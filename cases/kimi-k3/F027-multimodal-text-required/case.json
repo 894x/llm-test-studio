@@ -1,0 +1,27 @@
+{
+  "id": "must.multimodal_text_required",
+  "name": "多模态字段 · type=text 时 text 必填",
+  "dimension": "multimodal",
+  "protocol": "kimi-k3",
+  "kind": "kimi_error_400",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text"
+            }
+          ]
+        }
+      ],
+      "max_tokens": 16
+    }
+  },
+  "disabled": true
+}

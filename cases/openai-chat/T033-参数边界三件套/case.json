@@ -1,0 +1,17 @@
+{
+  "id": "T033",
+  "name": "参数边界三件套",
+  "dimension": "boundary",
+  "protocol": "openai-chat",
+  "kind": "parameter_boundaries",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出 BOUNDARY_OK"}],
+      "max_tokens": 16
+    }
+  }
+}

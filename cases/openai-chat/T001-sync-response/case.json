@@ -1,0 +1,17 @@
+{
+  "id": "T001",
+  "name": "同步响应检测",
+  "dimension": "boundary",
+  "protocol": "openai-chat",
+  "kind": "chat_sync",
+  "default": true,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出数字 5"}],
+      "max_tokens": 256
+    }
+  }
+}

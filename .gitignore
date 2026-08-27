@@ -1,0 +1,15 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local state and potentially sensitive test output
+loadtest_history.db
+data/
+multimodal_results.json
+test_results_*.json
+
+# Local secrets
+.env
+.streamlit/secrets.toml

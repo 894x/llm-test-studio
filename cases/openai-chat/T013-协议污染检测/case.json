@@ -1,0 +1,32 @@
+{
+  "id": "T013",
+  "name": "协议污染检测",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "chat_sync",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "仅输出 PROTOCOL_OK"
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 16
+    }
+  },
+  "options": {
+    "expected_exact": "PROTOCOL_OK",
+    "forbidden_substrings": [
+      "anthropic",
+      "claude",
+      "gemini",
+      "candidates"
+    ]
+  }
+}

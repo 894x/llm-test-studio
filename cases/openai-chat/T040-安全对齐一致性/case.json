@@ -1,0 +1,16 @@
+{
+  "id": "T040",
+  "name": "安全对齐一致性",
+  "dimension": "quality",
+  "protocol": "openai-chat",
+  "kind": "manual_unknown",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions"
+  },
+  "options": {
+    "reason": "安全拒绝需要人工语义复核，不能仅用关键词自动判定"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "V006",
+  "name": "图像与视频混合参考",
+  "dimension": "compatibility",
+  "protocol": "seedance",
+  "kind": "seedance_task",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/api/v3/contents/generations/tasks",
+    "body": {
+      "content": [
+        {"type": "text", "text": "Use the subject from image 1 and the movement from video 1 in a coherent cinematic scene."},
+        {"type": "image_url", "image_url": {"url": "https://p9-arcosite.byteimg.com/tos-cn-i-goo7wpa0wc/666b1aa0e24143b285cf2325ad90de77~tplv-goo7wpa0wc-image.image"}, "role": "reference_image"},
+        {"type": "video_url", "video_url": {"url": "https://p9-arcosite.byteimg.com/obj/tos-cn-i-goo7wpa0wc/0751d1ba97664456893058e914a1b44a"}, "role": "reference_video"}
+      ],
+      "duration": 4,
+      "resolution": "480p",
+      "ratio": "16:9"
+    }
+  }
+}

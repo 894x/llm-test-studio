@@ -1,0 +1,44 @@
+{
+  "id": "T037",
+  "name": "Function Calling",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "tool_call",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "调用 get_weather 查询北京天气"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "查询天气",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "tool_choice": "required",
+      "temperature": 0,
+      "max_tokens": 128
+    }
+  }
+}

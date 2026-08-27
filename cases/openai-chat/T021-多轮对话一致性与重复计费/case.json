@@ -1,0 +1,21 @@
+{
+  "id": "T021",
+  "name": "多轮对话一致性与 usage 增长",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "multi_turn_usage",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [],
+      "temperature": 0,
+      "max_tokens": 256
+    }
+  },
+  "options": {
+    "needle": "AUDIT_MEMORY_7F3A"
+  }
+}

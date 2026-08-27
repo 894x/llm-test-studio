@@ -1,0 +1,28 @@
+{
+  "name": "Kimi-K3 32K 标准场景压测",
+  "model": "kimi-k3",
+  "protocol": "openai-chat",
+  "request_path": "/v1/chat/completions",
+  "input_tokens_target": 32000,
+  "max_output_tokens": 300,
+  "turns_per_session": 8,
+  "sessions": 20,
+  "total_requests": 160,
+  "concurrency": 12,
+  "arrival_rate_per_second": {"start": 0.08, "end": 1.0},
+  "ramp_seconds": 120,
+  "reference_result": {
+    "duration_seconds": 156.967,
+    "success_rate_percent": 100.0,
+    "steady_cache_hit_percent": 98.18,
+    "ttft_p50_ms": 6363,
+    "ttft_p90_ms": 10193,
+    "ttft_p99_ms": 12547,
+    "e2e_p50_ms": 6721,
+    "e2e_p90_ms": 10784,
+    "e2e_p99_ms": 14059,
+    "tpot_p50_ms": 7.8,
+    "tpot_p90_ms": 56.3,
+    "tpot_p99_ms": 552.6
+  }
+}

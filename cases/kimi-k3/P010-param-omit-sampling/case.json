@@ -1,0 +1,14 @@
+{
+  "id": "param_omit_sampling",
+  "name": "参数约束 · 不传采样参数（应接受）",
+  "dimension": "parameters",
+  "protocol": "kimi-k3",
+  "kind": "kimi_success",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {"messages": [{"role": "user", "content": "说你好"}], "max_tokens": 50}
+  }
+}

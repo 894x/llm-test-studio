@@ -1,0 +1,22 @@
+{
+  "id": "V002",
+  "name": "首帧图生视频",
+  "dimension": "compatibility",
+  "protocol": "seedance",
+  "kind": "seedance_task",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/api/v3/contents/generations/tasks",
+    "body": {
+      "content": [
+        {"type": "text", "text": "The camera moves gently around the subject with natural cinematic motion."},
+        {"type": "image_url", "image_url": {"url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_first_frame.jpeg"}, "role": "first_frame"}
+      ],
+      "duration": 4,
+      "resolution": "480p",
+      "ratio": "16:9"
+    }
+  }
+}

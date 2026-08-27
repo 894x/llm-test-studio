@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "kimi-k3",
+  "display_name": "Kimi K3",
+  "model": "kimi-k3",
+  "protocol": "kimi-k3",
+  "endpoint": "",
+  "suites": [
+    "kimi-k3"
+  ],
+  "capabilities": [],
+  "enabled": true
+}

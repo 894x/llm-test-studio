@@ -1,0 +1,22 @@
+{
+  "id": "T025",
+  "name": "长流式断连率",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "long_stream_stability",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "输出从 1 到 80 的整数，每个数字用英文逗号分隔，不要解释。"}],
+      "temperature": 0,
+      "max_tokens": 256,
+      "stream": true
+    }
+  },
+  "options": {
+    "repetitions": 3
+  }
+}

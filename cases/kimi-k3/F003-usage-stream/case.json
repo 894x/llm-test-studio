@@ -1,0 +1,19 @@
+{
+  "id": "must.usage_stream",
+  "name": "协议 · Usage 流式",
+  "dimension": "protocol",
+  "protocol": "kimi-k3",
+  "kind": "stream_usage",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "说你好"}],
+      "max_tokens": 50,
+      "stream": true,
+      "stream_options": {"include_usage": true}
+    }
+  }
+}

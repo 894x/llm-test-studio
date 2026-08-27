@@ -1,0 +1,19 @@
+{
+  "id": "must.json_object",
+  "name": "结构化输出 · JSON Object",
+  "dimension": "structured-output",
+  "protocol": "kimi-k3",
+  "kind": "structured_json",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "返回包含 name 和 age 的 JSON 对象，name 为小林，age 为 28。"}],
+      "response_format": {"type": "json_object"},
+      "max_tokens": 200
+    }
+  },
+  "options": {"required_keys": ["name", "age"]}
+}

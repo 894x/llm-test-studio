@@ -1,0 +1,23 @@
+{
+  "id": "T022",
+  "name": "结构化输出 JSON 字段稳定性",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "structured_stability",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出 JSON 对象：name 为 Alice，age 为 18。"}],
+      "response_format": {"type": "json_object"},
+      "temperature": 0,
+      "max_tokens": 256
+    }
+  },
+  "options": {
+    "repetitions": 5,
+    "required_keys": ["name", "age"]
+  }
+}

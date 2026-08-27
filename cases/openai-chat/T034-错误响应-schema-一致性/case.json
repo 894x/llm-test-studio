@@ -1,0 +1,22 @@
+{
+  "id": "T034",
+  "name": "错误响应 schema 一致性",
+  "dimension": "boundary",
+  "protocol": "openai-chat",
+  "kind": "error_schema",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "error schema probe"
+        }
+      ],
+      "max_tokens": -1
+    }
+  }
+}

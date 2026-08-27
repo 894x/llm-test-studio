@@ -1,0 +1,16 @@
+{
+  "id": "T010",
+  "name": "指纹题测试",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "manual_unknown",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions"
+  },
+  "options": {
+    "reason": "参考报告未包含可复现的官方指纹题原文与答案基线"
+  }
+}

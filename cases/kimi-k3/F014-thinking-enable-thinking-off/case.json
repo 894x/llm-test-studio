@@ -1,0 +1,24 @@
+{
+  "id": "must.thinking_enable_thinking_off",
+  "name": "思考 · enable_thinking=false（K3 不能关）",
+  "dimension": "reasoning",
+  "protocol": "kimi-k3",
+  "kind": "kimi_reasoning_visible",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "1+1 等于几？为什么？"
+        }
+      ],
+      "enable_thinking": false,
+      "max_tokens": 200
+    }
+  },
+  "disabled": true
+}

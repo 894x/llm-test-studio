@@ -1,0 +1,16 @@
+{
+  "id": "T018",
+  "name": "模型自我身份认知",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "manual_unknown",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions"
+  },
+  "options": {
+    "reason": "需要通过部署配置提供预期厂商/模型身份基线后才能自动判定"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "T028",
+  "name": "流式字符交付速率测试",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "stream_throughput",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "输出 20 个由逗号分隔的英文单词，不要解释。"}],
+      "temperature": 0,
+      "max_tokens": 128,
+      "stream": true
+    }
+  },
+  "options": {
+    "repetitions": 3
+  }
+}

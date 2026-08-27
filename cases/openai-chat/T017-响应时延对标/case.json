@@ -1,0 +1,27 @@
+{
+  "id": "T017",
+  "name": "响应时延对标",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "chat_sync",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "仅输出 LATENCY_OK"
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 16
+    }
+  },
+  "options": {
+    "expected_exact": "LATENCY_OK",
+    "max_elapsed_ms": 5000
+  }
+}

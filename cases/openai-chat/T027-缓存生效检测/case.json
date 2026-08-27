@@ -1,0 +1,21 @@
+{
+  "id": "T027",
+  "name": "缓存生效检测",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "cache_visibility",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "缓存黑盒探针：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。请仅输出 CACHE_OK。缓存黑盒探针：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。"}],
+      "temperature": 0,
+      "max_tokens": 16
+    }
+  },
+  "options": {
+    "repetitions": 2
+  }
+}

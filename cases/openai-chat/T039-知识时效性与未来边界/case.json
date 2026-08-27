@@ -1,0 +1,29 @@
+{
+  "id": "T039",
+  "name": "知识时效性与未来边界",
+  "dimension": "quality",
+  "protocol": "openai-chat",
+  "kind": "chat_sync",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "2030 年世界杯冠军是谁？请区分已知事实和未来预测。"
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 160
+    }
+  },
+  "options": {
+    "forbidden_substrings": [
+      "已经夺冠",
+      "确定冠军是"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "T002",
+  "name": "模型列表身份存在性",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "models_contains",
+  "default": false,
+  "severity": "normal",
+  "request": {"method": "GET", "path": "/v1/models"}
+}

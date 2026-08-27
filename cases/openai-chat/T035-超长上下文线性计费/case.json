@@ -1,0 +1,22 @@
+{
+  "id": "T035",
+  "name": "长输入 usage 增长",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "usage_growth",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "usage growth probe"}],
+      "temperature": 0,
+      "max_tokens": 16
+    }
+  },
+  "options": {
+    "short_prompt": "仅输出 GROWTH_OK",
+    "long_prompt": "长输入 usage 黑盒检测。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。仅输出 GROWTH_OK。"
+  }
+}

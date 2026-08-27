@@ -1,0 +1,39 @@
+{
+  "id": "T026",
+  "name": "图片识别检测",
+  "dimension": "quality",
+  "protocol": "openai-chat",
+  "kind": "chat_sync",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "描述图片中的主体、颜色和场景。"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "https://p9-arcosite.byteimg.com/tos-cn-i-goo7wpa0wc/666b1aa0e24143b285cf2325ad90de77~tplv-goo7wpa0wc-image.image"
+              }
+            }
+          ]
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 256
+    }
+  },
+  "options": {
+    "required_substrings": [
+      "雪"
+    ]
+  }
+}

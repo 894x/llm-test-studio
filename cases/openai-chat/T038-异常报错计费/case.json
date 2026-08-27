@@ -1,0 +1,16 @@
+{
+  "id": "T038",
+  "name": "异常响应 usage 可见性",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "error_no_usage",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "error usage probe"}]
+    }
+  }
+}

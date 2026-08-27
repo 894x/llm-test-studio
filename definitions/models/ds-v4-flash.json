@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "ds-v4-flash",
+  "display_name": "DS V4 Flash",
+  "model": "ds-v4-flash",
+  "protocol": "openai-chat",
+  "endpoint": "",
+  "suites": [
+    "openai-chat"
+  ],
+  "capabilities": [],
+  "enabled": true
+}

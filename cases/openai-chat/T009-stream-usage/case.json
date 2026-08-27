@@ -1,0 +1,27 @@
+{
+  "id": "T009",
+  "name": "流式 usage 支持检测",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "stream_usage",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "仅输出 STREAM_USAGE_OK"
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 32,
+      "stream": true,
+      "stream_options": {
+        "include_usage": true
+      }
+    }
+  }
+}

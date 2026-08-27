@@ -1,0 +1,18 @@
+{
+  "id": "must.stream_integrity",
+  "name": "协议 · Stream 完整性",
+  "dimension": "protocol",
+  "protocol": "kimi-k3",
+  "kind": "sse_integrity",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "说你好"}],
+      "max_tokens": 50,
+      "stream": true
+    }
+  }
+}

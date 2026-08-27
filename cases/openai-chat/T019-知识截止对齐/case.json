@@ -1,0 +1,16 @@
+{
+  "id": "T019",
+  "name": "知识截止对齐",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "manual_unknown",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions"
+  },
+  "options": {
+    "reason": "需要通过部署配置提供目标模型的官方知识截止日期"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "T003",
+  "name": "认证方式兼容性",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "chat_sync",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "仅输出 AUTH_OK"
+        }
+      ],
+      "temperature": 0,
+      "max_tokens": 16
+    }
+  },
+  "options": {
+    "expected_exact": "AUTH_OK"
+  }
+}

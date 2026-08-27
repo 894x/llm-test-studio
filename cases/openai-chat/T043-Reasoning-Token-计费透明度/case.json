@@ -1,0 +1,16 @@
+{
+  "id": "T043",
+  "name": "Reasoning Token 计费透明度",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "manual_unknown",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions"
+  },
+  "options": {
+    "reason": "需要为被测模型配置 reasoning 开关和供应商 usage 字段映射"
+  }
+}

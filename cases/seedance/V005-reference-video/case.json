@@ -1,0 +1,22 @@
+{
+  "id": "V005",
+  "name": "参考视频生成",
+  "dimension": "compatibility",
+  "protocol": "seedance",
+  "kind": "seedance_task",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/api/v3/contents/generations/tasks",
+    "body": {
+      "content": [
+        {"type": "text", "text": "Follow the motion and camera language of video 1 while producing a coherent new shot."},
+        {"type": "video_url", "video_url": {"url": "https://p9-arcosite.byteimg.com/obj/tos-cn-i-goo7wpa0wc/0751d1ba97664456893058e914a1b44a"}, "role": "reference_video"}
+      ],
+      "duration": 4,
+      "resolution": "480p",
+      "ratio": "16:9"
+    }
+  }
+}

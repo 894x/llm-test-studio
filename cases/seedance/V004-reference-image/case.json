@@ -1,0 +1,22 @@
+{
+  "id": "V004",
+  "name": "参考图片生成视频",
+  "dimension": "compatibility",
+  "protocol": "seedance",
+  "kind": "seedance_task",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/api/v3/contents/generations/tasks",
+    "body": {
+      "content": [
+        {"type": "text", "text": "Use the subject and visual style from image 1 to create a natural cinematic shot."},
+        {"type": "image_url", "image_url": {"url": "https://p9-arcosite.byteimg.com/tos-cn-i-goo7wpa0wc/666b1aa0e24143b285cf2325ad90de77~tplv-goo7wpa0wc-image.image"}, "role": "reference_image"}
+      ],
+      "duration": 4,
+      "resolution": "480p",
+      "ratio": "16:9"
+    }
+  }
+}

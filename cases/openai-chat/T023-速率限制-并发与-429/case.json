@@ -1,0 +1,21 @@
+{
+  "id": "T023",
+  "name": "速率限制、并发与 429",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "concurrency_probe",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出 CONCURRENT_OK"}],
+      "temperature": 0,
+      "max_tokens": 16
+    }
+  },
+  "options": {
+    "repetitions": 5
+  }
+}

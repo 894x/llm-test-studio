@@ -1,0 +1,23 @@
+{
+  "id": "T041",
+  "name": "批量短输出 usage 上限",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "padding_ratio",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出 PAD_OK"}],
+      "temperature": 0,
+      "max_tokens": 256
+    }
+  },
+  "options": {
+    "repetitions": 6,
+    "expected_exact": "PAD_OK",
+    "max_completion_tokens": 6
+  }
+}

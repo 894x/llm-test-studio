@@ -1,0 +1,20 @@
+{
+  "id": "optional.tool_choice_function",
+  "name": "工具调用 · tool_choice=function",
+  "dimension": "tools",
+  "protocol": "kimi-k3",
+  "kind": "kimi_tool_call",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "查询北京天气。"}],
+      "tools": [{"type": "function", "function": {"name": "get_weather", "description": "查询天气", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}],
+      "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
+      "max_tokens": 200
+    }
+  },
+  "options": {"expected_tool_name": "get_weather"}
+}

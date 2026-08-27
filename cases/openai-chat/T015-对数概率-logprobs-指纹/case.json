@@ -1,0 +1,18 @@
+{
+  "id": "T015",
+  "name": "logprobs 接口结构检测",
+  "dimension": "identity",
+  "protocol": "openai-chat",
+  "kind": "logprobs_contract",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出字母 A"}],
+      "temperature": 0,
+      "max_tokens": 8
+    }
+  }
+}

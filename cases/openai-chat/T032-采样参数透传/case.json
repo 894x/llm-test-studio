@@ -1,0 +1,20 @@
+{
+  "id": "T032",
+  "name": "采样参数透传",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "sampling_effect",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"}],
+      "max_tokens": 256
+    }
+  },
+  "options": {
+    "repetitions": 6
+  }
+}

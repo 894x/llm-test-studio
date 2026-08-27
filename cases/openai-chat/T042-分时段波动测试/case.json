@@ -1,0 +1,16 @@
+{
+  "id": "T042",
+  "name": "分时段波动测试",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "manual_unknown",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions"
+  },
+  "options": {
+    "reason": "缺少同一渠道的历史时段基线，当前运行无法独立判定"
+  }
+}

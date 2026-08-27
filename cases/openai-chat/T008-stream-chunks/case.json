@@ -1,0 +1,19 @@
+{
+  "id": "T008",
+  "name": "流式分片异常判定",
+  "dimension": "billing",
+  "protocol": "openai-chat",
+  "kind": "sse_integrity",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出 SSE_INTEGRITY_OK"}],
+      "temperature": 0,
+      "max_tokens": 32,
+      "stream": true
+    }
+  }
+}

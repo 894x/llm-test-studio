@@ -1,0 +1,29 @@
+{
+  "id": "T029",
+  "name": "stop 参数测试",
+  "dimension": "boundary",
+  "protocol": "openai-chat",
+  "kind": "stop_parameter",
+  "default": false,
+  "severity": "normal",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "依次输出 苹果、香蕉、STOP_AUDIT、橙子"
+        }
+      ],
+      "stop": [
+        "STOP_AUDIT"
+      ],
+      "temperature": 0,
+      "max_tokens": 64
+    }
+  },
+  "options": {
+    "stop_text": "STOP_AUDIT"
+  }
+}

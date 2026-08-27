@@ -1,0 +1,22 @@
+{
+  "id": "T020",
+  "name": "确定性输出稳定性",
+  "dimension": "stability",
+  "protocol": "openai-chat",
+  "kind": "deterministic_stability",
+  "default": false,
+  "severity": "critical",
+  "request": {
+    "method": "POST",
+    "path": "/v1/chat/completions",
+    "body": {
+      "messages": [{"role": "user", "content": "仅输出 STABLE_OK"}],
+      "temperature": 0,
+      "max_tokens": 256
+    }
+  },
+  "options": {
+    "repetitions": 5,
+    "expected_exact": "STABLE_OK"
+  }
+}
