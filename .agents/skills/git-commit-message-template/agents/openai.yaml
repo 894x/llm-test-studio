@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Commit Template"
+  short_description: "Format commits with categorized details."
+  default_prompt: "Use $git-commit-message-template to prepare a categorized git commit message."
