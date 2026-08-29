@@ -1,0 +1,4 @@
+interface:
+  display_name: "README i18n Sync"
+  short_description: "Keep README and Chinese versions synchronized."
+  default_prompt: "Use $i18n-readme-sync to update a README and its corresponding Chinese version together."
