@@ -1,6 +1,8 @@
 import json
+import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -36,6 +38,7 @@ class EngineClientIntegrationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary_directory = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary_directory.name)
+        shutil.copy2(PROJECT_ROOT / "go.mod", cls.root / "go.mod")
         shutil.copytree(PROJECT_ROOT / "engine", cls.root / "engine")
         shutil.rmtree(cls.root / "engine" / "bin", ignore_errors=True)
         write_case(cls.root)
@@ -49,7 +52,8 @@ class EngineClientIntegrationTests(unittest.TestCase):
         binary = self.client.build(force=True)
 
         self.assertTrue(binary.is_file())
-        self.assertTrue(binary.stat().st_mode & 0o100)
+        if os.name != "nt":
+            self.assertTrue(binary.stat().st_mode & 0o100)
 
     def test_list_returns_engine_validated_cases(self):
         cases = self.client.list_cases("openai-chat")
@@ -91,7 +95,7 @@ class EngineClientCredentialTests(unittest.TestCase):
             def terminate(self):
                 return None
 
-        client = EngineClient(PROJECT_ROOT, binary_path=shutil.which("true"))
+        client = EngineClient(PROJECT_ROOT, binary_path=sys.executable)
         with patch("llm_test.engine_client.subprocess.Popen", FakeProcess):
             events = client.run(
                 suite="openai-chat",

@@ -1,22 +1,27 @@
 # Compatibility engine
 
-This directory is an independent Go module. It runs the `openai-chat`,
-`kimi-k3`, and `seedance` compatibility suites stored under the repository's
-`cases/` directory and produces redacted JSON and HTML reports.
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+This directory contains the compatibility execution packages and legacy JSONL
+CLI adapter in the repository-wide Go module. It runs the `openai-chat`,
+`kimi-k3`, and `seedance` suites under `cases/` and produces redacted JSON and
+HTML reports.
+
+Run build commands from the repository root.
 
 Build and inspect cases:
 
 ```sh
-GOWORK=off go build -o bin/llm-compat-engine ./cmd/llm-compat-engine
-./bin/llm-compat-engine list --suite openai-chat --cases-root ../cases --jsonl
+GOWORK=off go build -o engine/bin/llm-compat-engine ./engine/cmd/llm-compat-engine
+./engine/bin/llm-compat-engine list --suite openai-chat --cases-root cases --jsonl
 ```
 
 Dry-run a suite without making network requests:
 
 ```sh
-./bin/llm-compat-engine run \
+./engine/bin/llm-compat-engine run \
   --suite openai-chat \
-  --cases-root ../cases \
+  --cases-root cases \
   --base-url https://gateway.example \
   --model example-model \
   --dry-run \
@@ -35,3 +40,8 @@ JSONL schema version 1 emits:
 The run's final event contains report paths, verdict, overall status, and
 summary counts. Exit code 1 means the audit completed with failed cases; exit
 code 2 means configuration or usage failed.
+
+During the Application Core refactor this executable remains a compatibility
+adapter for Streamlit and scripts. Planning, execution state, evaluation, and
+report orchestration are moving into shared Core packages used by both this
+adapter and `llm-test`.

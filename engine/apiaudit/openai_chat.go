@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"llm-test/engine/common"
+	"github.com/894x/llm-test/engine/common"
 )
 
 func RunOpenAIChatCase(ctx context.Context, doer HTTPDoer, config RunConfig, definition CaseDefinition) (result CaseResult) {

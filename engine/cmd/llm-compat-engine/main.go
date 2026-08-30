@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"llm-test/engine/apiaudit"
+	"github.com/894x/llm-test/engine/apiaudit"
 )
 
 type stringListFlag []string

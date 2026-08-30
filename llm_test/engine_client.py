@@ -35,6 +35,7 @@ class EngineClient:
         self.root = (
             Path(root) if root is not None else Path(__file__).resolve().parents[1]
         ).resolve()
+        self.module_dir = self.root
         self.engine_dir = self.root / "engine"
         self._managed_binary = binary_path is None
         self.binary_path = (
@@ -53,8 +54,8 @@ class EngineClient:
             if not self.binary_path.is_file():
                 raise EngineError(f"engine binary does not exist: {self.binary_path}")
             return self.binary_path
-        if not self.engine_dir.joinpath("go.mod").is_file():
-            raise EngineError(f"engine module is missing: {self.engine_dir}")
+        if not self.module_dir.joinpath("go.mod").is_file():
+            raise EngineError(f"repository Go module is missing: {self.module_dir}")
         if not force and self._binary_is_current():
             return self.binary_path
 
@@ -64,10 +65,14 @@ class EngineClient:
         environment.pop(ENGINE_API_KEY_ENV, None)
         environment["GOWORK"] = "off"
         completed = subprocess.run(
-            [str(go), "build", "-o", str(self.binary_path), "./cmd/llm-compat-engine"],
-            cwd=self.engine_dir,
+            [
+                str(go), "build", "-o", str(self.binary_path),
+                "./engine/cmd/llm-compat-engine",
+            ],
+            cwd=self.module_dir,
             env=environment,
             text=True,
+            encoding="utf-8",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -213,6 +218,7 @@ class EngineClient:
                 cwd=self.root,
                 env=dict(environment),
                 text=True,
+                encoding="utf-8",
                 stdout=subprocess.PIPE,
                 stderr=stderr_file,
             )
@@ -249,7 +255,12 @@ class EngineClient:
         if not self.binary_path.is_file():
             return False
         binary_time = self.binary_path.stat().st_mtime_ns
-        source_paths = [self.engine_dir / "go.mod", *self.engine_dir.rglob("*.go")]
+        source_paths = [self.module_dir / "go.mod"]
+        go_sum = self.module_dir / "go.sum"
+        if go_sum.is_file():
+            source_paths.append(go_sum)
+        source_paths.extend(self.engine_dir.rglob("*.go"))
+        source_paths.extend(self.module_dir.joinpath("internal").rglob("*.go"))
         return all(path.stat().st_mtime_ns <= binary_time for path in source_paths)
 
     def _resolve_go(self) -> Path:

@@ -165,7 +165,7 @@
 - Python 代码要求 Python 3.10+；Go 引擎要求 Go 1.22+。
 - SQLite schema 初始化必须兼容旧版性能表，并可按需补充新列。
 
-当前 Windows 可移植性存在已知缺口：Python 引擎集成测试依赖 POSIX executable bit 与 `true` 命令，跨盘临时目录不能直接相对化；`EngineClient` 读取 Go 引擎 UTF-8 JSONL 时尚未显式指定编码。这些缺口不应被解释为已经完成的跨平台保证。
+当前 Windows 可移植性仍有一个已知缺口：跨盘临时报告目录不能直接相对化。Go 进程边界已显式使用 UTF-8，集成测试也不再依赖 POSIX executable bit 或 `true` 命令；但在 artifact 路径支持外部位置前，仍不能宣称完成跨平台保证。
 
 ### NFR-400 可观测性与失败语义
 
@@ -191,8 +191,8 @@
 | 范围 | 最低验收命令/检查 |
 | --- | --- |
 | Python 领域逻辑与 UI smoke | `python -m unittest discover -v` |
-| Go 兼容性引擎 | `cd engine && GOWORK=off go test ./...` |
-| Go 可执行文件 | `cd engine && GOWORK=off go build ./cmd/llm-compat-engine` |
+| Go Core 与兼容性引擎 | `GOWORK=off go test ./...` |
+| Go 可执行文件 | `GOWORK=off go build ./engine/cmd/llm-compat-engine` |
 | Bash benchmark | `bash scripts/test_llm_benchmark.sh` |
 | 文档 | README 链接有效，示例路径和环境变量与代码一致，未包含真实凭据 |
 

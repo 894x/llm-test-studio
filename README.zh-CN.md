@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-LLM Test Lab 是一个面向 OpenAI 兼容模型网关的独立验证工作区。它集成了 Streamlit 仪表盘、异步 Python 负载生成器和独立的 Go 兼容性引擎，使模型配置、协议用例、实时结果和可审查报告能够在同一个仓库中统一管理。
+LLM Test Lab 是一个面向 OpenAI 兼容模型网关的独立验证工作区。它集成了 Streamlit 仪表盘、异步 Python 负载生成器和 Go 兼容性引擎可执行文件，使模型配置、协议用例、实时结果和可审查报告能够在同一个仓库中统一管理。
 
 当前实现覆盖三类测试路径：
 
@@ -92,7 +92,7 @@ py -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-当托管二进制文件不存在或已过期时，兼容性引擎会在首次使用时从 `engine/` 构建。它是一个独立的 Go 模块，不依赖 `new-api` 工作区。
+当托管二进制文件不存在或已过期时，兼容性引擎会在首次使用时从仓库级 Go module 构建。可执行文件仍位于 `engine/bin/`，且不依赖 `new-api` 工作区。
 
 ## 运行仪表盘
 
@@ -216,12 +216,11 @@ Python 测试套件：
 python -m unittest discover -v
 ```
 
-独立引擎：
+仓库级 Go module 与独立兼容性可执行文件：
 
 ```bash
-cd engine
 GOWORK=off go test ./...
-GOWORK=off go build ./cmd/llm-compat-engine
+GOWORK=off go build ./engine/cmd/llm-compat-engine
 ```
 
 Shell 基准测试集成：
@@ -232,7 +231,7 @@ bash scripts/test_llm_benchmark.sh
 
 ### 当前 Windows 测试限制
 
-应用提供了 PowerShell 安装路径，但当前 Python 引擎集成测试仍包含 POSIX 假设：测试会检查可执行权限位、要求存在 `true` 可执行程序，并假定临时报告能够设置为仓库的相对路径，即使 Windows 将 `%TEMP%` 放在另一个驱动器上也是如此。此外，`EngineClient` 读取 Go 引擎的 UTF-8 JSONL 输出时，目前仍依赖 Windows 默认文本编码。请按上文所示单独运行 Go 测试套件；在进程边界和测试具备跨平台兼容性之前，应将这些 Python 失败视为已知的可移植性缺陷。
+Go 进程边界及其集成测试现已跨平台，并显式使用 UTF-8 解码 JSONL。目前仍有一个已知 Windows 缺口：当审计报告位于与仓库不同的盘符时，历史持久化还不能把它表示为相对路径。在 artifact 路径支持外部位置之前，应将该失败测试视为已知缺口。
 
 ## 项目结构
 

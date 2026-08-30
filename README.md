@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-LLM Test Lab is a standalone validation workspace for OpenAI-compatible model gateways. It combines a Streamlit dashboard, an asynchronous Python load generator, and a standalone Go compatibility engine so model profiles, protocol cases, live results, and reviewable reports can be managed in one repository.
+LLM Test Lab is a standalone validation workspace for OpenAI-compatible model gateways. It combines a Streamlit dashboard, an asynchronous Python load generator, and a Go compatibility-engine executable so model profiles, protocol cases, live results, and reviewable reports can be managed in one repository.
 
 The current implementation covers three test paths:
 
@@ -92,7 +92,7 @@ py -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-The compatibility engine is built from `engine/` on first use when its managed binary is absent or stale. It is an independent Go module and does not depend on a `new-api` checkout.
+The compatibility engine is built from the repository-wide Go module on first use when its managed binary is absent or stale. The executable remains under `engine/bin/` and does not depend on a `new-api` checkout.
 
 ## Run the dashboard
 
@@ -216,12 +216,11 @@ Python suite:
 python -m unittest discover -v
 ```
 
-Standalone engine:
+Repository-wide Go module and standalone compatibility executable:
 
 ```bash
-cd engine
 GOWORK=off go test ./...
-GOWORK=off go build ./cmd/llm-compat-engine
+GOWORK=off go build ./engine/cmd/llm-compat-engine
 ```
 
 Shell benchmark integration:
@@ -232,7 +231,7 @@ bash scripts/test_llm_benchmark.sh
 
 ### Current Windows test limitations
 
-The application includes a PowerShell setup path, but the current Python engine-integration tests still contain POSIX assumptions: they check an executable permission bit, expect a `true` executable, and assume temporary reports can be made relative to the repository even when Windows places `%TEMP%` on another drive. In addition, `EngineClient` currently relies on the Windows default text encoding when reading the Go engine's UTF-8 JSONL output. Run the Go suite separately as shown above and treat these Python failures as known portability gaps until the process boundary and tests are made platform-neutral.
+The Go process boundary and its integration tests are platform-neutral, including explicit UTF-8 JSONL decoding. One known Windows portability gap remains in audit-history persistence: a report created on a different drive from the repository cannot yet be represented as a relative path. Treat that failing test as a known gap until artifact paths gain an external-location representation.
 
 ## Project structure
 

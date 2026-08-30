@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"llm-test/engine/common"
+	"github.com/894x/llm-test/engine/common"
 )
 
 const DefaultSeedanceModel = "doubao-seedance-2-0-260128"
