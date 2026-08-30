@@ -2,6 +2,8 @@
 
 本文记录项目的产品边界、阶段架构与实施清单。目标不是把现有脚本简单包一层界面，而是统一模型、渠道、测试用例、执行、结果和报告，使 GUI、CLI、本地执行和未来的服务端执行共享同一套语义。
 
+本次 V1 是完整的 Go 迁移，不长期保留 Python 业务层。Python/Streamlit 只作为迁移期行为基准和旧数据验收工具；对应 Go 能力通过等价测试后即删除，不形成第二套运行时。
+
 ## 产品定义
 
 项目定位为面向 LLM 接口的本地优先测试工作台，覆盖：
@@ -65,7 +67,7 @@ llm-test CLI ───┘                          ├─ SQLite Repository
 - [ ] 将 `Tauri + React/Vite + Go sidecar` 作为备选，验证 sidecar 生命周期、签名和打包复杂度。
 - [ ] 仅在生态能力确有必要时选择 `Electron + React/Vite + Go sidecar`，同时评估体积和内存成本。
 - [ ] 技术验证至少覆盖：GUI 调用 Go、CLI 调用同一核心、访问同一 SQLite、操作系统凭据存储、三平台打包。
-- [ ] 明确现有 Streamlit Dashboard 的去留：迁移为新 GUI、保留为开发工具，或在 V1 完成后废弃。
+- [x] 明确现有 Streamlit Dashboard 的去留：迁移期用于人工回归，Wails 功能等价后删除。
 
 建议代码边界：
 
@@ -319,8 +321,8 @@ Remote Execution Plane
 ## 待讨论决策
 
 - [ ] 桌面壳最终选择 Wails、Tauri 还是 Electron？
-- [ ] Python 压测实现是迁移到 Go，还是只保留为研究/开发工具？
-- [ ] Streamlit Dashboard 在新桌面端完成后是否继续维护？
+- [x] Python 压测实现完整迁移到 Go；等价测试通过后删除 Python 业务实现。
+- [x] Streamlit Dashboard 在新桌面端达到功能等价后停止维护并删除。
 - [ ] V2 是否允许同步渠道 Key？若允许，需要哪些逐级授权和撤销机制？
 - [ ] V2 首期只支持个人账号，还是直接引入团队 Workspace？
 - [ ] 远程 Worker 是共享池、账号独享，还是两者都支持？

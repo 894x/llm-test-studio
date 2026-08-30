@@ -2,6 +2,8 @@
 
 本计划按依赖顺序重构现有系统。每个阶段必须独立提交、可验证、保留迁移期兼容入口，并减少重复业务规则。
 
+最终形态是完整 Go Core。Python/Streamlit 不是长期 adapter，也不保留为研究工具；它们只在迁移期间提供行为 fixtures、旧数据验收和人工回归，达到退出门槛后随对应业务逻辑一起删除。
+
 ## 提交原则
 
 - 一个提交只完成一个可回滚的架构或行为切片；
@@ -51,10 +53,10 @@
 | 旧实现 | 迁移期用途 | 删除或降级条件 |
 | --- | --- | --- |
 | Streamlit | UI 原型和人工回归 | Wails 五页面、历史、报告、凭据达到功能等价 |
-| Python `loadtest.py` | 现有 Dashboard 执行 | Go runner 对固定 fixtures 的调度、SSE、指标和错误分类等价 |
+| Python `loadtest.py` | 迁移期行为 fixtures | Go runner 对固定 fixtures 的调度、SSE、指标和错误分类等价后删除 |
 | `llm_benchmark.sh` | 开放环行为基准 | Go CLI 通过 burst/open-loop/drain 集成矩阵；脚本改为 wrapper 后再 deprecated |
 | `llm-compat-engine` | Python JSONL 兼容 | Python adapter 被移除或改调主 CLI；其内部不再含业务编排 |
-| Python SQLite | 旧历史兼容 | Go migration/repository 完成双向 fixture 和旧库恢复测试 |
+| Python SQLite | 旧历史只读验收 | Go migration/repository 完成旧库 fixture、恢复和数据保留测试后删除 |
 
 ## 每阶段完成定义
 
