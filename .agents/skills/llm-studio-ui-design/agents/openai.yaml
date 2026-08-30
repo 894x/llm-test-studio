@@ -1,0 +1,4 @@
+interface:
+  display_name: "LLM Studio UI Design"
+  short_description: "LLM Studio desktop UI design and visual QA"
+  default_prompt: "Use $llm-studio-ui-design to design or review the LLM Studio desktop interface."
