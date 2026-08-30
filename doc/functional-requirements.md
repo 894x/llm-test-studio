@@ -88,7 +88,7 @@
 
 - FR-501：系统必须保存请求状态、E2E、TTFT、TPOT、queue time、相对开始/结束时间、prompt/completion/cached token 和 stream chunk 数。
 - FR-502：流式 TTFT 必须取首个非空 `content` 或 `reasoning_content` delta 到达时间。
-- FR-503：存在有效 TTFT 和 completion token 时，TPOT 按 `(E2E - TTFT) / completion_tokens` 计算。
+- FR-503：存在有效 TTFT 且 completion token 至少为 2 时，TPOT 按 `(E2E - TTFT) / (completion_tokens - 1)` 计算；首个 token 已包含在 TTFT 中，不重复计入生成间隔。
 - FR-504：系统必须计算成功率、失败数、超时数、峰值在途、QPS、RPM、输入/输出/总 TPM、生成 TPS 和缓存率。
 - FR-505：TTFT、TPOT、E2E 必须提供 P50、P90、P95、P99 和平均值；queue time 至少提供 P50、P95 和平均值。
 - FR-506：每次运行只保存一份完整 request template；单请求记录只保存相对该模板的顶层差异。
