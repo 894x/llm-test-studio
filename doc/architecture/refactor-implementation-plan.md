@@ -43,7 +43,7 @@
 
 ### M4：桌面端和交付
 
-16. `feat(desktop-poc)`：Wails v2 + React/Vite 调用 Core、订阅 Run、取消、访问同一 SQLite 和 OS store。
+16. `feat(desktop-poc)`：Wails v2 + React/Vite + Tailwind CSS + shadcn/ui 调用 Core、订阅 Run、取消、访问同一 SQLite 和 OS store；前端只持有展示与交互状态。
 17. `feat(desktop)`：迁移五个 Streamlit 页面并完成 1000+ 行结果体验；达到等价后标记 Streamlit deprecated。
 18. `build(release)`：三平台 CI、安装包、签名、更新和回滚；验证同一测试和报告。
 19. `chore(legacy)`：删除已达到退出门槛的 Python/Bash 业务实现，只保留明确需要的导入/诊断工具。

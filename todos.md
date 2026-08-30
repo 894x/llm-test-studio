@@ -51,19 +51,19 @@
 ### 目标架构
 
 ```text
-React / Web UI ─┐
-                ├─ Local Application Core ─┬─ Execution Engines
-llm-test CLI ───┘                          ├─ SQLite Repository
-                                           ├─ OS Credential Store
-                                           └─ Report / Artifact Renderer
+React + Tailwind + shadcn/ui ─┐
+                              ├─ Local Application Core ─┬─ Execution Engines
+llm-test CLI ─────────────────┘                          ├─ SQLite Repository
+                                                         ├─ OS Credential Store
+                                                         └─ Report / Artifact Renderer
 ```
 
 目标平台：Windows、macOS、Linux。
 
 ### 桌面技术选型
 
-- [ ] 完成桌面壳技术验证并记录 ADR。
-- [ ] 优先验证 `Wails + React/Vite + Go Core`：可复用当前 Go 兼容测试能力，GUI 与 CLI 都能直接调用 Go 核心，安装体积也通常小于 Electron。
+- [x] 完成桌面壳技术决策并记录 ADR；Wails 进入 PoC 后仍须通过三平台退出门槛。
+- [x] 选择 `Wails + React/Vite + Tailwind CSS + shadcn/ui + Go Core`：GUI 与 CLI 直接调用同一 Go 核心，不启动本地 HTTP 服务。
 - [ ] 将 `Tauri + React/Vite + Go sidecar` 作为备选，验证 sidecar 生命周期、签名和打包复杂度。
 - [ ] 仅在生态能力确有必要时选择 `Electron + React/Vite + Go sidecar`，同时评估体积和内存成本。
 - [ ] 技术验证至少覆盖：GUI 调用 Go、CLI 调用同一核心、访问同一 SQLite、操作系统凭据存储、三平台打包。
@@ -320,7 +320,8 @@ Remote Execution Plane
 
 ## 待讨论决策
 
-- [ ] 桌面壳最终选择 Wails、Tauri 还是 Electron？
+- [x] 桌面壳选择 Wails；Tauri 和 Electron 仅在 PoC 未通过退出门槛时重新评估。
+- [x] React 样式与基础组件选择 Tailwind CSS + shadcn/ui；业务状态与校验不进入前端组件。
 - [x] Python 压测实现完整迁移到 Go；等价测试通过后删除 Python 业务实现。
 - [x] Streamlit Dashboard 在新桌面端达到功能等价后停止维护并删除。
 - [ ] V2 是否允许同步渠道 Key？若允许，需要哪些逐级授权和撤销机制？
