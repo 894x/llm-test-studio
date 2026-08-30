@@ -1,0 +1,341 @@
+package catalog
+
+import (
+	"context"
+	"sort"
+
+	"github.com/894x/llm-test/internal/domain"
+)
+
+func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
+	ctx, err := service.ready(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	models, err := service.repository.ListModels(ctx)
+	if err != nil {
+		return Snapshot{}, service.portError(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	channels, err := service.repository.ListChannels(ctx)
+	if err != nil {
+		return Snapshot{}, service.portError(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	mappings, err := service.repository.ListChannelModels(ctx)
+	if err != nil {
+		return Snapshot{}, service.portError(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	testCases, err := service.repository.ListTestCases(ctx)
+	if err != nil {
+		return Snapshot{}, service.portError(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	suites, err := service.repository.ListSuites(ctx)
+	if err != nil {
+		return Snapshot{}, service.portError(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	plans, err := service.repository.ListPlans(ctx)
+	if err != nil {
+		return Snapshot{}, service.portError(ctx, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+
+	return buildSnapshot(ctx, models, channels, mappings, testCases, suites, plans)
+}
+
+func (service *Service) ListModels(ctx context.Context) ([]ModelSummary, error) {
+	snapshot, err := service.Snapshot(ctx)
+	return snapshot.Models, err
+}
+
+func (service *Service) ListChannels(ctx context.Context) ([]ChannelSummary, error) {
+	snapshot, err := service.Snapshot(ctx)
+	return snapshot.Channels, err
+}
+
+func (service *Service) ListChannelModels(ctx context.Context) ([]ChannelModelSummary, error) {
+	snapshot, err := service.Snapshot(ctx)
+	return snapshot.ChannelModels, err
+}
+
+func (service *Service) ListTestCases(ctx context.Context) ([]TestCaseSummary, error) {
+	snapshot, err := service.Snapshot(ctx)
+	return snapshot.TestCases, err
+}
+
+func (service *Service) ListSuites(ctx context.Context) ([]SuiteSummary, error) {
+	snapshot, err := service.Snapshot(ctx)
+	return snapshot.Suites, err
+}
+
+func (service *Service) ListPlans(ctx context.Context) ([]PlanSummary, error) {
+	snapshot, err := service.Snapshot(ctx)
+	return snapshot.Plans, err
+}
+
+func buildSnapshot(
+	ctx context.Context,
+	models []domain.Model,
+	channels []domain.Channel,
+	mappings []domain.ChannelModel,
+	testCases []domain.TestCase,
+	suites []domain.Suite,
+	plans []domain.Plan,
+) (Snapshot, error) {
+	modelByID := make(map[string]domain.Model, len(models))
+	for _, model := range models {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		if err := model.Validate(); err != nil {
+			return Snapshot{}, ErrCorrupt
+		}
+		if _, duplicate := modelByID[model.ID]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		modelByID[model.ID] = model
+	}
+	channelByID := make(map[string]domain.Channel, len(channels))
+	for _, channel := range channels {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		if err := channel.Validate(); err != nil {
+			return Snapshot{}, ErrCorrupt
+		}
+		if _, duplicate := channelByID[channel.ID]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		channelByID[channel.ID] = channel
+	}
+	testCaseByID := make(map[string]domain.TestCase, len(testCases))
+	for _, testCase := range testCases {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		if err := testCase.Validate(); err != nil {
+			return Snapshot{}, ErrCorrupt
+		}
+		if _, duplicate := testCaseByID[testCase.ID]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		testCaseByID[testCase.ID] = testCase
+	}
+
+	mappingByBinding := make(map[string]domain.ChannelModel, len(mappings))
+	mappingIDs := make(map[string]struct{}, len(mappings))
+	modelCountByChannel := make(map[string]int, len(channels))
+	for _, mapping := range mappings {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		if err := mapping.Validate(); err != nil {
+			return Snapshot{}, ErrCorrupt
+		}
+		if _, duplicate := mappingIDs[mapping.ID]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		mappingIDs[mapping.ID] = struct{}{}
+		channel, channelFound := channelByID[mapping.ChannelID]
+		model, modelFound := modelByID[mapping.ModelID]
+		if !channelFound || !modelFound || channel.Protocol != model.Protocol {
+			return Snapshot{}, ErrCorrupt
+		}
+		binding := mapping.ChannelID + "\x00" + mapping.ModelID
+		if _, duplicate := mappingByBinding[binding]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		mappingByBinding[binding] = mapping
+		modelCountByChannel[mapping.ChannelID]++
+	}
+
+	suiteByID := make(map[string]domain.Suite, len(suites))
+	for _, suite := range suites {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		if err := suite.Validate(); err != nil {
+			return Snapshot{}, ErrCorrupt
+		}
+		if _, duplicate := suiteByID[suite.ID]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		if !validCaseRefs(suite.Cases, testCaseByID) {
+			return Snapshot{}, ErrCorrupt
+		}
+		suiteByID[suite.ID] = suite
+	}
+	planIDs := make(map[string]struct{}, len(plans))
+	for _, plan := range plans {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		if err := plan.Validate(); err != nil {
+			return Snapshot{}, ErrCorrupt
+		}
+		if _, duplicate := planIDs[plan.ID]; duplicate {
+			return Snapshot{}, ErrCorrupt
+		}
+		planIDs[plan.ID] = struct{}{}
+		if plan.SuiteID != "" {
+			suite, found := suiteByID[plan.SuiteID]
+			if !found || plan.SuiteRevision > suite.Revision {
+				return Snapshot{}, ErrCorrupt
+			}
+		}
+		if !validCaseRefs(plan.Cases, testCaseByID) {
+			return Snapshot{}, ErrCorrupt
+		}
+		targetProtocol := modelByID[plan.ModelIDs[0]].Protocol
+		for _, ref := range plan.Cases {
+			if testCaseByID[ref.CaseID].Protocol != targetProtocol {
+				return Snapshot{}, ErrCorrupt
+			}
+		}
+		for _, channelID := range plan.ChannelIDs {
+			if _, found := channelByID[channelID]; !found {
+				return Snapshot{}, ErrCorrupt
+			}
+			for _, modelID := range plan.ModelIDs {
+				if _, found := modelByID[modelID]; !found {
+					return Snapshot{}, ErrCorrupt
+				}
+				if _, found := mappingByBinding[channelID+"\x00"+modelID]; !found {
+					return Snapshot{}, ErrCorrupt
+				}
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+
+	snapshot := Snapshot{
+		SchemaVersion: CurrentSnapshotSchemaVersion,
+		Models:        make([]ModelSummary, 0, len(models)), Channels: make([]ChannelSummary, 0, len(channels)),
+		ChannelModels: make([]ChannelModelSummary, 0, len(mappings)), TestCases: make([]TestCaseSummary, 0, len(testCases)),
+		Suites: make([]SuiteSummary, 0, len(suites)), Plans: make([]PlanSummary, 0, len(plans)),
+	}
+	for _, model := range models {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		snapshot.Models = append(snapshot.Models, ModelSummary{
+			ID: model.ID, Revision: model.Revision, Name: model.Name, Protocol: model.Protocol,
+			Capabilities: append([]string(nil), model.Capabilities...),
+		})
+	}
+	for _, channel := range channels {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		snapshot.Channels = append(snapshot.Channels, ChannelSummary{
+			ID: channel.ID, Revision: channel.Revision, Name: channel.Name, BaseURL: channel.BaseURL,
+			Protocol: channel.Protocol, Enabled: channel.Enabled, CredentialConfigured: channel.CredentialID != "",
+			ModelCount: modelCountByChannel[channel.ID],
+		})
+	}
+	for _, mapping := range mappings {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		snapshot.ChannelModels = append(snapshot.ChannelModels, ChannelModelSummary{
+			ID: mapping.ID, Revision: mapping.Revision, ChannelID: mapping.ChannelID,
+			ModelID: mapping.ModelID, UpstreamModelName: mapping.UpstreamModelName,
+		})
+	}
+	for _, testCase := range testCases {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		kinds := make([]domain.AssertionKind, len(testCase.Definition.Assertions))
+		for index, assertion := range testCase.Definition.Assertions {
+			kinds[index] = assertion.Kind
+		}
+		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
+			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
+			Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
+			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
+			Method: testCase.Definition.Request.Method, Path: testCase.Definition.Request.Path, AssertionKinds: kinds,
+		})
+	}
+	for _, suite := range suites {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		snapshot.Suites = append(snapshot.Suites, SuiteSummary{ID: suite.ID, Revision: suite.Revision, Name: suite.Name, CaseCount: len(suite.Cases)})
+	}
+	for _, plan := range plans {
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		snapshot.Plans = append(snapshot.Plans, PlanSummary{
+			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
+			ModelCount: len(plan.ModelIDs), ChannelCount: len(plan.ChannelIDs), CaseCount: len(plan.Cases),
+			LoadMode: plan.Load.Mode, Concurrency: plan.Load.Concurrency, RequestCount: plan.Load.RequestCount,
+			RatePerSecond: plan.Load.RatePerSecond, DurationMS: plan.Load.DurationMS, RequestTimeoutMS: plan.Load.RequestTimeoutMS,
+		})
+	}
+
+	sort.Slice(snapshot.Models, func(left, right int) bool {
+		return lessNameID(snapshot.Models[left].Name, snapshot.Models[left].ID, snapshot.Models[right].Name, snapshot.Models[right].ID)
+	})
+	sort.Slice(snapshot.Channels, func(left, right int) bool {
+		return lessNameID(snapshot.Channels[left].Name, snapshot.Channels[left].ID, snapshot.Channels[right].Name, snapshot.Channels[right].ID)
+	})
+	sort.Slice(snapshot.ChannelModels, func(left, right int) bool {
+		leftValue, rightValue := snapshot.ChannelModels[left], snapshot.ChannelModels[right]
+		if leftValue.ChannelID != rightValue.ChannelID {
+			return leftValue.ChannelID < rightValue.ChannelID
+		}
+		if leftValue.ModelID != rightValue.ModelID {
+			return leftValue.ModelID < rightValue.ModelID
+		}
+		return leftValue.ID < rightValue.ID
+	})
+	sort.Slice(snapshot.TestCases, func(left, right int) bool {
+		return lessNameID(snapshot.TestCases[left].Name, snapshot.TestCases[left].ID, snapshot.TestCases[right].Name, snapshot.TestCases[right].ID)
+	})
+	sort.Slice(snapshot.Suites, func(left, right int) bool {
+		return lessNameID(snapshot.Suites[left].Name, snapshot.Suites[left].ID, snapshot.Suites[right].Name, snapshot.Suites[right].ID)
+	})
+	sort.Slice(snapshot.Plans, func(left, right int) bool {
+		return lessNameID(snapshot.Plans[left].Name, snapshot.Plans[left].ID, snapshot.Plans[right].Name, snapshot.Plans[right].ID)
+	})
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
+}
+
+func validCaseRefs(refs []domain.CaseRevisionRef, testCases map[string]domain.TestCase) bool {
+	for _, ref := range refs {
+		testCase, found := testCases[ref.CaseID]
+		if !found || ref.Revision > testCase.Revision {
+			return false
+		}
+	}
+	return true
+}
+
+func lessNameID(leftName, leftID, rightName, rightID string) bool {
+	if leftName == rightName {
+		return leftID < rightID
+	}
+	return leftName < rightName
+}
