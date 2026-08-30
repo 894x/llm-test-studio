@@ -57,7 +57,11 @@ func (request TestRequest) Validate() error {
 			return fmt.Errorf("credential-bearing header %q is forbidden in a test definition", name)
 		}
 	}
-	if err := validateSafeJSONObject(request.Body); err != nil {
+	body := bytes.TrimSpace(request.Body)
+	if len(body) == 0 || bytes.Equal(body, []byte("null")) {
+		return nil
+	}
+	if err := validateSafeJSONObject(body); err != nil {
 		return fmt.Errorf("invalid test request body: %w", err)
 	}
 	return nil
@@ -192,25 +196,92 @@ func (definition *TestCaseDefinition) UnmarshalJSON(data []byte) error {
 
 type TestCase struct {
 	EntityMeta
-	Name       string             `json:"name"`
-	Protocol   Protocol           `json:"protocol"`
-	Definition TestCaseDefinition `json:"definition"`
+	Key           string             `json:"key"`
+	Name          string             `json:"name"`
+	Dimension     string             `json:"dimension"`
+	Protocol      Protocol           `json:"protocol"`
+	Enabled       bool               `json:"enabled"`
+	Default       bool               `json:"default"`
+	Severity      CaseSeverity       `json:"severity"`
+	ExecutionMode CaseExecutionMode  `json:"execution_mode"`
+	Definition    TestCaseDefinition `json:"definition"`
+}
+
+type CaseSeverity string
+
+const (
+	CaseSeverityNormal   CaseSeverity = "normal"
+	CaseSeverityCritical CaseSeverity = "critical"
+)
+
+func (severity CaseSeverity) Validate() error {
+	switch severity {
+	case CaseSeverityNormal, CaseSeverityCritical:
+		return nil
+	default:
+		return fmt.Errorf("unsupported test case severity %q", severity)
+	}
+}
+
+type CaseExecutionMode string
+
+const (
+	CaseExecutionAutomatic CaseExecutionMode = "automatic"
+	CaseExecutionManual    CaseExecutionMode = "manual"
+)
+
+func (mode CaseExecutionMode) Validate() error {
+	switch mode {
+	case CaseExecutionAutomatic, CaseExecutionManual:
+		return nil
+	default:
+		return fmt.Errorf("unsupported test case execution mode %q", mode)
+	}
 }
 
 func (testCase TestCase) Validate() error {
 	if err := testCase.EntityMeta.Validate(); err != nil {
 		return fmt.Errorf("invalid test case metadata: %w", err)
 	}
+	if !isSafeCaseKey(testCase.Key) {
+		return errors.New("test case key must contain only letters, digits, dot, underscore, or hyphen")
+	}
 	if strings.TrimSpace(testCase.Name) == "" {
 		return errors.New("test case name must not be empty")
 	}
+	if strings.TrimSpace(testCase.Dimension) == "" || strings.TrimSpace(testCase.Dimension) != testCase.Dimension {
+		return errors.New("test case dimension must be a trimmed non-empty value")
+	}
 	if err := testCase.Protocol.Validate(); err != nil {
+		return err
+	}
+	if testCase.Default && !testCase.Enabled {
+		return errors.New("a default test case must be enabled")
+	}
+	if err := testCase.Severity.Validate(); err != nil {
+		return err
+	}
+	if err := testCase.ExecutionMode.Validate(); err != nil {
 		return err
 	}
 	if err := testCase.Definition.Validate(); err != nil {
 		return fmt.Errorf("invalid test case definition: %w", err)
 	}
 	return nil
+}
+
+func isSafeCaseKey(value string) bool {
+	if value == "" || strings.TrimSpace(value) != value {
+		return false
+	}
+	for index, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || (index > 0 && strings.ContainsRune("._-", character)) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func validateRequestPath(value string) error {

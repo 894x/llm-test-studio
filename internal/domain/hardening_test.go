@@ -267,7 +267,9 @@ func TestChannelModelAndTestCaseValidateTheirOwnedIdentity(t *testing.T) {
 
 	testCase := TestCase{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174024"),
-		Name:       "chat smoke", Protocol: ProtocolOpenAIChat,
+		Key:        "T001", Name: "chat smoke", Dimension: "boundary",
+		Protocol: ProtocolOpenAIChat, Enabled: true, Default: true,
+		Severity: CaseSeverityCritical, ExecutionMode: CaseExecutionAutomatic,
 		Definition: validTestCaseDefinition(),
 	}
 	if err := testCase.Validate(); err != nil {
@@ -276,6 +278,37 @@ func TestChannelModelAndTestCaseValidateTheirOwnedIdentity(t *testing.T) {
 	testCase.Definition.Request.Body = json.RawMessage(`[]`)
 	if err := testCase.Validate(); err == nil {
 		t.Fatal("test case with a non-object request body validated")
+	}
+}
+
+func TestTestCaseValidatesCatalogPolicyFields(t *testing.T) {
+	t.Parallel()
+
+	valid := TestCase{
+		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174024"),
+		Key:        "must.tool_call", Name: "tool call", Dimension: "tools",
+		Protocol: ProtocolKimiK3, Enabled: true,
+		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic,
+		Definition: validTestCaseDefinition(),
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*TestCase)
+	}{
+		{name: "empty key", mutate: func(value *TestCase) { value.Key = "" }},
+		{name: "unsafe key", mutate: func(value *TestCase) { value.Key = "../case" }},
+		{name: "empty dimension", mutate: func(value *TestCase) { value.Dimension = "" }},
+		{name: "unsupported severity", mutate: func(value *TestCase) { value.Severity = "urgent" }},
+		{name: "unsupported execution", mutate: func(value *TestCase) { value.ExecutionMode = "sometimes" }},
+		{name: "disabled default", mutate: func(value *TestCase) { value.Enabled = false; value.Default = true }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := valid
+			test.mutate(&candidate)
+			if err := candidate.Validate(); err == nil {
+				t.Fatalf("TestCase.Validate() accepted %s", test.name)
+			}
+		})
 	}
 }
 
@@ -339,6 +372,21 @@ func TestTestCaseDefinitionValidatesVersionExpectedAndAssertionContracts(t *test
 				t.Fatalf("invalid definition validated: %#v", candidate)
 			}
 		})
+	}
+}
+
+func TestTestCaseDefinitionAllowsRequestsWithoutBodies(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []json.RawMessage{nil, json.RawMessage(`null`)} {
+		candidate := validTestCaseDefinition()
+		candidate.Request.Method = RequestGET
+		candidate.Request.Path = "/v1/models"
+		candidate.Request.Body = body
+
+		if err := candidate.Validate(); err != nil {
+			t.Fatalf("TestCaseDefinition.Validate() body %q error = %v", body, err)
+		}
 	}
 }
 
