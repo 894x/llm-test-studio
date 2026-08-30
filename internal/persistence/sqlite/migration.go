@@ -190,40 +190,44 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		}
 	}()
 
-	alreadyApplied, err := migration0001AlreadyApplied(ctx, conn)
+	version, err := appliedMigrationVersion(ctx, conn)
 	if err != nil {
 		return err
 	}
-	if alreadyApplied {
-		if err := validateIntegrity(ctx, conn); err != nil {
+	if version == 0 {
+		if err := validateLegacySchema(ctx, conn); err != nil {
 			return err
 		}
-		if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
-			return fmt.Errorf("commit sqlite migration verification: %w", err)
+		for _, statement := range migration0001Statements {
+			if _, err := conn.ExecContext(ctx, statement); err != nil {
+				return fmt.Errorf("apply sqlite migration %s: %w", migration0001Name, err)
+			}
 		}
-		committed = true
-		return nil
-	}
-	if err := validateLegacySchema(ctx, conn); err != nil {
-		return err
-	}
-
-	for _, statement := range migration0001Statements {
-		if _, err := conn.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("apply sqlite migration %s: %w", migration0001Name, err)
+		if err := addLegacyRunColumns(ctx, conn); err != nil {
+			return err
 		}
+		if _, err := conn.ExecContext(ctx, `
+			INSERT INTO schema_migrations(version, name, checksum, applied_at, app_version)
+			VALUES(1, ?, ?, ?, ?)
+		`, migration0001Name, migration0001Checksum(), time.Now().UTC().Format(time.RFC3339Nano), options.AppVersion); err != nil {
+			return fmt.Errorf("record sqlite migration %s: %w", migration0001Name, err)
+		}
+		if _, err := conn.ExecContext(ctx, "PRAGMA user_version = 1"); err != nil {
+			return fmt.Errorf("set sqlite user version: %w", err)
+		}
+		version = 1
 	}
-	if err := addLegacyRunColumns(ctx, conn); err != nil {
+	if version == 1 {
+		if err := applyMigration0002(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 2
+	}
+	if version != 2 {
+		return fmt.Errorf("sqlite schema is unknown: unsupported migration version %d", version)
+	}
+	if err := validateAppliedSchema0002(ctx, conn); err != nil {
 		return err
-	}
-	if _, err := conn.ExecContext(ctx, `
-		INSERT INTO schema_migrations(version, name, checksum, applied_at, app_version)
-		VALUES(1, ?, ?, ?, ?)
-	`, migration0001Name, migration0001Checksum(), time.Now().UTC().Format(time.RFC3339Nano), options.AppVersion); err != nil {
-		return fmt.Errorf("record sqlite migration %s: %w", migration0001Name, err)
-	}
-	if _, err := conn.ExecContext(ctx, "PRAGMA user_version = 1"); err != nil {
-		return fmt.Errorf("set sqlite user version: %w", err)
 	}
 	if err := validateIntegrity(ctx, conn); err != nil {
 		return err
@@ -759,56 +763,7 @@ func columnNames(ctx context.Context, conn *sql.Conn, table string) ([]string, e
 	return columns, nil
 }
 
-func migration0001AlreadyApplied(ctx context.Context, conn *sql.Conn) (bool, error) {
-	var userVersion int
-	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&userVersion); err != nil {
-		return false, fmt.Errorf("read sqlite user version: %w", err)
-	}
-
-	var migrationTableCount int
-	if err := conn.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM sqlite_master
-		WHERE type = 'table' AND name = 'schema_migrations'
-	`).Scan(&migrationTableCount); err != nil {
-		return false, fmt.Errorf("inspect sqlite migration table: %w", err)
-	}
-	if migrationTableCount == 0 {
-		if userVersion != 0 {
-			return false, fmt.Errorf("sqlite schema is unknown: user_version is %d without migration history", userVersion)
-		}
-		return false, nil
-	}
-
-	var count int
-	if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
-		return false, fmt.Errorf("read sqlite migration history: %w", err)
-	}
-	if count != 1 {
-		return false, fmt.Errorf("sqlite schema is unknown: migration history contains %d rows", count)
-	}
-	var version int
-	var name, checksum string
-	if err := conn.QueryRowContext(ctx, `
-		SELECT version, name, checksum FROM schema_migrations
-	`).Scan(&version, &name, &checksum); err != nil {
-		return false, fmt.Errorf("read sqlite migration 0001: %w", err)
-	}
-	if version != 1 || name != migration0001Name {
-		return false, fmt.Errorf("sqlite schema is unknown: migration record is version %d name %q", version, name)
-	}
-	if checksum != migration0001Checksum() {
-		return false, fmt.Errorf("sqlite migration 0001 checksum mismatch: got %q", checksum)
-	}
-	if userVersion != 1 {
-		return false, fmt.Errorf("sqlite schema is unknown: migration 0001 has user_version %d", userVersion)
-	}
-	if err := validateAppliedSchema(ctx, conn); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func validateAppliedSchema(ctx context.Context, conn *sql.Conn) error {
+func validateAppliedSchema0001(ctx context.Context, conn *sql.Conn) error {
 	expectedTables := map[string]bool{
 		"schema_migrations":  true,
 		"runs":               true,

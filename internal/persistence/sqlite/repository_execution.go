@@ -1,0 +1,1111 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"reflect"
+
+	"github.com/894x/llm-test/internal/domain"
+)
+
+func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) error {
+	if err := run.Validate(); err != nil {
+		return fmt.Errorf("validate run: %w", err)
+	}
+	meta := run.Meta()
+	if meta.Revision != 1 || run.Status() != domain.RunQueued {
+		return errors.New("new run must be queued at revision 1")
+	}
+	document, err := marshalCanonical(run)
+	if err != nil {
+		return fmt.Errorf("encode run: %w", err)
+	}
+	snapshotDocument, err := marshalCanonical(run.Snapshot())
+	if err != nil {
+		return fmt.Errorf("encode run snapshot: %w", err)
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin run create: %w", err)
+	}
+	defer tx.Rollback()
+	if err := validateRunReferences(ctx, tx, run); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO execution_runs(id, current_revision, created_at, sealed)
+		VALUES(?, ?, ?, 0)
+	`, meta.ID, meta.Revision, formatTime(meta.CreatedAt)); err != nil {
+		return classifyWriteError("create run root", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO execution_run_revisions(
+			run_id, schema_version, revision, created_at, updated_at,
+			plan_id, plan_revision, status, snapshot_json, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, meta.ID, meta.SchemaVersion, meta.Revision, formatTime(meta.CreatedAt), formatTime(meta.UpdatedAt),
+		run.PlanID(), run.Snapshot().Plan.Revision, run.Status(), snapshotDocument, document); err != nil {
+		return classifyWriteError("create run revision", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit run", err)
+	}
+	return nil
+}
+
+func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision uint64, run domain.Run) error {
+	if err := run.Validate(); err != nil {
+		return fmt.Errorf("validate run: %w", err)
+	}
+	meta := run.Meta()
+	if err := validateNextRevision(expectedRevision, meta); err != nil {
+		return err
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin run update: %w", err)
+	}
+	defer tx.Rollback()
+	var currentRevision int64
+	var sealed int
+	err = tx.QueryRowContext(ctx, `SELECT current_revision, sealed FROM execution_runs WHERE id = ?`, meta.ID).Scan(&currentRevision, &sealed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: run", ErrNotFound)
+	}
+	if err != nil {
+		return fmt.Errorf("inspect run revision: %w", err)
+	}
+	if currentRevision < 1 || (sealed != 0 && sealed != 1) {
+		return fmt.Errorf("%w: run revision pointer", ErrCorrupt)
+	}
+	if sealed != 0 || uint64(currentRevision) != expectedRevision {
+		return fmt.Errorf("%w: run", ErrConflict)
+	}
+	current, err := queryRunRevision(ctx, tx, meta.ID, expectedRevision, false)
+	if err != nil {
+		return err
+	}
+	if err := validateStoredRunReferences(ctx, tx, current); err != nil {
+		return err
+	}
+	want, err := current.Transition(run.Status(), meta.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("validate persisted run transition: %w", err)
+	}
+	if !reflect.DeepEqual(want, run) {
+		return errors.New("updated run must be exactly one valid state transition")
+	}
+	document, err := marshalCanonical(run)
+	if err != nil {
+		return fmt.Errorf("encode run: %w", err)
+	}
+	snapshotDocument, err := marshalCanonical(run.Snapshot())
+	if err != nil {
+		return fmt.Errorf("encode run snapshot: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO execution_run_revisions(
+			run_id, schema_version, revision, created_at, updated_at,
+			plan_id, plan_revision, status, snapshot_json, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, meta.ID, meta.SchemaVersion, meta.Revision, formatTime(meta.CreatedAt), formatTime(meta.UpdatedAt),
+		run.PlanID(), run.Snapshot().Plan.Revision, run.Status(), snapshotDocument, document); err != nil {
+		return classifyWriteError("append run revision", err)
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE execution_runs SET current_revision = ?
+		WHERE id = ? AND current_revision = ? AND sealed = 0
+	`, meta.Revision, meta.ID, expectedRevision)
+	if err != nil {
+		return classifyWriteError("update run", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read updated run row count: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("%w: run", ErrConflict)
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit run update", err)
+	}
+	return nil
+}
+
+func (repository *Repository) GetRun(ctx context.Context, id string) (domain.Run, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Run{}, err
+	}
+	run, err := queryCurrentRun(ctx, repository.conn, id)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if err := validateStoredRunReferences(ctx, repository.conn, run); err != nil {
+		return domain.Run{}, err
+	}
+	return run, nil
+}
+
+func (repository *Repository) GetRunRevision(ctx context.Context, id string, revision uint64) (domain.Run, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Run{}, err
+	}
+	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.Run{}, fmt.Errorf("begin run revision read: %w", err)
+	}
+	defer tx.Rollback()
+	run, err := queryRunRevision(ctx, tx, id, revision, false)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if err := validateStoredRunReferences(ctx, tx, run); err != nil {
+		return domain.Run{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Run{}, fmt.Errorf("commit run revision read: %w", err)
+	}
+	return run, nil
+}
+
+func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("begin run list: %w", err)
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `
+		SELECT root.id, root.current_revision, root.created_at, root.sealed,
+		       (SELECT COUNT(*) FROM reports WHERE run_id = root.id),
+		       (SELECT COUNT(*) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       (SELECT COALESCE(MIN(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       (SELECT COALESCE(MAX(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       revision.schema_version, revision.revision, revision.created_at, revision.updated_at,
+		       revision.plan_id, revision.plan_revision, revision.status,
+		       revision.snapshot_json, revision.document_json
+		FROM execution_runs AS root
+		JOIN execution_run_revisions AS revision
+		  ON revision.run_id = root.id AND revision.revision = root.current_revision
+		ORDER BY root.created_at, root.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list runs: %w", err)
+	}
+	defer rows.Close()
+	stored := make([]storedRunRow, 0)
+	for rows.Next() {
+		var row storedRunRow
+		if err := row.scan(rows); err != nil {
+			return nil, fmt.Errorf("scan run: %w", err)
+		}
+		stored = append(stored, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate runs: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close runs: %w", err)
+	}
+	var rootCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
+		return nil, fmt.Errorf("count run roots: %w", err)
+	}
+	if rootCount != len(stored) {
+		return nil, fmt.Errorf("%w: run current revision pointer", ErrCorrupt)
+	}
+	runs := make([]domain.Run, 0, len(stored))
+	for _, row := range stored {
+		run, err := row.decode(true)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateStoredRunReferences(ctx, tx, run); err != nil {
+			return nil, err
+		}
+		runs = append(runs, run)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit run list: %w", err)
+	}
+	return runs, nil
+}
+
+type storedRunRow struct {
+	id, rootCreated, revisionCreated, revisionUpdated, planID, status string
+	rootCurrent, schemaVersion, revision, planRevision                int64
+	historyCount, historyMin, historyMax                              int64
+	sealed, reportCount                                               int
+	snapshotDocument, document                                        []byte
+}
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+func (row *storedRunRow) scan(scanner rowScanner) error {
+	return scanner.Scan(
+		&row.id, &row.rootCurrent, &row.rootCreated, &row.sealed, &row.reportCount,
+		&row.historyCount, &row.historyMin, &row.historyMax,
+		&row.schemaVersion, &row.revision, &row.revisionCreated, &row.revisionUpdated,
+		&row.planID, &row.planRevision, &row.status, &row.snapshotDocument, &row.document,
+	)
+}
+
+func (row storedRunRow) decode(requireCurrent bool) (domain.Run, error) {
+	if row.revision < 1 || row.rootCurrent < 1 || (requireCurrent && row.rootCurrent != row.revision) || (row.sealed != 0 && row.sealed != 1) {
+		return domain.Run{}, fmt.Errorf("%w: invalid run revision pointer", ErrCorrupt)
+	}
+	if row.historyCount != row.rootCurrent || row.historyMin != 1 || row.historyMax != row.rootCurrent {
+		return domain.Run{}, fmt.Errorf("%w: run revision history is not contiguous", ErrCorrupt)
+	}
+	if err := verifyDocumentIdentity(row.document, row.id, uint64(row.revision)); err != nil {
+		return domain.Run{}, fmt.Errorf("%w: run document identity", ErrCorrupt)
+	}
+	run, err := decodeRunDocument(row.document)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	var snapshot domain.RunSnapshot
+	if err := decodeCanonical(row.snapshotDocument, &snapshot, func() error { return snapshot.Validate() }); err != nil {
+		return domain.Run{}, fmt.Errorf("%w: run snapshot document", ErrCorrupt)
+	}
+	meta := run.Meta()
+	if int64(meta.SchemaVersion) != row.schemaVersion || int64(meta.Revision) != row.revision ||
+		formatTime(meta.CreatedAt) != row.revisionCreated || formatTime(meta.UpdatedAt) != row.revisionUpdated ||
+		row.rootCreated != row.revisionCreated || run.PlanID() != row.planID ||
+		int64(run.Snapshot().Plan.Revision) != row.planRevision || string(run.Status()) != row.status ||
+		!reflect.DeepEqual(run.Snapshot(), snapshot) {
+		return domain.Run{}, fmt.Errorf("%w: run columns do not match its document", ErrCorrupt)
+	}
+	if requireCurrent && row.sealed == 1 {
+		switch run.Status() {
+		case domain.RunCompleted, domain.RunFailed, domain.RunCancelled:
+		default:
+			return domain.Run{}, fmt.Errorf("%w: non-terminal run is sealed", ErrCorrupt)
+		}
+	}
+	if (row.sealed == 0 && row.reportCount != 0) || (row.sealed == 1 && row.reportCount != 1) {
+		return domain.Run{}, fmt.Errorf("%w: run report seal", ErrCorrupt)
+	}
+	return run, nil
+}
+
+func queryCurrentRun(ctx context.Context, queryer rowQueryer, id string) (domain.Run, error) {
+	var row storedRunRow
+	err := row.scan(queryer.QueryRowContext(ctx, `
+		SELECT root.id, root.current_revision, root.created_at, root.sealed,
+		       (SELECT COUNT(*) FROM reports WHERE run_id = root.id),
+		       (SELECT COUNT(*) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       (SELECT COALESCE(MIN(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       (SELECT COALESCE(MAX(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       revision.schema_version, revision.revision, revision.created_at, revision.updated_at,
+		       revision.plan_id, revision.plan_revision, revision.status,
+		       revision.snapshot_json, revision.document_json
+		FROM execution_runs AS root
+		JOIN execution_run_revisions AS revision
+		  ON revision.run_id = root.id AND revision.revision = root.current_revision
+		WHERE root.id = ?
+	`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		var rootCount int
+		if countErr := queryer.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs WHERE id = ?`, id).Scan(&rootCount); countErr != nil {
+			return domain.Run{}, fmt.Errorf("get run root: %w", countErr)
+		}
+		if rootCount != 0 {
+			return domain.Run{}, fmt.Errorf("%w: run current revision pointer", ErrCorrupt)
+		}
+		return domain.Run{}, fmt.Errorf("%w: run", ErrNotFound)
+	}
+	if err != nil {
+		return domain.Run{}, fmt.Errorf("get run: %w", err)
+	}
+	return row.decode(true)
+}
+
+func queryRunRevision(ctx context.Context, queryer rowQueryer, id string, revision uint64, requireCurrent bool) (domain.Run, error) {
+	if revision == 0 || revision > uint64(^uint64(0)>>1) {
+		return domain.Run{}, fmt.Errorf("%w: run revision", ErrNotFound)
+	}
+	var row storedRunRow
+	err := row.scan(queryer.QueryRowContext(ctx, `
+		SELECT root.id, root.current_revision, root.created_at, root.sealed,
+		       (SELECT COUNT(*) FROM reports WHERE run_id = root.id),
+		       (SELECT COUNT(*) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       (SELECT COALESCE(MIN(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       (SELECT COALESCE(MAX(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+		       revision.schema_version, revision.revision, revision.created_at, revision.updated_at,
+		       revision.plan_id, revision.plan_revision, revision.status,
+		       revision.snapshot_json, revision.document_json
+		FROM execution_runs AS root
+		JOIN execution_run_revisions AS revision ON revision.run_id = root.id
+		WHERE root.id = ? AND revision.revision = ?
+	`, id, revision))
+	if errors.Is(err, sql.ErrNoRows) {
+		var currentRevision, historyCount, historyMin, historyMax int64
+		inspectErr := queryer.QueryRowContext(ctx, `
+			SELECT root.current_revision,
+			       (SELECT COUNT(*) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+			       (SELECT COALESCE(MIN(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
+			       (SELECT COALESCE(MAX(history.revision), 0) FROM execution_run_revisions AS history WHERE history.run_id = root.id)
+			FROM execution_runs AS root WHERE root.id = ?
+		`, id).Scan(&currentRevision, &historyCount, &historyMin, &historyMax)
+		if errors.Is(inspectErr, sql.ErrNoRows) {
+			return domain.Run{}, fmt.Errorf("%w: run revision", ErrNotFound)
+		}
+		if inspectErr != nil {
+			return domain.Run{}, fmt.Errorf("inspect run revision history: %w", inspectErr)
+		}
+		if currentRevision < 1 || historyCount != currentRevision || historyMin != 1 || historyMax != currentRevision || int64(revision) <= currentRevision {
+			return domain.Run{}, fmt.Errorf("%w: run revision history", ErrCorrupt)
+		}
+		return domain.Run{}, fmt.Errorf("%w: run revision", ErrNotFound)
+	}
+	if err != nil {
+		return domain.Run{}, fmt.Errorf("get run revision: %w", err)
+	}
+	return row.decode(requireCurrent)
+}
+
+func decodeRunDocument(document []byte) (domain.Run, error) {
+	var run domain.Run
+	if err := decodeCanonical(document, &run, func() error { return run.Validate() }); err != nil {
+		return domain.Run{}, fmt.Errorf("%w: run document", ErrCorrupt)
+	}
+	return run, nil
+}
+
+func validateRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
+	snapshot := run.Snapshot()
+	planDocument, err := exactDocument(ctx, queryer, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
+	if err != nil {
+		return err
+	}
+	plan, err := decodePlanDocument(planDocument)
+	if err != nil {
+		return err
+	}
+	if err := validatePlanStorage(ctx, queryer, plan); err != nil {
+		return err
+	}
+	if !containsString(plan.ModelIDs, snapshot.Model.ID) || !containsString(plan.ChannelIDs, snapshot.Channel.ID) ||
+		!reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) || !reflect.DeepEqual(plan.SLA, snapshot.SLA) {
+		return errors.New("run snapshot does not match its pinned plan")
+	}
+	var pinnedModelRevision int64
+	if err := queryer.QueryRowContext(ctx, `
+		SELECT model_revision FROM plan_models
+		WHERE plan_id = ? AND plan_revision = ? AND model_id = ?
+	`, run.PlanID(), snapshot.Plan.Revision, snapshot.Model.ID).Scan(&pinnedModelRevision); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: plan model relation", ErrCorrupt)
+		}
+		return fmt.Errorf("read plan model relation: %w", err)
+	}
+	if uint64(pinnedModelRevision) != snapshot.Model.Revision {
+		return errors.New("run model revision differs from its pinned plan revision")
+	}
+	var pinnedChannelRevision int64
+	if err := queryer.QueryRowContext(ctx, `
+		SELECT channel_revision FROM plan_channels
+		WHERE plan_id = ? AND plan_revision = ? AND channel_id = ?
+	`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID).Scan(&pinnedChannelRevision); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: plan channel relation", ErrCorrupt)
+		}
+		return fmt.Errorf("read plan channel relation: %w", err)
+	}
+	if uint64(pinnedChannelRevision) != snapshot.Channel.Revision {
+		return errors.New("run channel revision differs from its pinned plan revision")
+	}
+	modelDocument, err := exactDocument(ctx, queryer, "models", snapshot.Model.ID, snapshot.Model.Revision, "model")
+	if err != nil {
+		return err
+	}
+	var model domain.Model
+	if err := decodeCanonical(modelDocument, &model, func() error { return model.Validate() }); err != nil {
+		return fmt.Errorf("%w: model document", ErrCorrupt)
+	}
+	if model.Name != snapshot.Model.Name || model.Protocol != snapshot.Model.Protocol || !reflect.DeepEqual(model.Capabilities, snapshot.Model.Capabilities) {
+		return errors.New("run model snapshot does not match its pinned model revision")
+	}
+	channelDocument, err := exactDocument(ctx, queryer, "channels", snapshot.Channel.ID, snapshot.Channel.Revision, "channel")
+	if err != nil {
+		return err
+	}
+	var channel domain.Channel
+	if err := decodeCanonical(channelDocument, &channel, func() error { return channel.Validate() }); err != nil {
+		return fmt.Errorf("%w: channel document", ErrCorrupt)
+	}
+	if err := validateChannelStorage(ctx, queryer, channel); err != nil {
+		return err
+	}
+	if channel.Name != snapshot.Channel.Name || channel.BaseURL != snapshot.Channel.BaseURL || channel.Protocol != snapshot.Channel.Protocol {
+		return errors.New("run channel snapshot does not match its pinned channel revision")
+	}
+	var mappingID string
+	var mappingRevision int64
+	err = queryer.QueryRowContext(ctx, `
+		SELECT mapping_id, mapping_revision
+		FROM plan_channel_models
+		WHERE plan_id = ? AND plan_revision = ? AND channel_id = ? AND model_id = ?
+	`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID, snapshot.Model.ID).Scan(&mappingID, &mappingRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: plan channel model relation", ErrCorrupt)
+	}
+	if err != nil {
+		return fmt.Errorf("get plan channel model relation: %w", err)
+	}
+	mappingDocument, err := exactDocument(ctx, queryer, "channel_models", mappingID, uint64(mappingRevision), "channel model")
+	if err != nil {
+		return err
+	}
+	var mapping domain.ChannelModel
+	if err := decodeCanonical(mappingDocument, &mapping, func() error { return mapping.Validate() }); err != nil {
+		return fmt.Errorf("%w: channel model document", ErrCorrupt)
+	}
+	if err := validateChannelModelStorage(ctx, queryer, mapping); err != nil {
+		return err
+	}
+	if mapping.ChannelID != snapshot.Channel.ID || mapping.ModelID != snapshot.Model.ID ||
+		mapping.UpstreamModelName != snapshot.Channel.UpstreamModelName {
+		return errors.New("run channel snapshot does not match its pinned channel model mapping")
+	}
+	return nil
+}
+
+func validateStoredRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
+	if err := validateRunReferences(ctx, queryer, run); err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return contextErr
+		}
+		return fmt.Errorf("%w: run pinned references", ErrCorrupt)
+	}
+	return nil
+}
+
+func (repository *Repository) CreateEvidence(ctx context.Context, evidence domain.Evidence) error {
+	if err := evidence.Validate(); err != nil {
+		return fmt.Errorf("validate evidence: %w", err)
+	}
+	if evidence.Revision != 1 {
+		return errors.New("new evidence revision must be 1")
+	}
+	document, err := marshalCanonical(evidence)
+	if err != nil {
+		return fmt.Errorf("encode evidence: %w", err)
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin evidence create: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := writableRun(ctx, tx, evidence.RunID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO evidence(id, schema_version, revision, created_at, updated_at, run_id, document_json)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
+	`, evidence.ID, evidence.SchemaVersion, evidence.Revision, formatTime(evidence.CreatedAt), formatTime(evidence.UpdatedAt), evidence.RunID, document); err != nil {
+		return classifyWriteError("create evidence", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit evidence", err)
+	}
+	return nil
+}
+
+func (repository *Repository) GetEvidence(ctx context.Context, id string) (domain.Evidence, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Evidence{}, err
+	}
+	var row storedEvidenceRow
+	err := row.scan(repository.conn.QueryRowContext(ctx, `
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
+		FROM evidence WHERE id = ?
+	`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Evidence{}, fmt.Errorf("%w: evidence", ErrNotFound)
+	}
+	if err != nil {
+		return domain.Evidence{}, fmt.Errorf("get evidence: %w", err)
+	}
+	evidence, err := row.decode("")
+	if err != nil {
+		return domain.Evidence{}, err
+	}
+	if err := validateStoredEvidenceReferences(ctx, repository.conn, evidence); err != nil {
+		return domain.Evidence{}, err
+	}
+	return evidence, nil
+}
+
+func (repository *Repository) ListEvidence(ctx context.Context, runID string) ([]domain.Evidence, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows, err := repository.conn.QueryContext(ctx, `
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
+		FROM evidence WHERE run_id = ? ORDER BY created_at, id
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("list evidence: %w", err)
+	}
+	defer rows.Close()
+	stored := make([]storedEvidenceRow, 0)
+	for rows.Next() {
+		var row storedEvidenceRow
+		if err := row.scan(rows); err != nil {
+			return nil, fmt.Errorf("scan evidence: %w", err)
+		}
+		stored = append(stored, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate evidence: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close evidence: %w", err)
+	}
+	var owner domain.Run
+	if len(stored) != 0 {
+		owner, err = queryCurrentRun(ctx, repository.conn, runID)
+		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return nil, contextErr
+			}
+			return nil, fmt.Errorf("%w: evidence owner", ErrCorrupt)
+		}
+		if err := validateStoredRunReferences(ctx, repository.conn, owner); err != nil {
+			return nil, err
+		}
+	}
+	result := make([]domain.Evidence, 0, len(stored))
+	for _, row := range stored {
+		evidence, err := row.decode(runID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, evidence)
+	}
+	return result, nil
+}
+
+type storedEvidenceRow struct {
+	id, createdAt, updatedAt, runID string
+	schemaVersion, revision         int64
+	document                        []byte
+}
+
+func (row *storedEvidenceRow) scan(scanner rowScanner) error {
+	return scanner.Scan(&row.id, &row.schemaVersion, &row.revision, &row.createdAt, &row.updatedAt, &row.runID, &row.document)
+}
+
+func (row storedEvidenceRow) decode(expectedRunID string) (domain.Evidence, error) {
+	if err := verifyEntityRow(row.document, row.id, row.schemaVersion, row.revision, row.createdAt, row.updatedAt); err != nil {
+		return domain.Evidence{}, fmt.Errorf("%w: evidence row does not match document", ErrCorrupt)
+	}
+	evidence, err := decodeEvidenceDocument(row.document)
+	if err != nil {
+		return domain.Evidence{}, err
+	}
+	if evidence.RunID != row.runID || (expectedRunID != "" && evidence.RunID != expectedRunID) {
+		return domain.Evidence{}, fmt.Errorf("%w: evidence owner does not match document", ErrCorrupt)
+	}
+	return evidence, nil
+}
+
+func validateStoredEvidenceReferences(ctx context.Context, queryer relationQueryer, evidence domain.Evidence) error {
+	run, err := queryCurrentRun(ctx, queryer, evidence.RunID)
+	if err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return contextErr
+		}
+		return fmt.Errorf("%w: evidence owner", ErrCorrupt)
+	}
+	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
+		return err
+	}
+	return nil
+}
+
+func decodeEvidenceDocument(document []byte) (domain.Evidence, error) {
+	var evidence domain.Evidence
+	if err := decodeCanonical(document, &evidence, func() error { return evidence.Validate() }); err != nil {
+		return domain.Evidence{}, fmt.Errorf("%w: evidence document", ErrCorrupt)
+	}
+	return evidence, nil
+}
+
+func (repository *Repository) AppendResult(ctx context.Context, result domain.Result) error {
+	if err := result.Validate(); err != nil {
+		return fmt.Errorf("validate result: %w", err)
+	}
+	if result.Revision != 1 {
+		return errors.New("new result revision must be 1")
+	}
+	document, err := marshalCanonical(result)
+	if err != nil {
+		return fmt.Errorf("encode result: %w", err)
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin result append: %w", err)
+	}
+	defer tx.Rollback()
+	run, err := writableRun(ctx, tx, result.RunID)
+	if err != nil {
+		return err
+	}
+	if result.CaseID != "" && !containsCase(run.Snapshot().Cases, result.CaseID) {
+		return errors.New("result case is outside the run snapshot")
+	}
+	for _, evidenceID := range result.EvidenceIDs {
+		var evidenceRow storedEvidenceRow
+		err := evidenceRow.scan(tx.QueryRowContext(ctx, `
+			SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
+			FROM evidence WHERE id = ?
+		`, evidenceID))
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: evidence", ErrNotFound)
+		}
+		if err != nil {
+			return fmt.Errorf("resolve result evidence: %w", err)
+		}
+		evidence, err := evidenceRow.decode("")
+		if err != nil {
+			return fmt.Errorf("%w: result evidence", ErrCorrupt)
+		}
+		if evidence.RunID != result.RunID {
+			return errors.New("result evidence belongs to another run")
+		}
+	}
+	var caseID any
+	if result.CaseID != "" {
+		caseID = result.CaseID
+	}
+	var requestID any
+	if result.RequestID != "" {
+		requestID = result.RequestID
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO case_results(
+			id, schema_version, revision, created_at, updated_at,
+			run_id, case_id, request_id, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, result.ID, result.SchemaVersion, result.Revision, formatTime(result.CreatedAt), formatTime(result.UpdatedAt), result.RunID, caseID, requestID, document); err != nil {
+		return classifyWriteError("append result", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit result", err)
+	}
+	return nil
+}
+
+func (repository *Repository) GetResult(ctx context.Context, id string) (domain.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Result{}, err
+	}
+	var row storedResultRow
+	err := row.scan(repository.conn.QueryRowContext(ctx, `
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
+		FROM case_results WHERE id = ?
+	`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Result{}, fmt.Errorf("%w: result", ErrNotFound)
+	}
+	if err != nil {
+		return domain.Result{}, fmt.Errorf("get result: %w", err)
+	}
+	result, err := row.decode("")
+	if err != nil {
+		return domain.Result{}, err
+	}
+	if err := validateStoredResultReferences(ctx, repository.conn, result); err != nil {
+		return domain.Result{}, err
+	}
+	return result, nil
+}
+
+func (repository *Repository) ListResults(ctx context.Context, runID string) ([]domain.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows, err := repository.conn.QueryContext(ctx, `
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
+		FROM case_results WHERE run_id = ? ORDER BY created_at, id
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("list results: %w", err)
+	}
+	defer rows.Close()
+	stored := make([]storedResultRow, 0)
+	for rows.Next() {
+		var row storedResultRow
+		if err := row.scan(rows); err != nil {
+			return nil, fmt.Errorf("scan result: %w", err)
+		}
+		stored = append(stored, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate results: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close results: %w", err)
+	}
+	var owner domain.Run
+	if len(stored) != 0 {
+		owner, err = queryCurrentRun(ctx, repository.conn, runID)
+		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return nil, contextErr
+			}
+			return nil, fmt.Errorf("%w: result owner", ErrCorrupt)
+		}
+		if err := validateStoredRunReferences(ctx, repository.conn, owner); err != nil {
+			return nil, err
+		}
+	}
+	evidenceCache := make(map[string]domain.Evidence)
+	result := make([]domain.Result, 0, len(stored))
+	for _, row := range stored {
+		item, err := row.decode(runID)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateStoredResultAgainstRun(ctx, repository.conn, item, owner, evidenceCache); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+type storedResultRow struct {
+	id, createdAt, updatedAt, runID string
+	caseID, requestID               sql.NullString
+	schemaVersion, revision         int64
+	document                        []byte
+}
+
+func (row *storedResultRow) scan(scanner rowScanner) error {
+	return scanner.Scan(
+		&row.id, &row.schemaVersion, &row.revision, &row.createdAt, &row.updatedAt,
+		&row.runID, &row.caseID, &row.requestID, &row.document,
+	)
+}
+
+func (row storedResultRow) decode(expectedRunID string) (domain.Result, error) {
+	if err := verifyEntityRow(row.document, row.id, row.schemaVersion, row.revision, row.createdAt, row.updatedAt); err != nil {
+		return domain.Result{}, fmt.Errorf("%w: result row does not match document", ErrCorrupt)
+	}
+	result, err := decodeResultDocument(row.document)
+	if err != nil {
+		return domain.Result{}, err
+	}
+	if result.RunID != row.runID || (expectedRunID != "" && result.RunID != expectedRunID) ||
+		row.caseID.Valid != (result.CaseID != "") || (row.caseID.Valid && row.caseID.String != result.CaseID) ||
+		row.requestID.Valid != (result.RequestID != "") || (row.requestID.Valid && row.requestID.String != result.RequestID) {
+		return domain.Result{}, fmt.Errorf("%w: result owner columns do not match document", ErrCorrupt)
+	}
+	return result, nil
+}
+
+func validateStoredResultReferences(ctx context.Context, queryer relationQueryer, result domain.Result) error {
+	run, err := queryCurrentRun(ctx, queryer, result.RunID)
+	if err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return contextErr
+		}
+		return fmt.Errorf("%w: result owner", ErrCorrupt)
+	}
+	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
+		return err
+	}
+	return validateStoredResultAgainstRun(ctx, queryer, result, run, make(map[string]domain.Evidence))
+}
+
+func validateStoredResultAgainstRun(ctx context.Context, queryer relationQueryer, result domain.Result, run domain.Run, evidenceCache map[string]domain.Evidence) error {
+	if result.CaseID != "" && !containsCase(run.Snapshot().Cases, result.CaseID) {
+		return fmt.Errorf("%w: result case is outside run snapshot", ErrCorrupt)
+	}
+	for _, evidenceID := range result.EvidenceIDs {
+		if evidence, exists := evidenceCache[evidenceID]; exists {
+			if evidence.RunID != result.RunID {
+				return fmt.Errorf("%w: result evidence reference", ErrCorrupt)
+			}
+			continue
+		}
+		var row storedEvidenceRow
+		err := row.scan(queryer.QueryRowContext(ctx, `
+			SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
+			FROM evidence WHERE id = ?
+		`, evidenceID))
+		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return contextErr
+			}
+			return fmt.Errorf("%w: result evidence reference", ErrCorrupt)
+		}
+		evidence, err := row.decode(result.RunID)
+		if err != nil {
+			return fmt.Errorf("%w: result evidence reference", ErrCorrupt)
+		}
+		evidenceCache[evidenceID] = evidence
+	}
+	return nil
+}
+
+func decodeResultDocument(document []byte) (domain.Result, error) {
+	var result domain.Result
+	if err := decodeCanonical(document, &result, func() error { return result.Validate() }); err != nil {
+		return domain.Result{}, fmt.Errorf("%w: result document", ErrCorrupt)
+	}
+	return result, nil
+}
+
+func (repository *Repository) CreateReport(ctx context.Context, report domain.Report) error {
+	if err := report.Validate(); err != nil {
+		return fmt.Errorf("validate report: %w", err)
+	}
+	document, err := marshalCanonical(report)
+	if err != nil {
+		return fmt.Errorf("encode report: %w", err)
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin report create: %w", err)
+	}
+	defer tx.Rollback()
+	run, err := queryCurrentRun(ctx, tx, report.RunID)
+	if err != nil {
+		return err
+	}
+	if err := validateStoredRunReferences(ctx, tx, run); err != nil {
+		return err
+	}
+	if run.Status() != report.RunStatus || !reflect.DeepEqual(run.Snapshot(), report.PlanSnapshot) {
+		return errors.New("report does not match the persisted terminal run")
+	}
+	if report.GeneratedAt.Before(run.Meta().UpdatedAt) {
+		return errors.New("report generation timestamp precedes the terminal run update")
+	}
+	if err := matchReportResults(ctx, tx, report); err != nil {
+		return err
+	}
+	if err := matchReportEvidence(ctx, tx, report); err != nil {
+		return err
+	}
+	seal, err := tx.ExecContext(ctx, `
+		UPDATE execution_runs SET sealed = 1
+		WHERE id = ? AND current_revision = ? AND sealed = 0
+	`, report.RunID, run.Meta().Revision)
+	if err != nil {
+		return classifyWriteError("seal run report output", err)
+	}
+	sealedRows, err := seal.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read run seal row count: %w", err)
+	}
+	if sealedRows != 1 {
+		return fmt.Errorf("%w: run output is already sealed", ErrConflict)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO reports(id, schema_version, run_id, generated_at, document_json)
+		VALUES(?, ?, ?, ?, ?)
+	`, report.ID, report.SchemaVersion, report.RunID, formatTime(report.GeneratedAt), document); err != nil {
+		return classifyWriteError("create report", err)
+	}
+	for position, attachment := range report.Attachments {
+		attachmentDocument, err := marshalCanonical(attachment)
+		if err != nil {
+			return fmt.Errorf("encode report attachment: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO artifacts(id, run_id, name, relative_path, sha256, media_type, redacted, document_json)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+		`, attachment.ArtifactID, attachment.RunID, attachment.Name, attachment.RelativePath, attachment.SHA256, attachment.MediaType, boolInt(attachment.Redacted), attachmentDocument); err != nil {
+			return classifyWriteError("create report artifact", err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO report_attachments(report_id, artifact_id, position) VALUES(?, ?, ?)`, report.ID, attachment.ArtifactID, position); err != nil {
+			return classifyWriteError("link report attachment", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit report", err)
+	}
+	return nil
+}
+
+func (repository *Repository) GetReport(ctx context.Context, id string) (domain.Report, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Report{}, err
+	}
+	var row storedReportRow
+	err := row.scan(repository.conn.QueryRowContext(ctx, `
+		SELECT id, schema_version, run_id, generated_at, document_json FROM reports WHERE id = ?
+	`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Report{}, fmt.Errorf("%w: report", ErrNotFound)
+	}
+	if err != nil {
+		return domain.Report{}, fmt.Errorf("get report: %w", err)
+	}
+	report, err := row.decode()
+	if err != nil {
+		return domain.Report{}, err
+	}
+	if err := validateReportStorage(ctx, repository.conn, report); err != nil {
+		return domain.Report{}, err
+	}
+	return report, nil
+}
+
+func (repository *Repository) ListReports(ctx context.Context) ([]domain.Report, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows, err := repository.conn.QueryContext(ctx, `
+		SELECT id, schema_version, run_id, generated_at, document_json FROM reports ORDER BY generated_at, id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list reports: %w", err)
+	}
+	defer rows.Close()
+	stored := make([]storedReportRow, 0)
+	for rows.Next() {
+		var row storedReportRow
+		if err := row.scan(rows); err != nil {
+			return nil, fmt.Errorf("scan report: %w", err)
+		}
+		stored = append(stored, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate reports: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close reports: %w", err)
+	}
+	result := make([]domain.Report, 0, len(stored))
+	for _, row := range stored {
+		report, err := row.decode()
+		if err != nil {
+			return nil, err
+		}
+		if err := validateReportStorage(ctx, repository.conn, report); err != nil {
+			return nil, err
+		}
+		result = append(result, report)
+	}
+	return result, nil
+}
+
+type storedReportRow struct {
+	id, runID, generatedAt string
+	schemaVersion          int64
+	document               []byte
+}
+
+func (row *storedReportRow) scan(scanner rowScanner) error {
+	return scanner.Scan(&row.id, &row.schemaVersion, &row.runID, &row.generatedAt, &row.document)
+}
+
+func (row storedReportRow) decode() (domain.Report, error) {
+	report, err := decodeReportDocument(row.document)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	if report.ID != row.id || int64(report.SchemaVersion) != row.schemaVersion || report.RunID != row.runID || formatTime(report.GeneratedAt) != row.generatedAt {
+		return domain.Report{}, fmt.Errorf("%w: report columns do not match document", ErrCorrupt)
+	}
+	return report, nil
+}
+
+func decodeReportDocument(document []byte) (domain.Report, error) {
+	var report domain.Report
+	if err := decodeCanonical(document, &report, func() error { return report.Validate() }); err != nil {
+		return domain.Report{}, fmt.Errorf("%w: report document", ErrCorrupt)
+	}
+	return report, nil
+}
+
+func matchReportResults(ctx context.Context, tx *sql.Tx, report domain.Report) error {
+	return validateReportResults(ctx, tx, report)
+}
+
+func matchReportEvidence(ctx context.Context, tx *sql.Tx, report domain.Report) error {
+	return validateReportEvidence(ctx, tx, report)
+}
+
+func writableRun(ctx context.Context, queryer relationQueryer, id string) (domain.Run, error) {
+	run, err := queryCurrentRun(ctx, queryer, id)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
+		return domain.Run{}, err
+	}
+	if run.Status() != domain.RunRunning && run.Status() != domain.RunDraining {
+		return domain.Run{}, fmt.Errorf("%w: run is not accepting execution output", ErrConflict)
+	}
+	var sealed int
+	if err := queryer.QueryRowContext(ctx, `SELECT sealed FROM execution_runs WHERE id = ?`, id).Scan(&sealed); err != nil {
+		return domain.Run{}, fmt.Errorf("inspect run output seal: %w", err)
+	}
+	if sealed != 0 {
+		return domain.Run{}, fmt.Errorf("%w: run output is sealed", ErrConflict)
+	}
+	var reportCount int
+	if err := queryer.QueryRowContext(ctx, `SELECT COUNT(*) FROM reports WHERE run_id = ?`, id).Scan(&reportCount); err != nil {
+		return domain.Run{}, fmt.Errorf("inspect run report seal: %w", err)
+	}
+	if reportCount != 0 {
+		return domain.Run{}, fmt.Errorf("%w: run output is sealed", ErrConflict)
+	}
+	return run, nil
+}
+
+func exactDocument(ctx context.Context, queryer rowQueryer, table, id string, revision uint64, kind string) ([]byte, error) {
+	var schemaVersion, storedRevision int64
+	var createdAt, updatedAt string
+	var document []byte
+	err := queryer.QueryRowContext(ctx, fmt.Sprintf(`SELECT schema_version, revision, created_at, updated_at, document_json FROM %s WHERE id = ? AND revision = ?`, table), id, revision).Scan(&schemaVersion, &storedRevision, &createdAt, &updatedAt, &document)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %s revision", ErrNotFound, kind)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get %s revision: %w", kind, err)
+	}
+	if err := verifyEntityRow(document, id, schemaVersion, storedRevision, createdAt, updatedAt); err != nil {
+		return nil, fmt.Errorf("%w: %s row does not match document", ErrCorrupt, kind)
+	}
+	return document, nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsCase(values []domain.CaseRevisionRef, id string) bool {
+	for _, value := range values {
+		if value.CaseID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}

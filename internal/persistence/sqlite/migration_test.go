@@ -26,8 +26,8 @@ func TestMigrateFreshDatabaseCreatesLegacyBaseline(t *testing.T) {
 	db := openDatabase(t, path)
 	defer db.Close()
 
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 1 {
-		t.Fatalf("PRAGMA user_version = %d, want 1", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != 2 {
+		t.Fatalf("PRAGMA user_version = %d, want 2", got)
 	}
 
 	for _, table := range []string{
@@ -46,7 +46,7 @@ func TestMigrateFreshDatabaseCreatesLegacyBaseline(t *testing.T) {
 	var name, checksum, appliedAt, appVersion string
 	if err := db.QueryRow(`
 		SELECT version, name, checksum, applied_at, app_version
-		FROM schema_migrations
+		FROM schema_migrations WHERE version = 1
 	`).Scan(&version, &name, &checksum, &appliedAt, &appVersion); err != nil {
 		t.Fatalf("read schema_migrations: %v", err)
 	}
@@ -294,12 +294,12 @@ func TestMigrateIsIdempotentAndDoesNotRewriteMigrationHistory(t *testing.T) {
 	if before != after {
 		t.Fatalf("migration record changed on second run: before=%+v after=%+v", before, after)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 1 {
-		t.Fatalf("schema_migrations count = %d, want 1", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 2 {
+		t.Fatalf("schema_migrations count = %d, want 2", got)
 	}
 }
 
-func TestMigrateRejectsDriftAfterMigration0001WasRecorded(t *testing.T) {
+func TestMigrateRejectsDriftAfterMigrationHistoryWasRecorded(t *testing.T) {
 	tests := []struct {
 		name        string
 		mutate      string
@@ -368,8 +368,8 @@ func TestMigrateRejectsDriftAfterMigration0001WasRecorded(t *testing.T) {
 			if after := migrationRecord(t, db); after != before {
 				t.Fatalf("migration history changed after rejected drift: before=%+v after=%+v", before, after)
 			}
-			if got := queryInt(t, db, "PRAGMA user_version"); got != 1 {
-				t.Fatalf("user_version after rejected drift = %d, want 1", got)
+			if got := queryInt(t, db, "PRAGMA user_version"); got != 2 {
+				t.Fatalf("user_version after rejected drift = %d, want 2", got)
 			}
 		})
 	}
@@ -394,11 +394,11 @@ func TestMigrateRejectsChecksumMismatchWithoutChangingDatabase(t *testing.T) {
 	if got := queryString(t, db, "SELECT checksum FROM schema_migrations WHERE version = 1"); got != "tampered" {
 		t.Fatalf("checksum after rejected migration = %q, want tampered", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 1 {
-		t.Fatalf("migration rows after rejection = %d, want 1", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 2 {
+		t.Fatalf("migration rows after rejection = %d, want 2", got)
 	}
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 1 {
-		t.Fatalf("user_version after rejection = %d, want 1", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != 2 {
+		t.Fatalf("user_version after rejection = %d, want 2", got)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close database: %v", err)
