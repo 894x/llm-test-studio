@@ -499,6 +499,9 @@ func (repository *Repository) CreateEvidence(ctx context.Context, evidence domai
 	if err != nil {
 		return fmt.Errorf("encode evidence: %w", err)
 	}
+	if len(document) > MaxReportProjectionItemBytes {
+		return fmt.Errorf("evidence exceeds %d-byte storage budget", MaxReportProjectionItemBytes)
+	}
 	tx, err := repository.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin evidence create: %w", err)
@@ -650,6 +653,9 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 	document, err := marshalCanonical(result)
 	if err != nil {
 		return fmt.Errorf("encode result: %w", err)
+	}
+	if len(document) > MaxReportProjectionItemBytes {
+		return fmt.Errorf("result exceeds %d-byte storage budget", MaxReportProjectionItemBytes)
 	}
 	tx, err := repository.conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -871,9 +877,15 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if err := report.Validate(); err != nil {
 		return fmt.Errorf("validate report: %w", err)
 	}
+	if err := checkReportProjectionItemBudgets(report); err != nil {
+		return fmt.Errorf("validate report byte budget: %w", err)
+	}
 	document, err := marshalCanonical(report)
 	if err != nil {
 		return fmt.Errorf("encode report: %w", err)
+	}
+	if len(document) > MaxReportProjectionDocumentBytes {
+		return fmt.Errorf("report exceeds %d-byte storage budget", MaxReportProjectionDocumentBytes)
 	}
 	tx, err := repository.conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -969,7 +981,9 @@ func (repository *Repository) ListReports(ctx context.Context) ([]domain.Report,
 		return nil, err
 	}
 	rows, err := repository.conn.QueryContext(ctx, `
-		SELECT id, schema_version, run_id, generated_at, document_json FROM reports ORDER BY generated_at, id
+		SELECT id, schema_version, run_id, generated_at, document_json
+		FROM reports
+		ORDER BY `+reportGeneratedAtSortKeySQL+`, id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list reports: %w", err)
