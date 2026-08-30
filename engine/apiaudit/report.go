@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/894x/llm-test/engine/common"
 )
@@ -248,8 +249,7 @@ func redactJSONValue(value any, apiKey string) any {
 	case map[string]any:
 		redacted := make(map[string]any, len(typed))
 		for key, item := range typed {
-			lowerKey := strings.ToLower(key)
-			if lowerKey == "authorization" || lowerKey == "api_key" || lowerKey == "apikey" || lowerKey == "access_token" || lowerKey == "secret" || lowerKey == "token" {
+			if isSecretJSONKey(key) {
 				redacted[key] = "[REDACTED]"
 				continue
 			}
@@ -259,6 +259,21 @@ func redactJSONValue(value any, apiKey string) any {
 	default:
 		return value
 	}
+}
+
+func isSecretJSONKey(key string) bool {
+	normalized := strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToLower(character)
+		}
+		return -1
+	}, key)
+	for _, marker := range []string{"authorization", "apikey", "password", "passwd", "secret", "privatekey"} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return normalized == "token" || strings.HasSuffix(normalized, "token")
 }
 
 const reportHTMLTemplate = `<!doctype html>
