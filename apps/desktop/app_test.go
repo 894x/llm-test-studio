@@ -310,6 +310,52 @@ func TestDesktopAppRejectsCallsBeforeStartup(t *testing.T) {
 	}
 }
 
+func TestDesktopAppWaitsForStartupInProgressBeforeServingBindings(t *testing.T) {
+	want := workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}
+	startupEntered := make(chan struct{})
+	allowStartup := make(chan struct{})
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		close(startupEntered)
+		<-allowStartup
+		return desktopDependencies{query: &recordingWorkspaceQuery{snapshot: want}}, nil
+	})
+
+	startupDone := make(chan struct{})
+	go func() {
+		app.onStartup(context.Background())
+		close(startupDone)
+	}()
+	<-startupEntered
+
+	type bindingResult struct {
+		snapshot workspace.Snapshot
+		err      error
+	}
+	result := make(chan bindingResult, 1)
+	go func() {
+		snapshot, err := app.GetWorkspace()
+		result <- bindingResult{snapshot: snapshot, err: err}
+	}()
+
+	select {
+	case early := <-result:
+		close(allowStartup)
+		<-startupDone
+		t.Fatalf("binding completed before startup: snapshot=%+v error=%v", early.snapshot, early.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(allowStartup)
+	<-startupDone
+	got := <-result
+	if got.err != nil {
+		t.Fatalf("GetWorkspace() error = %v", got.err)
+	}
+	if got.snapshot.SchemaVersion != want.SchemaVersion {
+		t.Fatalf("schema version = %q, want %q", got.snapshot.SchemaVersion, want.SchemaVersion)
+	}
+}
+
 func TestDesktopAppCatalogAndReportsRejectCallsBeforeStartup(t *testing.T) {
 	catalogQuery := &recordingCatalogQuery{}
 	reportingQuery := &recordingReportingQuery{}

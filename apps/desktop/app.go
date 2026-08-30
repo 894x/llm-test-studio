@@ -81,7 +81,9 @@ type DesktopApp struct {
 	lifecycleMu sync.Mutex
 	mu          sync.Mutex
 	drained     *sync.Cond
+	startupDone *sync.Cond
 	initialize  desktopInitializer
+	starting    bool
 	started     bool
 	stopping    bool
 	stopped     bool
@@ -137,6 +139,7 @@ func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
 func newDesktopApp(initialize desktopInitializer) *DesktopApp {
 	app := &DesktopApp{initialize: initialize}
 	app.drained = sync.NewCond(&app.mu)
+	app.startupDone = sync.NewCond(&app.mu)
 	return app
 }
 
@@ -163,25 +166,30 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		app.mu.Unlock()
 		return
 	}
+	app.starting = true
 	app.mu.Unlock()
 
 	lifecycleContext, cancel := context.WithCancel(ctx)
 	if app.initialize == nil {
 		app.mu.Lock()
+		app.starting = false
 		app.started = true
 		app.ctx = lifecycleContext
 		app.cancel = cancel
 		app.startupErr = ErrWorkspaceUnavailable
+		app.startupDone.Broadcast()
 		app.mu.Unlock()
 		return
 	}
 	dependencies, err := app.initialize(lifecycleContext)
 	app.mu.Lock()
+	app.starting = false
 	app.started = true
 	app.ctx = lifecycleContext
 	app.cancel = cancel
 	if err != nil {
 		app.startupErr = fmt.Errorf("%w: %w", ErrDesktopStartup, err)
+		app.startupDone.Broadcast()
 		app.mu.Unlock()
 		if dependencies.close != nil {
 			_ = dependencies.close()
@@ -193,6 +201,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.reports = dependencies.reports
 	app.commands = dependencies.commands
 	app.close = dependencies.close
+	app.startupDone.Broadcast()
 	app.mu.Unlock()
 }
 
@@ -298,6 +307,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	}
 	app.mu.Lock()
 	defer app.mu.Unlock()
+	for app.starting && !app.stopping && !app.stopped {
+		app.startupDone.Wait()
+	}
 	if app.stopping || app.stopped {
 		return desktopLease{}, ErrDesktopStopped
 	}
