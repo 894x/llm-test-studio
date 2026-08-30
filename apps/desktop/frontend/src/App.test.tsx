@@ -6,7 +6,11 @@ import { resolve } from "node:path"
 
 import App from "./App"
 import type { DesktopClient } from "./app/desktop-client"
-import { FIXTURE_WORKSPACE } from "./features/runs/fixtures"
+import {
+  FIXTURE_CATALOG,
+  FIXTURE_REPORTS,
+  FIXTURE_WORKSPACE,
+} from "./features/runs/fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
 import indexHtml from "../index.html?raw"
 
@@ -18,6 +22,8 @@ function desktopClient(): DesktopClient & {
   const client = {
     workspace: structuredClone(FIXTURE_WORKSPACE),
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
+    getCatalog: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
+    getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
     startRun: vi.fn(async () => structuredClone(client.workspace)),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
@@ -46,6 +52,7 @@ describe("desktop run workspace", () => {
   beforeEach(() => {
     window.localStorage.clear()
     document.documentElement.className = ""
+    window.history.replaceState(null, "", "#runs")
   })
 
   it("opens on the compact run workspace instead of a dashboard", async () => {
@@ -91,6 +98,87 @@ describe("desktop run workspace", () => {
       expect(row.children).toHaveLength(2)
       expect(row.querySelector("dd")?.children).toHaveLength(0)
     })
+  })
+
+  it("opens every primary workspace from the main navigation", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "运行工作区" })
+    for (const [label, heading, evidence] of [
+      ["总览", "工作台总览", "6 个模型"],
+      ["模型与渠道", "模型与渠道", "gpt-5.2"],
+      ["用例", "测试用例", "基础对话"],
+      ["计划", "测试计划", "营销文案基准"],
+      ["报告", "测试报告", "兼容性门禁通过"],
+      ["运行", "运行工作区", "JSON 模式回归"],
+    ] as const) {
+      await user.click(screen.getByRole("button", { name: label }))
+      expect(
+        await screen.findByRole("heading", { name: heading }),
+      ).toBeInTheDocument()
+      expect(screen.getAllByText(evidence).length).toBeGreaterThan(0)
+    }
+    expect(client.getWorkspace).toHaveBeenCalledTimes(1)
+    expect(client.getCatalog).toHaveBeenCalledTimes(1)
+    expect(client.getReports).toHaveBeenCalledTimes(1)
+  })
+
+  it("distinguishes imported automatic, disabled, and manual cases", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const client = desktopClient()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    Object.assign(catalog.test_cases[0], {
+      key: "T001",
+      dimension: "must",
+      enabled: true,
+      default: true,
+      severity: "critical",
+      execution_mode: "automatic",
+    })
+    Object.assign(catalog.test_cases[1], {
+      key: "disabled.case",
+      dimension: "compatibility",
+      enabled: false,
+      default: false,
+      severity: "critical",
+      execution_mode: "automatic",
+    })
+    Object.assign(catalog.test_cases[2], {
+      key: "T010",
+      dimension: "manual",
+      enabled: true,
+      default: false,
+      severity: "normal",
+      execution_mode: "manual",
+    })
+    vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+
+    render(<App client={client} />)
+
+    const table = await screen.findByRole("table", { name: "测试用例目录" })
+    expect(within(table).getByText("默认启用")).toBeInTheDocument()
+    expect(within(table).getByText("已停用")).toBeInTheDocument()
+    expect(within(table).getByText("人工判定")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "查看用例 工具调用" }))
+    const inspector = screen.getByRole("complementary", { name: "用例详情" })
+    expect(inspector).toHaveTextContent("T010")
+    expect(inspector).toHaveTextContent("人工判定")
+  })
+
+  it("restores the selected workspace from hash navigation", async () => {
+    window.history.replaceState(null, "", "#reports")
+    render(<App client={desktopClient()} />)
+
+    expect(
+      await screen.findByRole("heading", { name: "测试报告" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "报告" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    )
   })
 
   it("keeps table selection and the inspector on the same run", async () => {
@@ -171,6 +259,8 @@ describe("desktop run workspace", () => {
       getWorkspace: vi.fn(async () => {
         throw new Error("sk-secret from https://provider.example/v1")
       }),
+      getCatalog: vi.fn(),
+      getReports: vi.fn(),
       startRun: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),

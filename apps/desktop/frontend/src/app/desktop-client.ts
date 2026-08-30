@@ -1,10 +1,22 @@
 import type { WorkspaceSnapshot } from "@/features/runs/data"
+import {
+  EMPTY_CATALOG,
+  parseCatalogSnapshot,
+  type CatalogSnapshot,
+} from "@/features/catalog/data"
+import {
+  EMPTY_REPORTS,
+  parseReportSnapshot,
+  type ReportSnapshot,
+} from "@/features/reports/data"
 
 export type DesktopErrorCode =
   | "desktop_not_started"
   | "desktop_startup_failed"
   | "desktop_stopped"
   | "workspace_unavailable"
+  | "catalog_unavailable"
+  | "reports_unavailable"
   | "run_commands_unavailable"
   | "invalid_identifier"
   | "operation_cancelled"
@@ -15,6 +27,8 @@ const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   desktop_startup_failed: "桌面应用初始化失败",
   desktop_stopped: "桌面应用已停止",
   workspace_unavailable: "本地工作区暂不可用",
+  catalog_unavailable: "测试目录暂不可用",
+  reports_unavailable: "测试报告暂不可用",
   run_commands_unavailable: "运行命令暂不可用",
   invalid_identifier: "操作对象无效",
   operation_cancelled: "操作已取消",
@@ -40,6 +54,8 @@ export function publicDesktopErrorMessage(
 
 export interface DesktopClient {
   getWorkspace(): Promise<WorkspaceSnapshot>
+  getCatalog(): Promise<CatalogSnapshot>
+  getReports(): Promise<ReportSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
@@ -47,6 +63,8 @@ export interface DesktopClient {
 
 type WailsDesktopBinding = {
   GetWorkspace(): Promise<unknown>
+  GetCatalog(): Promise<unknown>
+  GetReports(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
@@ -59,11 +77,21 @@ export function createDesktopClient(): DesktopClient {
   return unavailableClient()
 }
 
-export function createFixtureClient(initial: WorkspaceSnapshot): DesktopClient {
+export function createFixtureClient(
+  initial: WorkspaceSnapshot,
+  catalog: CatalogSnapshot = EMPTY_CATALOG,
+  reports: ReportSnapshot = EMPTY_REPORTS,
+): DesktopClient {
   let workspace = cloneSnapshot(initial)
   return {
     async getWorkspace() {
       return cloneSnapshot(workspace)
+    },
+    async getCatalog() {
+      return structuredClone(catalog)
+    },
+    async getReports() {
+      return structuredClone(reports)
     },
     async startRun(planId) {
       if (!workspace.plans.some((plan) => plan.id === planId)) {
@@ -87,11 +115,14 @@ export function createFixtureClient(initial: WorkspaceSnapshot): DesktopClient {
 }
 
 function createLazyFixtureClient(): DesktopClient {
-  const client = import("@/features/runs/fixtures").then(({ FIXTURE_WORKSPACE }) =>
-    createFixtureClient(FIXTURE_WORKSPACE),
+  const client = import("@/features/runs/fixtures").then(
+    ({ FIXTURE_CATALOG, FIXTURE_REPORTS, FIXTURE_WORKSPACE }) =>
+      createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS),
   )
   return {
     getWorkspace: async () => (await client).getWorkspace(),
+    getCatalog: async () => (await client).getCatalog(),
+    getReports: async () => (await client).getReports(),
     startRun: async (planId) => (await client).startRun(planId),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
@@ -100,24 +131,32 @@ function createLazyFixtureClient(): DesktopClient {
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   return {
-    getWorkspace: async () => callBinding(() => binding.GetWorkspace()),
-    startRun: async (planId) => callBinding(() => binding.StartRun(planId)),
+    getWorkspace: async () =>
+      callBinding(() => binding.GetWorkspace(), parseSnapshot),
+    getCatalog: async () =>
+      callBinding(() => binding.GetCatalog(), parseCatalogSnapshot),
+    getReports: async () =>
+      callBinding(() => binding.GetReports(), parseReportSnapshot),
+    startRun: async (planId) =>
+      callBinding(() => binding.StartRun(planId), parseSnapshot),
     stopSending: async (runId) =>
-      callBinding(() => binding.StopSending(runId)),
+      callBinding(() => binding.StopSending(runId), parseSnapshot),
     cancelRun: async (runId) =>
-      callBinding(() => binding.CancelRun(runId)),
+      callBinding(() => binding.CancelRun(runId), parseSnapshot),
   }
 }
 
 function unavailableClient(): DesktopClient {
-  const reject = async (): Promise<WorkspaceSnapshot> => {
+  const reject = async <T>(): Promise<T> => {
     throw new DesktopClientError("workspace_unavailable")
   }
   return {
-    getWorkspace: reject,
-    startRun: reject,
-    stopSending: reject,
-    cancelRun: reject,
+    getWorkspace: () => reject(),
+    getCatalog: () => reject(),
+    getReports: () => reject(),
+    startRun: () => reject(),
+    stopSending: () => reject(),
+    cancelRun: () => reject(),
   }
 }
 
@@ -128,6 +167,8 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
   const candidate = root.go?.main?.DesktopApp
   if (
     typeof candidate?.GetWorkspace !== "function" ||
+    typeof candidate.GetCatalog !== "function" ||
+    typeof candidate.GetReports !== "function" ||
     typeof candidate.StartRun !== "function" ||
     typeof candidate.StopSending !== "function" ||
     typeof candidate.CancelRun !== "function"
@@ -172,11 +213,12 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
   }
 }
 
-async function callBinding(
+async function callBinding<T>(
   invoke: () => Promise<unknown>,
-): Promise<WorkspaceSnapshot> {
+  parse: (value: unknown) => T,
+): Promise<T> {
   try {
-    return parseSnapshot(await invoke())
+    return parse(await invoke())
   } catch (error) {
     if (isProtocolError(error)) throw error
     throw normalizeBindingError(error)
@@ -204,7 +246,9 @@ function isProtocolError(error: unknown): boolean {
     (error.message.startsWith("桌面数据") ||
       error.message.startsWith("桌面测试计划数据") ||
       error.message.startsWith("桌面运行记录数据") ||
-      error.message.startsWith("桌面活动运行引用"))
+      error.message.startsWith("桌面活动运行引用") ||
+      error.message.startsWith("桌面目录") ||
+      error.message.startsWith("桌面报告"))
   )
 }
 

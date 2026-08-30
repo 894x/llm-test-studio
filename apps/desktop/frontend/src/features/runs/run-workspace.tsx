@@ -1,19 +1,13 @@
-import { useEffect, useMemo, useState } from "react"
-import ActivityIcon from "lucide-react/dist/esm/icons/activity.mjs"
+import { useMemo, useState } from "react"
 import CircleStopIcon from "lucide-react/dist/esm/icons/circle-stop.mjs"
 import CircleXIcon from "lucide-react/dist/esm/icons/circle-x.mjs"
-import ContrastIcon from "lucide-react/dist/esm/icons/contrast.mjs"
-import MoonIcon from "lucide-react/dist/esm/icons/moon.mjs"
 import PanelLeftIcon from "lucide-react/dist/esm/icons/panel-left.mjs"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
-import SunIcon from "lucide-react/dist/esm/icons/sun.mjs"
 
 import {
   publicDesktopErrorMessage,
-  type DesktopClient,
 } from "@/app/desktop-client"
-import { useTheme, type ThemePreference } from "@/app/theme-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
@@ -23,14 +17,6 @@ import {
   FieldDescription,
   FieldLabel,
 } from "@/components/ui/field"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -55,11 +41,6 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 import {
@@ -73,8 +54,6 @@ import {
 } from "./data"
 
 type ActiveTaskState = "queued" | "starting" | "running" | "draining"
-
-const MAIN_NAV = ["总览", "模型与渠道", "用例", "计划", "运行", "报告"]
 
 const STATUS_CLASS: Record<RunStatus, string> = {
   running: "border-info/25 bg-info-soft text-info-strong",
@@ -91,118 +70,6 @@ const TASK_LABEL: Record<ActiveTaskState, string> = {
   starting: "启动中",
   running: "发送中",
   draining: "排空中",
-}
-
-function ThemeMenu() {
-  const { theme, setTheme } = useTheme()
-  const icon =
-    theme === "dark" ? (
-      <MoonIcon />
-    ) : theme === "light" ? (
-      <SunIcon />
-    ) : (
-      <ContrastIcon />
-    )
-  const label =
-    theme === "dark" ? "深色" : theme === "light" ? "浅色" : "跟随系统"
-
-  return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`主题：${label}`}
-              className="rounded-full"
-            >
-              {icon}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">主题：{label}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuLabel>外观</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={theme}
-          onValueChange={(value) => setTheme(value as ThemePreference)}
-        >
-          <DropdownMenuRadioItem value="system">
-            <ContrastIcon /> 跟随系统
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="light">
-            <SunIcon /> 浅色
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark">
-            <MoonIcon /> 深色
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function AppHeader({
-  plans,
-  commandPending,
-  onStartRun,
-}: {
-  plans: TestPlan[]
-  commandPending: boolean
-  onStartRun: (planId: string) => Promise<void>
-}) {
-  return (
-    <header className="flex h-12 shrink-0 items-center border-b bg-background px-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <ActivityIcon className="size-4" />
-        </div>
-        <div className="mr-3 hidden min-w-0 sm:block">
-          <div className="truncate text-sm font-semibold leading-none">
-            LLM Test Lab
-          </div>
-          <div className="mt-1 text-[10px] leading-none text-muted-foreground">
-            本地测试工作台
-          </div>
-        </div>
-      </div>
-
-      <nav
-        aria-label="主导航"
-        className="flex min-w-0 flex-1 items-center overflow-x-auto"
-      >
-        {MAIN_NAV.map((item) => {
-          const active = item === "运行"
-          return (
-            <Button
-              key={item}
-              variant="ghost"
-              size="sm"
-              disabled={!active}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "shrink-0 px-2 text-xs font-normal disabled:opacity-55",
-                active && "bg-accent font-medium text-accent-foreground",
-              )}
-            >
-              {item}
-            </Button>
-          )
-        })}
-      </nav>
-
-      <div className="ml-2 flex shrink-0 items-center gap-1">
-        <ThemeMenu />
-        <NewRunSheet
-          plans={plans}
-          commandPending={commandPending}
-          onStartRun={onStartRun}
-        />
-      </div>
-    </header>
-  )
 }
 
 function PlanNavigation({
@@ -522,7 +389,7 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
   )
 }
 
-function NewRunSheet({
+export function NewRunSheet({
   plans,
   commandPending,
   onStartRun,
@@ -769,40 +636,23 @@ function IdleTaskBar() {
   )
 }
 
-export function RunWorkspace({ client }: { client: DesktopClient }) {
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
-  const [loadError, setLoadError] = useState("")
-  const [commandError, setCommandError] = useState("")
-  const [commandPending, setCommandPending] = useState(false)
+export function RunWorkspace({
+  snapshot,
+  commandPending,
+  commandError,
+  onStopSending,
+  onCancelRun,
+}: {
+  snapshot: WorkspaceSnapshot
+  commandPending: boolean
+  commandError: string
+  onStopSending: (runId: string) => Promise<void>
+  onCancelRun: (runId: string) => Promise<void>
+}) {
   const [activePlanId, setActivePlanId] = useState("all")
   const [selectedRunId, setSelectedRunId] = useState("")
 
-  useEffect(() => {
-    let active = true
-    void client
-      .getWorkspace()
-      .then((next) => {
-        if (active) {
-          setLoadError("")
-          setSnapshot(next)
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setLoadError(
-            publicDesktopErrorMessage(error, "无法读取本地工作区"),
-          )
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [client])
-
-  const presentation = useMemo(
-    () => (snapshot ? presentWorkspace(snapshot) : { plans: [], runs: [] }),
-    [snapshot],
-  )
+  const presentation = useMemo(() => presentWorkspace(snapshot), [snapshot])
   const { plans, runs } = presentation
   const visibleRuns = useMemo(
     () =>
@@ -813,7 +663,7 @@ export function RunWorkspace({ client }: { client: DesktopClient }) {
   )
   const selectedRun =
     visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0]
-  const activeRun = snapshot?.active_run_id
+  const activeRun = snapshot.active_run_id
     ? runs.find((run) => run.id === snapshot.active_run_id)
     : undefined
 
@@ -826,51 +676,8 @@ export function RunWorkspace({ client }: { client: DesktopClient }) {
     setSelectedRunId(firstRun?.id ?? "")
   }
 
-  const runCommand = async (
-    operation: () => Promise<WorkspaceSnapshot>,
-  ): Promise<void> => {
-    setCommandPending(true)
-    setCommandError("")
-    try {
-      setSnapshot(await operation())
-    } catch (error) {
-      setCommandError(
-        publicDesktopErrorMessage(error, "桌面操作失败，请检查本地日志"),
-      )
-      throw error
-    } finally {
-      setCommandPending(false)
-    }
-  }
-
-  if (loadError) {
-    return (
-      <div className="flex h-svh min-h-[640px] items-center justify-center bg-background p-6 text-foreground">
-        <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
-          <div className="text-sm font-semibold">无法打开运行工作区</div>
-          <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
-        </div>
-      </div>
-    )
-  }
-  if (!snapshot) {
-    return (
-      <div className="flex h-svh min-h-[640px] items-center justify-center bg-background text-xs text-muted-foreground">
-        正在读取本地工作区…
-      </div>
-    )
-  }
-
   return (
-    <div className="flex h-svh min-h-[640px] flex-col overflow-hidden bg-background text-foreground">
-      <AppHeader
-        plans={plans}
-        commandPending={commandPending}
-        onStartRun={(planId) =>
-          runCommand(() => client.startRun(planId))
-        }
-      />
-      <main className="flex min-h-0 flex-1">
+    <main className="flex min-h-0 flex-1">
         <aside className="hidden w-56 shrink-0 border-r bg-sidebar min-[1180px]:flex">
           <PlanNavigation
             activePlanId={activePlanId}
@@ -928,14 +735,10 @@ export function RunWorkspace({ client }: { client: DesktopClient }) {
               state={activeRun.coreStatus}
               commandPending={commandPending}
               onStop={() => {
-                void runCommand(() => client.stopSending(activeRun.id)).catch(
-                  () => undefined,
-                )
+                void onStopSending(activeRun.id).catch(() => undefined)
               }}
               onCancel={() => {
-                void runCommand(() => client.cancelRun(activeRun.id)).catch(
-                  () => undefined,
-                )
+                void onCancelRun(activeRun.id).catch(() => undefined)
               }}
             />
           ) : (
@@ -953,8 +756,7 @@ export function RunWorkspace({ client }: { client: DesktopClient }) {
             <div className="p-4 text-xs text-muted-foreground">尚未选择运行</div>
           )}
         </aside>
-      </main>
-    </div>
+    </main>
   )
 }
 

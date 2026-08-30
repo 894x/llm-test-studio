@@ -4,6 +4,8 @@ import type {
   WorkspaceRun,
   WorkspaceSnapshot,
 } from "./data"
+import type { CatalogSnapshot } from "@/features/catalog/data"
+import type { ReportSnapshot } from "@/features/reports/data"
 
 const PLAN_IDS = {
   copy: "11111111-1111-4111-8111-111111111111",
@@ -27,6 +29,64 @@ const CHANNEL_IDS = {
   anthropic: "33333333-3333-4333-8333-333333333333",
   vertex: "33333333-3333-4333-8333-333333333334",
   compatible: "33333333-3333-4333-8333-333333333335",
+}
+
+const CASE_IDS = {
+  chat: "44444444-4444-4444-8444-444444444441",
+  json: "44444444-4444-4444-8444-444444444442",
+  tools: "44444444-4444-4444-8444-444444444443",
+  stream: "44444444-4444-4444-8444-444444444444",
+}
+
+export const FIXTURE_CATALOG: CatalogSnapshot = {
+  schema_version: 1,
+  models: [
+    { id: MODEL_IDS.openai, revision: 2, name: "gpt-5.2", protocol: "openai-chat", capabilities: ["text", "json", "tools"] },
+    { id: MODEL_IDS.qwen, revision: 1, name: "qwen3-max", protocol: "openai-chat", capabilities: ["text", "json"] },
+    { id: MODEL_IDS.claude, revision: 1, name: "claude-sonnet-4", protocol: "openai-chat", capabilities: ["text", "tools"] },
+    { id: MODEL_IDS.gemini, revision: 1, name: "gemini-2.5-pro", protocol: "openai-chat", capabilities: ["text", "multimodal"] },
+    { id: MODEL_IDS.deepseek, revision: 1, name: "deepseek-v3.2", protocol: "openai-chat", capabilities: ["text", "stream"] },
+    { id: MODEL_IDS.mini, revision: 1, name: "gpt-4.1-mini", protocol: "openai-chat", capabilities: ["text"] },
+  ],
+  channels: [
+    { id: CHANNEL_IDS.openai, revision: 2, name: "OpenAI 主渠道", base_url: "https://api.openai.com/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 2 },
+    { id: CHANNEL_IDS.aliyun, revision: 1, name: "阿里云备用渠道", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 1 },
+    { id: CHANNEL_IDS.anthropic, revision: 1, name: "Anthropic 主渠道", base_url: "https://gateway.example.test/anthropic/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 1 },
+    { id: CHANNEL_IDS.vertex, revision: 1, name: "Vertex 测试渠道", base_url: "https://gateway.example.test/vertex/v1", protocol: "openai-chat", enabled: false, credential_configured: false, model_count: 1 },
+    { id: CHANNEL_IDS.compatible, revision: 1, name: "兼容协议渠道", base_url: "https://gateway.example.test/compatible/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 1 },
+  ],
+  channel_models: [
+    { id: "77777777-7777-4777-8777-777777777771", revision: 1, channel_id: CHANNEL_IDS.openai, model_id: MODEL_IDS.openai, upstream_model_name: "gpt-5.2" },
+    { id: "77777777-7777-4777-8777-777777777772", revision: 1, channel_id: CHANNEL_IDS.openai, model_id: MODEL_IDS.mini, upstream_model_name: "gpt-4.1-mini" },
+    { id: "77777777-7777-4777-8777-777777777773", revision: 1, channel_id: CHANNEL_IDS.aliyun, model_id: MODEL_IDS.qwen, upstream_model_name: "qwen3-max" },
+    { id: "77777777-7777-4777-8777-777777777774", revision: 1, channel_id: CHANNEL_IDS.anthropic, model_id: MODEL_IDS.claude, upstream_model_name: "claude-sonnet-4" },
+    { id: "77777777-7777-4777-8777-777777777775", revision: 1, channel_id: CHANNEL_IDS.vertex, model_id: MODEL_IDS.gemini, upstream_model_name: "gemini-2.5-pro" },
+    { id: "77777777-7777-4777-8777-777777777776", revision: 1, channel_id: CHANNEL_IDS.compatible, model_id: MODEL_IDS.deepseek, upstream_model_name: "deepseek-v3.2" },
+  ],
+  test_cases: [
+    { id: CASE_IDS.chat, revision: 3, key: "T001", name: "基础对话", dimension: "must", protocol: "openai-chat", enabled: true, default: true, severity: "critical", execution_mode: "automatic", method: "POST", path: "/chat/completions", assertion_kinds: ["response_schema", "text"] },
+    { id: CASE_IDS.json, revision: 2, key: "T016", name: "JSON 模式", dimension: "response", protocol: "openai-chat", enabled: true, default: false, severity: "critical", execution_mode: "automatic", method: "POST", path: "/chat/completions", assertion_kinds: ["response_schema", "json"] },
+    { id: CASE_IDS.tools, revision: 1, key: "T037", name: "工具调用", dimension: "tools", protocol: "openai-chat", enabled: true, default: false, severity: "normal", execution_mode: "automatic", method: "POST", path: "/chat/completions", assertion_kinds: ["response_schema", "tool_call"] },
+    { id: CASE_IDS.stream, revision: 2, key: "T008", name: "流式结束", dimension: "streaming", protocol: "openai-chat", enabled: true, default: false, severity: "normal", execution_mode: "automatic", method: "POST", path: "/chat/completions", assertion_kinds: ["stream_end", "text"] },
+  ],
+  suites: [
+    { id: "88888888-8888-4888-8888-888888888881", revision: 2, name: "OpenAI 回归套件", case_count: 4 },
+  ],
+  plans: [
+    { id: PLAN_IDS.copy, revision: 1, name: "营销文案基准", model_count: 1, channel_count: 1, case_count: 36, load_mode: "fixed_concurrency", concurrency: 4, request_count: 120, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000 },
+    { id: PLAN_IDS.json, revision: 1, name: "JSON 模式回归", model_count: 1, channel_count: 1, case_count: 24, load_mode: "fixed_concurrency", concurrency: 2, request_count: 24, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000 },
+    { id: PLAN_IDS.tools, revision: 1, name: "工具调用兼容性", model_count: 1, channel_count: 1, case_count: 18, load_mode: "fixed_concurrency", concurrency: 8, request_count: 72, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000 },
+    { id: PLAN_IDS.stream, revision: 1, name: "流式性能门禁", model_count: 1, channel_count: 1, case_count: 12, load_mode: "open_loop", concurrency: 1, request_count: 180, rate_per_second: 12, duration_ms: 0, request_timeout_ms: 30_000 },
+  ],
+}
+
+export const FIXTURE_REPORTS: ReportSnapshot = {
+  schema_version: 1,
+  reports: [
+    { id: "66666666-6666-4666-8666-666666666661", run_id: "55555555-5555-4555-8555-555555555553", generated_at: "2026-08-30T07:34:00Z", run_status: "completed", plan_name: "多轮工具调用", model_name: "claude-sonnet-4", channel_name: "Anthropic 主渠道", passed: true, verdict: "兼容性门禁通过", issue_count: 0, case_count: 18, failed_case_count: 0, attachment_count: 2 },
+    { id: "66666666-6666-4666-8666-666666666662", run_id: "55555555-5555-4555-8555-555555555554", generated_at: "2026-08-30T05:18:00Z", run_status: "completed", plan_name: "长上下文边界", model_name: "gemini-2.5-pro", channel_name: "Vertex 测试渠道", passed: false, verdict: "存在一项语义回归", issue_count: 1, case_count: 36, failed_case_count: 1, attachment_count: 2 },
+    { id: "66666666-6666-4666-8666-666666666663", run_id: "55555555-5555-4555-8555-555555555552", generated_at: "2026-08-30T08:54:00Z", run_status: "failed", plan_name: "JSON 模式回归", model_name: "qwen3-max", channel_name: "阿里云备用渠道", passed: false, verdict: "协议错误导致运行失败", issue_count: 2, case_count: 24, failed_case_count: 3, attachment_count: 3 },
+  ],
 }
 
 export const FIXTURE_WORKSPACE: WorkspaceSnapshot = {
