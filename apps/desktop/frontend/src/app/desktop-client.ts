@@ -2,7 +2,21 @@ import type { WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_CATALOG,
   parseCatalogSnapshot,
+  type CatalogActions,
   type CatalogSnapshot,
+  type CreateChannelCommand,
+  type CreateChannelModelCommand,
+  type CreateModelCommand,
+  type CreatePlanCommand,
+  type CreateSuiteCommand,
+  type CreateTestCaseCommand,
+  type DeleteCommand,
+  type UpdateChannelCommand,
+  type UpdateChannelModelCommand,
+  type UpdateModelCommand,
+  type UpdatePlanCommand,
+  type UpdateSuiteCommand,
+  type UpdateTestCaseCommand,
 } from "@/features/catalog/data"
 import {
   EMPTY_REPORTS,
@@ -21,6 +35,9 @@ export type DesktopErrorCode =
   | "invalid_identifier"
   | "operation_cancelled"
   | "operation_failed"
+  | "catalog_invalid"
+  | "catalog_revision_conflict"
+  | "catalog_not_found"
 
 const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   desktop_not_started: "桌面应用尚未启动",
@@ -33,6 +50,9 @@ const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   invalid_identifier: "操作对象无效",
   operation_cancelled: "操作已取消",
   operation_failed: "桌面操作失败，请检查本地日志",
+  catalog_invalid: "目录内容无效，请检查表单字段",
+  catalog_revision_conflict: "对象版本已变化或仍被引用，请刷新并解除引用后重试",
+  catalog_not_found: "对象已删除或不存在，请刷新目录",
 }
 
 export class DesktopClientError extends Error {
@@ -52,7 +72,7 @@ export function publicDesktopErrorMessage(
   return error instanceof DesktopClientError ? error.message : fallback
 }
 
-export interface DesktopClient {
+export interface DesktopClient extends CatalogActions {
   getWorkspace(): Promise<WorkspaceSnapshot>
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
@@ -68,6 +88,24 @@ type WailsDesktopBinding = {
   StartRun(planId: string): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
+  CreateModel(command: CreateModelCommand): Promise<unknown>
+  UpdateModel(command: UpdateModelCommand): Promise<unknown>
+  DeleteModel(command: DeleteCommand): Promise<unknown>
+  CreateChannel(command: CreateChannelCommand): Promise<unknown>
+  UpdateChannel(command: UpdateChannelCommand): Promise<unknown>
+  DeleteChannel(command: DeleteCommand): Promise<unknown>
+  CreateChannelModel(command: CreateChannelModelCommand): Promise<unknown>
+  UpdateChannelModel(command: UpdateChannelModelCommand): Promise<unknown>
+  DeleteChannelModel(command: DeleteCommand): Promise<unknown>
+  CreateTestCase(command: CreateTestCaseCommand): Promise<unknown>
+  UpdateTestCase(command: UpdateTestCaseCommand): Promise<unknown>
+  DeleteTestCase(command: DeleteCommand): Promise<unknown>
+  CreateSuite(command: CreateSuiteCommand): Promise<unknown>
+  UpdateSuite(command: UpdateSuiteCommand): Promise<unknown>
+  DeleteSuite(command: DeleteCommand): Promise<unknown>
+  CreatePlan(command: CreatePlanCommand): Promise<unknown>
+  UpdatePlan(command: UpdatePlanCommand): Promise<unknown>
+  DeletePlan(command: DeleteCommand): Promise<unknown>
 }
 
 export function createDesktopClient(): DesktopClient {
@@ -83,12 +121,20 @@ export function createFixtureClient(
   reports: ReportSnapshot = EMPTY_REPORTS,
 ): DesktopClient {
   let workspace = cloneSnapshot(initial)
+  let catalogState = structuredClone(catalog)
+  const nextID = () => crypto.randomUUID()
+  const refreshChannelCounts = () => {
+    catalogState.channels = catalogState.channels.map((channel) => ({
+      ...channel,
+      model_count: catalogState.channel_models.filter((mapping) => mapping.channel_id === channel.id).length,
+    }))
+  }
   return {
     async getWorkspace() {
       return cloneSnapshot(workspace)
     },
     async getCatalog() {
-      return structuredClone(catalog)
+      return structuredClone(catalogState)
     },
     async getReports() {
       return structuredClone(reports)
@@ -111,6 +157,115 @@ export function createFixtureClient(
       }
       return cloneSnapshot(workspace)
     },
+    async createModel(command) {
+      catalogState.models.push({ id: nextID(), revision: 1, ...structuredClone(command) })
+      return structuredClone(catalogState)
+    },
+    async updateModel(command) {
+      catalogState.models = replaceByID(catalogState.models, command.id, {
+        id: command.id,
+        revision: command.expected_revision + 1,
+        name: command.name,
+        protocol: command.protocol,
+        capabilities: [...command.capabilities],
+      })
+      return structuredClone(catalogState)
+    },
+    async deleteModel(command) {
+      catalogState.models = removeByID(catalogState.models, command.id)
+      return structuredClone(catalogState)
+    },
+    async createChannel(command) {
+      catalogState.channels.push({ id: nextID(), revision: 1, ...structuredClone(command), credential_configured: false, model_count: 0 })
+      return structuredClone(catalogState)
+    },
+    async updateChannel(command) {
+      const current = catalogState.channels.find((channel) => channel.id === command.id)
+      if (!current) throw new DesktopClientError("invalid_identifier")
+      catalogState.channels = replaceByID(catalogState.channels, command.id, {
+        id: command.id,
+        revision: command.expected_revision + 1,
+        name: command.name,
+        base_url: command.base_url,
+        protocol: command.protocol,
+        enabled: command.enabled,
+        credential_configured: current.credential_configured,
+        model_count: current.model_count,
+      })
+      return structuredClone(catalogState)
+    },
+    async deleteChannel(command) {
+      catalogState.channels = removeByID(catalogState.channels, command.id)
+      return structuredClone(catalogState)
+    },
+    async createChannelModel(command) {
+      catalogState.channel_models.push({ id: nextID(), revision: 1, ...structuredClone(command) })
+      refreshChannelCounts()
+      return structuredClone(catalogState)
+    },
+    async updateChannelModel(command) {
+      const current = catalogState.channel_models.find((mapping) => mapping.id === command.id)
+      if (!current) throw new DesktopClientError("invalid_identifier")
+      catalogState.channel_models = replaceByID(catalogState.channel_models, command.id, {
+        ...current,
+        revision: command.expected_revision + 1,
+        upstream_model_name: command.upstream_model_name,
+      })
+      return structuredClone(catalogState)
+    },
+    async deleteChannelModel(command) {
+      catalogState.channel_models = removeByID(catalogState.channel_models, command.id)
+      refreshChannelCounts()
+      return structuredClone(catalogState)
+    },
+    async createTestCase(command) {
+      catalogState.test_cases.push({ id: nextID(), revision: 1, ...structuredClone(command), assertion_kinds: command.assertions.map((assertion) => assertion.kind) })
+      return structuredClone(catalogState)
+    },
+    async updateTestCase(command) {
+      const { id, expected_revision, ...editable } = command
+      catalogState.test_cases = replaceByID(catalogState.test_cases, command.id, {
+        id,
+        revision: expected_revision + 1,
+        ...structuredClone(editable),
+        assertion_kinds: command.assertions.map((assertion) => assertion.kind),
+      })
+      return structuredClone(catalogState)
+    },
+    async deleteTestCase(command) {
+      catalogState.test_cases = removeByID(catalogState.test_cases, command.id)
+      return structuredClone(catalogState)
+    },
+    async createSuite(command) {
+      catalogState.suites.push({ id: nextID(), revision: 1, ...structuredClone(command), case_count: command.cases.length })
+      return structuredClone(catalogState)
+    },
+    async updateSuite(command) {
+      catalogState.suites = replaceByID(catalogState.suites, command.id, {
+        id: command.id,
+        revision: command.expected_revision + 1,
+        name: command.name,
+        cases: structuredClone(command.cases),
+        case_count: command.cases.length,
+      })
+      return structuredClone(catalogState)
+    },
+    async deleteSuite(command) {
+      catalogState.suites = removeByID(catalogState.suites, command.id)
+      return structuredClone(catalogState)
+    },
+    async createPlan(command) {
+      catalogState.plans.push(planFromCommand(nextID(), 1, command))
+      return structuredClone(catalogState)
+    },
+    async updatePlan(command) {
+      catalogState.plans = replaceByID(catalogState.plans, command.id, planFromCommand(command.id, command.expected_revision + 1, command))
+      return structuredClone(catalogState)
+    },
+    async deletePlan(command) {
+      catalogState.plans = removeByID(catalogState.plans, command.id)
+      return structuredClone(catalogState)
+    },
   }
 }
 
@@ -126,6 +281,24 @@ function createLazyFixtureClient(): DesktopClient {
     startRun: async (planId) => (await client).startRun(planId),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
+    createModel: async (command) => (await client).createModel(command),
+    updateModel: async (command) => (await client).updateModel(command),
+    deleteModel: async (command) => (await client).deleteModel(command),
+    createChannel: async (command) => (await client).createChannel(command),
+    updateChannel: async (command) => (await client).updateChannel(command),
+    deleteChannel: async (command) => (await client).deleteChannel(command),
+    createChannelModel: async (command) => (await client).createChannelModel(command),
+    updateChannelModel: async (command) => (await client).updateChannelModel(command),
+    deleteChannelModel: async (command) => (await client).deleteChannelModel(command),
+    createTestCase: async (command) => (await client).createTestCase(command),
+    updateTestCase: async (command) => (await client).updateTestCase(command),
+    deleteTestCase: async (command) => (await client).deleteTestCase(command),
+    createSuite: async (command) => (await client).createSuite(command),
+    updateSuite: async (command) => (await client).updateSuite(command),
+    deleteSuite: async (command) => (await client).deleteSuite(command),
+    createPlan: async (command) => (await client).createPlan(command),
+    updatePlan: async (command) => (await client).updatePlan(command),
+    deletePlan: async (command) => (await client).deletePlan(command),
   }
 }
 
@@ -143,6 +316,24 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.StopSending(runId), parseSnapshot),
     cancelRun: async (runId) =>
       callBinding(() => binding.CancelRun(runId), parseSnapshot),
+    createModel: async (command) => callBinding(() => binding.CreateModel(command), parseCatalogSnapshot),
+    updateModel: async (command) => callBinding(() => binding.UpdateModel(command), parseCatalogSnapshot),
+    deleteModel: async (command) => callBinding(() => binding.DeleteModel(command), parseCatalogSnapshot),
+    createChannel: async (command) => callBinding(() => binding.CreateChannel(command), parseCatalogSnapshot),
+    updateChannel: async (command) => callBinding(() => binding.UpdateChannel(command), parseCatalogSnapshot),
+    deleteChannel: async (command) => callBinding(() => binding.DeleteChannel(command), parseCatalogSnapshot),
+    createChannelModel: async (command) => callBinding(() => binding.CreateChannelModel(command), parseCatalogSnapshot),
+    updateChannelModel: async (command) => callBinding(() => binding.UpdateChannelModel(command), parseCatalogSnapshot),
+    deleteChannelModel: async (command) => callBinding(() => binding.DeleteChannelModel(command), parseCatalogSnapshot),
+    createTestCase: async (command) => callBinding(() => binding.CreateTestCase(command), parseCatalogSnapshot),
+    updateTestCase: async (command) => callBinding(() => binding.UpdateTestCase(command), parseCatalogSnapshot),
+    deleteTestCase: async (command) => callBinding(() => binding.DeleteTestCase(command), parseCatalogSnapshot),
+    createSuite: async (command) => callBinding(() => binding.CreateSuite(command), parseCatalogSnapshot),
+    updateSuite: async (command) => callBinding(() => binding.UpdateSuite(command), parseCatalogSnapshot),
+    deleteSuite: async (command) => callBinding(() => binding.DeleteSuite(command), parseCatalogSnapshot),
+    createPlan: async (command) => callBinding(() => binding.CreatePlan(command), parseCatalogSnapshot),
+    updatePlan: async (command) => callBinding(() => binding.UpdatePlan(command), parseCatalogSnapshot),
+    deletePlan: async (command) => callBinding(() => binding.DeletePlan(command), parseCatalogSnapshot),
   }
 }
 
@@ -157,6 +348,24 @@ function unavailableClient(): DesktopClient {
     startRun: () => reject(),
     stopSending: () => reject(),
     cancelRun: () => reject(),
+    createModel: () => reject(),
+    updateModel: () => reject(),
+    deleteModel: () => reject(),
+    createChannel: () => reject(),
+    updateChannel: () => reject(),
+    deleteChannel: () => reject(),
+    createChannelModel: () => reject(),
+    updateChannelModel: () => reject(),
+    deleteChannelModel: () => reject(),
+    createTestCase: () => reject(),
+    updateTestCase: () => reject(),
+    deleteTestCase: () => reject(),
+    createSuite: () => reject(),
+    updateSuite: () => reject(),
+    deleteSuite: () => reject(),
+    createPlan: () => reject(),
+    updatePlan: () => reject(),
+    deletePlan: () => reject(),
   }
 }
 
@@ -165,13 +374,22 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     go?: { main?: { DesktopApp?: Partial<WailsDesktopBinding> } }
   }
   const candidate = root.go?.main?.DesktopApp
+  const catalogMethods = [
+    "CreateModel", "UpdateModel", "DeleteModel",
+    "CreateChannel", "UpdateChannel", "DeleteChannel",
+    "CreateChannelModel", "UpdateChannelModel", "DeleteChannelModel",
+    "CreateTestCase", "UpdateTestCase", "DeleteTestCase",
+    "CreateSuite", "UpdateSuite", "DeleteSuite",
+    "CreatePlan", "UpdatePlan", "DeletePlan",
+  ] as const satisfies ReadonlyArray<keyof WailsDesktopBinding>
   if (
     typeof candidate?.GetWorkspace !== "function" ||
     typeof candidate.GetCatalog !== "function" ||
     typeof candidate.GetReports !== "function" ||
     typeof candidate.StartRun !== "function" ||
     typeof candidate.StopSending !== "function" ||
-    typeof candidate.CancelRun !== "function"
+    typeof candidate.CancelRun !== "function" ||
+    catalogMethods.some((method) => typeof candidate[method] !== "function")
   ) {
     return undefined
   }
@@ -273,6 +491,38 @@ function updateRun(
 
 function cloneSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
   return structuredClone(snapshot)
+}
+
+function replaceByID<T extends { id: string }>(items: T[], id: string, replacement: T): T[] {
+  if (!items.some((item) => item.id === id)) throw new DesktopClientError("invalid_identifier")
+  return items.map((item) => (item.id === id ? replacement : item))
+}
+
+function removeByID<T extends { id: string }>(items: T[], id: string): T[] {
+  if (!items.some((item) => item.id === id)) throw new DesktopClientError("invalid_identifier")
+  return items.filter((item) => item.id !== id)
+}
+
+function planFromCommand(id: string, revision: number, command: CreatePlanCommand): CatalogSnapshot["plans"][number] {
+  return {
+    id,
+    revision,
+    name: command.name,
+    model_count: command.model_ids.length,
+    channel_count: command.channel_ids.length,
+    case_count: command.cases.length,
+    load_mode: command.load_mode,
+    concurrency: command.concurrency,
+    request_count: command.request_count,
+    rate_per_second: command.rate_per_second,
+    duration_ms: command.duration_ms,
+    request_timeout_ms: command.request_timeout_ms,
+    model_ids: [...command.model_ids],
+    channel_ids: [...command.channel_ids],
+    ...(command.suite_id === undefined ? {} : { suite_id: command.suite_id, suite_revision: command.suite_revision }),
+    cases: structuredClone(command.cases),
+    sla_thresholds: { ...command.sla_thresholds },
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -106,6 +106,9 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if snapshot.SchemaVersion != workspace.CurrentSchemaVersion || len(snapshot.Plans) != 0 || len(snapshot.Runs) != 0 {
 		t.Fatalf("initialized workspace = %+v, want empty schema v%d", snapshot, workspace.CurrentSchemaVersion)
 	}
+	if _, err := dependencies.query.Snapshot(context.Background()); err != nil {
+		t.Fatalf("query initialized workspace repeatedly: %v", err)
+	}
 	catalogSnapshot, err := dependencies.catalog.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("query initialized catalog: %v", err)

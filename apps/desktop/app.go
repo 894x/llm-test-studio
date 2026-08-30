@@ -35,6 +35,9 @@ const (
 	desktopCodeInvalidIdentifier  = "invalid_identifier"
 	desktopCodeOperationCancelled = "operation_cancelled"
 	desktopCodeOperationFailed    = "operation_failed"
+	desktopCodeCatalogInvalid     = "catalog_invalid"
+	desktopCodeCatalogConflict    = "catalog_revision_conflict"
+	desktopCodeCatalogNotFound    = "catalog_not_found"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -48,6 +51,29 @@ type WorkspaceQuery interface {
 // desktop presentation layer.
 type CatalogQuery interface {
 	Snapshot(context.Context) (catalog.Snapshot, error)
+}
+
+// CatalogCommands mutates the six versioned catalog entity kinds. The
+// desktop adapter refreshes CatalogQuery after every successful command.
+type CatalogCommands interface {
+	CreateModel(context.Context, catalog.CreateModelCommand) (catalog.MutationResult, error)
+	UpdateModel(context.Context, catalog.UpdateModelCommand) (catalog.MutationResult, error)
+	DeleteModel(context.Context, catalog.DeleteCommand) error
+	CreateChannel(context.Context, catalog.CreateChannelCommand) (catalog.MutationResult, error)
+	UpdateChannel(context.Context, catalog.UpdateChannelCommand) (catalog.MutationResult, error)
+	DeleteChannel(context.Context, catalog.DeleteCommand) error
+	CreateChannelModel(context.Context, catalog.CreateChannelModelCommand) (catalog.MutationResult, error)
+	UpdateChannelModel(context.Context, catalog.UpdateChannelModelCommand) (catalog.MutationResult, error)
+	DeleteChannelModel(context.Context, catalog.DeleteCommand) error
+	CreateTestCase(context.Context, catalog.CreateTestCaseCommand) (catalog.MutationResult, error)
+	UpdateTestCase(context.Context, catalog.UpdateTestCaseCommand) (catalog.MutationResult, error)
+	DeleteTestCase(context.Context, catalog.DeleteCommand) error
+	CreateSuite(context.Context, catalog.CreateSuiteCommand) (catalog.MutationResult, error)
+	UpdateSuite(context.Context, catalog.UpdateSuiteCommand) (catalog.MutationResult, error)
+	DeleteSuite(context.Context, catalog.DeleteCommand) error
+	CreatePlan(context.Context, catalog.CreatePlanCommand) (catalog.MutationResult, error)
+	UpdatePlan(context.Context, catalog.UpdatePlanCommand) (catalog.MutationResult, error)
+	DeletePlan(context.Context, catalog.DeleteCommand) error
 }
 
 // ReportingQuery exposes bounded report summaries rather than complete
@@ -66,11 +92,12 @@ type RunCommands interface {
 }
 
 type desktopDependencies struct {
-	query    WorkspaceQuery
-	catalog  CatalogQuery
-	reports  ReportingQuery
-	commands RunCommands
-	close    func() error
+	query           WorkspaceQuery
+	catalog         CatalogQuery
+	catalogCommands CatalogCommands
+	reports         ReportingQuery
+	commands        RunCommands
+	close           func() error
 }
 
 type desktopInitializer func(context.Context) (desktopDependencies, error)
@@ -78,42 +105,45 @@ type desktopInitializer func(context.Context) (desktopDependencies, error)
 // DesktopApp is the Wails binding. It owns only desktop lifecycle and
 // delegation; business decisions remain in Application services.
 type DesktopApp struct {
-	lifecycleMu sync.Mutex
-	mu          sync.Mutex
-	drained     *sync.Cond
-	startupDone *sync.Cond
-	initialize  desktopInitializer
-	starting    bool
-	started     bool
-	stopping    bool
-	stopped     bool
-	active      int
-	ctx         context.Context
-	cancel      context.CancelFunc
-	query       WorkspaceQuery
-	catalog     CatalogQuery
-	reports     ReportingQuery
-	commands    RunCommands
-	close       func() error
-	startupErr  error
-	shutdownErr error
-	reportError func(error)
+	lifecycleMu     sync.Mutex
+	mu              sync.Mutex
+	drained         *sync.Cond
+	startupDone     *sync.Cond
+	initialize      desktopInitializer
+	starting        bool
+	started         bool
+	stopping        bool
+	stopped         bool
+	active          int
+	ctx             context.Context
+	cancel          context.CancelFunc
+	query           WorkspaceQuery
+	catalog         CatalogQuery
+	catalogCommands CatalogCommands
+	reports         ReportingQuery
+	commands        RunCommands
+	close           func() error
+	startupErr      error
+	shutdownErr     error
+	reportError     func(error)
 }
 
 type desktopRequirements struct {
-	workspace bool
-	catalog   bool
-	reports   bool
-	commands  bool
+	workspace       bool
+	catalog         bool
+	catalogCommands bool
+	reports         bool
+	commands        bool
 }
 
 type desktopLease struct {
-	ctx       context.Context
-	workspace WorkspaceQuery
-	catalog   CatalogQuery
-	reports   ReportingQuery
-	commands  RunCommands
-	release   func()
+	ctx             context.Context
+	workspace       WorkspaceQuery
+	catalog         CatalogQuery
+	catalogCommands CatalogCommands
+	reports         ReportingQuery
+	commands        RunCommands
+	release         func()
 }
 
 // DesktopBindingError is the complete error surface exposed to JavaScript.
@@ -198,6 +228,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	}
 	app.query = dependencies.query
 	app.catalog = dependencies.catalog
+	app.catalogCommands = dependencies.catalogCommands
 	app.reports = dependencies.reports
 	app.commands = dependencies.commands
 	app.close = dependencies.close
@@ -235,6 +266,142 @@ func (app *DesktopApp) GetCatalog() (catalog.Snapshot, error) {
 	snapshot, err := lease.catalog.Snapshot(lease.ctx)
 	if err != nil {
 		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("query desktop catalog: %w", err))
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) CreateModel(command catalog.CreateModelCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("create model", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.CreateModel(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) UpdateModel(command catalog.UpdateModelCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("update model", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.UpdateModel(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) DeleteModel(command catalog.DeleteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("delete model", func(ctx context.Context, commands CatalogCommands) error {
+		return commands.DeleteModel(ctx, command)
+	})
+}
+
+func (app *DesktopApp) CreateChannel(command catalog.CreateChannelCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("create channel", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.CreateChannel(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) UpdateChannel(command catalog.UpdateChannelCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("update channel", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.UpdateChannel(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) DeleteChannel(command catalog.DeleteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("delete channel", func(ctx context.Context, commands CatalogCommands) error {
+		return commands.DeleteChannel(ctx, command)
+	})
+}
+
+func (app *DesktopApp) CreateChannelModel(command catalog.CreateChannelModelCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("create channel model", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.CreateChannelModel(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) UpdateChannelModel(command catalog.UpdateChannelModelCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("update channel model", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.UpdateChannelModel(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) DeleteChannelModel(command catalog.DeleteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("delete channel model", func(ctx context.Context, commands CatalogCommands) error {
+		return commands.DeleteChannelModel(ctx, command)
+	})
+}
+
+func (app *DesktopApp) CreateTestCase(command catalog.CreateTestCaseCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("create test case", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.CreateTestCase(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) UpdateTestCase(command catalog.UpdateTestCaseCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("update test case", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.UpdateTestCase(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) DeleteTestCase(command catalog.DeleteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("delete test case", func(ctx context.Context, commands CatalogCommands) error {
+		return commands.DeleteTestCase(ctx, command)
+	})
+}
+
+func (app *DesktopApp) CreateSuite(command catalog.CreateSuiteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("create suite", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.CreateSuite(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) UpdateSuite(command catalog.UpdateSuiteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("update suite", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.UpdateSuite(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) DeleteSuite(command catalog.DeleteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("delete suite", func(ctx context.Context, commands CatalogCommands) error {
+		return commands.DeleteSuite(ctx, command)
+	})
+}
+
+func (app *DesktopApp) CreatePlan(command catalog.CreatePlanCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("create plan", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.CreatePlan(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) UpdatePlan(command catalog.UpdatePlanCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("update plan", func(ctx context.Context, commands CatalogCommands) error {
+		_, err := commands.UpdatePlan(ctx, command)
+		return err
+	})
+}
+
+func (app *DesktopApp) DeletePlan(command catalog.DeleteCommand) (catalog.Snapshot, error) {
+	return app.executeCatalogCommand("delete plan", func(ctx context.Context, commands CatalogCommands) error {
+		return commands.DeletePlan(ctx, command)
+	})
+}
+
+func (app *DesktopApp) executeCatalogCommand(name string, execute func(context.Context, CatalogCommands) error) (catalog.Snapshot, error) {
+	lease, err := app.acquire(desktopRequirements{catalog: true, catalogCommands: true})
+	if err != nil {
+		return catalog.Snapshot{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	if err := execute(lease.ctx, lease.catalogCommands); err != nil {
+		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("%s: %w", name, err))
+	}
+	snapshot, err := lease.catalog.Snapshot(lease.ctx)
+	if err != nil {
+		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("query catalog after %s: %w", name, err))
 	}
 	return snapshot, nil
 }
@@ -325,6 +492,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.catalog && isNilInterface(app.catalog) {
 		return desktopLease{}, ErrCatalogUnavailable
 	}
+	if require.catalogCommands && isNilInterface(app.catalogCommands) {
+		return desktopLease{}, ErrCatalogUnavailable
+	}
 	if require.reports && isNilInterface(app.reports) {
 		return desktopLease{}, ErrReportingUnavailable
 	}
@@ -346,7 +516,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		}
 	}
 	return desktopLease{
-		ctx: app.ctx, workspace: app.query, catalog: app.catalog,
+		ctx: app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
 	}, nil
 }
@@ -378,6 +548,7 @@ func (app *DesktopApp) shutdown() error {
 	closeResources := app.close
 	app.query = nil
 	app.catalog = nil
+	app.catalogCommands = nil
 	app.reports = nil
 	app.commands = nil
 	app.close = nil
@@ -438,6 +609,12 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeCommandsMissing}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
+	case errors.Is(internal, catalog.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeCatalogInvalid}
+	case errors.Is(internal, catalog.ErrConflict):
+		return DesktopBindingError{Code: desktopCodeCatalogConflict}
+	case errors.Is(internal, catalog.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeCatalogNotFound}
 	case errors.Is(internal, context.Canceled), errors.Is(internal, context.DeadlineExceeded):
 		return DesktopBindingError{Code: desktopCodeOperationCancelled}
 	default:
@@ -456,7 +633,10 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeCommandsMissing,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
-		desktopCodeOperationFailed:
+		desktopCodeOperationFailed,
+		desktopCodeCatalogInvalid,
+		desktopCodeCatalogConflict,
+		desktopCodeCatalogNotFound:
 		return true
 	default:
 		return false

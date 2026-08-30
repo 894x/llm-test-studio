@@ -49,46 +49,64 @@ type ChannelModelSummary struct {
 }
 
 type TestCaseSummary struct {
-	ID             string                   `json:"id"`
-	Revision       uint64                   `json:"revision"`
-	Key            string                   `json:"key"`
-	Name           string                   `json:"name"`
-	Dimension      string                   `json:"dimension"`
-	Protocol       domain.Protocol          `json:"protocol"`
-	Enabled        bool                     `json:"enabled"`
-	Default        bool                     `json:"default"`
-	Severity       domain.CaseSeverity      `json:"severity"`
-	ExecutionMode  domain.CaseExecutionMode `json:"execution_mode"`
-	Method         domain.RequestMethod     `json:"method"`
-	Path           string                   `json:"path"`
-	AssertionKinds []domain.AssertionKind   `json:"assertion_kinds"`
+	ID                      string                             `json:"id"`
+	Revision                uint64                             `json:"revision"`
+	Key                     string                             `json:"key"`
+	Name                    string                             `json:"name"`
+	Dimension               string                             `json:"dimension"`
+	Protocol                domain.Protocol                    `json:"protocol"`
+	Enabled                 bool                               `json:"enabled"`
+	Default                 bool                               `json:"default"`
+	Severity                domain.CaseSeverity                `json:"severity"`
+	ExecutionMode           domain.CaseExecutionMode           `json:"execution_mode"`
+	Method                  domain.RequestMethod               `json:"method"`
+	Path                    string                             `json:"path"`
+	AssertionKinds          []domain.AssertionKind             `json:"assertion_kinds"`
+	DefinitionSchemaVersion int                                `json:"definition_schema_version"`
+	Headers                 map[string]string                  `json:"headers"`
+	Body                    json.RawMessage                    `json:"body"`
+	AllowedHTTPStatuses     []int                              `json:"allowed_http_statuses"`
+	StreamCompletion        domain.StreamCompletionExpectation `json:"stream_completion"`
+	Assertions              []AssertionInput                   `json:"assertions"`
 }
 
 type SuiteSummary struct {
-	ID        string `json:"id"`
-	Revision  uint64 `json:"revision"`
-	Name      string `json:"name"`
-	CaseCount int    `json:"case_count"`
+	ID        string              `json:"id"`
+	Revision  uint64              `json:"revision"`
+	Name      string              `json:"name"`
+	CaseCount int                 `json:"case_count"`
+	Cases     []CaseRevisionInput `json:"cases"`
 }
 
 type PlanSummary struct {
-	ID               string          `json:"id"`
-	Revision         uint64          `json:"revision"`
-	Name             string          `json:"name"`
-	ModelCount       int             `json:"model_count"`
-	ChannelCount     int             `json:"channel_count"`
-	CaseCount        int             `json:"case_count"`
-	LoadMode         domain.LoadMode `json:"load_mode"`
-	Concurrency      uint32          `json:"concurrency"`
-	RequestCount     uint64          `json:"request_count"`
-	RatePerSecond    float64         `json:"rate_per_second"`
-	DurationMS       uint64          `json:"duration_ms"`
-	RequestTimeoutMS uint64          `json:"request_timeout_ms"`
+	ID               string              `json:"id"`
+	Revision         uint64              `json:"revision"`
+	Name             string              `json:"name"`
+	ModelCount       int                 `json:"model_count"`
+	ChannelCount     int                 `json:"channel_count"`
+	CaseCount        int                 `json:"case_count"`
+	LoadMode         domain.LoadMode     `json:"load_mode"`
+	Concurrency      uint32              `json:"concurrency"`
+	RequestCount     uint64              `json:"request_count"`
+	RatePerSecond    float64             `json:"rate_per_second"`
+	DurationMS       uint64              `json:"duration_ms"`
+	RequestTimeoutMS uint64              `json:"request_timeout_ms"`
+	ModelIDs         []string            `json:"model_ids"`
+	ChannelIDs       []string            `json:"channel_ids"`
+	SuiteID          string              `json:"suite_id,omitempty"`
+	SuiteRevision    uint64              `json:"suite_revision,omitempty"`
+	Cases            []CaseRevisionInput `json:"cases"`
+	SLAThresholds    map[string]float64  `json:"sla_thresholds"`
 }
 
 type MutationResult struct {
 	ID       string `json:"id"`
 	Revision uint64 `json:"revision"`
+}
+
+type DeleteCommand struct {
+	ID               string `json:"id"`
+	ExpectedRevision uint64 `json:"expected_revision"`
 }
 
 type CreateModelCommand struct {

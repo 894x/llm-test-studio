@@ -2,6 +2,17 @@ export type CatalogProtocol = "openai-chat" | "kimi-k3" | "seedance"
 export type CatalogLoadMode = "single" | "fixed_concurrency" | "open_loop"
 export type CatalogCaseSeverity = "normal" | "critical"
 export type CatalogCaseExecutionMode = "automatic" | "manual"
+export type CatalogStreamCompletion = "not_applicable" | "required" | "forbidden"
+
+export interface CatalogAssertion {
+  kind: string
+  config: Record<string, unknown>
+}
+
+export interface CatalogCaseRevision {
+  case_id: string
+  revision: number
+}
 
 export interface CatalogModel {
   id: string
@@ -44,6 +55,12 @@ export interface CatalogTestCase {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
   path: string
   assertion_kinds: string[]
+  definition_schema_version: number
+  headers: Record<string, string>
+  body: Record<string, unknown> | null
+  allowed_http_statuses: number[]
+  stream_completion: CatalogStreamCompletion
+  assertions: CatalogAssertion[]
 }
 
 export interface CatalogSuite {
@@ -51,6 +68,7 @@ export interface CatalogSuite {
   revision: number
   name: string
   case_count: number
+  cases: CatalogCaseRevision[]
 }
 
 export interface CatalogPlan {
@@ -66,6 +84,54 @@ export interface CatalogPlan {
   rate_per_second: number
   duration_ms: number
   request_timeout_ms: number
+  model_ids: string[]
+  channel_ids: string[]
+  suite_id?: string
+  suite_revision?: number
+  cases: CatalogCaseRevision[]
+  sla_thresholds: Record<string, number>
+}
+
+export type CreateModelCommand = Pick<CatalogModel, "name" | "protocol" | "capabilities">
+export type UpdateModelCommand = CreateModelCommand & { id: string; expected_revision: number }
+export type CreateChannelCommand = Pick<CatalogChannel, "name" | "base_url" | "protocol" | "enabled">
+export type UpdateChannelCommand = CreateChannelCommand & { id: string; expected_revision: number }
+export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name">
+export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name"> & { id: string; expected_revision: number }
+export type CreateTestCaseCommand = Pick<CatalogTestCase,
+  "key" | "name" | "dimension" | "protocol" | "enabled" | "default" | "severity" |
+  "execution_mode" | "definition_schema_version" | "method" | "path" | "headers" | "body" |
+  "allowed_http_statuses" | "stream_completion" | "assertions"
+>
+export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
+export type CreateSuiteCommand = Pick<CatalogSuite, "name" | "cases">
+export type UpdateSuiteCommand = CreateSuiteCommand & { id: string; expected_revision: number }
+export type CreatePlanCommand = Pick<CatalogPlan,
+  "name" | "model_ids" | "channel_ids" | "suite_id" | "suite_revision" | "cases" | "load_mode" |
+  "concurrency" | "request_count" | "rate_per_second" | "duration_ms" | "request_timeout_ms" | "sla_thresholds"
+>
+export type UpdatePlanCommand = CreatePlanCommand & { id: string; expected_revision: number }
+export interface DeleteCommand { id: string; expected_revision: number }
+
+export interface CatalogActions {
+  createModel(command: CreateModelCommand): Promise<CatalogSnapshot>
+  updateModel(command: UpdateModelCommand): Promise<CatalogSnapshot>
+  deleteModel(command: DeleteCommand): Promise<CatalogSnapshot>
+  createChannel(command: CreateChannelCommand): Promise<CatalogSnapshot>
+  updateChannel(command: UpdateChannelCommand): Promise<CatalogSnapshot>
+  deleteChannel(command: DeleteCommand): Promise<CatalogSnapshot>
+  createChannelModel(command: CreateChannelModelCommand): Promise<CatalogSnapshot>
+  updateChannelModel(command: UpdateChannelModelCommand): Promise<CatalogSnapshot>
+  deleteChannelModel(command: DeleteCommand): Promise<CatalogSnapshot>
+  createTestCase(command: CreateTestCaseCommand): Promise<CatalogSnapshot>
+  updateTestCase(command: UpdateTestCaseCommand): Promise<CatalogSnapshot>
+  deleteTestCase(command: DeleteCommand): Promise<CatalogSnapshot>
+  createSuite(command: CreateSuiteCommand): Promise<CatalogSnapshot>
+  updateSuite(command: UpdateSuiteCommand): Promise<CatalogSnapshot>
+  deleteSuite(command: DeleteCommand): Promise<CatalogSnapshot>
+  createPlan(command: CreatePlanCommand): Promise<CatalogSnapshot>
+  updatePlan(command: UpdatePlanCommand): Promise<CatalogSnapshot>
+  deletePlan(command: DeleteCommand): Promise<CatalogSnapshot>
 }
 
 export interface CatalogSnapshot {
@@ -116,13 +182,19 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
 
   const modelByID = new Map(models.map((model) => [model.id, model]))
   const channelByID = new Map(channels.map((channel) => [channel.id, channel]))
+  const testCaseByID = new Map(testCases.map((testCase) => [testCase.id, testCase]))
+  const suiteByID = new Map(suites.map((suite) => [suite.id, suite]))
   const mappedCounts = new Map<string, number>()
+  const mappedBindings = new Set<string>()
   for (const mapping of channelModels) {
     const model = modelByID.get(mapping.model_id)
     const channel = channelByID.get(mapping.channel_id)
     if (!model || !channel || model.protocol !== channel.protocol) {
       throw new Error("桌面目录模型映射引用无效")
     }
+    const binding = `${mapping.channel_id}\u0000${mapping.model_id}`
+    if (mappedBindings.has(binding)) throw new Error("桌面目录模型映射重复")
+    mappedBindings.add(binding)
     mappedCounts.set(mapping.channel_id, (mappedCounts.get(mapping.channel_id) ?? 0) + 1)
   }
   if (
@@ -131,6 +203,27 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
     )
   ) {
     throw new Error("桌面目录渠道模型计数无效")
+  }
+  for (const suite of suites) {
+    if (suite.cases.some((ref) => !isCurrentCaseRef(ref, testCaseByID))) {
+      throw new Error("桌面目录测试套件引用无效")
+    }
+  }
+  for (const plan of plans) {
+    if (
+      plan.model_ids.some((id) => !modelByID.has(id)) ||
+      plan.channel_ids.some((id) => !channelByID.has(id)) ||
+      plan.cases.some((ref) => !isCurrentCaseRef(ref, testCaseByID)) ||
+      plan.model_ids.some((modelID) => plan.channel_ids.some((channelID) => !mappedBindings.has(`${channelID}\u0000${modelID}`)))
+    ) {
+      throw new Error("桌面目录测试计划引用无效")
+    }
+    if (plan.suite_id !== undefined) {
+      const suite = suiteByID.get(plan.suite_id)
+      if (!suite || plan.suite_revision === undefined || plan.suite_revision > suite.revision) {
+        throw new Error("桌面目录测试计划套件引用无效")
+      }
+    }
   }
 
   return {
@@ -227,9 +320,24 @@ function parseTestCase(value: unknown): CatalogTestCase {
     !isMethod(value.method) ||
     !isRequestPath(value.path) ||
     !isStringList(value.assertion_kinds) ||
-    value.assertion_kinds.length === 0
+    value.assertion_kinds.length === 0 ||
+    !isPositiveInteger(value.definition_schema_version) ||
+    !isStringRecord(value.headers) ||
+    !(value.body === null || isRecord(value.body)) ||
+    !isHTTPStatuses(value.allowed_http_statuses) ||
+    !isStreamCompletion(value.stream_completion) ||
+    !Array.isArray(value.assertions)
   ) {
     throw new Error("桌面目录测试用例数据无效")
+  }
+  const assertions = value.assertions.map(parseAssertion)
+  const assertionKinds = value.assertion_kinds
+  if (
+    assertions.length === 0 ||
+    assertions.length !== assertionKinds.length ||
+    assertions.some((assertion, index) => assertion.kind !== assertionKinds[index])
+  ) {
+    throw new Error("桌面目录测试用例断言无效")
   }
   return {
     id: value.id,
@@ -244,7 +352,13 @@ function parseTestCase(value: unknown): CatalogTestCase {
     execution_mode: value.execution_mode,
     method: value.method,
     path: value.path,
-    assertion_kinds: [...value.assertion_kinds],
+    assertion_kinds: [...assertionKinds],
+    definition_schema_version: value.definition_schema_version,
+    headers: { ...value.headers },
+    body: value.body === null ? null : structuredClone(value.body),
+    allowed_http_statuses: [...value.allowed_http_statuses],
+    stream_completion: value.stream_completion,
+    assertions,
   }
 }
 
@@ -254,15 +368,21 @@ function parseSuite(value: unknown): CatalogSuite {
     !isUUID(value.id) ||
     !isPositiveInteger(value.revision) ||
     !isNonBlank(value.name) ||
-    !isPositiveInteger(value.case_count)
+    !isPositiveInteger(value.case_count) ||
+    !Array.isArray(value.cases)
   ) {
     throw new Error("桌面目录测试套件数据无效")
+  }
+  const cases = value.cases.map(parseCaseRevision)
+  if (cases.length !== value.case_count || !hasUniqueCaseIDs(cases)) {
+    throw new Error("桌面目录测试套件成员无效")
   }
   return {
     id: value.id,
     revision: value.revision,
     name: value.name,
     case_count: value.case_count,
+    cases,
   }
 }
 
@@ -282,8 +402,22 @@ function parsePlan(value: unknown): CatalogPlan {
     !isNonNegativeInteger(value.duration_ms) ||
     (value.request_count === 0 && value.duration_ms === 0) ||
     !isPositiveInteger(value.request_timeout_ms)
+    || !isUUIDList(value.model_ids)
+    || !isUUIDList(value.channel_ids)
+    || !Array.isArray(value.cases)
+    || !isFiniteNumberRecord(value.sla_thresholds)
+    || !isOptionalSuiteRef(value.suite_id, value.suite_revision)
   ) {
     throw new Error("桌面目录测试计划数据无效")
+  }
+  const cases = value.cases.map(parseCaseRevision)
+  if (
+    value.model_ids.length !== value.model_count ||
+    value.channel_ids.length !== value.channel_count ||
+    cases.length !== value.case_count ||
+    !hasUniqueCaseIDs(cases)
+  ) {
+    throw new Error("桌面目录测试计划成员无效")
   }
   return {
     id: value.id,
@@ -298,7 +432,35 @@ function parsePlan(value: unknown): CatalogPlan {
     rate_per_second: value.rate_per_second,
     duration_ms: value.duration_ms,
     request_timeout_ms: value.request_timeout_ms,
+    model_ids: [...value.model_ids],
+    channel_ids: [...value.channel_ids],
+    ...(typeof value.suite_id === "string" ? { suite_id: value.suite_id, suite_revision: value.suite_revision as number } : {}),
+    cases,
+    sla_thresholds: { ...value.sla_thresholds },
   }
+}
+
+function parseAssertion(value: unknown): CatalogAssertion {
+  if (!isRecord(value) || !isAssertionKind(value.kind) || !isRecord(value.config)) {
+    throw new Error("桌面目录测试用例断言无效")
+  }
+  return { kind: value.kind, config: structuredClone(value.config) }
+}
+
+function parseCaseRevision(value: unknown): CatalogCaseRevision {
+  if (!isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision)) {
+    throw new Error("桌面目录用例版本引用无效")
+  }
+  return { case_id: value.case_id, revision: value.revision }
+}
+
+function isCurrentCaseRef(ref: CatalogCaseRevision, testCases: Map<string, CatalogTestCase>): boolean {
+  const testCase = testCases.get(ref.case_id)
+  return testCase !== undefined && ref.revision <= testCase.revision
+}
+
+function hasUniqueCaseIDs(cases: CatalogCaseRevision[]): boolean {
+  return new Set(cases.map((ref) => ref.case_id)).size === cases.length
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -340,6 +502,26 @@ function isStringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isNonBlank)
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.entries(value).every(([name, entry]) => isNonBlank(name) && typeof entry === "string" && entry.trim() === entry)
+}
+
+function isHTTPStatuses(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length > 0 && value.every((status) => Number.isSafeInteger(status) && status >= 100 && status <= 599) && new Set(value).size === value.length
+}
+
+function isUUIDList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isUUID) && new Set(value).size === value.length
+}
+
+function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
+  return isRecord(value) && Object.keys(value).length > 0 && Object.entries(value).every(([name, entry]) => isNonBlank(name) && isNonNegativeFinite(entry))
+}
+
+function isOptionalSuiteRef(id: unknown, revision: unknown): boolean {
+  return (id === undefined && revision === undefined) || (isUUID(id) && isPositiveInteger(revision))
+}
+
 function isProtocol(value: unknown): value is CatalogProtocol {
   return value === "openai-chat" || value === "kimi-k3" || value === "seedance"
 }
@@ -354,6 +536,14 @@ function isCaseSeverity(value: unknown): value is CatalogCaseSeverity {
 
 function isCaseExecutionMode(value: unknown): value is CatalogCaseExecutionMode {
   return value === "automatic" || value === "manual"
+}
+
+function isStreamCompletion(value: unknown): value is CatalogStreamCompletion {
+  return value === "not_applicable" || value === "required" || value === "forbidden"
+}
+
+function isAssertionKind(value: unknown): value is string {
+  return value === "response_schema" || value === "stream_end" || value === "text" || value === "json" || value === "tool_call" || value === "multimodal" || value === "custom"
 }
 
 function isSafeCaseKey(value: unknown): value is string {

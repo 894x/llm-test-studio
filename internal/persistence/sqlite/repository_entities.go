@@ -102,6 +102,10 @@ func (repository *Repository) UpdateChannel(ctx context.Context, expectedRevisio
 	return repository.writeChannel(ctx, &expectedRevision, channel)
 }
 
+func (repository *Repository) DeleteChannel(ctx context.Context, id string, expectedRevision uint64) error {
+	return repository.deleteVersionedEntity(ctx, "channels", "channel", id, expectedRevision)
+}
+
 func (repository *Repository) writeChannel(ctx context.Context, expected *uint64, channel domain.Channel) error {
 	if err := channel.Validate(); err != nil {
 		return fmt.Errorf("validate channel: %w", err)
@@ -181,6 +185,10 @@ func (repository *Repository) CreateChannelModel(ctx context.Context, mapping do
 
 func (repository *Repository) UpdateChannelModel(ctx context.Context, expectedRevision uint64, mapping domain.ChannelModel) error {
 	return repository.writeChannelModel(ctx, &expectedRevision, mapping)
+}
+
+func (repository *Repository) DeleteChannelModel(ctx context.Context, id string, expectedRevision uint64) error {
+	return repository.deleteVersionedEntity(ctx, "channel_models", "channel model", id, expectedRevision)
 }
 
 func (repository *Repository) writeChannelModel(ctx context.Context, expected *uint64, mapping domain.ChannelModel) error {
@@ -299,6 +307,10 @@ func (repository *Repository) UpdateTestCase(ctx context.Context, expectedRevisi
 	return repository.writeTestCase(ctx, &expectedRevision, testCase)
 }
 
+func (repository *Repository) DeleteTestCase(ctx context.Context, id string, expectedRevision uint64) error {
+	return repository.deleteVersionedEntity(ctx, "test_cases", "test case", id, expectedRevision)
+}
+
 func (repository *Repository) writeTestCase(ctx context.Context, expected *uint64, testCase domain.TestCase) error {
 	if err := testCase.Validate(); err != nil {
 		return fmt.Errorf("validate test case: %w", err)
@@ -373,6 +385,10 @@ func (repository *Repository) CreateSuite(ctx context.Context, suite domain.Suit
 
 func (repository *Repository) UpdateSuite(ctx context.Context, expectedRevision uint64, suite domain.Suite) error {
 	return repository.writeSuite(ctx, &expectedRevision, suite)
+}
+
+func (repository *Repository) DeleteSuite(ctx context.Context, id string, expectedRevision uint64) error {
+	return repository.deleteVersionedEntity(ctx, "test_suites", "suite", id, expectedRevision)
 }
 
 func (repository *Repository) writeSuite(ctx context.Context, expected *uint64, suite domain.Suite) error {
@@ -459,6 +475,10 @@ func (repository *Repository) UpdatePlan(ctx context.Context, expectedRevision u
 	return repository.writePlan(ctx, &expectedRevision, plan)
 }
 
+func (repository *Repository) DeletePlan(ctx context.Context, id string, expectedRevision uint64) error {
+	return repository.deleteVersionedEntity(ctx, "test_plans", "plan", id, expectedRevision)
+}
+
 func (repository *Repository) writePlan(ctx context.Context, expected *uint64, plan domain.Plan) error {
 	if err := plan.Validate(); err != nil {
 		return fmt.Errorf("validate plan: %w", err)
@@ -534,6 +554,7 @@ func (repository *Repository) writePlan(ctx context.Context, expected *uint64, p
 				SELECT id, revision FROM channel_models
 				WHERE channel_id = ? AND channel_revision = ?
 				  AND model_id = ? AND model_revision = ?
+				  AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'channel_models' AND entity_id = channel_models.id)
 				ORDER BY revision DESC LIMIT 1
 			`, channelID, channelRevisions[channelPosition], modelID, modelRevisions[modelPosition]).Scan(&mappingID, &mappingRevision)
 			if errors.Is(err, sql.ErrNoRows) {
@@ -725,6 +746,16 @@ func checkVersionedWrite(ctx context.Context, tx *sql.Tx, table string, meta dom
 	if meta.Revision > math.MaxInt64 {
 		return errors.New("entity revision exceeds SQLite integer range")
 	}
+	var tombstoned int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_tombstones WHERE entity_table = ? AND entity_id = ?`, table, meta.ID).Scan(&tombstoned); err != nil {
+		return fmt.Errorf("inspect entity tombstone: %w", err)
+	}
+	if tombstoned != 0 {
+		if expected == nil {
+			return fmt.Errorf("%w: entity id is retired", ErrConflict)
+		}
+		return fmt.Errorf("%w: entity", ErrNotFound)
+	}
 	var currentRevision int64
 	var createdAt, updatedAt string
 	err := tx.QueryRowContext(ctx, fmt.Sprintf(`
@@ -762,7 +793,94 @@ func checkVersionedWrite(ctx context.Context, tx *sql.Tx, table string, meta dom
 	return nil
 }
 
+func (repository *Repository) deleteVersionedEntity(ctx context.Context, table, kind, id string, expectedRevision uint64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !domain.IsUUID(id) || expectedRevision < 1 {
+		return fmt.Errorf("%w: %s", ErrNotFound, kind)
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin %s delete: %w", kind, err)
+	}
+	defer tx.Rollback()
+	currentRevision, err := latestRevision(ctx, tx, table, id, kind)
+	if err != nil {
+		return err
+	}
+	if currentRevision != expectedRevision {
+		return fmt.Errorf("%w: %s", ErrConflict, kind)
+	}
+	referenced, err := hasLiveCatalogReferences(ctx, tx, table, id)
+	if err != nil {
+		return fmt.Errorf("inspect %s references: %w", kind, err)
+	}
+	if referenced {
+		return fmt.Errorf("%w: %s is still referenced", ErrConflict, kind)
+	}
+	if expectedRevision == math.MaxUint64 {
+		return fmt.Errorf("%w: %s", ErrConflict, kind)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO catalog_tombstones(entity_table, entity_id, deleted_revision, deleted_at)
+		VALUES(?, ?, ?, ?)
+	`, table, id, expectedRevision+1, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return classifyWriteError("write "+kind+" tombstone", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit "+kind+" delete", err)
+	}
+	return nil
+}
+
+func hasLiveCatalogReferences(ctx context.Context, tx *sql.Tx, table, id string) (bool, error) {
+	queries := map[string]string{
+		"models": `SELECT EXISTS(
+			SELECT 1 FROM channel_models child WHERE child.model_id = ? AND child.revision = (SELECT MAX(revision) FROM channel_models WHERE id = child.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'channel_models' AND entity_id = child.id)
+			UNION ALL SELECT 1 FROM plan_models ref JOIN test_plans owner ON owner.id = ref.plan_id AND owner.revision = ref.plan_revision WHERE ref.model_id = ? AND owner.revision = (SELECT MAX(revision) FROM test_plans WHERE id = owner.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'test_plans' AND entity_id = owner.id)
+		)`,
+		"channels": `SELECT EXISTS(
+			SELECT 1 FROM channel_models child WHERE child.channel_id = ? AND child.revision = (SELECT MAX(revision) FROM channel_models WHERE id = child.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'channel_models' AND entity_id = child.id)
+			UNION ALL SELECT 1 FROM plan_channels ref JOIN test_plans owner ON owner.id = ref.plan_id AND owner.revision = ref.plan_revision WHERE ref.channel_id = ? AND owner.revision = (SELECT MAX(revision) FROM test_plans WHERE id = owner.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'test_plans' AND entity_id = owner.id)
+		)`,
+		"channel_models": `SELECT EXISTS(SELECT 1 FROM plan_channel_models ref JOIN test_plans owner ON owner.id = ref.plan_id AND owner.revision = ref.plan_revision WHERE ref.mapping_id = ? AND owner.revision = (SELECT MAX(revision) FROM test_plans WHERE id = owner.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'test_plans' AND entity_id = owner.id))`,
+		"test_cases": `SELECT EXISTS(
+			SELECT 1 FROM suite_cases ref JOIN test_suites owner ON owner.id = ref.suite_id AND owner.revision = ref.suite_revision WHERE ref.case_id = ? AND owner.revision = (SELECT MAX(revision) FROM test_suites WHERE id = owner.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'test_suites' AND entity_id = owner.id)
+			UNION ALL SELECT 1 FROM plan_cases ref JOIN test_plans owner ON owner.id = ref.plan_id AND owner.revision = ref.plan_revision WHERE ref.case_id = ? AND owner.revision = (SELECT MAX(revision) FROM test_plans WHERE id = owner.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'test_plans' AND entity_id = owner.id)
+			UNION ALL SELECT 1 FROM test_case_import_sources WHERE entity_id = ? AND retired_at IS NULL
+		)`,
+		"test_suites": `SELECT EXISTS(SELECT 1 FROM test_plans owner WHERE owner.suite_id = ? AND owner.revision = (SELECT MAX(revision) FROM test_plans WHERE id = owner.id) AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'test_plans' AND entity_id = owner.id))`,
+		"test_plans":  `SELECT EXISTS(SELECT 1 FROM execution_run_revisions WHERE plan_id = ?)`,
+	}
+	query, exists := queries[table]
+	if !exists {
+		return false, fmt.Errorf("unsupported catalog table %q", table)
+	}
+	args := []any{}
+	switch table {
+	case "models", "channels":
+		args = []any{id, id}
+	case "test_cases":
+		args = []any{id, id, id}
+	default:
+		args = []any{id}
+	}
+	var referenced int
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&referenced); err != nil {
+		return false, err
+	}
+	return referenced != 0, nil
+}
+
 func latestRevision(ctx context.Context, queryer rowQueryer, table, id, kind string) (uint64, error) {
+	var tombstoned int
+	if err := queryer.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_tombstones WHERE entity_table = ? AND entity_id = ?`, table, id).Scan(&tombstoned); err != nil {
+		return 0, fmt.Errorf("resolve %s tombstone: %w", kind, err)
+	}
+	if tombstoned != 0 {
+		return 0, fmt.Errorf("%w: %s", ErrNotFound, kind)
+	}
 	var revision sql.NullInt64
 	err := queryer.QueryRowContext(ctx, fmt.Sprintf("SELECT MAX(revision) FROM %s WHERE id = ?", table), id).Scan(&revision)
 	if err != nil {
@@ -777,6 +895,13 @@ func latestRevision(ctx context.Context, queryer rowQueryer, table, id, kind str
 func requireExactVersion(ctx context.Context, queryer rowQueryer, table, id string, revision uint64, kind string) error {
 	if revision > math.MaxInt64 {
 		return fmt.Errorf("%w: %s revision", ErrNotFound, kind)
+	}
+	var tombstoned int
+	if err := queryer.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_tombstones WHERE entity_table = ? AND entity_id = ?`, table, id).Scan(&tombstoned); err != nil {
+		return fmt.Errorf("resolve %s tombstone: %w", kind, err)
+	}
+	if tombstoned != 0 {
+		return fmt.Errorf("%w: %s is deleted", ErrNotFound, kind)
 	}
 	var count int
 	if err := queryer.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id = ? AND revision = ?", table), id, revision).Scan(&count); err != nil {
@@ -795,7 +920,7 @@ func (repository *Repository) getLatestDocument(ctx context.Context, table, id, 
 	var schemaVersion, revision int64
 	var createdAt, updatedAt string
 	var document []byte
-	err := repository.conn.QueryRowContext(ctx, fmt.Sprintf(`SELECT schema_version, revision, created_at, updated_at, document_json FROM %s WHERE id = ? ORDER BY revision DESC LIMIT 1`, table), id).Scan(&schemaVersion, &revision, &createdAt, &updatedAt, &document)
+	err := repository.conn.QueryRowContext(ctx, fmt.Sprintf(`SELECT schema_version, revision, created_at, updated_at, document_json FROM %s WHERE id = ? AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = ? AND entity_id = ?) ORDER BY revision DESC LIMIT 1`, table), id, table, id).Scan(&schemaVersion, &revision, &createdAt, &updatedAt, &document)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, kind)
 	}
@@ -835,8 +960,9 @@ func (repository *Repository) listLatestDocuments(ctx context.Context, table, ki
 	rows, err := repository.conn.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, schema_version, revision, created_at, updated_at, document_json FROM %s AS candidate
 		WHERE revision = (SELECT MAX(revision) FROM %s WHERE id = candidate.id)
+		AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = ? AND entity_id = candidate.id)
 		ORDER BY created_at, id
-	`, table, table))
+	`, table, table), table)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", kind, err)
 	}

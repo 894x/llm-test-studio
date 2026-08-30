@@ -90,6 +90,87 @@ func TestSnapshotIsStableSecretFreeAndReadsEachCollectionOnce(t *testing.T) {
 	}
 }
 
+func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
+	repository := validRepository()
+	service := newTestService(t, repository, fixtureTime())
+
+	snapshot, err := service.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	testCase := snapshot.TestCases[0]
+	if testCase.DefinitionSchemaVersion != 1 || string(testCase.Body) != `{"model":"gpt-5"}` ||
+		len(testCase.Headers) != 1 || testCase.Headers["X-Test"] != "safe" ||
+		len(testCase.AllowedHTTPStatuses) != 1 || testCase.AllowedHTTPStatuses[0] != 200 ||
+		testCase.StreamCompletion != domain.StreamCompletionRequired || len(testCase.Assertions) != 1 ||
+		testCase.Assertions[0].Kind != domain.AssertionText || string(testCase.Assertions[0].Config) != `{"contains":"ok"}` {
+		t.Fatalf("Snapshot().TestCases[0] editor payload = %#v", testCase)
+	}
+	if len(snapshot.Suites[0].Cases) != 1 || snapshot.Suites[0].Cases[0].CaseID != caseID {
+		t.Fatalf("Snapshot().Suites[0] editor payload = %#v", snapshot.Suites[0])
+	}
+	plan := snapshot.Plans[0]
+	if len(plan.ModelIDs) != 2 || len(plan.ChannelIDs) != 1 || plan.SuiteID != suiteID || plan.SuiteRevision != 1 ||
+		len(plan.Cases) != 1 || plan.Cases[0].CaseID != caseID || plan.SLAThresholds["p95_ms"] != 1500 {
+		t.Fatalf("Snapshot().Plans[0] editor payload = %#v", plan)
+	}
+
+	testCase.Headers["X-Test"] = "caller-mutated"
+	testCase.Body[0] = '['
+	testCase.AllowedHTTPStatuses[0] = 500
+	testCase.Assertions[0].Config[0] = '['
+	snapshot.Suites[0].Cases[0].Revision = 99
+	plan.ModelIDs[0] = modelBID
+	plan.SLAThresholds["p95_ms"] = 1
+
+	fresh, err := service.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("second Snapshot() error = %v", err)
+	}
+	if fresh.TestCases[0].Headers["X-Test"] != "safe" || string(fresh.TestCases[0].Body) != `{"model":"gpt-5"}` ||
+		fresh.TestCases[0].AllowedHTTPStatuses[0] != 200 || string(fresh.TestCases[0].Assertions[0].Config) != `{"contains":"ok"}` ||
+		fresh.Suites[0].Cases[0].Revision != 1 || fresh.Plans[0].ModelIDs[0] != modelAID || fresh.Plans[0].SLAThresholds["p95_ms"] != 1500 {
+		t.Fatalf("Snapshot() editor payload aliases repository state: %#v", fresh)
+	}
+}
+
+func TestDeleteCommandsValidateIdentityAndDelegateByEntityKind(t *testing.T) {
+	tests := []struct {
+		name   string
+		invoke func(*Service, context.Context, DeleteCommand) error
+		kind   string
+		id     string
+	}{
+		{name: "model", invoke: (*Service).DeleteModel, kind: "model", id: modelAID},
+		{name: "channel", invoke: (*Service).DeleteChannel, kind: "channel", id: channelID},
+		{name: "channel model", invoke: (*Service).DeleteChannelModel, kind: "channel_model", id: mappingAID},
+		{name: "test case", invoke: (*Service).DeleteTestCase, kind: "test_case", id: caseID},
+		{name: "suite", invoke: (*Service).DeleteSuite, kind: "suite", id: suiteID},
+		{name: "plan", invoke: (*Service).DeletePlan, kind: "plan", id: planID},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := validRepository()
+			service := newTestService(t, repository, fixtureTime())
+			command := DeleteCommand{ID: test.id, ExpectedRevision: 1}
+
+			if err := test.invoke(service, context.Background(), command); err != nil {
+				t.Fatalf("delete error = %v", err)
+			}
+			if got := repository.deleted[test.kind]; got != command {
+				t.Fatalf("repository delete command = %#v, want %#v", got, command)
+			}
+
+			if err := test.invoke(service, context.Background(), DeleteCommand{ID: test.id, ExpectedRevision: 0}); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("invalid delete error = %v, want ErrInvalid", err)
+			}
+			if len(repository.deleted) != 1 {
+				t.Fatalf("invalid delete reached repository: %#v", repository.deleted)
+			}
+		})
+	}
+}
+
 func TestSnapshotFailsClosedOnDuplicateBadReferenceAndProtocolMismatch(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -479,6 +560,7 @@ type fakeRepository struct {
 	updateTestCaseCalls int
 	updatePlanCalls     int
 	afterGetModel       func()
+	deleted             map[string]DeleteCommand
 }
 
 func (repository *fakeRepository) ListModels(context.Context) ([]domain.Model, error) {
@@ -615,6 +697,38 @@ func (repository *fakeRepository) UpdatePlan(_ context.Context, _ uint64, value 
 	repository.updatePlanCalls++
 	repository.updatedPlan = value
 	return nil
+}
+
+func (repository *fakeRepository) DeleteModel(_ context.Context, id string, expectedRevision uint64) error {
+	repository.recordDelete("model", id, expectedRevision)
+	return nil
+}
+func (repository *fakeRepository) DeleteChannel(_ context.Context, id string, expectedRevision uint64) error {
+	repository.recordDelete("channel", id, expectedRevision)
+	return nil
+}
+func (repository *fakeRepository) DeleteChannelModel(_ context.Context, id string, expectedRevision uint64) error {
+	repository.recordDelete("channel_model", id, expectedRevision)
+	return nil
+}
+func (repository *fakeRepository) DeleteTestCase(_ context.Context, id string, expectedRevision uint64) error {
+	repository.recordDelete("test_case", id, expectedRevision)
+	return nil
+}
+func (repository *fakeRepository) DeleteSuite(_ context.Context, id string, expectedRevision uint64) error {
+	repository.recordDelete("suite", id, expectedRevision)
+	return nil
+}
+func (repository *fakeRepository) DeletePlan(_ context.Context, id string, expectedRevision uint64) error {
+	repository.recordDelete("plan", id, expectedRevision)
+	return nil
+}
+
+func (repository *fakeRepository) recordDelete(kind, id string, expectedRevision uint64) {
+	if repository.deleted == nil {
+		repository.deleted = make(map[string]DeleteCommand)
+	}
+	repository.deleted[kind] = DeleteCommand{ID: id, ExpectedRevision: expectedRevision}
 }
 
 func (repository *fakeRepository) count(name string) {

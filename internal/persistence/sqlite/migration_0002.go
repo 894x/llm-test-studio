@@ -342,13 +342,14 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 	if err := rows.Close(); err != nil {
 		return 0, fmt.Errorf("close sqlite migration history: %w", err)
 	}
-	if len(history) < 1 || len(history) > 3 {
+	if len(history) < 1 || len(history) > 4 {
 		return 0, fmt.Errorf("sqlite schema is unknown: migration history contains %d rows", len(history))
 	}
 	want := []record{
 		{version: 1, name: migration0001Name, checksum: migration0001Checksum()},
 		{version: 2, name: migration0002Name, checksum: migration0002Checksum()},
 		{version: 3, name: migration0003Name, checksum: migration0003Checksum()},
+		{version: 4, name: migration0004Name, checksum: migration0004Checksum()},
 	}
 	for index, got := range history {
 		expected := want[index]
@@ -379,7 +380,11 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		if err := validateAppliedSchema0002(ctx, conn); err != nil {
 			return 0, err
 		}
-	} else if err := validateAppliedSchema0003(ctx, conn); err != nil {
+	} else if version == 3 {
+		if err := validateAppliedSchema0003(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if err := validateAppliedSchema0004(ctx, conn); err != nil {
 		return 0, err
 	}
 	return version, nil

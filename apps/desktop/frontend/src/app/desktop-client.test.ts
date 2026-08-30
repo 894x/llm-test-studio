@@ -29,6 +29,44 @@ describe("Wails desktop client", () => {
     expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
   })
 
+  it("forwards all catalog create update and delete commands", async () => {
+	const binding = installBinding(FIXTURE_WORKSPACE)
+	const client = createDesktopClient()
+	const model = FIXTURE_CATALOG.models[0]
+	const channel = FIXTURE_CATALOG.channels[0]
+	const mapping = FIXTURE_CATALOG.channel_models[0]
+	const testCase = FIXTURE_CATALOG.test_cases[0]
+	const suite = FIXTURE_CATALOG.suites[0]
+	const plan = FIXTURE_CATALOG.plans[0]
+	const deletion = (id: string, expected_revision: number) => ({ id, expected_revision })
+
+	const commands = [
+		["CreateModel", "createModel", { name: "new model", protocol: "openai-chat", capabilities: ["chat"] }],
+		["UpdateModel", "updateModel", { id: model.id, expected_revision: model.revision, name: model.name, protocol: model.protocol, capabilities: model.capabilities }],
+		["DeleteModel", "deleteModel", deletion(model.id, model.revision)],
+		["CreateChannel", "createChannel", { name: "new channel", base_url: "https://example.test/v1", protocol: "openai-chat", enabled: true }],
+		["UpdateChannel", "updateChannel", { id: channel.id, expected_revision: channel.revision, name: channel.name, base_url: channel.base_url, protocol: channel.protocol, enabled: channel.enabled }],
+		["DeleteChannel", "deleteChannel", deletion(channel.id, channel.revision)],
+		["CreateChannelModel", "createChannelModel", { channel_id: mapping.channel_id, model_id: mapping.model_id, upstream_model_name: "new-upstream" }],
+		["UpdateChannelModel", "updateChannelModel", { id: mapping.id, expected_revision: mapping.revision, upstream_model_name: mapping.upstream_model_name }],
+		["DeleteChannelModel", "deleteChannelModel", deletion(mapping.id, mapping.revision)],
+		["CreateTestCase", "createTestCase", withoutIdentity(testCase)],
+		["UpdateTestCase", "updateTestCase", { ...withoutIdentity(testCase), id: testCase.id, expected_revision: testCase.revision }],
+		["DeleteTestCase", "deleteTestCase", deletion(testCase.id, testCase.revision)],
+		["CreateSuite", "createSuite", { name: "new suite", cases: suite.cases }],
+		["UpdateSuite", "updateSuite", { id: suite.id, expected_revision: suite.revision, name: suite.name, cases: suite.cases }],
+		["DeleteSuite", "deleteSuite", deletion(suite.id, suite.revision)],
+		["CreatePlan", "createPlan", withoutIdentity(plan)],
+		["UpdatePlan", "updatePlan", { ...withoutIdentity(plan), id: plan.id, expected_revision: plan.revision }],
+		["DeletePlan", "deletePlan", deletion(plan.id, plan.revision)],
+	] as const
+
+	for (const [bindingMethod, clientMethod, command] of commands) {
+		await expect(client[clientMethod](command as never)).resolves.toEqual(FIXTURE_CATALOG)
+		expect(binding[bindingMethod]).toHaveBeenLastCalledWith(command)
+	}
+  })
+
   it.each([
     [{ ...FIXTURE_WORKSPACE, schema_version: 2 }, "协议版本"],
     [{ ...FIXTURE_WORKSPACE, plans: [{ id: "broken" }] }, "测试计划"],
@@ -138,6 +176,10 @@ describe("Wails desktop client", () => {
       key: longKey,
       dimension: longDimension,
       assertion_kinds: ["custom", "custom"],
+      assertions: [
+        { kind: "custom", config: {} },
+        { kind: "custom", config: { mode: "manual" } },
+      ],
     })
     installBinding(FIXTURE_WORKSPACE, catalog)
 
@@ -152,11 +194,14 @@ describe("Wails desktop client", () => {
   it.each([
     ["catalog_unavailable", "测试目录暂不可用", "GetCatalog", "getCatalog"],
     ["reports_unavailable", "测试报告暂不可用", "GetReports", "getReports"],
+    ["catalog_invalid", "目录内容无效", "CreateModel", "createModel"],
+    ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
+    ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],
   ] as const)("maps the public %s binding error", async (code, message, bindingMethod, clientMethod) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce({ code })
 
-    await expect(createDesktopClient()[clientMethod]()).rejects.toThrow(message)
+    await expect((createDesktopClient()[clientMethod] as (command?: never) => Promise<unknown>)()).rejects.toThrow(message)
   })
 
   it("rejects corrupt catalog references and contradictory report conclusions", async () => {
@@ -185,10 +230,33 @@ function installBinding(
     StartRun: vi.fn(async () => structuredClone(payload)),
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
+	CreateModel: vi.fn(async () => structuredClone(catalog)),
+	UpdateModel: vi.fn(async () => structuredClone(catalog)),
+	DeleteModel: vi.fn(async () => structuredClone(catalog)),
+	CreateChannel: vi.fn(async () => structuredClone(catalog)),
+	UpdateChannel: vi.fn(async () => structuredClone(catalog)),
+	DeleteChannel: vi.fn(async () => structuredClone(catalog)),
+	CreateChannelModel: vi.fn(async () => structuredClone(catalog)),
+	UpdateChannelModel: vi.fn(async () => structuredClone(catalog)),
+	DeleteChannelModel: vi.fn(async () => structuredClone(catalog)),
+	CreateTestCase: vi.fn(async () => structuredClone(catalog)),
+	UpdateTestCase: vi.fn(async () => structuredClone(catalog)),
+	DeleteTestCase: vi.fn(async () => structuredClone(catalog)),
+	CreateSuite: vi.fn(async () => structuredClone(catalog)),
+	UpdateSuite: vi.fn(async () => structuredClone(catalog)),
+	DeleteSuite: vi.fn(async () => structuredClone(catalog)),
+	CreatePlan: vi.fn(async () => structuredClone(catalog)),
+	UpdatePlan: vi.fn(async () => structuredClone(catalog)),
+	DeletePlan: vi.fn(async () => structuredClone(catalog)),
   }
   Object.defineProperty(window, "go", {
     configurable: true,
     value: { main: { DesktopApp: binding } },
   })
   return binding
+}
+
+function withoutIdentity<T extends { id: string; revision: number }>(value: T): Omit<T, "id" | "revision"> {
+  const { id: _id, revision: _revision, ...rest } = value
+  return rest
 }

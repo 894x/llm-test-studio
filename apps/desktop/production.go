@@ -112,11 +112,16 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("create desktop catalog service: %w", err)
 		}
 		reportingQuery := reporting.New(repository)
+		gate := &productionServiceGate{}
+		serializedCatalog := serializedCatalogService{
+			gate: gate, query: catalogQuery, commands: catalogQuery,
+		}
 		return desktopDependencies{
-			query:   workspaceQuery,
-			catalog: catalogQuery,
-			reports: reportingQuery,
-			close:   repository.Close,
+			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
+			catalog:         serializedCatalog,
+			catalogCommands: serializedCatalog,
+			reports:         serializedReportingQuery{gate: gate, query: reportingQuery},
+			close:           repository.Close,
 		}, nil
 	}
 }

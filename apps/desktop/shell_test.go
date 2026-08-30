@@ -11,6 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/workspace"
 )
 
@@ -111,6 +112,9 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		{name: "reports", err: ErrReportingUnavailable, want: "reports_unavailable"},
 		{name: "commands", err: ErrRunCommandsUnavailable, want: "run_commands_unavailable"},
 		{name: "identifier", err: ErrInvalidIdentifier, want: "invalid_identifier"},
+		{name: "catalog invalid", err: catalog.ErrInvalid, want: "catalog_invalid"},
+		{name: "catalog conflict", err: catalog.ErrConflict, want: "catalog_revision_conflict"},
+		{name: "catalog not found", err: catalog.ErrNotFound, want: "catalog_not_found"},
 		{name: "cancelled", err: context.Canceled, want: "operation_cancelled"},
 		{name: "deadline", err: context.DeadlineExceeded, want: "operation_cancelled"},
 		{name: "unknown", err: errors.New("unknown"), want: "operation_failed"},
@@ -153,6 +157,9 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeInvalidIdentifier:  {},
 		desktopCodeOperationCancelled: {},
 		desktopCodeOperationFailed:    {},
+		desktopCodeCatalogInvalid:     {},
+		desktopCodeCatalogConflict:    {},
+		desktopCodeCatalogNotFound:    {},
 	}
 	if len(gotCodes) != len(wantCodes) {
 		t.Fatalf("frontend error codes = %v, want exact backend code set %v", gotCodes, wantCodes)

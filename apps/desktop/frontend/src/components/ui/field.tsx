@@ -12,6 +12,14 @@ function Field({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="field-group" className={cn("space-y-4", className)} {...props} />
+}
+
+function FieldError({ className, ...props }: React.ComponentProps<"p">) {
+  return <p role="alert" data-slot="field-error" className={cn("text-xs text-destructive", className)} {...props} />
+}
+
 function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -42,4 +50,4 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
-export { Field, FieldContent, FieldDescription, FieldLabel }
+export { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel }

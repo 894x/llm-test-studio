@@ -7,6 +7,7 @@ export function PageFrame({
   children,
   inspector,
   inspectorLabel,
+  actions,
 }: {
   title: string
   description: string
@@ -14,6 +15,7 @@ export function PageFrame({
   children: ReactNode
   inspector?: ReactNode
   inspectorLabel?: string
+  actions?: ReactNode
 }) {
   return (
     <main className="flex min-h-0 flex-1">
@@ -27,11 +29,10 @@ export function PageFrame({
               {description}
             </p>
           </div>
-          {count ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {count}
-            </span>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            {count ? <span className="text-[11px] tabular-nums text-muted-foreground">{count}</span> : null}
+            {actions}
+          </div>
         </div>
         {children}
       </section>

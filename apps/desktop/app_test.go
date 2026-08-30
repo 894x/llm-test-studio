@@ -52,6 +52,76 @@ type recordingReportingQuery struct {
 	ctx      context.Context
 }
 
+type recordingCatalogCommands struct {
+	calls []string
+	err   error
+}
+
+func (commands *recordingCatalogCommands) record(name string) (catalog.MutationResult, error) {
+	commands.calls = append(commands.calls, name)
+	return catalog.MutationResult{ID: "11111111-1111-4111-8111-111111111111", Revision: 1}, commands.err
+}
+func (commands *recordingCatalogCommands) CreateModel(context.Context, catalog.CreateModelCommand) (catalog.MutationResult, error) {
+	return commands.record("create_model")
+}
+func (commands *recordingCatalogCommands) UpdateModel(context.Context, catalog.UpdateModelCommand) (catalog.MutationResult, error) {
+	return commands.record("update_model")
+}
+func (commands *recordingCatalogCommands) DeleteModel(context.Context, catalog.DeleteCommand) error {
+	_, err := commands.record("delete_model")
+	return err
+}
+func (commands *recordingCatalogCommands) CreateChannel(context.Context, catalog.CreateChannelCommand) (catalog.MutationResult, error) {
+	return commands.record("create_channel")
+}
+func (commands *recordingCatalogCommands) UpdateChannel(context.Context, catalog.UpdateChannelCommand) (catalog.MutationResult, error) {
+	return commands.record("update_channel")
+}
+func (commands *recordingCatalogCommands) DeleteChannel(context.Context, catalog.DeleteCommand) error {
+	_, err := commands.record("delete_channel")
+	return err
+}
+func (commands *recordingCatalogCommands) CreateChannelModel(context.Context, catalog.CreateChannelModelCommand) (catalog.MutationResult, error) {
+	return commands.record("create_channel_model")
+}
+func (commands *recordingCatalogCommands) UpdateChannelModel(context.Context, catalog.UpdateChannelModelCommand) (catalog.MutationResult, error) {
+	return commands.record("update_channel_model")
+}
+func (commands *recordingCatalogCommands) DeleteChannelModel(context.Context, catalog.DeleteCommand) error {
+	_, err := commands.record("delete_channel_model")
+	return err
+}
+func (commands *recordingCatalogCommands) CreateTestCase(context.Context, catalog.CreateTestCaseCommand) (catalog.MutationResult, error) {
+	return commands.record("create_test_case")
+}
+func (commands *recordingCatalogCommands) UpdateTestCase(context.Context, catalog.UpdateTestCaseCommand) (catalog.MutationResult, error) {
+	return commands.record("update_test_case")
+}
+func (commands *recordingCatalogCommands) DeleteTestCase(context.Context, catalog.DeleteCommand) error {
+	_, err := commands.record("delete_test_case")
+	return err
+}
+func (commands *recordingCatalogCommands) CreateSuite(context.Context, catalog.CreateSuiteCommand) (catalog.MutationResult, error) {
+	return commands.record("create_suite")
+}
+func (commands *recordingCatalogCommands) UpdateSuite(context.Context, catalog.UpdateSuiteCommand) (catalog.MutationResult, error) {
+	return commands.record("update_suite")
+}
+func (commands *recordingCatalogCommands) DeleteSuite(context.Context, catalog.DeleteCommand) error {
+	_, err := commands.record("delete_suite")
+	return err
+}
+func (commands *recordingCatalogCommands) CreatePlan(context.Context, catalog.CreatePlanCommand) (catalog.MutationResult, error) {
+	return commands.record("create_plan")
+}
+func (commands *recordingCatalogCommands) UpdatePlan(context.Context, catalog.UpdatePlanCommand) (catalog.MutationResult, error) {
+	return commands.record("update_plan")
+}
+func (commands *recordingCatalogCommands) DeletePlan(context.Context, catalog.DeleteCommand) error {
+	_, err := commands.record("delete_plan")
+	return err
+}
+
 func (query *recordingReportingQuery) Snapshot(ctx context.Context) (reporting.Snapshot, error) {
 	query.calls++
 	query.ctx = ctx
@@ -168,6 +238,97 @@ func TestDesktopAppCatalogAndReportsDelegateWithLifecycleContext(t *testing.T) {
 	}
 	if reportingQuery.ctx == nil || reportingQuery.ctx.Value(contextKey{}) != "desktop" {
 		t.Fatal("reporting query did not receive the desktop lifecycle context")
+	}
+}
+
+func TestDesktopAppCatalogCommandsDelegateAndReturnAuthoritativeCatalog(t *testing.T) {
+	query := &recordingCatalogQuery{snapshot: catalog.Snapshot{SchemaVersion: catalog.CurrentSnapshotSchemaVersion}}
+	commands := &recordingCatalogCommands{}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{catalog: query, catalogCommands: commands}, nil
+	})
+	app.onStartup(context.Background())
+
+	tests := []struct {
+		name   string
+		invoke func(*DesktopApp) (catalog.Snapshot, error)
+	}{
+		{name: "create_model", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.CreateModel(catalog.CreateModelCommand{}) }},
+		{name: "update_model", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.UpdateModel(catalog.UpdateModelCommand{}) }},
+		{name: "delete_model", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.DeleteModel(catalog.DeleteCommand{}) }},
+		{name: "create_channel", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.CreateChannel(catalog.CreateChannelCommand{})
+		}},
+		{name: "update_channel", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.UpdateChannel(catalog.UpdateChannelCommand{})
+		}},
+		{name: "delete_channel", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.DeleteChannel(catalog.DeleteCommand{}) }},
+		{name: "create_channel_model", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.CreateChannelModel(catalog.CreateChannelModelCommand{})
+		}},
+		{name: "update_channel_model", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.UpdateChannelModel(catalog.UpdateChannelModelCommand{})
+		}},
+		{name: "delete_channel_model", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.DeleteChannelModel(catalog.DeleteCommand{})
+		}},
+		{name: "create_test_case", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.CreateTestCase(catalog.CreateTestCaseCommand{})
+		}},
+		{name: "update_test_case", invoke: func(app *DesktopApp) (catalog.Snapshot, error) {
+			return app.UpdateTestCase(catalog.UpdateTestCaseCommand{})
+		}},
+		{name: "delete_test_case", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.DeleteTestCase(catalog.DeleteCommand{}) }},
+		{name: "create_suite", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.CreateSuite(catalog.CreateSuiteCommand{}) }},
+		{name: "update_suite", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.UpdateSuite(catalog.UpdateSuiteCommand{}) }},
+		{name: "delete_suite", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.DeleteSuite(catalog.DeleteCommand{}) }},
+		{name: "create_plan", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.CreatePlan(catalog.CreatePlanCommand{}) }},
+		{name: "update_plan", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.UpdatePlan(catalog.UpdatePlanCommand{}) }},
+		{name: "delete_plan", invoke: func(app *DesktopApp) (catalog.Snapshot, error) { return app.DeletePlan(catalog.DeleteCommand{}) }},
+	}
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := test.invoke(app)
+			if err != nil {
+				t.Fatalf("catalog command error = %v", err)
+			}
+			if got.SchemaVersion != catalog.CurrentSnapshotSchemaVersion {
+				t.Fatalf("catalog schema version = %d", got.SchemaVersion)
+			}
+			if commands.calls[index] != test.name {
+				t.Fatalf("catalog command call = %q, want %q", commands.calls[index], test.name)
+			}
+		})
+	}
+	if query.calls != len(tests) {
+		t.Fatalf("catalog snapshot calls = %d, want %d", query.calls, len(tests))
+	}
+}
+
+func TestDesktopAppCatalogCommandErrorsKeepStablePublicMeaning(t *testing.T) {
+	tests := []struct {
+		name    string
+		failure error
+		code    string
+	}{
+		{name: "invalid", failure: catalog.ErrInvalid, code: "catalog_invalid"},
+		{name: "conflict", failure: catalog.ErrConflict, code: "catalog_revision_conflict"},
+		{name: "not found", failure: catalog.ErrNotFound, code: "catalog_not_found"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			query := &recordingCatalogQuery{snapshot: catalog.Snapshot{SchemaVersion: catalog.CurrentSnapshotSchemaVersion}}
+			commands := &recordingCatalogCommands{err: test.failure}
+			app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+				return desktopDependencies{catalog: query, catalogCommands: commands}, nil
+			})
+			app.onStartup(context.Background())
+			_, err := app.CreateModel(catalog.CreateModelCommand{})
+			assertBindingErrorCode(t, err, test.code)
+			if query.calls != 0 {
+				t.Fatalf("catalog query calls = %d, want 0", query.calls)
+			}
+		})
 	}
 }
 

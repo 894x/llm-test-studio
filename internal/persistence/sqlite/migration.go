@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -16,8 +18,9 @@ import (
 )
 
 const (
-	migration0001Name = "0001_legacy_baseline"
-	defaultBusyTime   = 5 * time.Second
+	migration0001Name    = "0001_legacy_baseline"
+	defaultBusyTime      = 5 * time.Second
+	CurrentSchemaVersion = 4
 )
 
 // MigrateOptions identifies the application applying the schema and controls
@@ -141,6 +144,9 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if busyTimeout < 0 {
 		return errors.New("sqlite migration busy timeout cannot be negative")
 	}
+	if err := backupBeforeMigration(ctx, path); err != nil {
+		return err
+	}
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -229,10 +235,16 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		}
 		version = 3
 	}
-	if version != 3 {
+	if version == 3 {
+		if err := applyMigration0004(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 4
+	}
+	if version != CurrentSchemaVersion {
 		return fmt.Errorf("sqlite schema is unknown: unsupported migration version %d", version)
 	}
-	if err := validateAppliedSchema0003(ctx, conn); err != nil {
+	if err := validateAppliedSchema0004(ctx, conn); err != nil {
 		return err
 	}
 	if err := validateIntegrity(ctx, conn); err != nil {
@@ -242,6 +254,42 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		return fmt.Errorf("commit sqlite migration: %w", err)
 	}
 	committed = true
+	return nil
+}
+
+func backupBeforeMigration(ctx context.Context, path string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect sqlite database before migration: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return nil
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return fmt.Errorf("open sqlite database before migration backup: %w", err)
+	}
+	var version int
+	queryErr := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version)
+	closeErr := db.Close()
+	if queryErr != nil {
+		return fmt.Errorf("inspect sqlite version before migration backup: %w", queryErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close sqlite version inspection: %w", closeErr)
+	}
+	if version >= CurrentSchemaVersion {
+		return nil
+	}
+	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	stamp := time.Now().UTC().Format("20060102T150405.000000000Z")
+	destination := filepath.Join(filepath.Dir(path), "backups", fmt.Sprintf("%s-before-v%d-%s.db", base, CurrentSchemaVersion, stamp))
+	if err := Backup(ctx, path, destination); err != nil {
+		return fmt.Errorf("create pre-migration sqlite backup: %w", err)
+	}
 	return nil
 }
 

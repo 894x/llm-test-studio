@@ -23,12 +23,16 @@ import {
 } from "@/features/shell/page-frame"
 
 import type {
+  CatalogActions,
   CatalogChannel,
+  CatalogChannelModel,
   CatalogModel,
   CatalogPlan,
   CatalogSnapshot,
+  CatalogSuite,
   CatalogTestCase,
 } from "./data"
+import { CatalogEditor, DeleteCatalogButton, type CatalogMutation } from "./catalog-editors"
 
 const PROTOCOL_LABELS = {
   "openai-chat": "OpenAI Chat",
@@ -42,14 +46,24 @@ const LOAD_LABELS = {
   open_loop: "开放环",
 } as const
 
-export function ModelChannelWorkspace({ catalog }: { catalog: CatalogSnapshot }) {
-  const [tab, setTab] = useState<"models" | "channels">("models")
+interface CatalogWorkspaceProps {
+  catalog: CatalogSnapshot
+  actions: CatalogActions
+  mutate: CatalogMutation
+  mutationPending: boolean
+  mutationError: string
+}
+
+export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
+  const [tab, setTab] = useState<"models" | "channels" | "mappings">("models")
   const [selectedModelID, setSelectedModelID] = useState("")
   const [selectedChannelID, setSelectedChannelID] = useState("")
+  const [selectedMappingID, setSelectedMappingID] = useState("")
   const selectedModel =
     catalog.models.find((model) => model.id === selectedModelID) ?? catalog.models[0]
   const selectedChannel =
     catalog.channels.find((channel) => channel.id === selectedChannelID) ?? catalog.channels[0]
+  const selectedMapping = catalog.channel_models.find((mapping) => mapping.id === selectedMappingID) ?? catalog.channel_models[0]
   const channelNames = useMemo(
     () => new Map(catalog.channels.map((channel) => [channel.id, channel.name])),
     [catalog.channels],
@@ -66,11 +80,17 @@ export function ModelChannelWorkspace({ catalog }: { catalog: CatalogSnapshot })
       ) : (
         <EmptyInspector label="尚未选择模型" />
       )
-    ) : selectedChannel ? (
+    ) : tab === "channels" && selectedChannel ? (
       <ChannelInspector channel={selectedChannel} catalog={catalog} modelNames={modelNames} />
+    ) : tab === "mappings" && selectedMapping ? (
+      <MappingInspector mapping={selectedMapping} channelNames={channelNames} modelNames={modelNames} />
     ) : (
-      <EmptyInspector label="尚未选择渠道" />
+      <EmptyInspector label="尚未选择对象" />
     )
+
+  const selected = tab === "models" ? selectedModel : tab === "channels" ? selectedChannel : selectedMapping
+  const deleteAction = tab === "models" ? actions.deleteModel : tab === "channels" ? actions.deleteChannel : actions.deleteChannelModel
+  const kind = tab === "models" ? "model" : tab === "channels" ? "channel" : "mapping"
 
   return (
     <PageFrame
@@ -78,11 +98,13 @@ export function ModelChannelWorkspace({ catalog }: { catalog: CatalogSnapshot })
       description="管理逻辑模型、调用渠道与上游模型映射"
       count={`${catalog.models.length} 个模型 · ${catalog.channels.length} 个渠道`}
       inspector={inspector}
-      inspectorLabel={tab === "models" ? "模型详情" : "渠道详情"}
+      inspectorLabel={tab === "models" ? "模型详情" : tab === "channels" ? "渠道详情" : "映射详情"}
+      actions={<><CatalogEditor kind={kind} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`${kind}-${selected.id}`} kind={kind} item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind={kind} item={selected} action={deleteAction} mutate={mutate} pending={mutationPending} /></>}
     >
+      {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as "models" | "channels")}
+        onValueChange={(value) => setTab(value as "models" | "channels" | "mappings")}
         className="min-h-0 flex-1 gap-0"
       >
         <TabsList variant="line" className="mx-4 h-8">
@@ -92,6 +114,9 @@ export function ModelChannelWorkspace({ catalog }: { catalog: CatalogSnapshot })
           <TabsTrigger value="channels" className="text-xs">
             渠道 {catalog.channels.length}
           </TabsTrigger>
+          <TabsTrigger value="mappings" className="text-xs">
+            映射 {catalog.channel_models.length}
+          </TabsTrigger>
         </TabsList>
         <Separator />
         {tab === "models" ? (
@@ -100,16 +125,27 @@ export function ModelChannelWorkspace({ catalog }: { catalog: CatalogSnapshot })
             selectedID={selectedModel?.id ?? ""}
             onSelect={setSelectedModelID}
           />
-        ) : (
+        ) : tab === "channels" ? (
           <ChannelTable
             channels={catalog.channels}
             selectedID={selectedChannel?.id ?? ""}
             onSelect={setSelectedChannelID}
           />
+        ) : (
+          <MappingTable mappings={catalog.channel_models} selectedID={selectedMapping?.id ?? ""} onSelect={setSelectedMappingID} channelNames={channelNames} modelNames={modelNames} />
         )}
       </Tabs>
     </PageFrame>
   )
+}
+
+function MappingTable({ mappings, selectedID, onSelect, channelNames, modelNames }: { mappings: CatalogChannelModel[]; selectedID: string; onSelect: (id: string) => void; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
+  if (!mappings.length) return <CatalogEmpty title="还没有模型映射" description="将逻辑模型绑定到一个兼容协议的渠道。" />
+  return <ScrollArea className="min-h-0 flex-1"><Table aria-label="模型映射目录"><TableHeader><TableRow><TableHead className="pl-4">渠道</TableHead><TableHead>逻辑模型</TableHead><TableHead>上游名称</TableHead><TableHead>版本</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-4 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+}
+
+function MappingInspector({ mapping, channelNames, modelNames }: { mapping: CatalogChannelModel; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
+  return <><InspectorHeader title={mapping.upstream_model_name} subtitle={mapping.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label="版本" value={`r${mapping.revision}`} /><InspectorRow label="渠道" value={channelNames.get(mapping.channel_id) ?? "未知渠道"} /><InspectorRow label="逻辑模型" value={modelNames.get(mapping.model_id) ?? "未知模型"} /></dl></>
 }
 
 function ModelTable({
@@ -294,20 +330,30 @@ function ChannelInspector({
   )
 }
 
-export function CasesWorkspace({ catalog }: { catalog: CatalogSnapshot }) {
+export function CasesWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
+  const [tab, setTab] = useState<"cases" | "suites">("cases")
   const [selectedID, setSelectedID] = useState("")
+  const [selectedSuiteID, setSelectedSuiteID] = useState("")
   const selected = catalog.test_cases.find((item) => item.id === selectedID) ?? catalog.test_cases[0]
+  const selectedSuite = catalog.suites.find((item) => item.id === selectedSuiteID) ?? catalog.suites[0]
+  const selectedEntity = tab === "cases" ? selected : selectedSuite
+  const kind = tab === "cases" ? "case" : "suite"
   return (
     <PageFrame
       title="测试用例"
       description="维护版本化请求、期望与断言"
       count={`${catalog.test_cases.length} 个用例 · ${catalog.suites.length} 个套件`}
-      inspector={selected ? <CaseInspector testCase={selected} catalog={catalog} /> : <EmptyInspector label="尚未选择用例" />}
-      inspectorLabel="用例详情"
+      inspector={tab === "cases" ? (selected ? <CaseInspector testCase={selected} catalog={catalog} /> : <EmptyInspector label="尚未选择用例" />) : (selectedSuite ? <SuiteInspector suite={selectedSuite} catalog={catalog} /> : <EmptyInspector label="尚未选择套件" />)}
+      inspectorLabel={tab === "cases" ? "用例详情" : "套件详情"}
+      actions={<><CatalogEditor kind={kind} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selectedEntity ? <CatalogEditor key={`${kind}-${selectedEntity.id}`} kind={kind} item={selectedEntity} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind={kind} item={selectedEntity} action={tab === "cases" ? actions.deleteTestCase : actions.deleteSuite} mutate={mutate} pending={mutationPending} /></>}
     >
-      {catalog.test_cases.length === 0 ? (
+      {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
+      <Tabs value={tab} onValueChange={(value) => setTab(value as "cases" | "suites")} className="min-h-0 flex-1 gap-0">
+        <TabsList variant="line" className="mx-4 h-8"><TabsTrigger value="cases" className="text-xs">用例 {catalog.test_cases.length}</TabsTrigger><TabsTrigger value="suites" className="text-xs">套件 {catalog.suites.length}</TabsTrigger></TabsList>
+        <Separator />
+      {tab === "cases" && catalog.test_cases.length === 0 ? (
         <CatalogEmpty title="还没有测试用例" description="添加用例后可组合成可复用套件与计划。" />
-      ) : (
+      ) : tab === "cases" ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Table aria-label="测试用例目录" className="min-w-[680px]">
             <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
@@ -343,9 +389,20 @@ export function CasesWorkspace({ catalog }: { catalog: CatalogSnapshot }) {
             </TableBody>
           </Table>
         </ScrollArea>
-      )}
+      ) : <SuiteTable suites={catalog.suites} selectedID={selectedSuite?.id ?? ""} onSelect={setSelectedSuiteID} />}
+      </Tabs>
     </PageFrame>
   )
+}
+
+function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; selectedID: string; onSelect: (id:string) => void }) {
+  if (!suites.length) return <CatalogEmpty title="还没有测试套件" description="将多个固定版本用例组合成可复用套件。" />
+  return <ScrollArea className="min-h-0 flex-1"><Table aria-label="测试套件目录"><TableHeader><TableRow><TableHead className="pl-4">套件</TableHead><TableHead>用例数</TableHead><TableHead>版本</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-4 text-xs">{suite.name}</TableCell><TableCell className="text-xs">{suite.case_count}</TableCell><TableCell className="text-xs">r{suite.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+}
+
+function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {
+  const names = new Map(catalog.test_cases.map(testCase => [testCase.id, testCase.name]))
+  return <><InspectorHeader title={suite.name} subtitle={suite.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label="版本" value={`r${suite.revision}`} /><InspectorRow label="固定用例" value={suite.cases.map(ref => `${names.get(ref.case_id) ?? "未知用例"} · r${ref.revision}`).join("；") || "空套件"} /></dl></>
 }
 
 function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catalog: CatalogSnapshot }) {
@@ -394,10 +451,18 @@ function casePolicyLabel(testCase: CatalogTestCase): string {
 
 export function PlansWorkspace({
   catalog,
+  actions,
+  mutate,
+  mutationPending,
+  mutationError,
   commandPending,
   onStartPlan,
 }: {
   catalog: CatalogSnapshot
+  actions: CatalogActions
+  mutate: CatalogMutation
+  mutationPending: boolean
+  mutationError: string
   commandPending: boolean
   onStartPlan: (planID: string) => Promise<void>
 }) {
@@ -416,7 +481,9 @@ export function PlansWorkspace({
         )
       }
       inspectorLabel="计划详情"
+      actions={<><CatalogEditor kind="plan" catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`plan-${selected.id}`} kind="plan" item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind="plan" item={selected} action={actions.deletePlan} mutate={mutate} pending={mutationPending} /></>}
     >
+      {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       {catalog.plans.length === 0 ? (
         <CatalogEmpty title="还没有测试计划" description="先准备模型、渠道和用例，再创建可复用计划。" />
       ) : (

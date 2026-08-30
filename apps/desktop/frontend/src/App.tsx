@@ -39,6 +39,8 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
   const [loadError, setLoadError] = useState("")
   const [commandError, setCommandError] = useState("")
   const [commandPending, setCommandPending] = useState(false)
+  const [catalogMutationPending, setCatalogMutationPending] = useState(false)
+  const [catalogMutationError, setCatalogMutationError] = useState("")
 
   useEffect(() => {
     const syncPage = () => setPage(desktopPageFromHash(window.location.hash))
@@ -97,6 +99,27 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     [],
   )
 
+  const mutateCatalog = useCallback(
+    async (operation: () => Promise<CatalogSnapshot>): Promise<void> => {
+      setCatalogMutationPending(true)
+      setCatalogMutationError("")
+      try {
+        setCatalog(await operation())
+        try {
+          setSnapshot(await client.getWorkspace())
+        } catch {
+          setCatalogMutationError("目录已保存，但运行计划列表刷新失败，请重新打开应用")
+        }
+      } catch (error) {
+        setCatalogMutationError(publicDesktopErrorMessage(error, "目录操作失败，请检查对象是否仍被引用"))
+        throw error
+      } finally {
+        setCatalogMutationPending(false)
+      }
+    },
+    [client],
+  )
+
   const plans = useMemo(
     () => (snapshot ? presentWorkspace(snapshot).plans : []),
     [snapshot],
@@ -138,12 +161,16 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
       {page === "overview" ? (
         <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} />
       ) : page === "catalog" ? (
-        <ModelChannelWorkspace catalog={catalog} />
+        <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
       ) : page === "cases" ? (
-        <CasesWorkspace catalog={catalog} />
+        <CasesWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
       ) : page === "plans" ? (
         <PlansWorkspace
           catalog={catalog}
+          actions={client}
+          mutate={mutateCatalog}
+          mutationPending={catalogMutationPending}
+          mutationError={catalogMutationError}
           commandPending={commandPending}
           onStartPlan={async (planID) => {
             await runCommand(() => client.startRun(planID))

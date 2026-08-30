@@ -337,6 +337,56 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 	return service.completedMutation(ctx, meta)
 }
 
+func (service *Service) DeleteModel(ctx context.Context, command DeleteCommand) error {
+	return service.delete(ctx, command, func(ctx context.Context, id string, expectedRevision uint64) error {
+		return service.repository.DeleteModel(ctx, id, expectedRevision)
+	})
+}
+
+func (service *Service) DeleteChannel(ctx context.Context, command DeleteCommand) error {
+	return service.delete(ctx, command, func(ctx context.Context, id string, expectedRevision uint64) error {
+		return service.repository.DeleteChannel(ctx, id, expectedRevision)
+	})
+}
+
+func (service *Service) DeleteChannelModel(ctx context.Context, command DeleteCommand) error {
+	return service.delete(ctx, command, func(ctx context.Context, id string, expectedRevision uint64) error {
+		return service.repository.DeleteChannelModel(ctx, id, expectedRevision)
+	})
+}
+
+func (service *Service) DeleteTestCase(ctx context.Context, command DeleteCommand) error {
+	return service.delete(ctx, command, func(ctx context.Context, id string, expectedRevision uint64) error {
+		return service.repository.DeleteTestCase(ctx, id, expectedRevision)
+	})
+}
+
+func (service *Service) DeleteSuite(ctx context.Context, command DeleteCommand) error {
+	return service.delete(ctx, command, func(ctx context.Context, id string, expectedRevision uint64) error {
+		return service.repository.DeleteSuite(ctx, id, expectedRevision)
+	})
+}
+
+func (service *Service) DeletePlan(ctx context.Context, command DeleteCommand) error {
+	return service.delete(ctx, command, func(ctx context.Context, id string, expectedRevision uint64) error {
+		return service.repository.DeletePlan(ctx, id, expectedRevision)
+	})
+}
+
+func (service *Service) delete(ctx context.Context, command DeleteCommand, operation func(context.Context, string, uint64) error) error {
+	ctx, err := service.ready(ctx)
+	if err != nil {
+		return err
+	}
+	if !validUpdateIdentity(command.ID, command.ExpectedRevision) {
+		return ErrInvalid
+	}
+	if err := operation(ctx, command.ID, command.ExpectedRevision); err != nil {
+		return service.portError(ctx, err)
+	}
+	return ctx.Err()
+}
+
 func (service *Service) ready(ctx context.Context) (context.Context, error) {
 	if service == nil || isNilInterface(service.repository) || isNilInterface(service.clock) || service.metaFactory == nil {
 		return nil, ErrUnavailable

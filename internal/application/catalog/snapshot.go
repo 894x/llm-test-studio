@@ -264,31 +264,55 @@ func buildSnapshot(
 			return Snapshot{}, err
 		}
 		kinds := make([]domain.AssertionKind, len(testCase.Definition.Assertions))
+		assertions := make([]AssertionInput, len(testCase.Definition.Assertions))
 		for index, assertion := range testCase.Definition.Assertions {
 			kinds[index] = assertion.Kind
+			assertions[index] = AssertionInput{Kind: assertion.Kind, Config: append([]byte(nil), assertion.Config...)}
+		}
+		headers := make(map[string]string, len(testCase.Definition.Request.Headers))
+		for name, value := range testCase.Definition.Request.Headers {
+			headers[name] = value
 		}
 		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
 			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 			Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
 			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
 			Method: testCase.Definition.Request.Method, Path: testCase.Definition.Request.Path, AssertionKinds: kinds,
+			DefinitionSchemaVersion: testCase.Definition.SchemaVersion, Headers: headers,
+			Body:                append([]byte(nil), testCase.Definition.Request.Body...),
+			AllowedHTTPStatuses: append([]int(nil), testCase.Definition.Expected.AllowedHTTPStatuses...),
+			StreamCompletion:    testCase.Definition.Expected.StreamCompletion, Assertions: assertions,
 		})
 	}
 	for _, suite := range suites {
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		snapshot.Suites = append(snapshot.Suites, SuiteSummary{ID: suite.ID, Revision: suite.Revision, Name: suite.Name, CaseCount: len(suite.Cases)})
+		cases := make([]CaseRevisionInput, len(suite.Cases))
+		for index, ref := range suite.Cases {
+			cases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
+		}
+		snapshot.Suites = append(snapshot.Suites, SuiteSummary{ID: suite.ID, Revision: suite.Revision, Name: suite.Name, CaseCount: len(suite.Cases), Cases: cases})
 	}
 	for _, plan := range plans {
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
+		}
+		cases := make([]CaseRevisionInput, len(plan.Cases))
+		for index, ref := range plan.Cases {
+			cases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
+		}
+		thresholds := make(map[string]float64, len(plan.SLA.Thresholds))
+		for name, value := range plan.SLA.Thresholds {
+			thresholds[name] = value
 		}
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{
 			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
 			ModelCount: len(plan.ModelIDs), ChannelCount: len(plan.ChannelIDs), CaseCount: len(plan.Cases),
 			LoadMode: plan.Load.Mode, Concurrency: plan.Load.Concurrency, RequestCount: plan.Load.RequestCount,
 			RatePerSecond: plan.Load.RatePerSecond, DurationMS: plan.Load.DurationMS, RequestTimeoutMS: plan.Load.RequestTimeoutMS,
+			ModelIDs: append([]string(nil), plan.ModelIDs...), ChannelIDs: append([]string(nil), plan.ChannelIDs...),
+			SuiteID: plan.SuiteID, SuiteRevision: plan.SuiteRevision, Cases: cases, SLAThresholds: thresholds,
 		})
 	}
 

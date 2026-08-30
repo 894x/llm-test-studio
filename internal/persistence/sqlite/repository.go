@@ -105,7 +105,7 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 		}
 		return nil, fmt.Errorf("%w: validate repository schema: %v", ErrCorrupt, err)
 	}
-	if version != 3 {
+	if version != CurrentSchemaVersion {
 		cleanup()
 		return nil, fmt.Errorf("%w: repository requires schema version 3", ErrCorrupt)
 	}
@@ -180,36 +180,33 @@ func (repository *Repository) UpdateModel(ctx context.Context, expectedRevision 
 	if err := validateNextRevision(expectedRevision, model.EntityMeta); err != nil {
 		return err
 	}
-	current, err := repository.GetModel(ctx, model.ID)
-	if err != nil {
-		return err
-	}
-	if current.Revision != expectedRevision {
-		return fmt.Errorf("%w: model", ErrConflict)
-	}
-	if !current.CreatedAt.Equal(model.CreatedAt) || model.UpdatedAt.Before(current.UpdatedAt) {
-		return errors.New("updated model must preserve creation time and advance update time")
-	}
 	document, err := marshalCanonical(model)
 	if err != nil {
 		return fmt.Errorf("encode model: %w", err)
 	}
-	result, err := repository.conn.ExecContext(ctx, `
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin model update: %w", err)
+	}
+	defer tx.Rollback()
+	if err := checkVersionedWrite(ctx, tx, "models", model.EntityMeta, &expectedRevision); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO models(id, schema_version, revision, created_at, updated_at, document_json)
-		SELECT ?, ?, ?, ?, ?, ?
-		WHERE (SELECT MAX(revision) FROM models WHERE id = ?) = ?
-	`, model.ID, model.SchemaVersion, model.Revision, formatTime(model.CreatedAt), formatTime(model.UpdatedAt), document, model.ID, expectedRevision)
+		VALUES(?, ?, ?, ?, ?, ?)
+	`, model.ID, model.SchemaVersion, model.Revision, formatTime(model.CreatedAt), formatTime(model.UpdatedAt), document)
 	if err != nil {
 		return classifyWriteError("update model", err)
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read updated model row count: %w", err)
-	}
-	if rows != 1 {
-		return fmt.Errorf("%w: model", ErrConflict)
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit model update", err)
 	}
 	return nil
+}
+
+func (repository *Repository) DeleteModel(ctx context.Context, id string, expectedRevision uint64) error {
+	return repository.deleteVersionedEntity(ctx, "models", "model", id, expectedRevision)
 }
 
 func (repository *Repository) ListModels(ctx context.Context) ([]domain.Model, error) {

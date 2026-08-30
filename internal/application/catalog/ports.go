@@ -47,6 +47,13 @@ type Repository interface {
 	UpdateTestCase(context.Context, uint64, domain.TestCase) error
 	UpdateSuite(context.Context, uint64, domain.Suite) error
 	UpdatePlan(context.Context, uint64, domain.Plan) error
+
+	DeleteModel(context.Context, string, uint64) error
+	DeleteChannel(context.Context, string, uint64) error
+	DeleteChannelModel(context.Context, string, uint64) error
+	DeleteTestCase(context.Context, string, uint64) error
+	DeleteSuite(context.Context, string, uint64) error
+	DeletePlan(context.Context, string, uint64) error
 }
 
 type Clock interface {

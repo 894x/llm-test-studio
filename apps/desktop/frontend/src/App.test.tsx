@@ -44,8 +44,21 @@ function desktopClient(): DesktopClient & {
       }
       return structuredClone(client.workspace)
     }),
+    ...catalogMutationMocks(),
   }
   return client
+}
+
+function catalogMutationMocks() {
+  const reply = async () => structuredClone(FIXTURE_CATALOG)
+  return {
+    createModel: vi.fn(reply), updateModel: vi.fn(reply), deleteModel: vi.fn(reply),
+    createChannel: vi.fn(reply), updateChannel: vi.fn(reply), deleteChannel: vi.fn(reply),
+    createChannelModel: vi.fn(reply), updateChannelModel: vi.fn(reply), deleteChannelModel: vi.fn(reply),
+    createTestCase: vi.fn(reply), updateTestCase: vi.fn(reply), deleteTestCase: vi.fn(reply),
+    createSuite: vi.fn(reply), updateSuite: vi.fn(reply), deleteSuite: vi.fn(reply),
+    createPlan: vi.fn(reply), updatePlan: vi.fn(reply), deletePlan: vi.fn(reply),
+  }
 }
 
 describe("desktop run workspace", () => {
@@ -123,6 +136,110 @@ describe("desktop run workspace", () => {
     expect(client.getWorkspace).toHaveBeenCalledTimes(1)
     expect(client.getCatalog).toHaveBeenCalledTimes(1)
     expect(client.getReports).toHaveBeenCalledTimes(1)
+  })
+
+  it("creates, updates, and confirms deletion for catalog models", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "新增模型" }))
+    expect(screen.getByRole("heading", { name: "新增模型" })).toBeInTheDocument()
+    await user.type(screen.getByLabelText("模型名称"), "gpt-next")
+    await user.type(screen.getByLabelText("模型能力"), "chat, tools")
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+
+    expect(client.createModel).toHaveBeenCalledWith({
+      name: "gpt-next",
+      protocol: "openai-chat",
+      capabilities: ["chat", "tools"],
+    })
+
+    await user.click(screen.getByRole("button", { name: "编辑模型" }))
+    const nameInput = screen.getByLabelText("模型名称")
+    await user.clear(nameInput)
+    await user.type(nameInput, "gpt-5.2 edited")
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+    expect(client.updateModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: FIXTURE_CATALOG.models[0].id,
+        expected_revision: FIXTURE_CATALOG.models[0].revision,
+        name: "gpt-5.2 edited",
+      }),
+    )
+
+    await user.click(screen.getByRole("button", { name: "删除模型" }))
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("历史版本与已停用的 ID 会保留")
+    await user.click(screen.getByRole("button", { name: "确认删除模型" }))
+    expect(client.deleteModel).toHaveBeenCalledWith({
+      id: FIXTURE_CATALOG.models[0].id,
+      expected_revision: FIXTURE_CATALOG.models[0].revision,
+    })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(4)
+  })
+
+  it("exposes CRUD entry points for mappings, cases, suites, and plans", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "运行工作区" })
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await user.click(screen.getByRole("tab", { name: /映射/ }))
+    expect(screen.getByRole("button", { name: "新增映射" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "编辑映射" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "删除映射" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "用例" }))
+    expect(screen.getByRole("button", { name: "新增用例" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "编辑用例" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "删除用例" })).toBeInTheDocument()
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+    expect(screen.getByRole("button", { name: "新增套件" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "编辑套件" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "删除套件" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "计划" }))
+    expect(screen.getByRole("button", { name: "新增计划" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "编辑计划" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "删除计划" })).toBeInTheDocument()
+  })
+
+  it("keeps a rejected catalog deletion visible as a workspace error", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.deleteModel).mockRejectedValueOnce(new Error("foreign key constraint"))
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "删除模型" }))
+    await user.click(screen.getByRole("button", { name: "确认删除模型" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("目录操作失败，请检查对象是否仍被引用")
+  })
+
+  it("preserves pinned case revisions during a suite name edit", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.test_cases[0].revision = catalog.suites[0].cases[0].revision + 5
+    vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+    await user.click(screen.getByRole("button", { name: "编辑套件" }))
+    const name = screen.getByLabelText("套件名称")
+    await user.clear(name)
+    await user.type(name, "仅重命名套件")
+    await user.click(screen.getByRole("button", { name: "保存套件" }))
+    expect(client.updateSuite).toHaveBeenCalledWith(expect.objectContaining({
+      name: "仅重命名套件",
+      cases: catalog.suites[0].cases,
+    }))
   })
 
   it("distinguishes imported automatic, disabled, and manual cases", async () => {
@@ -264,6 +381,7 @@ describe("desktop run workspace", () => {
       startRun: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
+      ...catalogMutationMocks(),
     }
 
     render(<App client={client} />)

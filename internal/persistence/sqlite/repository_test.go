@@ -23,6 +23,7 @@ type coreRepositoryContract interface {
 	CreateModel(context.Context, domain.Model) error
 	GetModel(context.Context, string) (domain.Model, error)
 	UpdateModel(context.Context, uint64, domain.Model) error
+	DeleteModel(context.Context, string, uint64) error
 	ListModels(context.Context) ([]domain.Model, error)
 	CreateCredentialRef(context.Context, domain.CredentialRef) error
 	GetCredentialRef(context.Context, string) (domain.CredentialRef, error)
@@ -31,22 +32,27 @@ type coreRepositoryContract interface {
 	CreateChannel(context.Context, domain.Channel) error
 	GetChannel(context.Context, string) (domain.Channel, error)
 	UpdateChannel(context.Context, uint64, domain.Channel) error
+	DeleteChannel(context.Context, string, uint64) error
 	ListChannels(context.Context) ([]domain.Channel, error)
 	CreateChannelModel(context.Context, domain.ChannelModel) error
 	GetChannelModel(context.Context, string) (domain.ChannelModel, error)
 	UpdateChannelModel(context.Context, uint64, domain.ChannelModel) error
+	DeleteChannelModel(context.Context, string, uint64) error
 	ListChannelModels(context.Context) ([]domain.ChannelModel, error)
 	CreateTestCase(context.Context, domain.TestCase) error
 	GetTestCase(context.Context, string) (domain.TestCase, error)
 	UpdateTestCase(context.Context, uint64, domain.TestCase) error
+	DeleteTestCase(context.Context, string, uint64) error
 	ListTestCases(context.Context) ([]domain.TestCase, error)
 	CreateSuite(context.Context, domain.Suite) error
 	GetSuite(context.Context, string) (domain.Suite, error)
 	UpdateSuite(context.Context, uint64, domain.Suite) error
+	DeleteSuite(context.Context, string, uint64) error
 	ListSuites(context.Context) ([]domain.Suite, error)
 	CreatePlan(context.Context, domain.Plan) error
 	GetPlan(context.Context, string) (domain.Plan, error)
 	UpdatePlan(context.Context, uint64, domain.Plan) error
+	DeletePlan(context.Context, string, uint64) error
 	ListPlans(context.Context) ([]domain.Plan, error)
 	CreateRun(context.Context, domain.Run) error
 	GetRun(context.Context, string) (domain.Run, error)
@@ -137,6 +143,198 @@ func TestRepositoryHonorsCancelledContext(t *testing.T) {
 	_, err := repository.ListModels(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListModels(cancelled) error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRepositoryCatalogDeletesAreRevisionCheckedAndReferenceSafe(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	ctx := context.Background()
+	fixture := newRepositoryFixture(t)
+	if err := repository.CreateCredentialRef(ctx, fixture.credential); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateModel(ctx, fixture.model); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateChannel(ctx, fixture.channel); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateChannelModel(ctx, fixture.mapping); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateTestCase(ctx, fixture.testCase); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateSuite(ctx, fixture.suite); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreatePlan(ctx, fixture.plan); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repository.DeleteModel(ctx, fixture.model.ID, 1); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("DeleteModel(referenced) error = %v, want ErrConflict", err)
+	}
+	if _, err := repository.GetModel(ctx, fixture.model.ID); err != nil {
+		t.Fatalf("GetModel() after rejected delete error = %v", err)
+	}
+	if err := repository.DeletePlan(ctx, fixture.plan.ID, 2); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("DeletePlan(stale) error = %v, want ErrConflict", err)
+	}
+
+	deletes := []struct {
+		name   string
+		id     string
+		remove func(context.Context, string, uint64) error
+		get    func(context.Context, string) error
+	}{
+		{name: "plan", id: fixture.plan.ID, remove: repository.DeletePlan, get: func(ctx context.Context, id string) error { _, err := repository.GetPlan(ctx, id); return err }},
+		{name: "suite", id: fixture.suite.ID, remove: repository.DeleteSuite, get: func(ctx context.Context, id string) error { _, err := repository.GetSuite(ctx, id); return err }},
+		{name: "test case", id: fixture.testCase.ID, remove: repository.DeleteTestCase, get: func(ctx context.Context, id string) error { _, err := repository.GetTestCase(ctx, id); return err }},
+		{name: "channel model", id: fixture.mapping.ID, remove: repository.DeleteChannelModel, get: func(ctx context.Context, id string) error { _, err := repository.GetChannelModel(ctx, id); return err }},
+		{name: "channel", id: fixture.channel.ID, remove: repository.DeleteChannel, get: func(ctx context.Context, id string) error { _, err := repository.GetChannel(ctx, id); return err }},
+		{name: "model", id: fixture.model.ID, remove: repository.DeleteModel, get: func(ctx context.Context, id string) error { _, err := repository.GetModel(ctx, id); return err }},
+	}
+	for _, deletion := range deletes {
+		if err := deletion.remove(ctx, deletion.id, 1); err != nil {
+			t.Fatalf("Delete%s() error = %v", deletion.name, err)
+		}
+		if err := deletion.get(ctx, deletion.id); !errors.Is(err, persistence.ErrNotFound) {
+			t.Fatalf("Get%s() after delete error = %v, want ErrNotFound", deletion.name, err)
+		}
+	}
+}
+
+func TestRepositoryCatalogDeletePreservesHistoryAndRetiresIdentity(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "catalog-tombstone.db")
+	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatalf("OpenRepository() error = %v", err)
+	}
+	fixture := newRepositoryFixture(t)
+	ctx := context.Background()
+	if err := repository.CreateModel(ctx, fixture.model); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.DeleteModel(ctx, fixture.model.ID, fixture.model.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.GetModel(ctx, fixture.model.ID); !errors.Is(err, persistence.ErrNotFound) {
+		t.Fatalf("GetModel() error = %v, want ErrNotFound", err)
+	}
+	if err := repository.CreateModel(ctx, fixture.model); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("CreateModel() with retired id error = %v, want ErrConflict", err)
+	}
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db := openDatabase(t, path)
+	defer db.Close()
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM models WHERE id = '`+fixture.model.ID+`'`); got != 1 {
+		t.Fatalf("model history rows = %d, want 1", got)
+	}
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM catalog_tombstones WHERE entity_table = 'models' AND entity_id = '`+fixture.model.ID+`' AND deleted_revision = 2`); got != 1 {
+		t.Fatalf("model tombstone rows = %d, want 1", got)
+	}
+}
+
+func TestRepositoryRejectsLiveReferencesToTombstonedCatalogEntities(t *testing.T) {
+	t.Run("suite cannot use deleted case", func(t *testing.T) {
+		repository := openRepository(t)
+		defer repository.Close()
+		fixture := newRepositoryFixture(t)
+		ctx := context.Background()
+		if err := repository.CreateTestCase(ctx, fixture.testCase); err != nil {
+			t.Fatal(err)
+		}
+		if err := repository.DeleteTestCase(ctx, fixture.testCase.ID, fixture.testCase.Revision); err != nil {
+			t.Fatal(err)
+		}
+		if err := repository.CreateSuite(ctx, fixture.suite); !errors.Is(err, persistence.ErrNotFound) {
+			t.Fatalf("CreateSuite() error = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("plan cannot use deleted suite", func(t *testing.T) {
+		repository := openRepository(t)
+		defer repository.Close()
+		fixture := newRepositoryFixture(t)
+		ctx := context.Background()
+		for _, create := range []func(context.Context) error{
+			func(ctx context.Context) error { return repository.CreateCredentialRef(ctx, fixture.credential) },
+			func(ctx context.Context) error { return repository.CreateModel(ctx, fixture.model) },
+			func(ctx context.Context) error { return repository.CreateChannel(ctx, fixture.channel) },
+			func(ctx context.Context) error { return repository.CreateChannelModel(ctx, fixture.mapping) },
+			func(ctx context.Context) error { return repository.CreateTestCase(ctx, fixture.testCase) },
+			func(ctx context.Context) error { return repository.CreateSuite(ctx, fixture.suite) },
+		} {
+			if err := create(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := repository.DeleteSuite(ctx, fixture.suite.ID, fixture.suite.Revision); err != nil {
+			t.Fatal(err)
+		}
+		if err := repository.CreatePlan(ctx, fixture.plan); !errors.Is(err, persistence.ErrNotFound) {
+			t.Fatalf("CreatePlan() error = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("plan cannot use deleted mapping", func(t *testing.T) {
+		repository := openRepository(t)
+		defer repository.Close()
+		fixture := newRepositoryFixture(t)
+		ctx := context.Background()
+		for _, create := range []func(context.Context) error{
+			func(ctx context.Context) error { return repository.CreateCredentialRef(ctx, fixture.credential) },
+			func(ctx context.Context) error { return repository.CreateModel(ctx, fixture.model) },
+			func(ctx context.Context) error { return repository.CreateChannel(ctx, fixture.channel) },
+			func(ctx context.Context) error { return repository.CreateChannelModel(ctx, fixture.mapping) },
+			func(ctx context.Context) error { return repository.CreateTestCase(ctx, fixture.testCase) },
+			func(ctx context.Context) error { return repository.CreateSuite(ctx, fixture.suite) },
+		} {
+			if err := create(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := repository.DeleteChannelModel(ctx, fixture.mapping.ID, fixture.mapping.Revision); err != nil {
+			t.Fatal(err)
+		}
+		if err := repository.CreatePlan(ctx, fixture.plan); !errors.Is(err, persistence.ErrNotFound) {
+			t.Fatalf("CreatePlan() error = %v, want ErrNotFound", err)
+		}
+	})
+}
+
+func TestRepositoryRejectsDeletingPlanOwnedByPersistedRun(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	ctx := context.Background()
+	for _, create := range []func(context.Context) error{
+		func(ctx context.Context) error { return repository.CreateCredentialRef(ctx, fixture.credential) },
+		func(ctx context.Context) error { return repository.CreateModel(ctx, fixture.model) },
+		func(ctx context.Context) error { return repository.CreateChannel(ctx, fixture.channel) },
+		func(ctx context.Context) error { return repository.CreateChannelModel(ctx, fixture.mapping) },
+		func(ctx context.Context) error { return repository.CreateTestCase(ctx, fixture.testCase) },
+		func(ctx context.Context) error { return repository.CreateSuite(ctx, fixture.suite) },
+		func(ctx context.Context) error { return repository.CreatePlan(ctx, fixture.plan) },
+		func(ctx context.Context) error { return repository.CreateRun(ctx, fixture.run) },
+	} {
+		if err := create(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repository.DeletePlan(ctx, fixture.plan.ID, fixture.plan.Revision); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("DeletePlan() error = %v, want ErrConflict", err)
 	}
 }
 
