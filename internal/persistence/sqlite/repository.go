@@ -105,9 +105,9 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 		}
 		return nil, fmt.Errorf("%w: validate repository schema: %v", ErrCorrupt, err)
 	}
-	if version != 2 {
+	if version != 3 {
 		cleanup()
-		return nil, fmt.Errorf("%w: repository requires schema version 2", ErrCorrupt)
+		return nil, fmt.Errorf("%w: repository requires schema version 3", ErrCorrupt)
 	}
 	return &Repository{db: db, conn: conn}, nil
 }

@@ -342,12 +342,13 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 	if err := rows.Close(); err != nil {
 		return 0, fmt.Errorf("close sqlite migration history: %w", err)
 	}
-	if len(history) < 1 || len(history) > 2 {
+	if len(history) < 1 || len(history) > 3 {
 		return 0, fmt.Errorf("sqlite schema is unknown: migration history contains %d rows", len(history))
 	}
 	want := []record{
 		{version: 1, name: migration0001Name, checksum: migration0001Checksum()},
 		{version: 2, name: migration0002Name, checksum: migration0002Checksum()},
+		{version: 3, name: migration0003Name, checksum: migration0003Checksum()},
 	}
 	for index, got := range history {
 		expected := want[index]
@@ -374,7 +375,11 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		if err := validateAppliedSchema0001(ctx, conn); err != nil {
 			return 0, err
 		}
-	} else if err := validateAppliedSchema0002(ctx, conn); err != nil {
+	} else if version == 2 {
+		if err := validateAppliedSchema0002(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if err := validateAppliedSchema0003(ctx, conn); err != nil {
 		return 0, err
 	}
 	return version, nil
@@ -399,6 +404,10 @@ func applyMigration0002(ctx context.Context, conn *sql.Conn, appVersion string) 
 }
 
 func validateAppliedSchema0002(ctx context.Context, conn *sql.Conn) error {
+	return validateAppliedDomainSchema(ctx, conn, nil)
+}
+
+func validateAppliedDomainSchema(ctx context.Context, conn *sql.Conn, additionalStatements []string) error {
 	expectedTables := map[string]bool{
 		"schema_migrations": true, "runs": true, "run_results": true,
 		"audit_runs": true, "audit_case_results": true,
@@ -413,6 +422,22 @@ func validateAppliedSchema0002(ctx context.Context, conn *sql.Conn) error {
 		match := migration0002ObjectPattern.FindStringSubmatch(strings.TrimSpace(statement))
 		if len(match) != 3 {
 			return errors.New("sqlite migration 0002 contains an unrecognized statement")
+		}
+		kind := strings.ToLower(match[1])
+		name := strings.ToLower(match[2])
+		expectedDDL[kind+":"+name] = normalizeDDL(statement)
+		if kind == "table" {
+			expectedTables[name] = true
+		} else if kind == "index" {
+			expectedIndexes[name] = ""
+		} else {
+			expectedTriggers[name] = true
+		}
+	}
+	for _, statement := range additionalStatements {
+		match := migration0002ObjectPattern.FindStringSubmatch(strings.TrimSpace(statement))
+		if len(match) != 3 {
+			return errors.New("sqlite migration contains an unrecognized statement")
 		}
 		kind := strings.ToLower(match[1])
 		name := strings.ToLower(match[2])

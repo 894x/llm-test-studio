@@ -223,10 +223,16 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		}
 		version = 2
 	}
-	if version != 2 {
+	if version == 2 {
+		if err := applyMigration0003(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 3
+	}
+	if version != 3 {
 		return fmt.Errorf("sqlite schema is unknown: unsupported migration version %d", version)
 	}
-	if err := validateAppliedSchema0002(ctx, conn); err != nil {
+	if err := validateAppliedSchema0003(ctx, conn); err != nil {
 		return err
 	}
 	if err := validateIntegrity(ctx, conn); err != nil {

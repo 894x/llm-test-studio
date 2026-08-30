@@ -21,11 +21,11 @@ func TestMigrateFreshDatabaseAppliesDomainSchemaV2(t *testing.T) {
 	db := openDatabase(t, path)
 	defer db.Close()
 
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 2 {
-		t.Fatalf("user_version = %d, want 2", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != 3 {
+		t.Fatalf("user_version = %d, want 3", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 2 {
-		t.Fatalf("migration count = %d, want 2", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 3 {
+		t.Fatalf("migration count = %d, want 3", got)
 	}
 	for _, table := range []string{
 		"models", "channels", "channel_models", "credential_refs", "test_cases",
@@ -78,11 +78,11 @@ func TestMigrateUpgrades0001WithoutChangingLegacyRows(t *testing.T) {
 	if got := queryInt(t, db, "SELECT requests FROM runs WHERE id = 42"); got != 9 {
 		t.Fatalf("legacy requests = %d, want 9", got)
 	}
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 2 {
-		t.Fatalf("user_version = %d, want 2", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != 3 {
+		t.Fatalf("user_version = %d, want 3", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 2 {
-		t.Fatalf("migration count = %d, want 2", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 3 {
+		t.Fatalf("migration count = %d, want 3", got)
 	}
 }
 
@@ -235,6 +235,7 @@ func createMigration0001Database(t *testing.T, path string) {
 		t.Fatalf("disable foreign keys while constructing v1 fixture: %v", err)
 	}
 	for _, table := range []string{
+		"test_case_import_sources",
 		"report_attachments", "artifacts", "reports", "case_results", "evidence", "execution_run_revisions", "execution_runs",
 		"plan_channel_models", "plan_cases", "plan_channels", "plan_models", "test_plans", "suite_cases", "test_suites",
 		"channel_models", "integrations", "channels", "credential_refs", "test_cases", "models",
@@ -244,9 +245,9 @@ func createMigration0001Database(t *testing.T, path string) {
 			t.Fatalf("drop v2 table %s: %v", table, err)
 		}
 	}
-	if _, err := db.Exec("DELETE FROM schema_migrations WHERE version = 2"); err != nil {
+	if _, err := db.Exec("DELETE FROM schema_migrations WHERE version >= 2"); err != nil {
 		db.Close()
-		t.Fatalf("remove v2 migration record: %v", err)
+		t.Fatalf("remove post-v1 migration records: %v", err)
 	}
 	if _, err := db.Exec("PRAGMA user_version = 1"); err != nil {
 		db.Close()
