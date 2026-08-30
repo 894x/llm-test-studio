@@ -66,6 +66,7 @@ describe("desktop run workspace", () => {
     window.localStorage.clear()
     document.documentElement.className = ""
     window.history.replaceState(null, "", "#runs")
+    delete (window as Window & { runtime?: unknown }).runtime
   })
 
   it("opens on the compact run workspace instead of a dashboard", async () => {
@@ -369,6 +370,36 @@ describe("desktop run workspace", () => {
       ),
     ).toEqual({ version: 1, theme: "dark" })
     expect(window.localStorage).toHaveLength(1)
+  })
+
+  it("keeps the native window chrome aligned with the theme preference", async () => {
+    const user = userEvent.setup()
+    const runtime = {
+      WindowSetSystemDefaultTheme: vi.fn(),
+      WindowSetLightTheme: vi.fn(),
+      WindowSetDarkTheme: vi.fn(),
+    }
+    Object.defineProperty(window, "runtime", {
+      configurable: true,
+      value: runtime,
+    })
+
+    render(<App client={desktopClient()} />)
+
+    const themeTrigger = await screen.findByRole("button", {
+      name: "主题：跟随系统",
+    })
+    expect(runtime.WindowSetSystemDefaultTheme).toHaveBeenCalledTimes(1)
+
+    await user.click(themeTrigger)
+    await user.click(screen.getByRole("menuitemradio", { name: "深色" }))
+    expect(runtime.WindowSetDarkTheme).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole("button", { name: "主题：深色" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "浅色" }))
+    expect(runtime.WindowSetSystemDefaultTheme).toHaveBeenCalledTimes(1)
+    expect(runtime.WindowSetDarkTheme).toHaveBeenCalledTimes(1)
+    expect(runtime.WindowSetLightTheme).toHaveBeenCalledTimes(1)
   })
 
   it("surfaces a missing production bridge instead of substituting fixtures", async () => {

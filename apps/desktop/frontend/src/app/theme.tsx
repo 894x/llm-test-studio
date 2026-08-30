@@ -9,6 +9,13 @@ import { ThemeContext, type ThemePreference } from "./theme-context"
 
 const STORAGE_KEY = "llm-studio:ui-preferences:v1"
 const DARK_QUERY = "(prefers-color-scheme: dark)"
+
+type NativeWindowThemeRuntime = Partial<{
+  WindowSetSystemDefaultTheme: () => void
+  WindowSetLightTheme: () => void
+  WindowSetDarkTheme: () => void
+}>
+
 function isThemePreference(value: unknown): value is ThemePreference {
   return value === "system" || value === "light" || value === "dark"
 }
@@ -33,12 +40,25 @@ function resolveTheme(theme: ThemePreference): "light" | "dark" {
   return dark ? "dark" : "light"
 }
 
+function applyNativeWindowTheme(theme: ThemePreference) {
+  const runtime = (window as Window & { runtime?: NativeWindowThemeRuntime })
+    .runtime
+  const apply =
+    theme === "dark"
+      ? runtime?.WindowSetDarkTheme
+      : theme === "light"
+        ? runtime?.WindowSetLightTheme
+        : runtime?.WindowSetSystemDefaultTheme
+  apply?.()
+}
+
 function applyTheme(theme: ThemePreference) {
   const resolved = resolveTheme(theme)
   document.documentElement.classList.toggle("dark", resolved === "dark")
   document.documentElement.dataset.theme = resolved
   document.documentElement.dataset.themePreference = theme
   document.documentElement.style.colorScheme = resolved
+  applyNativeWindowTheme(theme)
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
