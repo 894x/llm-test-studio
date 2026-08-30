@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="LLM Test Lab 本地兼容性、质量与负载测试工作台"
+    />
+    <title>LLM Test Lab</title>
+    <script>
+      (() => {
+        const root = document.documentElement
+        let preference = "system"
+        try {
+          const saved = JSON.parse(
+            localStorage.getItem("llm-test:ui-preferences:v1") || "null",
+          )
+          if (
+            saved?.version === 1 &&
+            ["system", "light", "dark"].includes(saved.theme)
+          ) {
+            preference = saved.theme
+          }
+        } catch {
+          // A corrupt optional preference must not block the desktop shell.
+        }
+        const resolved =
+          preference === "dark" ||
+          (preference === "system" &&
+            matchMedia("(prefers-color-scheme: dark)").matches)
+            ? "dark"
+            : "light"
+        root.classList.toggle("dark", resolved === "dark")
+        root.setAttribute("data-theme", resolved)
+        root.setAttribute("data-theme-preference", preference)
+        root.style.colorScheme = resolved
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
