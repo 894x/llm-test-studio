@@ -4,6 +4,12 @@
 
 最终形态是完整 Go Core。Python/Streamlit 不是长期 adapter，也不保留为研究工具；它们只在迁移期间提供行为 fixtures、旧数据验收和人工回归，达到退出门槛后随对应业务逻辑一起删除。
 
+## 当前交付检查点（2026-08-30）
+
+提交 `0b6c07a`、`d8672f8`、`c1cf044`、`38a5391`、`98de454`、`eec4e92` 已依次交付领域用例策略、类型化 Catalog、89 个内置用例的 SQLite v3 导入、报告摘要投影、Wails production 接线和六个桌面工作区。迁移字段、稳定身份、冲突策略、开发 fixture 与生产 SQLite 边界及未完成项见[《内置测试用例目录迁移与桌面读取边界》](case-catalog-migration.md)。
+
+本检查点不表示 M2/M3/M4 已完成：`legacy.apiaudit.v1` 当前只保存 evaluator 语义，纯 Go runtime 等价、完整报告导出和三平台安装验收仍按下文顺序推进。
+
 ## 提交原则
 
 - 一个提交只完成一个可回滚的架构或行为切片；

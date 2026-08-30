@@ -336,3 +336,15 @@ Remote Execution Plane
 - **P0**：领域对象与协议、桌面技术验证、Application Core、SQLite/凭据边界、Report Schema 和视觉原型。
 - **P1**：统一压测与兼容引擎、GUI/CLI 功能闭环、四格式报告、三平台打包。
 - **P2**：账号同步、远程执行、new-api 一键上架。
+
+## 当前已验证的窄交付（2026-08-30）
+
+- [x] 为领域 `TestCase` 增加 key、维度、启停、默认、严重度、执行模式和版本化 definition。
+- [x] 将 89 个 legacy case 严格转换并幂等导入 SQLite，记录稳定 UUID、四类哈希、CAS、冲突和退休状态。
+- [x] 通过 schema v3 回填旧 `TestCase` 文档，保持原 ID、revision 和时间元数据。
+- [x] Wails production 启动时使用用户配置目录中的 SQLite，并接通 Catalog 与最新 100 条报告摘要查询。
+- [x] React 桌面主导航的总览、模型与渠道、用例、计划、运行、报告均有可访问工作区。
+- [ ] 实现 `legacy.apiaudit.v1` 的纯 Go evaluator runtime，并证明与旧执行行为等价。
+- [ ] 用真实三平台安装包完成 Wails、系统 WebView、系统凭据、签名和升级回滚验收。
+
+详细证据、边界与后续顺序见 [`doc/architecture/case-catalog-migration.md`](doc/architecture/case-catalog-migration.md)。
