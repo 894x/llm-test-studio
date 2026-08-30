@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/894x/llm-test/internal/application/catalog"
+	"github.com/894x/llm-test/internal/application/reporting"
 	"github.com/894x/llm-test/internal/application/workspace"
 	"github.com/894x/llm-test/internal/domain"
 )
@@ -16,6 +18,8 @@ var (
 	ErrDesktopStartup         = errors.New("desktop application startup failed")
 	ErrDesktopStopped         = errors.New("desktop application is shutting down or stopped")
 	ErrWorkspaceUnavailable   = errors.New("workspace query is unavailable")
+	ErrCatalogUnavailable     = errors.New("catalog query is unavailable")
+	ErrReportingUnavailable   = errors.New("reporting query is unavailable")
 	ErrRunCommandsUnavailable = errors.New("run commands are unavailable")
 	ErrInvalidIdentifier      = errors.New("desktop command identifier is invalid")
 )
@@ -25,6 +29,8 @@ const (
 	desktopCodeStartupFailed      = "desktop_startup_failed"
 	desktopCodeStopped            = "desktop_stopped"
 	desktopCodeWorkspaceMissing   = "workspace_unavailable"
+	desktopCodeCatalogMissing     = "catalog_unavailable"
+	desktopCodeReportsMissing     = "reports_unavailable"
 	desktopCodeCommandsMissing    = "run_commands_unavailable"
 	desktopCodeInvalidIdentifier  = "invalid_identifier"
 	desktopCodeOperationCancelled = "operation_cancelled"
@@ -38,6 +44,18 @@ type WorkspaceQuery interface {
 	Snapshot(context.Context) (workspace.Snapshot, error)
 }
 
+// CatalogQuery exposes the secret-free catalog projection used by the
+// desktop presentation layer.
+type CatalogQuery interface {
+	Snapshot(context.Context) (catalog.Snapshot, error)
+}
+
+// ReportingQuery exposes bounded report summaries rather than complete
+// evidence or provider payload documents.
+type ReportingQuery interface {
+	Snapshot(context.Context) (reporting.Snapshot, error)
+}
+
 // RunCommands is the Application command boundary used by the desktop
 // adapter. A command mutates Core state; the adapter then obtains the
 // authoritative state through WorkspaceQuery.
@@ -49,6 +67,8 @@ type RunCommands interface {
 
 type desktopDependencies struct {
 	query    WorkspaceQuery
+	catalog  CatalogQuery
+	reports  ReportingQuery
 	commands RunCommands
 	close    func() error
 }
@@ -69,11 +89,29 @@ type DesktopApp struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	query       WorkspaceQuery
+	catalog     CatalogQuery
+	reports     ReportingQuery
 	commands    RunCommands
 	close       func() error
 	startupErr  error
 	shutdownErr error
 	reportError func(error)
+}
+
+type desktopRequirements struct {
+	workspace bool
+	catalog   bool
+	reports   bool
+	commands  bool
+}
+
+type desktopLease struct {
+	ctx       context.Context
+	workspace WorkspaceQuery
+	catalog   CatalogQuery
+	reports   ReportingQuery
+	commands  RunCommands
+	release   func()
 }
 
 // DesktopBindingError is the complete error surface exposed to JavaScript.
@@ -151,6 +189,8 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 		return
 	}
 	app.query = dependencies.query
+	app.catalog = dependencies.catalog
+	app.reports = dependencies.reports
 	app.commands = dependencies.commands
 	app.close = dependencies.close
 	app.mu.Unlock()
@@ -165,14 +205,40 @@ func (app *DesktopApp) GetWorkspace() (workspace.Snapshot, error) {
 }
 
 func (app *DesktopApp) getWorkspace() (workspace.Snapshot, error) {
-	ctx, query, _, release, err := app.acquire(false)
+	lease, err := app.acquire(desktopRequirements{workspace: true})
 	if err != nil {
 		return workspace.Snapshot{}, err
 	}
-	defer release()
-	snapshot, err := query.Snapshot(ctx)
+	defer lease.release()
+	snapshot, err := lease.workspace.Snapshot(lease.ctx)
 	if err != nil {
 		return workspace.Snapshot{}, fmt.Errorf("query desktop workspace: %w", err)
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) GetCatalog() (catalog.Snapshot, error) {
+	lease, err := app.acquire(desktopRequirements{catalog: true})
+	if err != nil {
+		return catalog.Snapshot{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	snapshot, err := lease.catalog.Snapshot(lease.ctx)
+	if err != nil {
+		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("query desktop catalog: %w", err))
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) GetReports() (reporting.Snapshot, error) {
+	lease, err := app.acquire(desktopRequirements{reports: true})
+	if err != nil {
+		return reporting.Snapshot{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	snapshot, err := lease.reports.Snapshot(lease.ctx)
+	if err != nil {
+		return reporting.Snapshot{}, app.safeBindingError(fmt.Errorf("query desktop reports: %w", err))
 	}
 	return snapshot, nil
 }
@@ -211,41 +277,47 @@ func (app *DesktopApp) executeRunCommand(name, id string, execute func(context.C
 	if !domain.IsUUID(id) {
 		return workspace.Snapshot{}, fmt.Errorf("%w: %s", ErrInvalidIdentifier, name)
 	}
-	ctx, query, commands, release, err := app.acquire(true)
+	lease, err := app.acquire(desktopRequirements{workspace: true, commands: true})
 	if err != nil {
 		return workspace.Snapshot{}, err
 	}
-	defer release()
-	if err := execute(ctx, commands); err != nil {
+	defer lease.release()
+	if err := execute(lease.ctx, lease.commands); err != nil {
 		return workspace.Snapshot{}, fmt.Errorf("%s: %w", name, err)
 	}
-	snapshot, err := query.Snapshot(ctx)
+	snapshot, err := lease.workspace.Snapshot(lease.ctx)
 	if err != nil {
 		return workspace.Snapshot{}, fmt.Errorf("query workspace after %s: %w", name, err)
 	}
 	return snapshot, nil
 }
 
-func (app *DesktopApp) acquire(requireCommands bool) (context.Context, WorkspaceQuery, RunCommands, func(), error) {
+func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error) {
 	if app == nil {
-		return nil, nil, nil, nil, ErrDesktopNotStarted
+		return desktopLease{}, ErrDesktopNotStarted
 	}
 	app.mu.Lock()
 	defer app.mu.Unlock()
 	if app.stopping || app.stopped {
-		return nil, nil, nil, nil, ErrDesktopStopped
+		return desktopLease{}, ErrDesktopStopped
 	}
 	if !app.started {
-		return nil, nil, nil, nil, ErrDesktopNotStarted
+		return desktopLease{}, ErrDesktopNotStarted
 	}
 	if app.startupErr != nil {
-		return nil, nil, nil, nil, app.startupErr
+		return desktopLease{}, app.startupErr
 	}
-	if isNilInterface(app.query) {
-		return nil, nil, nil, nil, ErrWorkspaceUnavailable
+	if require.workspace && isNilInterface(app.query) {
+		return desktopLease{}, ErrWorkspaceUnavailable
 	}
-	if requireCommands && isNilInterface(app.commands) {
-		return nil, nil, nil, nil, ErrRunCommandsUnavailable
+	if require.catalog && isNilInterface(app.catalog) {
+		return desktopLease{}, ErrCatalogUnavailable
+	}
+	if require.reports && isNilInterface(app.reports) {
+		return desktopLease{}, ErrReportingUnavailable
+	}
+	if require.commands && isNilInterface(app.commands) {
+		return desktopLease{}, ErrRunCommandsUnavailable
 	}
 	app.active++
 	released := false
@@ -261,7 +333,10 @@ func (app *DesktopApp) acquire(requireCommands bool) (context.Context, Workspace
 			app.drained.Broadcast()
 		}
 	}
-	return app.ctx, app.query, app.commands, release, nil
+	return desktopLease{
+		ctx: app.ctx, workspace: app.query, catalog: app.catalog,
+		reports: app.reports, commands: app.commands, release: release,
+	}, nil
 }
 
 func (app *DesktopApp) shutdown() error {
@@ -290,6 +365,8 @@ func (app *DesktopApp) shutdown() error {
 	}
 	closeResources := app.close
 	app.query = nil
+	app.catalog = nil
+	app.reports = nil
 	app.commands = nil
 	app.close = nil
 	app.mu.Unlock()
@@ -341,6 +418,10 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeStopped}
 	case errors.Is(internal, ErrWorkspaceUnavailable):
 		return DesktopBindingError{Code: desktopCodeWorkspaceMissing}
+	case errors.Is(internal, ErrCatalogUnavailable):
+		return DesktopBindingError{Code: desktopCodeCatalogMissing}
+	case errors.Is(internal, ErrReportingUnavailable):
+		return DesktopBindingError{Code: desktopCodeReportsMissing}
 	case errors.Is(internal, ErrRunCommandsUnavailable):
 		return DesktopBindingError{Code: desktopCodeCommandsMissing}
 	case errors.Is(internal, ErrInvalidIdentifier):
@@ -358,6 +439,8 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeStartupFailed,
 		desktopCodeStopped,
 		desktopCodeWorkspaceMissing,
+		desktopCodeCatalogMissing,
+		desktopCodeReportsMissing,
 		desktopCodeCommandsMissing,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,

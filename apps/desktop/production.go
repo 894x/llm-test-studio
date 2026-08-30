@@ -4,10 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	casebundle "github.com/894x/llm-test/cases"
+	"github.com/894x/llm-test/internal/application/caseimport"
+	"github.com/894x/llm-test/internal/application/catalog"
+	"github.com/894x/llm-test/internal/application/reporting"
 	"github.com/894x/llm-test/internal/application/workspace"
 	"github.com/894x/llm-test/internal/persistence/sqlite"
 )
@@ -15,14 +22,26 @@ import (
 var desktopApplicationVersion = "dev"
 
 type productionOptions struct {
-	userConfigDir func() (string, error)
-	appVersion    string
+	userConfigDir       func() (string, error)
+	appVersion          string
+	caseBundle          fs.FS
+	reportCaseConflicts func(int)
+}
+
+type productionClock struct{}
+
+func (productionClock) Now() time.Time {
+	return time.Now().UTC()
 }
 
 func defaultProductionOptions() productionOptions {
 	return productionOptions{
 		userConfigDir: os.UserConfigDir,
 		appVersion:    desktopApplicationVersion,
+		caseBundle:    casebundle.Bundle,
+		reportCaseConflicts: func(count int) {
+			log.Printf("llm-test: %d built-in case update conflict(s) retained user revisions", count)
+		},
 	}
 }
 
@@ -58,10 +77,46 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("open desktop repository: %w", err)
 		}
-		query := workspace.New(repository)
+		caseImporter, err := caseimport.New(caseimport.Dependencies{
+			Store: repository,
+			Clock: productionClock{},
+		})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create built-in case importer: %w", err)
+		}
+		bundle := options.caseBundle
+		if isNilInterface(bundle) {
+			bundle = casebundle.Bundle
+		}
+		importResult, err := caseImporter.Import(ctx, bundle)
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("import built-in cases: %w", err)
+		}
+		if len(importResult.Conflicts) != 0 && options.reportCaseConflicts != nil {
+			options.reportCaseConflicts(len(importResult.Conflicts))
+		}
+		workspaceQuery := workspace.New(repository)
+		catalogQuery, err := catalog.New(catalog.Dependencies{
+			Repository: repository,
+			Clock:      productionClock{},
+			RepositoryErrors: catalog.RepositoryErrorSet{
+				NotFound: sqlite.ErrNotFound,
+				Conflict: sqlite.ErrConflict,
+				Corrupt:  sqlite.ErrCorrupt,
+			},
+		})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create desktop catalog service: %w", err)
+		}
+		reportingQuery := reporting.New(repository)
 		return desktopDependencies{
-			query: query,
-			close: repository.Close,
+			query:   workspaceQuery,
+			catalog: catalogQuery,
+			reports: reportingQuery,
+			close:   repository.Close,
 		}, nil
 	}
 }

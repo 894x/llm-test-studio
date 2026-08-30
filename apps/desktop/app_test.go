@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test/internal/application/catalog"
+	"github.com/894x/llm-test/internal/application/reporting"
 	"github.com/894x/llm-test/internal/application/workspace"
 )
 
@@ -27,6 +29,32 @@ func (query *recordingWorkspaceQuery) Snapshot(ctx context.Context) (workspace.S
 			return workspace.Snapshot{}, err
 		}
 	}
+	return query.snapshot, query.err
+}
+
+type recordingCatalogQuery struct {
+	snapshot catalog.Snapshot
+	err      error
+	calls    int
+	ctx      context.Context
+}
+
+func (query *recordingCatalogQuery) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
+	query.calls++
+	query.ctx = ctx
+	return query.snapshot, query.err
+}
+
+type recordingReportingQuery struct {
+	snapshot reporting.Snapshot
+	err      error
+	calls    int
+	ctx      context.Context
+}
+
+func (query *recordingReportingQuery) Snapshot(ctx context.Context) (reporting.Snapshot, error) {
+	query.calls++
+	query.ctx = ctx
 	return query.snapshot, query.err
 }
 
@@ -101,6 +129,45 @@ func TestDesktopAppGetWorkspaceDelegatesToApplicationQuery(t *testing.T) {
 	}
 	if query.ctx == nil || query.ctx.Value(struct{}{}) != "desktop" {
 		t.Fatal("workspace query did not receive the desktop lifecycle context")
+	}
+}
+
+func TestDesktopAppCatalogAndReportsDelegateWithLifecycleContext(t *testing.T) {
+	catalogQuery := &recordingCatalogQuery{snapshot: catalog.Snapshot{SchemaVersion: catalog.CurrentSnapshotSchemaVersion}}
+	reportingQuery := &recordingReportingQuery{snapshot: reporting.Snapshot{SchemaVersion: reporting.CurrentSchemaVersion}}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{
+			catalog: catalogQuery,
+			reports: reportingQuery,
+		}, nil
+	})
+	type contextKey struct{}
+	startupContext := context.WithValue(context.Background(), contextKey{}, "desktop")
+	app.onStartup(startupContext)
+
+	gotCatalog, err := app.GetCatalog()
+	if err != nil {
+		t.Fatalf("GetCatalog() error = %v", err)
+	}
+	gotReports, err := app.GetReports()
+	if err != nil {
+		t.Fatalf("GetReports() error = %v", err)
+	}
+
+	if gotCatalog.SchemaVersion != catalog.CurrentSnapshotSchemaVersion {
+		t.Fatalf("GetCatalog() schema version = %d, want %d", gotCatalog.SchemaVersion, catalog.CurrentSnapshotSchemaVersion)
+	}
+	if gotReports.SchemaVersion != reporting.CurrentSchemaVersion {
+		t.Fatalf("GetReports() schema version = %d, want %d", gotReports.SchemaVersion, reporting.CurrentSchemaVersion)
+	}
+	if catalogQuery.calls != 1 || reportingQuery.calls != 1 {
+		t.Fatalf("query calls = catalog %d, reports %d; want 1 each", catalogQuery.calls, reportingQuery.calls)
+	}
+	if catalogQuery.ctx == nil || catalogQuery.ctx.Value(contextKey{}) != "desktop" {
+		t.Fatal("catalog query did not receive the desktop lifecycle context")
+	}
+	if reportingQuery.ctx == nil || reportingQuery.ctx.Value(contextKey{}) != "desktop" {
+		t.Fatal("reporting query did not receive the desktop lifecycle context")
 	}
 }
 
@@ -243,6 +310,22 @@ func TestDesktopAppRejectsCallsBeforeStartup(t *testing.T) {
 	}
 }
 
+func TestDesktopAppCatalogAndReportsRejectCallsBeforeStartup(t *testing.T) {
+	catalogQuery := &recordingCatalogQuery{}
+	reportingQuery := &recordingReportingQuery{}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{catalog: catalogQuery, reports: reportingQuery}, nil
+	})
+
+	_, err := app.GetCatalog()
+	assertBindingErrorCode(t, err, "desktop_not_started")
+	_, err = app.GetReports()
+	assertBindingErrorCode(t, err, "desktop_not_started")
+	if catalogQuery.calls != 0 || reportingQuery.calls != 0 {
+		t.Fatalf("calls before startup reached queries: catalog=%d reports=%d", catalogQuery.calls, reportingQuery.calls)
+	}
+}
+
 func TestDesktopAppTreatsTypedNilDependenciesAsUnavailable(t *testing.T) {
 	const planID = "11111111-1111-4111-8111-111111111111"
 	t.Run("workspace query", func(t *testing.T) {
@@ -265,6 +348,28 @@ func TestDesktopAppTreatsTypedNilDependenciesAsUnavailable(t *testing.T) {
 		if query.calls != 0 {
 			t.Fatalf("workspace query calls = %d, want 0", query.calls)
 		}
+	})
+
+	t.Run("catalog query", func(t *testing.T) {
+		var query *recordingCatalogQuery
+		app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+			return desktopDependencies{catalog: query}, nil
+		})
+		app.onStartup(context.Background())
+
+		_, err := app.GetCatalog()
+		assertBindingErrorCode(t, err, "catalog_unavailable")
+	})
+
+	t.Run("reporting query", func(t *testing.T) {
+		var query *recordingReportingQuery
+		app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+			return desktopDependencies{reports: query}, nil
+		})
+		app.onStartup(context.Background())
+
+		_, err := app.GetReports()
+		assertBindingErrorCode(t, err, "reports_unavailable")
 	})
 }
 
@@ -317,6 +422,30 @@ func TestDesktopAppShutdownBeforeStartupPreventsInitialization(t *testing.T) {
 type cancelableWorkspaceQuery struct {
 	started  chan struct{}
 	returned atomic.Bool
+}
+
+type cancelableCatalogQuery struct {
+	started  chan struct{}
+	returned atomic.Bool
+}
+
+func (query *cancelableCatalogQuery) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
+	close(query.started)
+	<-ctx.Done()
+	query.returned.Store(true)
+	return catalog.Snapshot{}, ctx.Err()
+}
+
+type cancelableReportingQuery struct {
+	started  chan struct{}
+	returned atomic.Bool
+}
+
+func (query *cancelableReportingQuery) Snapshot(ctx context.Context) (reporting.Snapshot, error) {
+	close(query.started)
+	<-ctx.Done()
+	query.returned.Store(true)
+	return reporting.Snapshot{}, ctx.Err()
 }
 
 func (query *cancelableWorkspaceQuery) Snapshot(ctx context.Context) (workspace.Snapshot, error) {
@@ -375,6 +504,72 @@ func TestDesktopAppShutdownCancelsAndDrainsActiveQueriesBeforeClose(t *testing.T
 	}
 }
 
+func TestDesktopAppShutdownCancelsAndDrainsCatalogAndReportQueriesBeforeClose(t *testing.T) {
+	catalogQuery := &cancelableCatalogQuery{started: make(chan struct{})}
+	reportingQuery := &cancelableReportingQuery{started: make(chan struct{})}
+	closeCalls := 0
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{
+			catalog: catalogQuery,
+			reports: reportingQuery,
+			close: func() error {
+				closeCalls++
+				if !catalogQuery.returned.Load() || !reportingQuery.returned.Load() {
+					return errors.New("resource closed before catalog and report queries returned")
+				}
+				return nil
+			},
+		}, nil
+	})
+	app.onStartup(context.Background())
+	catalogResult := make(chan error, 1)
+	reportingResult := make(chan error, 1)
+	go func() {
+		_, err := app.GetCatalog()
+		catalogResult <- err
+	}()
+	go func() {
+		_, err := app.GetReports()
+		reportingResult <- err
+	}()
+
+	for name, started := range map[string]<-chan struct{}{
+		"catalog": catalogQuery.started,
+		"reports": reportingQuery.started,
+	} {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s query did not start", name)
+		}
+	}
+	shutdownResult := make(chan error, 1)
+	go func() { shutdownResult <- app.shutdown() }()
+
+	for name, result := range map[string]<-chan error{
+		"catalog": catalogResult,
+		"reports": reportingResult,
+	} {
+		select {
+		case err := <-result:
+			assertBindingErrorCode(t, err, "operation_cancelled")
+		case <-time.After(2 * time.Second):
+			t.Fatalf("active %s query was not canceled", name)
+		}
+	}
+	select {
+	case err := <-shutdownResult:
+		if err != nil {
+			t.Fatalf("shutdown error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not drain active catalog and report queries")
+	}
+	if closeCalls != 1 {
+		t.Fatalf("close calls = %d, want 1", closeCalls)
+	}
+}
+
 func assertBindingErrorCode(t *testing.T, err error, want string) {
 	t.Helper()
 	if err == nil {
@@ -417,6 +612,30 @@ func TestDesktopAppBindingErrorsAreStableAndDoNotLeakSensitiveDetails(t *testing
 			},
 			invoke: func(app *DesktopApp) error {
 				_, err := app.GetWorkspace()
+				return err
+			},
+		},
+		{
+			name: "catalog query",
+			app: func() *DesktopApp {
+				return newDesktopApp(func(context.Context) (desktopDependencies, error) {
+					return desktopDependencies{catalog: &recordingCatalogQuery{err: sensitiveFailure}}, nil
+				})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.GetCatalog()
+				return err
+			},
+		},
+		{
+			name: "reporting query",
+			app: func() *DesktopApp {
+				return newDesktopApp(func(context.Context) (desktopDependencies, error) {
+					return desktopDependencies{reports: &recordingReportingQuery{err: sensitiveFailure}}, nil
+				})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.GetReports()
 				return err
 			},
 		},
