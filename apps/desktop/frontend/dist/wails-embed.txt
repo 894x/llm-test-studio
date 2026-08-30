@@ -1,0 +1,1 @@
+This marker keeps frontend/dist embeddable before the first frontend build.

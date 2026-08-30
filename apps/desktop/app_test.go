@@ -1,0 +1,486 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/894x/llm-test/internal/application/workspace"
+)
+
+type recordingWorkspaceQuery struct {
+	snapshot workspace.Snapshot
+	err      error
+	calls    int
+	ctx      context.Context
+	before   func() error
+}
+
+func (query *recordingWorkspaceQuery) Snapshot(ctx context.Context) (workspace.Snapshot, error) {
+	query.calls++
+	query.ctx = ctx
+	if query.before != nil {
+		if err := query.before(); err != nil {
+			return workspace.Snapshot{}, err
+		}
+	}
+	return query.snapshot, query.err
+}
+
+type recordingRunCommands struct {
+	startIDs     []string
+	stopIDs      []string
+	cancelIDs    []string
+	startErr     error
+	stopErr      error
+	cancelErr    error
+	commandEnded *bool
+}
+
+func (commands *recordingRunCommands) StartRun(_ context.Context, id string) error {
+	commands.startIDs = append(commands.startIDs, id)
+	if commands.commandEnded != nil {
+		*commands.commandEnded = true
+	}
+	return commands.startErr
+}
+
+func (commands *recordingRunCommands) StopSending(_ context.Context, id string) error {
+	commands.stopIDs = append(commands.stopIDs, id)
+	if commands.commandEnded != nil {
+		*commands.commandEnded = true
+	}
+	return commands.stopErr
+}
+
+func (commands *recordingRunCommands) CancelRun(_ context.Context, id string) error {
+	commands.cancelIDs = append(commands.cancelIDs, id)
+	if commands.commandEnded != nil {
+		*commands.commandEnded = true
+	}
+	return commands.cancelErr
+}
+
+func TestDesktopAppExposesStartupInitializationFailure(t *testing.T) {
+	initializationFailure := errors.New("cannot open application database")
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{}, initializationFailure
+	})
+	var reported error
+	app.setErrorReporter(func(err error) { reported = err })
+
+	app.onStartup(context.Background())
+	_, err := app.GetWorkspace()
+
+	assertBindingErrorCode(t, err, "desktop_startup_failed")
+	if !errors.Is(reported, initializationFailure) {
+		t.Fatalf("locally reported error = %v, want startup failure", reported)
+	}
+}
+
+func TestDesktopAppGetWorkspaceDelegatesToApplicationQuery(t *testing.T) {
+	want := workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}
+	query := &recordingWorkspaceQuery{snapshot: want}
+	app := NewDesktopApp(query, nil)
+	startupContext := context.WithValue(context.Background(), struct{}{}, "desktop")
+	app.onStartup(startupContext)
+
+	got, err := app.GetWorkspace()
+
+	if err != nil {
+		t.Fatalf("GetWorkspace() error = %v", err)
+	}
+	if got.SchemaVersion != want.SchemaVersion {
+		t.Fatalf("GetWorkspace() schema version = %d, want %d", got.SchemaVersion, want.SchemaVersion)
+	}
+	if query.calls != 1 {
+		t.Fatalf("workspace query calls = %d, want 1", query.calls)
+	}
+	if query.ctx == nil || query.ctx.Value(struct{}{}) != "desktop" {
+		t.Fatal("workspace query did not receive the desktop lifecycle context")
+	}
+}
+
+func TestDesktopAppCommandsReturnAuthoritativeWorkspaceAfterSuccess(t *testing.T) {
+	const planID = "11111111-1111-4111-8111-111111111111"
+	const runID = "22222222-2222-4222-8222-222222222222"
+	tests := []struct {
+		name       string
+		id         string
+		invoke     func(*DesktopApp, string) (workspace.Snapshot, error)
+		calledWith func(*recordingRunCommands) []string
+	}{
+		{name: "start run", id: planID, invoke: (*DesktopApp).StartRun, calledWith: func(commands *recordingRunCommands) []string { return commands.startIDs }},
+		{name: "stop sending", id: runID, invoke: (*DesktopApp).StopSending, calledWith: func(commands *recordingRunCommands) []string { return commands.stopIDs }},
+		{name: "cancel run", id: runID, invoke: (*DesktopApp).CancelRun, calledWith: func(commands *recordingRunCommands) []string { return commands.cancelIDs }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			commandEnded := false
+			commands := &recordingRunCommands{commandEnded: &commandEnded}
+			want := workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion, ActiveRunID: runID}
+			query := &recordingWorkspaceQuery{
+				snapshot: want,
+				before: func() error {
+					if !commandEnded {
+						return errors.New("workspace queried before command completed")
+					}
+					return nil
+				},
+			}
+			app := NewDesktopApp(query, commands)
+			app.onStartup(context.Background())
+
+			got, err := test.invoke(app, test.id)
+
+			if err != nil {
+				t.Fatalf("command error = %v", err)
+			}
+			if got.ActiveRunID != want.ActiveRunID {
+				t.Fatalf("command snapshot active run = %q, want %q", got.ActiveRunID, want.ActiveRunID)
+			}
+			if query.calls != 1 {
+				t.Fatalf("workspace query calls = %d, want 1", query.calls)
+			}
+			calls := test.calledWith(commands)
+			if len(calls) != 1 || calls[0] != test.id {
+				t.Fatalf("command IDs = %v, want [%s]", calls, test.id)
+			}
+		})
+	}
+}
+
+func TestDesktopAppCommandErrorsDoNotQueryOrInventWorkspace(t *testing.T) {
+	const planID = "11111111-1111-4111-8111-111111111111"
+	const runID = "22222222-2222-4222-8222-222222222222"
+	commandFailure := errors.New("application command rejected")
+	tests := []struct {
+		name   string
+		id     string
+		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
+		setup  func(*recordingRunCommands)
+	}{
+		{name: "start run", id: planID, invoke: (*DesktopApp).StartRun, setup: func(commands *recordingRunCommands) { commands.startErr = commandFailure }},
+		{name: "stop sending", id: runID, invoke: (*DesktopApp).StopSending, setup: func(commands *recordingRunCommands) { commands.stopErr = commandFailure }},
+		{name: "cancel run", id: runID, invoke: (*DesktopApp).CancelRun, setup: func(commands *recordingRunCommands) { commands.cancelErr = commandFailure }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			query := &recordingWorkspaceQuery{snapshot: workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}}
+			commands := &recordingRunCommands{}
+			test.setup(commands)
+			app := NewDesktopApp(query, commands)
+			var reported error
+			app.setErrorReporter(func(err error) { reported = err })
+			app.onStartup(context.Background())
+
+			_, err := test.invoke(app, test.id)
+
+			assertBindingErrorCode(t, err, "operation_failed")
+			if query.calls != 0 {
+				t.Fatalf("workspace query calls = %d, want 0", query.calls)
+			}
+			if !errors.Is(reported, commandFailure) {
+				t.Fatalf("locally reported error = %v, want application failure", reported)
+			}
+		})
+	}
+}
+
+func TestDesktopAppCommandsRejectInvalidIdentifiersBeforeDelegation(t *testing.T) {
+	invalidIDs := []string{
+		"",
+		"   ",
+		"not-a-uuid",
+		"00000000-0000-0000-0000-000000000000",
+		"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+	}
+	commands := &recordingRunCommands{}
+	query := &recordingWorkspaceQuery{snapshot: workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}}
+	app := NewDesktopApp(query, commands)
+	app.onStartup(context.Background())
+	operations := []struct {
+		name   string
+		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
+	}{
+		{name: "start run", invoke: (*DesktopApp).StartRun},
+		{name: "stop sending", invoke: (*DesktopApp).StopSending},
+		{name: "cancel run", invoke: (*DesktopApp).CancelRun},
+	}
+
+	for _, operation := range operations {
+		for _, id := range invalidIDs {
+			t.Run(operation.name+"/"+id, func(t *testing.T) {
+				_, err := operation.invoke(app, id)
+				assertBindingErrorCode(t, err, "invalid_identifier")
+			})
+		}
+	}
+	if len(commands.startIDs)+len(commands.stopIDs)+len(commands.cancelIDs) != 0 {
+		t.Fatalf("invalid identifiers reached commands: start=%v stop=%v cancel=%v", commands.startIDs, commands.stopIDs, commands.cancelIDs)
+	}
+	if query.calls != 0 {
+		t.Fatalf("invalid identifiers queried workspace %d times, want 0", query.calls)
+	}
+}
+
+func TestDesktopAppRejectsCallsBeforeStartup(t *testing.T) {
+	query := &recordingWorkspaceQuery{}
+	commands := &recordingRunCommands{}
+	app := NewDesktopApp(query, commands)
+
+	_, err := app.GetWorkspace()
+	assertBindingErrorCode(t, err, "desktop_not_started")
+	_, err = app.StartRun("11111111-1111-4111-8111-111111111111")
+	assertBindingErrorCode(t, err, "desktop_not_started")
+	if query.calls != 0 || len(commands.startIDs) != 0 {
+		t.Fatal("call before startup reached an application dependency")
+	}
+}
+
+func TestDesktopAppTreatsTypedNilDependenciesAsUnavailable(t *testing.T) {
+	const planID = "11111111-1111-4111-8111-111111111111"
+	t.Run("workspace query", func(t *testing.T) {
+		var query *recordingWorkspaceQuery
+		app := NewDesktopApp(query, &recordingRunCommands{})
+		app.onStartup(context.Background())
+
+		_, err := app.GetWorkspace()
+		assertBindingErrorCode(t, err, "workspace_unavailable")
+	})
+
+	t.Run("run commands", func(t *testing.T) {
+		var commands *recordingRunCommands
+		query := &recordingWorkspaceQuery{snapshot: workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}}
+		app := NewDesktopApp(query, commands)
+		app.onStartup(context.Background())
+
+		_, err := app.StartRun(planID)
+		assertBindingErrorCode(t, err, "run_commands_unavailable")
+		if query.calls != 0 {
+			t.Fatalf("workspace query calls = %d, want 0", query.calls)
+		}
+	})
+}
+
+func TestDesktopAppShutdownIsIdempotent(t *testing.T) {
+	closeFailure := errors.New("close failed")
+	closeCalls := 0
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{
+			query: &recordingWorkspaceQuery{},
+			close: func() error {
+				closeCalls++
+				return closeFailure
+			},
+		}, nil
+	})
+	app.onStartup(context.Background())
+
+	first := app.shutdown()
+	second := app.shutdown()
+
+	if !errors.Is(first, closeFailure) || !errors.Is(second, closeFailure) {
+		t.Fatalf("shutdown errors = (%v, %v), want close failure", first, second)
+	}
+	if closeCalls != 1 {
+		t.Fatalf("close calls = %d, want 1", closeCalls)
+	}
+	_, err := app.GetWorkspace()
+	assertBindingErrorCode(t, err, "desktop_stopped")
+}
+
+func TestDesktopAppShutdownBeforeStartupPreventsInitialization(t *testing.T) {
+	initializeCalls := 0
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		initializeCalls++
+		return desktopDependencies{query: &recordingWorkspaceQuery{}}, nil
+	})
+
+	if err := app.shutdown(); err != nil {
+		t.Fatalf("shutdown before startup error = %v", err)
+	}
+	app.onStartup(context.Background())
+
+	if initializeCalls != 0 {
+		t.Fatalf("initializer calls = %d, want 0", initializeCalls)
+	}
+	_, err := app.GetWorkspace()
+	assertBindingErrorCode(t, err, "desktop_stopped")
+}
+
+type cancelableWorkspaceQuery struct {
+	started  chan struct{}
+	returned atomic.Bool
+}
+
+func (query *cancelableWorkspaceQuery) Snapshot(ctx context.Context) (workspace.Snapshot, error) {
+	close(query.started)
+	<-ctx.Done()
+	query.returned.Store(true)
+	return workspace.Snapshot{}, ctx.Err()
+}
+
+func TestDesktopAppShutdownCancelsAndDrainsActiveQueriesBeforeClose(t *testing.T) {
+	query := &cancelableWorkspaceQuery{started: make(chan struct{})}
+	closeCalls := 0
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{
+			query: query,
+			close: func() error {
+				closeCalls++
+				if !query.returned.Load() {
+					return errors.New("resource closed before active query returned")
+				}
+				return nil
+			},
+		}, nil
+	})
+	app.onStartup(context.Background())
+	queryResult := make(chan error, 1)
+	go func() {
+		_, err := app.GetWorkspace()
+		queryResult <- err
+	}()
+
+	select {
+	case <-query.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("workspace query did not start")
+	}
+	shutdownResult := make(chan error, 1)
+	go func() { shutdownResult <- app.shutdown() }()
+
+	select {
+	case err := <-queryResult:
+		assertBindingErrorCode(t, err, "operation_cancelled")
+	case <-time.After(2 * time.Second):
+		t.Fatal("active workspace query was not canceled")
+	}
+	select {
+	case err := <-shutdownResult:
+		if err != nil {
+			t.Fatalf("shutdown error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not drain active query")
+	}
+	if closeCalls != 1 {
+		t.Fatalf("close calls = %d, want 1", closeCalls)
+	}
+}
+
+func assertBindingErrorCode(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("binding error = nil, want code %q", want)
+	}
+	var bindingError DesktopBindingError
+	if !errors.As(err, &bindingError) {
+		t.Fatalf("binding error type = %T, want DesktopBindingError", err)
+	}
+	if bindingError.Code != want {
+		t.Fatalf("binding error code = %q, want %q", bindingError.Code, want)
+	}
+}
+
+func TestDesktopAppBindingErrorsAreStableAndDoNotLeakSensitiveDetails(t *testing.T) {
+	const secret = "https://provider.example/v1 api-key=sk-sensitive-value"
+	sensitiveFailure := errors.New(secret)
+	const validID = "11111111-1111-4111-8111-111111111111"
+	tests := []struct {
+		name   string
+		app    func() *DesktopApp
+		invoke func(*DesktopApp) error
+	}{
+		{
+			name: "startup",
+			app: func() *DesktopApp {
+				return newDesktopApp(func(context.Context) (desktopDependencies, error) {
+					return desktopDependencies{}, sensitiveFailure
+				})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.GetWorkspace()
+				return err
+			},
+		},
+		{
+			name: "workspace query",
+			app: func() *DesktopApp {
+				return NewDesktopApp(&recordingWorkspaceQuery{err: sensitiveFailure}, &recordingRunCommands{})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.GetWorkspace()
+				return err
+			},
+		},
+		{
+			name: "start run",
+			app: func() *DesktopApp {
+				return NewDesktopApp(&recordingWorkspaceQuery{}, &recordingRunCommands{startErr: sensitiveFailure})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.StartRun(validID)
+				return err
+			},
+		},
+		{
+			name: "stop sending",
+			app: func() *DesktopApp {
+				return NewDesktopApp(&recordingWorkspaceQuery{}, &recordingRunCommands{stopErr: sensitiveFailure})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.StopSending(validID)
+				return err
+			},
+		},
+		{
+			name: "cancel run",
+			app: func() *DesktopApp {
+				return NewDesktopApp(&recordingWorkspaceQuery{}, &recordingRunCommands{cancelErr: sensitiveFailure})
+			},
+			invoke: func(app *DesktopApp) error {
+				_, err := app.CancelRun(validID)
+				return err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			app := test.app()
+			var reported error
+			app.setErrorReporter(func(err error) { reported = err })
+			app.onStartup(context.Background())
+
+			err := test.invoke(app)
+
+			if err == nil {
+				t.Fatal("binding error = nil")
+			}
+			if strings.Contains(err.Error(), "provider.example") || strings.Contains(err.Error(), "sk-sensitive-value") {
+				t.Fatalf("binding error leaked sensitive detail: %q", err)
+			}
+			var bindingError DesktopBindingError
+			if !errors.As(err, &bindingError) {
+				t.Fatalf("binding error type = %T, want DesktopBindingError", err)
+			}
+			if test.name == "startup" {
+				if bindingError.Code != "desktop_startup_failed" {
+					t.Fatalf("binding error code = %q, want desktop_startup_failed", bindingError.Code)
+				}
+			} else if bindingError.Code != "operation_failed" {
+				t.Fatalf("binding error code = %q, want operation_failed", bindingError.Code)
+			}
+			if !errors.Is(reported, sensitiveFailure) {
+				t.Fatalf("locally reported error = %v, want sensitive internal failure", reported)
+			}
+		})
+	}
+}
