@@ -1,6 +1,6 @@
-"""Streamlit entry point for LLM Test Lab."""
+"""Streamlit entry point for llm-studio."""
 
-from llm_test.app_shell import run_app
+from llm_studio.app_shell import run_app
 
 
 run_app()

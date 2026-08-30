@@ -8,8 +8,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from llm_test.catalog import Catalog, CatalogError
-from llm_test.ui_theme import page_heading, resource_summary
+from llm_studio.catalog import Catalog, CatalogError
+from llm_studio.ui_theme import page_heading, resource_summary
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]

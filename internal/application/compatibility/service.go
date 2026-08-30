@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/894x/llm-test/engine/apiaudit"
+	"github.com/894x/llm-studio/engine/apiaudit"
 )
 
 type RunRequest struct {

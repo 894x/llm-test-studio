@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	casebundle "github.com/894x/llm-test/cases"
-	"github.com/894x/llm-test/internal/application/caseimport"
-	"github.com/894x/llm-test/internal/application/catalog"
-	"github.com/894x/llm-test/internal/application/reporting"
-	"github.com/894x/llm-test/internal/application/workspace"
-	"github.com/894x/llm-test/internal/persistence/sqlite"
+	casebundle "github.com/894x/llm-studio/cases"
+	"github.com/894x/llm-studio/internal/application/caseimport"
+	"github.com/894x/llm-studio/internal/application/catalog"
+	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/workspace"
+	"github.com/894x/llm-studio/internal/persistence/sqlite"
 )
 
 var desktopApplicationVersion = "dev"
@@ -40,7 +40,7 @@ func defaultProductionOptions() productionOptions {
 		appVersion:    desktopApplicationVersion,
 		caseBundle:    casebundle.Bundle,
 		reportCaseConflicts: func(count int) {
-			log.Printf("llm-test: %d built-in case update conflict(s) retained user revisions", count)
+			log.Printf("llm-studio: %d built-in case update conflict(s) retained user revisions", count)
 		},
 	}
 }
@@ -129,8 +129,8 @@ func productionStoragePaths(configurationRoot string) (directory string, databas
 	if !filepath.IsAbs(root) {
 		return "", "", errors.New("user configuration directory must be an absolute path")
 	}
-	directory = filepath.Join(root, "llm-test")
-	database = filepath.Join(directory, "llm-test.db")
+	directory = filepath.Join(root, "llm-studio")
+	database = filepath.Join(directory, "llm-studio.db")
 	relative, err := filepath.Rel(root, database)
 	if err != nil {
 		return "", "", fmt.Errorf("validate desktop database path: %w", err)

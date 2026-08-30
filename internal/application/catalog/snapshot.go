@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {

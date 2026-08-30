@@ -31,7 +31,7 @@ func main() {
 func desktopOptions(app *DesktopApp, assets fs.FS, report func(error)) *options.App {
 	app.setErrorReporter(report)
 	return &options.App{
-		Title:            "LLM Test Lab",
+		Title:            "llm-studio",
 		Width:            1360,
 		Height:           820,
 		MinWidth:         960,

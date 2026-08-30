@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/894x/llm-test/internal/domain"
-	persistence "github.com/894x/llm-test/internal/persistence/sqlite"
+	"github.com/894x/llm-studio/internal/domain"
+	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
 )
 
 func TestMigrateAppliesCaseImportTrackingSchemaV3(t *testing.T) {

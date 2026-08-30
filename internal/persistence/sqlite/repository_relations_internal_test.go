@@ -31,8 +31,8 @@ func TestRepositoryDSNForcesImmediateTxLock(t *testing.T) {
 		name, input, base string
 		pragmas           int
 	}{
-		{"windows path", `E:\data\llm-test.db`, `E:\data\llm-test.db`, 0},
-		{"existing query", `file:E:/data/llm-test.db?mode=rwc&_pragma=foreign_keys(1)&_pragma=busy_timeout(10)&_txlock=deferred`, `file:E:/data/llm-test.db`, 2},
+		{"windows path", `E:\data\llm-studio.db`, `E:\data\llm-studio.db`, 0},
+		{"existing query", `file:E:/data/llm-studio.db?mode=rwc&_pragma=foreign_keys(1)&_pragma=busy_timeout(10)&_txlock=deferred`, `file:E:/data/llm-studio.db`, 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := repositoryDSN(test.input)

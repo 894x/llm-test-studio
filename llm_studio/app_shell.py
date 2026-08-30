@@ -14,7 +14,7 @@ from .ui_theme import apply_theme, render_top_navigation
 
 def run_app() -> None:
     st.set_page_config(
-        page_title="LLM Test Lab",
+        page_title="llm-studio",
         page_icon="🧪",
         layout="wide",
         initial_sidebar_state="collapsed",

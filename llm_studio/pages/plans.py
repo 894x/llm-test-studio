@@ -17,13 +17,13 @@ from loadtest import (
     LoadTestProgress,
     run_load_test,
 )
-from llm_test.catalog import Catalog
-from llm_test.audit_storage import save_audit_run
-from llm_test.engine_client import EngineClient, EngineError
-from llm_test.metrics import compute_metrics, status_label
-from llm_test.storage import save_run
-from llm_test.ui_components import format_rate, render_results
-from llm_test.ui_theme import page_heading
+from llm_studio.catalog import Catalog
+from llm_studio.audit_storage import save_audit_run
+from llm_studio.engine_client import EngineClient, EngineError
+from llm_studio.metrics import compute_metrics, status_label
+from llm_studio.storage import save_run
+from llm_studio.ui_components import format_rate, render_results
+from llm_studio.ui_theme import page_heading
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]

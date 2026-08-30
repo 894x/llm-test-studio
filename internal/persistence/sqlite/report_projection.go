@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-test/internal/application/reporting"
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 const (

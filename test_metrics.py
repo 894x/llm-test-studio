@@ -1,7 +1,7 @@
 import unittest
 
 from loadtest import LoadTestProgress, RequestResult
-from llm_test.metrics import compute_metrics, percentile, status_label
+from llm_studio.metrics import compute_metrics, percentile, status_label
 
 
 class PercentileTest(unittest.TestCase):

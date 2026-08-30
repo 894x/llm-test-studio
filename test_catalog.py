@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from llm_test.catalog import (
+from llm_studio.catalog import (
     Catalog,
     CatalogNotFoundError,
     CatalogValidationError,

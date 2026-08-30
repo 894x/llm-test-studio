@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	persistence "github.com/894x/llm-test/internal/persistence/sqlite"
+	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
 )
 
 func TestMigrateFreshDatabaseAppliesDomainSchemaV2(t *testing.T) {

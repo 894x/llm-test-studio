@@ -67,8 +67,8 @@ func TestOSStoreUsesStableServiceAndCanonicalAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const wantService = "com.github.894x.llm-test.credentials.v1"
-	const wantAccount = "llm-test/v1/channel_api_key/11111111-2222-4333-8444-555555555555"
+	const wantService = "com.github.894x.llm-studio.credentials.v1"
+	const wantAccount = "llm-studio/v1/channel_api_key/11111111-2222-4333-8444-555555555555"
 	if !backend.has(wantService, wantAccount) {
 		t.Fatalf("backend did not receive stable service %q and account %q", wantService, wantAccount)
 	}

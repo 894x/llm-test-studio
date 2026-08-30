@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) error {

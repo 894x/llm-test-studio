@@ -8,10 +8,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from llm_test.catalog import Catalog
-from llm_test.audit_storage import count_audit_runs
-from llm_test.storage import DB_PATH, count_runs, load_history
-from llm_test.ui_theme import page_heading, section_title, stat_card
+from llm_studio.catalog import Catalog
+from llm_studio.audit_storage import count_audit_runs
+from llm_studio.storage import DB_PATH, count_runs, load_history
+from llm_studio.ui_theme import page_heading, section_title, stat_card
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]

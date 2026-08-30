@@ -5,13 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from llm_test.audit_storage import (
+from llm_studio.audit_storage import (
     count_audit_runs,
     load_audit_history,
     load_audit_run,
     save_audit_run,
 )
-from llm_test.storage import init_db
+from llm_studio.storage import init_db
 
 
 class AuditStorageTest(unittest.TestCase):

@@ -1,11 +1,11 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "llm-test-desktop",
-  "outputfilename": "llm-test",
+  "name": "llm-studio",
+  "outputfilename": "llm-studio",
   "frontend:dir": "frontend",
   "frontend:install": "pnpm install --frozen-lockfile",
   "frontend:build": "pnpm build",
   "author": {
-    "name": "LLM Test"
+    "name": "llm-studio"
   }
 }

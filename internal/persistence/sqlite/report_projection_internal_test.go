@@ -8,8 +8,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/894x/llm-test/internal/application/reporting"
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 func TestReportProjectionRetainedRunStateIsLightweight(t *testing.T) {

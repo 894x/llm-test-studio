@@ -1,8 +1,8 @@
-# LLM Test 桌面前端
+# llm-studio
 
 [English](README.md)
 
-本目录是本地 LLM Test 桌面应用的 React 展示层，负责呈现紧凑的运行工作区、收集用户意图，并调用 Wails 生成的绑定。领域规则、持久化、凭证、执行过程和权威运行状态均由 Go Core 负责。
+本目录是本地 llm-studio 桌面应用的 React 展示层，负责呈现紧凑的运行工作区、收集用户意图，并调用 Wails 生成的绑定。领域规则、持久化、凭证、执行过程和权威运行状态均由 Go Core 负责。
 
 ## 本地开发
 

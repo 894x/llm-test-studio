@@ -9,7 +9,7 @@ loadtest_history.db
 data/
 multimodal_results.json
 test_results_*.json
-/cmd/llm-test/output/
+/cmd/llm-studio/output/
 /output/
 
 # Local secrets

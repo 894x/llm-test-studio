@@ -1,4 +1,4 @@
-module github.com/894x/llm-test
+module github.com/894x/llm-studio
 
 go 1.22.0
 

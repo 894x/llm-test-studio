@@ -433,7 +433,7 @@ def apply_theme() -> None:
 def render_top_navigation(pages: list) -> None:
     st.markdown(
         '<div class="lab-header-brand"><span class="lab-brand-mark">science</span>'
-        '<span>LLM Test Lab</span></div>',
+        '<span>llm-studio</span></div>',
         unsafe_allow_html=True,
     )
     links = [

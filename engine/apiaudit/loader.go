@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/894x/llm-test/engine/common"
+	"github.com/894x/llm-studio/engine/common"
 )
 
 var safeCaseIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)

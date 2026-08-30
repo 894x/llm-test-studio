@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from llm_test.metrics import status_label
+from llm_studio.metrics import status_label
 
 
 REPORT_WIDTH = 1600

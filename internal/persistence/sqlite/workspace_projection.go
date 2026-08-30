@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/894x/llm-test/internal/application/workspace"
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/application/workspace"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 // ListRunProjections returns the bounded run-list read model expected by the

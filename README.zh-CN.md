@@ -1,8 +1,8 @@
-# LLM Test Lab
+# llm-studio
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-LLM Test Lab 是一个面向 OpenAI 兼容模型网关的独立验证工作区。它集成了 Streamlit 仪表盘、异步 Python 负载生成器和 Go 兼容性引擎可执行文件，使模型配置、协议用例、实时结果和可审查报告能够在同一个仓库中统一管理。
+llm-studio 是一个面向 OpenAI 兼容模型网关的独立验证工作区。它集成了 Streamlit 仪表盘、异步 Python 负载生成器和 Go 兼容性引擎可执行文件，使模型配置、协议用例、实时结果和可审查报告能够在同一个仓库中统一管理。
 
 当前实现覆盖三类测试路径：
 
@@ -58,13 +58,13 @@ flowchart LR
 
 主要边界如下：
 
-- `app.py` 和 `llm_test/app_shell.py` — Streamlit 入口和五页面导航；
-- `llm_test/pages/` — 概览、目录、计划和历史记录等仪表盘工作流；
-- `llm_test/catalog.py` — 模型和用例的校验及原子文件系统更新；
+- `app.py` 和 `llm_studio/app_shell.py` — Streamlit 入口和五页面导航；
+- `llm_studio/pages/` — 概览、目录、计划和历史记录等仪表盘工作流；
+- `llm_studio/catalog.py` — 模型和用例的校验及原子文件系统更新；
 - `loadtest.py` — 异步 OpenAI 兼容性能请求；
-- `llm_test/engine_client.py` — Go 引擎的构建和 JSONL 进程边界；
+- `llm_studio/engine_client.py` — Go 引擎的构建和 JSONL 进程边界；
 - `engine/` — 用例加载、协议执行、评估、脱敏和审计报告生成；
-- `llm_test/storage.py` 和 `llm_test/audit_storage.py` — 本地持久化；
+- `llm_studio/storage.py` 和 `llm_studio/audit_storage.py` — 本地持久化；
 - `report_export.py` — 性能报告渲染。
 
 ## 环境要求
@@ -237,13 +237,13 @@ Go 进程边界及其集成测试现已跨平台，并显式使用 UTF-8 解码 
 
 ```text
 app.py                       Streamlit 入口
-llm_test/app_shell.py        导航和应用外壳
-llm_test/pages/              概览、模型、用例、计划和运行记录
-llm_test/catalog.py          模型和用例文件系统目录
-llm_test/storage.py          性能运行持久化
-llm_test/audit_storage.py    兼容性和 Seedance 持久化
-llm_test/metrics.py          共享性能计算
-llm_test/engine_client.py    Go 引擎的 Python 边界
+llm_studio/app_shell.py      导航和应用外壳
+llm_studio/pages/            概览、模型、用例、计划和运行记录
+llm_studio/catalog.py        模型和用例文件系统目录
+llm_studio/storage.py        性能运行持久化
+llm_studio/audit_storage.py  兼容性和 Seedance 持久化
+llm_studio/metrics.py        共享性能计算
+llm_studio/engine_client.py  Go 引擎的 Python 边界
 loadtest.py                  异步性能请求引擎
 report_export.py             HTML、PDF 和 PNG 性能导出
 engine/                      独立兼容性引擎

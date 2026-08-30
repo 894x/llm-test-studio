@@ -14,18 +14,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/894x/llm-test/internal/application/compatibility"
-	appdoctor "github.com/894x/llm-test/internal/application/doctor"
+	"github.com/894x/llm-studio/internal/application/compatibility"
+	appdoctor "github.com/894x/llm-studio/internal/application/doctor"
 )
 
-const rootUsage = `Usage: llm-test <doctor|audit> [options]
+const rootUsage = `Usage: llm-studio <doctor|audit> [options]
 
 Commands:
   doctor      Check whether the Go core and local case definitions are usable
   audit       List or run compatibility audit cases
 `
 
-const auditUsage = `Usage: llm-test audit <list|run> [options]
+const auditUsage = `Usage: llm-studio audit <list|run> [options]
 
 Commands:
   list        List available compatibility cases
@@ -257,7 +257,7 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	flags.Var(&caseIDs, "case", "case ID to run; repeat for multiple cases")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return writeUsage(stdout, stderr, "Usage: llm-test audit run [options]\n")
+			return writeUsage(stdout, stderr, "Usage: llm-studio audit run [options]\n")
 		}
 		return diagnosticExit(stderr, normalizeFormat(format.value), "usage_error", "invalid audit run options", 2)
 	}
@@ -478,7 +478,7 @@ func runAuditList(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	format := flags.String("format", "json", "output format: json or human")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return writeUsage(stdout, stderr, "Usage: llm-test audit list [options]\n")
+			return writeUsage(stdout, stderr, "Usage: llm-studio audit list [options]\n")
 		}
 		return diagnosticExit(stderr, normalizeFormat(*format), "usage_error", "invalid audit list options", 2)
 	}
@@ -567,7 +567,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer, dep
 	format := flags.String("format", "json", "output format: json or human")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return writeUsage(stdout, stderr, "Usage: llm-test doctor [options]\n")
+			return writeUsage(stdout, stderr, "Usage: llm-studio doctor [options]\n")
 		}
 		return diagnosticExit(stderr, normalizeFormat(*format), "usage_error", "invalid doctor options", 2)
 	}

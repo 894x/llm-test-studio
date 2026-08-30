@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 func fixedProfile(requests uint64, concurrency uint32) domain.LoadProfile {

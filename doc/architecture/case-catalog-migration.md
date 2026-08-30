@@ -93,7 +93,7 @@ schema v3 新增 `test_case_import_sources`，并遍历 v2 已有的 `test_cases
 | 运行方式 | 数据来源 | 当前用途 |
 | --- | --- | --- |
 | 浏览器直接运行 Vite，且没有 Wails binding | `features/runs/fixtures` 的小型、进程内样例 | 页面开发、组件测试和交互预览；不是完整目录验收 |
-| Wails production | 用户配置目录下 `llm-test/llm-test.db` | 启动顺序为 migration → repository → 内置 bundle import → catalog/report/workspace service；完整目录为 89 个用例 |
+| Wails production | 用户配置目录下 `llm-studio/llm-studio.db` | 启动顺序为 migration → repository → 内置 bundle import → catalog/report/workspace service；完整目录为 89 个用例 |
 
 非开发构建缺少 Wails binding 时返回公开的 unavailable 错误，不替换为 fixture。由此，Vite 页面里看到的用例数量不能用于判断 SQLite 导入结果；生产目录数量应通过 Wails `GetCatalog` 或 repository 测试确认。
 

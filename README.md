@@ -1,8 +1,8 @@
-# LLM Test Lab
+# llm-studio
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-LLM Test Lab is a standalone validation workspace for OpenAI-compatible model gateways. It combines a Streamlit dashboard, an asynchronous Python load generator, and a Go compatibility-engine executable so model profiles, protocol cases, live results, and reviewable reports can be managed in one repository.
+llm-studio is a standalone validation workspace for OpenAI-compatible model gateways. It combines a Streamlit dashboard, an asynchronous Python load generator, and a Go compatibility-engine executable so model profiles, protocol cases, live results, and reviewable reports can be managed in one repository.
 
 The current implementation covers three test paths:
 
@@ -58,13 +58,13 @@ flowchart LR
 
 The main boundaries are:
 
-- `app.py` and `llm_test/app_shell.py` — Streamlit entry point and five-page navigation;
-- `llm_test/pages/` — dashboard workflows for overview, catalogs, plans, and history;
-- `llm_test/catalog.py` — validation and atomic filesystem updates for models and cases;
+- `app.py` and `llm_studio/app_shell.py` — Streamlit entry point and five-page navigation;
+- `llm_studio/pages/` — dashboard workflows for overview, catalogs, plans, and history;
+- `llm_studio/catalog.py` — validation and atomic filesystem updates for models and cases;
 - `loadtest.py` — asynchronous OpenAI-compatible performance requests;
-- `llm_test/engine_client.py` — build and JSONL process boundary for the Go engine;
+- `llm_studio/engine_client.py` — build and JSONL process boundary for the Go engine;
 - `engine/` — case loading, protocol execution, evaluation, redaction, and audit report generation;
-- `llm_test/storage.py` and `llm_test/audit_storage.py` — local persistence;
+- `llm_studio/storage.py` and `llm_studio/audit_storage.py` — local persistence;
 - `report_export.py` — performance report rendering.
 
 ## Requirements
@@ -237,13 +237,13 @@ The Go process boundary and its integration tests are platform-neutral, includin
 
 ```text
 app.py                       Streamlit entry point
-llm_test/app_shell.py        Navigation and application shell
-llm_test/pages/              Overview, models, cases, plans, and runs
-llm_test/catalog.py          Model and case filesystem catalog
-llm_test/storage.py          Performance-run persistence
-llm_test/audit_storage.py    Compatibility and Seedance persistence
-llm_test/metrics.py          Shared performance calculations
-llm_test/engine_client.py    Python boundary for the Go engine
+llm_studio/app_shell.py      Navigation and application shell
+llm_studio/pages/            Overview, models, cases, plans, and runs
+llm_studio/catalog.py        Model and case filesystem catalog
+llm_studio/storage.py        Performance-run persistence
+llm_studio/audit_storage.py  Compatibility and Seedance persistence
+llm_studio/metrics.py        Shared performance calculations
+llm_studio/engine_client.py  Python boundary for the Go engine
 loadtest.py                  Async performance request engine
 report_export.py             HTML, PDF, and PNG performance exports
 engine/                      Standalone compatibility engine

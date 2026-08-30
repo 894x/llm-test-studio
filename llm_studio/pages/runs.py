@@ -9,11 +9,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from llm_test.metrics import compute_metrics
-from llm_test.audit_storage import load_audit_history, load_audit_run
-from llm_test.storage import load_history, load_saved_run
-from llm_test.ui_components import render_copy_png_button, render_results
-from llm_test.ui_theme import page_heading, section_title
+from llm_studio.metrics import compute_metrics
+from llm_studio.audit_storage import load_audit_history, load_audit_run
+from llm_studio.storage import load_history, load_saved_run
+from llm_studio.ui_components import render_copy_png_button, render_results
+from llm_studio.ui_theme import page_heading, section_title
 from report_export import build_report_artifacts
 
 

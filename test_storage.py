@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from loadtest import LoadTestConfig, LoadTestProgress, RequestResult
-from llm_test.storage import (
+from llm_studio.storage import (
     DEFAULT_CAPTURE_POLICY,
     count_runs,
     decode_json,

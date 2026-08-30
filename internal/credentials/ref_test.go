@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 const testCredentialID = "11111111-2222-4333-8444-555555555555"
@@ -17,7 +17,7 @@ func TestNewStoreRefBuildsStableNamespacedReference(t *testing.T) {
 		t.Fatalf("NewStoreRef() error = %v", err)
 	}
 
-	const want = "llm-test/v1/channel_api_key/11111111-2222-4333-8444-555555555555"
+	const want = "llm-studio/v1/channel_api_key/11111111-2222-4333-8444-555555555555"
 	if got := ref.Value(); got != want {
 		t.Fatalf("Value() = %q, want %q", got, want)
 	}
@@ -40,12 +40,12 @@ func TestNewStoreRefBuildsStableNamespacedReference(t *testing.T) {
 func TestParseStoreRefRejectsNamespaceConfusion(t *testing.T) {
 	invalid := []string{
 		"",
-		"llm-test/v2/channel_api_key/" + testCredentialID,
+		"llm-studio/v2/channel_api_key/" + testCredentialID,
 		"other/v1/channel_api_key/" + testCredentialID,
-		"llm-test/v1/channel_api_key/../" + testCredentialID,
-		"llm-test/v1/channel_api_key/" + testCredentialID + "/extra",
-		"llm-test/v1/CHANNEL_API_KEY/" + testCredentialID,
-		"llm-test/v1/channel_api_key/00000000-0000-0000-0000-000000000000",
+		"llm-studio/v1/channel_api_key/../" + testCredentialID,
+		"llm-studio/v1/channel_api_key/" + testCredentialID + "/extra",
+		"llm-studio/v1/CHANNEL_API_KEY/" + testCredentialID,
+		"llm-studio/v1/channel_api_key/00000000-0000-0000-0000-000000000000",
 	}
 	for _, value := range invalid {
 		t.Run(strings.ReplaceAll(value, "/", "_"), func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestStoreRefFromCredentialRequiresMatchingPurpose(t *testing.T) {
 	}
 	ref := domain.CredentialRef{
 		EntityMeta:   meta,
-		StoreRef:     "llm-test/v1/channel_api_key/" + testCredentialID,
+		StoreRef:     "llm-studio/v1/channel_api_key/" + testCredentialID,
 		Purpose:      domain.CredentialIntegrationAdmin,
 		MaskedSuffix: "abcd",
 		Fingerprint:  "sha256:" + strings.Repeat("a", 64),
@@ -81,7 +81,7 @@ func TestStoreRefFromCredentialRequiresMatchingCredentialID(t *testing.T) {
 	}
 	ref := domain.CredentialRef{
 		EntityMeta:   meta,
-		StoreRef:     "llm-test/v1/channel_api_key/" + testCredentialID,
+		StoreRef:     "llm-studio/v1/channel_api_key/" + testCredentialID,
 		Purpose:      domain.CredentialChannelAPIKey,
 		MaskedSuffix: "abcd",
 		Fingerprint:  "sha256:" + strings.Repeat("a", 64),
@@ -99,7 +99,7 @@ func TestStoreRefFromCredentialAcceptsFullyBoundReference(t *testing.T) {
 	}
 	ref := domain.CredentialRef{
 		EntityMeta:   meta,
-		StoreRef:     "llm-test/v1/channel_api_key/" + meta.ID,
+		StoreRef:     "llm-studio/v1/channel_api_key/" + meta.ID,
 		Purpose:      domain.CredentialChannelAPIKey,
 		MaskedSuffix: "abcd",
 		Fingerprint:  "sha256:" + strings.Repeat("a", 64),

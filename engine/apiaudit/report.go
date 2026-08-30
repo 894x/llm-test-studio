@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/894x/llm-test/engine/common"
+	"github.com/894x/llm-studio/engine/common"
 )
 
 var signedURLPattern = regexp.MustCompile(`https?://[^\s"<>?]+\?[^\s"<>]+`)

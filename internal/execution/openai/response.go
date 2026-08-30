@@ -9,7 +9,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/894x/llm-test/internal/execution/load"
+	"github.com/894x/llm-studio/internal/execution/load"
 )
 
 const streamReadBufferBytes = 4 << 10

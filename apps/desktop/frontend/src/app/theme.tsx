@@ -7,7 +7,7 @@ import {
 
 import { ThemeContext, type ThemePreference } from "./theme-context"
 
-const STORAGE_KEY = "llm-test:ui-preferences:v1"
+const STORAGE_KEY = "llm-studio:ui-preferences:v1"
 const DARK_QUERY = "(prefers-color-scheme: dark)"
 function isThemePreference(value: unknown): value is ThemePreference {
   return value === "system" || value === "light" || value === "dark"

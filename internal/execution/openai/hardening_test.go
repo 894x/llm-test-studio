@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-test/internal/domain"
-	"github.com/894x/llm-test/internal/execution/load"
+	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-studio/internal/execution/load"
 )
 
 func TestClientOwnsRedirectPolicyAndNeverFollows307(t *testing.T) {

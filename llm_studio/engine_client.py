@@ -15,7 +15,7 @@ import tempfile
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 
-ENGINE_API_KEY_ENV = "LLM_TEST_ENGINE_API_KEY"
+ENGINE_API_KEY_ENV = "LLM_STUDIO_ENGINE_API_KEY"
 
 
 class EngineError(RuntimeError):

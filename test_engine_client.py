@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from llm_test.engine_client import ENGINE_API_KEY_ENV, EngineClient
+from llm_studio.engine_client import ENGINE_API_KEY_ENV, EngineClient
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -99,7 +99,7 @@ class EngineClientCredentialTests(unittest.TestCase):
                 return None
 
         client = EngineClient(PROJECT_ROOT, binary_path=sys.executable)
-        with patch("llm_test.engine_client.subprocess.Popen", FakeProcess):
+        with patch("llm_studio.engine_client.subprocess.Popen", FakeProcess):
             events = client.run(
                 suite="openai-chat",
                 base_url="https://gateway.example",
@@ -110,7 +110,9 @@ class EngineClientCredentialTests(unittest.TestCase):
 
         self.assertEqual("final", events[-1]["type"])
         self.assertNotIn(secret, observed["command"])
-        self.assertEqual(secret, observed["environment"][ENGINE_API_KEY_ENV])
+        self.assertEqual(
+            secret, observed["environment"]["LLM_STUDIO_ENGINE_API_KEY"]
+        )
         self.assertIn("--api-key-env", observed["command"])
 
 

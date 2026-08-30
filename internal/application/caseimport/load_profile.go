@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/894x/llm-test/internal/domain"
+	"github.com/894x/llm-studio/internal/domain"
 )
 
 type legacyLoadProfile struct {

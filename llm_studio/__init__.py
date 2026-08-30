@@ -1,4 +1,4 @@
-"""Reusable domain helpers for the LLM load-test dashboard."""
+"""Reusable domain helpers for llm-studio."""
 
 from .metrics import compute_metrics, percentile, status_label
 from .storage import (

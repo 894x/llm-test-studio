@@ -44,4 +44,4 @@ code 2 means configuration or usage failed.
 During the Application Core refactor this executable remains a compatibility
 adapter for Streamlit and scripts. Planning, execution state, evaluation, and
 report orchestration are moving into shared Core packages used by both this
-adapter and `llm-test`.
+adapter and `llm-studio`.

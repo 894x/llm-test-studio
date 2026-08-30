@@ -40,4 +40,4 @@ JSONL schema version 1 输出：
 
 在 Application Core 重构期间，此可执行文件继续作为 Streamlit 和脚本的兼容
 adapter。计划、执行状态、评估和报告编排将迁入共享 Core 包，由该 adapter 与
-`llm-test` 共同调用。
+`llm-studio` 共同调用。

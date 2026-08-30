@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-test/internal/credentials"
-	"github.com/894x/llm-test/internal/domain"
-	"github.com/894x/llm-test/internal/execution/load"
+	"github.com/894x/llm-studio/internal/credentials"
+	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-studio/internal/execution/load"
 )
 
 const (

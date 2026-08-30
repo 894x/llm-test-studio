@@ -10,10 +10,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/894x/llm-test/internal/application/catalog"
-	"github.com/894x/llm-test/internal/application/reporting"
-	"github.com/894x/llm-test/internal/application/workspace"
-	"github.com/894x/llm-test/internal/persistence/sqlite"
+	"github.com/894x/llm-studio/internal/application/catalog"
+	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/workspace"
+	"github.com/894x/llm-studio/internal/persistence/sqlite"
 )
 
 func TestProductionStoragePathsStayWithinInjectedConfigurationRoot(t *testing.T) {
@@ -22,8 +22,8 @@ func TestProductionStoragePathsStayWithinInjectedConfigurationRoot(t *testing.T)
 	if err != nil {
 		t.Fatalf("productionStoragePaths() error = %v", err)
 	}
-	wantDirectory := filepath.Join(configurationRoot, "llm-test")
-	wantDatabase := filepath.Join(wantDirectory, "llm-test.db")
+	wantDirectory := filepath.Join(configurationRoot, "llm-studio")
+	wantDatabase := filepath.Join(wantDirectory, "llm-studio.db")
 	if directory != wantDirectory || database != wantDatabase {
 		t.Fatalf("storage paths = (%q, %q), want (%q, %q)", directory, database, wantDirectory, wantDatabase)
 	}
@@ -85,8 +85,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 		t.Fatal("production initializer invented run commands")
 	}
 
-	directory := filepath.Join(configurationRoot, "llm-test")
-	database := filepath.Join(directory, "llm-test.db")
+	directory := filepath.Join(configurationRoot, "llm-studio")
+	database := filepath.Join(directory, "llm-studio.db")
 	if _, err := os.Stat(database); err != nil {
 		t.Fatalf("stat production database: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestProductionInitializerKeepsUserEditedBuiltInCaseAvailableOnBundleConflic
 		t.Fatalf("close first production initialization: %v", err)
 	}
 
-	database := filepath.Join(configurationRoot, "llm-test", "llm-test.db")
+	database := filepath.Join(configurationRoot, "llm-studio", "llm-studio.db")
 	repository, err := sqlite.OpenRepository(context.Background(), database, sqlite.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("open repository for user edit: %v", err)
