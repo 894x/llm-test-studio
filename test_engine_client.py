@@ -39,7 +39,10 @@ class EngineClientIntegrationTests(unittest.TestCase):
         cls.temporary_directory = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary_directory.name)
         shutil.copy2(PROJECT_ROOT / "go.mod", cls.root / "go.mod")
+        if (PROJECT_ROOT / "go.sum").is_file():
+            shutil.copy2(PROJECT_ROOT / "go.sum", cls.root / "go.sum")
         shutil.copytree(PROJECT_ROOT / "engine", cls.root / "engine")
+        shutil.copytree(PROJECT_ROOT / "internal", cls.root / "internal")
         shutil.rmtree(cls.root / "engine" / "bin", ignore_errors=True)
         write_case(cls.root)
         cls.client = EngineClient(cls.root)
