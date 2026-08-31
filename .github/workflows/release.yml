@@ -1,0 +1,200 @@
+name: Release desktop app
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+  WAILS_VERSION: v2.12.0
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows amd64
+            os: windows-latest
+            artifact: windows-amd64
+          - name: macOS universal
+            os: macos-latest
+            artifact: macos-universal
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.0.8
+        with:
+          version: 10.30.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: apps/desktop/frontend/pnpm-lock.yaml
+
+      - name: Install the project Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Derive release metadata
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const tag = process.env.GITHUB_REF_NAME;
+          const match = /^v(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(tag);
+          if (!match) {
+            throw new Error(`Release tag must use semantic versioning, for example v1.2.3; received ${tag}`);
+          }
+
+          const packageVersion = match.slice(1, 4).map(Number).join(".");
+          const assetVersion = tag.replace(/[^0-9A-Za-z._-]/g, "-");
+          fs.appendFileSync(
+            process.env.GITHUB_ENV,
+            `APP_VERSION=${tag}\nPACKAGE_VERSION=${packageVersion}\nASSET_VERSION=${assetVersion}\n`,
+          );
+
+          const configPath = "wails.json";
+          const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+          config.info = {
+            ...config.info,
+            companyName: "llm-studio",
+            productName: "LLM Studio",
+            productVersion: packageVersion,
+          };
+          fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis --no-progress -y
+
+      - name: Build Windows application and installer
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: >-
+          wails build
+          -clean
+          -nosyncgomod
+          -trimpath
+          -platform windows/amd64
+          -nsis
+          -webview2 download
+          -ldflags "-X main.desktopApplicationVersion=$env:APP_VERSION"
+
+      - name: Package Windows release assets
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $releaseDirectory = New-Item -ItemType Directory -Force -Path release
+          $binary = "build/bin/llm-studio.exe"
+          $installer = "build/bin/llm-studio-amd64-installer.exe"
+          if (-not (Test-Path -LiteralPath $binary)) {
+            throw "Windows binary was not produced at $binary"
+          }
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "Windows installer was not produced at $installer"
+          }
+
+          Compress-Archive `
+            -LiteralPath $binary `
+            -DestinationPath "$($releaseDirectory.FullName)/llm-studio-$env:ASSET_VERSION-windows-amd64.zip"
+          Copy-Item `
+            -LiteralPath $installer `
+            -Destination "$($releaseDirectory.FullName)/llm-studio-$env:ASSET_VERSION-windows-amd64-installer.exe"
+
+      - name: Build macOS universal application
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          wails build \
+            -clean \
+            -nosyncgomod \
+            -trimpath \
+            -platform darwin/universal \
+            -ldflags "-X main.desktopApplicationVersion=${APP_VERSION}"
+
+      - name: Package macOS release assets
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          test -d build/bin/llm-studio.app
+          mkdir -p release
+          ditto \
+            -c -k --sequesterRsrc --keepParent \
+            build/bin/llm-studio.app \
+            "release/llm-studio-${ASSET_VERSION}-macos-universal.zip"
+          hdiutil create \
+            -volname "LLM Studio ${APP_VERSION}" \
+            -srcfolder build/bin/llm-studio.app \
+            -ov \
+            -format UDZO \
+            "release/llm-studio-${ASSET_VERSION}-macos-universal.dmg"
+
+      - name: Upload packaged assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: llm-studio-${{ matrix.artifact }}
+          path: apps/desktop/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged assets
+        uses: actions/download-artifact@v7
+        with:
+          pattern: llm-studio-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd release-assets
+          sha256sum ./* > SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
