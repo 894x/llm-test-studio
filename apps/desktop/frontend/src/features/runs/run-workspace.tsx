@@ -6,7 +6,7 @@ import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
 
 import {
-  publicDesktopErrorMessage,
+  publicDesktopOperationErrorMessage,
 } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -415,7 +415,11 @@ export function NewRunSheet({
       setOpen(false)
     } catch (error) {
       setStartError(
-        publicDesktopErrorMessage(error, "无法创建运行，请检查本地日志"),
+        publicDesktopOperationErrorMessage(
+          error,
+          `创建运行（计划：${plans.find((plan) => plan.id === effectiveSelectedPlan)?.name ?? effectiveSelectedPlan}）`,
+          "无法创建运行，请检查本地日志",
+        ),
       )
     }
   }

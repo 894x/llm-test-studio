@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
+import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
@@ -43,8 +44,12 @@ export function ReportWorkspace({ snapshot, getDetail, exportReport }: {
     setExportError("")
     try {
       downloadExport(await exportReport(selected.id, format))
-    } catch {
-      setExportError("报告导出失败，请检查本地日志")
+    } catch (error) {
+      setExportError(publicDesktopOperationErrorMessage(
+        error,
+        `导出 ${format.toUpperCase()} 报告（${selected.verdict}）`,
+        "报告导出失败，请检查本地日志",
+      ))
     } finally {
       setExporting("")
     }

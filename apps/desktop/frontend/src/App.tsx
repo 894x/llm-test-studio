@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   createDesktopClient,
   publicDesktopErrorMessage,
+  publicDesktopOperationErrorMessage,
   type DesktopClient,
 } from "@/app/desktop-client"
 import { ThemeProvider } from "@/app/theme"
@@ -128,7 +129,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
   )
 
   const mutateCatalog = useCallback(
-    async (operation: () => Promise<CatalogSnapshot>): Promise<void> => {
+    async (operation: () => Promise<CatalogSnapshot>, operationLabel: string): Promise<void> => {
       setCatalogMutationPending(true)
       setCatalogMutationError("")
       try {
@@ -136,10 +137,10 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
         try {
           setSnapshot(await client.getWorkspace())
         } catch {
-          setCatalogMutationError("目录已保存，但运行计划列表刷新失败，请重新打开应用")
+          setCatalogMutationError(`${operationLabel}已完成，但运行计划列表刷新失败，请重新打开应用`)
         }
       } catch (error) {
-        setCatalogMutationError(publicDesktopErrorMessage(error, "目录操作失败，请检查对象是否仍被引用"))
+        setCatalogMutationError(publicDesktopOperationErrorMessage(error, operationLabel, "目录操作失败，请检查对象是否仍被引用"))
         throw error
       } finally {
         setCatalogMutationPending(false)

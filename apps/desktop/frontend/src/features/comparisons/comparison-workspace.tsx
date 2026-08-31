@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import GitCompareArrowsIcon from "lucide-react/dist/esm/icons/git-compare-arrows.mjs"
 
-import { publicDesktopErrorMessage } from "@/app/desktop-client"
+import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -57,7 +57,11 @@ export function NewComparisonSheet({
       await onStart({ plan_id: plan.id, model_id: effectiveModelID, channel_ids: effectiveSelected })
       setOpen(false)
     } catch (caught) {
-      setError(publicDesktopErrorMessage(caught, "无法启动渠道对比，请检查本地日志"))
+      setError(publicDesktopOperationErrorMessage(
+        caught,
+        `启动渠道对比（计划：${plan.name}，模型：${models.find((model) => model.id === effectiveModelID)?.name ?? effectiveModelID}，渠道：${effectiveSelected.length} 个）`,
+        "无法启动渠道对比，请检查本地日志",
+      ))
     }
   }
 

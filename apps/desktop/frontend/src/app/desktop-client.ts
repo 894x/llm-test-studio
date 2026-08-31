@@ -85,6 +85,14 @@ export function publicDesktopErrorMessage(
   return error instanceof DesktopClientError ? error.message : fallback
 }
 
+export function publicDesktopOperationErrorMessage(
+  error: unknown,
+  operation: string,
+  fallback: string,
+): string {
+  return `${operation}失败：${publicDesktopErrorMessage(error, fallback)}`
+}
+
 export interface DesktopClient extends CatalogActions {
   getWorkspace(): Promise<WorkspaceSnapshot>
   getCatalog(): Promise<CatalogSnapshot>

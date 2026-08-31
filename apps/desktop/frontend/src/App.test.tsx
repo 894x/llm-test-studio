@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 import App from "./App"
-import type { DesktopClient } from "./app/desktop-client"
+import { DesktopClientError, type DesktopClient } from "./app/desktop-client"
 import {
   FIXTURE_CATALOG,
   FIXTURE_REPORTS,
@@ -119,7 +119,7 @@ describe("desktop run workspace", () => {
     })
   })
 
-  it("starts a same-model comparison across selected channels", async () => {
+	it("starts a same-model comparison across selected channels", async () => {
 		const user = userEvent.setup()
 		const client = desktopClient()
 		const catalog = structuredClone(FIXTURE_CATALOG)
@@ -144,6 +144,37 @@ describe("desktop run workspace", () => {
 		await waitFor(() => expect(client.startComparison).toHaveBeenCalledWith({
 			plan_id: plan.id, model_id: model.id, channel_ids: [catalog.channels[0].id, secondChannel.id],
 		}))
+	})
+
+	it("identifies the comparison selection when starting it fails", async () => {
+		const user = userEvent.setup()
+		const client = desktopClient()
+		const catalog = structuredClone(FIXTURE_CATALOG)
+		const plan = catalog.plans[0]
+		const model = catalog.models[0]
+		const secondChannel = catalog.channels[1]
+		plan.channel_ids.push(secondChannel.id)
+		plan.channel_count = 2
+		secondChannel.model_count += 1
+		catalog.channel_models.push({
+			id: "77777777-7777-4777-8777-777777777798", revision: 1,
+			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name,
+		})
+		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+		vi.mocked(client.startComparison).mockRejectedValueOnce(
+			new DesktopClientError("comparison_unavailable"),
+		)
+
+		render(<App client={client} />)
+		await user.click(await screen.findByRole("button", { name: "渠道对比" }))
+		const dialog = screen.getByRole("dialog", { name: "同模型渠道对比" })
+		await user.click(within(dialog).getByRole("checkbox", { name: /OpenAI 主渠道/ }))
+		await user.click(within(dialog).getByRole("checkbox", { name: /阿里云备用渠道/ }))
+		await user.click(within(dialog).getByRole("button", { name: "对比 2 个渠道" }))
+
+		expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+			"启动渠道对比（计划：营销文案基准，模型：gpt-5.2，渠道：2 个）失败：渠道对比暂不可用",
+		)
 	})
 
   it("opens every primary workspace from the main navigation", async () => {
@@ -242,6 +273,41 @@ describe("desktop run workspace", () => {
     expect(client.getWorkspace).toHaveBeenCalledTimes(4)
   })
 
+  it("identifies the catalog form and field when local validation blocks saving", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    render(<App client={desktopClient()} />)
+
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "新增模型" }))
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "新增模型表单校验失败：模型名称不能为空。请修改后重新保存。",
+    )
+  })
+
+  it("identifies the catalog form when its backend save is rejected", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.createModel).mockRejectedValueOnce(
+      new DesktopClientError("catalog_revision_conflict"),
+    )
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "新增模型" }))
+    await user.type(screen.getByLabelText("模型名称"), "gpt-conflict")
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+
+    const dialog = screen.getByRole("dialog", { name: "新增模型" })
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "新增模型保存失败：对象版本已变化或仍被引用，请刷新并解除引用后重试",
+    )
+    expect(dialog.querySelector('[data-slot="field-group"]')).not.toHaveAttribute("aria-invalid")
+  })
+
   it("exposes CRUD entry points for mappings, cases, suites, and plans", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
@@ -279,7 +345,9 @@ describe("desktop run workspace", () => {
     await screen.findByRole("heading", { name: "模型与渠道" })
     await user.click(screen.getByRole("button", { name: "删除模型" }))
     await user.click(screen.getByRole("button", { name: "确认删除模型" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent("目录操作失败，请检查对象是否仍被引用")
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "删除模型失败：目录操作失败，请检查对象是否仍被引用",
+    )
   })
 
   it("preserves pinned case revisions during a suite name edit", async () => {
@@ -395,6 +463,40 @@ describe("desktop run workspace", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
     expect(client.startRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.plans[1].id)
+  })
+
+  it("identifies the selected plan when creating a run fails", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.startRun).mockRejectedValueOnce(
+      new DesktopClientError("run_commands_unavailable"),
+    )
+    render(<App client={client} />)
+
+    await user.click(await screen.findByRole("button", { name: "新建运行" }))
+    const dialog = screen.getByRole("dialog", { name: "新建运行" })
+    await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "创建运行（计划：营销文案基准）失败：运行命令暂不可用",
+    )
+  })
+
+  it("identifies the report and format when an export fails", async () => {
+    window.history.replaceState(null, "", "#reports")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.exportReport).mockRejectedValueOnce(
+      new DesktopClientError("reports_unavailable"),
+    )
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "测试报告" })
+    await user.click(screen.getByRole("button", { name: "JSON" }))
+
+    expect(await screen.findByText(
+      "导出 JSON 报告（兼容性门禁通过）失败：测试报告暂不可用",
+    )).toBeInTheDocument()
   })
 
   it("treats stop-sending and cancel as separate lifecycle actions", async () => {

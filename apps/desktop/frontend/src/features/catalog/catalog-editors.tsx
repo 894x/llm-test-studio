@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
 
+import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -24,7 +25,10 @@ import type {
 
 export type CatalogEntityKind = "model" | "channel" | "mapping" | "case" | "suite" | "plan"
 export type CatalogEntity = CatalogModel | CatalogChannel | CatalogChannelModel | CatalogTestCase | CatalogSuite | CatalogPlan
-export type CatalogMutation = (operation: () => Promise<CatalogSnapshot>) => Promise<void>
+export type CatalogMutation = (
+  operation: () => Promise<CatalogSnapshot>,
+  operationLabel: string,
+) => Promise<void>
 
 const TITLES: Record<CatalogEntityKind, string> = {
   model: "模型", channel: "渠道", mapping: "映射", case: "用例", suite: "套件", plan: "计划",
@@ -55,7 +59,7 @@ export function CatalogEditor({
           <SheetDescription>保存后将刷新整个本地目录；编辑会检查当前版本，避免覆盖其他修改。</SheetDescription>
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1 px-4">
-          <EditorForm kind={kind} item={item} catalog={catalog} actions={actions} mutate={mutate} pending={pending} onSaved={() => setOpen(false)} />
+          <EditorForm kind={kind} item={item} catalog={catalog} actions={actions} mutate={mutate} pending={pending} formTitle={title} onSaved={() => setOpen(false)} />
         </ScrollArea>
       </SheetContent>
     </Sheet>
@@ -83,7 +87,7 @@ export function DeleteCatalogButton({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction onClick={() => void mutate(() => action({ id: item.id, expected_revision: item.revision })).catch(() => undefined)}>确认删除{noun}</AlertDialogAction>
+          <AlertDialogAction onClick={() => void mutate(() => action({ id: item.id, expected_revision: item.revision }), `删除${noun}`).catch(() => undefined)}>确认删除{noun}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -92,7 +96,7 @@ export function DeleteCatalogButton({
 
 function EditorForm(props: {
   kind: CatalogEntityKind; item?: CatalogEntity; catalog: CatalogSnapshot; actions: CatalogActions;
-  mutate: CatalogMutation; pending: boolean; onSaved: () => void
+  mutate: CatalogMutation; pending: boolean; formTitle: string; onSaved: () => void
 }) {
   if (props.kind === "model") return <ModelForm {...props} item={props.item as CatalogModel | undefined} />
   if (props.kind === "channel") return <ChannelForm {...props} item={props.item as CatalogChannel | undefined} />
@@ -104,16 +108,16 @@ function EditorForm(props: {
 
 type FormProps<T> = {
   item?: T; catalog: CatalogSnapshot; actions: CatalogActions; mutate: CatalogMutation;
-  pending: boolean; onSaved: () => void
+  pending: boolean; formTitle: string; onSaved: () => void
 }
 
-function ModelForm({ item, actions, mutate, pending, onSaved }: FormProps<CatalogModel>) {
+function ModelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogModel>) {
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [capabilities, setCapabilities] = useState(item?.capabilities.join(", ") ?? "")
-  return <FormShell pending={pending} label="保存模型" onSubmit={async () => {
+  return <FormShell pending={pending} label="保存模型" formTitle={formTitle} onSubmit={async () => {
     const command = { name: required(name, "模型名称"), protocol, capabilities: list(capabilities) }
-    await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command)); onSaved()
+    await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), `${formTitle}保存`); onSaved()
   }}>
     <TextField label="模型名称" value={name} onChange={setName} />
     <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
@@ -121,15 +125,15 @@ function ModelForm({ item, actions, mutate, pending, onSaved }: FormProps<Catalo
   </FormShell>
 }
 
-function ChannelForm({ item, actions, mutate, pending, onSaved }: FormProps<CatalogChannel>) {
+function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannel>) {
   const [name, setName] = useState(item?.name ?? "")
   const [baseURL, setBaseURL] = useState(item?.base_url ?? "https://")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
   const [apiKey, setAPIKey] = useState("")
-  return <FormShell pending={pending} label="保存渠道" onSubmit={async () => {
+  return <FormShell pending={pending} label="保存渠道" formTitle={formTitle} onSubmit={async () => {
     const command = { name: required(name, "渠道名称"), base_url: required(baseURL, "服务地址"), api_key: required(apiKey, "API Key"), protocol, enabled }
-    await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command)); onSaved()
+    await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), `${formTitle}保存`); onSaved()
   }}>
     <TextField label="渠道名称" value={name} onChange={setName} />
     <TextField label="服务地址" value={baseURL} onChange={setBaseURL} />
@@ -140,16 +144,16 @@ function ChannelForm({ item, actions, mutate, pending, onSaved }: FormProps<Cata
   </FormShell>
 }
 
-function MappingForm({ item, catalog, actions, mutate, pending, onSaved }: FormProps<CatalogChannelModel>) {
+function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannelModel>) {
   const [channelID, setChannelID] = useState(item?.channel_id ?? catalog.channels[0]?.id ?? "")
   const compatibleModels = catalog.models.filter((model) => model.protocol === catalog.channels.find((channel) => channel.id === channelID)?.protocol)
   const [modelID, setModelID] = useState(item?.model_id ?? compatibleModels[0]?.id ?? "")
   const [upstreamName, setUpstreamName] = useState(item?.upstream_model_name ?? "")
-  return <FormShell pending={pending} label="保存映射" onSubmit={async () => {
-    if (!channelID || !modelID) throw new Error("请选择渠道和模型")
+  return <FormShell pending={pending} label="保存映射" formTitle={formTitle} onSubmit={async () => {
+    if (!channelID || !modelID) throw new FormValidationError("请选择渠道和模型")
     await mutate(() => item
       ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, upstream_model_name: required(upstreamName, "上游模型名称") })
-      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, "上游模型名称") }))
+      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, "上游模型名称") }), `${formTitle}保存`)
     onSaved()
   }}>
     <SelectField label="渠道" value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={(value) => { setChannelID(value); const protocol = catalog.channels.find((channel) => channel.id === value)?.protocol; setModelID(catalog.models.find((model) => model.protocol === protocol)?.id ?? "") }} />
@@ -158,7 +162,7 @@ function MappingForm({ item, catalog, actions, mutate, pending, onSaved }: FormP
   </FormShell>
 }
 
-function CaseForm({ item, actions, mutate, pending, onSaved }: FormProps<CatalogTestCase>) {
+function CaseForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
   const [value, setValue] = useState(() => ({
     key: item?.key ?? "", name: item?.name ?? "", dimension: item?.dimension ?? "compatibility",
     protocol: item?.protocol ?? "openai-chat" as CatalogProtocol, enabled: item?.enabled ?? true,
@@ -169,7 +173,7 @@ function CaseForm({ item, actions, mutate, pending, onSaved }: FormProps<Catalog
     assertions: json(item?.assertions ?? [{ kind: "custom", config: { name: "custom-check" } }]),
   }))
   const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue((current) => ({ ...current, [key]: next }))
-  return <FormShell pending={pending} label="保存用例" onSubmit={async () => {
+  return <FormShell pending={pending} label="保存用例" formTitle={formTitle} onSubmit={async () => {
     const command = {
       key: required(value.key, "用例键"), name: required(value.name, "用例名称"), dimension: required(value.dimension, "维度"),
       protocol: value.protocol, enabled: value.enabled, default: value.default, severity: value.severity as "normal" | "critical",
@@ -179,7 +183,7 @@ function CaseForm({ item, actions, mutate, pending, onSaved }: FormProps<Catalog
       allowed_http_statuses: numberList(value.statuses), stream_completion: value.stream_completion,
       assertions: arrayJSON<{ kind: string; config: Record<string, unknown> }>(value.assertions, "断言"),
     }
-    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command)); onSaved()
+    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), `${formTitle}保存`); onSaved()
   }}>
     <div className="grid grid-cols-2 gap-3"><TextField label="用例键" value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label="用例名称" value={value.name} onChange={(v) => set("name", v)} /></div>
     <div className="grid grid-cols-2 gap-3"><TextField label="维度" value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label="协议" value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
@@ -194,20 +198,20 @@ function CaseForm({ item, actions, mutate, pending, onSaved }: FormProps<Catalog
   </FormShell>
 }
 
-function SuiteForm({ item, catalog, actions, mutate, pending, onSaved }: FormProps<CatalogSuite>) {
+function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogSuite>) {
   const [name, setName] = useState(item?.name ?? "")
   const [selected, setSelected] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
-  return <FormShell pending={pending} label="保存套件" onSubmit={async () => {
+  return <FormShell pending={pending} label="保存套件" formTitle={formTitle} onSubmit={async () => {
     const pinned = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
     const command = { name: required(name, "套件名称"), cases: catalog.test_cases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision })) }
-    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command)); onSaved()
+    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), `${formTitle}保存`); onSaved()
   }}>
     <TextField label="套件名称" value={name} onChange={setName} />
     <ChoiceList label="包含用例" values={catalog.test_cases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
   </FormShell>
 }
 
-function PlanForm({ item, catalog, actions, mutate, pending, onSaved }: FormProps<CatalogPlan>) {
+function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
   const [name, setName] = useState(item?.name ?? "")
   const [models, setModels] = useState(() => new Set(item?.model_ids ?? catalog.models.slice(0, 1).map(model => model.id)))
   const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? catalog.channels.slice(0, 1).map(channel => channel.id)))
@@ -216,7 +220,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, onSaved }: FormProp
   const [loadMode, setLoadMode] = useState<CatalogLoadMode>(item?.load_mode ?? "single")
   const [numbers, setNumbers] = useState({ concurrency: item?.concurrency ?? 1, request_count: item?.request_count ?? 1, rate_per_second: item?.rate_per_second ?? 0, duration_ms: item?.duration_ms ?? 0, request_timeout_ms: item?.request_timeout_ms ?? 60000 })
   const [sla, setSla] = useState(json(item?.sla_thresholds ?? { e2e_p95_ms: 3000 }))
-  return <FormShell pending={pending} label="保存计划" onSubmit={async () => {
+  return <FormShell pending={pending} label="保存计划" formTitle={formTitle} onSubmit={async () => {
     const suite = catalog.suites.find((value) => value.id === suiteID)
     const pinnedCases = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
     const command = {
@@ -225,7 +229,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, onSaved }: FormProp
       cases: catalog.test_cases.filter((testCase) => cases.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinnedCases.get(testCase.id) ?? testCase.revision })),
       load_mode: loadMode, ...numbers, sla_thresholds: recordJSON<number>(sla, "SLA 阈值"),
     }
-    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command)); onSaved()
+    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), `${formTitle}保存`); onSaved()
   }}>
     <TextField label="计划名称" value={name} onChange={setName} />
     <ChoiceList label="模型" values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} onChange={setModels} />
@@ -240,10 +244,26 @@ function PlanForm({ item, catalog, actions, mutate, pending, onSaved }: FormProp
   </FormShell>
 }
 
-function FormShell({ children, label, pending, onSubmit }: { children: ReactNode; label: string; pending: boolean; onSubmit: () => Promise<void> }) {
-  const [error, setError] = useState("")
-  return <form className="pb-4" onSubmit={(event: FormEvent) => { event.preventDefault(); setError(""); void onSubmit().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "保存失败")) }}>
-    <FieldGroup data-invalid={error ? true : undefined} aria-invalid={error ? true : undefined}>{children}{error ? <FieldError>{error}</FieldError> : null}</FieldGroup>
+function FormShell({ children, label, pending, formTitle, onSubmit }: { children: ReactNode; label: string; pending: boolean; formTitle: string; onSubmit: () => Promise<void> }) {
+  const [error, setError] = useState<{ message: string; validation: boolean } | null>(null)
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    void onSubmit().catch((reason: unknown) => {
+      const validation = reason instanceof FormValidationError
+      setError({
+        validation,
+        message: validation
+          ? `${formTitle}表单校验失败：${reason.message}。请修改后重新保存。`
+          : publicDesktopOperationErrorMessage(reason, `${formTitle}保存`, "保存未完成，请检查本地日志"),
+      })
+    })
+  }
+  return <form className="pb-4" onSubmit={submit}>
+    <FieldGroup data-invalid={error?.validation || undefined} aria-invalid={error?.validation || undefined}>
+      {children}
+      {error ? <FieldError className={error.validation ? undefined : "rounded-md border border-destructive/25 bg-destructive-soft p-3"}>{error.message}</FieldError> : null}
+    </FieldGroup>
     <SheetFooter className="px-0"><Button type="submit" className="min-w-24" disabled={pending}>{pending ? <><Spinner data-icon="inline-start" />正在保存…</> : label}</Button></SheetFooter>
   </form>
 }
@@ -268,11 +288,12 @@ function ChoiceList({ label, values, selected, onChange }: { label: string; valu
 }
 
 const protocolOptions = [["openai-chat","OpenAI Chat"],["kimi-k3","Kimi K3"],["seedance","Seedance"]] as const
-function required(value: string, label: string) { const result = value.trim(); if (!result) throw new Error(`${label}不能为空`); return result }
+class FormValidationError extends Error {}
+function required(value: string, label: string) { const result = value.trim(); if (!result) throw new FormValidationError(`${label}不能为空`); return result }
 function list(value: string) { return [...new Set(value.split(",").map(v => v.trim()).filter(Boolean))] }
-function numberList(value: string) { const result = list(value).map(Number); if (!result.length || result.some(v => !Number.isInteger(v))) throw new Error("HTTP 状态码格式无效"); return result }
+function numberList(value: string) { const result = list(value).map(Number); if (!result.length || result.some(v => !Number.isInteger(v))) throw new FormValidationError("HTTP 状态码格式无效"); return result }
 function json(value: unknown) { return JSON.stringify(value, null, 2) }
-function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new Error(`${label}不是有效 JSON`) } }
-function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(`${label}必须是 JSON 对象`); return parsed as Record<string,T> }
-function nullableRecordJSON(value: string, label: string): Record<string,unknown> | null { const parsed = parseJSON(value, label); if (parsed === null) return null; if (Array.isArray(parsed) || typeof parsed !== "object") throw new Error(`${label}必须是 JSON 对象或 null`); return parsed as Record<string,unknown> }
-function arrayJSON<T>(value: string, label: string): T[] { const parsed = parseJSON(value, label); if (!Array.isArray(parsed)) throw new Error(`${label}必须是 JSON 数组`); return parsed as T[] }
+function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(`${label}不是有效 JSON`) } }
+function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(`${label}必须是 JSON 对象`); return parsed as Record<string,T> }
+function nullableRecordJSON(value: string, label: string): Record<string,unknown> | null { const parsed = parseJSON(value, label); if (parsed === null) return null; if (Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(`${label}必须是 JSON 对象或 null`); return parsed as Record<string,unknown> }
+function arrayJSON<T>(value: string, label: string): T[] { const parsed = parseJSON(value, label); if (!Array.isArray(parsed)) throw new FormValidationError(`${label}必须是 JSON 数组`); return parsed as T[] }
