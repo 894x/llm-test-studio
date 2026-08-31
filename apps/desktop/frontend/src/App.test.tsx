@@ -12,6 +12,7 @@ import {
   FIXTURE_WORKSPACE,
 } from "./features/runs/fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
+import { EMPTY_COMPARISONS } from "./features/comparisons/data"
 import indexHtml from "../index.html?raw"
 
 const indexCss = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8")
@@ -24,6 +25,9 @@ function desktopClient(): DesktopClient & {
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
     getCatalog: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
+		getReportDetail: vi.fn(async () => { throw new Error("report detail unavailable in shell fixture") }),
+		exportReport: vi.fn(async () => { throw new Error("report export unavailable in shell fixture") }),
+		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     startRun: vi.fn(async () => structuredClone(client.workspace)),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
@@ -44,6 +48,7 @@ function desktopClient(): DesktopClient & {
       }
       return structuredClone(client.workspace)
     }),
+		startComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     ...catalogMutationMocks(),
   }
   return client
@@ -114,6 +119,33 @@ describe("desktop run workspace", () => {
     })
   })
 
+  it("starts a same-model comparison across selected channels", async () => {
+		const user = userEvent.setup()
+		const client = desktopClient()
+		const catalog = structuredClone(FIXTURE_CATALOG)
+		const plan = catalog.plans[0]
+		const model = catalog.models[0]
+		const secondChannel = catalog.channels[1]
+		plan.channel_ids.push(secondChannel.id)
+		plan.channel_count = 2
+		secondChannel.model_count += 1
+		catalog.channel_models.push({
+			id: "77777777-7777-4777-8777-777777777799", revision: 1,
+			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name,
+		})
+		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+
+		render(<App client={client} />)
+		await user.click(await screen.findByRole("button", { name: "渠道对比" }))
+		await user.click(screen.getByRole("checkbox", { name: /OpenAI 主渠道/ }))
+		await user.click(screen.getByRole("checkbox", { name: /阿里云备用渠道/ }))
+		await user.click(screen.getByRole("button", { name: "对比 2 个渠道" }))
+
+		await waitFor(() => expect(client.startComparison).toHaveBeenCalledWith({
+			plan_id: plan.id, model_id: model.id, channel_ids: [catalog.channels[0].id, secondChannel.id],
+		}))
+	})
+
   it("opens every primary workspace from the main navigation", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
@@ -138,6 +170,35 @@ describe("desktop run workspace", () => {
     expect(client.getCatalog).toHaveBeenCalledTimes(1)
     expect(client.getReports).toHaveBeenCalledTimes(1)
   })
+
+	it("shows request-level report detail and all Go export actions", async () => {
+		window.history.replaceState(null, "", "#reports")
+		const client = desktopClient()
+		const summary = FIXTURE_REPORTS.reports[0]
+		vi.mocked(client.getReportDetail).mockResolvedValue({
+			schema_version: 1,
+			report: {
+				id: summary.id, run_id: summary.run_id, run_status: summary.run_status, generated_at: summary.generated_at,
+				model: { id: "22222222-2222-4222-8222-222222222221", name: summary.model_name },
+				channel: { id: "33333333-3333-4333-8333-333333333331", name: summary.channel_name },
+				environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "go-core-v1" },
+				conclusion: { passed: true, verdict: summary.verdict, issues: [] },
+				sla: {}, metrics: { e2e_p95_ms: { value: 123, unit: "ms", samples: 1 } }, case_results: [],
+			},
+			request_results: [{
+				id: "99999999-9999-4999-8999-999999999991", request_id: "request-1",
+				success: { transport: true, protocol: true, semantic: true, sla: true },
+				metrics: { e2e_ms: 123, ttft_ms: 40, tpot_ms: 10, schedule_lag_ms: 1, prompt_tokens: 10, completion_tokens: 3 },
+			}],
+		})
+
+		render(<App client={client} />)
+		expect(await screen.findByRole("table", { name: "请求级结果" })).toHaveTextContent("request-1")
+		for (const label of ["JSON", "HTML", "PNG", "PDF", "复制 PNG"]) {
+			expect(screen.getByRole("button", { name: label })).toBeInTheDocument()
+		}
+		expect(screen.getByText(/e2e_p95_ms/)).toBeInTheDocument()
+	})
 
   it("creates, updates, and confirms deletion for catalog models", async () => {
     window.history.replaceState(null, "", "#catalog")
@@ -409,9 +470,13 @@ describe("desktop run workspace", () => {
       }),
       getCatalog: vi.fn(),
       getReports: vi.fn(),
+			getReportDetail: vi.fn(),
+			exportReport: vi.fn(),
+			getComparisons: vi.fn(),
       startRun: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
+			startComparison: vi.fn(),
       ...catalogMutationMocks(),
     }
 

@@ -126,15 +126,17 @@ function ChannelForm({ item, actions, mutate, pending, onSaved }: FormProps<Cata
   const [baseURL, setBaseURL] = useState(item?.base_url ?? "https://")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
+  const [apiKey, setAPIKey] = useState("")
   return <FormShell pending={pending} label="保存渠道" onSubmit={async () => {
-    const command = { name: required(name, "渠道名称"), base_url: required(baseURL, "服务地址"), protocol, enabled }
+    const command = { name: required(name, "渠道名称"), base_url: required(baseURL, "服务地址"), api_key: required(apiKey, "API Key"), protocol, enabled }
     await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command)); onSaved()
   }}>
     <TextField label="渠道名称" value={name} onChange={setName} />
     <TextField label="服务地址" value={baseURL} onChange={setBaseURL} />
+    <TextField label="API Key" type="password" value={apiKey} onChange={setAPIKey} description={item ? "保存为渠道新版本的独立凭据；历史计划继续使用旧版本。" : "仅写入系统密钥环，不会保存到数据库或前端快照。"} />
     <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
     <CheckField label="启用渠道" checked={enabled} onChange={setEnabled} />
-    <FieldDescription>凭据仍由操作系统密钥环管理，不会进入目录快照。</FieldDescription>
+    <FieldDescription>服务地址和 API Key 会作为同一个渠道配置一起保存。</FieldDescription>
   </FormShell>
 }
 
@@ -213,7 +215,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, onSaved }: FormProp
   const [suiteID, setSuiteID] = useState(item?.suite_id ?? "none")
   const [loadMode, setLoadMode] = useState<CatalogLoadMode>(item?.load_mode ?? "single")
   const [numbers, setNumbers] = useState({ concurrency: item?.concurrency ?? 1, request_count: item?.request_count ?? 1, rate_per_second: item?.rate_per_second ?? 0, duration_ms: item?.duration_ms ?? 0, request_timeout_ms: item?.request_timeout_ms ?? 60000 })
-  const [sla, setSla] = useState(json(item?.sla_thresholds ?? { p95_ms: 3000 }))
+  const [sla, setSla] = useState(json(item?.sla_thresholds ?? { e2e_p95_ms: 3000 }))
   return <FormShell pending={pending} label="保存计划" onSubmit={async () => {
     const suite = catalog.suites.find((value) => value.id === suiteID)
     const pinnedCases = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
@@ -246,8 +248,8 @@ function FormShell({ children, label, pending, onSubmit }: { children: ReactNode
   </form>
 }
 
-function TextField({ label, value, onChange, description, disabled = false }: { label: string; value: string; onChange: (value: string) => void; description?: string; disabled?: boolean }) {
-  return <Field className="block"><FieldLabel>{label}</FieldLabel><FieldContent><Input aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />{description ? <FieldDescription>{description}</FieldDescription> : null}</FieldContent></Field>
+function TextField({ label, value, onChange, description, disabled = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; description?: string; disabled?: boolean; type?: "text" | "password" }) {
+  return <Field className="block"><FieldLabel>{label}</FieldLabel><FieldContent><Input aria-label={label} type={type} autoComplete={type === "password" ? "new-password" : undefined} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />{description ? <FieldDescription>{description}</FieldDescription> : null}</FieldContent></Field>
 }
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return <Field className="block"><FieldLabel>{label}</FieldLabel><Input aria-label={label} type="number" min={0} value={value} onChange={(e) => onChange(Number(e.target.value))} /></Field>

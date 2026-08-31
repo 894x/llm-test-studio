@@ -42,6 +42,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import { ComparisonPanel } from "@/features/comparisons/comparison-workspace"
+import type { ComparisonSnapshot } from "@/features/comparisons/data"
 
 import {
   STATUS_LABELS,
@@ -638,12 +640,14 @@ function IdleTaskBar() {
 
 export function RunWorkspace({
   snapshot,
+  comparisons,
   commandPending,
   commandError,
   onStopSending,
   onCancelRun,
 }: {
   snapshot: WorkspaceSnapshot
+  comparisons: ComparisonSnapshot
   commandPending: boolean
   commandError: string
   onStopSending: (runId: string) => Promise<void>
@@ -716,6 +720,8 @@ export function RunWorkspace({
               </span>
             </div>
           </div>
+
+          <ComparisonPanel snapshot={comparisons} />
 
           <RunTable
             runs={visibleRuns}

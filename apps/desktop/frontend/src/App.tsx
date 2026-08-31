@@ -16,6 +16,8 @@ import type { CatalogSnapshot } from "@/features/catalog/data"
 import { OverviewWorkspace } from "@/features/overview/overview-workspace"
 import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
+import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
+import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
 import { presentWorkspace, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
@@ -36,6 +38,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
   const [reports, setReports] = useState<ReportSnapshot | null>(null)
+  const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
   const [loadError, setLoadError] = useState("")
   const [commandError, setCommandError] = useState("")
   const [commandPending, setCommandPending] = useState(false)
@@ -54,13 +57,15 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
       client.getWorkspace(),
       client.getCatalog(),
       client.getReports(),
+			client.getComparisons(),
     ])
-      .then(([nextWorkspace, nextCatalog, nextReports]) => {
+      .then(([nextWorkspace, nextCatalog, nextReports, nextComparisons]) => {
         if (active) {
           setLoadError("")
           setSnapshot(nextWorkspace)
           setCatalog(nextCatalog)
           setReports(nextReports)
+					setComparisons(nextComparisons)
         }
       })
       .catch((error: unknown) => {
@@ -72,6 +77,29 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
       active = false
     }
   }, [client])
+
+  useEffect(() => {
+		const activeRun = snapshot?.runs.some((run) => ["queued", "starting", "running", "draining"].includes(run.status))
+		const activeComparison = comparisons?.comparisons.some((comparison) => comparison.status === "running")
+		if (!activeRun && !activeComparison) return
+		let active = true
+		const refresh = async () => {
+			try {
+				const [nextWorkspace, nextReports, nextComparisons] = await Promise.all([
+					client.getWorkspace(), client.getReports(), client.getComparisons(),
+				])
+				if (active) {
+					setSnapshot(nextWorkspace)
+					setReports(nextReports)
+					setComparisons(nextComparisons)
+				}
+			} catch {
+				// Keep the last authoritative snapshot; command errors remain explicit.
+			}
+		}
+		const timer = window.setInterval(() => void refresh(), 1_000)
+		return () => { active = false; window.clearInterval(timer) }
+	}, [client, snapshot, comparisons])
 
   const navigate = useCallback((next: DesktopPage) => {
     if (desktopPageFromHash(window.location.hash) === next) {
@@ -120,6 +148,20 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     [client],
   )
 
+  const startComparison = useCallback(async (command: StartComparisonCommand): Promise<void> => {
+		setCommandPending(true)
+		setCommandError("")
+		try {
+			setComparisons(await client.startComparison(command))
+			setSnapshot(await client.getWorkspace())
+		} catch (error) {
+			setCommandError(publicDesktopErrorMessage(error, "无法启动渠道对比，请检查本地日志"))
+			throw error
+		} finally {
+			setCommandPending(false)
+		}
+	}, [client])
+
   const plans = useMemo(
     () => (snapshot ? presentWorkspace(snapshot).plans : []),
     [snapshot],
@@ -135,7 +177,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
       </div>
     )
   }
-  if (!snapshot || !catalog || !reports) {
+  if (!snapshot || !catalog || !reports || !comparisons) {
     return (
       <div className="flex h-svh min-h-[640px] items-center justify-center bg-background text-xs text-muted-foreground">
         正在读取本地工作区…
@@ -148,14 +190,17 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
       activePage={page}
       onNavigate={navigate}
       actions={
-        <NewRunSheet
-          plans={plans}
-          commandPending={commandPending}
-          onStartRun={async (planId) => {
-            await runCommand(() => client.startRun(planId))
-            navigate("runs")
-          }}
-        />
+				<div className="flex items-center gap-2">
+					<NewComparisonSheet catalog={catalog} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
+					<NewRunSheet
+						plans={plans}
+						commandPending={commandPending}
+						onStartRun={async (planId) => {
+							await runCommand(() => client.startRun(planId))
+							navigate("runs")
+						}}
+					/>
+				</div>
       }
     >
       {page === "overview" ? (
@@ -178,10 +223,11 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
           }}
         />
       ) : page === "reports" ? (
-        <ReportWorkspace snapshot={reports} />
+        <ReportWorkspace snapshot={reports} getDetail={client.getReportDetail} exportReport={client.exportReport} />
       ) : (
         <RunWorkspace
           snapshot={snapshot}
+          comparisons={comparisons}
           commandPending={commandPending}
           commandError={commandError}
           onStopSending={(runId) =>

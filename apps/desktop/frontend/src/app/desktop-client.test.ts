@@ -5,6 +5,7 @@ import {
   FIXTURE_REPORTS,
   FIXTURE_WORKSPACE,
 } from "@/features/runs/fixtures"
+import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 
 import { createDesktopClient } from "./desktop-client"
 
@@ -29,6 +30,20 @@ describe("Wails desktop client", () => {
     expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
   })
 
+	it("reads complete report details and forwards all export formats", async () => {
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		const client = createDesktopClient()
+		const reportID = FIXTURE_REPORTS.reports[0].id
+		const detail = await client.getReportDetail(reportID)
+		expect(detail.report.id).toBe(reportID)
+		expect(binding.GetReportDetail).toHaveBeenCalledWith(reportID)
+		for (const format of ["json", "html", "png", "pdf"] as const) {
+			const exported = await client.exportReport(reportID, format)
+			expect(exported.filename).toContain(reportID)
+			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format)
+		}
+	})
+
   it("forwards all catalog create update and delete commands", async () => {
 	const binding = installBinding(FIXTURE_WORKSPACE)
 	const client = createDesktopClient()
@@ -44,8 +59,8 @@ describe("Wails desktop client", () => {
 		["CreateModel", "createModel", { name: "new model", protocol: "openai-chat", capabilities: ["chat"] }],
 		["UpdateModel", "updateModel", { id: model.id, expected_revision: model.revision, name: model.name, protocol: model.protocol, capabilities: model.capabilities }],
 		["DeleteModel", "deleteModel", deletion(model.id, model.revision)],
-		["CreateChannel", "createChannel", { name: "new channel", base_url: "https://example.test/v1", protocol: "openai-chat", enabled: true }],
-		["UpdateChannel", "updateChannel", { id: channel.id, expected_revision: channel.revision, name: channel.name, base_url: channel.base_url, protocol: channel.protocol, enabled: channel.enabled }],
+		["CreateChannel", "createChannel", { name: "new channel", base_url: "https://example.test/v1", api_key: "test-key-1234", protocol: "openai-chat", enabled: true }],
+		["UpdateChannel", "updateChannel", { id: channel.id, expected_revision: channel.revision, name: channel.name, base_url: channel.base_url, api_key: "test-key-5678", protocol: channel.protocol, enabled: channel.enabled }],
 		["DeleteChannel", "deleteChannel", deletion(channel.id, channel.revision)],
 		["CreateChannelModel", "createChannelModel", { channel_id: mapping.channel_id, model_id: mapping.model_id, upstream_model_name: "new-upstream" }],
 		["UpdateChannelModel", "updateChannelModel", { id: mapping.id, expected_revision: mapping.revision, upstream_model_name: mapping.upstream_model_name }],
@@ -227,9 +242,17 @@ function installBinding(
     GetWorkspace: vi.fn(async () => structuredClone(payload)),
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
+		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
+		ExportReport: vi.fn(async (reportID: string, format: string) => ({
+			filename: `llm-studio-report-${reportID}.${format}`,
+			media_type: format === "json" ? "application/json" : "application/octet-stream",
+			data_base64: "e30=",
+		})),
+		GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     StartRun: vi.fn(async () => structuredClone(payload)),
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
+		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
 	CreateModel: vi.fn(async () => structuredClone(catalog)),
 	UpdateModel: vi.fn(async () => structuredClone(catalog)),
 	DeleteModel: vi.fn(async () => structuredClone(catalog)),
@@ -254,6 +277,22 @@ function installBinding(
     value: { main: { DesktopApp: binding } },
   })
   return binding
+}
+
+function reportDetailFixture(reportID: string) {
+	const summary = FIXTURE_REPORTS.reports.find((report) => report.id === reportID) ?? FIXTURE_REPORTS.reports[0]
+	return {
+		schema_version: 1,
+		report: {
+			id: summary.id, run_id: summary.run_id, run_status: summary.run_status, generated_at: summary.generated_at,
+			model: { id: "22222222-2222-4222-8222-222222222221", name: summary.model_name },
+			channel: { id: "33333333-3333-4333-8333-333333333331", name: summary.channel_name },
+			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "go-core-v1" },
+			conclusion: { passed: summary.passed, verdict: summary.verdict, issues: [] },
+			sla: {}, metrics: {}, case_results: [],
+		},
+		request_results: [],
+	}
 }
 
 function withoutIdentity<T extends { id: string; revision: number }>(value: T): Omit<T, "id" | "revision"> {

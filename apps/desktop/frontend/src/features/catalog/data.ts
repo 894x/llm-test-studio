@@ -94,7 +94,7 @@ export interface CatalogPlan {
 
 export type CreateModelCommand = Pick<CatalogModel, "name" | "protocol" | "capabilities">
 export type UpdateModelCommand = CreateModelCommand & { id: string; expected_revision: number }
-export type CreateChannelCommand = Pick<CatalogChannel, "name" | "base_url" | "protocol" | "enabled">
+export type CreateChannelCommand = Pick<CatalogChannel, "name" | "base_url" | "protocol" | "enabled"> & { api_key: string }
 export type UpdateChannelCommand = CreateChannelCommand & { id: string; expected_revision: number }
 export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name">
 export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name"> & { id: string; expected_revision: number }
@@ -182,7 +182,6 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
 
   const modelByID = new Map(models.map((model) => [model.id, model]))
   const channelByID = new Map(channels.map((channel) => [channel.id, channel]))
-  const testCaseByID = new Map(testCases.map((testCase) => [testCase.id, testCase]))
   const suiteByID = new Map(suites.map((suite) => [suite.id, suite]))
   const mappedCounts = new Map<string, number>()
   const mappedBindings = new Set<string>()
@@ -205,15 +204,13 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
     throw new Error("桌面目录渠道模型计数无效")
   }
   for (const suite of suites) {
-    if (suite.cases.some((ref) => !isCurrentCaseRef(ref, testCaseByID))) {
-      throw new Error("桌面目录测试套件引用无效")
-    }
+		if (!hasUniqueCaseIDs(suite.cases)) throw new Error("桌面目录测试套件引用无效")
   }
   for (const plan of plans) {
     if (
       plan.model_ids.some((id) => !modelByID.has(id)) ||
       plan.channel_ids.some((id) => !channelByID.has(id)) ||
-      plan.cases.some((ref) => !isCurrentCaseRef(ref, testCaseByID)) ||
+			!hasUniqueCaseIDs(plan.cases) ||
       plan.model_ids.some((modelID) => plan.channel_ids.some((channelID) => !mappedBindings.has(`${channelID}\u0000${modelID}`)))
     ) {
       throw new Error("桌面目录测试计划引用无效")
@@ -452,11 +449,6 @@ function parseCaseRevision(value: unknown): CatalogCaseRevision {
     throw new Error("桌面目录用例版本引用无效")
   }
   return { case_id: value.case_id, revision: value.revision }
-}
-
-function isCurrentCaseRef(ref: CatalogCaseRevision, testCases: Map<string, CatalogTestCase>): boolean {
-  const testCase = testCases.get(ref.case_id)
-  return testCase !== undefined && ref.revision <= testCase.revision
 }
 
 function hasUniqueCaseIDs(cases: CatalogCaseRevision[]): boolean {
