@@ -5,6 +5,7 @@
 - Read `doc/design/desktop-ui-system.md`, `apps/desktop/frontend/src/index.css`, and the nearby component/tests.
 - State the target route, primary task, data source, expected record volume, and required states.
 - Identify which existing shadcn/Radix primitive owns every control.
+- Audit dropdown-like controls for raw `<select>`, HTML `datalist`, and hand-built listbox/menu behavior before accepting the implementation.
 - Identify the root, table/list, and inspector scroll owners.
 - Decide whether the validation surface is Vite fixture mode or Wails production data.
 
@@ -18,6 +19,7 @@
 - Check icon-only actions have accessible names, Tooltips where needed, and visible focus.
 - Check the 28 px circular theme trigger, three radio choices, focus restoration, persistence, and system-theme updates.
 - Check every overlay uses the resolved theme and has an accessible title and close path.
+- Check Select, Combobox, Autocomplete, and menu popups match their trigger width where appropriate, use semantic popover tokens, stay inside the viewport, and expose keyboard-reachable highlighted/selected/empty states.
 - Check running tasks through queued, sending, draining, completed, failed, cancelled, stop-sending, and cancellation behavior where applicable.
 - Force vertical and horizontal overflow and confirm 5 px rails with 4 px inset do not change container geometry.
 - Remove nested cards, decorative accent usage, duplicate explanatory text, fake controls, and presentation-side business inference.

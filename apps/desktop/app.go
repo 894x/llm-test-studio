@@ -9,9 +9,12 @@ import (
 
 	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/comparisons"
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var (
@@ -24,25 +27,29 @@ var (
 	ErrRunCommandsUnavailable = errors.New("run commands are unavailable")
 	ErrComparisonUnavailable  = errors.New("comparison service is unavailable")
 	ErrDiagnosticsUnavailable = errors.New("desktop diagnostics are unavailable")
+	ErrQuickTestUnavailable   = errors.New("quick test service is unavailable")
+	ErrQuickTestSavePartial   = errors.New("quick test connection was only partially saved")
 	ErrInvalidIdentifier      = errors.New("desktop command identifier is invalid")
 )
 
 const (
-	desktopCodeNotStarted         = "desktop_not_started"
-	desktopCodeStartupFailed      = "desktop_startup_failed"
-	desktopCodeStopped            = "desktop_stopped"
-	desktopCodeWorkspaceMissing   = "workspace_unavailable"
-	desktopCodeCatalogMissing     = "catalog_unavailable"
-	desktopCodeReportsMissing     = "reports_unavailable"
-	desktopCodeCommandsMissing    = "run_commands_unavailable"
-	desktopCodeComparisonMissing  = "comparison_unavailable"
-	desktopCodeDiagnosticsMissing = "diagnostics_unavailable"
-	desktopCodeInvalidIdentifier  = "invalid_identifier"
-	desktopCodeOperationCancelled = "operation_cancelled"
-	desktopCodeOperationFailed    = "operation_failed"
-	desktopCodeCatalogInvalid     = "catalog_invalid"
-	desktopCodeCatalogConflict    = "catalog_revision_conflict"
-	desktopCodeCatalogNotFound    = "catalog_not_found"
+	desktopCodeNotStarted           = "desktop_not_started"
+	desktopCodeStartupFailed        = "desktop_startup_failed"
+	desktopCodeStopped              = "desktop_stopped"
+	desktopCodeWorkspaceMissing     = "workspace_unavailable"
+	desktopCodeCatalogMissing       = "catalog_unavailable"
+	desktopCodeReportsMissing       = "reports_unavailable"
+	desktopCodeCommandsMissing      = "run_commands_unavailable"
+	desktopCodeComparisonMissing    = "comparison_unavailable"
+	desktopCodeDiagnosticsMissing   = "diagnostics_unavailable"
+	desktopCodeQuickTestMissing     = "quick_test_unavailable"
+	desktopCodeQuickTestSavePartial = "quick_test_save_partial"
+	desktopCodeInvalidIdentifier    = "invalid_identifier"
+	desktopCodeOperationCancelled   = "operation_cancelled"
+	desktopCodeOperationFailed      = "operation_failed"
+	desktopCodeCatalogInvalid       = "catalog_invalid"
+	desktopCodeCatalogConflict      = "catalog_revision_conflict"
+	desktopCodeCatalogNotFound      = "catalog_not_found"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -90,7 +97,7 @@ type ReportingQuery interface {
 type ReportDocumentQuery interface {
 	ReportingQuery
 	Detail(context.Context, string) (reporting.Detail, error)
-	Export(context.Context, string, reporting.ExportFormat) (reporting.ExportedDocument, error)
+	Export(context.Context, string, reporting.ExportFormat, string) (reporting.ExportedDocument, error)
 }
 
 // RunCommands is the Application command boundary used by the desktop
@@ -98,6 +105,7 @@ type ReportDocumentQuery interface {
 // authoritative state through WorkspaceQuery.
 type RunCommands interface {
 	StartRun(context.Context, string) error
+	StartTarget(context.Context, runs.StartCommand) (string, error)
 	StopSending(context.Context, string) error
 	CancelRun(context.Context, string) error
 }
@@ -107,6 +115,17 @@ type ComparisonService interface {
 	Snapshot(context.Context) (comparisons.Snapshot, error)
 }
 
+type QuickTestRunner interface {
+	Run(context.Context, quicktest.Command) (quicktest.Result, error)
+	RunPerformance(context.Context, quicktest.PerformanceCommand) (quicktest.PerformanceReport, error)
+}
+
+type QuickTestProgressRunner interface {
+	RunPerformanceWithProgress(context.Context, quicktest.PerformanceCommand, func(quicktest.PerformanceProgress)) (quicktest.PerformanceReport, error)
+}
+
+type desktopEventEmitter func(context.Context, string, ...interface{})
+
 type desktopDependencies struct {
 	query           WorkspaceQuery
 	catalog         CatalogQuery
@@ -114,6 +133,7 @@ type desktopDependencies struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
+	quickTests      QuickTestRunner
 	close           func() error
 }
 
@@ -140,12 +160,14 @@ type DesktopApp struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
+	quickTests      QuickTestRunner
 	close           func() error
 	startupErr      error
 	shutdownErr     error
 	reportError     func(error)
 	diagnostics     DesktopDiagnosticsSnapshot
 	openDiagnostics func() error
+	emitEvent       desktopEventEmitter
 }
 
 // DesktopDiagnosticsSnapshot is an allow-listed operator view. The filesystem
@@ -168,6 +190,7 @@ type desktopRequirements struct {
 	reports         bool
 	commands        bool
 	comparisons     bool
+	quickTests      bool
 }
 
 type desktopLease struct {
@@ -178,6 +201,7 @@ type desktopLease struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
+	quickTests      QuickTestRunner
 	release         func()
 }
 
@@ -202,10 +226,28 @@ func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
 }
 
 func newDesktopApp(initialize desktopInitializer) *DesktopApp {
-	app := &DesktopApp{initialize: initialize}
+	app := &DesktopApp{initialize: initialize, emitEvent: wailsruntime.EventsEmit}
 	app.drained = sync.NewCond(&app.mu)
 	app.startupDone = sync.NewCond(&app.mu)
 	return app
+}
+
+func (app *DesktopApp) setEventEmitter(emit desktopEventEmitter) {
+	if app == nil {
+		return
+	}
+	app.mu.Lock()
+	app.emitEvent = emit
+	app.mu.Unlock()
+}
+
+func (app *DesktopApp) emitDesktopEvent(ctx context.Context, name string, data ...interface{}) {
+	app.mu.Lock()
+	emit := app.emitEvent
+	app.mu.Unlock()
+	if emit != nil {
+		emit(ctx, name, data...)
+	}
 }
 
 func (app *DesktopApp) setErrorReporter(report func(error)) {
@@ -308,6 +350,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.reports = dependencies.reports
 	app.commands = dependencies.commands
 	app.comparisons = dependencies.comparisons
+	app.quickTests = dependencies.quickTests
 	app.close = dependencies.close
 	app.startupDone.Broadcast()
 	app.mu.Unlock()
@@ -516,7 +559,7 @@ func (app *DesktopApp) GetReportDetail(reportID string) (reporting.Detail, error
 	return detail, nil
 }
 
-func (app *DesktopApp) ExportReport(reportID, format string) (reporting.ExportedDocument, error) {
+func (app *DesktopApp) ExportReport(reportID, format, watermark string) (reporting.ExportedDocument, error) {
 	if !domain.IsUUID(reportID) {
 		return reporting.ExportedDocument{}, app.safeBindingError(ErrInvalidIdentifier)
 	}
@@ -535,7 +578,7 @@ func (app *DesktopApp) ExportReport(reportID, format string) (reporting.Exported
 	if !ok || isNilInterface(documents) {
 		return reporting.ExportedDocument{}, app.safeBindingError(ErrReportingUnavailable)
 	}
-	exported, err := documents.Export(lease.ctx, reportID, exportFormat)
+	exported, err := documents.Export(lease.ctx, reportID, exportFormat, watermark)
 	if err != nil {
 		return reporting.ExportedDocument{}, app.safeBindingError(fmt.Errorf("export desktop report: %w", err))
 	}
@@ -582,6 +625,20 @@ func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (compar
 func (app *DesktopApp) StartRun(planID string) (workspace.Snapshot, error) {
 	snapshot, err := app.executeRunCommand("start run", planID, func(ctx context.Context, commands RunCommands) error {
 		return commands.StartRun(ctx, planID)
+	})
+	if err != nil {
+		return workspace.Snapshot{}, app.safeBindingError(err)
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) StartRunTarget(command runs.StartCommand) (workspace.Snapshot, error) {
+	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
+		return workspace.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	snapshot, err := app.executeRunCommand("start run target", command.PlanID, func(ctx context.Context, commands RunCommands) error {
+		_, err := commands.StartTarget(ctx, command)
+		return err
 	})
 	if err != nil {
 		return workspace.Snapshot{}, app.safeBindingError(err)
@@ -664,6 +721,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.comparisons && isNilInterface(app.comparisons) {
 		return desktopLease{}, ErrComparisonUnavailable
 	}
+	if require.quickTests && isNilInterface(app.quickTests) {
+		return desktopLease{}, ErrQuickTestUnavailable
+	}
 	app.active++
 	released := false
 	release := func() {
@@ -682,6 +742,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		ctx: app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
 		comparisons: app.comparisons,
+		quickTests:  app.quickTests,
 	}, nil
 }
 
@@ -716,6 +777,7 @@ func (app *DesktopApp) shutdown() error {
 	app.reports = nil
 	app.commands = nil
 	app.comparisons = nil
+	app.quickTests = nil
 	app.close = nil
 	app.mu.Unlock()
 
@@ -776,6 +838,10 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeComparisonMissing}
 	case errors.Is(internal, ErrDiagnosticsUnavailable):
 		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
+	case errors.Is(internal, ErrQuickTestUnavailable):
+		return DesktopBindingError{Code: desktopCodeQuickTestMissing}
+	case errors.Is(internal, ErrQuickTestSavePartial):
+		return DesktopBindingError{Code: desktopCodeQuickTestSavePartial}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, catalog.ErrInvalid):
@@ -802,6 +868,8 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeCommandsMissing,
 		desktopCodeComparisonMissing,
 		desktopCodeDiagnosticsMissing,
+		desktopCodeQuickTestMissing,
+		desktopCodeQuickTestSavePartial,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,

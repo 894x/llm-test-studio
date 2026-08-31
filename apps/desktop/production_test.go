@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -89,6 +90,9 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if isNilInterface(dependencies.comparisons) {
 		t.Fatal("production initializer did not wire channel comparisons")
 	}
+	if isNilInterface(dependencies.quickTests) {
+		t.Fatal("production initializer did not wire quick tests")
+	}
 
 	directory := filepath.Join(configurationRoot, "llm-studio")
 	database := filepath.Join(directory, "llm-studio.db")
@@ -108,8 +112,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if err != nil {
 		t.Fatalf("query initialized workspace: %v", err)
 	}
-	if snapshot.SchemaVersion != workspace.CurrentSchemaVersion || len(snapshot.Plans) != 0 || len(snapshot.Runs) != 0 {
-		t.Fatalf("initialized workspace = %+v, want empty schema v%d", snapshot, workspace.CurrentSchemaVersion)
+	if snapshot.SchemaVersion != workspace.CurrentSchemaVersion || len(snapshot.Plans) != 1 || len(snapshot.Runs) != 0 {
+		t.Fatalf("initialized workspace = %+v, want one built-in plan and no runs in schema v%d", snapshot, workspace.CurrentSchemaVersion)
 	}
 	if _, err := dependencies.query.Snapshot(context.Background()); err != nil {
 		t.Fatalf("query initialized workspace repeatedly: %v", err)
@@ -120,10 +124,15 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Suites)+len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 89 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want only 89 built-in cases",
+			len(catalogSnapshot.Suites) != 1 || len(catalogSnapshot.Plans) != 1 || len(catalogSnapshot.TestCases) != 89 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 89 cases plus one Kimi K3 suite and plan",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
+	}
+	if suite, plan := catalogSnapshot.Suites[0], catalogSnapshot.Plans[0]; suite.Name != builtinKimiK3SuiteName || suite.CaseCount != 14 ||
+		plan.Name != builtinKimiK3PlanName || plan.CaseCount != 14 || plan.ModelCount != 0 || plan.ChannelCount != 0 ||
+		plan.LoadMode != domain.LoadFixedConcurrency || plan.Concurrency != 1 || plan.RequestCount != 14 {
+		t.Fatalf("built-in Kimi catalog = suite:%+v plan:%+v", suite, plan)
 	}
 	runnable, disabled, manual := 0, 0, 0
 	for _, testCase := range catalogSnapshot.TestCases {
@@ -196,8 +205,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	storedCases, err := repository.ListTestCases(context.Background())
 	_ = repository.Close()
-	if err != nil || len(storedCases) != 0 {
-		t.Fatalf("database case rows = %d, %v, want zero before a plan pins a case", len(storedCases), err)
+	if err != nil || len(storedCases) != 14 {
+		t.Fatalf("database case rows = %d, %v, want the 14 revisions pinned by the built-in Kimi plan", len(storedCases), err)
 	}
 
 	second, err := initialize(context.Background())
@@ -217,11 +226,100 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if len(firstSnapshot.TestCases) != 89 || len(secondSnapshot.TestCases) != 89 {
 		t.Fatalf("case counts across restart = %d/%d, want 89/89", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
+	if len(firstSnapshot.Suites) != 1 || len(secondSnapshot.Suites) != 1 || len(firstSnapshot.Plans) != 1 || len(secondSnapshot.Plans) != 1 {
+		t.Fatalf("built-in suite/plan counts across restart = %d/%d suites, %d/%d plans, want 1/1 and 1/1",
+			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
+	}
 	for index, firstCase := range firstSnapshot.TestCases {
 		secondCase := secondSnapshot.TestCases[index]
 		if firstCase.ID != secondCase.ID || firstCase.Key != secondCase.Key || firstCase.Revision == 0 || firstCase.Revision != secondCase.Revision {
 			t.Fatalf("case %d changed across idempotent restart: first=%+v second=%+v", index, firstCase, secondCase)
 		}
+	}
+}
+
+func TestProductionInitializerDoesNotRecreateDeletedBuiltInCatalog(t *testing.T) {
+	configurationRoot := t.TempDir()
+	initialize := newProductionInitializer(productionOptions{
+		userConfigDir: func() (string, error) { return configurationRoot, nil },
+		appVersion:    "desktop-test",
+	})
+	first, err := initialize(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := first.catalog.Snapshot(context.Background())
+	if err != nil || len(snapshot.Plans) != 1 || len(snapshot.Suites) != 1 {
+		_ = first.close()
+		t.Fatalf("first built-in catalog = %+v, %v", snapshot, err)
+	}
+	if err := first.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database := filepath.Join(configurationRoot, "llm-studio", "llm-studio.db")
+	repository, err := persistence.OpenRepository(context.Background(), database, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.DeletePlan(context.Background(), snapshot.Plans[0].ID, snapshot.Plans[0].Revision); err != nil {
+		_ = repository.Close()
+		t.Fatal(err)
+	}
+	if err := repository.DeleteSuite(context.Background(), snapshot.Suites[0].ID, snapshot.Suites[0].Revision); err != nil {
+		_ = repository.Close()
+		t.Fatal(err)
+	}
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := initialize(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.close()
+	snapshot, err = second.catalog.Snapshot(context.Background())
+	if err != nil || len(snapshot.Plans) != 0 || len(snapshot.Suites) != 0 {
+		t.Fatalf("catalog after deleting built-ins and restarting = plans:%d suites:%d, %v", len(snapshot.Plans), len(snapshot.Suites), err)
+	}
+}
+
+func TestProductionInitializerRecoversSeedAfterObjectsPersistBeforeMarker(t *testing.T) {
+	configurationRoot := t.TempDir()
+	initialize := newProductionInitializer(productionOptions{
+		userConfigDir: func() (string, error) { return configurationRoot, nil },
+		appVersion:    "desktop-test",
+	})
+	first, err := initialize(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database := filepath.Join(configurationRoot, "llm-studio", "llm-studio.db")
+	db, err := sql.Open("sqlite", database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM builtin_catalog_seeds WHERE seed_key = ?`, builtinKimiK3SeedKey); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := initialize(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.close()
+	snapshot, err := second.catalog.Snapshot(context.Background())
+	if err != nil || len(snapshot.Plans) != 1 || len(snapshot.Suites) != 1 {
+		t.Fatalf("recovered built-in catalog = plans:%d suites:%d, %v", len(snapshot.Plans), len(snapshot.Suites), err)
 	}
 }
 

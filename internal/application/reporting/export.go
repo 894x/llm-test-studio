@@ -17,20 +17,25 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/domain"
 )
 
 type ExportFormat string
 
 const (
-	ExportJSON ExportFormat = "json"
-	ExportHTML ExportFormat = "html"
-	ExportPNG  ExportFormat = "png"
-	ExportPDF  ExportFormat = "pdf"
+	ExportJSON         ExportFormat = "json"
+	ExportHTML         ExportFormat = "html"
+	ExportPNG          ExportFormat = "png"
+	ExportPDF          ExportFormat = "pdf"
+	DefaultWatermark                = "rhzs"
+	MaxWatermarkLength              = 64
 )
 
 var ErrUnsupportedExport = errors.New("unsupported report export format")
+var ErrInvalidWatermark = errors.New("invalid report watermark")
 
 // ExportedDocument is safe for JSON/Wails transport. Encoding the bytes here
 // keeps JavaScript bindings stable across platforms and Wails versions.
@@ -40,7 +45,11 @@ type ExportedDocument struct {
 	DataBase64 string `json:"data_base64"`
 }
 
-func (service Service) Export(ctx context.Context, reportID string, format ExportFormat) (ExportedDocument, error) {
+func (service Service) Export(ctx context.Context, reportID string, format ExportFormat, watermark string) (ExportedDocument, error) {
+	watermark, err := normalizeWatermark(watermark)
+	if err != nil {
+		return ExportedDocument{}, err
+	}
 	detail, err := service.Detail(ctx, reportID)
 	if err != nil {
 		return ExportedDocument{}, err
@@ -50,16 +59,19 @@ func (service Service) Export(ctx context.Context, reportID string, format Expor
 	switch format {
 	case ExportJSON:
 		mediaType, extension = "application/json", "json"
-		contents, err = json.MarshalIndent(detail, "", "  ")
+		contents, err = json.MarshalIndent(struct {
+			Watermark string `json:"watermark"`
+			Detail
+		}{Watermark: watermark, Detail: detail}, "", "  ")
 	case ExportHTML:
 		mediaType, extension = "text/html; charset=utf-8", "html"
-		contents, err = renderHTML(detail)
+		contents, err = renderHTML(detail, watermark)
 	case ExportPNG:
 		mediaType, extension = "image/png", "png"
-		contents, err = renderPNG(detail)
+		contents, err = renderPNG(detail, watermark)
 	case ExportPDF:
 		mediaType, extension = "application/pdf", "pdf"
-		contents, err = renderPDF(detail)
+		contents, err = renderPDF(detail, watermark)
 	default:
 		return ExportedDocument{}, ErrUnsupportedExport
 	}
@@ -73,8 +85,20 @@ func (service Service) Export(ctx context.Context, reportID string, format Expor
 	}, nil
 }
 
+func normalizeWatermark(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return DefaultWatermark, nil
+	}
+	if utf8.RuneCountInString(value) > MaxWatermarkLength || strings.ContainsAny(value, "\r\n\t") {
+		return "", ErrInvalidWatermark
+	}
+	return value, nil
+}
+
 type htmlReport struct {
 	Detail       Detail
+	Watermark    string
 	Metrics      []namedMetric
 	SLA          []namedMetric
 	Issues       []string
@@ -101,18 +125,27 @@ type resultRow struct {
 	Error     string
 }
 
-func renderHTML(detail Detail) ([]byte, error) {
-	view := reportHTMLView(detail)
+func renderHTML(detail Detail, watermark string) ([]byte, error) {
 	var output bytes.Buffer
+	if detail.Source == SourceQuickPerformance && detail.Performance != nil {
+		if err := quickReportHTMLTemplate.Execute(&output, struct {
+			Detail    Detail
+			Watermark string
+		}{Detail: detail, Watermark: watermark}); err != nil {
+			return nil, err
+		}
+		return output.Bytes(), nil
+	}
+	view := reportHTMLView(detail, watermark)
 	if err := reportHTMLTemplate.Execute(&output, view); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
 }
 
-func reportHTMLView(detail Detail) htmlReport {
+func reportHTMLView(detail Detail, watermark string) htmlReport {
 	return htmlReport{
-		Detail: detail, Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
+		Detail: detail, Watermark: watermark, Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
 		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Results: resultRows(detail.RequestResults),
 		GeneratedUTC: detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
 	}
@@ -167,8 +200,8 @@ func formatNumber(value float64) string {
 var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Studio Report {{.Detail.Report.ID}}</title><style>
-:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
-</style></head><body><main>
+:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
+</style></head><body><div class="watermark">{{.Watermark}}</div><main>
 <h1>LLM Studio 测试报告</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
 <h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">结论：{{.Detail.Report.Conclusion.Verdict}}</h2>
 <p>计划 {{.Detail.Report.PlanSnapshot.Plan.ID}} · 运行 {{.Detail.Report.RunID}} · 报告 {{.Detail.Report.ID}}</p>
@@ -179,8 +212,27 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 <p class="muted">Schema v{{.Detail.SchemaVersion}} · All values are derived from the sealed Go Core report document.</p>
 </main></body></html>`))
 
-func renderPNG(detail Detail) ([]byte, error) {
-	canvas := drawReportImage(detail)
+var quickReportHTMLTemplate = template.Must(template.New("quick-report").Parse(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LLM Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
+:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
+</style></head><body><div class="watermark">{{.Watermark}}</div><main>
+<h1>LLM Studio 快速性能测试报告</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
+<h2 class="{{if .Detail.Performance.Success}}pass{{else}}fail{{end}}">结论：{{if .Detail.Performance.Success}}全部请求成功{{else}}性能测试未通过{{end}}</h2>
+<p>报告 {{.Detail.Performance.ReportID}} · 阶段 {{.Detail.Performance.Progress.Phase}}</p>
+<h2>核心指标</h2><section class="grid">
+<div class="card"><strong>{{.Detail.Performance.Metrics.SuccessRatePercent}}%</strong><span>成功率</span></div>
+<div class="card"><strong>{{.Detail.Performance.Metrics.RequestQPS}} req/s</strong><span>请求速率</span></div>
+<div class="card"><strong>{{.Detail.Performance.Metrics.TTFTP50}} / {{.Detail.Performance.Metrics.TTFTP95}} ms</strong><span>TTFT P50 / P95</span></div>
+<div class="card"><strong>{{.Detail.Performance.Metrics.TPOTP50}} / {{.Detail.Performance.Metrics.TPOTP95}} ms/token</strong><span>TPOT P50 / P95</span></div>
+<div class="card"><strong>{{.Detail.Performance.Metrics.E2EP50}} / {{.Detail.Performance.Metrics.E2EP95}} ms</strong><span>E2E P50 / P95</span></div>
+</section>
+<h2>请求样本（{{len .Detail.Performance.Samples}}）</h2><div class="scroll"><table><thead><tr><th>#</th><th>Status</th><th>HTTP</th><th>E2E ms</th><th>TTFT ms</th><th>TPOT ms</th><th>Input</th><th>Output</th><th>Error</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}passed{{else}}failed{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{.TTFTMS}}</td><td>{{.TPOTMS}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>
+<p class="muted">Schema v{{.Detail.SchemaVersion}} · Generated from the archived Go Core quick performance report.</p>
+</main></body></html>`))
+
+func renderPNG(detail Detail, watermark string) ([]byte, error) {
+	canvas := drawReportImage(detail, watermark)
 	var output bytes.Buffer
 	if err := png.Encode(&output, canvas); err != nil {
 		return nil, err
@@ -188,11 +240,16 @@ func renderPNG(detail Detail) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func drawReportImage(detail Detail) image.Image {
+func drawReportImage(detail Detail, watermark string) image.Image {
 	const width, height = 1400, 1800
 	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.RGBA{R: 242, G: 245, B: 249, A: 255}}, image.Point{}, draw.Src)
 	fillRect(canvas, 45, 45, width-45, height-45, color.RGBA{255, 255, 255, 255})
+	if detail.Source == SourceQuickPerformance && detail.Performance != nil {
+		drawQuickPerformanceImage(canvas, *detail.Performance)
+		drawWatermark(canvas, watermark)
+		return canvas
+	}
 	drawBitmapText(canvas, 80, 82, 5, "LLM STUDIO REPORT", color.RGBA{23, 32, 51, 255})
 	drawBitmapText(canvas, 80, 132, 2, strings.ToUpper(detail.Report.Conclusion.Verdict), conclusionColor(detail.Report.Conclusion.Passed))
 	drawBitmapText(canvas, 80, 170, 2, "REPORT "+detail.Report.ID, color.RGBA{91, 105, 128, 255})
@@ -223,7 +280,62 @@ func drawReportImage(detail Detail) image.Image {
 		line := fmt.Sprintf("%s  %s  E2E %s  TTFT %s  %s", row.RequestID, strings.ToUpper(row.Status), row.E2E, row.TTFT, row.Error)
 		drawBitmapText(canvas, 80, 1490+index*26, 2, line, color.RGBA{56, 67, 84, 255})
 	}
+	drawWatermark(canvas, watermark)
 	return canvas
+}
+
+func drawQuickPerformanceImage(canvas *image.RGBA, report quicktest.PerformanceReport) {
+	drawBitmapText(canvas, 80, 82, 5, "LLM STUDIO QUICK PERFORMANCE", color.RGBA{23, 32, 51, 255})
+	verdict := "PERFORMANCE TEST FAILED"
+	if report.Success {
+		verdict = "ALL REQUESTS PASSED"
+	}
+	drawBitmapText(canvas, 80, 132, 2, verdict, conclusionColor(report.Success))
+	drawBitmapText(canvas, 80, 170, 2, "MODEL "+report.ModelID, color.RGBA{91, 105, 128, 255})
+	drawBitmapText(canvas, 80, 200, 2, "REPORT "+report.ReportID, color.RGBA{91, 105, 128, 255})
+	metrics := []struct{ name, value string }{
+		{"SUCCESS RATE", formatNumber(report.Metrics.SuccessRatePercent) + " %"},
+		{"REQUEST QPS", formatNumber(report.Metrics.RequestQPS)},
+		{"TTFT P50", formatNumber(report.Metrics.TTFTP50) + " MS"},
+		{"TTFT P95", formatNumber(report.Metrics.TTFTP95) + " MS"},
+		{"TPOT P50", formatNumber(report.Metrics.TPOTP50) + " MS"},
+		{"E2E P95", formatNumber(report.Metrics.E2EP95) + " MS"},
+	}
+	for index, metric := range metrics {
+		column, row := index%3, index/3
+		x, y := 80+column*420, 280+row*170
+		fillRect(canvas, x, y, x+390, y+140, color.RGBA{248, 250, 252, 255})
+		drawBitmapText(canvas, x+20, y+22, 2, metric.name, color.RGBA{91, 105, 128, 255})
+		drawBitmapText(canvas, x+20, y+72, 3, metric.value, color.RGBA{23, 32, 51, 255})
+	}
+	drawBitmapText(canvas, 80, 660, 3, "E2E LATENCY MS", color.RGBA{23, 32, 51, 255})
+	values := make([]float64, 0, len(report.Samples))
+	for _, sample := range report.Samples {
+		values = append(values, sample.E2EMS)
+	}
+	drawBars(canvas, image.Rect(80, 710, 1320, 1100), values)
+	drawBitmapText(canvas, 80, 1170, 3, "REQUEST SAMPLES", color.RGBA{23, 32, 51, 255})
+	for index, sample := range report.Samples {
+		if index >= 16 {
+			break
+		}
+		status := "PASSED"
+		if !sample.Success {
+			status = "FAILED"
+		}
+		line := fmt.Sprintf("%d  %s  HTTP %d  E2E %.2f  TTFT %.2f", sample.RequestIndex, status, sample.HTTPStatus, sample.E2EMS, sample.TTFTMS)
+		drawBitmapText(canvas, 80, 1220+index*26, 2, line, color.RGBA{56, 67, 84, 255})
+	}
+}
+
+func drawWatermark(canvas *image.RGBA, watermark string) {
+	label := "WATERMARK " + watermark
+	ink := color.RGBA{R: 220, G: 226, B: 234, A: 255}
+	for y := 520; y < canvas.Bounds().Dy()-100; y += 360 {
+		for x := 140; x < canvas.Bounds().Dx()-300; x += 620 {
+			drawBitmapText(canvas, x, y, 4, label, ink)
+		}
+	}
 }
 
 func metricValues(results []domain.Result, name string) []float64 {
@@ -301,8 +413,8 @@ var bitmapGlyphs = map[rune][7]byte{
 	'A': {14, 17, 17, 31, 17, 17, 17}, 'B': {30, 17, 17, 30, 17, 17, 30}, 'C': {14, 17, 16, 16, 16, 17, 14}, 'D': {30, 17, 17, 17, 17, 17, 30}, 'E': {31, 16, 16, 30, 16, 16, 31}, 'F': {31, 16, 16, 30, 16, 16, 16}, 'G': {14, 17, 16, 23, 17, 17, 15}, 'H': {17, 17, 17, 31, 17, 17, 17}, 'I': {14, 4, 4, 4, 4, 4, 14}, 'J': {7, 2, 2, 2, 18, 18, 12}, 'K': {17, 18, 20, 24, 20, 18, 17}, 'L': {16, 16, 16, 16, 16, 16, 31}, 'M': {17, 27, 21, 21, 17, 17, 17}, 'N': {17, 25, 21, 19, 17, 17, 17}, 'O': {14, 17, 17, 17, 17, 17, 14}, 'P': {30, 17, 17, 30, 16, 16, 16}, 'Q': {14, 17, 17, 17, 21, 18, 13}, 'R': {30, 17, 17, 30, 20, 18, 17}, 'S': {15, 16, 16, 14, 1, 1, 30}, 'T': {31, 4, 4, 4, 4, 4, 4}, 'U': {17, 17, 17, 17, 17, 17, 14}, 'V': {17, 17, 17, 17, 17, 10, 4}, 'W': {17, 17, 17, 21, 21, 21, 10}, 'X': {17, 17, 10, 4, 10, 17, 17}, 'Y': {17, 17, 10, 4, 4, 4, 4}, 'Z': {31, 1, 2, 4, 8, 16, 31},
 }
 
-func renderPDF(detail Detail) ([]byte, error) {
-	canvas := drawReportImage(detail)
+func renderPDF(detail Detail, watermark string) ([]byte, error) {
+	canvas := drawReportImage(detail, watermark)
 	var jpegData bytes.Buffer
 	if err := jpeg.Encode(&jpegData, canvas, &jpeg.Options{Quality: 92}); err != nil {
 		return nil, err

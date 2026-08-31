@@ -398,35 +398,40 @@ func validateRunReferences(ctx context.Context, queryer relationQueryer, run dom
 	if err := validatePlanStorage(ctx, queryer, plan); err != nil {
 		return err
 	}
-	if !containsString(plan.ModelIDs, snapshot.Model.ID) || !containsString(plan.ChannelIDs, snapshot.Channel.ID) ||
-		!reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) || !reflect.DeepEqual(plan.SLA, snapshot.SLA) {
+	if !reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) || !reflect.DeepEqual(plan.SLA, snapshot.SLA) {
 		return errors.New("run snapshot does not match its pinned plan")
 	}
-	var pinnedModelRevision int64
-	if err := queryer.QueryRowContext(ctx, `
-		SELECT model_revision FROM plan_models
-		WHERE plan_id = ? AND plan_revision = ? AND model_id = ?
-	`, run.PlanID(), snapshot.Plan.Revision, snapshot.Model.ID).Scan(&pinnedModelRevision); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: plan model relation", ErrCorrupt)
+	runtimeSelectedTarget := len(plan.ModelIDs) == 0
+	if !runtimeSelectedTarget {
+		if !containsString(plan.ModelIDs, snapshot.Model.ID) || !containsString(plan.ChannelIDs, snapshot.Channel.ID) {
+			return errors.New("run target does not match its pinned plan")
 		}
-		return fmt.Errorf("read plan model relation: %w", err)
-	}
-	if uint64(pinnedModelRevision) != snapshot.Model.Revision {
-		return errors.New("run model revision differs from its pinned plan revision")
-	}
-	var pinnedChannelRevision int64
-	if err := queryer.QueryRowContext(ctx, `
-		SELECT channel_revision FROM plan_channels
-		WHERE plan_id = ? AND plan_revision = ? AND channel_id = ?
-	`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID).Scan(&pinnedChannelRevision); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: plan channel relation", ErrCorrupt)
+		var pinnedModelRevision int64
+		if err := queryer.QueryRowContext(ctx, `
+			SELECT model_revision FROM plan_models
+			WHERE plan_id = ? AND plan_revision = ? AND model_id = ?
+		`, run.PlanID(), snapshot.Plan.Revision, snapshot.Model.ID).Scan(&pinnedModelRevision); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: plan model relation", ErrCorrupt)
+			}
+			return fmt.Errorf("read plan model relation: %w", err)
 		}
-		return fmt.Errorf("read plan channel relation: %w", err)
-	}
-	if uint64(pinnedChannelRevision) != snapshot.Channel.Revision {
-		return errors.New("run channel revision differs from its pinned plan revision")
+		if uint64(pinnedModelRevision) != snapshot.Model.Revision {
+			return errors.New("run model revision differs from its pinned plan revision")
+		}
+		var pinnedChannelRevision int64
+		if err := queryer.QueryRowContext(ctx, `
+			SELECT channel_revision FROM plan_channels
+			WHERE plan_id = ? AND plan_revision = ? AND channel_id = ?
+		`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID).Scan(&pinnedChannelRevision); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: plan channel relation", ErrCorrupt)
+			}
+			return fmt.Errorf("read plan channel relation: %w", err)
+		}
+		if uint64(pinnedChannelRevision) != snapshot.Channel.Revision {
+			return errors.New("run channel revision differs from its pinned plan revision")
+		}
 	}
 	modelDocument, err := exactDocument(ctx, queryer, "models", snapshot.Model.ID, snapshot.Model.Revision, "model")
 	if err != nil {
@@ -455,11 +460,23 @@ func validateRunReferences(ctx context.Context, queryer relationQueryer, run dom
 	}
 	var mappingID string
 	var mappingRevision int64
-	err = queryer.QueryRowContext(ctx, `
-		SELECT mapping_id, mapping_revision
-		FROM plan_channel_models
-		WHERE plan_id = ? AND plan_revision = ? AND channel_id = ? AND model_id = ?
-	`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID, snapshot.Model.ID).Scan(&mappingID, &mappingRevision)
+	if runtimeSelectedTarget {
+		// Runtime-selected plans bind mappings by the logical model/channel IDs.
+		// A later metadata-only revision of either endpoint must not invalidate the
+		// mapping; the Run snapshot separately pins the exact endpoint revisions.
+		err = queryer.QueryRowContext(ctx, `
+			SELECT id, revision FROM channel_models
+			WHERE channel_id = ? AND model_id = ?
+			  AND json_extract(document_json, '$.upstream_model_name') = ?
+			ORDER BY revision DESC LIMIT 1
+		`, snapshot.Channel.ID, snapshot.Model.ID, snapshot.Channel.UpstreamModelName).Scan(&mappingID, &mappingRevision)
+	} else {
+		err = queryer.QueryRowContext(ctx, `
+			SELECT mapping_id, mapping_revision
+			FROM plan_channel_models
+			WHERE plan_id = ? AND plan_revision = ? AND channel_id = ? AND model_id = ?
+		`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID, snapshot.Model.ID).Scan(&mappingID, &mappingRevision)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: plan channel model relation", ErrCorrupt)
 	}

@@ -201,20 +201,27 @@ func buildSnapshot(
 		if !validCaseRefs(plan.Cases, testCaseByID) {
 			return Snapshot{}, ErrCorrupt
 		}
-		targetProtocol := modelByID[plan.ModelIDs[0]].Protocol
+		targetProtocol := domain.Protocol("")
 		for _, ref := range plan.Cases {
-			if testCaseByID[ref.CaseID].Protocol != targetProtocol {
+			caseProtocol := testCaseByID[ref.CaseID].Protocol
+			if targetProtocol == "" {
+				targetProtocol = caseProtocol
+			} else if caseProtocol != targetProtocol {
+				return Snapshot{}, ErrCorrupt
+			}
+		}
+		for _, modelID := range plan.ModelIDs {
+			model, found := modelByID[modelID]
+			if !found || model.Protocol != targetProtocol {
 				return Snapshot{}, ErrCorrupt
 			}
 		}
 		for _, channelID := range plan.ChannelIDs {
-			if _, found := channelByID[channelID]; !found {
+			channel, found := channelByID[channelID]
+			if !found || channel.Protocol != targetProtocol {
 				return Snapshot{}, ErrCorrupt
 			}
 			for _, modelID := range plan.ModelIDs {
-				if _, found := modelByID[modelID]; !found {
-					return Snapshot{}, ErrCorrupt
-				}
 				if _, found := mappingByBinding[channelID+"\x00"+modelID]; !found {
 					return Snapshot{}, ErrCorrupt
 				}

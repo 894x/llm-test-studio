@@ -85,6 +85,8 @@ shadcn/ui，不引入 Naive UI 运行时，也不复制 Animetown 的组件代�
 | 状态 | `Badge` 的语义变体；详细原因进入 Tooltip 或检查器 |
 | 搜索 | `InputGroup` + `InputGroupInput`，不绝对定位自制按钮 |
 | 筛选 | `Select`，所有 `SelectItem` 位于 `SelectGroup` 内 |
+| 可筛选的封闭选项 | `Combobox`；提交值必须来自候选项 |
+| 候选建议并允许自由输入 | 共享 `Autocomplete`；候选仅辅助补全，不得使用无法随主题统一的原生 `datalist` |
 | 新建运行 | 桌面使用 `Sheet`，窄窗口使用 `Drawer`；必须包含可访问 Title |
 | 运行表单 | `FieldGroup` + `Field`；错误同时设置 `data-invalid` 与 `aria-invalid` |
 | 长任务 | `Progress` + 固定任务条；不可测进度使用 `Spinner` |

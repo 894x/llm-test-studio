@@ -352,6 +352,8 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		{version: 3, name: migration0003Name, checksum: migration0003Checksum()},
 		{version: 4, name: migration0004Name, checksum: migration0004Checksum()},
 		{version: 5, name: migration0005Name, checksum: migration0005Checksum()},
+		{version: 6, name: migration0006Name, checksum: migration0006Checksum()},
+		{version: 7, name: migration0007Name, checksum: migration0007Checksum()},
 	}
 	for index, got := range history {
 		expected := want[index]
@@ -390,7 +392,15 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		if err := validateAppliedSchema0004(ctx, conn); err != nil {
 			return 0, err
 		}
-	} else if err := validateAppliedSchema0005(ctx, conn); err != nil {
+	} else if version == 5 {
+		if err := validateAppliedSchema0005(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if version == 6 {
+		if err := validateAppliedSchema0006(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if err := validateAppliedSchema0007(ctx, conn); err != nil {
 		return 0, err
 	}
 	return version, nil

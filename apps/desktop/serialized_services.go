@@ -12,6 +12,7 @@ import (
 	"github.com/894x/llm-studio/internal/application/casecatalog"
 	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/channelconfig"
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
@@ -63,16 +64,27 @@ func (query serializedReportingQuery) Detail(ctx context.Context, reportID strin
 	return documents.Detail(ctx, reportID)
 }
 
-func (query serializedReportingQuery) Export(ctx context.Context, reportID string, format reporting.ExportFormat) (reporting.ExportedDocument, error) {
+func (query serializedReportingQuery) Export(ctx context.Context, reportID string, format reporting.ExportFormat, watermark string) (reporting.ExportedDocument, error) {
 	release := query.gate.enter()
 	defer release()
 	documents, ok := query.query.(interface {
-		Export(context.Context, string, reporting.ExportFormat) (reporting.ExportedDocument, error)
+		Export(context.Context, string, reporting.ExportFormat, string) (reporting.ExportedDocument, error)
 	})
 	if !ok || isNilInterface(documents) {
 		return reporting.ExportedDocument{}, ErrReportingUnavailable
 	}
-	return documents.Export(ctx, reportID, format)
+	return documents.Export(ctx, reportID, format, watermark)
+}
+
+type serializedQuickPerformanceArchive struct {
+	gate    *productionServiceGate
+	archive quicktest.PerformanceArchive
+}
+
+func (archive serializedQuickPerformanceArchive) SaveQuickPerformanceReport(ctx context.Context, report quicktest.PerformanceReport) error {
+	release := archive.gate.enter()
+	defer release()
+	return archive.archive.SaveQuickPerformanceReport(ctx, report)
 }
 
 type serializedCatalogService struct {

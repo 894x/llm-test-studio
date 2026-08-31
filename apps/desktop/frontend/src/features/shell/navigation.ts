@@ -1,5 +1,6 @@
 export const DESKTOP_PAGES = [
   { id: "overview", label: "总览" },
+  { id: "quick-test", label: "快速测试" },
   { id: "catalog", label: "模型与渠道" },
   { id: "cases", label: "用例" },
   { id: "plans", label: "计划" },

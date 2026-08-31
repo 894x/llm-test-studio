@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-studio/internal/application/catalog"
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/workspace"
 )
@@ -48,19 +49,31 @@ func (service probedReportingService) Snapshot(context.Context) (reporting.Snaps
 	return reporting.Snapshot{}, nil
 }
 
+type probedQuickPerformanceArchive struct{ probe *sharedConnectionProbe }
+
+func (archive probedQuickPerformanceArchive) SaveQuickPerformanceReport(context.Context, quicktest.PerformanceReport) error {
+	release := archive.probe.call()
+	defer release()
+	return nil
+}
+
 func TestProductionServiceGateSerializesSharedConnectionCalls(t *testing.T) {
 	probe := &sharedConnectionProbe{}
 	gate := &productionServiceGate{}
 	workspaceQuery := serializedWorkspaceQuery{gate: gate, query: probedWorkspaceService{probe: probe}}
 	catalogQuery := serializedCatalogService{gate: gate, query: probedCatalogService{probe: probe}}
 	reportingQuery := serializedReportingQuery{gate: gate, query: probedReportingService{probe: probe}}
+	quickArchive := serializedQuickPerformanceArchive{gate: gate, archive: probedQuickPerformanceArchive{probe: probe}}
 
 	start := make(chan struct{})
-	errors := make(chan error, 3)
+	errors := make(chan error, 4)
 	for _, call := range []func() error{
 		func() error { _, err := workspaceQuery.Snapshot(context.Background()); return err },
 		func() error { _, err := catalogQuery.Snapshot(context.Background()); return err },
 		func() error { _, err := reportingQuery.Snapshot(context.Background()); return err },
+		func() error {
+			return quickArchive.SaveQuickPerformanceReport(context.Background(), quicktest.PerformanceReport{})
+		},
 	} {
 		go func(call func() error) {
 			<-start

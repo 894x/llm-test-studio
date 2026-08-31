@@ -488,6 +488,26 @@ func (service *Service) validateBinding(ctx context.Context, channelID, modelID 
 
 func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan) error {
 	targetProtocol := domain.Protocol("")
+	for _, ref := range plan.Cases {
+		testCase, err := service.repository.GetTestCase(ctx, ref.CaseID)
+		if err != nil {
+			return service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := testCase.Validate(); err != nil || testCase.ID != ref.CaseID {
+			return ErrCorrupt
+		}
+		if ref.Revision > testCase.Revision {
+			return ErrInvalid
+		}
+		if targetProtocol == "" {
+			targetProtocol = testCase.Protocol
+		} else if testCase.Protocol != targetProtocol {
+			return ErrInvalid
+		}
+	}
 	for _, modelID := range plan.ModelIDs {
 		model, err := service.repository.GetModel(ctx, modelID)
 		if err != nil {
@@ -499,9 +519,7 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 		if err := model.Validate(); err != nil || model.ID != modelID {
 			return ErrCorrupt
 		}
-		if targetProtocol == "" {
-			targetProtocol = model.Protocol
-		} else if model.Protocol != targetProtocol {
+		if model.Protocol != targetProtocol {
 			return ErrInvalid
 		}
 	}
@@ -517,21 +535,6 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 			return ErrCorrupt
 		}
 		if channel.Protocol != targetProtocol {
-			return ErrInvalid
-		}
-	}
-	for _, ref := range plan.Cases {
-		testCase, err := service.repository.GetTestCase(ctx, ref.CaseID)
-		if err != nil {
-			return service.portError(ctx, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := testCase.Validate(); err != nil || testCase.ID != ref.CaseID {
-			return ErrCorrupt
-		}
-		if ref.Revision > testCase.Revision || testCase.Protocol != targetProtocol {
 			return ErrInvalid
 		}
 	}

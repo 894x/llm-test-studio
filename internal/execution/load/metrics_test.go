@@ -8,9 +8,9 @@ import (
 
 func TestComputeMetricsMatchesLegacyPercentileAndSuccessFiltering(t *testing.T) {
 	observations := []Observation{
-		{Success: true, E2E: 100 * time.Millisecond, TTFT: 20 * time.Millisecond, CompletionTokens: 3, PromptTokens: 100, CachedTokens: 40},
-		{Success: true, E2E: 300 * time.Millisecond, TTFT: 60 * time.Millisecond, CompletionTokens: 5, PromptTokens: 300, CachedTokens: 80},
-		{Success: false, TimedOut: true, E2E: 500 * time.Millisecond, TTFT: 400 * time.Millisecond, CompletionTokens: 999, PromptTokens: 999, CachedTokens: 999},
+		{Success: true, ScheduleLag: 10 * time.Millisecond, E2E: 100 * time.Millisecond, TTFT: 20 * time.Millisecond, CompletionTokens: 3, PromptTokens: 100, CachedTokens: 40},
+		{Success: true, ScheduleLag: 20 * time.Millisecond, E2E: 300 * time.Millisecond, TTFT: 60 * time.Millisecond, CompletionTokens: 5, PromptTokens: 300, CachedTokens: 80},
+		{Success: false, TimedOut: true, ScheduleLag: 30 * time.Millisecond, E2E: 500 * time.Millisecond, TTFT: 400 * time.Millisecond, CompletionTokens: 999, PromptTokens: 999, CachedTokens: 999},
 	}
 
 	metrics := ComputeMetrics(observations, 2*time.Second)
@@ -22,6 +22,9 @@ func TestComputeMetricsMatchesLegacyPercentileAndSuccessFiltering(t *testing.T) 
 	}
 	if metrics.TTFTP50 != 40 || metrics.E2EP50 != 200 || metrics.CacheRatePercent != 30 {
 		t.Fatalf("latency/cache metrics = %#v", metrics)
+	}
+	if metrics.ScheduleLagP50 != 20 || metrics.ScheduleLagP90 != 28 || metrics.ScheduleLagP95 != 29 || math.Abs(metrics.ScheduleLagP99-29.8) > 1e-9 || metrics.ScheduleLagAverage != 20 {
+		t.Fatalf("client queue metrics = %#v", metrics)
 	}
 	// TPOT is measured after the first generated token, so N tokens have N-1 intervals.
 	if metrics.TPOTP50 != 50 {

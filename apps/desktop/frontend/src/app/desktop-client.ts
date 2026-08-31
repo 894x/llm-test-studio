@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@/features/runs/data"
+import type { StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
   parseComparisonSnapshot,
@@ -34,6 +34,17 @@ import {
   type ReportExportFormat,
   type ReportSnapshot,
 } from "@/features/reports/data"
+import {
+  parseQuickPerformanceProgress,
+  parseQuickPerformanceReport,
+  parseQuickTestResult,
+  type QuickPerformanceCommand,
+  type QuickPerformanceProgress,
+  type QuickPerformanceReport,
+  type QuickTestCommand,
+  type QuickTestResult,
+  type SaveQuickTestConnectionCommand,
+} from "@/features/quick-test/data"
 
 export type DesktopErrorCode =
   | "desktop_not_started"
@@ -45,6 +56,8 @@ export type DesktopErrorCode =
   | "run_commands_unavailable"
   | "comparison_unavailable"
   | "diagnostics_unavailable"
+  | "quick_test_unavailable"
+  | "quick_test_save_partial"
   | "invalid_identifier"
   | "operation_cancelled"
   | "operation_failed"
@@ -62,6 +75,8 @@ const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   run_commands_unavailable: "运行命令暂不可用",
   comparison_unavailable: "渠道对比暂不可用",
   diagnostics_unavailable: "诊断日志暂不可用",
+  quick_test_unavailable: "快速测试暂不可用",
+  quick_test_save_partial: "连接已部分保存，请前往模型与渠道检查并完成配置",
   invalid_identifier: "操作对象无效",
   operation_cancelled: "操作已取消",
   operation_failed: "桌面操作失败，请检查本地日志",
@@ -102,12 +117,16 @@ export interface DesktopClient extends CatalogActions {
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
   getReportDetail(reportId: string): Promise<ReportDetail>
-  exportReport(reportId: string, format: ReportExportFormat): Promise<ExportedReport>
+  exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
+  startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
+  runQuickTest(command: QuickTestCommand): Promise<QuickTestResult>
+  runQuickPerformanceTest(command: QuickPerformanceCommand, onProgress?: (progress: QuickPerformanceProgress) => void): Promise<QuickPerformanceReport>
+  saveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<CatalogSnapshot>
 }
 
 export type DesktopDiagnosticsSnapshot = {
@@ -127,12 +146,16 @@ type WailsDesktopBinding = {
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
-  ExportReport(reportId: string, format: ReportExportFormat): Promise<unknown>
+  ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
+  StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
+  RunQuickTest(command: QuickTestCommand): Promise<unknown>
+  RunQuickPerformanceTest(command: QuickPerformanceCommand, progressId: string): Promise<unknown>
+  SaveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<unknown>
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
   DeleteModel(command: DeleteCommand): Promise<unknown>
@@ -195,12 +218,12 @@ export function createFixtureClient(
 			if (!summary) throw new DesktopClientError("invalid_identifier")
 			return fixtureReportDetail(summary)
 		},
-		async exportReport(reportId, format) {
+		async exportReport(reportId, format, watermark) {
 			const summary = reports.reports.find((report) => report.id === reportId)
 			if (!summary) throw new DesktopClientError("invalid_identifier")
 			const detail = fixtureReportDetail(summary)
 			const mediaTypes: Record<ReportExportFormat, string> = { json: "application/json", html: "text/html; charset=utf-8", png: "image/png", pdf: "application/pdf" }
-			const payload = format === "json" ? JSON.stringify(detail, null, 2) : `LLM Studio ${format.toUpperCase()} report ${reportId}`
+			const payload = format === "json" ? JSON.stringify({ watermark: watermark.trim() || "rhzs", ...detail }, null, 2) : `LLM Studio ${format.toUpperCase()} report ${reportId} watermark ${watermark.trim() || "rhzs"}`
 			return { filename: `llm-studio-report-${reportId}.${format}`, media_type: mediaTypes[format], data_base64: bytesToBase64(new TextEncoder().encode(payload)) }
 		},
 		async getComparisons() {
@@ -212,6 +235,14 @@ export function createFixtureClient(
       }
       return cloneSnapshot(workspace)
     },
+		async startRunTarget(command) {
+			const plan = catalogState.plans.find((item) => item.id === command.plan_id)
+			const model = catalogState.models.find((item) => item.id === command.model_id)
+			const channel = catalogState.channels.find((item) => item.id === command.channel_id)
+			const mapped = catalogState.channel_models.some((item) => item.model_id === command.model_id && item.channel_id === command.channel_id)
+			if (!plan || !model || !channel || !mapped) throw new DesktopClientError("invalid_identifier")
+			return cloneSnapshot(workspace)
+		},
     async stopSending(runId) {
       workspace = updateRun(workspace, runId, "draining")
       return cloneSnapshot(workspace)
@@ -241,6 +272,57 @@ export function createFixtureClient(
 			})
 			return structuredClone(comparisonState)
 		},
+    async runQuickTest(command) {
+      const normalizedURL = command.url.replace(/\/+$/, "")
+      const endpoint = command.address_mode === "base_url"
+        ? `${normalizedURL}/chat/completions`
+        : command.url
+      return {
+        schema_version: 1,
+        success: true,
+        address_mode: command.address_mode,
+        base_url: command.address_mode === "base_url"
+          ? normalizedURL
+          : normalizedURL.replace(/\/chat\/completions$/, ""),
+        endpoint,
+        http_status: 200,
+        e2e_ms: 42,
+        prompt_tokens: 8,
+        completion_tokens: 1,
+        cached_tokens: 0,
+      }
+    },
+    async runQuickPerformanceTest(command, onProgress) {
+      onProgress?.(fixtureQuickPerformanceProgress(command, "sending", 0))
+      onProgress?.(fixtureQuickPerformanceProgress(command, "completed", command.request_count || Math.max(1, command.concurrency * 2)))
+      return fixtureQuickPerformanceReport(command)
+    },
+    async saveQuickTestConnection(command) {
+      let modelID = command.existing_model_id
+      if (modelID) {
+        const existing = catalogState.models.find((model) => model.id === modelID)
+        if (!existing || existing.protocol !== "openai-chat") {
+          throw new DesktopClientError("catalog_not_found")
+        }
+      } else {
+        modelID = nextID()
+        catalogState.models.push({
+          id: modelID, revision: 1, name: command.model_name,
+          protocol: "openai-chat", capabilities: ["chat"],
+        })
+      }
+      const channelID = nextID()
+      catalogState.channels.push({
+        id: channelID, revision: 1, name: command.channel_name,
+        base_url: command.base_url, protocol: "openai-chat", enabled: true,
+        credential_configured: true, model_count: 1,
+      })
+      catalogState.channel_models.push({
+        id: nextID(), revision: 1, channel_id: channelID, model_id: modelID,
+        upstream_model_name: command.model_id,
+      })
+      return structuredClone(catalogState)
+    },
     async createModel(command) {
       catalogState.models.push({ id: nextID(), revision: 1, ...structuredClone(command) })
       return structuredClone(catalogState)
@@ -366,12 +448,16 @@ function createLazyFixtureClient(): DesktopClient {
     getCatalog: async () => (await client).getCatalog(),
     getReports: async () => (await client).getReports(),
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
-		exportReport: async (reportId, format) => (await client).exportReport(reportId, format),
+		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
+		startRunTarget: async (command) => (await client).startRunTarget(command),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
+    runQuickTest: async (command) => (await client).runQuickTest(command),
+    runQuickPerformanceTest: async (command, onProgress) => (await client).runQuickPerformanceTest(command, onProgress),
+    saveQuickTestConnection: async (command) => (await client).saveQuickTestConnection(command),
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
     deleteModel: async (command) => (await client).deleteModel(command),
@@ -407,18 +493,35 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.GetReports(), parseReportSnapshot),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
-		exportReport: async (reportId, format) =>
-			callBinding(() => binding.ExportReport(reportId, format), parseExportedReport),
+		exportReport: async (reportId, format, watermark) =>
+			callBinding(() => binding.ExportReport(reportId, format, watermark), parseExportedReport),
 		getComparisons: async () =>
 			callBinding(() => binding.GetComparisons(), parseComparisonSnapshot),
     startRun: async (planId) =>
       callBinding(() => binding.StartRun(planId), parseSnapshot),
+		startRunTarget: async (command) =>
+			callBinding(() => binding.StartRunTarget(command), parseSnapshot),
     stopSending: async (runId) =>
       callBinding(() => binding.StopSending(runId), parseSnapshot),
     cancelRun: async (runId) =>
       callBinding(() => binding.CancelRun(runId), parseSnapshot),
 		startComparison: async (command) =>
 			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
+    runQuickTest: async (command) =>
+      callBinding(() => binding.RunQuickTest(command), parseQuickTestResult),
+    runQuickPerformanceTest: async (command, onProgress) => {
+      const subscription = subscribeQuickPerformanceProgress(onProgress)
+      try {
+        return await callBinding(
+          () => binding.RunQuickPerformanceTest(command, subscription.progressID),
+          parseQuickPerformanceReport,
+        )
+      } finally {
+        subscription.unsubscribe()
+      }
+    },
+    saveQuickTestConnection: async (command) =>
+      callBinding(() => binding.SaveQuickTestConnection(command), parseCatalogSnapshot),
     createModel: async (command) => callBinding(() => binding.CreateModel(command), parseCatalogSnapshot),
     updateModel: async (command) => callBinding(() => binding.UpdateModel(command), parseCatalogSnapshot),
     deleteModel: async (command) => callBinding(() => binding.DeleteModel(command), parseCatalogSnapshot),
@@ -458,9 +561,13 @@ function unavailableClient(): DesktopClient {
 		exportReport: () => reject(),
 		getComparisons: () => reject(),
     startRun: () => reject(),
+		startRunTarget: () => reject(),
     stopSending: () => reject(),
     cancelRun: () => reject(),
 		startComparison: () => reject(),
+    runQuickTest: () => reject(),
+    runQuickPerformanceTest: () => reject(),
+    saveQuickTestConnection: () => reject(),
     createModel: () => reject(),
     updateModel: () => reject(),
     deleteModel: () => reject(),
@@ -503,9 +610,13 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     typeof candidate.GetReports !== "function" ||
 		typeof candidate.GetComparisons !== "function" ||
     typeof candidate.StartRun !== "function" ||
+		typeof candidate.StartRunTarget !== "function" ||
     typeof candidate.StopSending !== "function" ||
     typeof candidate.CancelRun !== "function" ||
 		typeof candidate.StartComparison !== "function" ||
+		typeof candidate.RunQuickTest !== "function" ||
+		typeof candidate.RunQuickPerformanceTest !== "function" ||
+    typeof candidate.SaveQuickTestConnection !== "function" ||
     catalogMethods.some((method) => typeof candidate[method] !== "function")
   ) {
     return undefined
@@ -525,11 +636,118 @@ function fixtureDiagnosticsSnapshot(): DesktopDiagnosticsSnapshot {
   }
 }
 
+const quickPerformanceProgressEventName = "quick-performance-progress"
+
+function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerformanceProgress) => void): {
+  progressID: string
+  unsubscribe: () => void
+} {
+  if (!onProgress) return { progressID: "", unsubscribe: () => {} }
+  const runtime = (window as typeof window & {
+    runtime?: { EventsOn?: (eventName: string, callback: (payload: unknown) => void) => () => void }
+  }).runtime
+  if (typeof runtime?.EventsOn !== "function") return { progressID: "", unsubscribe: () => {} }
+  const progressID = crypto.randomUUID()
+  const unsubscribe = runtime.EventsOn(quickPerformanceProgressEventName, (payload) => {
+    if (!isRecord(payload) || payload.progress_id !== progressID) return
+    try {
+      onProgress(parseQuickPerformanceProgress(payload.progress))
+    } catch {
+      // Ignore malformed or stale event payloads at the desktop boundary.
+    }
+  })
+  return { progressID, unsubscribe }
+}
+
+function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
+  const completed = command.request_count || Math.max(1, command.concurrency * 2)
+  const totalDurationMS = Math.max(320, command.duration_ms)
+  const seconds = totalDurationMS / 1_000
+  const promptTokens = completed * command.input_tokens
+  const completionTokens = completed * command.output_tokens
+  return {
+    schema_version: 1,
+    archived: false,
+    archive_status: "not_attempted",
+    model_id: command.model_id,
+    success: true,
+    address_mode: command.address_mode,
+    base_url: command.url.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, ""),
+    endpoint: command.address_mode === "base_url"
+      ? `${command.url.replace(/\/+$/, "")}/chat/completions`
+      : command.url,
+    profile: {
+      request_count: command.request_count, duration_ms: command.duration_ms,
+      concurrency: command.concurrency, timeout_ms: command.timeout_ms,
+      input_tokens: command.input_tokens, output_tokens: command.output_tokens,
+    },
+    progress: {
+      phase: "completed", planned: completed, launched: completed, completed,
+      in_flight: 0,
+      peak_in_flight: Math.min(command.concurrency, completed), succeeded: completed,
+      failed: 0, rejected: 0, send_duration_ms: totalDurationMS,
+      drain_duration_ms: 0, total_duration_ms: totalDurationMS,
+    },
+    metrics: {
+      completed, succeeded: completed, failed: 0, timed_out: 0,
+      success_rate_percent: 100, request_qps: completed / seconds,
+      rpm: completed / seconds * 60, input_tpm: promptTokens / seconds * 60,
+      output_tpm: completionTokens / seconds * 60,
+      total_tpm: (promptTokens + completionTokens) / seconds * 60,
+      generation_tps: completionTokens / seconds,
+      ttft_p50_ms: 35, ttft_p90_ms: 45, ttft_p95_ms: 48, ttft_p99_ms: 50, ttft_average_ms: 38,
+      tpot_p50_ms: 5, tpot_p90_ms: 6, tpot_p95_ms: 6.5, tpot_p99_ms: 7, tpot_average_ms: 5.2,
+      e2e_p50_ms: 120, e2e_p90_ms: 150, e2e_p95_ms: 160, e2e_p99_ms: 170, e2e_average_ms: 128,
+      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
+      schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
+      prompt_tokens: promptTokens, completion_tokens: completionTokens,
+      cached_tokens: 0, cache_rate_percent: 0,
+    },
+    samples: Array.from({ length: completed }, (_, index) => ({
+      request_index: index,
+      scheduled_offset_ms: 0,
+      started_offset_ms: index,
+      finished_offset_ms: 120 + index,
+      schedule_lag_ms: index,
+      e2e_ms: 120,
+      ttft_ms: 35,
+      tpot_ms: 5,
+      http_status: 200,
+      success: true,
+      timed_out: false,
+      prompt_tokens: command.input_tokens,
+      completion_tokens: command.output_tokens,
+      cached_tokens: 0,
+    })),
+    failures: [],
+  }
+}
+
+function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {
+  const planned = command.request_count || Math.max(1, command.concurrency * 2)
+  const totalDurationMS = phase === "completed" ? Math.max(320, command.duration_ms) : 0
+  return {
+    phase,
+    planned,
+    launched: phase === "completed" ? planned : Math.min(command.concurrency, planned),
+    completed,
+    in_flight: phase === "completed" ? 0 : Math.min(command.concurrency, planned),
+    peak_in_flight: Math.min(command.concurrency, planned),
+    succeeded: completed,
+    failed: 0,
+    rejected: 0,
+    send_duration_ms: totalDurationMS,
+    drain_duration_ms: 0,
+    total_duration_ms: totalDurationMS,
+  }
+}
+
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
 	return {
 		schema_version: 1,
+		source: "run",
 		report: {
-			id: summary.id, run_id: summary.run_id, run_status: summary.run_status, generated_at: summary.generated_at,
+			id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
 			model: { id: "10000000-0000-4000-8000-000000000001", name: summary.model_name },
 			channel: { id: "10000000-0000-4000-8000-000000000002", name: summary.channel_name },
 			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "fixture", engine_version: "go-core-v1" },
@@ -650,7 +868,9 @@ function isProtocolError(error: unknown): boolean {
       error.message.startsWith("桌面目录") ||
       error.message.startsWith("桌面报告") ||
 		error.message.startsWith("渠道对比") ||
-      error.message.startsWith("桌面诊断"))
+		error.message.startsWith("桌面诊断") ||
+		error.message.startsWith("快速测试") ||
+		error.message.startsWith("快速性能"))
   )
 }
 

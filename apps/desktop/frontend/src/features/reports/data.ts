@@ -1,6 +1,11 @@
+import { parseQuickPerformanceReport, type QuickPerformanceReport } from "@/features/quick-test/data"
+
+export type ReportSource = "run" | "quick_performance"
+
 export interface ReportSummary {
   id: string
-  run_id: string
+  source: ReportSource
+  run_id?: string
   generated_at: string
   run_status: "completed" | "failed" | "cancelled"
   plan_name: string
@@ -40,8 +45,9 @@ export interface ReportResult {
   metrics: Record<string, number>
 }
 
-export interface ReportDetail {
+export interface FormalReportDetail {
   schema_version: 1
+  source: "run"
   report: {
     id: string
     run_id: string
@@ -64,6 +70,14 @@ export interface ReportDetail {
   }
   request_results: ReportResult[]
 }
+
+export interface QuickPerformanceReportDetail {
+  schema_version: 1
+  source: "quick_performance"
+  performance: QuickPerformanceReport
+}
+
+export type ReportDetail = FormalReportDetail | QuickPerformanceReportDetail
 
 export type ReportExportFormat = "json" | "html" | "png" | "pdf"
 
@@ -93,9 +107,15 @@ export function parseReportSnapshot(value: unknown): ReportSnapshot {
 }
 
 export function parseReportDetail(value: unknown): ReportDetail {
-  if (!isRecord(value) || value.schema_version !== 1 || !isRecord(value.report) || !Array.isArray(value.request_results)) {
+  if (!isRecord(value) || value.schema_version !== 1 || !isReportSource(value.source)) {
     throw new Error("桌面报告详情数据无效")
   }
+  if (value.source === "quick_performance") {
+    const performance = parseQuickPerformanceReport(value.performance)
+    if (!performance.archived || !performance.report_id) throw new Error("桌面报告详情数据无效")
+    return { schema_version: 1, source: "quick_performance", performance }
+  }
+  if (!isRecord(value.report) || !Array.isArray(value.request_results)) throw new Error("桌面报告详情数据无效")
   const report = value.report
   if (
     !isUUID(report.id) || !isUUID(report.run_id) || !isRunStatus(report.run_status) ||
@@ -107,6 +127,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
   }
   return {
     schema_version: 1,
+    source: "run",
     report: {
       id: report.id, run_id: report.run_id, run_status: report.run_status,
       generated_at: report.generated_at, model: report.model, channel: report.channel,
@@ -167,11 +188,11 @@ function isSubject(value: unknown): value is { id: string; name: string } {
   return isRecord(value) && isUUID(value.id) && isNonBlank(value.name)
 }
 
-function isEnvironment(value: unknown): value is ReportDetail["report"]["environment"] {
+function isEnvironment(value: unknown): value is FormalReportDetail["report"]["environment"] {
   return isRecord(value) && [value.os, value.arch, value.region, value.network_egress, value.app_version, value.engine_version].every((item) => typeof item === "string")
 }
 
-function isConclusion(value: unknown): value is ReportDetail["report"]["conclusion"] {
+function isConclusion(value: unknown): value is FormalReportDetail["report"]["conclusion"] {
   return isRecord(value) && typeof value.passed === "boolean" && isNonBlank(value.verdict) && Array.isArray(value.issues) && value.issues.every(isNonBlank)
 }
 
@@ -179,7 +200,8 @@ function parseReport(value: unknown): ReportSummary {
   if (
     !isRecord(value) ||
     !isUUID(value.id) ||
-    !isUUID(value.run_id) ||
+    !isReportSource(value.source) ||
+    (value.source === "run" ? !isUUID(value.run_id) : value.run_id !== undefined) ||
     !isUTCTimestamp(value.generated_at) ||
     !isRunStatus(value.run_status) ||
     !isNonBlank(value.plan_name) ||
@@ -198,7 +220,8 @@ function parseReport(value: unknown): ReportSummary {
   }
   return {
     id: value.id,
-    run_id: value.run_id,
+    source: value.source,
+    ...(value.source === "run" ? { run_id: value.run_id as string } : {}),
     generated_at: value.generated_at,
     run_status: value.run_status,
     plan_name: value.plan_name,
@@ -234,6 +257,10 @@ function isUTCTimestamp(value: unknown): value is string {
 
 function isRunStatus(value: unknown): value is ReportSummary["run_status"] {
   return value === "completed" || value === "failed" || value === "cancelled"
+}
+
+function isReportSource(value: unknown): value is ReportSource {
+  return value === "run" || value === "quick_performance"
 }
 
 function isNonBlank(value: unknown): value is string {

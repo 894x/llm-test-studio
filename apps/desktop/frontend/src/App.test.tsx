@@ -17,6 +17,7 @@ import {
 } from "./features/runs/fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
 import { EMPTY_COMPARISONS } from "./features/comparisons/data"
+import type { QuickPerformanceReport } from "./features/quick-test/data"
 import indexHtml from "../index.html?raw"
 
 const indexCss = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8")
@@ -47,6 +48,7 @@ function desktopClient(): DesktopClient & {
 		exportReport: vi.fn(async () => { throw new Error("report export unavailable in shell fixture") }),
 		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     startRun: vi.fn(async () => structuredClone(client.workspace)),
+		startRunTarget: vi.fn(async () => structuredClone(client.workspace)),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
         ...client.workspace,
@@ -67,6 +69,20 @@ function desktopClient(): DesktopClient & {
       return structuredClone(client.workspace)
     }),
 		startComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
+		runQuickTest: vi.fn(async () => ({
+			schema_version: 1 as const,
+			success: true,
+			address_mode: "base_url" as const,
+			base_url: "https://api.example.test/v1",
+			endpoint: "https://api.example.test/v1/chat/completions",
+			http_status: 200,
+			e2e_ms: 42,
+			prompt_tokens: 8,
+			completion_tokens: 1,
+			cached_tokens: 0,
+		})),
+		runQuickPerformanceTest: vi.fn(),
+		saveQuickTestConnection: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
     ...catalogMutationMocks(),
   }
   return client
@@ -81,6 +97,34 @@ function catalogMutationMocks() {
     createTestCase: vi.fn(reply), updateTestCase: vi.fn(reply), deleteTestCase: vi.fn(reply),
     createSuite: vi.fn(reply), updateSuite: vi.fn(reply), deleteSuite: vi.fn(reply),
     createPlan: vi.fn(reply), updatePlan: vi.fn(reply), deletePlan: vi.fn(reply),
+  }
+}
+
+function archivedPerformanceReport(reportID: string): QuickPerformanceReport {
+  return {
+    schema_version: 1,
+    report_id: reportID,
+    generated_at: "2026-08-31T14:30:00Z",
+    archived: true,
+    archive_status: "archived",
+    model_id: "gpt-new",
+    success: true,
+    address_mode: "base_url",
+    base_url: "https://api.example.test/v1",
+    endpoint: "https://api.example.test/v1/chat/completions",
+    profile: { request_count: 1, duration_ms: 0, concurrency: 1, timeout_ms: 60_000, input_tokens: 100, output_tokens: 100 },
+    progress: { phase: "completed", planned: 1, launched: 1, completed: 1, in_flight: 0, peak_in_flight: 1, succeeded: 1, failed: 0, rejected: 0, send_duration_ms: 40, drain_duration_ms: 20, total_duration_ms: 60 },
+    metrics: {
+      completed: 1, succeeded: 1, failed: 0, timed_out: 0, success_rate_percent: 100, request_qps: 16.7, rpm: 1_000,
+      input_tpm: 100_000, output_tpm: 100_000, total_tpm: 200_000, generation_tps: 1_666.7,
+      ttft_p50_ms: 20, ttft_p90_ms: 20, ttft_p95_ms: 20, ttft_p99_ms: 20, ttft_average_ms: 20,
+      tpot_p50_ms: 2, tpot_p90_ms: 2, tpot_p95_ms: 2, tpot_p99_ms: 2, tpot_average_ms: 2,
+      e2e_p50_ms: 60, e2e_p90_ms: 60, e2e_p95_ms: 60, e2e_p99_ms: 60, e2e_average_ms: 60,
+      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 0, schedule_lag_p95_ms: 0, schedule_lag_p99_ms: 0, schedule_lag_average_ms: 0,
+      prompt_tokens: 100, completion_tokens: 100, cached_tokens: 0, cache_rate_percent: 0,
+    },
+    samples: [{ request_index: 0, scheduled_offset_ms: 0, started_offset_ms: 0, finished_offset_ms: 60, schedule_lag_ms: 0, e2e_ms: 60, ttft_ms: 20, tpot_ms: 2, http_status: 200, success: true, timed_out: false, prompt_tokens: 100, completion_tokens: 100, cached_tokens: 0 }],
+    failures: [],
   }
 }
 
@@ -203,6 +247,7 @@ describe("desktop run workspace", () => {
     await screen.findByRole("heading", { name: "运行工作区" })
     for (const [label, heading, evidence] of [
       ["总览", "工作台总览", "6 个模型"],
+      ["快速测试", "快速测试", "无需预先创建模型、渠道或计划，直接验证 OpenAI Chat 兼容接口。"],
       ["模型与渠道", "模型与渠道", "gpt-5.2"],
       ["用例", "测试用例", "基础对话"],
       ["计划", "测试计划", "营销文案基准"],
@@ -277,14 +322,39 @@ describe("desktop run workspace", () => {
 		})
 	})
 
+  it("offers only current OpenAI catalog models to quick test while keeping the field editable", async () => {
+    window.history.replaceState(null, "", "#quick-test")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.models.push({
+      id: "22222222-2222-4222-8222-222222222299",
+      revision: 1,
+      name: "seedance-video-model",
+      protocol: "seedance",
+      capabilities: ["video"],
+    })
+    vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+
+    render(<App client={client} />)
+
+    const modelID = await screen.findByLabelText("模型 ID")
+    expect(modelID).toHaveAttribute("aria-autocomplete", "list")
+    await user.click(modelID)
+    const options = await screen.findByRole("listbox")
+    expect(within(options).getByRole("option", { name: "gpt-5.2" })).toBeInTheDocument()
+    expect(within(options).queryByRole("option", { name: "seedance-video-model" })).not.toBeInTheDocument()
+  })
+
 	it("shows request-level report detail and all Go export actions", async () => {
 		window.history.replaceState(null, "", "#reports")
 		const client = desktopClient()
 		const summary = FIXTURE_REPORTS.reports[0]
 		vi.mocked(client.getReportDetail).mockResolvedValue({
 			schema_version: 1,
+			source: "run",
 			report: {
-				id: summary.id, run_id: summary.run_id, run_status: summary.run_status, generated_at: summary.generated_at,
+				id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
 				model: { id: "22222222-2222-4222-8222-222222222221", name: summary.model_name },
 				channel: { id: "33333333-3333-4333-8333-333333333331", name: summary.channel_name },
 				environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "go-core-v1" },
@@ -299,11 +369,59 @@ describe("desktop run workspace", () => {
 		})
 
 		render(<App client={client} />)
+		await userEvent.click(await screen.findByRole("button", { name: `查看报告：${summary.verdict}` }))
 		expect(await screen.findByRole("table", { name: "请求级结果" })).toHaveTextContent("request-1")
 		for (const label of ["JSON", "HTML", "PNG", "PDF", "复制 PNG"]) {
 			expect(screen.getByRole("button", { name: label })).toBeInTheDocument()
 		}
 		expect(screen.getByText(/e2e_p95_ms/)).toBeInTheDocument()
+	})
+
+	it("refreshes archived quick-performance reports and opens the selected report charts", async () => {
+		window.history.replaceState(null, "", "#quick-test")
+		const user = userEvent.setup()
+		const client = desktopClient()
+		client.workspace.active_run_id = undefined
+		client.workspace.runs = client.workspace.runs.map((run) => ["queued", "starting", "running", "draining"].includes(run.status) ? { ...run, status: "completed" as const } : run)
+		const reportID = "77777777-7777-4777-8777-777777777771"
+		const performance = archivedPerformanceReport(reportID)
+		const updatedReports = structuredClone(FIXTURE_REPORTS)
+		updatedReports.reports.push({
+			id: reportID,
+			source: "quick_performance",
+			generated_at: performance.generated_at!,
+			run_status: "completed",
+			plan_name: "快速性能测试",
+			model_name: "gpt-new",
+			channel_name: "api.example.test",
+			passed: true,
+			verdict: "快速性能测试通过",
+			issue_count: 0,
+			case_count: 1,
+			failed_case_count: 0,
+			attachment_count: 0,
+		})
+		vi.mocked(client.getReports)
+			.mockResolvedValueOnce(structuredClone(FIXTURE_REPORTS))
+			.mockResolvedValue(structuredClone(updatedReports))
+		vi.mocked(client.runQuickPerformanceTest).mockResolvedValue(performance)
+		vi.mocked(client.getReportDetail).mockResolvedValue({ schema_version: 1, source: "quick_performance", performance })
+
+		render(<App client={client} />)
+		await user.type(await screen.findByLabelText("接口地址"), "https://api.example.test/v1")
+		await user.type(screen.getByLabelText("API Key"), "sk-private-value")
+		await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
+		await user.keyboard("{Escape}")
+		await user.click(screen.getByRole("button", { name: "发送测试" }))
+		await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+		const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+		await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+		await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
+		await user.click(await within(dialog).findByRole("button", { name: "查看正式报告" }))
+		expect(window.location.hash).toBe("#reports")
+		expect(await screen.findByRole("region", { name: "归档性能报告" })).toHaveTextContent("1 / 1")
+		expect(client.getReportDetail).toHaveBeenCalledWith(reportID)
 	})
 
   it("creates, updates, and confirms deletion for catalog models", async () => {
@@ -556,13 +674,17 @@ describe("desktop run workspace", () => {
     fireEvent.keyUp(radios[1], { key: "ArrowDown" })
 
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
-    expect(client.startRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.plans[1].id)
+		expect(client.startRunTarget).toHaveBeenCalledWith({
+			plan_id: FIXTURE_WORKSPACE.plans[1].id,
+			model_id: FIXTURE_CATALOG.plans[1].model_ids[0],
+			channel_id: FIXTURE_CATALOG.plans[1].channel_ids[0],
+		})
   })
 
   it("identifies the selected plan when creating a run fails", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
-    vi.mocked(client.startRun).mockRejectedValueOnce(
+		vi.mocked(client.startRunTarget).mockRejectedValueOnce(
       new DesktopClientError("run_commands_unavailable"),
     )
     render(<App client={client} />)
@@ -672,9 +794,13 @@ describe("desktop run workspace", () => {
 			exportReport: vi.fn(),
 			getComparisons: vi.fn(),
       startRun: vi.fn(),
+			startRunTarget: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),
+			runQuickTest: vi.fn(),
+			runQuickPerformanceTest: vi.fn(),
+			saveQuickTestConnection: vi.fn(),
       ...catalogMutationMocks(),
     }
 

@@ -14,7 +14,7 @@ func dropMigration0005Objects(t *testing.T, db *sql.DB) {
 	if _, err := db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"comparison_runs", "comparisons", "comparison_revisions", "pending_test_case_snapshots", "case_catalog_cutover"} {
+	for _, table := range []string{"builtin_catalog_seeds", "quick_performance_reports", "comparison_runs", "comparisons", "comparison_revisions", "pending_test_case_snapshots", "case_catalog_cutover"} {
 		if _, err := db.Exec("DROP TABLE IF EXISTS " + table); err != nil {
 			t.Fatalf("drop v5 table %s: %v", table, err)
 		}

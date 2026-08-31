@@ -20,6 +20,7 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -44,6 +45,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { ComparisonPanel } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot } from "@/features/comparisons/data"
+import type { CatalogSnapshot } from "@/features/catalog/data"
 
 import {
   STATUS_LABELS,
@@ -51,9 +53,11 @@ import {
   presentWorkspace,
   type RunRecord,
   type RunStatus,
+  type StartRunTargetCommand,
   type TestPlan,
   type WorkspaceSnapshot,
 } from "./data"
+import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
 
 type ActiveTaskState = "queued" | "starting" | "running" | "draining"
 
@@ -393,25 +397,36 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
 
 export function NewRunSheet({
   plans,
+	catalog,
   commandPending,
   onStartRun,
 }: {
   plans: TestPlan[]
+	catalog: CatalogSnapshot
   commandPending: boolean
-  onStartRun: (planId: string) => Promise<void>
+  onStartRun: (command: StartRunTargetCommand) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(plans[0]?.id ?? "")
+	const [selectedModel, setSelectedModel] = useState("")
+	const [selectedChannel, setSelectedChannel] = useState("")
   const [startError, setStartError] = useState("")
   const effectiveSelectedPlan = plans.some((plan) => plan.id === selectedPlan)
     ? selectedPlan
     : (plans[0]?.id ?? "")
+	const models = useMemo(() => eligibleRuntimeModels(catalog, effectiveSelectedPlan), [catalog, effectiveSelectedPlan])
+	const effectiveSelectedModel = models.some((model) => model.id === selectedModel) ? selectedModel : (models[0]?.id ?? "")
+	const channels = useMemo(
+		() => eligibleRuntimeChannels(catalog, effectiveSelectedPlan, effectiveSelectedModel),
+		[catalog, effectiveSelectedPlan, effectiveSelectedModel],
+	)
+	const effectiveSelectedChannel = channels.some((channel) => channel.id === selectedChannel) ? selectedChannel : (channels[0]?.id ?? "")
 
   const start = async () => {
-    if (!effectiveSelectedPlan) return
+    if (!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel) return
     setStartError("")
     try {
-      await onStartRun(effectiveSelectedPlan)
+      await onStartRun({ plan_id: effectiveSelectedPlan, model_id: effectiveSelectedModel, channel_id: effectiveSelectedChannel })
       setOpen(false)
     } catch (error) {
       setStartError(
@@ -444,7 +459,7 @@ export function NewRunSheet({
           <RadioGroup
             aria-label="测试计划"
             value={effectiveSelectedPlan}
-            onValueChange={setSelectedPlan}
+            onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel("") }}
           >
             {plans.map((plan) => {
               const selected = effectiveSelectedPlan === plan.id
@@ -472,6 +487,22 @@ export function NewRunSheet({
               )
             })}
           </RadioGroup>
+					<div className="grid gap-3 border-t pt-3">
+						<RuntimeTargetSelect
+							label="逻辑模型"
+							value={effectiveSelectedModel}
+							options={models.map((model) => [model.id, model.name])}
+							onChange={(value) => { setSelectedModel(value); setSelectedChannel("") }}
+						/>
+						<RuntimeTargetSelect
+							label="执行渠道"
+							value={effectiveSelectedChannel}
+							options={channels.map((channel) => [channel.id, channel.name])}
+							onChange={setSelectedChannel}
+						/>
+						{models.length === 0 ? <p className="text-xs text-destructive">当前计划没有协议兼容且已映射的可用模型。</p> : null}
+						{models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">当前模型没有已启用、已配置密钥且已映射的可用渠道。</p> : null}
+					</div>
           <div className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
             凭据将由 Go Core 从系统密钥环按需租用，不会进入前端状态或本地存储。
           </div>
@@ -486,7 +517,7 @@ export function NewRunSheet({
             <Button variant="outline">取消</Button>
           </SheetClose>
           <Button
-            disabled={!effectiveSelectedPlan || commandPending}
+            disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending}
             onClick={() => void start()}
           >
             {commandPending ? "正在创建…" : "开始运行"}
@@ -495,6 +526,18 @@ export function NewRunSheet({
       </SheetContent>
     </Sheet>
   )
+}
+
+function RuntimeTargetSelect({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
+	return (
+		<Field className="block">
+			<FieldLabel>{label}</FieldLabel>
+			<Select value={value} onValueChange={onChange} disabled={options.length === 0}>
+				<SelectTrigger aria-label={label} className="w-full"><SelectValue placeholder={`无可用${label}`} /></SelectTrigger>
+				<SelectContent><SelectGroup>{options.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectGroup></SelectContent>
+			</Select>
+		</Field>
+	)
 }
 
 function MobilePlanSheet({

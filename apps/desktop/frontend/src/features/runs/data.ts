@@ -7,6 +7,12 @@ export type CoreRunStatus =
   | "failed"
   | "cancelled"
 
+export interface StartRunTargetCommand {
+  plan_id: string
+  model_id: string
+  channel_id: string
+}
+
 export type WorkspacePlan = {
   id: string
   revision: number

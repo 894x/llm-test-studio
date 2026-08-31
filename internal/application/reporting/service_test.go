@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-studio/internal/execution/load"
 )
 
 const (
@@ -49,7 +51,8 @@ func TestSnapshotReturnsVersionedSecretFreeSummariesWithOnePortCall(t *testing.T
 		t.Fatalf("snapshot = %#v", snapshot)
 	}
 	want := Summary{
-		ID: reportID, RunID: runID, GeneratedAt: now, RunStatus: domain.RunCompleted,
+		Source: SourceRun,
+		ID:     reportID, RunID: runID, GeneratedAt: now, RunStatus: domain.RunCompleted,
 		PlanName: "Regression", ModelName: "gpt-test", ChannelName: "primary",
 		Passed: true, Verdict: "all checks passed", IssueCount: 0,
 		CaseCount: 12, FailedCaseCount: 0, AttachmentCount: 2,
@@ -72,6 +75,87 @@ func TestSnapshotReturnsVersionedSecretFreeSummariesWithOnePortCall(t *testing.T
 		if strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(forbidden)) {
 			t.Fatalf("summary leaked forbidden field/value %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+type fakeMixedCatalog struct {
+	fakeCatalog
+	quick []quicktest.PerformanceArchiveSummary
+	get   quicktest.PerformanceReport
+	err   error
+}
+
+func (catalog *fakeMixedCatalog) ListQuickPerformanceReportSummaries(context.Context) ([]quicktest.PerformanceArchiveSummary, error) {
+	return append([]quicktest.PerformanceArchiveSummary(nil), catalog.quick...), catalog.err
+}
+
+func (catalog *fakeMixedCatalog) GetQuickPerformanceReport(_ context.Context, id string) (quicktest.PerformanceReport, error) {
+	if catalog.err != nil {
+		return quicktest.PerformanceReport{}, catalog.err
+	}
+	if catalog.get.ReportID == id {
+		return catalog.get, nil
+	}
+	return quicktest.PerformanceReport{}, quicktest.ErrPerformanceArchiveNotFound
+}
+
+func TestSnapshotIncludesQuickPerformanceReportsWithoutRunOwnership(t *testing.T) {
+	formalTime := time.Date(2026, time.August, 31, 15, 0, 0, 0, time.UTC)
+	quickReport := validArchivedQuickPerformanceReport()
+	catalog := &fakeMixedCatalog{
+		fakeCatalog: fakeCatalog{projections: []ReportProjection{validProjection(formalTime)}},
+		quick:       []quicktest.PerformanceArchiveSummary{quickPerformanceArchiveSummary(quickReport)},
+	}
+	snapshot, err := New(catalog).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if len(snapshot.Reports) != 2 || snapshot.Reports[0].Source != SourceQuickPerformance || snapshot.Reports[1].Source != SourceRun {
+		t.Fatalf("reports = %#v", snapshot.Reports)
+	}
+	quickSummary := snapshot.Reports[0]
+	if quickSummary.ID != quickReport.ReportID || quickSummary.RunID != "" || quickSummary.PlanName != "快速性能测试" ||
+		quickSummary.ModelName != "quick-model" || quickSummary.ChannelName != "https://example.com/v1" || !quickSummary.Passed ||
+		quickSummary.CaseCount != 1 || quickSummary.FailedCaseCount != 0 {
+		t.Fatalf("quick summary = %#v", quickSummary)
+	}
+}
+
+func quickPerformanceArchiveSummary(report quicktest.PerformanceReport) quicktest.PerformanceArchiveSummary {
+	return quicktest.PerformanceArchiveSummary{
+		ReportID: report.ReportID, GeneratedAt: report.GeneratedAt, Success: report.Success,
+		ModelID: report.ModelID, BaseURL: report.BaseURL, Phase: report.Progress.Phase,
+		Completed: report.Metrics.Completed, Failed: report.Metrics.Failed,
+	}
+}
+
+func TestDetailReturnsQuickPerformanceDocumentBySource(t *testing.T) {
+	quickReport := validArchivedQuickPerformanceReport()
+	catalog := &fakeMixedCatalog{get: quickReport}
+	detail, err := New(catalog).Detail(context.Background(), quickReport.ReportID)
+	if err != nil {
+		t.Fatalf("Detail() error = %v", err)
+	}
+	if detail.Source != SourceQuickPerformance || detail.Performance == nil || detail.Performance.ReportID != quickReport.ReportID || len(detail.Performance.Samples) != 1 {
+		t.Fatalf("detail = %#v", detail)
+	}
+	if detail.Report.ID != "" || len(detail.RequestResults) != 0 {
+		t.Fatalf("quick detail leaked formal placeholders = %#v", detail)
+	}
+}
+
+func validArchivedQuickPerformanceReport() quicktest.PerformanceReport {
+	return quicktest.PerformanceReport{
+		SchemaVersion: quicktest.PerformanceSchemaVersion,
+		ReportID:      "77777777-7777-4777-8777-777777777777", GeneratedAt: "2026-08-31T15:30:00Z",
+		Archived: true, ArchiveStatus: quicktest.PerformanceArchiveArchived,
+		Success: true, AddressMode: quicktest.AddressModeBaseURL,
+		BaseURL: "https://example.com/v1", Endpoint: "https://example.com/v1/chat/completions", ModelID: "quick-model",
+		Profile:  quicktest.PerformanceProfile{RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3},
+		Progress: quicktest.PerformanceProgress{Phase: load.PhaseCompleted, Planned: 1, Launched: 1, Completed: 1, PeakInFlight: 1, Succeeded: 1, TotalDurationMS: 12},
+		Metrics:  load.Metrics{Completed: 1, Succeeded: 1, SuccessRatePercent: 100, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2},
+		Failures: []quicktest.PerformanceFailure{},
+		Samples:  []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
 	}
 }
 

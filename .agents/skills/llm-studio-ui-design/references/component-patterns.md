@@ -12,6 +12,8 @@ Prefer existing project components and shadcn/ui composition:
 | Status | Semantic `Badge`; put detail in Tooltip or inspector |
 | Search | Existing input-group primitives, with visible label or accessible name |
 | Bounded choices | `Select` with grouped, keyboard-reachable items |
+| Filterable bounded choices | `Combobox`; the committed value must resolve to an available item |
+| Suggestions plus free text | Shared `Autocomplete`; suggestions may complete the input but must not reject an arbitrary value |
 | Create/edit workflow | `Sheet` or dialog with an accessible title and description |
 | Forms | `FieldGroup` and `Field`; pair invalid styling with `aria-invalid` |
 | Measurable work | `Progress`; use `Spinner` or `Skeleton` when progress is unknown |
@@ -21,6 +23,8 @@ Prefer existing project components and shadcn/ui composition:
 | Contextual details | Borderless description list or inspector |
 
 Do not replace established primitives with raw buttons, inputs, selects, radio groups, dialogs, or hand-built accessibility behavior.
+
+Do not use HTML `datalist` for suggestions in the desktop product. Its browser-owned popup bypasses semantic theme tokens and cannot reliably match the application's density, focus, selected, empty, or overlay states. Use the shared `Autocomplete` primitive, keep its popup aligned to the input width, and render options inside its bounded list.
 
 ## Actions and forms
 
@@ -37,6 +41,7 @@ Do not replace established primitives with raw buttons, inputs, selects, radio g
 - Use global navigation for product destinations and tabs for peer views that share one workspace.
 - Use a segmented or radio control only for a small closed set of peer modes.
 - Use menus or selects for numerous or secondary options.
+- Use `Combobox` only when filtering helps but the value is still restricted to the supplied items. Use `Autocomplete` when suggestions are optional and users may keep free-form text.
 - Make selection visible through both surface and text/icon treatment, not color alone.
 - Preserve URL/hash navigation, focus, and keyboard activation for primary destinations.
 - Do not leave enabled-looking controls without an action.

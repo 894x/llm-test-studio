@@ -15,6 +15,7 @@ import {
 } from "@/features/catalog/catalog-workspaces"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { OverviewWorkspace } from "@/features/overview/overview-workspace"
+import { QuickTestWorkspace } from "@/features/quick-test/quick-test-workspace"
 import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
@@ -40,6 +41,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
   const [reports, setReports] = useState<ReportSnapshot | null>(null)
+  const [preferredReportID, setPreferredReportID] = useState("")
   const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
   const [loadError, setLoadError] = useState("")
   const [commandError, setCommandError] = useState("")
@@ -110,6 +112,26 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     }
     window.location.hash = next
   }, [])
+
+  const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
+    try {
+      setReports(await client.getReports())
+      setPreferredReportID(reportID)
+    } catch {
+      // The quick-test result remains available in its sheet; the reports
+      // workspace can be refreshed again through normal app polling/reload.
+    }
+  }, [client])
+
+  const openArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
+    setPreferredReportID(reportID)
+    navigate("reports")
+    try {
+      setReports(await client.getReports())
+    } catch {
+      // Keep the reports workspace open with the last authoritative snapshot.
+    }
+  }, [client, navigate])
 
   const runCommand = useCallback(
     async (operation: () => Promise<WorkspaceSnapshot>): Promise<void> => {
@@ -197,9 +219,10 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
 					<NewComparisonSheet catalog={catalog} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
 					<NewRunSheet
 						plans={plans}
+						catalog={catalog}
 						commandPending={commandPending}
-						onStartRun={async (planId) => {
-							await runCommand(() => client.startRun(planId))
+						onStartRun={async (command) => {
+							await runCommand(() => client.startRunTarget(command))
 							navigate("runs")
 						}}
 					/>
@@ -208,6 +231,23 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     >
       {page === "overview" ? (
         <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} />
+      ) : page === "quick-test" ? (
+        <QuickTestWorkspace
+          modelCandidates={catalog.models
+            .filter((model) => model.protocol === "openai-chat")
+            .map((model) => ({ id: model.id, name: model.name }))}
+          channelCandidates={catalog.channels
+            .filter((channel) => channel.protocol === "openai-chat" && channel.enabled && channel.credential_configured)
+            .map((channel) => ({ id: channel.id, name: channel.name, baseUrl: channel.base_url }))}
+          runQuickTest={client.runQuickTest}
+          runQuickPerformanceTest={client.runQuickPerformanceTest}
+          saveQuickTestConnection={client.saveQuickTestConnection}
+          refreshCatalog={client.getCatalog}
+          onCatalogUpdated={setCatalog}
+          onOpenCatalog={() => navigate("catalog")}
+          onPerformanceArchived={refreshArchivedPerformanceReport}
+          onOpenReport={openArchivedPerformanceReport}
+        />
       ) : page === "catalog" ? (
         <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
       ) : page === "cases" ? (
@@ -226,7 +266,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
           }}
         />
       ) : page === "reports" ? (
-        <ReportWorkspace snapshot={reports} getDetail={client.getReportDetail} exportReport={client.exportReport} />
+        <ReportWorkspace snapshot={reports} preferredReportID={preferredReportID} getDetail={client.getReportDetail} exportReport={client.exportReport} />
       ) : (
         <RunWorkspace
           snapshot={snapshot}

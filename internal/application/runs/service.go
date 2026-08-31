@@ -37,9 +37,9 @@ type Repository interface {
 }
 
 type StartCommand struct {
-	PlanID    string
-	ModelID   string
-	ChannelID string
+	PlanID    string `json:"plan_id"`
+	ModelID   string `json:"model_id"`
+	ChannelID string `json:"channel_id"`
 }
 
 type CredentialStore interface {
