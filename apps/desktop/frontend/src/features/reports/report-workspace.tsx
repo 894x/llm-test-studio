@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
@@ -12,14 +12,16 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
 import { PerformanceCharts } from "./performance-charts"
+import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
 import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary } from "./data"
 
-export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport }: {
+export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
   preferredReportID?: string
   getDetail: (reportId: string) => Promise<ReportDetail>
   exportReport: (reportId: string, format: ReportExportFormat, watermark: string) => Promise<ExportedReport>
+  exportVisualReport?: typeof createVisualReportExport
 }) {
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
   const [viewingReportID, setViewingReportID] = useState(preferredReportID ?? "")
@@ -27,6 +29,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
   const [exportError, setExportError] = useState("")
   const [watermark, setWatermark] = useState("rhzs")
+  const exportDocumentRef = useRef<HTMLElement>(null)
   const selected = snapshot.reports.find((report) => report.id === selectedID) ?? snapshot.reports[0]
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
@@ -48,7 +51,12 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExporting(format)
     setExportError("")
     try {
-      downloadExport(await exportReport(selected.id, format, watermark))
+      if (format === "json") {
+        downloadExport(await exportReport(selected.id, format, watermark))
+      } else {
+        if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
+        downloadVisualExport(await exportVisualReport(exportDocumentRef.current, format, selected.id))
+      }
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
         error,
@@ -65,10 +73,11 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExporting("copy")
     setExportError("")
     try {
-      const exported = await exportReport(selected.id, "png", watermark)
+      if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
+      const exported = await exportVisualReport(exportDocumentRef.current, "png", selected.id)
       const ClipboardItemType = window.ClipboardItem
       if (!navigator.clipboard?.write || !ClipboardItemType) throw new Error("clipboard image unsupported")
-      await navigator.clipboard.write([new ClipboardItemType({ [exported.media_type]: exportBlob(exported) })])
+      await navigator.clipboard.write([new ClipboardItemType({ [exported.mediaType]: exported.blob })])
     } catch {
       setExportError("当前系统无法复制 PNG，可使用 PNG 下载")
     } finally {
@@ -76,7 +85,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     }
   }
 
-  return (
+  return <>
     <PageFrame
       title={isViewingReport ? "报告详情" : "测试报告"}
       description={isViewingReport ? `查看 ${selected?.verdict ?? "报告"} 的指标与请求明细` : "查看 Go Core 封存的结论、指标、请求明细与同源导出"}
@@ -117,17 +126,32 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         </div>
       )}
     </PageFrame>
-  )
+    {selected && detail ? <ReportExportSurface ref={exportDocumentRef} report={selected} detail={detail} watermark={watermark} /> : null}
+  </>
 }
 
 function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
   if (error) return <div role="alert" className="border-t px-4 py-3 text-xs text-destructive">{error}</div>
   if (!detail) return <div className="border-t px-4 py-3 text-xs text-muted-foreground">正在读取请求明细…</div>
   if (detail.source === "quick_performance") return <QuickPerformanceDetail detail={detail} />
+  return <RunReportDetail detail={detail} />
+}
+
+function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
   const visibleResults = detail.request_results.slice(0, 1000)
   return (
     <ScrollArea className="min-h-[180px] flex-[3] border-t">
-      {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">当前显示前 1,000 条请求；完整 {detail.request_results.length.toLocaleString("zh-CN")} 条可导出 JSON 或 HTML。</div> : null}
+      <RunReportBody detail={detail} visibleResults={visibleResults} />
+    </ScrollArea>
+  )
+}
+
+function RunReportBody({ detail, visibleResults = detail.request_results.slice(0, 1000) }: {
+  detail: Extract<ReportDetail, { source: "run" }>
+  visibleResults?: Extract<ReportDetail, { source: "run" }>["request_results"]
+}) {
+  return <>
+      {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">当前显示前 1,000 条请求；完整 {detail.request_results.length.toLocaleString("zh-CN")} 条可导出 JSON。</div> : null}
       <Table aria-label="请求级结果" className="min-w-[900px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95"><TableRow>
           <TableHead className="h-8 pl-4 text-[11px]">请求</TableHead><TableHead className="h-8 text-[11px]">状态</TableHead><TableHead className="h-8 text-[11px]">E2E</TableHead><TableHead className="h-8 text-[11px]">TTFT</TableHead><TableHead className="h-8 text-[11px]">TPOT</TableHead><TableHead className="h-8 text-[11px]">排队</TableHead><TableHead className="h-8 text-[11px]">Token</TableHead><TableHead className="h-8 text-[11px]">错误</TableHead>
@@ -140,25 +164,51 @@ function ReportContent({ detail, error }: { detail: ReportDetail | null; error: 
           </TableRow>
         )) : <TableRow><TableCell colSpan={8} className="h-24 text-center text-xs text-muted-foreground">此报告没有请求级结果</TableCell></TableRow>}</TableBody>
       </Table>
+    </>
+}
+
+function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
+  return (
+    <ScrollArea className="min-h-[260px] flex-[3] border-t">
+      <QuickPerformanceBody detail={detail} />
     </ScrollArea>
   )
 }
 
-function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
+function QuickPerformanceBody({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
   const report = detail.performance
-  return (
-    <ScrollArea className="min-h-[260px] flex-[3] border-t">
-      <section aria-label="归档性能报告" className="space-y-4 p-4">
-        <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-          <SummaryValue label="成功 / 完成" value={`${report.metrics.succeeded} / ${report.metrics.completed}`} />
-          <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
-          <SummaryValue label="请求速率" value={`${formatMetric(report.metrics.request_qps)} req/s`} />
-          <SummaryValue label="峰值在途" value={String(report.progress.peak_in_flight)} />
-        </div>
-        <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
-      </section>
-    </ScrollArea>
-  )
+  return <section aria-label="归档性能报告" className="space-y-4 p-4">
+    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+      <SummaryValue label="成功 / 完成" value={`${report.metrics.succeeded} / ${report.metrics.completed}`} />
+      <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
+      <SummaryValue label="请求速率" value={`${formatMetric(report.metrics.request_qps)} req/s`} />
+      <SummaryValue label="峰值在途" value={String(report.progress.peak_in_flight)} />
+    </div>
+    <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
+  </section>
+}
+
+function ReportExportSurface({ ref, report, detail, watermark }: {
+  ref: React.Ref<HTMLElement>
+  report: ReportSummary
+  detail: ReportDetail
+  watermark: string
+}) {
+  const label = watermark.trim() || "rhzs"
+  return <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0 z-[-1] w-[1200px]">
+    <article ref={ref} data-report-export-document className="relative w-[1200px] overflow-hidden bg-background text-foreground">
+      <header className="px-4 py-3">
+        <h1 className="text-lg font-semibold tracking-tight">报告详情</h1>
+        <p className="mt-1 text-[11px] text-muted-foreground">查看 {report.verdict} 的指标与请求明细</p>
+      </header>
+      <div className="border-t">
+        {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} /> : <RunReportBody detail={detail} />}
+      </div>
+      <div className="absolute inset-0 z-10 grid grid-cols-2 content-around overflow-hidden" data-report-watermark>
+        {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{label}</span>)}
+      </div>
+    </article>
+  </div>
 }
 
 function SummaryValue({ label, value }: { label: string; value: string }) {
@@ -215,6 +265,15 @@ function exportBlob(exported: ExportedReport): Blob {
 
 function downloadExport(exported: ExportedReport) {
   const url = URL.createObjectURL(exportBlob(exported))
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = exported.filename
+  anchor.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function downloadVisualExport(exported: { filename: string; blob: Blob }) {
+  const url = URL.createObjectURL(exported.blob)
   const anchor = document.createElement("a")
   anchor.href = url
   anchor.download = exported.filename

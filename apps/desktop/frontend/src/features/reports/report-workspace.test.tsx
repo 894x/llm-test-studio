@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -25,8 +25,16 @@ describe("ReportWorkspace", () => {
     } as unknown as ReportSnapshot
     const getDetail = vi.fn(async () => quickDetail(quickID) as unknown as ReportDetail)
     const exportReport = vi.fn(async () => { throw new Error("stop after export request") })
+    const exportVisualReport = vi.fn(async (element: HTMLElement, _format: "html" | "png" | "pdf", reportID: string) => {
+      expect(reportID).toBe(quickID)
+      expect(element).toHaveTextContent("team-alpha")
+      expect(element.querySelectorAll("figure")).toHaveLength(6)
+      expect(element.querySelector('[aria-label="TTFT 分布图"]')).not.toBeNull()
+      expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()
+      throw new Error("stop after visual export request")
+    })
 
-    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} />)
+    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} exportVisualReport={exportVisualReport} />)
 
     const table = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(table).getByRole("columnheader", { name: "查看报告" })).toBeInTheDocument()
@@ -58,7 +66,12 @@ describe("ReportWorkspace", () => {
     await user.clear(watermark)
     await user.type(watermark, "team-alpha")
     await user.click(screen.getByRole("button", { name: "HTML" }))
-    expect(exportReport).toHaveBeenCalledWith(quickID, "html", "team-alpha")
+    await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(1))
+    expect(exportReport).not.toHaveBeenCalledWith(quickID, "html", "team-alpha")
+    await user.click(screen.getByRole("button", { name: "PNG" }))
+    await user.click(screen.getByRole("button", { name: "PDF" }))
+    await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(3))
+    expect(exportVisualReport.mock.calls.map(([, format]) => format)).toEqual(["html", "png", "pdf"])
 
     await user.click(screen.getByRole("button", { name: "返回报告列表" }))
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
