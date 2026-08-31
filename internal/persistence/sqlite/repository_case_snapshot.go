@@ -34,6 +34,10 @@ func (repository *Repository) PruneUnreferencedTestCaseSnapshots(ctx context.Con
 	if _, err := repository.conn.ExecContext(ctx, `DELETE FROM pending_test_case_snapshots`); err != nil {
 		return classifyWriteError("prune pending filesystem case snapshots", err)
 	}
+	// Files are authoritative after cutover, so legacy import metadata must not keep snapshots alive.
+	if _, err := repository.conn.ExecContext(ctx, `DELETE FROM test_case_import_sources`); err != nil {
+		return classifyWriteError("prune legacy case import sources", err)
+	}
 	_, err := repository.conn.ExecContext(ctx, `
 		DELETE FROM test_cases
 		WHERE NOT EXISTS (
