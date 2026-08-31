@@ -80,15 +80,23 @@ type ReportGenerator interface {
 
 type EnvironmentProvider func() domain.EnvironmentSnapshot
 
+type Diagnostic struct {
+	RunID     string
+	Operation string
+	ErrorCode string
+	Err       error
+}
+
 type Dependencies struct {
-	Repository  Repository
-	Credentials CredentialStore
-	Executor    Executor
-	Clock       Clock
-	MetaFactory MetaFactory
-	Environment EnvironmentProvider
-	Reporter    ReportGenerator
-	ReportError func(error)
+	Repository       Repository
+	Credentials      CredentialStore
+	Executor         Executor
+	Clock            Clock
+	MetaFactory      MetaFactory
+	Environment      EnvironmentProvider
+	Reporter         ReportGenerator
+	ReportError      func(error)
+	ReportDiagnostic func(Diagnostic)
 	// AllowInsecureLoopback is restricted to explicit test harnesses. Desktop
 	// production construction deliberately leaves it false.
 	AllowInsecureLoopback bool
@@ -103,6 +111,7 @@ type Service struct {
 	environment           EnvironmentProvider
 	reporter              ReportGenerator
 	reportError           func(error)
+	diagnostics           *diagnosticDispatcher
 	allowInsecureLoopback bool
 
 	mu     sync.Mutex
@@ -140,6 +149,7 @@ func New(dependencies Dependencies) (*Service, error) {
 		executor: dependencies.Executor, clock: dependencies.Clock,
 		metaFactory: factory, environment: dependencies.Environment,
 		reporter: dependencies.Reporter, reportError: dependencies.ReportError,
+		diagnostics:           newDiagnosticDispatcher(dependencies.ReportDiagnostic),
 		allowInsecureLoopback: dependencies.AllowInsecureLoopback,
 		active:                make(map[string]*runControl),
 	}, nil
@@ -417,6 +427,9 @@ func (service *Service) Close() error {
 		}
 	}
 	service.wg.Wait()
+	if err := service.diagnostics.close(); err != nil {
+		closeErrors = append(closeErrors, err)
+	}
 	return errors.Join(closeErrors...)
 }
 
@@ -432,17 +445,28 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 
 	control.mu.Lock()
 	if err := service.transition(context.Background(), control, domain.RunRunning); err != nil {
+		runID := control.run.Meta().ID
 		control.mu.Unlock()
+		service.report(Diagnostic{
+			RunID: runID, Operation: "transition_running",
+			ErrorCode: "run_state_transition_failed", Err: err,
+		})
 		return
 	}
 	if control.stopRequested {
 		if err := service.transition(context.Background(), control, domain.RunDraining); err != nil {
+			runID := control.run.Meta().ID
 			control.mu.Unlock()
+			service.report(Diagnostic{
+				RunID: runID, Operation: "transition_draining",
+				ErrorCode: "run_state_transition_failed", Err: err,
+			})
 			return
 		}
 	}
 	request := ExecutionRequest{Run: control.run, Cases: append([]domain.TestCase(nil), control.cases...), Credential: control.lease, StopSending: control.stop}
 	control.mu.Unlock()
+	runID := request.Run.Meta().ID
 
 	emit := func(draft ResultDraft) error {
 		control.mu.Lock()
@@ -472,6 +496,15 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 		return nil
 	}
 	executionErr := service.executor.Execute(ctx, request, emit)
+	pendingDiagnostics := make([]Diagnostic, 0, 2)
+	failure := domain.RunFailure{}
+	if executionErr != nil {
+		failure = domain.RunFailure{Phase: "execute", ErrorCode: "run_execution_failed"}
+		pendingDiagnostics = append(pendingDiagnostics, Diagnostic{
+			RunID: runID, Operation: "execute",
+			ErrorCode: "run_execution_failed", Err: executionErr,
+		})
+	}
 
 	control.mu.Lock()
 	status := control.run.Status()
@@ -479,8 +512,15 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 		control.mu.Unlock()
 		return
 	}
-	if summaryErr := service.persistCaseSummaries(context.Background(), control); summaryErr != nil && executionErr == nil {
-		executionErr = summaryErr
+	if summaryErr := service.persistCaseSummaries(context.Background(), control); summaryErr != nil {
+		if executionErr == nil {
+			executionErr = summaryErr
+			failure = domain.RunFailure{Phase: "persist_case_summaries", ErrorCode: "result_persistence_failed"}
+		}
+		pendingDiagnostics = append(pendingDiagnostics, Diagnostic{
+			RunID: control.run.Meta().ID, Operation: "persist_case_summaries",
+			ErrorCode: "result_persistence_failed", Err: summaryErr,
+		})
 	}
 	coverageComplete := true
 	for _, testCase := range control.cases {
@@ -493,14 +533,49 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 	if executionErr != nil || !coverageComplete {
 		terminal = domain.RunFailed
 	}
-	transitionErr := service.transition(context.Background(), control, terminal)
-	runID := control.run.Meta().ID
+	if terminal == domain.RunFailed && failure.ErrorCode == "" {
+		failure = domain.RunFailure{Phase: "execute", ErrorCode: "run_execution_incomplete"}
+		pendingDiagnostics = append(pendingDiagnostics, Diagnostic{
+			RunID: control.run.Meta().ID, Operation: "execute",
+			ErrorCode: "run_execution_incomplete",
+			Err:       errors.New("execution completed without results for every case"),
+		})
+	}
+	var transitionErr error
+	if terminal == domain.RunFailed {
+		transitionErr = service.fail(context.Background(), control, failure)
+	} else {
+		transitionErr = service.transition(context.Background(), control, terminal)
+	}
+	runID = control.run.Meta().ID
 	control.mu.Unlock()
+	for _, diagnostic := range pendingDiagnostics {
+		service.report(diagnostic)
+	}
+	if transitionErr != nil {
+		service.report(Diagnostic{
+			RunID: runID, Operation: "transition_" + string(terminal),
+			ErrorCode: "run_state_transition_failed", Err: transitionErr,
+		})
+	}
 	if transitionErr == nil && !isNil(service.reporter) {
-		if err := service.reporter.Generate(context.Background(), runID); err != nil && service.reportError != nil {
-			service.reportError(err)
+		if err := service.reporter.Generate(context.Background(), runID); err != nil {
+			if service.reportError != nil {
+				service.reportError(err)
+			}
+			service.report(Diagnostic{
+				RunID: runID, Operation: "generate_report",
+				ErrorCode: "report_generation_failed", Err: err,
+			})
 		}
 	}
+}
+
+func (service *Service) report(diagnostic Diagnostic) {
+	if service == nil {
+		return
+	}
+	service.diagnostics.submit(diagnostic)
 }
 
 func (service *Service) persistCaseSummaries(ctx context.Context, control *runControl) error {
@@ -574,6 +649,19 @@ func cloneDraft(draft ResultDraft) ResultDraft {
 func (service *Service) transition(ctx context.Context, control *runControl, status domain.RunStatus) error {
 	current := control.run
 	next, err := current.Transition(status, service.clock.Now())
+	if err != nil {
+		return err
+	}
+	if err := service.repository.UpdateRun(ctx, current.Meta().Revision, next); err != nil {
+		return err
+	}
+	control.run = next
+	return nil
+}
+
+func (service *Service) fail(ctx context.Context, control *runControl, failure domain.RunFailure) error {
+	current := control.run
+	next, err := current.Fail(failure, service.clock.Now())
 	if err != nil {
 		return err
 	}

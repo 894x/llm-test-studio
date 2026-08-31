@@ -97,6 +97,8 @@ type RunSummary struct {
 	PlanName        string           `json:"plan_name"`
 	Status          domain.RunStatus `json:"status"`
 	Conclusion      Conclusion       `json:"conclusion"`
+	FailurePhase    domain.ErrorCode `json:"failure_phase,omitempty"`
+	ErrorCode       domain.ErrorCode `json:"error_code,omitempty"`
 	ModelID         string           `json:"model_id"`
 	ModelRevision   uint64           `json:"model_revision"`
 	ModelName       string           `json:"model_name"`
@@ -274,7 +276,7 @@ func summarizeRun(projection RunProjection) RunSummary {
 	run := projection.Run
 	meta := run.Meta()
 	snapshot := run.Snapshot()
-	return RunSummary{
+	summary := RunSummary{
 		ID: meta.ID, Revision: meta.Revision,
 		PlanID: run.PlanID(), PlanRevision: snapshot.Plan.Revision, PlanName: projection.PinnedPlan.Name,
 		Status: run.Status(), Conclusion: projection.Conclusion,
@@ -287,6 +289,11 @@ func summarizeRun(projection RunProjection) RunSummary {
 		ArtifactCount: projection.ArtifactCount,
 		StartedAt:     meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
 	}
+	if failure := run.Failure(); failure != nil {
+		summary.FailurePhase = failure.Phase
+		summary.ErrorCode = failure.ErrorCode
+	}
+	return summary
 }
 
 func newestActiveRun(runs []RunSummary) string {

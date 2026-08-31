@@ -126,6 +126,51 @@ describe("Wails desktop client", () => {
     expect(snapshot).toEqual(FIXTURE_WORKSPACE)
   })
 
+  it("preserves stable failure phase and error code for failed runs", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    payload.active_run_id = undefined
+    Object.assign(payload.runs[0], {
+      status: "failed",
+      failure_phase: "execute",
+      error_code: "run_execution_failed",
+    })
+    installBinding(payload)
+
+    const snapshot = await createDesktopClient().getWorkspace()
+
+    expect(snapshot.runs[0]).toMatchObject({
+      status: "failed",
+      failure_phase: "execute",
+      error_code: "run_execution_failed",
+    })
+  })
+
+  it.each([
+    ["partial metadata", { status: "failed", failure_phase: "execute" }],
+    ["metadata on a non-failed run", { status: "completed", failure_phase: "execute", error_code: "run_execution_failed" }],
+    ["invalid stable code", { status: "failed", failure_phase: "execute!", error_code: "run_execution_failed" }],
+  ])("rejects %s", async (_name, failure) => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    payload.active_run_id = undefined
+    Object.assign(payload.runs[0], failure)
+    installBinding(payload)
+
+    await expect(createDesktopClient().getWorkspace()).rejects.toThrow("运行记录")
+  })
+
+  it("accepts historical failed runs without failure metadata", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    payload.active_run_id = undefined
+    Object.assign(payload.runs[0], { status: "failed" })
+    installBinding(payload)
+
+    const snapshot = await createDesktopClient().getWorkspace()
+
+    expect(snapshot.runs[0].status).toBe("failed")
+    expect(snapshot.runs[0]).not.toHaveProperty("failure_phase")
+    expect(snapshot.runs[0]).not.toHaveProperty("error_code")
+  })
+
   it("drops unexpected secret-bearing fields from catalog and report payloads", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG) as unknown as Record<string, unknown>
     catalog.api_key = "opaque-catalog-secret"

@@ -29,6 +29,8 @@ export type WorkspaceRun = {
   plan_name: string
   status: CoreRunStatus
   conclusion: "none" | "passed" | "failed"
+  failure_phase?: string
+  error_code?: string
   model_id: string
   model_revision: number
   model_name: string
@@ -138,7 +140,9 @@ export function presentWorkspace(snapshot: WorkspaceSnapshot): {
       loadProfile: describeRunLoad(item),
       artifactCount: item.artifact_count,
       failureSummary:
-        item.failed > 0
+        item.error_code
+          ? `${item.failure_phase ?? "run"} · ${item.error_code}`
+          : item.failed > 0
           ? `${item.failed} 个请求未通过完整成功判定。`
           : item.conclusion === "failed"
             ? "运行结论未通过，请检查报告中的 SLA 与汇总。"

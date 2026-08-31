@@ -34,6 +34,7 @@ type productionOptions struct {
 	caseBundle          fs.FS
 	executablePath      func() (string, error)
 	reportCaseConflicts func(int)
+	reportRunDiagnostic func(runs.Diagnostic)
 }
 
 type productionClock struct{}
@@ -155,9 +156,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 				runs.NewLegacyAPIAuditExecutor(nil),
 				runs.NewLoadExecutor(nil),
 			),
-			Clock:       productionClock{},
-			Reporter:    reportGenerator,
-			ReportError: func(err error) { log.Printf("llm-studio: generate run report: %v", err) },
+			Clock:            productionClock{},
+			Reporter:         reportGenerator,
+			ReportDiagnostic: options.reportRunDiagnostic,
 			Environment: func() domain.EnvironmentSnapshot {
 				return domain.EnvironmentSnapshot{
 					OS: runtime.GOOS, Arch: runtime.GOARCH, Region: "local",

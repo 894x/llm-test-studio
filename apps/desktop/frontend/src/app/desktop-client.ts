@@ -662,6 +662,9 @@ function parsePlan(value: unknown) {
 }
 
 function isWorkspaceRun(value: unknown): boolean {
+  const hasFailure =
+    isRecord(value) &&
+    (value.failure_phase !== undefined || value.error_code !== undefined)
   return (
     isRecord(value) &&
     isUUID(value.id) &&
@@ -683,6 +686,10 @@ function isWorkspaceRun(value: unknown): boolean {
     isNonNegativeSafeInteger(value.duration_ms) &&
     ((value.planned as number) > 0 || (value.duration_ms as number) > 0) &&
     isConclusion(value.conclusion) &&
+    (!hasFailure ||
+      (value.status === "failed" &&
+        isStableErrorCode(value.failure_phase) &&
+        isStableErrorCode(value.error_code))) &&
     isNonNegativeSafeInteger(value.completed) &&
     isNonNegativeSafeInteger(value.passed) &&
     isNonNegativeSafeInteger(value.failed) &&
@@ -712,6 +719,12 @@ function parseRun(value: unknown) {
       | "failed"
       | "cancelled",
     conclusion: record.conclusion as "none" | "passed" | "failed",
+    ...(record.failure_phase === undefined
+      ? {}
+      : {
+          failure_phase: record.failure_phase as string,
+          error_code: record.error_code as string,
+        }),
     model_id: record.model_id as string,
     model_revision: record.model_revision as number,
     model_name: record.model_name as string,
@@ -745,6 +758,14 @@ function isRunStatus(value: unknown): boolean {
     value === "completed" ||
     value === "failed" ||
     value === "cancelled"
+  )
+}
+
+function isStableErrorCode(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 64 &&
+    /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(value)
   )
 }
 

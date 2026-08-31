@@ -236,9 +236,14 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.ctx = lifecycleContext
 	app.cancel = cancel
 	if err != nil {
-		app.startupErr = fmt.Errorf("%w: %w", ErrDesktopStartup, err)
+		startupErr := fmt.Errorf("%w: %w", ErrDesktopStartup, err)
+		app.startupErr = startupErr
+		report := app.reportError
 		app.startupDone.Broadcast()
 		app.mu.Unlock()
+		if report != nil {
+			report(startupErr)
+		}
 		if dependencies.close != nil {
 			_ = dependencies.close()
 		}
@@ -690,7 +695,7 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 	if internal == nil {
 		return nil
 	}
-	if app != nil {
+	if app != nil && !errors.Is(internal, ErrDesktopStartup) {
 		app.mu.Lock()
 		report := app.reportError
 		app.mu.Unlock()

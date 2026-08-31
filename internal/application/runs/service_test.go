@@ -87,13 +87,53 @@ func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 type recordingReporter struct {
 	mu    sync.Mutex
 	runID string
+	err   error
 }
 
 func (reporter *recordingReporter) Generate(_ context.Context, runID string) error {
 	reporter.mu.Lock()
 	defer reporter.mu.Unlock()
 	reporter.runID = runID
-	return nil
+	return reporter.err
+}
+
+func TestReportGenerationFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	executor := &controlledExecutor{entered: make(chan runs.ExecutionRequest, 1), release: make(chan struct{})}
+	reportFailure := errors.New("report storage unavailable")
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: executor,
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		Reporter:         &recordingReporter{err: reportFailure},
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	request := <-executor.entered
+	close(executor.release)
+	waitForStatus(t, repository, domain.RunCompleted)
+
+	select {
+	case diagnostic := <-reported:
+		if diagnostic.RunID != request.Run.Meta().ID || diagnostic.Operation != "generate_report" || diagnostic.ErrorCode != "report_generation_failed" {
+			t.Fatalf("diagnostic = %#v, want correlated report generation failure", diagnostic)
+		}
+		if !errors.Is(diagnostic.Err, reportFailure) {
+			t.Fatalf("diagnostic error = %v, want report failure", diagnostic.Err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("report generation failure was not reported")
+	}
 }
 
 func TestStartRunRejectsManualCasesBeforeCreatingDurableState(t *testing.T) {
@@ -296,6 +336,363 @@ func TestCloseCancelsAndPersistsActiveRun(t *testing.T) {
 	}
 }
 
+func TestExecutionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	executionFailure := errors.New("executor unavailable")
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: failingExecutor{err: executionFailure},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForStatus(t, repository, domain.RunFailed)
+	repository.mu.Lock()
+	persistedFailure := repository.run.Failure()
+	repository.mu.Unlock()
+	if persistedFailure == nil || persistedFailure.Phase != "execute" || persistedFailure.ErrorCode != "run_execution_failed" {
+		t.Fatalf("persisted run failure = %#v", persistedFailure)
+	}
+
+	select {
+	case diagnostic := <-reported:
+		repository.mu.Lock()
+		runID := repository.run.Meta().ID
+		repository.mu.Unlock()
+		if diagnostic.RunID != runID || diagnostic.Operation != "execute" || diagnostic.ErrorCode != "run_execution_failed" {
+			t.Fatalf("diagnostic = %#v, want correlated execution failure", diagnostic)
+		}
+		if !errors.Is(diagnostic.Err, executionFailure) {
+			t.Fatalf("diagnostic error = %v, want execution failure", diagnostic.Err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("execution failure was not reported")
+	}
+}
+
+func TestBackgroundTransitionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	transitionFailure := errors.New("repository transition unavailable")
+	repository := &fakeRepository{
+		fixture: fixture, failUpdateStatus: domain.RunRunning, updateErr: transitionFailure,
+	}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case diagnostic := <-reported:
+		repository.mu.Lock()
+		runID := repository.run.Meta().ID
+		repository.mu.Unlock()
+		if diagnostic.RunID != runID || diagnostic.Operation != "transition_running" || diagnostic.ErrorCode != "run_state_transition_failed" {
+			t.Fatalf("diagnostic = %#v, want correlated running transition failure", diagnostic)
+		}
+		if !errors.Is(diagnostic.Err, transitionFailure) {
+			t.Fatalf("diagnostic error = %v, want transition failure", diagnostic.Err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background transition failure was not reported")
+	}
+}
+
+func TestCaseSummaryPersistenceFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	summaryFailure := errors.New("summary persistence unavailable")
+	repository := &fakeRepository{fixture: fixture, failSummaryAppend: summaryFailure}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	executor := &controlledExecutor{entered: make(chan runs.ExecutionRequest, 1), release: make(chan struct{})}
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: executor,
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	request := <-executor.entered
+	close(executor.release)
+	waitForStatus(t, repository, domain.RunFailed)
+
+	select {
+	case diagnostic := <-reported:
+		if diagnostic.RunID != request.Run.Meta().ID || diagnostic.Operation != "persist_case_summaries" || diagnostic.ErrorCode != "result_persistence_failed" {
+			t.Fatalf("diagnostic = %#v, want correlated summary persistence failure", diagnostic)
+		}
+		if !errors.Is(diagnostic.Err, summaryFailure) {
+			t.Fatalf("diagnostic error = %v, want summary failure", diagnostic.Err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("summary persistence failure was not reported")
+	}
+}
+
+func TestTerminalTransitionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	transitionFailure := errors.New("terminal transition unavailable")
+	repository := &fakeRepository{
+		fixture: fixture, failUpdateStatus: domain.RunCompleted, updateErr: transitionFailure,
+	}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	executor := &controlledExecutor{entered: make(chan runs.ExecutionRequest, 1), release: make(chan struct{})}
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: executor,
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	request := <-executor.entered
+	close(executor.release)
+
+	select {
+	case diagnostic := <-reported:
+		if diagnostic.RunID != request.Run.Meta().ID || diagnostic.Operation != "transition_completed" || diagnostic.ErrorCode != "run_state_transition_failed" {
+			t.Fatalf("diagnostic = %#v, want correlated terminal transition failure", diagnostic)
+		}
+		if !errors.Is(diagnostic.Err, transitionFailure) {
+			t.Fatalf("diagnostic error = %v, want terminal transition failure", diagnostic.Err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("terminal transition failure was not reported")
+	}
+}
+
+func TestIncompleteExecutionReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForStatus(t, repository, domain.RunFailed)
+
+	select {
+	case diagnostic := <-reported:
+		if diagnostic.Operation != "execute" || diagnostic.ErrorCode != "run_execution_incomplete" {
+			t.Fatalf("diagnostic = %#v, want correlated incomplete execution", diagnostic)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("incomplete execution was not reported")
+	}
+}
+
+func TestBackgroundDrainingTransitionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
+	fixture := newRunFixture(t)
+	transitionFailure := errors.New("draining transition unavailable")
+	repository := &fakeRepository{
+		fixture: fixture, failUpdateStatus: domain.RunDraining, updateErr: transitionFailure,
+	}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	runID, err := service.PrepareTarget(context.Background(), runs.StartCommand{PlanID: fixture.plan.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.StopSending(context.Background(), runID); !errors.Is(err, runs.ErrNotActive) {
+		t.Fatalf("StopSending(queued) error = %v, want ErrNotActive", err)
+	}
+	if err := service.ActivateRun(context.Background(), runID); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case diagnostic := <-reported:
+		if diagnostic.RunID != runID || diagnostic.Operation != "transition_draining" || diagnostic.ErrorCode != "run_state_transition_failed" || !errors.Is(diagnostic.Err, transitionFailure) {
+			t.Fatalf("diagnostic = %#v, want correlated draining transition failure", diagnostic)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("draining transition failure was not reported")
+	}
+}
+
+func TestBlockingDiagnosticCallbackDoesNotDelayDurableFailure(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	defer close(releaseCallback)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: failingExecutor{err: errors.New("executor unavailable")},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(runs.Diagnostic) {
+			close(callbackEntered)
+			<-releaseCallback
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-callbackEntered:
+	case <-time.After(time.Second):
+		t.Fatal("diagnostic callback was not invoked")
+	}
+	waitForStatus(t, repository, domain.RunFailed)
+}
+
+func TestPanickingDiagnosticCallbackDoesNotCrashOrBlockService(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	callbackEntered := make(chan struct{})
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: failingExecutor{err: errors.New("executor unavailable")},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(runs.Diagnostic) {
+			close(callbackEntered)
+			panic("diagnostic sink failed")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForStatus(t, repository, domain.RunFailed)
+	select {
+	case <-callbackEntered:
+	case <-time.After(time.Second):
+		t.Fatal("diagnostic callback was not invoked")
+	}
+	if err := service.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
+func TestCloseDrainsQueuedDiagnosticsBeforeReturning(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	delivered := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCallback) }) }
+	defer release()
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: failingExecutor{err: errors.New("executor unavailable")},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(runs.Diagnostic) {
+			close(callbackEntered)
+			<-releaseCallback
+			close(delivered)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForStatus(t, repository, domain.RunFailed)
+	select {
+	case <-callbackEntered:
+	case <-time.After(time.Second):
+		t.Fatal("diagnostic callback was not invoked")
+	}
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- service.Close() }()
+	select {
+	case err := <-closeDone:
+		t.Fatalf("Close() returned before queued diagnostic completed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close() did not finish after diagnostic callback completed")
+	}
+	select {
+	case <-delivered:
+	default:
+		t.Fatal("queued diagnostic was not delivered before Close() returned")
+	}
+}
+
+type failingExecutor struct{ err error }
+
+func (executor failingExecutor) Execute(context.Context, runs.ExecutionRequest, func(runs.ResultDraft) error) error {
+	return executor.err
+}
+
 type signalExecutor struct{ entered chan runs.ExecutionRequest }
 
 func (executor *signalExecutor) Execute(ctx context.Context, request runs.ExecutionRequest, _ func(runs.ResultDraft) error) error {
@@ -330,6 +727,9 @@ type fakeRepository struct {
 	statuses          []domain.RunStatus
 	selectedModelID   string
 	selectedChannelID string
+	failUpdateStatus  domain.RunStatus
+	updateErr         error
+	failSummaryAppend error
 }
 
 func (repository *fakeRepository) GetPlan(context.Context, string) (domain.Plan, error) {
@@ -367,6 +767,9 @@ func (repository *fakeRepository) GetRun(context.Context, string) (domain.Run, e
 func (repository *fakeRepository) UpdateRun(_ context.Context, expected uint64, run domain.Run) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
+	if run.Status() == repository.failUpdateStatus && repository.updateErr != nil {
+		return repository.updateErr
+	}
 	if repository.run.Meta().Revision != expected {
 		return context.Canceled
 	}
@@ -378,6 +781,9 @@ func (repository *fakeRepository) UpdateRun(_ context.Context, expected uint64, 
 func (repository *fakeRepository) AppendResult(_ context.Context, result domain.Result) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
+	if result.CaseID != "" && repository.failSummaryAppend != nil {
+		return repository.failSummaryAppend
+	}
 	repository.results = append(repository.results, result)
 	return nil
 }

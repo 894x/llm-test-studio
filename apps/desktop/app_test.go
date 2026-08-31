@@ -185,6 +185,9 @@ func TestDesktopAppExposesStartupInitializationFailure(t *testing.T) {
 	app.setErrorReporter(func(err error) { reported = err })
 
 	app.onStartup(context.Background())
+	if !errors.Is(reported, initializationFailure) {
+		t.Fatalf("startup error was not reported immediately: %v", reported)
+	}
 	_, err := app.GetWorkspace()
 
 	assertBindingErrorCode(t, err, "desktop_startup_failed")
