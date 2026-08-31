@@ -15,6 +15,7 @@ import {
 } from "@/features/catalog/catalog-workspaces"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { OverviewWorkspace } from "@/features/overview/overview-workspace"
+import { QuickTestWorkspace } from "@/features/quick-test/quick-test-workspace"
 import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
@@ -206,6 +207,17 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     >
       {page === "overview" ? (
         <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} />
+      ) : page === "quick-test" ? (
+        <QuickTestWorkspace
+          modelCandidates={catalog.models
+            .filter((model) => model.protocol === "openai-chat")
+            .map((model) => ({ id: model.id, name: model.name }))}
+          runQuickTest={client.runQuickTest}
+          saveQuickTestConnection={client.saveQuickTestConnection}
+          refreshCatalog={client.getCatalog}
+          onCatalogUpdated={setCatalog}
+          onOpenCatalog={() => navigate("catalog")}
+        />
       ) : page === "catalog" ? (
         <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
       ) : page === "cases" ? (

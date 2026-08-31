@@ -34,6 +34,12 @@ import {
   type ReportExportFormat,
   type ReportSnapshot,
 } from "@/features/reports/data"
+import {
+  parseQuickTestResult,
+  type QuickTestCommand,
+  type QuickTestResult,
+  type SaveQuickTestConnectionCommand,
+} from "@/features/quick-test/data"
 
 export type DesktopErrorCode =
   | "desktop_not_started"
@@ -44,6 +50,8 @@ export type DesktopErrorCode =
   | "reports_unavailable"
   | "run_commands_unavailable"
   | "comparison_unavailable"
+  | "quick_test_unavailable"
+  | "quick_test_save_partial"
   | "invalid_identifier"
   | "operation_cancelled"
   | "operation_failed"
@@ -60,6 +68,8 @@ const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   reports_unavailable: "测试报告暂不可用",
   run_commands_unavailable: "运行命令暂不可用",
   comparison_unavailable: "渠道对比暂不可用",
+  quick_test_unavailable: "快速测试暂不可用",
+  quick_test_save_partial: "连接已部分保存，请前往模型与渠道检查并完成配置",
   invalid_identifier: "操作对象无效",
   operation_cancelled: "操作已取消",
   operation_failed: "桌面操作失败，请检查本地日志",
@@ -104,6 +114,8 @@ export interface DesktopClient extends CatalogActions {
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
+  runQuickTest(command: QuickTestCommand): Promise<QuickTestResult>
+  saveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<CatalogSnapshot>
 }
 
 type WailsDesktopBinding = {
@@ -117,6 +129,8 @@ type WailsDesktopBinding = {
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
+  RunQuickTest(command: QuickTestCommand): Promise<unknown>
+  SaveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<unknown>
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
   DeleteModel(command: DeleteCommand): Promise<unknown>
@@ -221,6 +235,52 @@ export function createFixtureClient(
 			})
 			return structuredClone(comparisonState)
 		},
+    async runQuickTest(command) {
+      const normalizedURL = command.url.replace(/\/+$/, "")
+      const endpoint = command.address_mode === "base_url"
+        ? `${normalizedURL}/chat/completions`
+        : command.url
+      return {
+        schema_version: 1,
+        success: true,
+        address_mode: command.address_mode,
+        base_url: command.address_mode === "base_url"
+          ? normalizedURL
+          : normalizedURL.replace(/\/chat\/completions$/, ""),
+        endpoint,
+        http_status: 200,
+        e2e_ms: 42,
+        prompt_tokens: 8,
+        completion_tokens: 1,
+        cached_tokens: 0,
+      }
+    },
+    async saveQuickTestConnection(command) {
+      let modelID = command.existing_model_id
+      if (modelID) {
+        const existing = catalogState.models.find((model) => model.id === modelID)
+        if (!existing || existing.protocol !== "openai-chat") {
+          throw new DesktopClientError("catalog_not_found")
+        }
+      } else {
+        modelID = nextID()
+        catalogState.models.push({
+          id: modelID, revision: 1, name: command.model_name,
+          protocol: "openai-chat", capabilities: ["chat"],
+        })
+      }
+      const channelID = nextID()
+      catalogState.channels.push({
+        id: channelID, revision: 1, name: command.channel_name,
+        base_url: command.base_url, protocol: "openai-chat", enabled: true,
+        credential_configured: true, model_count: 1,
+      })
+      catalogState.channel_models.push({
+        id: nextID(), revision: 1, channel_id: channelID, model_id: modelID,
+        upstream_model_name: command.model_id,
+      })
+      return structuredClone(catalogState)
+    },
     async createModel(command) {
       catalogState.models.push({ id: nextID(), revision: 1, ...structuredClone(command) })
       return structuredClone(catalogState)
@@ -349,6 +409,8 @@ function createLazyFixtureClient(): DesktopClient {
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
+    runQuickTest: async (command) => (await client).runQuickTest(command),
+    saveQuickTestConnection: async (command) => (await client).saveQuickTestConnection(command),
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
     deleteModel: async (command) => (await client).deleteModel(command),
@@ -392,6 +454,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.CancelRun(runId), parseSnapshot),
 		startComparison: async (command) =>
 			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
+    runQuickTest: async (command) =>
+      callBinding(() => binding.RunQuickTest(command), parseQuickTestResult),
+    saveQuickTestConnection: async (command) =>
+      callBinding(() => binding.SaveQuickTestConnection(command), parseCatalogSnapshot),
     createModel: async (command) => callBinding(() => binding.CreateModel(command), parseCatalogSnapshot),
     updateModel: async (command) => callBinding(() => binding.UpdateModel(command), parseCatalogSnapshot),
     deleteModel: async (command) => callBinding(() => binding.DeleteModel(command), parseCatalogSnapshot),
@@ -428,6 +494,8 @@ function unavailableClient(): DesktopClient {
     stopSending: () => reject(),
     cancelRun: () => reject(),
 		startComparison: () => reject(),
+    runQuickTest: () => reject(),
+    saveQuickTestConnection: () => reject(),
     createModel: () => reject(),
     updateModel: () => reject(),
     deleteModel: () => reject(),
@@ -471,6 +539,8 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     typeof candidate.StopSending !== "function" ||
     typeof candidate.CancelRun !== "function" ||
 		typeof candidate.StartComparison !== "function" ||
+    typeof candidate.RunQuickTest !== "function" ||
+    typeof candidate.SaveQuickTestConnection !== "function" ||
     catalogMethods.some((method) => typeof candidate[method] !== "function")
   ) {
     return undefined
@@ -570,7 +640,8 @@ function isProtocolError(error: unknown): boolean {
       error.message.startsWith("桌面活动运行引用") ||
       error.message.startsWith("桌面目录") ||
       error.message.startsWith("桌面报告") ||
-		error.message.startsWith("渠道对比"))
+		error.message.startsWith("渠道对比") ||
+      error.message.startsWith("快速测试"))
   )
 }
 

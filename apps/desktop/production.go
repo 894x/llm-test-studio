@@ -18,6 +18,7 @@ import (
 	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/channelconfig"
 	"github.com/894x/llm-studio/internal/application/comparisons"
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/application/workspace"
@@ -189,6 +190,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			reports:         serializedReportingQuery{gate: gate, query: reportingQuery},
 			commands:        runService,
 			comparisons:     comparisonService,
+			quickTests:      quicktest.New(quicktest.Dependencies{}),
 			close: func() error {
 				return errors.Join(runService.Close(), repository.Close())
 			},

@@ -49,6 +49,19 @@ function desktopClient(): DesktopClient & {
       return structuredClone(client.workspace)
     }),
 		startComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
+		runQuickTest: vi.fn(async () => ({
+			schema_version: 1 as const,
+			success: true,
+			address_mode: "base_url" as const,
+			base_url: "https://api.example.test/v1",
+			endpoint: "https://api.example.test/v1/chat/completions",
+			http_status: 200,
+			e2e_ms: 42,
+			prompt_tokens: 8,
+			completion_tokens: 1,
+			cached_tokens: 0,
+		})),
+		saveQuickTestConnection: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
     ...catalogMutationMocks(),
   }
   return client
@@ -185,6 +198,7 @@ describe("desktop run workspace", () => {
     await screen.findByRole("heading", { name: "运行工作区" })
     for (const [label, heading, evidence] of [
       ["总览", "工作台总览", "6 个模型"],
+      ["快速测试", "快速测试", "无需预先创建模型、渠道或计划，直接验证 OpenAI Chat 兼容接口。"],
       ["模型与渠道", "模型与渠道", "gpt-5.2"],
       ["用例", "测试用例", "基础对话"],
       ["计划", "测试计划", "营销文案基准"],
@@ -200,6 +214,27 @@ describe("desktop run workspace", () => {
     expect(client.getWorkspace).toHaveBeenCalledTimes(1)
     expect(client.getCatalog).toHaveBeenCalledTimes(1)
     expect(client.getReports).toHaveBeenCalledTimes(1)
+  })
+
+  it("offers only current OpenAI catalog models to quick test while keeping the field editable", async () => {
+    window.history.replaceState(null, "", "#quick-test")
+    const client = desktopClient()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.models.push({
+      id: "22222222-2222-4222-8222-222222222299",
+      revision: 1,
+      name: "seedance-video-model",
+      protocol: "seedance",
+      capabilities: ["video"],
+    })
+    vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+
+    render(<App client={client} />)
+
+    const modelID = await screen.findByLabelText("模型 ID")
+    expect(modelID).toHaveAttribute("list", "quick-test-model-options")
+    expect(document.querySelector('option[value="gpt-5.2"]')).not.toBeNull()
+    expect(document.querySelector('option[value="seedance-video-model"]')).toBeNull()
   })
 
 	it("shows request-level report detail and all Go export actions", async () => {
@@ -598,6 +633,8 @@ describe("desktop run workspace", () => {
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),
+			runQuickTest: vi.fn(),
+			saveQuickTestConnection: vi.fn(),
       ...catalogMutationMocks(),
     }
 

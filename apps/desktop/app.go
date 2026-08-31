@@ -9,6 +9,7 @@ import (
 
 	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/comparisons"
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
@@ -23,24 +24,28 @@ var (
 	ErrReportingUnavailable   = errors.New("reporting query is unavailable")
 	ErrRunCommandsUnavailable = errors.New("run commands are unavailable")
 	ErrComparisonUnavailable  = errors.New("comparison service is unavailable")
+	ErrQuickTestUnavailable   = errors.New("quick test service is unavailable")
+	ErrQuickTestSavePartial   = errors.New("quick test connection was only partially saved")
 	ErrInvalidIdentifier      = errors.New("desktop command identifier is invalid")
 )
 
 const (
-	desktopCodeNotStarted         = "desktop_not_started"
-	desktopCodeStartupFailed      = "desktop_startup_failed"
-	desktopCodeStopped            = "desktop_stopped"
-	desktopCodeWorkspaceMissing   = "workspace_unavailable"
-	desktopCodeCatalogMissing     = "catalog_unavailable"
-	desktopCodeReportsMissing     = "reports_unavailable"
-	desktopCodeCommandsMissing    = "run_commands_unavailable"
-	desktopCodeComparisonMissing  = "comparison_unavailable"
-	desktopCodeInvalidIdentifier  = "invalid_identifier"
-	desktopCodeOperationCancelled = "operation_cancelled"
-	desktopCodeOperationFailed    = "operation_failed"
-	desktopCodeCatalogInvalid     = "catalog_invalid"
-	desktopCodeCatalogConflict    = "catalog_revision_conflict"
-	desktopCodeCatalogNotFound    = "catalog_not_found"
+	desktopCodeNotStarted           = "desktop_not_started"
+	desktopCodeStartupFailed        = "desktop_startup_failed"
+	desktopCodeStopped              = "desktop_stopped"
+	desktopCodeWorkspaceMissing     = "workspace_unavailable"
+	desktopCodeCatalogMissing       = "catalog_unavailable"
+	desktopCodeReportsMissing       = "reports_unavailable"
+	desktopCodeCommandsMissing      = "run_commands_unavailable"
+	desktopCodeComparisonMissing    = "comparison_unavailable"
+	desktopCodeQuickTestMissing     = "quick_test_unavailable"
+	desktopCodeQuickTestSavePartial = "quick_test_save_partial"
+	desktopCodeInvalidIdentifier    = "invalid_identifier"
+	desktopCodeOperationCancelled   = "operation_cancelled"
+	desktopCodeOperationFailed      = "operation_failed"
+	desktopCodeCatalogInvalid       = "catalog_invalid"
+	desktopCodeCatalogConflict      = "catalog_revision_conflict"
+	desktopCodeCatalogNotFound      = "catalog_not_found"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -105,6 +110,10 @@ type ComparisonService interface {
 	Snapshot(context.Context) (comparisons.Snapshot, error)
 }
 
+type QuickTestRunner interface {
+	Run(context.Context, quicktest.Command) (quicktest.Result, error)
+}
+
 type desktopDependencies struct {
 	query           WorkspaceQuery
 	catalog         CatalogQuery
@@ -112,6 +121,7 @@ type desktopDependencies struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
+	quickTests      QuickTestRunner
 	close           func() error
 }
 
@@ -138,6 +148,7 @@ type DesktopApp struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
+	quickTests      QuickTestRunner
 	close           func() error
 	startupErr      error
 	shutdownErr     error
@@ -151,6 +162,7 @@ type desktopRequirements struct {
 	reports         bool
 	commands        bool
 	comparisons     bool
+	quickTests      bool
 }
 
 type desktopLease struct {
@@ -161,6 +173,7 @@ type desktopLease struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
+	quickTests      QuickTestRunner
 	release         func()
 }
 
@@ -250,6 +263,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.reports = dependencies.reports
 	app.commands = dependencies.commands
 	app.comparisons = dependencies.comparisons
+	app.quickTests = dependencies.quickTests
 	app.close = dependencies.close
 	app.startupDone.Broadcast()
 	app.mu.Unlock()
@@ -606,6 +620,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.comparisons && isNilInterface(app.comparisons) {
 		return desktopLease{}, ErrComparisonUnavailable
 	}
+	if require.quickTests && isNilInterface(app.quickTests) {
+		return desktopLease{}, ErrQuickTestUnavailable
+	}
 	app.active++
 	released := false
 	release := func() {
@@ -624,6 +641,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		ctx: app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
 		comparisons: app.comparisons,
+		quickTests:  app.quickTests,
 	}, nil
 }
 
@@ -658,6 +676,7 @@ func (app *DesktopApp) shutdown() error {
 	app.reports = nil
 	app.commands = nil
 	app.comparisons = nil
+	app.quickTests = nil
 	app.close = nil
 	app.mu.Unlock()
 
@@ -716,6 +735,10 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeCommandsMissing}
 	case errors.Is(internal, ErrComparisonUnavailable):
 		return DesktopBindingError{Code: desktopCodeComparisonMissing}
+	case errors.Is(internal, ErrQuickTestUnavailable):
+		return DesktopBindingError{Code: desktopCodeQuickTestMissing}
+	case errors.Is(internal, ErrQuickTestSavePartial):
+		return DesktopBindingError{Code: desktopCodeQuickTestSavePartial}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, catalog.ErrInvalid):
@@ -741,6 +764,8 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeReportsMissing,
 		desktopCodeCommandsMissing,
 		desktopCodeComparisonMissing,
+		desktopCodeQuickTestMissing,
+		desktopCodeQuickTestSavePartial,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,

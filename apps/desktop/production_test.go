@@ -89,6 +89,9 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if isNilInterface(dependencies.comparisons) {
 		t.Fatal("production initializer did not wire channel comparisons")
 	}
+	if isNilInterface(dependencies.quickTests) {
+		t.Fatal("production initializer did not wire quick tests")
+	}
 
 	directory := filepath.Join(configurationRoot, "llm-studio")
 	database := filepath.Join(directory, "llm-studio.db")
