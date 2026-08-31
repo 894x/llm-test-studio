@@ -13,6 +13,7 @@ import (
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var (
@@ -115,6 +116,12 @@ type QuickTestRunner interface {
 	RunPerformance(context.Context, quicktest.PerformanceCommand) (quicktest.PerformanceReport, error)
 }
 
+type QuickTestProgressRunner interface {
+	RunPerformanceWithProgress(context.Context, quicktest.PerformanceCommand, func(quicktest.PerformanceProgress)) (quicktest.PerformanceReport, error)
+}
+
+type desktopEventEmitter func(context.Context, string, ...interface{})
+
 type desktopDependencies struct {
 	query           WorkspaceQuery
 	catalog         CatalogQuery
@@ -154,6 +161,7 @@ type DesktopApp struct {
 	startupErr      error
 	shutdownErr     error
 	reportError     func(error)
+	emitEvent       desktopEventEmitter
 }
 
 type desktopRequirements struct {
@@ -199,10 +207,28 @@ func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
 }
 
 func newDesktopApp(initialize desktopInitializer) *DesktopApp {
-	app := &DesktopApp{initialize: initialize}
+	app := &DesktopApp{initialize: initialize, emitEvent: wailsruntime.EventsEmit}
 	app.drained = sync.NewCond(&app.mu)
 	app.startupDone = sync.NewCond(&app.mu)
 	return app
+}
+
+func (app *DesktopApp) setEventEmitter(emit desktopEventEmitter) {
+	if app == nil {
+		return
+	}
+	app.mu.Lock()
+	app.emitEvent = emit
+	app.mu.Unlock()
+}
+
+func (app *DesktopApp) emitDesktopEvent(ctx context.Context, name string, data ...interface{}) {
+	app.mu.Lock()
+	emit := app.emitEvent
+	app.mu.Unlock()
+	if emit != nil {
+		emit(ctx, name, data...)
+	}
 }
 
 func (app *DesktopApp) setErrorReporter(report func(error)) {

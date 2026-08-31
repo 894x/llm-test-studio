@@ -314,6 +314,53 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 	}
 }
 
+func TestRunPerformanceWithProgressPublishesAuthoritativeLifecycleSnapshots(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":3}}\n\n")
+		fmt.Fprint(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	progress := make([]PerformanceProgress, 0)
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
+	}, func(next PerformanceProgress) {
+		progress = append(progress, next)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Success || len(progress) < 3 {
+		t.Fatalf("report = %#v, progress = %#v", report, progress)
+	}
+	first, last := progress[0], progress[len(progress)-1]
+	if first.Phase != load.PhaseSending || first.Planned != 3 || first.Completed != 0 {
+		t.Fatalf("first progress = %#v", first)
+	}
+	if last.Phase != load.PhaseCompleted || last.Completed != 3 || last.Succeeded != 3 || last.Failed != 0 || last.PeakInFlight == 0 || last.TotalDurationMS <= 0 {
+		t.Fatalf("last progress = %#v", last)
+	}
+	foundPartial := false
+	foundInFlight := false
+	for _, snapshot := range progress {
+		if snapshot.Completed > 0 && snapshot.Completed < snapshot.Planned {
+			foundPartial = true
+		}
+		if snapshot.InFlight > 0 {
+			foundInFlight = true
+		}
+	}
+	if !foundPartial {
+		t.Fatalf("progress never exposed an intermediate completion: %#v", progress)
+	}
+	if !foundInFlight {
+		t.Fatalf("progress never exposed in-flight work: %#v", progress)
+	}
+}
+
 func TestRunPerformanceArchivesLaunchedSamplesWithStableIdentity(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")

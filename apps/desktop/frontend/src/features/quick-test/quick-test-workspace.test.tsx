@@ -6,7 +6,7 @@ import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopClientError } from "@/app/desktop-client"
 
 import { QuickTestWorkspace } from "./quick-test-workspace"
-import { updateQuickTestForm, type QuickPerformanceReport, type QuickTestResult } from "./data"
+import { updateQuickTestForm, type QuickPerformanceProgress, type QuickPerformanceReport, type QuickTestResult } from "./data"
 
 describe("QuickTestWorkspace", () => {
   it("uses a selected catalog channel without exposing its stored API key", async () => {
@@ -190,13 +190,19 @@ describe("QuickTestWorkspace", () => {
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
-    }))
+    }, expect.any(Function)))
     const report = await within(dialog).findByRole("region", { name: "性能报告" })
-    expect(report).toHaveTextContent("4 / 4")
+    expect(report).toHaveTextContent("完成 / 计划")
+    expect(report).toHaveTextContent("失败")
     expect(report).toHaveTextContent("100%")
     expect(report).toHaveTextContent("12.5 req/s")
     expect(report).toHaveTextContent("750 RPM")
-    expect(report).toHaveTextContent("60 / 80 / 84 ms")
+    expect(report).toHaveTextContent("39,000 TPM")
+    const latency = within(report).getByRole("table", { name: "延迟分布统计" })
+    expect(within(latency).getByRole("row", { name: /TTFT/ })).toHaveTextContent(/32\s*30\s*40\s*42\s*44/)
+    expect(within(latency).getByRole("row", { name: /TPOT/ })).toHaveTextContent(/4\.5\s*4\s*5\s*6\s*7/)
+    expect(within(latency).getByRole("row", { name: /E2E/ })).toHaveTextContent(/65\s*60\s*75\s*80\s*84/)
+    expect(within(latency).getByRole("row", { name: /客户端排队（本地调度延迟）/ })).toHaveTextContent(/0\.5\s*0\s*1\.8\s*2\s*2\.8/)
     expect(within(report).getByRole("figure", { name: "TTFT 分布图" })).toBeInTheDocument()
     expect(within(report).getByRole("figure", { name: "TPOT 时间曲线" })).toBeInTheDocument()
     expect(within(report).getByRole("figure", { name: "E2E 时间曲线" })).toBeInTheDocument()
@@ -204,6 +210,110 @@ describe("QuickTestWorkspace", () => {
     await user.click(within(report).getByRole("button", { name: "查看正式报告" }))
     expect(onOpenReport).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
     expect(report).not.toHaveTextContent("sk-private-value")
+  })
+
+  it("shows authoritative progress while a performance test is running", async () => {
+    const user = userEvent.setup()
+    let resolvePerformance!: (report: QuickPerformanceReport) => void
+    const runQuickPerformanceTest = vi.fn((_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
+      onProgress?.({
+        phase: "sending", planned: 10, launched: 5, completed: 3, in_flight: 2,
+        peak_in_flight: 2, succeeded: 2, failed: 1, rejected: 0,
+        send_duration_ms: 120, drain_duration_ms: 0, total_duration_ms: 120,
+      })
+      return new Promise<QuickPerformanceReport>((resolve) => { resolvePerformance = resolve })
+    })
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
+    expect(status).toHaveTextContent("发送中")
+    expect(status).toHaveTextContent(/完成 \/ 计划\s*3 \/ 10/)
+    expect(status).toHaveTextContent(/成功\s*2/)
+    expect(status).toHaveTextContent(/失败\s*1/)
+    expect(status).toHaveTextContent(/在途\s*2/)
+    expect(within(status).getByRole("progressbar", { name: "请求完成进度" })).toHaveAttribute("aria-valuenow", "30")
+
+    resolvePerformance(successfulPerformanceReport())
+    await within(dialog).findByRole("region", { name: "性能报告" })
+  })
+
+  it("shows report finalization after Core has completed the load", async () => {
+    const user = userEvent.setup()
+    let resolvePerformance!: (report: QuickPerformanceReport) => void
+    const runQuickPerformanceTest = vi.fn((_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
+      onProgress?.({
+        phase: "completed", planned: 10, launched: 10, completed: 10, in_flight: 0,
+        peak_in_flight: 2, succeeded: 10, failed: 0, rejected: 0,
+        send_duration_ms: 300, drain_duration_ms: 20, total_duration_ms: 320,
+      })
+      return new Promise<QuickPerformanceReport>((resolve) => { resolvePerformance = resolve })
+    })
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
+    expect(status).toHaveTextContent("测试已完成，正在封存报告")
+    expect(status).not.toHaveTextContent("发送中")
+
+    resolvePerformance(successfulPerformanceReport())
+    await within(dialog).findByRole("region", { name: "性能报告" })
+  })
+
+  it("does not present the duration-mode safety cap as a planned request count", async () => {
+    const user = userEvent.setup()
+    const durationReport = successfulPerformanceReport()
+    durationReport.profile.request_count = 0
+    durationReport.profile.duration_ms = 1_000
+    durationReport.progress.planned = 10_000
+    const runQuickPerformanceTest = vi.fn(async () => durationReport)
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
+    await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    expect(report).toHaveTextContent("完成（持续时间模式）")
+    expect(report).not.toHaveTextContent("4 / 10,000")
   })
 
   it("requires a request-count or duration target before starting performance testing", async () => {
@@ -559,6 +669,7 @@ async function fillAndRun(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("接口地址"), "https://api.example.test/v1")
   await user.type(screen.getByLabelText("API Key"), "sk-private-value")
   await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
+  await user.keyboard("{Escape}")
   await user.click(screen.getByRole("button", { name: "发送测试" }))
 }
 
@@ -585,7 +696,7 @@ function successfulPerformanceReport(): QuickPerformanceReport {
     },
     progress: {
       phase: "completed", planned: 4, launched: 4, completed: 4,
-      peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
+      in_flight: 0, peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
       send_duration_ms: 300, drain_duration_ms: 20, total_duration_ms: 320,
     },
     metrics: {
@@ -596,7 +707,8 @@ function successfulPerformanceReport(): QuickPerformanceReport {
       ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
       tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,
       e2e_p50_ms: 60, e2e_p90_ms: 75, e2e_p95_ms: 80, e2e_p99_ms: 84, e2e_average_ms: 65,
-      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
+      schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
       prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20, cache_rate_percent: 25,
     },
     samples: [

@@ -94,14 +94,14 @@ function archivedPerformanceReport(reportID: string): QuickPerformanceReport {
     base_url: "https://api.example.test/v1",
     endpoint: "https://api.example.test/v1/chat/completions",
     profile: { request_count: 1, duration_ms: 0, concurrency: 1, timeout_ms: 60_000, input_tokens: 100, output_tokens: 100 },
-    progress: { phase: "completed", planned: 1, launched: 1, completed: 1, peak_in_flight: 1, succeeded: 1, failed: 0, rejected: 0, send_duration_ms: 40, drain_duration_ms: 20, total_duration_ms: 60 },
+    progress: { phase: "completed", planned: 1, launched: 1, completed: 1, in_flight: 0, peak_in_flight: 1, succeeded: 1, failed: 0, rejected: 0, send_duration_ms: 40, drain_duration_ms: 20, total_duration_ms: 60 },
     metrics: {
       completed: 1, succeeded: 1, failed: 0, timed_out: 0, success_rate_percent: 100, request_qps: 16.7, rpm: 1_000,
       input_tpm: 100_000, output_tpm: 100_000, total_tpm: 200_000, generation_tps: 1_666.7,
       ttft_p50_ms: 20, ttft_p90_ms: 20, ttft_p95_ms: 20, ttft_p99_ms: 20, ttft_average_ms: 20,
       tpot_p50_ms: 2, tpot_p90_ms: 2, tpot_p95_ms: 2, tpot_p99_ms: 2, tpot_average_ms: 2,
       e2e_p50_ms: 60, e2e_p90_ms: 60, e2e_p95_ms: 60, e2e_p99_ms: 60, e2e_average_ms: 60,
-      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 0, schedule_lag_average_ms: 0,
+      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 0, schedule_lag_p95_ms: 0, schedule_lag_p99_ms: 0, schedule_lag_average_ms: 0,
       prompt_tokens: 100, completion_tokens: 100, cached_tokens: 0, cache_rate_percent: 0,
     },
     samples: [{ request_index: 0, scheduled_offset_ms: 0, started_offset_ms: 0, finished_offset_ms: 60, schedule_lag_ms: 0, e2e_ms: 60, ttft_ms: 20, tpot_ms: 2, http_status: 200, success: true, timed_out: false, prompt_tokens: 100, completion_tokens: 100, cached_tokens: 0 }],
@@ -248,6 +248,7 @@ describe("desktop run workspace", () => {
 
   it("offers only current OpenAI catalog models to quick test while keeping the field editable", async () => {
     window.history.replaceState(null, "", "#quick-test")
+    const user = userEvent.setup()
     const client = desktopClient()
     const catalog = structuredClone(FIXTURE_CATALOG)
     catalog.models.push({
@@ -262,9 +263,11 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
 
     const modelID = await screen.findByLabelText("模型 ID")
-    expect(modelID).toHaveAttribute("list", "quick-test-model-options")
-    expect(document.querySelector('option[value="gpt-5.2"]')).not.toBeNull()
-    expect(document.querySelector('option[value="seedance-video-model"]')).toBeNull()
+    expect(modelID).toHaveAttribute("aria-autocomplete", "list")
+    await user.click(modelID)
+    const options = await screen.findByRole("listbox")
+    expect(within(options).getByRole("option", { name: "gpt-5.2" })).toBeInTheDocument()
+    expect(within(options).queryByRole("option", { name: "seedance-video-model" })).not.toBeInTheDocument()
   })
 
 	it("shows request-level report detail and all Go export actions", async () => {
@@ -332,6 +335,7 @@ describe("desktop run workspace", () => {
 		await user.type(await screen.findByLabelText("接口地址"), "https://api.example.test/v1")
 		await user.type(screen.getByLabelText("API Key"), "sk-private-value")
 		await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
+		await user.keyboard("{Escape}")
 		await user.click(screen.getByRole("button", { name: "发送测试" }))
 		await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
 		const dialog = screen.getByRole("dialog", { name: "快速性能测试" })

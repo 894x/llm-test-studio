@@ -104,6 +104,7 @@ type PerformanceProgress struct {
 	Planned         uint64     `json:"planned"`
 	Launched        uint64     `json:"launched"`
 	Completed       uint64     `json:"completed"`
+	InFlight        uint64     `json:"in_flight,omitempty"`
 	PeakInFlight    uint64     `json:"peak_in_flight"`
 	Succeeded       uint64     `json:"succeeded"`
 	Failed          uint64     `json:"failed"`

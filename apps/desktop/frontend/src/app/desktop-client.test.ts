@@ -12,6 +12,7 @@ import { createDesktopClient } from "./desktop-client"
 describe("Wails desktop client", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "go")
+		Reflect.deleteProperty(window, "runtime")
   })
 
   it("uses the typed Wails methods and forwards command identifiers", async () => {
@@ -68,7 +69,7 @@ describe("Wails desktop client", () => {
     expect(binding.StopSending).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
     expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
     expect(binding.RunQuickTest).toHaveBeenCalledWith(quickCommand)
-    expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(performanceCommand)
+    expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(performanceCommand, "")
     expect(binding.SaveQuickTestConnection).toHaveBeenCalledWith(saveCommand)
   })
 
@@ -206,6 +207,73 @@ describe("Wails desktop client", () => {
     } as never)
     await expect(createDesktopClient().runQuickPerformanceTest(command)).rejects.toThrow("快速性能报告数据结构无效")
   })
+
+	it("publishes only correlated validated quick-performance progress and unsubscribes", async () => {
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		let eventCallback: ((payload: unknown) => void) | undefined
+		const unsubscribe = vi.fn()
+		const eventsOn = vi.fn((_name: string, callback: (payload: unknown) => void) => {
+			eventCallback = callback
+			return unsubscribe
+		})
+		Object.defineProperty(window, "runtime", {
+			configurable: true,
+			value: { EventsOn: eventsOn },
+		})
+		binding.RunQuickPerformanceTest.mockImplementationOnce(async (_command, progressID) => {
+			const progress = {
+				phase: "sending", planned: 4, launched: 2, completed: 1,
+				peak_in_flight: 2, succeeded: 1, failed: 0, rejected: 0,
+				send_duration_ms: 100, drain_duration_ms: 0, total_duration_ms: 100,
+			}
+			eventCallback?.({ progress_id: "99999999-9999-4999-8999-999999999999", progress })
+			eventCallback?.({ progress_id: progressID, progress: { ...progress, api_key: "sk-secret" }, raw_response: "secret" })
+			return performanceReportFixture()
+		})
+		const progress = vi.fn()
+		const command = {
+			address_mode: "base_url" as const, url: "https://api.example.test/v1",
+			api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
+			duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+			input_tokens: 20, output_tokens: 32,
+		}
+
+		const report = await createDesktopClient().runQuickPerformanceTest(command, progress)
+
+		expect(eventsOn).toHaveBeenCalledWith("quick-performance-progress", expect.any(Function))
+		expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(command, expect.stringMatching(/^[0-9a-f-]{36}$/))
+		expect(progress).toHaveBeenCalledTimes(1)
+		expect(progress).toHaveBeenCalledWith(expect.objectContaining({ phase: "sending", completed: 1 }))
+		expect(JSON.stringify(progress.mock.calls)).not.toContain("sk-secret")
+		expect(JSON.stringify(progress.mock.calls)).not.toContain("raw_response")
+		expect(report.metrics.schedule_lag_p90_ms).toBe(2.7)
+		expect(report.metrics.schedule_lag_p99_ms).toBe(2.97)
+		expect(unsubscribe).toHaveBeenCalledTimes(1)
+	})
+
+	it("accepts archived performance reports created before queue P90 and P99 were recorded", async () => {
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		const fixture = performanceReportFixture()
+		const {
+			schedule_lag_p90_ms: _legacyP90,
+			schedule_lag_p99_ms: _legacyP99,
+			...legacyMetrics
+		} = fixture.metrics
+		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
+			...fixture,
+			metrics: legacyMetrics,
+		} as never)
+
+		const report = await createDesktopClient().runQuickPerformanceTest({
+			address_mode: "base_url", url: "https://api.example.test/v1",
+			api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
+			duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+			input_tokens: 20, output_tokens: 32,
+		})
+
+		expect(report.metrics.schedule_lag_p90_ms).toBe(0)
+		expect(report.metrics.schedule_lag_p99_ms).toBe(0)
+	})
 
 	it("reads complete report details and forwards all export formats", async () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
@@ -463,7 +531,7 @@ function installBinding(
 			http_status: 200, e2e_ms: 42, prompt_tokens: 8,
 			completion_tokens: 1, cached_tokens: 0,
 		})),
-		RunQuickPerformanceTest: vi.fn(async () => performanceReportFixture()),
+		RunQuickPerformanceTest: vi.fn(async (_command?: unknown, _progressID?: string) => performanceReportFixture()),
 		SaveQuickTestConnection: vi.fn(async () => structuredClone(catalog)),
 	CreateModel: vi.fn(async () => structuredClone(catalog)),
 	UpdateModel: vi.fn(async () => structuredClone(catalog)),
@@ -509,7 +577,7 @@ function performanceReportFixture() {
       ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
       tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,
       e2e_p50_ms: 60, e2e_p90_ms: 75, e2e_p95_ms: 80, e2e_p99_ms: 84, e2e_average_ms: 65,
-      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+			schedule_lag_p50_ms: 1.5, schedule_lag_p90_ms: 2.7, schedule_lag_p95_ms: 2.85, schedule_lag_p99_ms: 2.97, schedule_lag_average_ms: 1.5,
       prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20, cache_rate_percent: 25,
     },
     samples: [

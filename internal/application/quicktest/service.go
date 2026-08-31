@@ -184,6 +184,14 @@ func (service *Service) Run(ctx context.Context, command Command) (Result, error
 }
 
 func (service *Service) RunPerformance(ctx context.Context, command PerformanceCommand) (PerformanceReport, error) {
+	return service.runPerformance(ctx, command, nil)
+}
+
+func (service *Service) RunPerformanceWithProgress(ctx context.Context, command PerformanceCommand, onProgress func(PerformanceProgress)) (PerformanceReport, error) {
+	return service.runPerformance(ctx, command, onProgress)
+}
+
+func (service *Service) runPerformance(ctx context.Context, command PerformanceCommand, onProgress func(PerformanceProgress)) (PerformanceReport, error) {
 	if service == nil {
 		return PerformanceReport{}, ErrServiceUnavailable
 	}
@@ -259,7 +267,13 @@ func (service *Service) RunPerformance(ctx context.Context, command PerformanceC
 	}
 	defer cleanup()
 
-	outcome, runErr := load.Run(ctx, profile, executor, load.Options{})
+	options := load.Options{}
+	if onProgress != nil {
+		options.OnProgress = func(progress load.Progress) {
+			onProgress(performanceProgress(progress))
+		}
+	}
+	outcome, runErr := load.Run(ctx, profile, executor, options)
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
@@ -379,7 +393,7 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 func performanceProgress(progress load.Progress) PerformanceProgress {
 	return PerformanceProgress{
 		Phase: progress.Phase, Planned: progress.Planned, Launched: progress.Launched,
-		Completed: progress.Completed, PeakInFlight: progress.PeakInFlight,
+		Completed: progress.Completed, InFlight: progress.InFlight, PeakInFlight: progress.PeakInFlight,
 		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected,
 		SendDurationMS:  float64(progress.SendDuration) / float64(time.Millisecond),
 		DrainDurationMS: float64(progress.DrainDuration) / float64(time.Millisecond),

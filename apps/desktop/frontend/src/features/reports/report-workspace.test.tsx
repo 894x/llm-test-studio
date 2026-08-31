@@ -49,7 +49,12 @@ describe("ReportWorkspace", () => {
 
     await user.click(within(quickRow as HTMLTableRowElement).getByRole("button", { name: "查看报告：快速性能测试通过" }))
 
-    expect(await screen.findByRole("region", { name: "归档性能报告" })).toHaveTextContent("3 / 3")
+    const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(archivedReport).toHaveTextContent("完成（持续时间模式）")
+    expect(archivedReport).not.toHaveTextContent("3 / 10,000")
+    expect(archivedReport).toHaveTextContent("失败")
+    expect(archivedReport).toHaveTextContent("104,000 TPM")
+    expect(within(archivedReport).getByRole("table", { name: "延迟分布统计" })).toHaveTextContent("客户端排队（本地调度延迟）")
     expect(screen.queryByRole("table", { name: "测试报告目录" })).not.toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "报告详情" })).toHaveTextContent(quickID)
     const charts = screen.getByRole("region", { name: "性能图表" })
@@ -95,15 +100,15 @@ function quickDetail(reportID: string) {
       address_mode: "base_url",
       base_url: "https://api.example.test/v1",
       endpoint: "https://api.example.test/v1/chat/completions",
-      profile: { request_count: 3, duration_ms: 0, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
-      progress: { phase: "completed", planned: 3, launched: 3, completed: 3, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, send_duration_ms: 60, drain_duration_ms: 30, total_duration_ms: 90 },
+      profile: { request_count: 0, duration_ms: 1_000, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
+      progress: { phase: "completed", planned: 10_000, launched: 3, completed: 3, in_flight: 0, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, send_duration_ms: 60, drain_duration_ms: 30, total_duration_ms: 90 },
       metrics: {
         completed: 3, succeeded: 3, failed: 0, timed_out: 0, success_rate_percent: 100, request_qps: 33.3, rpm: 2_000,
         input_tpm: 40_000, output_tpm: 64_000, total_tpm: 104_000, generation_tps: 1_066.7,
         ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
         tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,
         e2e_p50_ms: 60, e2e_p90_ms: 75, e2e_p95_ms: 80, e2e_p99_ms: 84, e2e_average_ms: 65,
-        schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+        schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2, schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
         prompt_tokens: 60, completion_tokens: 96, cached_tokens: 0, cache_rate_percent: 0,
       },
       samples: [

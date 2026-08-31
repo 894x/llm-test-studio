@@ -29,6 +29,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -45,17 +46,20 @@ import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { PerformanceCharts } from "@/features/reports/performance-charts"
+import { PerformanceLatencyTable } from "@/features/reports/performance-latency-table"
 
 import {
   QUICK_TEST_ERROR_MESSAGES,
   updateQuickTestForm,
   type QuickPerformanceCommand,
+  type QuickPerformanceProgress,
   type QuickPerformanceReport,
   type QuickTestAddressMode,
   type QuickTestCommand,
   type QuickTestResult,
   type SaveQuickTestConnectionCommand,
 } from "./data"
+import { performanceCompletion, performanceProgressPhaseLabel } from "./performance-summary"
 
 type QuickTestActions = Pick<
   DesktopClient,
@@ -578,18 +582,20 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   open: boolean
   onOpenChange: (open: boolean) => void
   testedCommand: QuickTestCommand
-  run: (command: QuickPerformanceCommand) => Promise<QuickPerformanceReport>
+  run: (command: QuickPerformanceCommand, onProgress?: (progress: QuickPerformanceProgress) => void) => Promise<QuickPerformanceReport>
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
 }) {
   const [form, setForm] = useState<PerformanceForm>(DEFAULT_PERFORMANCE_FORM)
   const [pending, setPending] = useState(false)
   const [report, setReport] = useState<QuickPerformanceReport | null>(null)
+  const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
   const [error, setError] = useState("")
 
   const update = (key: keyof PerformanceForm, value: number) => {
     setForm((current) => ({ ...current, [key]: value }))
     setReport(null)
+    setProgress(null)
     setError("")
   }
 
@@ -604,6 +610,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
     }
     setPending(true)
     setReport(null)
+    setProgress(null)
     setError("")
     void run({
       address_mode: testedCommand.address_mode,
@@ -617,7 +624,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       timeout_ms: form.timeoutSeconds * 1_000,
       input_tokens: form.inputTokens,
       output_tokens: form.outputTokens,
-    })
+    }, setProgress)
       .then((nextReport) => {
         setReport(nextReport)
         if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
@@ -630,7 +637,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl">
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>快速性能测试</SheetTitle>
           <SheetDescription>
@@ -654,7 +661,9 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
               {error ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{error}</FieldError> : null}
             </FieldGroup>
           </form>
-          {pending ? (
+          {pending && progress ? (
+            <QuickPerformanceProgressPanel progress={progress} requestCount={form.requestCount} />
+          ) : pending ? (
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Spinner className="size-5" />
               <p className="mt-3 text-sm font-medium">性能测试运行中</p>
@@ -703,6 +712,7 @@ function PerformanceNumberField({ label, value, min, max, disabled, onChange }: 
 }
 
 function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPerformanceReport; onOpenReport?: (reportID: string) => void | Promise<void> }) {
+  const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   const completedWithFailures = !report.success && !report.error_code && report.metrics.completed > 0
   const title = report.success
     ? "性能测试完成"
@@ -727,7 +737,9 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
       <Separator />
       <div className="space-y-4 p-4">
         <MetricSection title="执行摘要">
-          <ResultValue label="成功 / 完成" value={`${report.metrics.succeeded} / ${report.metrics.completed}`} numeric />
+          <ResultValue label={completion.label} value={completion.value} numeric />
+          <ResultValue label="成功" value={String(report.metrics.succeeded)} numeric />
+          <ResultValue label="失败" value={String(report.metrics.failed)} numeric />
           <ResultValue label="成功率" value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
           <ResultValue label="总耗时" value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
           <ResultValue label="峰值在途" value={String(report.progress.peak_in_flight)} numeric />
@@ -735,18 +747,15 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
         <MetricSection title="吞吐">
           <ResultValue label="请求速率" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric />
           <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
-          <ResultValue label="输入 / 输出 TPM" value={`${formatNumber(report.metrics.input_tpm)} / ${formatNumber(report.metrics.output_tpm)}`} numeric />
+          <ResultValue label="输入 TPM" value={`${formatNumber(report.metrics.input_tpm)} TPM`} numeric />
+          <ResultValue label="输出 TPM" value={`${formatNumber(report.metrics.output_tpm)} TPM`} numeric />
+          <ResultValue label="总 TPM" value={`${formatNumber(report.metrics.total_tpm)} TPM`} numeric />
           <ResultValue label="生成速度" value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
         </MetricSection>
-        <MetricSection title="延迟分位">
-          <ResultValue label="E2E P50 / P95 / P99" value={`${formatNumber(report.metrics.e2e_p50_ms)} / ${formatNumber(report.metrics.e2e_p95_ms)} / ${formatNumber(report.metrics.e2e_p99_ms)} ms`} numeric />
-          <ResultValue label="TTFT P50 / P95 / P99" value={`${formatNumber(report.metrics.ttft_p50_ms)} / ${formatNumber(report.metrics.ttft_p95_ms)} / ${formatNumber(report.metrics.ttft_p99_ms)} ms`} numeric />
-          <ResultValue label="TPOT P50 / P95 / P99" value={`${formatNumber(report.metrics.tpot_p50_ms)} / ${formatNumber(report.metrics.tpot_p95_ms)} / ${formatNumber(report.metrics.tpot_p99_ms)} ms`} numeric />
-          <ResultValue label="调度延迟 P95" value={`${formatNumber(report.metrics.schedule_lag_p95_ms)} ms`} numeric />
-        </MetricSection>
+        <PerformanceLatencyTable metrics={report.metrics} />
         <MetricSection title="Token">
           <ResultValue label="Prompt / Completion / Cached" value={`${report.metrics.prompt_tokens} / ${report.metrics.completion_tokens} / ${report.metrics.cached_tokens}`} numeric />
-          <ResultValue label="缓存率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
+          <ResultValue label="KV 缓存命中率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
           <ResultValue label="超时请求" value={String(report.metrics.timed_out)} numeric />
         </MetricSection>
         {report.samples.length ? <PerformanceCharts layout="stacked" samples={report.samples} percentiles={report.metrics} /> : null}
@@ -772,6 +781,41 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <p role="status" className="border-t pt-3 text-[11px] text-warning">性能结果已生成，但未能写入报告目录。</p>
         ) : null}
       </div>
+    </section>
+  )
+}
+
+function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: QuickPerformanceProgress; requestCount: number }) {
+  const percentage = requestCount > 0 && progress.planned > 0
+    ? Math.min(100, progress.completed / progress.planned * 100)
+    : undefined
+  const phaseLabel = performanceProgressPhaseLabel(progress.phase)
+  const completion = performanceCompletion(requestCount, progress.completed, progress.planned)
+  return (
+    <section role="status" aria-label="性能测试进度" className="rounded-lg border bg-surface-subtle p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Spinner className="size-4 shrink-0" />
+          <span className="text-sm font-medium">{phaseLabel}</span>
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {percentage === undefined ? "持续时间模式" : `${formatNumber(percentage)}%`}
+        </span>
+      </div>
+      <Progress
+        className="mt-3 h-1.5"
+        value={percentage}
+        aria-label="请求完成进度"
+        aria-valuenow={percentage}
+        aria-valuemin={percentage === undefined ? undefined : 0}
+        aria-valuemax={percentage === undefined ? undefined : 100}
+      />
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
+        <ResultValue label={completion.label} value={completion.value} numeric />
+        <ResultValue label="成功" value={String(progress.succeeded)} numeric />
+        <ResultValue label="失败" value={String(progress.failed)} numeric />
+        <ResultValue label="在途" value={String(progress.in_flight)} numeric />
+      </dl>
     </section>
   )
 }

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/894x/llm-studio/internal/application/catalog"
@@ -21,6 +22,15 @@ const (
 )
 
 var errQuickTestOperationFailed = errors.New("quick test operation failed")
+
+const quickPerformanceProgressEventName = "quick-performance-progress"
+
+const quickPerformanceProgressInterval = 100 * time.Millisecond
+
+type quickPerformanceProgressEvent struct {
+	ProgressID string                        `json:"progress_id"`
+	Progress   quicktest.PerformanceProgress `json:"progress"`
+}
 
 // SaveQuickTestConnectionCommand is intentionally separate from the
 // zero-persistence test command. The UI must call it explicitly after a
@@ -50,13 +60,36 @@ func (app *DesktopApp) RunQuickTest(command quicktest.Command) (quicktest.Result
 	return result, nil
 }
 
-func (app *DesktopApp) RunQuickPerformanceTest(command quicktest.PerformanceCommand) (quicktest.PerformanceReport, error) {
+func (app *DesktopApp) RunQuickPerformanceTest(command quicktest.PerformanceCommand, progressID string) (quicktest.PerformanceReport, error) {
 	lease, err := app.acquire(desktopRequirements{quickTests: true})
 	if err != nil {
 		return quicktest.PerformanceReport{}, app.safeBindingError(err)
 	}
 	defer lease.release()
-	report, err := lease.quickTests.RunPerformance(lease.ctx, command)
+	var report quicktest.PerformanceReport
+	if progressID == "" {
+		report, err = lease.quickTests.RunPerformance(lease.ctx, command)
+	} else if !domain.IsUUID(progressID) {
+		return quicktest.PerformanceReport{}, app.safeBindingError(ErrInvalidIdentifier)
+	} else if runner, ok := lease.quickTests.(QuickTestProgressRunner); ok {
+		lastEmitted := time.Time{}
+		lastPhase := quicktest.PerformancePhaseNotStarted
+		report, err = runner.RunPerformanceWithProgress(lease.ctx, command, func(progress quicktest.PerformanceProgress) {
+			now := time.Now()
+			phaseChanged := progress.Phase != lastPhase
+			if !lastEmitted.IsZero() && !phaseChanged && now.Sub(lastEmitted) < quickPerformanceProgressInterval {
+				return
+			}
+			lastEmitted = now
+			lastPhase = progress.Phase
+			app.emitDesktopEvent(lease.ctx, quickPerformanceProgressEventName, quickPerformanceProgressEvent{
+				ProgressID: progressID,
+				Progress:   progress,
+			})
+		})
+	} else {
+		report, err = lease.quickTests.RunPerformance(lease.ctx, command)
+	}
 	if err != nil {
 		// As with connectivity testing, provider and credential details must stay
 		// behind the allowlisted performance report boundary.
