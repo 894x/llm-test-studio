@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 import App from "./App"
-import type { DesktopClient } from "./app/desktop-client"
+import type { DesktopClient, DesktopDiagnosticsSnapshot } from "./app/desktop-client"
 import {
   FIXTURE_CATALOG,
   FIXTURE_REPORTS,
@@ -17,6 +17,14 @@ import indexHtml from "../index.html?raw"
 
 const indexCss = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8")
 
+function deferred<T>() {
+  let resolvePromise!: (value: T) => void
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve
+  })
+  return { promise, resolve: resolvePromise }
+}
+
 function desktopClient(): DesktopClient & {
   workspace: WorkspaceSnapshot
 } {
@@ -25,6 +33,12 @@ function desktopClient(): DesktopClient & {
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
     getCatalog: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
+		getDiagnostics: vi.fn(async () => ({
+			schema_version: 1 as const, available: true, format: "jsonl" as const,
+			max_file_bytes: 10 * 1024 * 1024, backup_files: 5,
+			run_correlation: true, request_correlation: true,
+		})),
+		openDiagnosticsDirectory: vi.fn(async () => undefined),
 		getReportDetail: vi.fn(async () => { throw new Error("report detail unavailable in shell fixture") }),
 		exportReport: vi.fn(async () => { throw new Error("report export unavailable in shell fixture") }),
 		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
@@ -170,6 +184,63 @@ describe("desktop run workspace", () => {
     expect(client.getCatalog).toHaveBeenCalledTimes(1)
     expect(client.getReports).toHaveBeenCalledTimes(1)
   })
+
+  it("opens diagnostics from compact header chrome without exposing a filesystem path", async () => {
+		const user = userEvent.setup()
+		const client = desktopClient()
+		render(<App client={client} />)
+		await screen.findByRole("heading", { name: "运行工作区" })
+
+		await user.click(screen.getByRole("button", { name: "诊断信息" }))
+		const dialog = await screen.findByRole("dialog", { name: "诊断信息" })
+		expect(dialog).toHaveTextContent("结构化日志已启用")
+		expect(dialog).toHaveTextContent("10 MB")
+		expect(dialog).toHaveTextContent("5 个历史文件")
+		expect(dialog).toHaveTextContent("Run 与 Request")
+		expect(dialog).not.toHaveTextContent("secret-log-path")
+		expect(dialog.querySelectorAll("dl")).toHaveLength(1)
+		expect(dialog.querySelectorAll("dt")).toHaveLength(6)
+		expect(dialog.querySelectorAll("dd")).toHaveLength(6)
+
+		await user.click(within(dialog).getByRole("button", { name: "打开日志目录" }))
+		expect(client.openDiagnosticsDirectory).toHaveBeenCalledOnce()
+	})
+
+	it("ignores a stale diagnostics load after the sheet is reopened", async () => {
+		const user = userEvent.setup()
+		const client = desktopClient()
+		const first = deferred<DesktopDiagnosticsSnapshot>()
+		const second = deferred<DesktopDiagnosticsSnapshot>()
+		vi.mocked(client.getDiagnostics)
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise)
+
+		render(<App client={client} />)
+		await screen.findByRole("heading", { name: "运行工作区" })
+		await user.click(screen.getByRole("button", { name: "诊断信息" }))
+		expect(await screen.findByRole("dialog", { name: "诊断信息" })).toHaveTextContent("正在读取诊断状态")
+		await user.keyboard("{Escape}")
+		await waitFor(() => expect(screen.queryByRole("dialog", { name: "诊断信息" })).not.toBeInTheDocument())
+		await user.click(screen.getByRole("button", { name: "诊断信息" }))
+
+		second.resolve({
+			schema_version: 1, available: false, format: "jsonl",
+			max_file_bytes: 2 * 1024 * 1024, backup_files: 2,
+			run_correlation: true, request_correlation: false,
+		})
+		const dialog = await screen.findByRole("dialog", { name: "诊断信息" })
+		expect(dialog).toHaveTextContent("诊断日志暂不可用")
+
+		first.resolve({
+			schema_version: 1, available: true, format: "jsonl",
+			max_file_bytes: 99 * 1024 * 1024, backup_files: 99,
+			run_correlation: true, request_correlation: true,
+		})
+		await waitFor(() => {
+			expect(dialog).toHaveTextContent("诊断日志暂不可用")
+			expect(dialog).not.toHaveTextContent("99 MB")
+		})
+	})
 
 	it("shows request-level report detail and all Go export actions", async () => {
 		window.history.replaceState(null, "", "#reports")
@@ -465,6 +536,8 @@ describe("desktop run workspace", () => {
 
   it("surfaces a missing production bridge instead of substituting fixtures", async () => {
     const client: DesktopClient = {
+      getDiagnostics: vi.fn(),
+      openDiagnosticsDirectory: vi.fn(),
       getWorkspace: vi.fn(async () => {
         throw new Error("sk-secret from https://provider.example/v1")
       }),

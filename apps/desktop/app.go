@@ -23,6 +23,7 @@ var (
 	ErrReportingUnavailable   = errors.New("reporting query is unavailable")
 	ErrRunCommandsUnavailable = errors.New("run commands are unavailable")
 	ErrComparisonUnavailable  = errors.New("comparison service is unavailable")
+	ErrDiagnosticsUnavailable = errors.New("desktop diagnostics are unavailable")
 	ErrInvalidIdentifier      = errors.New("desktop command identifier is invalid")
 )
 
@@ -35,6 +36,7 @@ const (
 	desktopCodeReportsMissing     = "reports_unavailable"
 	desktopCodeCommandsMissing    = "run_commands_unavailable"
 	desktopCodeComparisonMissing  = "comparison_unavailable"
+	desktopCodeDiagnosticsMissing = "diagnostics_unavailable"
 	desktopCodeInvalidIdentifier  = "invalid_identifier"
 	desktopCodeOperationCancelled = "operation_cancelled"
 	desktopCodeOperationFailed    = "operation_failed"
@@ -142,6 +144,21 @@ type DesktopApp struct {
 	startupErr      error
 	shutdownErr     error
 	reportError     func(error)
+	diagnostics     DesktopDiagnosticsSnapshot
+	openDiagnostics func() error
+}
+
+// DesktopDiagnosticsSnapshot is an allow-listed operator view. The filesystem
+// path stays inside the Go desktop adapter; React can only request that the
+// application open the owned directory.
+type DesktopDiagnosticsSnapshot struct {
+	SchemaVersion      int    `json:"schema_version"`
+	Available          bool   `json:"available"`
+	Format             string `json:"format"`
+	MaxFileBytes       int64  `json:"max_file_bytes"`
+	BackupFiles        int    `json:"backup_files"`
+	RunCorrelation     bool   `json:"run_correlation"`
+	RequestCorrelation bool   `json:"request_correlation"`
 }
 
 type desktopRequirements struct {
@@ -198,6 +215,42 @@ func (app *DesktopApp) setErrorReporter(report func(error)) {
 	app.mu.Lock()
 	app.reportError = report
 	app.mu.Unlock()
+}
+
+func (app *DesktopApp) setDiagnostics(snapshot DesktopDiagnosticsSnapshot, open func() error) {
+	if app == nil {
+		return
+	}
+	app.mu.Lock()
+	app.diagnostics = snapshot
+	app.openDiagnostics = open
+	app.mu.Unlock()
+}
+
+func (app *DesktopApp) GetDiagnostics() DesktopDiagnosticsSnapshot {
+	if app == nil {
+		return DesktopDiagnosticsSnapshot{}
+	}
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	return app.diagnostics
+}
+
+func (app *DesktopApp) OpenDiagnosticsDirectory() error {
+	if app == nil {
+		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
+	}
+	app.mu.Lock()
+	available := app.diagnostics.Available
+	open := app.openDiagnostics
+	app.mu.Unlock()
+	if !available || open == nil {
+		return app.safeBindingError(ErrDiagnosticsUnavailable)
+	}
+	if err := open(); err != nil {
+		return app.safeBindingError(fmt.Errorf("open diagnostics directory: %w", err))
+	}
+	return nil
 }
 
 func (app *DesktopApp) onStartup(ctx context.Context) {
@@ -721,6 +774,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeCommandsMissing}
 	case errors.Is(internal, ErrComparisonUnavailable):
 		return DesktopBindingError{Code: desktopCodeComparisonMissing}
+	case errors.Is(internal, ErrDiagnosticsUnavailable):
+		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, catalog.ErrInvalid):
@@ -746,6 +801,7 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeReportsMissing,
 		desktopCodeCommandsMissing,
 		desktopCodeComparisonMissing,
+		desktopCodeDiagnosticsMissing,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,

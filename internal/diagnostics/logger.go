@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	defaultMaxBytes = 10 << 20
-	defaultBackups  = 5
+	DefaultMaxBytes int64 = 10 << 20
+	DefaultBackups        = 5
 )
 
 type Level string
@@ -37,15 +37,16 @@ type Options struct {
 }
 
 type Event struct {
-	Level     Level
-	Message   string
-	Component string
-	Operation string
-	ErrorCode string
-	RunID     string
-	RequestID string
-	Duration  time.Duration
-	Err       error
+	Level        Level
+	Message      string
+	Component    string
+	Operation    string
+	ErrorCode    string
+	RunID        string
+	RequestID    string
+	Duration     time.Duration
+	DroppedCount uint64
+	Err          error
 }
 
 type Logger struct {
@@ -117,11 +118,11 @@ func Open(options Options) (*Logger, error) {
 	}
 	maxBytes := options.MaxBytes
 	if maxBytes <= 0 {
-		maxBytes = defaultMaxBytes
+		maxBytes = DefaultMaxBytes
 	}
 	backups := options.Backups
 	if backups <= 0 {
-		backups = defaultBackups
+		backups = DefaultBackups
 	}
 	sink, err := openRotatingFile(path, maxBytes, backups)
 	if err != nil {
@@ -154,6 +155,9 @@ func (logger *Logger) Record(ctx context.Context, event Event) error {
 	attributes = appendString(attributes, "request_id", event.RequestID)
 	if event.Duration > 0 {
 		attributes = append(attributes, "duration_ms", event.Duration.Milliseconds())
+	}
+	if event.DroppedCount > 0 {
+		attributes = append(attributes, "dropped_count", event.DroppedCount)
 	}
 	if event.Err != nil {
 		attributes = append(attributes, "error", RedactText(event.Err.Error()))

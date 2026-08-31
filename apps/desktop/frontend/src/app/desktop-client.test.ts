@@ -126,6 +126,26 @@ describe("Wails desktop client", () => {
     expect(snapshot).toEqual(FIXTURE_WORKSPACE)
   })
 
+  it("allow-lists diagnostics status and opens the owned directory without exposing its path", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+
+    const status = await client.getDiagnostics()
+    await client.openDiagnosticsDirectory()
+
+    expect(status).toEqual({
+      schema_version: 1,
+      available: true,
+      format: "jsonl",
+      max_file_bytes: 10 * 1024 * 1024,
+      backup_files: 5,
+      run_correlation: true,
+      request_correlation: true,
+    })
+    expect(JSON.stringify(status)).not.toContain("secret-log-path")
+    expect(binding.OpenDiagnosticsDirectory).toHaveBeenCalledOnce()
+  })
+
   it("preserves stable failure phase and error code for failed runs", async () => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     payload.active_run_id = undefined
@@ -287,6 +307,13 @@ function installBinding(
     GetWorkspace: vi.fn(async () => structuredClone(payload)),
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
+		GetDiagnostics: vi.fn(async () => ({
+			schema_version: 1, available: true, format: "jsonl",
+			max_file_bytes: 10 * 1024 * 1024, backup_files: 5,
+			run_correlation: true, request_correlation: true,
+			path: "C:\\secret-log-path",
+		})),
+		OpenDiagnosticsDirectory: vi.fn(async () => undefined),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
 		ExportReport: vi.fn(async (reportID: string, format: string) => ({
 			filename: `llm-studio-report-${reportID}.${format}`,

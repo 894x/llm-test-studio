@@ -81,10 +81,12 @@ type ReportGenerator interface {
 type EnvironmentProvider func() domain.EnvironmentSnapshot
 
 type Diagnostic struct {
-	RunID     string
-	Operation string
-	ErrorCode string
-	Err       error
+	RunID        string
+	RequestID    string
+	Operation    string
+	ErrorCode    string
+	DroppedCount uint64
+	Err          error
 }
 
 type Dependencies struct {
@@ -470,15 +472,17 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 
 	emit := func(draft ResultDraft) error {
 		control.mu.Lock()
-		defer control.mu.Unlock()
 		if control.run.Status() != domain.RunRunning && control.run.Status() != domain.RunDraining {
+			control.mu.Unlock()
 			return context.Canceled
 		}
 		if draft.RequestID == "" || !controlContainsCase(control, draft.CaseID) {
+			control.mu.Unlock()
 			return fmt.Errorf("invalid request observation identity")
 		}
 		meta, err := service.metaFactory(service.clock.Now())
 		if err != nil {
+			control.mu.Unlock()
 			return err
 		}
 		result := domain.Result{
@@ -487,12 +491,21 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			Metrics: cloneMetrics(draft.Metrics), EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
 		}
 		if err := result.Validate(); err != nil {
+			control.mu.Unlock()
 			return fmt.Errorf("invalid execution result: %w", err)
 		}
 		if err := service.repository.AppendResult(ctx, result); err != nil {
+			control.mu.Unlock()
 			return err
 		}
 		control.drafts[draft.CaseID] = append(control.drafts[draft.CaseID], cloneDraft(draft))
+		control.mu.Unlock()
+		if !result.Success.Overall() {
+			service.report(Diagnostic{
+				RunID: result.RunID, RequestID: result.RequestID,
+				Operation: "execute_request", ErrorCode: string(result.ErrorCode),
+			})
+		}
 		return nil
 	}
 	executionErr := service.executor.Execute(ctx, request, emit)

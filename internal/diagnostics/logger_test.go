@@ -25,14 +25,15 @@ func TestOpenWritesStructuredRedactedDiagnosticEvent(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	logger.Record(context.Background(), Event{
-		Level:     LevelError,
-		Message:   "operation failed",
-		Component: "desktop",
-		Operation: "startup",
-		ErrorCode: "startup_failed",
-		RunID:     "run-1",
-		RequestID: "request-1",
-		Duration:  1250 * time.Millisecond,
+		Level:        LevelError,
+		Message:      "operation failed",
+		Component:    "desktop",
+		Operation:    "startup",
+		ErrorCode:    "startup_failed",
+		RunID:        "run-1",
+		RequestID:    "request-1",
+		Duration:     1250 * time.Millisecond,
+		DroppedCount: 3,
 		Err: errors.New(
 			"connect Authorization: Bearer bearer-secret api_key=key-secret sk-secret-token",
 		),
@@ -56,15 +57,16 @@ func TestOpenWritesStructuredRedactedDiagnosticEvent(t *testing.T) {
 		t.Fatalf("Unmarshal() error = %v; log = %s", err, contents)
 	}
 	want := map[string]any{
-		"level":       "ERROR",
-		"msg":         "operation failed",
-		"app_version": "test-version",
-		"component":   "desktop",
-		"operation":   "startup",
-		"error_code":  "startup_failed",
-		"run_id":      "run-1",
-		"request_id":  "request-1",
-		"duration_ms": float64(1250),
+		"level":         "ERROR",
+		"msg":           "operation failed",
+		"app_version":   "test-version",
+		"component":     "desktop",
+		"operation":     "startup",
+		"error_code":    "startup_failed",
+		"run_id":        "run-1",
+		"request_id":    "request-1",
+		"duration_ms":   float64(1250),
+		"dropped_count": float64(3),
 	}
 	for key, expected := range want {
 		if got := entry[key]; got != expected {

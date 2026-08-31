@@ -196,6 +196,39 @@ func TestDesktopAppExposesStartupInitializationFailure(t *testing.T) {
 	}
 }
 
+func TestDesktopAppExposesSafeDiagnosticsStatusAndOpensOwnedDirectory(t *testing.T) {
+	app := newDesktopApp(nil)
+	want := DesktopDiagnosticsSnapshot{
+		SchemaVersion: 1, Available: true, Format: "jsonl",
+		MaxFileBytes: 10 << 20, BackupFiles: 5,
+		RunCorrelation: true, RequestCorrelation: true,
+	}
+	opened := 0
+	app.setDiagnostics(want, func() error {
+		opened++
+		return nil
+	})
+
+	if got := app.GetDiagnostics(); got != want {
+		t.Fatalf("GetDiagnostics() = %#v, want %#v", got, want)
+	}
+	if err := app.OpenDiagnosticsDirectory(); err != nil {
+		t.Fatalf("OpenDiagnosticsDirectory() error = %v", err)
+	}
+	if opened != 1 {
+		t.Fatalf("diagnostics directory open calls = %d, want 1", opened)
+	}
+}
+
+func TestDesktopAppRejectsUnavailableDiagnosticsDirectory(t *testing.T) {
+	app := newDesktopApp(nil)
+	app.setDiagnostics(DesktopDiagnosticsSnapshot{SchemaVersion: 1}, nil)
+
+	err := app.OpenDiagnosticsDirectory()
+
+	assertBindingErrorCode(t, err, "diagnostics_unavailable")
+}
+
 func TestDesktopAppGetWorkspaceDelegatesToApplicationQuery(t *testing.T) {
 	want := workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}
 	query := &recordingWorkspaceQuery{snapshot: want}

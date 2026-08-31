@@ -26,6 +26,7 @@ import {
 import {
   DesktopShell,
 } from "@/features/shell/desktop-shell"
+import { DiagnosticsSheet } from "@/features/shell/diagnostics-sheet"
 import {
   desktopPageFromHash,
   type DesktopPage,
@@ -191,6 +192,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
       onNavigate={navigate}
       actions={
 				<div className="flex items-center gap-2">
+					<DiagnosticsSheet client={client} />
 					<NewComparisonSheet catalog={catalog} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
 					<NewRunSheet
 						plans={plans}

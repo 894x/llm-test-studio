@@ -61,3 +61,50 @@ func TestDiagnosticDispatcherBoundsShutdownWhenCallbackBlocks(t *testing.T) {
 		t.Fatal("dispatcher did not exit after blocked callback was released")
 	}
 }
+
+func TestDiagnosticDispatcherReportsQueueSaturationAfterDeliveryResumes(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var mu sync.Mutex
+	reported := make([]Diagnostic, 0, diagnosticQueueSize+2)
+	dispatcher := newDiagnosticDispatcher(func(diagnostic Diagnostic) {
+		if diagnostic.Operation == "blocking" {
+			close(entered)
+			<-release
+		}
+		mu.Lock()
+		reported = append(reported, diagnostic)
+		mu.Unlock()
+	})
+	if !dispatcher.submit(Diagnostic{Operation: "blocking"}) {
+		t.Fatal("initial submit rejected")
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("callback was not invoked")
+	}
+	for index := 0; index < diagnosticQueueSize; index++ {
+		if !dispatcher.submit(Diagnostic{Operation: "queued"}) {
+			t.Fatalf("submit(%d) rejected before queue capacity", index)
+		}
+	}
+	if dispatcher.submit(Diagnostic{Operation: "dropped"}) {
+		t.Fatal("submit beyond queue capacity succeeded")
+	}
+	close(release)
+	if err := dispatcher.close(); err != nil {
+		t.Fatalf("close() error = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, diagnostic := range reported {
+		if diagnostic.Operation == "diagnostic_dispatch" &&
+			diagnostic.ErrorCode == "diagnostics_dropped" &&
+			diagnostic.DroppedCount == 1 {
+			return
+		}
+	}
+	t.Fatalf("reported diagnostics do not include saturation marker: %#v", reported)
+}

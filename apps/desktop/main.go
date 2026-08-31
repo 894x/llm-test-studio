@@ -35,21 +35,49 @@ func main() {
 	report := desktopErrorReporter(operator, log.Default())
 	production.reportRunDiagnostic = desktopRunDiagnosticReporter(operator, log.Default())
 	app := newDesktopApp(newProductionInitializer(production))
+	configureDesktopDiagnostics(app, operator, openDirectory)
 	if err := wails.Run(desktopOptions(app, frontendAssets, report)); err != nil {
 		report(fmt.Errorf("run Wails desktop shell: %w", err))
 	}
 }
 
+func configureDesktopDiagnostics(app *DesktopApp, operator *diagnostics.Logger, open func(string) error) {
+	snapshot := DesktopDiagnosticsSnapshot{
+		SchemaVersion: 1, Available: operator != nil, Format: "jsonl",
+		MaxFileBytes: diagnostics.DefaultMaxBytes, BackupFiles: diagnostics.DefaultBackups,
+		RunCorrelation: true, RequestCorrelation: true,
+	}
+	if operator == nil || open == nil {
+		app.setDiagnostics(snapshot, nil)
+		return
+	}
+	directory := filepath.Dir(operator.Path())
+	app.setDiagnostics(snapshot, func() error { return open(directory) })
+}
+
 func desktopRunDiagnosticReporter(operator *diagnostics.Logger, fallback *log.Logger) func(runs.Diagnostic) {
 	return func(diagnostic runs.Diagnostic) {
+		level := diagnostics.LevelError
+		message := "run operation failed"
+		if diagnostic.ErrorCode == "diagnostics_dropped" {
+			level = diagnostics.LevelWarn
+			message = "run diagnostics were dropped"
+		}
 		if fallback != nil {
-			fallback.Printf("run %s %s: %s", diagnostic.RunID, diagnostic.Operation, diagnostics.RedactText(errorText(diagnostic.Err)))
+			fallback.Printf(
+				"%s: run=%s request=%s operation=%s code=%s dropped=%d: %s",
+				message,
+				diagnostic.RunID, diagnostic.RequestID, diagnostic.Operation, diagnostic.ErrorCode,
+				diagnostic.DroppedCount,
+				diagnostics.RedactText(errorText(diagnostic.Err)),
+			)
 		}
 		if operator != nil {
 			if err := operator.Record(context.Background(), diagnostics.Event{
-				Level: diagnostics.LevelError, Message: "run operation failed",
+				Level: level, Message: message,
 				Component: "runs", Operation: diagnostic.Operation, ErrorCode: diagnostic.ErrorCode,
-				RunID: diagnostic.RunID, Err: diagnostic.Err,
+				RunID: diagnostic.RunID, RequestID: diagnostic.RequestID,
+				DroppedCount: diagnostic.DroppedCount, Err: diagnostic.Err,
 			}); err != nil && fallback != nil {
 				fallback.Printf("structured diagnostic degraded: %s", diagnostics.RedactText(err.Error()))
 			}

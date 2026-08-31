@@ -3,6 +3,7 @@ package runs
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,8 +20,9 @@ type diagnosticDispatcher struct {
 	done            chan struct{}
 	shutdownTimeout time.Duration
 
-	mu     sync.Mutex
-	closed bool
+	mu      sync.Mutex
+	closed  bool
+	dropped atomic.Uint64
 }
 
 func newDiagnosticDispatcher(report func(Diagnostic)) *diagnosticDispatcher {
@@ -50,6 +52,7 @@ func (dispatcher *diagnosticDispatcher) submit(diagnostic Diagnostic) bool {
 	case dispatcher.queue <- diagnostic:
 		return true
 	default:
+		dispatcher.dropped.Add(1)
 		return false
 	}
 }
@@ -78,9 +81,17 @@ func (dispatcher *diagnosticDispatcher) close() error {
 func (dispatcher *diagnosticDispatcher) run() {
 	defer close(dispatcher.done)
 	for diagnostic := range dispatcher.queue {
-		func() {
-			defer func() { _ = recover() }()
-			dispatcher.report(diagnostic)
-		}()
+		dispatcher.deliver(diagnostic)
+		if dropped := dispatcher.dropped.Swap(0); dropped > 0 {
+			dispatcher.deliver(Diagnostic{
+				Operation: "diagnostic_dispatch", ErrorCode: "diagnostics_dropped",
+				DroppedCount: dropped,
+			})
+		}
 	}
+}
+
+func (dispatcher *diagnosticDispatcher) deliver(diagnostic Diagnostic) {
+	defer func() { _ = recover() }()
+	dispatcher.report(diagnostic)
 }

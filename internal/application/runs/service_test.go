@@ -380,6 +380,40 @@ func TestExecutionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	}
 }
 
+func TestFailedRequestReportsRunAndRequestCorrelation(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	reported := make(chan runs.Diagnostic, 1)
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: requestFailureExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForStatus(t, repository, domain.RunCompleted)
+
+	select {
+	case diagnostic := <-reported:
+		repository.mu.Lock()
+		runID := repository.run.Meta().ID
+		repository.mu.Unlock()
+		if diagnostic.RunID != runID || diagnostic.RequestID != "request-17" || diagnostic.Operation != "execute_request" || diagnostic.ErrorCode != "rate_limited" {
+			t.Fatalf("diagnostic = %#v, want correlated request failure", diagnostic)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("failed request was not reported")
+	}
+}
+
 func TestBackgroundTransitionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	fixture := newRunFixture(t)
 	transitionFailure := errors.New("repository transition unavailable")
@@ -691,6 +725,16 @@ type failingExecutor struct{ err error }
 
 func (executor failingExecutor) Execute(context.Context, runs.ExecutionRequest, func(runs.ResultDraft) error) error {
 	return executor.err
+}
+
+type requestFailureExecutor struct{}
+
+func (requestFailureExecutor) Execute(_ context.Context, request runs.ExecutionRequest, emit func(runs.ResultDraft) error) error {
+	return emit(runs.ResultDraft{
+		CaseID: request.Cases[0].ID, RequestID: "request-17",
+		Success: domain.SuccessDimensions{Transport: true},
+		Failure: domain.FailureRateLimit, ErrorCode: "rate_limited",
+	})
 }
 
 type signalExecutor struct{ entered chan runs.ExecutionRequest }

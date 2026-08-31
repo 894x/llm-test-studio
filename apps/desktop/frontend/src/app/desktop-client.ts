@@ -44,6 +44,7 @@ export type DesktopErrorCode =
   | "reports_unavailable"
   | "run_commands_unavailable"
   | "comparison_unavailable"
+  | "diagnostics_unavailable"
   | "invalid_identifier"
   | "operation_cancelled"
   | "operation_failed"
@@ -60,6 +61,7 @@ const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   reports_unavailable: "测试报告暂不可用",
   run_commands_unavailable: "运行命令暂不可用",
   comparison_unavailable: "渠道对比暂不可用",
+  diagnostics_unavailable: "诊断日志暂不可用",
   invalid_identifier: "操作对象无效",
   operation_cancelled: "操作已取消",
   operation_failed: "桌面操作失败，请检查本地日志",
@@ -86,6 +88,8 @@ export function publicDesktopErrorMessage(
 }
 
 export interface DesktopClient extends CatalogActions {
+  getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
+  openDiagnosticsDirectory(): Promise<void>
   getWorkspace(): Promise<WorkspaceSnapshot>
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
@@ -98,7 +102,19 @@ export interface DesktopClient extends CatalogActions {
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
 }
 
+export type DesktopDiagnosticsSnapshot = {
+  schema_version: 1
+  available: boolean
+  format: "jsonl"
+  max_file_bytes: number
+  backup_files: number
+  run_correlation: boolean
+  request_correlation: boolean
+}
+
 type WailsDesktopBinding = {
+  GetDiagnostics(): Promise<unknown>
+  OpenDiagnosticsDirectory(): Promise<unknown>
   GetWorkspace(): Promise<unknown>
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
@@ -153,6 +169,10 @@ export function createFixtureClient(
     }))
   }
   return {
+    async getDiagnostics() {
+      return fixtureDiagnosticsSnapshot()
+    },
+    async openDiagnosticsDirectory() {},
     async getWorkspace() {
       return cloneSnapshot(workspace)
     },
@@ -331,6 +351,9 @@ function createLazyFixtureClient(): DesktopClient {
       createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS),
   )
   return {
+    getDiagnostics: async () => (await client).getDiagnostics(),
+    openDiagnosticsDirectory: async () =>
+      (await client).openDiagnosticsDirectory(),
     getWorkspace: async () => (await client).getWorkspace(),
     getCatalog: async () => (await client).getCatalog(),
     getReports: async () => (await client).getReports(),
@@ -364,6 +387,10 @@ function createLazyFixtureClient(): DesktopClient {
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   return {
+    getDiagnostics: async () =>
+      callBinding(() => binding.GetDiagnostics(), parseDiagnosticsSnapshot),
+    openDiagnosticsDirectory: async () =>
+      callBinding(() => binding.OpenDiagnosticsDirectory(), parseVoid),
     getWorkspace: async () =>
       callBinding(() => binding.GetWorkspace(), parseSnapshot),
     getCatalog: async () =>
@@ -410,6 +437,12 @@ function unavailableClient(): DesktopClient {
     throw new DesktopClientError("workspace_unavailable")
   }
   return {
+    getDiagnostics: async () => {
+      throw new DesktopClientError("diagnostics_unavailable")
+    },
+    openDiagnosticsDirectory: async () => {
+      throw new DesktopClientError("diagnostics_unavailable")
+    },
     getWorkspace: () => reject(),
     getCatalog: () => reject(),
     getReports: () => reject(),
@@ -455,7 +488,9 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     "CreatePlan", "UpdatePlan", "DeletePlan",
   ] as const satisfies ReadonlyArray<keyof WailsDesktopBinding>
   if (
-    typeof candidate?.GetWorkspace !== "function" ||
+    typeof candidate?.GetDiagnostics !== "function" ||
+    typeof candidate.OpenDiagnosticsDirectory !== "function" ||
+    typeof candidate.GetWorkspace !== "function" ||
     typeof candidate.GetCatalog !== "function" ||
     typeof candidate.GetReports !== "function" ||
 		typeof candidate.GetComparisons !== "function" ||
@@ -468,6 +503,18 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     return undefined
   }
   return candidate as WailsDesktopBinding
+}
+
+function fixtureDiagnosticsSnapshot(): DesktopDiagnosticsSnapshot {
+  return {
+    schema_version: 1,
+    available: true,
+    format: "jsonl",
+    max_file_bytes: 10 * 1024 * 1024,
+    backup_files: 5,
+    run_correlation: true,
+    request_correlation: true,
+  }
 }
 
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
@@ -489,6 +536,38 @@ function bytesToBase64(bytes: Uint8Array): string {
 	let binary = ""
 	for (const byte of bytes) binary += String.fromCharCode(byte)
 	return btoa(binary)
+}
+
+function parseDiagnosticsSnapshot(value: unknown): DesktopDiagnosticsSnapshot {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== 1 ||
+    typeof value.available !== "boolean" ||
+    value.format !== "jsonl" ||
+    !isPositiveSafeInteger(value.max_file_bytes) ||
+    (value.max_file_bytes as number) > 1024 * 1024 * 1024 ||
+    !isNonNegativeSafeInteger(value.backup_files) ||
+    (value.backup_files as number) > 100 ||
+    typeof value.run_correlation !== "boolean" ||
+    typeof value.request_correlation !== "boolean"
+  ) {
+    throw new Error("桌面诊断数据无效")
+  }
+  return {
+    schema_version: 1,
+    available: value.available,
+    format: "jsonl",
+    max_file_bytes: value.max_file_bytes as number,
+    backup_files: value.backup_files as number,
+    run_correlation: value.run_correlation,
+    request_correlation: value.request_correlation,
+  }
+}
+
+function parseVoid(value: unknown): void {
+  if (value !== undefined && value !== null) {
+    throw new Error("桌面诊断命令响应无效")
+  }
 }
 
 function parseSnapshot(value: unknown): WorkspaceSnapshot {
@@ -562,7 +641,8 @@ function isProtocolError(error: unknown): boolean {
       error.message.startsWith("桌面活动运行引用") ||
       error.message.startsWith("桌面目录") ||
       error.message.startsWith("桌面报告") ||
-		error.message.startsWith("渠道对比"))
+		error.message.startsWith("渠道对比") ||
+      error.message.startsWith("桌面诊断"))
   )
 }
 
