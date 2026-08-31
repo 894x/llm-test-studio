@@ -91,7 +91,12 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	if err := validateStoredRunReferences(ctx, tx, current); err != nil {
 		return err
 	}
-	want, err := current.Transition(run.Status(), meta.UpdatedAt)
+	var want domain.Run
+	if failure := run.Failure(); run.Status() == domain.RunFailed && failure != nil {
+		want, err = current.Fail(*failure, meta.UpdatedAt)
+	} else {
+		want, err = current.Transition(run.Status(), meta.UpdatedAt)
+	}
 	if err != nil {
 		return fmt.Errorf("validate persisted run transition: %w", err)
 	}

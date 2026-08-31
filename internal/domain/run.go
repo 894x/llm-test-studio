@@ -22,6 +22,21 @@ const (
 	RunCancelled RunStatus = "cancelled"
 )
 
+type RunFailure struct {
+	Phase     ErrorCode `json:"phase"`
+	ErrorCode ErrorCode `json:"error_code"`
+}
+
+func (failure RunFailure) Validate() error {
+	if err := failure.Phase.Validate(); err != nil {
+		return fmt.Errorf("invalid run failure phase: %w", err)
+	}
+	if err := failure.ErrorCode.Validate(); err != nil {
+		return fmt.Errorf("invalid run failure error code: %w", err)
+	}
+	return nil
+}
+
 var runTransitions = map[RunStatus]map[RunStatus]struct{}{
 	RunQueued:    {RunStarting: {}, RunFailed: {}, RunCancelled: {}},
 	RunStarting:  {RunRunning: {}, RunFailed: {}, RunCancelled: {}},
@@ -126,6 +141,7 @@ type Run struct {
 	planID       string
 	status       RunStatus
 	planSnapshot RunSnapshot
+	failure      *RunFailure
 }
 
 type serializedRun struct {
@@ -133,6 +149,7 @@ type serializedRun struct {
 	PlanID       string      `json:"plan_id"`
 	Status       RunStatus   `json:"status"`
 	PlanSnapshot RunSnapshot `json:"plan_snapshot"`
+	Failure      *RunFailure `json:"failure,omitempty"`
 }
 
 func NewRun(meta EntityMeta, planID string, snapshot RunSnapshot) (Run, error) {
@@ -169,6 +186,14 @@ func (run Run) Snapshot() RunSnapshot {
 	return run.planSnapshot.clone()
 }
 
+func (run Run) Failure() *RunFailure {
+	if run.failure == nil {
+		return nil
+	}
+	failure := *run.failure
+	return &failure
+}
+
 func (run Run) Validate() error {
 	if err := run.meta.Validate(); err != nil {
 		return fmt.Errorf("invalid run metadata: %w", err)
@@ -178,6 +203,14 @@ func (run Run) Validate() error {
 	}
 	if _, known := runTransitions[run.status]; !known {
 		return fmt.Errorf("unknown run status %q", run.status)
+	}
+	if run.failure != nil {
+		if run.status != RunFailed {
+			return errors.New("run failure details require failed status")
+		}
+		if err := run.failure.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := run.planSnapshot.Validate(); err != nil {
 		return fmt.Errorf("invalid run plan snapshot: %w", err)
@@ -209,12 +242,24 @@ func (run Run) Transition(next RunStatus, at time.Time) (Run, error) {
 	return run, nil
 }
 
+func (run Run) Fail(failure RunFailure, at time.Time) (Run, error) {
+	if err := failure.Validate(); err != nil {
+		return Run{}, err
+	}
+	failed, err := run.Transition(RunFailed, at)
+	if err != nil {
+		return Run{}, err
+	}
+	failed.failure = &failure
+	return failed, nil
+}
+
 func (run Run) MarshalJSON() ([]byte, error) {
 	if err := run.Validate(); err != nil {
 		return nil, fmt.Errorf("marshal run: %w", err)
 	}
 	return json.Marshal(serializedRun{
-		EntityMeta: run.meta, PlanID: run.planID, Status: run.status, PlanSnapshot: run.Snapshot(),
+		EntityMeta: run.meta, PlanID: run.planID, Status: run.status, PlanSnapshot: run.Snapshot(), Failure: run.Failure(),
 	})
 }
 
@@ -228,6 +273,7 @@ func (run *Run) UnmarshalJSON(data []byte) error {
 		planID:       serialized.PlanID,
 		status:       serialized.Status,
 		planSnapshot: serialized.PlanSnapshot.clone(),
+		failure:      serialized.Failure,
 	}
 	if err := candidate.Validate(); err != nil {
 		return err

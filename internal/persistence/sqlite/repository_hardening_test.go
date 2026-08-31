@@ -755,6 +755,35 @@ func createRunGraph(t *testing.T, repository *persistence.Repository, fixture re
 	}
 }
 
+func TestRepositoryUpdateRunPersistsStructuredFailure(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	createRunGraph(t, repository, fixture)
+	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
+
+	previous := run.Meta().Revision
+	failed, err := run.Fail(domain.RunFailure{
+		Phase: "execute", ErrorCode: "run_execution_failed",
+	}, repositoryEpoch.Add(time.Duration(previous)*time.Minute))
+	if err != nil {
+		t.Fatalf("Fail() error = %v", err)
+	}
+	if err := repository.UpdateRun(context.Background(), previous, failed); err != nil {
+		t.Fatalf("UpdateRun(failed) error = %v", err)
+	}
+
+	stored, err := repository.GetRun(context.Background(), failed.Meta().ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	if !reflect.DeepEqual(stored, failed) {
+		t.Fatalf("GetRun() = %#v, want %#v", stored, failed)
+	}
+}
+
 func transitionRun(t *testing.T, repository *persistence.Repository, run domain.Run, statuses ...domain.RunStatus) domain.Run {
 	t.Helper()
 	for _, status := range statuses {

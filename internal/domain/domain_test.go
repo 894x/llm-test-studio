@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -89,6 +90,44 @@ func TestRunTransitionRejectsInvalidJump(t *testing.T) {
 
 	if _, err := run.Transition(RunDraining, now.Add(time.Second)); err == nil {
 		t.Fatal("queued run transitioned directly to draining")
+	}
+}
+
+func TestRunFailPersistsStableFailurePhaseAndCode(t *testing.T) {
+	now := time.Date(2026, 8, 30, 9, 30, 0, 0, time.UTC)
+	snapshot := validRunSnapshot()
+	run, err := NewRun(EntityMeta{
+		ID: "123e4567-e89b-42d3-a456-426614174000", SchemaVersion: 1,
+		Revision: 1, CreatedAt: now, UpdatedAt: now,
+	}, snapshot.Plan.ID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err = run.Transition(RunStarting, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err = run.Transition(RunRunning, now.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err = run.Fail(RunFailure{Phase: "execute", ErrorCode: "run_execution_failed"}, now.Add(3*time.Second))
+	if err != nil {
+		t.Fatalf("Fail() error = %v", err)
+	}
+	if run.Status() != RunFailed {
+		t.Fatalf("failed run status = %q", run.Status())
+	}
+	failure := run.Failure()
+	if failure == nil || failure.Phase != "execute" || failure.ErrorCode != "run_execution_failed" {
+		t.Fatalf("Failure() = %#v", failure)
+	}
+	encoded, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"failure":{"phase":"execute","error_code":"run_execution_failed"}`)) {
+		t.Fatalf("failed run JSON = %s", encoded)
 	}
 }
 

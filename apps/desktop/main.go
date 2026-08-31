@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"path/filepath"
 
+	"github.com/894x/llm-studio/internal/application/runs"
+	"github.com/894x/llm-studio/internal/diagnostics"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -17,15 +20,122 @@ import (
 var frontendAssets embed.FS
 
 func main() {
-	report := func(err error) {
-		if err != nil {
-			log.Printf("desktop: %v", err)
-		}
+	production := defaultProductionOptions()
+	operator, err := openDesktopDiagnostics(production)
+	if err != nil {
+		log.Printf("desktop diagnostics unavailable: %v", err)
 	}
-	app := newDesktopApp(newProductionInitializer(defaultProductionOptions()))
+	if operator != nil {
+		defer func() {
+			if err := operator.Close(); err != nil {
+				log.Printf("close desktop diagnostics: %v", err)
+			}
+		}()
+	}
+	report := desktopErrorReporter(operator, log.Default())
+	production.reportRunDiagnostic = desktopRunDiagnosticReporter(operator, log.Default())
+	app := newDesktopApp(newProductionInitializer(production))
+	configureDesktopDiagnostics(app, operator, openDirectory)
 	if err := wails.Run(desktopOptions(app, frontendAssets, report)); err != nil {
 		report(fmt.Errorf("run Wails desktop shell: %w", err))
 	}
+}
+
+func configureDesktopDiagnostics(app *DesktopApp, operator *diagnostics.Logger, open func(string) error) {
+	snapshot := DesktopDiagnosticsSnapshot{
+		SchemaVersion: 1, Available: operator != nil, Format: "jsonl",
+		MaxFileBytes: diagnostics.DefaultMaxBytes, BackupFiles: diagnostics.DefaultBackups,
+		RunCorrelation: true, RequestCorrelation: true,
+	}
+	if operator == nil || open == nil {
+		app.setDiagnostics(snapshot, nil)
+		return
+	}
+	directory := filepath.Dir(operator.Path())
+	app.setDiagnostics(snapshot, func() error { return open(directory) })
+}
+
+func desktopRunDiagnosticReporter(operator *diagnostics.Logger, fallback *log.Logger) func(runs.Diagnostic) {
+	return func(diagnostic runs.Diagnostic) {
+		level := diagnostics.LevelError
+		message := "run operation failed"
+		if diagnostic.ErrorCode == "diagnostics_dropped" {
+			level = diagnostics.LevelWarn
+			message = "run diagnostics were dropped"
+		}
+		if fallback != nil {
+			fallback.Printf(
+				"%s: run=%s request=%s operation=%s code=%s dropped=%d: %s",
+				message,
+				diagnostic.RunID, diagnostic.RequestID, diagnostic.Operation, diagnostic.ErrorCode,
+				diagnostic.DroppedCount,
+				diagnostics.RedactText(errorText(diagnostic.Err)),
+			)
+		}
+		if operator != nil {
+			if err := operator.Record(context.Background(), diagnostics.Event{
+				Level: level, Message: message,
+				Component: "runs", Operation: diagnostic.Operation, ErrorCode: diagnostic.ErrorCode,
+				RunID: diagnostic.RunID, RequestID: diagnostic.RequestID,
+				DroppedCount: diagnostic.DroppedCount, Err: diagnostic.Err,
+			}); err != nil && fallback != nil {
+				fallback.Printf("structured diagnostic degraded: %s", diagnostics.RedactText(err.Error()))
+			}
+		}
+	}
+}
+
+func openDesktopDiagnostics(options productionOptions) (*diagnostics.Logger, error) {
+	if options.userConfigDir == nil {
+		return nil, fmt.Errorf("user configuration directory provider is unavailable")
+	}
+	root, err := options.userConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("locate user configuration directory for diagnostics: %w", err)
+	}
+	directory, _, err := productionStoragePaths(root)
+	if err != nil {
+		return nil, err
+	}
+	return diagnostics.Open(diagnostics.Options{
+		Directory:  filepath.Join(directory, "logs"),
+		Filename:   "llm-studio.log",
+		AppVersion: options.appVersion,
+	})
+}
+
+func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) func(error) {
+	return func(err error) {
+		if err == nil {
+			return
+		}
+		operation := "wails_boundary"
+		errorCode := desktopCodeOperationFailed
+		message := "desktop operation failed"
+		if errors.Is(err, ErrDesktopStartup) {
+			operation = "startup"
+			errorCode = desktopCodeStartupFailed
+			message = "desktop startup failed"
+		}
+		if fallback != nil {
+			fallback.Printf("desktop: %s", diagnostics.RedactText(err.Error()))
+		}
+		if operator != nil {
+			if writeErr := operator.Record(context.Background(), diagnostics.Event{
+				Level: diagnostics.LevelError, Message: message,
+				Component: "desktop", Operation: operation, ErrorCode: errorCode, Err: err,
+			}); writeErr != nil && fallback != nil {
+				fallback.Printf("structured diagnostic degraded: %s", diagnostics.RedactText(writeErr.Error()))
+			}
+		}
+	}
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func desktopOptions(app *DesktopApp, assets fs.FS, report func(error)) *options.App {

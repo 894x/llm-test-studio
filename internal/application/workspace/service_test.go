@@ -169,6 +169,40 @@ func TestSnapshotAcceptsDurationOnlyRunsWithoutInventingARequestTarget(t *testin
 	}
 }
 
+func TestSnapshotExposesStableRunFailureWithoutInternalCause(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
+	plan, run := validPlanAndRun(t, now, domain.LoadProfile{
+		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+	})
+	var err error
+	run, err = run.Fail(domain.RunFailure{Phase: "execute", ErrorCode: "run_execution_failed"}, now.Add(3*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := &fakeCatalog{
+		plans: []domain.Plan{plan},
+		projections: []RunProjection{{
+			Run: run, PinnedPlan: plan, Conclusion: ConclusionFailed,
+		}},
+	}
+
+	snapshot, err := New(catalog).Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := snapshot.Runs[0]
+	if got.FailurePhase != "execute" || got.ErrorCode != "run_execution_failed" {
+		t.Fatalf("failed run projection = %#v", got)
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "internal_cause") {
+		t.Fatalf("failed run projection exposed internal cause: %s", encoded)
+	}
+}
+
 func TestSnapshotRedactsPortErrorsAndPreservesContextTermination(t *testing.T) {
 	secret := "api-key=sk-do-not-leak https://secret.provider.example/v1"
 	for _, test := range []struct {

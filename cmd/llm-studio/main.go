@@ -16,6 +16,7 @@ import (
 
 	"github.com/894x/llm-studio/internal/application/compatibility"
 	appdoctor "github.com/894x/llm-studio/internal/application/doctor"
+	"github.com/894x/llm-studio/internal/diagnostics"
 )
 
 const rootUsage = `Usage: llm-studio <doctor|audit|load> [options]
@@ -114,6 +115,7 @@ func (values *stringListFlag) Set(value string) error {
 type diagnosticPayload struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 type diagnosticResponse struct {
@@ -256,6 +258,7 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	format := runOutputFormatFlag{value: "jsonl"}
 	flags.Var(&format, "format", "output format: jsonl, json, or human")
 	jsonl := flags.Bool("jsonl", false, "emit canonical machine-readable JSON Lines")
+	diagnosticDetail := flags.Bool("diagnostic-detail", false, "include a redacted internal error detail")
 	var caseIDs stringListFlag
 	flags.Var(&caseIDs, "case", "case ID to run; repeat for multiple cases")
 	if err := flags.Parse(args); err != nil {
@@ -354,15 +357,15 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	if err != nil {
 		switch {
 		case compatibility.IsMissingCredentialError(err):
-			return diagnosticExit(stderr, format.value, "missing_credential", "configured API key is required for a live run", 2)
+			return diagnosticExitCause(stderr, format.value, "missing_credential", "configured API key is required for a live run", err, *diagnosticDetail, 2)
 		case compatibility.IsConfigError(err):
-			return diagnosticExit(stderr, format.value, "config_error", "audit configuration is invalid", 2)
+			return diagnosticExitCause(stderr, format.value, "config_error", "audit configuration is invalid", err, *diagnosticDetail, 2)
 		case compatibility.IsReportError(err):
-			return diagnosticExit(stderr, format.value, "report_error", "report could not be written", 1)
+			return diagnosticExitCause(stderr, format.value, "report_error", "report could not be written", err, *diagnosticDetail, 1)
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return diagnosticExit(stderr, format.value, "canceled", "audit run was canceled", 1)
+			return diagnosticExitCause(stderr, format.value, "canceled", "audit run was canceled", err, *diagnosticDetail, 1)
 		default:
-			return diagnosticExit(stderr, format.value, "run_error", "audit run failed", 1)
+			return diagnosticExitCause(stderr, format.value, "run_error", "audit run failed", err, *diagnosticDetail, 1)
 		}
 	}
 	if final.Payload.Summary.Fail > 0 {
@@ -409,14 +412,22 @@ func validEnvironmentName(value string) bool {
 }
 
 func writeDiagnostic(output io.Writer, format, code, message string) error {
+	return writeDiagnosticDetail(output, format, code, message, "")
+}
+
+func writeDiagnosticDetail(output io.Writer, format, code, message, detail string) error {
+	detail = diagnostics.RedactText(strings.TrimSpace(detail))
 	if format == "human" {
 		contents := fmt.Sprintf("%s: %s\n", strings.ToUpper(strings.ReplaceAll(code, "_", " ")), message)
+		if detail != "" {
+			contents += "DETAIL: " + detail + "\n"
+		}
 		return writeAll(output, []byte(contents))
 	}
 	encoded, err := json.Marshal(diagnosticResponse{
 		SchemaVersion: 1,
 		Type:          "error",
-		Payload:       diagnosticPayload{Code: code, Message: message},
+		Payload:       diagnosticPayload{Code: code, Message: message, Detail: detail},
 	})
 	if err != nil {
 		return err
@@ -426,6 +437,17 @@ func writeDiagnostic(output io.Writer, format, code, message string) error {
 
 func diagnosticExit(output io.Writer, format, code, message string, successCode int) int {
 	if err := writeDiagnostic(output, format, code, message); err != nil {
+		return 1
+	}
+	return successCode
+}
+
+func diagnosticExitCause(output io.Writer, format, code, message string, cause error, includeDetail bool, successCode int) int {
+	detail := ""
+	if includeDetail && cause != nil {
+		detail = cause.Error()
+	}
+	if err := writeDiagnosticDetail(output, format, code, message, detail); err != nil {
 		return 1
 	}
 	return successCode
@@ -479,6 +501,7 @@ func runAuditList(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, or seedance")
 	casesRoot := flags.String("cases-root", "cases", "case definition root")
 	format := flags.String("format", "json", "output format: json or human")
+	diagnosticDetail := flags.Bool("diagnostic-detail", false, "include a redacted internal error detail")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return writeUsage(stdout, stderr, "Usage: llm-studio audit list [options]\n")
@@ -498,9 +521,9 @@ func runAuditList(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	cases, err := application.List(ctx, compatibility.ListRequest{Suite: *suite, CasesRoot: *casesRoot})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return diagnosticExit(stderr, *format, "canceled", "audit list was canceled", 1)
+			return diagnosticExitCause(stderr, *format, "canceled", "audit list was canceled", err, *diagnosticDetail, 1)
 		}
-		return diagnosticExit(stderr, *format, "config_error", "audit configuration is invalid", 2)
+		return diagnosticExitCause(stderr, *format, "config_error", "audit configuration is invalid", err, *diagnosticDetail, 2)
 	}
 	if *format == "human" {
 		var contents strings.Builder
