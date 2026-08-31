@@ -1292,14 +1292,148 @@ func (filesystem doctorFileSystemFunc) DirectoryHasEntries(ctx context.Context, 
 
 type applicationStub struct {
 	list func(context.Context, compatibility.ListRequest) ([]compatibility.CaseDefinition, error)
+	run  func(context.Context, compatibility.RunRequest) (compatibility.FinalEvent, error)
+}
+
+func TestLoadRunDiagnosticDetailIncludesRedactedConfigurationCause(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sk-load-detail-secret"
+	requestFile := filepath.Join(t.TempDir(), "api_key="+secret)
+	dependencies := defaultDependencies()
+	dependencies.getenv = func(name string) string {
+		switch name {
+		case "LOADTEST_API_KEY":
+			return "sk-runtime-secret"
+		case "LOADTEST_MODEL":
+			return "test-model"
+		default:
+			return ""
+		}
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"load", "run", "--url", "https://gateway.example/v1/chat/completions",
+		"--request-file", requestFile, "--diagnostic-detail",
+	}, strings.NewReader(""), &stdout, &stderr, dependencies)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), secret) || !strings.Contains(stderr.String(), "[REDACTED]") || !strings.Contains(stderr.String(), "cannot find") {
+		t.Fatalf("diagnostic detail was not useful and redacted: %q", stderr.String())
+	}
 }
 
 func (application applicationStub) List(ctx context.Context, request compatibility.ListRequest) ([]compatibility.CaseDefinition, error) {
 	return application.list(ctx, request)
 }
 
-func (applicationStub) Run(context.Context, compatibility.RunRequest) (compatibility.FinalEvent, error) {
+func (application applicationStub) Run(ctx context.Context, request compatibility.RunRequest) (compatibility.FinalEvent, error) {
+	if application.run != nil {
+		return application.run(ctx, request)
+	}
 	return compatibility.FinalEvent{}, errors.New("Run must not be called by doctor")
+}
+
+func TestAuditRunDiagnosticDetailIsOptInAndRedacted(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sk-diagnostic-secret"
+	cause := errors.New("dial gateway: timeout; Authorization: Bearer " + secret)
+	for _, test := range []struct {
+		name       string
+		args       []string
+		wantDetail bool
+	}{
+		{
+			name: "default output remains stable",
+			args: []string{"audit", "run", "--suite", "openai-chat", "--base-url", "https://gateway.example", "--model", "test-model", "--dry-run"},
+		},
+		{
+			name:       "explicit diagnostic detail includes redacted cause",
+			args:       []string{"audit", "run", "--suite", "openai-chat", "--base-url", "https://gateway.example", "--model", "test-model", "--dry-run", "--diagnostic-detail"},
+			wantDetail: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			dependencies := defaultDependencies()
+			dependencies.newApplication = func(compatibility.Dependencies) compatibilityApplication {
+				return applicationStub{run: func(context.Context, compatibility.RunRequest) (compatibility.FinalEvent, error) {
+					return compatibility.FinalEvent{}, cause
+				}}
+			}
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if code := run(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, dependencies); code != 1 {
+				t.Fatalf("exit code = %d, want 1; stderr = %q", code, stderr.String())
+			}
+			var diagnostic struct {
+				Payload struct {
+					Code   string `json:"code"`
+					Detail string `json:"detail"`
+				} `json:"payload"`
+			}
+			if err := json.Unmarshal(stderr.Bytes(), &diagnostic); err != nil {
+				t.Fatalf("stderr is not a JSON diagnostic: %v; stderr = %q", err, stderr.String())
+			}
+			if diagnostic.Payload.Code != "run_error" {
+				t.Fatalf("diagnostic code = %q, want run_error", diagnostic.Payload.Code)
+			}
+			if strings.Contains(stderr.String(), secret) {
+				t.Fatalf("diagnostic leaked secret: %q", stderr.String())
+			}
+			if test.wantDetail {
+				if !strings.Contains(diagnostic.Payload.Detail, "timeout") || !strings.Contains(diagnostic.Payload.Detail, "[REDACTED]") {
+					t.Fatalf("diagnostic detail = %q, want useful redacted cause", diagnostic.Payload.Detail)
+				}
+			} else if diagnostic.Payload.Detail != "" {
+				t.Fatalf("diagnostic detail = %q, want omitted by default", diagnostic.Payload.Detail)
+			}
+		})
+	}
+}
+
+func TestAuditListDiagnosticDetailIncludesRedactedCause(t *testing.T) {
+	t.Parallel()
+
+	const secret = "sk-list-diagnostic-secret"
+	dependencies := defaultDependencies()
+	dependencies.newApplication = func(compatibility.Dependencies) compatibilityApplication {
+		return applicationStub{list: func(context.Context, compatibility.ListRequest) ([]compatibility.CaseDefinition, error) {
+			return nil, errors.New("read case catalog: api_key=" + secret)
+		}}
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run(
+		context.Background(),
+		[]string{"audit", "list", "--suite", "openai-chat", "--diagnostic-detail"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+		dependencies,
+	)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), secret) || !strings.Contains(stderr.String(), "[REDACTED]") || !strings.Contains(stderr.String(), "read case catalog") {
+		t.Fatalf("diagnostic detail was not useful and redacted: %q", stderr.String())
+	}
+}
+
+func TestHumanDiagnosticDetailUsesSeparateLineAndRedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	if err := writeDiagnosticDetail(&output, "human", "run_error", "audit run failed", "Authorization: Bearer sk-human-secret"); err != nil {
+		t.Fatalf("writeDiagnosticDetail() error = %v", err)
+	}
+	if got := output.String(); got != "RUN ERROR: audit run failed\nDETAIL: Authorization: [REDACTED]\n" {
+		t.Fatalf("human diagnostic = %q", got)
+	}
 }
 
 func TestDoctorCLIAdaptsReusableInspectionService(t *testing.T) {

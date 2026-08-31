@@ -36,6 +36,7 @@ Options:
   --max-tokens N              Maximum completion tokens
   --output PATH               Optional JSON result path
   --format json|human         Standard output format
+  --diagnostic-detail        Include a redacted internal error detail
   --allow-insecure-loopback   Permit HTTP only for explicit localhost testing
 `
 
@@ -89,6 +90,7 @@ func runLoadRun(ctx context.Context, args []string, stdout, stderr io.Writer, de
 	maxTokens := flags.Uint("max-tokens", 100, "maximum completion tokens")
 	output := flags.String("output", "", "optional JSON result path")
 	format := flags.String("format", "json", "output format: json or human")
+	diagnosticDetail := flags.Bool("diagnostic-detail", false, "include a redacted internal error detail")
 	allowLoopback := flags.Bool("allow-insecure-loopback", false, "permit HTTP only for localhost testing")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -124,17 +126,17 @@ func runLoadRun(ctx context.Context, args []string, stdout, stderr io.Writer, de
 	}
 	body, requestPath, err := loadRequestBody(*requestFile, requestPath, *model, *stream, *inputTokens, *maxTokens)
 	if err != nil {
-		return diagnosticExit(stderr, *format, "config_error", "load request definition is invalid", 2)
+		return diagnosticExitCause(stderr, *format, "config_error", "load request definition is invalid", err, *diagnosticDetail, 2)
 	}
 	requestPath = relativeLoadRequestPath(baseURL, requestPath)
 	effectiveRequests := effectiveLoadRequestCount(*requests, requestsExplicit, *rate, *duration)
 	profile, err := loadProfile(effectiveRequests, uint32(*concurrency), *rate, *duration, *timeout)
 	if err != nil {
-		return diagnosticExit(stderr, *format, "config_error", "load configuration is invalid", 2)
+		return diagnosticExitCause(stderr, *format, "config_error", "load configuration is invalid", err, *diagnosticDetail, 2)
 	}
 	outcome, err := executeCLILoad(ctx, baseURL, requestPath, strings.TrimSpace(*model), secret, body, profile, *allowLoopback)
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		return diagnosticExit(stderr, *format, "run_error", "load run failed", 1)
+		return diagnosticExitCause(stderr, *format, "run_error", "load run failed", err, *diagnosticDetail, 1)
 	}
 	response := loadRunResponse{SchemaVersion: 1, Type: "load_run", Payload: loadRunPayload{
 		URL: *endpoint, Model: strings.TrimSpace(*model), Profile: profile,
@@ -146,7 +148,7 @@ func runLoadRun(ctx context.Context, args []string, stdout, stderr io.Writer, de
 	}
 	if *output != "" {
 		if err := writeLoadOutput(*output, append(encoded, '\n')); err != nil {
-			return diagnosticExit(stderr, *format, "output_error", "load result could not be written", 1)
+			return diagnosticExitCause(stderr, *format, "output_error", "load result could not be written", err, *diagnosticDetail, 1)
 		}
 	}
 	if *format == "human" {
