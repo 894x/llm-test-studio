@@ -136,7 +136,7 @@ func (query *recordingReportingQuery) Detail(ctx context.Context, _ string) (rep
 	return query.detail, query.err
 }
 
-func (query *recordingReportingQuery) Export(ctx context.Context, _ string, _ reporting.ExportFormat) (reporting.ExportedDocument, error) {
+func (query *recordingReportingQuery) Export(ctx context.Context, _ string, _ reporting.ExportFormat, _ string) (reporting.ExportedDocument, error) {
 	query.calls++
 	query.ctx = ctx
 	return query.exported, query.err
@@ -270,14 +270,14 @@ func TestDesktopAppReadsAndExportsCompleteReports(t *testing.T) {
 	if err != nil || detail.SchemaVersion != reporting.CurrentSchemaVersion {
 		t.Fatalf("GetReportDetail() = %#v, %v", detail, err)
 	}
-	exported, err := app.ExportReport(id, "json")
+	exported, err := app.ExportReport(id, "json", reporting.DefaultWatermark)
 	if err != nil || exported.Filename != "report.json" || exported.DataBase64 != "e30=" {
 		t.Fatalf("ExportReport() = %#v, %v", exported, err)
 	}
 	if query.calls != 2 {
 		t.Fatalf("report document calls = %d, want 2", query.calls)
 	}
-	if _, err := app.ExportReport(id, "exe"); !errors.As(err, new(DesktopBindingError)) {
+	if _, err := app.ExportReport(id, "exe", reporting.DefaultWatermark); !errors.As(err, new(DesktopBindingError)) {
 		t.Fatalf("invalid export error = %v", err)
 	}
 }

@@ -50,7 +50,7 @@ func TestDetailAndExportsUseTheSameSealedReportAndRequestResults(t *testing.T) {
 		{ExportPDF, "application/pdf", []byte("%PDF-1.4"), ""},
 	} {
 		t.Run(string(test.format), func(t *testing.T) {
-			exported, err := service.Export(context.Background(), detail.Report.ID, test.format)
+			exported, err := service.Export(context.Background(), detail.Report.ID, test.format, "team-alpha")
 			if err != nil {
 				t.Fatalf("Export() error = %v", err)
 			}
@@ -67,12 +67,67 @@ func TestDetailAndExportsUseTheSameSealedReportAndRequestResults(t *testing.T) {
 			if test.contains != "" && !strings.Contains(string(contents), test.contains) {
 				t.Fatalf("export does not contain %q", test.contains)
 			}
+			if (test.format == ExportJSON || test.format == ExportHTML) && !strings.Contains(string(contents), "team-alpha") {
+				t.Fatalf("export does not contain the configured watermark")
+			}
 			for _, secret := range []string{"sk-do-not-leak", "authorization"} {
 				if strings.Contains(strings.ToLower(string(contents)), secret) {
 					t.Fatalf("export leaked %q", secret)
 				}
 			}
 		})
+	}
+}
+
+func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T) {
+	report := validArchivedQuickPerformanceReport()
+	service := New(&fakeMixedCatalog{get: report})
+
+	for _, test := range []struct {
+		format    ExportFormat
+		mediaType string
+		prefix    []byte
+		contains  string
+	}{
+		{ExportJSON, "application/json", []byte("{"), `"source": "quick_performance"`},
+		{ExportHTML, "text/html; charset=utf-8", []byte("<!doctype html>"), "quick-model"},
+		{ExportPNG, "image/png", []byte("\x89PNG\r\n\x1a\n"), ""},
+		{ExportPDF, "application/pdf", []byte("%PDF-1.4"), ""},
+	} {
+		t.Run(string(test.format), func(t *testing.T) {
+			exported, err := service.Export(context.Background(), report.ReportID, test.format, "")
+			if err != nil {
+				t.Fatalf("Export() error = %v", err)
+			}
+			if exported.MediaType != test.mediaType {
+				t.Fatalf("media type = %q, want %q", exported.MediaType, test.mediaType)
+			}
+			contents, err := base64.StdEncoding.DecodeString(exported.DataBase64)
+			if err != nil {
+				t.Fatalf("base64: %v", err)
+			}
+			if !strings.HasPrefix(string(contents), string(test.prefix)) {
+				t.Fatalf("prefix = %q, want %q", contents[:min(len(contents), 20)], test.prefix)
+			}
+			if test.contains != "" && !strings.Contains(string(contents), test.contains) {
+				t.Fatalf("export does not contain %q", test.contains)
+			}
+			if (test.format == ExportJSON || test.format == ExportHTML) && !strings.Contains(string(contents), DefaultWatermark) {
+				t.Fatalf("export does not contain default watermark %q", DefaultWatermark)
+			}
+		})
+	}
+
+	defaultPNG, err := service.Export(context.Background(), report.ReportID, ExportPNG, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	customPNG, err := service.Export(context.Background(), report.ReportID, ExportPNG, "team-alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultPNG.DataBase64 == customPNG.DataBase64 {
+		t.Fatal("PNG watermark did not change with configured text")
 	}
 }
 

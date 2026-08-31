@@ -217,9 +217,9 @@ describe("Wails desktop client", () => {
 		expect(detail.report.id).toBe(reportID)
 		expect(binding.GetReportDetail).toHaveBeenCalledWith(reportID)
 		for (const format of ["json", "html", "png", "pdf"] as const) {
-			const exported = await client.exportReport(reportID, format)
+			const exported = await client.exportReport(reportID, format, "team-alpha")
 			expect(exported.filename).toContain(reportID)
-			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format)
+			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format, "team-alpha")
 		}
 	})
 
@@ -446,7 +446,7 @@ function installBinding(
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
-		ExportReport: vi.fn(async (reportID: string, format: string) => ({
+		ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
 			filename: `llm-studio-report-${reportID}.${format}`,
 			media_type: format === "json" ? "application/json" : "application/octet-stream",
 			data_base64: "e30=",

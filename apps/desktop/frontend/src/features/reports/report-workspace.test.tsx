@@ -24,8 +24,9 @@ describe("ReportWorkspace", () => {
       ],
     } as unknown as ReportSnapshot
     const getDetail = vi.fn(async () => quickDetail(quickID) as unknown as ReportDetail)
+    const exportReport = vi.fn(async () => { throw new Error("stop after export request") })
 
-    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={vi.fn()} />)
+    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} />)
 
     const table = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(table).getByRole("columnheader", { name: "查看报告" })).toBeInTheDocument()
@@ -49,6 +50,15 @@ describe("ReportWorkspace", () => {
     expect(within(charts).getByRole("figure", { name: "E2E 时间曲线" })).toBeInTheDocument()
     expect(getDetail).toHaveBeenCalledWith(quickID)
     expect(screen.queryByRole("table", { name: "请求级结果" })).not.toBeInTheDocument()
+
+    const watermark = screen.getByRole("textbox", { name: "导出水印" })
+    expect(watermark).toHaveValue("rhzs")
+    await user.click(screen.getByRole("button", { name: "JSON" }))
+    expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs")
+    await user.clear(watermark)
+    await user.type(watermark, "team-alpha")
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    expect(exportReport).toHaveBeenCalledWith(quickID, "html", "team-alpha")
 
     await user.click(screen.getByRole("button", { name: "返回报告列表" }))
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()

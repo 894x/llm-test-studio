@@ -93,7 +93,7 @@ type ReportingQuery interface {
 type ReportDocumentQuery interface {
 	ReportingQuery
 	Detail(context.Context, string) (reporting.Detail, error)
-	Export(context.Context, string, reporting.ExportFormat) (reporting.ExportedDocument, error)
+	Export(context.Context, string, reporting.ExportFormat, string) (reporting.ExportedDocument, error)
 }
 
 // RunCommands is the Application command boundary used by the desktop
@@ -473,7 +473,7 @@ func (app *DesktopApp) GetReportDetail(reportID string) (reporting.Detail, error
 	return detail, nil
 }
 
-func (app *DesktopApp) ExportReport(reportID, format string) (reporting.ExportedDocument, error) {
+func (app *DesktopApp) ExportReport(reportID, format, watermark string) (reporting.ExportedDocument, error) {
 	if !domain.IsUUID(reportID) {
 		return reporting.ExportedDocument{}, app.safeBindingError(ErrInvalidIdentifier)
 	}
@@ -492,7 +492,7 @@ func (app *DesktopApp) ExportReport(reportID, format string) (reporting.Exported
 	if !ok || isNilInterface(documents) {
 		return reporting.ExportedDocument{}, app.safeBindingError(ErrReportingUnavailable)
 	}
-	exported, err := documents.Export(lease.ctx, reportID, exportFormat)
+	exported, err := documents.Export(lease.ctx, reportID, exportFormat, watermark)
 	if err != nil {
 		return reporting.ExportedDocument{}, app.safeBindingError(fmt.Errorf("export desktop report: %w", err))
 	}

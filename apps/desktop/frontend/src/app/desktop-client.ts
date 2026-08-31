@@ -111,7 +111,7 @@ export interface DesktopClient extends CatalogActions {
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
   getReportDetail(reportId: string): Promise<ReportDetail>
-  exportReport(reportId: string, format: ReportExportFormat): Promise<ExportedReport>
+  exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
@@ -127,7 +127,7 @@ type WailsDesktopBinding = {
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
-  ExportReport(reportId: string, format: ReportExportFormat): Promise<unknown>
+  ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
@@ -194,12 +194,12 @@ export function createFixtureClient(
 			if (!summary) throw new DesktopClientError("invalid_identifier")
 			return fixtureReportDetail(summary)
 		},
-		async exportReport(reportId, format) {
+		async exportReport(reportId, format, watermark) {
 			const summary = reports.reports.find((report) => report.id === reportId)
 			if (!summary) throw new DesktopClientError("invalid_identifier")
 			const detail = fixtureReportDetail(summary)
 			const mediaTypes: Record<ReportExportFormat, string> = { json: "application/json", html: "text/html; charset=utf-8", png: "image/png", pdf: "application/pdf" }
-			const payload = format === "json" ? JSON.stringify(detail, null, 2) : `LLM Studio ${format.toUpperCase()} report ${reportId}`
+			const payload = format === "json" ? JSON.stringify({ watermark: watermark.trim() || "rhzs", ...detail }, null, 2) : `LLM Studio ${format.toUpperCase()} report ${reportId} watermark ${watermark.trim() || "rhzs"}`
 			return { filename: `llm-studio-report-${reportId}.${format}`, media_type: mediaTypes[format], data_base64: bytesToBase64(new TextEncoder().encode(payload)) }
 		},
 		async getComparisons() {
@@ -411,7 +411,7 @@ function createLazyFixtureClient(): DesktopClient {
     getCatalog: async () => (await client).getCatalog(),
     getReports: async () => (await client).getReports(),
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
-		exportReport: async (reportId, format) => (await client).exportReport(reportId, format),
+		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
     stopSending: async (runId) => (await client).stopSending(runId),
@@ -451,8 +451,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.GetReports(), parseReportSnapshot),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
-		exportReport: async (reportId, format) =>
-			callBinding(() => binding.ExportReport(reportId, format), parseExportedReport),
+		exportReport: async (reportId, format, watermark) =>
+			callBinding(() => binding.ExportReport(reportId, format, watermark), parseExportedReport),
 		getComparisons: async () =>
 			callBinding(() => binding.GetComparisons(), parseComparisonSnapshot),
     startRun: async (planId) =>

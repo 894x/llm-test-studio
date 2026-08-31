@@ -5,6 +5,8 @@ import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -17,13 +19,14 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   snapshot: ReportSnapshot
   preferredReportID?: string
   getDetail: (reportId: string) => Promise<ReportDetail>
-  exportReport: (reportId: string, format: ReportExportFormat) => Promise<ExportedReport>
+  exportReport: (reportId: string, format: ReportExportFormat, watermark: string) => Promise<ExportedReport>
 }) {
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
   const [viewingReportID, setViewingReportID] = useState(preferredReportID ?? "")
   const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: string }>({ reportID: "" })
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
   const [exportError, setExportError] = useState("")
+  const [watermark, setWatermark] = useState("rhzs")
   const selected = snapshot.reports.find((report) => report.id === selectedID) ?? snapshot.reports[0]
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
@@ -45,7 +48,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExporting(format)
     setExportError("")
     try {
-      downloadExport(await exportReport(selected.id, format))
+      downloadExport(await exportReport(selected.id, format, watermark))
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
         error,
@@ -62,7 +65,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExporting("copy")
     setExportError("")
     try {
-      const exported = await exportReport(selected.id, "png")
+      const exported = await exportReport(selected.id, "png", watermark)
       const ClipboardItemType = window.ClipboardItem
       if (!navigator.clipboard?.write || !ClipboardItemType) throw new Error("clipboard image unsupported")
       await navigator.clipboard.write([new ClipboardItemType({ [exported.media_type]: exportBlob(exported) })])
@@ -80,7 +83,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
       count={isViewingReport ? undefined : `${snapshot.reports.length} 份报告`}
       actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />返回报告列表</Button> : undefined}
       inspector={selected ? (
-        <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} onExport={handleExport} onCopyPNG={copyPNG} />
+        <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG} />
       ) : <EmptyInspector label="尚未选择报告" />}
       inspectorLabel="报告详情"
     >
@@ -166,12 +169,14 @@ function MetricCell({ value, unit }: { value?: number; unit: string }) {
   return <TableCell className="py-1 text-xs tabular-nums">{metric(value)} {value === undefined ? "" : unit}</TableCell>
 }
 
-function ReportInspector({ report, detail, detailError, exporting, exportError, onExport, onCopyPNG }: {
+function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG }: {
   report: ReportSummary
   detail: ReportDetail | null
   detailError: string
   exporting: ReportExportFormat | "copy" | ""
   exportError: string
+  watermark: string
+  onWatermarkChange: (value: string) => void
   onExport: (format: ReportExportFormat) => Promise<void>
   onCopyPNG: () => Promise<void>
 }) {
@@ -184,10 +189,14 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
       <InspectorRow label="来源" value={report.source === "quick_performance" ? "快速性能测试" : "执行计划"} />{report.run_id ? <InspectorRow label="运行" value={`${report.run_status} · ${report.run_id}`} /> : null}<InspectorRow label="测试计划" value={report.plan_name} /><InspectorRow label="模型与渠道" value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={report.source === "quick_performance" ? "请求结论" : "用例结论"} value={`${report.case_count - report.failed_case_count}/${report.case_count} 通过 · ${report.failed_case_count} 失败`} /><InspectorRow label="问题" value={`${report.issue_count} 项`} /><InspectorRow label="生成时间" value={formatTimestamp(report.generated_at)} />
     </dl>
     <Separator />
-    {report.source === "run" ? <div className="grid grid-cols-2 gap-2 px-4 py-3" aria-label="报告导出">
+    <div className="grid grid-cols-2 gap-2 px-4 py-3" aria-label="报告导出">
+      <Field className="col-span-2 block space-y-1">
+        <FieldLabel htmlFor="report-watermark">导出水印</FieldLabel>
+        <Input id="report-watermark" value={watermark} maxLength={64} disabled={Boolean(exporting)} onChange={(event) => onWatermarkChange(event.target.value)} placeholder="rhzs" />
+      </Field>
       {(["json", "html", "png", "pdf"] as const).map((format) => <Button key={format} variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onExport(format)}>{exporting === format ? "生成中…" : format.toUpperCase()}</Button>)}
       <Button className="col-span-2" variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onCopyPNG()}>{exporting === "copy" ? "复制中…" : "复制 PNG"}</Button>
-    </div> : null}
+    </div>
     {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
     {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">核心指标</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label="目标" value={quick.model_id} /><InspectorRow label="请求速率" value={`${formatMetric(quick.metrics.request_qps)} req/s`} /><InspectorRow label="TTFT P50 / P95" value={`${formatMetric(quick.metrics.ttft_p50_ms)} / ${formatMetric(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatMetric(quick.metrics.tpot_p50_ms)} / ${formatMetric(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatMetric(quick.metrics.e2e_p50_ms)} / ${formatMetric(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
