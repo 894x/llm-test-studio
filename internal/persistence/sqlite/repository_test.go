@@ -25,9 +25,11 @@ type coreRepositoryContract interface {
 	UpdateModel(context.Context, uint64, domain.Model) error
 	DeleteModel(context.Context, string, uint64) error
 	ListModels(context.Context) ([]domain.Model, error)
+	ResolvePlanTarget(context.Context, domain.Plan) (domain.Model, domain.Channel, domain.ChannelModel, error)
 	CreateCredentialRef(context.Context, domain.CredentialRef) error
 	GetCredentialRef(context.Context, string) (domain.CredentialRef, error)
 	UpdateCredentialRef(context.Context, uint64, domain.CredentialRef) error
+	DeleteCredentialRef(context.Context, string, uint64) error
 	ListCredentialRefs(context.Context) ([]domain.CredentialRef, error)
 	CreateChannel(context.Context, domain.Channel) error
 	GetChannel(context.Context, string) (domain.Channel, error)
@@ -68,13 +70,168 @@ type coreRepositoryContract interface {
 	CreateReport(context.Context, domain.Report) error
 	GetReport(context.Context, string) (domain.Report, error)
 	ListReports(context.Context) ([]domain.Report, error)
+	CreateComparison(context.Context, domain.Comparison) error
+	GetComparison(context.Context, string) (domain.Comparison, error)
+	UpdateComparison(context.Context, uint64, domain.Comparison) error
+	ListComparisons(context.Context) ([]domain.Comparison, error)
 	CreateIntegration(context.Context, domain.Integration) error
 	GetIntegration(context.Context, string) (domain.Integration, error)
 	UpdateIntegration(context.Context, uint64, domain.Integration) error
 	ListIntegrations(context.Context) ([]domain.Integration, error)
 }
 
+func TestRepositoryDeletesOnlyAnUnreferencedCredentialRevisionSet(t *testing.T) {
+	t.Parallel()
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	ctx := context.Background()
+	if err := repository.CreateCredentialRef(ctx, fixture.credential); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.DeleteCredentialRef(ctx, fixture.credential.ID, fixture.credential.Revision); err != nil {
+		t.Fatalf("DeleteCredentialRef() error = %v", err)
+	}
+	if _, err := repository.GetCredentialRef(ctx, fixture.credential.ID); !errors.Is(err, persistence.ErrNotFound) {
+		t.Fatalf("GetCredentialRef(deleted) error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRepositoryResolvesTheExactSingleTargetPinnedByAPlanRevision(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	ctx := context.Background()
+	fixture := newRepositoryFixture(t)
+	creates := []struct {
+		name   string
+		create func() error
+	}{
+		{"credential", func() error { return repository.CreateCredentialRef(ctx, fixture.credential) }},
+		{"model", func() error { return repository.CreateModel(ctx, fixture.model) }},
+		{"channel", func() error { return repository.CreateChannel(ctx, fixture.channel) }},
+		{"mapping", func() error { return repository.CreateChannelModel(ctx, fixture.mapping) }},
+		{"case", func() error { return repository.CreateTestCase(ctx, fixture.testCase) }},
+		{"suite", func() error { return repository.CreateSuite(ctx, fixture.suite) }},
+		{"plan", func() error { return repository.CreatePlan(ctx, fixture.plan) }},
+	}
+	for _, item := range creates {
+		if err := item.create(); err != nil {
+			t.Fatalf("create %s: %v", item.name, err)
+		}
+	}
+
+	model, channel, mapping, err := repository.ResolvePlanTarget(ctx, fixture.plan)
+	if err != nil {
+		t.Fatalf("ResolvePlanTarget() error = %v", err)
+	}
+	assertRoundTrip(t, "resolved model", fixture.model, model)
+	assertRoundTrip(t, "resolved channel", fixture.channel, channel)
+	assertRoundTrip(t, "resolved mapping", fixture.mapping, mapping)
+
+	ambiguous := fixture.plan
+	ambiguous.ModelIDs = append(ambiguous.ModelIDs, "20000000-0000-4000-8000-000000000099")
+	if _, _, _, err := repository.ResolvePlanTarget(ctx, ambiguous); !errors.Is(err, persistence.ErrAmbiguousPlanTarget) {
+		t.Fatalf("ResolvePlanTarget(ambiguous) error = %v, want ErrAmbiguousPlanTarget", err)
+	}
+}
+
 var _ coreRepositoryContract = (*persistence.Repository)(nil)
+
+func TestRepositoryComparisonRoundTripAndTerminalRevision(t *testing.T) {
+	t.Parallel()
+	repository := openRepository(t)
+	defer repository.Close()
+	ctx := context.Background()
+	fixture := newRepositoryFixture(t)
+
+	secondCredential := fixture.credential
+	secondCredential.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000021", 1)
+	secondCredential.StoreRef = "llm-studio/v1/channel_api_key/" + secondCredential.ID
+	secondChannel := fixture.channel
+	secondChannel.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000022", 1)
+	secondChannel.Name = "Second channel"
+	secondChannel.BaseURL = "https://second.example.test/v1"
+	secondChannel.CredentialID = secondCredential.ID
+	secondMapping := fixture.mapping
+	secondMapping.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000023", 1)
+	secondMapping.ChannelID = secondChannel.ID
+	secondMapping.UpstreamModelName = "upstream-second"
+	fixture.plan.ChannelIDs = append(fixture.plan.ChannelIDs, secondChannel.ID)
+
+	creates := []func() error{
+		func() error { return repository.CreateCredentialRef(ctx, fixture.credential) },
+		func() error { return repository.CreateCredentialRef(ctx, secondCredential) },
+		func() error { return repository.CreateModel(ctx, fixture.model) },
+		func() error { return repository.CreateChannel(ctx, fixture.channel) },
+		func() error { return repository.CreateChannel(ctx, secondChannel) },
+		func() error { return repository.CreateChannelModel(ctx, fixture.mapping) },
+		func() error { return repository.CreateChannelModel(ctx, secondMapping) },
+		func() error { return repository.CreateTestCase(ctx, fixture.testCase) },
+		func() error { return repository.CreateSuite(ctx, fixture.suite) },
+		func() error { return repository.CreatePlan(ctx, fixture.plan) },
+	}
+	for index, create := range creates {
+		if err := create(); err != nil {
+			t.Fatalf("create comparison fixture %d: %v", index, err)
+		}
+	}
+
+	firstSnapshot := fixture.run.Snapshot()
+	firstSnapshot.Plan.Revision = fixture.plan.Revision
+	firstRun, err := domain.NewRun(entityMeta(fixture.run.Meta().ID, 1), fixture.plan.ID, firstSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSnapshot := firstSnapshot
+	secondSnapshot.Channel = domain.ChannelSnapshot{
+		EntityRevisionRef: domain.EntityRevisionRef{ID: secondChannel.ID, Revision: secondChannel.Revision},
+		Name:              secondChannel.Name, BaseURL: secondChannel.BaseURL, Protocol: secondChannel.Protocol,
+		UpstreamModelName: secondMapping.UpstreamModelName,
+	}
+	secondRun, err := domain.NewRun(entityMeta("10000000-0000-4000-8000-000000000024", 1), fixture.plan.ID, secondSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, run := range []domain.Run{firstRun, secondRun} {
+		if err := repository.CreateRun(ctx, run); err != nil {
+			t.Fatalf("CreateRun() error = %v", err)
+		}
+	}
+	comparison, err := domain.NewComparison(
+		entityMeta("10000000-0000-4000-8000-000000000025", 1),
+		domain.EntityRevisionRef{ID: fixture.plan.ID, Revision: fixture.plan.Revision},
+		domain.EntityRevisionRef{ID: fixture.model.ID, Revision: fixture.model.Revision},
+		[]domain.ComparisonRunRef{
+			{Channel: firstSnapshot.Channel.EntityRevisionRef, RunID: firstRun.Meta().ID},
+			{Channel: secondSnapshot.Channel.EntityRevisionRef, RunID: secondRun.Meta().ID},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateComparison(ctx, comparison); err != nil {
+		t.Fatalf("CreateComparison() error = %v", err)
+	}
+	assertRoundTrip(t, "comparison", comparison, mustGetComparison(t, repository, comparison.Meta().ID))
+	listed, err := repository.ListComparisons(ctx)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("ListComparisons() = %#v, %v", listed, err)
+	}
+
+	completed, err := comparison.Transition(domain.ComparisonCompleted, repositoryEpoch.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.UpdateComparison(ctx, comparison.Meta().Revision, completed); err != nil {
+		t.Fatalf("UpdateComparison() error = %v", err)
+	}
+	assertRoundTrip(t, "completed comparison", completed, mustGetComparison(t, repository, comparison.Meta().ID))
+	if err := repository.UpdateComparison(ctx, comparison.Meta().Revision, completed); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("stale UpdateComparison() error = %v, want ErrConflict", err)
+	}
+}
 
 func TestRepositoryModelRoundTripAndOptimisticRevision(t *testing.T) {
 	t.Parallel()
@@ -846,6 +1003,15 @@ func mustGetIntegration(t *testing.T, repository *persistence.Repository, id str
 func mustGetReport(t *testing.T, repository *persistence.Repository, id string) domain.Report {
 	t.Helper()
 	value, err := repository.GetReport(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func mustGetComparison(t *testing.T, repository *persistence.Repository, id string) domain.Comparison {
+	t.Helper()
+	value, err := repository.GetComparison(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}

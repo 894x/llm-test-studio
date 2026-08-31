@@ -21,11 +21,11 @@ func TestMigrateFreshDatabaseAppliesDomainSchemaV2(t *testing.T) {
 	db := openDatabase(t, path)
 	defer db.Close()
 
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 4 {
-		t.Fatalf("user_version = %d, want 4", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 4 {
-		t.Fatalf("migration count = %d, want 4", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("migration count = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
 	for _, table := range []string{
 		"models", "channels", "channel_models", "credential_refs", "test_cases",
@@ -78,11 +78,11 @@ func TestMigrateUpgrades0001WithoutChangingLegacyRows(t *testing.T) {
 	if got := queryInt(t, db, "SELECT requests FROM runs WHERE id = 42"); got != 9 {
 		t.Fatalf("legacy requests = %d, want 9", got)
 	}
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 4 {
-		t.Fatalf("user_version = %d, want 4", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 4 {
-		t.Fatalf("migration count = %d, want 4", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("migration count = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
 }
 
@@ -234,6 +234,7 @@ func createMigration0001Database(t *testing.T, path string) {
 		db.Close()
 		t.Fatalf("disable foreign keys while constructing v1 fixture: %v", err)
 	}
+	dropMigration0005Objects(t, db)
 	for _, table := range []string{
 		"catalog_tombstones",
 		"test_case_import_sources",

@@ -20,7 +20,7 @@ import (
 const (
 	migration0001Name    = "0001_legacy_baseline"
 	defaultBusyTime      = 5 * time.Second
-	CurrentSchemaVersion = 4
+	CurrentSchemaVersion = 5
 )
 
 // MigrateOptions identifies the application applying the schema and controls
@@ -241,10 +241,16 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		}
 		version = 4
 	}
+	if version == 4 {
+		if err := applyMigration0005(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 5
+	}
 	if version != CurrentSchemaVersion {
 		return fmt.Errorf("sqlite schema is unknown: unsupported migration version %d", version)
 	}
-	if err := validateAppliedSchema0004(ctx, conn); err != nil {
+	if err := validateAppliedSchema0005(ctx, conn); err != nil {
 		return err
 	}
 	if err := validateIntegrity(ctx, conn); err != nil {

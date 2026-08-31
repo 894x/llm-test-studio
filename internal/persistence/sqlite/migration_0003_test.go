@@ -20,11 +20,11 @@ func TestMigrateAppliesCaseImportTrackingSchemaV3(t *testing.T) {
 
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 4 {
-		t.Fatalf("user_version = %d, want 4", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 4 {
-		t.Fatalf("migration count = %d, want 4", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("migration count = %d, want %d", got, persistence.CurrentSchemaVersion)
 	}
 	if got := tableColumns(t, db, "test_case_import_sources"); !equalStrings(got, []string{
 		"namespace", "source_key", "source_path", "source_bytes_sha256", "semantic_sha256",
@@ -140,6 +140,7 @@ func createMigration0002Database(t *testing.T, path string) {
 		t.Fatalf("seed latest database: %v", err)
 	}
 	db := openDatabase(t, path)
+	dropMigration0005Objects(t, db)
 	if _, err := db.Exec("DROP TABLE IF EXISTS catalog_tombstones"); err != nil {
 		db.Close()
 		t.Fatalf("drop v4 tombstone table: %v", err)

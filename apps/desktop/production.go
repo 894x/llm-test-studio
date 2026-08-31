@@ -8,14 +8,21 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
 	casebundle "github.com/894x/llm-studio/cases"
-	"github.com/894x/llm-studio/internal/application/caseimport"
+	"github.com/894x/llm-studio/internal/application/casecatalog"
 	"github.com/894x/llm-studio/internal/application/catalog"
+	"github.com/894x/llm-studio/internal/application/channelconfig"
+	"github.com/894x/llm-studio/internal/application/comparisons"
 	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/application/workspace"
+	"github.com/894x/llm-studio/internal/credentials"
+	"github.com/894x/llm-studio/internal/domain"
 	"github.com/894x/llm-studio/internal/persistence/sqlite"
 )
 
@@ -25,6 +32,7 @@ type productionOptions struct {
 	userConfigDir       func() (string, error)
 	appVersion          string
 	caseBundle          fs.FS
+	executablePath      func() (string, error)
 	reportCaseConflicts func(int)
 }
 
@@ -36,9 +44,10 @@ func (productionClock) Now() time.Time {
 
 func defaultProductionOptions() productionOptions {
 	return productionOptions{
-		userConfigDir: os.UserConfigDir,
-		appVersion:    desktopApplicationVersion,
-		caseBundle:    casebundle.Bundle,
+		userConfigDir:  os.UserConfigDir,
+		appVersion:     desktopApplicationVersion,
+		caseBundle:     casebundle.Bundle,
+		executablePath: os.Executable,
 		reportCaseConflicts: func(count int) {
 			log.Printf("llm-studio: %d built-in case update conflict(s) retained user revisions", count)
 		},
@@ -77,25 +86,36 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("open desktop repository: %w", err)
 		}
-		caseImporter, err := caseimport.New(caseimport.Dependencies{
-			Store: repository,
-			Clock: productionClock{},
-		})
-		if err != nil {
-			_ = repository.Close()
-			return desktopDependencies{}, fmt.Errorf("create built-in case importer: %w", err)
-		}
 		bundle := options.caseBundle
 		if isNilInterface(bundle) {
 			bundle = casebundle.Bundle
 		}
-		importResult, err := caseImporter.Import(ctx, bundle)
+		executableProvider := options.executablePath
+		if executableProvider == nil {
+			executableProvider = os.Executable
+		}
+		executable, err := executableProvider()
 		if err != nil {
 			_ = repository.Close()
-			return desktopDependencies{}, fmt.Errorf("import built-in cases: %w", err)
+			return desktopDependencies{}, fmt.Errorf("locate desktop executable: %w", err)
 		}
-		if len(importResult.Conflicts) != 0 && options.reportCaseConflicts != nil {
-			options.reportCaseConflicts(len(importResult.Conflicts))
+		userCaseRoot, err := casecatalog.UserRootForExecutable(executable)
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("locate executable case directory: %w", err)
+		}
+		caseFiles, err := casecatalog.New(casecatalog.Options{Builtin: bundle, UserRoot: userCaseRoot})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create filesystem case catalog: %w", err)
+		}
+		if err := cutoverLegacyCaseCatalog(ctx, repository, caseFiles, options.reportCaseConflicts); err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("cut over filesystem case catalog: %w", err)
+		}
+		if err := runs.RecoverInterrupted(ctx, repository, productionClock{}); err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("recover interrupted desktop runs: %w", err)
 		}
 		workspaceQuery := workspace.New(repository)
 		catalogQuery, err := catalog.New(catalog.Dependencies{
@@ -112,18 +132,121 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("create desktop catalog service: %w", err)
 		}
 		reportingQuery := reporting.New(repository)
+		reportGenerator, err := reporting.NewGenerator(reporting.GeneratorDependencies{
+			Repository: repository,
+			Clock:      productionClock{},
+		})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create report generator: %w", err)
+		}
+		credentialStore := credentials.NewOSStore()
+		channelService, err := channelconfig.New(channelconfig.Dependencies{
+			Repository: repository, Credentials: credentialStore, Clock: productionClock{},
+		})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create channel configuration service: %w", err)
+		}
+		runService, err := runs.New(runs.Dependencies{
+			Repository:  repository,
+			Credentials: credentialStore,
+			Executor: runs.NewExecutorRouter(
+				runs.NewLegacyAPIAuditExecutor(nil),
+				runs.NewLoadExecutor(nil),
+			),
+			Clock:       productionClock{},
+			Reporter:    reportGenerator,
+			ReportError: func(err error) { log.Printf("llm-studio: generate run report: %v", err) },
+			Environment: func() domain.EnvironmentSnapshot {
+				return domain.EnvironmentSnapshot{
+					OS: runtime.GOOS, Arch: runtime.GOARCH, Region: "local",
+					NetworkEgress: "direct", AppVersion: options.appVersion, EngineVersion: "go-core-v1",
+				}
+			},
+		})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create run application service: %w", err)
+		}
+		comparisonService, err := comparisons.New(comparisons.Dependencies{
+			Repository: repository, Runner: runService, Clock: productionClock{},
+		})
+		if err != nil {
+			_ = runService.Close()
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create comparison application service: %w", err)
+		}
 		gate := &productionServiceGate{}
 		serializedCatalog := serializedCatalogService{
-			gate: gate, query: catalogQuery, commands: catalogQuery,
+			gate: gate, query: catalogQuery, commands: catalogQuery, channels: channelService,
+			caseFiles: caseFiles, caseSnapshots: repository,
 		}
 		return desktopDependencies{
 			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
 			catalog:         serializedCatalog,
 			catalogCommands: serializedCatalog,
 			reports:         serializedReportingQuery{gate: gate, query: reportingQuery},
-			close:           repository.Close,
+			commands:        runService,
+			comparisons:     comparisonService,
+			close: func() error {
+				return errors.Join(runService.Close(), repository.Close())
+			},
 		}, nil
 	}
+}
+
+type legacyCaseCutoverRepository interface {
+	ListTestCases(context.Context) ([]domain.TestCase, error)
+	CaseCatalogCutoverCompleted(context.Context) (bool, error)
+	CompleteCaseCatalogCutover(context.Context, time.Time) error
+	PruneUnreferencedTestCaseSnapshots(context.Context) error
+}
+
+func cutoverLegacyCaseCatalog(ctx context.Context, repository legacyCaseCutoverRepository, files *casecatalog.Service, report func(int)) error {
+	completed, err := repository.CaseCatalogCutoverCompleted(ctx)
+	if err != nil {
+		return err
+	}
+	exported := 0
+	if !completed {
+		legacyCases, err := repository.ListTestCases(ctx)
+		if err != nil {
+			return err
+		}
+		entries, err := files.Entries(ctx)
+		if err != nil {
+			return err
+		}
+		byID := make(map[string]casecatalog.Entry, len(entries))
+		for _, entry := range entries {
+			byID[entry.TestCase.ID] = entry
+		}
+		for _, testCase := range legacyCases {
+			entry, found := byID[testCase.ID]
+			if found && reflect.DeepEqual(entry.TestCase, testCase) {
+				continue
+			}
+			directory := filesystemCaseDirectory(testCase.Key)
+			if found {
+				directory = entry.Directory
+			}
+			if err := files.SaveCase(ctx, string(testCase.Protocol), directory, testCase); err != nil {
+				return fmt.Errorf("export legacy case %s: %w", testCase.ID, err)
+			}
+			exported++
+		}
+		if err := repository.CompleteCaseCatalogCutover(ctx, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	if err := repository.PruneUnreferencedTestCaseSnapshots(ctx); err != nil {
+		return err
+	}
+	if exported != 0 && report != nil {
+		report(exported)
+	}
+	return nil
 }
 
 func productionStoragePaths(configurationRoot string) (directory string, database string, err error) {

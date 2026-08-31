@@ -3,6 +3,8 @@ package caseimport
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,98 @@ type legacyRequest struct {
 	Method string          `json:"method"`
 	Path   string          `json:"path"`
 	Body   json.RawMessage `json:"body,omitempty"`
+}
+
+// DecodeFilesystemCase materializes one shareable group/case/case.json file
+// as a deterministic domain value. Identity is stable by protocol and case
+// key; revision is content-addressed so file edits cannot masquerade as the
+// revision pinned by an existing plan or run.
+func DecodeFilesystemCase(sourcePath string, raw []byte) (domain.TestCase, error) {
+	var probe struct {
+		SchemaVersion int             `json:"schema_version"`
+		Definition    json.RawMessage `json:"definition"`
+	}
+	if err := json.Unmarshal(raw, &probe); err == nil && probe.SchemaVersion == 1 && len(probe.Definition) != 0 {
+		return decodeShareableFilesystemCase(raw)
+	}
+	candidate, err := convertLegacyCase(sourcePath, raw)
+	if err != nil {
+		return domain.TestCase{}, err
+	}
+	digest, err := hex.DecodeString(candidate.SemanticSHA256)
+	if err != nil || len(digest) < 8 {
+		return domain.TestCase{}, errors.New("decode filesystem case semantic revision")
+	}
+	revision := binary.BigEndian.Uint64(digest[:8])
+	revision &= (1 << 53) - 1
+	if revision == 0 {
+		revision = 1
+	}
+	stamp := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	entity := candidate.materialize(domain.EntityMeta{
+		ID:            stableCaseID(string(candidate.Protocol) + "/" + candidate.Key),
+		SchemaVersion: domain.CurrentEntitySchemaVersion, Revision: revision,
+		CreatedAt: stamp, UpdatedAt: stamp,
+	})
+	if err := entity.Validate(); err != nil {
+		return domain.TestCase{}, err
+	}
+	return entity, nil
+}
+
+type shareableFilesystemCase struct {
+	SchemaVersion int                       `json:"schema_version"`
+	Key           string                    `json:"key"`
+	Name          string                    `json:"name"`
+	Dimension     string                    `json:"dimension"`
+	Protocol      domain.Protocol           `json:"protocol"`
+	Enabled       bool                      `json:"enabled"`
+	Default       bool                      `json:"default"`
+	Severity      domain.CaseSeverity       `json:"severity"`
+	ExecutionMode domain.CaseExecutionMode  `json:"execution_mode"`
+	Definition    domain.TestCaseDefinition `json:"definition"`
+}
+
+func EncodeFilesystemCase(testCase domain.TestCase) ([]byte, error) {
+	if err := testCase.Validate(); err != nil {
+		return nil, err
+	}
+	payload := shareableFilesystemCase{
+		SchemaVersion: 1, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
+		Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
+		Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode, Definition: testCase.Definition,
+	}
+	return json.MarshalIndent(payload, "", "  ")
+}
+
+func decodeShareableFilesystemCase(raw []byte) (domain.TestCase, error) {
+	var payload shareableFilesystemCase
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.SchemaVersion != 1 {
+		return domain.TestCase{}, errors.New("decode shareable filesystem case")
+	}
+	canonical, err := json.Marshal(payload)
+	if err != nil {
+		return domain.TestCase{}, err
+	}
+	digest := sha256.Sum256(canonical)
+	revision := binary.BigEndian.Uint64(digest[:8]) & ((1 << 53) - 1)
+	if revision == 0 {
+		revision = 1
+	}
+	stamp := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	entity := domain.TestCase{
+		EntityMeta: domain.EntityMeta{
+			ID: stableCaseID(string(payload.Protocol) + "/" + payload.Key), SchemaVersion: domain.CurrentEntitySchemaVersion,
+			Revision: revision, CreatedAt: stamp, UpdatedAt: stamp,
+		},
+		Key: payload.Key, Name: payload.Name, Dimension: payload.Dimension, Protocol: payload.Protocol,
+		Enabled: payload.Enabled, Default: payload.Default, Severity: payload.Severity,
+		ExecutionMode: payload.ExecutionMode, Definition: payload.Definition,
+	}
+	if err := entity.Validate(); err != nil {
+		return domain.TestCase{}, err
+	}
+	return entity, nil
 }
 
 type legacyCase struct {

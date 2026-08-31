@@ -26,6 +26,50 @@ func (repository *Repository) UpdateCredentialRef(ctx context.Context, expectedR
 	return repository.writeCredentialRef(ctx, &expectedRevision, credential)
 }
 
+// DeleteCredentialRef removes a never-used, single-revision credential record.
+// It exists for compensating an atomic channel+key create when the channel
+// write fails; historical or referenced credentials are never erased.
+func (repository *Repository) DeleteCredentialRef(ctx context.Context, id string, expectedRevision uint64) error {
+	if ctx == nil || !domain.IsUUID(id) || expectedRevision != 1 {
+		return errors.New("credential reference delete is invalid")
+	}
+	tx, err := repository.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin credential reference delete: %w", err)
+	}
+	defer tx.Rollback()
+	var count int
+	var revision uint64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(revision), 0) FROM credential_refs WHERE id = ?`, id).Scan(&count, &revision); err != nil {
+		return fmt.Errorf("inspect credential reference delete: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("%w: credential reference", ErrNotFound)
+	}
+	if count != 1 || revision != expectedRevision {
+		return fmt.Errorf("%w: credential reference", ErrConflict)
+	}
+	var referenced int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM channels WHERE credential_id = ?
+			UNION ALL SELECT 1 FROM integrations WHERE credential_id = ?
+		)
+	`, id, id).Scan(&referenced); err != nil {
+		return fmt.Errorf("inspect credential reference usage: %w", err)
+	}
+	if referenced != 0 {
+		return fmt.Errorf("%w: credential reference", ErrConflict)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM credential_refs WHERE id = ? AND revision = ?`, id, expectedRevision); err != nil {
+		return classifyWriteError("delete credential reference", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit credential reference delete", err)
+	}
+	return nil
+}
+
 func (repository *Repository) writeCredentialRef(ctx context.Context, expected *uint64, credential domain.CredentialRef) error {
 	if err := credential.Validate(); err != nil {
 		return errors.New("credential reference is invalid")
@@ -340,6 +384,18 @@ func (repository *Repository) writeTestCase(ctx context.Context, expected *uint6
 }
 
 func (repository *Repository) GetTestCase(ctx context.Context, id string) (domain.TestCase, error) {
+	var pending []byte
+	err := repository.conn.QueryRowContext(ctx, `SELECT document_json FROM pending_test_case_snapshots WHERE id = ? ORDER BY updated_at DESC LIMIT 1`, id).Scan(&pending)
+	if err == nil {
+		var testCase domain.TestCase
+		if err := decodeCanonical(pending, &testCase, func() error { return testCase.Validate() }); err != nil {
+			return domain.TestCase{}, fmt.Errorf("%w: pending test case document", ErrCorrupt)
+		}
+		return testCase, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return domain.TestCase{}, fmt.Errorf("get pending test case: %w", err)
+	}
 	document, err := repository.getLatestDocument(ctx, "test_cases", id, "test case")
 	if err != nil {
 		return domain.TestCase{}, err
@@ -354,7 +410,15 @@ func (repository *Repository) GetTestCase(ctx context.Context, id string) (domai
 func (repository *Repository) GetTestCaseRevision(ctx context.Context, id string, revision uint64) (domain.TestCase, error) {
 	document, err := repository.getExactDocument(ctx, "test_cases", id, revision, "test case")
 	if err != nil {
-		return domain.TestCase{}, err
+		if !errors.Is(err, ErrNotFound) {
+			return domain.TestCase{}, err
+		}
+		if pendingErr := repository.conn.QueryRowContext(ctx, `SELECT document_json FROM pending_test_case_snapshots WHERE id = ? AND revision = ?`, id, revision).Scan(&document); pendingErr != nil {
+			if errors.Is(pendingErr, sql.ErrNoRows) {
+				return domain.TestCase{}, err
+			}
+			return domain.TestCase{}, fmt.Errorf("get pending test case revision: %w", pendingErr)
+		}
 	}
 	var testCase domain.TestCase
 	if err := decodeCanonical(document, &testCase, func() error { return testCase.Validate() }); err != nil {
@@ -414,7 +478,7 @@ func (repository *Repository) writeSuite(ctx context.Context, expected *uint64, 
 		return classifyWriteError("write suite", err)
 	}
 	for position, ref := range suite.Cases {
-		if err := requireExactVersion(ctx, tx, "test_cases", ref.CaseID, ref.Revision, "test case"); err != nil {
+		if err := promotePendingCaseSnapshot(ctx, tx, ref); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -518,7 +582,7 @@ func (repository *Repository) writePlan(ctx context.Context, expected *uint64, p
 		}
 	}
 	for _, ref := range plan.Cases {
-		if err := requireExactVersion(ctx, tx, "test_cases", ref.CaseID, ref.Revision, "test case"); err != nil {
+		if err := promotePendingCaseSnapshot(ctx, tx, ref); err != nil {
 			return err
 		}
 	}

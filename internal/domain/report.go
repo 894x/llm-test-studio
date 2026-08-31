@@ -218,9 +218,6 @@ func (report Report) Validate() error {
 		if _, planned := plannedCaseIDs[result.CaseID]; !planned {
 			return fmt.Errorf("report case result %d references case %q outside the plan snapshot", index, result.CaseID)
 		}
-		if _, duplicate := completedCaseIDs[result.CaseID]; duplicate {
-			return fmt.Errorf("report contains multiple results for planned case %q", result.CaseID)
-		}
 		completedCaseIDs[result.CaseID] = struct{}{}
 		for _, evidenceID := range result.EvidenceIDs {
 			if _, exists := evidenceIDs[evidenceID]; !exists {

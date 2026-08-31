@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/894x/llm-studio/internal/application/catalog"
+	"github.com/894x/llm-studio/internal/application/comparisons"
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
@@ -21,6 +22,7 @@ var (
 	ErrCatalogUnavailable     = errors.New("catalog query is unavailable")
 	ErrReportingUnavailable   = errors.New("reporting query is unavailable")
 	ErrRunCommandsUnavailable = errors.New("run commands are unavailable")
+	ErrComparisonUnavailable  = errors.New("comparison service is unavailable")
 	ErrInvalidIdentifier      = errors.New("desktop command identifier is invalid")
 )
 
@@ -32,6 +34,7 @@ const (
 	desktopCodeCatalogMissing     = "catalog_unavailable"
 	desktopCodeReportsMissing     = "reports_unavailable"
 	desktopCodeCommandsMissing    = "run_commands_unavailable"
+	desktopCodeComparisonMissing  = "comparison_unavailable"
 	desktopCodeInvalidIdentifier  = "invalid_identifier"
 	desktopCodeOperationCancelled = "operation_cancelled"
 	desktopCodeOperationFailed    = "operation_failed"
@@ -82,6 +85,12 @@ type ReportingQuery interface {
 	Snapshot(context.Context) (reporting.Snapshot, error)
 }
 
+type ReportDocumentQuery interface {
+	ReportingQuery
+	Detail(context.Context, string) (reporting.Detail, error)
+	Export(context.Context, string, reporting.ExportFormat) (reporting.ExportedDocument, error)
+}
+
 // RunCommands is the Application command boundary used by the desktop
 // adapter. A command mutates Core state; the adapter then obtains the
 // authoritative state through WorkspaceQuery.
@@ -91,12 +100,18 @@ type RunCommands interface {
 	CancelRun(context.Context, string) error
 }
 
+type ComparisonService interface {
+	Start(context.Context, comparisons.StartCommand) (string, error)
+	Snapshot(context.Context) (comparisons.Snapshot, error)
+}
+
 type desktopDependencies struct {
 	query           WorkspaceQuery
 	catalog         CatalogQuery
 	catalogCommands CatalogCommands
 	reports         ReportingQuery
 	commands        RunCommands
+	comparisons     ComparisonService
 	close           func() error
 }
 
@@ -122,6 +137,7 @@ type DesktopApp struct {
 	catalogCommands CatalogCommands
 	reports         ReportingQuery
 	commands        RunCommands
+	comparisons     ComparisonService
 	close           func() error
 	startupErr      error
 	shutdownErr     error
@@ -134,6 +150,7 @@ type desktopRequirements struct {
 	catalogCommands bool
 	reports         bool
 	commands        bool
+	comparisons     bool
 }
 
 type desktopLease struct {
@@ -143,6 +160,7 @@ type desktopLease struct {
 	catalogCommands CatalogCommands
 	reports         ReportingQuery
 	commands        RunCommands
+	comparisons     ComparisonService
 	release         func()
 }
 
@@ -231,6 +249,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.catalogCommands = dependencies.catalogCommands
 	app.reports = dependencies.reports
 	app.commands = dependencies.commands
+	app.comparisons = dependencies.comparisons
 	app.close = dependencies.close
 	app.startupDone.Broadcast()
 	app.mu.Unlock()
@@ -419,6 +438,89 @@ func (app *DesktopApp) GetReports() (reporting.Snapshot, error) {
 	return snapshot, nil
 }
 
+func (app *DesktopApp) GetReportDetail(reportID string) (reporting.Detail, error) {
+	if !domain.IsUUID(reportID) {
+		return reporting.Detail{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	lease, err := app.acquire(desktopRequirements{reports: true})
+	if err != nil {
+		return reporting.Detail{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	documents, ok := lease.reports.(ReportDocumentQuery)
+	if !ok || isNilInterface(documents) {
+		return reporting.Detail{}, app.safeBindingError(ErrReportingUnavailable)
+	}
+	detail, err := documents.Detail(lease.ctx, reportID)
+	if err != nil {
+		return reporting.Detail{}, app.safeBindingError(fmt.Errorf("query desktop report detail: %w", err))
+	}
+	return detail, nil
+}
+
+func (app *DesktopApp) ExportReport(reportID, format string) (reporting.ExportedDocument, error) {
+	if !domain.IsUUID(reportID) {
+		return reporting.ExportedDocument{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	exportFormat := reporting.ExportFormat(format)
+	switch exportFormat {
+	case reporting.ExportJSON, reporting.ExportHTML, reporting.ExportPNG, reporting.ExportPDF:
+	default:
+		return reporting.ExportedDocument{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	lease, err := app.acquire(desktopRequirements{reports: true})
+	if err != nil {
+		return reporting.ExportedDocument{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	documents, ok := lease.reports.(ReportDocumentQuery)
+	if !ok || isNilInterface(documents) {
+		return reporting.ExportedDocument{}, app.safeBindingError(ErrReportingUnavailable)
+	}
+	exported, err := documents.Export(lease.ctx, reportID, exportFormat)
+	if err != nil {
+		return reporting.ExportedDocument{}, app.safeBindingError(fmt.Errorf("export desktop report: %w", err))
+	}
+	return exported, nil
+}
+
+func (app *DesktopApp) GetComparisons() (comparisons.Snapshot, error) {
+	lease, err := app.acquire(desktopRequirements{comparisons: true})
+	if err != nil {
+		return comparisons.Snapshot{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	snapshot, err := lease.comparisons.Snapshot(lease.ctx)
+	if err != nil {
+		return comparisons.Snapshot{}, app.safeBindingError(fmt.Errorf("query desktop comparisons: %w", err))
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (comparisons.Snapshot, error) {
+	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || len(command.ChannelIDs) < 2 {
+		return comparisons.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	for _, id := range command.ChannelIDs {
+		if !domain.IsUUID(id) {
+			return comparisons.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
+		}
+	}
+	lease, err := app.acquire(desktopRequirements{comparisons: true})
+	if err != nil {
+		return comparisons.Snapshot{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	if _, err := lease.comparisons.Start(lease.ctx, command); err != nil {
+		return comparisons.Snapshot{}, app.safeBindingError(fmt.Errorf("start comparison: %w", err))
+	}
+	snapshot, err := lease.comparisons.Snapshot(lease.ctx)
+	if err != nil {
+		return comparisons.Snapshot{}, app.safeBindingError(fmt.Errorf("query comparisons after start: %w", err))
+	}
+	return snapshot, nil
+}
+
 func (app *DesktopApp) StartRun(planID string) (workspace.Snapshot, error) {
 	snapshot, err := app.executeRunCommand("start run", planID, func(ctx context.Context, commands RunCommands) error {
 		return commands.StartRun(ctx, planID)
@@ -501,6 +603,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.commands && isNilInterface(app.commands) {
 		return desktopLease{}, ErrRunCommandsUnavailable
 	}
+	if require.comparisons && isNilInterface(app.comparisons) {
+		return desktopLease{}, ErrComparisonUnavailable
+	}
 	app.active++
 	released := false
 	release := func() {
@@ -518,6 +623,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	return desktopLease{
 		ctx: app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
+		comparisons: app.comparisons,
 	}, nil
 }
 
@@ -551,6 +657,7 @@ func (app *DesktopApp) shutdown() error {
 	app.catalogCommands = nil
 	app.reports = nil
 	app.commands = nil
+	app.comparisons = nil
 	app.close = nil
 	app.mu.Unlock()
 
@@ -607,6 +714,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeReportsMissing}
 	case errors.Is(internal, ErrRunCommandsUnavailable):
 		return DesktopBindingError{Code: desktopCodeCommandsMissing}
+	case errors.Is(internal, ErrComparisonUnavailable):
+		return DesktopBindingError{Code: desktopCodeComparisonMissing}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, catalog.ErrInvalid):
@@ -631,6 +740,7 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeCatalogMissing,
 		desktopCodeReportsMissing,
 		desktopCodeCommandsMissing,
+		desktopCodeComparisonMissing,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,

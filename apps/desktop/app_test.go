@@ -47,6 +47,8 @@ func (query *recordingCatalogQuery) Snapshot(ctx context.Context) (catalog.Snaps
 
 type recordingReportingQuery struct {
 	snapshot reporting.Snapshot
+	detail   reporting.Detail
+	exported reporting.ExportedDocument
 	err      error
 	calls    int
 	ctx      context.Context
@@ -126,6 +128,18 @@ func (query *recordingReportingQuery) Snapshot(ctx context.Context) (reporting.S
 	query.calls++
 	query.ctx = ctx
 	return query.snapshot, query.err
+}
+
+func (query *recordingReportingQuery) Detail(ctx context.Context, _ string) (reporting.Detail, error) {
+	query.calls++
+	query.ctx = ctx
+	return query.detail, query.err
+}
+
+func (query *recordingReportingQuery) Export(ctx context.Context, _ string, _ reporting.ExportFormat) (reporting.ExportedDocument, error) {
+	query.calls++
+	query.ctx = ctx
+	return query.exported, query.err
 }
 
 type recordingRunCommands struct {
@@ -238,6 +252,33 @@ func TestDesktopAppCatalogAndReportsDelegateWithLifecycleContext(t *testing.T) {
 	}
 	if reportingQuery.ctx == nil || reportingQuery.ctx.Value(contextKey{}) != "desktop" {
 		t.Fatal("reporting query did not receive the desktop lifecycle context")
+	}
+}
+
+func TestDesktopAppReadsAndExportsCompleteReports(t *testing.T) {
+	const id = "11111111-1111-4111-8111-111111111111"
+	query := &recordingReportingQuery{
+		detail:   reporting.Detail{SchemaVersion: reporting.CurrentSchemaVersion},
+		exported: reporting.ExportedDocument{Filename: "report.json", MediaType: "application/json", DataBase64: "e30="},
+	}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{reports: query}, nil
+	})
+	app.onStartup(context.Background())
+
+	detail, err := app.GetReportDetail(id)
+	if err != nil || detail.SchemaVersion != reporting.CurrentSchemaVersion {
+		t.Fatalf("GetReportDetail() = %#v, %v", detail, err)
+	}
+	exported, err := app.ExportReport(id, "json")
+	if err != nil || exported.Filename != "report.json" || exported.DataBase64 != "e30=" {
+		t.Fatalf("ExportReport() = %#v, %v", exported, err)
+	}
+	if query.calls != 2 {
+		t.Fatalf("report document calls = %d, want 2", query.calls)
+	}
+	if _, err := app.ExportReport(id, "exe"); !errors.As(err, new(DesktopBindingError)) {
+		t.Fatalf("invalid export error = %v", err)
 	}
 }
 

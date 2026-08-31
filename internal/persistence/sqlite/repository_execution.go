@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/894x/llm-studio/internal/domain"
 )
@@ -1002,6 +1003,52 @@ func (repository *Repository) ListReports(ctx context.Context) ([]domain.Report,
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close reports: %w", err)
+	}
+	result := make([]domain.Report, 0, len(stored))
+	for _, row := range stored {
+		report, err := row.decode()
+		if err != nil {
+			return nil, err
+		}
+		if err := validateReportStorage(ctx, repository.conn, report); err != nil {
+			return nil, err
+		}
+		result = append(result, report)
+	}
+	return result, nil
+}
+
+func (repository *Repository) ListReportsForRuns(ctx context.Context, runIDs []string) ([]domain.Report, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(runIDs) == 0 {
+		return []domain.Report{}, nil
+	}
+	arguments := make([]any, len(runIDs))
+	for index, runID := range runIDs {
+		if !domain.IsUUID(runID) {
+			return nil, errors.New("invalid report run id")
+		}
+		arguments[index] = runID
+	}
+	query := `SELECT id, schema_version, run_id, generated_at, document_json FROM reports WHERE run_id IN (` +
+		strings.TrimSuffix(strings.Repeat("?,", len(runIDs)), ",") + `) ORDER BY ` + reportGeneratedAtSortKeySQL + `, id`
+	rows, err := repository.conn.QueryContext(ctx, query, arguments...)
+	if err != nil {
+		return nil, fmt.Errorf("list reports for runs: %w", err)
+	}
+	defer rows.Close()
+	stored := make([]storedReportRow, 0, len(runIDs))
+	for rows.Next() {
+		var row storedReportRow
+		if err := row.scan(rows); err != nil {
+			return nil, fmt.Errorf("scan report for run: %w", err)
+		}
+		stored = append(stored, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate reports for runs: %w", err)
 	}
 	result := make([]domain.Report, 0, len(stored))
 	for _, row := range stored {

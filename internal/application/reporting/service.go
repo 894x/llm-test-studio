@@ -1,6 +1,5 @@
 // Package reporting exposes the safe, presentation-neutral report read model
-// used by overview and report adapters. Complete report documents deliberately
-// remain behind the storage port.
+// used by overview, report, desktop, and CLI adapters.
 package reporting
 
 import (
@@ -30,6 +29,14 @@ var (
 // scalar values that the reporting application service is allowed to expose.
 type Catalog interface {
 	ListReportProjections(context.Context) ([]ReportProjection, error)
+}
+
+// DocumentCatalog exposes the sealed report and its request-level results.
+// Large provider payloads remain behind the redacted evidence/artifact boundary.
+type DocumentCatalog interface {
+	Catalog
+	GetReport(context.Context, string) (domain.Report, error)
+	ListResults(context.Context, string) ([]domain.Result, error)
 }
 
 type ReportProjection struct {
@@ -75,6 +82,57 @@ type Summary struct {
 	CaseCount       uint64           `json:"case_count"`
 	FailedCaseCount uint64           `json:"failed_case_count"`
 	AttachmentCount uint64           `json:"attachment_count"`
+}
+
+// Detail is the complete machine-readable report view. Report contains the
+// sealed conclusion and case-level results; RequestResults contains the load
+// and protocol observations used to derive the aggregate metrics.
+type Detail struct {
+	SchemaVersion  int             `json:"schema_version"`
+	Report         domain.Report   `json:"report"`
+	RequestResults []domain.Result `json:"request_results"`
+}
+
+func (service Service) Detail(ctx context.Context, reportID string) (Detail, error) {
+	if !domain.IsUUID(reportID) {
+		return Detail{}, classified(ErrInconsistent, errors.New("report id must be a canonical UUID"))
+	}
+	documents, ok := service.catalog.(DocumentCatalog)
+	if !ok || documents == nil {
+		return Detail{}, ErrUnavailable
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Detail{}, err
+	}
+	report, err := documents.GetReport(ctx, reportID)
+	if err != nil {
+		return Detail{}, classifyPortError(ctx, err)
+	}
+	if report.ID != reportID {
+		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned another report"))
+	}
+	results, err := documents.ListResults(ctx, report.RunID)
+	if err != nil {
+		return Detail{}, classifyPortError(ctx, err)
+	}
+	requestResults := make([]domain.Result, 0, len(results))
+	seen := make(map[string]struct{}, len(results))
+	for _, result := range results {
+		if result.RunID != report.RunID {
+			return Detail{}, classified(ErrInconsistent, errors.New("request result belongs to another run"))
+		}
+		if _, duplicate := seen[result.ID]; duplicate {
+			return Detail{}, classified(ErrInconsistent, errors.New("duplicate result id"))
+		}
+		seen[result.ID] = struct{}{}
+		if result.RequestID != "" {
+			requestResults = append(requestResults, result)
+		}
+	}
+	return Detail{SchemaVersion: CurrentSchemaVersion, Report: report, RequestResults: requestResults}, nil
 }
 
 func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {

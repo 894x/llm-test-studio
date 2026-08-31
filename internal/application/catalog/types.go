@@ -126,6 +126,7 @@ type UpdateModelCommand struct {
 type CreateChannelCommand struct {
 	Name         string          `json:"name"`
 	BaseURL      string          `json:"base_url"`
+	APIKey       string          `json:"api_key"`
 	Protocol     domain.Protocol `json:"protocol"`
 	Enabled      bool            `json:"enabled"`
 	CredentialID string          `json:"credential_id,omitempty"`
@@ -136,6 +137,7 @@ type UpdateChannelCommand struct {
 	ExpectedRevision uint64          `json:"expected_revision"`
 	Name             string          `json:"name"`
 	BaseURL          string          `json:"base_url"`
+	APIKey           string          `json:"api_key"`
 	Protocol         domain.Protocol `json:"protocol"`
 	Enabled          bool            `json:"enabled"`
 }

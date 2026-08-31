@@ -285,6 +285,7 @@ var migration0002Statements = []string{
 }
 
 var migration0002ObjectPattern = regexp.MustCompile(`(?i)^CREATE\s+(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER)\s+([a-z_][a-z0-9_]*)\b`)
+var migrationTriggerTablePattern = regexp.MustCompile(`(?i)\bON\s+([a-z_][a-z0-9_]*)\b`)
 
 func migration0002Checksum() string {
 	definition := migration0002Name + "\n" + strings.Join(migration0002Statements, "\n-- statement --\n")
@@ -342,7 +343,7 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 	if err := rows.Close(); err != nil {
 		return 0, fmt.Errorf("close sqlite migration history: %w", err)
 	}
-	if len(history) < 1 || len(history) > 4 {
+	if len(history) < 1 || len(history) > CurrentSchemaVersion {
 		return 0, fmt.Errorf("sqlite schema is unknown: migration history contains %d rows", len(history))
 	}
 	want := []record{
@@ -350,6 +351,7 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		{version: 2, name: migration0002Name, checksum: migration0002Checksum()},
 		{version: 3, name: migration0003Name, checksum: migration0003Checksum()},
 		{version: 4, name: migration0004Name, checksum: migration0004Checksum()},
+		{version: 5, name: migration0005Name, checksum: migration0005Checksum()},
 	}
 	for index, got := range history {
 		expected := want[index]
@@ -384,7 +386,11 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		if err := validateAppliedSchema0003(ctx, conn); err != nil {
 			return 0, err
 		}
-	} else if err := validateAppliedSchema0004(ctx, conn); err != nil {
+	} else if version == 4 {
+		if err := validateAppliedSchema0004(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if err := validateAppliedSchema0005(ctx, conn); err != nil {
 		return 0, err
 	}
 	return version, nil
@@ -421,7 +427,7 @@ func validateAppliedDomainSchema(ctx context.Context, conn *sql.Conn, additional
 	for name, definition := range legacyIndexes {
 		expectedIndexes[name] = definition.table
 	}
-	expectedTriggers := make(map[string]bool)
+	expectedTriggers := make(map[string]string)
 	expectedDDL := make(map[string]string, len(migration0002Statements))
 	for _, statement := range migration0002Statements {
 		match := migration0002ObjectPattern.FindStringSubmatch(strings.TrimSpace(statement))
@@ -436,7 +442,11 @@ func validateAppliedDomainSchema(ctx context.Context, conn *sql.Conn, additional
 		} else if kind == "index" {
 			expectedIndexes[name] = ""
 		} else {
-			expectedTriggers[name] = true
+			tableMatch := migrationTriggerTablePattern.FindStringSubmatch(statement)
+			if len(tableMatch) != 2 {
+				return errors.New("sqlite migration 0002 contains a trigger without a target table")
+			}
+			expectedTriggers[name] = strings.ToLower(tableMatch[1])
 		}
 	}
 	for _, statement := range additionalStatements {
@@ -452,7 +462,11 @@ func validateAppliedDomainSchema(ctx context.Context, conn *sql.Conn, additional
 		} else if kind == "index" {
 			expectedIndexes[name] = ""
 		} else {
-			expectedTriggers[name] = true
+			tableMatch := migrationTriggerTablePattern.FindStringSubmatch(statement)
+			if len(tableMatch) != 2 {
+				return errors.New("sqlite migration contains a trigger without a target table")
+			}
+			expectedTriggers[name] = strings.ToLower(tableMatch[1])
 		}
 	}
 
@@ -489,7 +503,8 @@ func validateAppliedDomainSchema(ctx context.Context, conn *sql.Conn, additional
 			}
 			seenIndexes[name] = true
 		case "trigger":
-			if !expectedTriggers[name] || table != "execution_run_revisions" {
+			expectedTable, ok := expectedTriggers[name]
+			if !ok || table != expectedTable {
 				rows.Close()
 				return fmt.Errorf("sqlite schema is unknown: migrated database has trigger %q on table %q", name, table)
 			}

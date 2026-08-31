@@ -113,6 +113,31 @@ func TestStreamingExecutorRequiresDoneAndMeasuresFirstSemanticToken(t *testing.T
 	}
 }
 
+func TestClientAcceptsKimiK3AsAnOpenAICompatibleProtocol(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	channel := testChannel(server.URL)
+	channel.Protocol = domain.ProtocolKimiK3
+	lease := testLease(t, "super-secret")
+	client, err := NewClient(channel, lease, server.Client().Transport)
+	if err != nil {
+		t.Fatalf("NewClient(Kimi K3) error = %v", err)
+	}
+	_ = lease.Close()
+	t.Cleanup(func() { _ = client.Close() })
+	executor, err := client.Executor(chatRequest(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation := executor(context.Background(), load.Request{}); !observation.Success {
+		t.Fatalf("Kimi K3 observation = %#v", observation)
+	}
+}
+
 func TestStreamingExecutorRejectsHTTP200WithoutDone(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")

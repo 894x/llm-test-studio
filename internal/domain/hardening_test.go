@@ -721,9 +721,10 @@ func TestReportValidationClosesSnapshotCaseAndSubjectIdentity(t *testing.T) {
 	report = validReport()
 	second := report.CaseResults[0]
 	second.EntityMeta = validEntityMeta("123e4567-e89b-42d3-a456-426614174098")
+	second.RequestID = "request-2"
 	report.CaseResults = append(report.CaseResults, second)
-	if err := report.Validate(); err == nil {
-		t.Fatal("completed report accepted two results for one planned case")
+	if err := report.Validate(); err != nil {
+		t.Fatalf("performance report rejected repeated observations for one planned case: %v", err)
 	}
 
 	report = validReport()

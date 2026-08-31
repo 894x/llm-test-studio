@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("sqlite repository record not found")
-	ErrConflict = errors.New("sqlite repository revision conflict")
-	ErrCorrupt  = errors.New("sqlite repository data is corrupt")
+	ErrNotFound            = errors.New("sqlite repository record not found")
+	ErrConflict            = errors.New("sqlite repository revision conflict")
+	ErrCorrupt             = errors.New("sqlite repository data is corrupt")
+	ErrAmbiguousPlanTarget = errors.New("sqlite plan must contain exactly one model and one channel")
 )
 
 type RepositoryOptions struct {
@@ -107,7 +108,7 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 	}
 	if version != CurrentSchemaVersion {
 		cleanup()
-		return nil, fmt.Errorf("%w: repository requires schema version 3", ErrCorrupt)
+		return nil, fmt.Errorf("%w: repository requires schema version %d", ErrCorrupt, CurrentSchemaVersion)
 	}
 	return &Repository{db: db, conn: conn}, nil
 }
