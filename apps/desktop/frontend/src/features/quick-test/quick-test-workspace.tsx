@@ -11,6 +11,14 @@ import {
   type DesktopClient,
 } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
+import {
+  Autocomplete,
+  AutocompleteContent,
+  AutocompleteEmpty,
+  AutocompleteInput,
+  AutocompleteItem,
+  AutocompleteList,
+} from "@/components/ui/autocomplete"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -21,8 +29,10 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -36,10 +46,13 @@ import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { PerformanceCharts } from "@/features/reports/performance-charts"
+import { PerformanceLatencyTable } from "@/features/reports/performance-latency-table"
 
 import {
   QUICK_TEST_ERROR_MESSAGES,
+  updateQuickTestForm,
   type QuickPerformanceCommand,
+  type QuickPerformanceProgress,
   type QuickPerformanceReport,
   type QuickTestAddressMode,
   type QuickTestCommand,
@@ -60,6 +73,12 @@ export interface QuickTestModelCandidate {
   name: string
 }
 
+export interface QuickTestChannelCandidate {
+  id: string
+  name: string
+  baseUrl: string
+}
+
 interface TestedQuickTest {
   command: QuickTestCommand
   result: QuickTestResult
@@ -68,6 +87,7 @@ interface TestedQuickTest {
 
 export function QuickTestWorkspace({
   modelCandidates,
+  channelCandidates = [],
   runQuickTest,
   runQuickPerformanceTest,
   saveQuickTestConnection,
@@ -78,6 +98,7 @@ export function QuickTestWorkspace({
   onOpenReport,
 }: QuickTestActions & {
   modelCandidates: readonly QuickTestModelCandidate[]
+  channelCandidates?: readonly QuickTestChannelCandidate[]
   refreshCatalog: () => Promise<CatalogSnapshot>
   onCatalogUpdated: (catalog: CatalogSnapshot) => void
   onOpenCatalog: () => void
@@ -104,12 +125,35 @@ export function QuickTestWorkspace({
   const existingModel = matchingModels.length === 1 ? matchingModels[0] : undefined
   const ambiguousModelName = matchingModels.length > 1
   const modelOptionNames = [...new Set(modelCandidates.map((candidate) => candidate.name))]
+  const selectedChannel = channelCandidates.find((candidate) => candidate.id === form.channel_id)
 
   const update = <K extends keyof QuickTestCommand>(
     key: K,
     value: QuickTestCommand[K],
   ) => {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => updateQuickTestForm(current, key, value))
+    setTested(null)
+    setRequestError("")
+    setSaved(false)
+  }
+
+  const selectChannel = (channelID: string) => {
+    if (channelID === "manual") {
+      setForm((current) => {
+        const { channel_id: _channelID, ...manual } = current
+        return manual
+      })
+    } else {
+      const channel = channelCandidates.find((candidate) => candidate.id === channelID)
+      if (!channel) return
+      setForm((current) => ({
+        ...current,
+        address_mode: "base_url",
+        url: channel.baseUrl,
+        api_key: "",
+        channel_id: channel.id,
+      }))
+    }
     setTested(null)
     setRequestError("")
     setSaved(false)
@@ -173,6 +217,31 @@ export function QuickTestWorkspace({
             </div>
             <form onSubmit={submit}>
               <FieldGroup>
+                <Field className="block">
+                  <FieldLabel>从渠道填充</FieldLabel>
+                  <FieldContent>
+                    <Select value={form.channel_id ?? "manual"} onValueChange={selectChannel}>
+                      <SelectTrigger aria-label="从渠道填充" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="manual">手动输入地址与 API Key</SelectItem>
+                          {channelCandidates.map((channel) => (
+                            <SelectItem key={channel.id} value={channel.id}>{channel.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {selectedChannel
+                        ? `已填入 ${selectedChannel.name} 的地址；保存的 API Key 由 Core 安全读取。`
+                        : channelCandidates.length
+                          ? "可选择已启用渠道自动填充，也可以继续手动粘贴。"
+                          : "当前没有可用于快速测试的已启用渠道，请手动输入。"}
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
                 <fieldset>
                   <legend className="mb-2 text-xs font-medium">地址模式</legend>
                   <RadioGroup
@@ -209,7 +278,9 @@ export function QuickTestWorkspace({
                     autoComplete="new-password"
                     value={form.api_key}
                     onChange={(value) => update("api_key", value)}
-                    required
+                    disabled={!!selectedChannel}
+                    placeholder={selectedChannel ? `已使用 ${selectedChannel.name} 的保存凭据` : undefined}
+                    required={!selectedChannel}
                   />
                   <ModelIDField
                     value={form.model_id}
@@ -275,6 +346,7 @@ export function QuickTestWorkspace({
                 <ResultPanel
                   result={tested.result}
                   saved={saved}
+                  catalogChannelSelected={!!tested.command.channel_id}
                   onSave={() => setSaveOpen(true)}
                   onPerformance={() => setPerformanceOpen(true)}
                   onOpenCatalog={onOpenCatalog}
@@ -295,7 +367,7 @@ export function QuickTestWorkspace({
 
       {tested?.result.success ? (
         <>
-          <SaveConnectionSheet
+            <SaveConnectionSheet
             open={saveOpen}
             onOpenChange={setSaveOpen}
             result={tested.result}
@@ -378,18 +450,34 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
     <Field className="block">
       <FieldLabel htmlFor="quick-test-model-id">模型 ID</FieldLabel>
       <FieldContent>
-        <Input
-          id="quick-test-model-id"
-          aria-label="模型 ID"
-          list="quick-test-model-options"
+        <Autocomplete
+          items={optionNames}
           value={value}
-          placeholder="选择目录模型或手动输入"
-          required
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <datalist id="quick-test-model-options">
-          {optionNames.map((name) => <option key={name} value={name} />)}
-        </datalist>
+          onValueChange={onChange}
+          modal={false}
+          openOnInputClick
+        >
+          <AutocompleteInput
+            id="quick-test-model-id"
+            aria-label="模型 ID"
+            placeholder="选择目录模型或手动输入"
+            required
+            triggerLabel="显示模型候选"
+            triggerDisabled={optionNames.length === 0}
+          />
+          {optionNames.length > 0 ? (
+            <AutocompleteContent>
+              <AutocompleteEmpty>无匹配模型，可继续使用当前输入</AutocompleteEmpty>
+              <AutocompleteList>
+                {(name) => (
+                  <AutocompleteItem key={name} value={name}>
+                    {name}
+                  </AutocompleteItem>
+                )}
+              </AutocompleteList>
+            </AutocompleteContent>
+          ) : null}
+        </Autocomplete>
         <FieldDescription>
           {existingModel
             ? `已匹配目录模型 ${existingModel.name}，保存连接时将直接复用。`
@@ -404,9 +492,10 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
   )
 }
 
-function ResultPanel({ result, saved, onSave, onPerformance, onOpenCatalog }: {
+function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, onPerformance, onOpenCatalog }: {
   result: QuickTestResult
   saved: boolean
+  catalogChannelSelected?: boolean
   onSave: () => void
   onPerformance: () => void
   onOpenCatalog: () => void
@@ -444,7 +533,14 @@ function ResultPanel({ result, saved, onSave, onPerformance, onOpenCatalog }: {
       </dl>
       {result.success ? (
         <div className="flex flex-wrap items-center gap-2 border-t p-4">
-          {saved ? (
+          {catalogChannelSelected ? (
+            <>
+              <span className="text-xs text-success">当前连接来自已保存渠道。</span>
+              <Button size="sm" variant="outline" onClick={onOpenCatalog}>
+                打开模型与渠道<ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            </>
+          ) : saved ? (
             <>
               <span className="text-xs text-success">模型、渠道与映射已保存。</span>
               <Button size="sm" variant="outline" onClick={onOpenCatalog}>
@@ -485,18 +581,20 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   open: boolean
   onOpenChange: (open: boolean) => void
   testedCommand: QuickTestCommand
-  run: (command: QuickPerformanceCommand) => Promise<QuickPerformanceReport>
+  run: (command: QuickPerformanceCommand, onProgress?: (progress: QuickPerformanceProgress) => void) => Promise<QuickPerformanceReport>
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
 }) {
   const [form, setForm] = useState<PerformanceForm>(DEFAULT_PERFORMANCE_FORM)
   const [pending, setPending] = useState(false)
   const [report, setReport] = useState<QuickPerformanceReport | null>(null)
+  const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
   const [error, setError] = useState("")
 
   const update = (key: keyof PerformanceForm, value: number) => {
     setForm((current) => ({ ...current, [key]: value }))
     setReport(null)
+    setProgress(null)
     setError("")
   }
 
@@ -511,11 +609,13 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
     }
     setPending(true)
     setReport(null)
+    setProgress(null)
     setError("")
     void run({
       address_mode: testedCommand.address_mode,
       url: testedCommand.url,
       api_key: testedCommand.api_key,
+      ...(testedCommand.channel_id ? { channel_id: testedCommand.channel_id } : {}),
       model_id: testedCommand.model_id,
       request_count: form.requestCount,
       duration_ms: form.durationSeconds * 1_000,
@@ -523,7 +623,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       timeout_ms: form.timeoutSeconds * 1_000,
       input_tokens: form.inputTokens,
       output_tokens: form.outputTokens,
-    })
+    }, setProgress)
       .then((nextReport) => {
         setReport(nextReport)
         if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
@@ -536,7 +636,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl">
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>快速性能测试</SheetTitle>
           <SheetDescription>
@@ -560,7 +660,9 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
               {error ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{error}</FieldError> : null}
             </FieldGroup>
           </form>
-          {pending ? (
+          {pending && progress ? (
+            <QuickPerformanceProgressPanel progress={progress} requestCount={form.requestCount} />
+          ) : pending ? (
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Spinner className="size-5" />
               <p className="mt-3 text-sm font-medium">性能测试运行中</p>
@@ -633,7 +735,9 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
       <Separator />
       <div className="space-y-4 p-4">
         <MetricSection title="执行摘要">
-          <ResultValue label="成功 / 完成" value={`${report.metrics.succeeded} / ${report.metrics.completed}`} numeric />
+          <ResultValue label="完成 / 计划" value={`${report.metrics.completed} / ${report.progress.planned}`} numeric />
+          <ResultValue label="成功" value={String(report.metrics.succeeded)} numeric />
+          <ResultValue label="失败" value={String(report.metrics.failed)} numeric />
           <ResultValue label="成功率" value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
           <ResultValue label="总耗时" value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
           <ResultValue label="峰值在途" value={String(report.progress.peak_in_flight)} numeric />
@@ -641,18 +745,15 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
         <MetricSection title="吞吐">
           <ResultValue label="请求速率" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric />
           <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
-          <ResultValue label="输入 / 输出 TPM" value={`${formatNumber(report.metrics.input_tpm)} / ${formatNumber(report.metrics.output_tpm)}`} numeric />
+          <ResultValue label="输入 TPM" value={`${formatNumber(report.metrics.input_tpm)} TPM`} numeric />
+          <ResultValue label="输出 TPM" value={`${formatNumber(report.metrics.output_tpm)} TPM`} numeric />
+          <ResultValue label="总 TPM" value={`${formatNumber(report.metrics.total_tpm)} TPM`} numeric />
           <ResultValue label="生成速度" value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
         </MetricSection>
-        <MetricSection title="延迟分位">
-          <ResultValue label="E2E P50 / P95 / P99" value={`${formatNumber(report.metrics.e2e_p50_ms)} / ${formatNumber(report.metrics.e2e_p95_ms)} / ${formatNumber(report.metrics.e2e_p99_ms)} ms`} numeric />
-          <ResultValue label="TTFT P50 / P95 / P99" value={`${formatNumber(report.metrics.ttft_p50_ms)} / ${formatNumber(report.metrics.ttft_p95_ms)} / ${formatNumber(report.metrics.ttft_p99_ms)} ms`} numeric />
-          <ResultValue label="TPOT P50 / P95 / P99" value={`${formatNumber(report.metrics.tpot_p50_ms)} / ${formatNumber(report.metrics.tpot_p95_ms)} / ${formatNumber(report.metrics.tpot_p99_ms)} ms`} numeric />
-          <ResultValue label="调度延迟 P95" value={`${formatNumber(report.metrics.schedule_lag_p95_ms)} ms`} numeric />
-        </MetricSection>
+        <PerformanceLatencyTable metrics={report.metrics} />
         <MetricSection title="Token">
           <ResultValue label="Prompt / Completion / Cached" value={`${report.metrics.prompt_tokens} / ${report.metrics.completion_tokens} / ${report.metrics.cached_tokens}`} numeric />
-          <ResultValue label="缓存率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
+          <ResultValue label="KV 缓存命中率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
           <ResultValue label="超时请求" value={String(report.metrics.timed_out)} numeric />
         </MetricSection>
         {report.samples.length ? <PerformanceCharts layout="stacked" samples={report.samples} percentiles={report.metrics} /> : null}
@@ -678,6 +779,40 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <p role="status" className="border-t pt-3 text-[11px] text-warning">性能结果已生成，但未能写入报告目录。</p>
         ) : null}
       </div>
+    </section>
+  )
+}
+
+function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: QuickPerformanceProgress; requestCount: number }) {
+  const percentage = requestCount > 0 && progress.planned > 0
+    ? Math.min(100, progress.completed / progress.planned * 100)
+    : undefined
+  const phaseLabel = progress.phase === "draining" ? "排空中" : progress.phase === "cancelled" ? "已取消" : "发送中"
+  return (
+    <section role="status" aria-label="性能测试进度" className="rounded-lg border bg-surface-subtle p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Spinner className="size-4 shrink-0" />
+          <span className="text-sm font-medium">{phaseLabel}</span>
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {percentage === undefined ? "持续时间模式" : `${formatNumber(percentage)}%`}
+        </span>
+      </div>
+      <Progress
+        className="mt-3 h-1.5"
+        value={percentage}
+        aria-label="请求完成进度"
+        aria-valuenow={percentage}
+        aria-valuemin={percentage === undefined ? undefined : 0}
+        aria-valuemax={percentage === undefined ? undefined : 100}
+      />
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
+        <ResultValue label="完成" value={`${progress.completed} / ${progress.planned}`} numeric />
+        <ResultValue label="成功" value={String(progress.succeeded)} numeric />
+        <ResultValue label="失败" value={String(progress.failed)} numeric />
+        <ResultValue label="在途" value={String(progress.in_flight)} numeric />
+      </dl>
     </section>
   )
 }

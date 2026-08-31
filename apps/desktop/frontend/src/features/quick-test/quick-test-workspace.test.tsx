@@ -6,9 +6,85 @@ import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopClientError } from "@/app/desktop-client"
 
 import { QuickTestWorkspace } from "./quick-test-workspace"
-import type { QuickPerformanceReport, QuickTestResult } from "./data"
+import { updateQuickTestForm, type QuickPerformanceProgress, type QuickPerformanceReport, type QuickTestResult } from "./data"
 
 describe("QuickTestWorkspace", () => {
+  it("uses a selected catalog channel without exposing its stored API key", async () => {
+    const user = userEvent.setup()
+    const runQuickTest = vi.fn(async () => ({
+      schema_version: 1 as const,
+      success: true,
+      address_mode: "base_url" as const,
+      base_url: "https://api.example.test/v1",
+      endpoint: "https://api.example.test/v1/chat/completions",
+      http_status: 200,
+      e2e_ms: 100,
+      prompt_tokens: 1,
+      completion_tokens: 1,
+      cached_tokens: 0,
+    }))
+
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        channelCandidates={[{
+          id: "10000000-0000-4000-8000-000000000001",
+          name: "OpenAI 主渠道",
+          baseUrl: "https://api.example.test/v1",
+        }]}
+        runQuickTest={runQuickTest}
+        runQuickPerformanceTest={vi.fn()}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("combobox", { name: "从渠道填充" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI 主渠道" }))
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue("https://api.example.test/v1")
+    expect(screen.getByLabelText("API Key")).toBeDisabled()
+    expect(screen.getByLabelText("API Key")).toHaveAttribute("placeholder", "已使用 OpenAI 主渠道 的保存凭据")
+
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-test")
+    await user.click(screen.getByRole("button", { name: "发送测试" }))
+
+    await waitFor(() => expect(runQuickTest).toHaveBeenCalledWith({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "",
+      channel_id: "10000000-0000-4000-8000-000000000001",
+      model_id: "gpt-test",
+      prompt: "Reply with OK only.",
+      timeout_ms: 30_000,
+    }))
+    const result = screen.getByRole("region", { name: "测试结果" })
+    expect(result).toHaveTextContent("当前连接来自已保存渠道")
+    expect(within(result).queryByRole("button", { name: "保存为模型与渠道" })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent("sk-")
+  })
+
+  it("removes the stored channel credential source when its copied address is edited", () => {
+    expect(updateQuickTestForm({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "",
+      channel_id: "10000000-0000-4000-8000-000000000001",
+      model_id: "gpt-test",
+      prompt: "Reply with OK only.",
+      timeout_ms: 30_000,
+    }, "url", "https://manual.example.test/v1")).toEqual({
+      address_mode: "base_url",
+      url: "https://manual.example.test/v1",
+      api_key: "",
+      model_id: "gpt-test",
+      prompt: "Reply with OK only.",
+      timeout_ms: 30_000,
+    })
+  })
+
   it("runs a zero-configuration connectivity test without exposing secrets or payloads", async () => {
     const user = userEvent.setup()
     const runQuickTest = vi.fn(async () => ({
@@ -114,13 +190,19 @@ describe("QuickTestWorkspace", () => {
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
-    }))
+    }, expect.any(Function)))
     const report = await within(dialog).findByRole("region", { name: "性能报告" })
-    expect(report).toHaveTextContent("4 / 4")
+    expect(report).toHaveTextContent("完成 / 计划")
+    expect(report).toHaveTextContent("失败")
     expect(report).toHaveTextContent("100%")
     expect(report).toHaveTextContent("12.5 req/s")
     expect(report).toHaveTextContent("750 RPM")
-    expect(report).toHaveTextContent("60 / 80 / 84 ms")
+    expect(report).toHaveTextContent("39,000 TPM")
+    const latency = within(report).getByRole("table", { name: "延迟分布统计" })
+    expect(within(latency).getByRole("row", { name: /TTFT/ })).toHaveTextContent(/32\s*30\s*40\s*42\s*44/)
+    expect(within(latency).getByRole("row", { name: /TPOT/ })).toHaveTextContent(/4\.5\s*4\s*5\s*6\s*7/)
+    expect(within(latency).getByRole("row", { name: /E2E/ })).toHaveTextContent(/65\s*60\s*75\s*80\s*84/)
+    expect(within(latency).getByRole("row", { name: /客户端排队（本地调度延迟）/ })).toHaveTextContent(/0\.5\s*0\s*1\.8\s*2\s*2\.8/)
     expect(within(report).getByRole("figure", { name: "TTFT 分布图" })).toBeInTheDocument()
     expect(within(report).getByRole("figure", { name: "TPOT 时间曲线" })).toBeInTheDocument()
     expect(within(report).getByRole("figure", { name: "E2E 时间曲线" })).toBeInTheDocument()
@@ -128,6 +210,45 @@ describe("QuickTestWorkspace", () => {
     await user.click(within(report).getByRole("button", { name: "查看正式报告" }))
     expect(onOpenReport).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
     expect(report).not.toHaveTextContent("sk-private-value")
+  })
+
+  it("shows authoritative progress while a performance test is running", async () => {
+    const user = userEvent.setup()
+    let resolvePerformance!: (report: QuickPerformanceReport) => void
+    const runQuickPerformanceTest = vi.fn((_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
+      onProgress?.({
+        phase: "sending", planned: 10, launched: 5, completed: 3, in_flight: 2,
+        peak_in_flight: 2, succeeded: 2, failed: 1, rejected: 0,
+        send_duration_ms: 120, drain_duration_ms: 0, total_duration_ms: 120,
+      })
+      return new Promise<QuickPerformanceReport>((resolve) => { resolvePerformance = resolve })
+    })
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
+    expect(status).toHaveTextContent("发送中")
+    expect(status).toHaveTextContent(/完成\s*3 \/ 10/)
+    expect(status).toHaveTextContent(/成功\s*2/)
+    expect(status).toHaveTextContent(/失败\s*1/)
+    expect(status).toHaveTextContent(/在途\s*2/)
+    expect(within(status).getByRole("progressbar", { name: "请求完成进度" })).toHaveAttribute("aria-valuenow", "30")
+
+    resolvePerformance(successfulPerformanceReport())
+    await within(dialog).findByRole("region", { name: "性能报告" })
   })
 
   it("requires a request-count or duration target before starting performance testing", async () => {
@@ -271,11 +392,14 @@ describe("QuickTestWorkspace", () => {
     )
 
     const modelID = screen.getByLabelText("模型 ID")
-    expect(modelID).toHaveAttribute("list", "quick-test-model-options")
-    expect(document.querySelector('option[value="gpt-5.2"]')).not.toBeNull()
-    expect(document.querySelector('option[value="gpt-4.1-mini"]')).not.toBeNull()
+    expect(modelID).not.toHaveAttribute("list")
+    expect(screen.getByRole("button", { name: "显示模型候选" })).toBeInTheDocument()
+    await user.click(modelID)
+    expect(screen.getByRole("listbox")).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "gpt-5.2" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "gpt-4.1-mini" })).toBeInTheDocument()
 
-    await user.type(modelID, "gpt-5.2")
+    await user.click(screen.getByRole("option", { name: "gpt-5.2" }))
     expect(modelID).toHaveValue("gpt-5.2")
     await user.clear(modelID)
     await user.type(modelID, "my-private-model-id")
@@ -312,6 +436,7 @@ describe("QuickTestWorkspace", () => {
     await user.type(screen.getByLabelText("接口地址"), "https://api.example.test/v1")
     await user.type(screen.getByLabelText("API Key"), "sk-private-value")
     await user.type(screen.getByLabelText("模型 ID"), existingModel.name)
+    await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "发送测试" }))
     await user.click(await screen.findByRole("button", { name: "保存为模型与渠道" }))
 
@@ -377,6 +502,7 @@ describe("QuickTestWorkspace", () => {
     await user.type(url, "https://tested.example/v1")
     await user.type(apiKey, "sk-tested")
     await user.type(modelID, existingModel.name)
+    await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "发送测试" }))
     await user.clear(url)
     await user.type(url, "https://untested.example/v1")
@@ -384,6 +510,7 @@ describe("QuickTestWorkspace", () => {
     await user.type(apiKey, "sk-untested")
     await user.clear(modelID)
     await user.type(modelID, "untested-model")
+    await user.keyboard("{Escape}")
     resolveTest({
       schema_version: 1, success: true, address_mode: "base_url",
       base_url: "https://tested.example/v1",
@@ -477,6 +604,7 @@ async function fillAndRun(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("接口地址"), "https://api.example.test/v1")
   await user.type(screen.getByLabelText("API Key"), "sk-private-value")
   await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
+  await user.keyboard("{Escape}")
   await user.click(screen.getByRole("button", { name: "发送测试" }))
 }
 
@@ -503,7 +631,7 @@ function successfulPerformanceReport(): QuickPerformanceReport {
     },
     progress: {
       phase: "completed", planned: 4, launched: 4, completed: 4,
-      peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
+      in_flight: 0, peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
       send_duration_ms: 300, drain_duration_ms: 20, total_duration_ms: 320,
     },
     metrics: {
@@ -514,7 +642,8 @@ function successfulPerformanceReport(): QuickPerformanceReport {
       ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
       tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,
       e2e_p50_ms: 60, e2e_p90_ms: 75, e2e_p95_ms: 80, e2e_p99_ms: 84, e2e_average_ms: 65,
-      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
+      schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
       prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20, cache_rate_percent: 25,
     },
     samples: [

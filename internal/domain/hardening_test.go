@@ -256,6 +256,28 @@ func TestSuiteAndPlanPinEveryCaseRevision(t *testing.T) {
 	}
 }
 
+func TestPlanAllowsTargetsToBeSelectedAtRunTime(t *testing.T) {
+	plan := Plan{
+		EntityMeta: validEntityMeta(testPlanID), Name: "runtime target smoke",
+		Cases: []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
+		Load:  validRunSnapshot().Load, SLA: validRunSnapshot().SLA,
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("targetless Plan.Validate() error = %v", err)
+	}
+
+	plan.ModelIDs = []string{testModelID}
+	if err := plan.Validate(); err == nil {
+		t.Fatal("plan with only a model allowlist validated")
+	}
+
+	plan.ModelIDs = nil
+	plan.ChannelIDs = []string{testChannelID}
+	if err := plan.Validate(); err == nil {
+		t.Fatal("plan with only a channel allowlist validated")
+	}
+}
+
 func TestChannelModelAndTestCaseValidateTheirOwnedIdentity(t *testing.T) {
 	mapping := ChannelModel{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174023"),

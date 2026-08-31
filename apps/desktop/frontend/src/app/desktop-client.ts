@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@/features/runs/data"
+import type { StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
   parseComparisonSnapshot,
@@ -35,9 +35,11 @@ import {
   type ReportSnapshot,
 } from "@/features/reports/data"
 import {
+  parseQuickPerformanceProgress,
   parseQuickPerformanceReport,
   parseQuickTestResult,
   type QuickPerformanceCommand,
+  type QuickPerformanceProgress,
   type QuickPerformanceReport,
   type QuickTestCommand,
   type QuickTestResult,
@@ -114,11 +116,12 @@ export interface DesktopClient extends CatalogActions {
   exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
+  startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
   runQuickTest(command: QuickTestCommand): Promise<QuickTestResult>
-  runQuickPerformanceTest(command: QuickPerformanceCommand): Promise<QuickPerformanceReport>
+  runQuickPerformanceTest(command: QuickPerformanceCommand, onProgress?: (progress: QuickPerformanceProgress) => void): Promise<QuickPerformanceReport>
   saveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<CatalogSnapshot>
 }
 
@@ -130,11 +133,12 @@ type WailsDesktopBinding = {
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
+  StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
   RunQuickTest(command: QuickTestCommand): Promise<unknown>
-  RunQuickPerformanceTest(command: QuickPerformanceCommand): Promise<unknown>
+  RunQuickPerformanceTest(command: QuickPerformanceCommand, progressId: string): Promise<unknown>
   SaveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<unknown>
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
@@ -211,6 +215,14 @@ export function createFixtureClient(
       }
       return cloneSnapshot(workspace)
     },
+		async startRunTarget(command) {
+			const plan = catalogState.plans.find((item) => item.id === command.plan_id)
+			const model = catalogState.models.find((item) => item.id === command.model_id)
+			const channel = catalogState.channels.find((item) => item.id === command.channel_id)
+			const mapped = catalogState.channel_models.some((item) => item.model_id === command.model_id && item.channel_id === command.channel_id)
+			if (!plan || !model || !channel || !mapped) throw new DesktopClientError("invalid_identifier")
+			return cloneSnapshot(workspace)
+		},
     async stopSending(runId) {
       workspace = updateRun(workspace, runId, "draining")
       return cloneSnapshot(workspace)
@@ -260,7 +272,9 @@ export function createFixtureClient(
         cached_tokens: 0,
       }
     },
-    async runQuickPerformanceTest(command) {
+    async runQuickPerformanceTest(command, onProgress) {
+      onProgress?.(fixtureQuickPerformanceProgress(command, "sending", 0))
+      onProgress?.(fixtureQuickPerformanceProgress(command, "completed", command.request_count || Math.max(1, command.concurrency * 2)))
       return fixtureQuickPerformanceReport(command)
     },
     async saveQuickTestConnection(command) {
@@ -414,11 +428,12 @@ function createLazyFixtureClient(): DesktopClient {
 		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
+		startRunTarget: async (command) => (await client).startRunTarget(command),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
     runQuickTest: async (command) => (await client).runQuickTest(command),
-    runQuickPerformanceTest: async (command) => (await client).runQuickPerformanceTest(command),
+    runQuickPerformanceTest: async (command, onProgress) => (await client).runQuickPerformanceTest(command, onProgress),
     saveQuickTestConnection: async (command) => (await client).saveQuickTestConnection(command),
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
@@ -457,6 +472,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.GetComparisons(), parseComparisonSnapshot),
     startRun: async (planId) =>
       callBinding(() => binding.StartRun(planId), parseSnapshot),
+		startRunTarget: async (command) =>
+			callBinding(() => binding.StartRunTarget(command), parseSnapshot),
     stopSending: async (runId) =>
       callBinding(() => binding.StopSending(runId), parseSnapshot),
     cancelRun: async (runId) =>
@@ -465,8 +482,17 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
     runQuickTest: async (command) =>
       callBinding(() => binding.RunQuickTest(command), parseQuickTestResult),
-    runQuickPerformanceTest: async (command) =>
-      callBinding(() => binding.RunQuickPerformanceTest(command), parseQuickPerformanceReport),
+    runQuickPerformanceTest: async (command, onProgress) => {
+      const subscription = subscribeQuickPerformanceProgress(onProgress)
+      try {
+        return await callBinding(
+          () => binding.RunQuickPerformanceTest(command, subscription.progressID),
+          parseQuickPerformanceReport,
+        )
+      } finally {
+        subscription.unsubscribe()
+      }
+    },
     saveQuickTestConnection: async (command) =>
       callBinding(() => binding.SaveQuickTestConnection(command), parseCatalogSnapshot),
     createModel: async (command) => callBinding(() => binding.CreateModel(command), parseCatalogSnapshot),
@@ -502,6 +528,7 @@ function unavailableClient(): DesktopClient {
 		exportReport: () => reject(),
 		getComparisons: () => reject(),
     startRun: () => reject(),
+		startRunTarget: () => reject(),
     stopSending: () => reject(),
     cancelRun: () => reject(),
 		startComparison: () => reject(),
@@ -548,6 +575,7 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     typeof candidate.GetReports !== "function" ||
 		typeof candidate.GetComparisons !== "function" ||
     typeof candidate.StartRun !== "function" ||
+		typeof candidate.StartRunTarget !== "function" ||
     typeof candidate.StopSending !== "function" ||
     typeof candidate.CancelRun !== "function" ||
 		typeof candidate.StartComparison !== "function" ||
@@ -559,6 +587,29 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     return undefined
   }
   return candidate as WailsDesktopBinding
+}
+
+const quickPerformanceProgressEventName = "quick-performance-progress"
+
+function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerformanceProgress) => void): {
+  progressID: string
+  unsubscribe: () => void
+} {
+  if (!onProgress) return { progressID: "", unsubscribe: () => {} }
+  const runtime = (window as typeof window & {
+    runtime?: { EventsOn?: (eventName: string, callback: (payload: unknown) => void) => () => void }
+  }).runtime
+  if (typeof runtime?.EventsOn !== "function") return { progressID: "", unsubscribe: () => {} }
+  const progressID = crypto.randomUUID()
+  const unsubscribe = runtime.EventsOn(quickPerformanceProgressEventName, (payload) => {
+    if (!isRecord(payload) || payload.progress_id !== progressID) return
+    try {
+      onProgress(parseQuickPerformanceProgress(payload.progress))
+    } catch {
+      // Ignore malformed or stale event payloads at the desktop boundary.
+    }
+  })
+  return { progressID, unsubscribe }
 }
 
 function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
@@ -585,6 +636,7 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     },
     progress: {
       phase: "completed", planned: completed, launched: completed, completed,
+      in_flight: 0,
       peak_in_flight: Math.min(command.concurrency, completed), succeeded: completed,
       failed: 0, rejected: 0, send_duration_ms: totalDurationMS,
       drain_duration_ms: 0, total_duration_ms: totalDurationMS,
@@ -599,7 +651,8 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       ttft_p50_ms: 35, ttft_p90_ms: 45, ttft_p95_ms: 48, ttft_p99_ms: 50, ttft_average_ms: 38,
       tpot_p50_ms: 5, tpot_p90_ms: 6, tpot_p95_ms: 6.5, tpot_p99_ms: 7, tpot_average_ms: 5.2,
       e2e_p50_ms: 120, e2e_p90_ms: 150, e2e_p95_ms: 160, e2e_p99_ms: 170, e2e_average_ms: 128,
-      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
+      schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
       prompt_tokens: promptTokens, completion_tokens: completionTokens,
       cached_tokens: 0, cache_rate_percent: 0,
     },
@@ -620,6 +673,25 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       cached_tokens: 0,
     })),
     failures: [],
+  }
+}
+
+function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {
+  const planned = command.request_count || Math.max(1, command.concurrency * 2)
+  const totalDurationMS = phase === "completed" ? Math.max(320, command.duration_ms) : 0
+  return {
+    phase,
+    planned,
+    launched: phase === "completed" ? planned : Math.min(command.concurrency, planned),
+    completed,
+    in_flight: phase === "completed" ? 0 : Math.min(command.concurrency, planned),
+    peak_in_flight: Math.min(command.concurrency, planned),
+    succeeded: completed,
+    failed: 0,
+    rejected: 0,
+    send_duration_ms: totalDurationMS,
+    drain_duration_ms: 0,
+    total_duration_ms: totalDurationMS,
   }
 }
 

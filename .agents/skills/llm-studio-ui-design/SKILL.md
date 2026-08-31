@@ -1,6 +1,6 @@
 ---
 name: llm-studio-ui-design
-description: Apply and review LLM Studio's compact town-derived desktop product-interface language in the React, Tailwind CSS, shadcn/ui, Radix, Lucide, and Wails application. Use when creating, changing, refactoring, or visually testing desktop pages, navigation, tables, forms, inspectors, dialogs, long-running task surfaces, themes, responsive layouts, empty/error states, or shared UI primitives under apps/desktop/frontend, and when checking whether an implementation matches the project's established visual, accessibility, data-boundary, and browser-acceptance conventions.
+description: Apply and review LLM Studio's compact town-derived desktop product-interface language in the React, Tailwind CSS, shadcn/ui, Radix or Base UI, Lucide, and Wails application. Use when creating, changing, refactoring, or visually testing desktop pages, navigation, tables, forms, inspectors, dialogs, long-running task surfaces, themes, responsive layouts, empty/error states, or shared UI primitives under apps/desktop/frontend, and when checking whether an implementation matches the project's established visual, accessibility, data-boundary, and browser-acceptance conventions.
 ---
 
 # LLM Studio UI Design
@@ -36,7 +36,8 @@ Apply the stable tool-oriented visual language adopted from `town-ui-design` wit
 ## Component and styling boundary
 
 - Prefer existing components in `apps/desktop/frontend/src/components/ui` before adding variants or raw controls.
-- Use shadcn/ui and Radix-backed components for controls, menus, dialogs, sheets, tables, feedback, and form composition.
+- Use shadcn/ui and its established Radix- or Base UI-backed components for controls, menus, dialogs, sheets, tables, feedback, and form composition.
+- Use `Select` for closed choices, `Combobox` for filterable choices that must resolve to an item, and a shared `Autocomplete` for suggestions that still allow arbitrary text. Never use HTML `datalist` on product surfaces because its browser-owned popup cannot follow the application's theme, geometry, or interaction states.
 - Use Lucide icons through the project's direct icon imports. Do not introduce another icon family for ordinary interface actions.
 - Use Tailwind utilities for layout, dimensions, and composition. Consume semantic variables and component variants for color and state styling.
 - Do not put raw theme colors, status colors, or handwritten `dark:` color overrides in JSX.

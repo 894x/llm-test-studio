@@ -29,7 +29,7 @@ _Avoid_: Prompt、Request Sample
 _Avoid_: Case Folder、Latest Cases
 
 **Plan（执行计划）**:
-可复用的测试意图，指定模型、渠道、用例、负载方式和通过阈值。
+可复用的测试意图，指定用例、负载方式、通过阈值，以及可选的模型/渠道候选范围。候选范围留空时，模型和渠道在执行前选择；运行创建后会把目标的精确修订固定到 Run 快照。
 _Avoid_: Run Config、Job
 
 **Run（执行）**:

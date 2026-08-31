@@ -24,9 +24,23 @@ export interface QuickTestCommand {
   address_mode: QuickTestAddressMode
   url: string
   api_key: string
+  channel_id?: string
   model_id: string
   prompt: string
   timeout_ms: number
+}
+
+export function updateQuickTestForm<K extends keyof QuickTestCommand>(
+  current: QuickTestCommand,
+  key: K,
+  value: QuickTestCommand[K],
+): QuickTestCommand {
+  const next = { ...current, [key]: value }
+  if (current.channel_id && (key === "url" || key === "address_mode")) {
+    const { channel_id: _channelID, ...manual } = next
+    return manual
+  }
+  return next
 }
 
 export interface QuickTestResult {
@@ -56,6 +70,7 @@ export interface QuickPerformanceCommand {
   address_mode: QuickTestAddressMode
   url: string
   api_key: string
+  channel_id?: string
   model_id: string
   request_count: number
   duration_ms: number
@@ -81,6 +96,7 @@ export interface QuickPerformanceProgress {
   planned: number
   launched: number
   completed: number
+  in_flight: number
   peak_in_flight: number
   succeeded: number
   failed: number
@@ -118,7 +134,9 @@ export interface QuickPerformanceMetrics {
   e2e_p99_ms: number
   e2e_average_ms: number
   schedule_lag_p50_ms: number
+  schedule_lag_p90_ms: number
   schedule_lag_p95_ms: number
+  schedule_lag_p99_ms: number
   schedule_lag_average_ms: number
   prompt_tokens: number
   completion_tokens: number
@@ -163,6 +181,11 @@ export interface QuickPerformanceReport {
   samples: QuickPerformanceSample[]
   failures: Array<{ error_code: QuickTestErrorCode; count: number }>
   error_code?: QuickTestErrorCode
+}
+
+export function parseQuickPerformanceProgress(value: unknown): QuickPerformanceProgress {
+  if (!isPerformanceProgress(value)) throw new Error("快速性能进度数据结构无效")
+  return pickPerformanceProgress(value)
 }
 
 const ERROR_CODES = new Set<QuickTestErrorCode>([
@@ -389,6 +412,7 @@ function pickPerformanceProgress(value: QuickPerformanceProgress): QuickPerforma
     planned: value.planned,
     launched: value.launched,
     completed: value.completed,
+    in_flight: value.in_flight ?? 0,
     peak_in_flight: value.peak_in_flight,
     succeeded: value.succeeded,
     failed: value.failed,
@@ -428,7 +452,9 @@ function pickPerformanceMetrics(value: QuickPerformanceMetrics): QuickPerformanc
     e2e_p99_ms: value.e2e_p99_ms,
     e2e_average_ms: value.e2e_average_ms,
     schedule_lag_p50_ms: value.schedule_lag_p50_ms,
+    schedule_lag_p90_ms: value.schedule_lag_p90_ms ?? 0,
     schedule_lag_p95_ms: value.schedule_lag_p95_ms,
+    schedule_lag_p99_ms: value.schedule_lag_p99_ms ?? 0,
     schedule_lag_average_ms: value.schedule_lag_average_ms,
     prompt_tokens: value.prompt_tokens,
     completion_tokens: value.completion_tokens,
@@ -443,6 +469,7 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
     isNonNegativeInteger(value.planned) &&
     isNonNegativeInteger(value.launched) &&
     isNonNegativeInteger(value.completed) &&
+    (value.in_flight === undefined || isNonNegativeInteger(value.in_flight)) &&
     isNonNegativeInteger(value.peak_in_flight) &&
     isNonNegativeInteger(value.succeeded) &&
     isNonNegativeInteger(value.failed) &&
@@ -464,6 +491,8 @@ function isPerformanceMetrics(value: unknown): value is QuickPerformanceMetrics 
   ] as const
   return integerFields.every((field) => isNonNegativeInteger(value[field])) &&
     numberFields.every((field) => isNonNegativeFinite(value[field])) &&
+    (value.schedule_lag_p90_ms === undefined || isNonNegativeFinite(value.schedule_lag_p90_ms)) &&
+    (value.schedule_lag_p99_ms === undefined || isNonNegativeFinite(value.schedule_lag_p99_ms)) &&
     Number(value.success_rate_percent) <= 100 && Number(value.cache_rate_percent) <= 100
 }
 

@@ -137,6 +137,47 @@ func TestRepositoryResolvesTheExactSingleTargetPinnedByAPlanRevision(t *testing.
 	}
 }
 
+func TestRepositoryResolvesCurrentCompatibleTargetForRuntimeTargetPlan(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	ctx := context.Background()
+	fixture := newRepositoryFixture(t)
+	fixture.plan.Name = "Runtime target plan"
+	fixture.plan.ModelIDs = nil
+	fixture.plan.ChannelIDs = nil
+	creates := []struct {
+		name   string
+		create func() error
+	}{
+		{"credential", func() error { return repository.CreateCredentialRef(ctx, fixture.credential) }},
+		{"model", func() error { return repository.CreateModel(ctx, fixture.model) }},
+		{"channel", func() error { return repository.CreateChannel(ctx, fixture.channel) }},
+		{"mapping", func() error { return repository.CreateChannelModel(ctx, fixture.mapping) }},
+		{"case", func() error { return repository.CreateTestCase(ctx, fixture.testCase) }},
+		{"suite", func() error { return repository.CreateSuite(ctx, fixture.suite) }},
+		{"plan", func() error { return repository.CreatePlan(ctx, fixture.plan) }},
+	}
+	for _, item := range creates {
+		if err := item.create(); err != nil {
+			t.Fatalf("create %s: %v", item.name, err)
+		}
+	}
+
+	model, channel, mapping, err := repository.ResolvePlanTargetSelection(ctx, fixture.plan, fixture.model.ID, fixture.channel.ID)
+	if err != nil {
+		t.Fatalf("ResolvePlanTargetSelection() error = %v", err)
+	}
+	assertRoundTrip(t, "resolved model", fixture.model, model)
+	assertRoundTrip(t, "resolved channel", fixture.channel, channel)
+	assertRoundTrip(t, "resolved mapping", fixture.mapping, mapping)
+	if err := repository.CreateRun(ctx, fixture.run); err != nil {
+		t.Fatalf("CreateRun(targetless plan snapshot) error = %v", err)
+	}
+	assertRoundTrip(t, "targetless plan run", fixture.run, mustGetRun(t, repository, fixture.run.Meta().ID))
+}
+
 var _ coreRepositoryContract = (*persistence.Repository)(nil)
 
 func TestRepositoryComparisonRoundTripAndTerminalRevision(t *testing.T) {

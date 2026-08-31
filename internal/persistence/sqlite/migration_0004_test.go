@@ -49,7 +49,7 @@ func TestMigrateBacksUpExistingV3BeforeApplyingLatestSchema(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "upgrade-v4"}); err != nil {
 		t.Fatalf("upgrade Migrate() error = %v", err)
 	}
-	matches, err := filepath.Glob(filepath.Join(directory, "backups", "upgrade-v3-before-v6-*.db"))
+	matches, err := filepath.Glob(filepath.Join(directory, "backups", "upgrade-v3-before-v7-*.db"))
 	if err != nil || len(matches) != 1 {
 		t.Fatalf("pre-migration backups = %v, error = %v, want one", matches, err)
 	}

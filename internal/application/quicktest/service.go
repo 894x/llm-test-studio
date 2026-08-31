@@ -24,11 +24,12 @@ const (
 )
 
 type Service struct {
-	transport         http.RoundTripper
-	allowLoopbackHTTP bool
-	archive           PerformanceArchive
-	clock             PerformanceClock
-	idFactory         PerformanceReportIDFactory
+	transport          http.RoundTripper
+	allowLoopbackHTTP  bool
+	channelConnections ChannelConnectionResolver
+	archive            PerformanceArchive
+	clock              PerformanceClock
+	idFactory          PerformanceReportIDFactory
 }
 
 func New(dependencies Dependencies) *Service {
@@ -44,11 +45,12 @@ func New(dependencies Dependencies) *Service {
 		}
 	}
 	return &Service{
-		transport:         dependencies.Transport,
-		allowLoopbackHTTP: dependencies.AllowLoopbackHTTPForTesting,
-		archive:           dependencies.Archive,
-		clock:             clock,
-		idFactory:         idFactory,
+		transport:          dependencies.Transport,
+		allowLoopbackHTTP:  dependencies.AllowLoopbackHTTPForTesting,
+		channelConnections: dependencies.ChannelConnections,
+		archive:            dependencies.Archive,
+		clock:              clock,
+		idFactory:          idFactory,
 	}
 }
 
@@ -65,6 +67,11 @@ func (service *Service) Run(ctx context.Context, command Command) (Result, error
 		result.ErrorCode = ErrorInvalidRequest
 		return result, nil
 	}
+	if code := service.applySelectedChannel(ctx, command.ChannelID, &command.AddressMode, &command.URL, &command.APIKey); code != "" {
+		result.ErrorCode = code
+		return result, nil
+	}
+	result.AddressMode = command.AddressMode
 
 	address, code := normalizeAddress(command.AddressMode, command.URL, service.allowLoopbackHTTP)
 	result.BaseURL, result.Endpoint = address.baseURL, address.endpoint
@@ -177,6 +184,14 @@ func (service *Service) Run(ctx context.Context, command Command) (Result, error
 }
 
 func (service *Service) RunPerformance(ctx context.Context, command PerformanceCommand) (PerformanceReport, error) {
+	return service.runPerformance(ctx, command, nil)
+}
+
+func (service *Service) RunPerformanceWithProgress(ctx context.Context, command PerformanceCommand, onProgress func(PerformanceProgress)) (PerformanceReport, error) {
+	return service.runPerformance(ctx, command, onProgress)
+}
+
+func (service *Service) runPerformance(ctx context.Context, command PerformanceCommand, onProgress func(PerformanceProgress)) (PerformanceReport, error) {
 	if service == nil {
 		return PerformanceReport{}, ErrServiceUnavailable
 	}
@@ -201,6 +216,11 @@ func (service *Service) RunPerformance(ctx context.Context, command PerformanceC
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
 	}
+	if code := service.applySelectedChannel(ctx, command.ChannelID, &command.AddressMode, &command.URL, &command.APIKey); code != "" {
+		report.ErrorCode = code
+		return report, nil
+	}
+	report.AddressMode = command.AddressMode
 	address, code := normalizeAddress(command.AddressMode, command.URL, service.allowLoopbackHTTP)
 	report.BaseURL, report.Endpoint = address.baseURL, address.endpoint
 	if code != "" {
@@ -247,7 +267,13 @@ func (service *Service) RunPerformance(ctx context.Context, command PerformanceC
 	}
 	defer cleanup()
 
-	outcome, runErr := load.Run(ctx, profile, executor, load.Options{})
+	options := load.Options{}
+	if onProgress != nil {
+		options.OnProgress = func(progress load.Progress) {
+			onProgress(performanceProgress(progress))
+		}
+	}
+	outcome, runErr := load.Run(ctx, profile, executor, options)
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
@@ -264,6 +290,25 @@ func (service *Service) RunPerformance(ctx context.Context, command PerformanceC
 		service.archivePerformanceReport(ctx, &report)
 	}
 	return report, nil
+}
+
+func (service *Service) applySelectedChannel(ctx context.Context, channelID string, addressMode *AddressMode, address, apiKey *string) domain.ErrorCode {
+	if channelID == "" {
+		return ""
+	}
+	if !domain.IsUUID(channelID) || strings.TrimSpace(*apiKey) != "" || service.channelConnections == nil {
+		return ErrorInvalidRequest
+	}
+	connection, err := service.channelConnections.Resolve(ctx, channelID)
+	if err != nil || strings.TrimSpace(connection.BaseURL) == "" || len(connection.APIKey) == 0 {
+		clear(connection.APIKey)
+		return ErrorInvalidRequest
+	}
+	*addressMode = AddressModeBaseURL
+	*address = connection.BaseURL
+	*apiKey = string(connection.APIKey)
+	clear(connection.APIKey)
+	return ""
 }
 
 func (service *Service) archivePerformanceReport(ctx context.Context, report *PerformanceReport) {
@@ -348,7 +393,7 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 func performanceProgress(progress load.Progress) PerformanceProgress {
 	return PerformanceProgress{
 		Phase: progress.Phase, Planned: progress.Planned, Launched: progress.Launched,
-		Completed: progress.Completed, PeakInFlight: progress.PeakInFlight,
+		Completed: progress.Completed, InFlight: progress.InFlight, PeakInFlight: progress.PeakInFlight,
 		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected,
 		SendDurationMS:  float64(progress.SendDuration) / float64(time.Millisecond),
 		DrainDurationMS: float64(progress.DrainDuration) / float64(time.Millisecond),

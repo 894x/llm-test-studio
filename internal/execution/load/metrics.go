@@ -34,7 +34,9 @@ type Metrics struct {
 	E2EP99             float64 `json:"e2e_p99_ms"`
 	E2EAverage         float64 `json:"e2e_average_ms"`
 	ScheduleLagP50     float64 `json:"schedule_lag_p50_ms"`
+	ScheduleLagP90     float64 `json:"schedule_lag_p90_ms,omitempty"`
 	ScheduleLagP95     float64 `json:"schedule_lag_p95_ms"`
+	ScheduleLagP99     float64 `json:"schedule_lag_p99_ms,omitempty"`
 	ScheduleLagAverage float64 `json:"schedule_lag_average_ms"`
 	PromptTokens       uint64  `json:"prompt_tokens"`
 	CompletionTokens   uint64  `json:"completion_tokens"`
@@ -86,7 +88,7 @@ func ComputeMetrics(observations []Observation, elapsed time.Duration) Metrics {
 	metrics.TTFTP50, metrics.TTFTP90, metrics.TTFTP95, metrics.TTFTP99, metrics.TTFTAverage = summarize(ttfts)
 	metrics.TPOTP50, metrics.TPOTP90, metrics.TPOTP95, metrics.TPOTP99, metrics.TPOTAverage = summarize(tpots)
 	metrics.E2EP50, metrics.E2EP90, metrics.E2EP95, metrics.E2EP99, metrics.E2EAverage = summarize(e2es)
-	metrics.ScheduleLagP50, _, metrics.ScheduleLagP95, _, metrics.ScheduleLagAverage = summarize(lags)
+	metrics.ScheduleLagP50, metrics.ScheduleLagP90, metrics.ScheduleLagP95, metrics.ScheduleLagP99, metrics.ScheduleLagAverage = summarize(lags)
 	if metrics.PromptTokens > 0 {
 		metrics.CacheRatePercent = float64(metrics.CachedTokens) / float64(metrics.PromptTokens) * 100
 	}

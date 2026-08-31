@@ -11,8 +11,10 @@ import (
 	"github.com/894x/llm-studio/internal/application/comparisons"
 	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var (
@@ -101,6 +103,7 @@ type ReportDocumentQuery interface {
 // authoritative state through WorkspaceQuery.
 type RunCommands interface {
 	StartRun(context.Context, string) error
+	StartTarget(context.Context, runs.StartCommand) (string, error)
 	StopSending(context.Context, string) error
 	CancelRun(context.Context, string) error
 }
@@ -114,6 +117,12 @@ type QuickTestRunner interface {
 	Run(context.Context, quicktest.Command) (quicktest.Result, error)
 	RunPerformance(context.Context, quicktest.PerformanceCommand) (quicktest.PerformanceReport, error)
 }
+
+type QuickTestProgressRunner interface {
+	RunPerformanceWithProgress(context.Context, quicktest.PerformanceCommand, func(quicktest.PerformanceProgress)) (quicktest.PerformanceReport, error)
+}
+
+type desktopEventEmitter func(context.Context, string, ...interface{})
 
 type desktopDependencies struct {
 	query           WorkspaceQuery
@@ -154,6 +163,7 @@ type DesktopApp struct {
 	startupErr      error
 	shutdownErr     error
 	reportError     func(error)
+	emitEvent       desktopEventEmitter
 }
 
 type desktopRequirements struct {
@@ -199,10 +209,28 @@ func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
 }
 
 func newDesktopApp(initialize desktopInitializer) *DesktopApp {
-	app := &DesktopApp{initialize: initialize}
+	app := &DesktopApp{initialize: initialize, emitEvent: wailsruntime.EventsEmit}
 	app.drained = sync.NewCond(&app.mu)
 	app.startupDone = sync.NewCond(&app.mu)
 	return app
+}
+
+func (app *DesktopApp) setEventEmitter(emit desktopEventEmitter) {
+	if app == nil {
+		return
+	}
+	app.mu.Lock()
+	app.emitEvent = emit
+	app.mu.Unlock()
+}
+
+func (app *DesktopApp) emitDesktopEvent(ctx context.Context, name string, data ...interface{}) {
+	app.mu.Lock()
+	emit := app.emitEvent
+	app.mu.Unlock()
+	if emit != nil {
+		emit(ctx, name, data...)
+	}
 }
 
 func (app *DesktopApp) setErrorReporter(report func(error)) {
@@ -539,6 +567,20 @@ func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (compar
 func (app *DesktopApp) StartRun(planID string) (workspace.Snapshot, error) {
 	snapshot, err := app.executeRunCommand("start run", planID, func(ctx context.Context, commands RunCommands) error {
 		return commands.StartRun(ctx, planID)
+	})
+	if err != nil {
+		return workspace.Snapshot{}, app.safeBindingError(err)
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) StartRunTarget(command runs.StartCommand) (workspace.Snapshot, error) {
+	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
+		return workspace.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	snapshot, err := app.executeRunCommand("start run target", command.PlanID, func(ctx context.Context, commands RunCommands) error {
+		_, err := commands.StartTarget(ctx, command)
+		return err
 	})
 	if err != nil {
 		return workspace.Snapshot{}, app.safeBindingError(err)

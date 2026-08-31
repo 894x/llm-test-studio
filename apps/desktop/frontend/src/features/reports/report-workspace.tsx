@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
 import { PerformanceCharts } from "./performance-charts"
+import { PerformanceLatencyTable } from "./performance-latency-table"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
 import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary } from "./data"
@@ -178,12 +179,21 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
 function QuickPerformanceBody({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
   const report = detail.performance
   return <section aria-label="归档性能报告" className="space-y-4 p-4">
-    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-      <SummaryValue label="成功 / 完成" value={`${report.metrics.succeeded} / ${report.metrics.completed}`} />
+    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
+      <SummaryValue label="完成 / 计划" value={`${report.metrics.completed} / ${report.progress.planned}`} />
+      <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
+      <SummaryValue label="失败" value={String(report.metrics.failed)} />
       <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
       <SummaryValue label="请求速率" value={`${formatMetric(report.metrics.request_qps)} req/s`} />
       <SummaryValue label="峰值在途" value={String(report.progress.peak_in_flight)} />
+      <SummaryValue label="总耗时" value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
+      <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
+      <SummaryValue label="输入 TPM" value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
+      <SummaryValue label="输出 TPM" value={`${formatMetric(report.metrics.output_tpm)} TPM`} />
+      <SummaryValue label="总 TPM" value={`${formatMetric(report.metrics.total_tpm)} TPM`} />
+      <SummaryValue label="生成速度" value={`${formatMetric(report.metrics.generation_tps)} token/s`} />
     </div>
+    <PerformanceLatencyTable metrics={report.metrics} />
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
   </section>
 }
