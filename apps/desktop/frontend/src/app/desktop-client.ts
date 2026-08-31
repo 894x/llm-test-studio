@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@/features/runs/data"
+import type { StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
   parseComparisonSnapshot,
@@ -116,6 +116,7 @@ export interface DesktopClient extends CatalogActions {
   exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
+  startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
@@ -132,6 +133,7 @@ type WailsDesktopBinding = {
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
+  StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
@@ -213,6 +215,14 @@ export function createFixtureClient(
       }
       return cloneSnapshot(workspace)
     },
+		async startRunTarget(command) {
+			const plan = catalogState.plans.find((item) => item.id === command.plan_id)
+			const model = catalogState.models.find((item) => item.id === command.model_id)
+			const channel = catalogState.channels.find((item) => item.id === command.channel_id)
+			const mapped = catalogState.channel_models.some((item) => item.model_id === command.model_id && item.channel_id === command.channel_id)
+			if (!plan || !model || !channel || !mapped) throw new DesktopClientError("invalid_identifier")
+			return cloneSnapshot(workspace)
+		},
     async stopSending(runId) {
       workspace = updateRun(workspace, runId, "draining")
       return cloneSnapshot(workspace)
@@ -418,6 +428,7 @@ function createLazyFixtureClient(): DesktopClient {
 		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
+		startRunTarget: async (command) => (await client).startRunTarget(command),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
@@ -461,6 +472,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.GetComparisons(), parseComparisonSnapshot),
     startRun: async (planId) =>
       callBinding(() => binding.StartRun(planId), parseSnapshot),
+		startRunTarget: async (command) =>
+			callBinding(() => binding.StartRunTarget(command), parseSnapshot),
     stopSending: async (runId) =>
       callBinding(() => binding.StopSending(runId), parseSnapshot),
     cancelRun: async (runId) =>
@@ -515,6 +528,7 @@ function unavailableClient(): DesktopClient {
 		exportReport: () => reject(),
 		getComparisons: () => reject(),
     startRun: () => reject(),
+		startRunTarget: () => reject(),
     stopSending: () => reject(),
     cancelRun: () => reject(),
 		startComparison: () => reject(),
@@ -561,6 +575,7 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     typeof candidate.GetReports !== "function" ||
 		typeof candidate.GetComparisons !== "function" ||
     typeof candidate.StartRun !== "function" ||
+		typeof candidate.StartRunTarget !== "function" ||
     typeof candidate.StopSending !== "function" ||
     typeof candidate.CancelRun !== "function" ||
 		typeof candidate.StartComparison !== "function" ||

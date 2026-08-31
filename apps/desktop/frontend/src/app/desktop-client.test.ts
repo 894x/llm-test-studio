@@ -23,6 +23,12 @@ describe("Wails desktop client", () => {
     await expect(client.getCatalog()).resolves.toEqual(FIXTURE_CATALOG)
     await expect(client.getReports()).resolves.toEqual(FIXTURE_REPORTS)
     await client.startRun(FIXTURE_WORKSPACE.plans[0].id)
+		const targetCommand = {
+			plan_id: FIXTURE_WORKSPACE.plans[0].id,
+			model_id: FIXTURE_CATALOG.models[0].id,
+			channel_id: FIXTURE_CATALOG.channels[0].id,
+		}
+		await client.startRunTarget(targetCommand)
     await client.stopSending(FIXTURE_WORKSPACE.runs[0].id)
     await client.cancelRun(FIXTURE_WORKSPACE.runs[0].id)
     const quickCommand = {
@@ -66,6 +72,7 @@ describe("Wails desktop client", () => {
     await expect(client.saveQuickTestConnection(saveCommand)).resolves.toEqual(FIXTURE_CATALOG)
 
     expect(binding.StartRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.plans[0].id)
+		expect(binding.StartRunTarget).toHaveBeenCalledWith(targetCommand)
     expect(binding.StopSending).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
     expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
     expect(binding.RunQuickTest).toHaveBeenCalledWith(quickCommand)
@@ -521,6 +528,7 @@ function installBinding(
 		})),
 		GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     StartRun: vi.fn(async () => structuredClone(payload)),
+		StartRunTarget: vi.fn(async () => structuredClone(payload)),
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
 		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),

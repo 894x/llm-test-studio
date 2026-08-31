@@ -217,9 +217,10 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
 					<NewComparisonSheet catalog={catalog} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
 					<NewRunSheet
 						plans={plans}
+						catalog={catalog}
 						commandPending={commandPending}
-						onStartRun={async (planId) => {
-							await runCommand(() => client.startRun(planId))
+						onStartRun={async (command) => {
+							await runCommand(() => client.startRunTarget(command))
 							navigate("runs")
 						}}
 					/>

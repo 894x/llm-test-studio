@@ -213,14 +213,15 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
 
 function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
   const [name, setName] = useState(item?.name ?? "")
-  const [models, setModels] = useState(() => new Set(item?.model_ids ?? catalog.models.slice(0, 1).map(model => model.id)))
-  const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? catalog.channels.slice(0, 1).map(channel => channel.id)))
+  const [models, setModels] = useState(() => new Set(item?.model_ids ?? []))
+  const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? []))
   const [cases, setCases] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
   const [suiteID, setSuiteID] = useState(item?.suite_id ?? "none")
   const [loadMode, setLoadMode] = useState<CatalogLoadMode>(item?.load_mode ?? "single")
   const [numbers, setNumbers] = useState({ concurrency: item?.concurrency ?? 1, request_count: item?.request_count ?? 1, rate_per_second: item?.rate_per_second ?? 0, duration_ms: item?.duration_ms ?? 0, request_timeout_ms: item?.request_timeout_ms ?? 60000 })
   const [sla, setSla] = useState(json(item?.sla_thresholds ?? { e2e_p95_ms: 3000 }))
   return <FormShell pending={pending} label="保存计划" formTitle={formTitle} onSubmit={async () => {
+		if ((models.size === 0) !== (channels.size === 0)) throw new FormValidationError("模型和渠道限制必须同时留空或同时配置")
     const suite = catalog.suites.find((value) => value.id === suiteID)
     const pinnedCases = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
     const command = {
@@ -234,6 +235,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     <TextField label="计划名称" value={name} onChange={setName} />
     <ChoiceList label="模型" values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} onChange={setModels} />
     <ChoiceList label="渠道" values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} onChange={setChannels} />
+		<FieldDescription>模型和渠道均留空时，在每次运行开始前选择一个协议兼容、已映射的目标；一旦启动，具体修订会固定到运行快照。</FieldDescription>
     <ChoiceList label="直接用例" values={catalog.test_cases.map(v => ({ id: v.id, label: `${v.name} · r${v.revision}` }))} selected={cases} onChange={setCases} />
     <SelectField label="套件" value={suiteID} options={[["none","不使用套件"], ...catalog.suites.map(v => [v.id, `${v.name} · r${v.revision}`] as [string,string])]} onChange={setSuiteID} />
     <SelectField label="负载模式" value={loadMode} options={[["single","单次"],["fixed_concurrency","固定并发"],["open_loop","开放环"]]} onChange={(v) => setLoadMode(v as CatalogLoadMode)} />

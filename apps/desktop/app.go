@@ -11,6 +11,7 @@ import (
 	"github.com/894x/llm-studio/internal/application/comparisons"
 	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -102,6 +103,7 @@ type ReportDocumentQuery interface {
 // authoritative state through WorkspaceQuery.
 type RunCommands interface {
 	StartRun(context.Context, string) error
+	StartTarget(context.Context, runs.StartCommand) (string, error)
 	StopSending(context.Context, string) error
 	CancelRun(context.Context, string) error
 }
@@ -565,6 +567,20 @@ func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (compar
 func (app *DesktopApp) StartRun(planID string) (workspace.Snapshot, error) {
 	snapshot, err := app.executeRunCommand("start run", planID, func(ctx context.Context, commands RunCommands) error {
 		return commands.StartRun(ctx, planID)
+	})
+	if err != nil {
+		return workspace.Snapshot{}, app.safeBindingError(err)
+	}
+	return snapshot, nil
+}
+
+func (app *DesktopApp) StartRunTarget(command runs.StartCommand) (workspace.Snapshot, error) {
+	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
+		return workspace.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	snapshot, err := app.executeRunCommand("start run target", command.PlanID, func(ctx context.Context, commands RunCommands) error {
+		_, err := commands.StartTarget(ctx, command)
+		return err
 	})
 	if err != nil {
 		return workspace.Snapshot{}, app.safeBindingError(err)

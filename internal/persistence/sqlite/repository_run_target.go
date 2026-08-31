@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -31,7 +32,7 @@ func (repository *Repository) ResolvePlanTargetSelection(ctx context.Context, pl
 	if err := plan.Validate(); err != nil {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("resolve plan target: invalid plan: %w", err)
 	}
-	if !containsString(plan.ModelIDs, modelID) || !containsString(plan.ChannelIDs, channelID) {
+	if len(plan.ModelIDs) > 0 && (!containsString(plan.ModelIDs, modelID) || !containsString(plan.ChannelIDs, channelID)) {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("%w: selected target is outside the plan", ErrNotFound)
 	}
 
@@ -42,6 +43,9 @@ func (repository *Repository) ResolvePlanTargetSelection(ctx context.Context, pl
 	var persistedPlan domain.Plan
 	if err := decodeCanonical(planDocument, &persistedPlan, func() error { return persistedPlan.Validate() }); err != nil || !reflect.DeepEqual(persistedPlan, plan) {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("%w: plan target input does not match persisted revision", ErrCorrupt)
+	}
+	if len(plan.ModelIDs) == 0 {
+		return repository.resolveCurrentTargetSelection(ctx, modelID, channelID)
 	}
 
 	var modelRevision, channelRevision, mappingRevision uint64
@@ -65,15 +69,15 @@ func (repository *Repository) ResolvePlanTargetSelection(ctx context.Context, pl
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, relationStorageError(ctx, "plan channel model target", err)
 	}
 
-	model, err := resolveExactModel(ctx, repository, modelID, modelRevision)
+	model, err := resolveExactModel(ctx, repository.conn, modelID, modelRevision)
 	if err != nil {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
 	}
-	channel, err := resolveExactChannel(ctx, repository, channelID, channelRevision)
+	channel, err := resolveExactChannel(ctx, repository.conn, channelID, channelRevision)
 	if err != nil {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
 	}
-	mapping, err := resolveExactChannelModel(ctx, repository, mappingID, mappingRevision)
+	mapping, err := resolveExactChannelModel(ctx, repository.conn, mappingID, mappingRevision)
 	if err != nil {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
 	}
@@ -83,8 +87,59 @@ func (repository *Repository) ResolvePlanTargetSelection(ctx context.Context, pl
 	return model, channel, mapping, nil
 }
 
-func resolveExactModel(ctx context.Context, repository *Repository, id string, revision uint64) (domain.Model, error) {
-	document, err := exactDocument(ctx, repository.conn, "models", id, revision, "model")
+func (repository *Repository) resolveCurrentTargetSelection(ctx context.Context, modelID, channelID string) (domain.Model, domain.Channel, domain.ChannelModel, error) {
+	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("begin runtime target read: %w", err)
+	}
+	defer tx.Rollback()
+	modelRevision, err := latestRevision(ctx, tx, "models", modelID, "model")
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
+	}
+	channelRevision, err := latestRevision(ctx, tx, "channels", channelID, "channel")
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
+	}
+	model, err := resolveExactModel(ctx, tx, modelID, modelRevision)
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
+	}
+	channel, err := resolveExactChannel(ctx, tx, channelID, channelRevision)
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
+	}
+	var mappingID string
+	var mappingRevision uint64
+	err = tx.QueryRowContext(ctx, `
+		SELECT candidate.id, candidate.revision
+		FROM channel_models AS candidate
+		WHERE candidate.channel_id = ? AND candidate.model_id = ?
+		  AND candidate.revision = (SELECT MAX(revision) FROM channel_models WHERE id = candidate.id)
+		  AND NOT EXISTS (SELECT 1 FROM catalog_tombstones WHERE entity_table = 'channel_models' AND entity_id = candidate.id)
+		ORDER BY candidate.created_at, candidate.id LIMIT 1
+	`, channelID, modelID).Scan(&mappingID, &mappingRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("%w: selected runtime target has no model mapping", ErrNotFound)
+	}
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("read runtime target mapping: %w", err)
+	}
+	mapping, err := resolveExactChannelModel(ctx, tx, mappingID, mappingRevision)
+	if err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
+	}
+	if model.Protocol != channel.Protocol || !channel.Enabled || mapping.ModelID != model.ID || mapping.ChannelID != channel.ID {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("%w: selected runtime target is incompatible or disabled", ErrNotFound)
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, fmt.Errorf("commit runtime target read: %w", err)
+	}
+	return model, channel, mapping, nil
+}
+
+func resolveExactModel(ctx context.Context, queryer rowQueryer, id string, revision uint64) (domain.Model, error) {
+	document, err := exactDocument(ctx, queryer, "models", id, revision, "model")
 	if err != nil {
 		return domain.Model{}, err
 	}
@@ -95,8 +150,8 @@ func resolveExactModel(ctx context.Context, repository *Repository, id string, r
 	return value, nil
 }
 
-func resolveExactChannel(ctx context.Context, repository *Repository, id string, revision uint64) (domain.Channel, error) {
-	document, err := exactDocument(ctx, repository.conn, "channels", id, revision, "channel")
+func resolveExactChannel(ctx context.Context, queryer rowQueryer, id string, revision uint64) (domain.Channel, error) {
+	document, err := exactDocument(ctx, queryer, "channels", id, revision, "channel")
 	if err != nil {
 		return domain.Channel{}, err
 	}
@@ -107,8 +162,8 @@ func resolveExactChannel(ctx context.Context, repository *Repository, id string,
 	return value, nil
 }
 
-func resolveExactChannelModel(ctx context.Context, repository *Repository, id string, revision uint64) (domain.ChannelModel, error) {
-	document, err := exactDocument(ctx, repository.conn, "channel_models", id, revision, "channel model")
+func resolveExactChannelModel(ctx context.Context, queryer rowQueryer, id string, revision uint64) (domain.ChannelModel, error) {
+	document, err := exactDocument(ctx, queryer, "channel_models", id, revision, "channel model")
 	if err != nil {
 		return domain.ChannelModel{}, err
 	}

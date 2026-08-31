@@ -264,11 +264,16 @@ func (plan Plan) Validate() error {
 	if strings.TrimSpace(plan.Name) == "" {
 		return errors.New("plan name must not be empty")
 	}
-	if err := validateUUIDList("model", plan.ModelIDs); err != nil {
-		return err
+	if (len(plan.ModelIDs) == 0) != (len(plan.ChannelIDs) == 0) {
+		return errors.New("plan model and channel allowlists must both be empty or both be configured")
 	}
-	if err := validateUUIDList("channel", plan.ChannelIDs); err != nil {
-		return err
+	if len(plan.ModelIDs) > 0 {
+		if err := validateUUIDList("model", plan.ModelIDs); err != nil {
+			return err
+		}
+		if err := validateUUIDList("channel", plan.ChannelIDs); err != nil {
+			return err
+		}
 	}
 	if plan.SuiteID == "" && plan.SuiteRevision != 0 {
 		return errors.New("plan suite revision requires a suite id")

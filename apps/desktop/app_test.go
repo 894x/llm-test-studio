@@ -10,6 +10,7 @@ import (
 
 	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/reporting"
+	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/application/workspace"
 )
 
@@ -144,12 +145,21 @@ func (query *recordingReportingQuery) Export(ctx context.Context, _ string, _ re
 
 type recordingRunCommands struct {
 	startIDs     []string
+	startTargets []runs.StartCommand
 	stopIDs      []string
 	cancelIDs    []string
 	startErr     error
 	stopErr      error
 	cancelErr    error
 	commandEnded *bool
+}
+
+func (commands *recordingRunCommands) StartTarget(_ context.Context, command runs.StartCommand) (string, error) {
+	commands.startTargets = append(commands.startTargets, command)
+	if commands.commandEnded != nil {
+		*commands.commandEnded = true
+	}
+	return "", commands.startErr
 }
 
 func (commands *recordingRunCommands) StartRun(_ context.Context, id string) error {
@@ -420,6 +430,32 @@ func TestDesktopAppCommandsReturnAuthoritativeWorkspaceAfterSuccess(t *testing.T
 				t.Fatalf("command IDs = %v, want [%s]", calls, test.id)
 			}
 		})
+	}
+}
+
+func TestDesktopAppStartsOneExplicitRuntimeTarget(t *testing.T) {
+	command := runs.StartCommand{
+		PlanID:    "11111111-1111-4111-8111-111111111111",
+		ModelID:   "22222222-2222-4222-8222-222222222222",
+		ChannelID: "33333333-3333-4333-8333-333333333333",
+	}
+	commands := &recordingRunCommands{}
+	want := workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion, ActiveRunID: "44444444-4444-4444-8444-444444444444"}
+	app := NewDesktopApp(&recordingWorkspaceQuery{snapshot: want}, commands)
+	app.onStartup(context.Background())
+
+	got, err := app.StartRunTarget(command)
+	if err != nil {
+		t.Fatalf("StartRunTarget() error = %v", err)
+	}
+	if got.ActiveRunID != want.ActiveRunID || len(commands.startTargets) != 1 || commands.startTargets[0] != command {
+		t.Fatalf("StartRunTarget() = snapshot:%+v commands:%+v", got, commands.startTargets)
+	}
+
+	_, err = app.StartRunTarget(runs.StartCommand{PlanID: command.PlanID, ModelID: "invalid", ChannelID: command.ChannelID})
+	assertBindingErrorCode(t, err, desktopCodeInvalidIdentifier)
+	if len(commands.startTargets) != 1 {
+		t.Fatalf("invalid target reached commands: %+v", commands.startTargets)
 	}
 }
 

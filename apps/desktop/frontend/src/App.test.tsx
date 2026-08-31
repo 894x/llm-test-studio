@@ -30,6 +30,7 @@ function desktopClient(): DesktopClient & {
 		exportReport: vi.fn(async () => { throw new Error("report export unavailable in shell fixture") }),
 		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     startRun: vi.fn(async () => structuredClone(client.workspace)),
+		startRunTarget: vi.fn(async () => structuredClone(client.workspace)),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
         ...client.workspace,
@@ -598,13 +599,17 @@ describe("desktop run workspace", () => {
     fireEvent.keyUp(radios[1], { key: "ArrowDown" })
 
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
-    expect(client.startRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.plans[1].id)
+		expect(client.startRunTarget).toHaveBeenCalledWith({
+			plan_id: FIXTURE_WORKSPACE.plans[1].id,
+			model_id: FIXTURE_CATALOG.plans[1].model_ids[0],
+			channel_id: FIXTURE_CATALOG.plans[1].channel_ids[0],
+		})
   })
 
   it("identifies the selected plan when creating a run fails", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
-    vi.mocked(client.startRun).mockRejectedValueOnce(
+		vi.mocked(client.startRunTarget).mockRejectedValueOnce(
       new DesktopClientError("run_commands_unavailable"),
     )
     render(<App client={client} />)
@@ -712,6 +717,7 @@ describe("desktop run workspace", () => {
 			exportReport: vi.fn(),
 			getComparisons: vi.fn(),
       startRun: vi.fn(),
+			startRunTarget: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),
