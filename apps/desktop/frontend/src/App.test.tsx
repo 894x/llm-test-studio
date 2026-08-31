@@ -415,6 +415,25 @@ describe("desktop run workspace", () => {
     expect(inspector).toHaveTextContent("人工判定")
   })
 
+  it("keeps internal case revisions out of the test case workspace", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const client = desktopClient()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.test_cases[0].revision = 137
+    vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+
+    render(<App client={client} />)
+
+    expect(await screen.findByText("维护请求、期望与断言")).toBeInTheDocument()
+    const table = screen.getByRole("table", { name: "测试用例目录" })
+    expect(within(table).queryByRole("columnheader", { name: "版本" })).not.toBeInTheDocument()
+    expect(within(table).queryByText("r137")).not.toBeInTheDocument()
+
+    const inspector = screen.getByRole("complementary", { name: "用例详情" })
+    expect(within(inspector).getByText("协议")).toBeInTheDocument()
+    expect(inspector).not.toHaveTextContent("r137")
+  })
+
   it("restores the selected workspace from hash navigation", async () => {
     window.history.replaceState(null, "", "#reports")
     render(<App client={desktopClient()} />)

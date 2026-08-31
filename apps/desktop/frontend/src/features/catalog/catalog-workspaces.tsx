@@ -341,7 +341,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
   return (
     <PageFrame
       title="测试用例"
-      description="维护版本化请求、期望与断言"
+      description="维护请求、期望与断言"
       count={`${catalog.test_cases.length} 个用例 · ${catalog.suites.length} 个套件`}
       inspector={tab === "cases" ? (selected ? <CaseInspector testCase={selected} catalog={catalog} /> : <EmptyInspector label="尚未选择用例" />) : (selectedSuite ? <SuiteInspector suite={selectedSuite} catalog={catalog} /> : <EmptyInspector label="尚未选择套件" />)}
       inspectorLabel={tab === "cases" ? "用例详情" : "套件详情"}
@@ -361,7 +361,6 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                 <TableHead className="h-8 pl-4 text-[11px]">用例</TableHead>
                 <TableHead className="h-8 text-[11px]">请求</TableHead>
                 <TableHead className="h-8 text-[11px]">策略</TableHead>
-                <TableHead className="h-8 text-right text-[11px]">版本</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -383,7 +382,6 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />
                   </TableCell>
-                  <TableCell className="py-1 text-right text-xs tabular-nums">r{testCase.revision}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -412,7 +410,7 @@ function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catal
       <Separator />
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label="来源键" value={testCase.key} />
-        <InspectorRow label="版本与协议" value={`r${testCase.revision} · ${PROTOCOL_LABELS[testCase.protocol]}`} />
+        <InspectorRow label="协议" value={PROTOCOL_LABELS[testCase.protocol]} />
         <InspectorRow label="维度" value={testCase.dimension} />
         <InspectorRow label="执行策略" value={casePolicyLabel(testCase)} />
         <InspectorRow label="严重度" value={testCase.severity === "critical" ? "关键" : "普通"} />
