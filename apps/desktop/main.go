@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"path/filepath"
+	"time"
 
 	"github.com/894x/llm-studio/internal/application/runs"
 	"github.com/894x/llm-studio/internal/diagnostics"
@@ -109,10 +110,30 @@ func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) fu
 		if err == nil {
 			return
 		}
+		level := diagnostics.LevelError
+		component := "desktop"
 		operation := "wails_boundary"
 		errorCode := desktopCodeOperationFailed
 		message := "desktop operation failed"
-		if errors.Is(err, ErrDesktopStartup) {
+		reportID := ""
+		duration := time.Duration(0)
+		failureCount := uint64(0)
+		eventErr := err
+		var quickDiagnostic quickTestDiagnosticEvent
+		if errors.As(err, &quickDiagnostic) {
+			level = diagnostics.LevelWarn
+			component = "quick_test"
+			operation = quickDiagnostic.Operation
+			errorCode = quickDiagnostic.ErrorCode
+			message = "quick test operation failed"
+			if operation == quickTestDiagnosticArchiveOperation {
+				message = "quick performance archive failed"
+			}
+			reportID = quickDiagnostic.ReportID
+			duration = quickDiagnostic.Duration
+			failureCount = quickDiagnostic.FailureCount
+			eventErr = nil
+		} else if errors.Is(err, ErrDesktopStartup) {
 			operation = "startup"
 			errorCode = desktopCodeStartupFailed
 			message = "desktop startup failed"
@@ -122,8 +143,9 @@ func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) fu
 		}
 		if operator != nil {
 			if writeErr := operator.Record(context.Background(), diagnostics.Event{
-				Level: diagnostics.LevelError, Message: message,
-				Component: "desktop", Operation: operation, ErrorCode: errorCode, Err: err,
+				Level: level, Message: message,
+				Component: component, Operation: operation, ErrorCode: errorCode,
+				ReportID: reportID, Duration: duration, FailureCount: failureCount, Err: eventErr,
 			}); writeErr != nil && fallback != nil {
 				fallback.Printf("structured diagnostic degraded: %s", diagnostics.RedactText(writeErr.Error()))
 			}

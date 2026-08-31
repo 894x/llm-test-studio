@@ -32,8 +32,10 @@ func TestOpenWritesStructuredRedactedDiagnosticEvent(t *testing.T) {
 		ErrorCode:    "startup_failed",
 		RunID:        "run-1",
 		RequestID:    "request-1",
+		ReportID:     "report-1",
 		Duration:     1250 * time.Millisecond,
 		DroppedCount: 3,
+		FailureCount: 2,
 		Err: errors.New(
 			"connect Authorization: Bearer bearer-secret api_key=key-secret sk-secret-token",
 		),
@@ -65,8 +67,10 @@ func TestOpenWritesStructuredRedactedDiagnosticEvent(t *testing.T) {
 		"error_code":    "startup_failed",
 		"run_id":        "run-1",
 		"request_id":    "request-1",
+		"report_id":     "report-1",
 		"duration_ms":   float64(1250),
 		"dropped_count": float64(3),
+		"failure_count": float64(2),
 	}
 	for key, expected := range want {
 		if got := entry[key]; got != expected {

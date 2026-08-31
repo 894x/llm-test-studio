@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/runs"
 )
 
@@ -169,6 +171,156 @@ func TestDesktopDiagnosticFallbacksRedactSecrets(t *testing.T) {
 	if strings.Count(got, "[REDACTED]") < 2 {
 		t.Errorf("fallback output = %q, want redaction markers for both errors", got)
 	}
+}
+
+func TestQuickTestFailureProducesSafeStructuredDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatalf("openDesktopDiagnostics() error = %v", err)
+	}
+	runner := &recordingQuickTestRunner{result: quicktest.Result{
+		SchemaVersion: quicktest.SchemaVersion,
+		Success:       false,
+		ErrorCode:     quicktest.ErrorAuthenticationFailed,
+		E2EMS:         125,
+	}}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{quickTests: runner}, nil
+	})
+	app.setErrorReporter(desktopErrorReporter(operator, log.New(io.Discard, "", 0)))
+	app.onStartup(context.Background())
+
+	_, err = app.RunQuickTest(quicktest.Command{
+		URL: "https://private-provider.example/v1", APIKey: "sk-private-quick-key", ModelID: "private-model",
+	})
+	if err != nil {
+		t.Fatalf("RunQuickTest() error = %v", err)
+	}
+	if err := operator.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	entries, contents := readDesktopDiagnosticEntries(t, root)
+	if len(entries) != 1 {
+		t.Fatalf("diagnostic entries = %d, want 1; log = %s", len(entries), contents)
+	}
+	entry := entries[0]
+	for key, want := range map[string]any{
+		"level":       "WARN",
+		"component":   "quick_test",
+		"operation":   "connection_test",
+		"error_code":  "authentication_failed",
+		"duration_ms": float64(125),
+	} {
+		if got := entry[key]; got != want {
+			t.Errorf("entry[%q] = %#v, want %#v", key, got, want)
+		}
+	}
+	for _, secret := range []string{"private-provider.example", "sk-private-quick-key", "private-model"} {
+		if strings.Contains(contents, secret) {
+			t.Errorf("quick-test diagnostic leaked %q: %s", secret, contents)
+		}
+	}
+}
+
+func TestQuickPerformanceFailuresAndArchiveFailureProduceCorrelatedDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatalf("openDesktopDiagnostics() error = %v", err)
+	}
+	const reportID = "77777777-7777-4777-8777-777777777777"
+	runner := &recordingQuickTestRunner{performanceReport: quicktest.PerformanceReport{
+		SchemaVersion: quicktest.PerformanceSchemaVersion,
+		ReportID:      reportID,
+		ArchiveStatus: quicktest.PerformanceArchiveFailed,
+		Success:       false,
+		Progress: quicktest.PerformanceProgress{
+			Phase: "completed", Completed: 2, Failed: 2, TotalDurationMS: 1250,
+		},
+		Failures: []quicktest.PerformanceFailure{{
+			ErrorCode: quicktest.ErrorAuthenticationFailed,
+			Count:     2,
+		}},
+	}}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{quickTests: runner}, nil
+	})
+	app.setErrorReporter(desktopErrorReporter(operator, log.New(io.Discard, "", 0)))
+	app.onStartup(context.Background())
+
+	_, err = app.RunQuickPerformanceTest(quicktest.PerformanceCommand{
+		URL: "https://private-performance.example/v1", APIKey: "sk-private-performance-key", ModelID: "private-performance-model",
+	}, "")
+	if err != nil {
+		t.Fatalf("RunQuickPerformanceTest() error = %v", err)
+	}
+	if err := operator.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	entries, contents := readDesktopDiagnosticEntries(t, root)
+	if len(entries) != 2 {
+		t.Fatalf("diagnostic entries = %d, want 2; log = %s", len(entries), contents)
+	}
+	for key, want := range map[string]any{
+		"level":         "WARN",
+		"component":     "quick_test",
+		"operation":     "performance_test",
+		"error_code":    "authentication_failed",
+		"report_id":     reportID,
+		"duration_ms":   float64(1250),
+		"failure_count": float64(2),
+	} {
+		if got := entries[0][key]; got != want {
+			t.Errorf("performance entry[%q] = %#v, want %#v", key, got, want)
+		}
+	}
+	for key, want := range map[string]any{
+		"level":      "WARN",
+		"component":  "quick_test",
+		"operation":  "performance_archive",
+		"error_code": "quick_performance_archive_failed",
+		"report_id":  reportID,
+	} {
+		if got := entries[1][key]; got != want {
+			t.Errorf("archive entry[%q] = %#v, want %#v", key, got, want)
+		}
+	}
+	for _, secret := range []string{"private-performance.example", "sk-private-performance-key", "private-performance-model"} {
+		if strings.Contains(contents, secret) {
+			t.Errorf("quick-performance diagnostic leaked %q: %s", secret, contents)
+		}
+	}
+}
+
+func readDesktopDiagnosticEntries(t *testing.T, root string) ([]map[string]any, string) {
+	t.Helper()
+	contents, err := os.ReadFile(filepath.Join(root, "llm-studio", "logs", "llm-studio.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := strings.TrimSpace(string(contents))
+	if text == "" {
+		return nil, text
+	}
+	lines := strings.Split(text, "\n")
+	entries := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("Unmarshal() error = %v; line = %s", err, line)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, text
 }
 
 func TestConfigureDesktopDiagnosticsKeepsPathInsideGoBoundary(t *testing.T) {

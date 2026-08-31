@@ -44,8 +44,10 @@ type Event struct {
 	ErrorCode    string
 	RunID        string
 	RequestID    string
+	ReportID     string
 	Duration     time.Duration
 	DroppedCount uint64
+	FailureCount uint64
 	Err          error
 }
 
@@ -153,11 +155,15 @@ func (logger *Logger) Record(ctx context.Context, event Event) error {
 	attributes = appendString(attributes, "error_code", event.ErrorCode)
 	attributes = appendString(attributes, "run_id", event.RunID)
 	attributes = appendString(attributes, "request_id", event.RequestID)
+	attributes = appendString(attributes, "report_id", event.ReportID)
 	if event.Duration > 0 {
 		attributes = append(attributes, "duration_ms", event.Duration.Milliseconds())
 	}
 	if event.DroppedCount > 0 {
 		attributes = append(attributes, "dropped_count", event.DroppedCount)
+	}
+	if event.FailureCount > 0 {
+		attributes = append(attributes, "failure_count", event.FailureCount)
 	}
 	if event.Err != nil {
 		attributes = append(attributes, "error", RedactText(event.Err.Error()))

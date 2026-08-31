@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -23,6 +24,14 @@ const (
 
 var errQuickTestOperationFailed = errors.New("quick test operation failed")
 
+const (
+	quickTestDiagnosticConnectionOperation  = "connection_test"
+	quickTestDiagnosticPerformanceOperation = "performance_test"
+	quickTestDiagnosticArchiveOperation     = "performance_archive"
+	quickTestDiagnosticFallbackCode         = domain.ErrorCode("quick_test_failed")
+	quickTestDiagnosticArchiveFailedCode    = domain.ErrorCode("quick_performance_archive_failed")
+)
+
 const quickPerformanceProgressEventName = "quick-performance-progress"
 
 const quickPerformanceProgressInterval = 100 * time.Millisecond
@@ -30,6 +39,18 @@ const quickPerformanceProgressInterval = 100 * time.Millisecond
 type quickPerformanceProgressEvent struct {
 	ProgressID string                        `json:"progress_id"`
 	Progress   quicktest.PerformanceProgress `json:"progress"`
+}
+
+type quickTestDiagnosticEvent struct {
+	Operation    string
+	ErrorCode    string
+	ReportID     string
+	Duration     time.Duration
+	FailureCount uint64
+}
+
+func (event quickTestDiagnosticEvent) Error() string {
+	return "quick test diagnostic: operation=" + event.Operation + " code=" + event.ErrorCode
 }
 
 // SaveQuickTestConnectionCommand is intentionally separate from the
@@ -56,6 +77,13 @@ func (app *DesktopApp) RunQuickTest(command quicktest.Command) (quicktest.Result
 		// diagnostics belong in the allowlisted Result; an interface-level error
 		// may otherwise contain a provider URL or credential.
 		return quicktest.Result{}, app.safeBindingError(errQuickTestOperationFailed)
+	}
+	if !result.Success {
+		app.reportQuickTestDiagnostic(quickTestDiagnosticEvent{
+			Operation: quickTestDiagnosticConnectionOperation,
+			ErrorCode: safeQuickTestDiagnosticCode(result.ErrorCode),
+			Duration:  quickTestDiagnosticDuration(result.E2EMS),
+		})
 	}
 	return result, nil
 }
@@ -95,7 +123,70 @@ func (app *DesktopApp) RunQuickPerformanceTest(command quicktest.PerformanceComm
 		// behind the allowlisted performance report boundary.
 		return quicktest.PerformanceReport{}, app.safeBindingError(errQuickTestOperationFailed)
 	}
+	app.reportQuickPerformanceDiagnostics(report)
 	return report, nil
+}
+
+func (app *DesktopApp) reportQuickPerformanceDiagnostics(report quicktest.PerformanceReport) {
+	reportID := ""
+	if domain.IsUUID(report.ReportID) {
+		reportID = report.ReportID
+	}
+	duration := quickTestDiagnosticDuration(report.Progress.TotalDurationMS)
+	if report.ErrorCode != "" {
+		app.reportQuickTestDiagnostic(quickTestDiagnosticEvent{
+			Operation: quickTestDiagnosticPerformanceOperation,
+			ErrorCode: safeQuickTestDiagnosticCode(report.ErrorCode),
+			ReportID:  reportID, Duration: duration, FailureCount: report.Progress.Failed,
+		})
+	}
+	for _, failure := range report.Failures {
+		app.reportQuickTestDiagnostic(quickTestDiagnosticEvent{
+			Operation: quickTestDiagnosticPerformanceOperation,
+			ErrorCode: safeQuickTestDiagnosticCode(failure.ErrorCode),
+			ReportID:  reportID, Duration: duration, FailureCount: failure.Count,
+		})
+	}
+	if !report.Success && report.ErrorCode == "" && len(report.Failures) == 0 {
+		app.reportQuickTestDiagnostic(quickTestDiagnosticEvent{
+			Operation: quickTestDiagnosticPerformanceOperation,
+			ErrorCode: string(quickTestDiagnosticFallbackCode),
+			ReportID:  reportID, Duration: duration, FailureCount: report.Progress.Failed,
+		})
+	}
+	if report.ArchiveStatus == quicktest.PerformanceArchiveFailed {
+		app.reportQuickTestDiagnostic(quickTestDiagnosticEvent{
+			Operation: quickTestDiagnosticArchiveOperation,
+			ErrorCode: string(quickTestDiagnosticArchiveFailedCode),
+			ReportID:  reportID,
+		})
+	}
+}
+
+func (app *DesktopApp) reportQuickTestDiagnostic(event quickTestDiagnosticEvent) {
+	if app == nil {
+		return
+	}
+	app.mu.Lock()
+	report := app.reportError
+	app.mu.Unlock()
+	if report != nil {
+		report(event)
+	}
+}
+
+func safeQuickTestDiagnosticCode(code domain.ErrorCode) string {
+	if code.Validate() == nil {
+		return string(code)
+	}
+	return string(quickTestDiagnosticFallbackCode)
+}
+
+func quickTestDiagnosticDuration(milliseconds float64) time.Duration {
+	if milliseconds <= 0 || math.IsNaN(milliseconds) || math.IsInf(milliseconds, 0) || milliseconds > float64((24*time.Hour)/time.Millisecond) {
+		return 0
+	}
+	return time.Duration(milliseconds * float64(time.Millisecond))
 }
 
 func (app *DesktopApp) SaveQuickTestConnection(command SaveQuickTestConnectionCommand) (catalog.Snapshot, error) {
