@@ -51,6 +51,7 @@ type Command struct {
 	AddressMode AddressMode `json:"address_mode"`
 	URL         string      `json:"url"`
 	APIKey      string      `json:"api_key"`
+	ChannelID   string      `json:"channel_id,omitempty"`
 	ModelID     string      `json:"model_id"`
 	Prompt      string      `json:"prompt"`
 	TimeoutMS   int64       `json:"timeout_ms"`
@@ -79,6 +80,7 @@ type PerformanceCommand struct {
 	AddressMode  AddressMode `json:"address_mode"`
 	URL          string      `json:"url"`
 	APIKey       string      `json:"api_key"`
+	ChannelID    string      `json:"channel_id,omitempty"`
 	ModelID      string      `json:"model_id"`
 	RequestCount uint64      `json:"request_count"`
 	DurationMS   uint64      `json:"duration_ms"`
@@ -192,6 +194,7 @@ type PerformanceReportIDFactory func(time.Time) (string, error)
 type Dependencies struct {
 	Transport                   http.RoundTripper
 	AllowLoopbackHTTPForTesting bool
+	ChannelConnections          ChannelConnectionResolver
 	Archive                     PerformanceArchive
 	Clock                       PerformanceClock
 	IDFactory                   PerformanceReportIDFactory

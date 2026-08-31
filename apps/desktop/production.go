@@ -192,8 +192,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			commands:        runService,
 			comparisons:     comparisonService,
 			quickTests: quicktest.New(quicktest.Dependencies{
-				Archive: quickPerformanceArchive,
-				Clock:   productionClock{},
+				Archive:            quickPerformanceArchive,
+				Clock:              productionClock{},
+				ChannelConnections: quicktest.NewStoredChannelConnectionResolver(repository, credentialStore),
 			}),
 			close: func() error {
 				return errors.Join(runService.Close(), repository.Close())

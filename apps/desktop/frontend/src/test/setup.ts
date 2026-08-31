@@ -30,6 +30,10 @@ Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", {
   value: () => undefined,
 })
 
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+  value: () => undefined,
+})
+
 class ResizeObserverStub {
   observe() {}
   unobserve() {}

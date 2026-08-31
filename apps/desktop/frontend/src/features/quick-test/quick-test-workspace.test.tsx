@@ -6,9 +6,85 @@ import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopClientError } from "@/app/desktop-client"
 
 import { QuickTestWorkspace } from "./quick-test-workspace"
-import type { QuickPerformanceReport, QuickTestResult } from "./data"
+import { updateQuickTestForm, type QuickPerformanceReport, type QuickTestResult } from "./data"
 
 describe("QuickTestWorkspace", () => {
+  it("uses a selected catalog channel without exposing its stored API key", async () => {
+    const user = userEvent.setup()
+    const runQuickTest = vi.fn(async () => ({
+      schema_version: 1 as const,
+      success: true,
+      address_mode: "base_url" as const,
+      base_url: "https://api.example.test/v1",
+      endpoint: "https://api.example.test/v1/chat/completions",
+      http_status: 200,
+      e2e_ms: 100,
+      prompt_tokens: 1,
+      completion_tokens: 1,
+      cached_tokens: 0,
+    }))
+
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        channelCandidates={[{
+          id: "10000000-0000-4000-8000-000000000001",
+          name: "OpenAI 主渠道",
+          baseUrl: "https://api.example.test/v1",
+        }]}
+        runQuickTest={runQuickTest}
+        runQuickPerformanceTest={vi.fn()}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("combobox", { name: "从渠道填充" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI 主渠道" }))
+
+    expect(screen.getByLabelText("接口地址")).toHaveValue("https://api.example.test/v1")
+    expect(screen.getByLabelText("API Key")).toBeDisabled()
+    expect(screen.getByLabelText("API Key")).toHaveAttribute("placeholder", "已使用 OpenAI 主渠道 的保存凭据")
+
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-test")
+    await user.click(screen.getByRole("button", { name: "发送测试" }))
+
+    await waitFor(() => expect(runQuickTest).toHaveBeenCalledWith({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "",
+      channel_id: "10000000-0000-4000-8000-000000000001",
+      model_id: "gpt-test",
+      prompt: "Reply with OK only.",
+      timeout_ms: 30_000,
+    }))
+    const result = screen.getByRole("region", { name: "测试结果" })
+    expect(result).toHaveTextContent("当前连接来自已保存渠道")
+    expect(within(result).queryByRole("button", { name: "保存为模型与渠道" })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent("sk-")
+  })
+
+  it("removes the stored channel credential source when its copied address is edited", () => {
+    expect(updateQuickTestForm({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "",
+      channel_id: "10000000-0000-4000-8000-000000000001",
+      model_id: "gpt-test",
+      prompt: "Reply with OK only.",
+      timeout_ms: 30_000,
+    }, "url", "https://manual.example.test/v1")).toEqual({
+      address_mode: "base_url",
+      url: "https://manual.example.test/v1",
+      api_key: "",
+      model_id: "gpt-test",
+      prompt: "Reply with OK only.",
+      timeout_ms: 30_000,
+    })
+  })
+
   it("runs a zero-configuration connectivity test without exposing secrets or payloads", async () => {
     const user = userEvent.setup()
     const runQuickTest = vi.fn(async () => ({

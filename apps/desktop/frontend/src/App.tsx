@@ -233,6 +233,9 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
           modelCandidates={catalog.models
             .filter((model) => model.protocol === "openai-chat")
             .map((model) => ({ id: model.id, name: model.name }))}
+          channelCandidates={catalog.channels
+            .filter((channel) => channel.protocol === "openai-chat" && channel.enabled && channel.credential_configured)
+            .map((channel) => ({ id: channel.id, name: channel.name, baseUrl: channel.base_url }))}
           runQuickTest={client.runQuickTest}
           runQuickPerformanceTest={client.runQuickPerformanceTest}
           saveQuickTestConnection={client.saveQuickTestConnection}

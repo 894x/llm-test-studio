@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -39,6 +40,7 @@ import { PerformanceCharts } from "@/features/reports/performance-charts"
 
 import {
   QUICK_TEST_ERROR_MESSAGES,
+  updateQuickTestForm,
   type QuickPerformanceCommand,
   type QuickPerformanceReport,
   type QuickTestAddressMode,
@@ -60,6 +62,12 @@ export interface QuickTestModelCandidate {
   name: string
 }
 
+export interface QuickTestChannelCandidate {
+  id: string
+  name: string
+  baseUrl: string
+}
+
 interface TestedQuickTest {
   command: QuickTestCommand
   result: QuickTestResult
@@ -68,6 +76,7 @@ interface TestedQuickTest {
 
 export function QuickTestWorkspace({
   modelCandidates,
+  channelCandidates = [],
   runQuickTest,
   runQuickPerformanceTest,
   saveQuickTestConnection,
@@ -78,6 +87,7 @@ export function QuickTestWorkspace({
   onOpenReport,
 }: QuickTestActions & {
   modelCandidates: readonly QuickTestModelCandidate[]
+  channelCandidates?: readonly QuickTestChannelCandidate[]
   refreshCatalog: () => Promise<CatalogSnapshot>
   onCatalogUpdated: (catalog: CatalogSnapshot) => void
   onOpenCatalog: () => void
@@ -104,12 +114,35 @@ export function QuickTestWorkspace({
   const existingModel = matchingModels.length === 1 ? matchingModels[0] : undefined
   const ambiguousModelName = matchingModels.length > 1
   const modelOptionNames = [...new Set(modelCandidates.map((candidate) => candidate.name))]
+  const selectedChannel = channelCandidates.find((candidate) => candidate.id === form.channel_id)
 
   const update = <K extends keyof QuickTestCommand>(
     key: K,
     value: QuickTestCommand[K],
   ) => {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => updateQuickTestForm(current, key, value))
+    setTested(null)
+    setRequestError("")
+    setSaved(false)
+  }
+
+  const selectChannel = (channelID: string) => {
+    if (channelID === "manual") {
+      setForm((current) => {
+        const { channel_id: _channelID, ...manual } = current
+        return manual
+      })
+    } else {
+      const channel = channelCandidates.find((candidate) => candidate.id === channelID)
+      if (!channel) return
+      setForm((current) => ({
+        ...current,
+        address_mode: "base_url",
+        url: channel.baseUrl,
+        api_key: "",
+        channel_id: channel.id,
+      }))
+    }
     setTested(null)
     setRequestError("")
     setSaved(false)
@@ -173,6 +206,31 @@ export function QuickTestWorkspace({
             </div>
             <form onSubmit={submit}>
               <FieldGroup>
+                <Field className="block">
+                  <FieldLabel>从渠道填充</FieldLabel>
+                  <FieldContent>
+                    <Select value={form.channel_id ?? "manual"} onValueChange={selectChannel}>
+                      <SelectTrigger aria-label="从渠道填充" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="manual">手动输入地址与 API Key</SelectItem>
+                          {channelCandidates.map((channel) => (
+                            <SelectItem key={channel.id} value={channel.id}>{channel.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {selectedChannel
+                        ? `已填入 ${selectedChannel.name} 的地址；保存的 API Key 由 Core 安全读取。`
+                        : channelCandidates.length
+                          ? "可选择已启用渠道自动填充，也可以继续手动粘贴。"
+                          : "当前没有可用于快速测试的已启用渠道，请手动输入。"}
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
                 <fieldset>
                   <legend className="mb-2 text-xs font-medium">地址模式</legend>
                   <RadioGroup
@@ -209,7 +267,9 @@ export function QuickTestWorkspace({
                     autoComplete="new-password"
                     value={form.api_key}
                     onChange={(value) => update("api_key", value)}
-                    required
+                    disabled={!!selectedChannel}
+                    placeholder={selectedChannel ? `已使用 ${selectedChannel.name} 的保存凭据` : undefined}
+                    required={!selectedChannel}
                   />
                   <ModelIDField
                     value={form.model_id}
@@ -275,6 +335,7 @@ export function QuickTestWorkspace({
                 <ResultPanel
                   result={tested.result}
                   saved={saved}
+                  catalogChannelSelected={!!tested.command.channel_id}
                   onSave={() => setSaveOpen(true)}
                   onPerformance={() => setPerformanceOpen(true)}
                   onOpenCatalog={onOpenCatalog}
@@ -404,9 +465,10 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
   )
 }
 
-function ResultPanel({ result, saved, onSave, onPerformance, onOpenCatalog }: {
+function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, onPerformance, onOpenCatalog }: {
   result: QuickTestResult
   saved: boolean
+  catalogChannelSelected?: boolean
   onSave: () => void
   onPerformance: () => void
   onOpenCatalog: () => void
@@ -444,7 +506,14 @@ function ResultPanel({ result, saved, onSave, onPerformance, onOpenCatalog }: {
       </dl>
       {result.success ? (
         <div className="flex flex-wrap items-center gap-2 border-t p-4">
-          {saved ? (
+          {catalogChannelSelected ? (
+            <>
+              <span className="text-xs text-success">当前连接来自已保存渠道。</span>
+              <Button size="sm" variant="outline" onClick={onOpenCatalog}>
+                打开模型与渠道<ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            </>
+          ) : saved ? (
             <>
               <span className="text-xs text-success">模型、渠道与映射已保存。</span>
               <Button size="sm" variant="outline" onClick={onOpenCatalog}>
@@ -516,6 +585,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       address_mode: testedCommand.address_mode,
       url: testedCommand.url,
       api_key: testedCommand.api_key,
+      ...(testedCommand.channel_id ? { channel_id: testedCommand.channel_id } : {}),
       model_id: testedCommand.model_id,
       request_count: form.requestCount,
       duration_ms: form.durationSeconds * 1_000,

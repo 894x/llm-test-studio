@@ -24,9 +24,23 @@ export interface QuickTestCommand {
   address_mode: QuickTestAddressMode
   url: string
   api_key: string
+  channel_id?: string
   model_id: string
   prompt: string
   timeout_ms: number
+}
+
+export function updateQuickTestForm<K extends keyof QuickTestCommand>(
+  current: QuickTestCommand,
+  key: K,
+  value: QuickTestCommand[K],
+): QuickTestCommand {
+  const next = { ...current, [key]: value }
+  if (current.channel_id && (key === "url" || key === "address_mode")) {
+    const { channel_id: _channelID, ...manual } = next
+    return manual
+  }
+  return next
 }
 
 export interface QuickTestResult {
@@ -56,6 +70,7 @@ export interface QuickPerformanceCommand {
   address_mode: QuickTestAddressMode
   url: string
   api_key: string
+  channel_id?: string
   model_id: string
   request_count: number
   duration_ms: number
