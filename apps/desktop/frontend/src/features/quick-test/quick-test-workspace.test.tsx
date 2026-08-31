@@ -347,11 +347,14 @@ describe("QuickTestWorkspace", () => {
     )
 
     const modelID = screen.getByLabelText("模型 ID")
-    expect(modelID).toHaveAttribute("list", "quick-test-model-options")
-    expect(document.querySelector('option[value="gpt-5.2"]')).not.toBeNull()
-    expect(document.querySelector('option[value="gpt-4.1-mini"]')).not.toBeNull()
+    expect(modelID).not.toHaveAttribute("list")
+    expect(screen.getByRole("button", { name: "显示模型候选" })).toBeInTheDocument()
+    await user.click(modelID)
+    expect(screen.getByRole("listbox")).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "gpt-5.2" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "gpt-4.1-mini" })).toBeInTheDocument()
 
-    await user.type(modelID, "gpt-5.2")
+    await user.click(screen.getByRole("option", { name: "gpt-5.2" }))
     expect(modelID).toHaveValue("gpt-5.2")
     await user.clear(modelID)
     await user.type(modelID, "my-private-model-id")
@@ -388,6 +391,7 @@ describe("QuickTestWorkspace", () => {
     await user.type(screen.getByLabelText("接口地址"), "https://api.example.test/v1")
     await user.type(screen.getByLabelText("API Key"), "sk-private-value")
     await user.type(screen.getByLabelText("模型 ID"), existingModel.name)
+    await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "发送测试" }))
     await user.click(await screen.findByRole("button", { name: "保存为模型与渠道" }))
 
@@ -453,6 +457,7 @@ describe("QuickTestWorkspace", () => {
     await user.type(url, "https://tested.example/v1")
     await user.type(apiKey, "sk-tested")
     await user.type(modelID, existingModel.name)
+    await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "发送测试" }))
     await user.clear(url)
     await user.type(url, "https://untested.example/v1")
@@ -460,6 +465,7 @@ describe("QuickTestWorkspace", () => {
     await user.type(apiKey, "sk-untested")
     await user.clear(modelID)
     await user.type(modelID, "untested-model")
+    await user.keyboard("{Escape}")
     resolveTest({
       schema_version: 1, success: true, address_mode: "base_url",
       base_url: "https://tested.example/v1",

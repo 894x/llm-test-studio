@@ -11,6 +11,14 @@ import {
   type DesktopClient,
 } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
+import {
+  Autocomplete,
+  AutocompleteContent,
+  AutocompleteEmpty,
+  AutocompleteInput,
+  AutocompleteItem,
+  AutocompleteList,
+} from "@/components/ui/autocomplete"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -439,18 +447,34 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
     <Field className="block">
       <FieldLabel htmlFor="quick-test-model-id">模型 ID</FieldLabel>
       <FieldContent>
-        <Input
-          id="quick-test-model-id"
-          aria-label="模型 ID"
-          list="quick-test-model-options"
+        <Autocomplete
+          items={optionNames}
           value={value}
-          placeholder="选择目录模型或手动输入"
-          required
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <datalist id="quick-test-model-options">
-          {optionNames.map((name) => <option key={name} value={name} />)}
-        </datalist>
+          onValueChange={onChange}
+          modal={false}
+          openOnInputClick
+        >
+          <AutocompleteInput
+            id="quick-test-model-id"
+            aria-label="模型 ID"
+            placeholder="选择目录模型或手动输入"
+            required
+            triggerLabel="显示模型候选"
+            triggerDisabled={optionNames.length === 0}
+          />
+          {optionNames.length > 0 ? (
+            <AutocompleteContent>
+              <AutocompleteEmpty>无匹配模型，可继续使用当前输入</AutocompleteEmpty>
+              <AutocompleteList>
+                {(name) => (
+                  <AutocompleteItem key={name} value={name}>
+                    {name}
+                  </AutocompleteItem>
+                )}
+              </AutocompleteList>
+            </AutocompleteContent>
+          ) : null}
+        </Autocomplete>
         <FieldDescription>
           {existingModel
             ? `已匹配目录模型 ${existingModel.name}，保存连接时将直接复用。`
