@@ -164,18 +164,36 @@ func TestRepositoryResolvesCurrentCompatibleTargetForRuntimeTargetPlan(t *testin
 			t.Fatalf("create %s: %v", item.name, err)
 		}
 	}
+	updatedModel := fixture.model
+	updatedModel.Revision = 2
+	updatedModel.UpdatedAt = updatedModel.UpdatedAt.Add(time.Second)
+	updatedModel.Name = "Fixture model metadata update"
+	if err := repository.UpdateModel(ctx, fixture.model.Revision, updatedModel); err != nil {
+		t.Fatalf("UpdateModel() error = %v", err)
+	}
 
 	model, channel, mapping, err := repository.ResolvePlanTargetSelection(ctx, fixture.plan, fixture.model.ID, fixture.channel.ID)
 	if err != nil {
 		t.Fatalf("ResolvePlanTargetSelection() error = %v", err)
 	}
-	assertRoundTrip(t, "resolved model", fixture.model, model)
+	assertRoundTrip(t, "resolved model", updatedModel, model)
 	assertRoundTrip(t, "resolved channel", fixture.channel, channel)
 	assertRoundTrip(t, "resolved mapping", fixture.mapping, mapping)
-	if err := repository.CreateRun(ctx, fixture.run); err != nil {
+	runSnapshot := fixture.run.Snapshot()
+	runSnapshot.Model = domain.ModelSnapshot{
+		EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision},
+		Name:              model.Name,
+		Protocol:          model.Protocol,
+		Capabilities:      append([]string(nil), model.Capabilities...),
+	}
+	runtimeTargetRun, err := domain.NewRun(fixture.run.Meta(), fixture.plan.ID, runSnapshot)
+	if err != nil {
+		t.Fatalf("NewRun(runtime target) error = %v", err)
+	}
+	if err := repository.CreateRun(ctx, runtimeTargetRun); err != nil {
 		t.Fatalf("CreateRun(targetless plan snapshot) error = %v", err)
 	}
-	assertRoundTrip(t, "targetless plan run", fixture.run, mustGetRun(t, repository, fixture.run.Meta().ID))
+	assertRoundTrip(t, "targetless plan run", runtimeTargetRun, mustGetRun(t, repository, runtimeTargetRun.Meta().ID))
 }
 
 var _ coreRepositoryContract = (*persistence.Repository)(nil)

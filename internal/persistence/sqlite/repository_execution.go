@@ -456,12 +456,15 @@ func validateRunReferences(ctx context.Context, queryer relationQueryer, run dom
 	var mappingID string
 	var mappingRevision int64
 	if runtimeSelectedTarget {
+		// Runtime-selected plans bind mappings by the logical model/channel IDs.
+		// A later metadata-only revision of either endpoint must not invalidate the
+		// mapping; the Run snapshot separately pins the exact endpoint revisions.
 		err = queryer.QueryRowContext(ctx, `
 			SELECT id, revision FROM channel_models
-			WHERE channel_id = ? AND channel_revision = ? AND model_id = ? AND model_revision = ?
+			WHERE channel_id = ? AND model_id = ?
 			  AND json_extract(document_json, '$.upstream_model_name') = ?
 			ORDER BY revision DESC LIMIT 1
-		`, snapshot.Channel.ID, snapshot.Channel.Revision, snapshot.Model.ID, snapshot.Model.Revision, snapshot.Channel.UpstreamModelName).Scan(&mappingID, &mappingRevision)
+		`, snapshot.Channel.ID, snapshot.Model.ID, snapshot.Channel.UpstreamModelName).Scan(&mappingID, &mappingRevision)
 	} else {
 		err = queryer.QueryRowContext(ctx, `
 			SELECT mapping_id, mapping_revision
