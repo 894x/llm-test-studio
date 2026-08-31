@@ -18,11 +18,12 @@ import (
 	appdoctor "github.com/894x/llm-studio/internal/application/doctor"
 )
 
-const rootUsage = `Usage: llm-studio <doctor|audit> [options]
+const rootUsage = `Usage: llm-studio <doctor|audit|load> [options]
 
 Commands:
   doctor      Check whether the Go core and local case definitions are usable
   audit       List or run compatibility audit cases
+  load        Run an OpenAI-compatible load test with the Go core
 `
 
 const auditUsage = `Usage: llm-studio audit <list|run> [options]
@@ -74,6 +75,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runDoctor(ctx, args[1:], stdout, stderr, dependencies)
 	case "audit":
 		return runAudit(ctx, args[1:], stdout, stderr, dependencies)
+	case "load":
+		return runLoad(ctx, args[1:], stdout, stderr, dependencies)
 	default:
 		return diagnosticExit(stderr, "json", "usage_error", "unknown command", 2)
 	}

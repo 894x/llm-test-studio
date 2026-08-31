@@ -2,7 +2,7 @@
 
 本文记录项目的产品边界、阶段架构与实施清单。目标不是把现有脚本简单包一层界面，而是统一模型、渠道、测试用例、执行、结果和报告，使 GUI、CLI、本地执行和未来的服务端执行共享同一套语义。
 
-本次 V1 是完整的 Go 迁移，不长期保留 Python 业务层。Python/Streamlit 只作为迁移期行为基准和旧数据验收工具；对应 Go 能力通过等价测试后即删除，不形成第二套运行时。
+本次 V1 已完成到统一 Go Core 的迁移，不保留第二套业务运行时。桌面交互由 Wails + React 承担，CLI 与桌面端共用 Go 领域、执行、持久化和报告语义。
 
 ## 产品定义
 
@@ -67,7 +67,7 @@ llm-studio CLI ───────────────┘                 
 - [ ] 将 `Tauri + React/Vite + Go sidecar` 作为备选，验证 sidecar 生命周期、签名和打包复杂度。
 - [ ] 仅在生态能力确有必要时选择 `Electron + React/Vite + Go sidecar`，同时评估体积和内存成本。
 - [ ] 技术验证至少覆盖：GUI 调用 Go、CLI 调用同一核心、访问同一 SQLite、操作系统凭据存储、三平台打包。
-- [x] 明确现有 Streamlit Dashboard 的去留：迁移期用于人工回归，Wails 功能等价后删除。
+- [x] 已用 Wails + React 替换旧 Dashboard，并删除旧运行时。
 
 建议代码边界：
 
@@ -88,10 +88,10 @@ internal/integrations    new-api 等外部系统适配器
 - [ ] 定义稳定的 Application Core API，GUI 和 CLI 不直接操作数据库。
 - [ ] GUI 与 CLI 共用数据校验、错误码、执行状态、结果聚合、凭据读取和报告生成。
 - [ ] 将 `scripts/` 中的现有实现逐步迁移到共享核心。
-- [ ] 迁移期间保留 Bash/PowerShell/Python 脚本作为兼容包装层，内部调用统一的 `llm-studio` CLI。
+- [x] 将独立压测入口收敛到 `llm-studio load run`，多模态/视频入口收敛到 `audit run --case`。
 - [ ] 迁移完成后标记旧脚本为 deprecated，不再维护第二套业务逻辑。
 - [ ] 将现有脚本中的流式完成判定、开放环发送、TTFT/TPOT 和实时指标纳入统一引擎。
-- [ ] 合并当前 Python Dashboard 与 Bash benchmark 的执行语义，消除指标口径差异。
+- [x] 将旧 Dashboard 指标与 Bash benchmark 的调度、SSE 和指标语义迁入 Go load engine；Bash 只作为独立验收 fixture。
 
 目标 CLI：
 

@@ -38,6 +38,6 @@ JSONL schema version 1 输出：
 运行的 `final` 事件包含报告路径、verdict、overall 状态和汇总计数。退出码 1
 表示审计已完成但存在失败用例；退出码 2 表示配置或命令用法错误。
 
-在 Application Core 重构期间，此可执行文件继续作为 Streamlit 和脚本的兼容
-adapter。计划、执行状态、评估和报告编排将迁入共享 Core 包，由该 adapter 与
-`llm-studio` 共同调用。
+此可执行文件是旧 JSONL 兼容 adapter。计划、执行状态、评估和报告编排均位于
+共享 Go Core 包中，由该 adapter 与主 `llm-studio` CLI 共同调用。新工作流应优先
+使用 `llm-studio audit list|run`。

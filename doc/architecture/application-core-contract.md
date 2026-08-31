@@ -12,7 +12,7 @@
 | `internal/persistence` | SQLite repository、migration、备份和 artifact 索引 | 保存秘密、重算业务结论 |
 | `internal/credentials` | OS 安全存储 adapter 和脱敏 | 向查询 API 返回明文秘密 |
 | `internal/reporting` | Report Model 到 JSON/HTML/PNG/PDF | 从运行时对象另算一套指标 |
-| adapters | CLI、Wails、旧 JSONL/Python 兼容 | 绕过 Application Service 调数据库或执行器 |
+| adapters | CLI、Wails、旧 JSONL 兼容 | 绕过 Application Service 调数据库或执行器 |
 
 依赖只能从 adapter 指向 application，再指向 domain 和端口；具体 adapter 实现反向注入。
 

@@ -1,5 +1,0 @@
-streamlit>=1.62
-aiohttp
-pandas
-plotly
-Pillow>=10.1

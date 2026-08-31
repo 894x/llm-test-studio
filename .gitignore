@@ -5,10 +5,9 @@ __pycache__/
 .pytest_cache/
 
 # Local state and potentially sensitive test output
-loadtest_history.db
 data/
-multimodal_results.json
-test_results_*.json
+load-result*.json
+loadtest_history.db
 /cmd/llm-studio/output/
 /output/
 

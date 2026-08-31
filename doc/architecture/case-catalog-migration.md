@@ -144,4 +144,4 @@ git status --short
 3. 让 CLI 调用同一 Catalog、execution、reporting Application Core，补齐 GUI/CLI 同库同语义验收。
 4. 建立完整 Report Schema 的详情读取和同源 JSON/HTML/PNG/PDF 导出，再做敏感信息与大数据量验收。
 5. 用真实 Windows、macOS、Linux 环境完成 Wails 打包、系统凭据适配、签名、升级和回滚。
-6. 达到行为等价和交付门槛后，删除 Python/Streamlit/Bash 中已被 Go 替代的业务逻辑。
+6. 达到行为等价和交付门槛后删除旧 UI 与脚本业务逻辑；Bash benchmark 仅保留为独立验收 fixture。

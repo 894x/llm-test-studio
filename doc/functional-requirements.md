@@ -7,7 +7,7 @@
 - 产品形态：本地运行的单用户模型验证工作台
 - 核心目标：统一管理模型、测试用例、执行计划、结果证据和报告
 - 支持协议：OpenAI Chat、Kimi K3、Seedance
-- 执行方式：Streamlit Dashboard、Python 异步压测引擎、Go 兼容性审计引擎、独立 CLI 脚本
+- 执行方式：Wails + React 桌面端、Go 压测/兼容性执行引擎、统一 `llm-studio` CLI
 - 数据位置：版本化 JSON 文件、本地 SQLite、本地报告目录
 
 ## 2. 用户与核心场景
@@ -112,7 +112,7 @@
 - FR-609：最终报告必须提供 pass、warning、fail、unknown 汇总，以及 overall、verdict、JSON 和 HTML 路径。
 - FR-610：存在失败用例时，审计仍必须产出有效 `final` 与报告；进程退出码 1 表示审计完成但有失败，退出码 2 表示配置或协议错误。
 
-验收标准：Python `EngineClient` 能构建或复用当前 Go binary，消费完整事件流，并把有效 final 与逐用例结果写入 SQLite。
+验收标准：桌面端和 CLI 直接调用 Go Application Core，消费完整运行状态，并把有效结论与逐用例结果写入统一 SQLite repository。
 
 ### FR-700 Seedance 审计计划
 
@@ -138,7 +138,7 @@
 ### FR-900 CLI 与辅助工具
 
 - FR-901：Go 引擎必须提供 `list` 和 `run` 命令，并支持人类可读输出与 `--jsonl` 输出。
-- FR-902：Python CLI 入口必须通过 `LOADTEST_API_KEY`、`LOADTEST_URL`、`LOADTEST_MODEL` 等环境变量读取运行配置；不得要求把密钥写入仓库。
+- FR-902：Go CLI 必须通过 `LOADTEST_API_KEY`、`LOADTEST_URL`、`LOADTEST_MODEL` 等环境变量读取运行配置；不得要求把密钥写入仓库。
 - FR-903：独立 Bash benchmark 必须支持 burst 与 open-loop timed dispatch、流式/非流式、单请求超时、请求级 artifact、汇总 JSON 和实时 TTFT/TPOT 指标。
 - FR-904：Bash benchmark 的 HTTP 2xx 流式请求只有在收到 SSE `[DONE]` 后才能判定为成功。
 - FR-905：benchmark 集成测试必须使用本地 OpenAI-compatible mock，不依赖真实供应商或真实密钥。
@@ -162,7 +162,7 @@
 ### NFR-300 独立性与兼容性
 
 - 项目不得依赖原始 `new-api` checkout 才能运行 Dashboard 或 Go 引擎。
-- Python 代码要求 Python 3.10+；Go 引擎要求 Go 1.22+。
+- Go Core 要求 Go 1.25+；React 桌面前端要求 Node.js 与 pnpm。
 - SQLite schema 初始化必须兼容旧版性能表，并可按需补充新列。
 
 当前 Windows 可移植性仍有一个已知缺口：跨盘临时报告目录不能直接相对化。Go 进程边界已显式使用 UTF-8，集成测试也不再依赖 POSIX executable bit 或 `true` 命令；但在 artifact 路径支持外部位置前，仍不能宣称完成跨平台保证。
@@ -190,7 +190,8 @@
 
 | 范围 | 最低验收命令/检查 |
 | --- | --- |
-| Python 领域逻辑与 UI smoke | `python -m unittest discover -v` |
+| Go 领域、应用、持久化、CLI 与桌面 binding | `go test ./... -count=1` |
+| React UI 与 binding contract | `cd apps/desktop/frontend && pnpm test && pnpm build` |
 | Go Core 与兼容性引擎 | `GOWORK=off go test ./...` |
 | Go 可执行文件 | `GOWORK=off go build ./engine/cmd/llm-compat-engine` |
 | Bash benchmark | `bash scripts/test_llm_benchmark.sh` |

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func TestHelpAndDefaultMachineDiagnosticsHaveStableContracts(t *testing.T) {
 			name:     "root help",
 			args:     []string{"--help"},
 			wantCode: 0,
-			wantHelp: "Usage: llm-studio <doctor|audit>",
+			wantHelp: "Usage: llm-studio <doctor|audit|load>",
 		},
 		{
 			name:     "audit help",
@@ -118,6 +119,93 @@ func TestHelpAndDefaultMachineDiagnosticsHaveStableContracts(t *testing.T) {
 				t.Fatalf("diagnostics echoed unknown command: stdout=%q stderr=%q", stdout.String(), stderr.String())
 			}
 		})
+	}
+}
+
+func TestLoadRunUsesGoSchedulerAndNeverEmitsCredential(t *testing.T) {
+	t.Parallel()
+	const secret = "sk-load-cli-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/chat/completions" || request.Header.Get("Authorization") != "Bearer "+secret {
+			http.Error(writer, "bad request", http.StatusBadRequest)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"prompt_tokens_details":{"cached_tokens":4}}}`)
+	}))
+	defer server.Close()
+	dependencies := defaultDependencies()
+	dependencies.getenv = func(name string) string {
+		switch name {
+		case "LOADTEST_API_KEY":
+			return secret
+		case "LOADTEST_MODEL":
+			return "test-model"
+		default:
+			return ""
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"load", "run", "--url", server.URL + "/v1/chat/completions",
+		"--requests", "2", "--concurrency", "1", "--allow-insecure-loopback",
+	}, strings.NewReader(""), &stdout, &stderr, dependencies)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), secret) {
+		t.Fatal("load output leaked the credential")
+	}
+	var response loadRunResponse
+	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
+		t.Fatalf("decode load output: %v", err)
+	}
+	if response.SchemaVersion != 1 || response.Type != "load_run" || response.Payload.Metrics.Succeeded != 2 || len(response.Payload.Results) != 2 {
+		t.Fatalf("load response = %#v", response)
+	}
+}
+
+func TestLoadOutputAtomicallyReplacesExistingFile(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "reports", "load.json")
+	if err := writeLoadOutput(filename, []byte("first\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeLoadOutput(filename, []byte("second\n")); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filename)
+	if err != nil || string(contents) != "second\n" {
+		t.Fatalf("output = %q, %v", contents, err)
+	}
+}
+
+func TestLoadEndpointAndCasePathComposeWithoutDuplicatingVersionPrefix(t *testing.T) {
+	baseURL, requestPath, err := splitLoadEndpoint("https://gateway.example/v1/chat/completions")
+	if err != nil || baseURL != "https://gateway.example/v1" || requestPath != "/chat/completions" {
+		t.Fatalf("split = %q %q %v", baseURL, requestPath, err)
+	}
+	if got := relativeLoadRequestPath(baseURL, "/v1/chat/completions"); got != "/chat/completions" {
+		t.Fatalf("relative case path = %q", got)
+	}
+}
+
+func TestEffectiveLoadRequestCountUsesDurationForOpenLoopByDefault(t *testing.T) {
+	if got := effectiveLoadRequestCount(1, false, 2, time.Minute); got != 0 {
+		t.Fatalf("implicit request count = %d, want duration-bounded open loop", got)
+	}
+	if got := effectiveLoadRequestCount(1, true, 2, time.Minute); got != 1 {
+		t.Fatalf("explicit request count = %d, want 1", got)
+	}
+}
+
+func TestLoadEndpointRejectsNonChatRoutes(t *testing.T) {
+	for _, endpoint := range []string{
+		"https://gateway.example/v1/embeddings",
+		"https://gateway.example/v1/models",
+	} {
+		if _, _, err := splitLoadEndpoint(endpoint); err == nil {
+			t.Fatalf("splitLoadEndpoint(%q) unexpectedly succeeded", endpoint)
+		}
 	}
 }
 

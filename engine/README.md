@@ -41,7 +41,7 @@ The run's final event contains report paths, verdict, overall status, and
 summary counts. Exit code 1 means the audit completed with failed cases; exit
 code 2 means configuration or usage failed.
 
-During the Application Core refactor this executable remains a compatibility
-adapter for Streamlit and scripts. Planning, execution state, evaluation, and
-report orchestration are moving into shared Core packages used by both this
-adapter and `llm-studio`.
+This executable is the legacy JSONL compatibility adapter. Planning, execution
+state, evaluation, and report orchestration live in shared Go Core packages
+used by both this adapter and the primary `llm-studio` CLI. New workflows
+should prefer `llm-studio audit list|run`.

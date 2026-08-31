@@ -16,24 +16,18 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-for command_name in curl jq python3 script; do
+for command_name in curl jq go script; do
     command -v "$command_name" >/dev/null 2>&1 || {
         echo "缺少测试依赖: $command_name" >&2
         exit 1
     }
 done
 
-PORT=$(python3 -c '
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-')
-
-python3 "$SCRIPT_DIR/mock_llm_server.py" \
+PORT_FILE="$TEST_DIR/mock.port"
+go run "$SCRIPT_DIR/../cmd/mock-llm-server" \
     --host 127.0.0.1 \
-    --port "$PORT" \
+    --port 0 \
+    --port-file "$PORT_FILE" \
     --base-latency-ms 50 \
     --prefill-tps 500 \
     --decode-tps 25 \
@@ -45,7 +39,10 @@ for _ in {1..50}; do
     if ! kill -0 "$MOCK_PID" 2>/dev/null; then
         break
     fi
-    if curl --silent --fail --connect-timeout 0.2 --max-time 0.2 \
+    if [[ -f "$PORT_FILE" ]]; then
+        PORT=$(tr -d '\r\n' < "$PORT_FILE")
+    fi
+    if [[ -n "${PORT:-}" ]] && curl --silent --fail --connect-timeout 0.2 --max-time 0.2 \
         "http://127.0.0.1:$PORT/health" >/dev/null; then
         ready=true
         break
@@ -93,13 +90,8 @@ script --quiet --return \
     --command "COLUMNS=80 LLM_API_KEY=mock-key bash '$SCRIPT_DIR/llm_benchmark.sh' -u 'http://127.0.0.1:$PORT/v1' -m mock-model -n 1 -c 1 -i 20 -o 2 -d 5 -s 0 --refresh-ms 50 -f '$TTY_RESULT_FILE'" \
     "$TTY_LOG" >/dev/null
 
-read -r cursor_hide_count cursor_show_count < <(
-    python3 -c '
-import sys
-data = open(sys.argv[1], "rb").read()
-print(data.count(b"\x1b[?25l"), data.count(b"\x1b[?25h"))
-' "$TTY_LOG"
-)
+cursor_hide_count=$(LC_ALL=C grep -aoF $'\033[?25l' "$TTY_LOG" | wc -l | tr -d ' ')
+cursor_show_count=$(LC_ALL=C grep -aoF $'\033[?25h' "$TTY_LOG" | wc -l | tr -d ' ')
 if (( cursor_hide_count != 1 || cursor_show_count != 1 )); then
     echo "TTY 压测应只隐藏和恢复光标各一次，实际 hide=$cursor_hide_count show=$cursor_show_count" >&2
     exit 1
