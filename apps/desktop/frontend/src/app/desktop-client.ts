@@ -35,7 +35,10 @@ import {
   type ReportSnapshot,
 } from "@/features/reports/data"
 import {
+  parseQuickPerformanceReport,
   parseQuickTestResult,
+  type QuickPerformanceCommand,
+  type QuickPerformanceReport,
   type QuickTestCommand,
   type QuickTestResult,
   type SaveQuickTestConnectionCommand,
@@ -115,6 +118,7 @@ export interface DesktopClient extends CatalogActions {
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
   runQuickTest(command: QuickTestCommand): Promise<QuickTestResult>
+  runQuickPerformanceTest(command: QuickPerformanceCommand): Promise<QuickPerformanceReport>
   saveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<CatalogSnapshot>
 }
 
@@ -130,6 +134,7 @@ type WailsDesktopBinding = {
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
   RunQuickTest(command: QuickTestCommand): Promise<unknown>
+  RunQuickPerformanceTest(command: QuickPerformanceCommand): Promise<unknown>
   SaveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<unknown>
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
@@ -254,6 +259,9 @@ export function createFixtureClient(
         completion_tokens: 1,
         cached_tokens: 0,
       }
+    },
+    async runQuickPerformanceTest(command) {
+      return fixtureQuickPerformanceReport(command)
     },
     async saveQuickTestConnection(command) {
       let modelID = command.existing_model_id
@@ -410,6 +418,7 @@ function createLazyFixtureClient(): DesktopClient {
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
     runQuickTest: async (command) => (await client).runQuickTest(command),
+    runQuickPerformanceTest: async (command) => (await client).runQuickPerformanceTest(command),
     saveQuickTestConnection: async (command) => (await client).saveQuickTestConnection(command),
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
@@ -456,6 +465,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
     runQuickTest: async (command) =>
       callBinding(() => binding.RunQuickTest(command), parseQuickTestResult),
+    runQuickPerformanceTest: async (command) =>
+      callBinding(() => binding.RunQuickPerformanceTest(command), parseQuickPerformanceReport),
     saveQuickTestConnection: async (command) =>
       callBinding(() => binding.SaveQuickTestConnection(command), parseCatalogSnapshot),
     createModel: async (command) => callBinding(() => binding.CreateModel(command), parseCatalogSnapshot),
@@ -495,6 +506,7 @@ function unavailableClient(): DesktopClient {
     cancelRun: () => reject(),
 		startComparison: () => reject(),
     runQuickTest: () => reject(),
+    runQuickPerformanceTest: () => reject(),
     saveQuickTestConnection: () => reject(),
     createModel: () => reject(),
     updateModel: () => reject(),
@@ -539,7 +551,8 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     typeof candidate.StopSending !== "function" ||
     typeof candidate.CancelRun !== "function" ||
 		typeof candidate.StartComparison !== "function" ||
-    typeof candidate.RunQuickTest !== "function" ||
+		typeof candidate.RunQuickTest !== "function" ||
+		typeof candidate.RunQuickPerformanceTest !== "function" ||
     typeof candidate.SaveQuickTestConnection !== "function" ||
     catalogMethods.some((method) => typeof candidate[method] !== "function")
   ) {
@@ -548,11 +561,74 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
   return candidate as WailsDesktopBinding
 }
 
+function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
+  const completed = command.request_count || Math.max(1, command.concurrency * 2)
+  const totalDurationMS = Math.max(320, command.duration_ms)
+  const seconds = totalDurationMS / 1_000
+  const promptTokens = completed * command.input_tokens
+  const completionTokens = completed * command.output_tokens
+  return {
+    schema_version: 1,
+    archived: false,
+    archive_status: "not_attempted",
+    model_id: command.model_id,
+    success: true,
+    address_mode: command.address_mode,
+    base_url: command.url.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, ""),
+    endpoint: command.address_mode === "base_url"
+      ? `${command.url.replace(/\/+$/, "")}/chat/completions`
+      : command.url,
+    profile: {
+      request_count: command.request_count, duration_ms: command.duration_ms,
+      concurrency: command.concurrency, timeout_ms: command.timeout_ms,
+      input_tokens: command.input_tokens, output_tokens: command.output_tokens,
+    },
+    progress: {
+      phase: "completed", planned: completed, launched: completed, completed,
+      peak_in_flight: Math.min(command.concurrency, completed), succeeded: completed,
+      failed: 0, rejected: 0, send_duration_ms: totalDurationMS,
+      drain_duration_ms: 0, total_duration_ms: totalDurationMS,
+    },
+    metrics: {
+      completed, succeeded: completed, failed: 0, timed_out: 0,
+      success_rate_percent: 100, request_qps: completed / seconds,
+      rpm: completed / seconds * 60, input_tpm: promptTokens / seconds * 60,
+      output_tpm: completionTokens / seconds * 60,
+      total_tpm: (promptTokens + completionTokens) / seconds * 60,
+      generation_tps: completionTokens / seconds,
+      ttft_p50_ms: 35, ttft_p90_ms: 45, ttft_p95_ms: 48, ttft_p99_ms: 50, ttft_average_ms: 38,
+      tpot_p50_ms: 5, tpot_p90_ms: 6, tpot_p95_ms: 6.5, tpot_p99_ms: 7, tpot_average_ms: 5.2,
+      e2e_p50_ms: 120, e2e_p90_ms: 150, e2e_p95_ms: 160, e2e_p99_ms: 170, e2e_average_ms: 128,
+      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+      prompt_tokens: promptTokens, completion_tokens: completionTokens,
+      cached_tokens: 0, cache_rate_percent: 0,
+    },
+    samples: Array.from({ length: completed }, (_, index) => ({
+      request_index: index,
+      scheduled_offset_ms: 0,
+      started_offset_ms: index,
+      finished_offset_ms: 120 + index,
+      schedule_lag_ms: index,
+      e2e_ms: 120,
+      ttft_ms: 35,
+      tpot_ms: 5,
+      http_status: 200,
+      success: true,
+      timed_out: false,
+      prompt_tokens: command.input_tokens,
+      completion_tokens: command.output_tokens,
+      cached_tokens: 0,
+    })),
+    failures: [],
+  }
+}
+
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
 	return {
 		schema_version: 1,
+		source: "run",
 		report: {
-			id: summary.id, run_id: summary.run_id, run_status: summary.run_status, generated_at: summary.generated_at,
+			id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
 			model: { id: "10000000-0000-4000-8000-000000000001", name: summary.model_name },
 			channel: { id: "10000000-0000-4000-8000-000000000002", name: summary.channel_name },
 			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "fixture", engine_version: "go-core-v1" },
@@ -641,7 +717,8 @@ function isProtocolError(error: unknown): boolean {
       error.message.startsWith("桌面目录") ||
       error.message.startsWith("桌面报告") ||
 		error.message.startsWith("渠道对比") ||
-      error.message.startsWith("快速测试"))
+		error.message.startsWith("快速测试") ||
+		error.message.startsWith("快速性能"))
   )
 }
 

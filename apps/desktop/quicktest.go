@@ -50,6 +50,21 @@ func (app *DesktopApp) RunQuickTest(command quicktest.Command) (quicktest.Result
 	return result, nil
 }
 
+func (app *DesktopApp) RunQuickPerformanceTest(command quicktest.PerformanceCommand) (quicktest.PerformanceReport, error) {
+	lease, err := app.acquire(desktopRequirements{quickTests: true})
+	if err != nil {
+		return quicktest.PerformanceReport{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	report, err := lease.quickTests.RunPerformance(lease.ctx, command)
+	if err != nil {
+		// As with connectivity testing, provider and credential details must stay
+		// behind the allowlisted performance report boundary.
+		return quicktest.PerformanceReport{}, app.safeBindingError(errQuickTestOperationFailed)
+	}
+	return report, nil
+}
+
 func (app *DesktopApp) SaveQuickTestConnection(command SaveQuickTestConnectionCommand) (catalog.Snapshot, error) {
 	if err := validateSaveQuickTestConnection(command); err != nil {
 		return catalog.Snapshot{}, app.safeBindingError(catalog.ErrInvalid)

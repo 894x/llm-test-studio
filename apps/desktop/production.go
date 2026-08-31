@@ -179,6 +179,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("create comparison application service: %w", err)
 		}
 		gate := &productionServiceGate{}
+		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
 		serializedCatalog := serializedCatalogService{
 			gate: gate, query: catalogQuery, commands: catalogQuery, channels: channelService,
 			caseFiles: caseFiles, caseSnapshots: repository,
@@ -190,7 +191,10 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			reports:         serializedReportingQuery{gate: gate, query: reportingQuery},
 			commands:        runService,
 			comparisons:     comparisonService,
-			quickTests:      quicktest.New(quicktest.Dependencies{}),
+			quickTests: quicktest.New(quicktest.Dependencies{
+				Archive: quickPerformanceArchive,
+				Clock:   productionClock{},
+			}),
 			close: func() error {
 				return errors.Join(runService.Close(), repository.Close())
 			},

@@ -40,6 +40,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
   const [reports, setReports] = useState<ReportSnapshot | null>(null)
+  const [preferredReportID, setPreferredReportID] = useState("")
   const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
   const [loadError, setLoadError] = useState("")
   const [commandError, setCommandError] = useState("")
@@ -110,6 +111,26 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     }
     window.location.hash = next
   }, [])
+
+  const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
+    try {
+      setReports(await client.getReports())
+      setPreferredReportID(reportID)
+    } catch {
+      // The quick-test result remains available in its sheet; the reports
+      // workspace can be refreshed again through normal app polling/reload.
+    }
+  }, [client])
+
+  const openArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
+    setPreferredReportID(reportID)
+    navigate("reports")
+    try {
+      setReports(await client.getReports())
+    } catch {
+      // Keep the reports workspace open with the last authoritative snapshot.
+    }
+  }, [client, navigate])
 
   const runCommand = useCallback(
     async (operation: () => Promise<WorkspaceSnapshot>): Promise<void> => {
@@ -213,10 +234,13 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
             .filter((model) => model.protocol === "openai-chat")
             .map((model) => ({ id: model.id, name: model.name }))}
           runQuickTest={client.runQuickTest}
+          runQuickPerformanceTest={client.runQuickPerformanceTest}
           saveQuickTestConnection={client.saveQuickTestConnection}
           refreshCatalog={client.getCatalog}
           onCatalogUpdated={setCatalog}
           onOpenCatalog={() => navigate("catalog")}
+          onPerformanceArchived={refreshArchivedPerformanceReport}
+          onOpenReport={openArchivedPerformanceReport}
         />
       ) : page === "catalog" ? (
         <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
@@ -236,7 +260,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
           }}
         />
       ) : page === "reports" ? (
-        <ReportWorkspace snapshot={reports} getDetail={client.getReportDetail} exportReport={client.exportReport} />
+        <ReportWorkspace snapshot={reports} preferredReportID={preferredReportID} getDetail={client.getReportDetail} exportReport={client.exportReport} />
       ) : (
         <RunWorkspace
           snapshot={snapshot}

@@ -12,11 +12,21 @@ import (
 )
 
 type recordingQuickTestRunner struct {
-	command quicktest.Command
-	result  quicktest.Result
-	err     error
-	calls   int
-	ctx     context.Context
+	command            quicktest.Command
+	result             quicktest.Result
+	performanceCommand quicktest.PerformanceCommand
+	performanceReport  quicktest.PerformanceReport
+	err                error
+	calls              int
+	performanceCalls   int
+	ctx                context.Context
+}
+
+func (runner *recordingQuickTestRunner) RunPerformance(ctx context.Context, command quicktest.PerformanceCommand) (quicktest.PerformanceReport, error) {
+	runner.performanceCalls++
+	runner.ctx = ctx
+	runner.performanceCommand = command
+	return runner.performanceReport, runner.err
 }
 
 func (runner *recordingQuickTestRunner) Run(ctx context.Context, command quicktest.Command) (quicktest.Result, error) {
@@ -160,6 +170,36 @@ func TestRunQuickTestReturnsStableErrorsWithoutLeakingRunnerDetails(t *testing.T
 	missing.onStartup(context.Background())
 	_, err = missing.RunQuickTest(quicktest.Command{})
 	assertBindingErrorCode(t, err, desktopCodeQuickTestMissing)
+}
+
+func TestRunQuickPerformanceTestDelegatesThroughLifecycleContext(t *testing.T) {
+	command := quicktest.PerformanceCommand{
+		AddressMode: quicktest.AddressModeBaseURL, URL: "https://api.example.test/v1",
+		APIKey: "sk-ephemeral", ModelID: "upstream-model", RequestCount: 10,
+		Concurrency: 2, TimeoutMS: 30_000, InputTokens: 100, OutputTokens: 100,
+	}
+	runner := &recordingQuickTestRunner{performanceReport: quicktest.PerformanceReport{
+		SchemaVersion: quicktest.PerformanceSchemaVersion, Success: true,
+		AddressMode: quicktest.AddressModeBaseURL, Endpoint: "https://api.example.test/v1/chat/completions",
+	}}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{quickTests: runner}, nil
+	})
+	app.onStartup(context.Background())
+
+	report, err := app.RunQuickPerformanceTest(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Success || report.Endpoint != runner.performanceReport.Endpoint {
+		t.Fatalf("report = %#v", report)
+	}
+	if runner.performanceCalls != 1 || runner.performanceCommand != command {
+		t.Fatalf("runner calls = %d, command = %#v", runner.performanceCalls, runner.performanceCommand)
+	}
+	if runner.ctx == nil || runner.ctx != app.ctx {
+		t.Fatal("quick performance test did not receive the desktop lifecycle context")
+	}
 }
 
 func TestSaveQuickTestConnectionCreatesAllEntitiesAndReturnsAuthoritativeCatalog(t *testing.T) {

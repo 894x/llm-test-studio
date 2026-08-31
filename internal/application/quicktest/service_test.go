@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -129,6 +130,7 @@ func TestRunRejectsInvalidOrUnsafeCommandsBeforeTransport(t *testing.T) {
 	var calls atomic.Int64
 	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		calls.Add(1)
+		time.Sleep(2 * time.Millisecond)
 		return nil, fmt.Errorf("transport must not be called")
 	})
 	tests := []struct {
@@ -234,6 +236,294 @@ func TestRunMapsSemanticAndTimeoutFailuresWithoutProviderDetails(t *testing.T) {
 	})
 }
 
+func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls.Add(1)
+		if request.URL.Path != "/v1/chat/completions" {
+			t.Errorf("path = %q", request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer performance-secret" {
+			t.Errorf("authorization header was not populated")
+		}
+		var body struct {
+			Model     string `json:"model"`
+			Stream    bool   `json:"stream"`
+			MaxTokens uint32 `json:"max_tokens"`
+			Messages  []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Model != "performance-model" || !body.Stream || body.MaxTokens != 32 || len(body.Messages) != 1 {
+			t.Errorf("request body = %#v", body)
+		}
+		if words := len(strings.Fields(body.Messages[0].Content)); words != 20 {
+			t.Errorf("generated prompt words = %d, want 20", words)
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":32,\"prompt_tokens_details\":{\"cached_tokens\":5}}}\n\n")
+		fmt.Fprint(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode:  AddressModeBaseURL,
+		URL:          server.URL + "/v1",
+		APIKey:       "performance-secret",
+		ModelID:      "performance-model",
+		RequestCount: 4,
+		Concurrency:  2,
+		TimeoutMS:    2_000,
+		InputTokens:  20,
+		OutputTokens: 32,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 4 || !report.Success || report.SchemaVersion != PerformanceSchemaVersion {
+		t.Fatalf("report = %#v, calls = %d", report, calls.Load())
+	}
+	if report.BaseURL != server.URL+"/v1" || report.Endpoint != server.URL+"/v1/chat/completions" {
+		t.Fatalf("report address = %#v", report)
+	}
+	if report.Profile.RequestCount != 4 || report.Profile.Concurrency != 2 || report.Profile.InputTokens != 20 || report.Profile.OutputTokens != 32 {
+		t.Fatalf("profile = %#v", report.Profile)
+	}
+	if report.Progress.Completed != 4 || report.Progress.Succeeded != 4 || report.Progress.Failed != 0 || report.Progress.Phase != load.PhaseCompleted {
+		t.Fatalf("progress = %#v", report.Progress)
+	}
+	if report.Metrics.Completed != 4 || report.Metrics.PromptTokens != 80 || report.Metrics.CompletionTokens != 128 || report.Metrics.CachedTokens != 20 {
+		t.Fatalf("metrics = %#v", report.Metrics)
+	}
+	if report.Metrics.RequestQPS <= 0 || report.Metrics.E2EP95 <= 0 || len(report.Failures) != 0 || report.ErrorCode != "" {
+		t.Fatalf("report measurements = %#v", report)
+	}
+
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"performance-secret", "messages", "choices", "request body"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("performance report leaked %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestRunPerformanceArchivesLaunchedSamplesWithStableIdentity(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":3,\"prompt_tokens_details\":{\"cached_tokens\":2}}}\n\n")
+		fmt.Fprint(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	archive := &capturingPerformanceArchive{}
+	generatedAt := time.Date(2026, time.August, 31, 15, 30, 0, 123, time.UTC)
+	service := New(Dependencies{
+		Transport: server.Client().Transport,
+		Archive:   archive,
+		Clock:     fixedPerformanceClock{now: generatedAt},
+		IDFactory: func(time.Time) (string, error) { return "77777777-7777-4777-8777-777777777777", nil },
+	})
+	report, err := service.RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "archive-secret", ModelID: "archive-model",
+		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Archived || report.ArchiveStatus != PerformanceArchiveArchived || report.ReportID != "77777777-7777-4777-8777-777777777777" {
+		t.Fatalf("archive state = %#v", report)
+	}
+	if report.GeneratedAt != "2026-08-31T15:30:00.000000123Z" || report.ModelID != "archive-model" {
+		t.Fatalf("report identity = %#v", report)
+	}
+	if len(report.Samples) != 2 || report.Samples[0].RequestIndex != 0 || report.Samples[1].RequestIndex != 1 {
+		t.Fatalf("samples = %#v", report.Samples)
+	}
+	for _, sample := range report.Samples {
+		if !sample.Success || sample.E2EMS <= 0 || sample.TTFTMS <= 0 || sample.TPOTMS < 0 || sample.HTTPStatus != http.StatusOK || sample.PromptTokens != 10 || sample.CompletionTokens != 3 || sample.CachedTokens != 2 {
+			t.Fatalf("sample = %#v", sample)
+		}
+	}
+	if len(archive.saved) != 1 || archive.saved[0].ReportID != report.ReportID || !archive.saved[0].Archived {
+		t.Fatalf("saved reports = %#v", archive.saved)
+	}
+	encoded, _ := json.Marshal(archive.saved[0])
+	for _, forbidden := range []string{"archive-secret", "messages", "choices", "raw response"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("archived report leaked %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestRunPerformanceKeepsImmediateReportWhenArchiveFails(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer server.Close()
+	archive := &capturingPerformanceArchive{err: fmt.Errorf("sqlite path contains sk-do-not-leak")}
+	report, err := New(Dependencies{Transport: server.Client().Transport, Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Archived || report.ArchiveStatus != PerformanceArchiveFailed || report.ReportID == "" || report.GeneratedAt == "" || len(report.Samples) != 1 {
+		t.Fatalf("report = %#v", report)
+	}
+	encoded, _ := json.Marshal(report)
+	if strings.Contains(string(encoded), "sk-do-not-leak") {
+		t.Fatalf("archive error leaked: %s", encoded)
+	}
+}
+
+func TestRunPerformanceDoesNotArchiveValidationFailure(t *testing.T) {
+	archive := &capturingPerformanceArchive{}
+	report, err := New(Dependencies{Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ArchiveStatus != PerformanceArchiveNotAttempted || report.ReportID != "" || report.GeneratedAt != "" || len(archive.saved) != 0 {
+		t.Fatalf("report = %#v, archive = %#v", report, archive.saved)
+	}
+}
+
+func TestRunPerformanceRejectsUnsafeOrUnboundedProfilesBeforeTransport(t *testing.T) {
+	var calls atomic.Int64
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, fmt.Errorf("transport must not be called")
+	})
+	valid := PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		RequestCount: 10, Concurrency: 2, TimeoutMS: 30_000, InputTokens: 100, OutputTokens: 100,
+	}
+	tests := []struct {
+		name   string
+		change func(*PerformanceCommand)
+	}{
+		{name: "no request or duration target", change: func(command *PerformanceCommand) { command.RequestCount = 0 }},
+		{name: "too many requests", change: func(command *PerformanceCommand) { command.RequestCount = MaxPerformanceRequests + 1 }},
+		{name: "zero concurrency", change: func(command *PerformanceCommand) { command.Concurrency = 0 }},
+		{name: "too much concurrency", change: func(command *PerformanceCommand) { command.Concurrency = MaxPerformanceConcurrency + 1 }},
+		{name: "duration too long", change: func(command *PerformanceCommand) { command.DurationMS = MaxPerformanceDurationMS + 1 }},
+		{name: "zero timeout", change: func(command *PerformanceCommand) { command.TimeoutMS = 0 }},
+		{name: "timeout too long", change: func(command *PerformanceCommand) { command.TimeoutMS = MaxPerformanceTimeoutMS + 1 }},
+		{name: "zero input tokens", change: func(command *PerformanceCommand) { command.InputTokens = 0 }},
+		{name: "too many input tokens", change: func(command *PerformanceCommand) { command.InputTokens = MaxPerformanceInputTokens + 1 }},
+		{name: "zero output tokens", change: func(command *PerformanceCommand) { command.OutputTokens = 0 }},
+		{name: "too many output tokens", change: func(command *PerformanceCommand) { command.OutputTokens = MaxPerformanceOutputTokens + 1 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command := valid
+			test.change(&command)
+			report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Success || report.ErrorCode != ErrorInvalidRequest {
+				t.Fatalf("report = %#v", report)
+			}
+			if report.Progress.Phase != PerformancePhaseNotStarted {
+				t.Fatalf("progress phase = %q", report.Progress.Phase)
+			}
+		})
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("transport calls = %d", calls.Load())
+	}
+}
+
+func TestRunPerformanceDurationOnlyPreservesRequestedProfileAndCapsLaunches(t *testing.T) {
+	var calls atomic.Uint64
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n" +
+					"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		}, nil
+	})
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		RequestCount: 0, DurationMS: 1_000, Concurrency: MaxPerformanceConcurrency,
+		TimeoutMS: 2_000, InputTokens: 1, OutputTokens: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Profile.RequestCount != 0 {
+		t.Fatalf("reported request count = %d, want user value 0", report.Profile.RequestCount)
+	}
+	if report.Progress.Planned != MaxPerformanceRequests || report.Progress.Launched != MaxPerformanceRequests ||
+		report.Progress.Completed != MaxPerformanceRequests || uint64(len(report.Samples)) != MaxPerformanceRequests || calls.Load() != MaxPerformanceRequests {
+		t.Fatalf("bounded report progress = %#v, samples=%d calls=%d", report.Progress, len(report.Samples), calls.Load())
+	}
+}
+
+func TestRunPerformanceArchivesAfterCancellationWithIndependentShortDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var calls atomic.Int64
+	transport := roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		if calls.Add(1) == 1 {
+			cancel()
+		}
+		<-request.Context().Done()
+		return nil, request.Context().Err()
+	})
+	archive := &contextCheckingPerformanceArchive{}
+	report, err := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 1, OutputTokens: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Archived || report.ArchiveStatus != PerformanceArchiveArchived || archive.contextErr != nil || !archive.hasDeadline {
+		t.Fatalf("report = %#v, archive context err=%v deadline=%v", report, archive.contextErr, archive.hasDeadline)
+	}
+}
+
+func TestRunPerformanceAggregatesStableFailureCodesWithoutProviderDetails(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(writer, `{"error":{"message":"provider mentioned sk-sensitive"}}`)
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-sensitive", ModelID: "model",
+		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Success || report.ErrorCode != "" || report.Metrics.Failed != 2 {
+		t.Fatalf("report = %#v", report)
+	}
+	if len(report.Failures) != 1 || report.Failures[0].ErrorCode != ErrorAuthenticationFailed || report.Failures[0].Count != 2 {
+		t.Fatalf("failures = %#v", report.Failures)
+	}
+	encoded, _ := json.Marshal(report)
+	if strings.Contains(string(encoded), "provider mentioned") || strings.Contains(string(encoded), "sk-sensitive") {
+		t.Fatalf("report leaked provider detail or credential: %s", encoded)
+	}
+}
+
 func validCommand() Command {
 	return Command{
 		AddressMode: AddressModeBaseURL,
@@ -254,4 +544,29 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return function(request)
+}
+
+type capturingPerformanceArchive struct {
+	saved []PerformanceReport
+	err   error
+}
+
+func (archive *capturingPerformanceArchive) SaveQuickPerformanceReport(_ context.Context, report PerformanceReport) error {
+	archive.saved = append(archive.saved, report)
+	return archive.err
+}
+
+type fixedPerformanceClock struct{ now time.Time }
+
+func (clock fixedPerformanceClock) Now() time.Time { return clock.now }
+
+type contextCheckingPerformanceArchive struct {
+	contextErr  error
+	hasDeadline bool
+}
+
+func (archive *contextCheckingPerformanceArchive) SaveQuickPerformanceReport(ctx context.Context, _ PerformanceReport) error {
+	archive.contextErr = ctx.Err()
+	_, archive.hasDeadline = ctx.Deadline()
+	return archive.contextErr
 }

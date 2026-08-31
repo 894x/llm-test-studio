@@ -105,9 +105,9 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
 export const FIXTURE_REPORTS: ReportSnapshot = {
   schema_version: 1,
   reports: [
-    { id: "66666666-6666-4666-8666-666666666661", run_id: "55555555-5555-4555-8555-555555555553", generated_at: "2026-08-30T07:34:00Z", run_status: "completed", plan_name: "多轮工具调用", model_name: "claude-sonnet-4", channel_name: "Anthropic 主渠道", passed: true, verdict: "兼容性门禁通过", issue_count: 0, case_count: 18, failed_case_count: 0, attachment_count: 2 },
-    { id: "66666666-6666-4666-8666-666666666662", run_id: "55555555-5555-4555-8555-555555555554", generated_at: "2026-08-30T05:18:00Z", run_status: "completed", plan_name: "长上下文边界", model_name: "gemini-2.5-pro", channel_name: "Vertex 测试渠道", passed: false, verdict: "存在一项语义回归", issue_count: 1, case_count: 36, failed_case_count: 1, attachment_count: 2 },
-    { id: "66666666-6666-4666-8666-666666666663", run_id: "55555555-5555-4555-8555-555555555552", generated_at: "2026-08-30T08:54:00Z", run_status: "failed", plan_name: "JSON 模式回归", model_name: "qwen3-max", channel_name: "阿里云备用渠道", passed: false, verdict: "协议错误导致运行失败", issue_count: 2, case_count: 24, failed_case_count: 3, attachment_count: 3 },
+    { id: "66666666-6666-4666-8666-666666666661", source: "run", run_id: "55555555-5555-4555-8555-555555555553", generated_at: "2026-08-30T07:34:00Z", run_status: "completed", plan_name: "多轮工具调用", model_name: "claude-sonnet-4", channel_name: "Anthropic 主渠道", passed: true, verdict: "兼容性门禁通过", issue_count: 0, case_count: 18, failed_case_count: 0, attachment_count: 2 },
+    { id: "66666666-6666-4666-8666-666666666662", source: "run", run_id: "55555555-5555-4555-8555-555555555554", generated_at: "2026-08-30T05:18:00Z", run_status: "completed", plan_name: "长上下文边界", model_name: "gemini-2.5-pro", channel_name: "Vertex 测试渠道", passed: false, verdict: "存在一项语义回归", issue_count: 1, case_count: 36, failed_case_count: 1, attachment_count: 2 },
+    { id: "66666666-6666-4666-8666-666666666663", source: "run", run_id: "55555555-5555-4555-8555-555555555552", generated_at: "2026-08-30T08:54:00Z", run_status: "failed", plan_name: "JSON 模式回归", model_name: "qwen3-max", channel_name: "阿里云备用渠道", passed: false, verdict: "协议错误导致运行失败", issue_count: 2, case_count: 24, failed_case_count: 3, attachment_count: 3 },
   ],
 }
 

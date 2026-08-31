@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/domain"
 )
 
@@ -38,6 +39,18 @@ type DocumentCatalog interface {
 	GetReport(context.Context, string) (domain.Report, error)
 	ListResults(context.Context, string) ([]domain.Result, error)
 }
+
+type QuickPerformanceCatalog interface {
+	ListQuickPerformanceReportSummaries(context.Context) ([]quicktest.PerformanceArchiveSummary, error)
+	GetQuickPerformanceReport(context.Context, string) (quicktest.PerformanceReport, error)
+}
+
+type ReportSource string
+
+const (
+	SourceRun              ReportSource = "run"
+	SourceQuickPerformance ReportSource = "quick_performance"
+)
 
 type ReportProjection struct {
 	ID              string
@@ -69,8 +82,9 @@ type Snapshot struct {
 }
 
 type Summary struct {
+	Source          ReportSource     `json:"source"`
 	ID              string           `json:"id"`
-	RunID           string           `json:"run_id"`
+	RunID           string           `json:"run_id,omitempty"`
 	GeneratedAt     time.Time        `json:"generated_at"`
 	RunStatus       domain.RunStatus `json:"run_status"`
 	PlanName        string           `json:"plan_name"`
@@ -88,24 +102,38 @@ type Summary struct {
 // sealed conclusion and case-level results; RequestResults contains the load
 // and protocol observations used to derive the aggregate metrics.
 type Detail struct {
-	SchemaVersion  int             `json:"schema_version"`
-	Report         domain.Report   `json:"report"`
-	RequestResults []domain.Result `json:"request_results"`
+	SchemaVersion  int                          `json:"schema_version"`
+	Source         ReportSource                 `json:"source"`
+	Report         domain.Report                `json:"report"`
+	RequestResults []domain.Result              `json:"request_results"`
+	Performance    *quicktest.PerformanceReport `json:"performance,omitempty"`
 }
 
 func (service Service) Detail(ctx context.Context, reportID string) (Detail, error) {
 	if !domain.IsUUID(reportID) {
 		return Detail{}, classified(ErrInconsistent, errors.New("report id must be a canonical UUID"))
 	}
-	documents, ok := service.catalog.(DocumentCatalog)
-	if !ok || documents == nil {
-		return Detail{}, ErrUnavailable
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
 		return Detail{}, err
+	}
+	if quickCatalog, ok := service.catalog.(QuickPerformanceCatalog); ok && quickCatalog != nil {
+		performance, err := quickCatalog.GetQuickPerformanceReport(ctx, reportID)
+		if err == nil {
+			if _, validationErr := quicktest.ValidateArchivedPerformanceReport(performance); validationErr != nil || performance.ReportID != reportID {
+				return Detail{}, classified(ErrInconsistent, errors.New("quick performance report is inconsistent"))
+			}
+			return Detail{SchemaVersion: CurrentSchemaVersion, Source: SourceQuickPerformance, Performance: &performance, RequestResults: []domain.Result{}}, nil
+		}
+		if !errors.Is(err, quicktest.ErrPerformanceArchiveNotFound) {
+			return Detail{}, classifyPortError(ctx, err)
+		}
+	}
+	documents, ok := service.catalog.(DocumentCatalog)
+	if !ok || documents == nil {
+		return Detail{}, ErrUnavailable
 	}
 	report, err := documents.GetReport(ctx, reportID)
 	if err != nil {
@@ -132,7 +160,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 			requestResults = append(requestResults, result)
 		}
 	}
-	return Detail{SchemaVersion: CurrentSchemaVersion, Report: report, RequestResults: requestResults}, nil
+	return Detail{SchemaVersion: CurrentSchemaVersion, Source: SourceRun, Report: report, RequestResults: requestResults}, nil
 }
 
 func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -180,6 +208,26 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		runIDs[projection.RunID] = struct{}{}
 		summaries = append(summaries, projection.summary())
 	}
+	if quickCatalog, ok := service.catalog.(QuickPerformanceCatalog); ok && quickCatalog != nil {
+		quickReports, err := quickCatalog.ListQuickPerformanceReportSummaries(ctx)
+		if err != nil {
+			return Snapshot{}, classifyPortError(ctx, err)
+		}
+		if len(quickReports) > MaxSnapshotReports {
+			return Snapshot{}, classified(ErrInconsistent, errors.New("quick performance report catalog exceeded the published limit"))
+		}
+		for _, report := range quickReports {
+			if _, duplicate := reportIDs[report.ReportID]; duplicate {
+				return Snapshot{}, classified(ErrInconsistent, fmt.Errorf("duplicate report id %q", report.ReportID))
+			}
+			summary, err := quickPerformanceSummary(report)
+			if err != nil {
+				return Snapshot{}, classified(ErrInconsistent, err)
+			}
+			reportIDs[report.ReportID] = struct{}{}
+			summaries = append(summaries, summary)
+		}
+	}
 
 	sort.Slice(summaries, func(left, right int) bool {
 		if summaries[left].GeneratedAt.Equal(summaries[right].GeneratedAt) {
@@ -187,7 +235,34 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 		return summaries[left].GeneratedAt.After(summaries[right].GeneratedAt)
 	})
+	if len(summaries) > MaxSnapshotReports {
+		summaries = summaries[:MaxSnapshotReports]
+	}
 	return Snapshot{SchemaVersion: CurrentSchemaVersion, Reports: summaries}, nil
+}
+
+func quickPerformanceSummary(report quicktest.PerformanceArchiveSummary) (Summary, error) {
+	generatedAt, err := quicktest.ValidatePerformanceArchiveSummary(report)
+	if err != nil {
+		return Summary{}, err
+	}
+	status := domain.RunFailed
+	switch report.Phase {
+	case "completed":
+		status = domain.RunCompleted
+	case "cancelled":
+		status = domain.RunCancelled
+	}
+	verdict := "性能测试未通过"
+	if report.Success {
+		verdict = "全部请求成功"
+	}
+	return Summary{
+		Source: SourceQuickPerformance, ID: report.ReportID, GeneratedAt: generatedAt,
+		RunStatus: status, PlanName: "快速性能测试", ModelName: report.ModelID, ChannelName: report.BaseURL,
+		Passed: report.Success, Verdict: verdict, IssueCount: report.Failed,
+		CaseCount: report.Completed, FailedCaseCount: report.Failed,
+	}, nil
 }
 
 func (projection ReportProjection) validate() error {
@@ -228,7 +303,7 @@ func (projection ReportProjection) validate() error {
 
 func (projection ReportProjection) summary() Summary {
 	return Summary{
-		ID: projection.ID, RunID: projection.RunID, GeneratedAt: projection.GeneratedAt,
+		Source: SourceRun, ID: projection.ID, RunID: projection.RunID, GeneratedAt: projection.GeneratedAt,
 		RunStatus: projection.RunStatus, PlanName: projection.PlanName,
 		ModelName: projection.ModelName, ChannelName: projection.ChannelName,
 		Passed: projection.Passed, Verdict: projection.Verdict,

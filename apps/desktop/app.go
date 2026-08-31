@@ -112,6 +112,7 @@ type ComparisonService interface {
 
 type QuickTestRunner interface {
 	Run(context.Context, quicktest.Command) (quicktest.Result, error)
+	RunPerformance(context.Context, quicktest.PerformanceCommand) (quicktest.PerformanceReport, error)
 }
 
 type desktopDependencies struct {

@@ -6,7 +6,7 @@ import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopClientError } from "@/app/desktop-client"
 
 import { QuickTestWorkspace } from "./quick-test-workspace"
-import type { QuickTestResult } from "./data"
+import type { QuickPerformanceReport, QuickTestResult } from "./data"
 
 describe("QuickTestWorkspace", () => {
   it("runs a zero-configuration connectivity test without exposing secrets or payloads", async () => {
@@ -28,6 +28,7 @@ describe("QuickTestWorkspace", () => {
       <QuickTestWorkspace
         modelCandidates={[]}
         runQuickTest={runQuickTest}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={vi.fn()}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={vi.fn()}
@@ -62,6 +63,95 @@ describe("QuickTestWorkspace", () => {
     expect(result).not.toHaveTextContent("sk-private-value")
     expect(result).not.toHaveTextContent("Reply with OK only.")
     expect(within(result).getByRole("button", { name: "保存为模型与渠道" })).toBeInTheDocument()
+    expect(within(result).getByRole("button", { name: "快速性能测试" })).toBeInTheDocument()
+  })
+
+  it("runs a configurable performance test from the immutable successful connection and renders its report", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const onPerformanceArchived = vi.fn(async () => {})
+    const onOpenReport = vi.fn()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+        onPerformanceArchived={onPerformanceArchived}
+        onOpenReport={onOpenReport}
+      />,
+    )
+    await fillAndRun(user)
+    const result = await screen.findByRole("region", { name: "测试结果" })
+    await user.click(within(result).getByRole("button", { name: "快速性能测试" }))
+
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    expect(within(dialog).getByLabelText("请求数")).toHaveValue(10)
+    expect(within(dialog).getByLabelText("持续时间（秒）")).toHaveValue(0)
+    expect(within(dialog).getByLabelText("并发数")).toHaveValue(1)
+    expect(within(dialog).getByLabelText("单请求超时（秒）")).toHaveValue(60)
+    expect(within(dialog).getByLabelText("近似输入 Token")).toHaveValue(100)
+    expect(within(dialog).getByLabelText("最大输出 Token")).toHaveValue(100)
+    await replaceNumber(user, within(dialog).getByLabelText("请求数"), "4")
+    await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
+    await replaceNumber(user, within(dialog).getByLabelText("并发数"), "2")
+    await replaceNumber(user, within(dialog).getByLabelText("单请求超时（秒）"), "30")
+    await replaceNumber(user, within(dialog).getByLabelText("近似输入 Token"), "20")
+    await replaceNumber(user, within(dialog).getByLabelText("最大输出 Token"), "32")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "sk-private-value",
+      model_id: "gpt-new",
+      request_count: 4,
+      duration_ms: 1_000,
+      concurrency: 2,
+      timeout_ms: 30_000,
+      input_tokens: 20,
+      output_tokens: 32,
+    }))
+    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    expect(report).toHaveTextContent("4 / 4")
+    expect(report).toHaveTextContent("100%")
+    expect(report).toHaveTextContent("12.5 req/s")
+    expect(report).toHaveTextContent("750 RPM")
+    expect(report).toHaveTextContent("60 / 80 / 84 ms")
+    expect(within(report).getByRole("figure", { name: "TTFT 分布图" })).toBeInTheDocument()
+    expect(within(report).getByRole("figure", { name: "TPOT 时间曲线" })).toBeInTheDocument()
+    expect(within(report).getByRole("figure", { name: "E2E 时间曲线" })).toBeInTheDocument()
+    expect(onPerformanceArchived).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
+    await user.click(within(report).getByRole("button", { name: "查看正式报告" }))
+    expect(onOpenReport).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
+    expect(report).not.toHaveTextContent("sk-private-value")
+  })
+
+  it("requires a request-count or duration target before starting performance testing", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("请求数和持续时间至少填写一项")
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
   })
 
   it("blocks duplicate submissions and maps a stable failure classification", async () => {
@@ -73,6 +163,7 @@ describe("QuickTestWorkspace", () => {
       <QuickTestWorkspace
         modelCandidates={[]}
         runQuickTest={runQuickTest}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={vi.fn()}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={vi.fn()}
@@ -128,6 +219,7 @@ describe("QuickTestWorkspace", () => {
           completion_tokens: 1,
           cached_tokens: 0,
         }))}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={saveQuickTestConnection}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={onCatalogUpdated}
@@ -170,6 +262,7 @@ describe("QuickTestWorkspace", () => {
           { id: "22222222-2222-4222-8222-222222222222", name: "gpt-4.1-mini" },
         ]}
         runQuickTest={vi.fn()}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={vi.fn()}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={vi.fn()}
@@ -208,6 +301,7 @@ describe("QuickTestWorkspace", () => {
           completion_tokens: 1,
           cached_tokens: 0,
         }))}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={saveQuickTestConnection}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={vi.fn()}
@@ -248,6 +342,7 @@ describe("QuickTestWorkspace", () => {
           { id: "22222222-2222-4222-8222-222222222232", name: "shared-name" },
         ]}
         runQuickTest={vi.fn()}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={vi.fn()}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={vi.fn()}
@@ -268,6 +363,7 @@ describe("QuickTestWorkspace", () => {
       <QuickTestWorkspace
         modelCandidates={[{ id: existingModel.id, name: existingModel.name }]}
         runQuickTest={vi.fn(() => new Promise<QuickTestResult>((resolve) => { resolveTest = resolve }))}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={saveQuickTestConnection}
         refreshCatalog={vi.fn()}
         onCatalogUpdated={vi.fn()}
@@ -324,6 +420,7 @@ describe("QuickTestWorkspace", () => {
       <QuickTestWorkspace
         modelCandidates={[]}
         runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={vi.fn(async () => { throw new DesktopClientError("quick_test_save_partial") })}
         refreshCatalog={refreshCatalog}
         onCatalogUpdated={onCatalogUpdated}
@@ -346,6 +443,7 @@ describe("QuickTestWorkspace", () => {
       <QuickTestWorkspace
         modelCandidates={[]}
         runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={vi.fn()}
         saveQuickTestConnection={vi.fn(async () => { throw new DesktopClientError("catalog_revision_conflict") })}
         refreshCatalog={refreshCatalog}
         onCatalogUpdated={vi.fn()}
@@ -380,4 +478,51 @@ async function fillAndRun(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("API Key"), "sk-private-value")
   await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
   await user.click(screen.getByRole("button", { name: "发送测试" }))
+}
+
+async function replaceNumber(user: ReturnType<typeof userEvent.setup>, input: HTMLElement, value: string) {
+  await user.clear(input)
+  await user.type(input, value)
+}
+
+function successfulPerformanceReport(): QuickPerformanceReport {
+  return {
+    schema_version: 1,
+    report_id: "77777777-7777-4777-8777-777777777771",
+    generated_at: "2026-08-31T14:30:00Z",
+    archived: true,
+    archive_status: "archived",
+    model_id: "gpt-new",
+    success: true,
+    address_mode: "base_url",
+    base_url: "https://api.example.test/v1",
+    endpoint: "https://api.example.test/v1/chat/completions",
+    profile: {
+      request_count: 4, duration_ms: 1_000, concurrency: 2,
+      timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+    },
+    progress: {
+      phase: "completed", planned: 4, launched: 4, completed: 4,
+      peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
+      send_duration_ms: 300, drain_duration_ms: 20, total_duration_ms: 320,
+    },
+    metrics: {
+      completed: 4, succeeded: 4, failed: 0, timed_out: 0,
+      success_rate_percent: 100, request_qps: 12.5, rpm: 750,
+      input_tpm: 15_000, output_tpm: 24_000, total_tpm: 39_000,
+      generation_tps: 400,
+      ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
+      tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,
+      e2e_p50_ms: 60, e2e_p90_ms: 75, e2e_p95_ms: 80, e2e_p99_ms: 84, e2e_average_ms: 65,
+      schedule_lag_p50_ms: 0, schedule_lag_p95_ms: 2, schedule_lag_average_ms: 0.5,
+      prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20, cache_rate_percent: 25,
+    },
+    samples: [
+      { request_index: 0, scheduled_offset_ms: 0, started_offset_ms: 0, finished_offset_ms: 60, schedule_lag_ms: 0, e2e_ms: 60, ttft_ms: 30, tpot_ms: 4, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
+      { request_index: 1, scheduled_offset_ms: 0, started_offset_ms: 1, finished_offset_ms: 75, schedule_lag_ms: 1, e2e_ms: 74, ttft_ms: 40, tpot_ms: 5, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
+      { request_index: 2, scheduled_offset_ms: 0, started_offset_ms: 2, finished_offset_ms: 84, schedule_lag_ms: 2, e2e_ms: 82, ttft_ms: 44, tpot_ms: 7, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
+      { request_index: 3, scheduled_offset_ms: 0, started_offset_ms: 2, finished_offset_ms: 90, schedule_lag_ms: 2, e2e_ms: 88, ttft_ms: 42, tpot_ms: 6, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
+    ],
+    failures: [],
+  }
 }

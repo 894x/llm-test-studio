@@ -2,6 +2,7 @@ import { useState, type ComponentProps, type FormEvent } from "react"
 import ArrowRightIcon from "lucide-react/dist/esm/icons/arrow-right.mjs"
 import CheckCircle2Icon from "lucide-react/dist/esm/icons/check-circle-2.mjs"
 import CircleAlertIcon from "lucide-react/dist/esm/icons/circle-alert.mjs"
+import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import PlugZapIcon from "lucide-react/dist/esm/icons/plug-zap.mjs"
 
 import {
@@ -34,9 +35,12 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot } from "@/features/catalog/data"
+import { PerformanceCharts } from "@/features/reports/performance-charts"
 
 import {
   QUICK_TEST_ERROR_MESSAGES,
+  type QuickPerformanceCommand,
+  type QuickPerformanceReport,
   type QuickTestAddressMode,
   type QuickTestCommand,
   type QuickTestResult,
@@ -45,7 +49,7 @@ import {
 
 type QuickTestActions = Pick<
   DesktopClient,
-  "runQuickTest" | "saveQuickTestConnection"
+  "runQuickTest" | "runQuickPerformanceTest" | "saveQuickTestConnection"
 >
 
 const DEFAULT_PROMPT = "Reply with OK only."
@@ -65,15 +69,20 @@ interface TestedQuickTest {
 export function QuickTestWorkspace({
   modelCandidates,
   runQuickTest,
+  runQuickPerformanceTest,
   saveQuickTestConnection,
   refreshCatalog,
   onCatalogUpdated,
   onOpenCatalog,
+  onPerformanceArchived,
+  onOpenReport,
 }: QuickTestActions & {
   modelCandidates: readonly QuickTestModelCandidate[]
   refreshCatalog: () => Promise<CatalogSnapshot>
   onCatalogUpdated: (catalog: CatalogSnapshot) => void
   onOpenCatalog: () => void
+  onPerformanceArchived?: (reportID: string) => void | Promise<void>
+  onOpenReport?: (reportID: string) => void | Promise<void>
 }) {
   const [form, setForm] = useState<QuickTestCommand>({
     address_mode: "base_url",
@@ -87,6 +96,7 @@ export function QuickTestWorkspace({
   const [tested, setTested] = useState<TestedQuickTest | null>(null)
   const [requestError, setRequestError] = useState("")
   const [saveOpen, setSaveOpen] = useState(false)
+  const [performanceOpen, setPerformanceOpen] = useState(false)
   const [saved, setSaved] = useState(false)
   const matchingModels = modelCandidates.filter(
     (candidate) => candidate.name === form.model_id.trim(),
@@ -266,6 +276,7 @@ export function QuickTestWorkspace({
                   result={tested.result}
                   saved={saved}
                   onSave={() => setSaveOpen(true)}
+                  onPerformance={() => setPerformanceOpen(true)}
                   onOpenCatalog={onOpenCatalog}
                 />
               ) : (
@@ -283,23 +294,33 @@ export function QuickTestWorkspace({
       </ScrollArea>
 
       {tested?.result.success ? (
-        <SaveConnectionSheet
-          open={saveOpen}
-          onOpenChange={setSaveOpen}
-          result={tested.result}
-          apiKey={tested.command.api_key}
-          modelID={tested.command.model_id}
-          existingModel={tested.existingModel}
-          save={saveQuickTestConnection}
-          refreshCatalog={refreshCatalog}
-          onCatalogUpdated={onCatalogUpdated}
-          onSaved={(catalog) => {
-            onCatalogUpdated(catalog)
-            setSaved(true)
-            setSaveOpen(false)
-          }}
-          onOpenCatalog={onOpenCatalog}
-        />
+        <>
+          <SaveConnectionSheet
+            open={saveOpen}
+            onOpenChange={setSaveOpen}
+            result={tested.result}
+            apiKey={tested.command.api_key}
+            modelID={tested.command.model_id}
+            existingModel={tested.existingModel}
+            save={saveQuickTestConnection}
+            refreshCatalog={refreshCatalog}
+            onCatalogUpdated={onCatalogUpdated}
+            onSaved={(catalog) => {
+              onCatalogUpdated(catalog)
+              setSaved(true)
+              setSaveOpen(false)
+            }}
+            onOpenCatalog={onOpenCatalog}
+          />
+          <QuickPerformanceSheet
+            open={performanceOpen}
+            onOpenChange={setPerformanceOpen}
+            testedCommand={tested.command}
+            run={runQuickPerformanceTest}
+            onArchived={onPerformanceArchived}
+            onOpenReport={onOpenReport}
+          />
+        </>
       ) : null}
     </main>
   )
@@ -383,10 +404,11 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
   )
 }
 
-function ResultPanel({ result, saved, onSave, onOpenCatalog }: {
+function ResultPanel({ result, saved, onSave, onPerformance, onOpenCatalog }: {
   result: QuickTestResult
   saved: boolean
   onSave: () => void
+  onPerformance: () => void
   onOpenCatalog: () => void
 }) {
   const title = result.success
@@ -432,10 +454,251 @@ function ResultPanel({ result, saved, onSave, onOpenCatalog }: {
           ) : (
             <Button size="sm" onClick={onSave}>保存为模型与渠道</Button>
           )}
+          <Button size="sm" variant="outline" onClick={onPerformance}>
+            <GaugeIcon data-icon="inline-start" />快速性能测试
+          </Button>
         </div>
       ) : null}
     </div>
   )
+}
+
+interface PerformanceForm {
+  requestCount: number
+  durationSeconds: number
+  concurrency: number
+  timeoutSeconds: number
+  inputTokens: number
+  outputTokens: number
+}
+
+const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
+  requestCount: 10,
+  durationSeconds: 0,
+  concurrency: 1,
+  timeoutSeconds: 60,
+  inputTokens: 100,
+  outputTokens: 100,
+}
+
+function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchived, onOpenReport }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  testedCommand: QuickTestCommand
+  run: (command: QuickPerformanceCommand) => Promise<QuickPerformanceReport>
+  onArchived?: (reportID: string) => void | Promise<void>
+  onOpenReport?: (reportID: string) => void | Promise<void>
+}) {
+  const [form, setForm] = useState<PerformanceForm>(DEFAULT_PERFORMANCE_FORM)
+  const [pending, setPending] = useState(false)
+  const [report, setReport] = useState<QuickPerformanceReport | null>(null)
+  const [error, setError] = useState("")
+
+  const update = (key: keyof PerformanceForm, value: number) => {
+    setForm((current) => ({ ...current, [key]: value }))
+    setReport(null)
+    setError("")
+  }
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (pending) return
+    if (!validPerformanceForm(form)) {
+      setError(form.requestCount === 0 && form.durationSeconds === 0
+        ? "请求数和持续时间至少填写一项"
+        : "性能测试参数超出允许范围")
+      return
+    }
+    setPending(true)
+    setReport(null)
+    setError("")
+    void run({
+      address_mode: testedCommand.address_mode,
+      url: testedCommand.url,
+      api_key: testedCommand.api_key,
+      model_id: testedCommand.model_id,
+      request_count: form.requestCount,
+      duration_ms: form.durationSeconds * 1_000,
+      concurrency: form.concurrency,
+      timeout_ms: form.timeoutSeconds * 1_000,
+      input_tokens: form.inputTokens,
+      output_tokens: form.outputTokens,
+    })
+      .then((nextReport) => {
+        setReport(nextReport)
+        if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
+      })
+      .catch((reason: unknown) => {
+        setError(publicDesktopErrorMessage(reason, "快速性能测试暂不可用，请检查本地日志"))
+      })
+      .finally(() => setPending(false))
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle>快速性能测试</SheetTitle>
+          <SheetDescription>
+            使用刚刚验证成功的临时连接运行流式负载；实际发起请求后会自动封存报告，但不会创建模型、渠道、用例或计划。
+          </SheetDescription>
+        </SheetHeader>
+        <ScrollArea className="min-h-0 flex-1 px-4">
+          <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4">
+            <FieldGroup>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <PerformanceNumberField label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} onChange={(value) => update("requestCount", value)} />
+                <PerformanceNumberField label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} onChange={(value) => update("durationSeconds", value)} />
+                <PerformanceNumberField label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} onChange={(value) => update("concurrency", value)} />
+                <PerformanceNumberField label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} onChange={(value) => update("timeoutSeconds", value)} />
+                <PerformanceNumberField label="近似输入 Token" value={form.inputTokens} min={1} max={200_000} disabled={pending} onChange={(value) => update("inputTokens", value)} />
+                <PerformanceNumberField label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} onChange={(value) => update("outputTokens", value)} />
+              </div>
+              <FieldDescription>
+                同时填写请求数和持续时间时，任一目标先达到即停止发送；输出 Token 是请求上限，不保证模型实际生成到该数值。
+              </FieldDescription>
+              {error ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{error}</FieldError> : null}
+            </FieldGroup>
+          </form>
+          {pending ? (
+            <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
+              <Spinner className="size-5" />
+              <p className="mt-3 text-sm font-medium">性能测试运行中</p>
+              <p className="mt-1 text-xs text-muted-foreground">请求完成后由 Core 生成聚合报告。</p>
+            </div>
+          ) : report ? <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} /> : null}
+        </ScrollArea>
+        <SheetFooter>
+          <Button type="submit" form="quick-performance-form" disabled={pending}>
+            {pending ? <><Spinner data-icon="inline-start" />正在测试…</> : <><GaugeIcon data-icon="inline-start" />开始性能测试</>}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function PerformanceNumberField({ label, value, min, max, disabled, onChange }: {
+  label: string
+  value: number
+  min: number
+  max: number
+  disabled: boolean
+  onChange: (value: number) => void
+}) {
+  const id = `quick-performance-${label}`
+  return (
+    <Field className="block min-w-0">
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldContent>
+        <Input
+          id={id}
+          aria-label={label}
+          type="number"
+          min={min}
+          max={max}
+          step={1}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(Number(event.target.value))}
+          required
+        />
+      </FieldContent>
+    </Field>
+  )
+}
+
+function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPerformanceReport; onOpenReport?: (reportID: string) => void | Promise<void> }) {
+  const completedWithFailures = !report.success && !report.error_code && report.metrics.completed > 0
+  const title = report.success
+    ? "性能测试完成"
+    : completedWithFailures
+      ? "性能测试完成，存在失败请求"
+      : QUICK_TEST_ERROR_MESSAGES[report.error_code ?? "request_failed"]
+  return (
+    <section aria-label="性能报告" className="rounded-lg border bg-surface-subtle">
+      <div className="flex items-start gap-3 p-4">
+        {report.success ? (
+          <CheckCircle2Icon className="mt-0.5 size-5 shrink-0 text-success" />
+        ) : (
+          <CircleAlertIcon className="mt-0.5 size-5 shrink-0 text-warning" />
+        )}
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {report.success ? "全部请求完成且通过协议与语义校验。" : "报告仅包含聚合指标和稳定错误分类。"}
+          </p>
+        </div>
+      </div>
+      <Separator />
+      <div className="space-y-4 p-4">
+        <MetricSection title="执行摘要">
+          <ResultValue label="成功 / 完成" value={`${report.metrics.succeeded} / ${report.metrics.completed}`} numeric />
+          <ResultValue label="成功率" value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
+          <ResultValue label="总耗时" value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
+          <ResultValue label="峰值在途" value={String(report.progress.peak_in_flight)} numeric />
+        </MetricSection>
+        <MetricSection title="吞吐">
+          <ResultValue label="请求速率" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric />
+          <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
+          <ResultValue label="输入 / 输出 TPM" value={`${formatNumber(report.metrics.input_tpm)} / ${formatNumber(report.metrics.output_tpm)}`} numeric />
+          <ResultValue label="生成速度" value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
+        </MetricSection>
+        <MetricSection title="延迟分位">
+          <ResultValue label="E2E P50 / P95 / P99" value={`${formatNumber(report.metrics.e2e_p50_ms)} / ${formatNumber(report.metrics.e2e_p95_ms)} / ${formatNumber(report.metrics.e2e_p99_ms)} ms`} numeric />
+          <ResultValue label="TTFT P50 / P95 / P99" value={`${formatNumber(report.metrics.ttft_p50_ms)} / ${formatNumber(report.metrics.ttft_p95_ms)} / ${formatNumber(report.metrics.ttft_p99_ms)} ms`} numeric />
+          <ResultValue label="TPOT P50 / P95 / P99" value={`${formatNumber(report.metrics.tpot_p50_ms)} / ${formatNumber(report.metrics.tpot_p95_ms)} / ${formatNumber(report.metrics.tpot_p99_ms)} ms`} numeric />
+          <ResultValue label="调度延迟 P95" value={`${formatNumber(report.metrics.schedule_lag_p95_ms)} ms`} numeric />
+        </MetricSection>
+        <MetricSection title="Token">
+          <ResultValue label="Prompt / Completion / Cached" value={`${report.metrics.prompt_tokens} / ${report.metrics.completion_tokens} / ${report.metrics.cached_tokens}`} numeric />
+          <ResultValue label="缓存率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
+          <ResultValue label="超时请求" value={String(report.metrics.timed_out)} numeric />
+        </MetricSection>
+        {report.samples.length ? <PerformanceCharts layout="stacked" samples={report.samples} percentiles={report.metrics} /> : null}
+        {report.failures.length ? (
+          <div>
+            <h4 className="text-xs font-semibold">失败分类</h4>
+            <ul className="mt-2 space-y-1 text-xs">
+              {report.failures.map((failure) => (
+                <li key={failure.error_code} className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">{QUICK_TEST_ERROR_MESSAGES[failure.error_code]}</span>
+                  <span className="tabular-nums">{failure.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {report.archived && report.report_id ? (
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            <p className="text-[10px] text-muted-foreground">已于 {report.generated_at ? new Date(report.generated_at).toLocaleString("zh-CN") : "测试完成时"} 封存到报告。</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => void onOpenReport?.(report.report_id!)}>查看正式报告</Button>
+          </div>
+        ) : report.archive_status === "failed" ? (
+          <p role="status" className="border-t pt-3 text-[11px] text-warning">性能结果已生成，但未能写入报告目录。</p>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+function MetricSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h4 className="mb-2 text-xs font-semibold">{title}</h4>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">{children}</dl>
+    </div>
+  )
+}
+
+function validPerformanceForm(form: PerformanceForm): boolean {
+  return Number.isInteger(form.requestCount) && form.requestCount >= 0 && form.requestCount <= 10_000 &&
+    Number.isInteger(form.durationSeconds) && form.durationSeconds >= 0 && form.durationSeconds <= 3_600 &&
+    (form.requestCount > 0 || form.durationSeconds > 0) &&
+    Number.isInteger(form.concurrency) && form.concurrency >= 1 && form.concurrency <= 256 &&
+    Number.isInteger(form.timeoutSeconds) && form.timeoutSeconds >= 1 && form.timeoutSeconds <= 600 &&
+    Number.isInteger(form.inputTokens) && form.inputTokens >= 1 && form.inputTokens <= 200_000 &&
+    Number.isInteger(form.outputTokens) && form.outputTokens >= 1 && form.outputTokens <= 65_536
 }
 
 function ResultValue({ label, value, numeric = false, wide = false, mono = false }: {

@@ -12,6 +12,7 @@ import (
 	"github.com/894x/llm-studio/internal/application/casecatalog"
 	"github.com/894x/llm-studio/internal/application/catalog"
 	"github.com/894x/llm-studio/internal/application/channelconfig"
+	"github.com/894x/llm-studio/internal/application/quicktest"
 	"github.com/894x/llm-studio/internal/application/reporting"
 	"github.com/894x/llm-studio/internal/application/workspace"
 	"github.com/894x/llm-studio/internal/domain"
@@ -73,6 +74,17 @@ func (query serializedReportingQuery) Export(ctx context.Context, reportID strin
 		return reporting.ExportedDocument{}, ErrReportingUnavailable
 	}
 	return documents.Export(ctx, reportID, format)
+}
+
+type serializedQuickPerformanceArchive struct {
+	gate    *productionServiceGate
+	archive quicktest.PerformanceArchive
+}
+
+func (archive serializedQuickPerformanceArchive) SaveQuickPerformanceReport(ctx context.Context, report quicktest.PerformanceReport) error {
+	release := archive.gate.enter()
+	defer release()
+	return archive.archive.SaveQuickPerformanceReport(ctx, report)
 }
 
 type serializedCatalogService struct {
