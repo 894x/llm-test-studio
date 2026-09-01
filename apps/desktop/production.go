@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
@@ -29,14 +28,6 @@ import (
 )
 
 var desktopApplicationVersion = "dev"
-
-const (
-	builtinKimiK3SeedKey   = "kimi-k3-official-v1"
-	builtinKimiK3SuiteName = "内置 · Kimi K3 官方兼容性"
-	builtinKimiK3PlanName  = "内置 · Kimi K3 官方兼容性验证"
-	builtinKimiK3SuiteID   = "6b934c5b-76ab-4bd5-a06a-000000000001"
-	builtinKimiK3PlanID    = "6b934c5b-76ab-4bd5-a06a-000000000002"
-)
 
 type productionOptions struct {
 	userConfigDir       func() (string, error)
@@ -194,11 +185,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			gate: gate, query: catalogQuery, commands: catalogQuery, channels: channelService,
 			caseFiles: caseFiles, caseSnapshots: repository,
 		}
-		if err := seedBuiltinKimiK3Catalog(ctx, repository, caseFiles, serializedCatalog); err != nil {
-			_ = runService.Close()
-			_ = repository.Close()
-			return desktopDependencies{}, fmt.Errorf("seed built-in Kimi K3 catalog: %w", err)
-		}
 		return desktopDependencies{
 			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
 			catalog:         serializedCatalog,
@@ -216,153 +202,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		}, nil
 	}
-}
-
-type builtinCatalogSeedRepository interface {
-	BuiltinCatalogSeedCompleted(context.Context, string) (bool, error)
-	CompleteBuiltinCatalogSeed(context.Context, string, time.Time) error
-	CreateSuite(context.Context, domain.Suite) error
-	CreatePlan(context.Context, domain.Plan) error
-}
-
-func seedBuiltinKimiK3Catalog(ctx context.Context, repository builtinCatalogSeedRepository, files *casecatalog.Service, service serializedCatalogService) error {
-	completed, err := repository.BuiltinCatalogSeedCompleted(ctx, builtinKimiK3SeedKey)
-	if err != nil || completed {
-		return err
-	}
-	entries, err := files.Entries(ctx)
-	if err != nil {
-		return err
-	}
-	refs := make([]catalog.CaseRevisionInput, 0)
-	for _, entry := range entries {
-		testCase := entry.TestCase
-		if testCase.Protocol == domain.ProtocolKimiK3 && testCase.Enabled && testCase.ExecutionMode == domain.CaseExecutionAutomatic {
-			refs = append(refs, catalog.CaseRevisionInput{CaseID: testCase.ID, Revision: testCase.Revision})
-		}
-	}
-	sort.Slice(refs, func(left, right int) bool { return refs[left].CaseID < refs[right].CaseID })
-	if len(refs) == 0 {
-		return repository.CompleteBuiltinCatalogSeed(ctx, builtinKimiK3SeedKey, time.Now().UTC())
-	}
-
-	snapshot, err := service.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	suite := catalog.MutationResult{}
-	suiteCreated := false
-	for _, candidate := range snapshot.Suites {
-		if candidate.Name == builtinKimiK3SuiteName && reflect.DeepEqual(candidate.Cases, refs) {
-			suite = catalog.MutationResult{ID: candidate.ID, Revision: candidate.Revision}
-			break
-		}
-	}
-	if suite.ID == "" {
-		createdCases, materializeErr := service.materializeCases(ctx, refs)
-		if materializeErr != nil {
-			return materializeErr
-		}
-		now := time.Now().UTC()
-		seedSuite := domain.Suite{
-			EntityMeta: domain.EntityMeta{ID: builtinKimiK3SuiteID, SchemaVersion: domain.CurrentEntitySchemaVersion, Revision: 1, CreatedAt: now, UpdatedAt: now},
-			Name:       builtinKimiK3SuiteName,
-			Cases:      toDomainCaseRefs(refs),
-		}
-		err = repository.CreateSuite(ctx, seedSuite)
-		if errors.Is(err, sqlite.ErrConflict) {
-			snapshot, err = service.Snapshot(ctx)
-			if err == nil {
-				for _, candidate := range snapshot.Suites {
-					if candidate.ID == builtinKimiK3SuiteID && candidate.Name == builtinKimiK3SuiteName && reflect.DeepEqual(candidate.Cases, refs) {
-						suite = catalog.MutationResult{ID: candidate.ID, Revision: candidate.Revision}
-						break
-					}
-				}
-			}
-			if err != nil || suite.ID == "" {
-				return errors.Join(err, service.cleanupMaterializedCases(createdCases))
-			}
-		} else if err != nil {
-			return errors.Join(err, service.cleanupMaterializedCases(createdCases))
-		} else {
-			suite = catalog.MutationResult{ID: seedSuite.ID, Revision: seedSuite.Revision}
-			suiteCreated = true
-		}
-	}
-	for _, candidate := range snapshot.Plans {
-		if builtinKimiK3PlanMatches(candidate, suite, refs) {
-			return repository.CompleteBuiltinCatalogSeed(ctx, builtinKimiK3SeedKey, time.Now().UTC())
-		}
-	}
-	now := time.Now().UTC()
-	seedPlan := domain.Plan{
-		EntityMeta:    domain.EntityMeta{ID: builtinKimiK3PlanID, SchemaVersion: domain.CurrentEntitySchemaVersion, Revision: 1, CreatedAt: now, UpdatedAt: now},
-		Name:          builtinKimiK3PlanName,
-		SuiteID:       suite.ID,
-		SuiteRevision: suite.Revision,
-		Cases:         toDomainCaseRefs(refs),
-		Load:          domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: uint64(len(refs)), RequestTimeoutMS: 300_000},
-		SLA:           domain.SLAProfile{Thresholds: map[string]float64{"success_rate": 1}},
-	}
-	err = repository.CreatePlan(ctx, seedPlan)
-	plan := catalog.MutationResult{ID: seedPlan.ID, Revision: seedPlan.Revision}
-	planCreated := err == nil
-	if errors.Is(err, sqlite.ErrConflict) {
-		snapshot, err = service.Snapshot(ctx)
-		found := false
-		if err == nil {
-			for _, candidate := range snapshot.Plans {
-				if candidate.ID == builtinKimiK3PlanID && builtinKimiK3PlanMatches(candidate, suite, refs) {
-					plan = catalog.MutationResult{ID: candidate.ID, Revision: candidate.Revision}
-					found = true
-					break
-				}
-			}
-		}
-		if err == nil && found {
-			err = nil
-		} else if err == nil {
-			err = sqlite.ErrConflict
-		}
-	}
-	if err != nil {
-		var cleanupErr error
-		if suiteCreated {
-			cleanupErr = service.DeleteSuite(context.Background(), catalog.DeleteCommand{ID: suite.ID, ExpectedRevision: suite.Revision})
-			cleanupErr = errors.Join(cleanupErr, service.cleanupMaterializedCases(toDomainCaseRefs(refs)))
-		}
-		return errors.Join(err, cleanupErr)
-	}
-	if err := repository.CompleteBuiltinCatalogSeed(ctx, builtinKimiK3SeedKey, time.Now().UTC()); err != nil {
-		var planCleanup error
-		if planCreated {
-			planCleanup = service.DeletePlan(context.Background(), catalog.DeleteCommand{ID: plan.ID, ExpectedRevision: plan.Revision})
-		}
-		var suiteCleanup, caseCleanup error
-		if suiteCreated {
-			suiteCleanup = service.DeleteSuite(context.Background(), catalog.DeleteCommand{ID: suite.ID, ExpectedRevision: suite.Revision})
-			caseCleanup = service.cleanupMaterializedCases(toDomainCaseRefs(refs))
-		}
-		return errors.Join(err, planCleanup, suiteCleanup, caseCleanup)
-	}
-	return nil
-}
-
-func builtinKimiK3PlanMatches(plan catalog.PlanSummary, suite catalog.MutationResult, refs []catalog.CaseRevisionInput) bool {
-	return plan.Name == builtinKimiK3PlanName && plan.SuiteID == suite.ID && plan.SuiteRevision == suite.Revision &&
-		len(plan.ModelIDs) == 0 && len(plan.ChannelIDs) == 0 && reflect.DeepEqual(plan.Cases, refs) &&
-		plan.LoadMode == domain.LoadFixedConcurrency && plan.Concurrency == 1 && plan.RequestCount == uint64(len(refs)) &&
-		plan.RatePerSecond == 0 && plan.DurationMS == 0 && plan.RequestTimeoutMS == 300_000 &&
-		reflect.DeepEqual(plan.SLAThresholds, map[string]float64{"success_rate": 1})
-}
-
-func toDomainCaseRefs(refs []catalog.CaseRevisionInput) []domain.CaseRevisionRef {
-	result := make([]domain.CaseRevisionRef, len(refs))
-	for index, ref := range refs {
-		result[index] = domain.CaseRevisionRef{CaseID: ref.CaseID, Revision: ref.Revision}
-	}
-	return result
 }
 
 type legacyCaseCutoverRepository interface {
