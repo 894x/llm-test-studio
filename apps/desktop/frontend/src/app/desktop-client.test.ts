@@ -296,6 +296,10 @@ describe("Wails desktop client", () => {
 			expect(exported.filename).toContain(reportID)
 			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format, "team-alpha")
 		}
+		await expect(client.saveReportExport("report.png", "image/png", "iVBORw0KGgo=")).resolves.toBe(true)
+		expect(binding.SaveReportExport).toHaveBeenCalledWith("report.png", "image/png", "iVBORw0KGgo=")
+		await client.copyReportPNG("iVBORw0KGgo=")
+		expect(binding.CopyReportPNG).toHaveBeenCalledWith("iVBORw0KGgo=")
 	})
 
 	it("parses an archived quick-performance detail through the closed report boundary", async () => {
@@ -593,12 +597,14 @@ function installBinding(
 		})),
 		OpenDiagnosticsDirectory: vi.fn(async () => undefined),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
-		ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
+			ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
 			filename: `llm-studio-report-${reportID}.${format}`,
 			media_type: format === "json" ? "application/json" : "application/octet-stream",
-			data_base64: "e30=",
-		})),
-		GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
+				data_base64: "e30=",
+			})),
+			SaveReportExport: vi.fn(async () => true),
+			CopyReportPNG: vi.fn(async () => undefined),
+			GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     StartRun: vi.fn(async () => structuredClone(payload)),
 		StartRunTarget: vi.fn(async () => structuredClone(payload)),
     StopSending: vi.fn(async () => structuredClone(payload)),

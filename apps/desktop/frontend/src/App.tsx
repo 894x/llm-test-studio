@@ -266,7 +266,14 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
           }}
         />
       ) : page === "reports" ? (
-        <ReportWorkspace snapshot={reports} preferredReportID={preferredReportID} getDetail={client.getReportDetail} exportReport={client.exportReport} />
+        <ReportWorkspace
+          snapshot={reports}
+          preferredReportID={preferredReportID}
+          getDetail={client.getReportDetail}
+          exportReport={client.exportReport}
+          saveReportExport={client.saveReportExport}
+          copyReportPNG={client.copyReportPNG}
+        />
       ) : (
         <RunWorkspace
           snapshot={snapshot}

@@ -142,32 +142,34 @@ type desktopInitializer func(context.Context) (desktopDependencies, error)
 // DesktopApp is the Wails binding. It owns only desktop lifecycle and
 // delegation; business decisions remain in Application services.
 type DesktopApp struct {
-	lifecycleMu     sync.Mutex
-	mu              sync.Mutex
-	drained         *sync.Cond
-	startupDone     *sync.Cond
-	initialize      desktopInitializer
-	starting        bool
-	started         bool
-	stopping        bool
-	stopped         bool
-	active          int
-	ctx             context.Context
-	cancel          context.CancelFunc
-	query           WorkspaceQuery
-	catalog         CatalogQuery
-	catalogCommands CatalogCommands
-	reports         ReportingQuery
-	commands        RunCommands
-	comparisons     ComparisonService
-	quickTests      QuickTestRunner
-	close           func() error
-	startupErr      error
-	shutdownErr     error
-	reportError     func(error)
-	diagnostics     DesktopDiagnosticsSnapshot
-	openDiagnostics func() error
-	emitEvent       desktopEventEmitter
+	lifecycleMu      sync.Mutex
+	mu               sync.Mutex
+	drained          *sync.Cond
+	startupDone      *sync.Cond
+	initialize       desktopInitializer
+	starting         bool
+	started          bool
+	stopping         bool
+	stopped          bool
+	active           int
+	ctx              context.Context
+	cancel           context.CancelFunc
+	query            WorkspaceQuery
+	catalog          CatalogQuery
+	catalogCommands  CatalogCommands
+	reports          ReportingQuery
+	commands         RunCommands
+	comparisons      ComparisonService
+	quickTests       QuickTestRunner
+	close            func() error
+	startupErr       error
+	shutdownErr      error
+	reportError      func(error)
+	diagnostics      DesktopDiagnosticsSnapshot
+	openDiagnostics  func() error
+	emitEvent        desktopEventEmitter
+	saveReportExport reportExportSaver
+	copyReportPNG    reportPNGClipboardWriter
 }
 
 // DesktopDiagnosticsSnapshot is an allow-listed operator view. The filesystem
@@ -226,7 +228,12 @@ func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
 }
 
 func newDesktopApp(initialize desktopInitializer) *DesktopApp {
-	app := &DesktopApp{initialize: initialize, emitEvent: wailsruntime.EventsEmit}
+	app := &DesktopApp{
+		initialize:       initialize,
+		emitEvent:        wailsruntime.EventsEmit,
+		saveReportExport: saveReportExportToFile,
+		copyReportPNG:    writePNGToClipboard,
+	}
 	app.drained = sync.NewCond(&app.mu)
 	app.startupDone = sync.NewCond(&app.mu)
 	return app

@@ -24,17 +24,24 @@ describe("ReportWorkspace", () => {
       ],
     } as unknown as ReportSnapshot
     const getDetail = vi.fn(async () => quickDetail(quickID) as unknown as ReportDetail)
-    const exportReport = vi.fn(async () => { throw new Error("stop after export request") })
-    const exportVisualReport = vi.fn(async (element: HTMLElement, _format: "html" | "png" | "pdf", reportID: string) => {
+    const exportReport = vi.fn(async (_reportID: string, format: "json" | "html" | "png" | "pdf") => ({
+      filename: `llm-studio-report-${quickID}.${format}`,
+      media_type: "application/json",
+      data_base64: "e30=",
+    }))
+    const saveReportExport = vi.fn(async (_filename: string, _mediaType: string, _dataBase64: string) => true)
+    const copyReportPNG = vi.fn(async (_dataBase64: string) => undefined)
+    const exportVisualReport = vi.fn(async (element: HTMLElement, format: "html" | "png" | "pdf", reportID: string) => {
       expect(reportID).toBe(quickID)
       expect(element).toHaveTextContent("team-alpha")
       expect(element.querySelectorAll("figure")).toHaveLength(7)
       expect(element.querySelector('[aria-label="TTFT 分布图"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()
-      throw new Error("stop after visual export request")
+      const mediaType = format === "html" ? "text/html; charset=utf-8" : format === "png" ? "image/png" : "application/pdf"
+      return { filename: `llm-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
     })
 
-    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} exportVisualReport={exportVisualReport} />)
+    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} />)
 
     const table = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(table).getByRole("columnheader", { name: "查看报告" })).toBeInTheDocument()
@@ -75,15 +82,26 @@ describe("ReportWorkspace", () => {
     expect(watermark).toHaveValue("rhzs")
     await user.click(screen.getByRole("button", { name: "JSON" }))
     expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs")
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-studio-report-${quickID}.json`, "application/json", "e30="))
     await user.clear(watermark)
     await user.type(watermark, "team-alpha")
     await user.click(screen.getByRole("button", { name: "HTML" }))
-    await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledTimes(2))
     expect(exportReport).not.toHaveBeenCalledWith(quickID, "html", "team-alpha")
     await user.click(screen.getByRole("button", { name: "PNG" }))
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledTimes(3))
     await user.click(screen.getByRole("button", { name: "PDF" }))
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledTimes(4))
     await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(3))
     expect(exportVisualReport.mock.calls.map(([, format]) => format)).toEqual(["html", "png", "pdf"])
+    expect(saveReportExport.mock.calls.map(([filename]) => filename)).toEqual([
+      `llm-studio-report-${quickID}.json`,
+      `llm-studio-report-${quickID}.html`,
+      `llm-studio-report-${quickID}.png`,
+      `llm-studio-report-${quickID}.pdf`,
+    ])
+    await user.click(screen.getByRole("button", { name: "复制 PNG" }))
+    await waitFor(() => expect(copyReportPNG).toHaveBeenCalledWith("cG5n"))
 
     await user.click(screen.getByRole("button", { name: "返回报告列表" }))
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()

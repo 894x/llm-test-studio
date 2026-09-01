@@ -118,6 +118,8 @@ export interface DesktopClient extends CatalogActions {
   getReports(): Promise<ReportSnapshot>
   getReportDetail(reportId: string): Promise<ReportDetail>
   exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
+  saveReportExport(filename: string, mediaType: string, dataBase64: string): Promise<boolean>
+  copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
   startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
@@ -147,6 +149,8 @@ type WailsDesktopBinding = {
   GetReports(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
+  SaveReportExport(filename: string, mediaType: string, dataBase64: string): Promise<unknown>
+  CopyReportPNG(dataBase64: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
   StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
@@ -226,6 +230,10 @@ export function createFixtureClient(
 			const payload = format === "json" ? JSON.stringify({ watermark: watermark.trim() || "rhzs", ...detail }, null, 2) : `LLM Studio ${format.toUpperCase()} report ${reportId} watermark ${watermark.trim() || "rhzs"}`
 			return { filename: `llm-studio-report-${reportId}.${format}`, media_type: mediaTypes[format], data_base64: bytesToBase64(new TextEncoder().encode(payload)) }
 		},
+		async saveReportExport() {
+			return true
+		},
+		async copyReportPNG() {},
 		async getComparisons() {
 			return structuredClone(comparisonState)
 		},
@@ -449,6 +457,8 @@ function createLazyFixtureClient(): DesktopClient {
     getReports: async () => (await client).getReports(),
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
 		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
+		saveReportExport: async (filename, mediaType, dataBase64) => (await client).saveReportExport(filename, mediaType, dataBase64),
+		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
 		startRunTarget: async (command) => (await client).startRunTarget(command),
@@ -495,6 +505,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
 		exportReport: async (reportId, format, watermark) =>
 			callBinding(() => binding.ExportReport(reportId, format, watermark), parseExportedReport),
+		saveReportExport: async (filename, mediaType, dataBase64) =>
+			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64), parseBoolean),
+		copyReportPNG: async (dataBase64) =>
+			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
 		getComparisons: async () =>
 			callBinding(() => binding.GetComparisons(), parseComparisonSnapshot),
     startRun: async (planId) =>
@@ -559,6 +573,8 @@ function unavailableClient(): DesktopClient {
     getReports: () => reject(),
 		getReportDetail: () => reject(),
 		exportReport: () => reject(),
+		saveReportExport: () => reject(),
+		copyReportPNG: () => reject(),
 		getComparisons: () => reject(),
     startRun: () => reject(),
 		startRunTarget: () => reject(),
@@ -608,6 +624,10 @@ function readWailsBinding(): WailsDesktopBinding | undefined {
     typeof candidate.GetWorkspace !== "function" ||
     typeof candidate.GetCatalog !== "function" ||
     typeof candidate.GetReports !== "function" ||
+		typeof candidate.GetReportDetail !== "function" ||
+		typeof candidate.ExportReport !== "function" ||
+		typeof candidate.SaveReportExport !== "function" ||
+		typeof candidate.CopyReportPNG !== "function" ||
 		typeof candidate.GetComparisons !== "function" ||
     typeof candidate.StartRun !== "function" ||
 		typeof candidate.StartRunTarget !== "function" ||
@@ -792,8 +812,15 @@ function parseDiagnosticsSnapshot(value: unknown): DesktopDiagnosticsSnapshot {
 
 function parseVoid(value: unknown): void {
   if (value !== undefined && value !== null) {
-    throw new Error("桌面诊断命令响应无效")
+		throw new Error("桌面命令响应无效")
   }
+}
+
+function parseBoolean(value: unknown): boolean {
+	if (typeof value !== "boolean") {
+		throw new Error("桌面命令响应无效")
+	}
+	return value
 }
 
 function parseSnapshot(value: unknown): WorkspaceSnapshot {

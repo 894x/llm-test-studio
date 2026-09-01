@@ -18,11 +18,13 @@ import { exportVisualReport as createVisualReportExport } from "./visual-report-
 
 import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary } from "./data"
 
-export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, exportVisualReport = createVisualReportExport }: {
+export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
   preferredReportID?: string
   getDetail: (reportId: string) => Promise<ReportDetail>
   exportReport: (reportId: string, format: ReportExportFormat, watermark: string) => Promise<ExportedReport>
+  saveReportExport: (filename: string, mediaType: string, dataBase64: string) => Promise<boolean>
+  copyReportPNG: (dataBase64: string) => Promise<void>
   exportVisualReport?: typeof createVisualReportExport
 }) {
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
@@ -54,10 +56,12 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExportError("")
     try {
       if (format === "json") {
-        downloadExport(await exportReport(selected.id, format, watermark))
+        const exported = await exportReport(selected.id, format, watermark)
+        await saveReportExport(exported.filename, exported.media_type, exported.data_base64)
       } else {
         if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
-        downloadVisualExport(await exportVisualReport(exportDocumentRef.current, format, selected.id))
+        const exported = await exportVisualReport(exportDocumentRef.current, format, selected.id)
+        await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob))
       }
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
@@ -77,11 +81,19 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     try {
       if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
       const exported = await exportVisualReport(exportDocumentRef.current, "png", selected.id)
-      const ClipboardItemType = window.ClipboardItem
-      if (!navigator.clipboard?.write || !ClipboardItemType) throw new Error("clipboard image unsupported")
-      await navigator.clipboard.write([new ClipboardItemType({ [exported.mediaType]: exported.blob })])
-    } catch {
-      setExportError("当前系统无法复制 PNG，可使用 PNG 下载")
+      try {
+        await copyReportPNG(await blobToBase64(exported.blob))
+      } catch (nativeError) {
+        const ClipboardItemType = window.ClipboardItem
+        if (!navigator.clipboard?.write || !ClipboardItemType) throw nativeError
+        await navigator.clipboard.write([new ClipboardItemType({ [exported.mediaType]: exported.blob })])
+      }
+    } catch (error) {
+      setExportError(publicDesktopOperationErrorMessage(
+        error,
+        `复制 PNG 报告（${selected.verdict}）`,
+        "无法写入系统剪贴板，请检查本地日志",
+      ))
     } finally {
       setExporting("")
     }
@@ -288,28 +300,24 @@ function ConclusionBadge({ passed }: { passed: boolean }) {
   return <Badge variant="outline" className={passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>{passed ? "通过" : "未通过"}</Badge>
 }
 
-function exportBlob(exported: ExportedReport): Blob {
-  const binary = atob(exported.data_base64)
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
-  return new Blob([bytes], { type: exported.media_type })
-}
-
-function downloadExport(exported: ExportedReport) {
-  const url = URL.createObjectURL(exportBlob(exported))
-  const anchor = document.createElement("a")
-  anchor.href = url
-  anchor.download = exported.filename
-  anchor.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
-function downloadVisualExport(exported: { filename: string; blob: Blob }) {
-  const url = URL.createObjectURL(exported.blob)
-  const anchor = document.createElement("a")
-  anchor.href = url
-  anchor.download = exported.filename
-  anchor.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error ?? new Error("report export encoding failed"))
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("report export encoding failed"))
+        return
+      }
+      const separator = reader.result.indexOf(",")
+      if (separator < 0) {
+        reject(new Error("report export encoding failed"))
+        return
+      }
+      resolve(reader.result.slice(separator + 1))
+    }
+    reader.readAsDataURL(blob)
+  })
 }
 
 function metric(value?: number): string { return value === undefined ? "—" : formatMetric(value) }
