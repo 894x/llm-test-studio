@@ -14,3 +14,5 @@ loadtest_history.db
 # Local secrets
 .env
 .streamlit/secrets.toml
+
+build

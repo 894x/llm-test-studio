@@ -1,5 +1,6 @@
 export interface PerformanceChartSample {
   request_index: number
+  started_offset_ms: number
   finished_offset_ms: number
   e2e_ms: number
   ttft_ms: number
@@ -56,8 +57,106 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
           ))}
         </div>
       </div>
+      <div>
+        <h4 className="text-xs font-semibold">吞吐与并发时间线</h4>
+        <p className="mt-0.5 text-[10px] text-muted-foreground">统计全部已完成请求；柱状表示分段完成吞吐，折线表示分段峰值在途。</p>
+        <ThroughputConcurrencyChart samples={samples} />
+      </div>
     </section>
   )
+}
+
+function ThroughputConcurrencyChart({ samples }: { samples: readonly PerformanceChartSample[] }) {
+  const timeline = throughputTimeline(samples)
+  if (!timeline) {
+    return <figure aria-label="吞吐与并发时间线" className="mt-2 rounded-md border bg-surface-control p-2"><EmptyChart expanded /></figure>
+  }
+  const { buckets, durationMS, maxThroughput, maxConcurrency } = timeline
+  const width = 720
+  const height = 176
+  const left = 42
+  const right = 42
+  const top = 18
+  const bottom = 26
+  const plotWidth = width - left - right
+  const plotHeight = height - top - bottom
+  const slotWidth = plotWidth / buckets.length
+  const points = buckets.map((bucket, index) => {
+    const x = left + (index + 0.5) * slotWidth
+    const y = top + plotHeight - bucket.peakInFlight / Math.max(1, maxConcurrency) * plotHeight
+    return `${x},${y}`
+  }).join(" ")
+  return (
+    <figure aria-label="吞吐与并发时间线" className="mt-2 min-w-0 rounded-md border bg-surface-control p-2">
+      <figcaption className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-primary/50" />完成吞吐</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-3 border-t-2 border-text-secondary" />峰值在途</span>
+        </span>
+        <span className="tabular-nums">峰值 {number(maxThroughput)} req/s · 在途 {number(maxConcurrency)}</span>
+      </figcaption>
+      <svg role="img" aria-label={`吞吐与并发时间线，${samples.length} 个完成请求`} viewBox={`0 0 ${width} ${height}`} className="mt-1 h-44 w-full overflow-visible">
+        <line x1={left} y1={top + plotHeight} x2={left + plotWidth} y2={top + plotHeight} stroke="var(--border-strong)" />
+        {buckets.map((bucket, index) => {
+          const barHeight = bucket.throughput / Math.max(1, maxThroughput) * plotHeight
+          return <rect key={index} x={left + index * slotWidth + 1} y={top + plotHeight - barHeight} width={Math.max(1, slotWidth - 2)} height={barHeight} rx="1" fill="var(--primary)" opacity="0.5" />
+        })}
+        <polyline points={points} fill="none" stroke="var(--text-secondary)" strokeWidth="1.8" strokeLinejoin="round" />
+        {buckets.map((bucket, index) => <circle key={index} cx={left + (index + 0.5) * slotWidth} cy={top + plotHeight - bucket.peakInFlight / Math.max(1, maxConcurrency) * plotHeight} r="1.8" fill="var(--surface-elevated)" stroke="var(--text-secondary)" strokeWidth="1.1" />)}
+        <g fill="var(--muted-foreground)" fontSize="8">
+          <text x={left - 3} y={top + 7} textAnchor="end">{number(maxThroughput)}</text>
+          <text x={left - 3} y={top + plotHeight} textAnchor="end">0</text>
+          <text x={left + plotWidth + 3} y={top + 7}>{number(maxConcurrency)}</text>
+          <text x={left + plotWidth + 3} y={top + plotHeight}>0</text>
+          <text x={left} y={top - 6}>req/s</text>
+          <text x={left + plotWidth} y={top - 6} textAnchor="end">在途</text>
+          <text x={left} y={top + plotHeight + 14}>完成偏移</text>
+          <text x={left + plotWidth} y={top + plotHeight + 14} textAnchor="end">{time(durationMS)}</text>
+        </g>
+      </svg>
+    </figure>
+  )
+}
+
+function throughputTimeline(samples: readonly PerformanceChartSample[]): {
+  buckets: Array<{ throughput: number; peakInFlight: number }>
+  durationMS: number
+  maxThroughput: number
+  maxConcurrency: number
+} | null {
+  const valid = samples.filter((sample) => Number.isFinite(sample.started_offset_ms) && Number.isFinite(sample.finished_offset_ms) && sample.started_offset_ms >= 0 && sample.finished_offset_ms >= sample.started_offset_ms)
+  const durationMS = Math.max(0, ...valid.map((sample) => sample.finished_offset_ms))
+  if (!valid.length || durationMS <= 0) return null
+  const bucketCount = Math.min(48, Math.max(8, Math.ceil(durationMS / 1_000)))
+  const bucketMS = durationMS / bucketCount
+  const completionCounts = Array<number>(bucketCount).fill(0)
+  for (const sample of valid) {
+    const index = Math.min(bucketCount - 1, Math.floor(sample.finished_offset_ms / bucketMS))
+    completionCounts[index] += 1
+  }
+  const events = valid.filter((sample) => sample.finished_offset_ms > sample.started_offset_ms).flatMap((sample) => [
+    { offset: sample.started_offset_ms, delta: 1 },
+    { offset: sample.finished_offset_ms, delta: -1 },
+  ]).sort((left, right) => left.offset - right.offset || left.delta - right.delta)
+  const buckets: Array<{ throughput: number; peakInFlight: number }> = []
+  let active = 0
+  let eventIndex = 0
+  for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
+    const bucketEnd = (bucketIndex + 1) * bucketMS
+    let peakInFlight = active
+    while (eventIndex < events.length && events[eventIndex].offset <= bucketEnd) {
+      active = Math.max(0, active + events[eventIndex].delta)
+      peakInFlight = Math.max(peakInFlight, active)
+      eventIndex += 1
+    }
+    buckets.push({ throughput: completionCounts[bucketIndex] / (bucketMS / 1_000), peakInFlight })
+  }
+  return {
+    buckets,
+    durationMS,
+    maxThroughput: Math.max(0, ...buckets.map((bucket) => bucket.throughput)),
+    maxConcurrency: Math.max(0, ...buckets.map((bucket) => bucket.peakInFlight)),
+  }
 }
 
 function DistributionChart({ metric, samples, percentiles, expanded }: {

@@ -30,6 +30,7 @@ describe("PerformanceCharts", () => {
     expect(screen.getByRole("img", { name: "TTFT 延迟直方分布，1 个成功请求样本" })).toBeInTheDocument()
     expect(screen.getByRole("img", { name: "TPOT 随完成时间变化曲线，1 个成功请求样本" })).toBeInTheDocument()
     expect(screen.queryByRole("img", { name: /2 个成功请求样本/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "吞吐与并发时间线，2 个完成请求" })).toBeInTheDocument()
   })
 
   it("shows an explicit empty state when every request failed", () => {
@@ -39,13 +40,14 @@ describe("PerformanceCharts", () => {
     const e2eTimeline = screen.getByRole("figure", { name: "E2E 时间曲线" })
     expect(within(ttftDistribution).getByText("暂无成功请求样本")).toBeInTheDocument()
     expect(within(e2eTimeline).getByText("暂无成功请求样本")).toBeInTheDocument()
-    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "吞吐与并发时间线，1 个完成请求" })).toBeInTheDocument()
   })
 })
 
 function sample(success: boolean, finishedOffsetMS: number): PerformanceChartSample {
   return {
     request_index: success ? 0 : 1,
+    started_offset_ms: finishedOffsetMS - 50,
     finished_offset_ms: finishedOffsetMS,
     e2e_ms: success ? 60 : 600,
     ttft_ms: success ? 20 : 200,

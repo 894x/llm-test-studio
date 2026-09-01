@@ -181,19 +181,34 @@ function QuickPerformanceBody({ detail }: { detail: Extract<ReportDetail, { sour
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   return <section aria-label="归档性能报告" className="space-y-4 p-4">
-    <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
-      <SummaryValue label={completion.label} value={completion.value} />
-      <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
-      <SummaryValue label="失败" value={String(report.metrics.failed)} />
-      <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
-      <SummaryValue label="请求速率" value={`${formatMetric(report.metrics.request_qps)} req/s`} />
-      <SummaryValue label="峰值在途" value={String(report.progress.peak_in_flight)} />
-      <SummaryValue label="总耗时" value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
-      <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
-      <SummaryValue label="输入 TPM" value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
-      <SummaryValue label="输出 TPM" value={`${formatMetric(report.metrics.output_tpm)} TPM`} />
-      <SummaryValue label="总 TPM" value={`${formatMetric(report.metrics.total_tpm)} TPM`} />
-      <SummaryValue label="生成速度" value={`${formatMetric(report.metrics.generation_tps)} token/s`} />
+    <div>
+      <h4 className="mb-2 text-xs font-semibold">测试配置</h4>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
+        <ContextValue label="模型" value={report.model_id} />
+        <ContextValue label="接口地址" value={report.endpoint} mono />
+        <ContextValue label="测试模式" value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
+        <ContextValue label="配置并发" value={formatMetric(report.profile.concurrency)} />
+        <ContextValue label="请求超时" value={formatDuration(report.profile.timeout_ms)} />
+        <ContextValue label="Token 目标（输入 / 输出）" value={`${formatMetric(report.profile.input_tokens)} / ${formatMetric(report.profile.output_tokens)}`} />
+      </dl>
+    </div>
+    <Separator />
+    <div>
+      <h4 className="mb-2 text-xs font-semibold">运行结果</h4>
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
+        <SummaryValue label={completion.label} value={completion.value} />
+        <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
+        <SummaryValue label="失败" value={String(report.metrics.failed)} />
+        <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
+        <SummaryValue label="请求速率" value={`${formatMetric(report.metrics.request_qps)} req/s`} />
+        <SummaryValue label="峰值在途 / 配置并发" value={`${report.progress.peak_in_flight} / ${report.profile.concurrency}`} />
+        <SummaryValue label="总耗时" value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
+        <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
+        <SummaryValue label="输入 TPM" value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
+        <SummaryValue label="输出 TPM" value={`${formatMetric(report.metrics.output_tpm)} TPM`} />
+        <SummaryValue label="总 TPM" value={`${formatMetric(report.metrics.total_tpm)} TPM`} />
+        <SummaryValue label="聚合输出吞吐" value={`${formatMetric(report.metrics.generation_tps)} token/s`} />
+      </div>
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
@@ -225,6 +240,10 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
 
 function SummaryValue({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mt-0.5 truncate font-medium tabular-nums" title={value}>{value}</div></div>
+}
+
+function ContextValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return <div className="min-w-0"><dt className="text-[10px] text-muted-foreground">{label}</dt><dd className={`mt-0.5 truncate font-medium ${mono ? "font-mono text-[11px]" : "tabular-nums"}`} title={value}>{value}</dd></div>
 }
 
 function MetricCell({ value, unit }: { value?: number; unit: string }) {
@@ -295,6 +314,10 @@ function downloadVisualExport(exported: { filename: string; blob: Blob }) {
 
 function metric(value?: number): string { return value === undefined ? "—" : formatMetric(value) }
 function formatMetric(value: number): string { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value) }
+function formatDuration(valueMS: number): string { return valueMS >= 1_000 ? `${formatMetric(valueMS / 1_000)} s` : `${formatMetric(valueMS)} ms` }
+function performanceMode(requestCount: number, durationMS: number): string {
+  return requestCount > 0 ? `固定请求 · ${formatMetric(requestCount)} 次` : `持续时间 · ${formatDuration(durationMS)}`
+}
 function formatTimestamp(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)).replaceAll("/", "-")
 }
