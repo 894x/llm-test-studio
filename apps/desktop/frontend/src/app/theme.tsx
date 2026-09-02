@@ -7,7 +7,7 @@ import {
 
 import { ThemeContext, type ThemePreference } from "./theme-context"
 
-const STORAGE_KEY = "llm-studio:ui-preferences:v1"
+const STORAGE_KEY = "llm-test-studio:ui-preferences:v1"
 const DARK_QUERY = "(prefers-color-scheme: dark)"
 
 type NativeWindowThemeRuntime = Partial<{

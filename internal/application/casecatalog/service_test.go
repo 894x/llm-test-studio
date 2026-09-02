@@ -8,7 +8,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/casecatalog"
+	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 )
 
 func TestCatalogMergesBuiltinAndUserCasesByGroupWithUserOverride(t *testing.T) {
@@ -76,7 +76,7 @@ func TestSaveSafelyReplacesAnExistingUserCase(t *testing.T) {
 }
 
 func TestUserRootForExecutableUsesTheExecutableDirectory(t *testing.T) {
-	executable := filepath.Join(t.TempDir(), "bin", "llm-studio.exe")
+	executable := filepath.Join(t.TempDir(), "bin", "llm-test-studio.exe")
 	root, err := casecatalog.UserRootForExecutable(executable)
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-// Package casebundle exposes the immutable case catalog shipped with llm-studio.
+// Package casebundle exposes the immutable case catalog shipped with llm-test-studio.
 package casebundle
 
 import "embed"

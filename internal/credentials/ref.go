@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-const storeRefNamespace = "llm-studio/v1"
+const storeRefNamespace = "llm-test-studio/v1"
 
 // StoreRef is a stable, non-secret identifier for an operating-system
 // credential. Its fields are private so only canonical references can exist.

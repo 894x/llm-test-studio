@@ -161,7 +161,7 @@ func TestFailureKindSeparatesExpectedOperationalClasses(t *testing.T) {
 func TestCredentialReferenceSerializesMetadataWithoutSecret(t *testing.T) {
 	ref := CredentialRef{
 		EntityMeta:   validEntityMeta("123e4567-e89b-42d3-a456-426614174000"),
-		StoreRef:     "llm-studio/channel/example",
+		StoreRef:     "llm-test-studio/channel/example",
 		Purpose:      CredentialChannelAPIKey,
 		MaskedSuffix: "cdef",
 		Fingerprint:  "sha256:" + strings.Repeat("a", 64),

@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 const CurrentSchemaVersion = 1

@@ -36,7 +36,7 @@
 
 ### M2：统一 CLI 与执行
 
-9. `feat(cli)`：建立 `llm-studio` 命令树和版本化 JSON/JSONL 输出，先覆盖 doctor、model、channel、audit、run、report。
+9. `feat(cli)`：建立 `llm-test-studio` 命令树和版本化 JSON/JSONL 输出，先覆盖 doctor、model、channel、audit、run、report。
 10. `refactor(compatibility)`：把 `engine/apiaudit` 收敛到统一 execution package；旧 `llm-compat-engine` 调新 Core。
 11. `feat(load)`：以 Bash benchmark 行为测试为基线迁移 Go 负载引擎，包括 burst、固定并发、开放环、send duration、timeout、drain 和取消。
 12. `fix(streaming)`：统一 HTTP/SSE/语义成功判定和 TTFT/TPOT 定义；CLI 调用 Go Core，Bash 仅保留验收 fixture。

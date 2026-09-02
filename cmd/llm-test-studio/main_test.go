@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/engine/apiaudit"
-	"github.com/894x/llm-studio/internal/application/compatibility"
+	"github.com/894x/llm-test-studio/engine/apiaudit"
+	"github.com/894x/llm-test-studio/internal/application/compatibility"
 )
 
 func TestHelpAndDefaultMachineDiagnosticsHaveStableContracts(t *testing.T) {
@@ -33,25 +33,25 @@ func TestHelpAndDefaultMachineDiagnosticsHaveStableContracts(t *testing.T) {
 			name:     "root help",
 			args:     []string{"--help"},
 			wantCode: 0,
-			wantHelp: "Usage: llm-studio <doctor|audit|load>",
+			wantHelp: "Usage: llm-test-studio <doctor|audit|load>",
 		},
 		{
 			name:     "audit help",
 			args:     []string{"audit", "--help"},
 			wantCode: 0,
-			wantHelp: "Usage: llm-studio audit <list|run>",
+			wantHelp: "Usage: llm-test-studio audit <list|run>",
 		},
 		{
 			name:     "doctor help",
 			args:     []string{"doctor", "--help"},
 			wantCode: 0,
-			wantHelp: "Usage: llm-studio doctor [options]",
+			wantHelp: "Usage: llm-test-studio doctor [options]",
 		},
 		{
 			name:     "audit list help",
 			args:     []string{"audit", "list", "--help"},
 			wantCode: 0,
-			wantHelp: "Usage: llm-studio audit list [options]",
+			wantHelp: "Usage: llm-test-studio audit list [options]",
 		},
 		{
 			name:           "missing root command",

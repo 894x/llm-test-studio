@@ -1,4 +1,4 @@
-# LLM Studio component patterns
+# LLM Test Studio component patterns
 
 ## Component choice
 

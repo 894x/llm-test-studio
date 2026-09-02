@@ -1,0 +1,4 @@
+interface:
+  display_name: "LLM Test Studio UI Design"
+  short_description: "LLM Test Studio desktop UI design and visual QA"
+  default_prompt: "Use $llm-test-studio-ui-design to design or review the LLM Test Studio desktop interface."

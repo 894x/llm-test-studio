@@ -8,7 +8,7 @@ __pycache__/
 data/
 load-result*.json
 loadtest_history.db
-/cmd/llm-studio/output/
+/cmd/llm-test-studio/output/
 /output/
 
 # Local secrets

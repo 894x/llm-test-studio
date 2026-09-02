@@ -806,7 +806,7 @@ describe("desktop run workspace", () => {
     expect(document.documentElement.style.colorScheme).toBe("dark")
     expect(
       JSON.parse(
-        window.localStorage.getItem("llm-studio:ui-preferences:v1") ?? "null",
+        window.localStorage.getItem("llm-test-studio:ui-preferences:v1") ?? "null",
       ),
     ).toEqual({ version: 1, theme: "dark" })
     expect(window.localStorage).toHaveLength(1)
@@ -962,7 +962,7 @@ describe("desktop run workspace", () => {
   })
 
   it("ships a blocking theme bootstrap before the React entrypoint", () => {
-    const bootstrap = indexHtml.indexOf("llm-studio:ui-preferences:v1")
+    const bootstrap = indexHtml.indexOf("llm-test-studio:ui-preferences:v1")
     const entrypoint = indexHtml.indexOf('/src/main.tsx')
 
     expect(bootstrap).toBeGreaterThan(-1)

@@ -11,11 +11,11 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/catalog"
-	"github.com/894x/llm-studio/internal/application/reporting"
-	"github.com/894x/llm-studio/internal/application/workspace"
-	"github.com/894x/llm-studio/internal/domain"
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/reporting"
+	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/domain"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func TestProductionStoragePathsStayWithinInjectedConfigurationRoot(t *testing.T) {
@@ -24,8 +24,8 @@ func TestProductionStoragePathsStayWithinInjectedConfigurationRoot(t *testing.T)
 	if err != nil {
 		t.Fatalf("productionStoragePaths() error = %v", err)
 	}
-	wantDirectory := filepath.Join(configurationRoot, "llm-studio")
-	wantDatabase := filepath.Join(wantDirectory, "llm-studio.db")
+	wantDirectory := filepath.Join(configurationRoot, "llm-test-studio")
+	wantDatabase := filepath.Join(wantDirectory, "llm-test-studio.db")
 	if directory != wantDirectory || database != wantDatabase {
 		t.Fatalf("storage paths = (%q, %q), want (%q, %q)", directory, database, wantDirectory, wantDatabase)
 	}
@@ -93,8 +93,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 		t.Fatal("production initializer did not wire quick tests")
 	}
 
-	directory := filepath.Join(configurationRoot, "llm-studio")
-	database := filepath.Join(directory, "llm-studio.db")
+	directory := filepath.Join(configurationRoot, "llm-test-studio")
+	database := filepath.Join(directory, "llm-test-studio.db")
 	if _, err := os.Stat(database); err != nil {
 		t.Fatalf("stat production database: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if err := first.close(); err != nil {
 		t.Fatalf("close first production initialization: %v", err)
 	}
-	database := filepath.Join(configurationRoot, "llm-studio", "llm-studio.db")
+	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	repository, err := persistence.OpenRepository(context.Background(), database, persistence.RepositoryOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +235,7 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing.T) {
 	configurationRoot := t.TempDir()
 	executableDirectory := t.TempDir()
-	executable := filepath.Join(executableDirectory, "llm-studio.exe")
+	executable := filepath.Join(executableDirectory, "llm-test-studio.exe")
 	casePath := "openai-chat/T001/case.json"
 	firstBundle := fstest.MapFS{casePath: &fstest.MapFile{Data: []byte(productionLegacyCase("first bundle"))}}
 	initialize := newProductionInitializer(productionOptions{
@@ -279,7 +279,7 @@ func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing
 
 func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	executableDirectory := t.TempDir()
-	executable := filepath.Join(executableDirectory, "llm-studio.exe")
+	executable := filepath.Join(executableDirectory, "llm-test-studio.exe")
 	dependencies, err := newProductionInitializer(productionOptions{
 		userConfigDir:  func() (string, error) { return t.TempDir(), nil },
 		appVersion:     "desktop-test",
@@ -360,7 +360,7 @@ func TestProductionCutsOverLegacyDatabaseCasesToExeRelativeFiles(t *testing.T) {
 	}
 
 	executableDirectory := t.TempDir()
-	executable := filepath.Join(executableDirectory, "llm-studio.exe")
+	executable := filepath.Join(executableDirectory, "llm-test-studio.exe")
 	dependencies, err := newProductionInitializer(productionOptions{
 		userConfigDir: func() (string, error) { return configurationRoot, nil }, appVersion: "desktop-test",
 		caseBundle: fstest.MapFS{}, executablePath: func() (string, error) { return executable, nil },

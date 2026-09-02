@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/894x/llm-studio/internal/application/catalog"
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 type recordingQuickTestRunner struct {

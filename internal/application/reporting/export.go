@@ -19,8 +19,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 type ExportFormat string
@@ -79,7 +79,7 @@ func (service Service) Export(ctx context.Context, reportID string, format Expor
 		return ExportedDocument{}, fmt.Errorf("render %s report: %w", format, err)
 	}
 	return ExportedDocument{
-		Filename:   "llm-studio-report-" + reportID + "." + extension,
+		Filename:   "llm-test-studio-report-" + reportID + "." + extension,
 		MediaType:  mediaType,
 		DataBase64: base64.StdEncoding.EncodeToString(contents),
 	}, nil
@@ -199,10 +199,10 @@ func formatNumber(value float64) string {
 
 var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LLM Studio Report {{.Detail.Report.ID}}</title><style>
+<title>LLM Test Studio Report {{.Detail.Report.ID}}</title><style>
 :root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
-<h1>LLM Studio 测试报告</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
+<h1>LLM Test Studio 测试报告</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
 <h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">结论：{{.Detail.Report.Conclusion.Verdict}}</h2>
 <p>计划 {{.Detail.Report.PlanSnapshot.Plan.ID}} · 运行 {{.Detail.Report.RunID}} · 报告 {{.Detail.Report.ID}}</p>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
@@ -214,10 +214,10 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 
 var quickReportHTMLTemplate = template.Must(template.New("quick-report").Parse(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LLM Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
+<title>LLM Test Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
 :root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
-<h1>LLM Studio 快速性能测试报告</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
+<h1>LLM Test Studio 快速性能测试报告</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
 <h2 class="{{if .Detail.Performance.Success}}pass{{else}}fail{{end}}">结论：{{if .Detail.Performance.Success}}全部请求成功{{else}}性能测试未通过{{end}}</h2>
 <p>报告 {{.Detail.Performance.ReportID}} · 阶段 {{.Detail.Performance.Progress.Phase}}</p>
 <h2>核心指标</h2><section class="grid">

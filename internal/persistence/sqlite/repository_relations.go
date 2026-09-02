@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 type relationQueryer interface {

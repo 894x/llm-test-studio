@@ -43,5 +43,5 @@ code 2 means configuration or usage failed.
 
 This executable is the legacy JSONL compatibility adapter. Planning, execution
 state, evaluation, and report orchestration live in shared Go Core packages
-used by both this adapter and the primary `llm-studio` CLI. New workflows
-should prefer `llm-studio audit list|run`.
+used by both this adapter and the primary `llm-test-studio` CLI. New workflows
+should prefer `llm-test-studio audit list|run`.

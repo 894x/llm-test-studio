@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/channelconfig"
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/channelconfig"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func TestCreateChannelStoresBaseURLAndKeyAsOneBoundConfiguration(t *testing.T) {

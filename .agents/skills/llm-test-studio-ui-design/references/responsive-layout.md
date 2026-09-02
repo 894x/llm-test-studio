@@ -1,6 +1,6 @@
 # Responsive desktop layout
 
-LLM Studio is currently a cross-platform desktop product with a minimum Wails window of `960 x 640`. Treat responsive work as desktop and compact-desktop recomposition unless the user explicitly expands scope to mobile or touch-first delivery.
+LLM Test Studio is currently a cross-platform desktop product with a minimum Wails window of `960 x 640`. Treat responsive work as desktop and compact-desktop recomposition unless the user explicitly expands scope to mobile or touch-first delivery.
 
 ## Layout ownership
 

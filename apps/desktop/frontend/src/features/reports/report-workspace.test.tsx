@@ -25,7 +25,7 @@ describe("ReportWorkspace", () => {
     } as unknown as ReportSnapshot
     const getDetail = vi.fn(async () => quickDetail(quickID) as unknown as ReportDetail)
     const exportReport = vi.fn(async (_reportID: string, format: "json" | "html" | "png" | "pdf") => ({
-      filename: `llm-studio-report-${quickID}.${format}`,
+      filename: `llm-test-studio-report-${quickID}.${format}`,
       media_type: "application/json",
       data_base64: "e30=",
     }))
@@ -38,7 +38,7 @@ describe("ReportWorkspace", () => {
       expect(element.querySelector('[aria-label="TTFT 分布图"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()
       const mediaType = format === "html" ? "text/html; charset=utf-8" : format === "png" ? "image/png" : "application/pdf"
-      return { filename: `llm-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
+      return { filename: `llm-test-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
     })
 
     render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} />)
@@ -82,7 +82,7 @@ describe("ReportWorkspace", () => {
     expect(watermark).toHaveValue("rhzs")
     await user.click(screen.getByRole("button", { name: "JSON" }))
     expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs")
-    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-studio-report-${quickID}.json`, "application/json", "e30="))
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-test-studio-report-${quickID}.json`, "application/json", "e30="))
     await user.clear(watermark)
     await user.type(watermark, "team-alpha")
     await user.click(screen.getByRole("button", { name: "HTML" }))
@@ -95,10 +95,10 @@ describe("ReportWorkspace", () => {
     await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(3))
     expect(exportVisualReport.mock.calls.map(([, format]) => format)).toEqual(["html", "png", "pdf"])
     expect(saveReportExport.mock.calls.map(([filename]) => filename)).toEqual([
-      `llm-studio-report-${quickID}.json`,
-      `llm-studio-report-${quickID}.html`,
-      `llm-studio-report-${quickID}.png`,
-      `llm-studio-report-${quickID}.pdf`,
+      `llm-test-studio-report-${quickID}.json`,
+      `llm-test-studio-report-${quickID}.html`,
+      `llm-test-studio-report-${quickID}.png`,
+      `llm-test-studio-report-${quickID}.pdf`,
     ])
     await user.click(screen.getByRole("button", { name: "复制 PNG" }))
     await waitFor(() => expect(copyReportPNG).toHaveBeenCalledWith("cG5n"))

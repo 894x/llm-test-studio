@@ -598,7 +598,7 @@ function installBinding(
 		OpenDiagnosticsDirectory: vi.fn(async () => undefined),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
 			ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
-			filename: `llm-studio-report-${reportID}.${format}`,
+			filename: `llm-test-studio-report-${reportID}.${format}`,
 			media_type: format === "json" ? "application/json" : "application/octet-stream",
 				data_base64: "e30=",
 			})),

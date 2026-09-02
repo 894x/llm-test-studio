@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/runs"
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
@@ -870,7 +870,7 @@ func newRunFixture(t *testing.T) runFixture {
 	planID := "30000000-0000-4000-8000-000000000006"
 	model := domain.Model{EntityMeta: meta(modelID), Name: "test-model", Protocol: domain.ProtocolOpenAIChat}
 	digest := sha256.Sum256([]byte("test fingerprint"))
-	credential := domain.CredentialRef{EntityMeta: meta(credentialID), StoreRef: "llm-studio/v1/channel_api_key/" + credentialID, Purpose: domain.CredentialChannelAPIKey, MaskedSuffix: "key1", Fingerprint: "sha256:" + hex.EncodeToString(digest[:])}
+	credential := domain.CredentialRef{EntityMeta: meta(credentialID), StoreRef: "llm-test-studio/v1/channel_api_key/" + credentialID, Purpose: domain.CredentialChannelAPIKey, MaskedSuffix: "key1", Fingerprint: "sha256:" + hex.EncodeToString(digest[:])}
 	channel := domain.Channel{EntityMeta: meta(channelID), Name: "test-channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{EntityMeta: meta(mappingID), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-model"}
 	testCase := domain.TestCase{

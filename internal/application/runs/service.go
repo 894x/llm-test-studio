@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 var (

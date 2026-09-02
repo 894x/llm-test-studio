@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/compatibility"
+	"github.com/894x/llm-test-studio/internal/application/compatibility"
 )
 
 type stringListFlag []string

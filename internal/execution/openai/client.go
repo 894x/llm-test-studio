@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/execution/load"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
 const (
@@ -463,7 +463,7 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 		request.Header.Set(name, value)
 	}
 	request.Header.Set("Accept", "application/json, text/event-stream")
-	request.Header.Set("User-Agent", "llm-studio/1")
+	request.Header.Set("User-Agent", "llm-test-studio/1")
 	if len(prepared.body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}

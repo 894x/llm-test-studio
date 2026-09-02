@@ -64,7 +64,7 @@ func (app *DesktopApp) SaveReportExport(filename, mediaType, dataBase64 string) 
 }
 
 func (app *DesktopApp) CopyReportPNG(dataBase64 string) error {
-	exported, err := parseReportExport("llm-studio-report.png", "image/png", dataBase64)
+	exported, err := parseReportExport("llm-test-studio-report.png", "image/png", dataBase64)
 	if err != nil {
 		return app.safeBindingError(errors.New("invalid PNG report export"))
 	}

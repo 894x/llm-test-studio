@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"testing"
 
-	casebundle "github.com/894x/llm-studio/cases"
+	casebundle "github.com/894x/llm-test-studio/cases"
 )
 
 func TestBundleContainsCompleteLegacyCatalog(t *testing.T) {

@@ -1,13 +1,13 @@
-# llm-studio 功能需求
+# LLM Test Studio 功能需求
 
 ## 1. 文档定位
 
-本文档描述 llm-studio 当前版本已经实现、并能从代码与测试中验证的功能需求。它是现状需求说明（as-is specification），不是未来路线图。
+本文档描述 LLM Test Studio 当前版本已经实现、并能从代码与测试中验证的功能需求。它是现状需求说明（as-is specification），不是未来路线图。
 
 - 产品形态：本地运行的单用户模型验证工作台
 - 核心目标：统一管理模型、测试用例、执行计划、结果证据和报告
 - 支持协议：OpenAI Chat、Kimi K3、Seedance
-- 执行方式：Wails + React 桌面端、Go 压测/兼容性执行引擎、统一 `llm-studio` CLI
+- 执行方式：Wails + React 桌面端、Go 压测/兼容性执行引擎、统一 `llm-test-studio` CLI
 - 数据位置：版本化 JSON 文件、本地 SQLite、本地报告目录
 
 ## 2. 用户与核心场景

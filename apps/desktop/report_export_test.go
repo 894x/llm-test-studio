@@ -29,11 +29,11 @@ func TestDesktopAppSavesAndCopiesRenderedReportExports(t *testing.T) {
 		return nil
 	}
 
-	saved, err := app.SaveReportExport("llm-studio-report-1.png", "image/png", validPNGBase64())
+	saved, err := app.SaveReportExport("llm-test-studio-report-1.png", "image/png", validPNGBase64())
 	if err != nil || !saved {
 		t.Fatalf("SaveReportExport() = %v, %v; want true, nil", saved, err)
 	}
-	if savedFile.filename != "llm-studio-report-1.png" || savedFile.mediaType != "image/png" || !hasPNGSignature(savedFile.data) {
+	if savedFile.filename != "llm-test-studio-report-1.png" || savedFile.mediaType != "image/png" || !hasPNGSignature(savedFile.data) {
 		t.Fatalf("saved export = %#v", savedFile)
 	}
 

@@ -1,9 +1,9 @@
 ---
-name: llm-studio-ui-design
-description: Apply and review LLM Studio's compact town-derived desktop product-interface language in the React, Tailwind CSS, shadcn/ui, Radix or Base UI, Lucide, and Wails application. Use when creating, changing, refactoring, or visually testing desktop pages, navigation, tables, forms, inspectors, dialogs, long-running task surfaces, themes, responsive layouts, empty/error states, or shared UI primitives under apps/desktop/frontend, and when checking whether an implementation matches the project's established visual, accessibility, data-boundary, and browser-acceptance conventions.
+name: llm-test-studio-ui-design
+description: Apply and review LLM Test Studio's compact town-derived desktop product-interface language in the React, Tailwind CSS, shadcn/ui, Radix or Base UI, Lucide, and Wails application. Use when creating, changing, refactoring, or visually testing desktop pages, navigation, tables, forms, inspectors, dialogs, long-running task surfaces, themes, responsive layouts, empty/error states, or shared UI primitives under apps/desktop/frontend, and when checking whether an implementation matches the project's established visual, accessibility, data-boundary, and browser-acceptance conventions.
 ---
 
-# LLM Studio UI Design
+# LLM Test Studio UI Design
 
 Apply the stable tool-oriented visual language adopted from `town-ui-design` without copying Animetown components or framework choices. Treat this skill as design and review policy; keep React components and CSS in the application as the executable implementation.
 

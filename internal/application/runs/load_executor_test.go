@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/894x/llm-studio/internal/application/runs"
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func TestLoadExecutorRunsThePinnedProfileAndMapsEveryObservation(t *testing.T) {

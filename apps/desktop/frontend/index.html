@@ -6,16 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="llm-studio 本地兼容性、质量与负载测试工作台"
+      content="LLM Test Studio 本地兼容性、质量与负载测试工作台"
     />
-    <title>llm-studio</title>
+    <title>LLM Test Studio</title>
     <script>
       (() => {
         const root = document.documentElement
         let preference = "system"
         try {
           const saved = JSON.parse(
-            localStorage.getItem("llm-studio:ui-preferences:v1") || "null",
+            localStorage.getItem("llm-test-studio:ui-preferences:v1") || "null",
           )
           if (
             saved?.version === 1 &&

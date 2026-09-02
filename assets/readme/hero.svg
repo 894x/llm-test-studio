@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390" role="img" aria-labelledby="title desc">
+  <title id="title">LLM Test Studio</title>
+  <desc id="desc">A case-first, local-first workbench that turns versioned test cases into reproducible multi-model runs and evidence-backed reports.</desc>
+
+  <rect width="1200" height="390" rx="28" fill="#15191e"/>
+  <path d="M0 78H1200M706 78V390" stroke="#2d353e" stroke-width="1"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <g transform="translate(58 48)">
+      <circle cx="7" cy="-3" r="7" fill="#7c8ea3"/>
+      <text x="26" y="4" fill="#aab8c7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="2">CASE-FIRST · LOCAL-FIRST · MULTI-MODEL</text>
+    </g>
+
+    <g transform="translate(58 124)">
+      <text x="0" y="62" fill="#f5f6f8" font-size="66" font-weight="720" letter-spacing="-2">LLM Test Studio</text>
+      <text x="2" y="112" fill="#d8dde3" font-size="27" font-weight="520">Reusable evaluation, from versioned cases to evidence.</text>
+      <text x="2" y="151" fill="#8f9bab" font-size="22">可复用的多模型测试，从版本化 Case 到可追溯结论。</text>
+
+      <g transform="translate(0 198)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">
+        <rect width="126" height="40" rx="20" fill="#222930" stroke="#465362"/>
+        <text x="63" y="26" fill="#d8dde3" text-anchor="middle">DESKTOP</text>
+        <rect x="140" width="86" height="40" rx="20" fill="#222930" stroke="#465362"/>
+        <text x="183" y="26" fill="#d8dde3" text-anchor="middle">CLI</text>
+        <rect x="240" width="154" height="40" rx="20" fill="#222930" stroke="#465362"/>
+        <text x="317" y="26" fill="#d8dde3" text-anchor="middle">GO CORE</text>
+      </g>
+    </g>
+
+    <g transform="translate(748 112)">
+      <rect width="392" height="216" rx="22" fill="#1c2228" stroke="#465362"/>
+      <g transform="translate(24 24)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+        <text x="0" y="20" fill="#7c8ea3" font-size="18" letter-spacing="1.5">TEST ASSET</text>
+        <text x="0" y="58" fill="#f5f6f8" font-size="27" font-weight="700">case.json</text>
+        <rect x="230" y="31" width="114" height="36" rx="18" fill="#2a333c"/>
+        <text x="287" y="55" fill="#aab8c7" font-size="18" text-anchor="middle">REV 07</text>
+
+        <path d="M12 96H332" stroke="#465362" stroke-width="2" stroke-dasharray="5 7"/>
+        <circle cx="12" cy="96" r="7" fill="#7c8ea3"/>
+        <circle cx="172" cy="96" r="7" fill="#7c8ea3"/>
+        <circle cx="332" cy="96" r="7" fill="#f2c97d"/>
+
+        <text x="0" y="134" fill="#d8dde3" font-size="19">SUITE + PLAN</text>
+        <text x="172" y="134" fill="#d8dde3" font-size="19" text-anchor="middle">RUN × N</text>
+        <text x="344" y="134" fill="#d8dde3" font-size="19" text-anchor="end">REPORT</text>
+        <text x="0" y="169" fill="#8f9bab" font-size="18">PIN</text>
+        <text x="172" y="169" fill="#8f9bab" font-size="18" text-anchor="middle">EXECUTE</text>
+        <text x="344" y="169" fill="#f2c97d" font-size="18" text-anchor="end">EVIDENCE</text>
+      </g>
+    </g>
+  </g>
+</svg>

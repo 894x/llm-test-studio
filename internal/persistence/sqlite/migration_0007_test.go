@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func TestMigrateAddsBuiltInCatalogSeedStateV7(t *testing.T) {

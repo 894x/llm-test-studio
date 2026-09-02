@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/runs"
-	"github.com/894x/llm-studio/internal/diagnostics"
+	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/diagnostics"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -100,7 +100,7 @@ func openDesktopDiagnostics(options productionOptions) (*diagnostics.Logger, err
 	}
 	return diagnostics.Open(diagnostics.Options{
 		Directory:  filepath.Join(directory, "logs"),
-		Filename:   "llm-studio.log",
+		Filename:   "llm-test-studio.log",
 		AppVersion: options.appVersion,
 	})
 }
@@ -163,7 +163,7 @@ func errorText(err error) string {
 func desktopOptions(app *DesktopApp, assets fs.FS, report func(error)) *options.App {
 	app.setErrorReporter(report)
 	return &options.App{
-		Title:            "llm-studio",
+		Title:            "LLM Test Studio",
 		Width:            1360,
 		Height:           820,
 		MinWidth:         960,

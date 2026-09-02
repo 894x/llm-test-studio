@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/domain"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func TestRepositoryRunUpdatesAreAppendOnlyAndRecoverable(t *testing.T) {
@@ -217,7 +217,7 @@ func TestRepositoryRejectsCredentialStoreRefIdentityMismatch(t *testing.T) {
 	}{
 		{"purpose", func(value *domain.CredentialRef) { value.Purpose = domain.CredentialIntegrationAdmin }},
 		{"id", func(value *domain.CredentialRef) {
-			value.StoreRef = "llm-studio/v1/channel_api_key/10000000-0000-4000-8000-000000000099"
+			value.StoreRef = "llm-test-studio/v1/channel_api_key/10000000-0000-4000-8000-000000000099"
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

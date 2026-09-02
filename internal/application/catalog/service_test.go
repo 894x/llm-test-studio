@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 const (

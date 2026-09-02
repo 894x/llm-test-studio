@@ -19,6 +19,6 @@ describe("standaloneReportHTML", () => {
     expect(exported).toContain('<html lang="zh-CN" class="dark" data-theme="dark">')
     expect(exported).toContain('aria-label="TTFT 分布图"')
     expect(exported).toContain("team-alpha")
-    expect(exported).toContain("LLM Studio Report report-&lt;unsafe&gt;")
+    expect(exported).toContain("LLM Test Studio Report report-&lt;unsafe&gt;")
   })
 })

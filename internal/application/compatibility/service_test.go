@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/engine/apiaudit"
-	"github.com/894x/llm-studio/internal/application/compatibility"
+	"github.com/894x/llm-test-studio/engine/apiaudit"
+	"github.com/894x/llm-test-studio/internal/application/compatibility"
 )
 
 type panicHTTPDoer struct{}

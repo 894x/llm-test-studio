@@ -1,6 +1,6 @@
 #import <AppKit/AppKit.h>
 
-int llm_studio_copy_png_to_clipboard(const void *bytes, long length) {
+int llm_test_studio_copy_png_to_clipboard(const void *bytes, long length) {
     @autoreleasepool {
         if (bytes == NULL || length <= 0) {
             return 0;

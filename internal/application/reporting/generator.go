@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 var ErrGenerationInvalid = errors.New("reporting: invalid generation request")

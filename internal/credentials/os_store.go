@@ -8,7 +8,7 @@ import (
 	keyring "github.com/zalando/go-keyring"
 )
 
-const defaultKeyringService = "com.github.894x.llm-studio.credentials.v1"
+const defaultKeyringService = "com.github.894x.llm-test-studio.credentials.v1"
 
 type keyringBackend interface {
 	Set(service, account, password string) error

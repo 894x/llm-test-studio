@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func (repository *Repository) CaseCatalogCutoverCompleted(ctx context.Context) (bool, error) {

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/application/runs"
 )
 
 func TestDesktopErrorReporterPersistsStructuredDiagnosticsUnderUserConfig(t *testing.T) {
@@ -32,7 +32,7 @@ func TestDesktopErrorReporterPersistsStructuredDiagnosticsUnderUserConfig(t *tes
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	path := filepath.Join(root, "llm-studio", "logs", "llm-studio.log")
+	path := filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log")
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile(%q) error = %v", path, err)
@@ -71,7 +71,7 @@ func TestDesktopRunDiagnosticReporterPersistsRunCorrelation(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	path := filepath.Join(root, "llm-studio", "logs", "llm-studio.log")
+	path := filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log")
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile(%q) error = %v", path, err)
@@ -109,7 +109,7 @@ func TestDesktopRunDiagnosticReporterLabelsDroppedSummary(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	contents, err := os.ReadFile(filepath.Join(root, "llm-studio", "logs", "llm-studio.log"))
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestDesktopErrorReporterClassifiesStartupFailure(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	contents, err := os.ReadFile(filepath.Join(root, "llm-studio", "logs", "llm-studio.log"))
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -303,7 +303,7 @@ func TestQuickPerformanceFailuresAndArchiveFailureProduceCorrelatedDiagnostics(t
 
 func readDesktopDiagnosticEntries(t *testing.T, root string) ([]map[string]any, string) {
 	t.Helper()
-	contents, err := os.ReadFile(filepath.Join(root, "llm-studio", "logs", "llm-studio.log"))
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -349,7 +349,7 @@ func TestConfigureDesktopDiagnosticsKeepsPathInsideGoBoundary(t *testing.T) {
 	if err := app.OpenDiagnosticsDirectory(); err != nil {
 		t.Fatalf("OpenDiagnosticsDirectory() error = %v", err)
 	}
-	want := filepath.Join(root, "llm-studio", "logs")
+	want := filepath.Join(root, "llm-test-studio", "logs")
 	if opened != want {
 		t.Fatalf("opened directory = %q, want %q", opened, want)
 	}

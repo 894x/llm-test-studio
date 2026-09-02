@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/execution/load"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
 func TestRunBaseURLUsesEphemeralCredentialAndReturnsSafeMeasurement(t *testing.T) {

@@ -7,13 +7,13 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/894x/llm-studio/internal/application/catalog"
-	"github.com/894x/llm-studio/internal/application/comparisons"
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/application/reporting"
-	"github.com/894x/llm-studio/internal/application/runs"
-	"github.com/894x/llm-studio/internal/application/workspace"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/application/reporting"
+	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/domain"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 

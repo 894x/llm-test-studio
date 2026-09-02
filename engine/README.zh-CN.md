@@ -39,5 +39,5 @@ JSONL schema version 1 输出：
 表示审计已完成但存在失败用例；退出码 2 表示配置或命令用法错误。
 
 此可执行文件是旧 JSONL 兼容 adapter。计划、执行状态、评估和报告编排均位于
-共享 Go Core 包中，由该 adapter 与主 `llm-studio` CLI 共同调用。新工作流应优先
-使用 `llm-studio audit list|run`。
+共享 Go Core 包中，由该 adapter 与主 `llm-test-studio` CLI 共同调用。新工作流应优先
+使用 `llm-test-studio audit list|run`。

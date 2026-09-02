@@ -1,4 +1,4 @@
-# LLM Studio visual review checklist
+# LLM Test Studio visual review checklist
 
 ## Before implementation
 

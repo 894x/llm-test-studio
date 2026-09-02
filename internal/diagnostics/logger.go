@@ -102,7 +102,7 @@ func Open(options Options) (*Logger, error) {
 	}
 	filename := strings.TrimSpace(options.Filename)
 	if filename == "" {
-		filename = "llm-studio.log"
+		filename = "llm-test-studio.log"
 	}
 	if filepath.Base(filename) != filename {
 		return nil, fmt.Errorf("diagnostic log filename must not contain a directory")

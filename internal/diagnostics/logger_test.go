@@ -18,7 +18,7 @@ func TestOpenWritesStructuredRedactedDiagnosticEvent(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "logs")
 	logger, err := Open(Options{
 		Directory:  directory,
-		Filename:   "llm-studio.log",
+		Filename:   "llm-test-studio.log",
 		AppVersion: "test-version",
 	})
 	if err != nil {
@@ -44,7 +44,7 @@ func TestOpenWritesStructuredRedactedDiagnosticEvent(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	contents, err := os.ReadFile(filepath.Join(directory, "llm-studio.log"))
+	contents, err := os.ReadFile(filepath.Join(directory, "llm-test-studio.log"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -115,7 +115,7 @@ func TestOpenRotatesDiagnosticLogAndRetainsConfiguredBackups(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "logs")
 	logger, err := Open(Options{
 		Directory: directory,
-		Filename:  "llm-studio.log",
+		Filename:  "llm-test-studio.log",
 		MaxBytes:  1,
 		Backups:   2,
 	})
@@ -130,9 +130,9 @@ func TestOpenRotatesDiagnosticLogAndRetainsConfiguredBackups(t *testing.T) {
 	}
 
 	wantMessages := map[string]string{
-		"llm-studio.log":   "event-4",
-		"llm-studio.log.1": "event-3",
-		"llm-studio.log.2": "event-2",
+		"llm-test-studio.log":   "event-4",
+		"llm-test-studio.log.1": "event-3",
+		"llm-test-studio.log.2": "event-2",
 	}
 	for name, expected := range wantMessages {
 		contents, err := os.ReadFile(filepath.Join(directory, name))
@@ -147,7 +147,7 @@ func TestOpenRotatesDiagnosticLogAndRetainsConfiguredBackups(t *testing.T) {
 			t.Errorf("%s msg = %#v, want %q", name, got, expected)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(directory, "llm-studio.log.3")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(directory, "llm-test-studio.log.3")); !os.IsNotExist(err) {
 		t.Fatalf("third backup exists or could not be inspected: %v", err)
 	}
 }
@@ -183,7 +183,7 @@ func TestRotatingLogKeepsWritingWhenBackupCannotBeRemoved(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	logger.Record(context.Background(), Event{Message: "event-1"})
-	blockedBackup := filepath.Join(directory, "llm-studio.log.1")
+	blockedBackup := filepath.Join(directory, "llm-test-studio.log.1")
 	if err := os.Mkdir(blockedBackup, 0o700); err != nil {
 		t.Fatalf("Mkdir(blocked backup) error = %v", err)
 	}
@@ -196,7 +196,7 @@ func TestRotatingLogKeepsWritingWhenBackupCannotBeRemoved(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	contents, err := os.ReadFile(filepath.Join(directory, "llm-studio.log"))
+	contents, err := os.ReadFile(filepath.Join(directory, "llm-test-studio.log"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -284,7 +284,7 @@ func TestRotatingLogRecoversFromInjectedFileOperationFailures(t *testing.T) {
 			if err := logger.Close(); err != nil {
 				t.Fatalf("Close() error = %v", err)
 			}
-			contents, err := os.ReadFile(filepath.Join(directory, "llm-studio.log"))
+			contents, err := os.ReadFile(filepath.Join(directory, "llm-test-studio.log"))
 			if err != nil {
 				t.Fatalf("ReadFile() error = %v", err)
 			}
@@ -406,7 +406,7 @@ func TestRotatingLogRetriesRecoveryAfterReopenFailure(t *testing.T) {
 	if err := logger.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	contents, err := os.ReadFile(filepath.Join(directory, "llm-studio.log"))
+	contents, err := os.ReadFile(filepath.Join(directory, "llm-test-studio.log"))
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}

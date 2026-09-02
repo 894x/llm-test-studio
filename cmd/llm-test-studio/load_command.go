@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/execution/load"
-	"github.com/894x/llm-studio/internal/execution/openai"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
+	"github.com/894x/llm-test-studio/internal/execution/openai"
 )
 
-const loadUsage = `Usage: llm-studio load run [options]
+const loadUsage = `Usage: llm-test-studio load run [options]
 
 Options:
   --url URL                    Full OpenAI-compatible endpoint (or LOADTEST_URL)
@@ -313,7 +313,7 @@ func writeLoadOutput(filename string, contents []byte) error {
 			return err
 		}
 	}
-	temporary, err := os.CreateTemp(directory, ".llm-studio-report-*.tmp")
+	temporary, err := os.CreateTemp(directory, ".llm-test-studio-report-*.tmp")
 	if err != nil {
 		return err
 	}

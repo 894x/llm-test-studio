@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/caseimport"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/caseimport"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 // LoadCaseImportState reads import metadata and the current Test Case catalog

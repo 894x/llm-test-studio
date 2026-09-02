@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/execution/load"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
 const (

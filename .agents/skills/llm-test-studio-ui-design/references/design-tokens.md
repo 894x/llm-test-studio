@@ -1,4 +1,4 @@
-# LLM Studio design tokens and implementation rules
+# LLM Test Studio design tokens and implementation rules
 
 Use `doc/design/desktop-ui-system.md` as the normative token table and `apps/desktop/frontend/src/index.css` as the executable mapping. Read both before changing a stable token. Keep them synchronized in the same focused change.
 

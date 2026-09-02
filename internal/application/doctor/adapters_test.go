@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/894x/llm-studio/internal/application/compatibility"
-	"github.com/894x/llm-studio/internal/application/doctor"
+	"github.com/894x/llm-test-studio/internal/application/compatibility"
+	"github.com/894x/llm-test-studio/internal/application/doctor"
 )
 
 type compatibilityListerFunc func(context.Context, compatibility.ListRequest) ([]compatibility.CaseDefinition, error)

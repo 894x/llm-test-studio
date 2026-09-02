@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/894x/llm-studio/internal/application/doctor"
+	"github.com/894x/llm-test-studio/internal/application/doctor"
 )
 
 type fileSystemFunc func(context.Context, string) (bool, error)

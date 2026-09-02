@@ -11,13 +11,13 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/894x/llm-studio/internal/application/catalog"
-	"github.com/894x/llm-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/workspace"
 )
 
 func TestDesktopOptionsConfigureNativeStaticWorkspaceShell(t *testing.T) {
 	assets := fstest.MapFS{
-		"frontend/dist/index.html": {Data: []byte("<!doctype html><title>llm-studio</title>")},
+		"frontend/dist/index.html": {Data: []byte("<!doctype html><title>LLM Test Studio</title>")},
 	}
 	closeFailure := errors.New("repository close failure")
 	closeCalls := 0
@@ -34,8 +34,8 @@ func TestDesktopOptionsConfigureNativeStaticWorkspaceShell(t *testing.T) {
 
 	configured := desktopOptions(app, assets, func(err error) { reported = err })
 
-	if configured.Title != "llm-studio" {
-		t.Fatalf("title = %q, want llm-studio", configured.Title)
+	if configured.Title != "LLM Test Studio" {
+		t.Fatalf("title = %q, want LLM Test Studio", configured.Title)
 	}
 	if configured.Width != 1360 || configured.Height != 820 {
 		t.Fatalf("window size = %dx%d, want 1360x820", configured.Width, configured.Height)

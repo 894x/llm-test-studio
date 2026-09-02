@@ -10,9 +10,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/caseimport"
-	"github.com/894x/llm-studio/internal/domain"
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/application/caseimport"
+	"github.com/894x/llm-test-studio/internal/domain"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func TestCaseImportStorePersistsAnIdempotentImportAcrossReopen(t *testing.T) {

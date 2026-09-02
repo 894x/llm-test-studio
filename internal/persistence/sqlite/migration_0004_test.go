@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func TestMigrateAddsCatalogTombstonesSchemaV4(t *testing.T) {

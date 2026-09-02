@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/execution/load"
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func TestRepositoryQuickPerformanceReportRoundTripIsIndependentAndNewestFirst(t *testing.T) {

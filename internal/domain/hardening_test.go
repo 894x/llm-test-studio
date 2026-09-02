@@ -216,7 +216,7 @@ func TestIntegrationJSONRejectsEveryUnknownConfigField(t *testing.T) {
 func TestCredentialReferenceOnlyKeepsFourSafeSuffixCharacters(t *testing.T) {
 	base := CredentialRef{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174022"),
-		StoreRef:   "llm-studio/channel/primary", Purpose: CredentialChannelAPIKey,
+		StoreRef:   "llm-test-studio/channel/primary", Purpose: CredentialChannelAPIKey,
 		MaskedSuffix: "aB09", Fingerprint: "sha256:" + strings.Repeat("a", 64),
 	}
 	if err := base.Validate(); err != nil {

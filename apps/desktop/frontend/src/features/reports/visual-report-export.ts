@@ -11,7 +11,7 @@ export async function exportVisualReport(
   format: VisualReportFormat,
   reportID: string,
 ): Promise<VisualReportExport> {
-  const filename = `llm-studio-report-${reportID}.${format}`
+  const filename = `llm-test-studio-report-${reportID}.${format}`
   if (format === "html") {
     return {
       filename,
@@ -55,7 +55,7 @@ export function standaloneReportHTML(element: HTMLElement, reportID: string): st
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LLM Studio Report ${escapeHTML(reportID)}</title>
+<title>LLM Test Studio Report ${escapeHTML(reportID)}</title>
 <style>${styles}</style>
 </head>
 <body>${element.outerHTML}</body>

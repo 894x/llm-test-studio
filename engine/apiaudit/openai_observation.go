@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-studio/engine/common"
+	"github.com/894x/llm-test-studio/engine/common"
 )
 
 type syncObservation struct {

@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/894x/llm-studio/engine/common"
+	"github.com/894x/llm-test-studio/engine/common"
 )
 
 type HTTPDoer interface {

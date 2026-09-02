@@ -93,7 +93,7 @@ export function DesktopShell({
           </div>
           <div className="mr-3 hidden min-w-0 sm:block">
             <div className="truncate text-sm font-semibold leading-none">
-              llm-studio
+              LLM Test Studio
             </div>
             <div className="mt-1 text-[10px] leading-none text-muted-foreground">
               本地测试工作台

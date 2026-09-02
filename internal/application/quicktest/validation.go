@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/execution/load"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
 // ValidateArchivedPerformanceReport protects every persistence and reporting

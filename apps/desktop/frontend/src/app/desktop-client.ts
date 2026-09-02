@@ -227,8 +227,8 @@ export function createFixtureClient(
 			if (!summary) throw new DesktopClientError("invalid_identifier")
 			const detail = fixtureReportDetail(summary)
 			const mediaTypes: Record<ReportExportFormat, string> = { json: "application/json", html: "text/html; charset=utf-8", png: "image/png", pdf: "application/pdf" }
-			const payload = format === "json" ? JSON.stringify({ watermark: watermark.trim() || "rhzs", ...detail }, null, 2) : `LLM Studio ${format.toUpperCase()} report ${reportId} watermark ${watermark.trim() || "rhzs"}`
-			return { filename: `llm-studio-report-${reportId}.${format}`, media_type: mediaTypes[format], data_base64: bytesToBase64(new TextEncoder().encode(payload)) }
+			const payload = format === "json" ? JSON.stringify({ watermark: watermark.trim() || "rhzs", ...detail }, null, 2) : `LLM Test Studio ${format.toUpperCase()} report ${reportId} watermark ${watermark.trim() || "rhzs"}`
+			return { filename: `llm-test-studio-report-${reportId}.${format}`, media_type: mediaTypes[format], data_base64: bytesToBase64(new TextEncoder().encode(payload)) }
 		},
 		async saveReportExport() {
 			return true

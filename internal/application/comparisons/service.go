@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/runs"
-	"github.com/894x/llm-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 var (

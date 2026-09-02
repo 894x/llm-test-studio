@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 func dropMigration0005Objects(t *testing.T, db *sql.DB) {

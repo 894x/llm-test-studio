@@ -1,8 +1,8 @@
-# llm-studio
+# LLM Test Studio frontend
 
 [简体中文](README.zh-CN.md)
 
-This package is the React presentation layer for the local llm-studio desktop application. It renders the compact run workspace, collects user intent, and calls Wails-generated bindings. Domain rules, persistence, credentials, execution, and authoritative run state remain in the Go Core.
+This package is the React presentation layer for the local LLM Test Studio desktop application. It renders the compact run workspace, collects user intent, and calls Wails-generated bindings. Domain rules, persistence, credentials, execution, and authoritative run state remain in the Go Core.
 
 ## Development
 

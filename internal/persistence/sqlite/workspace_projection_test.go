@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/application/workspace"
-	"github.com/894x/llm-studio/internal/domain"
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/domain"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 var _ workspace.Catalog = (*persistence.Repository)(nil)

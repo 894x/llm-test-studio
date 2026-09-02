@@ -13,18 +13,18 @@ import (
 	"strings"
 	"time"
 
-	casebundle "github.com/894x/llm-studio/cases"
-	"github.com/894x/llm-studio/internal/application/casecatalog"
-	"github.com/894x/llm-studio/internal/application/catalog"
-	"github.com/894x/llm-studio/internal/application/channelconfig"
-	"github.com/894x/llm-studio/internal/application/comparisons"
-	"github.com/894x/llm-studio/internal/application/quicktest"
-	"github.com/894x/llm-studio/internal/application/reporting"
-	"github.com/894x/llm-studio/internal/application/runs"
-	"github.com/894x/llm-studio/internal/application/workspace"
-	"github.com/894x/llm-studio/internal/credentials"
-	"github.com/894x/llm-studio/internal/domain"
-	"github.com/894x/llm-studio/internal/persistence/sqlite"
+	casebundle "github.com/894x/llm-test-studio/cases"
+	"github.com/894x/llm-test-studio/internal/application/casecatalog"
+	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/channelconfig"
+	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/application/reporting"
+	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 var desktopApplicationVersion = "dev"
@@ -51,7 +51,7 @@ func defaultProductionOptions() productionOptions {
 		caseBundle:     casebundle.Bundle,
 		executablePath: os.Executable,
 		reportCaseConflicts: func(count int) {
-			log.Printf("llm-studio: %d built-in case update conflict(s) retained user revisions", count)
+			log.Printf("llm-test-studio: %d built-in case update conflict(s) retained user revisions", count)
 		},
 	}
 }
@@ -265,8 +265,8 @@ func productionStoragePaths(configurationRoot string) (directory string, databas
 	if !filepath.IsAbs(root) {
 		return "", "", errors.New("user configuration directory must be an absolute path")
 	}
-	directory = filepath.Join(root, "llm-studio")
-	database = filepath.Join(directory, "llm-studio.db")
+	directory = filepath.Join(root, "llm-test-studio")
+	database = filepath.Join(directory, "llm-test-studio.db")
 	relative, err := filepath.Rel(root, database)
 	if err != nil {
 		return "", "", fmt.Errorf("validate desktop database path: %w", err)

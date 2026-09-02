@@ -1,4 +1,4 @@
-# llm-studio Roadmap & TODO
+# LLM Test Studio Roadmap & TODO
 
 本文记录项目的产品边界、阶段架构与实施清单。目标不是把现有脚本简单包一层界面，而是统一模型、渠道、测试用例、执行、结果和报告，使 GUI、CLI、本地执行和未来的服务端执行共享同一套语义。
 
@@ -53,7 +53,7 @@
 ```text
 React + Tailwind + shadcn/ui ─┐
                               ├─ Local Application Core ─┬─ Execution Engines
-llm-studio CLI ───────────────┘                          ├─ SQLite Repository
+llm-test-studio CLI ──────────┘                          ├─ SQLite Repository
                                                          ├─ OS Credential Store
                                                          └─ Report / Artifact Renderer
 ```
@@ -73,7 +73,7 @@ llm-studio CLI ───────────────┘                 
 
 ```text
 apps/desktop             Web UI 与桌面壳
-apps/cli                 llm-studio 命令行入口
+apps/cli                 llm-test-studio 命令行入口
 internal/domain          领域对象与纯业务规则
 internal/application     用例编排、事务和权限无关的应用服务
 internal/execution       压测、兼容测试和执行状态机
@@ -88,7 +88,7 @@ internal/integrations    new-api 等外部系统适配器
 - [ ] 定义稳定的 Application Core API，GUI 和 CLI 不直接操作数据库。
 - [ ] GUI 与 CLI 共用数据校验、错误码、执行状态、结果聚合、凭据读取和报告生成。
 - [ ] 将 `scripts/` 中的现有实现逐步迁移到共享核心。
-- [x] 将独立压测入口收敛到 `llm-studio load run`，多模态/视频入口收敛到 `audit run --case`。
+- [x] 将独立压测入口收敛到 `llm-test-studio load run`，多模态/视频入口收敛到 `audit run --case`。
 - [ ] 迁移完成后标记旧脚本为 deprecated，不再维护第二套业务逻辑。
 - [ ] 将现有脚本中的流式完成判定、开放环发送、TTFT/TPOT 和实时指标纳入统一引擎。
 - [x] 将旧 Dashboard 指标与 Bash benchmark 的调度、SSE 和指标语义迁入 Go load engine；Bash 只作为独立验收 fixture。
@@ -96,17 +96,17 @@ internal/integrations    new-api 等外部系统适配器
 目标 CLI：
 
 ```text
-llm-studio model list|show|add|edit
-llm-studio channel list|show|add|edit|enable|disable|test
-llm-studio credential set|replace|remove
-llm-studio case list|show|add|edit|validate
-llm-studio suite list|show
-llm-studio plan list|show|create|clone|run
-llm-studio load run
-llm-studio audit run
-llm-studio run list|show|cancel
-llm-studio report show|export
-llm-studio doctor
+llm-test-studio model list|show|add|edit
+llm-test-studio channel list|show|add|edit|enable|disable|test
+llm-test-studio credential set|replace|remove
+llm-test-studio case list|show|add|edit|validate
+llm-test-studio suite list|show
+llm-test-studio plan list|show|create|clone|run
+llm-test-studio load run
+llm-test-studio audit run
+llm-test-studio run list|show|cancel
+llm-test-studio report show|export
+llm-test-studio doctor
 ```
 
 ### SQLite 与本地数据

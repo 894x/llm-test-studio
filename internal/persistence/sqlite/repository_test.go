@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-studio/internal/domain"
-	persistence "github.com/894x/llm-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/domain"
+	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 var repositoryEpoch = time.Date(2026, 8, 30, 1, 2, 3, 0, time.UTC)
@@ -207,7 +207,7 @@ func TestRepositoryComparisonRoundTripAndTerminalRevision(t *testing.T) {
 
 	secondCredential := fixture.credential
 	secondCredential.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000021", 1)
-	secondCredential.StoreRef = "llm-studio/v1/channel_api_key/" + secondCredential.ID
+	secondCredential.StoreRef = "llm-test-studio/v1/channel_api_key/" + secondCredential.ID
 	secondChannel := fixture.channel
 	secondChannel.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000022", 1)
 	secondChannel.Name = "Second channel"
@@ -703,7 +703,7 @@ func TestRepositoryStoresCredentialMetadataWithoutSecretBytes(t *testing.T) {
 		repository.Close()
 		t.Fatal("CreateCredentialRef() leaked plaintext credential material in its error")
 	}
-	credential.StoreRef = "llm-studio/v1/channel_api_key/" + credential.ID
+	credential.StoreRef = "llm-test-studio/v1/channel_api_key/" + credential.ID
 	if err := repository.CreateCredentialRef(context.Background(), credential); err != nil {
 		repository.Close()
 		t.Fatalf("CreateCredentialRef(valid metadata) error = %v", err)
@@ -902,12 +902,12 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	model := domain.Model{EntityMeta: entityMeta(modelID, 1), Name: "Fixture model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat", "streaming"}}
 	digest := sha256.Sum256([]byte("credential fingerprint only"))
 	credential := domain.CredentialRef{
-		EntityMeta: entityMeta(credentialID, 1), StoreRef: "llm-studio/v1/channel_api_key/" + credentialID,
+		EntityMeta: entityMeta(credentialID, 1), StoreRef: "llm-test-studio/v1/channel_api_key/" + credentialID,
 		Purpose: domain.CredentialChannelAPIKey, MaskedSuffix: "9Ab2", Fingerprint: "sha256:" + hex.EncodeToString(digest[:]),
 	}
 	adminCredential := credential
 	adminCredential.EntityMeta = entityMeta(adminCredID, 1)
-	adminCredential.StoreRef = "llm-studio/v1/integration_admin/" + adminCredID
+	adminCredential.StoreRef = "llm-test-studio/v1/integration_admin/" + adminCredID
 	adminCredential.Purpose = domain.CredentialIntegrationAdmin
 	channel := domain.Channel{EntityMeta: entityMeta(channelID, 1), Name: "Fixture channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{EntityMeta: entityMeta(mappingID, 1), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-fixture"}
