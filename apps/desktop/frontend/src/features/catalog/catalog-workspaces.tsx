@@ -400,7 +400,35 @@ function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; 
 
 function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {
   const names = new Map(catalog.test_cases.map(testCase => [testCase.id, testCase.name]))
-  return <><InspectorHeader title={suite.name} subtitle={suite.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label="版本" value={`r${suite.revision}`} /><InspectorRow label="固定用例" value={suite.cases.map(ref => `${names.get(ref.case_id) ?? "未知用例"} · r${ref.revision}`).join("；") || "空套件"} /></dl></>
+  return <div className="flex h-full min-h-0 flex-col">
+    <InspectorHeader title={suite.name} subtitle={suite.id} />
+    <Separator />
+    <ScrollArea className="min-h-0 flex-1">
+      <dl className="space-y-1 px-4 py-2">
+        <InspectorRow label="版本" value={`r${suite.revision}`} />
+        <div data-slot="inspector-definition-row" className="py-2">
+          <dt className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span>固定用例</span>
+            <span className="tabular-nums">{suite.cases.length} 项</span>
+          </dt>
+          <dd className="mt-1 min-w-0">
+            {suite.cases.length ? (
+              <ul aria-label="固定用例">
+                {suite.cases.map(ref => (
+                  <li key={ref.case_id} className="flex min-w-0 items-start gap-2 py-1.5">
+                    <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
+                    <span className="min-w-0 break-words text-xs font-medium leading-4">
+                      {names.get(ref.case_id) ?? "未知用例"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : <span className="text-xs text-muted-foreground">暂无固定用例</span>}
+          </dd>
+        </div>
+      </dl>
+    </ScrollArea>
+  </div>
 }
 
 function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catalog: CatalogSnapshot }) {

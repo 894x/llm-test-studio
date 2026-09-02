@@ -567,6 +567,65 @@ describe("desktop run workspace", () => {
     }))
   })
 
+  it("renders a suite's fixed cases as a scannable list", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const user = userEvent.setup()
+    render(<App client={desktopClient()} />)
+
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+
+    const inspector = screen.getByRole("complementary", { name: "套件详情" })
+    const fixedCases = within(inspector).getByRole("list", { name: "固定用例" })
+    expect(within(fixedCases).getAllByRole("listitem")).toHaveLength(4)
+    expect(fixedCases).toHaveTextContent("基础对话")
+    expect(fixedCases).toHaveTextContent("JSON 模式")
+    expect(fixedCases).toHaveTextContent("工具调用")
+    expect(fixedCases).toHaveTextContent("流式结束")
+  })
+
+  it("keeps internal case revisions out of the suite's fixed-case list", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const user = userEvent.setup()
+    render(<App client={desktopClient()} />)
+
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+
+    const fixedCases = screen.getByRole("list", { name: "固定用例" })
+    expect(fixedCases).not.toHaveTextContent(/r\d+/)
+  })
+
+  it("keeps the suite's fixed-case list inside a bounded scroll region", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const user = userEvent.setup()
+    render(<App client={desktopClient()} />)
+
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+
+    const fixedCases = screen.getByRole("list", { name: "固定用例" })
+    expect(fixedCases.closest('[data-slot="scroll-area-viewport"]')).not.toBeNull()
+  })
+
+  it("shows a clear empty state when a suite has no fixed cases", async () => {
+    window.history.replaceState(null, "", "#cases")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.suites[0].cases = []
+    catalog.suites[0].case_count = 0
+    vi.mocked(client.getCatalog).mockResolvedValue(catalog)
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("tab", { name: /套件/ }))
+
+    const inspector = screen.getByRole("complementary", { name: "套件详情" })
+    expect(within(inspector).getByText("暂无固定用例")).toBeInTheDocument()
+    expect(within(inspector).queryByRole("list", { name: "固定用例" })).not.toBeInTheDocument()
+  })
+
   it("distinguishes imported automatic, disabled, and manual cases", async () => {
     window.history.replaceState(null, "", "#cases")
     const client = desktopClient()
