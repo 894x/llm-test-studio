@@ -14,7 +14,8 @@ concurrency:
 
 env:
   NODE_OPTIONS: --max-old-space-size=4096
-  WAILS_VERSION: v2.12.0
+  GO_VERSION: "1.26.6"
+  WAILS_VERSION: v2.15.0
 
 jobs:
   build:
@@ -33,21 +34,21 @@ jobs:
 
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.sum
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6.0.8
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
           version: 10.30.3
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24"
           cache: pnpm
@@ -55,6 +56,9 @@ jobs:
 
       - name: Install the project Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Verify Wails CLI version
+        run: wails version
 
       - name: Derive release metadata
         shell: bash
@@ -157,7 +161,7 @@ jobs:
             "release/llm-test-studio-${ASSET_VERSION}-macos-universal.dmg"
 
       - name: Upload packaged assets
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: llm-test-studio-${{ matrix.artifact }}
           path: apps/desktop/release/*
@@ -172,8 +176,11 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out release metadata
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
       - name: Download packaged assets
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: llm-test-studio-*
           path: release-assets
@@ -182,6 +189,7 @@ jobs:
       - name: Generate checksums
         shell: bash
         run: |
+          cp LICENSE NOTICE THIRD_PARTY_NOTICES.md release-assets/
           cd release-assets
           sha256sum ./* > SHA256SUMS.txt
 

@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> LLM Test Studio is under active development and is being prepared for a public open-source release. A license and contributor policy have not been published yet.
+> LLM Test Studio is licensed under Apache-2.0 and is being prepared for its first public open-source release.
 
 ## Product proof
 
@@ -57,19 +57,22 @@ Check [GitHub Releases](https://github.com/894x/llm-test-studio/releases) for av
 
 ### Build the desktop application
 
-Requirements: Go 1.25+, Node.js 24, pnpm 10, and Wails v2.
+Requirements: Go 1.25+ with the Go 1.26.6 toolchain, Node.js 24, pnpm 10.30.3, and Wails v2.15.0.
 
 ```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+wails version
+
 cd apps/desktop/frontend
 pnpm install --frozen-lockfile
 pnpm test
 pnpm build
 
 cd ..
-wails build
+wails build -nosyncgomod
 ```
 
-Use `wails dev` instead of `wails build` for desktop development. On first start, structured application data is created below the operating system's user configuration directory.
+Use `wails dev -nosyncgomod` instead of `wails build -nosyncgomod` for desktop development. On first start, structured application data is created below the operating system's user configuration directory.
 
 ### Build the CLI
 
@@ -221,6 +224,10 @@ The legacy Bash benchmark remains as an independent load-engine acceptance fixtu
 bash scripts/test_llm_benchmark.sh
 ```
 
+## License
+
+LLM Test Studio source code, built-in case definitions, and project-owned media fixtures are available under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE), [third-party notices](THIRD_PARTY_NOTICES.md), and the [case and media provenance statement](cases/PROVENANCE.md) for attribution and scope details.
+
 ## Open-source status
 
-This repository is not ready to accept outside contributions yet. Before public release, it still needs an explicit license, contribution and security policies, a code of conduct, issue and pull-request templates, an ownership review, and a clean public-history/secrets audit.
+Public-release preparation is in progress. Licensing, contributor guidance, security reporting, repository templates, and initial source/history secret scanning are now covered. Remaining release gates include replacing or stabilizing externally hosted media fixtures and deciding how public desktop binaries will be signed and notarized.

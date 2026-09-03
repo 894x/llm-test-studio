@@ -93,7 +93,7 @@ func observeStream(ctx context.Context, doer HTTPDoer, config RunConfig, definit
 		return streamObservation{}, fmt.Errorf("create request: %w", err)
 	}
 	request.Header.Set("Accept", "application/json, text/event-stream")
-	request.Header.Set("User-Agent", "new-api-audit/1.0")
+	request.Header.Set("User-Agent", auditUserAgent)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

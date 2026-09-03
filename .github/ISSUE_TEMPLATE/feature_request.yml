@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose an improvement to LLM Test Studio
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What testing workflow or user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the desired behavior and any alternatives considered.
+    validations:
+      required: true
+  - type: textarea
+    id: case_reuse
+    attributes:
+      label: Case reuse and model coverage
+      description: If relevant, explain how this affects reusable cases, providers, models, or reports.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add sanitized examples, mockups, or links.

@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> LLM Test Studio 正在积极开发中，并为公开开源发布做准备。目前尚未发布许可证和贡献者政策。
+> LLM Test Studio 采用 Apache-2.0 许可证，目前正在为首次公开开源发布做准备。
 
 ## 产品实证
 
@@ -57,19 +57,22 @@ Case 目录是产品的中心，而不是藏在一次运行背后的配置页面
 
 ### 构建桌面应用
 
-要求：Go 1.25+、Node.js 24、pnpm 10 和 Wails v2。
+要求：Go 1.25+ 并使用 Go 1.26.6 工具链、Node.js 24、pnpm 10.30.3 和 Wails v2.15.0。
 
 ```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+wails version
+
 cd apps/desktop/frontend
 pnpm install --frozen-lockfile
 pnpm test
 pnpm build
 
 cd ..
-wails build
+wails build -nosyncgomod
 ```
 
-桌面开发时使用 `wails dev` 代替 `wails build`。首次启动后，结构化应用数据会创建在操作系统的用户配置目录下。
+桌面开发时使用 `wails dev -nosyncgomod` 代替 `wails build -nosyncgomod`。首次启动后，结构化应用数据会创建在操作系统的用户配置目录下。
 
 ### 构建 CLI
 
@@ -221,6 +224,10 @@ pnpm build
 bash scripts/test_llm_benchmark.sh
 ```
 
+## 许可证
+
+LLM Test Studio 源代码、内置 Case 定义和项目自有媒体 fixture 均采用 [Apache License 2.0](LICENSE)。归属和授权范围详见 [NOTICE](NOTICE)、[第三方声明](THIRD_PARTY_NOTICES.md)与 [Case 及媒体来源声明](cases/PROVENANCE.md)。
+
 ## 开源状态
 
-本仓库目前尚未准备好接受外部贡献。公开发布前仍需补充明确的许可证、贡献与安全政策、行为准则、Issue 与 Pull Request 模板，并完成所有权审查以及公开历史与秘密信息审计。
+公开发布准备仍在进行中。许可证、贡献指南、安全报告渠道、仓库模板以及首轮源码与 Git 历史秘密扫描已经覆盖；剩余发布门禁主要是替换或稳定外部托管的媒体 fixture，并确定公开桌面二进制文件的签名与公证方案。

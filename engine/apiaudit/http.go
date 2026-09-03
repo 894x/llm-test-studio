@@ -16,6 +16,8 @@ type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
+const auditUserAgent = "llm-test-studio/1.0"
+
 func performRequest(ctx context.Context, doer HTTPDoer, config RunConfig, definition RequestDefinition, body map[string]any) (HTTPExchange, []byte, error) {
 	baseURL := strings.TrimRight(config.BaseURL, "/")
 	path := definition.Path
@@ -40,7 +42,7 @@ func performRequest(ctx context.Context, doer HTTPDoer, config RunConfig, defini
 		return HTTPExchange{}, nil, fmt.Errorf("create request: %w", err)
 	}
 	request.Header.Set("Accept", "application/json, text/event-stream")
-	request.Header.Set("User-Agent", "new-api-audit/1.0")
+	request.Header.Set("User-Agent", auditUserAgent)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

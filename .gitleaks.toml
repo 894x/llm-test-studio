@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic API key used by a channel configuration unit test"
+paths = ['''internal/application/channelconfig/service_test\.go''']
+regexes = ['''sk-bound-1234''']
