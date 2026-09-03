@@ -16,3 +16,4 @@ loadtest_history.db
 .streamlit/secrets.toml
 
 build
+.history/
