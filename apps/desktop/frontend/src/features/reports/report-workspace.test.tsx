@@ -1,12 +1,15 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nextProvider } from "react-i18next"
 import { describe, expect, it, vi } from "vitest"
 
+import { createAppI18n } from "@/i18n/i18n"
 import { ReportWorkspace } from "./report-workspace"
 import type { ReportDetail, ReportSnapshot } from "./data"
 
 describe("ReportWorkspace", () => {
   it("keeps row selection in the inspector and opens report content only from the action column", async () => {
+    const testI18n = createAppI18n("zh-CN")
     const user = userEvent.setup()
     const quickID = "77777777-7777-4777-8777-777777777771"
     const snapshot = {
@@ -41,7 +44,7 @@ describe("ReportWorkspace", () => {
       return { filename: `llm-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
     })
 
-    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} />)
+    render(<I18nextProvider i18n={testI18n}><ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /></I18nextProvider>)
 
     const table = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(table).getByRole("columnheader", { name: "查看报告" })).toBeInTheDocument()
@@ -54,7 +57,7 @@ describe("ReportWorkspace", () => {
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
     expect(screen.queryByRole("region", { name: "归档性能报告" })).not.toBeInTheDocument()
 
-    await user.click(within(quickRow as HTMLTableRowElement).getByRole("button", { name: "查看报告：快速性能测试通过" }))
+    await user.click(within(quickRow as HTMLTableRowElement).getByRole("button", { name: "查看报告：全部请求成功" }))
 
     const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
     expect(archivedReport).toHaveTextContent("完成（持续时间模式）")
@@ -81,8 +84,8 @@ describe("ReportWorkspace", () => {
     const watermark = screen.getByRole("textbox", { name: "导出水印" })
     expect(watermark).toHaveValue("rhzs")
     await user.click(screen.getByRole("button", { name: "JSON" }))
-    expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs")
-    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-studio-report-${quickID}.json`, "application/json", "e30="))
+    expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs", "zh-CN")
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-studio-report-${quickID}.json`, "application/json", "e30=", "zh-CN"))
     await user.clear(watermark)
     await user.type(watermark, "team-alpha")
     await user.click(screen.getByRole("button", { name: "HTML" }))
@@ -107,6 +110,32 @@ describe("ReportWorkspace", () => {
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "报告详情" })).toHaveTextContent(quickID)
     expect(screen.queryByRole("region", { name: "归档性能报告" })).not.toBeInTheDocument()
+  })
+
+  it("localizes Go-owned quick performance summary labels in English", async () => {
+    const testI18n = createAppI18n("en-US")
+    const reportID = "77777777-7777-4777-8777-777777777772"
+    const snapshot = {
+      schema_version: 1,
+      reports: [{
+        id: reportID, source: "quick_performance", generated_at: "2026-08-31T14:30:00Z", run_status: "completed",
+        plan_name: "快速性能测试", model_name: "gpt-fast", channel_name: "api.example.test", passed: true,
+        verdict: "全部请求成功", issue_count: 0, case_count: 3, failed_case_count: 0, attachment_count: 0,
+      }],
+    } as unknown as ReportSnapshot
+
+    render(<I18nextProvider i18n={testI18n}><ReportWorkspace
+      snapshot={snapshot}
+      getDetail={async () => quickDetail(reportID) as unknown as ReportDetail}
+      exportReport={vi.fn()}
+      saveReportExport={vi.fn()}
+      copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+
+    const table = screen.getByRole("table", { name: "Test report catalog" })
+    expect(within(table).getByText("All requests passed")).toBeInTheDocument()
+    expect(within(table).getByText("Quick performance test")).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "Report details" })).toHaveTextContent("All requests passed")
   })
 })
 

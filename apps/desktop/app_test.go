@@ -53,6 +53,7 @@ type recordingReportingQuery struct {
 	err      error
 	calls    int
 	ctx      context.Context
+	locale   string
 }
 
 type recordingCatalogCommands struct {
@@ -140,6 +141,13 @@ func (query *recordingReportingQuery) Detail(ctx context.Context, _ string) (rep
 func (query *recordingReportingQuery) Export(ctx context.Context, _ string, _ reporting.ExportFormat, _ string) (reporting.ExportedDocument, error) {
 	query.calls++
 	query.ctx = ctx
+	return query.exported, query.err
+}
+
+func (query *recordingReportingQuery) ExportLocalized(ctx context.Context, _ string, _ reporting.ExportFormat, _ string, locale string) (reporting.ExportedDocument, error) {
+	query.calls++
+	query.ctx = ctx
+	query.locale = locale
 	return query.exported, query.err
 }
 
@@ -316,14 +324,17 @@ func TestDesktopAppReadsAndExportsCompleteReports(t *testing.T) {
 	if err != nil || detail.SchemaVersion != reporting.CurrentSchemaVersion {
 		t.Fatalf("GetReportDetail() = %#v, %v", detail, err)
 	}
-	exported, err := app.ExportReport(id, "json", reporting.DefaultWatermark)
+	exported, err := app.ExportReport(id, "json", reporting.DefaultWatermark, "en-US")
 	if err != nil || exported.Filename != "report.json" || exported.DataBase64 != "e30=" {
 		t.Fatalf("ExportReport() = %#v, %v", exported, err)
 	}
 	if query.calls != 2 {
 		t.Fatalf("report document calls = %d, want 2", query.calls)
 	}
-	if _, err := app.ExportReport(id, "exe", reporting.DefaultWatermark); !errors.As(err, new(DesktopBindingError)) {
+	if query.locale != "en-US" {
+		t.Fatalf("report export locale = %q, want en-US", query.locale)
+	}
+	if _, err := app.ExportReport(id, "exe", reporting.DefaultWatermark, "en-US"); !errors.As(err, new(DesktopBindingError)) {
 		t.Fatalf("invalid export error = %v", err)
 	}
 }

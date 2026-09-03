@@ -292,12 +292,12 @@ describe("Wails desktop client", () => {
 		expect(detail.report.id).toBe(reportID)
 		expect(binding.GetReportDetail).toHaveBeenCalledWith(reportID)
 		for (const format of ["json", "html", "png", "pdf"] as const) {
-			const exported = await client.exportReport(reportID, format, "team-alpha")
+			const exported = await client.exportReport(reportID, format, "team-alpha", "en-US")
 			expect(exported.filename).toContain(reportID)
-			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format, "team-alpha")
+			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format, "team-alpha", "en-US")
 		}
-		await expect(client.saveReportExport("report.png", "image/png", "iVBORw0KGgo=")).resolves.toBe(true)
-		expect(binding.SaveReportExport).toHaveBeenCalledWith("report.png", "image/png", "iVBORw0KGgo=")
+		await expect(client.saveReportExport("report.png", "image/png", "iVBORw0KGgo=", "en-US")).resolves.toBe(true)
+		expect(binding.SaveReportExport).toHaveBeenCalledWith("report.png", "image/png", "iVBORw0KGgo=", "en-US")
 		await client.copyReportPNG("iVBORw0KGgo=")
 		expect(binding.CopyReportPNG).toHaveBeenCalledWith("iVBORw0KGgo=")
 	})

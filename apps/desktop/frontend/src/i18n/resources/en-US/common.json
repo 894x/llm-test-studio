@@ -1,0 +1,38 @@
+{
+  "actions": {
+    "close": "Close",
+    "showOptions": "Show options"
+  },
+  "status": {
+    "running": "Running",
+    "draining": "Draining",
+    "passed": "Passed",
+    "completed": "Completed",
+    "failed": "Failed",
+    "queued": "Queued",
+    "cancelled": "Cancelled"
+  },
+  "page": {
+    "details": "{{title}} details"
+  },
+  "error": {
+    "operationFailed": "{{operation}} failed: {{message}}",
+    "desktop_not_started": "The desktop app has not started",
+    "desktop_startup_failed": "The desktop app failed to initialize",
+    "desktop_stopped": "The desktop app has stopped",
+    "workspace_unavailable": "The local workspace is unavailable",
+    "catalog_unavailable": "The test catalog is unavailable",
+    "reports_unavailable": "Test reports are unavailable",
+    "run_commands_unavailable": "Run commands are unavailable",
+    "comparison_unavailable": "Channel comparison is unavailable",
+    "diagnostics_unavailable": "Diagnostics logging is unavailable",
+    "quick_test_unavailable": "Quick Test is unavailable",
+    "quick_test_save_partial": "The connection was partially saved. Open Models & Channels to finish configuring it.",
+    "invalid_identifier": "The target object is invalid",
+    "operation_cancelled": "The operation was cancelled",
+    "operation_failed": "The desktop operation failed; check local logs",
+    "catalog_invalid": "The catalog content is invalid; check the form fields",
+    "catalog_revision_conflict": "The object version changed or is still referenced. Refresh, remove references, and try again.",
+    "catalog_not_found": "The object was deleted or does not exist. Refresh the catalog."
+  }
+}

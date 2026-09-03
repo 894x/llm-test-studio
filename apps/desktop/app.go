@@ -100,6 +100,10 @@ type ReportDocumentQuery interface {
 	Export(context.Context, string, reporting.ExportFormat, string) (reporting.ExportedDocument, error)
 }
 
+type LocalizedReportExporter interface {
+	ExportLocalized(context.Context, string, reporting.ExportFormat, string, string) (reporting.ExportedDocument, error)
+}
+
 // RunCommands is the Application command boundary used by the desktop
 // adapter. A command mutates Core state; the adapter then obtains the
 // authoritative state through WorkspaceQuery.
@@ -566,8 +570,11 @@ func (app *DesktopApp) GetReportDetail(reportID string) (reporting.Detail, error
 	return detail, nil
 }
 
-func (app *DesktopApp) ExportReport(reportID, format, watermark string) (reporting.ExportedDocument, error) {
+func (app *DesktopApp) ExportReport(reportID, format, watermark, locale string) (reporting.ExportedDocument, error) {
 	if !domain.IsUUID(reportID) {
+		return reporting.ExportedDocument{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	if locale != "zh-CN" && locale != "en-US" {
 		return reporting.ExportedDocument{}, app.safeBindingError(ErrInvalidIdentifier)
 	}
 	exportFormat := reporting.ExportFormat(format)
@@ -585,7 +592,12 @@ func (app *DesktopApp) ExportReport(reportID, format, watermark string) (reporti
 	if !ok || isNilInterface(documents) {
 		return reporting.ExportedDocument{}, app.safeBindingError(ErrReportingUnavailable)
 	}
-	exported, err := documents.Export(lease.ctx, reportID, exportFormat, watermark)
+	var exported reporting.ExportedDocument
+	if localized, ok := lease.reports.(LocalizedReportExporter); ok && !isNilInterface(localized) {
+		exported, err = localized.ExportLocalized(lease.ctx, reportID, exportFormat, watermark, locale)
+	} else {
+		exported, err = documents.Export(lease.ctx, reportID, exportFormat, watermark)
+	}
 	if err != nil {
 		return reporting.ExportedDocument{}, app.safeBindingError(fmt.Errorf("export desktop report: %w", err))
 	}

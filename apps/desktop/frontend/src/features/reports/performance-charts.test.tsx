@@ -1,12 +1,24 @@
-import { render, screen, within } from "@testing-library/react"
+import { render as testingRender, screen, within } from "@testing-library/react"
+import type { ReactElement } from "react"
+import { I18nextProvider } from "react-i18next"
 import { describe, expect, it } from "vitest"
 
+import { createAppI18n } from "@/i18n/i18n"
 import { PerformanceCharts, type PerformanceChartPercentiles, type PerformanceChartSample } from "./performance-charts"
 
 const PERCENTILES: PerformanceChartPercentiles = {
   ttft_p50_ms: 20, ttft_p95_ms: 20,
   tpot_p50_ms: 2, tpot_p95_ms: 2,
   e2e_p50_ms: 60, e2e_p95_ms: 60,
+}
+
+function render(ui: ReactElement) {
+  const instance = createAppI18n("zh-CN")
+  const result = testingRender(<I18nextProvider i18n={instance}>{ui}</I18nextProvider>)
+  return {
+    ...result,
+    rerender: (next: ReactElement) => result.rerender(<I18nextProvider i18n={instance}>{next}</I18nextProvider>),
+  }
 }
 
 describe("PerformanceCharts", () => {

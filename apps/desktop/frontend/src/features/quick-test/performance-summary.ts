@@ -1,27 +1,29 @@
 import type { QuickPerformancePhase } from "./data"
+import zhQuickTest from "@/i18n/resources/zh-CN/quick-test.json"
+
+type Translate = (key: string) => string
 
 export function performanceCompletion(
   requestCount: number,
   completed: number,
   planned: number,
+  translate: Translate = defaultTranslate,
 ): { label: string; value: string } {
   if (requestCount === 0) {
-    return { label: "完成（持续时间模式）", value: String(completed) }
+    return { label: translate("completion.duration"), value: String(completed) }
   }
-  return { label: "完成 / 计划", value: `${completed} / ${planned}` }
+  return { label: translate("completion.planned"), value: `${completed} / ${planned}` }
 }
 
-export function performanceProgressPhaseLabel(phase: QuickPerformancePhase): string {
-  switch (phase) {
-    case "not_started":
-      return "准备中"
-    case "sending":
-      return "发送中"
-    case "draining":
-      return "排空中"
-    case "completed":
-      return "测试已完成，正在封存报告…"
-    case "cancelled":
-      return "已取消"
-  }
+export function performanceProgressPhaseLabel(
+  phase: QuickPerformancePhase,
+  translate: Translate = defaultTranslate,
+): string {
+  return translate(`phase.${phase}`)
+}
+
+function defaultTranslate(key: string): string {
+  const [section, name] = key.split(".")
+  const group = zhQuickTest[section as "completion" | "phase"]
+  return group?.[name as keyof typeof group] ?? key
 }

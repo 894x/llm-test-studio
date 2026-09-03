@@ -36,12 +36,13 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
   percentiles: PerformanceChartPercentiles
   layout?: "grid" | "stacked"
 }) {
+  const { t } = useTranslation("reports")
   const stacked = layout === "stacked"
   return (
-    <section aria-label="性能图表" className="space-y-3">
+    <section aria-label={t("charts.aria")} className="space-y-3">
       <div>
-        <h4 className="text-xs font-semibold">延迟分布</h4>
-        <p className="mt-0.5 text-[10px] text-muted-foreground">仅统计成功请求；每项指标使用独立纵轴，TPOT 单位为 ms/token。</p>
+        <h4 className="text-xs font-semibold">{t("charts.distribution")}</h4>
+        <p className="mt-0.5 text-[10px] text-muted-foreground">{t("charts.distributionHint")}</p>
         <div data-testid="distribution-chart-list" className={stacked ? "mt-2 grid grid-cols-1 gap-2" : "mt-2 grid gap-2 sm:grid-cols-3"}>
           {METRICS.map((metric) => (
             <DistributionChart key={metric.key} metric={metric} samples={samples} percentiles={percentiles} expanded={stacked} />
@@ -49,8 +50,8 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
         </div>
       </div>
       <div>
-        <h4 className="text-xs font-semibold">延迟时间曲线</h4>
-        <p className="mt-0.5 text-[10px] text-muted-foreground">仅展示成功请求；横轴为完成偏移，虚线标记整体 P50 / P95。</p>
+        <h4 className="text-xs font-semibold">{t("charts.timeline")}</h4>
+        <p className="mt-0.5 text-[10px] text-muted-foreground">{t("charts.timelineHint")}</p>
         <div data-testid="timeline-chart-list" className={stacked ? "mt-2 grid grid-cols-1 gap-2" : "mt-2 grid gap-2 sm:grid-cols-3"}>
           {METRICS.map((metric) => (
             <TimelineChart key={metric.key} metric={metric} samples={samples} percentiles={percentiles} expanded={stacked} />
@@ -58,8 +59,8 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
         </div>
       </div>
       <div>
-        <h4 className="text-xs font-semibold">吞吐与并发时间线</h4>
-        <p className="mt-0.5 text-[10px] text-muted-foreground">统计全部已完成请求；柱状表示分段完成吞吐，折线表示分段峰值在途。</p>
+        <h4 className="text-xs font-semibold">{t("charts.throughput")}</h4>
+        <p className="mt-0.5 text-[10px] text-muted-foreground">{t("charts.throughputHint")}</p>
         <ThroughputConcurrencyChart samples={samples} />
       </div>
     </section>
@@ -67,9 +68,11 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
 }
 
 function ThroughputConcurrencyChart({ samples }: { samples: readonly PerformanceChartSample[] }) {
+  const { t, i18n } = useTranslation("reports")
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const timeline = throughputTimeline(samples)
   if (!timeline) {
-    return <figure aria-label="吞吐与并发时间线" className="mt-2 rounded-md border bg-surface-control p-2"><EmptyChart expanded /></figure>
+    return <figure aria-label={t("charts.throughput")} className="mt-2 rounded-md border bg-surface-control p-2"><EmptyChart expanded /></figure>
   }
   const { buckets, durationMS, maxThroughput, maxConcurrency } = timeline
   const width = 720
@@ -87,15 +90,15 @@ function ThroughputConcurrencyChart({ samples }: { samples: readonly Performance
     return `${x},${y}`
   }).join(" ")
   return (
-    <figure aria-label="吞吐与并发时间线" className="mt-2 min-w-0 rounded-md border bg-surface-control p-2">
+    <figure aria-label={t("charts.throughput")} className="mt-2 min-w-0 rounded-md border bg-surface-control p-2">
       <figcaption className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
         <span className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-primary/50" />完成吞吐</span>
-          <span className="inline-flex items-center gap-1.5"><span className="w-3 border-t-2 border-text-secondary" />峰值在途</span>
+          <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-primary/50" />{t("charts.completedThroughput")}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-3 border-t-2 border-text-secondary" />{t("charts.peakInFlight")}</span>
         </span>
-        <span className="tabular-nums">峰值 {number(maxThroughput)} req/s · 在途 {number(maxConcurrency)}</span>
+        <span className="tabular-nums">{t("charts.peakSummary", { throughput: number(maxThroughput, locale), concurrency: number(maxConcurrency, locale) })}</span>
       </figcaption>
-      <svg role="img" aria-label={`吞吐与并发时间线，${samples.length} 个完成请求`} viewBox={`0 0 ${width} ${height}`} className="mt-1 h-44 w-full overflow-visible">
+      <svg role="img" aria-label={t("charts.completedRequests", { count: samples.length })} viewBox={`0 0 ${width} ${height}`} className="mt-1 h-44 w-full overflow-visible">
         <line x1={left} y1={top + plotHeight} x2={left + plotWidth} y2={top + plotHeight} stroke="var(--border-strong)" />
         {buckets.map((bucket, index) => {
           const barHeight = bucket.throughput / Math.max(1, maxThroughput) * plotHeight
@@ -104,14 +107,14 @@ function ThroughputConcurrencyChart({ samples }: { samples: readonly Performance
         <polyline points={points} fill="none" stroke="var(--text-secondary)" strokeWidth="1.8" strokeLinejoin="round" />
         {buckets.map((bucket, index) => <circle key={index} cx={left + (index + 0.5) * slotWidth} cy={top + plotHeight - bucket.peakInFlight / Math.max(1, maxConcurrency) * plotHeight} r="1.8" fill="var(--surface-elevated)" stroke="var(--text-secondary)" strokeWidth="1.1" />)}
         <g fill="var(--muted-foreground)" fontSize="8">
-          <text x={left - 3} y={top + 7} textAnchor="end">{number(maxThroughput)}</text>
+          <text x={left - 3} y={top + 7} textAnchor="end">{number(maxThroughput, locale)}</text>
           <text x={left - 3} y={top + plotHeight} textAnchor="end">0</text>
-          <text x={left + plotWidth + 3} y={top + 7}>{number(maxConcurrency)}</text>
+          <text x={left + plotWidth + 3} y={top + 7}>{number(maxConcurrency, locale)}</text>
           <text x={left + plotWidth + 3} y={top + plotHeight}>0</text>
           <text x={left} y={top - 6}>req/s</text>
-          <text x={left + plotWidth} y={top - 6} textAnchor="end">在途</text>
-          <text x={left} y={top + plotHeight + 14}>完成偏移</text>
-          <text x={left + plotWidth} y={top + plotHeight + 14} textAnchor="end">{time(durationMS)}</text>
+          <text x={left + plotWidth} y={top - 6} textAnchor="end">{t("charts.inFlight")}</text>
+          <text x={left} y={top + plotHeight + 14}>{t("charts.completionOffset")}</text>
+          <text x={left + plotWidth} y={top + plotHeight + 14} textAnchor="end">{time(durationMS, locale)}</text>
         </g>
       </svg>
     </figure>
@@ -165,6 +168,8 @@ function DistributionChart({ metric, samples, percentiles, expanded }: {
   percentiles: PerformanceChartPercentiles
   expanded: boolean
 }) {
+  const { t, i18n } = useTranslation("reports")
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const values = metricValues(samples, metric.key)
   const p50 = percentiles[metric.p50]
   const p95 = percentiles[metric.p95]
@@ -180,13 +185,13 @@ function DistributionChart({ metric, samples, percentiles, expanded }: {
   const plotWidth = width - left - right
   const plotHeight = height - top - bottom
   return (
-    <figure aria-label={`${metric.label} 分布图`} className="min-w-0 rounded-md border bg-surface-control p-2">
+    <figure aria-label={t("charts.distributionAria", { metric: metric.label })} className="min-w-0 rounded-md border bg-surface-control p-2">
       <figcaption className="flex items-baseline justify-between gap-2 text-[11px] font-medium">
         <span>{metric.label}</span>
-        <span className="truncate text-[9px] font-normal tabular-nums text-muted-foreground">P50 {number(p50)} · P95 {number(p95)} {metric.unit}</span>
+        <span className="truncate text-[9px] font-normal tabular-nums text-muted-foreground">P50 {number(p50, locale)} · P95 {number(p95, locale)} {metric.unit}</span>
       </figcaption>
       {values.length ? (
-        <svg role="img" aria-label={`${metric.label} 延迟直方分布，${values.length} 个成功请求样本`} viewBox={`0 0 ${width} ${height}`} className={expanded ? "mt-1 h-36 w-full overflow-visible" : "mt-1 h-28 w-full overflow-visible"}>
+        <svg role="img" aria-label={t("charts.histogramAria", { metric: metric.label, count: values.length })} viewBox={`0 0 ${width} ${height}`} className={expanded ? "mt-1 h-36 w-full overflow-visible" : "mt-1 h-28 w-full overflow-visible"}>
           <line x1={left} y1={top + plotHeight} x2={left + plotWidth} y2={top + plotHeight} stroke="var(--border-strong)" />
           {bins.map((count, index) => {
             const gap = 2
@@ -197,7 +202,7 @@ function DistributionChart({ metric, samples, percentiles, expanded }: {
           <PercentileMarker value={p50} max={max} left={left} top={top} width={plotWidth} height={plotHeight} label="P50" />
           <PercentileMarker value={p95} max={max} left={left} top={top} width={plotWidth} height={plotHeight} label="P95" strong />
           <ChartYAxis max={peak} left={left} top={top} height={plotHeight} />
-          <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={number(max)} label={metric.unit} />
+          <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={number(max, locale)} label={metric.unit} />
         </svg>
       ) : <EmptyChart expanded={expanded} />}
     </figure>
@@ -210,6 +215,8 @@ function TimelineChart({ metric, samples, percentiles, expanded }: {
   percentiles: PerformanceChartPercentiles
   expanded: boolean
 }) {
+  const { t, i18n } = useTranslation("reports")
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const points = samples
     .filter((sample) => sample.success && Number.isFinite(sample[metric.key]) && sample[metric.key] > 0)
     .map((sample) => ({ x: sample.finished_offset_ms, y: sample[metric.key] }))
@@ -228,20 +235,20 @@ function TimelineChart({ metric, samples, percentiles, expanded }: {
   const plotHeight = height - top - bottom
   const path = points.map((point) => `${left + point.x / maxX * plotWidth},${top + plotHeight - point.y / maxY * plotHeight}`).join(" ")
   return (
-    <figure aria-label={`${metric.label} 时间曲线`} className="min-w-0 rounded-md border bg-surface-control p-2">
+    <figure aria-label={t("charts.curveAria", { metric: metric.label })} className="min-w-0 rounded-md border bg-surface-control p-2">
       <figcaption className="flex items-baseline justify-between gap-2 text-[11px] font-medium">
         <span>{metric.label}</span>
-        <span className="truncate text-[9px] font-normal tabular-nums text-muted-foreground">完成时间 · {metric.unit}</span>
+        <span className="truncate text-[9px] font-normal tabular-nums text-muted-foreground">{t("charts.completionTime", { unit: metric.unit })}</span>
       </figcaption>
       {points.length ? (
-        <svg role="img" aria-label={`${metric.label} 随完成时间变化曲线，${points.length} 个成功请求样本`} viewBox={`0 0 ${width} ${height}`} className={expanded ? "mt-1 h-36 w-full overflow-visible" : "mt-1 h-28 w-full overflow-visible"}>
+        <svg role="img" aria-label={t("charts.curveSamples", { metric: metric.label, count: points.length })} viewBox={`0 0 ${width} ${height}`} className={expanded ? "mt-1 h-36 w-full overflow-visible" : "mt-1 h-28 w-full overflow-visible"}>
           <line x1={left} y1={top + plotHeight} x2={left + plotWidth} y2={top + plotHeight} stroke="var(--border-strong)" />
           <HorizontalMarker value={p50} max={maxY} left={left} top={top} width={plotWidth} height={plotHeight} label="P50" />
           <HorizontalMarker value={p95} max={maxY} left={left} top={top} width={plotWidth} height={plotHeight} label="P95" strong />
           <polyline points={path} fill="none" stroke="var(--primary)" strokeWidth="1.5" strokeLinejoin="round" />
           {points.map((point, index) => <circle key={`${point.x}-${index}`} cx={left + point.x / maxX * plotWidth} cy={top + plotHeight - point.y / maxY * plotHeight} r="2" fill="var(--surface-elevated)" stroke="var(--primary)" strokeWidth="1.2" />)}
           <ChartYAxis max={maxY} left={left} top={top} height={plotHeight} />
-          <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={time(maxX)} label="完成偏移" />
+          <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={time(maxX, locale)} label={t("charts.completionOffset")} />
         </svg>
       ) : <EmptyChart expanded={expanded} />}
     </figure>
@@ -263,7 +270,8 @@ function HorizontalMarker({ value, max, left, top, width, height, label, strong 
 }
 
 function ChartYAxis({ max, left, top, height }: { max: number; left: number; top: number; height: number }) {
-  return <g fill="var(--muted-foreground)" fontSize="8"><text x={left - 3} y={top + 7} textAnchor="end">{number(max)}</text><text x={left - 3} y={top + height} textAnchor="end">0</text></g>
+  const { i18n } = useTranslation()
+  return <g fill="var(--muted-foreground)" fontSize="8"><text x={left - 3} y={top + 7} textAnchor="end">{number(max, i18n.resolvedLanguage ?? i18n.language)}</text><text x={left - 3} y={top + height} textAnchor="end">0</text></g>
 }
 
 function ChartXAxis({ left, top, width, height, end, label }: { left: number; top: number; width: number; height: number; end: string; label: string }) {
@@ -271,7 +279,8 @@ function ChartXAxis({ left, top, width, height, end, label }: { left: number; to
 }
 
 function EmptyChart({ expanded }: { expanded: boolean }) {
-  return <div className={`flex ${expanded ? "h-36" : "h-28"} items-center justify-center text-[10px] text-muted-foreground`}>暂无成功请求样本</div>
+  const { t } = useTranslation("reports")
+  return <div className={`flex ${expanded ? "h-36" : "h-28"} items-center justify-center text-[10px] text-muted-foreground`}>{t("charts.empty")}</div>
 }
 
 function metricValues(samples: readonly PerformanceChartSample[], key: MetricDefinition["key"]): number[] {
@@ -284,10 +293,11 @@ function histogram(values: readonly number[], max: number, binCount: number): nu
   return bins
 }
 
-function number(value: number): string {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value)
+function number(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value)
 }
 
-function time(value: number): string {
-  return value >= 1_000 ? `${number(value / 1_000)} s` : `${number(value)} ms`
+function time(value: number, locale: string): string {
+  return value >= 1_000 ? `${number(value / 1_000, locale)} s` : `${number(value, locale)} ms`
 }
+import { useTranslation } from "react-i18next"

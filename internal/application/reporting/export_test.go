@@ -131,6 +131,42 @@ func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T)
 	}
 }
 
+func TestLocalizedHTMLExportsUseTheRequestedLanguage(t *testing.T) {
+	detail := exportFixture(t)
+	runService := New(&fakeDocumentCatalog{report: detail.Report, results: detail.RequestResults})
+	runExport, err := runService.ExportLocalized(context.Background(), detail.Report.ID, ExportHTML, "team-alpha", "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLocalizedHTML(t, runExport, []string{`<html lang="en-US">`, "LLM Studio Test Report", "Conclusion:", "Core metrics", "Request details"}, []string{"测试报告", "结论：", "核心指标", "请求明细"})
+
+	quick := validArchivedQuickPerformanceReport()
+	quickExport, err := New(&fakeMixedCatalog{get: quick}).ExportLocalized(context.Background(), quick.ReportID, ExportHTML, "team-alpha", "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLocalizedHTML(t, quickExport, []string{`<html lang="en-US">`, "Quick Performance Test Report", "All requests passed", "Request samples"}, []string{"快速性能测试报告", "全部请求成功", "请求样本"})
+}
+
+func assertLocalizedHTML(t *testing.T, exported ExportedDocument, contains, excludes []string) {
+	t.Helper()
+	contents, err := base64.StdEncoding.DecodeString(exported.DataBase64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(contents)
+	for _, expected := range contains {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("localized HTML does not contain %q", expected)
+		}
+	}
+	for _, excluded := range excludes {
+		if strings.Contains(body, excluded) {
+			t.Fatalf("localized HTML contains %q", excluded)
+		}
+	}
+}
+
 func TestDetailRejectsForeignAndDuplicateResults(t *testing.T) {
 	detail := exportFixture(t)
 	for _, mutate := range []func(*[]domain.Result){

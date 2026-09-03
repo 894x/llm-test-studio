@@ -1,0 +1,51 @@
+{
+  "navigation": {
+    "overview": "Overview",
+    "quickTest": "Quick Test",
+    "catalog": "Models & Channels",
+    "cases": "Cases",
+    "plans": "Plans",
+    "runs": "Runs",
+    "reports": "Reports"
+  },
+  "product": {
+    "subtitle": "Local testing workspace"
+  },
+  "navigationAria": "Main navigation",
+  "settings": {
+    "trigger": "Interface settings, theme: {{theme}}",
+    "tooltip": "Interface settings",
+    "language": "Language",
+    "appearance": "Appearance"
+  },
+  "language": {
+    "system": "System",
+    "zh-CN": "简体中文",
+    "en-US": "English"
+  },
+  "theme": {
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "description": "Review local logging capabilities and open the log folder in the system file manager.",
+    "loading": "Reading diagnostics status…",
+    "loadError": "Unable to read diagnostics status",
+    "openError": "Unable to open the log folder",
+    "status": "Status",
+    "available": "Structured logging enabled",
+    "unavailable": "Diagnostics logging unavailable",
+    "format": "Format",
+    "maxFileSize": "Maximum file size",
+    "retention": "Retention",
+    "retentionValue": "{{count}} retained files",
+    "correlation": "Correlation",
+    "bothCorrelations": "Run and Request",
+    "notEnabled": "Not enabled",
+    "sensitiveData": "Sensitive data",
+    "redaction": "Redacted before writing",
+    "openFolder": "Open log folder"
+  }
+}

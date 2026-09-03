@@ -1,0 +1,9 @@
+{
+  "loadError": "Unable to read the local workspace",
+  "commandError": "Desktop operation failed; check local logs",
+  "catalogRefreshError": "{{operation}} completed, but the run-plan list could not be refreshed. Reopen the app.",
+  "catalogError": "Catalog operation failed; check whether the object is still referenced",
+  "comparisonError": "Unable to start the channel comparison; check local logs",
+  "openErrorTitle": "Unable to open the local workspace",
+  "loading": "Reading the local workspace…"
+}

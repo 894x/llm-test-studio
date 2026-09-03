@@ -209,26 +209,7 @@ const ERROR_CODES = new Set<QuickTestErrorCode>([
   "unclassified_error",
 ])
 
-export const QUICK_TEST_ERROR_MESSAGES: Record<QuickTestErrorCode, string> = {
-  invalid_request: "测试参数无效",
-  insecure_endpoint: "仅支持 HTTPS 接口地址",
-  credential_required: "API Key 不能为空",
-  authentication_failed: "鉴权失败",
-  network_error: "无法连接接口",
-  timeout: "请求超时",
-  cancelled: "测试已取消",
-  http_error: "接口返回失败状态",
-  rate_limited: "接口触发限流",
-  protocol_error: "接口响应协议无效",
-  incomplete_stream: "流式响应未正常结束",
-  semantic_empty: "接口未返回有效模型内容",
-  response_too_large: "接口响应超过安全限制",
-  client_closed: "测试客户端已关闭",
-  executor_panic: "测试执行器异常",
-  scheduler_overload: "本地调度容量不足",
-  request_failed: "接口请求失败",
-  unclassified_error: "接口返回未分类错误",
-}
+export const QUICK_TEST_ERROR_MESSAGES = zhQuickTest.errorCode as Record<QuickTestErrorCode, string>
 
 export function parseQuickTestResult(value: unknown): QuickTestResult {
   if (!isRecord(value) || value.schema_version !== 1) {
@@ -549,3 +530,4 @@ function isNonNegativeInteger(value: unknown): value is number {
 function isPositiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0
 }
+import zhQuickTest from "@/i18n/resources/zh-CN/quick-test.json"

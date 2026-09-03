@@ -1,5 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react"
+import type { TFunction } from "i18next"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
+import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import {
@@ -30,10 +32,6 @@ export type CatalogMutation = (
   operationLabel: string,
 ) => Promise<void>
 
-const TITLES: Record<CatalogEntityKind, string> = {
-  model: "模型", channel: "渠道", mapping: "映射", case: "用例", suite: "套件", plan: "计划",
-}
-
 export function CatalogEditor({
   kind, item, catalog, actions, mutate, pending,
 }: {
@@ -44,8 +42,10 @@ export function CatalogEditor({
   mutate: CatalogMutation
   pending: boolean
 }) {
+  const { t } = useTranslation("catalog")
   const [open, setOpen] = useState(false)
-  const title = `${item ? "编辑" : "新增"}${TITLES[kind]}`
+  const noun = t(`editor.noun.${kind}`)
+  const title = t(item ? "editor.editTitle" : "editor.newTitle", { noun })
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -56,7 +56,7 @@ export function CatalogEditor({
       <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>保存后将刷新整个本地目录；编辑会检查当前版本，避免覆盖其他修改。</SheetDescription>
+          <SheetDescription>{t("editor.description")}</SheetDescription>
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1 px-4">
           <EditorForm kind={kind} item={item} catalog={catalog} actions={actions} mutate={mutate} pending={pending} formTitle={title} onSaved={() => setOpen(false)} />
@@ -75,19 +75,20 @@ export function DeleteCatalogButton({
   mutate: CatalogMutation
   pending: boolean
 }) {
+  const { t } = useTranslation("catalog")
   if (!item) return null
-  const noun = TITLES[kind]
+  const noun = t(`editor.noun.${kind}`)
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>删除{noun}</Button></AlertDialogTrigger>
+      <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>{t("editor.delete", { noun })}</Button></AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>删除{noun}？</AlertDialogTitle>
-          <AlertDialogDescription>此对象会从当前目录隐藏，历史版本与已停用的 ID 会保留。对象可能被渠道映射或测试计划引用，存在当前引用时后端会拒绝删除。</AlertDialogDescription>
+          <AlertDialogTitle>{t("editor.deleteTitle", { noun })}</AlertDialogTitle>
+          <AlertDialogDescription>{t("editor.deleteDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction onClick={() => void mutate(() => action({ id: item.id, expected_revision: item.revision }), `删除${noun}`).catch(() => undefined)}>确认删除{noun}</AlertDialogAction>
+          <AlertDialogCancel>{t("editor.cancel")}</AlertDialogCancel>
+          <AlertDialogAction onClick={() => void mutate(() => action({ id: item.id, expected_revision: item.revision }), t("editor.delete", { noun })).catch(() => undefined)}>{t("editor.confirmDelete", { noun })}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -112,57 +113,61 @@ type FormProps<T> = {
 }
 
 function ModelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogModel>) {
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [capabilities, setCapabilities] = useState(item?.capabilities.join(", ") ?? "")
-  return <FormShell pending={pending} label="保存模型" formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, "模型名称"), protocol, capabilities: list(capabilities) }
-    await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), `${formTitle}保存`); onSaved()
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.model") })} formTitle={formTitle} onSubmit={async () => {
+    const command = { name: required(name, t("editor.fields.modelName"), t), protocol, capabilities: list(capabilities) }
+    await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label="模型名称" value={name} onChange={setName} />
-    <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <TextField label="模型能力" value={capabilities} onChange={setCapabilities} description="使用逗号分隔，例如 chat, tools, vision。" />
+    <TextField label={t("editor.fields.modelName")} value={name} onChange={setName} />
+    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <TextField label={t("editor.fields.modelCapabilities")} value={capabilities} onChange={setCapabilities} description={t("editor.fields.capabilityHint")} />
   </FormShell>
 }
 
 function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannel>) {
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [baseURL, setBaseURL] = useState(item?.base_url ?? "https://")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
   const [apiKey, setAPIKey] = useState("")
-  return <FormShell pending={pending} label="保存渠道" formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, "渠道名称"), base_url: required(baseURL, "服务地址"), api_key: required(apiKey, "API Key"), protocol, enabled }
-    await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), `${formTitle}保存`); onSaved()
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.channel") })} formTitle={formTitle} onSubmit={async () => {
+    const command = { name: required(name, t("editor.fields.channelName"), t), base_url: required(baseURL, t("editor.fields.serviceUrl"), t), api_key: required(apiKey, t("editor.fields.apiKey"), t), protocol, enabled }
+    await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label="渠道名称" value={name} onChange={setName} />
-    <TextField label="服务地址" value={baseURL} onChange={setBaseURL} />
-    <TextField label="API Key" type="password" value={apiKey} onChange={setAPIKey} description={item ? "保存为渠道新版本的独立凭据；历史计划继续使用旧版本。" : "仅写入系统密钥环，不会保存到数据库或前端快照。"} />
-    <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <CheckField label="启用渠道" checked={enabled} onChange={setEnabled} />
-    <FieldDescription>服务地址和 API Key 会作为同一个渠道配置一起保存。</FieldDescription>
+    <TextField label={t("editor.fields.channelName")} value={name} onChange={setName} />
+    <TextField label={t("editor.fields.serviceUrl")} value={baseURL} onChange={setBaseURL} />
+    <TextField label={t("editor.fields.apiKey")} type="password" value={apiKey} onChange={setAPIKey} description={t(item ? "editor.fields.apiKeyEditHint" : "editor.fields.apiKeyNewHint")} />
+    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <CheckField label={t("editor.fields.enabledChannel")} checked={enabled} onChange={setEnabled} />
+    <FieldDescription>{t("editor.fields.channelSaveHint")}</FieldDescription>
   </FormShell>
 }
 
 function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannelModel>) {
+  const { t } = useTranslation("catalog")
   const [channelID, setChannelID] = useState(item?.channel_id ?? catalog.channels[0]?.id ?? "")
   const compatibleModels = catalog.models.filter((model) => model.protocol === catalog.channels.find((channel) => channel.id === channelID)?.protocol)
   const [modelID, setModelID] = useState(item?.model_id ?? compatibleModels[0]?.id ?? "")
   const [upstreamName, setUpstreamName] = useState(item?.upstream_model_name ?? "")
-  return <FormShell pending={pending} label="保存映射" formTitle={formTitle} onSubmit={async () => {
-    if (!channelID || !modelID) throw new FormValidationError("请选择渠道和模型")
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.mapping") })} formTitle={formTitle} onSubmit={async () => {
+    if (!channelID || !modelID) throw new FormValidationError(t("editor.fields.selectChannelModel"))
     await mutate(() => item
-      ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, upstream_model_name: required(upstreamName, "上游模型名称") })
-      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, "上游模型名称") }), `${formTitle}保存`)
+      ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel"), t) })
+      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel"), t) }), t("editor.savedOperation", { title: formTitle }))
     onSaved()
   }}>
-    <SelectField label="渠道" value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={(value) => { setChannelID(value); const protocol = catalog.channels.find((channel) => channel.id === value)?.protocol; setModelID(catalog.models.find((model) => model.protocol === protocol)?.id ?? "") }} />
-    <SelectField label="逻辑模型" value={modelID} disabled={!!item} options={compatibleModels.map((value) => [value.id, value.name])} onChange={setModelID} />
-    <TextField label="上游模型名称" value={upstreamName} onChange={setUpstreamName} />
+    <SelectField label={t("common.channel")} value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={(value) => { setChannelID(value); const protocol = catalog.channels.find((channel) => channel.id === value)?.protocol; setModelID(catalog.models.find((model) => model.protocol === protocol)?.id ?? "") }} />
+    <SelectField label={t("editor.fields.logicalModel")} value={modelID} disabled={!!item} options={compatibleModels.map((value) => [value.id, value.name])} onChange={setModelID} />
+    <TextField label={t("editor.fields.upstreamModel")} value={upstreamName} onChange={setUpstreamName} />
   </FormShell>
 }
 
 function CaseForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
+  const { t } = useTranslation("catalog")
   const [value, setValue] = useState(() => ({
     key: item?.key ?? "", name: item?.name ?? "", dimension: item?.dimension ?? "compatibility",
     protocol: item?.protocol ?? "openai-chat" as CatalogProtocol, enabled: item?.enabled ?? true,
@@ -173,45 +178,47 @@ function CaseForm({ item, actions, mutate, pending, formTitle, onSaved }: FormPr
     assertions: json(item?.assertions ?? [{ kind: "custom", config: { name: "custom-check" } }]),
   }))
   const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue((current) => ({ ...current, [key]: next }))
-  return <FormShell pending={pending} label="保存用例" formTitle={formTitle} onSubmit={async () => {
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.case") })} formTitle={formTitle} onSubmit={async () => {
     const command = {
-      key: required(value.key, "用例键"), name: required(value.name, "用例名称"), dimension: required(value.dimension, "维度"),
+      key: required(value.key, t("editor.fields.caseKey"), t), name: required(value.name, t("editor.fields.caseName"), t), dimension: required(value.dimension, t("editor.fields.dimension"), t),
       protocol: value.protocol, enabled: value.enabled, default: value.default, severity: value.severity as "normal" | "critical",
       execution_mode: value.execution_mode as "automatic" | "manual", definition_schema_version: value.definition_schema_version,
-      method: value.method as CatalogTestCase["method"], path: required(value.path, "请求路径"),
-      headers: recordJSON<string>(value.headers, "请求头"), body: nullableRecordJSON(value.body, "请求体"),
-      allowed_http_statuses: numberList(value.statuses), stream_completion: value.stream_completion,
-      assertions: arrayJSON<{ kind: string; config: Record<string, unknown> }>(value.assertions, "断言"),
+      method: value.method as CatalogTestCase["method"], path: required(value.path, t("editor.fields.requestPath"), t),
+      headers: recordJSON<string>(value.headers, t("editor.fields.headers"), t), body: nullableRecordJSON(value.body, t("editor.fields.body"), t),
+      allowed_http_statuses: numberList(value.statuses, t), stream_completion: value.stream_completion,
+      assertions: arrayJSON<{ kind: string; config: Record<string, unknown> }>(value.assertions, t("editor.fields.assertions"), t),
     }
-    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), `${formTitle}保存`); onSaved()
+    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <div className="grid grid-cols-2 gap-3"><TextField label="用例键" value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label="用例名称" value={value.name} onChange={(v) => set("name", v)} /></div>
-    <div className="grid grid-cols-2 gap-3"><TextField label="维度" value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label="协议" value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
-    <div className="grid grid-cols-2 gap-3"><SelectField label="请求方法" value={value.method} options={["GET","POST","PUT","PATCH","DELETE"].map(v => [v,v])} onChange={(v) => set("method", v as CatalogTestCase["method"])} /><TextField label="请求路径" value={value.path} onChange={(v) => set("path", v)} /></div>
-    <div className="grid grid-cols-2 gap-3"><SelectField label="严重度" value={value.severity} options={[["normal","普通"],["critical","关键"]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label="执行方式" value={value.execution_mode} options={[["automatic","自动"],["manual","人工"]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
-    <div className="grid grid-cols-2 gap-3"><CheckField label="启用" checked={value.enabled} onChange={(v) => set("enabled", v)} /><CheckField label="默认启用" checked={value.default} onChange={(v) => set("default", v)} /></div>
-    <TextAreaField label="请求头 JSON" value={value.headers} onChange={(v) => set("headers", v)} />
-    <TextAreaField label="请求体 JSON" value={value.body} onChange={(v) => set("body", v)} description="无请求体请填写 null。" />
-    <TextField label="允许的 HTTP 状态码" value={value.statuses} onChange={(v) => set("statuses", v)} />
-    <SelectField label="流结束约束" value={value.stream_completion} options={[["not_applicable","不适用"],["required","必须完成"],["forbidden","禁止流式"]]} onChange={(v) => set("stream_completion", v as CatalogStreamCompletion)} />
-    <TextAreaField label="断言 JSON" value={value.assertions} onChange={(v) => set("assertions", v)} />
+    <div className="grid grid-cols-2 gap-3"><TextField label={t("editor.fields.caseKey")} value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label={t("editor.fields.caseName")} value={value.name} onChange={(v) => set("name", v)} /></div>
+    <div className="grid grid-cols-2 gap-3"><TextField label={t("editor.fields.dimension")} value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label={t("common.protocol")} value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
+    <div className="grid grid-cols-2 gap-3"><SelectField label={t("editor.fields.requestMethod")} value={value.method} options={["GET","POST","PUT","PATCH","DELETE"].map(v => [v,v])} onChange={(v) => set("method", v as CatalogTestCase["method"])} /><TextField label={t("editor.fields.requestPath")} value={value.path} onChange={(v) => set("path", v)} /></div>
+    <div className="grid grid-cols-2 gap-3"><SelectField label={t("editor.fields.severity")} value={value.severity} options={[["normal",t("editor.options.normal")],["critical",t("editor.options.critical")]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label={t("editor.fields.executionMode")} value={value.execution_mode} options={[["automatic",t("editor.options.automatic")],["manual",t("editor.options.manual")]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
+    <div className="grid grid-cols-2 gap-3"><CheckField label={t("editor.fields.enabled")} checked={value.enabled} onChange={(v) => set("enabled", v)} /><CheckField label={t("editor.fields.enabledDefault")} checked={value.default} onChange={(v) => set("default", v)} /></div>
+    <TextAreaField label={t("editor.fields.headersJson")} value={value.headers} onChange={(v) => set("headers", v)} />
+    <TextAreaField label={t("editor.fields.bodyJson")} value={value.body} onChange={(v) => set("body", v)} description={t("editor.fields.bodyHint")} />
+    <TextField label={t("editor.fields.statuses")} value={value.statuses} onChange={(v) => set("statuses", v)} />
+    <SelectField label={t("editor.fields.streamCompletion")} value={value.stream_completion} options={[["not_applicable",t("editor.options.notApplicable")],["required",t("editor.options.required")],["forbidden",t("editor.options.forbidden")]]} onChange={(v) => set("stream_completion", v as CatalogStreamCompletion)} />
+    <TextAreaField label={t("editor.fields.assertionsJson")} value={value.assertions} onChange={(v) => set("assertions", v)} />
   </FormShell>
 }
 
 function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogSuite>) {
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [selected, setSelected] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
-  return <FormShell pending={pending} label="保存套件" formTitle={formTitle} onSubmit={async () => {
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.suite") })} formTitle={formTitle} onSubmit={async () => {
     const pinned = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
-    const command = { name: required(name, "套件名称"), cases: catalog.test_cases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision })) }
-    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), `${formTitle}保存`); onSaved()
+    const command = { name: required(name, t("editor.fields.suiteName"), t), cases: catalog.test_cases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision })) }
+    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label="套件名称" value={name} onChange={setName} />
-    <ChoiceList label="包含用例" values={catalog.test_cases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
+    <TextField label={t("editor.fields.suiteName")} value={name} onChange={setName} />
+    <ChoiceList label={t("editor.fields.includedCases")} values={catalog.test_cases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
   </FormShell>
 }
 
 function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [models, setModels] = useState(() => new Set(item?.model_ids ?? []))
   const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? []))
@@ -220,33 +227,34 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const [loadMode, setLoadMode] = useState<CatalogLoadMode>(item?.load_mode ?? "single")
   const [numbers, setNumbers] = useState({ concurrency: item?.concurrency ?? 1, request_count: item?.request_count ?? 1, rate_per_second: item?.rate_per_second ?? 0, duration_ms: item?.duration_ms ?? 0, request_timeout_ms: item?.request_timeout_ms ?? 60000 })
   const [sla, setSla] = useState(json(item?.sla_thresholds ?? { e2e_p95_ms: 3000 }))
-  return <FormShell pending={pending} label="保存计划" formTitle={formTitle} onSubmit={async () => {
-		if ((models.size === 0) !== (channels.size === 0)) throw new FormValidationError("模型和渠道限制必须同时留空或同时配置")
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
+		if ((models.size === 0) !== (channels.size === 0)) throw new FormValidationError(t("editor.fields.targetPair"))
     const suite = catalog.suites.find((value) => value.id === suiteID)
     const pinnedCases = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
     const command = {
-      name: required(name, "计划名称"), model_ids: [...models], channel_ids: [...channels],
+      name: required(name, t("editor.fields.planName"), t), model_ids: [...models], channel_ids: [...channels],
       suite_id: suite?.id, suite_revision: suite?.id === item?.suite_id ? item?.suite_revision : suite?.revision,
       cases: catalog.test_cases.filter((testCase) => cases.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinnedCases.get(testCase.id) ?? testCase.revision })),
-      load_mode: loadMode, ...numbers, sla_thresholds: recordJSON<number>(sla, "SLA 阈值"),
+      load_mode: loadMode, ...numbers, sla_thresholds: recordJSON<number>(sla, t("editor.fields.sla"), t),
     }
-    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), `${formTitle}保存`); onSaved()
+    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label="计划名称" value={name} onChange={setName} />
-    <ChoiceList label="模型" values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} onChange={setModels} />
-    <ChoiceList label="渠道" values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} onChange={setChannels} />
-		<FieldDescription>模型和渠道均留空时，在每次运行开始前选择一个协议兼容、已映射的目标；一旦启动，具体修订会固定到运行快照。</FieldDescription>
-    <ChoiceList label="直接用例" values={catalog.test_cases.map(v => ({ id: v.id, label: `${v.name} · r${v.revision}` }))} selected={cases} onChange={setCases} />
-    <SelectField label="套件" value={suiteID} options={[["none","不使用套件"], ...catalog.suites.map(v => [v.id, `${v.name} · r${v.revision}`] as [string,string])]} onChange={setSuiteID} />
-    <SelectField label="负载模式" value={loadMode} options={[["single","单次"],["fixed_concurrency","固定并发"],["open_loop","开放环"]]} onChange={(v) => setLoadMode(v as CatalogLoadMode)} />
+    <TextField label={t("editor.fields.planName")} value={name} onChange={setName} />
+    <ChoiceList label={t("editor.fields.models")} values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} onChange={setModels} />
+    <ChoiceList label={t("editor.fields.channels")} values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} onChange={setChannels} />
+		<FieldDescription>{t("editor.fields.targetHint")}</FieldDescription>
+    <ChoiceList label={t("editor.fields.directCases")} values={catalog.test_cases.map(v => ({ id: v.id, label: `${v.name} · r${v.revision}` }))} selected={cases} onChange={setCases} />
+    <SelectField label={t("editor.fields.suite")} value={suiteID} options={[["none",t("editor.fields.noSuite")], ...catalog.suites.map(v => [v.id, `${v.name} · r${v.revision}`] as [string,string])]} onChange={setSuiteID} />
+    <SelectField label={t("editor.fields.loadMode")} value={loadMode} options={[["single",t("plans.loadSingle")],["fixed_concurrency",t("plans.loadFixed")],["open_loop",t("plans.loadOpen")]]} onChange={(v) => setLoadMode(v as CatalogLoadMode)} />
     <div className="grid grid-cols-2 gap-3">
-      {Object.entries({ concurrency: "并发数", request_count: "请求数", rate_per_second: "每秒请求数", duration_ms: "持续时间毫秒", request_timeout_ms: "单请求超时毫秒" }).map(([key, label]) => <NumberField key={key} label={label} value={numbers[key as keyof typeof numbers]} onChange={(v) => setNumbers(current => ({ ...current, [key]: v }))} />)}
+      {Object.entries({ concurrency: t("editor.fields.concurrency"), request_count: t("editor.fields.requestCount"), rate_per_second: t("editor.fields.rate"), duration_ms: t("editor.fields.durationMs"), request_timeout_ms: t("editor.fields.timeoutMs") }).map(([key, label]) => <NumberField key={key} label={label} value={numbers[key as keyof typeof numbers]} onChange={(v) => setNumbers(current => ({ ...current, [key]: v }))} />)}
     </div>
-    <TextAreaField label="SLA 阈值 JSON" value={sla} onChange={setSla} />
+    <TextAreaField label={t("editor.fields.slaJson")} value={sla} onChange={setSla} />
   </FormShell>
 }
 
 function FormShell({ children, label, pending, formTitle, onSubmit }: { children: ReactNode; label: string; pending: boolean; formTitle: string; onSubmit: () => Promise<void> }) {
+  const { t } = useTranslation("catalog")
   const [error, setError] = useState<{ message: string; validation: boolean } | null>(null)
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -256,8 +264,8 @@ function FormShell({ children, label, pending, formTitle, onSubmit }: { children
       setError({
         validation,
         message: validation
-          ? `${formTitle}表单校验失败：${reason.message}。请修改后重新保存。`
-          : publicDesktopOperationErrorMessage(reason, `${formTitle}保存`, "保存未完成，请检查本地日志"),
+          ? t("editor.validationError", { title: formTitle, message: reason.message })
+          : publicDesktopOperationErrorMessage(reason, t("editor.savedOperation", { title: formTitle }), t("editor.saveError")),
       })
     })
   }
@@ -266,7 +274,7 @@ function FormShell({ children, label, pending, formTitle, onSubmit }: { children
       {children}
       {error ? <FieldError className={error.validation ? undefined : "rounded-md border border-destructive/25 bg-destructive-soft p-3"}>{error.message}</FieldError> : null}
     </FieldGroup>
-    <SheetFooter className="px-0"><Button type="submit" className="min-w-24" disabled={pending}>{pending ? <><Spinner data-icon="inline-start" />正在保存…</> : label}</Button></SheetFooter>
+    <SheetFooter className="px-0"><Button type="submit" className="min-w-24" disabled={pending}>{pending ? <><Spinner data-icon="inline-start" />{t("editor.saving")}</> : label}</Button></SheetFooter>
   </form>
 }
 
@@ -286,16 +294,17 @@ function CheckField({ label, checked, onChange }: { label: string; checked: bool
   return <Field><Checkbox id={`check-${label}`} checked={checked} onCheckedChange={(value) => onChange(value === true)} /><FieldLabel htmlFor={`check-${label}`}>{label}</FieldLabel></Field>
 }
 function ChoiceList({ label, values, selected, onChange }: { label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void }) {
-  return <fieldset className="space-y-2 rounded-lg border p-3"><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>暂无可选项</FieldDescription>}</fieldset>
+  const { t } = useTranslation("catalog")
+  return <fieldset className="space-y-2 rounded-lg border p-3"><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>{t("editor.noChoices")}</FieldDescription>}</fieldset>
 }
 
 const protocolOptions = [["openai-chat","OpenAI Chat"],["kimi-k3","Kimi K3"],["seedance","Seedance"]] as const
 class FormValidationError extends Error {}
-function required(value: string, label: string) { const result = value.trim(); if (!result) throw new FormValidationError(`${label}不能为空`); return result }
+function required(value: string, label: string, t: TFunction<"catalog">) { const result = value.trim(); if (!result) throw new FormValidationError(t("editor.required", { label })); return result }
 function list(value: string) { return [...new Set(value.split(",").map(v => v.trim()).filter(Boolean))] }
-function numberList(value: string) { const result = list(value).map(Number); if (!result.length || result.some(v => !Number.isInteger(v))) throw new FormValidationError("HTTP 状态码格式无效"); return result }
+function numberList(value: string, t: TFunction<"catalog">) { const result = list(value).map(Number); if (!result.length || result.some(v => !Number.isInteger(v))) throw new FormValidationError(t("editor.invalidStatuses")); return result }
 function json(value: unknown) { return JSON.stringify(value, null, 2) }
-function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(`${label}不是有效 JSON`) } }
-function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(`${label}必须是 JSON 对象`); return parsed as Record<string,T> }
-function nullableRecordJSON(value: string, label: string): Record<string,unknown> | null { const parsed = parseJSON(value, label); if (parsed === null) return null; if (Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(`${label}必须是 JSON 对象或 null`); return parsed as Record<string,unknown> }
-function arrayJSON<T>(value: string, label: string): T[] { const parsed = parseJSON(value, label); if (!Array.isArray(parsed)) throw new FormValidationError(`${label}必须是 JSON 数组`); return parsed as T[] }
+function parseJSON(value: string, label: string, t: TFunction<"catalog">): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(t("editor.invalidJson", { label })) } }
+function recordJSON<T>(value: string, label: string, t: TFunction<"catalog">): Record<string,T> { const parsed = parseJSON(value, label, t); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(t("editor.jsonObject", { label })); return parsed as Record<string,T> }
+function nullableRecordJSON(value: string, label: string, t: TFunction<"catalog">): Record<string,unknown> | null { const parsed = parseJSON(value, label, t); if (parsed === null) return null; if (Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(t("editor.nullableJsonObject", { label })); return parsed as Record<string,unknown> }
+function arrayJSON<T>(value: string, label: string, t: TFunction<"catalog">): T[] { const parsed = parseJSON(value, label, t); if (!Array.isArray(parsed)) throw new FormValidationError(t("editor.jsonArray", { label })); return parsed as T[] }

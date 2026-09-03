@@ -45,6 +45,8 @@ import {
   type QuickTestResult,
   type SaveQuickTestConnectionCommand,
 } from "@/features/quick-test/data"
+import enCommon from "@/i18n/resources/en-US/common.json"
+import zhCommon from "@/i18n/resources/zh-CN/common.json"
 
 export type DesktopErrorCode =
   | "desktop_not_started"
@@ -65,31 +67,20 @@ export type DesktopErrorCode =
   | "catalog_revision_conflict"
   | "catalog_not_found"
 
-const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
-  desktop_not_started: "桌面应用尚未启动",
-  desktop_startup_failed: "桌面应用初始化失败",
-  desktop_stopped: "桌面应用已停止",
-  workspace_unavailable: "本地工作区暂不可用",
-  catalog_unavailable: "测试目录暂不可用",
-  reports_unavailable: "测试报告暂不可用",
-  run_commands_unavailable: "运行命令暂不可用",
-  comparison_unavailable: "渠道对比暂不可用",
-  diagnostics_unavailable: "诊断日志暂不可用",
-  quick_test_unavailable: "快速测试暂不可用",
-  quick_test_save_partial: "连接已部分保存，请前往模型与渠道检查并完成配置",
-  invalid_identifier: "操作对象无效",
-  operation_cancelled: "操作已取消",
-  operation_failed: "桌面操作失败，请检查本地日志",
-  catalog_invalid: "目录内容无效，请检查表单字段",
-  catalog_revision_conflict: "对象版本已变化或仍被引用，请刷新并解除引用后重试",
-  catalog_not_found: "对象已删除或不存在，请刷新目录",
+type PublicErrorMessages = Record<DesktopErrorCode, string> & {
+  operationFailed: string
 }
+
+const PUBLIC_ERROR_MESSAGES = {
+  "zh-CN": zhCommon.error as PublicErrorMessages,
+  "en-US": enCommon.error as PublicErrorMessages,
+} as const
 
 export class DesktopClientError extends Error {
   readonly code: DesktopErrorCode
 
   constructor(code: DesktopErrorCode) {
-    super(PUBLIC_ERROR_MESSAGES[code])
+    super(currentPublicErrorMessages()[code])
     this.name = "DesktopClientError"
     this.code = code
   }
@@ -99,7 +90,9 @@ export function publicDesktopErrorMessage(
   error: unknown,
   fallback: string,
 ): string {
-  return error instanceof DesktopClientError ? error.message : fallback
+  return error instanceof DesktopClientError
+    ? currentPublicErrorMessages()[error.code]
+    : fallback
 }
 
 export function publicDesktopOperationErrorMessage(
@@ -107,7 +100,15 @@ export function publicDesktopOperationErrorMessage(
   operation: string,
   fallback: string,
 ): string {
-  return `${operation}失败：${publicDesktopErrorMessage(error, fallback)}`
+  return currentPublicErrorMessages().operationFailed
+    .replace("{{operation}}", operation)
+    .replace("{{message}}", publicDesktopErrorMessage(error, fallback))
+}
+
+function currentPublicErrorMessages(): PublicErrorMessages {
+  return typeof document !== "undefined" && document.documentElement.lang === "en-US"
+    ? PUBLIC_ERROR_MESSAGES["en-US"]
+    : PUBLIC_ERROR_MESSAGES["zh-CN"]
 }
 
 export interface DesktopClient extends CatalogActions {
@@ -117,8 +118,8 @@ export interface DesktopClient extends CatalogActions {
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
   getReportDetail(reportId: string): Promise<ReportDetail>
-  exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
-  saveReportExport(filename: string, mediaType: string, dataBase64: string): Promise<boolean>
+  exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
+  saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
@@ -148,8 +149,8 @@ type WailsDesktopBinding = {
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
-  ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
-  SaveReportExport(filename: string, mediaType: string, dataBase64: string): Promise<unknown>
+  ExportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<unknown>
+  SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
@@ -456,8 +457,8 @@ function createLazyFixtureClient(): DesktopClient {
     getCatalog: async () => (await client).getCatalog(),
     getReports: async () => (await client).getReports(),
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
-		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
-		saveReportExport: async (filename, mediaType, dataBase64) => (await client).saveReportExport(filename, mediaType, dataBase64),
+		exportReport: async (reportId, format, watermark, locale) => (await client).exportReport(reportId, format, watermark, locale),
+		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
@@ -503,10 +504,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.GetReports(), parseReportSnapshot),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
-		exportReport: async (reportId, format, watermark) =>
-			callBinding(() => binding.ExportReport(reportId, format, watermark), parseExportedReport),
-		saveReportExport: async (filename, mediaType, dataBase64) =>
-			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64), parseBoolean),
+		exportReport: async (reportId, format, watermark, locale) =>
+			callBinding(() => binding.ExportReport(reportId, format, watermark, locale), parseExportedReport),
+		saveReportExport: async (filename, mediaType, dataBase64, locale) =>
+			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64, locale), parseBoolean),
 		copyReportPNG: async (dataBase64) =>
 			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
 		getComparisons: async () =>
@@ -902,7 +903,7 @@ function isProtocolError(error: unknown): boolean {
 }
 
 function isDesktopErrorCode(value: string): value is DesktopErrorCode {
-  return Object.hasOwn(PUBLIC_ERROR_MESSAGES, value)
+  return Object.hasOwn(PUBLIC_ERROR_MESSAGES["zh-CN"], value)
 }
 
 function updateRun(

@@ -4,6 +4,7 @@ import CircleXIcon from "lucide-react/dist/esm/icons/circle-x.mjs"
 import PanelLeftIcon from "lucide-react/dist/esm/icons/panel-left.mjs"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
+import { useTranslation } from "react-i18next"
 
 import {
   publicDesktopOperationErrorMessage,
@@ -48,7 +49,6 @@ import type { ComparisonSnapshot } from "@/features/comparisons/data"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
 import {
-  STATUS_LABELS,
   formatTargetDuration,
   presentWorkspace,
   type RunRecord,
@@ -71,13 +71,6 @@ const STATUS_CLASS: Record<RunStatus, string> = {
   cancelled: "border-border bg-muted text-muted-foreground",
 }
 
-const TASK_LABEL: Record<ActiveTaskState, string> = {
-  queued: "排队中",
-  starting: "启动中",
-  running: "发送中",
-  draining: "排空中",
-}
-
 function PlanNavigation({
   activePlanId,
   plans,
@@ -89,12 +82,14 @@ function PlanNavigation({
   totalRuns: number
   onSelect: (planId: string) => void
 }) {
+  const { t } = useTranslation("runs")
+
   return (
-    <nav aria-label="测试计划" className="flex min-h-0 flex-1 flex-col">
+    <nav aria-label={t("plans.aria")} className="flex min-h-0 flex-1 flex-col">
       <div className="px-3 pb-2 pt-4">
-        <div className="text-xs font-semibold">测试计划</div>
+        <div className="text-xs font-semibold">{t("plans.title")}</div>
         <div className="mt-1 text-[11px] text-muted-foreground">
-          按已固定的计划版本查看运行
+          {t("plans.description")}
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
@@ -105,9 +100,9 @@ function PlanNavigation({
           className="plan-nav-item"
         >
           <span>
-            <span className="block text-xs font-medium">全部运行</span>
+            <span className="block text-xs font-medium">{t("plans.all")}</span>
             <span className="mt-0.5 block text-[11px] text-muted-foreground">
-              跨计划追踪与对比
+              {t("plans.allDescription")}
             </span>
           </span>
           <span className="text-[11px] tabular-nums text-muted-foreground">
@@ -141,6 +136,8 @@ function PlanNavigation({
 }
 
 function StatusBadge({ status }: { status: RunStatus }) {
+  const { t } = useTranslation("common")
+
   return (
     <Badge
       variant="outline"
@@ -150,7 +147,7 @@ function StatusBadge({ status }: { status: RunStatus }) {
       )}
     >
       <span className="status-dot" aria-hidden="true" />
-      {STATUS_LABELS[status]}
+      {t(`status.${status}`)}
     </Badge>
   )
 }
@@ -166,17 +163,19 @@ function RunTable({
   onSelect: (run: RunRecord) => void
   filtered: boolean
 }) {
+  const { t } = useTranslation("runs")
+
   if (runs.length === 0) {
     return (
       <ScrollArea className="min-h-0 flex-1 border-t">
         <Empty>
           <EmptyTitle>
-            {filtered ? "这个计划还没有运行记录" : "还没有运行记录"}
+            {t(filtered ? "table.emptyFiltered" : "table.empty")}
           </EmptyTitle>
           <EmptyDescription>
             {filtered
-              ? "选择其他计划，或从当前计划新建一次运行。"
-              : "从右上角新建运行，结果会出现在这里。"}
+              ? t("table.emptyFilteredDescription")
+              : t("table.emptyDescription")}
           </EmptyDescription>
         </Empty>
       </ScrollArea>
@@ -185,26 +184,26 @@ function RunTable({
 
   return (
     <ScrollArea className="min-h-0 flex-1 border-t">
-      <Table aria-label="运行记录" className="min-w-[780px]">
+      <Table aria-label={t("table.aria")} className="min-w-[780px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-8 w-[96px] pl-4 text-[11px] text-muted-foreground">
-              状态
+              {t("table.status")}
             </TableHead>
             <TableHead className="h-8 min-w-[190px] text-[11px] text-muted-foreground">
-              运行 / 计划
+              {t("table.runPlan")}
             </TableHead>
             <TableHead className="h-8 min-w-[180px] text-[11px] text-muted-foreground">
-              目标
+              {t("table.target")}
             </TableHead>
             <TableHead className="h-8 min-w-[150px] text-[11px] text-muted-foreground">
-              进度
+              {t("table.progress")}
             </TableHead>
             <TableHead className="h-8 text-[11px] text-muted-foreground">
               P95
             </TableHead>
             <TableHead className="h-8 text-[11px] text-muted-foreground">
-              开始时间
+              {t("table.started")}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -230,7 +229,7 @@ function RunTable({
                   <Button
                     variant="link"
                     size="sm"
-                    aria-label={`查看 ${run.title}`}
+                    aria-label={t("table.view", { title: run.title })}
                     onClick={() => onSelect(run)}
                     className="h-auto max-w-[220px] justify-start p-0 text-xs font-medium no-underline hover:no-underline"
                   >
@@ -253,24 +252,24 @@ function RunTable({
                         <Progress
                           value={percent}
                           className="w-20"
-                          aria-label={`${run.title} 进度 ${percent}%`}
+                          aria-label={t("table.progressAria", { title: run.title, percent })}
                         />
                         <span className="text-[11px] tabular-nums text-muted-foreground">
                           {run.completed}/{run.total}
                         </span>
                       </div>
                       <div className="mt-1 text-[10px] text-muted-foreground">
-                        通过 {run.passed}
+                        {t("table.passed", { count: run.passed })}
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                         {isActiveTaskState(run.coreStatus) ? <Spinner /> : null}
-                        <span className="tabular-nums">{run.completed} 个已完成</span>
+                        <span className="tabular-nums">{t("table.completedCount", { count: run.completed })}</span>
                       </div>
                       <div className="mt-1 text-[10px] text-muted-foreground">
-                        目标 {formatTargetDuration(run.targetDurationMS)}
+                        {t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}
                       </div>
                     </>
                   )}
@@ -311,13 +310,14 @@ function DefinitionRow({
 }
 
 function RunInspectorContent({ run }: { run: RunRecord }) {
+  const { t } = useTranslation("runs")
   const durationOnly = run.total === 0 && run.targetDurationMS > 0
   const targetDetail = durationOnly
-    ? `目标时长 ${formatTargetDuration(run.targetDurationMS)}`
-    : `${run.total} 个请求已固定`
+    ? t("inspector.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })
+    : t("inspector.fixedRequests", { count: run.total })
   const progressDetail = durationOnly
-    ? `${run.completed} 个请求已完成`
-    : `${run.completed}/${run.total} 已完成`
+    ? t("inspector.completedRequests", { count: run.completed })
+    : t("inspector.completedFraction", { completed: run.completed, total: run.total })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -335,13 +335,13 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
       <Tabs defaultValue="summary" className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="mx-4 h-8">
           <TabsTrigger value="summary" className="text-xs">
-            摘要
+            {t("inspector.summary")}
           </TabsTrigger>
           <TabsTrigger value="failures" className="text-xs">
-            失败
+            {t("inspector.failures")}
           </TabsTrigger>
           <TabsTrigger value="artifacts" className="text-xs">
-            产物
+            {t("inspector.artifacts")}
           </TabsTrigger>
         </TabsList>
         <Separator />
@@ -351,28 +351,28 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
         >
           <dl data-slot="inspector-description-list" className="space-y-1">
             <DefinitionRow
-              label="计划版本"
+              label={t("inspector.planRevision")}
               value={`${run.planRevision} · ${targetDetail}`}
             />
             <DefinitionRow
-              label="模型"
+              label={t("inspector.model")}
               value={`${run.model} · ${run.modelRevision}`}
             />
             <DefinitionRow
-              label="渠道"
+              label={t("inspector.channel")}
               value={`${run.channel} · ${run.channelRevision}`}
             />
             <DefinitionRow
-              label="负载"
+              label={t("inspector.load")}
               value={`${run.loadProfile} · ${progressDetail}`}
             />
             <DefinitionRow
-              label="耗时"
+              label={t("inspector.duration")}
               value={`${run.duration} · P95 ${run.p95}`}
             />
             <DefinitionRow
-              label="产物"
-              value={`${run.artifactCount} 个已保存 · 报告、证据与原始事件`}
+              label={t("inspector.artifacts")}
+              value={t("inspector.savedArtifacts", { count: run.artifactCount })}
             />
           </dl>
         </TabsContent>
@@ -380,15 +380,15 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
           value="failures"
           className="min-h-0 overflow-y-auto px-4 py-3 text-xs"
         >
-          {run.failureSummary ?? "当前运行没有已记录的失败。"}
+          {run.failureSummary ?? t("inspector.noFailures")}
         </TabsContent>
         <TabsContent
           value="artifacts"
           className="min-h-0 overflow-y-auto px-4 py-3 text-xs"
         >
           {run.artifactCount > 0
-            ? `${run.artifactCount} 个产物等待 Go Core 提供本地路径。`
-            : "尚未生成产物。"}
+            ? t("inspector.artifactsPending", { count: run.artifactCount })
+            : t("inspector.noArtifacts")}
         </TabsContent>
       </Tabs>
     </div>
@@ -406,6 +406,7 @@ export function NewRunSheet({
   commandPending: boolean
   onStartRun: (command: StartRunTargetCommand) => Promise<void>
 }) {
+  const { t } = useTranslation("runs")
   const [open, setOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState(plans[0]?.id ?? "")
 	const [selectedModel, setSelectedModel] = useState("")
@@ -432,8 +433,8 @@ export function NewRunSheet({
       setStartError(
         publicDesktopOperationErrorMessage(
           error,
-          `创建运行（计划：${plans.find((plan) => plan.id === effectiveSelectedPlan)?.name ?? effectiveSelectedPlan}）`,
-          "无法创建运行，请检查本地日志",
+          t("newRun.operation", { plan: plans.find((plan) => plan.id === effectiveSelectedPlan)?.name ?? effectiveSelectedPlan }),
+          t("newRun.error"),
         ),
       )
     }
@@ -444,20 +445,20 @@ export function NewRunSheet({
       <SheetTrigger asChild>
         <Button size="sm" className="ml-1">
           <PlusIcon data-icon="inline-start" />
-          新建运行
+          {t("newRun.title")}
         </Button>
       </SheetTrigger>
       <SheetContent className="sm:max-w-[420px]">
         <SheetHeader>
-          <SheetTitle>新建运行</SheetTitle>
+          <SheetTitle>{t("newRun.title")}</SheetTitle>
           <SheetDescription>
-            从固定版本的测试计划创建一次可追溯运行。
+            {t("newRun.description")}
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
-          <div className="text-xs font-semibold">选择测试计划</div>
+          <div className="text-xs font-semibold">{t("newRun.selectPlan")}</div>
           <RadioGroup
-            aria-label="测试计划"
+            aria-label={t("plans.aria")}
             value={effectiveSelectedPlan}
             onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel("") }}
           >
@@ -481,7 +482,7 @@ export function NewRunSheet({
                     </FieldDescription>
                   </FieldContent>
                   <span className="text-[11px] tabular-nums text-muted-foreground">
-                    {plan.caseCount} 用例
+                    {t("newRun.caseCount", { count: plan.caseCount })}
                   </span>
                 </Field>
               )
@@ -489,22 +490,22 @@ export function NewRunSheet({
           </RadioGroup>
 					<div className="grid gap-3 border-t pt-3">
 						<RuntimeTargetSelect
-							label="逻辑模型"
+                            label={t("newRun.model")}
 							value={effectiveSelectedModel}
 							options={models.map((model) => [model.id, model.name])}
 							onChange={(value) => { setSelectedModel(value); setSelectedChannel("") }}
 						/>
 						<RuntimeTargetSelect
-							label="执行渠道"
+                            label={t("newRun.channel")}
 							value={effectiveSelectedChannel}
 							options={channels.map((channel) => [channel.id, channel.name])}
 							onChange={setSelectedChannel}
 						/>
-						{models.length === 0 ? <p className="text-xs text-destructive">当前计划没有协议兼容且已映射的可用模型。</p> : null}
-						{models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">当前模型没有已启用、已配置密钥且已映射的可用渠道。</p> : null}
+                        {models.length === 0 ? <p className="text-xs text-destructive">{t("newRun.noModels")}</p> : null}
+                        {models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">{t("newRun.noChannels")}</p> : null}
 					</div>
           <div className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
-            凭据将由 Go Core 从系统密钥环按需租用，不会进入前端状态或本地存储。
+            {t("newRun.credentialNote")}
           </div>
           {startError ? (
             <p role="alert" className="text-xs text-destructive">
@@ -514,13 +515,13 @@ export function NewRunSheet({
         </div>
         <SheetFooter className="flex-row justify-end border-t">
           <SheetClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{t("newRun.cancel")}</Button>
           </SheetClose>
           <Button
             disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending}
             onClick={() => void start()}
           >
-            {commandPending ? "正在创建…" : "开始运行"}
+            {t(commandPending ? "newRun.creating" : "newRun.start")}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -529,11 +530,12 @@ export function NewRunSheet({
 }
 
 function RuntimeTargetSelect({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
+	const { t } = useTranslation("runs")
 	return (
 		<Field className="block">
 			<FieldLabel>{label}</FieldLabel>
 			<Select value={value} onValueChange={onChange} disabled={options.length === 0}>
-				<SelectTrigger aria-label={label} className="w-full"><SelectValue placeholder={`无可用${label}`} /></SelectTrigger>
+				<SelectTrigger aria-label={label} className="w-full"><SelectValue placeholder={t("newRun.noOptions", { label })} /></SelectTrigger>
 				<SelectContent><SelectGroup>{options.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectGroup></SelectContent>
 			</Select>
 		</Field>
@@ -551,6 +553,8 @@ function MobilePlanSheet({
   totalRuns: number
   onSelect: (planId: string) => void
 }) {
+  const { t } = useTranslation("runs")
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -559,13 +563,13 @@ function MobilePlanSheet({
           size="sm"
           className="min-[1180px]:hidden"
         >
-          <PanelLeftIcon data-icon="inline-start" /> 计划
+          <PanelLeftIcon data-icon="inline-start" /> {t("mobile.plans")}
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[300px] p-0">
         <SheetHeader className="sr-only">
-          <SheetTitle>测试计划</SheetTitle>
-          <SheetDescription>筛选运行记录</SheetDescription>
+          <SheetTitle>{t("plans.title")}</SheetTitle>
+          <SheetDescription>{t("plans.filter")}</SheetDescription>
         </SheetHeader>
         <PlanNavigation
           activePlanId={activePlanId}
@@ -579,6 +583,8 @@ function MobilePlanSheet({
 }
 
 function MobileInspectorSheet({ run }: { run: RunRecord }) {
+  const { t } = useTranslation("runs")
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -587,14 +593,14 @@ function MobileInspectorSheet({ run }: { run: RunRecord }) {
           size="sm"
           className="min-[1180px]:hidden"
         >
-          <PanelRightIcon data-icon="inline-start" /> 详情
+          <PanelRightIcon data-icon="inline-start" /> {t("mobile.details")}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-[340px] p-0">
         <SheetHeader className="sr-only">
-          <SheetTitle>运行详情</SheetTitle>
+          <SheetTitle>{t("inspector.details")}</SheetTitle>
           <SheetDescription>
-            {run.title} 的版本、负载与产物信息
+            {t("inspector.description", { title: run.title })}
           </SheetDescription>
         </SheetHeader>
         <RunInspectorContent run={run} />
@@ -616,6 +622,7 @@ function ActiveTaskBar({
   onStop: () => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation("runs")
   const progress =
     run.total === 0 ? 0 : Math.round((run.completed / run.total) * 100)
 
@@ -632,24 +639,24 @@ function ActiveTaskBar({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-xs">
           <span data-task-state className="font-semibold">
-            {TASK_LABEL[state]}
+            {t(`task.${state}`)}
           </span>
           <span className="truncate text-muted-foreground">{run.title}</span>
           <span className="hidden tabular-nums text-muted-foreground sm:inline">
             {run.total > 0
               ? `${run.completed}/${run.total}`
-              : `${run.completed} 已完成 · 目标 ${formatTargetDuration(run.targetDurationMS)}`}
+              : t("task.completedTarget", { count: run.completed, duration: formatTargetDuration(run.targetDurationMS) })}
           </span>
         </div>
         {run.total > 0 ? (
           <Progress
             value={progress}
             className="mt-2 max-w-sm"
-            aria-label={`活动运行进度 ${progress}%`}
+            aria-label={t("task.progressAria", { percent: progress })}
           />
         ) : (
           <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <Spinner /> 定时运行，进度取决于经过时间
+            <Spinner /> {t("task.timedHint")}
           </div>
         )}
       </div>
@@ -659,7 +666,7 @@ function ActiveTaskBar({
         disabled={state !== "running" || commandPending}
         onClick={onStop}
       >
-        <CircleStopIcon data-icon="inline-start" /> 停止发送
+        <CircleStopIcon data-icon="inline-start" /> {t("task.stop")}
       </Button>
       <Button
         variant="destructive"
@@ -667,19 +674,21 @@ function ActiveTaskBar({
         disabled={commandPending}
         onClick={onCancel}
       >
-        <CircleXIcon data-icon="inline-start" /> 取消运行
+        <CircleXIcon data-icon="inline-start" /> {t("task.cancel")}
       </Button>
     </div>
   )
 }
 
 function IdleTaskBar() {
+  const { t } = useTranslation("runs")
+
   return (
     <div className="flex min-h-14 shrink-0 items-center border-t bg-background px-4 py-2">
       <span className="size-2 rounded-full bg-muted-foreground" aria-hidden="true" />
-      <span className="ml-3 text-xs font-semibold">无活动运行</span>
+      <span className="ml-3 text-xs font-semibold">{t("task.idle")}</span>
       <span className="ml-2 text-[11px] text-muted-foreground">
-        新建运行后，任务生命周期会固定显示在这里
+        {t("task.idleHint")}
       </span>
     </div>
   )
@@ -700,10 +709,17 @@ export function RunWorkspace({
   onStopSending: (runId: string) => Promise<void>
   onCancelRun: (runId: string) => Promise<void>
 }) {
+  const { t, i18n } = useTranslation("runs")
   const [activePlanId, setActivePlanId] = useState("all")
   const [selectedRunId, setSelectedRunId] = useState("")
 
-  const presentation = useMemo(() => presentWorkspace(snapshot), [snapshot])
+  const presentation = useMemo(
+    () => presentWorkspace(snapshot, {
+      locale: i18n.resolvedLanguage ?? i18n.language,
+      t: (key, values) => t(key, values),
+    }),
+    [i18n.language, i18n.resolvedLanguage, snapshot, t],
+  )
   const { plans, runs } = presentation
   const visibleRuns = useMemo(
     () =>
@@ -748,10 +764,10 @@ export function RunWorkspace({
                 id="workspace-heading"
                 className="text-lg font-semibold tracking-tight"
               >
-                运行工作区
+                {t("title")}
               </h1>
               <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                比较固定版本、追踪执行状态并检查可复现证据
+                {t("description")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -763,7 +779,7 @@ export function RunWorkspace({
               />
               {selectedRun ? <MobileInspectorSheet run={selectedRun} /> : null}
               <span className="hidden text-[11px] text-muted-foreground sm:inline">
-                {visibleRuns.length} 次运行
+                {t("count", { count: visibleRuns.length })}
               </span>
             </div>
           </div>
@@ -800,13 +816,13 @@ export function RunWorkspace({
         </section>
 
         <aside
-          aria-label="运行详情"
+          aria-label={t("inspector.details")}
           className="hidden w-[320px] shrink-0 border-l bg-background min-[1180px]:flex"
         >
           {selectedRun ? (
             <RunInspectorContent run={selectedRun} />
           ) : (
-            <div className="p-4 text-xs text-muted-foreground">尚未选择运行</div>
+            <div className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</div>
           )}
         </aside>
     </main>

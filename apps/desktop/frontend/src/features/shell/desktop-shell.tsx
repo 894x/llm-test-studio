@@ -3,6 +3,8 @@ import ActivityIcon from "lucide-react/dist/esm/icons/activity.mjs"
 import ContrastIcon from "lucide-react/dist/esm/icons/contrast.mjs"
 import MoonIcon from "lucide-react/dist/esm/icons/moon.mjs"
 import SunIcon from "lucide-react/dist/esm/icons/sun.mjs"
+import Settings2Icon from "lucide-react/dist/esm/icons/settings-2.mjs"
+import { useTranslation } from "react-i18next"
 
 import { useTheme, type ThemePreference } from "@/app/theme-context"
 import { Button } from "@/components/ui/button"
@@ -12,8 +14,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useLanguage } from "@/i18n/language-state"
+import type { LanguagePreference } from "@/i18n/locale"
 import {
   Tooltip,
   TooltipContent,
@@ -22,18 +27,11 @@ import {
 import { cn } from "@/lib/utils"
 import { DESKTOP_PAGES, type DesktopPage } from "./navigation"
 
-function ThemeMenu() {
+function InterfaceSettingsMenu() {
   const { theme, setTheme } = useTheme()
-  const icon =
-    theme === "dark" ? (
-      <MoonIcon />
-    ) : theme === "light" ? (
-      <SunIcon />
-    ) : (
-      <ContrastIcon />
-    )
-  const label =
-    theme === "dark" ? "深色" : theme === "light" ? "浅色" : "跟随系统"
+  const { preference, setPreference } = useLanguage()
+  const { t } = useTranslation("shell")
+  const label = t(`theme.${theme}`)
 
   return (
     <DropdownMenu>
@@ -43,29 +41,47 @@ function ThemeMenu() {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`主题：${label}`}
+              aria-label={t("settings.trigger", { theme: label })}
               className="rounded-full"
             >
-              {icon}
+              <Settings2Icon />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">主题：{label}</TooltipContent>
+        <TooltipContent side="bottom">{t("settings.tooltip")}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuLabel>外观</DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel>{t("settings.language")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={preference}
+          onValueChange={(value) =>
+            setPreference(value as LanguagePreference)
+          }
+        >
+          <DropdownMenuRadioItem value="system">
+            {t("language.system")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="zh-CN">
+            {t("language.zh-CN")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="en-US">
+            {t("language.en-US")}
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("settings.appearance")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={theme}
           onValueChange={(value) => setTheme(value as ThemePreference)}
         >
           <DropdownMenuRadioItem value="system">
-            <ContrastIcon /> 跟随系统
+            <ContrastIcon /> {t("theme.system")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="light">
-            <SunIcon /> 浅色
+            <SunIcon /> {t("theme.light")}
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">
-            <MoonIcon /> 深色
+            <MoonIcon /> {t("theme.dark")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
@@ -84,6 +100,7 @@ export function DesktopShell({
   actions?: ReactNode
   children: ReactNode
 }) {
+  const { t } = useTranslation("shell")
   return (
     <div className="flex h-svh min-h-[640px] flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center border-b bg-background px-3">
@@ -91,18 +108,18 @@ export function DesktopShell({
           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <ActivityIcon className="size-4" />
           </div>
-          <div className="mr-3 hidden min-w-0 sm:block">
+          <div className="mr-3 hidden min-w-0 min-[1100px]:block">
             <div className="truncate text-sm font-semibold leading-none">
               llm-studio
             </div>
             <div className="mt-1 text-[10px] leading-none text-muted-foreground">
-              本地测试工作台
+              {t("product.subtitle")}
             </div>
           </div>
         </div>
 
         <nav
-          aria-label="主导航"
+          aria-label={t("navigationAria")}
           className="flex min-w-0 flex-1 items-center overflow-x-auto"
         >
           {DESKTOP_PAGES.map((page) => {
@@ -119,14 +136,14 @@ export function DesktopShell({
                   active && "bg-accent font-medium text-accent-foreground",
                 )}
               >
-                {page.label}
+                {t(page.labelKey)}
               </Button>
             )
           })}
         </nav>
 
         <div className="ml-2 flex shrink-0 items-center gap-1">
-          <ThemeMenu />
+          <InterfaceSettingsMenu />
           {actions}
         </div>
       </header>

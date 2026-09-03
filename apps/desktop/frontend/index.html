@@ -12,6 +12,30 @@
     <script>
       (() => {
         const root = document.documentElement
+        let languagePreference = "system"
+        try {
+          const savedLanguage = JSON.parse(
+            localStorage.getItem("llm-studio:language-preference:v1") || "null",
+          )
+          if (
+            savedLanguage?.version === 1 &&
+            ["system", "zh-CN", "en-US"].includes(savedLanguage.language)
+          ) {
+            languagePreference = savedLanguage.language
+          }
+        } catch {
+          // A corrupt optional preference must not block the desktop shell.
+        }
+        const systemLocale = navigator.languages
+          .map((language) => language.trim().toLowerCase())
+          .find((language) => language === "en" || language.startsWith("en-") || language === "zh" || language.startsWith("zh-"))
+        const locale = languagePreference === "en-US" ||
+          (languagePreference === "system" && systemLocale?.startsWith("en"))
+          ? "en-US"
+          : "zh-CN"
+        root.setAttribute("lang", locale)
+        root.setAttribute("dir", "ltr")
+
         let preference = "system"
         try {
           const saved = JSON.parse(

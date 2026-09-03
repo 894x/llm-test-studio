@@ -92,6 +92,18 @@ export const EMPTY_REPORTS: ReportSnapshot = {
   reports: [],
 }
 
+export function reportVerdictTranslationKey(report: ReportSummary): "system.quickPassed" | "system.quickFailed" | "system.passed" | "system.failed" | "system.cancelled" | null {
+  if (report.source === "quick_performance") return report.passed ? "system.quickPassed" : "system.quickFailed"
+  if (report.verdict === "pass") return "system.passed"
+  if (report.verdict === "fail") return "system.failed"
+  if (report.verdict === "cancelled") return "system.cancelled"
+  return null
+}
+
+export function reportPlanTranslationKey(report: ReportSummary): "system.quickPerformance" | null {
+  return report.source === "quick_performance" ? "system.quickPerformance" : null
+}
+
 export function parseReportSnapshot(value: unknown): ReportSnapshot {
   if (!isRecord(value) || value.schema_version !== 1) {
     throw new Error("桌面报告数据协议版本不受支持")

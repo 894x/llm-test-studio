@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
+import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,12 +41,6 @@ const PROTOCOL_LABELS = {
   seedance: "Seedance",
 } as const
 
-const LOAD_LABELS = {
-  single: "单次",
-  fixed_concurrency: "固定并发",
-  open_loop: "开放环",
-} as const
-
 interface CatalogWorkspaceProps {
   catalog: CatalogSnapshot
   actions: CatalogActions
@@ -55,6 +50,7 @@ interface CatalogWorkspaceProps {
 }
 
 export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
+  const { t } = useTranslation("catalog")
   const [tab, setTab] = useState<"models" | "channels" | "mappings">("models")
   const [selectedModelID, setSelectedModelID] = useState("")
   const [selectedChannelID, setSelectedChannelID] = useState("")
@@ -78,14 +74,14 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
       selectedModel ? (
         <ModelInspector model={selectedModel} catalog={catalog} channelNames={channelNames} />
       ) : (
-        <EmptyInspector label="尚未选择模型" />
+        <EmptyInspector label={t("models.noneSelectedModel")} />
       )
     ) : tab === "channels" && selectedChannel ? (
       <ChannelInspector channel={selectedChannel} catalog={catalog} modelNames={modelNames} />
     ) : tab === "mappings" && selectedMapping ? (
       <MappingInspector mapping={selectedMapping} channelNames={channelNames} modelNames={modelNames} />
     ) : (
-      <EmptyInspector label="尚未选择对象" />
+      <EmptyInspector label={t("models.noneSelected")} />
     )
 
   const selected = tab === "models" ? selectedModel : tab === "channels" ? selectedChannel : selectedMapping
@@ -94,11 +90,11 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
 
   return (
     <PageFrame
-      title="模型与渠道"
-      description="管理逻辑模型、调用渠道与上游模型映射"
-      count={`${catalog.models.length} 个模型 · ${catalog.channels.length} 个渠道`}
+      title={t("models.title")}
+      description={t("models.description")}
+      count={t("models.count", { models: catalog.models.length, channels: catalog.channels.length })}
       inspector={inspector}
-      inspectorLabel={tab === "models" ? "模型详情" : tab === "channels" ? "渠道详情" : "映射详情"}
+      inspectorLabel={t(tab === "models" ? "models.modelDetails" : tab === "channels" ? "models.channelDetails" : "models.mappingDetails")}
       actions={<><CatalogEditor kind={kind} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`${kind}-${selected.id}`} kind={kind} item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind={kind} item={selected} action={deleteAction} mutate={mutate} pending={mutationPending} /></>}
     >
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
@@ -109,13 +105,13 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
       >
         <TabsList variant="line" className="mx-4 h-8">
           <TabsTrigger value="models" className="text-xs">
-            模型 {catalog.models.length}
+            {t("models.tabs.models", { count: catalog.models.length })}
           </TabsTrigger>
           <TabsTrigger value="channels" className="text-xs">
-            渠道 {catalog.channels.length}
+            {t("models.tabs.channels", { count: catalog.channels.length })}
           </TabsTrigger>
           <TabsTrigger value="mappings" className="text-xs">
-            映射 {catalog.channel_models.length}
+            {t("models.tabs.mappings", { count: catalog.channel_models.length })}
           </TabsTrigger>
         </TabsList>
         <Separator />
@@ -140,12 +136,14 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
 }
 
 function MappingTable({ mappings, selectedID, onSelect, channelNames, modelNames }: { mappings: CatalogChannelModel[]; selectedID: string; onSelect: (id: string) => void; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
-  if (!mappings.length) return <CatalogEmpty title="还没有模型映射" description="将逻辑模型绑定到一个兼容协议的渠道。" />
-  return <ScrollArea className="min-h-0 flex-1"><Table aria-label="模型映射目录"><TableHeader><TableRow><TableHead className="pl-4">渠道</TableHead><TableHead>逻辑模型</TableHead><TableHead>上游名称</TableHead><TableHead>版本</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-4 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  const { t } = useTranslation("catalog")
+  if (!mappings.length) return <CatalogEmpty title={t("models.mappingEmpty")} description={t("models.mappingEmptyDescription")} />
+  return <ScrollArea className="min-h-0 flex-1"><Table aria-label={t("models.mappingAria")}><TableHeader><TableRow><TableHead className="pl-4">{t("common.channel")}</TableHead><TableHead>{t("models.logicalModel")}</TableHead><TableHead>{t("models.upstreamName")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-4 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function MappingInspector({ mapping, channelNames, modelNames }: { mapping: CatalogChannelModel; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
-  return <><InspectorHeader title={mapping.upstream_model_name} subtitle={mapping.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label="版本" value={`r${mapping.revision}`} /><InspectorRow label="渠道" value={channelNames.get(mapping.channel_id) ?? "未知渠道"} /><InspectorRow label="逻辑模型" value={modelNames.get(mapping.model_id) ?? "未知模型"} /></dl></>
+  const { t } = useTranslation("catalog")
+  return <><InspectorHeader title={mapping.upstream_model_name} subtitle={mapping.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label={t("common.version")} value={`r${mapping.revision}`} /><InspectorRow label={t("common.channel")} value={channelNames.get(mapping.channel_id) ?? t("common.unknownChannel")} /><InspectorRow label={t("models.logicalModel")} value={modelNames.get(mapping.model_id) ?? t("common.unknownModel")} /></dl></>
 }
 
 function ModelTable({
@@ -157,18 +155,19 @@ function ModelTable({
   selectedID: string
   onSelect: (id: string) => void
 }) {
+  const { t } = useTranslation("catalog")
   if (models.length === 0) {
-    return <CatalogEmpty title="还没有模型" description="通过 GUI 或 CLI 添加第一个逻辑模型。" />
+    return <CatalogEmpty title={t("models.modelEmpty")} description={t("models.modelEmptyDescription")} />
   }
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <Table aria-label="模型目录" className="min-w-[620px]">
+      <Table aria-label={t("models.modelAria")} className="min-w-[620px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="h-8 pl-4 text-[11px]">模型</TableHead>
-            <TableHead className="h-8 text-[11px]">协议</TableHead>
-            <TableHead className="h-8 text-[11px]">能力</TableHead>
-            <TableHead className="h-8 text-right text-[11px]">版本</TableHead>
+            <TableHead className="h-8 pl-4 text-[11px]">{t("common.model")}</TableHead>
+            <TableHead className="h-8 text-[11px]">{t("common.protocol")}</TableHead>
+            <TableHead className="h-8 text-[11px]">{t("common.capabilities")}</TableHead>
+            <TableHead className="h-8 text-right text-[11px]">{t("common.version")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -185,7 +184,7 @@ function ModelTable({
                   variant="link"
                   size="sm"
                   className="h-auto justify-start p-0 text-xs no-underline hover:no-underline"
-                  aria-label={`查看模型 ${model.name}`}
+                  aria-label={t("models.viewModel", { name: model.name })}
                 >
                   {model.name}
                 </Button>
@@ -195,7 +194,7 @@ function ModelTable({
               </TableCell>
               <TableCell className="py-1 text-xs">{PROTOCOL_LABELS[model.protocol]}</TableCell>
               <TableCell className="py-1 text-[11px] text-muted-foreground">
-                {model.capabilities.join(" · ") || "未标注"}
+                {model.capabilities.join(" · ") || t("common.notSpecified")}
               </TableCell>
               <TableCell className="py-1 text-right text-xs tabular-nums">r{model.revision}</TableCell>
             </TableRow>
@@ -215,19 +214,20 @@ function ChannelTable({
   selectedID: string
   onSelect: (id: string) => void
 }) {
+  const { t } = useTranslation("catalog")
   if (channels.length === 0) {
-    return <CatalogEmpty title="还没有渠道" description="添加渠道后再安全配置系统凭据。" />
+    return <CatalogEmpty title={t("models.channelEmpty")} description={t("models.channelEmptyDescription")} />
   }
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <Table aria-label="渠道目录" className="min-w-[700px]">
+      <Table aria-label={t("models.channelAria")} className="min-w-[700px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="h-8 pl-4 text-[11px]">渠道</TableHead>
-            <TableHead className="h-8 text-[11px]">状态</TableHead>
-            <TableHead className="h-8 text-[11px]">服务地址</TableHead>
-            <TableHead className="h-8 text-[11px]">映射</TableHead>
-            <TableHead className="h-8 text-[11px]">凭据</TableHead>
+            <TableHead className="h-8 pl-4 text-[11px]">{t("common.channel")}</TableHead>
+            <TableHead className="h-8 text-[11px]">{t("common.status")}</TableHead>
+            <TableHead className="h-8 text-[11px]">{t("models.serviceUrl")}</TableHead>
+            <TableHead className="h-8 text-[11px]">{t("common.mapping")}</TableHead>
+            <TableHead className="h-8 text-[11px]">{t("models.credential")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -244,7 +244,7 @@ function ChannelTable({
                   variant="link"
                   size="sm"
                   className="h-auto justify-start p-0 text-xs no-underline hover:no-underline"
-                  aria-label={`查看渠道 ${channel.name}`}
+                  aria-label={t("models.viewChannel", { name: channel.name })}
                 >
                   {channel.name}
                 </Button>
@@ -260,7 +260,7 @@ function ChannelTable({
               </TableCell>
               <TableCell className="py-1 text-xs tabular-nums">{channel.model_count}</TableCell>
               <TableCell className="py-1 text-xs">
-                {channel.credential_configured ? "已配置" : "未配置"}
+                {t(channel.credential_configured ? "models.configured" : "models.notConfigured")}
               </TableCell>
             </TableRow>
           ))}
@@ -279,22 +279,23 @@ function ModelInspector({
   catalog: CatalogSnapshot
   channelNames: Map<string, string>
 }) {
+  const { t } = useTranslation("catalog")
   const mappings = catalog.channel_models.filter((mapping) => mapping.model_id === model.id)
   return (
     <>
       <InspectorHeader title={model.name} subtitle={model.id} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label="版本" value={`r${model.revision}`} />
-        <InspectorRow label="协议" value={PROTOCOL_LABELS[model.protocol]} />
-        <InspectorRow label="能力" value={model.capabilities.join(" · ") || "未标注"} />
-        <InspectorRow label="渠道映射" value={`${mappings.length} 条`} />
+        <InspectorRow label={t("common.version")} value={`r${model.revision}`} />
+        <InspectorRow label={t("common.protocol")} value={PROTOCOL_LABELS[model.protocol]} />
+        <InspectorRow label={t("common.capabilities")} value={model.capabilities.join(" · ") || t("common.notSpecified")} />
+        <InspectorRow label={t("models.channelMappings")} value={t("common.countMappings", { count: mappings.length })} />
         <InspectorRow
-          label="上游名称"
+          label={t("models.upstreamName")}
           value={
             mappings
-              .map((mapping) => `${channelNames.get(mapping.channel_id) ?? "未知渠道"} · ${mapping.upstream_model_name}`)
-              .join("；") || "尚未绑定渠道"
+              .map((mapping) => `${channelNames.get(mapping.channel_id) ?? t("common.unknownChannel")} · ${mapping.upstream_model_name}`)
+              .join("; ") || t("models.unboundChannels")
           }
         />
       </dl>
@@ -311,19 +312,20 @@ function ChannelInspector({
   catalog: CatalogSnapshot
   modelNames: Map<string, string>
 }) {
+  const { t } = useTranslation("catalog")
   const mappings = catalog.channel_models.filter((mapping) => mapping.channel_id === channel.id)
   return (
     <>
       <InspectorHeader title={channel.name} subtitle={channel.id} trailing={<StateBadge enabled={channel.enabled} />} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label="版本与协议" value={`r${channel.revision} · ${PROTOCOL_LABELS[channel.protocol]}`} />
+        <InspectorRow label={t("models.versionProtocol")} value={`r${channel.revision} · ${PROTOCOL_LABELS[channel.protocol]}`} />
         <InspectorRow label="Base URL" value={channel.base_url} />
-        <InspectorRow label="凭据" value={channel.credential_configured ? "已在系统密钥环配置" : "尚未配置"} />
-        <InspectorRow label="模型映射" value={`${mappings.length} 条`} />
+        <InspectorRow label={t("models.credential")} value={t(channel.credential_configured ? "models.credentialConfigured" : "models.credentialNotConfigured")} />
+        <InspectorRow label={t("models.modelMappings")} value={t("common.countMappings", { count: mappings.length })} />
         <InspectorRow
-          label="逻辑模型"
-          value={mappings.map((mapping) => modelNames.get(mapping.model_id) ?? "未知模型").join(" · ") || "尚未绑定模型"}
+          label={t("models.logicalModel")}
+          value={mappings.map((mapping) => modelNames.get(mapping.model_id) ?? t("common.unknownModel")).join(" · ") || t("models.unboundModels")}
         />
       </dl>
     </>
@@ -331,6 +333,7 @@ function ChannelInspector({
 }
 
 export function CasesWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
+  const { t } = useTranslation("catalog")
   const [tab, setTab] = useState<"cases" | "suites">("cases")
   const [selectedID, setSelectedID] = useState("")
   const [selectedSuiteID, setSelectedSuiteID] = useState("")
@@ -340,27 +343,27 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
   const kind = tab === "cases" ? "case" : "suite"
   return (
     <PageFrame
-      title="测试用例"
-      description="维护请求、期望与断言"
-      count={`${catalog.test_cases.length} 个用例 · ${catalog.suites.length} 个套件`}
-      inspector={tab === "cases" ? (selected ? <CaseInspector testCase={selected} catalog={catalog} /> : <EmptyInspector label="尚未选择用例" />) : (selectedSuite ? <SuiteInspector suite={selectedSuite} catalog={catalog} /> : <EmptyInspector label="尚未选择套件" />)}
-      inspectorLabel={tab === "cases" ? "用例详情" : "套件详情"}
+      title={t("cases.title")}
+      description={t("cases.description")}
+      count={t("cases.count", { cases: catalog.test_cases.length, suites: catalog.suites.length })}
+      inspector={tab === "cases" ? (selected ? <CaseInspector testCase={selected} catalog={catalog} /> : <EmptyInspector label={t("cases.noneSelectedCase")} />) : (selectedSuite ? <SuiteInspector suite={selectedSuite} catalog={catalog} /> : <EmptyInspector label={t("cases.noneSelectedSuite")} />)}
+      inspectorLabel={t(tab === "cases" ? "cases.caseDetails" : "cases.suiteDetails")}
       actions={<><CatalogEditor kind={kind} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selectedEntity ? <CatalogEditor key={`${kind}-${selectedEntity.id}`} kind={kind} item={selectedEntity} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind={kind} item={selectedEntity} action={tab === "cases" ? actions.deleteTestCase : actions.deleteSuite} mutate={mutate} pending={mutationPending} /></>}
     >
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       <Tabs value={tab} onValueChange={(value) => setTab(value as "cases" | "suites")} className="min-h-0 flex-1 gap-0">
-        <TabsList variant="line" className="mx-4 h-8"><TabsTrigger value="cases" className="text-xs">用例 {catalog.test_cases.length}</TabsTrigger><TabsTrigger value="suites" className="text-xs">套件 {catalog.suites.length}</TabsTrigger></TabsList>
+        <TabsList variant="line" className="mx-4 h-8"><TabsTrigger value="cases" className="text-xs">{t("cases.tabs.cases", { count: catalog.test_cases.length })}</TabsTrigger><TabsTrigger value="suites" className="text-xs">{t("cases.tabs.suites", { count: catalog.suites.length })}</TabsTrigger></TabsList>
         <Separator />
       {tab === "cases" && catalog.test_cases.length === 0 ? (
-        <CatalogEmpty title="还没有测试用例" description="添加用例后可组合成可复用套件与计划。" />
+        <CatalogEmpty title={t("cases.empty")} description={t("cases.emptyDescription")} />
       ) : tab === "cases" ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
-          <Table aria-label="测试用例目录" className="min-w-[680px]">
+          <Table aria-label={t("cases.aria")} className="min-w-[680px]">
             <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="h-8 pl-4 text-[11px]">用例</TableHead>
-                <TableHead className="h-8 text-[11px]">请求</TableHead>
-                <TableHead className="h-8 text-[11px]">策略</TableHead>
+                <TableHead className="h-8 pl-4 text-[11px]">{t("common.case")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("cases.request")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("cases.policy")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -373,7 +376,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                   className="dense-table-row h-11"
                 >
                   <TableCell className="py-1 pl-4">
-                    <Button variant="link" size="sm" className="h-auto p-0 text-xs no-underline hover:no-underline" aria-label={`查看用例 ${testCase.name}`}>
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs no-underline hover:no-underline" aria-label={t("cases.view", { name: testCase.name })}>
                       {testCase.name}
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
@@ -394,36 +397,38 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
 }
 
 function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; selectedID: string; onSelect: (id:string) => void }) {
-  if (!suites.length) return <CatalogEmpty title="还没有测试套件" description="将多个固定版本用例组合成可复用套件。" />
-  return <ScrollArea className="min-h-0 flex-1"><Table aria-label="测试套件目录"><TableHeader><TableRow><TableHead className="pl-4">套件</TableHead><TableHead>用例数</TableHead><TableHead>版本</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-4 text-xs">{suite.name}</TableCell><TableCell className="text-xs">{suite.case_count}</TableCell><TableCell className="text-xs">r{suite.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  const { t } = useTranslation("catalog")
+  if (!suites.length) return <CatalogEmpty title={t("cases.suiteEmpty")} description={t("cases.suiteEmptyDescription")} />
+  return <ScrollArea className="min-h-0 flex-1"><Table aria-label={t("cases.suiteAria")}><TableHeader><TableRow><TableHead className="pl-4">{t("common.suite")}</TableHead><TableHead>{t("cases.caseCount")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-4 text-xs">{suite.name}</TableCell><TableCell className="text-xs">{suite.case_count}</TableCell><TableCell className="text-xs">r{suite.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {
+  const { t } = useTranslation("catalog")
   const names = new Map(catalog.test_cases.map(testCase => [testCase.id, testCase.name]))
   return <div className="flex h-full min-h-0 flex-col">
     <InspectorHeader title={suite.name} subtitle={suite.id} />
     <Separator />
     <ScrollArea className="min-h-0 flex-1">
       <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label="版本" value={`r${suite.revision}`} />
+        <InspectorRow label={t("common.version")} value={`r${suite.revision}`} />
         <div data-slot="inspector-definition-row" className="py-2">
           <dt className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span>固定用例</span>
-            <span className="tabular-nums">{suite.cases.length} 项</span>
+            <span>{t("cases.pinnedCases")}</span>
+            <span className="tabular-nums">{t("common.countItems", { count: suite.cases.length })}</span>
           </dt>
           <dd className="mt-1 min-w-0">
             {suite.cases.length ? (
-              <ul aria-label="固定用例">
+              <ul aria-label={t("cases.pinnedCasesAria")}>
                 {suite.cases.map(ref => (
                   <li key={ref.case_id} className="flex min-w-0 items-start gap-2 py-1.5">
                     <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
                     <span className="min-w-0 break-words text-xs font-medium leading-4">
-                      {names.get(ref.case_id) ?? "未知用例"}
+                      {names.get(ref.case_id) ?? t("common.unknownCase")}
                     </span>
                   </li>
                 ))}
               </ul>
-            ) : <span className="text-xs text-muted-foreground">暂无固定用例</span>}
+            ) : <span className="text-xs text-muted-foreground">{t("cases.noPinnedCases")}</span>}
           </dd>
         </div>
       </dl>
@@ -432,26 +437,28 @@ function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: Cata
 }
 
 function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catalog: CatalogSnapshot }) {
+  const { t } = useTranslation("catalog")
   return (
     <>
       <InspectorHeader title={testCase.name} subtitle={testCase.id} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label="来源键" value={testCase.key} />
-        <InspectorRow label="协议" value={PROTOCOL_LABELS[testCase.protocol]} />
-        <InspectorRow label="维度" value={testCase.dimension} />
-        <InspectorRow label="执行策略" value={casePolicyLabel(testCase)} />
-        <InspectorRow label="严重度" value={testCase.severity === "critical" ? "关键" : "普通"} />
-        <InspectorRow label="请求" value={`${testCase.method} ${testCase.path}`} />
-        <InspectorRow label="断言" value={testCase.assertion_kinds.join(" · ")} />
-        <InspectorRow label="套件目录" value={`${catalog.suites.length} 个可复用套件`} />
+        <InspectorRow label={t("cases.sourceKey")} value={testCase.key} />
+        <InspectorRow label={t("common.protocol")} value={PROTOCOL_LABELS[testCase.protocol]} />
+        <InspectorRow label={t("cases.dimension")} value={testCase.dimension} />
+        <InspectorRow label={t("cases.executionPolicy")} value={t(casePolicyKey(testCase))} />
+        <InspectorRow label={t("cases.severity")} value={t(testCase.severity === "critical" ? "cases.critical" : "cases.normal")} />
+        <InspectorRow label={t("cases.request")} value={`${testCase.method} ${testCase.path}`} />
+        <InspectorRow label={t("cases.assertions")} value={testCase.assertion_kinds.join(" · ")} />
+        <InspectorRow label={t("cases.suiteCatalog")} value={t("cases.reusableSuites", { count: catalog.suites.length })} />
       </dl>
     </>
   )
 }
 
 function CasePolicyBadge({ testCase }: { testCase: CatalogTestCase }) {
-  const label = casePolicyLabel(testCase)
+  const { t } = useTranslation("catalog")
+  const label = t(casePolicyKey(testCase))
   return (
     <Badge
       variant="outline"
@@ -468,11 +475,11 @@ function CasePolicyBadge({ testCase }: { testCase: CatalogTestCase }) {
   )
 }
 
-function casePolicyLabel(testCase: CatalogTestCase): string {
-  if (!testCase.enabled) return "已停用"
-  if (testCase.execution_mode === "manual") return "人工判定"
-  if (testCase.default) return "默认启用"
-  return "自动"
+function casePolicyKey(testCase: CatalogTestCase): string {
+  if (!testCase.enabled) return "cases.policyDisabled"
+  if (testCase.execution_mode === "manual") return "cases.policyManual"
+  if (testCase.default) return "cases.policyDefault"
+  return "cases.policyAutomatic"
 }
 
 export function PlansWorkspace({
@@ -492,35 +499,36 @@ export function PlansWorkspace({
   commandPending: boolean
   onStartPlan: (planID: string) => Promise<void>
 }) {
+  const { t } = useTranslation("catalog")
   const [selectedID, setSelectedID] = useState("")
   const selected = catalog.plans.find((item) => item.id === selectedID) ?? catalog.plans[0]
   return (
     <PageFrame
-      title="测试计划"
-      description="组合模型、渠道、用例与负载配置"
-      count={`${catalog.plans.length} 个计划`}
+      title={t("plans.title")}
+      description={t("plans.description")}
+      count={t("plans.count", { count: catalog.plans.length })}
       inspector={
         selected ? (
           <PlanInspector plan={selected} commandPending={commandPending} onStartPlan={onStartPlan} />
         ) : (
-          <EmptyInspector label="尚未选择计划" />
+          <EmptyInspector label={t("plans.noneSelected")} />
         )
       }
-      inspectorLabel="计划详情"
+      inspectorLabel={t("plans.details")}
       actions={<><CatalogEditor kind="plan" catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`plan-${selected.id}`} kind="plan" item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind="plan" item={selected} action={actions.deletePlan} mutate={mutate} pending={mutationPending} /></>}
     >
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       {catalog.plans.length === 0 ? (
-        <CatalogEmpty title="还没有测试计划" description="先准备模型、渠道和用例，再创建可复用计划。" />
+        <CatalogEmpty title={t("plans.empty")} description={t("plans.emptyDescription")} />
       ) : (
         <ScrollArea className="min-h-0 flex-1 border-t">
-          <Table aria-label="测试计划目录" className="min-w-[720px]">
+          <Table aria-label={t("plans.aria")} className="min-w-[720px]">
             <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="h-8 pl-4 text-[11px]">计划</TableHead>
-                <TableHead className="h-8 text-[11px]">对象</TableHead>
-                <TableHead className="h-8 text-[11px]">负载</TableHead>
-                <TableHead className="h-8 text-[11px]">目标</TableHead>
+                <TableHead className="h-8 pl-4 text-[11px]">{t("common.plan")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("plans.objects")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("common.load")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("common.target")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -533,16 +541,16 @@ export function PlansWorkspace({
                   className="dense-table-row h-11"
                 >
                   <TableCell className="py-1 pl-4">
-                    <Button variant="link" size="sm" className="h-auto p-0 text-xs no-underline hover:no-underline" aria-label={`查看计划 ${plan.name}`}>
+                    <Button variant="link" size="sm" className="h-auto p-0 text-xs no-underline hover:no-underline" aria-label={t("plans.view", { name: plan.name })}>
                       {plan.name}
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision}</div>
                   </TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
-                    {plan.model_count} 模型 · {plan.channel_count} 渠道 · {plan.case_count} 用例
+                    {t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, cases: plan.case_count })}
                   </TableCell>
-                  <TableCell className="py-1 text-xs">{LOAD_LABELS[plan.load_mode]}</TableCell>
-                  <TableCell className="py-1 text-xs tabular-nums">{plan.request_count > 0 ? `${plan.request_count} 请求` : `${Math.round(plan.duration_ms / 1000)} 秒`}</TableCell>
+                  <TableCell className="py-1 text-xs">{t(`plans.load${plan.load_mode === "single" ? "Single" : plan.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)}</TableCell>
+                  <TableCell className="py-1 text-xs tabular-nums">{t(plan.request_count > 0 ? "common.requests" : "common.seconds", { count: plan.request_count > 0 ? plan.request_count : Math.round(plan.duration_ms / 1000) })}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -562,20 +570,22 @@ function PlanInspector({
   commandPending: boolean
   onStartPlan: (planID: string) => Promise<void>
 }) {
+  const { t } = useTranslation("catalog")
+  const loadLabel = t(`plans.load${plan.load_mode === "single" ? "Single" : plan.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)
   return (
     <>
       <InspectorHeader title={plan.name} subtitle={plan.id} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label="固定版本" value={`r${plan.revision}`} />
-        <InspectorRow label="对象" value={`${plan.model_count} 模型 · ${plan.channel_count} 渠道 · ${plan.case_count} 用例`} />
-        <InspectorRow label="负载模式" value={`${LOAD_LABELS[plan.load_mode]} · 并发 ${plan.concurrency}`} />
-        <InspectorRow label="发送目标" value={plan.request_count > 0 ? `${plan.request_count} 个请求` : `${Math.round(plan.duration_ms / 1000)} 秒`} />
-        <InspectorRow label="单请求超时" value={`${Math.round(plan.request_timeout_ms / 1000)} 秒`} />
+        <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
+        <InspectorRow label={t("plans.objects")} value={t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, cases: plan.case_count })} />
+        <InspectorRow label={t("plans.loadMode")} value={`${loadLabel} · ${t("plans.concurrency", { count: plan.concurrency })}`} />
+        <InspectorRow label={t("plans.sendTarget")} value={t(plan.request_count > 0 ? "common.requestCount" : "common.seconds", { count: plan.request_count > 0 ? plan.request_count : Math.round(plan.duration_ms / 1000) })} />
+        <InspectorRow label={t("plans.requestTimeout")} value={t("common.seconds", { count: Math.round(plan.request_timeout_ms / 1000) })} />
       </dl>
       <div className="border-t px-4 py-3">
         <Button size="sm" disabled={commandPending} onClick={() => void onStartPlan(plan.id)}>
-          <PlayIcon data-icon="inline-start" /> {commandPending ? "正在创建…" : "运行这个计划"}
+          <PlayIcon data-icon="inline-start" /> {t(commandPending ? "plans.creating" : "plans.run")}
         </Button>
       </div>
     </>
@@ -583,12 +593,13 @@ function PlanInspector({
 }
 
 function StateBadge({ enabled }: { enabled: boolean }) {
+  const { t } = useTranslation("catalog")
   return (
     <Badge
       variant="outline"
       className={enabled ? "border-success/25 bg-success-soft text-success-strong" : "border-border bg-muted text-muted-foreground"}
     >
-      {enabled ? "启用" : "停用"}
+      {t(enabled ? "common.enabled" : "common.disabled")}
     </Badge>
   )
 }

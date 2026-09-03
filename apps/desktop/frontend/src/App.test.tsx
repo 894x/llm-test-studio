@@ -134,6 +134,10 @@ describe("desktop run workspace", () => {
   beforeEach(() => {
     window.localStorage.clear()
     document.documentElement.className = ""
+    Object.defineProperty(window.navigator, "languages", {
+      configurable: true,
+      value: ["zh-CN"],
+    })
     window.history.replaceState(null, "", "#runs")
     delete (window as Window & { runtime?: unknown }).runtime
   })
@@ -796,8 +800,9 @@ describe("desktop run workspace", () => {
     const user = userEvent.setup()
     render(<App client={desktopClient()} />)
 
-    const systemTheme = await screen.findByRole("button", { name: "主题：跟随系统" })
-    expect(systemTheme.querySelector(".lucide-contrast")).not.toBeNull()
+    const systemTheme = await screen.findByRole("button", {
+      name: "界面设置，主题：跟随系统",
+    })
     await user.click(systemTheme)
     await user.click(screen.getByRole("menuitemradio", { name: "深色" }))
 
@@ -810,6 +815,79 @@ describe("desktop run workspace", () => {
       ),
     ).toEqual({ version: 1, theme: "dark" })
     expect(window.localStorage).toHaveLength(1)
+  })
+
+  it("switches the complete shell language and persists the preference", async () => {
+    const user = userEvent.setup()
+    render(<App client={desktopClient()} />)
+
+    const settings = await screen.findByRole("button", {
+      name: "界面设置，主题：跟随系统",
+    })
+    await user.click(settings)
+    await user.click(screen.getByRole("menuitemradio", { name: "English" }))
+
+    expect(
+      await screen.findByRole("navigation", { name: "Main navigation" }),
+    ).toHaveTextContent("Overview")
+    expect(screen.getByRole("heading", { name: "Run workspace" })).toBeInTheDocument()
+    expect(screen.getByRole("table", { name: "Run records" })).toBeInTheDocument()
+    expect(document.documentElement).toHaveAttribute("lang", "en-US")
+    expect(
+      JSON.parse(
+        window.localStorage.getItem("llm-studio:language-preference:v1") ??
+          "null",
+      ),
+    ).toEqual({ version: 1, language: "en-US" })
+    expect(
+      screen.getByRole("button", {
+        name: "Interface settings, theme: System",
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it("switches overview and diagnostics content with the selected language", async () => {
+    const user = userEvent.setup()
+    render(<App client={desktopClient()} />)
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "界面设置，主题：跟随系统",
+      }),
+    )
+    await user.click(screen.getByRole("menuitemradio", { name: "English" }))
+    await user.click(screen.getByRole("button", { name: "Overview" }))
+
+    expect(
+      await screen.findByRole("heading", { name: "Workspace overview" }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Local object summary" })).toHaveTextContent(
+      "6 models",
+    )
+
+    await user.click(screen.getByRole("button", { name: "Diagnostics" }))
+    const dialog = await screen.findByRole("dialog", { name: "Diagnostics" })
+    expect(dialog).toHaveTextContent("Structured logging enabled")
+    expect(dialog).toHaveTextContent("5 retained files")
+    expect(within(dialog).getByRole("button", { name: "Open log folder" })).toBeInTheDocument()
+
+    await user.keyboard("{Escape}")
+    await user.click(screen.getByRole("button", { name: "Models & Channels" }))
+    expect(await screen.findByRole("heading", { name: "Models & Channels" })).toBeInTheDocument()
+    expect(screen.getByRole("table", { name: "Model catalog" })).toBeInTheDocument()
+
+    for (const [navigation, heading, table] of [
+      ["Quick Test", "Quick Test", null],
+      ["Cases", "Test Cases", "Test case catalog"],
+      ["Plans", "Test Plans", "Test plan catalog"],
+      ["Reports", "Test Reports", "Test report catalog"],
+      ["Runs", "Run workspace", "Run records"],
+    ] as const) {
+      await user.click(screen.getByRole("button", { name: navigation }))
+      expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument()
+      if (table) expect(screen.getByRole("table", { name: table })).toBeInTheDocument()
+      if (navigation === "Reports") expect(screen.getByRole("main")).toHaveClass("min-w-0")
+    }
   })
 
   it("keeps the native window chrome aligned with the theme preference", async () => {
@@ -827,7 +905,7 @@ describe("desktop run workspace", () => {
     render(<App client={desktopClient()} />)
 
     const themeTrigger = await screen.findByRole("button", {
-      name: "主题：跟随系统",
+      name: "界面设置，主题：跟随系统",
     })
     expect(runtime.WindowSetSystemDefaultTheme).toHaveBeenCalledTimes(1)
 
@@ -835,7 +913,9 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "深色" }))
     expect(runtime.WindowSetDarkTheme).toHaveBeenCalledTimes(1)
 
-    await user.click(screen.getByRole("button", { name: "主题：深色" }))
+    await user.click(
+      screen.getByRole("button", { name: "界面设置，主题：深色" }),
+    )
     await user.click(screen.getByRole("menuitemradio", { name: "浅色" }))
     expect(runtime.WindowSetSystemDefaultTheme).toHaveBeenCalledTimes(1)
     expect(runtime.WindowSetDarkTheme).toHaveBeenCalledTimes(1)
@@ -969,6 +1049,16 @@ describe("desktop run workspace", () => {
     expect(bootstrap).toBeLessThan(entrypoint)
     expect(indexHtml).toContain("data-theme")
     expect(indexHtml).toContain("colorScheme")
+  })
+
+  it("ships a blocking language bootstrap before the React entrypoint", () => {
+    const bootstrap = indexHtml.indexOf("llm-studio:language-preference:v1")
+    const entrypoint = indexHtml.indexOf('/src/main.tsx')
+
+    expect(bootstrap).toBeGreaterThan(-1)
+    expect(bootstrap).toBeLessThan(entrypoint)
+    expect(indexHtml).toContain("navigator.languages")
+    expect(indexHtml).toContain('root.setAttribute("lang", locale)')
   })
 
   it("uses the exact town semantic tokens and the Contrast system icon", () => {
