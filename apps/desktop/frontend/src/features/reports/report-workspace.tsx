@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
 import { performanceCompletion } from "@/features/quick-test/performance-summary"
+import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
@@ -184,12 +185,15 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
 function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
   return (
     <ScrollArea className="min-h-[260px] flex-[3] border-t">
-      <QuickPerformanceBody detail={detail} />
+      <QuickPerformanceBody detail={detail} includeRequestAnalysis />
     </ScrollArea>
   )
 }
 
-function QuickPerformanceBody({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
+function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
+  detail: Extract<ReportDetail, { source: "quick_performance" }>
+  includeRequestAnalysis?: boolean
+}) {
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   return <section aria-label="归档性能报告" className="space-y-4 p-4">
@@ -224,6 +228,12 @@ function QuickPerformanceBody({ detail }: { detail: Extract<ReportDetail, { sour
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
+    {includeRequestAnalysis ? (
+      <>
+        <Separator />
+        <QuickPerformanceRequestAnalysis report={report} />
+      </>
+    ) : null}
   </section>
 }
 

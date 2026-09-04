@@ -108,6 +108,46 @@ describe("ReportWorkspace", () => {
     expect(screen.getByRole("complementary", { name: "报告详情" })).toHaveTextContent(quickID)
     expect(screen.queryByRole("region", { name: "归档性能报告" })).not.toBeInTheDocument()
   })
+
+  it("filters archived request results and reveals redacted failure response evidence", async () => {
+    const user = userEvent.setup()
+    const quickID = "77777777-7777-4777-8777-777777777772"
+    const snapshot = {
+      schema_version: 1,
+      reports: [{
+        id: quickID, source: "quick_performance", generated_at: "2026-08-31T14:30:00Z", run_status: "completed", plan_name: "快速性能测试",
+        model_name: "gpt-fast", channel_name: "api.example.test", passed: false, verdict: "快速性能测试未通过", issue_count: 1, case_count: 3, failed_case_count: 1, attachment_count: 0,
+      }],
+    } as unknown as ReportSnapshot
+    const getDetail = vi.fn(async () => failedQuickDetail(quickID) as unknown as ReportDetail)
+    const exportReport = vi.fn(async () => ({ filename: `${quickID}.json`, media_type: "application/json", data_base64: "e30=" }))
+
+    render(
+      <ReportWorkspace
+        snapshot={snapshot}
+        getDetail={getDetail}
+        exportReport={exportReport}
+        saveReportExport={vi.fn(async () => true)}
+        copyReportPNG={vi.fn(async () => undefined)}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "查看报告：快速性能测试未通过" }))
+    const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(within(archivedReport).getByRole("figure", { name: "请求结果分布：成功 2，失败 1" })).toBeInTheDocument()
+    expect(within(archivedReport).getByRole("table", { name: "逐请求结果" })).toBeInTheDocument()
+
+    await user.click(within(archivedReport).getByRole("button", { name: "失败 1" }))
+    expect(within(archivedReport).getByRole("row", { name: /请求 1/ })).toBeInTheDocument()
+    expect(within(archivedReport).queryByRole("row", { name: /请求 2/ })).not.toBeInTheDocument()
+    await user.click(within(archivedReport).getByRole("button", { name: "查看请求 1 详情" }))
+
+    const requestDetail = within(archivedReport).getByRole("region", { name: "请求 1 详情" })
+    expect(requestDetail).toHaveTextContent("鉴权失败")
+    expect(requestDetail).toHaveTextContent("req-report-safe")
+    expect(requestDetail).toHaveTextContent("quota exhausted")
+    expect(requestDetail).not.toHaveTextContent("sk-report-private")
+  })
 })
 
 function quickDetail(reportID: string) {
@@ -146,4 +186,42 @@ function quickDetail(reportID: string) {
 
 function sample(requestIndex: number, finished: number, e2e: number, ttft: number, tpot: number) {
   return { request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished, schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 0 }
+}
+
+function failedQuickDetail(reportID: string) {
+  const detail = quickDetail(reportID)
+  return {
+    ...detail,
+    performance: {
+      ...detail.performance,
+      success: false,
+      progress: { ...detail.performance.progress, succeeded: 2, failed: 1 },
+      metrics: {
+        ...detail.performance.metrics,
+        succeeded: 2,
+        failed: 1,
+        success_rate_percent: 66.67,
+        prompt_tokens: 40,
+        completion_tokens: 64,
+      },
+      samples: detail.performance.samples.map((entry, index) => index === 0 ? {
+        ...entry,
+        http_status: 401,
+        success: false,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        error_code: "authentication_failed",
+        response_evidence: {
+          capture_status: "captured",
+          content_type: "application/json",
+          request_id: "req-report-safe",
+          body: "{\"error\":{\"message\":\"quota exhausted\",\"api_key\":\"[REDACTED]\"}}",
+          body_bytes: 96,
+          truncated: false,
+          redacted: true,
+        },
+      } : entry),
+      failures: [{ error_code: "authentication_failed", count: 1 }],
+    },
+  }
 }
