@@ -196,6 +196,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
 }) {
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
+  const targetRanges = performanceTargetRanges(report)
   return <section aria-label="归档性能报告" className="space-y-4 p-4">
     <div>
       <h4 className="mb-2 text-xs font-semibold">测试配置</h4>
@@ -203,10 +204,16 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <ContextValue label="模型" value={report.model_id} />
         <ContextValue label="接口地址" value={report.endpoint} mono />
         <ContextValue label="负载模式" value={performanceLoadMode(report.profile.load_mode)} />
+        {report.profile.load_mode === "open_loop" ? <ContextValue label="到达分布" value={performanceArrivalPattern(report)} /> : null}
+        <ContextValue label="工作负载" value={performanceWorkloadMode(report)} />
         <ContextValue label="停止条件" value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
         <ContextValue label={report.profile.load_mode === "open_loop" ? "最大在途" : "配置并发"} value={formatMetric(report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? 0) : report.profile.concurrency)} />
         <ContextValue label="请求超时" value={formatDuration(report.profile.timeout_ms)} />
-        <ContextValue label="Token 目标（输入 / 输出）" value={`${formatMetric(report.profile.input_tokens)} / ${formatMetric(report.profile.output_tokens)}`} />
+        <ContextValue label={report.profile.workload_mode === "normal" ? "Token 均值（输入 / 输出）" : "Token 目标（输入 / 输出）"} value={`${formatMetric(report.profile.input_tokens)} / ${formatMetric(report.profile.output_tokens)}`} />
+        {report.profile.workload_mode === "normal" ? <ContextValue label="Token 标准差（输入 / 输出）" value={`${formatMetric(report.profile.input_tokens_stddev ?? 0)} / ${formatMetric(report.profile.output_tokens_stddev ?? 0)}`} /> : null}
+        <ContextValue label="随机种子" value={performanceSeed(report)} />
+        <ContextValue label="共享前缀" value={performanceSharedPrefix(report)} />
+        {targetRanges ? <ContextValue label="采样目标范围（输入 / 输出）" value={targetRanges} /> : null}
       </dl>
     </div>
     <Separator />
@@ -341,6 +348,35 @@ function formatMetric(value: number): string { return new Intl.NumberFormat("zh-
 function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatMetric(value)} req/s` }
 function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? "开放到达（RPS）" : mode === "fixed_concurrency" ? "固定并发" : "旧版固定并发" }
 function performanceTargetRate(mode?: "fixed_concurrency" | "open_loop", rate?: number): string { return mode === "open_loop" && rate !== undefined ? `${formatMetric(rate)} req/s` : "—（固定并发）" }
+type QuickPerformanceReport = Extract<ReportDetail, { source: "quick_performance" }>["performance"]
+function performanceArrivalPattern(report: QuickPerformanceReport): string {
+  if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
+  return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"
+}
+function performanceWorkloadMode(report: QuickPerformanceReport): string {
+  if (report.profile.workload_mode === "normal") return "正态分布"
+  return report.profile.workload_mode === "fixed" ? "固定 Token" : "固定 Token（旧报告）"
+}
+function performanceSeed(report: QuickPerformanceReport): string {
+  if (report.profile.random_seed === undefined) return "—（旧报告）"
+  return report.profile.random_seed > 0 ? formatMetric(report.profile.random_seed) : "—（未使用）"
+}
+function performanceSharedPrefix(report: QuickPerformanceReport): string {
+  if (report.profile.shared_prefix_tokens === undefined) return "0 Token（旧报告）"
+  return `${formatMetric(report.profile.shared_prefix_tokens)} Token`
+}
+function performanceTargetRanges(report: QuickPerformanceReport): string | undefined {
+  const inputTargets = report.samples.flatMap((sample) => sample.target_input_tokens === undefined ? [] : [sample.target_input_tokens])
+  const outputTargets = report.samples.flatMap((sample) => sample.target_output_tokens === undefined ? [] : [sample.target_output_tokens])
+  if (inputTargets.length === 0 && outputTargets.length === 0) return undefined
+  return `${formatIntegerRange(inputTargets)} / ${formatIntegerRange(outputTargets)}`
+}
+function formatIntegerRange(values: number[]): string {
+  if (values.length === 0) return "—"
+  const minimum = Math.min(...values)
+  const maximum = Math.max(...values)
+  return minimum === maximum ? formatMetric(minimum) : `${formatMetric(minimum)}–${formatMetric(maximum)}`
+}
 function formatDuration(valueMS: number): string { return valueMS >= 1_000 ? `${formatMetric(valueMS / 1_000)} s` : `${formatMetric(valueMS)} ms` }
 function performanceMode(requestCount: number, durationMS: number): string {
   return requestCount > 0 ? `固定请求 · ${formatMetric(requestCount)} 次` : `持续时间 · ${formatDuration(durationMS)}`

@@ -35,6 +35,8 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	if len(report.Samples) > int(MaxPerformanceRequests) {
 		return time.Time{}, errors.New("quick performance report exceeds the sample limit")
 	}
+	arrival := normalizedArrivalPattern(report.Profile.ArrivalPattern)
+	workloadMode := normalizedWorkloadMode(report.Profile.WorkloadMode)
 	if report.SchemaVersion == PerformanceSchemaVersion {
 		if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
 			report.Progress.Completed != report.Progress.Offered {
@@ -68,7 +70,8 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		} else {
 			rateWindowSeconds := report.Progress.SendDurationMS / 1_000
 			countLimitReached := !report.Progress.Stopped && report.Profile.RequestCount > 0 && report.Progress.Offered >= report.Profile.RequestCount
-			if countLimitReached {
+			useNominalCountWindow := arrival != load.ArrivalPoisson || report.Progress.Offered == 1
+			if countLimitReached && useNominalCountWindow {
 				minimumScheduleWindow := float64(report.Progress.Offered) / report.Profile.RatePerSecond
 				if rateWindowSeconds < minimumScheduleWindow {
 					rateWindowSeconds = minimumScheduleWindow
@@ -94,6 +97,13 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		return time.Time{}, errors.New("quick performance report error code is unsafe")
 	}
 	seen := make(map[uint64]struct{}, len(report.Samples))
+	var workload *performanceWorkload
+	if report.SchemaVersion == PerformanceSchemaVersion && workloadMode == PerformanceWorkloadNormal {
+		workload, err = newPerformanceWorkload(report.Profile)
+		if err != nil {
+			return time.Time{}, errors.New("quick performance report workload is invalid")
+		}
+	}
 	var succeeded, failed, timedOut, promptTokens, completionTokens, cachedTokens uint64
 	evidenceBytes := 0
 	failureCounts := make(map[domain.ErrorCode]uint64)
@@ -102,6 +112,16 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			return time.Time{}, errors.New("quick performance report sample index is duplicated")
 		}
 		seen[sample.RequestIndex] = struct{}{}
+		if workload == nil {
+			if sample.TargetInputTokens != 0 || sample.TargetOutputTokens != 0 {
+				return time.Time{}, errors.New("fixed quick performance sample has workload targets")
+			}
+		} else {
+			target := workload.target(sample.RequestIndex)
+			if sample.TargetInputTokens != target.InputTokens || sample.TargetOutputTokens != target.OutputTokens {
+				return time.Time{}, errors.New("quick performance sample workload target is inconsistent")
+			}
+		}
 		if sample.HTTPStatus < 0 || sample.HTTPStatus > 999 || !finiteNonNegative(sample.ScheduledOffsetMS) || !finiteNonNegative(sample.StartedOffsetMS) ||
 			!finiteNonNegative(sample.FinishedOffsetMS) || !finiteNonNegative(sample.ScheduleLagMS) || !finiteNonNegative(sample.E2EMS) ||
 			!finiteNonNegative(sample.TTFTMS) || !finiteNonNegative(sample.TPOTMS) || sample.FinishedOffsetMS < sample.StartedOffsetMS {

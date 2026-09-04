@@ -25,6 +25,8 @@ type runState struct {
 	requestCap    uint64
 	countLimited  bool
 	interval      time.Duration
+	schedule      []time.Duration
+	arrival       ArrivalPattern
 	sendWindow    time.Duration
 	timeout       time.Duration
 	sendingDone   bool
@@ -160,7 +162,7 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	outcome := Outcome{
 		Progress: state.progress,
 		Results:  append([]Observation(nil), state.results...),
-		Metrics:  ComputeMetricsWithProfile(state.results, state.progress, profile),
+		Metrics:  ComputeMetricsWithArrival(state.results, state.progress, profile, state.arrival),
 	}
 	if state.cancelled {
 		return outcome, ctx.Err()
@@ -184,6 +186,26 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 	if profile.Mode == domain.LoadSingle && (profile.RequestCount != 1 || profile.DurationMS != 0 || profile.Concurrency != 1) {
 		return nil, errors.New("single load requires exactly one request, concurrency one, and no send duration")
 	}
+	arrival := options.ArrivalPattern
+	if arrival == "" {
+		arrival = ArrivalConstant
+	}
+	if arrival != ArrivalConstant && arrival != ArrivalPoisson {
+		return nil, fmt.Errorf("unsupported arrival pattern %q", arrival)
+	}
+	if profile.Mode != domain.LoadOpenLoop && arrival != ArrivalConstant {
+		return nil, errors.New("non-constant arrivals require open-loop load")
+	}
+	maxScheduledRequests := uint64(MaxRequests)
+	if options.MaxScheduledRequests > MaxRequests {
+		return nil, fmt.Errorf("scheduled request limit cannot exceed %d", MaxRequests)
+	}
+	if options.MaxScheduledRequests > 0 {
+		maxScheduledRequests = options.MaxScheduledRequests
+	}
+	if profile.RequestCount > maxScheduledRequests {
+		return nil, fmt.Errorf("load request count exceeds scheduled limit %d", maxScheduledRequests)
+	}
 	timeout, err := durationFromMilliseconds(profile.RequestTimeoutMS)
 	if err != nil {
 		return nil, fmt.Errorf("invalid request timeout: %w", err)
@@ -198,6 +220,7 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 		countLimited: profile.RequestCount > 0,
 		sendWindow:   sendWindow,
 		timeout:      timeout,
+		arrival:      arrival,
 	}
 	if profile.Mode == domain.LoadOpenLoop {
 		state.openLoopLimit = MaxOpenLoopInFlight
@@ -212,21 +235,89 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 			return nil, errors.New("open-loop rate cannot be represented with nanosecond precision")
 		}
 		state.interval = time.Duration(intervalFloat)
-		if state.requestCap == 0 {
-			state.requestCap = uint64(math.Ceil(float64(sendWindow) / intervalFloat))
+		if arrival == ArrivalPoisson {
+			schedule, err := buildPoissonSchedule(profile.RatePerSecond, options.RandomSeed, state.requestCap, sendWindow, state.countLimited, maxScheduledRequests)
+			if err != nil {
+				return nil, err
+			}
+			state.schedule = schedule
+			if !state.countLimited {
+				state.requestCap = uint64(len(schedule))
+				state.progress.Planned = state.requestCap
+			}
+		} else {
 			if state.requestCap == 0 {
-				state.requestCap = 1
+				state.requestCap = uint64(math.Ceil(float64(sendWindow) / intervalFloat))
+				if state.requestCap == 0 {
+					state.requestCap = 1
+				}
+				if state.requestCap > maxScheduledRequests {
+					return nil, fmt.Errorf("open-loop schedule exceeds %d requests", maxScheduledRequests)
+				}
+				state.progress.Planned = state.requestCap
 			}
-			if state.requestCap > MaxRequests {
-				return nil, fmt.Errorf("open-loop schedule exceeds %d requests", MaxRequests)
+			if state.requestCap > 1 && uint64(state.interval) > uint64(math.MaxInt64)/(state.requestCap-1) {
+				return nil, errors.New("open-loop schedule exceeds time.Duration range")
 			}
-			state.progress.Planned = state.requestCap
-		}
-		if state.requestCap > 1 && uint64(state.interval) > uint64(math.MaxInt64)/(state.requestCap-1) {
-			return nil, errors.New("open-loop schedule exceeds time.Duration range")
 		}
 	}
 	return state, nil
+}
+
+func (state *runState) scheduledOffset(index uint64) time.Duration {
+	if state.arrival == ArrivalPoisson {
+		if index < uint64(len(state.schedule)) {
+			return state.schedule[index]
+		}
+		return state.sendWindow
+	}
+	return time.Duration(index) * state.interval
+}
+
+// buildPoissonSchedule uses SplitMix64 and inverse-transform sampling rather
+// than math/rand, keeping the seed-to-schedule mapping stable across Go
+// releases. The first request starts at zero; each later gap is exponentially
+// distributed with the configured mean rate and rounded to at least 1ns.
+func buildPoissonSchedule(rate float64, seed uint32, requestCap uint64, sendWindow time.Duration, countLimited bool, maxScheduled uint64) ([]time.Duration, error) {
+	limit := requestCap
+	if !countLimited {
+		limit = maxScheduled
+	}
+	if limit == 0 {
+		return nil, errors.New("poisson schedule requires a positive request limit")
+	}
+	schedule := make([]time.Duration, 1, min(limit, 1_024))
+	schedule[0] = 0
+	state := uint64(seed) ^ 0xa0761d6478bd642f
+	for uint64(len(schedule)) < limit {
+		state += 0x9e3779b97f4a7c15
+		mixed := state
+		mixed = (mixed ^ (mixed >> 30)) * 0xbf58476d1ce4e5b9
+		mixed = (mixed ^ (mixed >> 27)) * 0x94d049bb133111eb
+		mixed ^= mixed >> 31
+		uniform := (float64(mixed>>11) + 0.5) / (1 << 53)
+		gapFloat := -math.Log1p(-uniform) * float64(time.Second) / rate
+		if math.IsNaN(gapFloat) || math.IsInf(gapFloat, 0) || gapFloat > float64(math.MaxInt64) {
+			return nil, errors.New("poisson schedule exceeds time.Duration range")
+		}
+		gap := time.Duration(math.Round(gapFloat))
+		if gap < 1 {
+			gap = 1
+		}
+		previous := schedule[len(schedule)-1]
+		if gap > time.Duration(math.MaxInt64)-previous {
+			return nil, errors.New("poisson schedule exceeds time.Duration range")
+		}
+		next := previous + gap
+		if sendWindow > 0 && next >= sendWindow {
+			if countLimited {
+				schedule = append(schedule, next)
+			}
+			break
+		}
+		schedule = append(schedule, next)
+	}
+	return schedule, nil
 }
 
 func runBounded(
@@ -328,7 +419,7 @@ func runOpenLoop(
 		}
 		checkSignals()
 		if !state.sendingDone && state.lastIndex < state.requestCap {
-			scheduled := time.Duration(state.lastIndex) * state.interval
+			scheduled := state.scheduledOffset(state.lastIndex)
 			if wait := time.Until(state.startedAt.Add(scheduled)); wait <= 0 {
 				for {
 					select {
@@ -360,7 +451,7 @@ func runOpenLoop(
 		if !state.sendingDone {
 			wakeAt := state.startedAt.Add(state.sendWindow)
 			if state.lastIndex < state.requestCap {
-				offset := time.Duration(state.lastIndex) * state.interval
+				offset := state.scheduledOffset(state.lastIndex)
 				wakeAt = state.startedAt.Add(offset)
 				if state.sendWindow > 0 {
 					windowEnd := state.startedAt.Add(state.sendWindow)

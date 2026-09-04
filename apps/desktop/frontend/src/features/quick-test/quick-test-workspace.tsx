@@ -51,10 +51,12 @@ import { PerformanceLatencyTable } from "@/features/reports/performance-latency-
 import {
   QUICK_TEST_ERROR_MESSAGES,
   updateQuickTestForm,
+  type QuickPerformanceArrivalPattern,
   type QuickPerformanceCommand,
   type QuickPerformanceLoadMode,
   type QuickPerformanceProgress,
   type QuickPerformanceReport,
+  type QuickPerformanceWorkloadMode,
   type QuickTestAddressMode,
   type QuickTestCommand,
   type QuickTestResult,
@@ -70,6 +72,7 @@ type QuickTestActions = Pick<
 
 const DEFAULT_PROMPT = "Reply with OK only."
 const DEFAULT_TIMEOUT_MS = 30_000
+const MAX_PERFORMANCE_REQUESTS = 10_000
 
 export interface QuickTestModelCandidate {
   id: string
@@ -598,6 +601,8 @@ function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, on
 
 interface PerformanceForm {
   loadMode: QuickPerformanceLoadMode
+  arrivalPattern: QuickPerformanceArrivalPattern
+  workloadMode: QuickPerformanceWorkloadMode
   requestCount: number
   durationSeconds: number
   concurrency: number
@@ -606,9 +611,13 @@ interface PerformanceForm {
   timeoutSeconds: number
   inputTokens: number
   outputTokens: number
+  inputTokensStdDev: number
+  outputTokensStdDev: number
+  sharedPrefixTokens: number
+  randomSeed: number
 }
 
-type PerformanceNumberFieldName = Exclude<keyof PerformanceForm, "loadMode">
+type PerformanceNumberFieldName = Exclude<keyof PerformanceForm, "loadMode" | "arrivalPattern" | "workloadMode">
 type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
 const PERFORMANCE_TARGET_ERRORS = {
@@ -618,6 +627,8 @@ const PERFORMANCE_TARGET_ERRORS = {
 
 const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
   loadMode: "fixed_concurrency",
+  arrivalPattern: "constant",
+  workloadMode: "fixed",
   requestCount: 10,
   durationSeconds: 0,
   concurrency: 1,
@@ -626,6 +637,10 @@ const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
   timeoutSeconds: 60,
   inputTokens: 100,
   outputTokens: 100,
+  inputTokensStdDev: 10,
+  outputTokensStdDev: 10,
+  sharedPrefixTokens: 0,
+  randomSeed: 1,
 }
 
 function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchived, onOpenReport }: {
@@ -653,6 +668,9 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
     setForm((current) => ({ ...current, [key]: value }))
     setFieldErrors((current) => {
       let next = omitFieldError(current, key)
+      if (key === "requestCount" || key === "durationSeconds" || key === "ratePerSecond") {
+        next = omitFieldError(next, "ratePerSecond")
+      }
       if ((key === "requestCount" || key === "durationSeconds") &&
         (current.requestCount === PERFORMANCE_TARGET_ERRORS.requestCount || current.durationSeconds === PERFORMANCE_TARGET_ERRORS.durationSeconds)) {
         next = omitFieldError(omitFieldError(next, "requestCount"), "durationSeconds")
@@ -664,9 +682,37 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
 
   const updateLoadMode = (loadMode: QuickPerformanceLoadMode) => {
     setForm((current) => ({ ...current, loadMode }))
-    setFieldErrors((current) => loadMode === "fixed_concurrency"
-      ? omitFieldError(omitFieldError(current, "ratePerSecond"), "maxInFlight")
-      : omitFieldError(current, "concurrency"))
+    setFieldErrors((current) => {
+      const next = loadMode === "fixed_concurrency"
+        ? omitFieldError(omitFieldError(current, "ratePerSecond"), "maxInFlight")
+        : omitFieldError(current, "concurrency")
+      return loadMode === "fixed_concurrency" && form.workloadMode === "fixed"
+        ? omitFieldError(next, "randomSeed")
+        : next
+    })
+    resetOutput()
+  }
+
+  const updateArrivalPattern = (arrivalPattern: QuickPerformanceArrivalPattern) => {
+    setForm((current) => ({ ...current, arrivalPattern }))
+    setFieldErrors((current) => {
+      const next = omitFieldError(current, "ratePerSecond")
+      return arrivalPattern === "constant" && form.workloadMode === "fixed"
+        ? omitFieldError(next, "randomSeed")
+        : next
+    })
+    resetOutput()
+  }
+
+  const updateWorkloadMode = (workloadMode: QuickPerformanceWorkloadMode) => {
+    setForm((current) => ({ ...current, workloadMode }))
+    if (workloadMode === "fixed") {
+      setFieldErrors((current) => {
+        let next = omitFieldError(omitFieldError(omitFieldError(current, "inputTokensStdDev"), "outputTokensStdDev"), "sharedPrefixTokens")
+        if (form.loadMode !== "open_loop" || form.arrivalPattern !== "poisson") next = omitFieldError(next, "randomSeed")
+        return next
+      })
+    }
     resetOutput()
   }
 
@@ -697,6 +743,12 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       concurrency: form.loadMode === "fixed_concurrency" ? form.concurrency : 0,
       rate_per_second: form.loadMode === "open_loop" ? form.ratePerSecond : 0,
       max_in_flight: form.loadMode === "open_loop" ? form.maxInFlight : 0,
+      arrival_pattern: form.loadMode === "open_loop" ? form.arrivalPattern : "constant",
+      workload_mode: form.workloadMode,
+      random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
+      input_tokens_stddev: form.workloadMode === "normal" ? form.inputTokensStdDev : 0,
+      output_tokens_stddev: form.workloadMode === "normal" ? form.outputTokensStdDev : 0,
+      shared_prefix_tokens: form.workloadMode === "normal" ? form.sharedPrefixTokens : 0,
       timeout_ms: form.timeoutSeconds * 1_000,
       input_tokens: form.inputTokens,
       output_tokens: form.outputTokens,
@@ -740,6 +792,40 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
                     </Select>
                   </FieldContent>
                 </Field>
+                {form.loadMode === "open_loop" ? (
+                  <Field className="block min-w-0">
+                    <FieldLabel htmlFor="quick-performance-arrivalPattern">到达分布</FieldLabel>
+                    <FieldContent>
+                      <Select value={form.arrivalPattern} disabled={pending} onValueChange={(value) => updateArrivalPattern(value as QuickPerformanceArrivalPattern)}>
+                        <SelectTrigger id="quick-performance-arrivalPattern" aria-label="到达分布" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="constant">恒定间隔</SelectItem>
+                            <SelectItem value="poisson">Poisson 到达</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </FieldContent>
+                  </Field>
+                ) : null}
+                <Field className="block min-w-0">
+                  <FieldLabel htmlFor="quick-performance-workloadMode">工作负载</FieldLabel>
+                  <FieldContent>
+                    <Select value={form.workloadMode} disabled={pending} onValueChange={(value) => updateWorkloadMode(value as QuickPerformanceWorkloadMode)}>
+                      <SelectTrigger id="quick-performance-workloadMode" aria-label="工作负载" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="fixed">固定 Token</SelectItem>
+                          <SelectItem value="normal">正态分布</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
                 <PerformanceNumberField field="requestCount" label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} error={fieldErrors.requestCount} onChange={(value) => update("requestCount", value)} />
                 <PerformanceNumberField field="durationSeconds" label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.durationSeconds} onChange={(value) => update("durationSeconds", value)} />
                 {form.loadMode === "fixed_concurrency" ? (
@@ -751,13 +837,26 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
                   </>
                 )}
                 <PerformanceNumberField field="timeoutSeconds" label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} error={fieldErrors.timeoutSeconds} onChange={(value) => update("timeoutSeconds", value)} />
-                <PerformanceNumberField field="inputTokens" label="近似输入 Token" value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
-                <PerformanceNumberField field="outputTokens" label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
+                <PerformanceNumberField field="inputTokens" label={form.workloadMode === "normal" ? "近似输入 Token 均值" : "近似输入 Token"} value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
+                <PerformanceNumberField field="outputTokens" label={form.workloadMode === "normal" ? "最大输出 Token 均值" : "最大输出 Token"} value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
+                {form.workloadMode === "normal" ? (
+                  <>
+                    <PerformanceNumberField field="inputTokensStdDev" label="输入 Token 标准差" value={form.inputTokensStdDev} min={0} max={1_000_000} disabled={pending} error={fieldErrors.inputTokensStdDev} onChange={(value) => update("inputTokensStdDev", value)} />
+                    <PerformanceNumberField field="outputTokensStdDev" label="输出 Token 标准差" value={form.outputTokensStdDev} min={0} max={65_536} disabled={pending} error={fieldErrors.outputTokensStdDev} onChange={(value) => update("outputTokensStdDev", value)} />
+                    <PerformanceNumberField field="sharedPrefixTokens" label="共享前缀 Token" value={form.sharedPrefixTokens} min={0} max={999_999} disabled={pending} error={fieldErrors.sharedPrefixTokens} onChange={(value) => update("sharedPrefixTokens", value)} />
+                  </>
+                ) : null}
+                {performanceNeedsSeed(form) ? (
+                  <PerformanceNumberField field="randomSeed" label="随机种子" value={form.randomSeed} min={1} max={4_294_967_295} disabled={pending} error={fieldErrors.randomSeed} onChange={(value) => update("randomSeed", value)} />
+                ) : null}
               </div>
               <FieldDescription>
                 {form.loadMode === "open_loop"
-                  ? "按目标 RPS 独立调度请求；达到最大在途后会记录本地拒绝。"
+                  ? form.arrivalPattern === "poisson"
+                    ? "按可复现的 Poisson 到达过程调度请求；达到最大在途后会记录本地拒绝。"
+                    : "按恒定间隔的目标 RPS 独立调度请求；达到最大在途后会记录本地拒绝。"
                   : "固定并发会在请求完成后补发，维持配置的在途请求数。"}
+                {form.workloadMode === "normal" ? " 正态工作负载会用种子复现每个请求的 Token 目标与唯一后缀。" : ""}
                 同时填写请求数和持续时间时，任一目标先达到即停止发送；输出 Token 是请求上限，不保证模型实际生成到该数值。
               </FieldDescription>
               {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{operationError}</FieldError> : null}
@@ -852,6 +951,13 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <ResultValue label="成功率" value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
           <ResultValue label="总耗时" value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
           <ResultValue label="峰值在途" value={String(report.progress.peak_in_flight)} numeric />
+        </MetricSection>
+        <MetricSection title="工作负载">
+          {report.profile.load_mode === "open_loop" ? <ResultValue label="到达分布" value={performanceArrivalPattern(report)} /> : null}
+          <ResultValue label="Token 分布" value={performanceWorkloadMode(report)} />
+          <ResultValue label="随机种子" value={performanceSeed(report)} numeric />
+          <ResultValue label="共享前缀" value={performanceSharedPrefix(report)} numeric />
+          {performanceTargetRanges(report) ? <ResultValue label="采样目标范围（输入 / 输出）" value={performanceTargetRanges(report)!} numeric wide /> : null}
         </MetricSection>
         <MetricSection title="吞吐">
           <ResultValue label="目标发送" value={performanceTargetRate(report)} numeric />
@@ -958,10 +1064,33 @@ function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors 
   } else {
     if (!finiteInRange(form.ratePerSecond, 0.01, 100_000)) errors.ratePerSecond = "目标发送 RPS 需为 0.01–100,000。"
     if (!integerInRange(form.maxInFlight, 1, 2_000)) errors.maxInFlight = "最大在途需为 1–2,000 的整数。"
+    if (!errors.requestCount && !errors.durationSeconds && !errors.ratePerSecond &&
+      form.requestCount === 0 && form.durationSeconds > 0) {
+      const expectedRequests = form.durationSeconds * form.ratePerSecond
+      const scheduledRequests = form.arrivalPattern === "poisson"
+        ? Math.ceil(2 * expectedRequests) + 1
+        : Math.ceil(expectedRequests)
+      if (scheduledRequests > MAX_PERFORMANCE_REQUESTS) {
+        errors.ratePerSecond = form.arrivalPattern === "poisson"
+          ? `Poisson 到达需预留两倍调度余量；当前预计上限 ${formatNumber(scheduledRequests)} 个请求，超过 10,000 个上限。`
+          : `当前持续时间与 RPS 预计调度 ${formatNumber(scheduledRequests)} 个请求，超过 10,000 个上限。`
+      }
+    }
   }
   if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = "单请求超时需为 1–600 秒的整数。"
   if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = "近似输入 Token 需为 1–1,000,000 的整数。"
   if (!integerInRange(form.outputTokens, 1, 65_536)) errors.outputTokens = "最大输出 Token 需为 1–65,536 的整数。"
+  if (form.workloadMode === "normal") {
+    if (!integerInRange(form.inputTokensStdDev, 0, 1_000_000)) errors.inputTokensStdDev = "输入 Token 标准差需为 0–1,000,000 的整数。"
+    else if (!errors.inputTokens && form.inputTokensStdDev > form.inputTokens) errors.inputTokensStdDev = "输入 Token 标准差不能大于输入均值。"
+    if (!integerInRange(form.outputTokensStdDev, 0, 65_536)) errors.outputTokensStdDev = "输出 Token 标准差需为 0–65,536 的整数。"
+    else if (!errors.outputTokens && form.outputTokensStdDev > form.outputTokens) errors.outputTokensStdDev = "输出 Token 标准差不能大于输出均值。"
+    if (!integerInRange(form.sharedPrefixTokens, 0, 999_999)) errors.sharedPrefixTokens = "共享前缀 Token 需为 0–999,999 的整数。"
+    else if (!errors.inputTokens && form.sharedPrefixTokens >= form.inputTokens) errors.sharedPrefixTokens = "共享前缀 Token 必须小于输入均值。"
+  }
+  if (performanceNeedsSeed(form) && !integerInRange(form.randomSeed, 1, 4_294_967_295)) {
+    errors.randomSeed = "随机种子需为 1–4,294,967,295 的整数。"
+  }
   return errors
 }
 
@@ -1117,6 +1246,46 @@ function formatOptionalRate(value: number | undefined): string {
   return value === undefined ? "—" : `${formatNumber(value)} req/s`
 }
 
+function performanceNeedsSeed(form: PerformanceForm): boolean {
+  return form.workloadMode === "normal" || (form.loadMode === "open_loop" && form.arrivalPattern === "poisson")
+}
+
+function performanceArrivalPattern(report: QuickPerformanceReport): string {
+  if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
+  return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"
+}
+
+function performanceWorkloadMode(report: QuickPerformanceReport): string {
+  if (report.profile.workload_mode === "normal") {
+    return `正态分布（输入 σ ${formatNumber(report.profile.input_tokens_stddev ?? 0)} / 输出 σ ${formatNumber(report.profile.output_tokens_stddev ?? 0)}）`
+  }
+  return report.profile.workload_mode === "fixed" ? "固定 Token" : "固定 Token（旧报告）"
+}
+
+function performanceSeed(report: QuickPerformanceReport): string {
+  if (report.profile.random_seed === undefined) return "—（旧报告）"
+  return report.profile.random_seed > 0 ? formatNumber(report.profile.random_seed) : "—（未使用）"
+}
+
+function performanceSharedPrefix(report: QuickPerformanceReport): string {
+  if (report.profile.shared_prefix_tokens === undefined) return "0 Token（旧报告）"
+  return `${formatNumber(report.profile.shared_prefix_tokens)} Token`
+}
+
+function performanceTargetRanges(report: QuickPerformanceReport): string | undefined {
+  const inputTargets = report.samples.flatMap((sample) => sample.target_input_tokens === undefined ? [] : [sample.target_input_tokens])
+  const outputTargets = report.samples.flatMap((sample) => sample.target_output_tokens === undefined ? [] : [sample.target_output_tokens])
+  if (inputTargets.length === 0 && outputTargets.length === 0) return undefined
+  return `${formatIntegerRange(inputTargets)} / ${formatIntegerRange(outputTargets)}`
+}
+
+function formatIntegerRange(values: number[]): string {
+  if (values.length === 0) return "—"
+  const minimum = Math.min(...values)
+  const maximum = Math.max(...values)
+  return minimum === maximum ? formatNumber(minimum) : `${formatNumber(minimum)}–${formatNumber(maximum)}`
+}
+
 function performanceTargetRate(report: QuickPerformanceReport): string {
   return report.profile.load_mode === "open_loop" && report.profile.rate_per_second !== undefined
     ? `${formatNumber(report.profile.rate_per_second)} req/s`
@@ -1189,7 +1358,10 @@ function firstConnectionErrorField(errors: ConnectionFieldErrors): ConnectionFie
 }
 
 function firstPerformanceErrorField(errors: PerformanceFieldErrors): PerformanceNumberFieldName | undefined {
-  return (["requestCount", "durationSeconds", "concurrency", "ratePerSecond", "maxInFlight", "timeoutSeconds", "inputTokens", "outputTokens"] as const)
+  return ([
+    "requestCount", "durationSeconds", "concurrency", "ratePerSecond", "maxInFlight", "timeoutSeconds",
+    "inputTokens", "outputTokens", "inputTokensStdDev", "outputTokensStdDev", "sharedPrefixTokens", "randomSeed",
+  ] as const)
     .find((field) => errors[field])
 }
 

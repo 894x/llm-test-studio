@@ -201,21 +201,29 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	if command.LoadMode == "" {
 		command.LoadMode = domain.LoadFixedConcurrency
 	}
+	command.ArrivalPattern = normalizedArrivalPattern(command.ArrivalPattern)
+	command.WorkloadMode = normalizedWorkloadMode(command.WorkloadMode)
 	report := PerformanceReport{
 		SchemaVersion: PerformanceSchemaVersion,
 		AddressMode:   command.AddressMode,
 		ModelID:       command.ModelID,
 		ArchiveStatus: PerformanceArchiveNotAttempted,
 		Profile: PerformanceProfile{
-			LoadMode:      command.LoadMode,
-			RequestCount:  command.RequestCount,
-			DurationMS:    command.DurationMS,
-			Concurrency:   command.Concurrency,
-			RatePerSecond: command.RatePerSecond,
-			MaxInFlight:   command.MaxInFlight,
-			TimeoutMS:     command.TimeoutMS,
-			InputTokens:   command.InputTokens,
-			OutputTokens:  command.OutputTokens,
+			LoadMode:           command.LoadMode,
+			ArrivalPattern:     command.ArrivalPattern,
+			WorkloadMode:       command.WorkloadMode,
+			RandomSeed:         command.RandomSeed,
+			RequestCount:       command.RequestCount,
+			DurationMS:         command.DurationMS,
+			Concurrency:        command.Concurrency,
+			RatePerSecond:      command.RatePerSecond,
+			MaxInFlight:        command.MaxInFlight,
+			TimeoutMS:          command.TimeoutMS,
+			InputTokens:        command.InputTokens,
+			OutputTokens:       command.OutputTokens,
+			InputTokensStdDev:  command.InputTokensStdDev,
+			OutputTokensStdDev: command.OutputTokensStdDev,
+			SharedPrefixTokens: command.SharedPrefixTokens,
 		},
 		Failures: []PerformanceFailure{},
 		Samples:  []PerformanceSample{},
@@ -263,19 +271,32 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
 	}
-	prompt := strings.TrimSpace(strings.Repeat("test ", int(command.InputTokens)))
-	body, err := json.Marshal(map[string]any{
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
-		"max_tokens": command.OutputTokens,
-		"stream":     true,
-	})
-	if err != nil {
-		report.ErrorCode = load.ErrorRequestFailed
-		return report, nil
+	var (
+		body     json.RawMessage
+		workload *performanceWorkload
+		err      error
+	)
+	if command.WorkloadMode == PerformanceWorkloadNormal {
+		workload, err = newPerformanceWorkload(report.Profile)
+		if err != nil {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+	} else {
+		prompt := strings.TrimSpace(strings.Repeat("test ", int(command.InputTokens)))
+		body, err = json.Marshal(map[string]any{
+			"messages":   []map[string]string{{"role": "user", "content": prompt}},
+			"max_tokens": command.OutputTokens,
+			"stream":     true,
+		})
+		if err != nil {
+			report.ErrorCode = load.ErrorRequestFailed
+			return report, nil
+		}
 	}
 
 	evidenceRecorder := newPerformanceEvidenceRecorder()
-	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body, evidenceRecorder.record)
+	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body, workload, evidenceRecorder.record)
 	command.APIKey = ""
 	if code != "" {
 		report.ErrorCode = code
@@ -286,7 +307,10 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	options := load.Options{}
 	if command.LoadMode == domain.LoadOpenLoop {
 		options.MaxOpenLoopInFlight = uint64(command.MaxInFlight)
+		options.MaxScheduledRequests = MaxPerformanceRequests
 	}
+	options.ArrivalPattern = command.ArrivalPattern
+	options.RandomSeed = command.RandomSeed
 	if onProgress != nil {
 		options.OnProgress = func(progress load.Progress) {
 			onProgress(performanceProgress(progress))
@@ -296,7 +320,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
-	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot())
+	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
 	report.Success = outcome.Progress.Phase == load.PhaseCompleted && outcome.Metrics.Completed > 0 && outcome.Metrics.Failed == 0
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -354,38 +378,74 @@ func (service *Service) archivePerformanceReport(ctx context.Context, report *Pe
 
 func validPerformanceProfile(command PerformanceCommand) bool {
 	return validPerformanceProfileValues(PerformanceProfile{
-		LoadMode: command.LoadMode, RequestCount: command.RequestCount, DurationMS: command.DurationMS,
+		LoadMode: command.LoadMode, ArrivalPattern: command.ArrivalPattern, WorkloadMode: command.WorkloadMode, RandomSeed: command.RandomSeed,
+		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
 		Concurrency: command.Concurrency, RatePerSecond: command.RatePerSecond, MaxInFlight: command.MaxInFlight,
 		TimeoutMS: command.TimeoutMS, InputTokens: command.InputTokens, OutputTokens: command.OutputTokens,
+		InputTokensStdDev: command.InputTokensStdDev, OutputTokensStdDev: command.OutputTokensStdDev,
+		SharedPrefixTokens: command.SharedPrefixTokens,
 	})
 }
 
 func validPerformanceProfileValues(profile PerformanceProfile) bool {
+	arrival := normalizedArrivalPattern(profile.ArrivalPattern)
+	workload := normalizedWorkloadMode(profile.WorkloadMode)
 	if !((profile.RequestCount > 0 || profile.DurationMS > 0) &&
 		profile.RequestCount <= MaxPerformanceRequests &&
 		profile.DurationMS <= MaxPerformanceDurationMS &&
 		profile.TimeoutMS > 0 && profile.TimeoutMS <= MaxPerformanceTimeoutMS &&
 		profile.InputTokens > 0 && profile.InputTokens <= MaxPerformanceInputTokens &&
-		profile.OutputTokens > 0 && profile.OutputTokens <= MaxPerformanceOutputTokens) {
+		profile.OutputTokens > 0 && profile.OutputTokens <= MaxPerformanceOutputTokens &&
+		profile.InputTokensStdDev <= MaxPerformanceInputTokens &&
+		profile.OutputTokensStdDev <= MaxPerformanceOutputTokens) {
+		return false
+	}
+	if arrival != load.ArrivalConstant && arrival != load.ArrivalPoisson {
+		return false
+	}
+	switch workload {
+	case PerformanceWorkloadFixed:
+		if profile.InputTokensStdDev != 0 || profile.OutputTokensStdDev != 0 || profile.SharedPrefixTokens != 0 {
+			return false
+		}
+	case PerformanceWorkloadNormal:
+		if profile.InputTokensStdDev > profile.InputTokens || profile.OutputTokensStdDev > profile.OutputTokens ||
+			profile.SharedPrefixTokens >= profile.InputTokens || profile.SharedPrefixTokens >= MaxPerformanceInputTokens {
+			return false
+		}
+	default:
+		return false
+	}
+	needsSeed := arrival == load.ArrivalPoisson || workload == PerformanceWorkloadNormal
+	if needsSeed != (profile.RandomSeed > 0) {
 		return false
 	}
 	switch profile.LoadMode {
 	case domain.LoadFixedConcurrency:
 		return profile.Concurrency > 0 && profile.Concurrency <= MaxPerformanceConcurrency &&
-			profile.RatePerSecond == 0 && profile.MaxInFlight == 0
+			profile.RatePerSecond == 0 && profile.MaxInFlight == 0 && arrival == load.ArrivalConstant
 	case domain.LoadOpenLoop:
 		if profile.Concurrency != 0 || profile.MaxInFlight == 0 || profile.MaxInFlight > MaxPerformanceInFlight ||
 			math.IsNaN(profile.RatePerSecond) || math.IsInf(profile.RatePerSecond, 0) ||
 			profile.RatePerSecond < MinPerformanceRatePerSecond || profile.RatePerSecond > MaxPerformanceRatePerSecond {
 			return false
 		}
-		return profile.RequestCount > 0 || math.Ceil(float64(profile.DurationMS)*profile.RatePerSecond/1_000) <= float64(MaxPerformanceRequests)
+		if profile.RequestCount > 0 {
+			return true
+		}
+		expected := float64(profile.DurationMS) * profile.RatePerSecond / 1_000
+		if arrival == load.ArrivalPoisson {
+			// Poisson counts have an unbounded tail. Require 2x expected-count
+			// headroom plus the immediate request, then enforce the hard runtime cap.
+			return math.Ceil(expected*2)+1 <= float64(MaxPerformanceRequests)
+		}
+		return math.Ceil(expected) <= float64(MaxPerformanceRequests)
 	default:
 		return false
 	}
 }
 
-func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
+func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, workload *performanceWorkload, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, quickTestCredentialID)
 	if err != nil {
 		return nil, func() {}, load.ErrorRequestFailed
@@ -420,13 +480,36 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 		_ = store.Delete(context.Background(), storeRef)
 		return nil, func() {}, classifyConstruction(err)
 	}
-	executor, err := client.Executor(domain.TestRequest{
-		Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: body,
-	})
-	if err != nil {
-		client.Close()
-		_ = store.Delete(context.Background(), storeRef)
-		return nil, func() {}, ErrorInvalidRequest
+	var executor load.Executor
+	if workload == nil {
+		executor, err = client.Executor(domain.TestRequest{
+			Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: body,
+		})
+		if err != nil {
+			client.Close()
+			_ = store.Delete(context.Background(), storeRef)
+			return nil, func() {}, ErrorInvalidRequest
+		}
+	} else {
+		executor = func(requestContext context.Context, request load.Request) load.Observation {
+			target := workload.target(request.Index)
+			release, budgetErr := sharedPerformanceInputTokenBudget.acquire(requestContext, target.InputTokens)
+			if budgetErr != nil {
+				return load.Observation{Index: request.Index, ErrorCode: classifyContext(budgetErr)}
+			}
+			defer release()
+			requestBody, bodyErr := workload.requestBodyForTarget(request.Index, target)
+			if bodyErr != nil {
+				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
+			}
+			requestExecutor, executorErr := client.Executor(domain.TestRequest{
+				Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: requestBody,
+			})
+			if executorErr != nil {
+				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
+			}
+			return requestExecutor(requestContext, request)
+		}
 	}
 	cleanup := func() {
 		client.Close()
@@ -475,7 +558,7 @@ func performanceFailures(observations []load.Observation) []PerformanceFailure {
 	return failures
 }
 
-func performanceSamples(observations []load.Observation, evidence map[uint64]*PerformanceResponseEvidence) []PerformanceSample {
+func performanceSamples(observations []load.Observation, evidence map[uint64]*PerformanceResponseEvidence, workload *performanceWorkload) []PerformanceSample {
 	samples := make([]PerformanceSample, 0, len(observations))
 	for _, observation := range observations {
 		code := observation.ErrorCode
@@ -493,7 +576,7 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 		if observation.TTFT > 0 && observation.E2E > observation.TTFT && observation.CompletionTokens > 1 {
 			tpot = durationMilliseconds(observation.E2E-observation.TTFT) / float64(observation.CompletionTokens-1)
 		}
-		samples = append(samples, PerformanceSample{
+		sample := PerformanceSample{
 			RequestIndex:      observation.Index,
 			ScheduledOffsetMS: durationMilliseconds(observation.ScheduledOffset),
 			StartedOffsetMS:   durationMilliseconds(observation.StartedOffset),
@@ -504,7 +587,13 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 			PromptTokens: observation.PromptTokens, CompletionTokens: observation.CompletionTokens, CachedTokens: observation.CachedTokens,
 			ErrorCode:        code,
 			ResponseEvidence: evidence[observation.Index],
-		})
+		}
+		if workload != nil {
+			target := workload.target(observation.Index)
+			sample.TargetInputTokens = target.InputTokens
+			sample.TargetOutputTokens = target.OutputTokens
+		}
+		samples = append(samples, sample)
 	}
 	return samples
 }

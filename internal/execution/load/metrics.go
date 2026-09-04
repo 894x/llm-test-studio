@@ -128,6 +128,10 @@ func ComputeMetricsWithProgress(observations []Observation, progress Progress) M
 }
 
 func ComputeMetricsWithProfile(observations []Observation, progress Progress, profile domain.LoadProfile) Metrics {
+	return ComputeMetricsWithArrival(observations, progress, profile, ArrivalConstant)
+}
+
+func ComputeMetricsWithArrival(observations []Observation, progress Progress, profile domain.LoadProfile, arrival ArrivalPattern) Metrics {
 	metrics := ComputeMetricsWithProgress(observations, progress)
 	if profile.Mode != domain.LoadOpenLoop || progress.Stopped || profile.RatePerSecond <= 0 {
 		return metrics
@@ -138,7 +142,8 @@ func ComputeMetricsWithProfile(observations []Observation, progress Progress, pr
 	}
 	rateWindowSeconds := progress.SendDuration.Seconds()
 	countLimitReached := profile.RequestCount > 0 && offered >= profile.RequestCount
-	if countLimitReached {
+	useNominalCountWindow := arrival != ArrivalPoisson || offered == 1
+	if countLimitReached && useNominalCountWindow {
 		minimumScheduleWindow := float64(offered) / profile.RatePerSecond
 		if rateWindowSeconds < minimumScheduleWindow {
 			rateWindowSeconds = minimumScheduleWindow

@@ -78,12 +78,20 @@ export interface QuickPerformanceCommand {
   concurrency: number
   rate_per_second: number
   max_in_flight: number
+  arrival_pattern: QuickPerformanceArrivalPattern
+  workload_mode: QuickPerformanceWorkloadMode
+  random_seed: number
+  input_tokens_stddev: number
+  output_tokens_stddev: number
+  shared_prefix_tokens: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
 }
 
 export type QuickPerformanceLoadMode = "fixed_concurrency" | "open_loop"
+export type QuickPerformanceArrivalPattern = "constant" | "poisson"
+export type QuickPerformanceWorkloadMode = "fixed" | "normal"
 
 export interface QuickPerformanceProfile {
   load_mode?: QuickPerformanceLoadMode
@@ -92,6 +100,12 @@ export interface QuickPerformanceProfile {
   concurrency: number
   rate_per_second?: number
   max_in_flight?: number
+  arrival_pattern?: QuickPerformanceArrivalPattern
+  workload_mode?: QuickPerformanceWorkloadMode
+  random_seed?: number
+  input_tokens_stddev?: number
+  output_tokens_stddev?: number
+  shared_prefix_tokens?: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
@@ -186,6 +200,8 @@ export interface QuickPerformanceSample {
   prompt_tokens: number
   completion_tokens: number
   cached_tokens: number
+  target_input_tokens?: number
+  target_output_tokens?: number
   error_code?: QuickTestErrorCode
   response_evidence?: QuickPerformanceResponseEvidence
 }
@@ -358,7 +374,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   }
   const progress = value.progress
   const metrics = value.metrics
-  const samples = value.samples.map(parsePerformanceSample)
+  const samples = value.samples.map((sample) => parsePerformanceSample(sample, schemaVersion === 2))
   const evidenceBytes = samples.reduce((sum, sample) => sum + new TextEncoder().encode(sample.response_evidence?.body ?? "").length, 0)
   const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
   if (
@@ -368,6 +384,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     metrics.succeeded + metrics.failed !== metrics.completed ||
     failureCount !== metrics.failed ||
     samples.length !== metrics.completed ||
+    (schemaVersion === 2 && !performanceSampleTargetsMatchWorkload(value.profile, samples)) ||
     evidenceBytes > 2 * 1024 * 1024 ||
     new Set(samples.map((sample) => sample.request_index)).size !== samples.length ||
     (value.archived !== (value.archive_status === "archived")) ||
@@ -401,7 +418,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   }
 }
 
-function parsePerformanceSample(value: unknown): QuickPerformanceSample {
+function parsePerformanceSample(value: unknown, includeTargets: boolean): QuickPerformanceSample {
   if (!isRecord(value)) throw new Error("快速性能报告样本数据无效")
   const offsets = [value.scheduled_offset_ms, value.started_offset_ms, value.finished_offset_ms, value.schedule_lag_ms, value.e2e_ms, value.ttft_ms, value.tpot_ms]
   if (
@@ -413,11 +430,16 @@ function parsePerformanceSample(value: unknown): QuickPerformanceSample {
     !isNonNegativeInteger(value.prompt_tokens) ||
     !isNonNegativeInteger(value.completion_tokens) ||
     !isNonNegativeInteger(value.cached_tokens) ||
+    (includeTargets && value.target_input_tokens !== undefined && !isPositiveUint32(value.target_input_tokens)) ||
+    (includeTargets && value.target_output_tokens !== undefined && !isPositiveUint32(value.target_output_tokens)) ||
+    (includeTargets && ((value.target_input_tokens === undefined) !== (value.target_output_tokens === undefined))) ||
     (value.error_code !== undefined && !isErrorCode(value.error_code)) ||
     (value.success && (value.error_code !== undefined || value.response_evidence !== undefined)) ||
     Number(value.started_offset_ms) < Number(value.scheduled_offset_ms) ||
     Number(value.finished_offset_ms) < Number(value.started_offset_ms)
   ) throw new Error("快速性能报告样本数据无效")
+  const targetInputTokens = includeTargets && value.target_input_tokens !== undefined ? Number(value.target_input_tokens) : undefined
+  const targetOutputTokens = includeTargets && value.target_output_tokens !== undefined ? Number(value.target_output_tokens) : undefined
   return {
     request_index: value.request_index,
     scheduled_offset_ms: Number(value.scheduled_offset_ms),
@@ -433,6 +455,8 @@ function parsePerformanceSample(value: unknown): QuickPerformanceSample {
     prompt_tokens: value.prompt_tokens,
     completion_tokens: value.completion_tokens,
     cached_tokens: value.cached_tokens,
+    ...(targetInputTokens === undefined ? {} : { target_input_tokens: targetInputTokens }),
+    ...(targetOutputTokens === undefined ? {} : { target_output_tokens: targetOutputTokens }),
     ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
     ...(value.response_evidence === undefined ? {} : { response_evidence: parsePerformanceResponseEvidence(value.response_evidence) }),
   }
@@ -449,7 +473,13 @@ function isPerformanceProfile(value: unknown, schemaVersion: 1 | 2): value is Qu
   if (schemaVersion === 1) return true
   return isPerformanceLoadMode(value.load_mode) &&
     (value.rate_per_second === undefined || isNonNegativeFinite(value.rate_per_second)) &&
-    (value.max_in_flight === undefined || isNonNegativeInteger(value.max_in_flight))
+    (value.max_in_flight === undefined || isNonNegativeInteger(value.max_in_flight)) &&
+    (value.arrival_pattern === undefined || isPerformanceArrivalPattern(value.arrival_pattern)) &&
+    (value.workload_mode === undefined || isPerformanceWorkloadMode(value.workload_mode)) &&
+    (value.random_seed === undefined || isUint32(value.random_seed)) &&
+    (value.input_tokens_stddev === undefined || isUint32(value.input_tokens_stddev)) &&
+    (value.output_tokens_stddev === undefined || isUint32(value.output_tokens_stddev)) &&
+    (value.shared_prefix_tokens === undefined || isUint32(value.shared_prefix_tokens))
 }
 
 function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1 | 2): boolean {
@@ -457,10 +487,21 @@ function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVers
     value.timeout_ms > 0 && value.input_tokens > 0 && value.output_tokens > 0)) return false
   if (schemaVersion === 1) return value.concurrency > 0
   if (value.load_mode === "fixed_concurrency") {
-    return value.concurrency > 0 && (value.rate_per_second ?? 0) === 0 && (value.max_in_flight ?? 0) === 0
+    if (!(value.concurrency > 0 && (value.rate_per_second ?? 0) === 0 && (value.max_in_flight ?? 0) === 0)) return false
+  } else if (!(value.load_mode === "open_loop" && value.concurrency === 0 &&
+    (value.rate_per_second ?? 0) > 0 && (value.max_in_flight ?? 0) > 0)) {
+    return false
   }
-  return value.load_mode === "open_loop" && value.concurrency === 0 &&
-    (value.rate_per_second ?? 0) > 0 && (value.max_in_flight ?? 0) > 0
+  const arrivalPattern = value.arrival_pattern ?? "constant"
+  const workloadMode = value.workload_mode ?? "fixed"
+  const randomSeed = value.random_seed ?? 0
+  const inputStdDev = value.input_tokens_stddev ?? 0
+  const outputStdDev = value.output_tokens_stddev ?? 0
+  const sharedPrefix = value.shared_prefix_tokens ?? 0
+  if (arrivalPattern === "poisson" && value.load_mode !== "open_loop") return false
+  if ((arrivalPattern === "poisson" || workloadMode === "normal") !== (randomSeed > 0)) return false
+  if (workloadMode === "fixed") return inputStdDev === 0 && outputStdDev === 0 && sharedPrefix === 0
+  return inputStdDev <= value.input_tokens && outputStdDev <= value.output_tokens && sharedPrefix < value.input_tokens
 }
 
 function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1 | 2): QuickPerformanceProfile {
@@ -471,6 +512,12 @@ function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1
     concurrency: value.concurrency,
     ...(schemaVersion === 2 && value.rate_per_second !== undefined ? { rate_per_second: value.rate_per_second } : {}),
     ...(schemaVersion === 2 && value.max_in_flight !== undefined ? { max_in_flight: value.max_in_flight } : {}),
+    ...(schemaVersion === 2 && value.arrival_pattern !== undefined ? { arrival_pattern: value.arrival_pattern } : {}),
+    ...(schemaVersion === 2 && value.workload_mode !== undefined ? { workload_mode: value.workload_mode } : {}),
+    ...(schemaVersion === 2 && value.random_seed !== undefined ? { random_seed: value.random_seed } : {}),
+    ...(schemaVersion === 2 && value.input_tokens_stddev !== undefined ? { input_tokens_stddev: value.input_tokens_stddev } : {}),
+    ...(schemaVersion === 2 && value.output_tokens_stddev !== undefined ? { output_tokens_stddev: value.output_tokens_stddev } : {}),
+    ...(schemaVersion === 2 && value.shared_prefix_tokens !== undefined ? { shared_prefix_tokens: value.shared_prefix_tokens } : {}),
     timeout_ms: value.timeout_ms,
     input_tokens: value.input_tokens,
     output_tokens: value.output_tokens,
@@ -583,12 +630,35 @@ function isPerformanceLoadMode(value: unknown): value is QuickPerformanceLoadMod
   return value === "fixed_concurrency" || value === "open_loop"
 }
 
+function isPerformanceArrivalPattern(value: unknown): value is QuickPerformanceArrivalPattern {
+  return value === "constant" || value === "poisson"
+}
+
+function isPerformanceWorkloadMode(value: unknown): value is QuickPerformanceWorkloadMode {
+  return value === "fixed" || value === "normal"
+}
+
+function performanceSampleTargetsMatchWorkload(profile: QuickPerformanceProfile, samples: QuickPerformanceSample[]): boolean {
+  const hasTargets = (sample: QuickPerformanceSample) => sample.target_input_tokens !== undefined && sample.target_output_tokens !== undefined
+  return (profile.workload_mode ?? "fixed") === "normal"
+    ? samples.every(hasTargets)
+    : samples.every((sample) => !hasTargets(sample))
+}
+
 function isArchiveStatus(value: unknown): value is QuickPerformanceArchiveStatus {
   return value === "not_attempted" || value === "archived" || value === "failed"
 }
 
 function isEvidenceCaptureStatus(value: unknown): value is QuickPerformanceEvidenceCaptureStatus {
   return value === "captured" || value === "empty" || value === "omitted"
+}
+
+function isUint32(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value <= 4_294_967_295
+}
+
+function isPositiveUint32(value: unknown): value is number {
+  return isPositiveInteger(value) && value <= 4_294_967_295
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

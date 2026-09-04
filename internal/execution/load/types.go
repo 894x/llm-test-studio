@@ -15,6 +15,15 @@ const (
 	MaxRequests         = 1_000_000
 )
 
+// ArrivalPattern controls only open-loop scheduling. The empty value is kept
+// backward compatible and is interpreted as ArrivalConstant.
+type ArrivalPattern string
+
+const (
+	ArrivalConstant ArrivalPattern = "constant"
+	ArrivalPoisson  ArrivalPattern = "poisson"
+)
+
 type Phase string
 
 const (
@@ -99,4 +108,12 @@ type Options struct {
 	// MaxOpenLoopInFlight may lower, but never raise, the process safety limit.
 	// It is primarily useful for constrained hosts and deterministic tests.
 	MaxOpenLoopInFlight uint64
+	// ArrivalPattern selects constant-spacing or a seeded Poisson process for
+	// open-loop work. RandomSeed is intentionally request-order independent.
+	ArrivalPattern ArrivalPattern
+	RandomSeed     uint32
+	// MaxScheduledRequests may lower, but never raise, the process-wide request
+	// cap. Explicit count-limited profiles above it fail; duration-only profiles
+	// stop offering at the cap but still keep their configured send window.
+	MaxScheduledRequests uint64
 }

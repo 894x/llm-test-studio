@@ -57,6 +57,12 @@ describe("Wails desktop client", () => {
       concurrency: 2,
       rate_per_second: 0,
       max_in_flight: 0,
+      arrival_pattern: "constant" as const,
+      workload_mode: "fixed" as const,
+      random_seed: 0,
+      input_tokens_stddev: 0,
+      output_tokens_stddev: 0,
+      shared_prefix_tokens: 0,
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
@@ -182,7 +188,9 @@ describe("Wails desktop client", () => {
     const command = {
       address_mode: "base_url" as const, url: "https://api.example.test/v1",
       api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
-      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
+      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
+      arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_seed: 0,
+      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     }
     const report = await createDesktopClient().runQuickPerformanceTest(command)
@@ -250,7 +258,9 @@ describe("Wails desktop client", () => {
     const report = await createDesktopClient().runQuickPerformanceTest({
       address_mode: "base_url", url: "https://api.example.test/v1",
       api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
-      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
+      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
+      arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
+      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     })
 
@@ -292,7 +302,9 @@ describe("Wails desktop client", () => {
 		const command = {
 			address_mode: "base_url" as const, url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
-			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
+			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
+			arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_seed: 0,
+			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		}
 
@@ -325,7 +337,9 @@ describe("Wails desktop client", () => {
 		const report = await createDesktopClient().runQuickPerformanceTest({
 			address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
-			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
+			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
+			arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
+			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		})
 
@@ -345,6 +359,12 @@ describe("Wails desktop client", () => {
 				concurrency: 0,
 				rate_per_second: 12.5,
 				max_in_flight: 37,
+				arrival_pattern: "poisson",
+				workload_mode: "normal",
+				random_seed: 424242,
+				input_tokens_stddev: 4,
+				output_tokens_stddev: 8,
+				shared_prefix_tokens: 10,
 			},
 			progress: { ...fixture.progress, offered: 6 },
 			metrics: {
@@ -355,25 +375,66 @@ describe("Wails desktop client", () => {
 				successful_request_qps: 10,
 				request_qps: 10,
 			},
+			samples: fixture.samples.map((sample, index) => ({
+				...sample,
+				target_input_tokens: 18 + index,
+				target_output_tokens: 28 + index,
+				provider_target: "must be dropped",
+			})),
 		} as never)
 
 		const v2 = await createDesktopClient().runQuickPerformanceTest({
 			address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "open_loop",
 			request_count: 4, duration_ms: 0, concurrency: 0, rate_per_second: 12.5,
-			max_in_flight: 37, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+			max_in_flight: 37, arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
+			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
+			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
 		expect(v2.schema_version).toBe(2)
-		expect(v2.profile).toMatchObject({ load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37 })
+		expect(v2.profile).toMatchObject({
+			load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37,
+			arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
+			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
+		})
 		expect(v2.progress.offered).toBe(6)
 		expect(v2.metrics).toMatchObject({ offered_qps: 15, launched_qps: 12.5, completed_qps: 11, successful_request_qps: 10 })
+		expect(v2.samples[0]).toMatchObject({ target_input_tokens: 18, target_output_tokens: 28 })
+		expect(JSON.stringify(v2.samples)).not.toContain("must be dropped")
+
+		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
+			...fixture,
+			schema_version: 2,
+			profile: { ...fixture.profile, load_mode: "fixed_concurrency" },
+			progress: { ...fixture.progress, offered: 4 },
+			metrics: {
+				...fixture.metrics,
+				offered_qps: 13.3,
+				launched_qps: 13.3,
+				completed_qps: 12.5,
+				successful_request_qps: 12.5,
+			},
+		} as never)
+		const phaseOneV2 = await createDesktopClient().runQuickPerformanceTest({
+			address_mode: "base_url", url: "https://api.example.test/v1",
+			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
+			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
+			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
+			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+		} as never)
+		expect(phaseOneV2.profile.arrival_pattern).toBeUndefined()
+		expect(phaseOneV2.profile.workload_mode).toBeUndefined()
+		expect(phaseOneV2.samples[0].target_input_tokens).toBeUndefined()
 
 		binding.RunQuickPerformanceTest.mockResolvedValueOnce(fixture as never)
 		const legacy = await createDesktopClient().runQuickPerformanceTest({
 			address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
 			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
-			max_in_flight: 0, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
+			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
 		expect(legacy.schema_version).toBe(1)
 		expect(legacy.profile.load_mode).toBeUndefined()

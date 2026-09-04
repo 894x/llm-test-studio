@@ -83,32 +83,44 @@ type Result struct {
 // It must remain independent from persisted Model, Channel, Case, and Plan
 // entities so a quick performance run stays zero-persistence.
 type PerformanceCommand struct {
-	AddressMode   AddressMode     `json:"address_mode"`
-	URL           string          `json:"url"`
-	APIKey        string          `json:"api_key"`
-	ChannelID     string          `json:"channel_id,omitempty"`
-	ModelID       string          `json:"model_id"`
-	LoadMode      domain.LoadMode `json:"load_mode,omitempty"`
-	RequestCount  uint64          `json:"request_count"`
-	DurationMS    uint64          `json:"duration_ms"`
-	Concurrency   uint32          `json:"concurrency"`
-	RatePerSecond float64         `json:"rate_per_second,omitempty"`
-	MaxInFlight   uint32          `json:"max_in_flight,omitempty"`
-	TimeoutMS     uint64          `json:"timeout_ms"`
-	InputTokens   uint32          `json:"input_tokens"`
-	OutputTokens  uint32          `json:"output_tokens"`
+	AddressMode        AddressMode             `json:"address_mode"`
+	URL                string                  `json:"url"`
+	APIKey             string                  `json:"api_key"`
+	ChannelID          string                  `json:"channel_id,omitempty"`
+	ModelID            string                  `json:"model_id"`
+	LoadMode           domain.LoadMode         `json:"load_mode,omitempty"`
+	ArrivalPattern     load.ArrivalPattern     `json:"arrival_pattern,omitempty"`
+	WorkloadMode       PerformanceWorkloadMode `json:"workload_mode,omitempty"`
+	RandomSeed         uint32                  `json:"random_seed,omitempty"`
+	RequestCount       uint64                  `json:"request_count"`
+	DurationMS         uint64                  `json:"duration_ms"`
+	Concurrency        uint32                  `json:"concurrency"`
+	RatePerSecond      float64                 `json:"rate_per_second,omitempty"`
+	MaxInFlight        uint32                  `json:"max_in_flight,omitempty"`
+	TimeoutMS          uint64                  `json:"timeout_ms"`
+	InputTokens        uint32                  `json:"input_tokens"`
+	OutputTokens       uint32                  `json:"output_tokens"`
+	InputTokensStdDev  uint32                  `json:"input_tokens_stddev,omitempty"`
+	OutputTokensStdDev uint32                  `json:"output_tokens_stddev,omitempty"`
+	SharedPrefixTokens uint32                  `json:"shared_prefix_tokens,omitempty"`
 }
 
 type PerformanceProfile struct {
-	LoadMode      domain.LoadMode `json:"load_mode,omitempty"`
-	RequestCount  uint64          `json:"request_count"`
-	DurationMS    uint64          `json:"duration_ms"`
-	Concurrency   uint32          `json:"concurrency"`
-	RatePerSecond float64         `json:"rate_per_second,omitempty"`
-	MaxInFlight   uint32          `json:"max_in_flight,omitempty"`
-	TimeoutMS     uint64          `json:"timeout_ms"`
-	InputTokens   uint32          `json:"input_tokens"`
-	OutputTokens  uint32          `json:"output_tokens"`
+	LoadMode           domain.LoadMode         `json:"load_mode,omitempty"`
+	ArrivalPattern     load.ArrivalPattern     `json:"arrival_pattern,omitempty"`
+	WorkloadMode       PerformanceWorkloadMode `json:"workload_mode,omitempty"`
+	RandomSeed         uint32                  `json:"random_seed,omitempty"`
+	RequestCount       uint64                  `json:"request_count"`
+	DurationMS         uint64                  `json:"duration_ms"`
+	Concurrency        uint32                  `json:"concurrency"`
+	RatePerSecond      float64                 `json:"rate_per_second,omitempty"`
+	MaxInFlight        uint32                  `json:"max_in_flight,omitempty"`
+	TimeoutMS          uint64                  `json:"timeout_ms"`
+	InputTokens        uint32                  `json:"input_tokens"`
+	OutputTokens       uint32                  `json:"output_tokens"`
+	InputTokensStdDev  uint32                  `json:"input_tokens_stddev,omitempty"`
+	OutputTokensStdDev uint32                  `json:"output_tokens_stddev,omitempty"`
+	SharedPrefixTokens uint32                  `json:"shared_prefix_tokens,omitempty"`
 }
 
 type PerformanceProgress struct {
@@ -165,22 +177,24 @@ const (
 // Failed samples may carry a bounded, redacted response. Request bodies,
 // prompts, credentials, headers, and unredacted provider text remain excluded.
 type PerformanceSample struct {
-	RequestIndex      uint64                       `json:"request_index"`
-	ScheduledOffsetMS float64                      `json:"scheduled_offset_ms"`
-	StartedOffsetMS   float64                      `json:"started_offset_ms"`
-	FinishedOffsetMS  float64                      `json:"finished_offset_ms"`
-	ScheduleLagMS     float64                      `json:"schedule_lag_ms"`
-	E2EMS             float64                      `json:"e2e_ms"`
-	TTFTMS            float64                      `json:"ttft_ms"`
-	TPOTMS            float64                      `json:"tpot_ms"`
-	HTTPStatus        int                          `json:"http_status"`
-	Success           bool                         `json:"success"`
-	TimedOut          bool                         `json:"timed_out"`
-	PromptTokens      uint64                       `json:"prompt_tokens"`
-	CompletionTokens  uint64                       `json:"completion_tokens"`
-	CachedTokens      uint64                       `json:"cached_tokens"`
-	ErrorCode         domain.ErrorCode             `json:"error_code,omitempty"`
-	ResponseEvidence  *PerformanceResponseEvidence `json:"response_evidence,omitempty"`
+	RequestIndex       uint64                       `json:"request_index"`
+	TargetInputTokens  uint32                       `json:"target_input_tokens,omitempty"`
+	TargetOutputTokens uint32                       `json:"target_output_tokens,omitempty"`
+	ScheduledOffsetMS  float64                      `json:"scheduled_offset_ms"`
+	StartedOffsetMS    float64                      `json:"started_offset_ms"`
+	FinishedOffsetMS   float64                      `json:"finished_offset_ms"`
+	ScheduleLagMS      float64                      `json:"schedule_lag_ms"`
+	E2EMS              float64                      `json:"e2e_ms"`
+	TTFTMS             float64                      `json:"ttft_ms"`
+	TPOTMS             float64                      `json:"tpot_ms"`
+	HTTPStatus         int                          `json:"http_status"`
+	Success            bool                         `json:"success"`
+	TimedOut           bool                         `json:"timed_out"`
+	PromptTokens       uint64                       `json:"prompt_tokens"`
+	CompletionTokens   uint64                       `json:"completion_tokens"`
+	CachedTokens       uint64                       `json:"cached_tokens"`
+	ErrorCode          domain.ErrorCode             `json:"error_code,omitempty"`
+	ResponseEvidence   *PerformanceResponseEvidence `json:"response_evidence,omitempty"`
 }
 
 // PerformanceReport is an ephemeral, bounded report. It contains no Model,

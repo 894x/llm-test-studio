@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -137,6 +138,75 @@ func TestDurationOnlyOpenLoopDoesNotExceedDerivedRequestCap(t *testing.T) {
 	}
 	if outcome.Progress.Planned != 3 || outcome.Progress.Offered != 3 || len(outcome.Results) != 3 {
 		t.Fatalf("derived-cap outcome = %#v", outcome)
+	}
+}
+
+func TestRunOpenLoopPoissonScheduleIsSeededAndNonConstant(t *testing.T) {
+	profile := domain.LoadProfile{
+		Mode: domain.LoadOpenLoop, Concurrency: 1, RequestCount: 5,
+		RatePerSecond: 1_000, RequestTimeoutMS: 1_000,
+	}
+	run := func(seed uint32) []time.Duration {
+		outcome, err := Run(context.Background(), profile, func(_ context.Context, request Request) Observation {
+			return Observation{Index: request.Index, Success: true}
+		}, Options{ArrivalPattern: ArrivalPoisson, RandomSeed: seed})
+		if err != nil {
+			t.Fatalf("Run(seed=%d) error = %v", seed, err)
+		}
+		offsets := make([]time.Duration, len(outcome.Results))
+		for index, observation := range outcome.Results {
+			offsets[index] = observation.ScheduledOffset
+		}
+		return offsets
+	}
+
+	first := run(42)
+	if second := run(42); !reflect.DeepEqual(second, first) {
+		t.Fatalf("same-seed schedules differ: %v != %v", first, second)
+	}
+	if different := run(43); reflect.DeepEqual(different, first) {
+		t.Fatalf("different-seed schedules are identical: %v", first)
+	}
+	if first[0] != 0 {
+		t.Fatalf("first scheduled offset = %v, want zero", first[0])
+	}
+	gaps := make(map[time.Duration]struct{}, len(first)-1)
+	for index := 1; index < len(first); index++ {
+		if first[index] <= first[index-1] {
+			t.Fatalf("schedule is not strictly increasing: %v", first)
+		}
+		gaps[first[index]-first[index-1]] = struct{}{}
+	}
+	if len(gaps) == 1 {
+		t.Fatalf("poisson inter-arrivals are constant: %v", first)
+	}
+}
+
+func TestDurationOnlyPoissonWaitsWindowAndHonorsCallerScheduleCap(t *testing.T) {
+	profile := domain.LoadProfile{
+		Mode: domain.LoadOpenLoop, Concurrency: 1, DurationMS: 30,
+		RatePerSecond: 10_000, RequestTimeoutMS: 1_000,
+	}
+	started := time.Now()
+	outcome, err := Run(context.Background(), profile, func(_ context.Context, request Request) Observation {
+		return Observation{Index: request.Index, Success: true}
+	}, Options{ArrivalPattern: ArrivalPoisson, RandomSeed: 7, MaxScheduledRequests: 10})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < 25*time.Millisecond {
+		t.Fatalf("duration-only poisson run ended after %v, want configured send window", elapsed)
+	}
+	if outcome.Progress.Offered == 0 || outcome.Progress.Offered > 10 || len(outcome.Results) > 10 {
+		t.Fatalf("bounded poisson outcome = %#v", outcome)
+	}
+}
+
+func TestRunRejectsPoissonOutsideOpenLoop(t *testing.T) {
+	if _, err := Run(context.Background(), fixedProfile(1, 1), func(context.Context, Request) Observation {
+		return Observation{Success: true}
+	}, Options{ArrivalPattern: ArrivalPoisson}); err == nil {
+		t.Fatal("Run(fixed + poisson) error = nil")
 	}
 }
 

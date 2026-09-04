@@ -51,6 +51,69 @@ func TestRepositoryQuickPerformanceReportSchemaV2RoundTrip(t *testing.T) {
 	}
 }
 
+func TestRepositoryReadsPhaseOneSchemaV2DefaultsAsFixedAndConstant(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777776", "2026-08-31T15:35:00Z")
+	report.Profile.ArrivalPattern = ""
+	report.Profile.WorkloadMode = ""
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if loaded.Profile.ArrivalPattern != load.ArrivalConstant || loaded.Profile.WorkloadMode != quicktest.PerformanceWorkloadFixed {
+		t.Fatalf("loaded phase-one defaults = %#v", loaded.Profile)
+	}
+}
+
+func TestRepositoryQuickPerformanceNormalWorkloadRoundTrip(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777777", "2026-08-31T15:36:00Z")
+	report.Profile.WorkloadMode = quicktest.PerformanceWorkloadNormal
+	report.Profile.RandomSeed = 5
+	report.Profile.SharedPrefixTokens = 2
+	report.Samples[0].TargetInputTokens = report.Profile.InputTokens
+	report.Samples[0].TargetOutputTokens = report.Profile.OutputTokens
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, report) {
+		t.Fatalf("loaded report = %#v, want %#v", loaded, report)
+	}
+}
+
+func TestRepositoryQuickPerformanceSinglePoissonRequestUsesNominalWindow(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777778", "2026-08-31T15:37:00Z")
+	report.Profile.LoadMode = domain.LoadOpenLoop
+	report.Profile.ArrivalPattern = load.ArrivalPoisson
+	report.Profile.RandomSeed = 1
+	report.Profile.Concurrency = 0
+	report.Profile.RatePerSecond = 10
+	report.Profile.MaxInFlight = 1
+	report.Metrics.OfferedQPS = 10
+	report.Metrics.LaunchedQPS = 10
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, report) {
+		t.Fatalf("loaded report = %#v, want %#v", loaded, report)
+	}
+}
+
 func TestRepositoryOnlyWritesCurrentQuickPerformanceSchema(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
@@ -76,6 +139,8 @@ func TestRepositoryRejectsNonCanonicalOrUnsupportedQuickPerformanceDocuments(t *
 		{name: "unsupported schema", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"schema_version":1`, `"schema_version":99`, 1)},
 		{name: "unknown field", document: strings.TrimSuffix(frozenSchemaV1QuickPerformanceReport, "}") + `,"unknown":true}`},
 		{name: "v2 field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"input_tokens":10,`, `"input_tokens":10,"load_mode":"fixed_concurrency",`, 1)},
+		{name: "phase two profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"profile":{"concurrency":`, `"profile":{"arrival_pattern":"poisson","concurrency":`, 1)},
+		{name: "phase two sample field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timed_out":false,`, `"target_input_tokens":10,"timed_out":false,`, 1)},
 		{name: "noncanonical whitespace", document: " " + frozenSchemaV1QuickPerformanceReport},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -202,6 +267,14 @@ func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) 
 			report.Metrics.OfferedQPS /= 2
 			report.Metrics.LaunchedQPS /= 2
 		}},
+		{name: "fixed workload target", mutate: func(report *quicktest.PerformanceReport) { report.Samples[0].TargetInputTokens = 10 }},
+		{name: "normal workload target mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			report.Profile.WorkloadMode = quicktest.PerformanceWorkloadNormal
+			report.Profile.RandomSeed = 5
+			report.Profile.SharedPrefixTokens = 2
+			report.Samples[0].TargetInputTokens = 3
+			report.Samples[0].TargetOutputTokens = 3
+		}},
 		{name: "unsafe url", mutate: func(report *quicktest.PerformanceReport) { report.BaseURL = "http://example.com/v1" }},
 		{name: "unsafe top level error code", mutate: func(report *quicktest.PerformanceReport) {
 			report.ErrorCode = domain.ErrorCode("provider said api-key=sk-secret")
@@ -223,6 +296,7 @@ func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) 
 				report.Samples[index].RequestIndex = uint64(index)
 			}
 			report.Progress.Planned = quicktest.MaxPerformanceRequests + 1
+			report.Progress.Offered = quicktest.MaxPerformanceRequests + 1
 			report.Progress.Launched = quicktest.MaxPerformanceRequests + 1
 			report.Progress.Completed = quicktest.MaxPerformanceRequests + 1
 			report.Progress.Succeeded = quicktest.MaxPerformanceRequests + 1
@@ -233,8 +307,12 @@ func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777779", "2026-08-31T15:30:00Z")
 			test.mutate(&report)
-			if err := repository.SaveQuickPerformanceReport(context.Background(), report); err == nil {
+			err := repository.SaveQuickPerformanceReport(context.Background(), report)
+			if err == nil {
 				t.Fatal("SaveQuickPerformanceReport() error = nil")
+			}
+			if test.name == "too many samples" && !strings.Contains(err.Error(), "sample limit") {
+				t.Fatalf("SaveQuickPerformanceReport() error = %v, want sample-limit rejection", err)
 			}
 		})
 	}
@@ -266,7 +344,8 @@ func validQuickPerformanceReport(id, generatedAt string) quicktest.PerformanceRe
 		Success: true, AddressMode: quicktest.AddressModeBaseURL,
 		BaseURL: "https://example.com/v1", Endpoint: "https://example.com/v1/chat/completions", ModelID: "model-a",
 		Profile: quicktest.PerformanceProfile{
-			LoadMode: domain.LoadFixedConcurrency, RequestCount: 1, Concurrency: 1,
+			LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: load.ArrivalConstant, WorkloadMode: quicktest.PerformanceWorkloadFixed,
+			RequestCount: 1, Concurrency: 1,
 			TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3,
 		},
 		Progress: quicktest.PerformanceProgress{

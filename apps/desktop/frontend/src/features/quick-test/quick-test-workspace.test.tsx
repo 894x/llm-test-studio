@@ -259,6 +259,12 @@ describe("QuickTestWorkspace", () => {
       concurrency: 2,
       rate_per_second: 0,
       max_in_flight: 0,
+      arrival_pattern: "constant",
+      workload_mode: "fixed",
+      random_seed: 0,
+      input_tokens_stddev: 0,
+      output_tokens_stddev: 0,
+      shared_prefix_tokens: 0,
       timeout_ms: 30_000,
       input_tokens: 1_000_000,
       output_tokens: 32,
@@ -336,10 +342,203 @@ describe("QuickTestWorkspace", () => {
       concurrency: 0,
       rate_per_second: 12.5,
       max_in_flight: 37,
+      arrival_pattern: "constant",
+      workload_mode: "fixed",
+      random_seed: 0,
+      input_tokens_stddev: 0,
+      output_tokens_stddev: 0,
+      shared_prefix_tokens: 0,
       timeout_ms: 60_000,
       input_tokens: 100,
       output_tokens: 100,
     }, expect.any(Function)))
+  })
+
+  it("keeps workload drafts and sends a reproducible Poisson normal workload", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+
+    expect(within(dialog).queryByRole("combobox", { name: "到达分布" })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    await user.click(within(dialog).getByRole("combobox", { name: "到达分布" }))
+    await user.click(screen.getByRole("option", { name: "Poisson 到达" }))
+
+    await user.click(within(dialog).getByRole("combobox", { name: "工作负载" }))
+    await user.click(screen.getByRole("option", { name: "正态分布" }))
+    await replaceNumber(user, within(dialog).getByLabelText("近似输入 Token 均值"), "120")
+    await replaceNumber(user, within(dialog).getByLabelText("最大输出 Token 均值"), "40")
+    await replaceNumber(user, within(dialog).getByLabelText("输入 Token 标准差"), "20")
+    await replaceNumber(user, within(dialog).getByLabelText("输出 Token 标准差"), "8")
+    await replaceNumber(user, within(dialog).getByLabelText("共享前缀 Token"), "60")
+    await replaceNumber(user, within(dialog).getByLabelText("随机种子"), "424242")
+
+    await user.click(within(dialog).getByRole("combobox", { name: "工作负载" }))
+    await user.click(screen.getByRole("option", { name: "固定 Token" }))
+    expect(within(dialog).queryByLabelText("输入 Token 标准差")).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText("随机种子")).toHaveValue(424242)
+    await user.click(within(dialog).getByRole("combobox", { name: "工作负载" }))
+    await user.click(screen.getByRole("option", { name: "正态分布" }))
+    expect(within(dialog).getByLabelText("输入 Token 标准差")).toHaveValue(20)
+    expect(within(dialog).getByLabelText("输出 Token 标准差")).toHaveValue(8)
+    expect(within(dialog).getByLabelText("共享前缀 Token")).toHaveValue(60)
+
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "sk-private-value",
+      model_id: "gpt-new",
+      load_mode: "open_loop",
+      request_count: 10,
+      duration_ms: 0,
+      concurrency: 0,
+      rate_per_second: 1,
+      max_in_flight: 256,
+      arrival_pattern: "poisson",
+      workload_mode: "normal",
+      random_seed: 424242,
+      input_tokens_stddev: 20,
+      output_tokens_stddev: 8,
+      shared_prefix_tokens: 60,
+      timeout_ms: 60_000,
+      input_tokens: 120,
+      output_tokens: 40,
+    }, expect.any(Function)))
+  })
+
+  it("validates normal workload bounds before starting performance testing", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("combobox", { name: "工作负载" }))
+    await user.click(screen.getByRole("option", { name: "正态分布" }))
+    await replaceNumber(user, within(dialog).getByLabelText("输入 Token 标准差"), "101")
+    await replaceNumber(user, within(dialog).getByLabelText("输出 Token 标准差"), "101")
+    await replaceNumber(user, within(dialog).getByLabelText("共享前缀 Token"), "101")
+    await replaceNumber(user, within(dialog).getByLabelText("随机种子"), "0")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    expect(await within(dialog).findByText("输入 Token 标准差不能大于输入均值。")).toHaveAttribute("data-slot", "field-error")
+    expect(within(dialog).getByText("输出 Token 标准差不能大于输出均值。")).toHaveAttribute("data-slot", "field-error")
+    expect(within(dialog).getByText("共享前缀 Token 必须小于输入均值。")).toHaveAttribute("data-slot", "field-error")
+    expect(within(dialog).getByText("随机种子需为 1–4,294,967,295 的整数。")).toHaveAttribute("data-slot", "field-error")
+    expect(within(dialog).getByLabelText("输入 Token 标准差")).toHaveFocus()
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+  })
+
+  it("allows the constant duration-only schedule cap boundary and rejects the first request above it", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
+    await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    const rate = within(dialog).getByLabelText("目标发送 RPS")
+
+    await replaceNumber(user, rate, "10000.01")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    expect(await within(dialog).findByText("当前持续时间与 RPS 预计调度 10,001 个请求，超过 10,000 个上限。")).toHaveAttribute("data-slot", "field-error")
+    expect(rate).toHaveAttribute("aria-invalid", "true")
+    expect(rate).toHaveFocus()
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+
+    await replaceNumber(user, rate, "10000")
+    expect(rate).not.toHaveAttribute("aria-invalid")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({ request_count: 0, duration_ms: 1_000, rate_per_second: 10_000, arrival_pattern: "constant" }),
+      expect.any(Function),
+    ))
+  })
+
+  it("uses Poisson headroom for duration-only loads and preserves the hidden RPS draft across modes", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
+    await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    await user.click(within(dialog).getByRole("combobox", { name: "到达分布" }))
+    await user.click(screen.getByRole("option", { name: "Poisson 到达" }))
+    const rate = within(dialog).getByLabelText("目标发送 RPS")
+    await replaceNumber(user, rate, "5000")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    expect(await within(dialog).findByText("Poisson 到达需预留两倍调度余量；当前预计上限 10,001 个请求，超过 10,000 个上限。")).toHaveAttribute("data-slot", "field-error")
+    expect(rate).toHaveFocus()
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "固定并发" }))
+    expect(within(dialog).queryByLabelText("目标发送 RPS")).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/当前预计上限/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    expect(within(dialog).getByLabelText("目标发送 RPS")).toHaveValue(5000)
+    expect(within(dialog).getByRole("combobox", { name: "到达分布" })).toHaveTextContent("Poisson 到达")
+
+    await replaceNumber(user, within(dialog).getByLabelText("目标发送 RPS"), "4999.5")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({ request_count: 0, duration_ms: 1_000, rate_per_second: 4_999.5, arrival_pattern: "poisson" }),
+      expect.any(Function),
+    ))
   })
 
   it("shows authoritative progress while a performance test is running", async () => {

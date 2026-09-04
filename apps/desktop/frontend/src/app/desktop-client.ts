@@ -752,6 +752,12 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       load_mode: command.load_mode, request_count: command.request_count, duration_ms: command.duration_ms,
       concurrency: command.concurrency,
       ...(command.load_mode === "open_loop" ? { rate_per_second: command.rate_per_second, max_in_flight: command.max_in_flight } : {}),
+      arrival_pattern: command.arrival_pattern,
+      workload_mode: command.workload_mode,
+      random_seed: command.random_seed,
+      input_tokens_stddev: command.input_tokens_stddev,
+      output_tokens_stddev: command.output_tokens_stddev,
+      shared_prefix_tokens: command.shared_prefix_tokens,
       timeout_ms: command.timeout_ms,
       input_tokens: command.input_tokens, output_tokens: command.output_tokens,
     },
@@ -794,6 +800,10 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       prompt_tokens: command.input_tokens,
       completion_tokens: command.output_tokens,
       cached_tokens: 0,
+      ...(command.workload_mode === "normal" ? {
+        target_input_tokens: command.input_tokens,
+        target_output_tokens: command.output_tokens,
+      } : {}),
     })),
     failures: [],
   }

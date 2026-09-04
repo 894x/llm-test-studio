@@ -94,3 +94,25 @@ func TestComputeMetricsWithProfileUsesHonestOpenLoopRateWindows(t *testing.T) {
 		t.Fatalf("duration-limited rates = %#v", metrics)
 	}
 }
+
+func TestComputeMetricsWithArrivalUsesRealizedPoissonWindow(t *testing.T) {
+	profile := domain.LoadProfile{Mode: domain.LoadOpenLoop, RequestCount: 3, RatePerSecond: 10}
+	progress := Progress{Offered: 3, Launched: 3, SendDuration: 200 * time.Millisecond, TotalDuration: 250 * time.Millisecond}
+	constant := ComputeMetricsWithArrival(make([]Observation, 3), progress, profile, ArrivalConstant)
+	poisson := ComputeMetricsWithArrival(make([]Observation, 3), progress, profile, ArrivalPoisson)
+	if constant.OfferedQPS != 10 {
+		t.Fatalf("constant offered QPS = %v, want configured schedule window", constant.OfferedQPS)
+	}
+	if poisson.OfferedQPS != 15 {
+		t.Fatalf("poisson offered QPS = %v, want realized schedule window", poisson.OfferedQPS)
+	}
+}
+
+func TestComputeMetricsWithArrivalUsesNominalWindowForSinglePoissonRequest(t *testing.T) {
+	profile := domain.LoadProfile{Mode: domain.LoadOpenLoop, RequestCount: 1, RatePerSecond: 10}
+	progress := Progress{Offered: 1, Launched: 1, SendDuration: time.Millisecond, TotalDuration: 2 * time.Millisecond}
+	metrics := ComputeMetricsWithArrival([]Observation{{Success: true}}, progress, profile, ArrivalPoisson)
+	if metrics.OfferedQPS != 10 || metrics.LaunchedQPS != 10 {
+		t.Fatalf("single-request poisson rates = %#v, want nominal 10 QPS", metrics)
+	}
+}

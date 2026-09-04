@@ -149,6 +149,14 @@ func decodeQuickPerformanceReport(document []byte) (quicktest.PerformanceReport,
 	if err != nil {
 		return quicktest.PerformanceReport{}, time.Time{}, err
 	}
+	if report.SchemaVersion == quicktest.PerformanceSchemaVersion {
+		if report.Profile.ArrivalPattern == "" {
+			report.Profile.ArrivalPattern = load.ArrivalConstant
+		}
+		if report.Profile.WorkloadMode == "" {
+			report.Profile.WorkloadMode = quicktest.PerformanceWorkloadFixed
+		}
+	}
 	return report, generatedAt, nil
 }
 

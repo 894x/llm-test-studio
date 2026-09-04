@@ -61,6 +61,13 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).not.toHaveTextContent("3 / 10,000")
     expect(archivedReport).toHaveTextContent("测试配置")
     expect(archivedReport).toHaveTextContent("持续时间 · 1 s")
+    expect(archivedReport).toHaveTextContent("正态分布")
+    expect(archivedReport).toHaveTextContent("随机种子")
+    expect(archivedReport).toHaveTextContent("424,242")
+    expect(archivedReport).toHaveTextContent("共享前缀")
+    expect(archivedReport).toHaveTextContent("8 Token")
+    expect(archivedReport).toHaveTextContent("采样目标范围（输入 / 输出）")
+    expect(archivedReport).toHaveTextContent("18–22 / 28–36")
     expect(archivedReport).toHaveTextContent("https://api.example.test/v1/chat/completions")
     expect(archivedReport).toHaveTextContent("峰值在途 / 配置并发")
     expect(archivedReport).toHaveTextContent("2 / 2")
@@ -168,7 +175,12 @@ function quickDetail(reportID: string) {
       address_mode: "base_url",
       base_url: "https://api.example.test/v1",
       endpoint: "https://api.example.test/v1/chat/completions",
-      profile: { load_mode: "fixed_concurrency", request_count: 0, duration_ms: 1_000, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
+      profile: {
+        load_mode: "fixed_concurrency", request_count: 0, duration_ms: 1_000, concurrency: 2,
+        arrival_pattern: "constant", workload_mode: "normal", random_seed: 424242,
+        input_tokens_stddev: 2, output_tokens_stddev: 4, shared_prefix_tokens: 8,
+        timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+      },
       progress: { phase: "completed", planned: 10_000, offered: 3, launched: 3, completed: 3, in_flight: 0, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, send_duration_ms: 60, drain_duration_ms: 30, total_duration_ms: 90 },
       metrics: {
         completed: 3, succeeded: 3, failed: 0, timed_out: 0, success_rate_percent: 100,
@@ -189,7 +201,9 @@ function quickDetail(reportID: string) {
 }
 
 function sample(requestIndex: number, finished: number, e2e: number, ttft: number, tpot: number) {
-  return { request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished, schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 0 }
+  const targetInput = [18, 20, 22][requestIndex]
+  const targetOutput = [28, 32, 36][requestIndex]
+  return { request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished, schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 0, target_input_tokens: targetInput, target_output_tokens: targetOutput }
 }
 
 function failedQuickDetail(reportID: string) {
