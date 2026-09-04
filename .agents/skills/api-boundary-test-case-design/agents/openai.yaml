@@ -1,4 +1,4 @@
 interface:
   display_name: "API Boundary Test Design"
-  short_description: "Design contract-based API boundary test suites."
-  default_prompt: "Use $api-boundary-test-case-design to audit an API contract and build a minimal boundary-focused test suite."
+  short_description: "Design API boundary cases and scenario suites."
+  default_prompt: "Use $api-boundary-test-case-design to audit an API contract, build contract-complete cases, and generate cost-aware scenario suites."

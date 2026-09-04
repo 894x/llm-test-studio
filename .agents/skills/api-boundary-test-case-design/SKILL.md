@@ -1,6 +1,6 @@
 ---
 name: api-boundary-test-case-design
-description: Audit, design, or implement contract-based API test cases using equivalence partitioning, boundary-value analysis, decision tables, negative testing, and cost-aware execution tiers. Use for REST or OpenAI-compatible API parameter suites and case catalogs; do not use for ordinary unit-test implementation with no external API contract.
+description: Audit, design, or implement contract-complete API test matrices, cases, and scenario suites using equivalence partitioning, boundary-value analysis, decision tables, negative testing, and cost-aware execution tiers. Use for REST or OpenAI-compatible API parameter suites and case catalogs; do not use for ordinary unit-test implementation with no external API contract.
 ---
 
 # API Boundary Test Case Design
@@ -11,8 +11,8 @@ Build the smallest suite that demonstrates the documented contract at its valid,
 
 1. Establish whether the request is an audit, a design, an implementation, or an authorized live execution. Do not turn an audit into code changes or a design into paid requests.
 2. Inspect the repository's case schema, loader, assertion kinds, model routing, and neighboring cases before proposing artifacts. In this repository, follow `AGENTS.md` and use the codebase graph before source fallback for structural discovery.
-3. Verify the current provider contract from primary official documentation. Record the retrieval date and direct source URL for every material limit, default, enum, dependency, and error expectation. Treat undocumented behavior as observed behavior, not contract.
-4. Build a parameter constraint matrix before writing cases. Read [coverage-matrix.md](references/coverage-matrix.md) for the required columns and selection rules.
+3. Verify the current provider contract from primary official documentation. Record the retrieval date and direct source URL for every material header, field, nested field, limit, default, enum, dependency, workflow transition, and error expectation. Treat undocumented behavior as observed behavior, not contract.
+4. Build a contract inventory and parameter constraint matrix before writing cases. Read [coverage-matrix.md](references/coverage-matrix.md) for the completeness gate, required columns, coverage-state rules, and selection rules.
 5. For an LLM or OpenAI-compatible API, also read [llm-api-checklist.md](references/llm-api-checklist.md). For `E:\GITHUB\llm-test`, read [llm-test-studio-cases.md](references/llm-test-studio-cases.md) before editing case files.
 6. Select cases by input shape:
    - ordered numeric, length, or cardinality domain: boundary-value analysis;
@@ -21,9 +21,24 @@ Build the smallest suite that demonstrates the documented contract at its valid,
    - workflow or multi-turn behavior: state transitions;
    - undocumented robustness questions: explicitly labeled exploratory or characterization cases.
 7. Give every case one primary contract claim, explicit preconditions, exact request delta, expected transport and business outcome, stable assertions, model applicability, execution tier, and source reference.
-8. Audit the proposed suite against the matrix. A happy-path case does not cover rejection behavior; an enum sweep is not numeric boundary testing; an HTTP 2xx or completed stream is not business success.
+8. Audit the proposed suite against the matrix. A parameter merely present in a happy-path request is not covered; an enum sweep is not numeric boundary testing; an HTTP 2xx or accepted asynchronous task is not business success.
 9. Implement only the approved scope. Reuse existing assertion kinds when they can prove the claim; extend the runner with tests when they cannot. Never weaken an assertion merely to make a provider response pass.
-10. Validate schema/loading, targeted tests, generated catalog consistency, and diff hygiene. Report separately what was designed, statically validated, live-executed, deferred for cost, or blocked by missing authoritative limits.
+10. When creating or materially extending a model case catalog in LLM Test Studio, define its execution profiles and generate scenario Suite files with [suite-generation.md](references/suite-generation.md). Do not make an agent hand-copy mechanically selectable memberships.
+11. Validate schema/loading, targeted tests, generated catalog consistency, and diff hygiene. Report separately what was designed, statically validated, live-executed, deferred for cost, or blocked by missing authoritative limits.
+
+## Scope and completeness gates
+
+Before generating case artifacts:
+
+1. Write one explicit scope statement naming provider, endpoint, exact model/version, included modes, excluded modes, and documentation retrieval date. If the user names a model or endpoint without narrowing its parameters, the matrix scope is the full documented request and lifecycle contract for that target. Do not silently narrow it to a cheaper capability subset.
+2. Inventory the contract in two passes:
+   - structural: method/path, headers, top-level fields, nested fields, collection item fields, response fields, and workflow states;
+   - behavioral: required/optional rules, defaults, valid and invalid partitions, ranges, lengths, cardinalities, formats, mutual exclusions, combined budgets, state transitions, and expiry rules.
+3. Map every inventory item to a matrix row or an explicit out-of-scope row with rationale. Do not start case generation while a documented item has no row.
+4. Keep design coverage separate from execution evidence. Missing credentials, deterministic assets, assertion capability, or spend authorization changes a row to `deferred` or `blocked`; it does not remove the row or its required scenarios.
+5. Apply the coverage-state rules in [coverage-matrix.md](references/coverage-matrix.md). Do not mark a row `covered` unless implemented cases and stable assertions prove every mandatory scenario selected for that row.
+
+For asynchronous APIs, state whether invalid input is rejected at admission, after task creation, or at either documented phase. A negative assertion must follow the task to a terminal failure when admission success is not business success.
 
 ## Boundary selection
 
@@ -45,6 +60,8 @@ Classify cases before execution:
 
 Never infer authorization to spend provider quota from a request to design or add cases. Redact credentials and sensitive payloads from artifacts and reports.
 
+Cost controls execution, not design completeness. Define expensive or asset-dependent scenarios in the matrix and keep their executable cases disabled or deferred until the user authorizes the required assets and spend.
+
 ## Inventory helper
 
 Use `scripts/audit_case_coverage.py` to inventory repository-owned `case.json` files before making exhaustive claims:
@@ -53,8 +70,19 @@ Use `scripts/audit_case_coverage.py` to inventory repository-owned `case.json` f
 python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py cases/kimi-k3 --model kimi-k3
 ```
 
-The script reports observed dimensions, request parameters, assertion kinds, and heuristic negative-case counts. It does not know the official contract, so compare its output with the constraint matrix and current primary documentation.
+The script reports observed dimensions, request parameters, assertion kinds, and heuristic negative-case counts. It does not know the official contract and cannot detect a documented parameter that is absent from both the matrix and case files. Compare its output with the independently built contract inventory and current primary documentation; never use the inventory output alone to claim completeness.
+
+## Scenario Suite generator
+
+For LLM Test Studio model catalogs, use `scripts/build_scenario_suites.py` after the case files and their execution modes are stable. Read [suite-generation.md](references/suite-generation.md) before creating or changing the profile manifest.
+
+The generator intentionally separates two kinds of membership:
+
+- explicit case keys for semantic profiles such as connectivity and basic functionality;
+- metadata selectors for mechanical profiles such as automatic parameter rejection, all automatic cases, and complete model coverage.
+
+Preview first, write only after inspecting the counts, then use `--check` in validation. The generator never authorizes live execution and never deletes unrelated Suite files.
 
 ## Completion standard
 
-A boundary suite is complete only for the explicitly bounded contract scope. State uncovered parameters and combinations, disabled or deferred cases, provider-documentation conflicts, assertion limitations, and live-execution level. Never call a foundation, compatibility, or smoke suite comprehensive boundary coverage without matrix evidence.
+A boundary suite is complete only for the explicitly bounded contract scope and only when the contract inventory has no unmapped item. State uncovered parameters and combinations, disabled or deferred cases, provider-documentation conflicts, assertion limitations, and live-execution level. Never call a foundation, compatibility, or smoke suite comprehensive boundary coverage without matrix evidence. If any row is `partial`, `missing`, `deferred`, or `blocked`, describe the suite as incomplete and list those rows. For a newly created LLM Test Studio model catalog, completion also requires a checked-in Suite profile manifest, generated Suite files, and a successful generator `--check`, unless the user explicitly limits the work to case design only.

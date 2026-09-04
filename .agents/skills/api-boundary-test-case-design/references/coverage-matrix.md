@@ -1,6 +1,15 @@
 # Contract coverage matrix
 
-Create this matrix before naming or implementing cases. One row may expand into several cases, but every case should map back to one primary row and scenario.
+Create this matrix before naming or implementing cases. One row may expand into several cases, but every case should map back to one primary row and scenario. The matrix must be derived from an independent contract inventory, not reconstructed from existing case files.
+
+## Pre-generation completeness gate
+
+Record a scope statement with provider, endpoint, model/version, modes, exclusions, and retrieval date. Then perform both inventory passes before case generation:
+
+- Structural inventory: method/path, headers, request objects, every nested field and item field, response fields, and workflow states.
+- Behavioral inventory: presence, defaults, accepted and rejected partitions, numeric/string/cardinality boundaries, formats, dependencies, mutual exclusions, combined limits, error phase, and expiry.
+
+Every inventory item must map to a matrix row. A broad row may group fields only when they share the same type, partitions, dependency, assertion, execution tier, and coverage status; otherwise split it. Cost, credentials, assets, or missing assertion support are statuses, not reasons to omit a row.
 
 | Field | Meaning |
 |---|---|
@@ -17,8 +26,23 @@ Create this matrix before naming or implementing cases. One row may expand into 
 | Expected result | Status/error type plus stable business assertion |
 | Model/version scope | Exact provider model, API version, or feature gate |
 | Execution tier | T0, T1, T2, or T3 |
+| Required scenarios | Minimal mandatory scenarios derived from the selection rules, including expected transport and business outcomes |
 | Existing cases | Case IDs that already prove this row |
-| Gap/status | Covered, partial, missing, deferred, blocked, or documentation conflict |
+| Design status | Whether all mandatory scenarios, expected outcomes, prerequisites, and blockers are explicitly defined |
+| Execution evidence | Not run, T0 static, simulated, or provider-backed T1/T2/T3 evidence |
+| Gap/status | Covered, partial, missing, deferred, blocked, out of scope, or documentation conflict |
+
+## Coverage-state rules
+
+- `covered`: every mandatory scenario selected for the row has an implemented case, its assertion proves that row's primary claim, and execution evidence is stated. A value merely present in an unrelated smoke request is not evidence.
+- `partial`: some mandatory scenarios or stable assertions exist, but at least one required valid, invalid, default, boundary, dependency, or lifecycle scenario is absent.
+- `missing`: the contract row is documented but has no implemented case or assertion evidence.
+- `deferred`: scenarios are designed, but execution or artifact creation is intentionally postponed because of spend, deterministic assets, environment, time, or another declared prerequisite.
+- `blocked`: the required assertion, fixture, authority, or provider behavior cannot currently be established. Name the unblock condition.
+- `documentation conflict`: authoritative sources disagree. Preserve both claims and do not invent a boundary.
+- `out of scope`: the user explicitly excluded the row. Record the exclusion; never silently use this status to reduce work.
+
+Design completeness and execution completeness are separate. A matrix can be design-complete while containing deferred execution. A suite is not implementation-complete while any in-scope row is partial, missing, deferred without an implemented disabled case, or blocked.
 
 ## Case derivation rules
 
@@ -46,6 +70,8 @@ Write a decision table first. Mark impossible combinations, expected accepted ro
 
 Model states, valid transitions, invalid transitions, and reset/retry behavior. For streaming, tool calls, uploads, or asynchronous jobs, assert intermediate and terminal protocol states separately.
 
+For asynchronous validation, distinguish admission rejection from terminal task failure. If the provider may accept a request and later return `FAILED`, an assertion that only accepts an admission-time HTTP error does not cover the row.
+
 ## Assertions
 
 Prefer stable contract assertions: transport status or SSE termination; provider error type/code without brittle full-message matching; required response shape and semantic predicate; documented finish reason or state transition; usage fields when the claim concerns accounting; and absence of forbidden behavior.
@@ -57,3 +83,11 @@ Avoid accepting any 2xx, merely parseable JSON, or task completion when the case
 Report totals by covered/partial/missing/deferred/conflict matrix rows; positive, negative, dependency, state, and robustness cases; T0/T1/T2/T3 tier; enabled/default/disabled status; and model/API-version scope.
 
 Coverage is scoped to the documented matrix. Unknown or undocumented provider behavior remains an explicit limitation.
+
+Before claiming completion, verify all of the following:
+
+- every official parameter and nested field appears in the contract inventory and matrix;
+- every default, valid enum, invalid enum/type, numeric or cardinality edge, and documented dependency has a mandatory scenario or an explicit rationale for reduction;
+- each `covered` row points to primary-claim cases and a capable assertion;
+- `partial`, `missing`, `deferred`, `blocked`, conflicts, and out-of-scope rows are listed in the final report;
+- live-provider execution is reported separately from static or simulated validation.
