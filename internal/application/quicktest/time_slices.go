@@ -9,10 +9,15 @@ import (
 )
 
 type performanceTimeSliceAccumulator struct {
-	slice PerformanceTimeSlice
-	ttft  []float64
-	tpot  []float64
-	e2e   []float64
+	slice              PerformanceTimeSlice
+	ttfb               []float64
+	ttftAny            []float64
+	ttftVisible        []float64
+	ttst               []float64
+	observedICL        []float64
+	semanticChunkCount []float64
+	tpot               []float64
+	e2e                []float64
 }
 
 func buildPerformanceTimeSlices(observations []load.Observation, totalDuration, sliceDuration time.Duration) []PerformanceTimeSlice {
@@ -56,14 +61,33 @@ func buildPerformanceTimeSlices(observations []load.Observation, totalDuration, 
 			completed.slice.CachedTokens += observation.CachedTokens
 
 			latency := get(observation.StartedOffset)
-			if observation.TTFT > 0 {
-				latency.ttft = append(latency.ttft, durationMilliseconds(observation.TTFT))
+			if observation.TTFB > 0 {
+				latency.ttfb = append(latency.ttfb, durationMilliseconds(observation.TTFB))
 			}
+			ttftAny := observation.TTFTAny
+			if ttftAny <= 0 {
+				ttftAny = observation.TTFT
+			}
+			if ttftAny > 0 {
+				latency.ttftAny = append(latency.ttftAny, durationMilliseconds(ttftAny))
+			}
+			if observation.TTFTVisible > 0 {
+				latency.ttftVisible = append(latency.ttftVisible, durationMilliseconds(observation.TTFTVisible))
+			}
+			if observation.SemanticChunkCount >= 2 {
+				if observation.TTST > 0 {
+					latency.ttst = append(latency.ttst, durationMilliseconds(observation.TTST))
+				}
+				if observation.ObservedICL >= 0 {
+					latency.observedICL = append(latency.observedICL, durationMilliseconds(observation.ObservedICL))
+				}
+			}
+			latency.semanticChunkCount = append(latency.semanticChunkCount, float64(observation.SemanticChunkCount))
 			if observation.E2E > 0 {
 				latency.e2e = append(latency.e2e, durationMilliseconds(observation.E2E))
 			}
 			if tpot := performanceTPOTMilliseconds(
-				durationMilliseconds(observation.TTFT),
+				durationMilliseconds(ttftAny),
 				durationMilliseconds(observation.E2E),
 				observation.CompletionTokens,
 			); tpot > 0 {
@@ -88,7 +112,13 @@ func buildPerformanceTimeSlices(observations []load.Observation, totalDuration, 
 	result := make([]PerformanceTimeSlice, 0, len(indices))
 	for _, index := range indices {
 		current := byIndex[index]
-		current.slice.TTFT = performanceLatencySlice(current.ttft)
+		current.slice.TTFB = performanceLatencySlice(current.ttfb)
+		current.slice.TTFTAny = performanceLatencySlice(current.ttftAny)
+		current.slice.TTFTVisible = performanceLatencySlice(current.ttftVisible)
+		current.slice.TTFT = current.slice.TTFTAny
+		current.slice.TTST = performanceLatencySlice(current.ttst)
+		current.slice.ObservedICL = performanceLatencySlice(current.observedICL)
+		current.slice.SemanticChunkCount = performanceCountSlice(current.semanticChunkCount)
 		current.slice.TPOT = performanceLatencySlice(current.tpot)
 		current.slice.E2E = performanceLatencySlice(current.e2e)
 		result = append(result, current.slice)
@@ -134,10 +164,27 @@ func buildPerformanceTimeSlicesFromSamples(samples []PerformanceSample, totalDur
 			completed.slice.CachedTokens += sample.CachedTokens
 
 			latency := get(sample.StartedOffsetMS)
-			if sample.TTFTMS > 0 {
-				latency.ttft = append(latency.ttft, sample.TTFTMS)
+			ttftAnyMS := sample.TTFTAnyMS
+			if ttftAnyMS <= 0 {
+				ttftAnyMS = sample.TTFTMS
 			}
-			if tpot := performanceTPOTMilliseconds(sample.TTFTMS, sample.E2EMS, sample.CompletionTokens); tpot > 0 {
+			if sample.TTFBMS > 0 {
+				latency.ttfb = append(latency.ttfb, sample.TTFBMS)
+			}
+			if ttftAnyMS > 0 {
+				latency.ttftAny = append(latency.ttftAny, ttftAnyMS)
+			}
+			if sample.TTFTVisibleMS > 0 {
+				latency.ttftVisible = append(latency.ttftVisible, sample.TTFTVisibleMS)
+			}
+			if sample.SemanticChunkCount >= 2 {
+				if sample.TTSTMS > 0 {
+					latency.ttst = append(latency.ttst, sample.TTSTMS)
+				}
+				latency.observedICL = append(latency.observedICL, sample.ObservedICLMS)
+			}
+			latency.semanticChunkCount = append(latency.semanticChunkCount, float64(sample.SemanticChunkCount))
+			if tpot := performanceTPOTMilliseconds(ttftAnyMS, sample.E2EMS, sample.CompletionTokens); tpot > 0 {
 				latency.tpot = append(latency.tpot, tpot)
 			}
 			if sample.E2EMS > 0 {
@@ -162,7 +209,13 @@ func buildPerformanceTimeSlicesFromSamples(samples []PerformanceSample, totalDur
 	result := make([]PerformanceTimeSlice, 0, len(indices))
 	for _, index := range indices {
 		current := byIndex[index]
-		current.slice.TTFT = performanceLatencySlice(current.ttft)
+		current.slice.TTFB = performanceLatencySlice(current.ttfb)
+		current.slice.TTFTAny = performanceLatencySlice(current.ttftAny)
+		current.slice.TTFTVisible = performanceLatencySlice(current.ttftVisible)
+		current.slice.TTFT = current.slice.TTFTAny
+		current.slice.TTST = performanceLatencySlice(current.ttst)
+		current.slice.ObservedICL = performanceLatencySlice(current.observedICL)
+		current.slice.SemanticChunkCount = performanceCountSlice(current.semanticChunkCount)
 		current.slice.TPOT = performanceLatencySlice(current.tpot)
 		current.slice.E2E = performanceLatencySlice(current.e2e)
 		result = append(result, current.slice)
@@ -204,11 +257,35 @@ func performanceLatencySlice(values []float64) PerformanceLatencySlice {
 	sorted := append([]float64(nil), values...)
 	sort.Float64s(sorted)
 	return PerformanceLatencySlice{
-		Count: uint64(len(sorted)),
-		P50MS: performancePercentile(sorted, 0.50),
-		P95MS: performancePercentile(sorted, 0.95),
-		P99MS: performancePercentile(sorted, 0.99),
+		Count:     uint64(len(sorted)),
+		P50MS:     performancePercentile(sorted, 0.50),
+		P95MS:     performancePercentile(sorted, 0.95),
+		P99MS:     performancePercentile(sorted, 0.99),
+		AverageMS: performanceAverage(sorted),
 	}
+}
+
+func performanceCountSlice(values []float64) PerformanceCountSlice {
+	if len(values) == 0 {
+		return PerformanceCountSlice{}
+	}
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	return PerformanceCountSlice{
+		Count:   uint64(len(sorted)),
+		P50:     performancePercentile(sorted, 0.50),
+		P95:     performancePercentile(sorted, 0.95),
+		P99:     performancePercentile(sorted, 0.99),
+		Average: performanceAverage(sorted),
+	}
+}
+
+func performanceAverage(values []float64) float64 {
+	var total float64
+	for _, value := range values {
+		total += value
+	}
+	return total / float64(len(values))
 }
 
 func performancePercentile(sorted []float64, quantile float64) float64 {

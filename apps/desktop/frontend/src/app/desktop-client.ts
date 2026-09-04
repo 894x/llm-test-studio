@@ -42,6 +42,8 @@ import {
   type QuickPerformanceCommand,
   type QuickPerformanceProgress,
   type QuickPerformanceReport,
+  type QuickPerformanceSliceCount,
+  type QuickPerformanceSliceLatency,
   type QuickTestCommand,
   type QuickTestResult,
   type SaveQuickTestConnectionCommand,
@@ -746,7 +748,13 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     finished_offset_ms: 120 + index,
     schedule_lag_ms: index,
     e2e_ms: 120,
+    ttfb_ms: 15,
+    ttft_any_ms: 35,
+    ttft_visible_ms: 45,
     ttft_ms: 35,
+    ttst_ms: 60,
+    observed_icl_ms: 25,
+    semantic_chunk_count: 2,
     tpot_ms: 5,
     http_status: 200,
     success: true,
@@ -775,6 +783,15 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     drain_duration_ms: 0,
     total_duration_ms: totalDurationMS,
   }
+  const ttft = fixturePerformanceSummary(samples.map((sample) => sample.ttft_ms))
+  const ttfb = fixturePerformanceSummary(samples.map((sample) => sample.ttfb_ms!))
+  const ttftVisible = fixturePerformanceSummary(samples.map((sample) => sample.ttft_visible_ms!))
+  const ttst = fixturePerformanceSummary(samples.map((sample) => sample.ttst_ms!))
+  const observedICL = fixturePerformanceSummary(samples.map((sample) => sample.observed_icl_ms!))
+  const semanticChunkCount = fixturePerformanceSummary(samples.map((sample) => sample.semantic_chunk_count!))
+  const tpot = fixturePerformanceSummary(samples.map((sample) => sample.tpot_ms))
+  const e2e = fixturePerformanceSummary(samples.map((sample) => sample.e2e_ms))
+  const scheduleLag = fixturePerformanceSummary(samples.map((sample) => sample.schedule_lag_ms))
   const metrics: QuickPerformanceReport["metrics"] = {
     completed, succeeded: completed, failed: 0, timed_out: 0,
     success_rate_percent: 100, offered_qps: completed / seconds,
@@ -784,11 +801,31 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     output_tpm: completionTokens / seconds * 60,
     total_tpm: (promptTokens + completionTokens) / seconds * 60,
     generation_tps: completionTokens / seconds,
-    ttft_p50_ms: 35, ttft_p90_ms: 45, ttft_p95_ms: 48, ttft_p99_ms: 50, ttft_average_ms: 38,
-    tpot_p50_ms: 5, tpot_p90_ms: 6, tpot_p95_ms: 6.5, tpot_p99_ms: 7, tpot_average_ms: 5.2,
-    e2e_p50_ms: 120, e2e_p90_ms: 150, e2e_p95_ms: 160, e2e_p99_ms: 170, e2e_average_ms: 128,
-    schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
-    schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
+    ttft_samples: completed,
+    ttft_p50_ms: ttft.p50, ttft_p90_ms: ttft.p90, ttft_p95_ms: ttft.p95,
+    ttft_p99_ms: ttft.p99, ttft_average_ms: ttft.average,
+    ttfb_samples: completed, ttfb_p50_ms: ttfb.p50, ttfb_p95_ms: ttfb.p95,
+    ttfb_p99_ms: ttfb.p99, ttfb_average_ms: ttfb.average,
+    ttft_any_samples: completed, ttft_any_p50_ms: ttft.p50, ttft_any_p95_ms: ttft.p95,
+    ttft_any_p99_ms: ttft.p99, ttft_any_average_ms: ttft.average,
+    ttft_visible_samples: completed, ttft_visible_p50_ms: ttftVisible.p50,
+    ttft_visible_p95_ms: ttftVisible.p95, ttft_visible_p99_ms: ttftVisible.p99,
+    ttft_visible_average_ms: ttftVisible.average,
+    ttst_samples: completed, ttst_p50_ms: ttst.p50, ttst_p95_ms: ttst.p95,
+    ttst_p99_ms: ttst.p99, ttst_average_ms: ttst.average,
+    observed_icl_samples: completed, observed_icl_p50_ms: observedICL.p50,
+    observed_icl_p95_ms: observedICL.p95, observed_icl_p99_ms: observedICL.p99,
+    observed_icl_average_ms: observedICL.average,
+    semantic_chunk_count_samples: completed, semantic_chunk_count_p50: semanticChunkCount.p50,
+    semantic_chunk_count_p95: semanticChunkCount.p95, semantic_chunk_count_p99: semanticChunkCount.p99,
+    semantic_chunk_count_average: semanticChunkCount.average,
+    tpot_p50_ms: tpot.p50, tpot_p90_ms: tpot.p90, tpot_p95_ms: tpot.p95,
+    tpot_p99_ms: tpot.p99, tpot_average_ms: tpot.average,
+    e2e_p50_ms: e2e.p50, e2e_p90_ms: e2e.p90, e2e_p95_ms: e2e.p95,
+    e2e_p99_ms: e2e.p99, e2e_average_ms: e2e.average,
+    schedule_lag_p50_ms: scheduleLag.p50, schedule_lag_p90_ms: scheduleLag.p90,
+    schedule_lag_p95_ms: scheduleLag.p95, schedule_lag_p99_ms: scheduleLag.p99,
+    schedule_lag_average_ms: scheduleLag.average,
     prompt_tokens: promptTokens, completion_tokens: completionTokens,
     cached_tokens: 0, cache_rate_percent: 0,
   }
@@ -828,7 +865,7 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     ? undefined
     : capacityResult.rungs[capacityResult.selected_rung_index]
   return {
-    schema_version: 2,
+    schema_version: 3,
     archived: false,
     archive_status: "not_attempted",
     model_id: command.model_id,
@@ -1014,7 +1051,17 @@ function fixtureQuickPerformanceTimeSlices(
   totalDurationMS: number,
 ): NonNullable<QuickPerformanceReport["time_slices"]> {
   type Slice = NonNullable<QuickPerformanceReport["time_slices"]>[number]
-  type Accumulator = { slice: Slice; ttft: number[]; tpot: number[]; e2e: number[] }
+  type Accumulator = {
+    slice: Slice
+    ttfb: number[]
+    ttftAny: number[]
+    ttftVisible: number[]
+    ttst: number[]
+    observedICL: number[]
+    semanticChunkCount: number[]
+    tpot: number[]
+    e2e: number[]
+  }
   const byIndex = new Map<number, Accumulator>()
   const get = (offsetMS: number) => {
     const finalOffsetMS = totalDurationMS - Math.max(Number.EPSILON, Math.abs(totalDurationMS) * Number.EPSILON)
@@ -1025,7 +1072,8 @@ function fixtureQuickPerformanceTimeSlices(
     const endMS = Math.min(nominalEndMS, totalDurationMS)
     let accumulator = byIndex.get(sliceIndex)
     if (!accumulator) {
-      const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 }
+      const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
+      const emptyCount = { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
       accumulator = {
         slice: {
           slice_index: sliceIndex,
@@ -1041,11 +1089,22 @@ function fixtureQuickPerformanceTimeSlices(
           prompt_tokens: 0,
           completion_tokens: 0,
           cached_tokens: 0,
+          ttfb: emptyLatency,
+          ttft_any: emptyLatency,
+          ttft_visible: emptyLatency,
           ttft: emptyLatency,
+          ttst: emptyLatency,
+          observed_icl: emptyLatency,
+          semantic_chunk_count: emptyCount,
           tpot: emptyLatency,
           e2e: emptyLatency,
         },
-        ttft: [],
+        ttfb: [],
+        ttftAny: [],
+        ttftVisible: [],
+        ttst: [],
+        observedICL: [],
+        semanticChunkCount: [],
         tpot: [],
         e2e: [],
       }
@@ -1057,9 +1116,18 @@ function fixtureQuickPerformanceTimeSlices(
     get(sample.scheduled_offset_ms).slice.offered += 1
     const launched = get(sample.started_offset_ms)
     launched.slice.launched += 1
-    if (sample.success && sample.ttft_ms > 0) launched.ttft.push(sample.ttft_ms)
-    if (sample.success && sample.tpot_ms > 0) launched.tpot.push(sample.tpot_ms)
-    if (sample.success && sample.e2e_ms > 0) launched.e2e.push(sample.e2e_ms)
+    if (sample.success) {
+      if (sample.ttfb_ms! > 0) launched.ttfb.push(sample.ttfb_ms!)
+      if (sample.ttft_any_ms! > 0) launched.ttftAny.push(sample.ttft_any_ms!)
+      if (sample.ttft_visible_ms! > 0) launched.ttftVisible.push(sample.ttft_visible_ms!)
+      if (sample.semantic_chunk_count! >= 2) {
+        if (sample.ttst_ms! > 0) launched.ttst.push(sample.ttst_ms!)
+        launched.observedICL.push(sample.observed_icl_ms!)
+      }
+      launched.semanticChunkCount.push(sample.semantic_chunk_count!)
+      if (sample.tpot_ms > 0) launched.tpot.push(sample.tpot_ms)
+      if (sample.e2e_ms > 0) launched.e2e.push(sample.e2e_ms)
+    }
 
     const completed = get(sample.finished_offset_ms)
     completed.slice.completed += 1
@@ -1078,14 +1146,31 @@ function fixtureQuickPerformanceTimeSlices(
     .sort((left, right) => left.slice.slice_index - right.slice.slice_index)
     .map((accumulator) => ({
       ...accumulator.slice,
-      ttft: fixturePerformanceLatencySlice(accumulator.ttft),
+      ttfb: fixturePerformanceLatencySlice(accumulator.ttfb),
+      ttft_any: fixturePerformanceLatencySlice(accumulator.ttftAny),
+      ttft_visible: fixturePerformanceLatencySlice(accumulator.ttftVisible),
+      ttft: fixturePerformanceLatencySlice(accumulator.ttftAny),
+      ttst: fixturePerformanceLatencySlice(accumulator.ttst),
+      observed_icl: fixturePerformanceLatencySlice(accumulator.observedICL),
+      semantic_chunk_count: fixturePerformanceCountSlice(accumulator.semanticChunkCount),
       tpot: fixturePerformanceLatencySlice(accumulator.tpot),
       e2e: fixturePerformanceLatencySlice(accumulator.e2e),
     }))
 }
 
-function fixturePerformanceLatencySlice(values: number[]): NonNullable<QuickPerformanceReport["time_slices"]>[number]["ttft"] {
-  if (values.length === 0) return { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 }
+function fixturePerformanceLatencySlice(values: number[]): QuickPerformanceSliceLatency {
+  if (values.length === 0) return { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
+  const summary = fixturePerformanceSummary(values)
+  return { count: values.length, p50_ms: summary.p50, p95_ms: summary.p95, p99_ms: summary.p99, average_ms: summary.average }
+}
+
+function fixturePerformanceCountSlice(values: number[]): QuickPerformanceSliceCount {
+  if (values.length === 0) return { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
+  const summary = fixturePerformanceSummary(values)
+  return { count: values.length, p50: summary.p50, p95: summary.p95, p99: summary.p99, average: summary.average }
+}
+
+function fixturePerformanceSummary(values: number[]): { p50: number; p90: number; p95: number; p99: number; average: number } {
   const sorted = [...values].sort((left, right) => left - right)
   const percentile = (quantile: number) => {
     const position = (sorted.length - 1) * quantile
@@ -1094,7 +1179,13 @@ function fixturePerformanceLatencySlice(values: number[]): NonNullable<QuickPerf
     if (lower === upper) return sorted[lower]
     return sorted[lower] * (upper - position) + sorted[upper] * (position - lower)
   }
-  return { count: sorted.length, p50_ms: percentile(0.5), p95_ms: percentile(0.95), p99_ms: percentile(0.99) }
+  return {
+    p50: percentile(0.5),
+    p90: percentile(0.9),
+    p95: percentile(0.95),
+    p99: percentile(0.99),
+    average: sorted.reduce((sum, value) => sum + value, 0) / sorted.length,
+  }
 }
 
 function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {

@@ -873,6 +873,84 @@ func TestRunContainsExecutorPanicsAndNormalizesUnsafeErrorCodes(t *testing.T) {
 	}
 }
 
+func TestRunNormalizesPhaseFiveTimingsBeforeReturningResultsAndMetrics(t *testing.T) {
+	outcome, err := Run(context.Background(), fixedProfile(5, 1), func(_ context.Context, request Request) Observation {
+		switch request.Index {
+		case 0:
+			return Observation{
+				Success: true, E2E: 100 * time.Millisecond, Streaming: true,
+				TTFB: -time.Millisecond, TTFT: 20 * time.Millisecond, TTFTAny: -time.Millisecond,
+				TTFTVisible: -time.Millisecond, TTST: -time.Millisecond, ObservedICL: -time.Millisecond,
+			}
+		case 1:
+			return Observation{
+				Success: true, E2E: 100 * time.Millisecond, Streaming: true,
+				TTFB: 30 * time.Millisecond, TTFTAny: 20 * time.Millisecond,
+				TTFTVisible: 10 * time.Millisecond, TTST: 19 * time.Millisecond,
+				ObservedICL: 7 * time.Millisecond, SemanticChunkCount: 2,
+			}
+		case 2:
+			return Observation{
+				Success: true, E2E: 100 * time.Millisecond, Streaming: true,
+				TTFB: 10 * time.Millisecond, TTFTAny: 20 * time.Millisecond,
+				TTFTVisible: 30 * time.Millisecond, TTST: 40 * time.Millisecond,
+				ObservedICL: 0, SemanticChunkCount: 2,
+			}
+		case 3:
+			return Observation{
+				Success: true, E2E: 100 * time.Millisecond, Streaming: true,
+				TTFB: 10 * time.Millisecond, TTFTVisible: 30 * time.Millisecond,
+				TTST: 40 * time.Millisecond, ObservedICL: 5 * time.Millisecond,
+				SemanticChunkCount: 1,
+			}
+		default:
+			return Observation{
+				Success: true, E2E: 100 * time.Millisecond,
+				TTFB: 10 * time.Millisecond, TTFT: 30 * time.Millisecond,
+				TTST: 40 * time.Millisecond, ObservedICL: 5 * time.Millisecond,
+				SemanticChunkCount: 7,
+			}
+		}
+	}, Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	legacy := outcome.Results[0]
+	if legacy.TTFB != 0 || legacy.TTFTAny != 20*time.Millisecond || legacy.TTFT != legacy.TTFTAny ||
+		legacy.TTFTVisible != 0 || legacy.TTST != 0 || legacy.ObservedICL != 0 || legacy.SemanticChunkCount != 1 {
+		t.Fatalf("legacy/negative normalization = %#v", legacy)
+	}
+	malformed := outcome.Results[1]
+	if malformed.TTFB != 0 || malformed.TTFT != malformed.TTFTAny || malformed.TTFTVisible != 0 ||
+		malformed.TTST != 0 || malformed.ObservedICL != 0 || malformed.SemanticChunkCount != 1 {
+		t.Fatalf("malformed timing normalization = %#v", malformed)
+	}
+	valid := outcome.Results[2]
+	if valid.TTFB != 10*time.Millisecond || valid.TTFT != valid.TTFTAny || valid.TTFTVisible != 30*time.Millisecond ||
+		valid.TTST != 40*time.Millisecond || valid.ObservedICL != 0 || valid.SemanticChunkCount != 2 {
+		t.Fatalf("valid timing normalization = %#v", valid)
+	}
+	missingFirst := outcome.Results[3]
+	if missingFirst.TTFB != 10*time.Millisecond || missingFirst.TTFTAny != 0 || missingFirst.TTFT != 0 ||
+		missingFirst.TTFTVisible != 0 || missingFirst.TTST != 0 || missingFirst.ObservedICL != 0 ||
+		missingFirst.SemanticChunkCount != 0 {
+		t.Fatalf("missing-first normalization = %#v", missingFirst)
+	}
+	nonStreaming := outcome.Results[4]
+	if nonStreaming.TTFTAny != 30*time.Millisecond || nonStreaming.TTFT != nonStreaming.TTFTAny ||
+		nonStreaming.SemanticChunkCount != 0 || nonStreaming.TTST != 0 || nonStreaming.ObservedICL != 0 {
+		t.Fatalf("non-streaming normalization = %#v", nonStreaming)
+	}
+
+	metrics := outcome.Metrics
+	if metrics.TTFBSamples != 3 || metrics.TTFTAnySamples != 4 || metrics.TTFTSamples != 4 ||
+		metrics.TTFTVisibleSamples != 1 || metrics.TTSTSamples != 1 || metrics.ObservedICLSamples != 1 ||
+		metrics.ObservedICLAverage != 0 || metrics.SemanticChunkCountSamples != 4 {
+		t.Fatalf("normalized telemetry cohorts = %#v", metrics)
+	}
+}
+
 func TestOpenLoopUsesRuntimeAdmissionInsteadOfWorstCasePreflight(t *testing.T) {
 	profile := domain.LoadProfile{
 		Mode: domain.LoadOpenLoop, Concurrency: 1,

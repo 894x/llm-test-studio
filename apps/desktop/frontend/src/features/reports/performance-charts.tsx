@@ -19,14 +19,14 @@ export interface PerformanceChartPercentiles {
 
 interface MetricDefinition {
   key: "ttft_ms" | "tpot_ms" | "e2e_ms"
-  label: "TTFT" | "TPOT" | "E2E"
+  label: "TTFT（含推理）" | "TPOT" | "E2E"
   unit: "ms" | "ms/token"
   p50: keyof PerformanceChartPercentiles
   p95: keyof PerformanceChartPercentiles
 }
 
 const METRICS: MetricDefinition[] = [
-  { key: "ttft_ms", label: "TTFT", unit: "ms", p50: "ttft_p50_ms", p95: "ttft_p95_ms" },
+  { key: "ttft_ms", label: "TTFT（含推理）", unit: "ms", p50: "ttft_p50_ms", p95: "ttft_p95_ms" },
   { key: "tpot_ms", label: "TPOT", unit: "ms/token", p50: "tpot_p50_ms", p95: "tpot_p95_ms" },
   { key: "e2e_ms", label: "E2E", unit: "ms", p50: "e2e_p50_ms", p95: "e2e_p95_ms" },
 ]

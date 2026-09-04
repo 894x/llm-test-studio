@@ -311,6 +311,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		return report, nil
 	}
 	defer cleanup()
+	executor = streamingPerformanceExecutor(executor)
 
 	if command.WarmupRequests > 0 {
 		warmupProfile := performanceWarmupProfile(report.Profile)
@@ -404,6 +405,21 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		service.archivePerformanceReport(ctx, &report)
 	}
 	return report, nil
+}
+
+func streamingPerformanceExecutor(executor load.Executor) load.Executor {
+	return func(ctx context.Context, request load.Request) load.Observation {
+		observation := executor(ctx, request)
+		observation.Streaming = true
+		if observation.TTFTAny <= 0 {
+			observation.TTFTAny = observation.TTFT
+		}
+		observation.TTFT = observation.TTFTAny
+		if observation.TTFTAny > 0 && observation.SemanticChunkCount == 0 {
+			observation.SemanticChunkCount = 1
+		}
+		return observation
+	}
 }
 
 type performanceCapacityProjection struct {
@@ -952,19 +968,31 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 		} else {
 			code = ""
 		}
+		ttftAnyMS := durationMilliseconds(observation.TTFTAny)
+		if ttftAnyMS <= 0 {
+			ttftAnyMS = durationMilliseconds(observation.TTFT)
+		}
 		tpot := performanceTPOTMilliseconds(
-			durationMilliseconds(observation.TTFT),
+			ttftAnyMS,
 			durationMilliseconds(observation.E2E),
 			observation.CompletionTokens,
 		)
 		sample := PerformanceSample{
-			RequestIndex:      observation.Index,
-			ScheduledOffsetMS: durationMilliseconds(observation.ScheduledOffset),
-			StartedOffsetMS:   durationMilliseconds(observation.StartedOffset),
-			FinishedOffsetMS:  durationMilliseconds(observation.FinishedOffset),
-			ScheduleLagMS:     durationMilliseconds(observation.ScheduleLag),
-			E2EMS:             durationMilliseconds(observation.E2E), TTFTMS: durationMilliseconds(observation.TTFT), TPOTMS: tpot,
-			HTTPStatus: observation.HTTPStatus, Success: observation.Success, TimedOut: observation.TimedOut,
+			RequestIndex:       observation.Index,
+			ScheduledOffsetMS:  durationMilliseconds(observation.ScheduledOffset),
+			StartedOffsetMS:    durationMilliseconds(observation.StartedOffset),
+			FinishedOffsetMS:   durationMilliseconds(observation.FinishedOffset),
+			ScheduleLagMS:      durationMilliseconds(observation.ScheduleLag),
+			E2EMS:              durationMilliseconds(observation.E2E),
+			TTFBMS:             durationMilliseconds(observation.TTFB),
+			TTFTAnyMS:          ttftAnyMS,
+			TTFTVisibleMS:      durationMilliseconds(observation.TTFTVisible),
+			TTFTMS:             ttftAnyMS,
+			TTSTMS:             durationMilliseconds(observation.TTST),
+			ObservedICLMS:      durationMilliseconds(observation.ObservedICL),
+			SemanticChunkCount: observation.SemanticChunkCount,
+			TPOTMS:             tpot,
+			HTTPStatus:         observation.HTTPStatus, Success: observation.Success, TimedOut: observation.TimedOut,
 			PromptTokens: observation.PromptTokens, CompletionTokens: observation.CompletionTokens, CachedTokens: observation.CachedTokens,
 			ErrorCode:        code,
 			ResponseEvidence: evidence[observation.Index],

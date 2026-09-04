@@ -62,10 +62,16 @@ func readStream(state *executionState, body io.Reader, endpoint endpointKind, st
 	var lineCount int64
 	seenEnvelope := false
 	seenSemantic := false
+	var firstText time.Duration
+	var lastText time.Duration
 
 	flush := func() (done bool, valid bool) {
 		if event.Len() == 0 {
 			return false, true
+		}
+		eventAt := time.Since(started)
+		if eventAt <= 0 {
+			eventAt = time.Nanosecond
 		}
 		payload := bytes.TrimSpace(event.Bytes())
 		if bytes.Equal(payload, []byte("[DONE]")) {
@@ -89,11 +95,24 @@ func readStream(state *executionState, body io.Reader, endpoint endpointKind, st
 		}
 		usage.apply(&observation)
 		seenEnvelope = true
-		if semantic && !seenSemantic {
-			seenSemantic = true
-			observation.TTFT = time.Since(started)
-			if observation.TTFT <= 0 {
-				observation.TTFT = time.Nanosecond
+		seenSemantic = seenSemantic || semantic
+		text, visible := chatStreamTextEvent(object, endpoint)
+		if text {
+			observation.SemanticChunkCount++
+			if observation.SemanticChunkCount == 1 {
+				firstText = eventAt
+				observation.TTFTAny = eventAt
+				observation.TTFT = eventAt
+			}
+			if visible && observation.TTFTVisible == 0 {
+				observation.TTFTVisible = eventAt
+			}
+			if observation.SemanticChunkCount == 2 {
+				observation.TTST = eventAt
+			}
+			lastText = eventAt
+			if observation.SemanticChunkCount >= 2 {
+				observation.ObservedICL = (lastText - firstText) / time.Duration(observation.SemanticChunkCount-1)
 			}
 		}
 		event.Reset()
@@ -181,6 +200,36 @@ func readStream(state *executionState, body io.Reader, endpoint endpointKind, st
 			return observation
 		}
 	}
+}
+
+func chatStreamTextEvent(object map[string]any, endpoint endpointKind) (text bool, visible bool) {
+	if endpoint != endpointChatCompletions {
+		return false, false
+	}
+	choices, ok := object["choices"].([]any)
+	if !ok {
+		return false, false
+	}
+	for _, rawChoice := range choices {
+		choice, ok := rawChoice.(map[string]any)
+		if !ok {
+			continue
+		}
+		delta, ok := choice["delta"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if content, ok := delta["content"].(string); ok && content != "" {
+			text = true
+			visible = true
+		}
+		for _, field := range []string{"reasoning_content", "reasoning"} {
+			if reasoning, ok := delta[field].(string); ok && reasoning != "" {
+				text = true
+			}
+		}
+	}
+	return text, visible
 }
 
 func readPhysicalLine(reader *bufio.Reader, limit int64) ([]byte, bool, error) {

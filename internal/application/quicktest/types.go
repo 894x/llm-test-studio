@@ -18,7 +18,8 @@ const (
 	DefaultTimeoutMS int64 = 30_000
 	MaxTimeoutMS     int64 = 120_000
 
-	PerformanceSchemaVersion                = 2
+	PerformanceSchemaVersion                = 3
+	PerformanceSchemaVersionV2              = 2
 	LegacyPerformanceSchemaVersion          = 1
 	MaxPerformanceRequests           uint64 = 10_000
 	MaxPerformanceConcurrency        uint32 = 256
@@ -213,10 +214,19 @@ type PerformanceRampSummary struct {
 }
 
 type PerformanceLatencySlice struct {
-	Count uint64  `json:"count"`
-	P50MS float64 `json:"p50_ms"`
-	P95MS float64 `json:"p95_ms"`
-	P99MS float64 `json:"p99_ms"`
+	Count     uint64  `json:"count"`
+	P50MS     float64 `json:"p50_ms"`
+	P95MS     float64 `json:"p95_ms"`
+	P99MS     float64 `json:"p99_ms"`
+	AverageMS float64 `json:"average_ms"`
+}
+
+type PerformanceCountSlice struct {
+	Count   uint64  `json:"count"`
+	P50     float64 `json:"p50"`
+	P95     float64 `json:"p95"`
+	P99     float64 `json:"p99"`
+	Average float64 `json:"average"`
 }
 
 type PerformanceSLOStatus string
@@ -270,22 +280,28 @@ type PerformanceCapacityResult struct {
 }
 
 type PerformanceTimeSlice struct {
-	SliceIndex       uint64                  `json:"slice_index"`
-	StartMS          float64                 `json:"start_ms"`
-	EndMS            float64                 `json:"end_ms"`
-	Partial          bool                    `json:"partial"`
-	Offered          uint64                  `json:"offered"`
-	Launched         uint64                  `json:"launched"`
-	Completed        uint64                  `json:"completed"`
-	Succeeded        uint64                  `json:"succeeded"`
-	Failed           uint64                  `json:"failed"`
-	Rejected         uint64                  `json:"rejected"`
-	PromptTokens     uint64                  `json:"prompt_tokens"`
-	CompletionTokens uint64                  `json:"completion_tokens"`
-	CachedTokens     uint64                  `json:"cached_tokens"`
-	TTFT             PerformanceLatencySlice `json:"ttft"`
-	TPOT             PerformanceLatencySlice `json:"tpot"`
-	E2E              PerformanceLatencySlice `json:"e2e"`
+	SliceIndex         uint64                  `json:"slice_index"`
+	StartMS            float64                 `json:"start_ms"`
+	EndMS              float64                 `json:"end_ms"`
+	Partial            bool                    `json:"partial"`
+	Offered            uint64                  `json:"offered"`
+	Launched           uint64                  `json:"launched"`
+	Completed          uint64                  `json:"completed"`
+	Succeeded          uint64                  `json:"succeeded"`
+	Failed             uint64                  `json:"failed"`
+	Rejected           uint64                  `json:"rejected"`
+	PromptTokens       uint64                  `json:"prompt_tokens"`
+	CompletionTokens   uint64                  `json:"completion_tokens"`
+	CachedTokens       uint64                  `json:"cached_tokens"`
+	TTFB               PerformanceLatencySlice `json:"ttfb"`
+	TTFTAny            PerformanceLatencySlice `json:"ttft_any"`
+	TTFTVisible        PerformanceLatencySlice `json:"ttft_visible"`
+	TTFT               PerformanceLatencySlice `json:"ttft"`
+	TTST               PerformanceLatencySlice `json:"ttst"`
+	ObservedICL        PerformanceLatencySlice `json:"observed_icl"`
+	SemanticChunkCount PerformanceCountSlice   `json:"semantic_chunk_count"`
+	TPOT               PerformanceLatencySlice `json:"tpot"`
+	E2E                PerformanceLatencySlice `json:"e2e"`
 }
 
 type PerformanceEvidenceCaptureStatus string
@@ -328,7 +344,13 @@ type PerformanceSample struct {
 	FinishedOffsetMS   float64                      `json:"finished_offset_ms"`
 	ScheduleLagMS      float64                      `json:"schedule_lag_ms"`
 	E2EMS              float64                      `json:"e2e_ms"`
+	TTFBMS             float64                      `json:"ttfb_ms"`
+	TTFTAnyMS          float64                      `json:"ttft_any_ms"`
+	TTFTVisibleMS      float64                      `json:"ttft_visible_ms"`
 	TTFTMS             float64                      `json:"ttft_ms"`
+	TTSTMS             float64                      `json:"ttst_ms"`
+	ObservedICLMS      float64                      `json:"observed_icl_ms"`
+	SemanticChunkCount uint64                       `json:"semantic_chunk_count"`
 	TPOTMS             float64                      `json:"tpot_ms"`
 	HTTPStatus         int                          `json:"http_status"`
 	Success            bool                         `json:"success"`

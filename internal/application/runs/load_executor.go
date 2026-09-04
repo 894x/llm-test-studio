@@ -79,15 +79,35 @@ func draftFromObservation(caseID string, observation load.Observation) ResultDra
 			"finished_offset_ms":  milliseconds(observation.FinishedOffset),
 			"schedule_lag_ms":     milliseconds(observation.ScheduleLag),
 			"e2e_ms":              milliseconds(observation.E2E),
-			"ttft_ms":             milliseconds(observation.TTFT),
 			"http_status":         float64(observation.HTTPStatus),
 			"prompt_tokens":       float64(observation.PromptTokens),
 			"completion_tokens":   float64(observation.CompletionTokens),
 			"cached_tokens":       float64(observation.CachedTokens),
 		},
 	}
-	if observation.CompletionTokens > 1 && observation.E2E > observation.TTFT {
-		draft.Metrics["tpot_ms"] = milliseconds(observation.E2E-observation.TTFT) / float64(observation.CompletionTokens-1)
+	if observation.TTFB > 0 {
+		draft.Metrics["ttfb_ms"] = milliseconds(observation.TTFB)
+	}
+	ttftAny := observation.TTFTAny
+	if ttftAny <= 0 {
+		ttftAny = observation.TTFT
+	}
+	if ttftAny > 0 {
+		draft.Metrics["ttft_any_ms"] = milliseconds(ttftAny)
+		draft.Metrics["ttft_ms"] = draft.Metrics["ttft_any_ms"]
+	}
+	if observation.TTFTVisible > 0 {
+		draft.Metrics["ttft_visible_ms"] = milliseconds(observation.TTFTVisible)
+	}
+	if observation.SemanticChunkCount >= 2 && observation.TTST > 0 {
+		draft.Metrics["ttst_ms"] = milliseconds(observation.TTST)
+		draft.Metrics["observed_icl_ms"] = milliseconds(observation.ObservedICL)
+	}
+	if observation.Streaming {
+		draft.Metrics["semantic_chunk_count"] = float64(observation.SemanticChunkCount)
+	}
+	if observation.CompletionTokens > 1 && observation.E2E > ttftAny && ttftAny > 0 {
+		draft.Metrics["tpot_ms"] = milliseconds(observation.E2E-ttftAny) / float64(observation.CompletionTokens-1)
 	}
 	if observation.StreamComplete {
 		draft.Metrics["stream_complete"] = 1

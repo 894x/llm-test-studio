@@ -13,10 +13,12 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/credentials"
@@ -427,7 +429,8 @@ func (state *executionState) contextClassification() (domain.ErrorCode, bool, bo
 
 func (client *Client) execute(ctx context.Context, scheduled load.Request, prepared preparedRequest) (observation load.Observation) {
 	started := time.Now()
-	observation = load.Observation{Index: scheduled.Index}
+	observation = load.Observation{Index: scheduled.Index, Streaming: prepared.stream}
+	var firstByteNanos atomic.Int64
 	var state *executionState
 	// Register completion before the recovery defer. Defers run in reverse
 	// order, so Close cannot cross its barrier until panic normalization and
@@ -443,7 +446,10 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 			elapsed = time.Nanosecond
 		}
 		if recover() != nil {
-			observation = load.Observation{Index: scheduled.Index, E2E: elapsed, ErrorCode: load.ErrorExecutorPanic}
+			observation = load.Observation{
+				Index: scheduled.Index, Streaming: prepared.stream,
+				TTFB: time.Duration(firstByteNanos.Load()), E2E: elapsed, ErrorCode: load.ErrorExecutorPanic,
+			}
 			return
 		}
 		observation.E2E = elapsed
@@ -464,6 +470,14 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 		observation.ErrorCode = load.ErrorRequestFailed
 		return observation
 	}
+	trace := &httptrace.ClientTrace{GotFirstResponseByte: func() {
+		elapsed := time.Since(started)
+		if elapsed <= 0 {
+			elapsed = time.Nanosecond
+		}
+		firstByteNanos.CompareAndSwap(0, int64(elapsed))
+	}}
+	request = request.WithContext(httptrace.WithClientTrace(request.Context(), trace))
 	for name, value := range prepared.headers {
 		request.Header.Set(name, value)
 	}
@@ -478,6 +492,7 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 	defer request.Header.Del("Authorization")
 
 	response, err := state.httpClient.Do(request)
+	observation.TTFB = time.Duration(firstByteNanos.Load())
 	if response != nil && response.Body != nil && !isNilInterface(response.Body) {
 		defer response.Body.Close()
 	}

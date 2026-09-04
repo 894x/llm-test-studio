@@ -20,6 +20,7 @@ import {
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
+import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
 import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary } from "./data"
@@ -305,6 +306,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
       </div>
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
+    <PerformanceStreamingTimingTable schemaVersion={report.schema_version} metrics={report.metrics} />
     {report.time_slices !== undefined ? <PerformanceTimeSliceTable slices={report.time_slices} /> : null}
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
     {includeRequestAnalysis ? (

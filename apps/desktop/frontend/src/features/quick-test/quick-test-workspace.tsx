@@ -48,6 +48,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { PerformanceCharts } from "@/features/reports/performance-charts"
 import { PerformanceLatencyTable } from "@/features/reports/performance-latency-table"
+import { PerformanceStreamingTimingTable } from "@/features/reports/performance-streaming-timing-table"
 
 import {
   QUICK_TEST_ERROR_MESSAGES,
@@ -1147,6 +1148,7 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <ResultValue label="生成速度" value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
         </MetricSection>
         <PerformanceLatencyTable metrics={report.metrics} />
+        <PerformanceStreamingTimingTable schemaVersion={report.schema_version} metrics={report.metrics} />
         <MetricSection title="Token">
           <ResultValue label="Prompt / Completion / Cached" value={`${report.metrics.prompt_tokens} / ${report.metrics.completion_tokens} / ${report.metrics.cached_tokens}`} numeric />
           <ResultValue label="KV 缓存命中率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />

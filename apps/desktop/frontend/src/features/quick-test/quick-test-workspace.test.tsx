@@ -296,13 +296,38 @@ describe("QuickTestWorkspace", () => {
     expect(within(latency).getByRole("row", { name: /TPOT/ })).toHaveTextContent(/4\.5\s*4\s*5\s*6\s*7/)
     expect(within(latency).getByRole("row", { name: /E2E/ })).toHaveTextContent(/65\s*60\s*75\s*80\s*84/)
     expect(within(latency).getByRole("row", { name: /客户端排队（本地调度延迟）/ })).toHaveTextContent(/0\.5\s*0\s*1\.8\s*2\s*2\.8/)
-    expect(within(report).getByRole("figure", { name: "TTFT 分布图" })).toBeInTheDocument()
+    expect(within(report).getByRole("figure", { name: "TTFT（含推理） 分布图" })).toBeInTheDocument()
     expect(within(report).getByRole("figure", { name: "TPOT 时间曲线" })).toBeInTheDocument()
     expect(within(report).getByRole("figure", { name: "E2E 时间曲线" })).toBeInTheDocument()
     expect(onPerformanceArchived).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
     await user.click(within(report).getByRole("button", { name: "查看正式报告" }))
     expect(onOpenReport).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
     expect(report).not.toHaveTextContent("sk-private-value")
+    expect(within(report).queryByRole("table", { name: "流式时序统计" })).not.toBeInTheDocument()
+  })
+
+  it("renders the shared streaming timing table for a live schema-v3 report", async () => {
+    const user = userEvent.setup()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={vi.fn(async () => phaseFivePerformanceReport())}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(within(await screen.findByRole("region", { name: "测试结果" })).getByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const streaming = within(report).getByRole("table", { name: "流式时序统计" })
+    expect(within(streaming).getByRole("row", { name: /TTFT（含推理）/ })).toHaveTextContent(/20 ms.*4/)
+    expect(within(streaming).getByRole("row", { name: /Observed ICL/ })).toHaveTextContent("非 Token ITL")
   })
 
   it("keeps mode-specific drafts and sends an open-loop RPS profile", async () => {
@@ -1683,6 +1708,36 @@ function successfulPerformanceReport(): QuickPerformanceReport {
       { request_index: 3, scheduled_offset_ms: 0, started_offset_ms: 2, finished_offset_ms: 90, schedule_lag_ms: 2, e2e_ms: 88, ttft_ms: 42, tpot_ms: 6, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
     ],
     failures: [],
+  }
+}
+
+function phaseFivePerformanceReport(): QuickPerformanceReport {
+  const report = successfulPerformanceReport()
+  return {
+    ...report,
+    schema_version: 3,
+    metrics: {
+      ...report.metrics,
+      ttft_samples: 4,
+      ttft_p50_ms: 20, ttft_p90_ms: 20, ttft_p95_ms: 20, ttft_p99_ms: 20, ttft_average_ms: 20,
+      ttfb_samples: 4, ttfb_p50_ms: 10, ttfb_p95_ms: 10, ttfb_p99_ms: 10, ttfb_average_ms: 10,
+      ttft_any_samples: 4, ttft_any_p50_ms: 20, ttft_any_p95_ms: 20, ttft_any_p99_ms: 20, ttft_any_average_ms: 20,
+      ttft_visible_samples: 4, ttft_visible_p50_ms: 30, ttft_visible_p95_ms: 30, ttft_visible_p99_ms: 30, ttft_visible_average_ms: 30,
+      ttst_samples: 4, ttst_p50_ms: 40, ttst_p95_ms: 40, ttst_p99_ms: 40, ttst_average_ms: 40,
+      observed_icl_samples: 4, observed_icl_p50_ms: 20, observed_icl_p95_ms: 20, observed_icl_p99_ms: 20, observed_icl_average_ms: 20,
+      semantic_chunk_count_samples: 4, semantic_chunk_count_p50: 3, semantic_chunk_count_p95: 3,
+      semantic_chunk_count_p99: 3, semantic_chunk_count_average: 3,
+    },
+    samples: report.samples.map((sample) => ({
+      ...sample,
+      ttft_ms: 20,
+      ttfb_ms: 10,
+      ttft_any_ms: 20,
+      ttft_visible_ms: 30,
+      ttst_ms: 40,
+      observed_icl_ms: 20,
+      semantic_chunk_count: 3,
+    })),
   }
 }
 

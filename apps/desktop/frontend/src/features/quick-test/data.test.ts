@@ -436,6 +436,161 @@ describe("parseQuickPerformanceReport phase-four fields", () => {
   })
 })
 
+describe("parseQuickPerformanceReport phase-five streaming telemetry", () => {
+  it("keeps a schema-v3 report whose fine streaming metrics reconstruct from successful samples", () => {
+    const report = parseQuickPerformanceReport(phaseFiveReport())
+
+    expect(report.schema_version).toBe(3)
+    expect(report.samples[0]).toMatchObject({
+      ttfb_ms: 10,
+      ttft_any_ms: 20,
+      ttft_visible_ms: 30,
+      ttft_ms: 20,
+      ttst_ms: 40,
+      observed_icl_ms: 20,
+      semantic_chunk_count: 3,
+    })
+    expect(report.metrics).toMatchObject({
+      ttft_samples: 2,
+      ttfb_samples: 2,
+      ttfb_p50_ms: 15,
+      ttfb_p95_ms: 19.5,
+      ttfb_p99_ms: 19.9,
+      ttfb_average_ms: 15,
+      ttft_any_samples: 2,
+      ttft_any_p50_ms: 30,
+      ttft_any_p95_ms: 39,
+      ttft_any_p99_ms: 39.8,
+      ttft_any_average_ms: 30,
+      ttft_visible_samples: 1,
+      ttst_samples: 2,
+      observed_icl_samples: 2,
+      semantic_chunk_count_samples: 2,
+      semantic_chunk_count_p50: 2.5,
+    })
+    expect(report.time_slices?.[0]).toMatchObject({
+      ttfb: { count: 2, average_ms: 15 },
+      ttft_any: { count: 2, average_ms: 30 },
+      ttft: { count: 2, average_ms: 30 },
+      ttft_visible: { count: 1, average_ms: 30 },
+      semantic_chunk_count: { count: 2, average: 2.5 },
+    })
+  })
+
+  it.each([
+    ["a missing mandatory sample scalar", (raw: any) => { delete raw.samples[0].ttfb_ms }],
+    ["a null mandatory sample scalar", (raw: any) => { raw.samples[0].ttfb_ms = null }],
+    ["a numeric-string Any TTFT", (raw: any) => { raw.samples[0].ttft_any_ms = "20" }],
+    ["a boolean visible TTFT", (raw: any) => { raw.samples[0].ttft_visible_ms = false }],
+    ["a null second-token milestone", (raw: any) => { raw.samples[0].ttst_ms = null }],
+    ["a boolean mandatory sample scalar", (raw: any) => { raw.samples[0].observed_icl_ms = false }],
+    ["a numeric-string mandatory sample scalar", (raw: any) => { raw.samples[0].semantic_chunk_count = "3" }],
+    ["a request-level TTFT alias mismatch", (raw: any) => { raw.samples[0].ttft_ms = 21 }],
+    ["a visible milestone before the first semantic chunk", (raw: any) => { raw.samples[0].ttft_visible_ms = 19 }],
+    ["a second semantic milestone without two chunks", (raw: any) => { raw.samples[0].semantic_chunk_count = 1 }],
+    ["one semantic chunk without an Any TTFT", (raw: any) => {
+      Object.assign(raw.samples[0], { semantic_chunk_count: 1, ttft_any_ms: 0, ttft_ms: 0, ttft_visible_ms: 0, ttst_ms: 0, observed_icl_ms: 0 })
+    }],
+    ["one semantic event with distinct Any and Visible timestamps", (raw: any) => {
+      Object.assign(raw.samples[0], { semantic_chunk_count: 1, ttst_ms: 0, observed_icl_ms: 0 })
+    }],
+    ["multiple semantic chunks without an Any TTFT", (raw: any) => {
+      Object.assign(raw.samples[0], { ttft_any_ms: 0, ttft_ms: 0, ttft_visible_ms: 0, ttst_ms: 0 })
+    }],
+    ["multiple semantic chunks without a second-token milestone", (raw: any) => { raw.samples[0].ttst_ms = 0 }],
+    ["a fabricated cohort size", (raw: any) => { raw.metrics.ttfb_samples = 1 }],
+    ["a fabricated percentile", (raw: any) => { raw.metrics.ttft_any_p95_ms = 38 }],
+    ["a monotonic but fabricated legacy TTFT P90", (raw: any) => { raw.metrics.ttft_p90_ms = 37 }],
+    ["a fabricated average", (raw: any) => { raw.metrics.observed_icl_average_ms = 19 }],
+    ["a legacy TTFT metric alias mismatch", (raw: any) => { raw.metrics.ttft_p50_ms = 29 }],
+    ["a time-slice TTFT alias mismatch", (raw: any) => { raw.time_slices[0].ttft.p50_ms = 29 }],
+    ["a reconstructed time-slice percentile mismatch", (raw: any) => { raw.time_slices[0].ttst.p99_ms = 58 }],
+  ])("rejects schema-v3 telemetry with %s", (_name, mutate) => {
+    const raw = phaseFiveReport()
+    mutate(raw)
+    expect(() => parseQuickPerformanceReport(raw)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it("excludes failed requests with partial milestones from every aggregate cohort", () => {
+    const report = parseQuickPerformanceReport(phaseFiveMixedReport())
+
+    expect(report.metrics).toMatchObject({
+      succeeded: 1,
+      failed: 1,
+      ttfb_samples: 1,
+      ttfb_average_ms: 10,
+      ttft_any_samples: 1,
+      ttft_any_average_ms: 20,
+      semantic_chunk_count_samples: 1,
+      semantic_chunk_count_average: 3,
+    })
+    expect(report.samples[1]).toMatchObject({ success: false, ttfb_ms: 20, ttft_any_ms: 40 })
+  })
+
+  it("attributes streaming latency to the start slice even when completion lands in a later slice", () => {
+    const raw = phaseFiveReport()
+    raw.samples[1].finished_offset_ms = 1_100
+    raw.samples[1].e2e_ms = 1_090
+    Object.assign(raw.time_slices[0], {
+      completed: 1, succeeded: 1, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5,
+      e2e: { count: 2, p50_ms: 575, p95_ms: 1_038.5, p99_ms: 1_079.7, average_ms: 575 },
+    })
+    const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
+    raw.time_slices.splice(1, 0, {
+      slice_index: 1, start_ms: 1_000, end_ms: 2_000, partial: false,
+      offered: 0, launched: 0, completed: 1, succeeded: 1, failed: 0, rejected: 0,
+      prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5,
+      ttfb: emptyLatency, ttft_any: emptyLatency, ttft_visible: emptyLatency, ttft: emptyLatency,
+      ttst: emptyLatency, observed_icl: emptyLatency,
+      semantic_chunk_count: { count: 0, p50: 0, p95: 0, p99: 0, average: 0 },
+      tpot: emptyLatency, e2e: emptyLatency,
+    })
+
+    expect(parseQuickPerformanceReport(raw).time_slices?.[0]).toMatchObject({
+      succeeded: 1,
+      semantic_chunk_count: { count: 2 },
+    })
+  })
+
+  it("validates selected capacity metrics from samples and nonselected rungs by cohort algebra", () => {
+    const selected = phaseFiveCapacityReport()
+    selected.metrics.ttfb_average_ms = 16
+    selected.capacity_result.rungs[1].metrics.ttfb_average_ms = 16
+    expect(() => parseQuickPerformanceReport(selected)).toThrow("快速性能报告数据结构无效")
+
+    const nonselected = phaseFiveCapacityReport()
+    nonselected.capacity_result.rungs[0].metrics.semantic_chunk_count_samples = 1
+    expect(() => parseQuickPerformanceReport(nonselected)).toThrow("快速性能报告数据结构无效")
+
+    const impossibleP90 = phaseFiveCapacityReport()
+    impossibleP90.capacity_result.rungs[0].metrics.ttft_p90_ms = 40
+    impossibleP90.capacity_result.rungs[0].metrics.ttft_p95_ms = 39
+    expect(() => parseQuickPerformanceReport(impossibleP90)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it("does not retain or fabricate fine telemetry for schema-v1 and schema-v2 reports", () => {
+    const raw = phaseThreeReport() as any
+    Object.assign(raw.samples[0], { ttfb_ms: 10, ttft_any_ms: 20, semantic_chunk_count: 2 })
+    Object.assign(raw.metrics, { ttfb_samples: 2, ttfb_p50_ms: 10 })
+    const v2 = parseQuickPerformanceReport(raw)
+    expect(v2.samples[0].ttfb_ms).toBeUndefined()
+    expect(v2.metrics.ttfb_samples).toBeUndefined()
+
+    const v1Raw = structuredClone(raw)
+    v1Raw.schema_version = 1
+    for (const field of ["load_mode", "arrival_pattern", "workload_mode", "random_seed", "input_tokens_stddev", "output_tokens_stddev", "shared_prefix_tokens", "warmup_requests", "ramp_duration_ms", "ramp_request_cap", "slice_duration_ms"]) delete v1Raw.profile[field]
+    for (const field of ["offered", "stopped", "capped"]) delete v1Raw.progress[field]
+    for (const field of ["offered_qps", "launched_qps", "completed_qps", "successful_request_qps"]) delete v1Raw.metrics[field]
+    delete v1Raw.request_budget
+    delete v1Raw.warmup
+    delete v1Raw.ramp
+    delete v1Raw.time_slices
+    const v1 = parseQuickPerformanceReport(v1Raw)
+    expect(v1.samples[0].ttfb_ms).toBeUndefined()
+    expect(v1.metrics.ttfb_samples).toBeUndefined()
+  })
+})
+
 function phaseThreeReport() {
   const traffic = {
     request_cap: 1,
@@ -706,4 +861,103 @@ function timeSlice(sliceIndex: number, startMS: number, endMS: number, partial: 
     e2e: { ...latency, p50_ms: 60, p95_ms: 80, p99_ms: 90 },
     provider_internal: "drop me",
   }
+}
+
+function phaseFiveReport(): any {
+  const raw: any = phaseThreeReport()
+  raw.schema_version = 3
+  Object.assign(raw.samples[0], {
+    ttfb_ms: 10, ttft_any_ms: 20, ttft_visible_ms: 30, ttft_ms: 20,
+    ttst_ms: 40, observed_icl_ms: 20, semantic_chunk_count: 3,
+  })
+  Object.assign(raw.samples[1], {
+    ttfb_ms: 20, ttft_any_ms: 40, ttft_visible_ms: 0, ttft_ms: 40,
+    ttst_ms: 60, observed_icl_ms: 20, semantic_chunk_count: 2,
+  })
+  Object.assign(raw.metrics, phaseFiveMetrics())
+  const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
+  const emptyCount = { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
+  Object.assign(raw.time_slices[0], {
+    ttfb: { count: 2, p50_ms: 15, p95_ms: 19.5, p99_ms: 19.9, average_ms: 15 },
+    ttft_any: { count: 2, p50_ms: 30, p95_ms: 39, p99_ms: 39.8, average_ms: 30 },
+    ttft_visible: { count: 1, p50_ms: 30, p95_ms: 30, p99_ms: 30, average_ms: 30 },
+    ttft: { count: 2, p50_ms: 30, p95_ms: 39, p99_ms: 39.8, average_ms: 30 },
+    ttst: { count: 2, p50_ms: 50, p95_ms: 59, p99_ms: 59.8, average_ms: 50 },
+    observed_icl: { count: 2, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+    semantic_chunk_count: { count: 2, p50: 2.5, p95: 2.95, p99: 2.99, average: 2.5 },
+    tpot: { count: 2, p50_ms: 4, p95_ms: 4, p99_ms: 4, average_ms: 4 },
+    e2e: { count: 2, p50_ms: 70, p95_ms: 79, p99_ms: 79.8, average_ms: 70 },
+  })
+  Object.assign(raw.time_slices[1], {
+    ttfb: emptyLatency, ttft_any: emptyLatency, ttft_visible: emptyLatency, ttft: emptyLatency,
+    ttst: emptyLatency, observed_icl: emptyLatency, semantic_chunk_count: emptyCount,
+    tpot: emptyLatency, e2e: emptyLatency,
+  })
+  return raw
+}
+
+function phaseFiveMetrics() {
+  return {
+    ttft_samples: 2,
+    ttft_p50_ms: 30, ttft_p90_ms: 38, ttft_p95_ms: 39, ttft_p99_ms: 39.8, ttft_average_ms: 30,
+    ttfb_samples: 2, ttfb_p50_ms: 15, ttfb_p95_ms: 19.5, ttfb_p99_ms: 19.9, ttfb_average_ms: 15,
+    ttft_any_samples: 2, ttft_any_p50_ms: 30, ttft_any_p95_ms: 39, ttft_any_p99_ms: 39.8, ttft_any_average_ms: 30,
+    ttft_visible_samples: 1, ttft_visible_p50_ms: 30, ttft_visible_p95_ms: 30, ttft_visible_p99_ms: 30, ttft_visible_average_ms: 30,
+    ttst_samples: 2, ttst_p50_ms: 50, ttst_p95_ms: 59, ttst_p99_ms: 59.8, ttst_average_ms: 50,
+    observed_icl_samples: 2, observed_icl_p50_ms: 20, observed_icl_p95_ms: 20, observed_icl_p99_ms: 20, observed_icl_average_ms: 20,
+    semantic_chunk_count_samples: 2, semantic_chunk_count_p50: 2.5, semantic_chunk_count_p95: 2.95,
+    semantic_chunk_count_p99: 2.99, semantic_chunk_count_average: 2.5,
+  }
+}
+
+function phaseFiveMixedReport(): any {
+  const raw = phaseFiveReport()
+  raw.profile.warmup_requests = 0
+  raw.profile.ramp_duration_ms = 0
+  raw.profile.ramp_request_cap = 0
+  raw.profile.slice_duration_ms = 0
+  delete raw.request_budget
+  delete raw.warmup
+  delete raw.ramp
+  delete raw.time_slices
+  Object.assign(raw.samples[1], { success: false, timed_out: true, error_code: "timeout" })
+  Object.assign(raw.progress, { succeeded: 1, failed: 1 })
+  Object.assign(raw.metrics, {
+    succeeded: 1, failed: 1, timed_out: 1, success_rate_percent: 50,
+    prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5, cache_rate_percent: 25,
+    ttft_samples: 1,
+    ttft_p50_ms: 20, ttft_p90_ms: 20, ttft_p95_ms: 20, ttft_p99_ms: 20, ttft_average_ms: 20,
+    ttfb_samples: 1, ttfb_p50_ms: 10, ttfb_p95_ms: 10, ttfb_p99_ms: 10, ttfb_average_ms: 10,
+    ttft_any_samples: 1, ttft_any_p50_ms: 20, ttft_any_p95_ms: 20, ttft_any_p99_ms: 20, ttft_any_average_ms: 20,
+    ttft_visible_samples: 1, ttft_visible_p50_ms: 30, ttft_visible_p95_ms: 30, ttft_visible_p99_ms: 30, ttft_visible_average_ms: 30,
+    ttst_samples: 1, ttst_p50_ms: 40, ttst_p95_ms: 40, ttst_p99_ms: 40, ttst_average_ms: 40,
+    observed_icl_samples: 1, observed_icl_p50_ms: 20, observed_icl_p95_ms: 20, observed_icl_p99_ms: 20, observed_icl_average_ms: 20,
+    semantic_chunk_count_samples: 1, semantic_chunk_count_p50: 3, semantic_chunk_count_p95: 3,
+    semantic_chunk_count_p99: 3, semantic_chunk_count_average: 3,
+  })
+  raw.failures = [{ error_code: "timeout", count: 1 }]
+  raw.success = false
+  return raw
+}
+
+function phaseFiveCapacityReport(): any {
+  const raw: any = phaseFourReport()
+  raw.schema_version = 3
+  raw.profile.warmup_requests = 0
+  raw.profile.slice_duration_ms = 0
+  delete raw.warmup
+  delete raw.time_slices
+  raw.request_budget.warmup_cap = 0
+  raw.request_budget.total_cap = raw.request_budget.measured_cap
+  Object.assign(raw.samples[0], {
+    ttfb_ms: 10, ttft_any_ms: 20, ttft_visible_ms: 30, ttft_ms: 20,
+    ttst_ms: 40, observed_icl_ms: 20, semantic_chunk_count: 3,
+  })
+  Object.assign(raw.samples[1], {
+    ttfb_ms: 20, ttft_any_ms: 40, ttft_visible_ms: 0, ttft_ms: 40,
+    ttst_ms: 60, observed_icl_ms: 20, semantic_chunk_count: 2,
+  })
+  Object.assign(raw.metrics, phaseFiveMetrics())
+  for (const rung of raw.capacity_result.rungs) Object.assign(rung.metrics, phaseFiveMetrics())
+  return raw
 }

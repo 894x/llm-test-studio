@@ -4,7 +4,7 @@ import type { QuickPerformanceMetrics } from "@/features/quick-test/data"
 
 export function PerformanceLatencyTable({ metrics }: { metrics: QuickPerformanceMetrics }) {
   const rows = [
-    { label: "TTFT", unit: "ms", values: [metrics.ttft_average_ms, metrics.ttft_p50_ms, metrics.ttft_p90_ms, metrics.ttft_p95_ms, metrics.ttft_p99_ms] },
+    { label: "TTFT（含推理）", unit: "ms", values: [metrics.ttft_average_ms, metrics.ttft_p50_ms, metrics.ttft_p90_ms, metrics.ttft_p95_ms, metrics.ttft_p99_ms] },
     { label: "TPOT", unit: "ms/token", values: [metrics.tpot_average_ms, metrics.tpot_p50_ms, metrics.tpot_p90_ms, metrics.tpot_p95_ms, metrics.tpot_p99_ms] },
     { label: "E2E", unit: "ms", values: [metrics.e2e_average_ms, metrics.e2e_p50_ms, metrics.e2e_p90_ms, metrics.e2e_p95_ms, metrics.e2e_p99_ms] },
     { label: "客户端排队（本地调度延迟）", unit: "ms", values: [metrics.schedule_lag_average_ms, metrics.schedule_lag_p50_ms, metrics.schedule_lag_p90_ms, metrics.schedule_lag_p95_ms, metrics.schedule_lag_p99_ms] },

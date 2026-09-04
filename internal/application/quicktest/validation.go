@@ -16,7 +16,7 @@ import (
 // ValidateArchivedPerformanceReport protects every persistence and reporting
 // adapter from malformed or unsafe quick-report documents.
 func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, error) {
-	if (report.SchemaVersion != LegacyPerformanceSchemaVersion && report.SchemaVersion != PerformanceSchemaVersion) || !domain.IsUUID(report.ReportID) {
+	if (report.SchemaVersion != LegacyPerformanceSchemaVersion && report.SchemaVersion != PerformanceSchemaVersionV2 && report.SchemaVersion != PerformanceSchemaVersion) || !domain.IsUUID(report.ReportID) {
 		return time.Time{}, errors.New("quick performance report identity is invalid")
 	}
 	generatedAt, err := time.Parse(time.RFC3339Nano, report.GeneratedAt)
@@ -38,7 +38,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	arrival := normalizedArrivalPattern(report.Profile.ArrivalPattern)
 	workloadMode := normalizedWorkloadMode(report.Profile.WorkloadMode)
 	effectiveProfile := performanceReportEffectiveProfile(report)
-	if report.SchemaVersion == PerformanceSchemaVersion {
+	if report.SchemaVersion >= PerformanceSchemaVersionV2 {
 		if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
 			report.Progress.Completed != report.Progress.Offered {
 			return time.Time{}, errors.New("quick performance report load profile is invalid")
@@ -107,7 +107,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	}
 	seen := make(map[uint64]struct{}, len(report.Samples))
 	var workload *performanceWorkload
-	if report.SchemaVersion == PerformanceSchemaVersion && workloadMode == PerformanceWorkloadNormal {
+	if report.SchemaVersion >= PerformanceSchemaVersionV2 && workloadMode == PerformanceWorkloadNormal {
 		workload, err = newPerformanceWorkload(report.Profile)
 		if err != nil {
 			return time.Time{}, errors.New("quick performance report workload is invalid")
@@ -135,6 +135,9 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			!finiteNonNegative(sample.FinishedOffsetMS) || !finiteNonNegative(sample.ScheduleLagMS) || !finiteNonNegative(sample.E2EMS) ||
 			!finiteNonNegative(sample.TTFTMS) || !finiteNonNegative(sample.TPOTMS) || sample.FinishedOffsetMS < sample.StartedOffsetMS {
 			return time.Time{}, errors.New("quick performance report sample measurement is invalid")
+		}
+		if report.SchemaVersion == PerformanceSchemaVersion && !validPerformanceFineSample(sample) {
+			return time.Time{}, errors.New("quick performance report fine streaming sample is invalid")
 		}
 		if sample.Success {
 			if sample.ErrorCode != "" || sample.ResponseEvidence != nil {
@@ -168,12 +171,12 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		promptTokens != report.Metrics.PromptTokens || completionTokens != report.Metrics.CompletionTokens || cachedTokens != report.Metrics.CachedTokens {
 		return time.Time{}, errors.New("quick performance report sample totals are inconsistent")
 	}
-	if report.SchemaVersion == PerformanceSchemaVersion {
+	if report.SchemaVersion >= PerformanceSchemaVersionV2 {
 		if !validPerformanceMetricScalars(report.Metrics) {
 			return time.Time{}, errors.New("quick performance report metrics are invalid")
 		}
 		expectedMetrics := rebuildPerformanceMetrics(report.Samples, report.Progress, effectiveProfile, arrival)
-		if !equalPerformanceMetrics(report.Metrics, expectedMetrics) {
+		if !equalPerformanceMetrics(report.Metrics, expectedMetrics, report.SchemaVersion == PerformanceSchemaVersion) {
 			return time.Time{}, errors.New("quick performance report metrics are inconsistent with its samples")
 		}
 	}
@@ -189,7 +192,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	if len(failureCounts) != 0 {
 		return time.Time{}, errors.New("quick performance report failures are incomplete")
 	}
-	if report.SchemaVersion == PerformanceSchemaVersion {
+	if report.SchemaVersion >= PerformanceSchemaVersionV2 {
 		if err := validatePerformanceSLO(report); err != nil {
 			return time.Time{}, err
 		}
@@ -197,6 +200,11 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			return time.Time{}, err
 		}
 		if err := validatePerformancePhaseThree(report); err != nil {
+			return time.Time{}, err
+		}
+	}
+	if report.SchemaVersion == PerformanceSchemaVersion {
+		if err := validatePerformanceFineMetrics(report.Metrics, report.Samples); err != nil {
 			return time.Time{}, err
 		}
 	}
@@ -328,7 +336,7 @@ func validatePerformancePhaseThree(report PerformanceReport) error {
 		return errors.New("quick performance report time slices are incomplete")
 	}
 	for index := range expectedSlices {
-		if !equalPerformanceTimeSlice(report.TimeSlices[index], expectedSlices[index]) {
+		if !equalPerformanceTimeSlice(report.TimeSlices[index], expectedSlices[index], report.SchemaVersion == PerformanceSchemaVersion) {
 			return errors.New("quick performance report time slices are inconsistent")
 		}
 	}
@@ -389,6 +397,89 @@ func validPerformancePhaseThreeSamples(samples []PerformanceSample, totalDuratio
 	return true
 }
 
+func validPerformanceFineSample(sample PerformanceSample) bool {
+	values := []float64{sample.TTFBMS, sample.TTFTAnyMS, sample.TTFTVisibleMS, sample.TTSTMS, sample.ObservedICLMS}
+	for _, value := range values {
+		if !finiteNonNegative(value) {
+			return false
+		}
+	}
+	if sample.TTFBMS > 0 && (sample.E2EMS <= 0 || sample.TTFBMS > sample.E2EMS) {
+		return false
+	}
+	if sample.TTFTMS != sample.TTFTAnyMS {
+		return false
+	}
+	for _, milestone := range []float64{sample.TTFTAnyMS, sample.TTFTVisibleMS, sample.TTSTMS} {
+		if milestone > 0 && (milestone > sample.E2EMS || (sample.TTFBMS > 0 && sample.TTFBMS > milestone)) {
+			return false
+		}
+	}
+	if sample.TTFTVisibleMS > 0 && (sample.TTFTAnyMS <= 0 || sample.TTFTAnyMS > sample.TTFTVisibleMS) {
+		return false
+	}
+	if sample.TTSTMS > 0 && (sample.TTFTAnyMS <= 0 || sample.TTFTAnyMS > sample.TTSTMS) {
+		return false
+	}
+	switch sample.SemanticChunkCount {
+	case 0:
+		return sample.TTFTAnyMS == 0 && sample.TTFTVisibleMS == 0 && sample.TTSTMS == 0 && sample.ObservedICLMS == 0
+	case 1:
+		return sample.TTFTAnyMS > 0 && (sample.TTFTVisibleMS == 0 || sample.TTFTVisibleMS == sample.TTFTAnyMS) &&
+			sample.TTSTMS == 0 && sample.ObservedICLMS == 0
+	default:
+		return sample.TTFTAnyMS > 0 && sample.TTSTMS > 0 &&
+			(sample.SemanticChunkCount != 2 || approximatelyEqual(sample.ObservedICLMS, sample.TTSTMS-sample.TTFTAnyMS))
+	}
+}
+
+func validatePerformanceFineMetrics(metrics load.Metrics, samples []PerformanceSample) error {
+	var ttfb, ttftAny, ttftVisible, ttst, observedICL, semanticChunkCount []float64
+	for _, sample := range samples {
+		if !sample.Success {
+			continue
+		}
+		if sample.TTFBMS > 0 {
+			ttfb = append(ttfb, sample.TTFBMS)
+		}
+		if sample.TTFTAnyMS > 0 {
+			ttftAny = append(ttftAny, sample.TTFTAnyMS)
+		}
+		if sample.TTFTVisibleMS > 0 {
+			ttftVisible = append(ttftVisible, sample.TTFTVisibleMS)
+		}
+		if sample.SemanticChunkCount >= 2 {
+			ttst = append(ttst, sample.TTSTMS)
+			observedICL = append(observedICL, sample.ObservedICLMS)
+		}
+		semanticChunkCount = append(semanticChunkCount, float64(sample.SemanticChunkCount))
+	}
+	if !equalMetricLatencyDistribution(performanceLatencySlice(ttfb), metrics.TTFBSamples, metrics.TTFBP50, metrics.TTFBP95, metrics.TTFBP99, metrics.TTFBAverage) ||
+		!equalMetricLatencyDistribution(performanceLatencySlice(ttftAny), metrics.TTFTAnySamples, metrics.TTFTAnyP50, metrics.TTFTAnyP95, metrics.TTFTAnyP99, metrics.TTFTAnyAverage) ||
+		!equalMetricLatencyDistribution(performanceLatencySlice(ttftVisible), metrics.TTFTVisibleSamples, metrics.TTFTVisibleP50, metrics.TTFTVisibleP95, metrics.TTFTVisibleP99, metrics.TTFTVisibleAverage) ||
+		!equalMetricLatencyDistribution(performanceLatencySlice(ttst), metrics.TTSTSamples, metrics.TTSTP50, metrics.TTSTP95, metrics.TTSTP99, metrics.TTSTAverage) ||
+		!equalMetricLatencyDistribution(performanceLatencySlice(observedICL), metrics.ObservedICLSamples, metrics.ObservedICLP50, metrics.ObservedICLP95, metrics.ObservedICLP99, metrics.ObservedICLAverage) ||
+		!equalMetricCountDistribution(performanceCountSlice(semanticChunkCount), metrics.SemanticChunkCountSamples, metrics.SemanticChunkCountP50, metrics.SemanticChunkCountP95, metrics.SemanticChunkCountP99, metrics.SemanticChunkCountAverage) {
+		return errors.New("quick performance report fine streaming metrics are inconsistent with its samples")
+	}
+	if metrics.TTFTSamples != metrics.TTFTAnySamples || metrics.TTFTP50 != metrics.TTFTAnyP50 ||
+		metrics.TTFTP95 != metrics.TTFTAnyP95 || metrics.TTFTP99 != metrics.TTFTAnyP99 ||
+		metrics.TTFTAverage != metrics.TTFTAnyAverage {
+		return errors.New("quick performance report TTFT alias is inconsistent")
+	}
+	return nil
+}
+
+func equalMetricLatencyDistribution(expected PerformanceLatencySlice, samples uint64, p50, p95, p99, average float64) bool {
+	return expected.Count == samples && approximatelyEqual(expected.P50MS, p50) && approximatelyEqual(expected.P95MS, p95) &&
+		approximatelyEqual(expected.P99MS, p99) && approximatelyEqual(expected.AverageMS, average)
+}
+
+func equalMetricCountDistribution(expected PerformanceCountSlice, samples uint64, p50, p95, p99, average float64) bool {
+	return expected.Count == samples && approximatelyEqual(expected.P50, p50) && approximatelyEqual(expected.P95, p95) &&
+		approximatelyEqual(expected.P99, p99) && approximatelyEqual(expected.Average, average)
+}
+
 func rebuildPerformanceMetrics(
 	samples []PerformanceSample,
 	progress PerformanceProgress,
@@ -397,21 +488,32 @@ func rebuildPerformanceMetrics(
 ) load.Metrics {
 	observations := make([]load.Observation, 0, len(samples))
 	for _, sample := range samples {
+		ttftAnyMS := sample.TTFTAnyMS
+		if ttftAnyMS <= 0 {
+			ttftAnyMS = sample.TTFTMS
+		}
 		observations = append(observations, load.Observation{
-			Index:            sample.RequestIndex,
-			ScheduledOffset:  performanceDurationFromMilliseconds(sample.ScheduledOffsetMS),
-			StartedOffset:    performanceDurationFromMilliseconds(sample.StartedOffsetMS),
-			FinishedOffset:   performanceDurationFromMilliseconds(sample.FinishedOffsetMS),
-			ScheduleLag:      performanceDurationFromMilliseconds(sample.ScheduleLagMS),
-			E2E:              performanceDurationFromMilliseconds(sample.E2EMS),
-			TTFT:             performanceDurationFromMilliseconds(sample.TTFTMS),
-			HTTPStatus:       sample.HTTPStatus,
-			Success:          sample.Success,
-			TimedOut:         sample.TimedOut,
-			PromptTokens:     sample.PromptTokens,
-			CompletionTokens: sample.CompletionTokens,
-			CachedTokens:     sample.CachedTokens,
-			ErrorCode:        sample.ErrorCode,
+			Index:              sample.RequestIndex,
+			ScheduledOffset:    performanceDurationFromMilliseconds(sample.ScheduledOffsetMS),
+			StartedOffset:      performanceDurationFromMilliseconds(sample.StartedOffsetMS),
+			FinishedOffset:     performanceDurationFromMilliseconds(sample.FinishedOffsetMS),
+			ScheduleLag:        performanceDurationFromMilliseconds(sample.ScheduleLagMS),
+			E2E:                performanceDurationFromMilliseconds(sample.E2EMS),
+			Streaming:          true,
+			TTFB:               performanceDurationFromMilliseconds(sample.TTFBMS),
+			TTFT:               performanceDurationFromMilliseconds(ttftAnyMS),
+			TTFTAny:            performanceDurationFromMilliseconds(ttftAnyMS),
+			TTFTVisible:        performanceDurationFromMilliseconds(sample.TTFTVisibleMS),
+			TTST:               performanceDurationFromMilliseconds(sample.TTSTMS),
+			ObservedICL:        performanceDurationFromMilliseconds(sample.ObservedICLMS),
+			SemanticChunkCount: sample.SemanticChunkCount,
+			HTTPStatus:         sample.HTTPStatus,
+			Success:            sample.Success,
+			TimedOut:           sample.TimedOut,
+			PromptTokens:       sample.PromptTokens,
+			CompletionTokens:   sample.CompletionTokens,
+			CachedTokens:       sample.CachedTokens,
+			ErrorCode:          sample.ErrorCode,
 		})
 	}
 	loadProgress := load.Progress{
@@ -443,7 +545,7 @@ func performanceDurationFromMilliseconds(value float64) time.Duration {
 	return time.Duration(math.Round(value * float64(time.Millisecond)))
 }
 
-func equalPerformanceMetrics(left, right load.Metrics) bool {
+func equalPerformanceMetrics(left, right load.Metrics, includeFine bool) bool {
 	if left.Completed != right.Completed || left.Succeeded != right.Succeeded || left.Failed != right.Failed ||
 		left.TimedOut != right.TimedOut || left.PromptTokens != right.PromptTokens ||
 		left.CompletionTokens != right.CompletionTokens || left.CachedTokens != right.CachedTokens {
@@ -472,15 +574,55 @@ func equalPerformanceMetrics(left, right load.Metrics) bool {
 			return false
 		}
 	}
+	if !includeFine {
+		return true
+	}
+	if left.TTFTSamples != right.TTFTSamples || left.TTFBSamples != right.TTFBSamples || left.TTFTAnySamples != right.TTFTAnySamples ||
+		left.TTFTVisibleSamples != right.TTFTVisibleSamples || left.TTSTSamples != right.TTSTSamples ||
+		left.ObservedICLSamples != right.ObservedICLSamples || left.SemanticChunkCountSamples != right.SemanticChunkCountSamples {
+		return false
+	}
+	leftFine := []float64{
+		left.TTFBP50, left.TTFBP95, left.TTFBP99, left.TTFBAverage,
+		left.TTFTAnyP50, left.TTFTAnyP95, left.TTFTAnyP99, left.TTFTAnyAverage,
+		left.TTFTVisibleP50, left.TTFTVisibleP95, left.TTFTVisibleP99, left.TTFTVisibleAverage,
+		left.TTSTP50, left.TTSTP95, left.TTSTP99, left.TTSTAverage,
+		left.ObservedICLP50, left.ObservedICLP95, left.ObservedICLP99, left.ObservedICLAverage,
+		left.SemanticChunkCountP50, left.SemanticChunkCountP95, left.SemanticChunkCountP99, left.SemanticChunkCountAverage,
+	}
+	rightFine := []float64{
+		right.TTFBP50, right.TTFBP95, right.TTFBP99, right.TTFBAverage,
+		right.TTFTAnyP50, right.TTFTAnyP95, right.TTFTAnyP99, right.TTFTAnyAverage,
+		right.TTFTVisibleP50, right.TTFTVisibleP95, right.TTFTVisibleP99, right.TTFTVisibleAverage,
+		right.TTSTP50, right.TTSTP95, right.TTSTP99, right.TTSTAverage,
+		right.ObservedICLP50, right.ObservedICLP95, right.ObservedICLP99, right.ObservedICLAverage,
+		right.SemanticChunkCountP50, right.SemanticChunkCountP95, right.SemanticChunkCountP99, right.SemanticChunkCountAverage,
+	}
+	for index := range leftFine {
+		if !approximatelyEqual(leftFine[index], rightFine[index]) {
+			return false
+		}
+	}
 	return true
 }
 
-func equalPerformanceTimeSlice(left, right PerformanceTimeSlice) bool {
-	return left.SliceIndex == right.SliceIndex && approximatelyEqual(left.StartMS, right.StartMS) && approximatelyEqual(left.EndMS, right.EndMS) &&
+func equalPerformanceTimeSlice(left, right PerformanceTimeSlice, includeFine bool) bool {
+	baseEqual := left.SliceIndex == right.SliceIndex && approximatelyEqual(left.StartMS, right.StartMS) && approximatelyEqual(left.EndMS, right.EndMS) &&
 		left.Partial == right.Partial && left.Offered == right.Offered && left.Launched == right.Launched && left.Completed == right.Completed &&
 		left.Succeeded == right.Succeeded && left.Failed == right.Failed && left.Rejected == right.Rejected &&
 		left.PromptTokens == right.PromptTokens && left.CompletionTokens == right.CompletionTokens && left.CachedTokens == right.CachedTokens &&
-		equalPerformanceLatencySlice(left.TTFT, right.TTFT) && equalPerformanceLatencySlice(left.TPOT, right.TPOT) &&
+		equalLegacyPerformanceLatencySlice(left.TTFT, right.TTFT) && equalLegacyPerformanceLatencySlice(left.TPOT, right.TPOT) &&
+		equalLegacyPerformanceLatencySlice(left.E2E, right.E2E)
+	if !baseEqual || !includeFine {
+		return baseEqual
+	}
+	if left.TTFT != left.TTFTAny {
+		return false
+	}
+	return equalPerformanceLatencySlice(left.TTFB, right.TTFB) && equalPerformanceLatencySlice(left.TTFTAny, right.TTFTAny) &&
+		equalPerformanceLatencySlice(left.TTFTVisible, right.TTFTVisible) && equalPerformanceLatencySlice(left.TTFT, right.TTFT) &&
+		equalPerformanceLatencySlice(left.TTST, right.TTST) && equalPerformanceLatencySlice(left.ObservedICL, right.ObservedICL) &&
+		equalPerformanceCountSlice(left.SemanticChunkCount, right.SemanticChunkCount) && equalPerformanceLatencySlice(left.TPOT, right.TPOT) &&
 		equalPerformanceLatencySlice(left.E2E, right.E2E)
 }
 
@@ -505,7 +647,18 @@ func performanceTimeSliceTotalsMatch(slices []PerformanceTimeSlice, progress Per
 
 func equalPerformanceLatencySlice(left, right PerformanceLatencySlice) bool {
 	return left.Count == right.Count && approximatelyEqual(left.P50MS, right.P50MS) &&
+		approximatelyEqual(left.P95MS, right.P95MS) && approximatelyEqual(left.P99MS, right.P99MS) &&
+		approximatelyEqual(left.AverageMS, right.AverageMS)
+}
+
+func equalLegacyPerformanceLatencySlice(left, right PerformanceLatencySlice) bool {
+	return left.Count == right.Count && approximatelyEqual(left.P50MS, right.P50MS) &&
 		approximatelyEqual(left.P95MS, right.P95MS) && approximatelyEqual(left.P99MS, right.P99MS)
+}
+
+func equalPerformanceCountSlice(left, right PerformanceCountSlice) bool {
+	return left.Count == right.Count && approximatelyEqual(left.P50, right.P50) && approximatelyEqual(left.P95, right.P95) &&
+		approximatelyEqual(left.P99, right.P99) && approximatelyEqual(left.Average, right.Average)
 }
 
 func validArchivedPerformanceProfile(profile PerformanceProfile) bool {

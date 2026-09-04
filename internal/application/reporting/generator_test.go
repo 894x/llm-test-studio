@@ -96,6 +96,70 @@ func TestSLAObservationSupportsLegacyDesktopAliases(t *testing.T) {
 	}
 }
 
+func TestFineStreamingReportMetricsUseOnlySuccessfulCohorts(t *testing.T) {
+	success := domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}
+	results := []domain.Result{
+		{Success: success, Metrics: map[string]float64{
+			"e2e_ms": 10, "ttfb_ms": 1, "ttft_ms": 2, "ttft_any_ms": 2, "ttft_visible_ms": 3,
+			"ttst_ms": 4, "observed_icl_ms": 2, "semantic_chunk_count": 2, "custom_latency_ms": 7,
+		}},
+		{Success: success, Metrics: map[string]float64{
+			"e2e_ms": 20, "ttfb_ms": 3, "semantic_chunk_count": 0, "custom_latency_ms": 8,
+		}},
+		{Metrics: map[string]float64{
+			"e2e_ms": 1000, "ttfb_ms": 100, "ttft_ms": 200, "ttft_any_ms": 200, "ttst_ms": 300,
+			"observed_icl_ms": 100, "semantic_chunk_count": 2, "custom_latency_ms": 9,
+		}},
+	}
+	metrics := aggregateMetrics(results)
+	for name, want := range map[string]struct {
+		value   float64
+		samples int
+	}{
+		"e2e_ms": {15, 2}, "ttfb_ms": {2, 2}, "ttfb_average_ms": {2, 2},
+		"ttft_any_ms": {2, 1}, "ttft_any_p99_ms": {2, 1},
+		"observed_icl_ms": {2, 1}, "semantic_chunk_count": {1, 2}, "semantic_chunk_count_average": {1, 2},
+	} {
+		got := metrics[name]
+		if got.Value != want.value || got.Samples != want.samples {
+			t.Fatalf("metric %s = %#v, want value=%v samples=%d", name, got, want.value, want.samples)
+		}
+	}
+	if _, ok := metrics["ttfb_p90_ms"]; ok {
+		t.Fatalf("new fine metric unexpectedly exposes P90: %#v", metrics["ttfb_p90_ms"])
+	}
+	if samples := metricSamples(results, "custom_latency_ms"); len(samples) != 3 {
+		t.Fatalf("generic metricSamples changed arbitrary SLA cohort: %v", samples)
+	}
+
+	distributions := resultDistributions(results)
+	foundICL := false
+	for _, raw := range distributions {
+		var distribution struct {
+			Metric  string  `json:"metric"`
+			Samples int     `json:"samples"`
+			Average float64 `json:"average"`
+		}
+		if err := json.Unmarshal(raw, &distribution); err != nil {
+			t.Fatal(err)
+		}
+		if distribution.Metric == "observed_icl_ms" {
+			foundICL = distribution.Samples == 1 && distribution.Average == 2
+		}
+	}
+	if !foundICL {
+		t.Fatalf("observed ICL distribution missing: %s", distributions)
+	}
+
+	var failedTimeline map[string]any
+	if err := json.Unmarshal(resultTimeline(results)[2], &failedTimeline); err != nil {
+		t.Fatal(err)
+	}
+	if failedTimeline["ttfb_ms"] != float64(100) || failedTimeline["observed_icl_ms"] != float64(100) {
+		t.Fatalf("failed partial timeline = %#v", failedTimeline)
+	}
+}
+
 type fakeReportRepository struct {
 	run      domain.Run
 	results  []domain.Result

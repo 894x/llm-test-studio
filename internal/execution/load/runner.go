@@ -896,9 +896,7 @@ func executeOne(
 	if observation.E2E <= 0 {
 		observation.E2E = finished.Sub(started)
 	}
-	if observation.TTFT < 0 {
-		observation.TTFT = 0
-	}
+	observation = normalizeObservationTimings(observation)
 	if observation.HTTPStatus < 0 || observation.HTTPStatus > 999 {
 		observation.HTTPStatus = 0
 	}

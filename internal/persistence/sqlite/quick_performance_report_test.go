@@ -18,6 +18,32 @@ import (
 
 const frozenSchemaV1QuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":0,"cached_tokens":2,"completed":1,"completion_tokens":3,"e2e_average_ms":0,"e2e_p50_ms":11,"e2e_p90_ms":0,"e2e_p95_ms":0,"e2e_p99_ms":0,"failed":0,"generation_tps":0,"input_tpm":0,"output_tpm":0,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":0,"schedule_lag_p50_ms":0,"schedule_lag_p95_ms":0,"succeeded":1,"success_rate_percent":100,"timed_out":0,"total_tpm":0,"tpot_average_ms":0,"tpot_p50_ms":4.5,"tpot_p90_ms":0,"tpot_p95_ms":0,"tpot_p99_ms":0,"ttft_average_ms":0,"ttft_p50_ms":2,"ttft_p90_ms":0,"ttft_p95_ms":0,"ttft_p99_ms":0},"model_id":"model-a","profile":{"concurrency":1,"duration_ms":0,"input_tokens":10,"output_tokens":3,"request_count":1,"timeout_ms":2000},"progress":{"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":0,"succeeded":1,"total_duration_ms":12},"report_id":"77777777-7777-4777-8777-777777777773","samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":0,"scheduled_offset_ms":0,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttft_ms":2}],"schema_version":1,"success":true}`
 
+const frozenSchemaV2PhaseFourQuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","capacity_result":{"highest_passing_rung_index":1,"rungs":[{"failures":[],"index":0,"metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2},"progress":{"capacity_rung_count":2,"capacity_rung_number":1,"capacity_target":1,"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"slo_assessment":{"bad_requests":0,"good_request_percent":100,"good_requests":1,"goodput_qps":80,"status":"passed","target_percent":100,"thresholds":{"e2e_ms":20,"tpot_ms":0,"ttft_ms":0},"total_requests":1,"violations":{"e2e":0,"tpot":0,"transport":0,"ttft":0}},"success":true,"target":1},{"failures":[],"index":1,"metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2},"progress":{"capacity_rung_count":2,"capacity_rung_number":2,"capacity_target":2,"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"slo_assessment":{"bad_requests":0,"good_request_percent":100,"good_requests":1,"goodput_qps":80,"status":"passed","target_percent":100,"thresholds":{"e2e_ms":20,"tpot_ms":0,"ttft_ms":0},"total_requests":1,"violations":{"e2e":0,"tpot":0,"transport":0,"ttft":0}},"success":true,"target":2}],"selected_rung_index":1,"status":"passed"},"endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2},"model_id":"model-a","profile":{"arrival_pattern":"constant","capacity_enabled":true,"capacity_start":1,"capacity_step":1,"concurrency":2,"duration_ms":0,"input_tokens":10,"load_mode":"fixed_concurrency","output_tokens":3,"request_count":1,"slice_duration_ms":100,"slo_e2e_ms":20,"slo_target_percent":100,"timeout_ms":2000,"workload_mode":"fixed"},"progress":{"capacity_rung_count":2,"capacity_rung_number":2,"capacity_target":2,"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"report_id":"77777777-7777-4777-8777-777777777773","request_budget":{"limit":10000,"measured_cap":2,"ramp_cap":0,"total_cap":2,"warmup_cap":0},"samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":1,"scheduled_offset_ms":0,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttft_ms":2}],"schema_version":2,"slo_assessment":{"bad_requests":0,"good_request_percent":100,"good_requests":1,"goodput_qps":80,"status":"passed","target_percent":100,"thresholds":{"e2e_ms":20,"tpot_ms":0,"ttft_ms":0},"total_requests":1,"violations":{"e2e":0,"tpot":0,"transport":0,"ttft":0}},"success":true,"time_slices":[{"cached_tokens":2,"completed":1,"completion_tokens":3,"e2e":{"count":1,"p50_ms":11,"p95_ms":11,"p99_ms":11},"end_ms":12.5,"failed":0,"launched":1,"offered":1,"partial":true,"prompt_tokens":10,"rejected":0,"slice_index":0,"start_ms":0,"succeeded":1,"tpot":{"count":1,"p50_ms":4.5,"p95_ms":4.5,"p99_ms":4.5},"ttft":{"count":1,"p50_ms":2,"p95_ms":2,"p99_ms":2}}]}`
+
+const frozenSchemaV3QuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"observed_icl_average_ms":2,"observed_icl_p50_ms":2,"observed_icl_p95_ms":2,"observed_icl_p99_ms":2,"observed_icl_samples":1,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"semantic_chunk_count_average":2,"semantic_chunk_count_p50":2,"semantic_chunk_count_p95":2,"semantic_chunk_count_p99":2,"semantic_chunk_count_samples":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttfb_average_ms":1,"ttfb_p50_ms":1,"ttfb_p95_ms":1,"ttfb_p99_ms":1,"ttfb_samples":1,"ttft_any_average_ms":2,"ttft_any_p50_ms":2,"ttft_any_p95_ms":2,"ttft_any_p99_ms":2,"ttft_any_samples":1,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2,"ttft_samples":1,"ttft_visible_average_ms":3,"ttft_visible_p50_ms":3,"ttft_visible_p95_ms":3,"ttft_visible_p99_ms":3,"ttft_visible_samples":1,"ttst_average_ms":4,"ttst_p50_ms":4,"ttst_p95_ms":4,"ttst_p99_ms":4,"ttst_samples":1},"model_id":"model-a","profile":{"arrival_pattern":"constant","concurrency":1,"duration_ms":0,"input_tokens":10,"load_mode":"fixed_concurrency","output_tokens":3,"request_count":1,"timeout_ms":2000,"workload_mode":"fixed"},"progress":{"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"report_id":"77777777-7777-4777-8777-777777777773","samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"observed_icl_ms":2,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":1,"scheduled_offset_ms":0,"semantic_chunk_count":2,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttfb_ms":1,"ttft_any_ms":2,"ttft_ms":2,"ttft_visible_ms":3,"ttst_ms":4}],"schema_version":3,"success":true}`
+
+func TestRepositoryLoadsFrozenSchemaV3QuickPerformanceReport(t *testing.T) {
+	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV3QuickPerformanceReport)
+	defer repository.Close()
+
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if loaded.SchemaVersion != quicktest.PerformanceSchemaVersion || len(loaded.Samples) != 1 {
+		t.Fatalf("loaded frozen v3 report = %#v", loaded)
+	}
+	sample := loaded.Samples[0]
+	if sample.TTFBMS != 1 || sample.TTFTAnyMS != 2 || sample.TTFTVisibleMS != 3 || sample.TTSTMS != 4 ||
+		sample.ObservedICLMS != 2 || sample.SemanticChunkCount != 2 || sample.TTFTMS != sample.TTFTAnyMS {
+		t.Fatalf("loaded frozen v3 sample = %#v", sample)
+	}
+	if loaded.Metrics.TTFBSamples != 1 || loaded.Metrics.TTFTAnySamples != 1 || loaded.Metrics.TTFTVisibleSamples != 1 ||
+		loaded.Metrics.TTSTSamples != 1 || loaded.Metrics.ObservedICLSamples != 1 || loaded.Metrics.SemanticChunkCountSamples != 1 {
+		t.Fatalf("loaded frozen v3 metrics = %#v", loaded.Metrics)
+	}
+}
+
 func TestRepositoryLoadsFrozenSchemaV1QuickPerformanceReport(t *testing.T) {
 	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV1QuickPerformanceReport)
 	defer repository.Close()
@@ -34,7 +60,24 @@ func TestRepositoryLoadsFrozenSchemaV1QuickPerformanceReport(t *testing.T) {
 	}
 }
 
-func TestRepositoryQuickPerformanceReportSchemaV2RoundTrip(t *testing.T) {
+func TestRepositoryLoadsFrozenSchemaV2PhaseFourQuickPerformanceReport(t *testing.T) {
+	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV2PhaseFourQuickPerformanceReport)
+	defer repository.Close()
+
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if loaded.SchemaVersion != quicktest.PerformanceSchemaVersionV2 || loaded.CapacityResult == nil || len(loaded.CapacityResult.Rungs) != 2 ||
+		len(loaded.TimeSlices) != 1 || loaded.TimeSlices[0].TTFT.Count != 1 {
+		t.Fatalf("loaded frozen v2 report = %#v", loaded)
+	}
+	if loaded.Metrics.TTFBSamples != 0 || loaded.Samples[0].TTFBMS != 0 || loaded.TimeSlices[0].TTFB.Count != 0 {
+		t.Fatalf("loaded v2 report contains v3 telemetry = %#v", loaded)
+	}
+}
+
+func TestRepositoryQuickPerformanceReportSchemaV3RoundTrip(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
 	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777774", "2026-08-31T15:33:00Z")
@@ -51,7 +94,7 @@ func TestRepositoryQuickPerformanceReportSchemaV2RoundTrip(t *testing.T) {
 	}
 }
 
-func TestRepositoryReadsPhaseOneSchemaV2DefaultsAsFixedAndConstant(t *testing.T) {
+func TestRepositoryReadsPhaseOneSchemaV3DefaultsAsFixedAndConstant(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
 	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777776", "2026-08-31T15:35:00Z")
@@ -148,6 +191,30 @@ func TestRepositoryQuickPerformancePhaseFourCapacityRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRepositoryRejectsSchemaV3NonSelectedCapacityFineMetricTampering(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		tamper func(*load.Metrics)
+	}{
+		{name: "samples exceed cohort", tamper: func(metrics *load.Metrics) { metrics.TTFBSamples = metrics.Succeeded + 1 }},
+		{name: "percentiles unordered", tamper: func(metrics *load.Metrics) { metrics.TTFBP95 = metrics.TTFBP50 / 2 }},
+		{name: "zero sample state", tamper: func(metrics *load.Metrics) { metrics.TTFBSamples = 0 }},
+		{name: "legacy alias", tamper: func(metrics *load.Metrics) { metrics.TTFTP50 = 1.5 }},
+		{name: "semantic cohort", tamper: func(metrics *load.Metrics) { metrics.SemanticChunkCountSamples = 0 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := openRepository(t)
+			defer repository.Close()
+			report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777755", "2026-09-05T06:07:09Z")
+			addPhaseFourCapacityFixture(&report)
+			test.tamper(&report.CapacityResult.Rungs[0].Metrics)
+			if err := repository.SaveQuickPerformanceReport(context.Background(), report); err == nil {
+				t.Fatal("SaveQuickPerformanceReport() error = nil")
+			}
+		})
+	}
+}
+
 func TestRepositoryQuickPerformanceOpenDurationPhaseThreeRoundTrip(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
@@ -161,17 +228,12 @@ func TestRepositoryQuickPerformanceOpenDurationPhaseThreeRoundTrip(t *testing.T)
 func TestRepositoryOnlyWritesCurrentQuickPerformanceSchema(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
-	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777775", "2026-08-31T15:34:00Z")
-	report.SchemaVersion = quicktest.LegacyPerformanceSchemaVersion
-	report.Profile.LoadMode = ""
-	report.Progress.Offered = 0
-	report.Metrics.OfferedQPS = 0
-	report.Metrics.LaunchedQPS = 0
-	report.Metrics.CompletedQPS = 0
-	report.Metrics.SuccessfulRequestQPS = 0
-
-	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err == nil {
-		t.Fatal("SaveQuickPerformanceReport(schema v1) error = nil")
+	for _, schemaVersion := range []int{quicktest.LegacyPerformanceSchemaVersion, quicktest.PerformanceSchemaVersionV2} {
+		report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777775", "2026-08-31T15:34:00Z")
+		report.SchemaVersion = schemaVersion
+		if err := repository.SaveQuickPerformanceReport(context.Background(), report); err == nil {
+			t.Fatalf("SaveQuickPerformanceReport(schema v%d) error = nil", schemaVersion)
+		}
 	}
 }
 
@@ -189,6 +251,12 @@ func TestRepositoryRejectsNonCanonicalOrUnsupportedQuickPerformanceDocuments(t *
 		{name: "phase four profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timeout_ms":2000}`, `"timeout_ms":2000,"slo_e2e_ms":20}`, 1)},
 		{name: "phase four progress field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"completed":1,`, `"capacity_target":1,"completed":1,`, 1)},
 		{name: "phase four report field in v1", document: strings.TrimSuffix(frozenSchemaV1QuickPerformanceReport, "}") + `,"slo_assessment":{}}`},
+		{name: "v3 sample field in v2", document: strings.Replace(frozenSchemaV2PhaseFourQuickPerformanceReport, `"tpot_ms":4.5,`, `"ttfb_ms":1,"tpot_ms":4.5,`, 1)},
+		{name: "v3 time slice field in v2", document: strings.Replace(frozenSchemaV2PhaseFourQuickPerformanceReport, `"e2e":{"count":1,`, `"e2e":{"average_ms":11,"count":1,`, 1)},
+		{name: "v3 capacity metric field in v2", document: strings.Replace(frozenSchemaV2PhaseFourQuickPerformanceReport, `"metrics":{"cache_rate_percent":20,`, `"metrics":{"cache_rate_percent":20,"ttfb_samples":1,`, 1)},
+		{name: "unknown nested v3 profile field", document: strings.Replace(frozenSchemaV3QuickPerformanceReport, `"profile":{"arrival_pattern":`, `"profile":{"unknown":true,"arrival_pattern":`, 1)},
+		{name: "unknown nested v3 metric field", document: strings.Replace(frozenSchemaV3QuickPerformanceReport, `"metrics":{"cache_rate_percent":`, `"metrics":{"unknown":true,"cache_rate_percent":`, 1)},
+		{name: "unknown nested v3 sample field", document: strings.Replace(frozenSchemaV3QuickPerformanceReport, `"samples":[{"cached_tokens":`, `"samples":[{"unknown":true,"cached_tokens":`, 1)},
 		{name: "noncanonical whitespace", document: " " + frozenSchemaV1QuickPerformanceReport},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -520,6 +588,37 @@ func makeQuickPerformanceReportFailed(report *quicktest.PerformanceReport, code 
 	report.Metrics.TTFTP95 = 0
 	report.Metrics.TTFTP99 = 0
 	report.Metrics.TTFTAverage = 0
+	report.Metrics.TTFTSamples = 0
+	report.Metrics.TTFBSamples = 0
+	report.Metrics.TTFBP50 = 0
+	report.Metrics.TTFBP95 = 0
+	report.Metrics.TTFBP99 = 0
+	report.Metrics.TTFBAverage = 0
+	report.Metrics.TTFTAnySamples = 0
+	report.Metrics.TTFTAnyP50 = 0
+	report.Metrics.TTFTAnyP95 = 0
+	report.Metrics.TTFTAnyP99 = 0
+	report.Metrics.TTFTAnyAverage = 0
+	report.Metrics.TTFTVisibleSamples = 0
+	report.Metrics.TTFTVisibleP50 = 0
+	report.Metrics.TTFTVisibleP95 = 0
+	report.Metrics.TTFTVisibleP99 = 0
+	report.Metrics.TTFTVisibleAverage = 0
+	report.Metrics.TTSTSamples = 0
+	report.Metrics.TTSTP50 = 0
+	report.Metrics.TTSTP95 = 0
+	report.Metrics.TTSTP99 = 0
+	report.Metrics.TTSTAverage = 0
+	report.Metrics.ObservedICLSamples = 0
+	report.Metrics.ObservedICLP50 = 0
+	report.Metrics.ObservedICLP95 = 0
+	report.Metrics.ObservedICLP99 = 0
+	report.Metrics.ObservedICLAverage = 0
+	report.Metrics.SemanticChunkCountSamples = 0
+	report.Metrics.SemanticChunkCountP50 = 0
+	report.Metrics.SemanticChunkCountP95 = 0
+	report.Metrics.SemanticChunkCountP99 = 0
+	report.Metrics.SemanticChunkCountAverage = 0
 	report.Metrics.TPOTP50 = 0
 	report.Metrics.TPOTP90 = 0
 	report.Metrics.TPOTP95 = 0
@@ -558,14 +657,25 @@ func validQuickPerformanceReport(id, generatedAt string) quicktest.PerformanceRe
 			OfferedQPS: 80, LaunchedQPS: 80, CompletedQPS: 80, SuccessfulRequestQPS: 80,
 			RequestQPS: 80, RPM: 4800, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
 			InputTPM: 48_000, OutputTPM: 14_400, TotalTPM: 62_400, GenerationTPS: 240,
-			TTFTP50: 2, TTFTP90: 2, TTFTP95: 2, TTFTP99: 2, TTFTAverage: 2,
+			TTFTSamples: 1, TTFTP50: 2, TTFTP90: 2, TTFTP95: 2, TTFTP99: 2, TTFTAverage: 2,
+			TTFBSamples: 1, TTFBP50: 1, TTFBP95: 1, TTFBP99: 1, TTFBAverage: 1,
+			TTFTAnySamples: 1, TTFTAnyP50: 2, TTFTAnyP95: 2, TTFTAnyP99: 2, TTFTAnyAverage: 2,
+			TTFTVisibleSamples: 1, TTFTVisibleP50: 3, TTFTVisibleP95: 3, TTFTVisibleP99: 3, TTFTVisibleAverage: 3,
+			TTSTSamples: 1, TTSTP50: 4, TTSTP95: 4, TTSTP99: 4, TTSTAverage: 4,
+			ObservedICLSamples: 1, ObservedICLP50: 2, ObservedICLP95: 2, ObservedICLP99: 2, ObservedICLAverage: 2,
+			SemanticChunkCountSamples: 1, SemanticChunkCountP50: 2, SemanticChunkCountP95: 2,
+			SemanticChunkCountP99: 2, SemanticChunkCountAverage: 2,
 			TPOTP50: 4.5, TPOTP90: 4.5, TPOTP95: 4.5, TPOTP99: 4.5, TPOTAverage: 4.5,
 			E2EP50: 11, E2EP90: 11, E2EP95: 11, E2EP99: 11, E2EAverage: 11,
 			ScheduleLagP50: 1, ScheduleLagP90: 1, ScheduleLagP95: 1, ScheduleLagP99: 1, ScheduleLagAverage: 1,
 			CacheRatePercent: 20,
 		},
-		Failures:  []quicktest.PerformanceFailure{},
-		Samples:   []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, ScheduleLagMS: 1, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
+		Failures: []quicktest.PerformanceFailure{},
+		Samples: []quicktest.PerformanceSample{{
+			RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, ScheduleLagMS: 1, E2EMS: 11,
+			TTFBMS: 1, TTFTAnyMS: 2, TTFTVisibleMS: 3, TTFTMS: 2, TTSTMS: 4, ObservedICLMS: 2, SemanticChunkCount: 2,
+			TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+		}},
 		ErrorCode: domain.ErrorCode(""),
 	}
 }
@@ -595,9 +705,15 @@ func addPhaseThreeFixture(report *quicktest.PerformanceReport) {
 		SliceIndex: 0, StartMS: 0, EndMS: 12.5, Partial: true,
 		Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
 		PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
-		TTFT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2},
-		TPOT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5},
-		E2E:  quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11},
+		TTFB:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 1, P95MS: 1, P99MS: 1, AverageMS: 1},
+		TTFTAny:            quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
+		TTFTVisible:        quicktest.PerformanceLatencySlice{Count: 1, P50MS: 3, P95MS: 3, P99MS: 3, AverageMS: 3},
+		TTFT:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
+		TTST:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4, P95MS: 4, P99MS: 4, AverageMS: 4},
+		ObservedICL:        quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
+		SemanticChunkCount: quicktest.PerformanceCountSlice{Count: 1, P50: 2, P95: 2, P99: 2, Average: 2},
+		TPOT:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5, AverageMS: 4.5},
+		E2E:                quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11, AverageMS: 11},
 	}}
 }
 
@@ -628,9 +744,15 @@ func addOpenDurationPhaseThreeFixture(report *quicktest.PerformanceReport) {
 		SliceIndex: 0, StartMS: 0, EndMS: 1_000,
 		Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
 		PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
-		TTFT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2},
-		TPOT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5},
-		E2E:  quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11},
+		TTFB:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 1, P95MS: 1, P99MS: 1, AverageMS: 1},
+		TTFTAny:            quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
+		TTFTVisible:        quicktest.PerformanceLatencySlice{Count: 1, P50MS: 3, P95MS: 3, P99MS: 3, AverageMS: 3},
+		TTFT:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
+		TTST:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4, P95MS: 4, P99MS: 4, AverageMS: 4},
+		ObservedICL:        quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
+		SemanticChunkCount: quicktest.PerformanceCountSlice{Count: 1, P50: 2, P95: 2, P99: 2, Average: 2},
+		TPOT:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5, AverageMS: 4.5},
+		E2E:                quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11, AverageMS: 11},
 	}}
 }
 

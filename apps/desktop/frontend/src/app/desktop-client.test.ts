@@ -6,6 +6,7 @@ import {
   FIXTURE_WORKSPACE,
 } from "@/features/runs/fixtures"
 import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
+import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
 import { createDesktopClient, createFixtureClient } from "./desktop-client"
 
@@ -136,7 +137,24 @@ describe("Wails desktop client", () => {
       output_tokens: 32,
     })
 
+    expect(report.schema_version).toBe(3)
+    expect(report.samples[0]).toMatchObject({
+      ttfb_ms: 15, ttft_any_ms: 35, ttft_ms: 35, ttft_visible_ms: 45,
+      ttst_ms: 60, observed_icl_ms: 25, semantic_chunk_count: 2,
+    })
+    expect(report.metrics).toMatchObject({
+      ttft_samples: 4, ttft_any_samples: 4, ttft_p50_ms: 35, ttft_any_p50_ms: 35,
+      ttfb_samples: 4, ttft_visible_samples: 4, ttst_samples: 4,
+      observed_icl_samples: 4, semantic_chunk_count_samples: 4,
+    })
     expect(report.time_slices?.map((slice) => slice.slice_index)).toEqual([0, 2])
+    expect(report.time_slices?.[0]).toMatchObject({
+      ttfb: { count: 4, average_ms: 15 },
+      ttft_any: { count: 4, average_ms: 35 },
+      ttft: { count: 4, average_ms: 35 },
+      semantic_chunk_count: { count: 4, average: 2 },
+    })
+    expect(parseQuickPerformanceReport(structuredClone(report))).toMatchObject({ schema_version: 3 })
     expect(report.time_slices?.[1]).toMatchObject({
       start_ms: 2_000,
       end_ms: 2_500,

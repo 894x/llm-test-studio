@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { ReportWorkspace } from "./report-workspace"
-import type { ReportDetail, ReportSnapshot } from "./data"
+import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./data"
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
@@ -24,7 +24,7 @@ describe("ReportWorkspace", () => {
         },
       ],
     } as unknown as ReportSnapshot
-    const getDetail = vi.fn(async () => quickDetail(quickID) as unknown as ReportDetail)
+    const getDetail = vi.fn(async () => phaseFiveQuickDetail(quickID))
     const exportReport = vi.fn(async (_reportID: string, format: "json" | "html" | "png" | "pdf") => ({
       filename: `llm-test-studio-report-${quickID}.${format}`,
       media_type: "application/json",
@@ -36,7 +36,8 @@ describe("ReportWorkspace", () => {
       expect(reportID).toBe(quickID)
       expect(element).toHaveTextContent("team-alpha")
       expect(element.querySelectorAll("figure")).toHaveLength(7)
-      expect(element.querySelector('[aria-label="TTFT 分布图"]')).not.toBeNull()
+      expect(element.querySelector('[aria-label="TTFT（含推理） 分布图"]')).not.toBeNull()
+      expect(element.querySelector('[aria-label="流式时序统计"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()
       const mediaType = format === "html" ? "text/html; charset=utf-8" : format === "png" ? "image/png" : "application/pdf"
       return { filename: `llm-test-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
@@ -68,7 +69,7 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("共享前缀")
     expect(archivedReport).toHaveTextContent("8 Token")
     expect(archivedReport).toHaveTextContent("采样目标范围（输入 / 输出）")
-    expect(archivedReport).toHaveTextContent("18–22 / 28–36")
+    expect(archivedReport).toHaveTextContent("19–22 / 22–35")
     expect(archivedReport).toHaveTextContent("热身请求")
     expect(archivedReport).toHaveTextContent("爬坡配置")
     expect(archivedReport).toHaveTextContent("1 s · 上限 2")
@@ -83,20 +84,21 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("成功吞吐")
     expect(archivedReport).not.toHaveTextContent("请求速率")
     expect(archivedReport).toHaveTextContent("失败")
-    expect(archivedReport).toHaveTextContent("104,000 TPM")
+    expect(archivedReport).toHaveTextContent("3,744 TPM")
     expect(within(archivedReport).getByRole("table", { name: "延迟分布统计" })).toHaveTextContent("客户端排队（本地调度延迟）")
+    expect(within(archivedReport).getByRole("table", { name: "流式时序统计" })).toHaveTextContent("语义块间隔，非 Token ITL")
     const timeSlices = within(archivedReport).getByRole("table", { name: "时间切片" })
     expect(timeSlices.parentElement).toHaveClass("overflow-x-auto")
     expect(within(timeSlices).getByRole("columnheader", { name: "TTFT P95" })).toBeInTheDocument()
     expect(within(timeSlices).getByRole("columnheader", { name: "TPOT P95" })).toBeInTheDocument()
     expect(within(timeSlices).getByRole("columnheader", { name: "E2E P95" })).toBeInTheDocument()
-    expect(within(timeSlices).getByRole("row", { name: /#0/ })).toHaveTextContent(/0–1 s.*3.*3.*3.*0.*0.*60 \/ 96 \/ 0.*40 ms.*6 ms.*80 ms/)
+    expect(within(timeSlices).getByRole("row", { name: /#0/ })).toHaveTextContent(/0–1 s.*3.*3.*3.*0.*0.*60 \/ 96 \/ 0.*20 ms.*2\.15 ms.*86\.6 ms/)
     expect(within(timeSlices).getByRole("row", { name: /#2/ })).toHaveTextContent(/2–2\.5 s · 部分.*0.*0.*0.*0.*0.*0 \/ 0 \/ 0.*—.*—.*—/)
     expect(within(timeSlices).queryByRole("row", { name: /#1/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("table", { name: "测试报告目录" })).not.toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "报告详情" })).toHaveTextContent(quickID)
     const charts = screen.getByRole("region", { name: "性能图表" })
-    expect(within(charts).getByRole("figure", { name: "TTFT 分布图" })).toBeInTheDocument()
+    expect(within(charts).getByRole("figure", { name: "TTFT（含推理） 分布图" })).toBeInTheDocument()
     expect(within(charts).getByRole("figure", { name: "TPOT 时间曲线" })).toBeInTheDocument()
     expect(within(charts).getByRole("figure", { name: "E2E 时间曲线" })).toBeInTheDocument()
     expect(within(charts).getByRole("figure", { name: "吞吐与并发时间线" })).toBeInTheDocument()
@@ -363,6 +365,77 @@ function quickDetail(reportID: string) {
       ],
     },
   }
+}
+
+function phaseFiveQuickDetail(reportID: string) {
+  const detail = quickDetail(reportID)
+  const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
+  const emptyCount = { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
+  return parseReportDetail({
+    ...detail,
+    performance: {
+      ...detail.performance,
+      schema_version: 3,
+      metrics: {
+        ...detail.performance.metrics,
+        offered_qps: 1.25, launched_qps: 1.25, completed_qps: 1.2, successful_request_qps: 1.2,
+        request_qps: 1.2, rpm: 72, input_tpm: 1_440, output_tpm: 2_304, total_tpm: 3_744, generation_tps: 38.4,
+        ttft_samples: 3,
+        ttft_p50_ms: 20, ttft_p90_ms: 20, ttft_p95_ms: 20, ttft_p99_ms: 20, ttft_average_ms: 20,
+        tpot_p50_ms: 54 / 31, tpot_p90_ms: 65.2 / 31, tpot_p95_ms: 66.6 / 31,
+        tpot_p99_ms: 67.72 / 31, tpot_average_ms: 54 / 31,
+        e2e_p50_ms: 74, e2e_p90_ms: 85.2, e2e_p95_ms: 86.6, e2e_p99_ms: 87.72, e2e_average_ms: 74,
+        schedule_lag_p50_ms: 1, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 1.9,
+        schedule_lag_p99_ms: 1.98, schedule_lag_average_ms: 1,
+        ttfb_samples: 3, ttfb_p50_ms: 10, ttfb_p95_ms: 10, ttfb_p99_ms: 10, ttfb_average_ms: 10,
+        ttft_any_samples: 3, ttft_any_p50_ms: 20, ttft_any_p95_ms: 20, ttft_any_p99_ms: 20, ttft_any_average_ms: 20,
+        ttft_visible_samples: 3, ttft_visible_p50_ms: 30, ttft_visible_p95_ms: 30, ttft_visible_p99_ms: 30, ttft_visible_average_ms: 30,
+        ttst_samples: 3, ttst_p50_ms: 40, ttst_p95_ms: 40, ttst_p99_ms: 40, ttst_average_ms: 40,
+        observed_icl_samples: 3, observed_icl_p50_ms: 20, observed_icl_p95_ms: 20, observed_icl_p99_ms: 20, observed_icl_average_ms: 20,
+        semantic_chunk_count_samples: 3, semantic_chunk_count_p50: 3, semantic_chunk_count_p95: 3,
+        semantic_chunk_count_p99: 3, semantic_chunk_count_average: 3,
+      },
+      samples: detail.performance.samples.map((item) => ({
+        ...item,
+        target_input_tokens: [22, 19, 19][item.request_index],
+        target_output_tokens: [35, 22, 28][item.request_index],
+        ttft_ms: 20,
+        ttfb_ms: 10,
+        ttft_any_ms: 20,
+        ttft_visible_ms: 30,
+        ttst_ms: 40,
+        observed_icl_ms: 20,
+        semantic_chunk_count: 3,
+        tpot_ms: (item.e2e_ms - 20) / (item.completion_tokens - 1),
+      })),
+      time_slices: [
+        {
+          ...detail.performance.time_slices[0],
+          ttfb: { count: 3, p50_ms: 10, p95_ms: 10, p99_ms: 10, average_ms: 10 },
+          ttft_any: { count: 3, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+          ttft_visible: { count: 3, p50_ms: 30, p95_ms: 30, p99_ms: 30, average_ms: 30 },
+          ttft: { count: 3, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+          ttst: { count: 3, p50_ms: 40, p95_ms: 40, p99_ms: 40, average_ms: 40 },
+          observed_icl: { count: 3, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+          semantic_chunk_count: { count: 3, p50: 3, p95: 3, p99: 3, average: 3 },
+          tpot: { count: 3, p50_ms: 54 / 31, p95_ms: 66.6 / 31, p99_ms: 67.72 / 31, average_ms: 54 / 31 },
+          e2e: { count: 3, p50_ms: 74, p95_ms: 86.6, p99_ms: 87.72, average_ms: 74 },
+        },
+        {
+          ...detail.performance.time_slices[1],
+          ttfb: emptyLatency,
+          ttft_any: emptyLatency,
+          ttft_visible: emptyLatency,
+          ttft: emptyLatency,
+          ttst: emptyLatency,
+          observed_icl: emptyLatency,
+          semantic_chunk_count: emptyCount,
+          tpot: emptyLatency,
+          e2e: emptyLatency,
+        },
+      ],
+    },
+  })
 }
 
 function phaseFourQuickDetail(

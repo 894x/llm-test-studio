@@ -158,13 +158,24 @@ func validArchivedQuickPerformanceReport() quicktest.PerformanceReport {
 			OfferedQPS: 1 / 0.012, LaunchedQPS: 1 / 0.012, CompletedQPS: 1 / 0.012, SuccessfulRequestQPS: 1 / 0.012,
 			RequestQPS: 1 / 0.012, RPM: 60 / 0.012, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
 			InputTPM: 50_000, OutputTPM: 15_000, TotalTPM: 65_000, GenerationTPS: 250,
-			TTFTP50: 2, TTFTP90: 2, TTFTP95: 2, TTFTP99: 2, TTFTAverage: 2,
+			TTFTSamples: 1, TTFTP50: 2, TTFTP90: 2, TTFTP95: 2, TTFTP99: 2, TTFTAverage: 2,
+			TTFBSamples: 1, TTFBP50: 1, TTFBP95: 1, TTFBP99: 1, TTFBAverage: 1,
+			TTFTAnySamples: 1, TTFTAnyP50: 2, TTFTAnyP95: 2, TTFTAnyP99: 2, TTFTAnyAverage: 2,
+			TTFTVisibleSamples: 1, TTFTVisibleP50: 3, TTFTVisibleP95: 3, TTFTVisibleP99: 3, TTFTVisibleAverage: 3,
+			TTSTSamples: 1, TTSTP50: 4, TTSTP95: 4, TTSTP99: 4, TTSTAverage: 4,
+			ObservedICLSamples: 1, ObservedICLP50: 2, ObservedICLP95: 2, ObservedICLP99: 2, ObservedICLAverage: 2,
+			SemanticChunkCountSamples: 1, SemanticChunkCountP50: 2, SemanticChunkCountP95: 2,
+			SemanticChunkCountP99: 2, SemanticChunkCountAverage: 2,
 			TPOTP50: 4.5, TPOTP90: 4.5, TPOTP95: 4.5, TPOTP99: 4.5, TPOTAverage: 4.5,
 			E2EP50: 11, E2EP90: 11, E2EP95: 11, E2EP99: 11, E2EAverage: 11,
 			CacheRatePercent: 20,
 		},
 		Failures: []quicktest.PerformanceFailure{},
-		Samples:  []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
+		Samples: []quicktest.PerformanceSample{{
+			RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, E2EMS: 11,
+			TTFBMS: 1, TTFTAnyMS: 2, TTFTVisibleMS: 3, TTFTMS: 2, TTSTMS: 4, ObservedICLMS: 2, SemanticChunkCount: 2,
+			TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+		}},
 	}
 }
 

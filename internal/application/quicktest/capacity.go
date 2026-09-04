@@ -122,7 +122,7 @@ func validatePerformanceCapacity(report PerformanceReport) error {
 			!approximatelyEqual(rung.Progress.CapacityTarget, rung.Target) {
 			return errors.New("quick performance report capacity rung plan is inconsistent")
 		}
-		if err := validatePerformanceCapacityRung(report.Profile, rung); err != nil {
+		if err := validatePerformanceCapacityRung(report.Profile, rung, report.SchemaVersion == PerformanceSchemaVersion); err != nil {
 			return err
 		}
 		if index < len(capacity.Rungs)-1 && rung.SLOAssessment.Status != PerformanceSLOPassed {
@@ -170,7 +170,7 @@ func validatePerformanceCapacity(report PerformanceReport) error {
 	return nil
 }
 
-func validatePerformanceCapacityRung(profile PerformanceProfile, rung PerformanceCapacityRung) error {
+func validatePerformanceCapacityRung(profile PerformanceProfile, rung PerformanceCapacityRung, includeFine bool) error {
 	progress := rung.Progress
 	metrics := rung.Metrics
 	if progress.Phase != load.PhaseCompleted || progress.Stopped || progress.Capped || progress.InFlight != 0 ||
@@ -189,6 +189,9 @@ func validatePerformanceCapacityRung(profile PerformanceProfile, rung Performanc
 		metrics.TimedOut > metrics.Failed || metrics.CachedTokens > metrics.PromptTokens ||
 		!validPerformanceMetricScalars(metrics) {
 		return errors.New("quick performance capacity rung metrics are invalid")
+	}
+	if includeFine && !validPerformanceFineMetricAlgebra(metrics) {
+		return errors.New("quick performance capacity rung fine streaming metrics are invalid")
 	}
 	expectedSuccessRate := float64(progress.Succeeded) / float64(progress.Completed) * 100
 	seconds := progress.TotalDurationMS / 1_000
@@ -323,6 +326,12 @@ func validPerformanceMetricScalars(metrics load.Metrics) bool {
 		metrics.TPOTP99, metrics.TPOTAverage, metrics.E2EP50, metrics.E2EP90, metrics.E2EP95,
 		metrics.E2EP99, metrics.E2EAverage, metrics.ScheduleLagP50, metrics.ScheduleLagP90,
 		metrics.ScheduleLagP95, metrics.ScheduleLagP99, metrics.ScheduleLagAverage, metrics.CacheRatePercent,
+		metrics.TTFBP50, metrics.TTFBP95, metrics.TTFBP99, metrics.TTFBAverage,
+		metrics.TTFTAnyP50, metrics.TTFTAnyP95, metrics.TTFTAnyP99, metrics.TTFTAnyAverage,
+		metrics.TTFTVisibleP50, metrics.TTFTVisibleP95, metrics.TTFTVisibleP99, metrics.TTFTVisibleAverage,
+		metrics.TTSTP50, metrics.TTSTP95, metrics.TTSTP99, metrics.TTSTAverage,
+		metrics.ObservedICLP50, metrics.ObservedICLP95, metrics.ObservedICLP99, metrics.ObservedICLAverage,
+		metrics.SemanticChunkCountP50, metrics.SemanticChunkCountP95, metrics.SemanticChunkCountP99, metrics.SemanticChunkCountAverage,
 	}
 	for _, value := range values {
 		if !finiteNonNegative(value) {
@@ -331,6 +340,41 @@ func validPerformanceMetricScalars(metrics load.Metrics) bool {
 	}
 	return metrics.SuccessRatePercent <= 100 && metrics.CacheRatePercent <= 100 &&
 		validPerformanceMetricDistributions(metrics)
+}
+
+func validPerformanceFineMetricAlgebra(metrics load.Metrics) bool {
+	if metrics.TTFBSamples > metrics.Succeeded || metrics.TTFTSamples > metrics.Succeeded || metrics.TTFTAnySamples > metrics.Succeeded ||
+		metrics.TTFTVisibleSamples > metrics.TTFTAnySamples || metrics.TTSTSamples > metrics.TTFTAnySamples ||
+		metrics.ObservedICLSamples != metrics.TTSTSamples || metrics.SemanticChunkCountSamples != metrics.Succeeded ||
+		metrics.TTFTSamples != metrics.TTFTAnySamples || metrics.TTFTP50 != metrics.TTFTAnyP50 ||
+		metrics.TTFTP95 != metrics.TTFTAnyP95 || metrics.TTFTP99 != metrics.TTFTAnyP99 ||
+		metrics.TTFTAverage != metrics.TTFTAnyAverage {
+		return false
+	}
+	return validSampledLegacyMetricDistribution(metrics.TTFTSamples, metrics.TTFTP50, metrics.TTFTP90, metrics.TTFTP95, metrics.TTFTP99, metrics.TTFTAverage) &&
+		validSampledMetricDistribution(metrics.TTFBSamples, true, metrics.TTFBP50, metrics.TTFBP95, metrics.TTFBP99, metrics.TTFBAverage) &&
+		validSampledMetricDistribution(metrics.TTFTAnySamples, true, metrics.TTFTAnyP50, metrics.TTFTAnyP95, metrics.TTFTAnyP99, metrics.TTFTAnyAverage) &&
+		validSampledMetricDistribution(metrics.TTFTVisibleSamples, true, metrics.TTFTVisibleP50, metrics.TTFTVisibleP95, metrics.TTFTVisibleP99, metrics.TTFTVisibleAverage) &&
+		validSampledMetricDistribution(metrics.TTSTSamples, true, metrics.TTSTP50, metrics.TTSTP95, metrics.TTSTP99, metrics.TTSTAverage) &&
+		validSampledMetricDistribution(metrics.ObservedICLSamples, false, metrics.ObservedICLP50, metrics.ObservedICLP95, metrics.ObservedICLP99, metrics.ObservedICLAverage) &&
+		validSampledMetricDistribution(metrics.SemanticChunkCountSamples, false, metrics.SemanticChunkCountP50, metrics.SemanticChunkCountP95, metrics.SemanticChunkCountP99, metrics.SemanticChunkCountAverage)
+}
+
+func validSampledLegacyMetricDistribution(samples uint64, p50, p90, p95, p99, average float64) bool {
+	if samples == 0 {
+		return p50 == 0 && p90 == 0 && p95 == 0 && p99 == 0 && average == 0
+	}
+	return p50 > 0 && p90 > 0 && p95 > 0 && p99 > 0 && average > 0 && p50 <= p90 && p90 <= p95 && p95 <= p99
+}
+
+func validSampledMetricDistribution(samples uint64, positive bool, p50, p95, p99, average float64) bool {
+	if samples == 0 {
+		return p50 == 0 && p95 == 0 && p99 == 0 && average == 0
+	}
+	if positive && (p50 <= 0 || p95 <= 0 || p99 <= 0 || average <= 0) {
+		return false
+	}
+	return p50 <= p95 && p95 <= p99
 }
 
 func validPerformanceMetricDistributions(metrics load.Metrics) bool {

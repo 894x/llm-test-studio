@@ -116,3 +116,42 @@ func TestComputeMetricsWithArrivalUsesNominalWindowForSinglePoissonRequest(t *te
 		t.Fatalf("single-request poisson rates = %#v, want nominal 10 QPS", metrics)
 	}
 }
+
+func TestComputeMetricsUsesSuccessfulPhaseFiveCohorts(t *testing.T) {
+	observations := []Observation{
+		{Success: true, Streaming: true, TTFB: 10 * time.Millisecond, TTFTAny: 20 * time.Millisecond, TTFTVisible: 20 * time.Millisecond, TTST: 999 * time.Millisecond, SemanticChunkCount: 1},
+		{Success: true, Streaming: true, TTFB: 20 * time.Millisecond, TTFTAny: 40 * time.Millisecond, TTST: 60 * time.Millisecond, ObservedICL: 20 * time.Millisecond, SemanticChunkCount: 2},
+		{Success: true, Streaming: true, TTFTAny: 60 * time.Millisecond, TTFTVisible: 90 * time.Millisecond, TTST: 70 * time.Millisecond, ObservedICL: 0, SemanticChunkCount: 3},
+		{Success: true, Streaming: true, TTFB: 40 * time.Millisecond, SemanticChunkCount: 0},
+		{Success: true, TTFB: 50 * time.Millisecond, SemanticChunkCount: 7},
+		{Success: false, Streaming: true, TTFB: 999 * time.Millisecond, TTFTAny: 999 * time.Millisecond, TTFTVisible: 999 * time.Millisecond, TTST: 999 * time.Millisecond, ObservedICL: 999 * time.Millisecond, SemanticChunkCount: 99},
+	}
+
+	metrics := ComputeMetrics(observations, time.Second)
+	if metrics.TTFBSamples != 4 || metrics.TTFBP50 != 30 || metrics.TTFBP95 != 48.5 ||
+		math.Abs(metrics.TTFBP99-49.7) > 1e-9 || metrics.TTFBAverage != 30 {
+		t.Fatalf("TTFB metrics = %#v", metrics)
+	}
+	if metrics.TTFTSamples != 3 || metrics.TTFTAnySamples != 3 || metrics.TTFTAnyP50 != 40 ||
+		metrics.TTFTAnyP95 != 58 || math.Abs(metrics.TTFTAnyP99-59.6) > 1e-9 || metrics.TTFTAnyAverage != 40 ||
+		metrics.TTFTP50 != metrics.TTFTAnyP50 || metrics.TTFTP90 != 56 || metrics.TTFTP95 != metrics.TTFTAnyP95 ||
+		metrics.TTFTP99 != metrics.TTFTAnyP99 || metrics.TTFTAverage != metrics.TTFTAnyAverage {
+		t.Fatalf("TTFT metrics = %#v", metrics)
+	}
+	if metrics.TTFTVisibleSamples != 2 || metrics.TTFTVisibleP50 != 55 || metrics.TTFTVisibleP95 != 86.5 ||
+		math.Abs(metrics.TTFTVisibleP99-89.3) > 1e-9 || metrics.TTFTVisibleAverage != 55 {
+		t.Fatalf("visible TTFT metrics = %#v", metrics)
+	}
+	if metrics.TTSTSamples != 2 || metrics.TTSTP50 != 65 || metrics.TTSTP95 != 69.5 ||
+		math.Abs(metrics.TTSTP99-69.9) > 1e-9 || metrics.TTSTAverage != 65 {
+		t.Fatalf("TTST metrics = %#v", metrics)
+	}
+	if metrics.ObservedICLSamples != 2 || metrics.ObservedICLP50 != 10 || metrics.ObservedICLP95 != 19 ||
+		math.Abs(metrics.ObservedICLP99-19.8) > 1e-9 || metrics.ObservedICLAverage != 10 {
+		t.Fatalf("observed ICL metrics = %#v", metrics)
+	}
+	if metrics.SemanticChunkCountSamples != 4 || metrics.SemanticChunkCountP50 != 1.5 || math.Abs(metrics.SemanticChunkCountP95-2.85) > 1e-9 ||
+		math.Abs(metrics.SemanticChunkCountP99-2.97) > 1e-9 || metrics.SemanticChunkCountAverage != 1.5 {
+		t.Fatalf("semantic chunk metrics = %#v", metrics)
+	}
+}
