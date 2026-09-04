@@ -72,18 +72,26 @@ export interface QuickPerformanceCommand {
   api_key: string
   channel_id?: string
   model_id: string
+  load_mode: QuickPerformanceLoadMode
   request_count: number
   duration_ms: number
   concurrency: number
+  rate_per_second: number
+  max_in_flight: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
 }
 
+export type QuickPerformanceLoadMode = "fixed_concurrency" | "open_loop"
+
 export interface QuickPerformanceProfile {
+  load_mode?: QuickPerformanceLoadMode
   request_count: number
   duration_ms: number
   concurrency: number
+  rate_per_second?: number
+  max_in_flight?: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
@@ -94,6 +102,7 @@ export type QuickPerformancePhase = "not_started" | "sending" | "draining" | "co
 export interface QuickPerformanceProgress {
   phase: QuickPerformancePhase
   planned: number
+  offered?: number
   launched: number
   completed: number
   in_flight: number
@@ -112,6 +121,10 @@ export interface QuickPerformanceMetrics {
   failed: number
   timed_out: number
   success_rate_percent: number
+  offered_qps?: number
+  launched_qps?: number
+  completed_qps?: number
+  successful_request_qps?: number
   request_qps: number
   rpm: number
   input_tpm: number
@@ -178,7 +191,7 @@ export interface QuickPerformanceSample {
 }
 
 export interface QuickPerformanceReport {
-  schema_version: 1
+  schema_version: 1 | 2
   report_id?: string
   generated_at?: string
   archived: boolean
@@ -198,7 +211,7 @@ export interface QuickPerformanceReport {
 
 export function parseQuickPerformanceProgress(value: unknown): QuickPerformanceProgress {
   if (!isPerformanceProgress(value)) throw new Error("快速性能进度数据结构无效")
-  return pickPerformanceProgress(value)
+  return pickPerformanceProgress(value, true)
 }
 
 const ERROR_CODES = new Set<QuickTestErrorCode>([
@@ -310,9 +323,10 @@ function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceRespo
 }
 
 export function parseQuickPerformanceReport(value: unknown): QuickPerformanceReport {
-  if (!isRecord(value) || value.schema_version !== 1) {
+  if (!isRecord(value) || (value.schema_version !== 1 && value.schema_version !== 2)) {
     throw new Error("快速性能报告数据协议版本不受支持")
   }
+  const schemaVersion = value.schema_version
   if (
     typeof value.success !== "boolean" ||
     typeof value.archived !== "boolean" ||
@@ -323,9 +337,9 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     !isAddressMode(value.address_mode) ||
     !isOptionalSafeURL(value.base_url) ||
     !isOptionalSafeURL(value.endpoint) ||
-    !isPerformanceProfile(value.profile) ||
+    !isPerformanceProfile(value.profile, schemaVersion) ||
     !isPerformanceProgress(value.progress) ||
-    !isPerformanceMetrics(value.metrics) ||
+    !isPerformanceMetrics(value.metrics, schemaVersion) ||
     !Array.isArray(value.failures) ||
     !Array.isArray(value.samples) ||
     (value.error_code !== undefined && !isErrorCode(value.error_code)) ||
@@ -364,11 +378,11 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   ) {
     throw new Error("快速性能报告数据结构无效")
   }
-  if (value.error_code === undefined && !isRunnablePerformanceProfile(value.profile)) {
+  if (value.error_code === undefined && !isRunnablePerformanceProfile(value.profile, schemaVersion)) {
     throw new Error("快速性能报告数据结构无效")
   }
   return {
-    schema_version: 1,
+    schema_version: schemaVersion,
     ...(value.report_id === undefined ? {} : { report_id: value.report_id }),
     ...(value.generated_at === undefined ? {} : { generated_at: value.generated_at }),
     archived: value.archived,
@@ -378,9 +392,9 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     address_mode: value.address_mode,
     base_url: value.base_url,
     endpoint: value.endpoint,
-    profile: pickPerformanceProfile(value.profile),
-    progress: pickPerformanceProgress(progress),
-    metrics: pickPerformanceMetrics(metrics),
+    profile: pickPerformanceProfile(value.profile, schemaVersion),
+    progress: pickPerformanceProgress(progress, schemaVersion === 2),
+    metrics: pickPerformanceMetrics(metrics, schemaVersion),
     samples,
     failures,
     ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
@@ -424,36 +438,50 @@ function parsePerformanceSample(value: unknown): QuickPerformanceSample {
   }
 }
 
-function isPerformanceProfile(value: unknown): value is QuickPerformanceProfile {
-  return isRecord(value) &&
+function isPerformanceProfile(value: unknown, schemaVersion: 1 | 2): value is QuickPerformanceProfile {
+  if (!(isRecord(value) &&
     isNonNegativeInteger(value.request_count) &&
     isNonNegativeInteger(value.duration_ms) &&
     isNonNegativeInteger(value.concurrency) &&
     isNonNegativeInteger(value.timeout_ms) &&
     isNonNegativeInteger(value.input_tokens) &&
-    isNonNegativeInteger(value.output_tokens)
+    isNonNegativeInteger(value.output_tokens))) return false
+  if (schemaVersion === 1) return true
+  return isPerformanceLoadMode(value.load_mode) &&
+    (value.rate_per_second === undefined || isNonNegativeFinite(value.rate_per_second)) &&
+    (value.max_in_flight === undefined || isNonNegativeInteger(value.max_in_flight))
 }
 
-function isRunnablePerformanceProfile(value: QuickPerformanceProfile): boolean {
-  return (value.request_count > 0 || value.duration_ms > 0) &&
-    value.concurrency > 0 && value.timeout_ms > 0 && value.input_tokens > 0 && value.output_tokens > 0
+function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1 | 2): boolean {
+  if (!((value.request_count > 0 || value.duration_ms > 0) &&
+    value.timeout_ms > 0 && value.input_tokens > 0 && value.output_tokens > 0)) return false
+  if (schemaVersion === 1) return value.concurrency > 0
+  if (value.load_mode === "fixed_concurrency") {
+    return value.concurrency > 0 && (value.rate_per_second ?? 0) === 0 && (value.max_in_flight ?? 0) === 0
+  }
+  return value.load_mode === "open_loop" && value.concurrency === 0 &&
+    (value.rate_per_second ?? 0) > 0 && (value.max_in_flight ?? 0) > 0
 }
 
-function pickPerformanceProfile(value: QuickPerformanceProfile): QuickPerformanceProfile {
+function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1 | 2): QuickPerformanceProfile {
   return {
+    ...(schemaVersion === 2 ? { load_mode: value.load_mode } : {}),
     request_count: value.request_count,
     duration_ms: value.duration_ms,
     concurrency: value.concurrency,
+    ...(schemaVersion === 2 && value.rate_per_second !== undefined ? { rate_per_second: value.rate_per_second } : {}),
+    ...(schemaVersion === 2 && value.max_in_flight !== undefined ? { max_in_flight: value.max_in_flight } : {}),
     timeout_ms: value.timeout_ms,
     input_tokens: value.input_tokens,
     output_tokens: value.output_tokens,
   }
 }
 
-function pickPerformanceProgress(value: QuickPerformanceProgress): QuickPerformanceProgress {
+function pickPerformanceProgress(value: QuickPerformanceProgress, includeOffered: boolean): QuickPerformanceProgress {
   return {
     phase: value.phase,
     planned: value.planned,
+    ...(!includeOffered || value.offered === undefined ? {} : { offered: value.offered }),
     launched: value.launched,
     completed: value.completed,
     in_flight: value.in_flight ?? 0,
@@ -467,13 +495,17 @@ function pickPerformanceProgress(value: QuickPerformanceProgress): QuickPerforma
   }
 }
 
-function pickPerformanceMetrics(value: QuickPerformanceMetrics): QuickPerformanceMetrics {
+function pickPerformanceMetrics(value: QuickPerformanceMetrics, schemaVersion: 1 | 2): QuickPerformanceMetrics {
   return {
     completed: value.completed,
     succeeded: value.succeeded,
     failed: value.failed,
     timed_out: value.timed_out,
     success_rate_percent: value.success_rate_percent,
+    ...(schemaVersion === 2 && value.offered_qps !== undefined ? { offered_qps: value.offered_qps } : {}),
+    ...(schemaVersion === 2 && value.launched_qps !== undefined ? { launched_qps: value.launched_qps } : {}),
+    ...(schemaVersion === 2 && value.completed_qps !== undefined ? { completed_qps: value.completed_qps } : {}),
+    ...(schemaVersion === 2 && value.successful_request_qps !== undefined ? { successful_request_qps: value.successful_request_qps } : {}),
     request_qps: value.request_qps,
     rpm: value.rpm,
     input_tpm: value.input_tpm,
@@ -511,6 +543,7 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
   return isRecord(value) &&
     isPerformancePhase(value.phase) &&
     isNonNegativeInteger(value.planned) &&
+    (value.offered === undefined || isNonNegativeInteger(value.offered)) &&
     isNonNegativeInteger(value.launched) &&
     isNonNegativeInteger(value.completed) &&
     (value.in_flight === undefined || isNonNegativeInteger(value.in_flight)) &&
@@ -523,7 +556,7 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
     isNonNegativeFinite(value.total_duration_ms)
 }
 
-function isPerformanceMetrics(value: unknown): value is QuickPerformanceMetrics {
+function isPerformanceMetrics(value: unknown, schemaVersion: 1 | 2 = 1): value is QuickPerformanceMetrics {
   if (!isRecord(value)) return false
   const integerFields = ["completed", "succeeded", "failed", "timed_out", "prompt_tokens", "completion_tokens", "cached_tokens"] as const
   const numberFields = [
@@ -533,8 +566,10 @@ function isPerformanceMetrics(value: unknown): value is QuickPerformanceMetrics 
     "e2e_p50_ms", "e2e_p90_ms", "e2e_p95_ms", "e2e_p99_ms", "e2e_average_ms",
     "schedule_lag_p50_ms", "schedule_lag_p95_ms", "schedule_lag_average_ms", "cache_rate_percent",
   ] as const
+  const v2Fields = ["offered_qps", "launched_qps", "completed_qps", "successful_request_qps"] as const
   return integerFields.every((field) => isNonNegativeInteger(value[field])) &&
     numberFields.every((field) => isNonNegativeFinite(value[field])) &&
+    (schemaVersion === 1 || v2Fields.every((field) => value[field] === undefined || isNonNegativeFinite(value[field]))) &&
     (value.schedule_lag_p90_ms === undefined || isNonNegativeFinite(value.schedule_lag_p90_ms)) &&
     (value.schedule_lag_p99_ms === undefined || isNonNegativeFinite(value.schedule_lag_p99_ms)) &&
     Number(value.success_rate_percent) <= 100 && Number(value.cache_rate_percent) <= 100
@@ -542,6 +577,10 @@ function isPerformanceMetrics(value: unknown): value is QuickPerformanceMetrics 
 
 function isPerformancePhase(value: unknown): value is QuickPerformancePhase {
   return value === "not_started" || value === "sending" || value === "draining" || value === "completed" || value === "cancelled"
+}
+
+function isPerformanceLoadMode(value: unknown): value is QuickPerformanceLoadMode {
+  return value === "fixed_concurrency" || value === "open_loop"
 }
 
 function isArchiveStatus(value: unknown): value is QuickPerformanceArchiveStatus {

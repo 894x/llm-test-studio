@@ -18,9 +18,13 @@ const (
 	DefaultTimeoutMS int64 = 30_000
 	MaxTimeoutMS     int64 = 120_000
 
-	PerformanceSchemaVersion                = 1
+	PerformanceSchemaVersion                = 2
+	LegacyPerformanceSchemaVersion          = 1
 	MaxPerformanceRequests           uint64 = 10_000
 	MaxPerformanceConcurrency        uint32 = 256
+	MaxPerformanceInFlight           uint32 = load.MaxOpenLoopInFlight
+	MinPerformanceRatePerSecond             = 0.01
+	MaxPerformanceRatePerSecond             = 100_000.0
 	MaxPerformanceDurationMS         uint64 = 3_600_000
 	MaxPerformanceTimeoutMS          uint64 = 600_000
 	MaxPerformanceInputTokens        uint32 = 1_000_000
@@ -79,31 +83,38 @@ type Result struct {
 // It must remain independent from persisted Model, Channel, Case, and Plan
 // entities so a quick performance run stays zero-persistence.
 type PerformanceCommand struct {
-	AddressMode  AddressMode `json:"address_mode"`
-	URL          string      `json:"url"`
-	APIKey       string      `json:"api_key"`
-	ChannelID    string      `json:"channel_id,omitempty"`
-	ModelID      string      `json:"model_id"`
-	RequestCount uint64      `json:"request_count"`
-	DurationMS   uint64      `json:"duration_ms"`
-	Concurrency  uint32      `json:"concurrency"`
-	TimeoutMS    uint64      `json:"timeout_ms"`
-	InputTokens  uint32      `json:"input_tokens"`
-	OutputTokens uint32      `json:"output_tokens"`
+	AddressMode   AddressMode     `json:"address_mode"`
+	URL           string          `json:"url"`
+	APIKey        string          `json:"api_key"`
+	ChannelID     string          `json:"channel_id,omitempty"`
+	ModelID       string          `json:"model_id"`
+	LoadMode      domain.LoadMode `json:"load_mode,omitempty"`
+	RequestCount  uint64          `json:"request_count"`
+	DurationMS    uint64          `json:"duration_ms"`
+	Concurrency   uint32          `json:"concurrency"`
+	RatePerSecond float64         `json:"rate_per_second,omitempty"`
+	MaxInFlight   uint32          `json:"max_in_flight,omitempty"`
+	TimeoutMS     uint64          `json:"timeout_ms"`
+	InputTokens   uint32          `json:"input_tokens"`
+	OutputTokens  uint32          `json:"output_tokens"`
 }
 
 type PerformanceProfile struct {
-	RequestCount uint64 `json:"request_count"`
-	DurationMS   uint64 `json:"duration_ms"`
-	Concurrency  uint32 `json:"concurrency"`
-	TimeoutMS    uint64 `json:"timeout_ms"`
-	InputTokens  uint32 `json:"input_tokens"`
-	OutputTokens uint32 `json:"output_tokens"`
+	LoadMode      domain.LoadMode `json:"load_mode,omitempty"`
+	RequestCount  uint64          `json:"request_count"`
+	DurationMS    uint64          `json:"duration_ms"`
+	Concurrency   uint32          `json:"concurrency"`
+	RatePerSecond float64         `json:"rate_per_second,omitempty"`
+	MaxInFlight   uint32          `json:"max_in_flight,omitempty"`
+	TimeoutMS     uint64          `json:"timeout_ms"`
+	InputTokens   uint32          `json:"input_tokens"`
+	OutputTokens  uint32          `json:"output_tokens"`
 }
 
 type PerformanceProgress struct {
 	Phase           load.Phase `json:"phase"`
 	Planned         uint64     `json:"planned"`
+	Offered         uint64     `json:"offered,omitempty"`
 	Launched        uint64     `json:"launched"`
 	Completed       uint64     `json:"completed"`
 	InFlight        uint64     `json:"in_flight,omitempty"`
@@ -111,6 +122,7 @@ type PerformanceProgress struct {
 	Succeeded       uint64     `json:"succeeded"`
 	Failed          uint64     `json:"failed"`
 	Rejected        uint64     `json:"rejected"`
+	Stopped         bool       `json:"stopped,omitempty"`
 	SendDurationMS  float64    `json:"send_duration_ms"`
 	DrainDurationMS float64    `json:"drain_duration_ms"`
 	TotalDurationMS float64    `json:"total_duration_ms"`

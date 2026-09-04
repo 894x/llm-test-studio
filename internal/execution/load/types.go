@@ -71,6 +71,7 @@ type Executor func(context.Context, Request) Observation
 type Progress struct {
 	Phase         Phase         `json:"phase"`
 	Planned       uint64        `json:"planned"`
+	Offered       uint64        `json:"offered,omitempty"`
 	Launched      uint64        `json:"launched"`
 	Completed     uint64        `json:"completed"`
 	InFlight      uint64        `json:"in_flight"`

@@ -151,9 +151,13 @@ func validArchivedQuickPerformanceReport() quicktest.PerformanceReport {
 		Archived: true, ArchiveStatus: quicktest.PerformanceArchiveArchived,
 		Success: true, AddressMode: quicktest.AddressModeBaseURL,
 		BaseURL: "https://example.com/v1", Endpoint: "https://example.com/v1/chat/completions", ModelID: "quick-model",
-		Profile:  quicktest.PerformanceProfile{RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3},
-		Progress: quicktest.PerformanceProgress{Phase: load.PhaseCompleted, Planned: 1, Launched: 1, Completed: 1, PeakInFlight: 1, Succeeded: 1, TotalDurationMS: 12},
-		Metrics:  load.Metrics{Completed: 1, Succeeded: 1, SuccessRatePercent: 100, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2},
+		Profile:  quicktest.PerformanceProfile{LoadMode: domain.LoadFixedConcurrency, RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3},
+		Progress: quicktest.PerformanceProgress{Phase: load.PhaseCompleted, Planned: 1, Offered: 1, Launched: 1, Completed: 1, PeakInFlight: 1, Succeeded: 1, SendDurationMS: 12, TotalDurationMS: 12},
+		Metrics: load.Metrics{
+			Completed: 1, Succeeded: 1, SuccessRatePercent: 100,
+			OfferedQPS: 1 / 0.012, LaunchedQPS: 1 / 0.012, CompletedQPS: 1 / 0.012, SuccessfulRequestQPS: 1 / 0.012,
+			RequestQPS: 1 / 0.012, RPM: 60 / 0.012, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+		},
 		Failures: []quicktest.PerformanceFailure{},
 		Samples:  []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
 	}

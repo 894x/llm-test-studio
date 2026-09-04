@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
@@ -452,6 +454,78 @@ func TestRunPerformanceWithProgressPublishesAuthoritativeLifecycleSnapshots(t *t
 	}
 	if !foundInFlight {
 		t.Fatalf("progress never exposed in-flight work: %#v", progress)
+	}
+}
+
+func TestRunPerformanceSupportsRateControlledOpenLoop(t *testing.T) {
+	var mu sync.Mutex
+	startedAt := make([]time.Time, 0, 3)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		startedAt = append(startedAt, time.Now())
+		mu.Unlock()
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+		LoadMode: domain.LoadOpenLoop, RatePerSecond: 50, RequestCount: 3, MaxInFlight: 3,
+		TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Success || report.Profile.LoadMode != domain.LoadOpenLoop || report.Profile.RatePerSecond != 50 || report.Profile.MaxInFlight != 3 {
+		t.Fatalf("report = %#v", report)
+	}
+	if report.Metrics.OfferedQPS <= 0 || report.Metrics.LaunchedQPS <= 0 || report.Metrics.SuccessfulRequestQPS <= 0 || report.Metrics.CompletedQPS <= 0 {
+		t.Fatalf("throughput metrics = %#v", report.Metrics)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(startedAt) != 3 {
+		t.Fatalf("request starts = %d, want 3", len(startedAt))
+	}
+	if gap := startedAt[1].Sub(startedAt[0]); gap < 8*time.Millisecond {
+		t.Fatalf("open-loop request gap = %v, want scheduled pacing", gap)
+	}
+}
+
+func TestRunPerformanceRejectsInvalidLoadModeCombinations(t *testing.T) {
+	base := PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
+		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
+	}
+	for name, mutate := range map[string]func(*PerformanceCommand){
+		"open loop without rate": func(command *PerformanceCommand) {
+			command.LoadMode = domain.LoadOpenLoop
+			command.Concurrency = 0
+			command.MaxInFlight = 2
+		},
+		"fixed concurrency with rate": func(command *PerformanceCommand) { command.RatePerSecond = 10 },
+		"duration schedule exceeds sample cap": func(command *PerformanceCommand) {
+			command.LoadMode = domain.LoadOpenLoop
+			command.RequestCount = 0
+			command.DurationMS = MaxPerformanceDurationMS
+			command.Concurrency = 0
+			command.RatePerSecond = 100
+			command.MaxInFlight = 2
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			command := base
+			mutate(&command)
+			report, err := New(Dependencies{}).RunPerformance(context.Background(), command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.ErrorCode != ErrorInvalidRequest {
+				t.Fatalf("error code = %q, want %q", report.ErrorCode, ErrorInvalidRequest)
+			}
+		})
 	}
 }
 

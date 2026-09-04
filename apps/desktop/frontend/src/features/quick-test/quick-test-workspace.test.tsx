@@ -253,9 +253,12 @@ describe("QuickTestWorkspace", () => {
       url: "https://api.example.test/v1",
       api_key: "sk-private-value",
       model_id: "gpt-new",
+      load_mode: "fixed_concurrency",
       request_count: 4,
       duration_ms: 1_000,
       concurrency: 2,
+      rate_per_second: 0,
+      max_in_flight: 0,
       timeout_ms: 30_000,
       input_tokens: 1_000_000,
       output_tokens: 32,
@@ -265,6 +268,10 @@ describe("QuickTestWorkspace", () => {
     expect(report).toHaveTextContent("失败")
     expect(report).toHaveTextContent("100%")
     expect(report).toHaveTextContent("12.5 req/s")
+    expect(report).toHaveTextContent("目标发送")
+    expect(report).toHaveTextContent("实际发送")
+    expect(report).toHaveTextContent("成功吞吐")
+    expect(report).not.toHaveTextContent("旧版请求吞吐")
     expect(report).toHaveTextContent("750 RPM")
     expect(report).toHaveTextContent("39,000 TPM")
     const latency = within(report).getByRole("table", { name: "延迟分布统计" })
@@ -279,6 +286,60 @@ describe("QuickTestWorkspace", () => {
     await user.click(within(report).getByRole("button", { name: "查看正式报告" }))
     expect(onOpenReport).toHaveBeenCalledWith("77777777-7777-4777-8777-777777777771")
     expect(report).not.toHaveTextContent("sk-private-value")
+  })
+
+  it("keeps mode-specific drafts and sends an open-loop RPS profile", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+
+    const mode = within(dialog).getByRole("combobox", { name: "负载模式" })
+    expect(mode).toHaveTextContent("固定并发")
+    await replaceNumber(user, within(dialog).getByLabelText("并发数"), "3")
+    await user.click(mode)
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+
+    expect(within(dialog).queryByLabelText("并发数")).not.toBeInTheDocument()
+    await replaceNumber(user, within(dialog).getByLabelText("目标发送 RPS"), "12.5")
+    await replaceNumber(user, within(dialog).getByLabelText("最大在途"), "37")
+
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "固定并发" }))
+    expect(within(dialog).getByLabelText("并发数")).toHaveValue(3)
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    expect(within(dialog).getByLabelText("目标发送 RPS")).toHaveValue(12.5)
+    expect(within(dialog).getByLabelText("最大在途")).toHaveValue(37)
+
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "sk-private-value",
+      model_id: "gpt-new",
+      load_mode: "open_loop",
+      request_count: 10,
+      duration_ms: 0,
+      concurrency: 0,
+      rate_per_second: 12.5,
+      max_in_flight: 37,
+      timeout_ms: 60_000,
+      input_tokens: 100,
+      output_tokens: 100,
+    }, expect.any(Function)))
   })
 
   it("shows authoritative progress while a performance test is running", async () => {
@@ -832,7 +893,7 @@ async function replaceNumber(user: ReturnType<typeof userEvent.setup>, input: HT
 
 function successfulPerformanceReport(): QuickPerformanceReport {
   return {
-    schema_version: 1,
+    schema_version: 2,
     report_id: "77777777-7777-4777-8777-777777777771",
     generated_at: "2026-08-31T14:30:00Z",
     archived: true,
@@ -843,17 +904,18 @@ function successfulPerformanceReport(): QuickPerformanceReport {
     base_url: "https://api.example.test/v1",
     endpoint: "https://api.example.test/v1/chat/completions",
     profile: {
-      request_count: 4, duration_ms: 1_000, concurrency: 2,
+      load_mode: "fixed_concurrency", request_count: 4, duration_ms: 1_000, concurrency: 2,
       timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
     },
     progress: {
-      phase: "completed", planned: 4, launched: 4, completed: 4,
+      phase: "completed", planned: 4, offered: 4, launched: 4, completed: 4,
       in_flight: 0, peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
       send_duration_ms: 300, drain_duration_ms: 20, total_duration_ms: 320,
     },
     metrics: {
       completed: 4, succeeded: 4, failed: 0, timed_out: 0,
-      success_rate_percent: 100, request_qps: 12.5, rpm: 750,
+      success_rate_percent: 100, offered_qps: 13.3, launched_qps: 13.3,
+      completed_qps: 12.5, successful_request_qps: 12.5, request_qps: 12.5, rpm: 750,
       input_tpm: 15_000, output_tpm: 24_000, total_tpm: 39_000,
       generation_tps: 400,
       ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,

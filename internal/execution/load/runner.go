@@ -23,6 +23,7 @@ type runState struct {
 	sendEndedAt   time.Time
 	lastIndex     uint64
 	requestCap    uint64
+	countLimited  bool
 	interval      time.Duration
 	sendWindow    time.Duration
 	timeout       time.Duration
@@ -58,6 +59,7 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	stop := options.StopSending
 	callerDone := ctx.Done()
 	launch := func(index uint64, scheduledOffset time.Duration) {
+		state.progress.Offered++
 		state.progress.Launched++
 		state.progress.InFlight++
 		if state.progress.InFlight > state.progress.PeakInFlight {
@@ -122,6 +124,7 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	reject := func(index uint64, scheduledOffset time.Duration) {
 		now := time.Now()
 		offset := now.Sub(state.startedAt)
+		state.progress.Offered++
 		state.progress.Rejected++
 		appendResult(Observation{
 			Index: index, ScheduledOffset: scheduledOffset,
@@ -157,7 +160,7 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	outcome := Outcome{
 		Progress: state.progress,
 		Results:  append([]Observation(nil), state.results...),
-		Metrics:  ComputeMetrics(state.results, state.progress.TotalDuration),
+		Metrics:  ComputeMetricsWithProfile(state.results, state.progress, profile),
 	}
 	if state.cancelled {
 		return outcome, ctx.Err()
@@ -190,10 +193,11 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 		return nil, fmt.Errorf("invalid load duration: %w", err)
 	}
 	state := &runState{
-		progress:   Progress{Planned: profile.RequestCount},
-		requestCap: profile.RequestCount,
-		sendWindow: sendWindow,
-		timeout:    timeout,
+		progress:     Progress{Planned: profile.RequestCount},
+		requestCap:   profile.RequestCount,
+		countLimited: profile.RequestCount > 0,
+		sendWindow:   sendWindow,
+		timeout:      timeout,
 	}
 	if profile.Mode == domain.LoadOpenLoop {
 		state.openLoopLimit = MaxOpenLoopInFlight
@@ -220,16 +224,6 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 		}
 		if state.requestCap > 1 && uint64(state.interval) > uint64(math.MaxInt64)/(state.requestCap-1) {
 			return nil, errors.New("open-loop schedule exceeds time.Duration range")
-		}
-		worstCaseInFlight := math.Ceil(profile.RatePerSecond * timeout.Seconds())
-		if worstCaseInFlight < 1 {
-			worstCaseInFlight = 1
-		}
-		if worstCaseInFlight > float64(state.requestCap) {
-			worstCaseInFlight = float64(state.requestCap)
-		}
-		if worstCaseInFlight > float64(state.openLoopLimit) {
-			return nil, fmt.Errorf("open-loop worst-case in-flight requests exceed safety limit %d", state.openLoopLimit)
 		}
 	}
 	return state, nil
@@ -326,17 +320,14 @@ func runOpenLoop(
 ) {
 	for {
 		if !state.sendingDone {
-			if state.lastIndex >= state.requestCap {
+			if state.countLimited && state.lastIndex >= state.requestCap {
 				finishSending(false, false)
-			} else {
-				scheduled := time.Duration(state.lastIndex) * state.interval
-				if state.sendWindow > 0 && scheduled >= state.sendWindow {
-					finishSending(false, false)
-				}
+			} else if state.sendWindow > 0 && time.Since(state.startedAt) >= state.sendWindow {
+				finishSending(false, false)
 			}
 		}
 		checkSignals()
-		if !state.sendingDone {
+		if !state.sendingDone && state.lastIndex < state.requestCap {
 			scheduled := time.Duration(state.lastIndex) * state.interval
 			if wait := time.Until(state.startedAt.Add(scheduled)); wait <= 0 {
 				for {
@@ -367,8 +358,18 @@ func runOpenLoop(
 		var scheduled <-chan time.Time
 		var timer *time.Timer
 		if !state.sendingDone {
-			offset := time.Duration(state.lastIndex) * state.interval
-			wait := time.Until(state.startedAt.Add(offset))
+			wakeAt := state.startedAt.Add(state.sendWindow)
+			if state.lastIndex < state.requestCap {
+				offset := time.Duration(state.lastIndex) * state.interval
+				wakeAt = state.startedAt.Add(offset)
+				if state.sendWindow > 0 {
+					windowEnd := state.startedAt.Add(state.sendWindow)
+					if windowEnd.Before(wakeAt) {
+						wakeAt = windowEnd
+					}
+				}
+			}
+			wait := time.Until(wakeAt)
 			if wait < 0 {
 				wait = 0
 			}

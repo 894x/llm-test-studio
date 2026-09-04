@@ -104,6 +104,42 @@ func TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests(t *testi
 	}
 }
 
+func TestDurationOnlyOpenLoopKeepsTheConfiguredSendWindow(t *testing.T) {
+	profile := domain.LoadProfile{
+		Mode: domain.LoadOpenLoop, Concurrency: 1, DurationMS: 50,
+		RatePerSecond: 10, RequestTimeoutMS: 1_000,
+	}
+	started := time.Now()
+	outcome, err := Run(context.Background(), profile, func(_ context.Context, request Request) Observation {
+		return Observation{Index: request.Index, Success: true}
+	}, Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < 40*time.Millisecond {
+		t.Fatalf("duration-only run ended after %v, want the configured send window", elapsed)
+	}
+	if outcome.Progress.Offered != 1 {
+		t.Fatalf("duration-only outcome = %#v", outcome)
+	}
+}
+
+func TestDurationOnlyOpenLoopDoesNotExceedDerivedRequestCap(t *testing.T) {
+	profile := domain.LoadProfile{
+		Mode: domain.LoadOpenLoop, Concurrency: 1, DurationMS: 100,
+		RatePerSecond: 30, RequestTimeoutMS: 1_000,
+	}
+	outcome, err := Run(context.Background(), profile, func(_ context.Context, request Request) Observation {
+		return Observation{Index: request.Index, Success: true}
+	}, Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if outcome.Progress.Planned != 3 || outcome.Progress.Offered != 3 || len(outcome.Results) != 3 {
+		t.Fatalf("derived-cap outcome = %#v", outcome)
+	}
+}
+
 func TestRunStopSendingDrainsOnlyLaunchedWork(t *testing.T) {
 	stop := make(chan struct{})
 	release := make(chan struct{})
@@ -272,22 +308,21 @@ func TestRunContainsExecutorPanicsAndNormalizesUnsafeErrorCodes(t *testing.T) {
 	}
 }
 
-func TestOpenLoopRejectsUnsafeWorstCaseInflightBeforeLaunching(t *testing.T) {
+func TestOpenLoopUsesRuntimeAdmissionInsteadOfWorstCasePreflight(t *testing.T) {
 	profile := domain.LoadProfile{
 		Mode: domain.LoadOpenLoop, Concurrency: 1,
-		RequestCount: MaxOpenLoopInFlight + 1, RatePerSecond: float64(MaxOpenLoopInFlight + 1),
-		RequestTimeoutMS: 1_000,
+		RequestCount: 3, RatePerSecond: 10, RequestTimeoutMS: 1_000,
 	}
 	var called atomic.Int64
-	_, err := Run(context.Background(), profile, func(context.Context, Request) Observation {
+	outcome, err := Run(context.Background(), profile, func(_ context.Context, request Request) Observation {
 		called.Add(1)
-		return Observation{}
-	}, Options{})
-	if err == nil {
-		t.Fatal("unsafe open-loop worst-case in-flight estimate was accepted")
+		return Observation{Index: request.Index, Success: true}
+	}, Options{MaxOpenLoopInFlight: 1})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
 	}
-	if called.Load() != 0 {
-		t.Fatalf("executor calls = %d, want zero after admission rejection", called.Load())
+	if called.Load() != 3 || outcome.Progress.Rejected != 0 || outcome.Progress.Offered != 3 {
+		t.Fatalf("runtime admission outcome = %#v, calls = %d", outcome.Progress, called.Load())
 	}
 }
 
@@ -342,6 +377,9 @@ func TestOpenLoopRuntimeAdmissionRejectsBacklogWithoutExceedingLimit(t *testing.
 	}
 	if got, want := result.outcome.Progress.Launched+result.outcome.Progress.Rejected, result.outcome.Progress.Planned; got != want {
 		t.Fatalf("launched + rejected = %d, want %d", got, want)
+	}
+	if result.outcome.Progress.Offered != result.outcome.Progress.Launched+result.outcome.Progress.Rejected {
+		t.Fatalf("offered invariant = %#v", result.outcome.Progress)
 	}
 	if got, want := result.outcome.Progress.Completed, result.outcome.Progress.Planned; got != want {
 		t.Fatalf("completed = %d, want %d", got, want)

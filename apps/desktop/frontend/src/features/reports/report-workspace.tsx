@@ -202,8 +202,9 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
         <ContextValue label="模型" value={report.model_id} />
         <ContextValue label="接口地址" value={report.endpoint} mono />
-        <ContextValue label="测试模式" value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
-        <ContextValue label="配置并发" value={formatMetric(report.profile.concurrency)} />
+        <ContextValue label="负载模式" value={performanceLoadMode(report.profile.load_mode)} />
+        <ContextValue label="停止条件" value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
+        <ContextValue label={report.profile.load_mode === "open_loop" ? "最大在途" : "配置并发"} value={formatMetric(report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? 0) : report.profile.concurrency)} />
         <ContextValue label="请求超时" value={formatDuration(report.profile.timeout_ms)} />
         <ContextValue label="Token 目标（输入 / 输出）" value={`${formatMetric(report.profile.input_tokens)} / ${formatMetric(report.profile.output_tokens)}`} />
       </dl>
@@ -216,8 +217,13 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
         <SummaryValue label="失败" value={String(report.metrics.failed)} />
         <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
-        <SummaryValue label="请求速率" value={`${formatMetric(report.metrics.request_qps)} req/s`} />
-        <SummaryValue label="峰值在途 / 配置并发" value={`${report.progress.peak_in_flight} / ${report.profile.concurrency}`} />
+        <SummaryValue label="目标发送" value={performanceTargetRate(report.profile.load_mode, report.profile.rate_per_second)} />
+        <SummaryValue label="调度需求" value={optionalRequestRate(report.metrics.offered_qps)} />
+        <SummaryValue label="实际发送" value={optionalRequestRate(report.metrics.launched_qps)} />
+        <SummaryValue label="已发送完成吞吐" value={optionalRequestRate(report.metrics.completed_qps)} />
+        <SummaryValue label="成功吞吐" value={optionalRequestRate(report.metrics.successful_request_qps)} />
+        {report.schema_version === 1 ? <SummaryValue label="旧版请求吞吐" value={`${formatMetric(report.metrics.request_qps)} req/s`} /> : null}
+        <SummaryValue label={report.profile.load_mode === "open_loop" ? "峰值在途 / 上限" : "峰值在途 / 配置并发"} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : report.profile.concurrency}`} />
         <SummaryValue label="总耗时" value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
         <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
         <SummaryValue label="输入 TPM" value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
@@ -302,7 +308,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
     </div>
     {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
-    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">核心指标</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label="目标" value={quick.model_id} /><InspectorRow label="请求速率" value={`${formatMetric(quick.metrics.request_qps)} req/s`} /><InspectorRow label="TTFT P50 / P95" value={`${formatMetric(quick.metrics.ttft_p50_ms)} / ${formatMetric(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatMetric(quick.metrics.tpot_p50_ms)} / ${formatMetric(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatMetric(quick.metrics.e2e_p50_ms)} / ${formatMetric(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
+    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">核心指标</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label="目标" value={quick.model_id} /><InspectorRow label="实际发送" value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label="成功吞吐" value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label="旧版请求吞吐" value={`${formatMetric(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatMetric(quick.metrics.ttft_p50_ms)} / ${formatMetric(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatMetric(quick.metrics.tpot_p50_ms)} / ${formatMetric(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatMetric(quick.metrics.e2e_p50_ms)} / ${formatMetric(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
   </ScrollArea>
 }
 
@@ -332,6 +338,9 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 function metric(value?: number): string { return value === undefined ? "—" : formatMetric(value) }
 function formatMetric(value: number): string { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value) }
+function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatMetric(value)} req/s` }
+function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? "开放到达（RPS）" : mode === "fixed_concurrency" ? "固定并发" : "旧版固定并发" }
+function performanceTargetRate(mode?: "fixed_concurrency" | "open_loop", rate?: number): string { return mode === "open_loop" && rate !== undefined ? `${formatMetric(rate)} req/s` : "—（固定并发）" }
 function formatDuration(valueMS: number): string { return valueMS >= 1_000 ? `${formatMetric(valueMS / 1_000)} s` : `${formatMetric(valueMS)} ms` }
 function performanceMode(requestCount: number, durationMS: number): string {
   return requestCount > 0 ? `固定请求 · ${formatMetric(requestCount)} 次` : `持续时间 · ${formatDuration(durationMS)}`

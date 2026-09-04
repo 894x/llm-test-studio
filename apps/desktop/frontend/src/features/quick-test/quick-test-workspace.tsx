@@ -52,6 +52,7 @@ import {
   QUICK_TEST_ERROR_MESSAGES,
   updateQuickTestForm,
   type QuickPerformanceCommand,
+  type QuickPerformanceLoadMode,
   type QuickPerformanceProgress,
   type QuickPerformanceReport,
   type QuickTestAddressMode,
@@ -596,15 +597,19 @@ function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, on
 }
 
 interface PerformanceForm {
+  loadMode: QuickPerformanceLoadMode
   requestCount: number
   durationSeconds: number
   concurrency: number
+  ratePerSecond: number
+  maxInFlight: number
   timeoutSeconds: number
   inputTokens: number
   outputTokens: number
 }
 
-type PerformanceFieldErrors = Partial<Record<keyof PerformanceForm, string>>
+type PerformanceNumberFieldName = Exclude<keyof PerformanceForm, "loadMode">
+type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
 const PERFORMANCE_TARGET_ERRORS = {
   requestCount: "请输入大于 0 的请求数，或填写持续时间。",
@@ -612,9 +617,12 @@ const PERFORMANCE_TARGET_ERRORS = {
 } as const
 
 const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
+  loadMode: "fixed_concurrency",
   requestCount: 10,
   durationSeconds: 0,
   concurrency: 1,
+  ratePerSecond: 1,
+  maxInFlight: 256,
   timeoutSeconds: 60,
   inputTokens: 100,
   outputTokens: 100,
@@ -635,7 +643,13 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   const [fieldErrors, setFieldErrors] = useState<PerformanceFieldErrors>({})
   const [operationError, setOperationError] = useState("")
 
-  const update = (key: keyof PerformanceForm, value: number) => {
+  const resetOutput = () => {
+    setReport(null)
+    setProgress(null)
+    setOperationError("")
+  }
+
+  const update = (key: PerformanceNumberFieldName, value: number) => {
     setForm((current) => ({ ...current, [key]: value }))
     setFieldErrors((current) => {
       let next = omitFieldError(current, key)
@@ -645,9 +659,15 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       }
       return next
     })
-    setReport(null)
-    setProgress(null)
-    setOperationError("")
+    resetOutput()
+  }
+
+  const updateLoadMode = (loadMode: QuickPerformanceLoadMode) => {
+    setForm((current) => ({ ...current, loadMode }))
+    setFieldErrors((current) => loadMode === "fixed_concurrency"
+      ? omitFieldError(omitFieldError(current, "ratePerSecond"), "maxInFlight")
+      : omitFieldError(current, "concurrency"))
+    resetOutput()
   }
 
   const submit = (event: FormEvent) => {
@@ -671,9 +691,12 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       api_key: testedCommand.api_key,
       ...(testedCommand.channel_id ? { channel_id: testedCommand.channel_id } : {}),
       model_id: testedCommand.model_id,
+      load_mode: form.loadMode,
       request_count: form.requestCount,
       duration_ms: form.durationSeconds * 1_000,
-      concurrency: form.concurrency,
+      concurrency: form.loadMode === "fixed_concurrency" ? form.concurrency : 0,
+      rate_per_second: form.loadMode === "open_loop" ? form.ratePerSecond : 0,
+      max_in_flight: form.loadMode === "open_loop" ? form.maxInFlight : 0,
       timeout_ms: form.timeoutSeconds * 1_000,
       input_tokens: form.inputTokens,
       output_tokens: form.outputTokens,
@@ -701,14 +724,40 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
           <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4" noValidate>
             <FieldGroup>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Field className="block min-w-0">
+                  <FieldLabel htmlFor="quick-performance-loadMode">负载模式</FieldLabel>
+                  <FieldContent>
+                    <Select value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)}>
+                      <SelectTrigger id="quick-performance-loadMode" aria-label="负载模式" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="fixed_concurrency">固定并发</SelectItem>
+                          <SelectItem value="open_loop">开放到达（RPS）</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
                 <PerformanceNumberField field="requestCount" label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} error={fieldErrors.requestCount} onChange={(value) => update("requestCount", value)} />
                 <PerformanceNumberField field="durationSeconds" label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.durationSeconds} onChange={(value) => update("durationSeconds", value)} />
-                <PerformanceNumberField field="concurrency" label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} error={fieldErrors.concurrency} onChange={(value) => update("concurrency", value)} />
+                {form.loadMode === "fixed_concurrency" ? (
+                  <PerformanceNumberField field="concurrency" label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} error={fieldErrors.concurrency} onChange={(value) => update("concurrency", value)} />
+                ) : (
+                  <>
+                    <PerformanceNumberField field="ratePerSecond" label="目标发送 RPS" value={form.ratePerSecond} min={0.01} max={100_000} step={0.01} disabled={pending} error={fieldErrors.ratePerSecond} onChange={(value) => update("ratePerSecond", value)} />
+                    <PerformanceNumberField field="maxInFlight" label="最大在途" value={form.maxInFlight} min={1} max={2_000} disabled={pending} error={fieldErrors.maxInFlight} onChange={(value) => update("maxInFlight", value)} />
+                  </>
+                )}
                 <PerformanceNumberField field="timeoutSeconds" label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} error={fieldErrors.timeoutSeconds} onChange={(value) => update("timeoutSeconds", value)} />
                 <PerformanceNumberField field="inputTokens" label="近似输入 Token" value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
                 <PerformanceNumberField field="outputTokens" label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
               </div>
               <FieldDescription>
+                {form.loadMode === "open_loop"
+                  ? "按目标 RPS 独立调度请求；达到最大在途后会记录本地拒绝。"
+                  : "固定并发会在请求完成后补发，维持配置的在途请求数。"}
                 同时填写请求数和持续时间时，任一目标先达到即停止发送；输出 Token 是请求上限，不保证模型实际生成到该数值。
               </FieldDescription>
               {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{operationError}</FieldError> : null}
@@ -734,12 +783,13 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   )
 }
 
-function PerformanceNumberField({ field, label, value, min, max, disabled, error, onChange }: {
-  field: keyof PerformanceForm
+function PerformanceNumberField({ field, label, value, min, max, step = 1, disabled, error, onChange }: {
+  field: PerformanceNumberFieldName
   label: string
   value: number
   min: number
   max: number
+  step?: number
   disabled: boolean
   error?: string
   onChange: (value: number) => void
@@ -758,7 +808,7 @@ function PerformanceNumberField({ field, label, value, min, max, disabled, error
           type="number"
           min={min}
           max={max}
-          step={1}
+          step={step}
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(Number(event.target.value))}
@@ -804,7 +854,12 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <ResultValue label="峰值在途" value={String(report.progress.peak_in_flight)} numeric />
         </MetricSection>
         <MetricSection title="吞吐">
-          <ResultValue label="请求速率" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric />
+          <ResultValue label="目标发送" value={performanceTargetRate(report)} numeric />
+          <ResultValue label="调度需求" value={formatOptionalRate(report.metrics.offered_qps)} numeric />
+          <ResultValue label="实际发送" value={formatOptionalRate(report.metrics.launched_qps)} numeric />
+          <ResultValue label="已发送完成吞吐" value={formatOptionalRate(report.metrics.completed_qps)} numeric />
+          <ResultValue label="成功吞吐" value={formatOptionalRate(report.metrics.successful_request_qps)} numeric />
+          {report.schema_version === 1 ? <ResultValue label="旧版请求吞吐" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric /> : null}
           <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
           <ResultValue label="输入 TPM" value={`${formatNumber(report.metrics.input_tpm)} TPM`} numeric />
           <ResultValue label="输出 TPM" value={`${formatNumber(report.metrics.output_tpm)} TPM`} numeric />
@@ -872,6 +927,7 @@ function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: Q
       />
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
         <ResultValue label={completion.label} value={completion.value} numeric />
+        {progress.offered === undefined ? null : <ResultValue label="调度需求" value={String(progress.offered)} numeric />}
         <ResultValue label="成功" value={String(progress.succeeded)} numeric />
         <ResultValue label="失败" value={String(progress.failed)} numeric />
         <ResultValue label="在途" value={String(progress.in_flight)} numeric />
@@ -897,7 +953,12 @@ function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors 
     errors.requestCount = PERFORMANCE_TARGET_ERRORS.requestCount
     errors.durationSeconds = PERFORMANCE_TARGET_ERRORS.durationSeconds
   }
-  if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
+  if (form.loadMode === "fixed_concurrency") {
+    if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
+  } else {
+    if (!finiteInRange(form.ratePerSecond, 0.01, 100_000)) errors.ratePerSecond = "目标发送 RPS 需为 0.01–100,000。"
+    if (!integerInRange(form.maxInFlight, 1, 2_000)) errors.maxInFlight = "最大在途需为 1–2,000 的整数。"
+  }
   if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = "单请求超时需为 1–600 秒的整数。"
   if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = "近似输入 Token 需为 1–1,000,000 的整数。"
   if (!integerInRange(form.outputTokens, 1, 65_536)) errors.outputTokens = "最大输出 Token 需为 1–65,536 的整数。"
@@ -1052,6 +1113,16 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value)
 }
 
+function formatOptionalRate(value: number | undefined): string {
+  return value === undefined ? "—" : `${formatNumber(value)} req/s`
+}
+
+function performanceTargetRate(report: QuickPerformanceReport): string {
+  return report.profile.load_mode === "open_loop" && report.profile.rate_per_second !== undefined
+    ? `${formatNumber(report.profile.rate_per_second)} req/s`
+    : "—（固定并发）"
+}
+
 function connectionFieldForCommandKey(key: keyof QuickTestCommand): ConnectionField | undefined {
   return ({
     url: "url",
@@ -1109,12 +1180,16 @@ function integerInRange(value: number, minimum: number, maximum: number): boolea
   return Number.isInteger(value) && value >= minimum && value <= maximum
 }
 
+function finiteInRange(value: number, minimum: number, maximum: number): boolean {
+  return Number.isFinite(value) && value >= minimum && value <= maximum
+}
+
 function firstConnectionErrorField(errors: ConnectionFieldErrors): ConnectionField | undefined {
   return (["url", "apiKey", "modelID", "prompt", "timeout"] as const).find((field) => errors[field])
 }
 
-function firstPerformanceErrorField(errors: PerformanceFieldErrors): keyof PerformanceForm | undefined {
-  return (["requestCount", "durationSeconds", "concurrency", "timeoutSeconds", "inputTokens", "outputTokens"] as const)
+function firstPerformanceErrorField(errors: PerformanceFieldErrors): PerformanceNumberFieldName | undefined {
+  return (["requestCount", "durationSeconds", "concurrency", "ratePerSecond", "maxInFlight", "timeoutSeconds", "inputTokens", "outputTokens"] as const)
     .find((field) => errors[field])
 }
 

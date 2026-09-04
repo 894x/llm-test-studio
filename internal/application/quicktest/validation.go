@@ -16,7 +16,7 @@ import (
 // ValidateArchivedPerformanceReport protects every persistence and reporting
 // adapter from malformed or unsafe quick-report documents.
 func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, error) {
-	if report.SchemaVersion != PerformanceSchemaVersion || !domain.IsUUID(report.ReportID) {
+	if (report.SchemaVersion != LegacyPerformanceSchemaVersion && report.SchemaVersion != PerformanceSchemaVersion) || !domain.IsUUID(report.ReportID) {
 		return time.Time{}, errors.New("quick performance report identity is invalid")
 	}
 	generatedAt, err := time.Parse(time.RFC3339Nano, report.GeneratedAt)
@@ -34,6 +34,51 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	}
 	if len(report.Samples) > int(MaxPerformanceRequests) {
 		return time.Time{}, errors.New("quick performance report exceeds the sample limit")
+	}
+	if report.SchemaVersion == PerformanceSchemaVersion {
+		if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
+			report.Progress.Completed != report.Progress.Offered {
+			return time.Time{}, errors.New("quick performance report load profile is invalid")
+		}
+		if !finiteNonNegative(report.Progress.SendDurationMS) || !finiteNonNegative(report.Progress.DrainDurationMS) ||
+			report.Progress.SendDurationMS <= 0 || !approximatelyEqual(report.Progress.TotalDurationMS, report.Progress.SendDurationMS+report.Progress.DrainDurationMS) {
+			return time.Time{}, errors.New("quick performance report timing windows are invalid")
+		}
+		if !finiteNonNegative(report.Metrics.OfferedQPS) || !finiteNonNegative(report.Metrics.LaunchedQPS) ||
+			!finiteNonNegative(report.Metrics.CompletedQPS) || !finiteNonNegative(report.Metrics.SuccessfulRequestQPS) ||
+			report.Progress.TotalDurationMS <= 0 || report.Metrics.OfferedQPS <= 0 || report.Metrics.LaunchedQPS <= 0 ||
+			report.Metrics.CompletedQPS <= 0 || report.Metrics.LaunchedQPS > report.Metrics.OfferedQPS ||
+			report.Metrics.SuccessfulRequestQPS > report.Metrics.CompletedQPS {
+			return time.Time{}, errors.New("quick performance report throughput is invalid")
+		}
+		seconds := report.Progress.TotalDurationMS / 1_000
+		if !approximatelyEqual(report.Metrics.CompletedQPS, float64(report.Progress.Launched)/seconds) ||
+			!approximatelyEqual(report.Metrics.SuccessfulRequestQPS, float64(report.Progress.Succeeded)/seconds) ||
+			!approximatelyEqual(report.Metrics.RequestQPS, float64(report.Progress.Completed)/seconds) ||
+			!approximatelyEqual(report.Metrics.RPM, report.Metrics.RequestQPS*60) ||
+			!approximatelyEqual(report.Metrics.LaunchedQPS/report.Metrics.OfferedQPS, float64(report.Progress.Launched)/float64(report.Progress.Offered)) {
+			return time.Time{}, errors.New("quick performance report throughput is inconsistent")
+		}
+		if report.Profile.LoadMode == domain.LoadFixedConcurrency {
+			sendSeconds := report.Progress.SendDurationMS / 1_000
+			if !approximatelyEqual(report.Metrics.OfferedQPS, float64(report.Progress.Offered)/sendSeconds) ||
+				!approximatelyEqual(report.Metrics.LaunchedQPS, report.Metrics.OfferedQPS) {
+				return time.Time{}, errors.New("quick performance report fixed-concurrency throughput is inconsistent")
+			}
+		} else {
+			rateWindowSeconds := report.Progress.SendDurationMS / 1_000
+			countLimitReached := !report.Progress.Stopped && report.Profile.RequestCount > 0 && report.Progress.Offered >= report.Profile.RequestCount
+			if countLimitReached {
+				minimumScheduleWindow := float64(report.Progress.Offered) / report.Profile.RatePerSecond
+				if rateWindowSeconds < minimumScheduleWindow {
+					rateWindowSeconds = minimumScheduleWindow
+				}
+			}
+			if !approximatelyEqual(report.Metrics.OfferedQPS, float64(report.Progress.Offered)/rateWindowSeconds) ||
+				!approximatelyEqual(report.Metrics.LaunchedQPS, float64(report.Progress.Launched)/rateWindowSeconds) {
+				return time.Time{}, errors.New("quick performance report open-loop throughput is inconsistent")
+			}
+		}
 	}
 	if report.Progress.Launched == 0 || report.Progress.Completed != uint64(len(report.Samples)) || report.Metrics.Completed != report.Progress.Completed ||
 		report.Progress.Succeeded+report.Progress.Failed != report.Progress.Completed || report.Metrics.Succeeded != report.Progress.Succeeded || report.Metrics.Failed != report.Progress.Failed {
@@ -109,6 +154,10 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	return generatedAt, nil
 }
 
+func validArchivedPerformanceProfile(profile PerformanceProfile) bool {
+	return validPerformanceProfileValues(profile)
+}
+
 func validatePerformanceResponseEvidence(evidence PerformanceResponseEvidence) error {
 	if !evidence.Redacted || len(evidence.ContentType) > 128 || len(evidence.RequestID) > 256 ||
 		!utf8.ValidString(evidence.Body) || len(evidence.Body) > MaxPerformanceEvidenceBodyBytes {
@@ -179,4 +228,9 @@ func safePerformanceErrorCode(code domain.ErrorCode) bool {
 
 func finiteNonNegative(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+func approximatelyEqual(left, right float64) bool {
+	scale := math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
+	return math.Abs(left-right) <= scale*1e-9
 }

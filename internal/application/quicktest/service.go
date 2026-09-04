@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -197,18 +198,24 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	if service == nil {
 		return PerformanceReport{}, ErrServiceUnavailable
 	}
+	if command.LoadMode == "" {
+		command.LoadMode = domain.LoadFixedConcurrency
+	}
 	report := PerformanceReport{
 		SchemaVersion: PerformanceSchemaVersion,
 		AddressMode:   command.AddressMode,
 		ModelID:       command.ModelID,
 		ArchiveStatus: PerformanceArchiveNotAttempted,
 		Profile: PerformanceProfile{
-			RequestCount: command.RequestCount,
-			DurationMS:   command.DurationMS,
-			Concurrency:  command.Concurrency,
-			TimeoutMS:    command.TimeoutMS,
-			InputTokens:  command.InputTokens,
-			OutputTokens: command.OutputTokens,
+			LoadMode:      command.LoadMode,
+			RequestCount:  command.RequestCount,
+			DurationMS:    command.DurationMS,
+			Concurrency:   command.Concurrency,
+			RatePerSecond: command.RatePerSecond,
+			MaxInFlight:   command.MaxInFlight,
+			TimeoutMS:     command.TimeoutMS,
+			InputTokens:   command.InputTokens,
+			OutputTokens:  command.OutputTokens,
 		},
 		Failures: []PerformanceFailure{},
 		Samples:  []PerformanceSample{},
@@ -239,11 +246,17 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	}
 
 	profile := domain.LoadProfile{
-		Mode: domain.LoadFixedConcurrency, Concurrency: command.Concurrency,
+		Mode: command.LoadMode, Concurrency: command.Concurrency,
 		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
+		RatePerSecond:    command.RatePerSecond,
 		RequestTimeoutMS: command.TimeoutMS,
 	}
-	if profile.RequestCount == 0 {
+	if profile.Mode == domain.LoadOpenLoop {
+		// LoadProfile keeps Concurrency mandatory for compatibility, but open-loop
+		// admission is controlled independently by MaxInFlight.
+		profile.Concurrency = 1
+	}
+	if profile.Mode == domain.LoadFixedConcurrency && profile.RequestCount == 0 {
 		profile.RequestCount = MaxPerformanceRequests
 	}
 	if err := profile.Validate(); err != nil {
@@ -271,6 +284,9 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	defer cleanup()
 
 	options := load.Options{}
+	if command.LoadMode == domain.LoadOpenLoop {
+		options.MaxOpenLoopInFlight = uint64(command.MaxInFlight)
+	}
 	if onProgress != nil {
 		options.OnProgress = func(progress load.Progress) {
 			onProgress(performanceProgress(progress))
@@ -337,13 +353,36 @@ func (service *Service) archivePerformanceReport(ctx context.Context, report *Pe
 }
 
 func validPerformanceProfile(command PerformanceCommand) bool {
-	return (command.RequestCount > 0 || command.DurationMS > 0) &&
-		command.RequestCount <= MaxPerformanceRequests &&
-		command.Concurrency > 0 && command.Concurrency <= MaxPerformanceConcurrency &&
-		command.DurationMS <= MaxPerformanceDurationMS &&
-		command.TimeoutMS > 0 && command.TimeoutMS <= MaxPerformanceTimeoutMS &&
-		command.InputTokens > 0 && command.InputTokens <= MaxPerformanceInputTokens &&
-		command.OutputTokens > 0 && command.OutputTokens <= MaxPerformanceOutputTokens
+	return validPerformanceProfileValues(PerformanceProfile{
+		LoadMode: command.LoadMode, RequestCount: command.RequestCount, DurationMS: command.DurationMS,
+		Concurrency: command.Concurrency, RatePerSecond: command.RatePerSecond, MaxInFlight: command.MaxInFlight,
+		TimeoutMS: command.TimeoutMS, InputTokens: command.InputTokens, OutputTokens: command.OutputTokens,
+	})
+}
+
+func validPerformanceProfileValues(profile PerformanceProfile) bool {
+	if !((profile.RequestCount > 0 || profile.DurationMS > 0) &&
+		profile.RequestCount <= MaxPerformanceRequests &&
+		profile.DurationMS <= MaxPerformanceDurationMS &&
+		profile.TimeoutMS > 0 && profile.TimeoutMS <= MaxPerformanceTimeoutMS &&
+		profile.InputTokens > 0 && profile.InputTokens <= MaxPerformanceInputTokens &&
+		profile.OutputTokens > 0 && profile.OutputTokens <= MaxPerformanceOutputTokens) {
+		return false
+	}
+	switch profile.LoadMode {
+	case domain.LoadFixedConcurrency:
+		return profile.Concurrency > 0 && profile.Concurrency <= MaxPerformanceConcurrency &&
+			profile.RatePerSecond == 0 && profile.MaxInFlight == 0
+	case domain.LoadOpenLoop:
+		if profile.Concurrency != 0 || profile.MaxInFlight == 0 || profile.MaxInFlight > MaxPerformanceInFlight ||
+			math.IsNaN(profile.RatePerSecond) || math.IsInf(profile.RatePerSecond, 0) ||
+			profile.RatePerSecond < MinPerformanceRatePerSecond || profile.RatePerSecond > MaxPerformanceRatePerSecond {
+			return false
+		}
+		return profile.RequestCount > 0 || math.Ceil(float64(profile.DurationMS)*profile.RatePerSecond/1_000) <= float64(MaxPerformanceRequests)
+	default:
+		return false
+	}
 }
 
 func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
@@ -399,8 +438,9 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 func performanceProgress(progress load.Progress) PerformanceProgress {
 	return PerformanceProgress{
 		Phase: progress.Phase, Planned: progress.Planned, Launched: progress.Launched,
+		Offered:   progress.Offered,
 		Completed: progress.Completed, InFlight: progress.InFlight, PeakInFlight: progress.PeakInFlight,
-		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected,
+		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected, Stopped: progress.Stopped,
 		SendDurationMS:  float64(progress.SendDuration) / float64(time.Millisecond),
 		DrainDurationMS: float64(progress.DrainDuration) / float64(time.Millisecond),
 		TotalDurationMS: float64(progress.TotalDuration) / float64(time.Millisecond),

@@ -64,6 +64,9 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("https://api.example.test/v1/chat/completions")
     expect(archivedReport).toHaveTextContent("峰值在途 / 配置并发")
     expect(archivedReport).toHaveTextContent("2 / 2")
+    expect(archivedReport).toHaveTextContent("实际发送")
+    expect(archivedReport).toHaveTextContent("成功吞吐")
+    expect(archivedReport).not.toHaveTextContent("请求速率")
     expect(archivedReport).toHaveTextContent("失败")
     expect(archivedReport).toHaveTextContent("104,000 TPM")
     expect(within(archivedReport).getByRole("table", { name: "延迟分布统计" })).toHaveTextContent("客户端排队（本地调度延迟）")
@@ -155,7 +158,7 @@ function quickDetail(reportID: string) {
     schema_version: 1,
     source: "quick_performance",
     performance: {
-      schema_version: 1,
+      schema_version: 2,
       report_id: reportID,
       generated_at: "2026-08-31T14:30:00Z",
       archived: true,
@@ -165,10 +168,11 @@ function quickDetail(reportID: string) {
       address_mode: "base_url",
       base_url: "https://api.example.test/v1",
       endpoint: "https://api.example.test/v1/chat/completions",
-      profile: { request_count: 0, duration_ms: 1_000, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
-      progress: { phase: "completed", planned: 10_000, launched: 3, completed: 3, in_flight: 0, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, send_duration_ms: 60, drain_duration_ms: 30, total_duration_ms: 90 },
+      profile: { load_mode: "fixed_concurrency", request_count: 0, duration_ms: 1_000, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
+      progress: { phase: "completed", planned: 10_000, offered: 3, launched: 3, completed: 3, in_flight: 0, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, send_duration_ms: 60, drain_duration_ms: 30, total_duration_ms: 90 },
       metrics: {
-        completed: 3, succeeded: 3, failed: 0, timed_out: 0, success_rate_percent: 100, request_qps: 33.3, rpm: 2_000,
+        completed: 3, succeeded: 3, failed: 0, timed_out: 0, success_rate_percent: 100,
+        offered_qps: 50, launched_qps: 50, completed_qps: 33.3, successful_request_qps: 33.3, request_qps: 33.3, rpm: 2_000,
         input_tpm: 40_000, output_tpm: 64_000, total_tpm: 104_000, generation_tps: 1_066.7,
         ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
         tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,

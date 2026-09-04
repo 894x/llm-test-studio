@@ -4,6 +4,8 @@ import (
 	"math"
 	"sort"
 	"time"
+
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 type Metrics struct {
@@ -12,6 +14,16 @@ type Metrics struct {
 	Failed             uint64  `json:"failed"`
 	TimedOut           uint64  `json:"timed_out"`
 	SuccessRatePercent float64 `json:"success_rate_percent"`
+	// OfferedQPS is the scheduler demand (launched plus locally rejected)
+	// divided by the send window. LaunchedQPS is the demand admitted by the
+	// client. SuccessfulRequestQPS is aligned with AIPerf request throughput:
+	// only valid responses divided by the full benchmark window.
+	OfferedQPS           float64 `json:"offered_qps,omitempty"`
+	LaunchedQPS          float64 `json:"launched_qps,omitempty"`
+	CompletedQPS         float64 `json:"completed_qps,omitempty"`
+	SuccessfulRequestQPS float64 `json:"successful_request_qps,omitempty"`
+	// RequestQPS retains the legacy all-outcomes rate for shared schema-v1
+	// consumers. New reports should present SuccessfulRequestQPS explicitly.
 	RequestQPS         float64 `json:"request_qps"`
 	RPM                float64 `json:"rpm"`
 	InputTPM           float64 `json:"input_tpm"`
@@ -45,6 +57,15 @@ type Metrics struct {
 }
 
 func ComputeMetrics(observations []Observation, elapsed time.Duration) Metrics {
+	return ComputeMetricsWithProgress(observations, Progress{
+		Offered:       uint64(len(observations)),
+		Launched:      uint64(len(observations)),
+		SendDuration:  elapsed,
+		TotalDuration: elapsed,
+	})
+}
+
+func ComputeMetricsWithProgress(observations []Observation, progress Progress) Metrics {
 	metrics := Metrics{Completed: uint64(len(observations))}
 	ttfts := make([]float64, 0, len(observations))
 	tpots := make([]float64, 0, len(observations))
@@ -76,8 +97,10 @@ func ComputeMetrics(observations []Observation, elapsed time.Duration) Metrics {
 	if metrics.Completed > 0 {
 		metrics.SuccessRatePercent = float64(metrics.Succeeded) / float64(metrics.Completed) * 100
 	}
-	seconds := elapsed.Seconds()
+	seconds := progress.TotalDuration.Seconds()
 	if seconds > 0 {
+		metrics.CompletedQPS = float64(progress.Launched) / seconds
+		metrics.SuccessfulRequestQPS = float64(metrics.Succeeded) / seconds
 		metrics.RequestQPS = float64(metrics.Completed) / seconds
 		metrics.RPM = metrics.RequestQPS * 60
 		metrics.InputTPM = float64(metrics.PromptTokens) / seconds * 60
@@ -85,12 +108,45 @@ func ComputeMetrics(observations []Observation, elapsed time.Duration) Metrics {
 		metrics.TotalTPM = metrics.InputTPM + metrics.OutputTPM
 		metrics.GenerationTPS = float64(metrics.CompletionTokens) / seconds
 	}
+	sendSeconds := progress.SendDuration.Seconds()
+	if sendSeconds > 0 {
+		offered := progress.Offered
+		if offered == 0 {
+			offered = progress.Launched + progress.Rejected
+		}
+		metrics.OfferedQPS = float64(offered) / sendSeconds
+		metrics.LaunchedQPS = float64(progress.Launched) / sendSeconds
+	}
 	metrics.TTFTP50, metrics.TTFTP90, metrics.TTFTP95, metrics.TTFTP99, metrics.TTFTAverage = summarize(ttfts)
 	metrics.TPOTP50, metrics.TPOTP90, metrics.TPOTP95, metrics.TPOTP99, metrics.TPOTAverage = summarize(tpots)
 	metrics.E2EP50, metrics.E2EP90, metrics.E2EP95, metrics.E2EP99, metrics.E2EAverage = summarize(e2es)
 	metrics.ScheduleLagP50, metrics.ScheduleLagP90, metrics.ScheduleLagP95, metrics.ScheduleLagP99, metrics.ScheduleLagAverage = summarize(lags)
 	if metrics.PromptTokens > 0 {
 		metrics.CacheRatePercent = float64(metrics.CachedTokens) / float64(metrics.PromptTokens) * 100
+	}
+	return metrics
+}
+
+func ComputeMetricsWithProfile(observations []Observation, progress Progress, profile domain.LoadProfile) Metrics {
+	metrics := ComputeMetricsWithProgress(observations, progress)
+	if profile.Mode != domain.LoadOpenLoop || progress.Stopped || profile.RatePerSecond <= 0 {
+		return metrics
+	}
+	offered := progress.Offered
+	if offered == 0 {
+		offered = progress.Launched + progress.Rejected
+	}
+	rateWindowSeconds := progress.SendDuration.Seconds()
+	countLimitReached := profile.RequestCount > 0 && offered >= profile.RequestCount
+	if countLimitReached {
+		minimumScheduleWindow := float64(offered) / profile.RatePerSecond
+		if rateWindowSeconds < minimumScheduleWindow {
+			rateWindowSeconds = minimumScheduleWindow
+		}
+	}
+	if rateWindowSeconds > 0 {
+		metrics.OfferedQPS = float64(offered) / rateWindowSeconds
+		metrics.LaunchedQPS = float64(progress.Launched) / rateWindowSeconds
 	}
 	return metrics
 }

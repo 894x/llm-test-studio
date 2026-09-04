@@ -2,14 +2,124 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
+
+const frozenSchemaV1QuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":0,"cached_tokens":2,"completed":1,"completion_tokens":3,"e2e_average_ms":0,"e2e_p50_ms":11,"e2e_p90_ms":0,"e2e_p95_ms":0,"e2e_p99_ms":0,"failed":0,"generation_tps":0,"input_tpm":0,"output_tpm":0,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":0,"schedule_lag_p50_ms":0,"schedule_lag_p95_ms":0,"succeeded":1,"success_rate_percent":100,"timed_out":0,"total_tpm":0,"tpot_average_ms":0,"tpot_p50_ms":4.5,"tpot_p90_ms":0,"tpot_p95_ms":0,"tpot_p99_ms":0,"ttft_average_ms":0,"ttft_p50_ms":2,"ttft_p90_ms":0,"ttft_p95_ms":0,"ttft_p99_ms":0},"model_id":"model-a","profile":{"concurrency":1,"duration_ms":0,"input_tokens":10,"output_tokens":3,"request_count":1,"timeout_ms":2000},"progress":{"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":0,"succeeded":1,"total_duration_ms":12},"report_id":"77777777-7777-4777-8777-777777777773","samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":0,"scheduled_offset_ms":0,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttft_ms":2}],"schema_version":1,"success":true}`
+
+func TestRepositoryLoadsFrozenSchemaV1QuickPerformanceReport(t *testing.T) {
+	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV1QuickPerformanceReport)
+	defer repository.Close()
+
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if loaded.SchemaVersion != quicktest.LegacyPerformanceSchemaVersion || loaded.Profile.LoadMode != "" || loaded.Progress.Offered != 0 {
+		t.Fatalf("loaded legacy report = %#v", loaded)
+	}
+	if loaded.Metrics.OfferedQPS != 0 || loaded.Metrics.LaunchedQPS != 0 || loaded.Metrics.CompletedQPS != 0 || loaded.Metrics.SuccessfulRequestQPS != 0 {
+		t.Fatalf("loaded legacy throughput = %#v", loaded.Metrics)
+	}
+}
+
+func TestRepositoryQuickPerformanceReportSchemaV2RoundTrip(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777774", "2026-08-31T15:33:00Z")
+
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, report) {
+		t.Fatalf("loaded report = %#v, want %#v", loaded, report)
+	}
+}
+
+func TestRepositoryOnlyWritesCurrentQuickPerformanceSchema(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777775", "2026-08-31T15:34:00Z")
+	report.SchemaVersion = quicktest.LegacyPerformanceSchemaVersion
+	report.Profile.LoadMode = ""
+	report.Progress.Offered = 0
+	report.Metrics.OfferedQPS = 0
+	report.Metrics.LaunchedQPS = 0
+	report.Metrics.CompletedQPS = 0
+	report.Metrics.SuccessfulRequestQPS = 0
+
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err == nil {
+		t.Fatal("SaveQuickPerformanceReport(schema v1) error = nil")
+	}
+}
+
+func TestRepositoryRejectsNonCanonicalOrUnsupportedQuickPerformanceDocuments(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		document string
+	}{
+		{name: "unsupported schema", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"schema_version":1`, `"schema_version":99`, 1)},
+		{name: "unknown field", document: strings.TrimSuffix(frozenSchemaV1QuickPerformanceReport, "}") + `,"unknown":true}`},
+		{name: "v2 field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"input_tokens":10,`, `"input_tokens":10,"load_mode":"fixed_concurrency",`, 1)},
+		{name: "noncanonical whitespace", document: " " + frozenSchemaV1QuickPerformanceReport},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := openRepositoryWithQuickPerformanceDocument(t, test.document)
+			defer repository.Close()
+
+			_, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
+			if !errors.Is(err, persistence.ErrCorrupt) {
+				t.Fatalf("GetQuickPerformanceReport() error = %v, want ErrCorrupt", err)
+			}
+		})
+	}
+}
+
+func openRepositoryWithQuickPerformanceDocument(t *testing.T, document string) *persistence.Repository {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "repository.db")
+	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	generatedAt := time.Date(2026, 8, 31, 15, 32, 0, 0, time.UTC)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	_, err = db.Exec(`
+		INSERT INTO quick_performance_reports(
+			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "77777777-7777-4777-8777-777777777773", generatedAt.Format(time.RFC3339Nano), generatedAt.UnixNano(), true,
+		"model-a", "https://example.com/v1", load.PhaseCompleted, 1, 0, []byte(document))
+	closeErr := db.Close()
+	if err != nil {
+		t.Fatalf("insert quick performance document error = %v", err)
+	}
+	if closeErr != nil {
+		t.Fatalf("close raw database error = %v", closeErr)
+	}
+	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatalf("OpenRepository() error = %v", err)
+	}
+	return repository
+}
 
 func TestRepositoryQuickPerformanceReportRoundTripIsIndependentAndNewestFirst(t *testing.T) {
 	repository := openRepository(t)
@@ -82,6 +192,16 @@ func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) 
 		{name: "not archived", mutate: func(report *quicktest.PerformanceReport) { report.Archived = false }},
 		{name: "wrong archive status", mutate: func(report *quicktest.PerformanceReport) { report.ArchiveStatus = quicktest.PerformanceArchiveFailed }},
 		{name: "sample count mismatch", mutate: func(report *quicktest.PerformanceReport) { report.Progress.Completed = 2 }},
+		{name: "offered count mismatch", mutate: func(report *quicktest.PerformanceReport) { report.Progress.Offered = 2 }},
+		{name: "successful throughput mismatch", mutate: func(report *quicktest.PerformanceReport) { report.Metrics.SuccessfulRequestQPS = 1 }},
+		{name: "legacy throughput mismatch", mutate: func(report *quicktest.PerformanceReport) { report.Metrics.RequestQPS = 1 }},
+		{name: "negative send window", mutate: func(report *quicktest.PerformanceReport) { report.Progress.SendDurationMS = -1 }},
+		{name: "window total mismatch", mutate: func(report *quicktest.PerformanceReport) { report.Progress.DrainDurationMS = 1 }},
+		{name: "load rate ratio mismatch", mutate: func(report *quicktest.PerformanceReport) { report.Metrics.LaunchedQPS = 1 }},
+		{name: "absolute load rates mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			report.Metrics.OfferedQPS /= 2
+			report.Metrics.LaunchedQPS /= 2
+		}},
 		{name: "unsafe url", mutate: func(report *quicktest.PerformanceReport) { report.BaseURL = "http://example.com/v1" }},
 		{name: "unsafe top level error code", mutate: func(report *quicktest.PerformanceReport) {
 			report.ErrorCode = domain.ErrorCode("provider said api-key=sk-secret")
@@ -127,6 +247,7 @@ func makeQuickPerformanceReportFailed(report *quicktest.PerformanceReport, code 
 	report.Metrics.Succeeded = 0
 	report.Metrics.Failed = 1
 	report.Metrics.SuccessRatePercent = 0
+	report.Metrics.SuccessfulRequestQPS = 0
 	report.Metrics.PromptTokens = 0
 	report.Metrics.CompletionTokens = 0
 	report.Metrics.CachedTokens = 0
@@ -144,9 +265,20 @@ func validQuickPerformanceReport(id, generatedAt string) quicktest.PerformanceRe
 		ReportID:      id, GeneratedAt: generatedAt, Archived: true, ArchiveStatus: quicktest.PerformanceArchiveArchived,
 		Success: true, AddressMode: quicktest.AddressModeBaseURL,
 		BaseURL: "https://example.com/v1", Endpoint: "https://example.com/v1/chat/completions", ModelID: "model-a",
-		Profile:   quicktest.PerformanceProfile{RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3},
-		Progress:  quicktest.PerformanceProgress{Phase: load.PhaseCompleted, Planned: 1, Launched: 1, Completed: 1, PeakInFlight: 1, Succeeded: 1, TotalDurationMS: 12},
-		Metrics:   load.Metrics{Completed: 1, Succeeded: 1, SuccessRatePercent: 100, RequestQPS: 80, RPM: 4800, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2, TTFTP50: 2, TPOTP50: 4.5, E2EP50: 11},
+		Profile: quicktest.PerformanceProfile{
+			LoadMode: domain.LoadFixedConcurrency, RequestCount: 1, Concurrency: 1,
+			TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3,
+		},
+		Progress: quicktest.PerformanceProgress{
+			Phase: load.PhaseCompleted, Planned: 1, Offered: 1, Launched: 1, Completed: 1,
+			PeakInFlight: 1, Succeeded: 1, SendDurationMS: 12.5, TotalDurationMS: 12.5,
+		},
+		Metrics: load.Metrics{
+			Completed: 1, Succeeded: 1, SuccessRatePercent: 100,
+			OfferedQPS: 80, LaunchedQPS: 80, CompletedQPS: 80, SuccessfulRequestQPS: 80,
+			RequestQPS: 80, RPM: 4800, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+			TTFTP50: 2, TPOTP50: 4.5, E2EP50: 11,
+		},
 		Failures:  []quicktest.PerformanceFailure{},
 		Samples:   []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
 		ErrorCode: domain.ErrorCode(""),

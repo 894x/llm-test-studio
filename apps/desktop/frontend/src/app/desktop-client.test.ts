@@ -51,9 +51,12 @@ describe("Wails desktop client", () => {
       url: "https://api.example.test/v1",
       api_key: "sk-private-value",
       model_id: "gpt-test",
+      load_mode: "fixed_concurrency" as const,
       request_count: 4,
       duration_ms: 0,
       concurrency: 2,
+      rate_per_second: 0,
+      max_in_flight: 0,
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
@@ -178,8 +181,8 @@ describe("Wails desktop client", () => {
     } as never)
     const command = {
       address_mode: "base_url" as const, url: "https://api.example.test/v1",
-      api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
-      duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+      api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
+      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     }
     const report = await createDesktopClient().runQuickPerformanceTest(command)
@@ -246,8 +249,8 @@ describe("Wails desktop client", () => {
 
     const report = await createDesktopClient().runQuickPerformanceTest({
       address_mode: "base_url", url: "https://api.example.test/v1",
-      api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
-      duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+      api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
+      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     })
 
@@ -288,8 +291,8 @@ describe("Wails desktop client", () => {
 		const progress = vi.fn()
 		const command = {
 			address_mode: "base_url" as const, url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
-			duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
+			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		}
 
@@ -321,13 +324,62 @@ describe("Wails desktop client", () => {
 
 		const report = await createDesktopClient().runQuickPerformanceTest({
 			address_mode: "base_url", url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
-			duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
+			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		})
 
 		expect(report.metrics.schedule_lag_p90_ms).toBe(0)
 		expect(report.metrics.schedule_lag_p99_ms).toBe(0)
+	})
+
+	it("parses schema v2 load semantics without fabricating them for legacy reports", async () => {
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		const fixture = performanceReportFixture()
+		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
+			...fixture,
+			schema_version: 2,
+			profile: {
+				...fixture.profile,
+				load_mode: "open_loop",
+				concurrency: 0,
+				rate_per_second: 12.5,
+				max_in_flight: 37,
+			},
+			progress: { ...fixture.progress, offered: 6 },
+			metrics: {
+				...fixture.metrics,
+				offered_qps: 15,
+				launched_qps: 12.5,
+				completed_qps: 11,
+				successful_request_qps: 10,
+				request_qps: 10,
+			},
+		} as never)
+
+		const v2 = await createDesktopClient().runQuickPerformanceTest({
+			address_mode: "base_url", url: "https://api.example.test/v1",
+			api_key: "sk-secret", model_id: "gpt-test", load_mode: "open_loop",
+			request_count: 4, duration_ms: 0, concurrency: 0, rate_per_second: 12.5,
+			max_in_flight: 37, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+		})
+		expect(v2.schema_version).toBe(2)
+		expect(v2.profile).toMatchObject({ load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37 })
+		expect(v2.progress.offered).toBe(6)
+		expect(v2.metrics).toMatchObject({ offered_qps: 15, launched_qps: 12.5, completed_qps: 11, successful_request_qps: 10 })
+
+		binding.RunQuickPerformanceTest.mockResolvedValueOnce(fixture as never)
+		const legacy = await createDesktopClient().runQuickPerformanceTest({
+			address_mode: "base_url", url: "https://api.example.test/v1",
+			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
+			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
+			max_in_flight: 0, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
+		})
+		expect(legacy.schema_version).toBe(1)
+		expect(legacy.profile.load_mode).toBeUndefined()
+		expect(legacy.progress.offered).toBeUndefined()
+		expect(legacy.metrics.offered_qps).toBeUndefined()
+		expect(legacy.metrics.successful_request_qps).toBeUndefined()
 	})
 
 	it("reads complete report details and forwards all export formats", async () => {

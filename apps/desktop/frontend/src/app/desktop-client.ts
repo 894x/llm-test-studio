@@ -731,13 +731,14 @@ function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerforma
 }
 
 function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
-  const completed = command.request_count || Math.max(1, command.concurrency * 2)
+  const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
+  const completed = command.request_count || Math.max(1, configuredInFlight * 2)
   const totalDurationMS = Math.max(320, command.duration_ms)
   const seconds = totalDurationMS / 1_000
   const promptTokens = completed * command.input_tokens
   const completionTokens = completed * command.output_tokens
   return {
-    schema_version: 1,
+    schema_version: 2,
     archived: false,
     archive_status: "not_attempted",
     model_id: command.model_id,
@@ -748,20 +749,24 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       ? `${command.url.replace(/\/+$/, "")}/chat/completions`
       : command.url,
     profile: {
-      request_count: command.request_count, duration_ms: command.duration_ms,
-      concurrency: command.concurrency, timeout_ms: command.timeout_ms,
+      load_mode: command.load_mode, request_count: command.request_count, duration_ms: command.duration_ms,
+      concurrency: command.concurrency,
+      ...(command.load_mode === "open_loop" ? { rate_per_second: command.rate_per_second, max_in_flight: command.max_in_flight } : {}),
+      timeout_ms: command.timeout_ms,
       input_tokens: command.input_tokens, output_tokens: command.output_tokens,
     },
     progress: {
-      phase: "completed", planned: completed, launched: completed, completed,
+      phase: "completed", planned: completed, offered: completed, launched: completed, completed,
       in_flight: 0,
-      peak_in_flight: Math.min(command.concurrency, completed), succeeded: completed,
+      peak_in_flight: Math.min(configuredInFlight, completed), succeeded: completed,
       failed: 0, rejected: 0, send_duration_ms: totalDurationMS,
       drain_duration_ms: 0, total_duration_ms: totalDurationMS,
     },
     metrics: {
       completed, succeeded: completed, failed: 0, timed_out: 0,
-      success_rate_percent: 100, request_qps: completed / seconds,
+      success_rate_percent: 100, offered_qps: completed / seconds,
+      launched_qps: completed / seconds, completed_qps: completed / seconds,
+      successful_request_qps: completed / seconds, request_qps: completed / seconds,
       rpm: completed / seconds * 60, input_tpm: promptTokens / seconds * 60,
       output_tpm: completionTokens / seconds * 60,
       total_tpm: (promptTokens + completionTokens) / seconds * 60,
@@ -795,15 +800,17 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
 }
 
 function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {
-  const planned = command.request_count || Math.max(1, command.concurrency * 2)
+  const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
+  const planned = command.request_count || Math.max(1, configuredInFlight * 2)
   const totalDurationMS = phase === "completed" ? Math.max(320, command.duration_ms) : 0
   return {
     phase,
     planned,
-    launched: phase === "completed" ? planned : Math.min(command.concurrency, planned),
+    offered: phase === "completed" ? planned : Math.min(configuredInFlight, planned),
+    launched: phase === "completed" ? planned : Math.min(configuredInFlight, planned),
     completed,
-    in_flight: phase === "completed" ? 0 : Math.min(command.concurrency, planned),
-    peak_in_flight: Math.min(command.concurrency, planned),
+    in_flight: phase === "completed" ? 0 : Math.min(configuredInFlight, planned),
+    peak_in_flight: Math.min(configuredInFlight, planned),
     succeeded: completed,
     failed: 0,
     rejected: 0,
