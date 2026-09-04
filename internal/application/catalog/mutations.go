@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -509,23 +511,48 @@ func (service *Service) validateBinding(ctx context.Context, channelID, modelID 
 func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan) error {
 	targetProtocol := domain.Protocol("")
 	for _, ref := range plan.Cases {
-		testCase, err := service.repository.GetTestCase(ctx, ref.CaseID)
+		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
 		if err != nil {
 			return service.portError(ctx, err)
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := testCase.Validate(); err != nil || testCase.ID != ref.CaseID {
+		if err := testCase.Validate(); err != nil || testCase.ID != ref.CaseID || testCase.Revision != ref.Revision {
 			return ErrCorrupt
-		}
-		if ref.Revision > testCase.Revision {
-			return ErrInvalid
 		}
 		if targetProtocol == "" {
 			targetProtocol = testCase.Protocol
 		} else if testCase.Protocol != targetProtocol {
 			return ErrPlanProtocolMismatch
+		}
+	}
+	if plan.SuiteID != "" {
+		suite, err := service.repository.GetSuiteRevision(ctx, plan.SuiteID, plan.SuiteRevision)
+		if err != nil {
+			return service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if suite.ID != plan.SuiteID || suite.Revision != plan.SuiteRevision || suite.Validate() != nil {
+			return ErrCorrupt
+		}
+		if suite.Protocol != targetProtocol {
+			return ErrPlanProtocolMismatch
+		}
+		for _, ref := range suite.Cases {
+			testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+			if err != nil {
+				return service.portError(ctx, err)
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Validate() != nil ||
+				testCase.Protocol != suite.Protocol || !testCase.AppliesToModel(suite.ModelTarget) {
+				return ErrCorrupt
+			}
 		}
 	}
 	for _, modelID := range plan.ModelIDs {
@@ -572,15 +599,26 @@ func (service *Service) portError(ctx context.Context, err error) error {
 		return context.DeadlineExceeded
 	}
 	if errors.Is(err, ErrNotFound) || matches(err, service.repositoryErrors.NotFound) {
-		return ErrNotFound
+		return repositoryError(ErrNotFound, err)
 	}
 	if errors.Is(err, ErrConflict) || matches(err, service.repositoryErrors.Conflict) {
-		return ErrConflict
+		return repositoryError(ErrConflict, err)
 	}
 	if errors.Is(err, ErrCorrupt) || matches(err, service.repositoryErrors.Corrupt) {
-		return ErrCorrupt
+		return repositoryError(ErrCorrupt, err)
 	}
-	return ErrUnavailable
+	return repositoryError(ErrUnavailable, err)
+}
+
+func repositoryError(publicError, portError error) error {
+	var diagnostic SafeDiagnosticCause
+	if errors.As(portError, &diagnostic) {
+		detail := strings.TrimSpace(diagnostic.SafeDiagnosticCause())
+		if detail != "" {
+			return fmt.Errorf("%w: %s", publicError, detail)
+		}
+	}
+	return publicError
 }
 
 func matches(err, target error) bool {

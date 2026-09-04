@@ -35,6 +35,7 @@ func TestReportProjectionQuerySortsBeforeLoadingWideDocuments(t *testing.T) {
 	if err := Migrate(context.Background(), path, MigrateOptions{AppVersion: "projection-plan-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
+	retireCoordinatorVersion10(t, path, "projection-plan-test-v11")
 	repository, err := OpenRepository(context.Background(), path, RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)
@@ -86,6 +87,12 @@ func TestReportProjectionQuerySortsBeforeLoadingWideDocuments(t *testing.T) {
 		if strings.Contains(detail, "USE TEMP B-TREE FOR ORDER BY") && index > reportLookupIndex {
 			t.Fatalf("wide report rows enter an ORDER BY temporary sorter:\n%s", plan)
 		}
+	}
+}
+
+func TestReportProjectionQueryDoesNotLoadThePlanCatalog(t *testing.T) {
+	if strings.Contains(strings.ToLower(reportProjectionQuery), "test_plans") {
+		t.Fatal("report projection query must use the immutable run snapshot instead of test_plans")
 	}
 }
 

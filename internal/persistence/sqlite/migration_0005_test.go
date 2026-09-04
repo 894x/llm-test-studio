@@ -29,8 +29,8 @@ func TestMigrateAddsChannelComparisonSchemaV5(t *testing.T) {
 	}
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 	for _, table := range []string{"case_catalog_cutover", "pending_test_case_snapshots", "comparisons", "comparison_revisions", "comparison_runs"} {
 		if !tableExists(t, db, table) {

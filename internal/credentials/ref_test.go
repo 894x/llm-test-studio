@@ -37,10 +37,25 @@ func TestNewStoreRefBuildsStableNamespacedReference(t *testing.T) {
 	}
 }
 
+func TestParseStoreRefAcceptsCanonicalScopedReference(t *testing.T) {
+	scope := strings.Repeat("a", 64)
+	want := "llm-test-studio/v2/" + scope + "/channel_api_key/" + testCredentialID
+	ref, err := ParseStoreRef(want)
+	if err != nil {
+		t.Fatalf("ParseStoreRef() error = %v", err)
+	}
+	if ref.Value() != want || ref.Scope() != scope || ref.Purpose() != domain.CredentialChannelAPIKey || ref.ID() != testCredentialID {
+		t.Fatalf("ParseStoreRef() = %#v, want canonical scoped reference", ref)
+	}
+}
+
 func TestParseStoreRefRejectsNamespaceConfusion(t *testing.T) {
 	invalid := []string{
 		"",
 		"llm-test-studio/v2/channel_api_key/" + testCredentialID,
+		"llm-test-studio/v2/" + strings.Repeat("A", 64) + "/channel_api_key/" + testCredentialID,
+		"llm-test-studio/v2/" + strings.Repeat("g", 64) + "/channel_api_key/" + testCredentialID,
+		"llm-test-studio/v2/" + strings.Repeat("a", 64) + "/CHANNEL_API_KEY/" + testCredentialID,
 		"other/v1/channel_api_key/" + testCredentialID,
 		"llm-test-studio/v1/channel_api_key/../" + testCredentialID,
 		"llm-test-studio/v1/channel_api_key/" + testCredentialID + "/extra",
@@ -111,5 +126,21 @@ func TestStoreRefFromCredentialAcceptsFullyBoundReference(t *testing.T) {
 	}
 	if storeRef.ID() != meta.ID || storeRef.Purpose() != ref.Purpose {
 		t.Fatalf("StoreRefFromCredential() = %#v, want ID and purpose bound to domain ref", storeRef)
+	}
+}
+
+func TestStoreRefFromCredentialRejectsRuntimeScopedReference(t *testing.T) {
+	meta, err := domain.NewEntityMeta(time.Date(2026, 8, 30, 1, 2, 3, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := domain.CredentialRef{
+		EntityMeta: meta,
+		StoreRef:   "llm-test-studio/v2/" + strings.Repeat("a", 64) + "/channel_api_key/" + meta.ID,
+		Purpose:    domain.CredentialChannelAPIKey, MaskedSuffix: "abcd",
+		Fingerprint: "sha256:" + strings.Repeat("a", 64),
+	}
+	if _, err := StoreRefFromCredential(ref); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("StoreRefFromCredential(scoped) error = %v, want ErrInvalid", err)
 	}
 }

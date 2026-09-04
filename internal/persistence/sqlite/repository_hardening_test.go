@@ -20,9 +20,9 @@ func TestRepositoryRunUpdatesAreAppendOnlyAndRecoverable(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
-		t.Fatalf("OpenRepository() error = %v", err)
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
 	}
 	fixture := newRepositoryFixture(t)
 	createRunGraph(t, repository, fixture)
@@ -257,11 +257,7 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		}
 		closeForTamper(t, repository)
 		tamperWithoutForeignKeys(t, path, `UPDATE channels SET credential_revision = 99 WHERE id = ?`, fixture.channel.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetChannel(context.Background(), fixture.channel.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetChannel() error = %v, want ErrCorrupt", err)
-		}
+		assertHardeningRepositoryOpenCorrupt(t, path)
 	})
 
 	t.Run("suite relation deleted", func(t *testing.T) {
@@ -281,7 +277,7 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		}
 	})
 
-	t.Run("plan mapping relation deleted", func(t *testing.T) {
+	t.Run("deleted plan mapping relation does not corrupt snapshot-backed runs", func(t *testing.T) {
 		path, repository, fixture := openHardeningRepository(t)
 		createRunGraph(t, repository, fixture)
 		closeForTamper(t, repository)
@@ -291,14 +287,14 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		if _, err := repository.GetPlan(context.Background(), fixture.plan.ID); !errors.Is(err, persistence.ErrCorrupt) {
 			t.Fatalf("GetPlan() error = %v, want ErrCorrupt", err)
 		}
-		if _, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetRun() with deleted pinned mapping error = %v, want ErrCorrupt", err)
+		if _, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); err != nil {
+			t.Fatalf("GetRun() with deleted retired catalog relation error = %v", err)
 		}
-		if _, err := repository.GetRunRevision(context.Background(), fixture.run.Meta().ID, 1); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetRunRevision() with deleted pinned mapping error = %v, want ErrCorrupt", err)
+		if _, err := repository.GetRunRevision(context.Background(), fixture.run.Meta().ID, 1); err != nil {
+			t.Fatalf("GetRunRevision() with deleted retired catalog relation error = %v", err)
 		}
-		if _, err := repository.ListRuns(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("ListRuns() with deleted pinned mapping error = %v, want ErrCorrupt", err)
+		if _, err := repository.ListRuns(context.Background()); err != nil {
+			t.Fatalf("ListRuns() with deleted retired catalog relation error = %v", err)
 		}
 	})
 
@@ -320,11 +316,7 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		}
 		closeForTamper(t, repository)
 		tamperWithoutForeignKeys(t, path, `UPDATE artifacts SET run_id = '10000000-0000-4000-8000-000000000099' WHERE id = ?`, report.Attachments[0].ArtifactID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetReport(context.Background(), report.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetReport() error = %v, want ErrCorrupt", err)
-		}
+		assertHardeningRepositoryOpenCorrupt(t, path)
 	})
 
 	t.Run("channel model target protocol", func(t *testing.T) {
@@ -384,20 +376,7 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		createRunningOutputs(t, repository, fixture)
 		closeForTamper(t, repository)
 		tamperWithoutForeignKeys(t, path, `DELETE FROM execution_runs WHERE id = ?`, fixture.run.Meta().ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetEvidence(context.Background(), fixture.evidence.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetEvidence() error = %v, want ErrCorrupt", err)
-		}
-		if _, err := repository.ListEvidence(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("ListEvidence() error = %v, want ErrCorrupt", err)
-		}
-		if _, err := repository.GetResult(context.Background(), fixture.result.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetResult() error = %v, want ErrCorrupt", err)
-		}
-		if _, err := repository.ListResults(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("ListResults() error = %v, want ErrCorrupt", err)
-		}
+		assertHardeningRepositoryOpenCorrupt(t, path)
 	})
 
 	t.Run("result evidence deleted", func(t *testing.T) {
@@ -435,7 +414,7 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		}
 	})
 
-	t.Run("report pinned run relation deleted", func(t *testing.T) {
+	t.Run("deleted plan mapping relation does not corrupt snapshot-backed reports", func(t *testing.T) {
 		path, repository, fixture := openHardeningRepository(t)
 		run := createRunningOutputs(t, repository, fixture)
 		run = transitionRun(t, repository, run, domain.RunCompleted)
@@ -448,11 +427,11 @@ func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
 		tamperWithoutForeignKeys(t, path, `DELETE FROM plan_channel_models WHERE plan_id = ?`, fixture.plan.ID)
 		repository = reopenHardeningRepository(t, path)
 		defer repository.Close()
-		if _, err := repository.GetReport(context.Background(), report.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetReport() error = %v, want ErrCorrupt", err)
+		if _, err := repository.GetReport(context.Background(), report.ID); err != nil {
+			t.Fatalf("GetReport() with deleted retired catalog relation error = %v", err)
 		}
-		if _, err := repository.ListReports(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("ListReports() error = %v, want ErrCorrupt", err)
+		if _, err := repository.ListReports(context.Background()); err != nil {
+			t.Fatalf("ListReports() with deleted retired catalog relation error = %v", err)
 		}
 	})
 
@@ -483,11 +462,7 @@ func TestRepositoryAggregateWritesRejectCorruptDependencies(t *testing.T) {
 		}
 		closeForTamper(t, repository)
 		tamperWithoutForeignKeys(t, path, `UPDATE channels SET credential_revision = 99 WHERE id = ?`, fixture.channel.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if err := repository.CreateChannelModel(context.Background(), fixture.mapping); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("CreateChannelModel() error = %v, want ErrCorrupt", err)
-		}
+		assertHardeningRepositoryOpenCorrupt(t, path)
 	})
 
 	t.Run("suite test case", func(t *testing.T) {
@@ -673,7 +648,7 @@ func TestRepositoryReportWriteFailureRollsBackSealAndAttachments(t *testing.T) {
 	}
 }
 
-func TestRepositoryPlanRevisionPinsModelChannelAndMappingRevisions(t *testing.T) {
+func TestRepositoryRunSnapshotPinsTargetRevisionsIndependentOfRetiredCatalog(t *testing.T) {
 	t.Parallel()
 
 	repository := openRepository(t)
@@ -709,15 +684,18 @@ func TestRepositoryPlanRevisionPinsModelChannelAndMappingRevisions(t *testing.T)
 	snapshot.Channel.Name = channel.Name
 	snapshot.Channel.BaseURL = channel.BaseURL
 	snapshot.Channel.UpstreamModelName = mapping.UpstreamModelName
+	snapshot.Mapping = &mapping
 	drifted, err := domain.NewRun(entityMeta("10000000-0000-4000-8000-000000000036", 1), fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatalf("NewRun() error = %v", err)
 	}
-	if err := repository.CreateRun(ctx, drifted); err == nil {
-		t.Fatal("CreateRun() accepted revisions newer than its pinned plan revision")
+	if err := repository.CreateRun(ctx, drifted); err != nil {
+		t.Fatalf("CreateRun() with self-contained newer target snapshot error = %v", err)
 	}
-	if _, err := repository.GetRun(ctx, drifted.Meta().ID); !errors.Is(err, persistence.ErrNotFound) {
-		t.Fatalf("GetRun() after rejected snapshot error = %v, want ErrNotFound", err)
+	if got, err := repository.GetRun(ctx, drifted.Meta().ID); err != nil {
+		t.Fatalf("GetRun() newer target snapshot error = %v", err)
+	} else if !reflect.DeepEqual(got, drifted) {
+		t.Fatalf("GetRun() newer target snapshot = %#v, want %#v", got, drifted)
 	}
 	pinned, err := domain.NewRun(
 		entityMeta("10000000-0000-4000-8000-000000000037", 1),
@@ -833,11 +811,41 @@ func openHardeningRepository(t *testing.T) (string, *persistence.Repository, rep
 
 func reopenHardeningRepository(t *testing.T, path string) *persistence.Repository {
 	t.Helper()
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
-		t.Fatalf("OpenRepository() error = %v", err)
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
 	}
 	return repository
+}
+
+func assertHardeningRepositoryOpenCorrupt(t *testing.T, path string) {
+	t.Helper()
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if repository != nil {
+		_ = repository.Close()
+	}
+	if !errors.Is(err, persistence.ErrCorrupt) {
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v, want ErrCorrupt", err)
+	}
+}
+
+func assertCorruptOnLegacyReopenOrOperation(
+	t *testing.T,
+	path string,
+	operation func(*persistence.Repository) error,
+) {
+	t.Helper()
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if err != nil {
+		if !errors.Is(err, persistence.ErrCorrupt) {
+			t.Fatalf("OpenLegacyCatalogRepository() error = %v, want ErrCorrupt", err)
+		}
+		return
+	}
+	defer repository.Close()
+	if err := operation(repository); !errors.Is(err, persistence.ErrCorrupt) {
+		t.Fatalf("repository operation error = %v, want ErrCorrupt", err)
+	}
 }
 
 func closeForTamper(t *testing.T, repository *persistence.Repository) {

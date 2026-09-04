@@ -1,6 +1,7 @@
 package caseimport
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
 	"os"
@@ -126,7 +127,15 @@ func TestFilesystemCaseV2RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Key != testCase.Key || decoded.Definition.Type != testCase.Definition.Type || string(decoded.Definition.Spec) != string(testCase.Definition.Spec) {
+	decodedSpec, err := canonicalJSON(decoded.Definition.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalSpec, err := canonicalJSON(testCase.Definition.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Key != testCase.Key || decoded.Definition.Type != testCase.Definition.Type || !bytes.Equal(decodedSpec, originalSpec) {
 		t.Fatalf("round trip mismatch: %#v != %#v", decoded, testCase)
 	}
 }

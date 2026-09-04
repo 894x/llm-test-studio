@@ -20,14 +20,20 @@ import (
 const (
 	migration0001Name    = "0001_legacy_baseline"
 	defaultBusyTime      = 5 * time.Second
-	CurrentSchemaVersion = 7
+	CurrentSchemaVersion = AuthoredCatalogRetirementSchemaVersion
 )
 
 // MigrateOptions identifies the application applying the schema and controls
 // how long SQLite waits for a competing writer.
 type MigrateOptions struct {
-	AppVersion  string
-	BusyTimeout time.Duration
+	AppVersion                    string
+	BusyTimeout                   time.Duration
+	RetireAuthoredCatalog         bool
+	ExpectedAuthoredCatalogDigest string
+	// BeforeAuthoredCatalogRetirement runs after the v10 digest and retirement
+	// eligibility have been revalidated under BEGIN IMMEDIATE, but before any
+	// authored table is dropped. It must not access this SQLite database.
+	BeforeAuthoredCatalogRetirement func(context.Context) error
 }
 
 var migration0001Statements = []string{
@@ -144,7 +150,36 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if busyTimeout < 0 {
 		return errors.New("sqlite migration busy timeout cannot be negative")
 	}
-	if err := backupBeforeMigration(ctx, path); err != nil {
+	startingVersion, err := SchemaVersion(ctx, path)
+	if err != nil {
+		return fmt.Errorf("inspect sqlite schema before migration: %w", err)
+	}
+	if options.RetireAuthoredCatalog && startingVersion < CatalogExportSchemaVersion {
+		return fmt.Errorf(
+			"retire authored sqlite catalog requires the database to start at version %d, got version %d",
+			CatalogExportSchemaVersion,
+			startingVersion,
+		)
+	}
+	var expectedAuthoredCatalogDigest []byte
+	if options.RetireAuthoredCatalog && startingVersion == CatalogExportSchemaVersion {
+		expectedAuthoredCatalogDigest, err = decodeAuthoredCatalogDigest(options.ExpectedAuthoredCatalogDigest)
+		if err != nil {
+			return err
+		}
+		currentDigest, digestErr := readAuthoredCatalogDigest(ctx, path)
+		if digestErr != nil {
+			return fmt.Errorf("inspect authored sqlite catalog before retirement backup: %w", digestErr)
+		}
+		if !authoredCatalogDigestsEqual(currentDigest, expectedAuthoredCatalogDigest) {
+			return errAuthoredCatalogChangedAfterExport
+		}
+	}
+	targetVersion := CatalogExportSchemaVersion
+	if options.RetireAuthoredCatalog || startingVersion == AuthoredCatalogRetirementSchemaVersion {
+		targetVersion = AuthoredCatalogRetirementSchemaVersion
+	}
+	if err := backupBeforeMigration(ctx, path, targetVersion); err != nil {
 		return err
 	}
 
@@ -200,7 +235,15 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if err != nil {
 		return err
 	}
-	if version == 0 {
+	if options.RetireAuthoredCatalog && version < CatalogExportSchemaVersion {
+		return fmt.Errorf(
+			"retire authored sqlite catalog requires the database to start at version %d, got version %d",
+			CatalogExportSchemaVersion,
+			version,
+		)
+	}
+	applyCatalogExportMigrations := !options.RetireAuthoredCatalog
+	if applyCatalogExportMigrations && version == 0 {
 		if err := validateLegacySchema(ctx, conn); err != nil {
 			return err
 		}
@@ -223,47 +266,79 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		}
 		version = 1
 	}
-	if version == 1 {
+	if applyCatalogExportMigrations && version == 1 {
 		if err := applyMigration0002(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
 		version = 2
 	}
-	if version == 2 {
+	if applyCatalogExportMigrations && version == 2 {
 		if err := applyMigration0003(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
 		version = 3
 	}
-	if version == 3 {
+	if applyCatalogExportMigrations && version == 3 {
 		if err := applyMigration0004(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
 		version = 4
 	}
-	if version == 4 {
+	if applyCatalogExportMigrations && version == 4 {
 		if err := applyMigration0005(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
 		version = 5
 	}
-	if version == 5 {
+	if applyCatalogExportMigrations && version == 5 {
 		if err := applyMigration0006(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
 		version = 6
 	}
-	if version == 6 {
+	if applyCatalogExportMigrations && version == 6 {
 		if err := applyMigration0007(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
 		version = 7
 	}
-	if version != CurrentSchemaVersion {
+	if applyCatalogExportMigrations && version == 7 {
+		if err := applyMigration0008(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 8
+	}
+	if applyCatalogExportMigrations && version == 8 {
+		if err := applyMigration0009(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 9
+	}
+	if applyCatalogExportMigrations && version == 9 {
+		if err := applyMigration0010(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
+		version = 10
+	}
+	if options.RetireAuthoredCatalog && version == CatalogExportSchemaVersion {
+		if err := applyMigration0011WithExpectedDigestAndPreparation(
+			ctx, conn, options.AppVersion, expectedAuthoredCatalogDigest, options.BeforeAuthoredCatalogRetirement,
+		); err != nil {
+			return err
+		}
+		version = AuthoredCatalogRetirementSchemaVersion
+	}
+	if version != CatalogExportSchemaVersion && version != AuthoredCatalogRetirementSchemaVersion {
 		return fmt.Errorf("sqlite schema is unknown: unsupported migration version %d", version)
 	}
-	if err := validateAppliedSchema0007(ctx, conn); err != nil {
-		return err
+	if version == CatalogExportSchemaVersion {
+		if err := validateAppliedSchema0010(ctx, conn); err != nil {
+			return err
+		}
+	} else {
+		if err := validateAppliedSchema0011(ctx, conn); err != nil {
+			return err
+		}
 	}
 	if err := validateIntegrity(ctx, conn); err != nil {
 		return err
@@ -275,7 +350,48 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	return nil
 }
 
-func backupBeforeMigration(ctx context.Context, path string) error {
+// SchemaVersion returns the fully validated migration version without mutating
+// the database. A path that does not exist yet is an unmigrated version 0.
+func SchemaVersion(ctx context.Context, path string) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(path) == "" {
+		return 0, errors.New("sqlite schema path is required")
+	}
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("inspect sqlite schema path: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return 0, errors.New("sqlite schema path must be a regular file")
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return 0, fmt.Errorf("open sqlite schema inspection: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	defer db.Close()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("acquire sqlite schema inspection connection: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA query_only = ON"); err != nil {
+		return 0, fmt.Errorf("enable read-only sqlite schema inspection: %w", err)
+	}
+	version, err := appliedMigrationVersion(ctx, conn)
+	if err != nil {
+		return 0, err
+	}
+	return version, nil
+}
+
+func backupBeforeMigration(ctx context.Context, path string, targetVersion int) error {
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -299,12 +415,12 @@ func backupBeforeMigration(ctx context.Context, path string) error {
 	if closeErr != nil {
 		return fmt.Errorf("close sqlite version inspection: %w", closeErr)
 	}
-	if version >= CurrentSchemaVersion {
+	if version >= targetVersion {
 		return nil
 	}
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	stamp := time.Now().UTC().Format("20060102T150405.000000000Z")
-	destination := filepath.Join(filepath.Dir(path), "backups", fmt.Sprintf("%s-before-v%d-%s.db", base, CurrentSchemaVersion, stamp))
+	destination := filepath.Join(filepath.Dir(path), "backups", fmt.Sprintf("%s-before-v%d-%s.db", base, targetVersion, stamp))
 	if err := Backup(ctx, path, destination); err != nil {
 		return fmt.Errorf("create pre-migration sqlite backup: %w", err)
 	}

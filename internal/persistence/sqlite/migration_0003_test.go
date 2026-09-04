@@ -20,11 +20,11 @@ func TestMigrateAppliesCaseImportTrackingSchemaV3(t *testing.T) {
 
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("migration count = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("migration count = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 	if got := tableColumns(t, db, "test_case_import_sources"); !equalStrings(got, []string{
 		"namespace", "source_key", "source_path", "source_bytes_sha256", "semantic_sha256",
@@ -92,9 +92,9 @@ func TestMigrateUpgradesV2TestCaseDocumentsToPolicyShape(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "upgrade-v3"}); err != nil {
 		t.Fatalf("upgrade Migrate() error = %v", err)
 	}
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
-		t.Fatalf("OpenRepository() error = %v", err)
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
 	}
 	defer repository.Close()
 	testCases, err := repository.ListTestCases(context.Background())
@@ -140,6 +140,7 @@ func createMigration0002Database(t *testing.T, path string) {
 		t.Fatalf("seed latest database: %v", err)
 	}
 	db := openDatabase(t, path)
+	restoreExecutionRunRevisionsV7(t, db)
 	dropMigration0005Objects(t, db)
 	if _, err := db.Exec("DROP TABLE IF EXISTS catalog_tombstones"); err != nil {
 		db.Close()

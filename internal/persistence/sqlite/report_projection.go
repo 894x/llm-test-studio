@@ -58,7 +58,7 @@ func (repository *Repository) ListReportProjections(ctx context.Context) ([]repo
 			_ = rows.Close()
 			return nil, reportProjectionCorrupt(ctx, "scan report projection", err)
 		}
-		projection, expectedRun, err := decodeStoredReportProjection(ctx, row)
+		projection, expectedRun, err := decodeStoredReportProjection(ctx, tx, row)
 		if err != nil {
 			_ = rows.Close()
 			return nil, err
@@ -179,22 +179,13 @@ type reportRunExpectation struct {
 	snapshotDigest [sha256.Size]byte
 }
 
-func decodeStoredReportProjection(ctx context.Context, row storedReportProjection) (reporting.ReportProjection, reportRunExpectation, error) {
-	projection, err := row.decode()
-	if err != nil {
-		return reporting.ReportProjection{}, reportRunExpectation{}, err
-	}
+func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedReportProjection) (reporting.ReportProjection, reportRunExpectation, error) {
 	if row.documentBytes < 1 || row.documentBytes > MaxReportProjectionDocumentBytes || len(row.document) != int(row.documentBytes) {
 		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report document byte budget", ErrCorrupt)
 	}
 	report, err := decodeReportDocument(row.document)
 	if err != nil {
 		return reporting.ReportProjection{}, reportRunExpectation{}, reportProjectionCorrupt(ctx, "report canonical document", err)
-	}
-	if report.ID != row.id || report.RunID != row.runID || formatTime(report.GeneratedAt) != row.generatedAt ||
-		report.RunStatus != projection.RunStatus || report.Conclusion.Passed != projection.Passed ||
-		report.Conclusion.Verdict != projection.Verdict {
-		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report canonical summary", ErrCorrupt)
 	}
 	if err := checkReportProjectionItemBudgets(report); err != nil {
 		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: %v", ErrCorrupt, err)
@@ -206,21 +197,22 @@ func decodeStoredReportProjection(ctx context.Context, row storedReportProjectio
 	if run.Meta().ID != row.runID {
 		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report run owner", ErrCorrupt)
 	}
-	if run.Status() != projection.RunStatus || formatTime(run.Meta().UpdatedAt) != row.runUpdatedAt {
-		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report run summary", ErrCorrupt)
-	}
-	if err := verifyEntityRow(
-		row.pinnedDocument, row.pinnedID, row.pinnedSchemaVersion, row.pinnedRevision,
-		row.pinnedCreatedAt, row.pinnedUpdatedAt,
-	); err != nil {
-		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report pinned plan metadata", ErrCorrupt)
-	}
-	pinnedPlan, err := decodePlanDocument(row.pinnedDocument)
+	pinnedPlan, err := reportProjectionPinnedPlan(ctx, tx, run)
 	if err != nil {
 		return reporting.ReportProjection{}, reportRunExpectation{}, err
 	}
-	if err := validateWorkspacePinnedPlan(run, pinnedPlan); err != nil || pinnedPlan.Name != row.planName {
-		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report pinned plan", ErrCorrupt)
+	row.planName = pinnedPlan.Name
+	projection, err := row.decode()
+	if err != nil {
+		return reporting.ReportProjection{}, reportRunExpectation{}, err
+	}
+	if report.ID != row.id || report.RunID != row.runID || formatTime(report.GeneratedAt) != row.generatedAt ||
+		report.RunStatus != projection.RunStatus || report.Conclusion.Passed != projection.Passed ||
+		report.Conclusion.Verdict != projection.Verdict {
+		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report canonical summary", ErrCorrupt)
+	}
+	if run.Status() != projection.RunStatus || formatTime(run.Meta().UpdatedAt) != row.runUpdatedAt {
+		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report run summary", ErrCorrupt)
 	}
 	validated := validatedReportProjectionFromReport(report)
 	if validated.modelName != projection.ModelName || validated.channelName != projection.ChannelName ||
@@ -241,6 +233,31 @@ func decodeStoredReportProjection(ctx context.Context, row storedReportProjectio
 		documentDigest: sha256.Sum256(row.run.document),
 		snapshotDigest: sha256.Sum256(snapshotDocument),
 	}, nil
+}
+
+func reportProjectionPinnedPlan(ctx context.Context, tx *sql.Tx, run domain.Run) (domain.Plan, error) {
+	snapshot := run.Snapshot()
+	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
+		if snapshot.PlanDocument == nil {
+			return domain.Plan{}, fmt.Errorf("%w: report pinned plan document", ErrCorrupt)
+		}
+		return *snapshot.PlanDocument, nil
+	}
+	document, err := exactDocument(ctx, tx, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
+	if err != nil {
+		return domain.Plan{}, reportProjectionCorrupt(ctx, "report legacy pinned plan", err)
+	}
+	plan, err := decodePlanDocument(document)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	if err := validatePlanStorage(ctx, tx, plan); err != nil {
+		return domain.Plan{}, reportProjectionCorrupt(ctx, "report legacy pinned plan storage", err)
+	}
+	if err := validateWorkspacePinnedPlan(run, plan); err != nil {
+		return domain.Plan{}, fmt.Errorf("%w: report legacy pinned plan", ErrCorrupt)
+	}
+	return plan, nil
 }
 
 func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map[string]reportRunExpectation) error {
@@ -452,16 +469,12 @@ type storedReportProjection struct {
 	documentBytes                        int64
 	document                             []byte
 	run                                  storedRunRow
-	pinnedID, pinnedCreatedAt            string
-	pinnedUpdatedAt                      string
-	pinnedSchemaVersion, pinnedRevision  int64
-	pinnedDocument                       []byte
 }
 
 func (row *storedReportProjection) scan(scanner rowScanner) error {
 	return scanner.Scan(
 		&row.ordinal, &row.id, &row.runID, &row.generatedAt, &row.runUpdatedAt,
-		&row.runStatus, &row.planName, &row.modelName, &row.channelName,
+		&row.runStatus, &row.modelName, &row.channelName,
 		&row.passed, &row.verdict, &row.issueCount, &row.caseCount,
 		&row.failedCaseCount, &row.attachmentCount, &row.corrupt,
 		&row.documentBytes, &row.document,
@@ -469,8 +482,6 @@ func (row *storedReportProjection) scan(scanner rowScanner) error {
 		&row.run.historyCount, &row.run.historyMin, &row.run.historyMax,
 		&row.run.schemaVersion, &row.run.revision, &row.run.revisionCreated, &row.run.revisionUpdated,
 		&row.run.planID, &row.run.planRevision, &row.run.status, &row.run.snapshotDocument, &row.run.document,
-		&row.pinnedID, &row.pinnedSchemaVersion, &row.pinnedRevision,
-		&row.pinnedCreatedAt, &row.pinnedUpdatedAt, &row.pinnedDocument,
 	)
 }
 
@@ -567,8 +578,6 @@ report_rows AS (
 	       revision.updated_at AS run_updated_at,
 	       CASE WHEN json_type(report.document_json, '$.run_status') = 'text'
 	         THEN json_extract(report.document_json, '$.run_status') ELSE '' END AS run_status,
-	       CASE WHEN json_type(pinned.document_json, '$.name') = 'text'
-	         THEN json_extract(pinned.document_json, '$.name') ELSE '' END AS plan_name,
 	       CASE WHEN json_type(report.document_json, '$.plan_snapshot.model.name') = 'text'
 	         THEN json_extract(report.document_json, '$.plan_snapshot.model.name') ELSE '' END AS model_name,
 	       CASE WHEN json_type(report.document_json, '$.plan_snapshot.channel.name') = 'text'
@@ -626,20 +635,6 @@ report_rows AS (
 	           json_extract(report.document_json, '$.plan_snapshot.plan.id') = revision.plan_id AND
 	         json_type(report.document_json, '$.plan_snapshot.plan.revision') = 'integer' AND
 	           json_extract(report.document_json, '$.plan_snapshot.plan.revision') = revision.plan_revision AND
-	         pinned.id = revision.plan_id AND pinned.revision = revision.plan_revision AND
-	         pinned.schema_version = json_extract(pinned.document_json, '$.schema_version') AND
-	         pinned.id = json_extract(pinned.document_json, '$.id') AND
-	         pinned.revision = json_extract(pinned.document_json, '$.revision') AND
-	         pinned.created_at = json_extract(pinned.document_json, '$.created_at') AND
-	         pinned.updated_at = json_extract(pinned.document_json, '$.updated_at') AND
-	         json_type(pinned.document_json, '$.name') = 'text' AND trim(json_extract(pinned.document_json, '$.name')) != '' AND
-	         json_type(pinned.document_json, '$.model_ids') = 'array' AND
-	           EXISTS (SELECT 1 FROM json_each(pinned.document_json, '$.model_ids') WHERE type = 'text' AND value = json_extract(report.document_json, '$.plan_snapshot.model.id')) AND
-	         json_type(pinned.document_json, '$.channel_ids') = 'array' AND
-	           EXISTS (SELECT 1 FROM json_each(pinned.document_json, '$.channel_ids') WHERE type = 'text' AND value = json_extract(report.document_json, '$.plan_snapshot.channel.id')) AND
-	         json_extract(pinned.document_json, '$.cases') = json_extract(report.document_json, '$.plan_snapshot.cases') AND
-	         json_extract(pinned.document_json, '$.load') = json_extract(report.document_json, '$.plan_snapshot.load') AND
-	         json_extract(pinned.document_json, '$.sla') = json_extract(report.document_json, '$.plan_snapshot.sla') AND
 	         json_type(report.document_json, '$.model') = 'object' AND
 	           (SELECT COUNT(*) FROM json_each(report.document_json, '$.model')) = 2 AND
 	           json_extract(report.document_json, '$.model.id') = json_extract(report.document_json, '$.plan_snapshot.model.id') AND
@@ -798,29 +793,20 @@ report_rows AS (
 	       revision.plan_revision AS owner_plan_revision,
 	       revision.status AS owner_status,
 	       revision.snapshot_json AS owner_snapshot_document,
-	       revision.document_json AS owner_run_document,
-	       pinned.id AS pinned_id,
-	       pinned.schema_version AS pinned_schema_version,
-	       pinned.revision AS pinned_revision,
-	       pinned.created_at AS pinned_created_at,
-	       pinned.updated_at AS pinned_updated_at,
-	       pinned.document_json AS pinned_document
+	       revision.document_json AS owner_run_document
 	FROM latest_reports AS latest
 	JOIN reports AS report ON report.id = latest.id
 	LEFT JOIN execution_runs AS root ON root.id = report.run_id
 	LEFT JOIN execution_run_revisions AS revision
 	  ON revision.run_id = root.id AND revision.revision = root.current_revision
-	LEFT JOIN test_plans AS pinned
-	  ON pinned.id = revision.plan_id AND pinned.revision = revision.plan_revision
 )
 SELECT ordinal, id, run_id, generated_at, run_updated_at, run_status,
-	   plan_name, model_name, channel_name, passed, verdict,
+	   model_name, channel_name, passed, verdict,
 	   issue_count, case_count, failed_case_count, attachment_count, corrupt,
 	   report_document_bytes, report_document,
 	   owner_run_id, owner_current_revision, owner_created_at, owner_sealed, owner_report_count,
 	   owner_history_count, owner_history_min, owner_history_max,
 	   owner_schema_version, owner_revision, owner_revision_created_at, owner_revision_updated_at,
-	   owner_plan_id, owner_plan_revision, owner_status, owner_snapshot_document, owner_run_document,
-	   pinned_id, pinned_schema_version, pinned_revision, pinned_created_at, pinned_updated_at, pinned_document
+	   owner_plan_id, owner_plan_revision, owner_status, owner_snapshot_document, owner_run_document
 FROM report_rows
 `

@@ -354,6 +354,10 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		{version: 5, name: migration0005Name, checksum: migration0005Checksum()},
 		{version: 6, name: migration0006Name, checksum: migration0006Checksum()},
 		{version: 7, name: migration0007Name, checksum: migration0007Checksum()},
+		{version: 8, name: migration0008Name, checksum: migration0008Checksum()},
+		{version: 9, name: migration0009Name, checksum: migration0009Checksum()},
+		{version: 10, name: migration0010Name, checksum: migration0010Checksum()},
+		{version: 11, name: migration0011Name, checksum: migration0011Checksum()},
 	}
 	for index, got := range history {
 		expected := want[index]
@@ -400,7 +404,23 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		if err := validateAppliedSchema0006(ctx, conn); err != nil {
 			return 0, err
 		}
-	} else if err := validateAppliedSchema0007(ctx, conn); err != nil {
+	} else if version == 7 {
+		if err := validateAppliedSchema0007(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if version == 8 {
+		if err := validateAppliedSchema0008(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if version == 9 {
+		if err := validateAppliedSchema0009(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if version == 10 {
+		if err := validateAppliedSchema0010(ctx, conn); err != nil {
+			return 0, err
+		}
+	} else if err := validateAppliedSchema0011(ctx, conn); err != nil {
 		return 0, err
 	}
 	return version, nil

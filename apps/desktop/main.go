@@ -39,6 +39,7 @@ func main() {
 	}
 	report := desktopErrorReporter(operator, log.Default())
 	production.reportRunDiagnostic = desktopRunDiagnosticReporter(operator, log.Default())
+	production.reportCredentialCleanup = report
 	app := newDesktopApp(newProductionInitializer(production))
 	configureDesktopDiagnostics(app, operator, openDirectory)
 	if err := wails.Run(desktopOptions(app, frontendAssets, report)); err != nil {
@@ -185,13 +186,35 @@ func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) fu
 		failureCount := uint64(0)
 		eventErr := err
 		var quickDiagnostic quickTestDiagnosticEvent
+		var quickSaveDiagnostic quickTestSaveDiagnosticError
 		var frontendDiagnostic frontendRuntimeDiagnosticError
+		var catalogDiagnostic catalogCommandDiagnosticError
+		var credentialCleanupDiagnostic credentialCleanupDiagnosticError
 		if errors.As(err, &frontendDiagnostic) {
 			component = "frontend"
 			operation = frontendDiagnostic.Operation
 			errorCode = frontendDiagnostic.ErrorCode
 			message = "frontend desktop operation failed"
 			eventErr = errors.New(frontendDiagnostic.Detail)
+		} else if errors.As(err, &quickSaveDiagnostic) {
+			component = "quick_test"
+			operation = strings.TrimSpace(quickSaveDiagnostic.operation)
+			message = "quick test connection save failed"
+			eventErr = quickSaveDiagnostic.err
+			switch {
+			case errors.Is(err, ErrCatalogSavedRefreshFailed):
+				errorCode = desktopCodeCatalogSavedRefreshFailed
+				message = "quick test connection saved but catalog refresh failed"
+			case errors.Is(err, ErrQuickTestSavePartial):
+				errorCode = desktopCodeQuickTestSavePartial
+				message = "quick test connection partially saved"
+			case errors.Is(err, catalog.ErrInvalid):
+				errorCode = desktopCodeCatalogInvalid
+			case errors.Is(err, catalog.ErrConflict):
+				errorCode = desktopCodeCatalogConflict
+			case errors.Is(err, catalog.ErrNotFound):
+				errorCode = desktopCodeCatalogNotFound
+			}
 		} else if errors.As(err, &quickDiagnostic) {
 			level = diagnostics.LevelWarn
 			component = "quick_test"
@@ -205,7 +228,33 @@ func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) fu
 			duration = quickDiagnostic.Duration
 			failureCount = quickDiagnostic.FailureCount
 			eventErr = nil
+		} else if errors.As(err, &credentialCleanupDiagnostic) {
+			level = diagnostics.LevelWarn
+			component = "credentials"
+			operation = "delete_obsolete_channel_credential"
+			errorCode = "credential_cleanup_failed"
+			message = "credential cleanup failed"
+			eventErr = credentialCleanupDiagnostic.err
+		} else if errors.As(err, &catalogDiagnostic) {
+			component = "catalog"
+			operation = strings.ReplaceAll(strings.TrimSpace(catalogDiagnostic.operation), " ", "_")
+			message = "catalog operation failed"
+			eventErr = catalogDiagnostic.err
+			switch {
+			case catalogDiagnostic.committed:
+				errorCode = desktopCodeCatalogSavedRefreshFailed
+				message = "catalog saved but refresh failed"
+			case errors.Is(err, catalog.ErrPlanProtocolMismatch):
+				errorCode = desktopCodePlanProtocolMismatch
+			case errors.Is(err, catalog.ErrInvalid):
+				errorCode = desktopCodeCatalogInvalid
+			case errors.Is(err, catalog.ErrConflict):
+				errorCode = desktopCodeCatalogConflict
+			case errors.Is(err, catalog.ErrNotFound):
+				errorCode = desktopCodeCatalogNotFound
+			}
 		} else if errors.Is(err, catalog.ErrPlanProtocolMismatch) {
+			component = "catalog"
 			operation = "save_plan"
 			errorCode = desktopCodePlanProtocolMismatch
 			message = "plan save failed"
@@ -270,6 +319,14 @@ type frontendRuntimeDiagnosticError struct {
 	ErrorCode string
 	Detail    string
 }
+
+type credentialCleanupDiagnosticError struct{ err error }
+
+func (err credentialCleanupDiagnosticError) Error() string {
+	return fmt.Sprintf("credential cleanup failed: %v", err.err)
+}
+
+func (err credentialCleanupDiagnosticError) Unwrap() error { return err.err }
 
 func (err frontendRuntimeDiagnosticError) Error() string {
 	return fmt.Sprintf("frontend %s (%s): %s", err.Operation, err.ErrorCode, err.Detail)

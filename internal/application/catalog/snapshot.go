@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -57,7 +58,7 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	snapshot, err := buildSnapshot(ctx, models, channels, mappings, testCases, suites, plans)
+	snapshot, err := service.buildSnapshot(ctx, models, channels, mappings, testCases, suites, plans)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -95,7 +96,7 @@ func (service *Service) ListPlans(ctx context.Context) ([]PlanSummary, error) {
 	return snapshot.Plans, err
 }
 
-func buildSnapshot(
+func (service *Service) buildSnapshot(
 	ctx context.Context,
 	models []domain.Model,
 	channels []domain.Channel,
@@ -104,6 +105,54 @@ func buildSnapshot(
 	suites []domain.Suite,
 	plans []domain.Plan,
 ) (Snapshot, error) {
+	type caseRevisionKey struct {
+		id       string
+		revision uint64
+	}
+	type suiteRevisionKey struct {
+		id       string
+		revision uint64
+	}
+	caseRevisionCache := make(map[caseRevisionKey]domain.TestCase)
+	resolveCaseRevision := func(ref domain.CaseRevisionRef) (domain.TestCase, error) {
+		key := caseRevisionKey{id: ref.CaseID, revision: ref.Revision}
+		if cached, found := caseRevisionCache[key]; found {
+			return cached, nil
+		}
+		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+		if err != nil {
+			mapped := service.portError(ctx, err)
+			if errors.Is(mapped, ErrNotFound) || errors.Is(mapped, ErrCorrupt) {
+				return domain.TestCase{}, ErrCorrupt
+			}
+			return domain.TestCase{}, mapped
+		}
+		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Validate() != nil {
+			return domain.TestCase{}, ErrCorrupt
+		}
+		caseRevisionCache[key] = testCase
+		return testCase, nil
+	}
+	suiteRevisionCache := make(map[suiteRevisionKey]domain.Suite)
+	resolveSuiteRevision := func(id string, revision uint64) (domain.Suite, error) {
+		key := suiteRevisionKey{id: id, revision: revision}
+		if cached, found := suiteRevisionCache[key]; found {
+			return cached, nil
+		}
+		suite, err := service.repository.GetSuiteRevision(ctx, id, revision)
+		if err != nil {
+			mapped := service.portError(ctx, err)
+			if errors.Is(mapped, ErrNotFound) || errors.Is(mapped, ErrCorrupt) {
+				return domain.Suite{}, ErrCorrupt
+			}
+			return domain.Suite{}, mapped
+		}
+		if suite.ID != id || suite.Revision != revision || suite.Validate() != nil {
+			return domain.Suite{}, ErrCorrupt
+		}
+		suiteRevisionCache[key] = suite
+		return suite, nil
+	}
 	modelByID := make(map[string]domain.Model, len(models))
 	for _, model := range models {
 		if err := ctx.Err(); err != nil {
@@ -182,8 +231,14 @@ func buildSnapshot(
 		if _, duplicate := suiteByID[suite.ID]; duplicate {
 			return Snapshot{}, ErrCorrupt
 		}
-		if !validCaseRefs(suite.Cases, testCaseByID) {
-			return Snapshot{}, ErrCorrupt
+		for _, ref := range suite.Cases {
+			testCase, err := resolveCaseRevision(ref)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			if _, found := testCaseByID[testCase.ID]; !found || testCase.Protocol != suite.Protocol || !testCase.AppliesToModel(suite.ModelTarget) {
+				return Snapshot{}, ErrCorrupt
+			}
 		}
 		suiteByID[suite.ID] = suite
 	}
@@ -200,21 +255,42 @@ func buildSnapshot(
 		}
 		planIDs[plan.ID] = struct{}{}
 		if plan.SuiteID != "" {
-			suite, found := suiteByID[plan.SuiteID]
-			if !found || plan.SuiteRevision > suite.Revision {
+			if _, found := suiteByID[plan.SuiteID]; !found {
 				return Snapshot{}, ErrCorrupt
 			}
 		}
-		if !validCaseRefs(plan.Cases, testCaseByID) {
-			return Snapshot{}, ErrCorrupt
-		}
 		targetProtocol := domain.Protocol("")
 		for _, ref := range plan.Cases {
-			caseProtocol := testCaseByID[ref.CaseID].Protocol
+			testCase, err := resolveCaseRevision(ref)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			if _, found := testCaseByID[testCase.ID]; !found {
+				return Snapshot{}, ErrCorrupt
+			}
+			caseProtocol := testCase.Protocol
 			if targetProtocol == "" {
 				targetProtocol = caseProtocol
 			} else if caseProtocol != targetProtocol {
 				return Snapshot{}, ErrCorrupt
+			}
+		}
+		if plan.SuiteID != "" {
+			pinnedSuite, err := resolveSuiteRevision(plan.SuiteID, plan.SuiteRevision)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			if pinnedSuite.Protocol != targetProtocol {
+				return Snapshot{}, ErrCorrupt
+			}
+			for _, ref := range pinnedSuite.Cases {
+				testCase, err := resolveCaseRevision(ref)
+				if err != nil {
+					return Snapshot{}, err
+				}
+				if _, found := testCaseByID[testCase.ID]; !found || testCase.Protocol != pinnedSuite.Protocol || !testCase.AppliesToModel(pinnedSuite.ModelTarget) {
+					return Snapshot{}, ErrCorrupt
+				}
 			}
 		}
 		for _, modelID := range plan.ModelIDs {
@@ -352,16 +428,6 @@ func buildSnapshot(
 		return Snapshot{}, err
 	}
 	return snapshot, nil
-}
-
-func validCaseRefs(refs []domain.CaseRevisionRef, testCases map[string]domain.TestCase) bool {
-	for _, ref := range refs {
-		testCase, found := testCases[ref.CaseID]
-		if !found || ref.Revision > testCase.Revision {
-			return false
-		}
-	}
-	return true
 }
 
 func lessNameID(leftName, leftID, rightName, rightID string) bool {

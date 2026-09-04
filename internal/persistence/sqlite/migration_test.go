@@ -26,8 +26,8 @@ func TestMigrateFreshDatabaseCreatesLegacyBaseline(t *testing.T) {
 	db := openDatabase(t, path)
 	defer db.Close()
 
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("PRAGMA user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("PRAGMA user_version = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 
 	for _, table := range []string{
@@ -294,8 +294,8 @@ func TestMigrateIsIdempotentAndDoesNotRewriteMigrationHistory(t *testing.T) {
 	if before != after {
 		t.Fatalf("migration record changed on second run: before=%+v after=%+v", before, after)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("schema_migrations count = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("schema_migrations count = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 }
 
@@ -368,8 +368,8 @@ func TestMigrateRejectsDriftAfterMigrationHistoryWasRecorded(t *testing.T) {
 			if after := migrationRecord(t, db); after != before {
 				t.Fatalf("migration history changed after rejected drift: before=%+v after=%+v", before, after)
 			}
-			if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-				t.Fatalf("user_version after rejected drift = %d, want %d", got, persistence.CurrentSchemaVersion)
+			if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+				t.Fatalf("user_version after rejected drift = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 			}
 		})
 	}
@@ -394,11 +394,11 @@ func TestMigrateRejectsChecksumMismatchWithoutChangingDatabase(t *testing.T) {
 	if got := queryString(t, db, "SELECT checksum FROM schema_migrations WHERE version = 1"); got != "tampered" {
 		t.Fatalf("checksum after rejected migration = %q, want tampered", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("migration rows after rejection = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("migration rows after rejection = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("user_version after rejection = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("user_version after rejection = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close database: %v", err)

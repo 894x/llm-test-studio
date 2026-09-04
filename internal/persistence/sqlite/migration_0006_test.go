@@ -16,8 +16,8 @@ func TestMigrateAddsIndependentQuickPerformanceReportsSchemaV6(t *testing.T) {
 	}
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 	if !tableExists(t, db, "quick_performance_reports") {
 		t.Fatal("migration did not create quick_performance_reports")

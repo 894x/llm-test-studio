@@ -49,12 +49,16 @@ func (runner *recordingQuickTestRunner) Run(ctx context.Context, command quickte
 
 type sequenceCatalogQuery struct {
 	snapshots []catalog.Snapshot
+	errs      []error
 	err       error
 	calls     int
 }
 
 func (query *sequenceCatalogQuery) Snapshot(context.Context) (catalog.Snapshot, error) {
 	query.calls++
+	if index := query.calls - 1; index < len(query.errs) && query.errs[index] != nil {
+		return catalog.Snapshot{}, query.errs[index]
+	}
 	if query.err != nil {
 		return catalog.Snapshot{}, query.err
 	}
@@ -463,9 +467,10 @@ func TestSaveQuickTestConnectionCompensatesModelWhenChannelCreationFails(t *test
 }
 
 func TestSaveQuickTestConnectionReportsPartialSaveWithoutDeletingCredentialOwner(t *testing.T) {
-	const sensitive = "sk-save-only-on-click"
+	const sensitive = "plain-sensitive-value-123"
+	mappingFailure := errors.New("write mappings.json failed for " + sensitive)
 	commands := newQuickTestSaveCommands()
-	commands.mappingErr = errors.New(sensitive)
+	commands.mappingErr = mappingFailure
 	query := &sequenceCatalogQuery{snapshots: []catalog.Snapshot{{}}}
 	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
 		return desktopDependencies{catalog: query, catalogCommands: commands}, nil
@@ -474,7 +479,9 @@ func TestSaveQuickTestConnectionReportsPartialSaveWithoutDeletingCredentialOwner
 	app.setErrorReporter(func(err error) { reported = err })
 	app.onStartup(context.Background())
 
-	_, err := app.SaveQuickTestConnection(validSaveQuickTestConnectionCommand())
+	command := validSaveQuickTestConnectionCommand()
+	command.APIKey = sensitive
+	_, err := app.SaveQuickTestConnection(command)
 	assertBindingErrorCode(t, err, desktopCodeQuickTestSavePartial)
 	if strings.Join(commands.calls, ",") != "create_model,create_channel,create_channel_model" {
 		t.Fatalf("command order = %v", commands.calls)
@@ -482,8 +489,39 @@ func TestSaveQuickTestConnectionReportsPartialSaveWithoutDeletingCredentialOwner
 	if commands.deleteModelCommand.ID != "" || commands.deleteChannelCommand.ID != "" {
 		t.Fatalf("unsafe compensation attempted: model=%#v channel=%#v", commands.deleteModelCommand, commands.deleteChannelCommand)
 	}
-	if reported == nil || strings.Contains(reported.Error(), sensitive) || strings.Contains(err.Error(), sensitive) {
+	var diagnostic quickTestSaveDiagnosticError
+	if !errors.As(reported, &diagnostic) || diagnostic.operation != "save_connection_create_mapping" ||
+		!strings.Contains(diagnostic.err.Error(), "write mappings.json failed") {
+		t.Fatalf("partial-save diagnostic = %#v, reported=%v", diagnostic, reported)
+	}
+	if strings.Contains(reported.Error(), sensitive) || strings.Contains(err.Error(), sensitive) {
 		t.Fatalf("partial-save error leaked credential: returned=%v reported=%v", err, reported)
+	}
+}
+
+func TestSaveQuickTestConnectionClassifiesFinalSnapshotFailureAsCommittedRefresh(t *testing.T) {
+	refreshFailure := errors.New("read channels.json: access denied")
+	query := &sequenceCatalogQuery{
+		snapshots: []catalog.Snapshot{{}},
+		errs:      []error{nil, refreshFailure},
+	}
+	commands := newQuickTestSaveCommands()
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{catalog: query, catalogCommands: commands}, nil
+	})
+	var reported error
+	app.setErrorReporter(func(err error) { reported = err })
+	app.onStartup(context.Background())
+
+	_, err := app.SaveQuickTestConnection(validSaveQuickTestConnectionCommand())
+	assertBindingErrorCode(t, err, desktopCodeCatalogSavedRefreshFailed)
+	if strings.Join(commands.calls, ",") != "create_model,create_channel,create_channel_model" {
+		t.Fatalf("command order = %v", commands.calls)
+	}
+	var diagnostic quickTestSaveDiagnosticError
+	if !errors.As(reported, &diagnostic) || diagnostic.operation != "save_connection_refresh_catalog" ||
+		!strings.Contains(diagnostic.err.Error(), "read channels.json: access denied") {
+		t.Fatalf("committed-refresh diagnostic = %#v, reported=%v", diagnostic, reported)
 	}
 }
 

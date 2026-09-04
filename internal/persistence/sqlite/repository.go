@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,11 +32,44 @@ type RepositoryOptions struct {
 // connection keeps PRAGMA foreign_keys effective for every repository call and
 // gives local writes a deterministic transaction boundary.
 type Repository struct {
-	db   *sql.DB
-	conn *sql.Conn
+	db                          *sql.DB
+	conn                        *sql.Conn
+	authoredCatalogExportActive bool
 }
 
 func OpenRepository(ctx context.Context, path string, options RepositoryOptions) (*Repository, error) {
+	return openRepositoryForSchema(
+		ctx,
+		path,
+		options,
+		AuthoredCatalogRetirementSchemaVersion,
+		"operational",
+		validateAppliedSchema0011,
+	)
+}
+
+// OpenLegacyCatalogRepository opens the final schema that still contains the
+// authored catalog. It exists only for the one-time file export performed
+// before Migrate is called with RetireAuthoredCatalog.
+func OpenLegacyCatalogRepository(ctx context.Context, path string, options RepositoryOptions) (*Repository, error) {
+	return openRepositoryForSchema(
+		ctx,
+		path,
+		options,
+		CatalogExportSchemaVersion,
+		"legacy catalog export",
+		validateAppliedSchema0010,
+	)
+}
+
+func openRepositoryForSchema(
+	ctx context.Context,
+	path string,
+	options RepositoryOptions,
+	requiredVersion int,
+	purpose string,
+	validate func(context.Context, *sql.Conn) error,
+) (*Repository, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -106,9 +140,23 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 		}
 		return nil, fmt.Errorf("%w: validate repository schema: %v", ErrCorrupt, err)
 	}
-	if version != CurrentSchemaVersion {
+	if version != requiredVersion {
 		cleanup()
-		return nil, fmt.Errorf("%w: repository requires schema version %d", ErrCorrupt, CurrentSchemaVersion)
+		return nil, fmt.Errorf("%w: %s repository requires schema version %d", ErrCorrupt, purpose, requiredVersion)
+	}
+	if err := validate(ctx, conn); err != nil {
+		cleanup()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: validate %s repository schema: %v", ErrCorrupt, purpose, err)
+	}
+	if err := validateIntegrity(ctx, conn); err != nil {
+		cleanup()
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: validate %s repository integrity: %v", ErrCorrupt, purpose, err)
 	}
 	return &Repository{db: db, conn: conn}, nil
 }
@@ -129,7 +177,13 @@ func (repository *Repository) Close() error {
 	}
 	var result error
 	if repository.conn != nil {
-		result = repository.conn.Close()
+		if repository.authoredCatalogExportActive {
+			if _, err := repository.conn.ExecContext(context.Background(), "ROLLBACK"); err != nil {
+				result = fmt.Errorf("finish authored catalog export snapshot: %w", err)
+			}
+			repository.authoredCatalogExportActive = false
+		}
+		result = errors.Join(result, repository.conn.Close())
 		repository.conn = nil
 	}
 	if repository.db != nil {
@@ -139,6 +193,46 @@ func (repository *Repository) Close() error {
 		repository.db = nil
 	}
 	return result
+}
+
+// BeginAuthoredCatalogExport starts the one-time, transactionally consistent
+// read window used to copy schema-v10 authored configuration into files. The
+// returned digest describes exactly the locked source seen by every subsequent
+// repository read. Close ends the window; Migrate then rechecks this digest
+// under its own BEGIN IMMEDIATE transaction before dropping any source table.
+func (repository *Repository) BeginAuthoredCatalogExport(ctx context.Context) (string, error) {
+	if repository == nil || repository.conn == nil {
+		return "", errors.New("legacy authored catalog export repository is closed")
+	}
+	if repository.authoredCatalogExportActive {
+		return "", errors.New("legacy authored catalog export snapshot is already active")
+	}
+	if _, err := repository.conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return "", fmt.Errorf("begin authored catalog export snapshot: %w", err)
+	}
+	rollback := func() {
+		_, _ = repository.conn.ExecContext(context.Background(), "ROLLBACK")
+	}
+	version, err := appliedMigrationVersion(ctx, repository.conn)
+	if err != nil {
+		rollback()
+		return "", fmt.Errorf("validate authored catalog export snapshot schema: %w", err)
+	}
+	if version != CatalogExportSchemaVersion {
+		rollback()
+		return "", fmt.Errorf("authored catalog export snapshot requires schema version %d, got version %d", CatalogExportSchemaVersion, version)
+	}
+	if err := validateMigration0011Eligibility(ctx, repository.conn); err != nil {
+		rollback()
+		return "", fmt.Errorf("validate authored catalog export snapshot eligibility: %w", err)
+	}
+	digest, err := calculateAuthoredCatalogDigest(ctx, repository.conn)
+	if err != nil {
+		rollback()
+		return "", fmt.Errorf("fingerprint authored catalog export snapshot: %w", err)
+	}
+	repository.authoredCatalogExportActive = true
+	return hex.EncodeToString(digest), nil
 }
 
 func (repository *Repository) CreateModel(ctx context.Context, model domain.Model) error {

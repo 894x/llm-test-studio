@@ -31,13 +31,9 @@ func TestLegacyAPIAuditExecutorRunsImportedDriverWithoutPython(t *testing.T) {
 		Type:          casetypes.TypeLegacyAPIAudit, TypeVersion: 1,
 		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"options":{"require_usage":true}}`),
 	}
-	snapshot := domain.RunSnapshot{
-		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
-		Plan:          domain.EntityRevisionRef{ID: fixture.plan.ID, Revision: 1},
-		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.model.ID, Revision: 1}, Name: fixture.model.Name, Protocol: fixture.model.Protocol},
-		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.channel.ID, Revision: 1}, Name: fixture.channel.Name, BaseURL: server.URL, Protocol: fixture.channel.Protocol, UpstreamModelName: fixture.mapping.UpstreamModelName},
-		Cases:         fixture.plan.Cases, Load: fixture.plan.Load, SLA: fixture.plan.SLA, Environment: fixture.environment,
-	}
+	snapshot := fixture.snapshot()
+	snapshot.Channel.BaseURL = server.URL
+	snapshot.CaseDefinitions[0] = fixture.testCase
 	run, err := domain.NewRun(domain.EntityMeta{ID: "30000000-0000-4000-8000-000000000098", SchemaVersion: 1, Revision: 1, CreatedAt: fixture.now, UpdatedAt: fixture.now}, fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatal(err)

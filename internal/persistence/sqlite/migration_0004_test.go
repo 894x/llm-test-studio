@@ -16,8 +16,8 @@ func TestMigrateAddsCatalogTombstonesSchemaV4(t *testing.T) {
 	}
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 	if got := queryInt(t, db, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'catalog_tombstones'`); got != 1 {
 		t.Fatalf("catalog_tombstones table count = %d, want 1", got)
@@ -32,6 +32,7 @@ func TestMigrateBacksUpExistingV3BeforeApplyingLatestSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := openDatabase(t, path)
+	restoreExecutionRunRevisionsV7(t, db)
 	dropMigration0005Objects(t, db)
 	if _, err := db.Exec("DELETE FROM schema_migrations WHERE version >= 4"); err != nil {
 		t.Fatal(err)
@@ -49,7 +50,7 @@ func TestMigrateBacksUpExistingV3BeforeApplyingLatestSchema(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "upgrade-v4"}); err != nil {
 		t.Fatalf("upgrade Migrate() error = %v", err)
 	}
-	matches, err := filepath.Glob(filepath.Join(directory, "backups", "upgrade-v3-before-v7-*.db"))
+	matches, err := filepath.Glob(filepath.Join(directory, "backups", "upgrade-v3-before-v10-*.db"))
 	if err != nil || len(matches) != 1 {
 		t.Fatalf("pre-migration backups = %v, error = %v, want one", matches, err)
 	}

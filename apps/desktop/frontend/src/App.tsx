@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
   createDesktopClient,
+  isCatalogSavedRefreshFailure,
   publicDesktopErrorMessage,
   publicDesktopOperationErrorMessage,
   type DesktopClient,
@@ -177,6 +178,20 @@ function AppWorkspace({
           setCatalogMutationError(`${operationLabel}已完成，但运行计划列表刷新失败，请重新打开应用`)
         }
       } catch (error) {
+        if (isCatalogSavedRefreshFailure(error)) {
+          try {
+            setCatalog(await client.getCatalog())
+          } catch {
+            // Keep the last authoritative catalog; the mutation is already committed.
+          }
+          try {
+            setSnapshot(await client.getWorkspace())
+          } catch {
+            // Keep the last workspace snapshot and let a later reload recover it.
+          }
+          setCatalogMutationError(publicDesktopErrorMessage(error, "已保存，但目录刷新失败，请刷新或重新打开应用"))
+          return
+        }
         setCatalogMutationError(publicDesktopOperationErrorMessage(error, operationLabel, "目录操作失败，请检查对象是否仍被引用"))
         throw error
       } finally {

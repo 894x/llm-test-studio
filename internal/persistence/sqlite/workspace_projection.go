@@ -65,7 +65,7 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		projection, err := row.decode()
+		projection, err := row.decode(ctx, tx)
 		if err != nil {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
@@ -83,10 +83,6 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 type storedWorkspaceProjection struct {
 	run storedRunRow
 
-	planID, planCreatedAt, planUpdatedAt string
-	planSchemaVersion, planRevision      int64
-	planDocument                         []byte
-
 	completed, passed, failed, artifactCount int64
 	resultCorrupt, evidenceCorrupt           int64
 	artifactCorrupt, reportCorrupt           int64
@@ -99,14 +95,13 @@ func (row *storedWorkspaceProjection) scan(scanner rowScanner) error {
 		&row.run.historyCount, &row.run.historyMin, &row.run.historyMax,
 		&row.run.schemaVersion, &row.run.revision, &row.run.revisionCreated, &row.run.revisionUpdated,
 		&row.run.planID, &row.run.planRevision, &row.run.status, &row.run.snapshotDocument, &row.run.document,
-		&row.planID, &row.planSchemaVersion, &row.planRevision, &row.planCreatedAt, &row.planUpdatedAt, &row.planDocument,
 		&row.completed, &row.passed, &row.failed, &row.artifactCount,
 		&row.resultCorrupt, &row.evidenceCorrupt, &row.artifactCorrupt, &row.reportCorrupt,
 		&row.conclusionPassed,
 	)
 }
 
-func (row storedWorkspaceProjection) decode() (workspace.RunProjection, error) {
+func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQueryer) (workspace.RunProjection, error) {
 	for _, value := range []int64{
 		row.completed, row.passed, row.failed, row.artifactCount,
 		row.resultCorrupt, row.evidenceCorrupt, row.artifactCorrupt, row.reportCorrupt,
@@ -126,21 +121,7 @@ func (row storedWorkspaceProjection) decode() (workspace.RunProjection, error) {
 	if err != nil {
 		return workspace.RunProjection{}, err
 	}
-	if row.planRevision < 1 || row.planSchemaVersion < 1 ||
-		row.planID != run.PlanID() || row.planRevision != int64(run.Snapshot().Plan.Revision) {
-		return workspace.RunProjection{}, fmt.Errorf("%w: workspace pinned plan row", ErrCorrupt)
-	}
-	if err := verifyEntityRow(
-		row.planDocument,
-		row.planID,
-		row.planSchemaVersion,
-		row.planRevision,
-		row.planCreatedAt,
-		row.planUpdatedAt,
-	); err != nil {
-		return workspace.RunProjection{}, fmt.Errorf("%w: workspace pinned plan metadata", ErrCorrupt)
-	}
-	pinnedPlan, err := decodePlanDocument(row.planDocument)
+	pinnedPlan, err := workspacePinnedPlan(ctx, queryer, run)
 	if err != nil {
 		return workspace.RunProjection{}, err
 	}
@@ -186,6 +167,29 @@ func (row storedWorkspaceProjection) decode() (workspace.RunProjection, error) {
 	}, nil
 }
 
+func workspacePinnedPlan(ctx context.Context, queryer rowQueryer, run domain.Run) (domain.Plan, error) {
+	snapshot := run.Snapshot()
+	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
+		if snapshot.PlanDocument == nil {
+			return domain.Plan{}, fmt.Errorf("%w: workspace v2 plan document", ErrCorrupt)
+		}
+		return *snapshot.PlanDocument, nil
+	}
+
+	document, err := exactDocument(ctx, queryer, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return domain.Plan{}, fmt.Errorf("%w: workspace legacy pinned plan row", ErrCorrupt)
+		}
+		return domain.Plan{}, err
+	}
+	plan, err := decodePlanDocument(document)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	return plan, nil
+}
+
 func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 	if err := run.Validate(); err != nil {
 		return err
@@ -196,6 +200,12 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 	snapshot := run.Snapshot()
 	if plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision {
 		return errors.New("run plan reference differs from pinned plan")
+	}
+	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
+		if snapshot.PlanDocument == nil || !reflect.DeepEqual(plan, *snapshot.PlanDocument) {
+			return errors.New("run snapshot differs from pinned plan")
+		}
+		return nil
 	}
 	if !containsString(plan.ModelIDs, snapshot.Model.ID) || !containsString(plan.ChannelIDs, snapshot.Channel.ID) ||
 		!reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) ||
@@ -255,9 +265,11 @@ WITH result_stats AS (
 	             FROM execution_runs AS result_root
 	             JOIN execution_run_revisions AS result_revision
 	               ON result_revision.run_id = result_root.id AND result_revision.revision = result_root.current_revision
-	             JOIN plan_cases AS planned_case
-	               ON planned_case.plan_id = result_revision.plan_id AND planned_case.plan_revision = result_revision.plan_revision
-	             WHERE result_root.id = item.run_id AND planned_case.case_id = item.case_id
+	             JOIN json_each(result_revision.snapshot_json, '$.cases') AS planned_case
+	             WHERE result_root.id = item.run_id AND
+	                   planned_case.type = 'object' AND
+	                   json_type(planned_case.value, '$.case_id') = 'text' AND
+	                   json_extract(planned_case.value, '$.case_id') = item.case_id
 	           ))
 	         THEN 0 ELSE 1 END) AS corrupt
 	FROM case_results AS item
@@ -341,7 +353,6 @@ SELECT root.id, root.current_revision, root.created_at, root.sealed,
 	   revision.schema_version, revision.revision, revision.created_at, revision.updated_at,
 	   revision.plan_id, revision.plan_revision, revision.status,
 	   revision.snapshot_json, revision.document_json,
-	   pinned.id, pinned.schema_version, pinned.revision, pinned.created_at, pinned.updated_at, pinned.document_json,
 	   COALESCE(result_stats.completed, 0), COALESCE(result_stats.passed, 0), COALESCE(result_stats.failed, 0),
 	   COALESCE(evidence_stats.evidence_count, 0) + COALESCE(artifact_stats.artifact_count, 0),
 	   COALESCE(result_stats.corrupt, 0), COALESCE(evidence_stats.corrupt, 0),
@@ -350,8 +361,6 @@ SELECT root.id, root.current_revision, root.created_at, root.sealed,
 FROM execution_runs AS root
 JOIN execution_run_revisions AS revision
 	ON revision.run_id = root.id AND revision.revision = root.current_revision
-JOIN test_plans AS pinned
-	ON pinned.id = revision.plan_id AND pinned.revision = revision.plan_revision
 LEFT JOIN result_stats ON result_stats.run_id = root.id
 LEFT JOIN evidence_stats ON evidence_stats.run_id = root.id
 LEFT JOIN artifact_stats ON artifact_stats.run_id = root.id

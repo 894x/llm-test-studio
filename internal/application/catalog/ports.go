@@ -34,7 +34,9 @@ type Repository interface {
 	GetChannel(context.Context, string) (domain.Channel, error)
 	GetChannelModel(context.Context, string) (domain.ChannelModel, error)
 	GetTestCase(context.Context, string) (domain.TestCase, error)
+	GetTestCaseRevision(context.Context, string, uint64) (domain.TestCase, error)
 	GetSuite(context.Context, string) (domain.Suite, error)
+	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
 	GetPlan(context.Context, string) (domain.Plan, error)
 
 	CreateModel(context.Context, domain.Model) error
@@ -57,6 +59,14 @@ type Repository interface {
 	DeleteTestCase(context.Context, string, uint64) error
 	DeleteSuite(context.Context, string, uint64) error
 	DeletePlan(context.Context, string, uint64) error
+}
+
+// SafeDiagnosticCause is implemented by repository adapters only after they
+// have removed credentials and other sensitive values from an operational
+// error. The service may retain this text for local diagnostics while keeping
+// its stable public error sentinel.
+type SafeDiagnosticCause interface {
+	SafeDiagnosticCause() string
 }
 
 type Clock interface {

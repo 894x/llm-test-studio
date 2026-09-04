@@ -17,12 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
 const CurrentSchemaVersion = 1
@@ -177,6 +179,70 @@ func (service *Service) Find(ctx context.Context, id string) (Entry, error) {
 	return Entry{}, fs.ErrNotExist
 }
 
+// FindRevision resolves an exact immutable Suite revision. The active
+// suite.json remains the authored document; historical revisions live in
+// executable-relative sidecars and are never included by Entries.
+func (service *Service) FindRevision(ctx context.Context, id string, revision uint64) (Entry, error) {
+	if service == nil || ctx == nil || !domain.IsUUID(id) || revision == 0 {
+		return Entry{}, ErrInvalid
+	}
+	entry, err := service.Find(ctx, id)
+	if err != nil {
+		return Entry{}, err
+	}
+	if entry.Suite.Revision == revision {
+		return entry, nil
+	}
+	target := service.revisionPath(entry.Group, entry.Directory, revision)
+	if !withinRoot(service.userRoot, target) {
+		return Entry{}, ErrInvalid
+	}
+	raw, err := os.ReadFile(target)
+	if err != nil {
+		return Entry{}, err
+	}
+	suite, err := decodeStoredSuiteRevision(raw)
+	if err != nil || suite.ID != id || suite.Revision != revision ||
+		suite.Protocol != entry.Suite.Protocol || suite.Key != entry.Suite.Key {
+		return Entry{}, ErrInvalid
+	}
+	return Entry{
+		Group: entry.Group, Directory: entry.Directory, Source: SourceUser,
+		Suite: suite,
+	}, nil
+}
+
+// StoreRevision persists a complete exact Suite without changing the active
+// suite.json. Revision values are content hashes, so only exact equality is
+// meaningful; their numeric ordering is deliberately ignored.
+func (service *Service) StoreRevision(ctx context.Context, suite domain.Suite) error {
+	if service == nil || ctx == nil || suite.Validate() != nil {
+		return ErrInvalid
+	}
+	entry, err := service.Find(ctx, suite.ID)
+	if err != nil {
+		return err
+	}
+	if entry.Suite.Protocol != suite.Protocol || entry.Suite.Key != suite.Key {
+		return ErrInvalid
+	}
+	if entry.Suite.Revision == suite.Revision {
+		if !equalStoredSuiteRevision(entry.Suite, suite) {
+			return ErrCollision
+		}
+		raw, encodeErr := encodeStoredSuiteRevision(suite)
+		if encodeErr != nil {
+			return ErrInvalid
+		}
+		return service.storeRevision(ctx, entry.Group, entry.Directory, suite, raw)
+	}
+	raw, err := encodeStoredSuiteRevision(suite)
+	if err != nil {
+		return ErrInvalid
+	}
+	return service.storeRevision(ctx, entry.Group, entry.Directory, suite, raw)
+}
+
 func (service *Service) SaveSuite(ctx context.Context, group, directory string, suite domain.Suite) error {
 	if err := suite.Validate(); err != nil || string(suite.Protocol) != group {
 		return ErrInvalid
@@ -229,8 +295,26 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	for _, entry := range caseEntries {
 		casesByIdentity[string(entry.TestCase.Protocol)+"/"+entry.TestCase.Key] = entry.TestCase
 	}
-	if _, err := materialize(doc, casesByIdentity); err != nil {
+	suite, err := materialize(doc, casesByIdentity)
+	if err != nil {
 		return ErrInvalid
+	}
+	current, findErr := service.Find(ctx, suite.ID)
+	if findErr == nil {
+		if current.Group != group || current.Directory != directory {
+			return ErrCollision
+		}
+		if current.Suite.Revision != suite.Revision {
+			previous, encodeErr := encodeStoredSuiteRevision(current.Suite)
+			if encodeErr != nil {
+				return ErrInvalid
+			}
+			if err := service.storeRevision(ctx, group, directory, current.Suite, previous); err != nil {
+				return err
+			}
+		}
+	} else if !errors.Is(findErr, fs.ErrNotExist) {
+		return findErr
 	}
 
 	targetDirectory := filepath.Join(service.userRoot, group, directory)
@@ -293,6 +377,69 @@ func (service *Service) Delete(ctx context.Context, id string, expectedRevision 
 	_ = os.Remove(targetDirectory)
 	_ = os.Remove(filepath.Dir(targetDirectory))
 	return nil
+}
+
+func (service *Service) storeRevision(ctx context.Context, group, directory string, suite domain.Suite, raw []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	target := service.revisionPath(group, directory, suite.Revision)
+	if !withinRoot(service.userRoot, target) {
+		return ErrInvalid
+	}
+	if existing, err := os.ReadFile(target); err == nil {
+		stored, decodeErr := decodeStoredSuiteRevision(existing)
+		if decodeErr != nil || !equalStoredSuiteRevision(stored, suite) {
+			return ErrCollision
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect suite revision: %w", err)
+	}
+	if err := fileconfig.WriteAtomically(ctx, target, raw); err != nil {
+		return fmt.Errorf("write suite revision: %w", err)
+	}
+	return nil
+}
+
+func (service *Service) revisionPath(group, directory string, revision uint64) string {
+	return filepath.Join(service.userRoot, group, directory, "revisions", strconv.FormatUint(revision, 10)+".json")
+}
+
+func encodeStoredSuiteRevision(suite domain.Suite) ([]byte, error) {
+	if err := suite.Validate(); err != nil {
+		return nil, err
+	}
+	payload, err := json.MarshalIndent(suite, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(payload, '\n'), nil
+}
+
+func decodeStoredSuiteRevision(raw []byte) (domain.Suite, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var suite domain.Suite
+	if err := decoder.Decode(&suite); err != nil {
+		return domain.Suite{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return domain.Suite{}, errors.New("suite revision must contain one object")
+		}
+		return domain.Suite{}, err
+	}
+	if err := suite.Validate(); err != nil {
+		return domain.Suite{}, err
+	}
+	return suite, nil
+}
+
+func equalStoredSuiteRevision(left, right domain.Suite) bool {
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {

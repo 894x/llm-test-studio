@@ -129,6 +129,58 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 	}
 }
 
+func TestSnapshotAcceptsPlanPinnedToHistoricalContentHashSuiteRevision(t *testing.T) {
+	repository := validRepository()
+	// Suite file revisions are content hashes, not monotonic counters. The
+	// repository has already resolved the Plan's exact historical sidecar; the
+	// snapshot only carries the current Suite summary for editing.
+	repository.suites[0].Revision = 7
+	repository.plans[0].SuiteRevision = 42
+	historical := repository.suites[0]
+	historical.Revision = 42
+	repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{
+		{suiteID: historical.ID, revision: historical.Revision}: historical,
+	}
+	service := newTestService(t, repository, fixtureTime())
+
+	snapshot, err := service.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if got := snapshot.Plans[0].SuiteRevision; got != 42 {
+		t.Fatalf("Snapshot().Plans[0].SuiteRevision = %d, want historical revision 42", got)
+	}
+}
+
+func TestSnapshotAcceptsExactHistoricalCaseHashAndRejectsMissingLowerHash(t *testing.T) {
+	t.Run("exact historical hash may be numerically greater", func(t *testing.T) {
+		repository := validRepository()
+		repository.testCases[0].Revision = 7
+		repository.suites[0].Cases[0].Revision = 7
+		historical := repository.testCases[0]
+		historical.Revision = 42
+		repository.plans[0].Cases[0].Revision = historical.Revision
+		repository.testCaseRevisions = map[exactCaseRevisionKey]domain.TestCase{
+			{caseID: historical.ID, revision: historical.Revision}: historical,
+		}
+		service := newTestService(t, repository, fixtureTime())
+		if _, err := service.Snapshot(context.Background()); err != nil {
+			t.Fatalf("Snapshot() error = %v", err)
+		}
+	})
+
+	t.Run("numerically lower hash is rejected when exact sidecar is missing", func(t *testing.T) {
+		repository := validRepository()
+		repository.testCases[0].Revision = 42
+		repository.suites[0].Cases[0].Revision = 42
+		repository.plans[0].Cases[0].Revision = 7
+		service := newTestService(t, repository, fixtureTime())
+		if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("Snapshot() error = %v, want ErrCorrupt", err)
+		}
+	})
+}
+
 func TestDeleteCommandsValidateIdentityAndDelegateByEntityKind(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -425,6 +477,58 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 			t.Fatalf("Snapshot() error = %q, want safe %v", err, test.want)
 		}
 	}
+
+	repository.listModelsErr = safePortDiagnosticError{detail: "write models.json: access denied"}
+	_, err = service.Snapshot(context.Background())
+	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "write models.json: access denied") {
+		t.Fatalf("Snapshot() diagnostic error = %q, want safe cause joined to ErrUnavailable", err)
+	}
+}
+
+func TestCreatePlanResolvesExactHistoricalCaseAndSuiteRevisions(t *testing.T) {
+	t.Run("exact historical content hashes are accepted regardless of numeric order", func(t *testing.T) {
+		repository := validRepository()
+		repository.testCases[0].Revision = 7
+		repository.suites[0].Cases[0].Revision = 7
+		historicalCase := repository.testCases[0]
+		historicalCase.Revision = 42
+		repository.testCaseRevisions = map[exactCaseRevisionKey]domain.TestCase{
+			{caseID: historicalCase.ID, revision: historicalCase.Revision}: historicalCase,
+		}
+		repository.suites[0].Revision = 9
+		historicalSuite := repository.suites[0]
+		historicalSuite.Revision = 88
+		repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{
+			{suiteID: historicalSuite.ID, revision: historicalSuite.Revision}: historicalSuite,
+		}
+		service := newTestService(t, repository, fixtureTime())
+		command := validCreatePlanCommand("historical refs")
+		command.Cases[0].Revision = historicalCase.Revision
+		command.SuiteRevision = historicalSuite.Revision
+
+		if _, err := service.CreatePlan(context.Background(), command); err != nil {
+			t.Fatalf("CreatePlan() error = %v", err)
+		}
+		if repository.createPlanCalls != 1 || repository.createdPlan.Cases[0].Revision != historicalCase.Revision ||
+			repository.createdPlan.SuiteRevision != historicalSuite.Revision {
+			t.Fatalf("created Plan = %#v", repository.createdPlan)
+		}
+	})
+
+	t.Run("numerically lower missing hash is rejected", func(t *testing.T) {
+		repository := validRepository()
+		repository.testCases[0].Revision = 42
+		service := newTestService(t, repository, fixtureTime())
+		command := validCreatePlanCommand("missing exact ref")
+		command.Cases[0].Revision = 7
+
+		if _, err := service.CreatePlan(context.Background(), command); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("CreatePlan() error = %v, want ErrNotFound", err)
+		}
+		if repository.createPlanCalls != 0 {
+			t.Fatalf("CreatePlan() writes = %d, want 0", repository.createPlanCalls)
+		}
+	})
 }
 
 func TestCatalogEnforcesCaseTypeCreationPolicy(t *testing.T) {
@@ -555,12 +659,14 @@ func (ctx *cancelAfterErrChecks) Err() error {
 func (*cancelAfterErrChecks) Value(any) any { return nil }
 
 type fakeRepository struct {
-	models    []domain.Model
-	channels  []domain.Channel
-	mappings  []domain.ChannelModel
-	testCases []domain.TestCase
-	suites    []domain.Suite
-	plans     []domain.Plan
+	models            []domain.Model
+	channels          []domain.Channel
+	mappings          []domain.ChannelModel
+	testCases         []domain.TestCase
+	suites            []domain.Suite
+	plans             []domain.Plan
+	testCaseRevisions map[exactCaseRevisionKey]domain.TestCase
+	suiteRevisions    map[exactSuiteRevisionKey]domain.Suite
 
 	listCalls       map[string]int
 	listModelsErr   error
@@ -587,6 +693,28 @@ type fakeRepository struct {
 	updatePlanCalls     int
 	afterGetModel       func()
 	deleted             map[string]DeleteCommand
+}
+
+type safePortDiagnosticError struct {
+	detail string
+}
+
+func (err safePortDiagnosticError) Error() string {
+	return "opaque repository failure"
+}
+
+func (err safePortDiagnosticError) SafeDiagnosticCause() string {
+	return err.detail
+}
+
+type exactCaseRevisionKey struct {
+	caseID   string
+	revision uint64
+}
+
+type exactSuiteRevisionKey struct {
+	suiteID  string
+	revision uint64
 }
 
 func (repository *fakeRepository) ListModels(context.Context) ([]domain.Model, error) {
@@ -652,9 +780,31 @@ func (repository *fakeRepository) GetTestCase(_ context.Context, id string) (dom
 	}
 	return domain.TestCase{}, ErrNotFound
 }
+func (repository *fakeRepository) GetTestCaseRevision(_ context.Context, id string, revision uint64) (domain.TestCase, error) {
+	if value, ok := repository.testCaseRevisions[exactCaseRevisionKey{caseID: id, revision: revision}]; ok {
+		return value, nil
+	}
+	for _, value := range repository.testCases {
+		if value.ID == id && value.Revision == revision {
+			return value, nil
+		}
+	}
+	return domain.TestCase{}, ErrNotFound
+}
 func (repository *fakeRepository) GetSuite(_ context.Context, id string) (domain.Suite, error) {
 	for _, value := range repository.suites {
 		if value.ID == id {
+			return value, nil
+		}
+	}
+	return domain.Suite{}, ErrNotFound
+}
+func (repository *fakeRepository) GetSuiteRevision(_ context.Context, id string, revision uint64) (domain.Suite, error) {
+	if value, ok := repository.suiteRevisions[exactSuiteRevisionKey{suiteID: id, revision: revision}]; ok {
+		return value, nil
+	}
+	for _, value := range repository.suites {
+		if value.ID == id && value.Revision == revision {
 			return value, nil
 		}
 	}

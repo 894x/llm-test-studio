@@ -12,7 +12,7 @@ import (
 )
 
 func TestRepositoryQuickPerformanceReportRoundTripIsIndependentAndNewestFirst(t *testing.T) {
-	repository := openRepository(t)
+	repository := openOperationalRepository(t)
 	defer repository.Close()
 	older := validQuickPerformanceReport("77777777-7777-4777-8777-777777777770", "2026-08-31T15:29:00Z")
 	newer := validQuickPerformanceReport("77777777-7777-4777-8777-777777777771", "2026-08-31T15:30:00Z")
@@ -43,7 +43,7 @@ func TestRepositoryQuickPerformanceReportRoundTripIsIndependentAndNewestFirst(t 
 }
 
 func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) {
-	repository := openRepository(t)
+	repository := openOperationalRepository(t)
 	defer repository.Close()
 	for _, test := range []struct {
 		name   string

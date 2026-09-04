@@ -383,6 +383,7 @@ export function QuickTestWorkspace({
               setSaved(true)
               setSaveOpen(false)
             }}
+            onCommitted={() => setSaved(true)}
             onOpenCatalog={onOpenCatalog}
           />
           <QuickPerformanceSheet
@@ -867,6 +868,7 @@ function SaveConnectionSheet({
   refreshCatalog,
   onCatalogUpdated,
   onSaved,
+  onCommitted,
   onOpenCatalog,
 }: {
   open: boolean
@@ -879,6 +881,7 @@ function SaveConnectionSheet({
   refreshCatalog: () => Promise<CatalogSnapshot>
   onCatalogUpdated: (catalog: CatalogSnapshot) => void
   onSaved: (catalog: CatalogSnapshot) => void
+  onCommitted: () => void
   onOpenCatalog: () => void
 }) {
   const [modelName, setModelName] = useState(modelID)
@@ -886,10 +889,11 @@ function SaveConnectionSheet({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [partialSave, setPartialSave] = useState(false)
+  const [saveCommitted, setSaveCommitted] = useState(false)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (pending) return
+    if (pending || saveCommitted) return
     setPending(true)
     setError("")
     setPartialSave(false)
@@ -905,16 +909,25 @@ function SaveConnectionSheet({
       .catch(async (reason: unknown) => {
         const partial = reason instanceof DesktopClientError &&
           reason.code === "quick_test_save_partial"
+        const committed = reason instanceof DesktopClientError &&
+          reason.code === "catalog_saved_refresh_failed"
         setPartialSave(partial)
+        setSaveCommitted(partial || committed)
         setError(publicDesktopErrorMessage(reason, "连接保存失败，请检查本地日志"))
-        if (partial) {
+        if (partial || committed) {
           try {
-            onCatalogUpdated(await refreshCatalog())
+            const catalog = await refreshCatalog()
+            if (committed) {
+              onSaved(catalog)
+              return
+            }
+            onCatalogUpdated(catalog)
           } catch {
             // Keep the partial-save guidance visible; navigation can retry the
             // authoritative catalog query without exposing internal details.
           }
         }
+        if (committed) onCommitted()
       })
       .finally(() => setPending(false))
   }
@@ -944,7 +957,7 @@ function SaveConnectionSheet({
             {error ? (
               <div className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
                 <FieldError>{error}</FieldError>
-                {partialSave ? (
+                {partialSave || saveCommitted ? (
                   <Button type="button" size="sm" variant="outline" className="mt-3" onClick={onOpenCatalog}>
                     打开模型与渠道
                   </Button>
@@ -953,8 +966,8 @@ function SaveConnectionSheet({
             ) : null}
           </FieldGroup>
           <SheetFooter className="px-0">
-            <Button type="submit" disabled={pending || !modelName.trim() || !channelName.trim()}>
-              {pending ? <><Spinner data-icon="inline-start" />正在保存…</> : "确认保存"}
+            <Button type="submit" disabled={pending || saveCommitted || !modelName.trim() || !channelName.trim()}>
+              {pending ? <><Spinner data-icon="inline-start" />正在保存…</> : partialSave ? "部分保存" : saveCommitted ? "已保存" : "确认保存"}
             </Button>
           </SheetFooter>
         </form>

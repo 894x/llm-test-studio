@@ -29,7 +29,6 @@ type Repository interface {
 	GetPlan(context.Context, string) (domain.Plan, error)
 	ResolvePlanTargetSelection(context.Context, domain.Plan, string, string) (domain.Model, domain.Channel, domain.ChannelModel, error)
 	GetTestCaseRevision(context.Context, string, uint64) (domain.TestCase, error)
-	GetCredentialRef(context.Context, string) (domain.CredentialRef, error)
 	CreateRun(context.Context, domain.Run) error
 	GetRun(context.Context, string) (domain.Run, error)
 	UpdateRun(context.Context, uint64, domain.Run) error
@@ -230,12 +229,8 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if len(cases) == 0 || channel.CredentialID == "" || !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
 		return "", ErrNotRunnable
 	}
-	credentialRef, err := service.repository.GetCredentialRef(ctx, channel.CredentialID)
+	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
 	if err != nil {
-		return "", fmt.Errorf("load channel credential: %w", err)
-	}
-	storeRef, err := credentials.StoreRefFromCredential(credentialRef)
-	if err != nil || credentialRef.Purpose != domain.CredentialChannelAPIKey {
 		return "", ErrNotRunnable
 	}
 	lease, err := service.credentials.Get(ctx, storeRef)
@@ -253,13 +248,17 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err != nil {
 		return "", fmt.Errorf("create run identity: %w", err)
 	}
+	planDocument := plan
+	mappingDocument := mapping
 	snapshot := domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
 		Cases:         applicableRefs, Load: plan.Load, SLA: plan.SLA,
-		Environment: service.environment(),
+		Environment:  service.environment(),
+		PlanDocument: &planDocument, Mapping: &mappingDocument,
+		CaseDefinitions: append([]domain.TestCase(nil), cases...),
 	}
 	run, err := domain.NewRun(meta, plan.ID, snapshot)
 	if err != nil {
