@@ -68,7 +68,7 @@ func RunKimiK3Case(ctx context.Context, doer HTTPDoer, config RunConfig, definit
 			result.Status, result.Evidence = StatusFail, fmt.Sprintf("expected OpenAI-style HTTP 400, got HTTP %d", observation.StatusCode)
 			return result
 		}
-		result.Status, result.Evidence = StatusPass, "invalid fixed-value parameter returned OpenAI-style HTTP 400"
+		result.Status, result.Evidence = StatusPass, "invalid request returned OpenAI-style HTTP 400"
 		return result
 	}
 	if observation.StatusCode < 200 || observation.StatusCode >= 300 {
@@ -128,7 +128,7 @@ func RunKimiK3Case(ctx context.Context, doer HTTPDoer, config RunConfig, definit
 			return result
 		}
 		if required, _ := definition.Options["require_content"].(bool); required {
-			result.Status, result.Evidence = StatusPass, fmt.Sprintf("HTTP %d returned non-empty assistant content with multimodal input evidence", observation.StatusCode)
+			result.Status, result.Evidence = StatusPass, fmt.Sprintf("HTTP %d returned non-empty assistant content", observation.StatusCode)
 			return result
 		}
 		result.Status, result.Evidence = StatusPass, fmt.Sprintf("HTTP %d returned an OpenAI-compatible choice", observation.StatusCode)

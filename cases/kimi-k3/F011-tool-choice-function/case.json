@@ -1,19 +1,19 @@
 {
   "schema_version": 2,
   "key": "optional.tool_choice_function",
-  "name": "工具调用 · tool_choice=function",
+  "name": "工具调用 · 指定函数与 K3 始终思考不兼容",
   "dimension": "tools",
   "protocol": "kimi-k3",
   "enabled": true,
   "default": false,
-  "severity": "normal",
+  "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
     "type": "legacy.apiaudit",
     "type_version": 1,
     "spec": {
-      "kind": "kimi_tool_call",
+      "kind": "kimi_error_400",
       "request": {
         "method": "POST",
         "path": "/v1/chat/completions",
@@ -54,9 +54,7 @@
           "max_tokens": 200
         }
       },
-      "options": {
-        "expected_tool_name": "get_weather"
-      }
+      "options": {}
     }
   }
 }

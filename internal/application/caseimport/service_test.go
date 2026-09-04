@@ -226,7 +226,7 @@ func TestImportConvertsTheCompleteRepositoryBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import(repository cases) error = %v", err)
 	}
-	if result.Discovered != 90 || result.Created != 90 || result.Runnable != 58 || result.Disabled != 26 || result.Manual != 6 || result.DeferredPlanTemplates != 1 {
+	if result.Discovered != 137 || result.Created != 137 || result.Runnable != 115 || result.Disabled != 16 || result.Manual != 6 || result.DeferredPlanTemplates != 1 {
 		t.Fatalf("repository import result = %#v", result)
 	}
 }

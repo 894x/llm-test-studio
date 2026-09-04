@@ -124,8 +124,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Suites)+len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 90 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want only 90 file-backed cases",
+			len(catalogSnapshot.Suites)+len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 137 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want only 137 file-backed cases",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -140,8 +140,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 58 || disabled != 26 || manual != 6 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 57/26/6", runnable, disabled, manual)
+	if runnable != 115 || disabled != 16 || manual != 6 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 115/16/6", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -218,8 +218,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 90 || len(secondSnapshot.TestCases) != 90 {
-		t.Fatalf("case counts across restart = %d/%d, want 90/90", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
+	if len(firstSnapshot.TestCases) != 137 || len(secondSnapshot.TestCases) != 137 {
+		t.Fatalf("case counts across restart = %d/%d, want 137/137", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
 	if len(firstSnapshot.Suites) != 0 || len(secondSnapshot.Suites) != 0 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
 		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want all empty",

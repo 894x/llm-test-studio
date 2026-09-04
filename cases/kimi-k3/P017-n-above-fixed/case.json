@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "key": "n_above_fixed",
+  "name": "固定采样 · n=2 应拒绝",
+  "dimension": "parameters",
+  "protocol": "kimi-k3",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "kimi_error_400",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "你好"}], "n": 2, "max_completion_tokens": 32}},
+    "options": {}
+  }}
+}

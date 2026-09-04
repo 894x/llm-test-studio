@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "key": "max_completion_context_overflow",
+  "name": "输出长度 · 1M 输出预算加输入超过上下文应拒绝",
+  "dimension": "parameters",
+  "protocol": "kimi-k3",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "kimi_error_400",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "你好"}], "max_completion_tokens": 1048576}},
+    "options": {}
+  }}
+}

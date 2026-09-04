@@ -4,7 +4,7 @@
   "name": "多模态图像 · image_url 字符串形式",
   "dimension": "multimodal",
   "protocol": "kimi-k3",
-  "enabled": false,
+  "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",

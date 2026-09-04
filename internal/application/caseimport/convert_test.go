@@ -64,13 +64,13 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WalkDir() error = %v", err)
 	}
-	if counts[domain.ProtocolOpenAIChat] != 44 || counts[domain.ProtocolKimiK3] != 40 || counts[domain.ProtocolSeedance] != 6 {
+	if counts[domain.ProtocolOpenAIChat] != 44 || counts[domain.ProtocolKimiK3] != 87 || counts[domain.ProtocolSeedance] != 6 {
 		t.Fatalf("protocol counts = %#v", counts)
 	}
-	if runnable != 58 || disabled != 26 || manual != 6 {
+	if runnable != 115 || disabled != 16 || manual != 6 {
 		t.Fatalf("policy counts = runnable:%d disabled:%d manual:%d", runnable, disabled, manual)
 	}
-	if typeCounts[casetypes.TypeLegacyAPIAudit] != 89 || typeCounts[casetypes.TypeInputLatencyLadder] != 1 {
+	if typeCounts[casetypes.TypeLegacyAPIAudit] != 136 || typeCounts[casetypes.TypeInputLatencyLadder] != 1 {
 		t.Fatalf("case type counts = %#v", typeCounts)
 	}
 }

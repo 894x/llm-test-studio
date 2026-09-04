@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "key": "tool_name_129_chars",
+  "name": "工具定义 · 函数名 129 字符应拒绝",
+  "dimension": "tools",
+  "protocol": "kimi-k3",
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "kimi_error_400",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "调用工具"}], "tools": [{"type": "function", "function": {"name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", "description": "非法长度", "parameters": {"type": "object"}}}], "max_completion_tokens": 32}},
+    "options": {}
+  }}
+}
