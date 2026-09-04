@@ -6,19 +6,21 @@ package catalog
 import (
 	"encoding/json"
 
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-const CurrentSnapshotSchemaVersion = 1
+const CurrentSnapshotSchemaVersion = 2
 
 type Snapshot struct {
-	SchemaVersion int                   `json:"schema_version"`
-	Models        []ModelSummary        `json:"models"`
-	Channels      []ChannelSummary      `json:"channels"`
-	ChannelModels []ChannelModelSummary `json:"channel_models"`
-	TestCases     []TestCaseSummary     `json:"test_cases"`
-	Suites        []SuiteSummary        `json:"suites"`
-	Plans         []PlanSummary         `json:"plans"`
+	SchemaVersion int                    `json:"schema_version"`
+	CaseTypes     []casetypes.Descriptor `json:"case_types"`
+	Models        []ModelSummary         `json:"models"`
+	Channels      []ChannelSummary       `json:"channels"`
+	ChannelModels []ChannelModelSummary  `json:"channel_models"`
+	TestCases     []TestCaseSummary      `json:"test_cases"`
+	Suites        []SuiteSummary         `json:"suites"`
+	Plans         []PlanSummary          `json:"plans"`
 }
 
 type ModelSummary struct {
@@ -49,25 +51,20 @@ type ChannelModelSummary struct {
 }
 
 type TestCaseSummary struct {
-	ID                      string                             `json:"id"`
-	Revision                uint64                             `json:"revision"`
-	Key                     string                             `json:"key"`
-	Name                    string                             `json:"name"`
-	Dimension               string                             `json:"dimension"`
-	Protocol                domain.Protocol                    `json:"protocol"`
-	Enabled                 bool                               `json:"enabled"`
-	Default                 bool                               `json:"default"`
-	Severity                domain.CaseSeverity                `json:"severity"`
-	ExecutionMode           domain.CaseExecutionMode           `json:"execution_mode"`
-	Method                  domain.RequestMethod               `json:"method"`
-	Path                    string                             `json:"path"`
-	AssertionKinds          []domain.AssertionKind             `json:"assertion_kinds"`
-	DefinitionSchemaVersion int                                `json:"definition_schema_version"`
-	Headers                 map[string]string                  `json:"headers"`
-	Body                    json.RawMessage                    `json:"body"`
-	AllowedHTTPStatuses     []int                              `json:"allowed_http_statuses"`
-	StreamCompletion        domain.StreamCompletionExpectation `json:"stream_completion"`
-	Assertions              []AssertionInput                   `json:"assertions"`
+	ID                      string                   `json:"id"`
+	Revision                uint64                   `json:"revision"`
+	Key                     string                   `json:"key"`
+	Name                    string                   `json:"name"`
+	Dimension               string                   `json:"dimension"`
+	Protocol                domain.Protocol          `json:"protocol"`
+	Enabled                 bool                     `json:"enabled"`
+	Default                 bool                     `json:"default"`
+	Severity                domain.CaseSeverity      `json:"severity"`
+	ExecutionMode           domain.CaseExecutionMode `json:"execution_mode"`
+	DefinitionSchemaVersion int                      `json:"definition_schema_version"`
+	Type                    domain.CaseType          `json:"type"`
+	TypeVersion             uint32                   `json:"type_version"`
+	Spec                    json.RawMessage          `json:"spec"`
 }
 
 type SuiteSummary struct {
@@ -156,49 +153,36 @@ type UpdateChannelModelCommand struct {
 	UpstreamModelName string `json:"upstream_model_name"`
 }
 
-type AssertionInput struct {
-	Kind   domain.AssertionKind `json:"kind"`
-	Config json.RawMessage      `json:"config"`
-}
-
 type CreateTestCaseCommand struct {
-	Key                     string                             `json:"key"`
-	Name                    string                             `json:"name"`
-	Dimension               string                             `json:"dimension"`
-	Protocol                domain.Protocol                    `json:"protocol"`
-	Enabled                 bool                               `json:"enabled"`
-	Default                 bool                               `json:"default"`
-	Severity                domain.CaseSeverity                `json:"severity"`
-	ExecutionMode           domain.CaseExecutionMode           `json:"execution_mode"`
-	DefinitionSchemaVersion int                                `json:"definition_schema_version"`
-	Method                  domain.RequestMethod               `json:"method"`
-	Path                    string                             `json:"path"`
-	Headers                 map[string]string                  `json:"headers"`
-	Body                    json.RawMessage                    `json:"body"`
-	AllowedHTTPStatuses     []int                              `json:"allowed_http_statuses"`
-	StreamCompletion        domain.StreamCompletionExpectation `json:"stream_completion"`
-	Assertions              []AssertionInput                   `json:"assertions"`
+	Key                     string                   `json:"key"`
+	Name                    string                   `json:"name"`
+	Dimension               string                   `json:"dimension"`
+	Protocol                domain.Protocol          `json:"protocol"`
+	Enabled                 bool                     `json:"enabled"`
+	Default                 bool                     `json:"default"`
+	Severity                domain.CaseSeverity      `json:"severity"`
+	ExecutionMode           domain.CaseExecutionMode `json:"execution_mode"`
+	DefinitionSchemaVersion int                      `json:"definition_schema_version"`
+	Type                    domain.CaseType          `json:"type"`
+	TypeVersion             uint32                   `json:"type_version"`
+	Spec                    json.RawMessage          `json:"spec"`
 }
 
 type UpdateTestCaseCommand struct {
-	ID                      string                             `json:"id"`
-	ExpectedRevision        uint64                             `json:"expected_revision"`
-	Key                     string                             `json:"key"`
-	Name                    string                             `json:"name"`
-	Dimension               string                             `json:"dimension"`
-	Protocol                domain.Protocol                    `json:"protocol"`
-	Enabled                 bool                               `json:"enabled"`
-	Default                 bool                               `json:"default"`
-	Severity                domain.CaseSeverity                `json:"severity"`
-	ExecutionMode           domain.CaseExecutionMode           `json:"execution_mode"`
-	DefinitionSchemaVersion int                                `json:"definition_schema_version"`
-	Method                  domain.RequestMethod               `json:"method"`
-	Path                    string                             `json:"path"`
-	Headers                 map[string]string                  `json:"headers"`
-	Body                    json.RawMessage                    `json:"body"`
-	AllowedHTTPStatuses     []int                              `json:"allowed_http_statuses"`
-	StreamCompletion        domain.StreamCompletionExpectation `json:"stream_completion"`
-	Assertions              []AssertionInput                   `json:"assertions"`
+	ID                      string                   `json:"id"`
+	ExpectedRevision        uint64                   `json:"expected_revision"`
+	Key                     string                   `json:"key"`
+	Name                    string                   `json:"name"`
+	Dimension               string                   `json:"dimension"`
+	Protocol                domain.Protocol          `json:"protocol"`
+	Enabled                 bool                     `json:"enabled"`
+	Default                 bool                     `json:"default"`
+	Severity                domain.CaseSeverity      `json:"severity"`
+	ExecutionMode           domain.CaseExecutionMode `json:"execution_mode"`
+	DefinitionSchemaVersion int                      `json:"definition_schema_version"`
+	Type                    domain.CaseType          `json:"type"`
+	TypeVersion             uint32                   `json:"type_version"`
+	Spec                    json.RawMessage          `json:"spec"`
 }
 
 type CaseRevisionInput struct {

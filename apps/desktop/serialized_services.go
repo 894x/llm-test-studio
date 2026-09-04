@@ -15,6 +15,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -88,10 +89,11 @@ func (archive serializedQuickPerformanceArchive) SaveQuickPerformanceReport(ctx 
 }
 
 type serializedCatalogService struct {
-	gate     *productionServiceGate
-	query    CatalogQuery
-	commands CatalogCommands
-	channels interface {
+	gate      *productionServiceGate
+	query     CatalogQuery
+	commands  CatalogCommands
+	caseTypes *casetypes.Registry
+	channels  interface {
 		Create(context.Context, channelconfig.CreateCommand) (channelconfig.MutationResult, error)
 		Update(context.Context, channelconfig.UpdateCommand) (channelconfig.MutationResult, error)
 	}
@@ -217,9 +219,16 @@ func (service serializedCatalogService) UpdateTestCase(ctx context.Context, comm
 			Key: command.Key, Name: command.Name, Dimension: command.Dimension, Protocol: command.Protocol,
 			Enabled: command.Enabled, Default: command.Default, Severity: command.Severity,
 			ExecutionMode: command.ExecutionMode, DefinitionSchemaVersion: command.DefinitionSchemaVersion,
-			Method: command.Method, Path: command.Path, Headers: command.Headers, Body: command.Body,
-			AllowedHTTPStatuses: command.AllowedHTTPStatuses, StreamCompletion: command.StreamCompletion, Assertions: command.Assertions,
+			Type: command.Type, TypeVersion: command.TypeVersion, Spec: command.Spec,
 		})
+		if err := service.caseTypeRegistry().Validate(updated.Protocol, updated.Definition); err != nil {
+			return catalog.MutationResult{}, catalog.ErrInvalid
+		}
+		if updated.Definition.Type != entry.TestCase.Definition.Type || updated.Definition.TypeVersion != entry.TestCase.Definition.TypeVersion {
+			if descriptor, found := service.caseTypeRegistry().Descriptor(updated.Definition.Type, updated.Definition.TypeVersion); !found || !descriptor.Creatable {
+				return catalog.MutationResult{}, catalog.ErrInvalid
+			}
+		}
 		if err := service.caseFiles.SaveCase(ctx, entry.Group, entry.Directory, updated); err != nil {
 			return catalog.MutationResult{}, catalog.ErrInvalid
 		}
@@ -323,6 +332,13 @@ func (service serializedCatalogService) saveNewFilesystemCase(ctx context.Contex
 	if err := testCase.Validate(); err != nil {
 		return catalog.MutationResult{}, catalog.ErrInvalid
 	}
+	registry := service.caseTypeRegistry()
+	if err := registry.Validate(testCase.Protocol, testCase.Definition); err != nil {
+		return catalog.MutationResult{}, catalog.ErrInvalid
+	}
+	if descriptor, found := registry.Descriptor(testCase.Definition.Type, testCase.Definition.TypeVersion); !found || !descriptor.Creatable {
+		return catalog.MutationResult{}, catalog.ErrInvalid
+	}
 	directory := filesystemCaseDirectory(command.Key)
 	entries, err := service.caseFiles.Entries(ctx)
 	if err != nil {
@@ -338,6 +354,13 @@ func (service serializedCatalogService) saveNewFilesystemCase(ctx context.Contex
 		return catalog.MutationResult{}, catalog.ErrInvalid
 	}
 	return service.findFilesystemCaseResult(ctx, command.Protocol, command.Key)
+}
+
+func (service serializedCatalogService) caseTypeRegistry() *casetypes.Registry {
+	if service.caseTypes != nil {
+		return service.caseTypes
+	}
+	return casetypes.MustBuiltinRegistry()
 }
 
 func (service serializedCatalogService) findFilesystemCaseResult(ctx context.Context, protocol domain.Protocol, key string) (catalog.MutationResult, error) {
@@ -396,22 +419,14 @@ func (service serializedCatalogService) cleanupMaterializedCases(refs []domain.C
 }
 
 func filesystemCaseFromCommand(meta domain.EntityMeta, command catalog.CreateTestCaseCommand) domain.TestCase {
-	assertions := make([]domain.TestAssertion, len(command.Assertions))
-	for index, assertion := range command.Assertions {
-		assertions[index] = domain.TestAssertion{Kind: assertion.Kind, Config: append(json.RawMessage(nil), assertion.Config...)}
-	}
-	headers := make(map[string]string, len(command.Headers))
-	for name, value := range command.Headers {
-		headers[name] = value
-	}
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension, Protocol: command.Protocol,
 		Enabled: command.Enabled, Default: command.Default, Severity: command.Severity, ExecutionMode: command.ExecutionMode,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: command.DefinitionSchemaVersion,
-			Request:       domain.TestRequest{Method: command.Method, Path: command.Path, Headers: headers, Body: append(json.RawMessage(nil), command.Body...)},
-			Expected:      domain.TestExpected{AllowedHTTPStatuses: append([]int(nil), command.AllowedHTTPStatuses...), StreamCompletion: command.StreamCompletion},
-			Assertions:    assertions,
+			Type:          command.Type,
+			TypeVersion:   command.TypeVersion,
+			Spec:          append(json.RawMessage(nil), command.Spec...),
 		},
 	}
 }
@@ -434,24 +449,12 @@ func filesystemCaseDirectory(key string) string {
 }
 
 func caseSummary(testCase domain.TestCase) catalog.TestCaseSummary {
-	kinds := make([]domain.AssertionKind, len(testCase.Definition.Assertions))
-	assertions := make([]catalog.AssertionInput, len(testCase.Definition.Assertions))
-	for index, assertion := range testCase.Definition.Assertions {
-		kinds[index] = assertion.Kind
-		assertions[index] = catalog.AssertionInput{Kind: assertion.Kind, Config: append(json.RawMessage(nil), assertion.Config...)}
-	}
-	headers := make(map[string]string, len(testCase.Definition.Request.Headers))
-	for name, value := range testCase.Definition.Request.Headers {
-		headers[name] = value
-	}
 	return catalog.TestCaseSummary{
 		ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 		Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
-		ExecutionMode: testCase.ExecutionMode, Method: testCase.Definition.Request.Method, Path: testCase.Definition.Request.Path,
-		AssertionKinds: kinds, DefinitionSchemaVersion: testCase.Definition.SchemaVersion, Headers: headers,
-		Body:                append(json.RawMessage(nil), testCase.Definition.Request.Body...),
-		AllowedHTTPStatuses: append([]int(nil), testCase.Definition.Expected.AllowedHTTPStatuses...),
-		StreamCompletion:    testCase.Definition.Expected.StreamCompletion, Assertions: assertions,
+		ExecutionMode: testCase.ExecutionMode, DefinitionSchemaVersion: testCase.Definition.SchemaVersion,
+		Type: testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
+		Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),
 	}
 }
 

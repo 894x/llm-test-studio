@@ -22,6 +22,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
@@ -120,9 +121,11 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("recover interrupted desktop runs: %w", err)
 		}
 		workspaceQuery := workspace.New(repository)
+		caseTypes := casetypes.MustBuiltinRegistry()
 		catalogQuery, err := catalog.New(catalog.Dependencies{
 			Repository: repository,
 			Clock:      productionClock{},
+			CaseTypes:  caseTypes,
 			RepositoryErrors: catalog.RepositoryErrorSet{
 				NotFound: sqlite.ErrNotFound,
 				Conflict: sqlite.ErrConflict,
@@ -153,10 +156,11 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		runService, err := runs.New(runs.Dependencies{
 			Repository:  repository,
 			Credentials: credentialStore,
-			Executor: runs.NewExecutorRouter(
-				runs.NewLegacyAPIAuditExecutor(nil),
-				runs.NewLoadExecutor(nil),
-			),
+			Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{
+				casetypes.TypeLegacyAPIAudit:     runs.NewLegacyAPIAuditExecutor(nil),
+				casetypes.TypeRequestSingle:      runs.NewLoadExecutor(nil),
+				casetypes.TypeInputLatencyLadder: runs.NewInputLatencyLadderExecutor(nil),
+			}),
 			Clock:            productionClock{},
 			Reporter:         reportGenerator,
 			ReportDiagnostic: options.reportRunDiagnostic,
@@ -183,7 +187,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
 		serializedCatalog := serializedCatalogService{
 			gate: gate, query: catalogQuery, commands: catalogQuery, channels: channelService,
-			caseFiles: caseFiles, caseSnapshots: repository,
+			caseTypes: caseTypes, caseFiles: caseFiles, caseSnapshots: repository,
 		}
 		return desktopDependencies{
 			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},

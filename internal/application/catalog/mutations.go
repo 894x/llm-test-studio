@@ -188,6 +188,12 @@ func (service *Service) CreateTestCase(ctx context.Context, command CreateTestCa
 	if err := testCase.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
+	if err := service.caseTypes.Validate(testCase.Protocol, testCase.Definition); err != nil {
+		return MutationResult{}, ErrInvalid
+	}
+	if descriptor, found := service.caseTypes.Descriptor(testCase.Definition.Type, testCase.Definition.TypeVersion); !found || !descriptor.Creatable {
+		return MutationResult{}, ErrInvalid
+	}
 	if err := service.repository.CreateTestCase(ctx, testCase); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
 	}
@@ -222,6 +228,14 @@ func (service *Service) UpdateTestCase(ctx context.Context, command UpdateTestCa
 	testCase := testCaseFromUpdate(meta, command)
 	if err := testCase.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
+	}
+	if err := service.caseTypes.Validate(testCase.Protocol, testCase.Definition); err != nil {
+		return MutationResult{}, ErrInvalid
+	}
+	if testCase.Definition.Type != current.Definition.Type || testCase.Definition.TypeVersion != current.Definition.TypeVersion {
+		if descriptor, found := service.caseTypes.Descriptor(testCase.Definition.Type, testCase.Definition.TypeVersion); !found || !descriptor.Creatable {
+			return MutationResult{}, ErrInvalid
+		}
 	}
 	if err := service.repository.UpdateTestCase(ctx, command.ExpectedRevision, testCase); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
@@ -572,7 +586,7 @@ func validUpdateIdentity(id string, revision uint64) bool {
 }
 
 func definitionFromCreate(command CreateTestCaseCommand) domain.TestCaseDefinition {
-	return newDefinition(command.DefinitionSchemaVersion, command.Method, command.Path, command.Headers, command.Body, command.AllowedHTTPStatuses, command.StreamCompletion, command.Assertions)
+	return newDefinition(command.DefinitionSchemaVersion, command.Type, command.TypeVersion, command.Spec)
 }
 
 func testCaseFromCreate(meta domain.EntityMeta, command CreateTestCaseCommand) domain.TestCase {
@@ -594,26 +608,15 @@ func testCaseFromUpdate(meta domain.EntityMeta, command UpdateTestCaseCommand) d
 }
 
 func definitionFromUpdate(command UpdateTestCaseCommand) domain.TestCaseDefinition {
-	return newDefinition(command.DefinitionSchemaVersion, command.Method, command.Path, command.Headers, command.Body, command.AllowedHTTPStatuses, command.StreamCompletion, command.Assertions)
+	return newDefinition(command.DefinitionSchemaVersion, command.Type, command.TypeVersion, command.Spec)
 }
 
-func newDefinition(schemaVersion int, method domain.RequestMethod, path string, headers map[string]string, body json.RawMessage, statuses []int, completion domain.StreamCompletionExpectation, assertions []AssertionInput) domain.TestCaseDefinition {
-	var clonedHeaders map[string]string
-	if headers != nil {
-		clonedHeaders = make(map[string]string, len(headers))
-		for name, value := range headers {
-			clonedHeaders[name] = value
-		}
-	}
-	clonedAssertions := make([]domain.TestAssertion, len(assertions))
-	for index, assertion := range assertions {
-		clonedAssertions[index] = domain.TestAssertion{Kind: assertion.Kind, Config: append(json.RawMessage(nil), assertion.Config...)}
-	}
+func newDefinition(schemaVersion int, caseType domain.CaseType, typeVersion uint32, spec json.RawMessage) domain.TestCaseDefinition {
 	return domain.TestCaseDefinition{
 		SchemaVersion: schemaVersion,
-		Request:       domain.TestRequest{Method: method, Path: path, Headers: clonedHeaders, Body: append(json.RawMessage(nil), body...)},
-		Expected:      domain.TestExpected{AllowedHTTPStatuses: append([]int(nil), statuses...), StreamCompletion: completion},
-		Assertions:    clonedAssertions,
+		Type:          caseType,
+		TypeVersion:   typeVersion,
+		Spec:          append(json.RawMessage(nil), spec...),
 	}
 }
 

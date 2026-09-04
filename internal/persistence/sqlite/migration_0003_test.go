@@ -79,7 +79,7 @@ func TestMigrateUpgradesV2TestCaseDocumentsToPolicyShape(t *testing.T) {
 	db := openDatabase(t, path)
 	const id = "44444444-4444-4444-8444-444444444444"
 	const stamp = "2026-08-30T00:00:00Z"
-	const legacyDocument = `{"created_at":"2026-08-30T00:00:00Z","definition":{"assertions":[{"config":{"required":true},"kind":"response_schema"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{},"headers":{},"method":"POST","path":"/chat/completions"},"schema_version":1},"id":"44444444-4444-4444-8444-444444444444","name":"preserved v2 case","protocol":"openai-chat","revision":1,"schema_version":1,"updated_at":"2026-08-30T00:00:00Z"}`
+	const legacyDocument = `{"created_at":"2026-08-30T00:00:00Z","definition":{"schema_version":2,"spec":{"assertions":[{"config":{"required":true},"kind":"response_schema"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{},"headers":{},"method":"POST","path":"/chat/completions"}},"type":"request.single","type_version":1},"id":"44444444-4444-4444-8444-444444444444","name":"preserved v2 case","protocol":"openai-chat","revision":1,"schema_version":1,"updated_at":"2026-08-30T00:00:00Z"}`
 	if _, err := db.Exec(`INSERT INTO test_cases(id, schema_version, revision, created_at, updated_at, document_json)
 		VALUES(?, 1, 1, ?, ?, ?)`, id, stamp, stamp, legacyDocument); err != nil {
 		db.Close()

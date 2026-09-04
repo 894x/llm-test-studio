@@ -1,23 +1,39 @@
 {
-  "id": "T024",
+  "schema_version": 2,
+  "key": "T024",
   "name": "TTFT 首 Token 延迟",
   "dimension": "stability",
   "protocol": "openai-chat",
-  "kind": "stream_ttft",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "仅输出 TTFT_OK"}],
-      "temperature": 0,
-      "max_tokens": 16,
-      "stream": true
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "stream_ttft",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "仅输出 TTFT_OK"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 16,
+          "stream": true
+        }
+      },
+      "options": {
+        "max_first_frame_ms": 5000,
+        "repetitions": 3
+      }
     }
-  },
-  "options": {
-    "repetitions": 3,
-    "max_first_frame_ms": 5000
   }
 }

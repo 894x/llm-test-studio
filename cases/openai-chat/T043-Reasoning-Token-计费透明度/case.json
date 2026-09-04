@@ -1,16 +1,28 @@
 {
-  "id": "T043",
+  "schema_version": 2,
+  "key": "T043",
   "name": "Reasoning Token 计费透明度",
   "dimension": "billing",
   "protocol": "openai-chat",
-  "kind": "manual_unknown",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions"
-  },
-  "options": {
-    "reason": "需要为被测模型配置 reasoning 开关和供应商 usage 字段映射"
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": null
+      },
+      "options": {
+        "reason": "需要为被测模型配置 reasoning 开关和供应商 usage 字段映射"
+      }
+    }
   }
 }

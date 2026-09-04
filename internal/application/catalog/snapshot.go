@@ -2,8 +2,10 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -55,7 +57,12 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	return buildSnapshot(ctx, models, channels, mappings, testCases, suites, plans)
+	snapshot, err := buildSnapshot(ctx, models, channels, mappings, testCases, suites, plans)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot.CaseTypes = service.caseTypes.Descriptors()
+	return snapshot, nil
 }
 
 func (service *Service) ListModels(ctx context.Context) ([]ModelSummary, error) {
@@ -234,6 +241,7 @@ func buildSnapshot(
 
 	snapshot := Snapshot{
 		SchemaVersion: CurrentSnapshotSchemaVersion,
+		CaseTypes:     []casetypes.Descriptor{},
 		Models:        make([]ModelSummary, 0, len(models)), Channels: make([]ChannelSummary, 0, len(channels)),
 		ChannelModels: make([]ChannelModelSummary, 0, len(mappings)), TestCases: make([]TestCaseSummary, 0, len(testCases)),
 		Suites: make([]SuiteSummary, 0, len(suites)), Plans: make([]PlanSummary, 0, len(plans)),
@@ -270,25 +278,13 @@ func buildSnapshot(
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		kinds := make([]domain.AssertionKind, len(testCase.Definition.Assertions))
-		assertions := make([]AssertionInput, len(testCase.Definition.Assertions))
-		for index, assertion := range testCase.Definition.Assertions {
-			kinds[index] = assertion.Kind
-			assertions[index] = AssertionInput{Kind: assertion.Kind, Config: append([]byte(nil), assertion.Config...)}
-		}
-		headers := make(map[string]string, len(testCase.Definition.Request.Headers))
-		for name, value := range testCase.Definition.Request.Headers {
-			headers[name] = value
-		}
 		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
 			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 			Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
 			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
-			Method: testCase.Definition.Request.Method, Path: testCase.Definition.Request.Path, AssertionKinds: kinds,
-			DefinitionSchemaVersion: testCase.Definition.SchemaVersion, Headers: headers,
-			Body:                append([]byte(nil), testCase.Definition.Request.Body...),
-			AllowedHTTPStatuses: append([]int(nil), testCase.Definition.Expected.AllowedHTTPStatuses...),
-			StreamCompletion:    testCase.Definition.Expected.StreamCompletion, Assertions: assertions,
+			DefinitionSchemaVersion: testCase.Definition.SchemaVersion,
+			Type:                    testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
+			Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),
 		})
 	}
 	for _, suite := range suites {

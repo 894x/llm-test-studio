@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "key": "T044",
+  "name": "输入 Token 阶梯延迟",
+  "dimension": "performance",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "latency.input_ladder",
+    "type_version": 2,
+    "spec": {
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "placeholder"
+            }
+          ],
+          "stream": true
+        }
+      },
+      "stages": [
+        { "input_tokens": 128 },
+        { "input_tokens": 512 },
+        { "input_tokens": 2048 },
+        { "input_tokens": 8192 },
+        { "input_tokens": 32768, "samples": 2 },
+        { "input_tokens": 131072, "warmups": 0, "samples": 1 }
+      ],
+      "warmups_per_step": 1,
+      "samples_per_step": 3,
+      "output_tokens": 16,
+      "timeout_ms": 600000,
+      "cache_mode": "cold"
+    }
+  }
+}

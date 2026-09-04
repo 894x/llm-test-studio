@@ -211,7 +211,7 @@ func TestImportUsesStableIDsAcrossIndependentDatabases(t *testing.T) {
 	if ids[0] != ids[1] {
 		t.Fatalf("stable IDs = %v", ids)
 	}
-	const expectedT001ID = "02e57ce1-363a-5add-a78a-1feba66bf611"
+	const expectedT001ID = "062b66ef-8d2e-59a1-95cb-dadf03dfe264"
 	if ids[0] != expectedT001ID {
 		t.Fatalf("stable T001 id = %q, want %q", ids[0], expectedT001ID)
 	}
@@ -226,7 +226,7 @@ func TestImportConvertsTheCompleteRepositoryBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import(repository cases) error = %v", err)
 	}
-	if result.Discovered != 89 || result.Created != 89 || result.Runnable != 57 || result.Disabled != 26 || result.Manual != 6 || result.DeferredPlanTemplates != 1 {
+	if result.Discovered != 90 || result.Created != 90 || result.Runnable != 58 || result.Disabled != 26 || result.Manual != 6 || result.DeferredPlanTemplates != 1 {
 		t.Fatalf("repository import result = %#v", result)
 	}
 }
@@ -302,15 +302,19 @@ func sourceByKey(t *testing.T, sources []SourceRecord, key string) SourceRecord 
 }
 
 func legacyFixture(id, name, kind string, disabled bool) string {
-	disabledJSON := ""
+	enabled := "true"
 	if disabled {
-		disabledJSON = `,"disabled":true`
+		enabled = "false"
 	}
-	return `{"id":"` + id + `","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","kind":"` + kind + `","default":false` + disabledJSON + `,"severity":"normal","request":{"method":"POST","path":"/v1/chat/completions","body":{"messages":[{"role":"user","content":"hello"}]}}}`
+	execution := "automatic"
+	if kind == "manual_unknown" {
+		execution = "manual"
+	}
+	return `{"schema_version":2,"key":"` + id + `","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","enabled":` + enabled + `,"default":false,"severity":"normal","execution_mode":"` + execution + `","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"` + kind + `","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}}}`
 }
 
 func kimiDisabledFixture() string {
-	return `{"id":"must.multimodal_type_required","name":"disabled","dimension":"multimodal","protocol":"kimi-k3","kind":"kimi_error_400","default":false,"disabled":true,"severity":"critical","request":{"method":"POST","path":"/v1/chat/completions","body":{"messages":[]}}}`
+	return `{"schema_version":2,"key":"must.multimodal_type_required","name":"disabled","dimension":"multimodal","protocol":"kimi-k3","enabled":false,"default":false,"severity":"critical","execution_mode":"automatic","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"kimi_error_400","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[]}},"options":{}}}}`
 }
 
 var _ fs.FS = fstest.MapFS{}

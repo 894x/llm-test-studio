@@ -132,6 +132,7 @@ type Result struct {
 	Failure     FailureKind        `json:"failure_kind,omitempty"`
 	ErrorCode   ErrorCode          `json:"error_code,omitempty"`
 	Detail      *ProviderDetail    `json:"detail,omitempty"`
+	Dimensions  map[string]string  `json:"dimensions,omitempty"`
 	Metrics     map[string]float64 `json:"metrics,omitempty"`
 	EvidenceIDs []string           `json:"evidence_ids,omitempty"`
 }
@@ -170,6 +171,11 @@ func (result Result) Validate() error {
 			if err := result.Detail.Validate(); err != nil {
 				return err
 			}
+		}
+	}
+	for name, value := range result.Dimensions {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(name) != name || strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value || len(name) > 64 || len(value) > 256 {
+			return fmt.Errorf("invalid result dimension %q", name)
 		}
 	}
 	for name, value := range result.Metrics {

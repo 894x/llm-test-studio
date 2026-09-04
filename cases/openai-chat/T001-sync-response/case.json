@@ -1,17 +1,34 @@
 {
-  "id": "T001",
+  "schema_version": 2,
+  "key": "T001",
   "name": "同步响应检测",
   "dimension": "boundary",
   "protocol": "openai-chat",
-  "kind": "chat_sync",
+  "enabled": true,
   "default": true,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "仅输出数字 5"}],
-      "max_tokens": 256
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "chat_sync",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "仅输出数字 5"
+            }
+          ],
+          "max_tokens": 256
+        }
+      },
+      "options": {}
     }
   }
 }

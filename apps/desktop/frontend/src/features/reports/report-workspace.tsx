@@ -168,15 +168,15 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
       {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">当前显示前 1,000 条请求；完整 {detail.request_results.length.toLocaleString("zh-CN")} 条可导出 JSON。</div> : null}
       <Table aria-label="请求级结果" className="min-w-[900px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95"><TableRow>
-          <TableHead className="h-8 pl-4 text-[11px]">请求</TableHead><TableHead className="h-8 text-[11px]">状态</TableHead><TableHead className="h-8 text-[11px]">E2E</TableHead><TableHead className="h-8 text-[11px]">TTFT</TableHead><TableHead className="h-8 text-[11px]">TPOT</TableHead><TableHead className="h-8 text-[11px]">排队</TableHead><TableHead className="h-8 text-[11px]">Token</TableHead><TableHead className="h-8 text-[11px]">错误</TableHead>
+          <TableHead className="h-8 pl-4 text-[11px]">请求</TableHead><TableHead className="h-8 text-[11px]">阶段</TableHead><TableHead className="h-8 text-[11px]">状态</TableHead><TableHead className="h-8 text-[11px]">E2E</TableHead><TableHead className="h-8 text-[11px]">TTFT</TableHead><TableHead className="h-8 text-[11px]">TPOT</TableHead><TableHead className="h-8 text-[11px]">排队</TableHead><TableHead className="h-8 text-[11px]">Token</TableHead><TableHead className="h-8 text-[11px]">错误</TableHead>
         </TableRow></TableHeader>
         <TableBody>{visibleResults.length ? visibleResults.map((result) => (
           <TableRow key={result.id} className="h-9">
-            <TableCell className="py-1 pl-4 font-mono text-[10px]">{result.request_id ?? result.id}</TableCell><TableCell className="py-1"><ConclusionBadge passed={Object.values(result.success).every(Boolean)} /></TableCell>
+            <TableCell className="py-1 pl-4 font-mono text-[10px]">{result.request_id ?? result.id}</TableCell><TableCell className="py-1 text-[10px] tabular-nums">{result.dimensions?.input_tokens_target ? `${result.dimensions.input_tokens_target} token · #${result.dimensions.sample ?? "—"}/${result.dimensions.stage_samples ?? "—"}` : "—"}</TableCell><TableCell className="py-1"><ConclusionBadge passed={Object.values(result.success).every(Boolean)} /></TableCell>
             <MetricCell value={result.metrics.e2e_ms} unit="ms" /><MetricCell value={result.metrics.ttft_ms} unit="ms" /><MetricCell value={result.metrics.tpot_ms} unit="ms" /><MetricCell value={result.metrics.schedule_lag_ms} unit="ms" />
             <TableCell className="py-1 text-xs tabular-nums">{metric(result.metrics.prompt_tokens)} / {metric(result.metrics.completion_tokens)}</TableCell><TableCell className="py-1 text-xs text-destructive">{result.error_code ?? "—"}</TableCell>
           </TableRow>
-        )) : <TableRow><TableCell colSpan={8} className="h-24 text-center text-xs text-muted-foreground">此报告没有请求级结果</TableCell></TableRow>}</TableBody>
+        )) : <TableRow><TableCell colSpan={9} className="h-24 text-center text-xs text-muted-foreground">此报告没有请求级结果</TableCell></TableRow>}</TableBody>
       </Table>
     </>
 }

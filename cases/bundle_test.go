@@ -7,11 +7,11 @@ import (
 	casebundle "github.com/894x/llm-test-studio/cases"
 )
 
-func TestBundleContainsCompleteLegacyCatalog(t *testing.T) {
+func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 	t.Parallel()
 
 	protocols := map[string]int{
-		"openai-chat": 43,
+		"openai-chat": 44,
 		"kimi-k3":     40,
 		"seedance":    6,
 	}

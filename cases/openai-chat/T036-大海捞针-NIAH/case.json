@@ -1,22 +1,33 @@
 {
-  "id": "T036",
+  "schema_version": 2,
+  "key": "T036",
   "name": "大海捞针 NIAH",
   "dimension": "quality",
   "protocol": "openai-chat",
-  "kind": "needle_retrieval",
+  "enabled": true,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [],
-      "temperature": 0,
-      "max_tokens": 256
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "needle_retrieval",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [],
+          "temperature": 0,
+          "max_tokens": 256
+        }
+      },
+      "options": {
+        "needle": "AUDIT_NEEDLE_7F3A",
+        "repetitions": 3
+      }
     }
-  },
-  "options": {
-    "repetitions": 3,
-    "needle": "AUDIT_NEEDLE_7F3A"
   }
 }

@@ -1,19 +1,36 @@
 {
-  "id": "V001",
+  "schema_version": 2,
+  "key": "V001",
   "name": "纯文本生成视频",
   "dimension": "compatibility",
   "protocol": "seedance",
-  "kind": "seedance_task",
+  "enabled": true,
   "default": true,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/api/v3/contents/generations/tasks",
-    "body": {
-      "content": [{"type": "text", "text": "A cute cat running through a sunny meadow, cinematic shot"}],
-      "duration": 4,
-      "resolution": "480p",
-      "ratio": "16:9"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "seedance_task",
+      "request": {
+        "method": "POST",
+        "path": "/api/v3/contents/generations/tasks",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "A cute cat running through a sunny meadow, cinematic shot"
+            }
+          ],
+          "duration": 4,
+          "resolution": "480p",
+          "ratio": "16:9"
+        }
+      },
+      "options": {}
     }
   }
 }

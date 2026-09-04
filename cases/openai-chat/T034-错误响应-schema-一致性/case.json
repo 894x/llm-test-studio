@@ -1,22 +1,34 @@
 {
-  "id": "T034",
+  "schema_version": 2,
+  "key": "T034",
   "name": "错误响应 schema 一致性",
   "dimension": "boundary",
   "protocol": "openai-chat",
-  "kind": "error_schema",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "error schema probe"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "error_schema",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "error schema probe"
+            }
+          ],
+          "max_tokens": -1
         }
-      ],
-      "max_tokens": -1
+      },
+      "options": {}
     }
   }
 }

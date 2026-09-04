@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/engine/apiaudit"
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -83,32 +84,29 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 }
 
 func legacyCaseDefinition(testCase domain.TestCase) (apiaudit.CaseDefinition, error) {
-	if err := testCase.Validate(); err != nil || testCase.ExecutionMode != domain.CaseExecutionAutomatic || len(testCase.Definition.Assertions) != 1 {
+	if err := testCase.Validate(); err != nil || testCase.ExecutionMode != domain.CaseExecutionAutomatic ||
+		testCase.Definition.Type != casetypes.TypeLegacyAPIAudit || testCase.Definition.TypeVersion != 1 {
 		return apiaudit.CaseDefinition{}, ErrNotRunnable
 	}
-	assertion := testCase.Definition.Assertions[0]
-	if assertion.Kind != domain.AssertionCustom {
-		return apiaudit.CaseDefinition{}, ErrNotRunnable
-	}
-	var driver legacyDriverConfig
-	if err := json.Unmarshal(assertion.Config, &driver); err != nil || driver.Driver != legacyAPIAuditDriver || driver.DriverVersion != 1 || strings.TrimSpace(driver.LegacyKind) == "" {
+	var spec casetypes.LegacyAPIAuditSpec
+	if err := json.Unmarshal(testCase.Definition.Spec, &spec); err != nil || strings.TrimSpace(spec.Kind) == "" {
 		return apiaudit.CaseDefinition{}, ErrNotRunnable
 	}
 	body := map[string]any{}
-	if len(testCase.Definition.Request.Body) != 0 {
-		if err := json.Unmarshal(testCase.Definition.Request.Body, &body); err != nil {
+	if len(spec.Request.Body) != 0 {
+		if err := json.Unmarshal(spec.Request.Body, &body); err != nil {
 			return apiaudit.CaseDefinition{}, ErrNotRunnable
 		}
 	}
-	if driver.Options == nil {
-		driver.Options = map[string]any{}
+	if spec.Options == nil {
+		spec.Options = map[string]any{}
 	}
 	return apiaudit.CaseDefinition{
 		ID: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-		Protocol: string(testCase.Protocol), Kind: driver.LegacyKind,
+		Protocol: string(testCase.Protocol), Kind: spec.Kind,
 		Default: testCase.Default, Disabled: !testCase.Enabled, Severity: string(testCase.Severity),
-		Request: apiaudit.RequestDefinition{Method: string(testCase.Definition.Request.Method), Path: testCase.Definition.Request.Path, Body: body},
-		Options: driver.Options,
+		Request: apiaudit.RequestDefinition{Method: string(spec.Request.Method), Path: spec.Request.Path, Body: body},
+		Options: spec.Options,
 	}, nil
 }
 

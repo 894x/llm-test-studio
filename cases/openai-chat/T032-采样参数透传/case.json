@@ -1,20 +1,36 @@
 {
-  "id": "T032",
+  "schema_version": 2,
+  "key": "T032",
   "name": "采样参数透传",
   "dimension": "stability",
   "protocol": "openai-chat",
-  "kind": "sampling_effect",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"}],
-      "max_tokens": 256
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "sampling_effect",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
+            }
+          ],
+          "max_tokens": 256
+        }
+      },
+      "options": {
+        "repetitions": 6
+      }
     }
-  },
-  "options": {
-    "repetitions": 6
   }
 }

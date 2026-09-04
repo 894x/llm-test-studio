@@ -911,15 +911,16 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	adminCredential.Purpose = domain.CredentialIntegrationAdmin
 	channel := domain.Channel{EntityMeta: entityMeta(channelID, 1), Name: "Fixture channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{EntityMeta: entityMeta(mappingID, 1), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-fixture"}
+	testCaseSpec := json.RawMessage(`{"assertions":[{"config":{"contains":"ok"},"kind":"text"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{"messages":[{"content":"hello","role":"user"}]},"headers":{"Content-Type":"application/json"},"method":"POST","path":"/chat/completions"}}`)
 	testCase := domain.TestCase{
 		EntityMeta: entityMeta(caseID, 1), Key: "T001", Name: "Basic chat", Dimension: "boundary",
 		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
 		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Request:       domain.TestRequest{Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{"Content-Type": "application/json"}, Body: json.RawMessage(`{"messages":[{"content":"hello","role":"user"}]}`)},
-			Expected:      domain.TestExpected{AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionNotApplicable},
-			Assertions:    []domain.TestAssertion{{Kind: domain.AssertionText, Config: json.RawMessage(`{"contains":"ok"}`)}},
+			Type:          domain.CaseType("request.single"),
+			TypeVersion:   1,
+			Spec:          testCaseSpec,
 		},
 	}
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}

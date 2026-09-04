@@ -66,6 +66,7 @@ type ResultDraft struct {
 	Failure     domain.FailureKind
 	ErrorCode   domain.ErrorCode
 	Detail      *domain.ProviderDetail
+	Dimensions  map[string]string
 	Metrics     map[string]float64
 	EvidenceIDs []string
 }
@@ -488,7 +489,7 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 		result := domain.Result{
 			EntityMeta: meta, RunID: control.run.Meta().ID, RequestID: draft.RequestID,
 			Success: draft.Success, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,
-			Metrics: cloneMetrics(draft.Metrics), EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
+			Dimensions: cloneDimensions(draft.Dimensions), Metrics: cloneMetrics(draft.Metrics), EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
 		}
 		if err := result.Validate(); err != nil {
 			control.mu.Unlock()
@@ -654,9 +655,21 @@ func controlContainsCase(control *runControl, caseID string) bool {
 }
 
 func cloneDraft(draft ResultDraft) ResultDraft {
+	draft.Dimensions = cloneDimensions(draft.Dimensions)
 	draft.Metrics = cloneMetrics(draft.Metrics)
 	draft.EvidenceIDs = append([]string(nil), draft.EvidenceIDs...)
 	return draft
+}
+
+func cloneDimensions(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for name, value := range values {
+		cloned[name] = value
+	}
+	return cloned
 }
 
 func (service *Service) transition(ctx context.Context, control *runControl, status domain.RunStatus) error {

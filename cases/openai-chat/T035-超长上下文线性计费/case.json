@@ -1,22 +1,38 @@
 {
-  "id": "T035",
+  "schema_version": 2,
+  "key": "T035",
   "name": "长输入 usage 增长",
   "dimension": "billing",
   "protocol": "openai-chat",
-  "kind": "usage_growth",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "usage growth probe"}],
-      "temperature": 0,
-      "max_tokens": 16
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "usage_growth",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "usage growth probe"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 16
+        }
+      },
+      "options": {
+        "long_prompt": "长输入 usage 黑盒检测。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。仅输出 GROWTH_OK。",
+        "short_prompt": "仅输出 GROWTH_OK"
+      }
     }
-  },
-  "options": {
-    "short_prompt": "仅输出 GROWTH_OK",
-    "long_prompt": "长输入 usage 黑盒检测。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。仅输出 GROWTH_OK。"
   }
 }

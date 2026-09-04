@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
@@ -99,11 +100,9 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
 	testCase := snapshot.TestCases[0]
-	if testCase.DefinitionSchemaVersion != 1 || string(testCase.Body) != `{"model":"gpt-5"}` ||
-		len(testCase.Headers) != 1 || testCase.Headers["X-Test"] != "safe" ||
-		len(testCase.AllowedHTTPStatuses) != 1 || testCase.AllowedHTTPStatuses[0] != 200 ||
-		testCase.StreamCompletion != domain.StreamCompletionRequired || len(testCase.Assertions) != 1 ||
-		testCase.Assertions[0].Kind != domain.AssertionText || string(testCase.Assertions[0].Config) != `{"contains":"ok"}` {
+	if testCase.DefinitionSchemaVersion != domain.CurrentTestCaseDefinitionSchemaVersion ||
+		testCase.Type != casetypes.TypeRequestSingle || testCase.TypeVersion != 1 ||
+		string(testCase.Spec) != string(validRequestSingleSpec()) {
 		t.Fatalf("Snapshot().TestCases[0] editor payload = %#v", testCase)
 	}
 	if len(snapshot.Suites[0].Cases) != 1 || snapshot.Suites[0].Cases[0].CaseID != caseID {
@@ -115,10 +114,7 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 		t.Fatalf("Snapshot().Plans[0] editor payload = %#v", plan)
 	}
 
-	testCase.Headers["X-Test"] = "caller-mutated"
-	testCase.Body[0] = '['
-	testCase.AllowedHTTPStatuses[0] = 500
-	testCase.Assertions[0].Config[0] = '['
+	testCase.Spec[0] = '['
 	snapshot.Suites[0].Cases[0].Revision = 99
 	plan.ModelIDs[0] = modelBID
 	plan.SLAThresholds["p95_ms"] = 1
@@ -127,8 +123,7 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Snapshot() error = %v", err)
 	}
-	if fresh.TestCases[0].Headers["X-Test"] != "safe" || string(fresh.TestCases[0].Body) != `{"model":"gpt-5"}` ||
-		fresh.TestCases[0].AllowedHTTPStatuses[0] != 200 || string(fresh.TestCases[0].Assertions[0].Config) != `{"contains":"ok"}` ||
+	if string(fresh.TestCases[0].Spec) != string(validRequestSingleSpec()) ||
 		fresh.Suites[0].Cases[0].Revision != 1 || fresh.Plans[0].ModelIDs[0] != modelAID || fresh.Plans[0].SLAThresholds["p95_ms"] != 1500 {
 		t.Fatalf("Snapshot() editor payload aliases repository state: %#v", fresh)
 	}
@@ -241,13 +236,17 @@ func TestListMethodsReturnSortedIndependentAllowListCopies(t *testing.T) {
 		t.Fatalf("list summaries are incomplete: %#v %#v %#v %#v %#v %#v", models, channels, mappings, testCases, suites, plans)
 	}
 	models[0].Capabilities[0] = "caller-mutated"
-	testCases[0].AssertionKinds[0] = domain.AssertionCustom
+	testCases[0].Spec[0] = '['
 	fresh, err := service.ListModels(ctx)
 	if err != nil {
 		t.Fatalf("second ListModels() error = %v", err)
 	}
 	if fresh[0].Capabilities[0] == "caller-mutated" || repository.models[1].Capabilities[0] == "caller-mutated" {
 		t.Fatal("ListModels() returned an aliased capabilities slice")
+	}
+	freshCases, err := service.ListTestCases(ctx)
+	if err != nil || string(freshCases[0].Spec) != string(validRequestSingleSpec()) {
+		t.Fatal("ListTestCases() returned an aliased spec")
 	}
 }
 
@@ -384,7 +383,7 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 		t.Fatalf("CreateChannel() error = %q, want safe ErrInvalid", err)
 	}
 	missingHeaders := validCreateTestCaseCommand("missing headers")
-	missingHeaders.Headers = nil
+	missingHeaders.Spec = json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":null,"body":{}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
 	if _, err := service.CreateTestCase(context.Background(), missingHeaders); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("CreateTestCase(nil headers) error = %v, want ErrInvalid", err)
 	}
@@ -418,6 +417,28 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 		if !errors.Is(err, test.want) || strings.Contains(err.Error(), "secret-material") {
 			t.Fatalf("Snapshot() error = %q, want safe %v", err, test.want)
 		}
+	}
+}
+
+func TestCatalogEnforcesCaseTypeCreationPolicy(t *testing.T) {
+	repository := validRepository()
+	service := newTestService(t, repository, fixtureTime())
+
+	create := validCreateTestCaseCommand("reserved case")
+	create.Type = casetypes.TypeLegacyAPIAudit
+	create.Spec = json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`)
+	if _, err := service.CreateTestCase(context.Background(), create); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("CreateTestCase(non-creatable type) error = %v, want ErrInvalid", err)
+	}
+
+	update := validUpdateTestCaseCommand(caseID, "reserved transition")
+	update.Type = casetypes.TypeLegacyAPIAudit
+	update.Spec = create.Spec
+	if _, err := service.UpdateTestCase(context.Background(), update); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("UpdateTestCase(non-creatable transition) error = %v, want ErrInvalid", err)
+	}
+	if repository.createTestCaseCalls != 0 || repository.updateTestCaseCalls != 0 {
+		t.Fatalf("reserved case type writes = create:%d update:%d, want zero", repository.createTestCaseCalls, repository.updateTestCaseCalls)
 	}
 }
 
@@ -483,14 +504,11 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 	if _, err := service.CreatePlan(context.Background(), planCommand); err != nil {
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
-	caseCommand.Headers["X-Test"] = "mutated"
-	caseCommand.Body[2] = 'X'
-	caseCommand.AllowedHTTPStatuses[0] = 500
-	caseCommand.Assertions[0].Config[2] = 'X'
+	caseCommand.Spec[2] = 'X'
 	planCommand.ModelIDs[0] = modelBID
 	planCommand.Cases[0].CaseID = modelAID
 	planCommand.SLAThresholds["p95_ms"] = 9999
-	if repository.createdTestCase.Definition.Request.Headers["X-Test"] != "safe" || string(repository.createdTestCase.Definition.Request.Body) != `{"model":"gpt-5"}` || repository.createdTestCase.Definition.Expected.AllowedHTTPStatuses[0] != 200 || string(repository.createdTestCase.Definition.Assertions[0].Config) != `{"contains":"ok"}` {
+	if string(repository.createdTestCase.Definition.Spec) != string(validRequestSingleSpec()) {
 		t.Fatalf("CreateTestCase() retained caller aliases: %#v", repository.createdTestCase)
 	}
 	if repository.createdPlan.ModelIDs[0] != modelAID || repository.createdPlan.Cases[0].CaseID != caseID || repository.createdPlan.SLA.Thresholds["p95_ms"] != 1500 {
@@ -554,6 +572,7 @@ type fakeRepository struct {
 	updatedSuite        domain.Suite
 	updatedPlan         domain.Plan
 	createModelCalls    int
+	createTestCaseCalls int
 	createPlanCalls     int
 	updateModelCalls    int
 	updateChannelCalls  int
@@ -657,6 +676,7 @@ func (repository *fakeRepository) CreateChannelModel(_ context.Context, value do
 	return nil
 }
 func (repository *fakeRepository) CreateTestCase(_ context.Context, value domain.TestCase) error {
+	repository.createTestCaseCalls++
 	repository.createdTestCase = value
 	return nil
 }
@@ -744,10 +764,10 @@ func validRepository() *fakeRepository {
 		return domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now}
 	}
 	definition := domain.TestCaseDefinition{
-		SchemaVersion: 1,
-		Request:       domain.TestRequest{Method: domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{"X-Test": "safe"}, Body: json.RawMessage(`{"model":"gpt-5"}`)},
-		Expected:      domain.TestExpected{AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionRequired},
-		Assertions:    []domain.TestAssertion{{Kind: domain.AssertionText, Config: json.RawMessage(`{"contains":"ok"}`)}},
+		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:          casetypes.TypeRequestSingle,
+		TypeVersion:   1,
+		Spec:          validRequestSingleSpec(),
 	}
 	return &fakeRepository{
 		models: []domain.Model{
@@ -780,11 +800,15 @@ func validCreateTestCaseCommand(name string) CreateTestCaseCommand {
 	return CreateTestCaseCommand{
 		Key: "T001", Name: name, Dimension: "boundary", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: true, Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: 1,
-		Method:                  domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{"X-Test": "safe"}, Body: json.RawMessage(`{"model":"gpt-5"}`),
-		AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionRequired,
-		Assertions: []AssertionInput{{Kind: domain.AssertionText, Config: json.RawMessage(`{"contains":"ok"}`)}},
+		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:                    casetypes.TypeRequestSingle,
+		TypeVersion:             1,
+		Spec:                    validRequestSingleSpec(),
 	}
+}
+
+func validRequestSingleSpec() json.RawMessage {
+	return json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"X-Test":"safe"},"body":{"model":"gpt-5"}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
 }
 
 func validUpdateTestCaseCommand(id, name string) UpdateTestCaseCommand {
@@ -793,8 +817,7 @@ func validUpdateTestCaseCommand(id, name string) UpdateTestCaseCommand {
 		ID: id, ExpectedRevision: 1, Key: create.Key, Name: create.Name, Dimension: create.Dimension,
 		Protocol: create.Protocol, Enabled: create.Enabled, Default: create.Default, Severity: create.Severity, ExecutionMode: create.ExecutionMode,
 		DefinitionSchemaVersion: create.DefinitionSchemaVersion,
-		Method:                  create.Method, Path: create.Path, Headers: create.Headers, Body: create.Body,
-		AllowedHTTPStatuses: create.AllowedHTTPStatuses, StreamCompletion: create.StreamCompletion, Assertions: create.Assertions,
+		Type:                    create.Type, TypeVersion: create.TypeVersion, Spec: create.Spec,
 	}
 }
 

@@ -1,10 +1,26 @@
 {
-  "id": "T002",
+  "schema_version": 2,
+  "key": "T002",
   "name": "模型列表身份存在性",
   "dimension": "identity",
   "protocol": "openai-chat",
-  "kind": "models_contains",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {"method": "GET", "path": "/v1/models"}
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "models_contains",
+      "request": {
+        "method": "GET",
+        "path": "/v1/models",
+        "headers": {},
+        "body": null
+      },
+      "options": {}
+    }
+  }
 }

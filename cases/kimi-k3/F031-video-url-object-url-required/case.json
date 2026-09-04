@@ -1,28 +1,39 @@
 {
-  "id": "must.video_url_object_url_required",
+  "schema_version": 2,
+  "key": "must.video_url_object_url_required",
   "name": "多模态字段 · video_url 对象内 url 必填",
   "dimension": "multimodal",
   "protocol": "kimi-k3",
-  "kind": "kimi_error_400",
+  "enabled": false,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [
-        {
-          "role": "user",
-          "content": [
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "kimi_error_400",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
             {
-              "type": "video_url",
-              "video_url": {}
+              "role": "user",
+              "content": [
+                {
+                  "type": "video_url",
+                  "video_url": {}
+                }
+              ]
             }
-          ]
+          ],
+          "max_tokens": 16
         }
-      ],
-      "max_tokens": 16
+      },
+      "options": {}
     }
-  },
-  "disabled": true
+  }
 }

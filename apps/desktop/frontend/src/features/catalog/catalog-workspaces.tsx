@@ -359,7 +359,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
             <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-4 text-[11px]">用例</TableHead>
-                <TableHead className="h-8 text-[11px]">请求</TableHead>
+                <TableHead className="h-8 text-[11px]">用例类型</TableHead>
                 <TableHead className="h-8 text-[11px]">策略</TableHead>
               </TableRow>
             </TableHeader>
@@ -378,7 +378,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
                   </TableCell>
-                  <TableCell className="py-1 font-mono text-[11px]">{testCase.method} {testCase.path}</TableCell>
+                  <TableCell className="py-1 font-mono text-[11px]">{catalog.case_types.find((value) => value.type === testCase.type && value.type_version === testCase.type_version)?.label ?? testCase.type}</TableCell>
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />
                   </TableCell>
@@ -432,6 +432,7 @@ function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: Cata
 }
 
 function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catalog: CatalogSnapshot }) {
+  const descriptor = catalog.case_types.find((value) => value.type === testCase.type && value.type_version === testCase.type_version)
   return (
     <>
       <InspectorHeader title={testCase.name} subtitle={testCase.id} />
@@ -442,8 +443,8 @@ function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catal
         <InspectorRow label="维度" value={testCase.dimension} />
         <InspectorRow label="执行策略" value={casePolicyLabel(testCase)} />
         <InspectorRow label="严重度" value={testCase.severity === "critical" ? "关键" : "普通"} />
-        <InspectorRow label="请求" value={`${testCase.method} ${testCase.path}`} />
-        <InspectorRow label="断言" value={testCase.assertion_kinds.join(" · ")} />
+        <InspectorRow label="用例类型" value={`${descriptor?.label ?? testCase.type} · v${testCase.type_version}`} />
+        <InspectorRow label="调度归属" value={descriptor?.scheduling_owner === "case" ? "用例内调度" : "计划负载调度"} />
         <InspectorRow label="套件目录" value={`${catalog.suites.length} 个可复用套件`} />
       </dl>
     </>

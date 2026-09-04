@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -75,6 +76,7 @@ type Dependencies struct {
 	Clock            Clock
 	MetaFactory      MetaFactory
 	RepositoryErrors RepositoryErrorSet
+	CaseTypes        *casetypes.Registry
 }
 
 type Service struct {
@@ -82,6 +84,7 @@ type Service struct {
 	clock            Clock
 	metaFactory      MetaFactory
 	repositoryErrors RepositoryErrorSet
+	caseTypes        *casetypes.Registry
 }
 
 func New(dependencies Dependencies) (*Service, error) {
@@ -92,9 +95,13 @@ func New(dependencies Dependencies) (*Service, error) {
 	if factory == nil {
 		factory = domain.NewEntityMeta
 	}
+	caseTypes := dependencies.CaseTypes
+	if caseTypes == nil {
+		caseTypes = casetypes.MustBuiltinRegistry()
+	}
 	return &Service{
 		repository: dependencies.Repository, clock: dependencies.Clock,
-		metaFactory: factory, repositoryErrors: dependencies.RepositoryErrors,
+		metaFactory: factory, repositoryErrors: dependencies.RepositoryErrors, caseTypes: caseTypes,
 	}, nil
 }
 

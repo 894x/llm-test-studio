@@ -11,7 +11,9 @@ import (
 	"unicode"
 )
 
-const CurrentTestCaseDefinitionSchemaVersion = 1
+const CurrentTestCaseDefinitionSchemaVersion = 2
+
+type CaseType string
 
 type RequestMethod string
 
@@ -138,9 +140,9 @@ func (assertion TestAssertion) Validate() error {
 
 type TestCaseDefinition struct {
 	SchemaVersion int             `json:"schema_version"`
-	Request       TestRequest     `json:"request"`
-	Expected      TestExpected    `json:"expected"`
-	Assertions    []TestAssertion `json:"assertions"`
+	Type          CaseType        `json:"type"`
+	TypeVersion   uint32          `json:"type_version"`
+	Spec          json.RawMessage `json:"spec"`
 }
 
 type serializedTestCaseDefinition TestCaseDefinition
@@ -149,21 +151,39 @@ func (definition TestCaseDefinition) Validate() error {
 	if definition.SchemaVersion != CurrentTestCaseDefinitionSchemaVersion {
 		return fmt.Errorf("unsupported test case definition schema version %d", definition.SchemaVersion)
 	}
-	if err := definition.Request.Validate(); err != nil {
-		return err
+	if !isSafeCaseType(definition.Type) {
+		return errors.New("test case definition type must use dot-separated lowercase identifiers")
 	}
-	if err := definition.Expected.Validate(); err != nil {
-		return err
+	if definition.TypeVersion == 0 {
+		return errors.New("test case definition type version must be positive")
 	}
-	if len(definition.Assertions) == 0 {
-		return errors.New("test case definition requires at least one assertion")
+	object, err := decodeSafeJSONObject(definition.Spec)
+	if err != nil {
+		return fmt.Errorf("invalid test case definition spec: %w", err)
 	}
-	for index, assertion := range definition.Assertions {
-		if err := assertion.Validate(); err != nil {
-			return fmt.Errorf("invalid test assertion %d: %w", index, err)
-		}
+	if len(object) == 0 {
+		return errors.New("test case definition spec must not be empty")
 	}
 	return nil
+}
+
+func isSafeCaseType(value CaseType) bool {
+	text := string(value)
+	if text == "" || strings.TrimSpace(text) != text || strings.HasPrefix(text, ".") || strings.HasSuffix(text, ".") {
+		return false
+	}
+	for _, segment := range strings.Split(text, ".") {
+		if segment == "" {
+			return false
+		}
+		for index, character := range segment {
+			if character >= 'a' && character <= 'z' || index > 0 && (character >= '0' && character <= '9' || character == '_' || character == '-') {
+				continue
+			}
+			return false
+		}
+	}
+	return true
 }
 
 func (definition TestCaseDefinition) MarshalJSON() ([]byte, error) {

@@ -2,11 +2,16 @@ export type CatalogProtocol = "openai-chat" | "kimi-k3" | "seedance"
 export type CatalogLoadMode = "single" | "fixed_concurrency" | "open_loop"
 export type CatalogCaseSeverity = "normal" | "critical"
 export type CatalogCaseExecutionMode = "automatic" | "manual"
-export type CatalogStreamCompletion = "not_applicable" | "required" | "forbidden"
 
-export interface CatalogAssertion {
-  kind: string
-  config: Record<string, unknown>
+export interface CatalogCaseTypeDescriptor {
+  type: string
+  type_version: number
+  label: string
+  category: string
+  scheduling_owner: "case" | "plan"
+  supported_protocols: CatalogProtocol[]
+  creatable: boolean
+  default_spec: Record<string, unknown>
 }
 
 export interface CatalogCaseRevision {
@@ -52,15 +57,10 @@ export interface CatalogTestCase {
   default: boolean
   severity: CatalogCaseSeverity
   execution_mode: CatalogCaseExecutionMode
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-  path: string
-  assertion_kinds: string[]
   definition_schema_version: number
-  headers: Record<string, string>
-  body: Record<string, unknown> | null
-  allowed_http_statuses: number[]
-  stream_completion: CatalogStreamCompletion
-  assertions: CatalogAssertion[]
+  type: string
+  type_version: number
+  spec: Record<string, unknown>
 }
 
 export interface CatalogSuite {
@@ -100,8 +100,7 @@ export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" |
 export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name"> & { id: string; expected_revision: number }
 export type CreateTestCaseCommand = Pick<CatalogTestCase,
   "key" | "name" | "dimension" | "protocol" | "enabled" | "default" | "severity" |
-  "execution_mode" | "definition_schema_version" | "method" | "path" | "headers" | "body" |
-  "allowed_http_statuses" | "stream_completion" | "assertions"
+  "execution_mode" | "definition_schema_version" | "type" | "type_version" | "spec"
 >
 export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
 export type CreateSuiteCommand = Pick<CatalogSuite, "name" | "cases">
@@ -135,7 +134,8 @@ export interface CatalogActions {
 }
 
 export interface CatalogSnapshot {
-  schema_version: 1
+  schema_version: 2
+  case_types: CatalogCaseTypeDescriptor[]
   models: CatalogModel[]
   channels: CatalogChannel[]
   channel_models: CatalogChannelModel[]
@@ -145,7 +145,8 @@ export interface CatalogSnapshot {
 }
 
 export const EMPTY_CATALOG: CatalogSnapshot = {
-  schema_version: 1,
+  schema_version: 2,
+  case_types: [],
   models: [],
   channels: [],
   channel_models: [],
@@ -155,10 +156,11 @@ export const EMPTY_CATALOG: CatalogSnapshot = {
 }
 
 export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
-  if (!isRecord(value) || value.schema_version !== 1) {
+  if (!isRecord(value) || value.schema_version !== 2) {
     throw new Error("桌面目录数据协议版本不受支持")
   }
   if (
+    !Array.isArray(value.case_types) ||
     !Array.isArray(value.models) ||
     !Array.isArray(value.channels) ||
     !Array.isArray(value.channel_models) ||
@@ -169,6 +171,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
     throw new Error("桌面目录数据结构无效")
   }
 
+  const caseTypes = value.case_types.map(parseCaseTypeDescriptor)
   const models = value.models.map(parseModel)
   const channels = value.channels.map(parseChannel)
   const channelModels = value.channel_models.map(parseChannelModel)
@@ -178,6 +181,16 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   const groups = [models, channels, channelModels, testCases, suites, plans]
   if (groups.some((items) => new Set(items.map((item) => item.id)).size !== items.length)) {
     throw new Error("桌面目录数据包含重复标识")
+  }
+  if (new Set(caseTypes.map((descriptor) => `${descriptor.type}@${descriptor.type_version}`)).size !== caseTypes.length) {
+    throw new Error("桌面目录用例类型重复")
+  }
+  const caseTypeByKey = new Map(caseTypes.map((descriptor) => [`${descriptor.type}@${descriptor.type_version}`, descriptor]))
+  for (const testCase of testCases) {
+    const descriptor = caseTypeByKey.get(`${testCase.type}@${testCase.type_version}`)
+    if (!descriptor || !descriptor.supported_protocols.includes(testCase.protocol)) {
+      throw new Error("桌面目录测试用例类型无效")
+    }
   }
 
   const modelByID = new Map(models.map((model) => [model.id, model]))
@@ -224,7 +237,8 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   }
 
   return {
-    schema_version: 1,
+    schema_version: 2,
+    case_types: caseTypes,
     models,
     channels,
     channel_models: channelModels,
@@ -314,27 +328,13 @@ function parseTestCase(value: unknown): CatalogTestCase {
     (value.default && !value.enabled) ||
     !isCaseSeverity(value.severity) ||
     !isCaseExecutionMode(value.execution_mode) ||
-    !isMethod(value.method) ||
-    !isRequestPath(value.path) ||
-    !isStringList(value.assertion_kinds) ||
-    value.assertion_kinds.length === 0 ||
     !isPositiveInteger(value.definition_schema_version) ||
-    !isStringRecord(value.headers) ||
-    !(value.body === null || isRecord(value.body)) ||
-    !isHTTPStatuses(value.allowed_http_statuses) ||
-    !isStreamCompletion(value.stream_completion) ||
-    !Array.isArray(value.assertions)
+    !isSafeCaseType(value.type) ||
+    !isPositiveInteger(value.type_version) ||
+    !isRecord(value.spec) ||
+    Object.keys(value.spec).length === 0
   ) {
     throw new Error("桌面目录测试用例数据无效")
-  }
-  const assertions = value.assertions.map(parseAssertion)
-  const assertionKinds = value.assertion_kinds
-  if (
-    assertions.length === 0 ||
-    assertions.length !== assertionKinds.length ||
-    assertions.some((assertion, index) => assertion.kind !== assertionKinds[index])
-  ) {
-    throw new Error("桌面目录测试用例断言无效")
   }
   return {
     id: value.id,
@@ -347,15 +347,28 @@ function parseTestCase(value: unknown): CatalogTestCase {
     default: value.default,
     severity: value.severity,
     execution_mode: value.execution_mode,
-    method: value.method,
-    path: value.path,
-    assertion_kinds: [...assertionKinds],
     definition_schema_version: value.definition_schema_version,
-    headers: { ...value.headers },
-    body: value.body === null ? null : structuredClone(value.body),
-    allowed_http_statuses: [...value.allowed_http_statuses],
-    stream_completion: value.stream_completion,
-    assertions,
+    type: value.type,
+    type_version: value.type_version,
+    spec: structuredClone(value.spec),
+  }
+}
+
+function parseCaseTypeDescriptor(value: unknown): CatalogCaseTypeDescriptor {
+  if (
+    !isRecord(value) || !isSafeCaseType(value.type) || !isPositiveInteger(value.type_version) ||
+    !isNonBlank(value.label) || !isNonBlank(value.category) ||
+    (value.scheduling_owner !== "case" && value.scheduling_owner !== "plan") ||
+    !Array.isArray(value.supported_protocols) || value.supported_protocols.length === 0 ||
+    !value.supported_protocols.every(isProtocol) || new Set(value.supported_protocols).size !== value.supported_protocols.length ||
+    typeof value.creatable !== "boolean" || !isRecord(value.default_spec) || Object.keys(value.default_spec).length === 0
+  ) {
+    throw new Error("桌面目录用例类型数据无效")
+  }
+  return {
+    type: value.type, type_version: value.type_version, label: value.label, category: value.category,
+    scheduling_owner: value.scheduling_owner, supported_protocols: [...value.supported_protocols],
+    creatable: value.creatable, default_spec: structuredClone(value.default_spec),
   }
 }
 
@@ -437,13 +450,6 @@ function parsePlan(value: unknown): CatalogPlan {
   }
 }
 
-function parseAssertion(value: unknown): CatalogAssertion {
-  if (!isRecord(value) || !isAssertionKind(value.kind) || !isRecord(value.config)) {
-    throw new Error("桌面目录测试用例断言无效")
-  }
-  return { kind: value.kind, config: structuredClone(value.config) }
-}
-
 function parseCaseRevision(value: unknown): CatalogCaseRevision {
   if (!isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision)) {
     throw new Error("桌面目录用例版本引用无效")
@@ -490,18 +496,6 @@ function isUniqueStrings(value: unknown): value is string[] {
   )
 }
 
-function isStringList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(isNonBlank)
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.entries(value).every(([name, entry]) => isNonBlank(name) && typeof entry === "string" && entry.trim() === entry)
-}
-
-function isHTTPStatuses(value: unknown): value is number[] {
-  return Array.isArray(value) && value.length > 0 && value.every((status) => Number.isSafeInteger(status) && status >= 100 && status <= 599) && new Set(value).size === value.length
-}
-
 function isUUIDList(value: unknown): value is string[] {
   return Array.isArray(value) && value.length > 0 && value.every(isUUID) && new Set(value).size === value.length
 }
@@ -530,14 +524,6 @@ function isCaseExecutionMode(value: unknown): value is CatalogCaseExecutionMode 
   return value === "automatic" || value === "manual"
 }
 
-function isStreamCompletion(value: unknown): value is CatalogStreamCompletion {
-  return value === "not_applicable" || value === "required" || value === "forbidden"
-}
-
-function isAssertionKind(value: unknown): value is string {
-  return value === "response_schema" || value === "stream_end" || value === "text" || value === "json" || value === "tool_call" || value === "multimodal" || value === "custom"
-}
-
 function isSafeCaseKey(value: unknown): value is string {
   return (
     isNonBlank(value) &&
@@ -549,18 +535,8 @@ function isSafeDimension(value: unknown): value is string {
   return isNonBlank(value)
 }
 
-function isMethod(value: unknown): value is CatalogTestCase["method"] {
-  return value === "GET" || value === "POST" || value === "PUT" || value === "PATCH" || value === "DELETE"
-}
-
-function isRequestPath(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.startsWith("/") &&
-    !value.startsWith("//") &&
-    !/[?#\\]/.test(value) &&
-    !value.split("/").some((part) => part === "." || part === "..")
-  )
+function isSafeCaseType(value: unknown): value is string {
+  return isNonBlank(value) && /^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/.test(value)
 }
 
 function isSafeServiceURL(value: unknown): value is string {

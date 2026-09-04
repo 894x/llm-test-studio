@@ -1,21 +1,37 @@
 {
-  "id": "T023",
+  "schema_version": 2,
+  "key": "T023",
   "name": "速率限制、并发与 429",
   "dimension": "stability",
   "protocol": "openai-chat",
-  "kind": "concurrency_probe",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "仅输出 CONCURRENT_OK"}],
-      "temperature": 0,
-      "max_tokens": 16
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "concurrency_probe",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "仅输出 CONCURRENT_OK"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 16
+        }
+      },
+      "options": {
+        "repetitions": 5
+      }
     }
-  },
-  "options": {
-    "repetitions": 5
   }
 }

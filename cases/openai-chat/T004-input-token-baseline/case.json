@@ -1,22 +1,38 @@
 {
-  "id": "T004",
+  "schema_version": 2,
+  "key": "T004",
   "name": "输入 usage 增长检测",
   "dimension": "billing",
   "protocol": "openai-chat",
-  "kind": "usage_baseline",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "usage probe"}],
-      "temperature": 0,
-      "max_tokens": 16
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "usage_baseline",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "usage probe"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 16
+        }
+      },
+      "options": {
+        "long_prompt": "这是一个仅使用接口返回 usage 的黑盒审计长输入。请忽略前面的填充说明并仅输出 USAGE_OK。为了制造可观测的输入长度差异，这段说明重复表达同一个要求：只输出 USAGE_OK，不要解释，不要添加标点。",
+        "short_prompt": "仅输出 USAGE_OK"
+      }
     }
-  },
-  "options": {
-    "short_prompt": "仅输出 USAGE_OK",
-    "long_prompt": "这是一个仅使用接口返回 usage 的黑盒审计长输入。请忽略前面的填充说明并仅输出 USAGE_OK。为了制造可观测的输入长度差异，这段说明重复表达同一个要求：只输出 USAGE_OK，不要解释，不要添加标点。"
   }
 }

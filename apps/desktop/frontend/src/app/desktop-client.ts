@@ -393,7 +393,7 @@ export function createFixtureClient(
       return structuredClone(catalogState)
     },
     async createTestCase(command) {
-      catalogState.test_cases.push({ id: nextID(), revision: 1, ...structuredClone(command), assertion_kinds: command.assertions.map((assertion) => assertion.kind) })
+      catalogState.test_cases.push({ id: nextID(), revision: 1, ...structuredClone(command) })
       return structuredClone(catalogState)
     },
     async updateTestCase(command) {
@@ -402,7 +402,6 @@ export function createFixtureClient(
         id,
         revision: expected_revision + 1,
         ...structuredClone(editable),
-        assertion_kinds: command.assertions.map((assertion) => assertion.kind),
       })
       return structuredClone(catalogState)
     },

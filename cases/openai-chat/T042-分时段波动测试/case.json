@@ -1,16 +1,28 @@
 {
-  "id": "T042",
+  "schema_version": 2,
+  "key": "T042",
   "name": "分时段波动测试",
   "dimension": "stability",
   "protocol": "openai-chat",
-  "kind": "manual_unknown",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions"
-  },
-  "options": {
-    "reason": "缺少同一渠道的历史时段基线，当前运行无法独立判定"
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": null
+      },
+      "options": {
+        "reason": "缺少同一渠道的历史时段基线，当前运行无法独立判定"
+      }
+    }
   }
 }

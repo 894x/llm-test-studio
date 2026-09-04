@@ -1,20 +1,57 @@
 {
-  "id": "must.tool_choice_required",
+  "schema_version": 2,
+  "key": "must.tool_choice_required",
   "name": "工具调用 · tool_choice=required",
   "dimension": "tools",
   "protocol": "kimi-k3",
-  "kind": "kimi_tool_call",
+  "enabled": true,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "查询北京天气。"}],
-      "tools": [{"type": "function", "function": {"name": "get_weather", "description": "查询天气", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}],
-      "tool_choice": "required",
-      "max_tokens": 200
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "kimi_tool_call",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "查询北京天气。"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "查询天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "required",
+          "max_tokens": 200
+        }
+      },
+      "options": {
+        "expected_tool_name": "get_weather"
+      }
     }
-  },
-  "options": {"expected_tool_name": "get_weather"}
+  }
 }

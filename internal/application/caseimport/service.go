@@ -1,4 +1,4 @@
-// Package caseimport converts the repository's legacy JSON case catalog into
+// Package caseimport imports the repository's v2 JSON case catalog into
 // versioned domain entities and coordinates idempotent persistence.
 package caseimport
 
@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	Namespace        = "builtin.cases/v1"
-	ConverterVersion = 1
+	Namespace        = "builtin.cases/v2"
+	ConverterVersion = 2
 )
 
 var (
@@ -270,14 +270,14 @@ func discoverBundle(ctx context.Context, bundle fs.FS) ([]discoveredCase, string
 			return contextErr
 		}
 		if entry.Type()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("legacy case bundle contains a symbolic link")
+			return fmt.Errorf("case bundle contains a symbolic link")
 		}
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
 			paths = append(paths, path)
 		}
 		return nil
 	}); err != nil {
-		return nil, "", 0, fmt.Errorf("scan legacy case bundle: %w", err)
+		return nil, "", 0, fmt.Errorf("scan case bundle: %w", err)
 	}
 	sort.Strings(paths)
 	manifestLines := make([]string, 0, len(paths))
@@ -287,7 +287,7 @@ func discoverBundle(ctx context.Context, bundle fs.FS) ([]discoveredCase, string
 	for _, path := range paths {
 		raw, err := fs.ReadFile(bundle, path)
 		if err != nil {
-			return nil, "", 0, fmt.Errorf("read legacy case bundle: %w", err)
+			return nil, "", 0, fmt.Errorf("read case bundle: %w", err)
 		}
 		rawHash := sha256Hex(raw)
 		manifestLines = append(manifestLines, path+"\x00"+rawHash)
@@ -299,15 +299,15 @@ func discoverBundle(ctx context.Context, bundle fs.FS) ([]discoveredCase, string
 			continue
 		}
 		if entryParts := strings.Split(path, "/"); len(entryParts) != 3 || entryParts[2] != "case.json" {
-			return nil, "", 0, fmt.Errorf("legacy case bundle contains unsupported JSON path %q", path)
+			return nil, "", 0, fmt.Errorf("case bundle contains unsupported JSON path %q", path)
 		}
-		candidate, err := convertLegacyCase(path, raw)
+		candidate, err := convertFilesystemCase(path, raw)
 		if err != nil {
 			return nil, "", 0, err
 		}
 		sourceKey := string(candidate.Protocol) + "/" + candidate.Key
 		if previous, duplicate := seenKeys[sourceKey]; duplicate {
-			return nil, "", 0, fmt.Errorf("legacy case source key %q is duplicated by %s and %s", sourceKey, previous, path)
+			return nil, "", 0, fmt.Errorf("case source key %q is duplicated by %s and %s", sourceKey, previous, path)
 		}
 		seenKeys[sourceKey] = path
 		cases = append(cases, discoveredCase{convertedCase: candidate, SourceKey: sourceKey})

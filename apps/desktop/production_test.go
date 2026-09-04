@@ -14,6 +14,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
@@ -123,8 +124,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Suites)+len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 89 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want only 89 file-backed cases",
+			len(catalogSnapshot.Suites)+len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 90 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want only 90 file-backed cases",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -139,7 +140,7 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 57 || disabled != 26 || manual != 6 {
+	if runnable != 58 || disabled != 26 || manual != 6 {
 		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 57/26/6", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
@@ -217,8 +218,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 89 || len(secondSnapshot.TestCases) != 89 {
-		t.Fatalf("case counts across restart = %d/%d, want 89/89", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
+	if len(firstSnapshot.TestCases) != 90 || len(secondSnapshot.TestCases) != 90 {
+		t.Fatalf("case counts across restart = %d/%d, want 90/90", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
 	if len(firstSnapshot.Suites) != 0 || len(secondSnapshot.Suites) != 0 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
 		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want all empty",
@@ -294,10 +295,8 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Method:                  domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{"Content-Type": "application/json"},
-		Body:                json.RawMessage(`{"messages":[{"role":"user","content":"hello"}]}`),
-		AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionNotApplicable,
-		Assertions: []catalog.AssertionInput{{Kind: domain.AssertionResponseSchema, Config: json.RawMessage(`{"required":true}`)}},
+		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
+		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
@@ -310,13 +309,21 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 		Key: "T900", Name: "must not replace", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Method:                  domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{"Content-Type": "application/json"},
-		Body:                json.RawMessage(`{"messages":[{"role":"user","content":"replacement"}]}`),
-		AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionNotApplicable,
-		Assertions: []catalog.AssertionInput{{Kind: domain.AssertionResponseSchema, Config: json.RawMessage(`{"required":true}`)}},
+		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
+		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"replacement"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
 	})
 	if !errors.Is(err, catalog.ErrConflict) {
 		t.Fatalf("duplicate CreateTestCase() error = %v, want ErrConflict", err)
+	}
+	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
+		Key: "T901", Name: "reserved", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
+		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
+		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:                    casetypes.TypeLegacyAPIAudit, TypeVersion: 1,
+		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`),
+	})
+	if !errors.Is(err, catalog.ErrInvalid) {
+		t.Fatalf("reserved CreateTestCase() error = %v, want ErrInvalid", err)
 	}
 	snapshot, err := dependencies.catalog.Snapshot(context.Background())
 	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Key != "T900" || snapshot.TestCases[0].Name != "shareable" {
@@ -347,9 +354,8 @@ func TestProductionCutsOverLegacyDatabaseCasesToExeRelativeFiles(t *testing.T) {
 		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Request:       domain.TestRequest{Method: domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{}, Body: json.RawMessage(`{"messages":[{"role":"user","content":"legacy"}]}`)},
-			Expected:      domain.TestExpected{AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionNotApplicable},
-			Assertions:    []domain.TestAssertion{{Kind: domain.AssertionResponseSchema, Config: json.RawMessage(`{"required":true}`)}},
+			Type:          casetypes.TypeRequestSingle, TypeVersion: 1,
+			Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"legacy"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
 		},
 	}
 	if err := repository.CreateTestCase(context.Background(), legacyCase); err != nil {
@@ -391,5 +397,5 @@ func TestProductionCutsOverLegacyDatabaseCasesToExeRelativeFiles(t *testing.T) {
 }
 
 func productionLegacyCase(name string) string {
-	return `{"id":"T001","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","kind":"chat_sync","default":false,"severity":"normal","request":{"method":"POST","path":"/v1/chat/completions","body":{"messages":[{"role":"user","content":"hello"}]}}}`
+	return `{"schema_version":2,"key":"T001","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}}}`
 }

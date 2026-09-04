@@ -59,21 +59,9 @@ func validRunSnapshot() RunSnapshot {
 func validTestCaseDefinition() TestCaseDefinition {
 	return TestCaseDefinition{
 		SchemaVersion: CurrentTestCaseDefinitionSchemaVersion,
-		Request: TestRequest{
-			Method: RequestPOST,
-			Path:   "/v1/chat/completions",
-			Headers: map[string]string{
-				"Content-Type": "application/json",
-			},
-			Body: json.RawMessage(`{"model":"model-upstream","max_tokens":64}`),
-		},
-		Expected: TestExpected{
-			AllowedHTTPStatuses: []int{200},
-			StreamCompletion:    StreamCompletionRequired,
-		},
-		Assertions: []TestAssertion{{
-			Kind: AssertionStreamEnd, Config: json.RawMessage(`{"marker":"[DONE]"}`),
-		}},
+		Type:          CaseType("request.single"),
+		TypeVersion:   1,
+		Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"model":"model-upstream","max_tokens":64}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"stream_end","config":{"marker":"[DONE]"}}]}`),
 	}
 }
 
@@ -297,7 +285,7 @@ func TestChannelModelAndTestCaseValidateTheirOwnedIdentity(t *testing.T) {
 	if err := testCase.Validate(); err != nil {
 		t.Fatalf("TestCase.Validate() error = %v", err)
 	}
-	testCase.Definition.Request.Body = json.RawMessage(`[]`)
+	testCase.Definition.Spec = json.RawMessage(`[]`)
 	if err := testCase.Validate(); err == nil {
 		t.Fatal("test case with a non-object request body validated")
 	}
@@ -334,21 +322,13 @@ func TestTestCaseValidatesCatalogPolicyFields(t *testing.T) {
 	}
 }
 
-func TestTestCaseDefinitionRejectsCredentialsWithoutBlockingModelTokenFields(t *testing.T) {
+func TestTestCaseDefinitionRejectsCredentialsInOpaqueSpec(t *testing.T) {
 	definition := validTestCaseDefinition()
 	if err := definition.Validate(); err != nil {
 		t.Fatalf("TestCaseDefinition.Validate() error = %v", err)
 	}
 
-	for _, header := range []string{"Authorization", "X-API-Key", "X-Token", "Cookie"} {
-		candidate := validTestCaseDefinition()
-		candidate.Request.Headers[header] = "plaintext"
-		if err := candidate.Validate(); err == nil {
-			t.Fatalf("credential header %q validated", header)
-		}
-	}
-
-	for _, body := range []string{
+	for _, spec := range []string{
 		`{"api_key":"plaintext"}`,
 		`{"key":"sk-plaintext"}`,
 		`{"token":"opaque-plaintext"}`,
@@ -356,35 +336,31 @@ func TestTestCaseDefinitionRejectsCredentialsWithoutBlockingModelTokenFields(t *
 		`{"password":"plaintext"}`,
 	} {
 		candidate := validTestCaseDefinition()
-		candidate.Request.Body = json.RawMessage(body)
+		candidate.Spec = json.RawMessage(spec)
 		if err := candidate.Validate(); err == nil {
-			t.Fatalf("secret-bearing request body validated: %s", body)
+			t.Fatalf("secret-bearing spec validated: %s", spec)
 		}
 	}
 }
 
 func TestTestCaseDefinitionRejectsCredentialLikeValueUnderBenignName(t *testing.T) {
 	candidate := validTestCaseDefinition()
-	candidate.Request.Body = json.RawMessage(`{"value":"sk-plaintext"}`)
+	candidate.Spec = json.RawMessage(`{"value":"sk-plaintext"}`)
 	if err := candidate.Validate(); err == nil {
 		t.Fatal("credential-like value under a benign field name validated")
 	}
 }
 
-func TestTestCaseDefinitionValidatesVersionExpectedAndAssertionContracts(t *testing.T) {
+func TestTestCaseDefinitionValidatesV2Envelope(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*TestCaseDefinition)
 	}{
 		{"schema", func(value *TestCaseDefinition) { value.SchemaVersion++ }},
-		{"method", func(value *TestCaseDefinition) { value.Request.Method = "CONNECT" }},
-		{"path", func(value *TestCaseDefinition) { value.Request.Path = "https://example.test/v1" }},
-		{"statuses", func(value *TestCaseDefinition) { value.Expected.AllowedHTTPStatuses = nil }},
-		{"duplicate status", func(value *TestCaseDefinition) { value.Expected.AllowedHTTPStatuses = []int{200, 200} }},
-		{"stream completion", func(value *TestCaseDefinition) { value.Expected.StreamCompletion = "maybe" }},
-		{"assertion kind", func(value *TestCaseDefinition) { value.Assertions[0].Kind = "shell" }},
-		{"assertion config", func(value *TestCaseDefinition) { value.Assertions[0].Config = json.RawMessage(`{}`) }},
-		{"assertion config type", func(value *TestCaseDefinition) { value.Assertions[0].Config = json.RawMessage(`[]`) }},
+		{"type", func(value *TestCaseDefinition) { value.Type = "Request.Single" }},
+		{"type version", func(value *TestCaseDefinition) { value.TypeVersion = 0 }},
+		{"empty spec", func(value *TestCaseDefinition) { value.Spec = json.RawMessage(`{}`) }},
+		{"spec type", func(value *TestCaseDefinition) { value.Spec = json.RawMessage(`[]`) }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -397,23 +373,8 @@ func TestTestCaseDefinitionValidatesVersionExpectedAndAssertionContracts(t *test
 	}
 }
 
-func TestTestCaseDefinitionAllowsRequestsWithoutBodies(t *testing.T) {
-	t.Parallel()
-
-	for _, body := range []json.RawMessage{nil, json.RawMessage(`null`)} {
-		candidate := validTestCaseDefinition()
-		candidate.Request.Method = RequestGET
-		candidate.Request.Path = "/v1/models"
-		candidate.Request.Body = body
-
-		if err := candidate.Validate(); err != nil {
-			t.Fatalf("TestCaseDefinition.Validate() body %q error = %v", body, err)
-		}
-	}
-}
-
 func TestTestCaseDefinitionJSONRejectsUnknownCredentialFields(t *testing.T) {
-	raw := `{"schema_version":1,"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{},"api_key":"plaintext"},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"stream_end","config":{"marker":"[DONE]"}}]}`
+	raw := `{"schema_version":2,"type":"request.single","type_version":1,"spec":{"api_key":"plaintext"},"request":{"method":"POST"}}`
 	var definition TestCaseDefinition
 	if err := json.Unmarshal([]byte(raw), &definition); err == nil {
 		t.Fatal("unknown credential field in request JSON was accepted")
@@ -422,7 +383,7 @@ func TestTestCaseDefinitionJSONRejectsUnknownCredentialFields(t *testing.T) {
 
 func TestTestCaseDefinitionMarshalRejectsSecretBearingBody(t *testing.T) {
 	definition := validTestCaseDefinition()
-	definition.Request.Body = json.RawMessage(`{"api_key":"plaintext"}`)
+	definition.Spec = json.RawMessage(`{"api_key":"plaintext"}`)
 	if _, err := json.Marshal(definition); err == nil {
 		t.Fatal("secret-bearing test definition was serialized")
 	}

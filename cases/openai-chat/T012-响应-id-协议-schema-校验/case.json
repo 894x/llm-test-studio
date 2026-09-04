@@ -1,27 +1,38 @@
 {
-  "id": "T012",
+  "schema_version": 2,
+  "key": "T012",
   "name": "响应 ID 上游渠道数推断",
   "dimension": "identity",
   "protocol": "openai-chat",
-  "kind": "response_id",
+  "enabled": true,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "仅输出 ID_OK"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "response_id",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "仅输出 ID_OK"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 16
         }
-      ],
-      "temperature": 0,
-      "max_tokens": 16
+      },
+      "options": {
+        "max_channels": 2,
+        "repetitions": 10
+      }
     }
-  },
-  "options": {
-    "repetitions": 10,
-    "max_channels": 2
   }
 }

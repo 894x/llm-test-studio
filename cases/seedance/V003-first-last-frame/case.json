@@ -1,23 +1,50 @@
 {
-  "id": "V003",
+  "schema_version": 2,
+  "key": "V003",
   "name": "首尾帧生成视频",
   "dimension": "compatibility",
   "protocol": "seedance",
-  "kind": "seedance_task",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/api/v3/contents/generations/tasks",
-    "body": {
-      "content": [
-        {"type": "text", "text": "The subject turns toward the camera as it completes a smooth 360-degree orbit."},
-        {"type": "image_url", "image_url": {"url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_first_frame.jpeg"}, "role": "first_frame"},
-        {"type": "image_url", "image_url": {"url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_last_frame.jpeg"}, "role": "last_frame"}
-      ],
-      "duration": 4,
-      "resolution": "480p",
-      "ratio": "16:9"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "seedance_task",
+      "request": {
+        "method": "POST",
+        "path": "/api/v3/contents/generations/tasks",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "The subject turns toward the camera as it completes a smooth 360-degree orbit."
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_first_frame.jpeg"
+              },
+              "role": "first_frame"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_last_frame.jpeg"
+              },
+              "role": "last_frame"
+            }
+          ],
+          "duration": 4,
+          "resolution": "480p",
+          "ratio": "16:9"
+        }
+      },
+      "options": {}
     }
   }
 }

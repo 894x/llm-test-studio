@@ -19,7 +19,7 @@ import { Spinner } from "@/components/ui/spinner"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
-  CatalogPlan, CatalogProtocol, CatalogSnapshot, CatalogStreamCompletion, CatalogSuite,
+  CatalogPlan, CatalogProtocol, CatalogSnapshot, CatalogSuite,
   CatalogTestCase, DeleteCommand,
 } from "./data"
 
@@ -162,39 +162,91 @@ function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSav
   </FormShell>
 }
 
-function CaseForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
+function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
+  const availableTypes = catalog.case_types.filter((descriptor) => descriptor.creatable || descriptor.type === item?.type)
+  const initialDescriptor = catalog.case_types.find((descriptor) => descriptor.type === item?.type && descriptor.type_version === item.type_version)
+    ?? availableTypes.find((descriptor) => descriptor.supported_protocols.includes(item?.protocol ?? "openai-chat"))
+  const initialSpec = item?.spec ?? initialDescriptor?.default_spec ?? {}
   const [value, setValue] = useState(() => ({
     key: item?.key ?? "", name: item?.name ?? "", dimension: item?.dimension ?? "compatibility",
     protocol: item?.protocol ?? "openai-chat" as CatalogProtocol, enabled: item?.enabled ?? true,
     default: item?.default ?? false, severity: item?.severity ?? "normal", execution_mode: item?.execution_mode ?? "automatic",
-    definition_schema_version: item?.definition_schema_version ?? 1, method: item?.method ?? "POST",
-    path: item?.path ?? "/v1/chat/completions", headers: json(item?.headers ?? {}), body: json(item?.body),
-    statuses: item?.allowed_http_statuses.join(", ") ?? "200", stream_completion: item?.stream_completion ?? "not_applicable" as CatalogStreamCompletion,
-    assertions: json(item?.assertions ?? [{ kind: "custom", config: { name: "custom-check" } }]),
+    type: item?.type ?? initialDescriptor?.type ?? "", type_version: item?.type_version ?? initialDescriptor?.type_version ?? 1,
+    spec: json(initialSpec),
+    stages: latencyStages(initialSpec.stages),
+    warmups_per_step: finiteNumber(initialSpec.warmups_per_step, 1),
+    samples_per_step: finiteNumber(initialSpec.samples_per_step, 3),
+    output_tokens: finiteNumber(initialSpec.output_tokens, 16),
+    timeout_ms: finiteNumber(initialSpec.timeout_ms, 600000),
+    cache_mode: initialSpec.cache_mode === "warm" ? "warm" : "cold",
   }))
   const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue((current) => ({ ...current, [key]: next }))
+  const descriptor = catalog.case_types.find((candidate) => candidate.type === value.type && candidate.type_version === value.type_version)
+  const typeOptions = availableTypes.filter((candidate) => candidate.supported_protocols.includes(value.protocol)).map((candidate) => [`${candidate.type}@${candidate.type_version}`, `${candidate.label} · v${candidate.type_version}`] as [string, string])
+  const selectType = (key: string) => {
+    const next = catalog.case_types.find((candidate) => `${candidate.type}@${candidate.type_version}` === key)
+    if (!next) return
+    const spec = next.default_spec
+    setValue((current) => ({
+      ...current, type: next.type, type_version: next.type_version, dimension: next.category, spec: json(spec),
+      stages: latencyStages(spec.stages), warmups_per_step: finiteNumber(spec.warmups_per_step, 1),
+      samples_per_step: finiteNumber(spec.samples_per_step, 3), output_tokens: finiteNumber(spec.output_tokens, 16),
+      timeout_ms: finiteNumber(spec.timeout_ms, 600000), cache_mode: spec.cache_mode === "warm" ? "warm" : "cold",
+    }))
+  }
+  const updateStage = (index: number, patch: Partial<LatencyStageDraft>) => setValue((current) => ({
+    ...current,
+    stages: current.stages.map((stage, stageIndex) => stageIndex === index ? { ...stage, ...patch } : stage),
+  }))
+  const addStage = () => setValue((current) => {
+    const previous = current.stages.at(-1)?.input_tokens ?? 64
+    return { ...current, stages: [...current.stages, { input_tokens: Math.min(previous * 2, 1_000_000), warmups: "", samples: "" }] }
+  })
+  const removeStage = (index: number) => setValue((current) => ({ ...current, stages: current.stages.filter((_, stageIndex) => stageIndex !== index) }))
   return <FormShell pending={pending} label="保存用例" formTitle={formTitle} onSubmit={async () => {
+    if (!descriptor) throw new FormValidationError("请选择可用的用例类型")
+    const spec = value.type === "latency.input_ladder"
+      ? {
+          ...recordJSON<unknown>(value.spec, "用例配置"),
+          stages: latencyStageSpecs(value.stages), warmups_per_step: value.warmups_per_step,
+          samples_per_step: value.samples_per_step, output_tokens: value.output_tokens,
+          timeout_ms: value.timeout_ms, cache_mode: value.cache_mode,
+        }
+      : recordJSON<unknown>(value.spec, "用例配置")
     const command = {
       key: required(value.key, "用例键"), name: required(value.name, "用例名称"), dimension: required(value.dimension, "维度"),
       protocol: value.protocol, enabled: value.enabled, default: value.default, severity: value.severity as "normal" | "critical",
-      execution_mode: value.execution_mode as "automatic" | "manual", definition_schema_version: value.definition_schema_version,
-      method: value.method as CatalogTestCase["method"], path: required(value.path, "请求路径"),
-      headers: recordJSON<string>(value.headers, "请求头"), body: nullableRecordJSON(value.body, "请求体"),
-      allowed_http_statuses: numberList(value.statuses), stream_completion: value.stream_completion,
-      assertions: arrayJSON<{ kind: string; config: Record<string, unknown> }>(value.assertions, "断言"),
+      execution_mode: value.execution_mode as "automatic" | "manual", definition_schema_version: 2,
+      type: value.type, type_version: value.type_version, spec,
     }
     await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), `${formTitle}保存`); onSaved()
   }}>
     <div className="grid grid-cols-2 gap-3"><TextField label="用例键" value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label="用例名称" value={value.name} onChange={(v) => set("name", v)} /></div>
     <div className="grid grid-cols-2 gap-3"><TextField label="维度" value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label="协议" value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
-    <div className="grid grid-cols-2 gap-3"><SelectField label="请求方法" value={value.method} options={["GET","POST","PUT","PATCH","DELETE"].map(v => [v,v])} onChange={(v) => set("method", v as CatalogTestCase["method"])} /><TextField label="请求路径" value={value.path} onChange={(v) => set("path", v)} /></div>
+    <SelectField label="用例类型" value={`${value.type}@${value.type_version}`} options={typeOptions} onChange={selectType} />
+    {descriptor ? <FieldDescription>{descriptor.category} · 调度由{descriptor.scheduling_owner === "case" ? "用例" : "计划"}负责 · {descriptor.type}@{descriptor.type_version}</FieldDescription> : null}
     <div className="grid grid-cols-2 gap-3"><SelectField label="严重度" value={value.severity} options={[["normal","普通"],["critical","关键"]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label="执行方式" value={value.execution_mode} options={[["automatic","自动"],["manual","人工"]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
     <div className="grid grid-cols-2 gap-3"><CheckField label="启用" checked={value.enabled} onChange={(v) => set("enabled", v)} /><CheckField label="默认启用" checked={value.default} onChange={(v) => set("default", v)} /></div>
-    <TextAreaField label="请求头 JSON" value={value.headers} onChange={(v) => set("headers", v)} />
-    <TextAreaField label="请求体 JSON" value={value.body} onChange={(v) => set("body", v)} description="无请求体请填写 null。" />
-    <TextField label="允许的 HTTP 状态码" value={value.statuses} onChange={(v) => set("statuses", v)} />
-    <SelectField label="流结束约束" value={value.stream_completion} options={[["not_applicable","不适用"],["required","必须完成"],["forbidden","禁止流式"]]} onChange={(v) => set("stream_completion", v as CatalogStreamCompletion)} />
-    <TextAreaField label="断言 JSON" value={value.assertions} onChange={(v) => set("assertions", v)} />
+    {value.type === "latency.input_ladder" ? <>
+      <div className="grid grid-cols-2 gap-3"><NumberField label="默认每档预热次数" value={value.warmups_per_step} maximum={10} onChange={(v) => set("warmups_per_step", v)} /><NumberField label="默认每档采样次数" value={value.samples_per_step} minimum={1} maximum={100} onChange={(v) => set("samples_per_step", v)} /></div>
+      <fieldset className="space-y-2 rounded-lg border p-3">
+        <legend className="px-1 text-xs font-medium">输入 Token 阶梯</legend>
+        <FieldDescription>预热或采样留空时继承上方默认值；填写后仅覆盖当前阶梯。</FieldDescription>
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 px-1 text-[10px] text-muted-foreground" aria-hidden="true">
+          <span>输入 Token</span><span>预热覆盖</span><span>采样覆盖</span><span className="w-12" />
+        </div>
+        {value.stages.map((stage, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+          <Input aria-label={`阶梯 ${index + 1} 输入 Token`} type="number" min={1} max={1_000_000} value={stage.input_tokens} onChange={(event) => updateStage(index, { input_tokens: Number(event.target.value) })} />
+          <Input aria-label={`阶梯 ${index + 1} 预热次数`} type="number" min={0} max={10} value={stage.warmups} placeholder={`继承 ${value.warmups_per_step}`} onChange={(event) => updateStage(index, { warmups: event.target.value })} />
+          <Input aria-label={`阶梯 ${index + 1} 采样次数`} type="number" min={1} max={100} value={stage.samples} placeholder={`继承 ${value.samples_per_step}`} onChange={(event) => updateStage(index, { samples: event.target.value })} />
+          <Button type="button" size="sm" variant="ghost" className="w-12" disabled={value.stages.length === 1} onClick={() => removeStage(index)} aria-label={`删除阶梯 ${index + 1}`}>删除</Button>
+        </div>)}
+        <Button type="button" size="sm" variant="outline" disabled={value.stages.length >= 32 || (value.stages.at(-1)?.input_tokens ?? 0) >= 1_000_000} onClick={addStage}><PlusIcon data-icon="inline-start" />新增阶梯</Button>
+      </fieldset>
+      <div className="grid grid-cols-2 gap-3"><NumberField label="输出 Token 上限" value={value.output_tokens} minimum={1} maximum={65_536} onChange={(v) => set("output_tokens", v)} /><NumberField label="单请求超时毫秒" value={value.timeout_ms} minimum={1} maximum={600_000} onChange={(v) => set("timeout_ms", v)} /></div>
+      <SelectField label="缓存模式" value={value.cache_mode} options={[["cold","冷缓存（每次变化探针）"],["warm","热缓存（复用探针）"]]} onChange={(v) => set("cache_mode", v as "cold" | "warm")} />
+      <TextAreaField label="高级配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description="请求模板保存在这里；上方阶梯参数保存时会覆盖同名字段。" />
+    </> : <TextAreaField label="用例配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description="配置结构由所选 type@version 定义并由后端校验。" />}
   </FormShell>
 }
 
@@ -273,8 +325,8 @@ function FormShell({ children, label, pending, formTitle, onSubmit }: { children
 function TextField({ label, value, onChange, description, disabled = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; description?: string; disabled?: boolean; type?: "text" | "password" }) {
   return <Field className="block"><FieldLabel>{label}</FieldLabel><FieldContent><Input aria-label={label} type={type} autoComplete={type === "password" ? "new-password" : undefined} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />{description ? <FieldDescription>{description}</FieldDescription> : null}</FieldContent></Field>
 }
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return <Field className="block"><FieldLabel>{label}</FieldLabel><Input aria-label={label} type="number" min={0} value={value} onChange={(e) => onChange(Number(e.target.value))} /></Field>
+function NumberField({ label, value, onChange, minimum = 0, maximum }: { label: string; value: number; onChange: (value: number) => void; minimum?: number; maximum?: number }) {
+  return <Field className="block"><FieldLabel>{label}</FieldLabel><Input aria-label={label} type="number" min={minimum} max={maximum} value={value} onChange={(e) => onChange(Number(e.target.value))} /></Field>
 }
 function TextAreaField({ label, value, onChange, description }: { label: string; value: string; onChange: (value: string) => void; description?: string }) {
   return <Field className="block"><FieldLabel>{label}</FieldLabel><Textarea aria-label={label} className="min-h-24 font-mono text-xs" value={value} onChange={(e) => onChange(e.target.value)} />{description ? <FieldDescription>{description}</FieldDescription> : null}</Field>
@@ -293,9 +345,45 @@ const protocolOptions = [["openai-chat","OpenAI Chat"],["kimi-k3","Kimi K3"],["s
 class FormValidationError extends Error {}
 function required(value: string, label: string) { const result = value.trim(); if (!result) throw new FormValidationError(`${label}不能为空`); return result }
 function list(value: string) { return [...new Set(value.split(",").map(v => v.trim()).filter(Boolean))] }
-function numberList(value: string) { const result = list(value).map(Number); if (!result.length || result.some(v => !Number.isInteger(v))) throw new FormValidationError("HTTP 状态码格式无效"); return result }
 function json(value: unknown) { return JSON.stringify(value, null, 2) }
 function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(`${label}不是有效 JSON`) } }
 function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(`${label}必须是 JSON 对象`); return parsed as Record<string,T> }
-function nullableRecordJSON(value: string, label: string): Record<string,unknown> | null { const parsed = parseJSON(value, label); if (parsed === null) return null; if (Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(`${label}必须是 JSON 对象或 null`); return parsed as Record<string,unknown> }
-function arrayJSON<T>(value: string, label: string): T[] { const parsed = parseJSON(value, label); if (!Array.isArray(parsed)) throw new FormValidationError(`${label}必须是 JSON 数组`); return parsed as T[] }
+function finiteNumber(value: unknown, fallback: number): number { return typeof value === "number" && Number.isFinite(value) ? value : fallback }
+
+type LatencyStageDraft = { input_tokens: number; warmups: string; samples: string }
+
+function latencyStages(value: unknown): LatencyStageDraft[] {
+  if (!Array.isArray(value)) return [{ input_tokens: 128, warmups: "", samples: "" }]
+  const stages = value.flatMap((entry) => {
+    if (!entry || Array.isArray(entry) || typeof entry !== "object") return []
+    const stage = entry as Record<string, unknown>
+    if (typeof stage.input_tokens !== "number" || !Number.isFinite(stage.input_tokens)) return []
+    return [{
+      input_tokens: stage.input_tokens,
+      warmups: typeof stage.warmups === "number" && Number.isFinite(stage.warmups) ? String(stage.warmups) : "",
+      samples: typeof stage.samples === "number" && Number.isFinite(stage.samples) ? String(stage.samples) : "",
+    }]
+  })
+  return stages.length ? stages : [{ input_tokens: 128, warmups: "", samples: "" }]
+}
+
+function latencyStageSpecs(stages: LatencyStageDraft[]) {
+  if (!stages.length) throw new FormValidationError("至少需要一个输入 Token 阶梯")
+  let previous = 0
+  return stages.map((stage, index) => {
+    if (!Number.isInteger(stage.input_tokens) || stage.input_tokens <= previous || stage.input_tokens > 1_000_000) {
+      throw new FormValidationError(`阶梯 ${index + 1} 的输入 Token 必须递增且不超过 1000000`)
+    }
+    previous = stage.input_tokens
+    const warmups = optionalInteger(stage.warmups, `阶梯 ${index + 1} 预热次数`, 0, 10)
+    const samples = optionalInteger(stage.samples, `阶梯 ${index + 1} 采样次数`, 1, 100)
+    return { input_tokens: stage.input_tokens, ...(warmups === undefined ? {} : { warmups }), ...(samples === undefined ? {} : { samples }) }
+  })
+}
+
+function optionalInteger(value: string, label: string, minimum: number, maximum: number): number | undefined {
+  if (!value.trim()) return undefined
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) throw new FormValidationError(`${label}必须是 ${minimum}–${maximum} 的整数`)
+  return parsed
+}

@@ -2,11 +2,13 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/execution/openai"
@@ -41,10 +43,15 @@ func (executor *LoadExecutor) Execute(ctx context.Context, request ExecutionRequ
 
 	caseExecutors := make([]load.Executor, len(request.Cases))
 	for index, testCase := range request.Cases {
-		if !testCase.Enabled || testCase.Protocol != snapshot.Channel.Protocol {
+		if !testCase.Enabled || testCase.Protocol != snapshot.Channel.Protocol ||
+			testCase.Definition.Type != casetypes.TypeRequestSingle || testCase.Definition.TypeVersion != 1 {
 			return ErrNotRunnable
 		}
-		caseExecutor, buildErr := client.Executor(testCase.Definition.Request)
+		var spec casetypes.RequestSingleSpec
+		if decodeErr := json.Unmarshal(testCase.Definition.Spec, &spec); decodeErr != nil {
+			return fmt.Errorf("decode case %s: %w", testCase.ID, decodeErr)
+		}
+		caseExecutor, buildErr := client.Executor(spec.Request)
 		if buildErr != nil {
 			return fmt.Errorf("prepare case %s: %w", testCase.ID, buildErr)
 		}

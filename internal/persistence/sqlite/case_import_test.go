@@ -528,7 +528,7 @@ func openExistingCaseImportRepository(t *testing.T, path string) *persistence.Re
 }
 
 func caseImportLegacyFixture(id, name string) string {
-	return `{"id":"` + id + `","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","kind":"chat_sync","default":false,"severity":"normal","request":{"method":"POST","path":"/v1/chat/completions","body":{"messages":[{"role":"user","content":"hello"}]}}}`
+	return `{"schema_version":2,"key":"` + id + `","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}}}`
 }
 
 var _ caseimport.Store = (*persistence.Repository)(nil)

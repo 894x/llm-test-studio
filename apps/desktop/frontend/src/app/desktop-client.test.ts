@@ -537,11 +537,9 @@ describe("Wails desktop client", () => {
     Object.assign(testCase, {
       key: longKey,
       dimension: longDimension,
-      assertion_kinds: ["custom", "custom"],
-      assertions: [
-        { kind: "custom", config: {} },
-        { kind: "custom", config: { mode: "manual" } },
-      ],
+      type: "request.single",
+      type_version: 1,
+      spec: { request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: {} }, expected: { allowed_http_statuses: [200], stream_completion: "not_applicable" }, assertions: [{ kind: "custom", config: { mode: "manual" } }] },
     })
     installBinding(FIXTURE_WORKSPACE, catalog)
 
@@ -549,7 +547,8 @@ describe("Wails desktop client", () => {
     expect(snapshot.test_cases[0]).toMatchObject({
       key: longKey,
       dimension: longDimension,
-      assertion_kinds: ["custom", "custom"],
+      type: "request.single",
+      type_version: 1,
     })
   })
 

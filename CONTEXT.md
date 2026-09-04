@@ -21,8 +21,20 @@ _Avoid_: Model Alias
 _Avoid_: API Key Record、Plaintext Secret
 
 **Test Case（测试用例）**:
-一个可版本化的请求、期望和断言集合；历史执行永远引用当时版本。
+一个可版本化的 `Case Type + Type Version + Spec` 实例；历史执行永远引用当时版本。
 _Avoid_: Prompt、Request Sample
+
+**Case Type（用例类型）**:
+一类测试意图的稳定标识，声明支持的协议、调度归属、默认配置和对应 Driver；类型版本用于演进配置与执行语义。
+_Avoid_: Assertion Kind、Hidden Driver
+
+**Case Spec（用例配置）**:
+由具体 Case Type 定义并校验的非秘密配置；通用目录层只负责保存和传递，不解释其内部字段。
+_Avoid_: Free-form Metadata、Driver Options Blob
+
+**Case Driver（用例驱动）**:
+执行某个 Case Type 的运行时实现，负责把 Spec 转换为请求序列，并产出带阶段维度的 Result。
+_Avoid_: Executor Flag、Custom Assertion
 
 **Suite（测试套件）**:
 一组明确版本的测试用例，可被多个执行计划复用。
@@ -37,7 +49,7 @@ _Avoid_: Run Config、Job
 _Avoid_: Task、Session
 
 **Result（结果）**:
-请求级或用例级的事实记录，分别表达传输、协议、语义与 SLA 是否成功。
+请求级或用例级的事实记录，分别表达传输、协议、语义与 SLA 是否成功；多阶段用例通过稳定 Dimensions 标识阶段与样本。
 _Avoid_: HTTP Success、Response
 
 **Evidence（证据）**:

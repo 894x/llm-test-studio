@@ -1,16 +1,28 @@
 {
-  "id": "T010",
+  "schema_version": 2,
+  "key": "T010",
   "name": "指纹题测试",
   "dimension": "identity",
   "protocol": "openai-chat",
-  "kind": "manual_unknown",
+  "enabled": true,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions"
-  },
-  "options": {
-    "reason": "参考报告未包含可复现的官方指纹题原文与答案基线"
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": null
+      },
+      "options": {
+        "reason": "参考报告未包含可复现的官方指纹题原文与答案基线"
+      }
+    }
   }
 }

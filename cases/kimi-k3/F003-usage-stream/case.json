@@ -1,19 +1,38 @@
 {
-  "id": "must.usage_stream",
+  "schema_version": 2,
+  "key": "must.usage_stream",
   "name": "协议 · Usage 流式",
   "dimension": "protocol",
   "protocol": "kimi-k3",
-  "kind": "stream_usage",
+  "enabled": true,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [{"role": "user", "content": "说你好"}],
-      "max_tokens": 50,
-      "stream": true,
-      "stream_options": {"include_usage": true}
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "stream_usage",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "说你好"
+            }
+          ],
+          "max_tokens": 50,
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        }
+      },
+      "options": {}
     }
   }
 }

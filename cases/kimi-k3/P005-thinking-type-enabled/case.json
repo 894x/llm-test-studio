@@ -1,26 +1,37 @@
 {
-  "id": "thinking_type_enabled_active",
+  "schema_version": 2,
+  "key": "thinking_type_enabled_active",
   "name": "思考 · thinking.type=enabled（非官方参数）",
   "dimension": "reasoning-parameters",
   "protocol": "kimi-k3",
-  "kind": "kimi_reasoning_visible",
+  "enabled": false,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "1+1 等于几？为什么？"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "kimi_reasoning_visible",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "1+1 等于几？为什么？"
+            }
+          ],
+          "thinking": {
+            "type": "enabled"
+          },
+          "max_tokens": 200
         }
-      ],
-      "thinking": {
-        "type": "enabled"
       },
-      "max_tokens": 200
+      "options": {}
     }
-  },
-  "disabled": true
+  }
 }

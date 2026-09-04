@@ -42,6 +42,7 @@ export interface ReportResult {
   }
   failure_kind?: string
   error_code?: string
+  dimensions?: Record<string, string>
   metrics: Record<string, number>
 }
 
@@ -161,7 +162,7 @@ function parseMetricMap(value: Record<string, unknown>): Record<string, ReportMe
 }
 
 function parseResult(value: unknown): ReportResult {
-  if (!isRecord(value) || !isUUID(value.id) || !isRecord(value.success) || (value.metrics !== undefined && !isRecord(value.metrics))) {
+  if (!isRecord(value) || !isUUID(value.id) || !isRecord(value.success) || (value.metrics !== undefined && !isRecord(value.metrics)) || (value.dimensions !== undefined && !isStringRecord(value.dimensions))) {
     throw new Error("桌面报告结果数据无效")
   }
   const success = value.success
@@ -180,6 +181,7 @@ function parseResult(value: unknown): ReportResult {
     success: { transport: success.transport as boolean, protocol: success.protocol as boolean, semantic: success.semantic as boolean, sla: success.sla as boolean },
     ...(typeof value.failure_kind === "string" && value.failure_kind ? { failure_kind: value.failure_kind } : {}),
     ...(typeof value.error_code === "string" && value.error_code ? { error_code: value.error_code } : {}),
+    ...(value.dimensions !== undefined ? { dimensions: { ...value.dimensions } as Record<string, string> } : {}),
     metrics,
   }
 }
@@ -265,6 +267,10 @@ function isReportSource(value: unknown): value is ReportSource {
 
 function isNonBlank(value: unknown): value is string {
   return typeof value === "string" && value.trim() === value && value.length > 0
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.entries(value).every(([name, entry]) => isNonBlank(name) && isNonBlank(entry))
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

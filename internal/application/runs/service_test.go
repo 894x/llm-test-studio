@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
@@ -877,10 +878,10 @@ func newRunFixture(t *testing.T) runFixture {
 		EntityMeta: meta(caseID), Key: "T001", Name: "basic", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
-			SchemaVersion: 1,
-			Request:       domain.TestRequest{Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: json.RawMessage(`{"messages":[{"role":"user","content":"hi"}]}`)},
-			Expected:      domain.TestExpected{AllowedHTTPStatuses: []int{200}, StreamCompletion: domain.StreamCompletionNotApplicable},
-			Assertions:    []domain.TestAssertion{{Kind: domain.AssertionText, Config: json.RawMessage(`{"non_empty":true}`)}},
+			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+			Type:          casetypes.TypeRequestSingle,
+			TypeVersion:   1,
+			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
 		},
 	}
 	plan := domain.Plan{

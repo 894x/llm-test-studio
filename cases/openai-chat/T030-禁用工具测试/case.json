@@ -1,44 +1,55 @@
 {
-  "id": "T030",
+  "schema_version": 2,
+  "key": "T030",
   "name": "禁用工具测试",
   "dimension": "boundary",
   "protocol": "openai-chat",
-  "kind": "chat_sync",
+  "enabled": true,
   "default": false,
   "severity": "normal",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "你好，请直接用文本回复。"
-        }
-      ],
-      "temperature": 0,
-      "max_tokens": 64,
-      "tools": [
-        {
-          "type": "function",
-          "function": {
-            "name": "get_weather",
-            "description": "查询天气",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "city": {
-                  "type": "string"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "chat_sync",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "你好，请直接用文本回复。"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 64,
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "查询天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
-          }
+          ],
+          "tool_choice": "none"
         }
-      ],
-      "tool_choice": "none"
+      },
+      "options": {
+        "forbid_tool_calls": true
+      }
     }
-  },
-  "options": {
-    "forbid_tool_calls": true
   }
 }

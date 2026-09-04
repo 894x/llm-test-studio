@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
@@ -25,10 +26,11 @@ func TestLegacyAPIAuditExecutorRunsImportedDriverWithoutPython(t *testing.T) {
 
 	fixture := newRunFixture(t)
 	fixture.channel.BaseURL = server.URL
-	fixture.testCase.Definition.Assertions = []domain.TestAssertion{{
-		Kind:   domain.AssertionCustom,
-		Config: json.RawMessage(`{"driver":"legacy.apiaudit","driver_version":1,"legacy_kind":"chat_sync","body_present":true,"options":{"require_usage":true}}`),
-	}}
+	fixture.testCase.Definition = domain.TestCaseDefinition{
+		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:          casetypes.TypeLegacyAPIAudit, TypeVersion: 1,
+		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"options":{"require_usage":true}}`),
+	}
 	snapshot := domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: fixture.plan.ID, Revision: 1},
@@ -60,13 +62,16 @@ func TestLegacyAPIAuditExecutorRunsImportedDriverWithoutPython(t *testing.T) {
 	}
 }
 
-func TestExecutorRouterSelectsLegacyDriverAndRejectsMixedSemantics(t *testing.T) {
+func TestExecutorRouterDispatchesMixedCaseTypesToTheirDrivers(t *testing.T) {
 	fixture := newRunFixture(t)
 	legacyCase := fixture.testCase
-	legacyCase.Definition.Assertions = []domain.TestAssertion{{Kind: domain.AssertionCustom, Config: json.RawMessage(`{"driver":"legacy.apiaudit","driver_version":1,"legacy_kind":"chat_sync","body_present":true,"options":{}}`)}}
+	legacyCase.Definition = domain.TestCaseDefinition{SchemaVersion: 2, Type: casetypes.TypeLegacyAPIAudit, TypeVersion: 1, Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{}},"options":{}}`)}
 	legacy := &recordingExecutor{}
 	load := &recordingExecutor{}
-	router := runs.NewExecutorRouter(legacy, load)
+	router := runs.MustExecutorRouter(casetypes.MustBuiltinRegistry(), map[domain.CaseType]runs.Executor{
+		casetypes.TypeLegacyAPIAudit: legacy,
+		casetypes.TypeRequestSingle:  load,
+	})
 	request := runs.ExecutionRequest{Cases: []domain.TestCase{legacyCase}}
 	if err := router.Execute(context.Background(), request, func(runs.ResultDraft) error { return nil }); err != nil {
 		t.Fatalf("legacy route error = %v", err)
@@ -75,14 +80,21 @@ func TestExecutorRouterSelectsLegacyDriverAndRejectsMixedSemantics(t *testing.T)
 		t.Fatalf("route calls legacy/load = %d/%d", legacy.calls, load.calls)
 	}
 	request.Cases = []domain.TestCase{legacyCase, fixture.testCase}
-	if err := router.Execute(context.Background(), request, func(runs.ResultDraft) error { return nil }); err == nil {
-		t.Fatal("mixed legacy and native plan was accepted")
+	if err := router.Execute(context.Background(), request, func(runs.ResultDraft) error { return nil }); err != nil {
+		t.Fatalf("mixed case route error = %v", err)
+	}
+	if legacy.calls != 2 || load.calls != 1 || len(legacy.caseCounts) != 2 || legacy.caseCounts[1] != 1 || len(load.caseCounts) != 1 || load.caseCounts[0] != 1 {
+		t.Fatalf("mixed route calls/counts legacy=%d/%v load=%d/%v", legacy.calls, legacy.caseCounts, load.calls, load.caseCounts)
 	}
 }
 
-type recordingExecutor struct{ calls int }
+type recordingExecutor struct {
+	calls      int
+	caseCounts []int
+}
 
-func (executor *recordingExecutor) Execute(context.Context, runs.ExecutionRequest, func(runs.ResultDraft) error) error {
+func (executor *recordingExecutor) Execute(_ context.Context, request runs.ExecutionRequest, _ func(runs.ResultDraft) error) error {
 	executor.calls++
+	executor.caseCounts = append(executor.caseCounts, len(request.Cases))
 	return nil
 }

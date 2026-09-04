@@ -1,26 +1,37 @@
 {
-  "id": "T016",
+  "schema_version": 2,
+  "key": "T016",
   "name": "智商/逻辑陷阱题库",
   "dimension": "identity",
   "protocol": "openai-chat",
-  "kind": "chat_sync",
+  "enabled": true,
   "default": false,
   "severity": "critical",
-  "request": {
-    "method": "POST",
-    "path": "/v1/chat/completions",
-    "body": {
-      "messages": [
-        {
-          "role": "user",
-          "content": "9.9 和 9.11 哪个数字更大？仅输出较大的那个数字。"
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "chat_sync",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "9.9 和 9.11 哪个数字更大？仅输出较大的那个数字。"
+            }
+          ],
+          "temperature": 0,
+          "max_tokens": 16
         }
-      ],
-      "temperature": 0,
-      "max_tokens": 16
+      },
+      "options": {
+        "expected_exact": "9.9"
+      }
     }
-  },
-  "options": {
-    "expected_exact": "9.9"
   }
 }
