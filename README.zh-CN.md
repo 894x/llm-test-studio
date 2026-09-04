@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="LLM Test Studio 将版本化测试 Case 转换为可复现的多模型运行与基于证据的报告">
+  <img src="./assets/readme/hero.svg" width="100%" alt="LLM Test Studio 是面向 LLM 服务商、AI 网关与私有化部署的本地优先渠道验收与基准测试平台">
 </p>
 
 <p align="center">
-  <strong>一套 Case-first、local-first 的可复用 LLM 测试工作台。</strong><br>
-  定义一次测试，在不同模型与渠道上反复运行，并保留每个结论背后的准确证据。
+  <strong>面向 LLM 服务商、AI 网关与私有化部署的本地优先渠道验收与基准测试平台。</strong><br>
+  在每条渠道上运行同一组版本化测试，验证兼容性与性能，并为每个上线结论保留可复核证据。
 </p>
 
 <p align="center">
@@ -26,7 +26,19 @@
 
 <p align="center"><sub>真实 Windows 桌面构建 · 89 个内置 Case · 不是概念稿或生成式 UI</sub></p>
 
-Case 目录是产品的中心，而不是藏在一次运行背后的配置页面。Case 是可检查、可修订的长期资产，可以组合为 Suite 和 Plan，通过不同目标执行，并一路追溯到最终报告。
+Case 目录是产品的中心，而不是藏在一次运行背后的配置页面。Case 是可检查、可修订的长期资产，可以组合为 Suite 和 Plan，在不同服务商或网关 Endpoint 上执行，并一路追溯到最终报告。
+
+## 在投入生产前验收渠道
+
+一次成功的 HTTP 响应，并不能证明某个 LLM Endpoint 已经适合承载生产流量。同一个逻辑模型在不同服务商、网关、地域或私有化部署上的实际行为可能不同。LLM Test Studio 将这种不确定性转换为可重复执行的验收结论：
+
+- **协议兼容性** — 验证请求参数、流式事件、工具调用、多模态输入、Usage 字段和错误行为。
+- **能力真实性** — 证明模型或 Endpoint 宣称支持的能力，确实能够满足应用所依赖的行为。
+- **负载下的性能** — 通过单次请求、固定并发或开放环流量测量延迟、Token 时序、吞吐、排队延迟和调度压力。
+- **运行可靠性** — 区分传输、协议、语义、超时和 SLA 失败，而不是将它们压缩成一个成功率。
+- **可审计证据** — 为每个结论固定准确的 Case、目标、负载配置、SLA 和运行环境。
+
+网关负责承载和路由生产流量；LLM Test Studio 负责在上线前，以及服务商、模型、网关或部署发生变化后，验证这些路径。
 
 ## 为什么是 Case-first 测试
 
@@ -38,7 +50,7 @@ Case 目录是产品的中心，而不是藏在一次运行背后的配置页面
 - **结论保留证据** — 请求结果区分传输、协议、语义与 SLA 失败，再生成统一的封存报告模型。
 - **桌面端与自动化语义一致** — Wails 应用和适合脚本调用的 CLI 共用同一个 Go Application Core 与领域规则。
 
-## 从 Case 到证据
+## 从渠道验收到证据
 
 ```text
 版本化 Test Case ──> Suite ──> Plan ──> 不可变 Run Snapshot
@@ -47,7 +59,7 @@ Case 目录是产品的中心，而不是藏在一次运行背后的配置页面
                                           Result + Evidence ──> Report
 ```
 
-可复用边界是准确的 Case 修订。Suite 组合这些修订；Plan 加入候选目标、负载行为、超时和 SLA 阈值；Run 在执行前固定完整输入。
+可复用边界是准确的 Case 修订。Suite 组合这些修订；Plan 将它们绑定到候选渠道、负载行为、超时和 SLA 阈值；Run 在执行前固定完整输入。这样，测试意图就不会与某个恰好承载该模型的服务商 Endpoint 耦合。
 
 ## 快速开始
 
@@ -128,8 +140,9 @@ go run ./cmd/llm-test-studio load run \
 
 </details>
 
-## 可以测试什么
+## 可以运行什么
 
+- 无需预先建立完整 Catalog，即可快速测试 URL、Model 或已保存 Channel。
 - 创建和维护内置或用户自定义测试 Case。
 - 将准确的 Case 修订组合成可复用的 Suite 和 Plan。
 - 使用单次请求、固定并发或开放环负载运行测试，并配置请求超时与 SLA 阈值。
@@ -203,6 +216,8 @@ llm-test-studio CLI ────┘                         ├── SQLite rep
 
 ## 当前范围
 
+- LLM Test Studio 会直接调用并验证配置的 Endpoint；它不是生产流量网关、路由器或服务商 SDK。
+- 产品聚焦 Endpoint 验收和对比证据，不负责维护公共模型排行榜，也不分析 API 边界以下的推理硬件性能。
 - 专用 Comparison 工作流用于比较同一个逻辑模型的多个渠道；任意模型与渠道的完整矩阵目前还不是一级工作流。
 - Case 复用遵守协议兼容性，不能把 Case 绑定到不兼容的 Model 或 Channel。
 - 已配置的桌面发行目标是 Windows amd64 和 macOS universal。Wails 支持的其他平台可以尝试从源码构建。

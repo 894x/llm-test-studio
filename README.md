@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="LLM Test Studio turns versioned test cases into reproducible multi-model runs and evidence-backed reports">
+  <img src="./assets/readme/hero.svg" width="100%" alt="LLM Test Studio is a local-first acceptance and benchmarking studio for LLM providers, gateways, and deployments">
 </p>
 
 <p align="center">
-  <strong>A case-first, local-first workbench for reusable LLM evaluation.</strong><br>
-  Define a test once, run it across models and channels, and keep the exact evidence behind every conclusion.
+  <strong>A local-first acceptance and benchmarking studio for LLM providers, gateways, and deployments.</strong><br>
+  Run the same versioned tests across every channel, measure compatibility and performance, and keep the evidence behind every release decision.
 </p>
 
 <p align="center">
@@ -26,7 +26,19 @@
 
 <p align="center"><sub>Real Windows desktop build · 89 built-in cases · no concept mockup or generated UI</sub></p>
 
-The case catalog is the center of the product, not a setup screen hidden behind a run. Cases remain inspectable, revisioned assets that can be assembled into suites and plans, executed through different targets, and traced into reports.
+The case catalog is the center of the product, not a setup screen hidden behind a run. Cases remain inspectable, revisioned assets that can be assembled into suites and plans, executed against different provider or gateway endpoints, and traced into reports.
+
+## Accept a channel before production
+
+A successful HTTP response does not prove that an LLM endpoint is ready to carry production traffic. The same logical model can behave differently across providers, gateways, regions, or private deployments. LLM Test Studio turns that uncertainty into a repeatable acceptance decision:
+
+- **Protocol compatibility** — verify request parameters, streaming events, tool calls, multimodal inputs, usage fields, and error behavior.
+- **Capability truth** — prove that an advertised model or endpoint actually supports the behavior your application depends on.
+- **Performance under load** — measure latency, token timing, throughput, queue delay, and scheduler pressure with single, fixed-concurrency, or open-loop traffic.
+- **Operational reliability** — separate transport, protocol, semantic, timeout, and SLA failures instead of reducing them to one success rate.
+- **Auditable evidence** — pin the exact case, target, load profile, SLA, and environment behind each conclusion.
+
+Gateways route production traffic. LLM Test Studio validates those routes before launch and after a provider, model, gateway, or deployment changes.
 
 ## Why case-first testing
 
@@ -38,7 +50,7 @@ Most LLM tests begin as a prompt, a script, or a one-off dashboard run. That is 
 - **Conclusions keep their evidence** — request results distinguish transport, protocol, semantic, and SLA failures before producing one sealed report model.
 - **Desktop and automation agree** — the Wails application and script-friendly CLI use the same Go Application Core and domain rules.
 
-## From case to evidence
+## From channel acceptance to evidence
 
 ```text
 Versioned Test Case ──> Suite ──> Plan ──> Immutable Run Snapshot
@@ -47,7 +59,7 @@ Versioned Test Case ──> Suite ──> Plan ──> Immutable Run Snapshot
                                            Results + Evidence ──> Report
 ```
 
-The reusable boundary is the exact case revision. Suites group those revisions; plans add candidate targets, load behavior, timeouts, and SLA thresholds; runs freeze the complete input before execution.
+The reusable boundary is the exact case revision. Suites group those revisions; plans bind them to candidate channels, load behavior, timeouts, and SLA thresholds; runs freeze the complete input before execution. This keeps test intent independent from the provider-specific endpoint that happens to serve the model.
 
 ## Quick start
 
@@ -128,8 +140,9 @@ Avoid passing credentials directly as command arguments because shells may retai
 
 </details>
 
-## What you can test
+## What you can run
 
+- Smoke-test a URL, model, or saved channel without first building a full catalog.
 - Create and maintain built-in or user-authored test cases.
 - Group exact case revisions into reusable suites and plans.
 - Run single-request, fixed-concurrency, or open-loop tests with request timeouts and SLA thresholds.
@@ -203,6 +216,8 @@ The desktop and CLI share the same application services and domain rules. There 
 
 ## Current scope
 
+- LLM Test Studio calls configured endpoints to validate them; it is not a production traffic gateway, router, or provider SDK.
+- The product focuses on endpoint acceptance and comparative evidence, not on maintaining a public model leaderboard or profiling inference hardware below the API boundary.
 - The dedicated comparison workflow compares one logical model across multiple channels; a full arbitrary model-by-channel matrix is not yet a first-class workflow.
 - Case reuse is protocol-aware. A case cannot be attached to an incompatible model or channel.
 - Windows amd64 and macOS universal are the configured packaged desktop targets. Other platforms can build from source where Wails supports them.
