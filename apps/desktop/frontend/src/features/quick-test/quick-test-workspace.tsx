@@ -86,6 +86,9 @@ interface TestedQuickTest {
   existingModel?: QuickTestModelCandidate
 }
 
+type ConnectionField = "url" | "apiKey" | "modelID" | "prompt" | "timeout"
+type ConnectionFieldErrors = Partial<Record<ConnectionField, string>>
+
 export function QuickTestWorkspace({
   modelCandidates,
   channelCandidates = [],
@@ -117,6 +120,7 @@ export function QuickTestWorkspace({
   const [pending, setPending] = useState(false)
   const [tested, setTested] = useState<TestedQuickTest | null>(null)
   const [requestError, setRequestError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<ConnectionFieldErrors>({})
   const [saveOpen, setSaveOpen] = useState(false)
   const [performanceOpen, setPerformanceOpen] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -133,6 +137,8 @@ export function QuickTestWorkspace({
     value: QuickTestCommand[K],
   ) => {
     setForm((current) => updateQuickTestForm(current, key, value))
+    const field = connectionFieldForCommandKey(key)
+    if (field) setFieldErrors((current) => omitFieldError(current, field))
     setTested(null)
     setRequestError("")
     setSaved(false)
@@ -155,6 +161,7 @@ export function QuickTestWorkspace({
         channel_id: channel.id,
       }))
     }
+    setFieldErrors({})
     setTested(null)
     setRequestError("")
     setSaved(false)
@@ -169,6 +176,13 @@ export function QuickTestWorkspace({
       api_key: form.api_key.trim(),
       model_id: form.model_id.trim(),
       prompt: form.prompt,
+    }
+    const nextFieldErrors = validateConnectionForm(command, Boolean(selectedChannel))
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setRequestError("")
+      focusFormField(event.currentTarget, firstConnectionErrorField(nextFieldErrors))
+      return
     }
     const testedExistingModel = existingModel
     setPending(true)
@@ -216,7 +230,7 @@ export function QuickTestWorkspace({
                 API Key 仅用于本次测试；只有确认保存后才会交给 Core 凭据链路。
               </p>
             </div>
-            <form onSubmit={submit}>
+            <form onSubmit={submit} noValidate>
               <FieldGroup>
                 <Field className="block">
                   <FieldLabel>从渠道填充</FieldLabel>
@@ -266,19 +280,23 @@ export function QuickTestWorkspace({
                 </fieldset>
 
                 <TextField
+                  id="quick-test-url"
                   label="接口地址"
                   value={form.url}
                   onChange={(value) => update("url", value)}
+                  error={fieldErrors.url}
                   placeholder={form.address_mode === "base_url" ? "https://api.example.com/v1" : "https://api.example.com/v1/chat/completions"}
                   required
                 />
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <TextField
+                    id="quick-test-api-key"
                     label="API Key"
                     type="password"
                     autoComplete="new-password"
                     value={form.api_key}
                     onChange={(value) => update("api_key", value)}
+                    error={fieldErrors.apiKey}
                     disabled={!!selectedChannel}
                     placeholder={selectedChannel ? `已使用 ${selectedChannel.name} 的保存凭据` : undefined}
                     required={!selectedChannel}
@@ -289,27 +307,33 @@ export function QuickTestWorkspace({
                     optionNames={modelOptionNames}
                     existingModel={existingModel}
                     ambiguous={ambiguousModelName}
+                    error={fieldErrors.modelID}
                   />
                 </div>
-                <Field className="block">
+                <Field className="block" data-invalid={fieldErrors.prompt ? true : undefined}>
                   <FieldLabel htmlFor="quick-test-prompt">测试消息</FieldLabel>
                   <FieldContent>
                     <Textarea
                       id="quick-test-prompt"
                       aria-label="测试消息"
+                      aria-invalid={fieldErrors.prompt ? true : undefined}
+                      aria-describedby={fieldErrors.prompt ? "quick-test-prompt-error" : undefined}
                       className="min-h-20 resize-y"
                       value={form.prompt}
                       onChange={(event) => update("prompt", event.target.value)}
                       required
                     />
+                    {fieldErrors.prompt ? <FieldError id="quick-test-prompt-error">{fieldErrors.prompt}</FieldError> : null}
                   </FieldContent>
                 </Field>
-                <Field className="block max-w-52">
+                <Field className="block max-w-52" data-invalid={fieldErrors.timeout ? true : undefined}>
                   <FieldLabel htmlFor="quick-test-timeout">超时（毫秒）</FieldLabel>
                   <FieldContent>
                     <Input
                       id="quick-test-timeout"
                       aria-label="超时（毫秒）"
+                      aria-invalid={fieldErrors.timeout ? true : undefined}
+                      aria-describedby={fieldErrors.timeout ? "quick-test-timeout-error" : undefined}
                       type="number"
                       min={1_000}
                       max={120_000}
@@ -319,6 +343,7 @@ export function QuickTestWorkspace({
                       required
                     />
                     <FieldDescription>默认 30 秒，端到端计时由 Core 返回。</FieldDescription>
+                    {fieldErrors.timeout ? <FieldError id="quick-test-timeout-error">{fieldErrors.timeout}</FieldError> : null}
                   </FieldContent>
                 </Field>
                 {requestError ? (
@@ -416,39 +441,45 @@ function ModeOption({ id, value, label, description }: {
   )
 }
 
-function TextField({ label, value, onChange, type = "text", ...props }: {
+function TextField({ label, value, onChange, type = "text", error, ...props }: {
   label: string
   value: string
   onChange: (value: string) => void
   type?: "text" | "password"
+  error?: string
 } & Omit<ComponentProps<typeof Input>, "value" | "onChange" | "type">) {
-  const id = `quick-test-${label}`
+  const id = props.id ?? `quick-test-${label}`
+  const errorID = `${id}-error`
   return (
-    <Field className="block">
+    <Field className="block" data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <FieldContent>
         <Input
           {...props}
           id={id}
           aria-label={label}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorID : props["aria-describedby"]}
           type={type}
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
+        {error ? <FieldError id={errorID}>{error}</FieldError> : null}
       </FieldContent>
     </Field>
   )
 }
 
-function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }: {
+function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous, error }: {
   value: string
   onChange: (value: string) => void
   optionNames: readonly string[]
   existingModel?: QuickTestModelCandidate
   ambiguous: boolean
+  error?: string
 }) {
   return (
-    <Field className="block">
+    <Field className="block" data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor="quick-test-model-id">模型 ID</FieldLabel>
       <FieldContent>
         <Autocomplete
@@ -461,6 +492,8 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
           <AutocompleteInput
             id="quick-test-model-id"
             aria-label="模型 ID"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "quick-test-model-id-error" : undefined}
             placeholder="选择目录模型或手动输入"
             required
             triggerLabel="显示模型候选"
@@ -488,6 +521,7 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous }
               ? "可选择已有 OpenAI 模型，也可以继续手动输入上游模型 ID。"
               : "当前目录没有 OpenAI 模型，可直接手动输入上游模型 ID。"}
         </FieldDescription>
+        {error ? <FieldError id="quick-test-model-id-error">{error}</FieldError> : null}
       </FieldContent>
     </Field>
   )
@@ -569,6 +603,13 @@ interface PerformanceForm {
   outputTokens: number
 }
 
+type PerformanceFieldErrors = Partial<Record<keyof PerformanceForm, string>>
+
+const PERFORMANCE_TARGET_ERRORS = {
+  requestCount: "请输入大于 0 的请求数，或填写持续时间。",
+  durationSeconds: "请输入大于 0 的持续时间，或填写请求数。",
+} as const
+
 const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
   requestCount: 10,
   durationSeconds: 0,
@@ -590,28 +631,39 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   const [pending, setPending] = useState(false)
   const [report, setReport] = useState<QuickPerformanceReport | null>(null)
   const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
-  const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<PerformanceFieldErrors>({})
+  const [operationError, setOperationError] = useState("")
 
   const update = (key: keyof PerformanceForm, value: number) => {
     setForm((current) => ({ ...current, [key]: value }))
+    setFieldErrors((current) => {
+      let next = omitFieldError(current, key)
+      if ((key === "requestCount" || key === "durationSeconds") &&
+        (current.requestCount === PERFORMANCE_TARGET_ERRORS.requestCount || current.durationSeconds === PERFORMANCE_TARGET_ERRORS.durationSeconds)) {
+        next = omitFieldError(omitFieldError(next, "requestCount"), "durationSeconds")
+      }
+      return next
+    })
     setReport(null)
     setProgress(null)
-    setError("")
+    setOperationError("")
   }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (pending) return
-    if (!validPerformanceForm(form)) {
-      setError(form.requestCount === 0 && form.durationSeconds === 0
-        ? "请求数和持续时间至少填写一项"
-        : "性能测试参数超出允许范围")
+    const nextFieldErrors = validatePerformanceForm(form)
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setOperationError("")
+      focusFormField(event.currentTarget, firstPerformanceErrorField(nextFieldErrors))
       return
     }
     setPending(true)
     setReport(null)
     setProgress(null)
-    setError("")
+    setFieldErrors({})
+    setOperationError("")
     void run({
       address_mode: testedCommand.address_mode,
       url: testedCommand.url,
@@ -630,7 +682,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
         if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
       })
       .catch((reason: unknown) => {
-        setError(publicDesktopErrorMessage(reason, "快速性能测试暂不可用，请检查本地日志"))
+        setOperationError(publicDesktopErrorMessage(reason, "快速性能测试暂不可用，请检查本地日志"))
       })
       .finally(() => setPending(false))
   }
@@ -645,20 +697,20 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
           </SheetDescription>
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1 px-4">
-          <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4">
+          <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4" noValidate>
             <FieldGroup>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <PerformanceNumberField label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} onChange={(value) => update("requestCount", value)} />
-                <PerformanceNumberField label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} onChange={(value) => update("durationSeconds", value)} />
-                <PerformanceNumberField label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} onChange={(value) => update("concurrency", value)} />
-                <PerformanceNumberField label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} onChange={(value) => update("timeoutSeconds", value)} />
-                <PerformanceNumberField label="近似输入 Token" value={form.inputTokens} min={1} max={1_000_000} disabled={pending} onChange={(value) => update("inputTokens", value)} />
-                <PerformanceNumberField label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} onChange={(value) => update("outputTokens", value)} />
+                <PerformanceNumberField field="requestCount" label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} error={fieldErrors.requestCount} onChange={(value) => update("requestCount", value)} />
+                <PerformanceNumberField field="durationSeconds" label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.durationSeconds} onChange={(value) => update("durationSeconds", value)} />
+                <PerformanceNumberField field="concurrency" label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} error={fieldErrors.concurrency} onChange={(value) => update("concurrency", value)} />
+                <PerformanceNumberField field="timeoutSeconds" label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} error={fieldErrors.timeoutSeconds} onChange={(value) => update("timeoutSeconds", value)} />
+                <PerformanceNumberField field="inputTokens" label="近似输入 Token" value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
+                <PerformanceNumberField field="outputTokens" label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
               </div>
               <FieldDescription>
                 同时填写请求数和持续时间时，任一目标先达到即停止发送；输出 Token 是请求上限，不保证模型实际生成到该数值。
               </FieldDescription>
-              {error ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{error}</FieldError> : null}
+              {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{operationError}</FieldError> : null}
             </FieldGroup>
           </form>
           {pending && progress ? (
@@ -681,22 +733,27 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   )
 }
 
-function PerformanceNumberField({ label, value, min, max, disabled, onChange }: {
+function PerformanceNumberField({ field, label, value, min, max, disabled, error, onChange }: {
+  field: keyof PerformanceForm
   label: string
   value: number
   min: number
   max: number
   disabled: boolean
+  error?: string
   onChange: (value: number) => void
 }) {
-  const id = `quick-performance-${label}`
+  const id = `quick-performance-${field}`
+  const errorID = `${id}-error`
   return (
-    <Field className="block min-w-0">
+    <Field className="block min-w-0" data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <FieldContent>
         <Input
           id={id}
           aria-label={label}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorID : undefined}
           type="number"
           min={min}
           max={max}
@@ -706,6 +763,7 @@ function PerformanceNumberField({ label, value, min, max, disabled, onChange }: 
           onChange={(event) => onChange(Number(event.target.value))}
           required
         />
+        {error ? <FieldError id={errorID}>{error}</FieldError> : null}
       </FieldContent>
     </Field>
   )
@@ -829,14 +887,19 @@ function MetricSection({ title, children }: { title: string; children: React.Rea
   )
 }
 
-function validPerformanceForm(form: PerformanceForm): boolean {
-  return Number.isInteger(form.requestCount) && form.requestCount >= 0 && form.requestCount <= 10_000 &&
-    Number.isInteger(form.durationSeconds) && form.durationSeconds >= 0 && form.durationSeconds <= 3_600 &&
-    (form.requestCount > 0 || form.durationSeconds > 0) &&
-    Number.isInteger(form.concurrency) && form.concurrency >= 1 && form.concurrency <= 256 &&
-    Number.isInteger(form.timeoutSeconds) && form.timeoutSeconds >= 1 && form.timeoutSeconds <= 600 &&
-    Number.isInteger(form.inputTokens) && form.inputTokens >= 1 && form.inputTokens <= 1_000_000 &&
-    Number.isInteger(form.outputTokens) && form.outputTokens >= 1 && form.outputTokens <= 65_536
+function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors {
+  const errors: PerformanceFieldErrors = {}
+  if (!integerInRange(form.requestCount, 0, 10_000)) errors.requestCount = "请求数需为 0–10,000 的整数。"
+  if (!integerInRange(form.durationSeconds, 0, 3_600)) errors.durationSeconds = "持续时间需为 0–3,600 秒的整数。"
+  if (!errors.requestCount && !errors.durationSeconds && form.requestCount === 0 && form.durationSeconds === 0) {
+    errors.requestCount = PERFORMANCE_TARGET_ERRORS.requestCount
+    errors.durationSeconds = PERFORMANCE_TARGET_ERRORS.durationSeconds
+  }
+  if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
+  if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = "单请求超时需为 1–600 秒的整数。"
+  if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = "近似输入 Token 需为 1–1,000,000 的整数。"
+  if (!integerInRange(form.outputTokens, 1, 65_536)) errors.outputTokens = "最大输出 Token 需为 1–65,536 的整数。"
+  return errors
 }
 
 function ResultValue({ label, value, numeric = false, wide = false, mono = false }: {
@@ -885,13 +948,25 @@ function SaveConnectionSheet({
   const [channelName, setChannelName] = useState(() => defaultChannelName(result.base_url))
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<"modelName" | "channelName", string>>>({})
   const [partialSave, setPartialSave] = useState(false)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (pending) return
+    const nextFieldErrors = {
+      ...(!modelName.trim() ? { modelName: "请输入模型名称。" } : {}),
+      ...(!channelName.trim() ? { channelName: "请输入渠道名称。" } : {}),
+    }
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setError("")
+      focusFormField(event.currentTarget, nextFieldErrors.modelName ? "modelName" : "channelName")
+      return
+    }
     setPending(true)
     setError("")
+    setFieldErrors({})
     setPartialSave(false)
     void save({
       base_url: result.base_url,
@@ -930,10 +1005,10 @@ function SaveConnectionSheet({
               : "Core 将创建模型、渠道与映射；若名称或连接已存在，会拒绝保存以避免覆盖。"}
           </SheetDescription>
         </SheetHeader>
-        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col px-4">
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col px-4" noValidate>
           <FieldGroup>
-            <TextField label="模型名称" value={modelName} onChange={setModelName} disabled={!!existingModel} required />
-            <TextField label="渠道名称" value={channelName} onChange={setChannelName} required />
+            <TextField id="quick-save-modelName" label="模型名称" value={modelName} onChange={(value) => { setFieldErrors((current) => omitFieldError(current, "modelName")); setModelName(value) }} error={fieldErrors.modelName} disabled={!!existingModel} />
+            <TextField id="quick-save-channelName" label="渠道名称" value={channelName} onChange={(value) => { setFieldErrors((current) => omitFieldError(current, "channelName")); setChannelName(value) }} error={fieldErrors.channelName} />
             <div className="rounded-lg border bg-surface-subtle p-3 text-xs">
               <dl className="space-y-2">
                 <ResultValue label="Base URL" value={result.base_url} mono />
@@ -953,7 +1028,7 @@ function SaveConnectionSheet({
             ) : null}
           </FieldGroup>
           <SheetFooter className="px-0">
-            <Button type="submit" disabled={pending || !modelName.trim() || !channelName.trim()}>
+            <Button type="submit" disabled={pending}>
               {pending ? <><Spinner data-icon="inline-start" />正在保存…</> : "确认保存"}
             </Button>
           </SheetFooter>
@@ -973,4 +1048,92 @@ function defaultChannelName(baseURL: string): string {
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value)
+}
+
+function connectionFieldForCommandKey(key: keyof QuickTestCommand): ConnectionField | undefined {
+  return ({
+    url: "url",
+    api_key: "apiKey",
+    model_id: "modelID",
+    prompt: "prompt",
+    timeout_ms: "timeout",
+  } as Partial<Record<keyof QuickTestCommand, ConnectionField>>)[key]
+}
+
+function validateConnectionForm(command: QuickTestCommand, usesStoredCredential: boolean): ConnectionFieldErrors {
+  const errors: ConnectionFieldErrors = {}
+  if (!command.url) {
+    errors.url = "请输入接口地址。"
+  } else {
+    const urlHint = connectionURLHint(command.url, command.address_mode)
+    if (urlHint) errors.url = urlHint
+  }
+  if (!usesStoredCredential && !command.api_key) errors.apiKey = "请输入 API Key，或选择已保存凭据的渠道。"
+  if (!command.model_id) errors.modelID = "请输入模型 ID。"
+  if (!command.prompt.trim()) errors.prompt = "请输入测试消息。"
+  if (!integerInRange(command.timeout_ms, 1_000, 120_000)) errors.timeout = "超时需为 1,000–120,000 毫秒的整数。"
+  return errors
+}
+
+function connectionURLHint(value: string, mode: QuickTestCommand["address_mode"]): string | undefined {
+  if (value.trim() !== value) return "接口地址前后不能有空格。"
+  if (value.includes("\\")) return "接口地址不能包含反斜杠。"
+  try {
+    const parsed = new URL(value)
+    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname) {
+      return "请输入以 http:// 或 https:// 开头的有效地址。"
+    }
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+      return "接口地址不能包含账号、密码、查询参数或片段。"
+    }
+    if (parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname)) {
+      return "远程接口必须使用 https://；http:// 仅适用于本机回环地址。"
+    }
+    if (mode === "full_url" && !value.replace(/\/+$/, "").endsWith("/chat/completions")) {
+      return "完整 URL 必须以 /chat/completions 结尾。"
+    }
+    return undefined
+  } catch {
+    return "请输入以 http:// 或 https:// 开头的有效地址。"
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/, "")
+  return normalized === "localhost" || normalized === "::1" || normalized === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(normalized)
+}
+
+function integerInRange(value: number, minimum: number, maximum: number): boolean {
+  return Number.isInteger(value) && value >= minimum && value <= maximum
+}
+
+function firstConnectionErrorField(errors: ConnectionFieldErrors): ConnectionField | undefined {
+  return (["url", "apiKey", "modelID", "prompt", "timeout"] as const).find((field) => errors[field])
+}
+
+function firstPerformanceErrorField(errors: PerformanceFieldErrors): keyof PerformanceForm | undefined {
+  return (["requestCount", "durationSeconds", "concurrency", "timeoutSeconds", "inputTokens", "outputTokens"] as const)
+    .find((field) => errors[field])
+}
+
+function omitFieldError<T extends object>(errors: T, field: PropertyKey): T {
+  if (!(field in errors)) return errors
+  const next = { ...errors }
+  delete (next as Record<PropertyKey, unknown>)[field]
+  return next
+}
+
+function focusFormField(form: Element, field: string | undefined) {
+  if (!field) return
+  const id = ({
+    url: "quick-test-url",
+    apiKey: "quick-test-api-key",
+    modelID: "quick-test-model-id",
+    prompt: "quick-test-prompt",
+    timeout: "quick-test-timeout",
+    modelName: "quick-save-modelName",
+    channelName: "quick-save-channelName",
+  } as Record<string, string>)[field] ?? `quick-performance-${field}`
+  const control = document.getElementById(id)
+  if (control instanceof HTMLElement && form.contains(control)) control.focus()
 }

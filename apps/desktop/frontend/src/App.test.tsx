@@ -477,9 +477,17 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "新增模型" }))
     await user.click(screen.getByRole("button", { name: "保存模型" }))
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "新增模型表单校验失败：模型名称不能为空。请修改后重新保存。",
-    )
+    const dialog = screen.getByRole("dialog", { name: "新增模型" })
+    const name = within(dialog).getByLabelText("模型名称")
+    expect(await within(dialog).findByText("请输入模型名称。")).toHaveAttribute("data-slot", "field-error")
+    expect(name).toHaveAttribute("aria-invalid", "true")
+    expect(name.closest('[data-slot="field"]')).toHaveAttribute("data-invalid", "true")
+    expect(within(dialog).getByText("模型名称", { selector: "label" })).toHaveAttribute("for", name.id)
+    expect(name).toHaveFocus()
+
+    await user.type(name, "gpt-friendly-errors")
+    expect(name).not.toHaveAttribute("aria-invalid")
+    expect(within(dialog).queryByText("请输入模型名称。")).not.toBeInTheDocument()
   })
 
   it("identifies the catalog form when its backend save is rejected", async () => {
@@ -501,6 +509,51 @@ describe("desktop run workspace", () => {
       "新增模型保存失败：对象版本已变化或仍被引用，请刷新并解除引用后重试",
     )
     expect(dialog.querySelector('[data-slot="field-group"]')).not.toHaveAttribute("aria-invalid")
+  })
+
+  it("identifies an invalid channel service address before saving", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("tab", { name: /渠道/ }))
+    await user.click(screen.getByRole("button", { name: "新增渠道" }))
+    const dialog = screen.getByRole("dialog", { name: "新增渠道" })
+    await user.type(within(dialog).getByLabelText("渠道名称"), "缺少主机名的渠道")
+    await user.type(within(dialog).getByLabelText("API Key"), "sk-private")
+    await user.click(within(dialog).getByRole("button", { name: "保存渠道" }))
+
+    const address = within(dialog).getByLabelText("服务地址")
+    expect(await within(dialog).findByText("请输入包含主机名的 http:// 或 https:// 服务地址。")).toHaveAttribute("data-slot", "field-error")
+    expect(address).toHaveAttribute("aria-invalid", "true")
+    expect(address).toHaveFocus()
+    expect(client.createChannel).not.toHaveBeenCalled()
+  })
+
+  it("identifies both missing plan stop conditions", async () => {
+    window.history.replaceState(null, "", "#plans")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "测试计划" })
+    await user.click(screen.getByRole("button", { name: "新增计划" }))
+    const dialog = screen.getByRole("dialog", { name: "新增计划" })
+    await user.type(within(dialog).getByLabelText("计划名称"), "缺少停止条件")
+    const requestCount = within(dialog).getByLabelText("请求数")
+    await user.clear(requestCount)
+    await user.type(requestCount, "0")
+    await user.click(within(dialog).getByRole("button", { name: "保存计划" }))
+
+    expect(await within(dialog).findByText("请求数和持续时间不能同时为 0。")).toHaveAttribute("data-slot", "field-error")
+    expect(requestCount).toHaveAttribute("aria-invalid", "true")
+    expect(requestCount).toHaveFocus()
+    expect(client.createPlan).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByLabelText("持续时间毫秒"), "100")
+    expect(within(dialog).queryByText("请求数和持续时间不能同时为 0。")).not.toBeInTheDocument()
   })
 
   it("exposes CRUD entry points for mappings, cases, suites, and plans", async () => {

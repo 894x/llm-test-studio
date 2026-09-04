@@ -9,6 +9,74 @@ import { QuickTestWorkspace } from "./quick-test-workspace"
 import { updateQuickTestForm, type QuickPerformanceProgress, type QuickPerformanceReport, type QuickTestResult } from "./data"
 
 describe("QuickTestWorkspace", () => {
+  it("identifies every missing connection input and focuses the first field", async () => {
+    const user = userEvent.setup()
+    const runQuickTest = vi.fn()
+
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={runQuickTest}
+        runQuickPerformanceTest={vi.fn()}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "发送测试" }))
+
+    const url = screen.getByLabelText("接口地址")
+    const apiKey = screen.getByLabelText("API Key")
+    const modelID = screen.getByLabelText("模型 ID")
+    expect(screen.getByText("请输入接口地址。")).toHaveAttribute("data-slot", "field-error")
+    expect(screen.getByText("请输入 API Key，或选择已保存凭据的渠道。")).toHaveAttribute("data-slot", "field-error")
+    expect(screen.getByText("请输入模型 ID。")).toHaveAttribute("data-slot", "field-error")
+    expect(url).toHaveAttribute("aria-invalid", "true")
+    expect(apiKey).toHaveAttribute("aria-invalid", "true")
+    expect(modelID).toHaveAttribute("aria-invalid", "true")
+    expect(url).toHaveFocus()
+    expect(runQuickTest).not.toHaveBeenCalled()
+
+    await user.type(url, "https://api.example.test/v1")
+    expect(url).not.toHaveAttribute("aria-invalid")
+    expect(screen.queryByText("请输入接口地址。")).not.toBeInTheDocument()
+  })
+
+  it("locates unsafe and mode-incompatible URLs before sending", async () => {
+    const user = userEvent.setup()
+    const runQuickTest = vi.fn()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={runQuickTest}
+        runQuickPerformanceTest={vi.fn()}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("radio", { name: "完整 URL" }))
+    const url = screen.getByLabelText("接口地址")
+    await user.type(url, "https://api.example.test/v1/responses")
+    await user.type(screen.getByLabelText("API Key"), "sk-test")
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-test")
+    await user.click(screen.getByRole("button", { name: "发送测试" }))
+
+    expect(screen.getByText("完整 URL 必须以 /chat/completions 结尾。")).toHaveAttribute("data-slot", "field-error")
+    expect(url).toHaveFocus()
+    expect(runQuickTest).not.toHaveBeenCalled()
+
+    await user.clear(url)
+    await user.type(url, "https://user:password@api.example.test/v1/chat/completions")
+    await user.click(screen.getByRole("button", { name: "发送测试" }))
+    expect(screen.getByText("接口地址不能包含账号、密码、查询参数或片段。")).toHaveAttribute("data-slot", "field-error")
+    expect(runQuickTest).not.toHaveBeenCalled()
+  })
+
   it("uses a selected catalog channel without exposing its stored API key", async () => {
     const user = userEvent.setup()
     const runQuickTest = vi.fn(async () => ({
@@ -337,7 +405,46 @@ describe("QuickTestWorkspace", () => {
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "0")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("请求数和持续时间至少填写一项")
+    const requestCount = within(dialog).getByLabelText("请求数")
+    const duration = within(dialog).getByLabelText("持续时间（秒）")
+    expect(await within(dialog).findByText("请输入大于 0 的请求数，或填写持续时间。")).toHaveAttribute("data-slot", "field-error")
+    expect(within(dialog).getByText("请输入大于 0 的持续时间，或填写请求数。")).toHaveAttribute("data-slot", "field-error")
+    expect(requestCount).toHaveAttribute("aria-invalid", "true")
+    expect(duration).toHaveAttribute("aria-invalid", "true")
+    expect(requestCount).toHaveFocus()
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+
+    await replaceNumber(user, duration, "1")
+    expect(requestCount).not.toHaveAttribute("aria-invalid")
+    expect(duration).not.toHaveAttribute("aria-invalid")
+    expect(within(dialog).queryByText("请输入大于 0 的请求数，或填写持续时间。")).not.toBeInTheDocument()
+    expect(within(dialog).queryByText("请输入大于 0 的持续时间，或填写请求数。")).not.toBeInTheDocument()
+  })
+
+  it("identifies an out-of-range performance input", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const concurrency = within(dialog).getByLabelText("并发数")
+    await replaceNumber(user, concurrency, "0")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    expect(await within(dialog).findByText("并发数需为 1–256 的整数。")).toHaveAttribute("data-slot", "field-error")
+    expect(concurrency).toHaveAttribute("aria-invalid", "true")
+    expect(concurrency).toHaveFocus()
     expect(runQuickPerformanceTest).not.toHaveBeenCalled()
   })
 
@@ -424,7 +531,15 @@ describe("QuickTestWorkspace", () => {
     const channelName = screen.getByLabelText("渠道名称")
     expect(modelName).toHaveValue("gpt-test")
     await user.clear(channelName)
+    await user.click(screen.getByRole("button", { name: "确认保存" }))
+    expect(await screen.findByText("请输入渠道名称。")).toHaveAttribute("data-slot", "field-error")
+    expect(channelName).toHaveAttribute("aria-invalid", "true")
+    expect(channelName).toHaveFocus()
+    expect(saveQuickTestConnection).not.toHaveBeenCalled()
+
     await user.type(channelName, "测试渠道")
+    expect(channelName).not.toHaveAttribute("aria-invalid")
+    expect(screen.queryByText("请输入渠道名称。")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "确认保存" }))
 
     await waitFor(() => expect(saveQuickTestConnection).toHaveBeenCalledWith({
