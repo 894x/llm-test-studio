@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "key": "h3.request_body.size_max",
+  "name": "MiniMax H3 · 请求体最大 64 MB",
+  "dimension": "payload-size",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_REQUEST_BODY_64MB}}"
+              },
+              "role": "reference_image"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要总 JSON 请求体恰为 64 MB 的 data URI fixture",
+        "expected_resolution": "768P",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true,
+        "fixture_requirements": {
+          "fixture_id": "H3_REQUEST_BODY_64MB",
+          "request_bytes": 67108864
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "key": "h3.audio.duration_seconds_1",
+  "name": "MiniMax H3 · 音频 duration_seconds=1",
+  "dimension": "media-boundary",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "audio_url",
+              "audio_url": {
+                "url": "{{H3_AUDIO_DURATION_SECONDS_1}}"
+              },
+              "role": "reference_audio"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要仅 duration_seconds 位于目标边界的确定性 fixture",
+        "fixture_requirements": {
+          "fixture_id": "H3_AUDIO_DURATION_SECONDS_1",
+          "duration_seconds": 1
+        }
+      }
+    }
+  }
+}

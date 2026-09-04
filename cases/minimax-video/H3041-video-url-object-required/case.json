@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "key": "h3.video_url.object_required",
+  "name": "MiniMax H3 · video_url 必须为对象",
+  "dimension": "boundary",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "video_url",
+              "video_url": "https://example.invalid/a.mp4",
+              "role": "reference_video"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {}
+    }
+  }
+}

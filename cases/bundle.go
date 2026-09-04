@@ -7,5 +7,5 @@ import "embed"
 // require an explicit future conversion. Importers must treat the paths and
 // bytes as immutable source material and persist provenance separately.
 //
-//go:embed openai-chat/*/case.json kimi-k3/*/case.json seedance/*/case.json wan-video/*/case.json kimi-k3/load-profile-32k.json
+//go:embed openai-chat/*/case.json kimi-k3/*/case.json seedance/*/case.json wan-video/*/case.json minimax-video/*/case.json kimi-k3/load-profile-32k.json
 var Bundle embed.FS

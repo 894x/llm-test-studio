@@ -1,0 +1,37 @@
+{
+  "schema_version": 2,
+  "key": "h3.content.array_required",
+  "name": "MiniMax H3 · content 必须为数组",
+  "dimension": "boundary",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": {
+            "type": "text",
+            "text": "cat"
+          },
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {}
+    }
+  }
+}

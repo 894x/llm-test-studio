@@ -125,8 +125,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 350 || len(catalogSnapshot.Suites) != 21 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 350 file-backed cases and 21 version-scoped suites",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 499 || len(catalogSnapshot.Suites) != 26 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 499 file-backed cases and 26 scenario suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -141,8 +141,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 213 || disabled != 131 || manual != 6 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 213/131/6", runnable, disabled, manual)
+	if runnable != 261 || disabled != 131 || manual != 107 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 261/131/107", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -202,8 +202,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	storedCases, err := repository.ListTestCases(context.Background())
 	storedSuites, suitesErr := repository.ListSuites(context.Background())
 	_ = repository.Close()
-	if err != nil || suitesErr != nil || len(firstSnapshot.Suites) != 21 || len(storedCases) != 0 || len(storedSuites) != 0 {
-		t.Fatalf("file suites = %d, database case snapshots = %d, database suites = %d, errors = %v/%v; want 21/0/0", len(firstSnapshot.Suites), len(storedCases), len(storedSuites), err, suitesErr)
+	if err != nil || suitesErr != nil || len(firstSnapshot.Suites) != 26 || len(storedCases) != 0 || len(storedSuites) != 0 {
+		t.Fatalf("file suites = %d, database case snapshots = %d, database suites = %d, errors = %v/%v; want 26/0/0", len(firstSnapshot.Suites), len(storedCases), len(storedSuites), err, suitesErr)
 	}
 
 	second, err := initialize(context.Background())
@@ -220,11 +220,11 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 350 || len(secondSnapshot.TestCases) != 350 {
-		t.Fatalf("case counts across restart = %d/%d, want 350/350", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
+	if len(firstSnapshot.TestCases) != 499 || len(secondSnapshot.TestCases) != 499 {
+		t.Fatalf("case counts across restart = %d/%d, want 499/499", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 21 || len(secondSnapshot.Suites) != 21 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 21 version-scoped suites and no plans",
+	if len(firstSnapshot.Suites) != 26 || len(secondSnapshot.Suites) != 26 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
+		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 26 scenario suites and no plans",
 			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
 	}
 	wantSuites := map[string]struct {
@@ -252,6 +252,11 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		"Wan 2.2 文生视频边界套件":                {target: "wan2.2-t2v-plus", count: 3},
 		"Wan 2.1 Turbo 边界套件":              {target: "wanx2.1-t2v-turbo", count: 3},
 		"Wan 2.1 Plus 边界套件":               {target: "wanx2.1-t2v-plus", count: 3},
+		"MiniMax H3 连通性测试套件":              {target: "MiniMax-H3", count: 3},
+		"MiniMax H3 基本功能测试套件":             {target: "MiniMax-H3", count: 24},
+		"MiniMax H3 参数拒绝测试套件":             {target: "MiniMax-H3", count: 45},
+		"MiniMax H3 自动化核心回归套件":            {target: "MiniMax-H3", count: 48},
+		"MiniMax H3 视频生成完整边界套件":           {target: "MiniMax-H3", count: 149},
 	}
 	firstByName := make(map[string]catalog.SuiteSummary, len(firstSnapshot.Suites))
 	secondByName := make(map[string]catalog.SuiteSummary, len(secondSnapshot.Suites))

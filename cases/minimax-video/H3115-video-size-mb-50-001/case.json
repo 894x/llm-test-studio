@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "key": "h3.video.size_mb_50_001",
+  "name": "MiniMax H3 · 视频 size_mb=50.001",
+  "dimension": "media-boundary",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "video_url",
+              "video_url": {
+                "url": "{{H3_VIDEO_SIZE_MB_50_001}}"
+              },
+              "role": "reference_video"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要仅 size_mb 位于目标边界的确定性 fixture",
+        "fixture_requirements": {
+          "fixture_id": "H3_VIDEO_SIZE_MB_50_001",
+          "size_mb": 50.001
+        }
+      }
+    }
+  }
+}

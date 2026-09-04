@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "key": "h3.video.format_mp4_h265_mp3",
+  "name": "MiniMax H3 · 视频格式 MP4 H.265/MP3",
+  "dimension": "media-format",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "video_url",
+              "video_url": {
+                "url": "{{H3_VIDEO_MP4_H265_MP3}}"
+              },
+              "role": "reference_video"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要 MP4 H.265/MP3 fixture",
+        "expected_resolution": "768P",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true,
+        "fixture_requirements": {
+          "fixture_id": "H3_VIDEO_MP4_H265_MP3",
+          "name": "MP4 H.265/MP3",
+          "container": "MP4",
+          "video_codec": "H.265/HEVC",
+          "audio_codec": "MP3"
+        }
+      }
+    }
+  }
+}

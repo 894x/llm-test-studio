@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "key": "minimax-video.MiniMax-H3.basic",
+  "name": "MiniMax H3 基本功能测试套件",
+  "protocol": "minimax-video",
+  "model_target": "MiniMax-H3",
+  "case_keys": [
+    "h3.t2v.min_duration",
+    "h3.authorization.required",
+    "h3.authorization.invalid",
+    "h3.content.required",
+    "h3.model.required",
+    "h3.resolution.required",
+    "h3.duration.required",
+    "h3.t2v.ratio_required",
+    "h3.content.text_min",
+    "h3.resolution.2k",
+    "h3.duration.interior",
+    "h3.t2v.ratio_9_16",
+    "h3.callback_url.valid",
+    "h3.aigc_watermark.false",
+    "h3.aigc_watermark.true",
+    "h3.i2v.role_omitted",
+    "h3.i2v.first_frame",
+    "h3.i2v.first_last_frame",
+    "h3.r2v.reference_image",
+    "h3.r2v.reference_video",
+    "h3.r2v.reference_audio",
+    "h3.r2v.all_media",
+    "h3.usage.t2v_seconds",
+    "h3.usage.multimodal"
+  ]
+}

@@ -308,6 +308,9 @@ func (service *Service) runPlannedCase(parent context.Context, config apiaudit.R
 	if config.Suite == "wan-video" {
 		return apiaudit.RunWanVideoCase(caseContext, service.httpDoer, config, planned)
 	}
+	if config.Suite == "minimax-video" {
+		return apiaudit.RunMiniMaxVideoCase(caseContext, service.httpDoer, config, planned)
+	}
 	caseConfig := config
 	caseConfig.Model = planned.Model
 	if config.Suite == "kimi-k3" {
@@ -331,8 +334,8 @@ func (service *Service) emitProgress(completed, total int, result apiaudit.CaseR
 }
 
 func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
-	if request.Suite != "openai-chat" && request.Suite != "kimi-k3" && request.Suite != "seedance" && request.Suite != "wan-video" {
-		return apiaudit.RunConfig{}, fmt.Errorf("--suite must be openai-chat, kimi-k3, seedance, or wan-video")
+	if request.Suite != "openai-chat" && request.Suite != "kimi-k3" && request.Suite != "seedance" && request.Suite != "wan-video" && request.Suite != "minimax-video" {
+		return apiaudit.RunConfig{}, fmt.Errorf("--suite must be openai-chat, kimi-k3, seedance, wan-video, or minimax-video")
 	}
 	parsedBase, err := url.Parse(request.BaseURL)
 	if err != nil || parsedBase.Scheme != "https" || parsedBase.Host == "" {
@@ -344,7 +347,7 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 	if request.AllModels && request.Suite != "seedance" {
 		return apiaudit.RunConfig{}, fmt.Errorf("--all-models is only valid for seedance")
 	}
-	if (request.Suite == "openai-chat" || request.Suite == "wan-video") && strings.TrimSpace(request.Model) == "" {
+	if (request.Suite == "openai-chat" || request.Suite == "wan-video" || request.Suite == "minimax-video") && strings.TrimSpace(request.Model) == "" {
 		return apiaudit.RunConfig{}, fmt.Errorf("--model is required for %s", request.Suite)
 	}
 	if request.Timeout <= 0 {
@@ -356,7 +359,7 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 	if request.Concurrency < 1 || request.Concurrency > 32 {
 		return apiaudit.RunConfig{}, fmt.Errorf("--concurrency must be between 1 and 32")
 	}
-	if (request.Suite == "seedance" || request.Suite == "wan-video") && request.Concurrency != 1 {
+	if (request.Suite == "seedance" || request.Suite == "wan-video" || request.Suite == "minimax-video") && request.Concurrency != 1 {
 		return apiaudit.RunConfig{}, fmt.Errorf("--concurrency is not supported for %s", request.Suite)
 	}
 	if !request.DryRun && strings.TrimSpace(request.APIKey) == "" {

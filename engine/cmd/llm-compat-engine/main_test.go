@@ -96,7 +96,7 @@ func TestRunConfigurationExitCodeCompatibility(t *testing.T) {
 		{
 			name:       "invalid suite is reported before credential",
 			args:       []string{"run", "--suite", "invalid", "--base-url", "https://gateway.example", "--model", "test-model"},
-			wantStderr: "CONFIG ERROR: --suite must be openai-chat, kimi-k3, seedance, or wan-video\n",
+			wantStderr: "CONFIG ERROR: --suite must be openai-chat, kimi-k3, seedance, wan-video, or minimax-video\n",
 		},
 		{
 			name:       "missing live credential names configured environment variable",

@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "key": "h3.video.total_duration_max",
+  "name": "MiniMax H3 · 参考视频总时长最大 15 秒",
+  "dimension": "media-boundary",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "video_url",
+              "video_url": {
+                "url": "{{H3_VIDEO_TOTAL15_1}}"
+              },
+              "role": "reference_video"
+            },
+            {
+              "type": "video_url",
+              "video_url": {
+                "url": "{{H3_VIDEO_TOTAL15_2}}"
+              },
+              "role": "reference_video"
+            },
+            {
+              "type": "video_url",
+              "video_url": {
+                "url": "{{H3_VIDEO_TOTAL15_3}}"
+              },
+              "role": "reference_video"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要三个总时长恰为 15 秒的参考视频",
+        "expected_resolution": "768P",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true,
+        "fixture_requirements": {
+          "fixture_id": "H3_VIDEO_TOTAL15",
+          "count": 3,
+          "total_seconds": 15
+        }
+      }
+    }
+  }
+}

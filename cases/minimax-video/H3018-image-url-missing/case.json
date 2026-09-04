@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "key": "h3.image_url.url_required",
+  "name": "MiniMax H3 · image_url.url 必填",
+  "dimension": "must",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "一只小猫在月光下奔跑，电影感镜头"
+            },
+            {
+              "type": "image_url",
+              "image_url": {},
+              "role": "first_frame"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "adaptive"
+        }
+      },
+      "options": {}
+    }
+  }
+}

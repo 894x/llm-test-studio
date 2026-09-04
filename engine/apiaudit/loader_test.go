@@ -51,6 +51,67 @@ func TestLoadSuiteRejectsWanCaseWithoutVersionTargets(t *testing.T) {
 	}
 }
 
+func TestLoadSuiteAcceptsMiniMaxVideoTaskKinds(t *testing.T) {
+	root := t.TempDir()
+	for _, item := range []struct {
+		dir  string
+		kind string
+	}{
+		{dir: "success", kind: "minimax_video_task_success"},
+		{dir: "rejected", kind: "minimax_video_task_rejected"},
+	} {
+		dir := filepath.Join(root, "minimax-video", item.dir)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		raw := `{"id":"` + item.dir + `","name":"` + item.dir + `","dimension":"parameters","protocol":"minimax-video","model_targets":["MiniMax-H3"],"kind":"` + item.kind + `","request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":4,"ratio":"16:9"}}}`
+		if err := os.WriteFile(filepath.Join(dir, "case.json"), []byte(raw), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cases, err := LoadSuite(root, "minimax-video")
+	if err != nil {
+		t.Fatalf("LoadSuite() error = %v", err)
+	}
+	if len(cases) != 2 || cases[0].Request.Path != "/v2/video_generation" {
+		t.Fatalf("cases = %#v", cases)
+	}
+}
+
+func TestLoadSuiteRejectsUnscopedMiniMaxVideoCase(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "minimax-video", "unscoped")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"id":"unscoped","name":"unscoped","dimension":"parameters","protocol":"minimax-video","kind":"minimax_video_task_rejected","request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[]}}}`
+	if err := os.WriteFile(filepath.Join(dir, "case.json"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadSuite(root, "minimax-video"); err == nil {
+		t.Fatal("LoadSuite() accepted an unscoped paid MiniMax video case")
+	}
+}
+
+func TestLoadSuiteAcceptsMiniMaxBoundaryOptionsAndAuthenticationKind(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "minimax-video", "auth-missing")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"id":"auth-missing","name":"auth missing","dimension":"authorization","protocol":"minimax-video","model_targets":["MiniMax-H3"],"kind":"minimax_video_auth_rejected","request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[]}},"options":{"model_mode":"omit","omit_authorization":true,"require_video_usage":false,"expected_resolution":"2K","expected_duration":15,"expected_ratio":"9:16"}}`
+	if err := os.WriteFile(filepath.Join(dir, "case.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cases, err := LoadSuite(root, "minimax-video")
+	if err != nil || len(cases) != 1 || cases[0].Kind != "minimax_video_auth_rejected" {
+		t.Fatalf("LoadSuite() = %#v, %v", cases, err)
+	}
+}
+
 func TestLoadSuiteReadsRepositoryV2WanCasesAndFiltersByModel(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", "cases"))
 	cases, err := LoadSuite(root, "wan-video")

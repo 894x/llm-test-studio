@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "key": "h3.usage.t2v_seconds",
+  "name": "MiniMax H3 · 文生视频 usage 秒数",
+  "dimension": "response-contract",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "真实执行会生成视频",
+        "expected_resolution": "768P",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true,
+        "expected_usage": {
+          "total_seconds": 4,
+          "input_seconds": 0,
+          "output_seconds": 4,
+          "input_image_count": 0
+        }
+      }
+    }
+  }
+}

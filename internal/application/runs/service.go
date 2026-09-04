@@ -212,7 +212,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if !channel.Enabled || model.Protocol != channel.Protocol || mapping.ModelID != model.ID || mapping.ChannelID != channel.ID {
 		return "", ErrNotRunnable
 	}
-	if model.Protocol == domain.ProtocolWanVideo && !command.ConfirmPaidVideo {
+	if (model.Protocol == domain.ProtocolWanVideo || model.Protocol == domain.ProtocolMiniMaxVideo) && !command.ConfirmPaidVideo {
 		return "", ErrPaidConfirmationRequired
 	}
 	cases := make([]domain.TestCase, 0, len(plan.Cases))
@@ -226,7 +226,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 			testCase.ExecutionMode != domain.CaseExecutionAutomatic || testCase.Protocol != model.Protocol {
 			return "", ErrNotRunnable
 		}
-		if testCase.Protocol == domain.ProtocolWanVideo && len(testCase.ModelTargets) == 0 {
+		if (testCase.Protocol == domain.ProtocolWanVideo || testCase.Protocol == domain.ProtocolMiniMaxVideo) && len(testCase.ModelTargets) == 0 {
 			return "", ErrNotRunnable
 		}
 		if !testCase.AppliesToModel(mapping.UpstreamModelName) {

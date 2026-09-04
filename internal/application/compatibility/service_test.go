@@ -208,6 +208,33 @@ func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
 	}
 }
 
+func TestRunDryRunSupportsMiniMaxVideoSuiteAndInjectsH3Model(t *testing.T) {
+	casesRoot := t.TempDir()
+	writeCase(t, casesRoot, "minimax-video", "H3001", `{
+		"id":"H3001","name":"H3 minimum duration","dimension":"boundary","protocol":"minimax-video","model_targets":["MiniMax-H3"],
+		"kind":"minimax_video_task_success","default":true,
+		"request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":4,"ratio":"16:9"}}
+	}`)
+	var written apiaudit.Report
+	service := compatibility.New(compatibility.Dependencies{
+		HTTPDoer: panicHTTPDoer{}, Emit: func(compatibility.Event) {},
+		WriteReport: func(_ string, report apiaudit.Report) error { written = report; return nil }, Now: time.Now,
+	})
+	_, err := service.Run(context.Background(), compatibility.RunRequest{
+		Suite: "minimax-video", CasesRoot: casesRoot, BaseURL: "https://api.minimax.cn", Model: "MiniMax-H3",
+		DryRun: true, OutputDir: t.TempDir(), PollInterval: time.Second, Timeout: time.Second, Concurrency: 1,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(written.Results) != 1 || written.Results[0].Protocol != "minimax-video" {
+		t.Fatalf("results = %#v", written.Results)
+	}
+	if got := written.Results[0].Exchanges[0].RequestBody["model"]; got != "MiniMax-H3" {
+		t.Fatalf("request model = %#v, want MiniMax-H3", got)
+	}
+}
+
 func TestListLoadsCasesThroughApplicationService(t *testing.T) {
 	t.Parallel()
 

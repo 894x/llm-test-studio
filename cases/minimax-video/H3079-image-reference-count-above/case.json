@@ -1,0 +1,115 @@
+{
+  "schema_version": 2,
+  "key": "h3.image.reference_count_above",
+  "name": "MiniMax H3 · reference_image 超过 9 张",
+  "dimension": "cardinality",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_1}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_2}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_3}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_4}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_5}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_6}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_7}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_8}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_9}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_REFERENCE_10}}"
+              },
+              "role": "reference_image"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要十张有效图片",
+        "fixture_requirements": {
+          "fixture_id": "H3_IMAGE_REFERENCE_TEN",
+          "count": 10
+        }
+      }
+    }
+  }
+}

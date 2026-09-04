@@ -424,7 +424,8 @@ export function NewRunSheet({
 	)
 	const effectiveSelectedChannel = channels.some((channel) => channel.id === selectedChannel) ? selectedChannel : (channels[0]?.id ?? "")
   const selectedModelDefinition = models.find((model) => model.id === effectiveSelectedModel)
-  const requiresPaidVideoConfirmation = selectedModelDefinition?.protocol === "wan-video"
+  const requiresPaidVideoConfirmation = selectedModelDefinition?.protocol === "wan-video" || selectedModelDefinition?.protocol === "minimax-video"
+  const paidVideoProvider = selectedModelDefinition?.protocol === "minimax-video" ? "MiniMax" : "Wan"
 
   const start = async () => {
     if (!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel) return
@@ -514,7 +515,7 @@ export function NewRunSheet({
 					</div>
           {requiresPaidVideoConfirmation ? (
             <div role="alert" className="rounded-md border border-warning/30 bg-warning-soft p-3 text-xs text-warning-strong">
-              <p className="font-medium">Wan 视频生成会产生费用。</p>
+              <p className="font-medium">{paidVideoProvider} 视频生成会产生费用。</p>
               <p className="mt-1 leading-5">运行将向上游提交真实视频任务，费用受模型、分辨率和时长影响。</p>
               <Field className="mt-3">
                 <Checkbox
@@ -523,7 +524,7 @@ export function NewRunSheet({
                   onCheckedChange={(value) => setPaidVideoConfirmed(value === true)}
                 />
                 <FieldContent>
-                  <FieldLabel htmlFor="confirm-paid-video">我确认本次 Wan 视频运行会调用计费接口</FieldLabel>
+                  <FieldLabel htmlFor="confirm-paid-video">我确认本次 {paidVideoProvider} 视频运行会调用计费接口</FieldLabel>
                 </FieldContent>
               </Field>
             </div>

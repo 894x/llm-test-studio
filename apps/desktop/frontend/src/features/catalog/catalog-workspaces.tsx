@@ -39,6 +39,7 @@ const PROTOCOL_LABELS = {
   "kimi-k3": "Kimi K3",
   seedance: "Seedance",
   "wan-video": "Wan Video",
+  "minimax-video": "MiniMax Video",
 } as const
 
 const LOAD_LABELS = {

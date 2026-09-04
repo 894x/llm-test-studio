@@ -48,7 +48,7 @@ func runContext(ctx context.Context, args []string, getenv func(string) string, 
 	case "list":
 		flags := flag.NewFlagSet("list", flag.ContinueOnError)
 		flags.SetOutput(stderr)
-		suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, seedance, or wan-video")
+		suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, seedance, wan-video, or minimax-video")
 		casesRoot := flags.String("cases-root", "cases", "case definition root")
 		jsonl := flags.Bool("jsonl", false, "emit machine-readable JSON Lines events")
 		if err := flags.Parse(args[1:]); err != nil {
@@ -78,7 +78,7 @@ func runContext(ctx context.Context, args []string, getenv func(string) string, 
 	case "run":
 		flags := flag.NewFlagSet("run", flag.ContinueOnError)
 		flags.SetOutput(stderr)
-		suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, seedance, or wan-video")
+		suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, seedance, wan-video, or minimax-video")
 		casesRoot := flags.String("cases-root", "cases", "case definition root")
 		baseURL := flags.String("base-url", "", "HTTPS gateway base URL")
 		model := flags.String("model", "", "model to audit")

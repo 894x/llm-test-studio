@@ -11,10 +11,11 @@ func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 	t.Parallel()
 
 	protocols := map[string]int{
-		"openai-chat": 44,
-		"kimi-k3":     87,
-		"seedance":    6,
-		"wan-video":   213,
+		"openai-chat":   44,
+		"kimi-k3":       87,
+		"seedance":      6,
+		"wan-video":     213,
+		"minimax-video": 149,
 	}
 	for protocol, want := range protocols {
 		matches, err := fs.Glob(casebundle.Bundle, protocol+"/*/case.json")

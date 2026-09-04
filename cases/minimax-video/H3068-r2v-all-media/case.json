@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "key": "h3.r2v.all_media",
+  "name": "MiniMax H3 · 图片视频音频联合参考",
+  "dimension": "dependency",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "{{H3_IMAGE_NOMINAL}}"
+              },
+              "role": "reference_image"
+            },
+            {
+              "type": "video_url",
+              "video_url": {
+                "url": "{{H3_VIDEO_NOMINAL}}"
+              },
+              "role": "reference_video"
+            },
+            {
+              "type": "audio_url",
+              "audio_url": {
+                "url": "{{H3_AUDIO_NOMINAL}}"
+              },
+              "role": "reference_audio"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要三类标称媒体",
+        "expected_resolution": "768P",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true,
+        "fixture_requirements": {
+          "fixture_id": "H3_ALL_MEDIA_NOMINAL"
+        }
+      }
+    }
+  }
+}

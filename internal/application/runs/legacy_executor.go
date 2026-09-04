@@ -70,6 +70,8 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 			result = apiaudit.RunSeedanceCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
 		case domain.ProtocolWanVideo:
 			result = apiaudit.RunWanVideoCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
+		case domain.ProtocolMiniMaxVideo:
+			result = apiaudit.RunMiniMaxVideoCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
 		default:
 			cancel()
 			return ErrUnsupportedExecutionProtocol

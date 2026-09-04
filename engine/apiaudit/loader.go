@@ -31,8 +31,9 @@ var supportedKinds = map[string]map[string]bool{
 		"usage_growth": true, "needle_retrieval": true,
 		"error_no_usage": true, "padding_ratio": true,
 	},
-	"seedance":  {"seedance_task": true},
-	"wan-video": {"wan_task_success": true, "wan_task_rejected": true},
+	"seedance":      {"seedance_task": true},
+	"wan-video":     {"wan_task_success": true, "wan_task_rejected": true},
+	"minimax-video": {"minimax_video_task_success": true, "minimax_video_task_rejected": true, "minimax_video_auth_rejected": true},
 }
 
 func LoadSuite(root, suite string) ([]CaseDefinition, error) {
@@ -87,7 +88,7 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if definition.Protocol != suite {
 			return nil, fmt.Errorf("case %s protocol %q does not match suite %q", definition.ID, definition.Protocol, suite)
 		}
-		if suite == "wan-video" && len(definition.ModelTargets) == 0 {
+		if (suite == "wan-video" || suite == "minimax-video") && len(definition.ModelTargets) == 0 {
 			return nil, fmt.Errorf("case %s requires version-scoped model targets", definition.ID)
 		}
 		if !supportedKinds[suite][definition.Kind] {
@@ -107,7 +108,7 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if definition.Request.Method != "" && definition.Request.Method != "GET" && definition.Request.Method != "POST" {
 			return nil, fmt.Errorf("case %s request method %q is not supported", definition.ID, definition.Request.Method)
 		}
-		if (suite == "seedance" || suite == "wan-video") && definition.Request.Body == nil {
+		if (suite == "seedance" || suite == "wan-video" || suite == "minimax-video") && definition.Request.Body == nil {
 			return nil, fmt.Errorf("case %s request body is required", definition.ID)
 		}
 		if err := validateCaseOptions(definition); err != nil {
@@ -216,7 +217,7 @@ func containsModelTarget(targets []string, model string) bool {
 }
 
 func validateCaseOptions(definition CaseDefinition) error {
-	stringOptions := []string{"reason", "expected_exact", "expected_digit_sequence", "stop_text", "short_prompt", "long_prompt", "needle", "model_mode"}
+	stringOptions := []string{"reason", "expected_exact", "expected_digit_sequence", "stop_text", "short_prompt", "long_prompt", "needle", "model_mode", "expected_resolution", "expected_ratio"}
 	for _, key := range stringOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(string); !ok {
@@ -224,7 +225,7 @@ func validateCaseOptions(definition CaseDefinition) error {
 			}
 		}
 	}
-	boolOptions := []string{"require_usage", "require_content", "require_image_input", "forbid_tool_calls"}
+	boolOptions := []string{"require_usage", "require_content", "require_image_input", "forbid_tool_calls", "omit_authorization", "invalid_authorization", "require_video_usage"}
 	for _, key := range boolOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(bool); !ok {
@@ -232,7 +233,7 @@ func validateCaseOptions(definition CaseDefinition) error {
 			}
 		}
 	}
-	numberOptions := []string{"max_completion_tokens", "max_elapsed_ms", "min_prompt_tokens", "repetitions", "max_channels", "max_first_frame_ms", "prompt_length"}
+	numberOptions := []string{"max_completion_tokens", "max_elapsed_ms", "min_prompt_tokens", "repetitions", "max_channels", "max_first_frame_ms", "prompt_length", "expected_duration"}
 	for _, key := range numberOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(float64); !ok {
@@ -267,6 +268,11 @@ func validateCaseOptions(definition CaseDefinition) error {
 	}
 	if value, ok := definition.Options["prompt_length"].(float64); ok && (value < 1 || value > 20001 || value != float64(int(value))) {
 		return fmt.Errorf("case %s option prompt_length must be an integer between 1 and 20001", definition.ID)
+	}
+	if omit, _ := definition.Options["omit_authorization"].(bool); omit {
+		if invalid, _ := definition.Options["invalid_authorization"].(bool); invalid {
+			return fmt.Errorf("case %s cannot omit and invalidate authorization together", definition.ID)
+		}
 	}
 	if value, exists := definition.Options["expected_usage"]; exists {
 		usage, ok := value.(map[string]any)

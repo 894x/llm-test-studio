@@ -1,6 +1,7 @@
 package caseimport
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
 	"os"
@@ -29,6 +30,8 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 		"wan3.0-video": {}, "wan3.0-video-prime": {}, "wan2.7-t2v": {}, "wan2.7-t2v-2026-06-12": {},
 		"wan2.6-t2v": {}, "wan2.5-t2v-preview": {}, "wan2.2-t2v-plus": {}, "wanx2.1-t2v-turbo": {}, "wanx2.1-t2v-plus": {},
 	}
+	miniMaxCoverage := map[string]int{}
+	miniMaxTargets := map[string]struct{}{"MiniMax-H3": {}}
 	err := fs.WalkDir(root, "cases", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() || entry.Name() != "case.json" {
 			return walkErr
@@ -85,6 +88,20 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 				wanCoverage[target]++
 			}
 		}
+		if candidate.Protocol == domain.ProtocolMiniMaxVideo && candidate.Enabled && candidate.ExecutionMode == domain.CaseExecutionAutomatic {
+			if candidate.Default {
+				t.Errorf("%s must not be in the default paid-capable plan", path)
+			}
+			if len(candidate.ModelTargets) == 0 {
+				t.Errorf("%s runnable MiniMax case has no explicit model targets", path)
+			}
+			for _, target := range candidate.ModelTargets {
+				if _, known := miniMaxTargets[target]; !known {
+					t.Errorf("%s has unsupported MiniMax model target %q", path, target)
+				}
+				miniMaxCoverage[target]++
+			}
+		}
 		switch {
 		case !candidate.Enabled:
 			disabled++
@@ -98,13 +115,13 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WalkDir() error = %v", err)
 	}
-	if counts[domain.ProtocolOpenAIChat] != 44 || counts[domain.ProtocolKimiK3] != 87 || counts[domain.ProtocolSeedance] != 6 || counts[domain.ProtocolWanVideo] != 213 {
+	if counts[domain.ProtocolOpenAIChat] != 44 || counts[domain.ProtocolKimiK3] != 87 || counts[domain.ProtocolSeedance] != 6 || counts[domain.ProtocolWanVideo] != 213 || counts[domain.ProtocolMiniMaxVideo] != 149 {
 		t.Fatalf("protocol counts = %#v", counts)
 	}
-	if runnable != 213 || disabled != 131 || manual != 6 {
+	if runnable != 261 || disabled != 131 || manual != 107 {
 		t.Fatalf("policy counts = runnable:%d disabled:%d manual:%d", runnable, disabled, manual)
 	}
-	if typeCounts[casetypes.TypeLegacyAPIAudit] != 349 || typeCounts[casetypes.TypeInputLatencyLadder] != 1 {
+	if typeCounts[casetypes.TypeLegacyAPIAudit] != 498 || typeCounts[casetypes.TypeInputLatencyLadder] != 1 {
 		t.Fatalf("case type counts = %#v", typeCounts)
 	}
 	for target := range kimiTargets {
@@ -115,6 +132,11 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	for target := range wanTargets {
 		if wanCoverage[target] == 0 {
 			t.Errorf("Wan model %q has no runnable version-scoped case", target)
+		}
+	}
+	for target := range miniMaxTargets {
+		if miniMaxCoverage[target] == 0 {
+			t.Errorf("MiniMax model %q has no runnable version-scoped case", target)
 		}
 	}
 }
@@ -150,7 +172,15 @@ func TestFilesystemCaseV2RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Key != testCase.Key || decoded.Definition.Type != testCase.Definition.Type || string(decoded.Definition.Spec) != string(testCase.Definition.Spec) {
+	originalSpec, err := canonicalJSON(testCase.Definition.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTripSpec, err := canonicalJSON(decoded.Definition.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Key != testCase.Key || decoded.Definition.Type != testCase.Definition.Type || !bytes.Equal(roundTripSpec, originalSpec) {
 		t.Fatalf("round trip mismatch: %#v != %#v", decoded, testCase)
 	}
 }

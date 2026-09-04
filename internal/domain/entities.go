@@ -18,15 +18,16 @@ import (
 type Protocol string
 
 const (
-	ProtocolOpenAIChat Protocol = "openai-chat"
-	ProtocolKimiK3     Protocol = "kimi-k3"
-	ProtocolSeedance   Protocol = "seedance"
-	ProtocolWanVideo   Protocol = "wan-video"
+	ProtocolOpenAIChat   Protocol = "openai-chat"
+	ProtocolKimiK3       Protocol = "kimi-k3"
+	ProtocolSeedance     Protocol = "seedance"
+	ProtocolWanVideo     Protocol = "wan-video"
+	ProtocolMiniMaxVideo Protocol = "minimax-video"
 )
 
 func (protocol Protocol) Validate() error {
 	switch protocol {
-	case ProtocolOpenAIChat, ProtocolKimiK3, ProtocolSeedance, ProtocolWanVideo:
+	case ProtocolOpenAIChat, ProtocolKimiK3, ProtocolSeedance, ProtocolWanVideo, ProtocolMiniMaxVideo:
 		return nil
 	default:
 		return fmt.Errorf("unsupported protocol %q", protocol)

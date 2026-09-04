@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "key": "h3.resolution.2k",
+  "name": "MiniMax H3 · 2K 分辨率",
+  "dimension": "boundary",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            }
+          ],
+          "resolution": "2K",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "2K 生成成本较高",
+        "expected_resolution": "2K",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true
+      }
+    }
+  }
+}

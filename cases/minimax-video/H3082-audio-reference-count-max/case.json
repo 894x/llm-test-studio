@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "key": "h3.audio.reference_count_max",
+  "name": "MiniMax H3 · reference_audio 最大 3 个",
+  "dimension": "cardinality",
+  "protocol": "minimax-video",
+  "model_targets": [
+    "MiniMax-H3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "minimax_video_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/v2/video_generation",
+        "headers": {},
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "H3边界测试"
+            },
+            {
+              "type": "audio_url",
+              "audio_url": {
+                "url": "{{H3_AUDIO_REFERENCE_1}}"
+              },
+              "role": "reference_audio"
+            },
+            {
+              "type": "audio_url",
+              "audio_url": {
+                "url": "{{H3_AUDIO_REFERENCE_2}}"
+              },
+              "role": "reference_audio"
+            },
+            {
+              "type": "audio_url",
+              "audio_url": {
+                "url": "{{H3_AUDIO_REFERENCE_3}}"
+              },
+              "role": "reference_audio"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "options": {
+        "reason": "需要三个总时长不超过 15 秒的音频",
+        "expected_resolution": "768P",
+        "expected_duration": 4,
+        "expected_ratio": "16:9",
+        "require_video_usage": true,
+        "fixture_requirements": {
+          "fixture_id": "H3_AUDIO_REFERENCE_THREE",
+          "count": 3,
+          "total_seconds": 15
+        }
+      }
+    }
+  }
+}

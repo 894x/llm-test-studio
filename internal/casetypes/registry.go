@@ -251,7 +251,7 @@ func descriptorResponseProbe() Descriptor {
 func descriptorLegacyAPIAudit() Descriptor {
 	return Descriptor{
 		Type: TypeLegacyAPIAudit, TypeVersion: 1, Label: "内置兼容性审计", Category: "compatibility",
-		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3, domain.ProtocolSeedance, domain.ProtocolWanVideo},
+		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3, domain.ProtocolSeedance, domain.ProtocolWanVideo, domain.ProtocolMiniMaxVideo},
 		Creatable: false,
 		DefaultSpec: mustJSON(LegacyAPIAuditSpec{
 			Kind:    "chat_sync",
@@ -499,6 +499,7 @@ var legacyKinds = map[domain.Protocol]map[string]struct{}{
 		"needle_retrieval", "error_no_usage", "padding_ratio", "kimi_success", "kimi_tool_call",
 		"kimi_reasoning_visible", "kimi_reasoning_hidden", "kimi_error_400",
 	),
-	domain.ProtocolSeedance: makeKindSet("seedance_task"),
-	domain.ProtocolWanVideo: makeKindSet("wan_task_success", "wan_task_rejected"),
+	domain.ProtocolSeedance:     makeKindSet("seedance_task"),
+	domain.ProtocolWanVideo:     makeKindSet("wan_task_success", "wan_task_rejected"),
+	domain.ProtocolMiniMaxVideo: makeKindSet("minimax_video_task_success", "minimax_video_task_rejected", "minimax_video_auth_rejected"),
 }
