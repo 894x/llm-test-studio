@@ -217,6 +217,52 @@ describe("Wails desktop client", () => {
     await expect(createDesktopClient().runQuickPerformanceTest(command)).rejects.toThrow("快速性能报告数据结构无效")
   })
 
+  it("accepts only bounded redacted failure response evidence", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const fixture = performanceReportFixture()
+    binding.RunQuickPerformanceTest.mockResolvedValueOnce({
+      ...fixture,
+      success: false,
+      progress: { ...fixture.progress, succeeded: 3, failed: 1 },
+      metrics: { ...fixture.metrics, succeeded: 3, failed: 1, success_rate_percent: 75 },
+      failures: [{ error_code: "authentication_failed", count: 1 }],
+      samples: fixture.samples.map((sample, index) => index === 0 ? {
+        ...sample,
+        success: false,
+        http_status: 401,
+        error_code: "authentication_failed",
+        response_evidence: {
+          capture_status: "captured",
+          content_type: "application/json",
+          request_id: "req-safe-123",
+          body: "{\"error\":{\"message\":\"quota exhausted\",\"api_key\":\"[REDACTED]\"}}",
+          body_bytes: 96,
+          truncated: false,
+          redacted: true,
+          provider_secret: "must be dropped",
+        },
+      } : sample),
+    } as never)
+
+    const report = await createDesktopClient().runQuickPerformanceTest({
+      address_mode: "base_url", url: "https://api.example.test/v1",
+      api_key: "sk-secret", model_id: "gpt-test", request_count: 4,
+      duration_ms: 0, concurrency: 2, timeout_ms: 30_000,
+      input_tokens: 20, output_tokens: 32,
+    })
+
+    expect(report.samples[0].response_evidence).toEqual({
+      capture_status: "captured",
+      content_type: "application/json",
+      request_id: "req-safe-123",
+      body: "{\"error\":{\"message\":\"quota exhausted\",\"api_key\":\"[REDACTED]\"}}",
+      body_bytes: 96,
+      truncated: false,
+      redacted: true,
+    })
+    expect(JSON.stringify(report)).not.toContain("must be dropped")
+  })
+
 	it("publishes only correlated validated quick-performance progress and unsubscribes", async () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
 		let eventCallback: ((payload: unknown) => void) | undefined

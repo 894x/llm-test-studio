@@ -146,6 +146,18 @@ export interface QuickPerformanceMetrics {
 
 export type QuickPerformanceArchiveStatus = "not_attempted" | "archived" | "failed"
 
+export type QuickPerformanceEvidenceCaptureStatus = "captured" | "empty" | "omitted"
+
+export interface QuickPerformanceResponseEvidence {
+  capture_status: QuickPerformanceEvidenceCaptureStatus
+  content_type?: string
+  request_id?: string
+  body: string
+  body_bytes: number
+  truncated: boolean
+  redacted: true
+}
+
 export interface QuickPerformanceSample {
   request_index: number
   scheduled_offset_ms: number
@@ -162,6 +174,7 @@ export interface QuickPerformanceSample {
   completion_tokens: number
   cached_tokens: number
   error_code?: QuickTestErrorCode
+  response_evidence?: QuickPerformanceResponseEvidence
 }
 
 export interface QuickPerformanceReport {
@@ -268,6 +281,34 @@ export function parseQuickTestResult(value: unknown): QuickTestResult {
   }
 }
 
+function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceResponseEvidence {
+  if (!isRecord(value)) throw new Error("快速性能报告响应证据无效")
+  const body = value.body === undefined ? "" : value.body
+  const contentType = value.content_type
+  const requestID = value.request_id
+  if (
+    !isEvidenceCaptureStatus(value.capture_status) ||
+    typeof body !== "string" || new TextEncoder().encode(body).length > 16 * 1024 ||
+    (contentType !== undefined && (typeof contentType !== "string" || contentType.length > 128)) ||
+    (requestID !== undefined && (typeof requestID !== "string" || requestID.length > 256)) ||
+    !isNonNegativeInteger(value.body_bytes) ||
+    typeof value.truncated !== "boolean" ||
+    value.redacted !== true ||
+    (value.capture_status === "captured" && body.trim() === "") ||
+    (value.capture_status === "empty" && (body !== "" || value.truncated)) ||
+    (value.capture_status === "omitted" && (body !== "" || !value.truncated))
+  ) throw new Error("快速性能报告响应证据无效")
+  return {
+    capture_status: value.capture_status,
+    ...(contentType === undefined ? {} : { content_type: contentType }),
+    ...(requestID === undefined ? {} : { request_id: requestID }),
+    body,
+    body_bytes: value.body_bytes,
+    truncated: value.truncated,
+    redacted: true,
+  }
+}
+
 export function parseQuickPerformanceReport(value: unknown): QuickPerformanceReport {
   if (!isRecord(value) || value.schema_version !== 1) {
     throw new Error("快速性能报告数据协议版本不受支持")
@@ -304,6 +345,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   const progress = value.progress
   const metrics = value.metrics
   const samples = value.samples.map(parsePerformanceSample)
+  const evidenceBytes = samples.reduce((sum, sample) => sum + new TextEncoder().encode(sample.response_evidence?.body ?? "").length, 0)
   const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
   if (
     progress.completed !== metrics.completed ||
@@ -312,6 +354,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     metrics.succeeded + metrics.failed !== metrics.completed ||
     failureCount !== metrics.failed ||
     samples.length !== metrics.completed ||
+    evidenceBytes > 2 * 1024 * 1024 ||
     new Set(samples.map((sample) => sample.request_index)).size !== samples.length ||
     (value.archived !== (value.archive_status === "archived")) ||
     (value.archived && (value.report_id === undefined || value.generated_at === undefined)) ||
@@ -357,7 +400,7 @@ function parsePerformanceSample(value: unknown): QuickPerformanceSample {
     !isNonNegativeInteger(value.completion_tokens) ||
     !isNonNegativeInteger(value.cached_tokens) ||
     (value.error_code !== undefined && !isErrorCode(value.error_code)) ||
-    (value.success && value.error_code !== undefined) ||
+    (value.success && (value.error_code !== undefined || value.response_evidence !== undefined)) ||
     Number(value.started_offset_ms) < Number(value.scheduled_offset_ms) ||
     Number(value.finished_offset_ms) < Number(value.started_offset_ms)
   ) throw new Error("快速性能报告样本数据无效")
@@ -377,6 +420,7 @@ function parsePerformanceSample(value: unknown): QuickPerformanceSample {
     completion_tokens: value.completion_tokens,
     cached_tokens: value.cached_tokens,
     ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
+    ...(value.response_evidence === undefined ? {} : { response_evidence: parsePerformanceResponseEvidence(value.response_evidence) }),
   }
 }
 
@@ -502,6 +546,10 @@ function isPerformancePhase(value: unknown): value is QuickPerformancePhase {
 
 function isArchiveStatus(value: unknown): value is QuickPerformanceArchiveStatus {
   return value === "not_attempted" || value === "archived" || value === "failed"
+}
+
+function isEvidenceCaptureStatus(value: unknown): value is QuickPerformanceEvidenceCaptureStatus {
+  return value === "captured" || value === "empty" || value === "omitted"
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

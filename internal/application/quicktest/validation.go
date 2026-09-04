@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
@@ -49,6 +50,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	}
 	seen := make(map[uint64]struct{}, len(report.Samples))
 	var succeeded, failed, timedOut, promptTokens, completionTokens, cachedTokens uint64
+	evidenceBytes := 0
 	failureCounts := make(map[domain.ErrorCode]uint64)
 	for _, sample := range report.Samples {
 		if _, duplicate := seen[sample.RequestIndex]; duplicate {
@@ -61,7 +63,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			return time.Time{}, errors.New("quick performance report sample measurement is invalid")
 		}
 		if sample.Success {
-			if sample.ErrorCode != "" {
+			if sample.ErrorCode != "" || sample.ResponseEvidence != nil {
 				return time.Time{}, errors.New("successful quick performance sample has an error code")
 			}
 			succeeded++
@@ -74,6 +76,15 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			}
 			failed++
 			failureCounts[sample.ErrorCode]++
+			if sample.ResponseEvidence != nil {
+				if err := validatePerformanceResponseEvidence(*sample.ResponseEvidence); err != nil {
+					return time.Time{}, err
+				}
+				evidenceBytes += len(sample.ResponseEvidence.Body)
+				if evidenceBytes > MaxPerformanceEvidenceTotalBytes {
+					return time.Time{}, errors.New("quick performance response evidence exceeds the total limit")
+				}
+			}
 		}
 		if sample.TimedOut {
 			timedOut++
@@ -96,6 +107,30 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		return time.Time{}, errors.New("quick performance report failures are incomplete")
 	}
 	return generatedAt, nil
+}
+
+func validatePerformanceResponseEvidence(evidence PerformanceResponseEvidence) error {
+	if !evidence.Redacted || len(evidence.ContentType) > 128 || len(evidence.RequestID) > 256 ||
+		!utf8.ValidString(evidence.Body) || len(evidence.Body) > MaxPerformanceEvidenceBodyBytes {
+		return errors.New("quick performance response evidence is unsafe")
+	}
+	switch evidence.CaptureStatus {
+	case PerformanceEvidenceCaptured:
+		if strings.TrimSpace(evidence.Body) == "" {
+			return errors.New("captured quick performance response evidence is empty")
+		}
+	case PerformanceEvidenceEmpty:
+		if evidence.Body != "" || evidence.Truncated {
+			return errors.New("empty quick performance response evidence is inconsistent")
+		}
+	case PerformanceEvidenceOmitted:
+		if evidence.Body != "" || !evidence.Truncated {
+			return errors.New("omitted quick performance response evidence is inconsistent")
+		}
+	default:
+		return errors.New("quick performance response evidence status is invalid")
+	}
+	return nil
 }
 
 // ValidatePerformanceArchiveSummary protects the list boundary without

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
@@ -314,6 +315,99 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 	}
 }
 
+func TestRunPerformanceReturnsRedactedFailureResponseEvidence(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+		writer.Header().Set("X-Request-Id", "req-quick-test-123")
+		writer.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(writer, `{"error":{"code":"quota_exceeded","message":"quota exhausted for sk-sensitive","api_key":"sk-sensitive"}}`)
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-sensitive", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Samples) != 1 || report.Samples[0].ResponseEvidence == nil {
+		t.Fatalf("samples = %#v", report.Samples)
+	}
+	evidence := report.Samples[0].ResponseEvidence
+	if evidence.CaptureStatus != PerformanceEvidenceCaptured || evidence.ContentType != "application/json" || evidence.RequestID != "req-quick-test-123" ||
+		!evidence.Redacted || evidence.Truncated || evidence.BodyBytes == 0 {
+		t.Fatalf("evidence = %#v", evidence)
+	}
+	if !strings.Contains(evidence.Body, "quota exhausted") || !strings.Contains(evidence.Body, "[REDACTED]") || strings.Contains(evidence.Body, "sk-sensitive") {
+		t.Fatalf("unsafe or incomplete evidence body = %q", evidence.Body)
+	}
+}
+
+func TestRunPerformanceBoundsOversizedFailureResponseEvidence(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/plain")
+		writer.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(writer, strings.Repeat("上游暂不可用 ", MaxPerformanceEvidenceBodyBytes))
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := report.Samples[0].ResponseEvidence
+	if evidence == nil || evidence.CaptureStatus != PerformanceEvidenceCaptured || !evidence.Truncated ||
+		len(evidence.Body) > MaxPerformanceEvidenceBodyBytes || evidence.BodyBytes <= uint64(len(evidence.Body)) || !utf8.ValidString(evidence.Body) {
+		t.Fatalf("evidence = %#v", evidence)
+	}
+}
+
+func TestRunPerformanceDoesNotExposeUndecodableTruncatedJSON(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(writer, `{"error":{"session_token":"opaque-sensitive","message":"%s`, strings.Repeat("x", MaxPerformanceEvidenceBodyBytes))
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := report.Samples[0].ResponseEvidence
+	if evidence == nil || !evidence.Truncated || strings.Contains(evidence.Body, "opaque-sensitive") {
+		t.Fatalf("unsafe truncated JSON evidence = %#v", evidence)
+	}
+}
+
+func TestRunPerformanceBoundsJSONExpandedDuringRedaction(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(writer, `{"message":"%s"}`, strings.Repeat("<", 4_000))
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := report.Samples[0].ResponseEvidence
+	if evidence == nil || !evidence.Truncated || len(evidence.Body) > MaxPerformanceEvidenceBodyBytes || !utf8.ValidString(evidence.Body) {
+		t.Fatalf("expanded JSON evidence = %#v", evidence)
+	}
+}
+
 func TestRunPerformanceWithProgressPublishesAuthoritativeLifecycleSnapshots(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")
@@ -571,7 +665,7 @@ func TestRunPerformanceArchivesAfterCancellationWithIndependentShortDeadline(t *
 	}
 }
 
-func TestRunPerformanceAggregatesStableFailureCodesWithoutProviderDetails(t *testing.T) {
+func TestRunPerformanceAggregatesStableFailureCodesWithRedactedEvidence(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprint(writer, `{"error":{"message":"provider mentioned sk-sensitive"}}`)
@@ -592,8 +686,8 @@ func TestRunPerformanceAggregatesStableFailureCodesWithoutProviderDetails(t *tes
 		t.Fatalf("failures = %#v", report.Failures)
 	}
 	encoded, _ := json.Marshal(report)
-	if strings.Contains(string(encoded), "provider mentioned") || strings.Contains(string(encoded), "sk-sensitive") {
-		t.Fatalf("report leaked provider detail or credential: %s", encoded)
+	if !strings.Contains(string(encoded), "provider mentioned") || strings.Contains(string(encoded), "sk-sensitive") {
+		t.Fatalf("report did not retain safe detail or leaked a credential: %s", encoded)
 	}
 }
 

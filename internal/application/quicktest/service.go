@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -259,7 +261,8 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		return report, nil
 	}
 
-	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body)
+	evidenceRecorder := newPerformanceEvidenceRecorder()
+	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body, evidenceRecorder.record)
 	command.APIKey = ""
 	if code != "" {
 		report.ErrorCode = code
@@ -277,7 +280,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
-	report.Samples = performanceSamples(outcome.Results)
+	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot())
 	report.Success = outcome.Progress.Phase == load.PhaseCompleted && outcome.Metrics.Completed > 0 && outcome.Metrics.Failed == 0
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -343,7 +346,7 @@ func validPerformanceProfile(command PerformanceCommand) bool {
 		command.OutputTokens > 0 && command.OutputTokens <= MaxPerformanceOutputTokens
 }
 
-func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage) (load.Executor, func(), domain.ErrorCode) {
+func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, quickTestCredentialID)
 	if err != nil {
 		return nil, func() {}, load.ErrorRequestFailed
@@ -360,7 +363,10 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 		_ = store.Delete(context.Background(), storeRef)
 		return nil, func() {}, classifyContext(ctx.Err())
 	}
-	options := make([]openai.Option, 0, 1)
+	options := make([]openai.Option, 0, 2)
+	if onFailureEvidence != nil {
+		options = append(options, openai.WithFailureResponseEvidence(MaxPerformanceEvidenceBodyBytes, onFailureEvidence))
+	}
 	if service.allowLoopbackHTTP {
 		options = append(options, openai.WithLoopbackHTTPForTesting())
 	}
@@ -429,7 +435,7 @@ func performanceFailures(observations []load.Observation) []PerformanceFailure {
 	return failures
 }
 
-func performanceSamples(observations []load.Observation) []PerformanceSample {
+func performanceSamples(observations []load.Observation, evidence map[uint64]*PerformanceResponseEvidence) []PerformanceSample {
 	samples := make([]PerformanceSample, 0, len(observations))
 	for _, observation := range observations {
 		code := observation.ErrorCode
@@ -456,10 +462,85 @@ func performanceSamples(observations []load.Observation) []PerformanceSample {
 			E2EMS:             durationMilliseconds(observation.E2E), TTFTMS: durationMilliseconds(observation.TTFT), TPOTMS: tpot,
 			HTTPStatus: observation.HTTPStatus, Success: observation.Success, TimedOut: observation.TimedOut,
 			PromptTokens: observation.PromptTokens, CompletionTokens: observation.CompletionTokens, CachedTokens: observation.CachedTokens,
-			ErrorCode: code,
+			ErrorCode:        code,
+			ResponseEvidence: evidence[observation.Index],
 		})
 	}
 	return samples
+}
+
+type performanceEvidenceRecorder struct {
+	mu        sync.Mutex
+	remaining int
+	byIndex   map[uint64]*PerformanceResponseEvidence
+}
+
+func newPerformanceEvidenceRecorder() *performanceEvidenceRecorder {
+	return &performanceEvidenceRecorder{
+		remaining: MaxPerformanceEvidenceTotalBytes,
+		byIndex:   make(map[uint64]*PerformanceResponseEvidence),
+	}
+}
+
+func (recorder *performanceEvidenceRecorder) record(value openai.FailureResponseEvidence) {
+	if recorder == nil {
+		return
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	body := value.Body
+	status := PerformanceEvidenceCaptured
+	if body == "" {
+		status = PerformanceEvidenceEmpty
+	} else if recorder.remaining == 0 {
+		body = ""
+		status = PerformanceEvidenceOmitted
+	} else if len(body) > recorder.remaining {
+		body = truncateUTF8(body, recorder.remaining)
+		value.Truncated = true
+		if body == "" {
+			status = PerformanceEvidenceOmitted
+			recorder.remaining = 0
+		}
+	}
+	recorder.remaining -= len(body)
+	recorder.byIndex[value.RequestIndex] = &PerformanceResponseEvidence{
+		CaptureStatus: status,
+		ContentType:   value.ContentType,
+		RequestID:     value.RequestID,
+		Body:          body,
+		BodyBytes:     value.BodyBytes,
+		Truncated:     value.Truncated || status == PerformanceEvidenceOmitted,
+		Redacted:      true,
+	}
+}
+
+func (recorder *performanceEvidenceRecorder) snapshot() map[uint64]*PerformanceResponseEvidence {
+	if recorder == nil {
+		return nil
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	result := make(map[uint64]*PerformanceResponseEvidence, len(recorder.byIndex))
+	for index, evidence := range recorder.byIndex {
+		copy := *evidence
+		result[index] = &copy
+	}
+	return result
+}
+
+func truncateUTF8(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if len(value) <= limit {
+		return value
+	}
+	value = value[:limit]
+	for len(value) > 0 && !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 func durationMilliseconds(value time.Duration) float64 {

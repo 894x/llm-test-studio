@@ -18,13 +18,15 @@ const (
 	DefaultTimeoutMS int64 = 30_000
 	MaxTimeoutMS     int64 = 120_000
 
-	PerformanceSchemaVersion          = 1
-	MaxPerformanceRequests     uint64 = 10_000
-	MaxPerformanceConcurrency  uint32 = 256
-	MaxPerformanceDurationMS   uint64 = 3_600_000
-	MaxPerformanceTimeoutMS    uint64 = 600_000
-	MaxPerformanceInputTokens  uint32 = 1_000_000
-	MaxPerformanceOutputTokens uint32 = 65_536
+	PerformanceSchemaVersion                = 1
+	MaxPerformanceRequests           uint64 = 10_000
+	MaxPerformanceConcurrency        uint32 = 256
+	MaxPerformanceDurationMS         uint64 = 3_600_000
+	MaxPerformanceTimeoutMS          uint64 = 600_000
+	MaxPerformanceInputTokens        uint32 = 1_000_000
+	MaxPerformanceOutputTokens       uint32 = 65_536
+	MaxPerformanceEvidenceBodyBytes         = 16 << 10
+	MaxPerformanceEvidenceTotalBytes        = 2 << 20
 
 	PerformancePhaseNotStarted load.Phase = "not_started"
 )
@@ -119,6 +121,26 @@ type PerformanceFailure struct {
 	Count     uint64           `json:"count"`
 }
 
+type PerformanceEvidenceCaptureStatus string
+
+const (
+	PerformanceEvidenceCaptured PerformanceEvidenceCaptureStatus = "captured"
+	PerformanceEvidenceEmpty    PerformanceEvidenceCaptureStatus = "empty"
+	PerformanceEvidenceOmitted  PerformanceEvidenceCaptureStatus = "omitted"
+)
+
+// PerformanceResponseEvidence is a bounded, redacted response captured only
+// for a failed request. It never contains request headers or credentials.
+type PerformanceResponseEvidence struct {
+	CaptureStatus PerformanceEvidenceCaptureStatus `json:"capture_status"`
+	ContentType   string                           `json:"content_type,omitempty"`
+	RequestID     string                           `json:"request_id,omitempty"`
+	Body          string                           `json:"body,omitempty"`
+	BodyBytes     uint64                           `json:"body_bytes"`
+	Truncated     bool                             `json:"truncated"`
+	Redacted      bool                             `json:"redacted"`
+}
+
 type PerformanceArchiveStatus string
 
 const (
@@ -128,24 +150,25 @@ const (
 )
 
 // PerformanceSample is the request-level measurement boundary used by charts.
-// It deliberately excludes request/response bodies, prompts, credentials, and
-// provider error text.
+// Failed samples may carry a bounded, redacted response. Request bodies,
+// prompts, credentials, headers, and unredacted provider text remain excluded.
 type PerformanceSample struct {
-	RequestIndex      uint64           `json:"request_index"`
-	ScheduledOffsetMS float64          `json:"scheduled_offset_ms"`
-	StartedOffsetMS   float64          `json:"started_offset_ms"`
-	FinishedOffsetMS  float64          `json:"finished_offset_ms"`
-	ScheduleLagMS     float64          `json:"schedule_lag_ms"`
-	E2EMS             float64          `json:"e2e_ms"`
-	TTFTMS            float64          `json:"ttft_ms"`
-	TPOTMS            float64          `json:"tpot_ms"`
-	HTTPStatus        int              `json:"http_status"`
-	Success           bool             `json:"success"`
-	TimedOut          bool             `json:"timed_out"`
-	PromptTokens      uint64           `json:"prompt_tokens"`
-	CompletionTokens  uint64           `json:"completion_tokens"`
-	CachedTokens      uint64           `json:"cached_tokens"`
-	ErrorCode         domain.ErrorCode `json:"error_code,omitempty"`
+	RequestIndex      uint64                       `json:"request_index"`
+	ScheduledOffsetMS float64                      `json:"scheduled_offset_ms"`
+	StartedOffsetMS   float64                      `json:"started_offset_ms"`
+	FinishedOffsetMS  float64                      `json:"finished_offset_ms"`
+	ScheduleLagMS     float64                      `json:"schedule_lag_ms"`
+	E2EMS             float64                      `json:"e2e_ms"`
+	TTFTMS            float64                      `json:"ttft_ms"`
+	TPOTMS            float64                      `json:"tpot_ms"`
+	HTTPStatus        int                          `json:"http_status"`
+	Success           bool                         `json:"success"`
+	TimedOut          bool                         `json:"timed_out"`
+	PromptTokens      uint64                       `json:"prompt_tokens"`
+	CompletionTokens  uint64                       `json:"completion_tokens"`
+	CachedTokens      uint64                       `json:"cached_tokens"`
+	ErrorCode         domain.ErrorCode             `json:"error_code,omitempty"`
+	ResponseEvidence  *PerformanceResponseEvidence `json:"response_evidence,omitempty"`
 }
 
 // PerformanceReport is an ephemeral, bounded report. It contains no Model,

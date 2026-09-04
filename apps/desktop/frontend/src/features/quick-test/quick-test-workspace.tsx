@@ -60,6 +60,7 @@ import {
   type SaveQuickTestConnectionCommand,
 } from "./data"
 import { performanceCompletion, performanceProgressPhaseLabel } from "./performance-summary"
+import { QuickPerformanceRequestAnalysis } from "./quick-performance-request-analysis"
 
 type QuickTestActions = Pick<
   DesktopClient,
@@ -689,7 +690,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-5xl">
         <SheetHeader>
           <SheetTitle>快速性能测试</SheetTitle>
           <SheetDescription>
@@ -788,7 +789,7 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{title}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            {report.success ? "全部请求完成且通过协议与语义校验。" : "报告仅包含聚合指标和稳定错误分类。"}
+            {report.success ? "全部请求完成且通过协议与语义校验。" : "可按失败原因筛选请求，并查看经过脱敏和限长处理的响应详情。"}
           </p>
         </div>
       </div>
@@ -830,6 +831,7 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
             </ul>
           </div>
         ) : null}
+        {report.samples.length ? <QuickPerformanceRequestAnalysis report={report} /> : null}
         {report.archived && report.report_id ? (
           <div className="flex items-center justify-between gap-3 border-t pt-3">
             <p className="text-[10px] text-muted-foreground">已于 {report.generated_at ? new Date(report.generated_at).toLocaleString("zh-CN") : "测试完成时"} 封存到报告。</p>

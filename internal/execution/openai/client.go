@@ -83,15 +83,17 @@ type Client struct {
 type clientState struct {
 	mu sync.Mutex
 
-	baseURL           string
-	upstreamModel     string
-	secret            []byte
-	httpClient        *http.Client
-	maxResponseBytes  int64
-	maxSSELineBytes   int64
-	maxSSEEventBytes  int64
-	maxSSELines       int64
-	allowLoopbackHTTP bool
+	baseURL                 string
+	upstreamModel           string
+	secret                  []byte
+	httpClient              *http.Client
+	maxResponseBytes        int64
+	maxSSELineBytes         int64
+	maxSSEEventBytes        int64
+	maxSSELines             int64
+	maxFailureEvidenceBytes int64
+	failureEvidenceSink     FailureResponseEvidenceSink
+	allowLoopbackHTTP       bool
 
 	lifecycleContext context.Context
 	cancelLifecycle  context.CancelFunc
@@ -286,17 +288,19 @@ func (client *Client) Executor(request domain.TestRequest) (load.Executor, error
 }
 
 type executionState struct {
-	owner              *clientState
-	callerContext      context.Context
-	requestContext     context.Context
-	cancelRequest      context.CancelFunc
-	stopLifecycleWatch func() bool
-	httpClient         *http.Client
-	secret             []byte
-	maxResponseBytes   int64
-	maxSSELineBytes    int64
-	maxSSEEventBytes   int64
-	maxSSELines        int64
+	owner                   *clientState
+	callerContext           context.Context
+	requestContext          context.Context
+	cancelRequest           context.CancelFunc
+	stopLifecycleWatch      func() bool
+	httpClient              *http.Client
+	secret                  []byte
+	maxResponseBytes        int64
+	maxSSELineBytes         int64
+	maxSSEEventBytes        int64
+	maxSSELines             int64
+	maxFailureEvidenceBytes int64
+	failureEvidenceSink     FailureResponseEvidenceSink
 }
 
 // ownedTransport normalizes the RoundTripper edge before net/http can discard
@@ -362,6 +366,7 @@ func (client *Client) beginExecution(ctx context.Context) (*executionState, bool
 		secret:           secret,
 		maxResponseBytes: owner.maxResponseBytes, maxSSELineBytes: owner.maxSSELineBytes,
 		maxSSEEventBytes: owner.maxSSEEventBytes, maxSSELines: owner.maxSSELines,
+		maxFailureEvidenceBytes: owner.maxFailureEvidenceBytes, failureEvidenceSink: owner.failureEvidenceSink,
 	}
 	state.stopLifecycleWatch = stopLifecycleWatch
 	// Add only after every context, secret, watcher, and state initialization
@@ -485,19 +490,30 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 		return observation
 	}
 	observation.HTTPStatus = response.StatusCode
+	capture := newBoundedEvidenceCapture(state.maxFailureEvidenceBytes)
+	responseBody := io.Reader(response.Body)
+	if capture != nil {
+		responseBody = io.TeeReader(response.Body, capture)
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, state.maxResponseBytes))
+		_, _ = io.Copy(io.Discard, io.LimitReader(responseBody, state.maxResponseBytes))
 		if response.StatusCode == http.StatusTooManyRequests {
 			observation.ErrorCode = load.ErrorRateLimited
 		} else {
 			observation.ErrorCode = load.ErrorHTTP
 		}
+		state.publishFailureEvidence(scheduled.Index, response, capture)
 		return observation
 	}
 	if prepared.stream {
-		return readStream(state, response.Body, prepared.endpoint, started, observation)
+		observation = readStream(state, responseBody, prepared.endpoint, started, observation)
+	} else {
+		observation = readSynchronous(state, responseBody, prepared.endpoint, observation)
 	}
-	return readSynchronous(state, response.Body, prepared.endpoint, observation)
+	if !observation.Success {
+		state.publishFailureEvidence(scheduled.Index, response, capture)
+	}
+	return observation
 }
 
 func (state *clientState) isClosed() bool {

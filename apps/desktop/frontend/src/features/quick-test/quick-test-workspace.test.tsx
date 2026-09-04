@@ -421,6 +421,42 @@ describe("QuickTestWorkspace", () => {
     expect(within(dialog).queryByText("请输入大于 0 的持续时间，或填写请求数。")).not.toBeInTheDocument()
   })
 
+  it("filters request results and reveals redacted failure response evidence", async () => {
+    const user = userEvent.setup()
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={vi.fn(async () => mixedPerformanceReport())}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    const result = await screen.findByRole("region", { name: "测试结果" })
+    await user.click(within(result).getByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    expect(within(report).getByRole("figure", { name: "请求结果分布：成功 3，失败 1" })).toBeInTheDocument()
+    expect(within(report).getByRole("table", { name: "逐请求结果" })).toBeInTheDocument()
+    await user.click(within(report).getByRole("button", { name: "失败 1" }))
+    expect(within(report).getByRole("row", { name: /请求 1/ })).toBeInTheDocument()
+    expect(within(report).queryByRole("row", { name: /请求 2/ })).not.toBeInTheDocument()
+
+    await user.click(within(report).getByRole("button", { name: "查看请求 1 详情" }))
+    const detail = within(report).getByRole("region", { name: "请求 1 详情" })
+    expect(detail).toHaveTextContent("鉴权失败")
+    expect(detail).toHaveTextContent("req-safe-123")
+    expect(detail).toHaveTextContent("quota exhausted")
+    expect(detail).toHaveTextContent("已截断")
+    expect(detail).toHaveTextContent("响应已经过安全脱敏")
+    expect(detail).not.toHaveTextContent("sk-private-value")
+  })
+
   it("identifies an out-of-range performance input", async () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn()
@@ -834,5 +870,31 @@ function successfulPerformanceReport(): QuickPerformanceReport {
       { request_index: 3, scheduled_offset_ms: 0, started_offset_ms: 2, finished_offset_ms: 90, schedule_lag_ms: 2, e2e_ms: 88, ttft_ms: 42, tpot_ms: 6, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
     ],
     failures: [],
+  }
+}
+
+function mixedPerformanceReport(): QuickPerformanceReport {
+  const report = successfulPerformanceReport()
+  return {
+    ...report,
+    success: false,
+    progress: { ...report.progress, succeeded: 3, failed: 1 },
+    metrics: { ...report.metrics, succeeded: 3, failed: 1, success_rate_percent: 75 },
+    failures: [{ error_code: "authentication_failed", count: 1 }],
+    samples: report.samples.map((sample, index) => index === 0 ? {
+      ...sample,
+      success: false,
+      http_status: 401,
+      error_code: "authentication_failed",
+      response_evidence: {
+        capture_status: "captured",
+        content_type: "application/json",
+        request_id: "req-safe-123",
+        body: "{\"error\":{\"message\":\"quota exhausted\",\"api_key\":\"[REDACTED]\"}}",
+        body_bytes: 96,
+        truncated: true,
+        redacted: true,
+      },
+    } : sample),
   }
 }

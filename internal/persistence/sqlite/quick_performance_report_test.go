@@ -42,6 +42,34 @@ func TestRepositoryQuickPerformanceReportRoundTripIsIndependentAndNewestFirst(t 
 	}
 }
 
+func TestRepositoryQuickPerformanceReportRoundTripPreservesFailureResponseEvidence(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777772", "2026-08-31T15:31:00Z")
+	makeQuickPerformanceReportFailed(&report, quicktest.ErrorAuthenticationFailed)
+	report.Samples[0].HTTPStatus = 401
+	report.Samples[0].ResponseEvidence = &quicktest.PerformanceResponseEvidence{
+		CaptureStatus: quicktest.PerformanceEvidenceCaptured,
+		ContentType:   "application/json",
+		RequestID:     "req-safe",
+		Body:          `{"error":{"message":"quota exhausted","api_key":"[REDACTED]"}}`,
+		BodyBytes:     72,
+		Redacted:      true,
+	}
+
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	evidence := loaded.Samples[0].ResponseEvidence
+	if evidence == nil || evidence.CaptureStatus != quicktest.PerformanceEvidenceCaptured || evidence.RequestID != "req-safe" || evidence.Body != report.Samples[0].ResponseEvidence.Body || !evidence.Redacted {
+		t.Fatalf("loaded evidence = %#v", evidence)
+	}
+}
+
 func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
