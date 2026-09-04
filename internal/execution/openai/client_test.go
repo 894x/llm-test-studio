@@ -138,6 +138,42 @@ func TestClientAcceptsKimiK3AsAnOpenAICompatibleProtocol(t *testing.T) {
 	}
 }
 
+func TestProbeExecutorReturnsOnlyClassifierDimensions(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if body["model"] != "upstream-model" {
+			t.Errorf("model = %#v", body["model"])
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"provider":"provider-secret","choices":[]}`)
+	}))
+	defer server.Close()
+	client := mustClient(t, server)
+	executor, err := client.ProbeExecutor(chatRequest(false), func(encoded []byte) (map[string]string, error) {
+		if !strings.Contains(string(encoded), `"provider":"provider-secret"`) {
+			t.Fatalf("classifier body = %q", encoded)
+		}
+		return map[string]string{"probe_bucket": "provider-a", "probe_shape": "sha256:test"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	observation := executor(context.Background(), load.Request{Index: 3})
+	if !observation.Success || observation.HTTPStatus != http.StatusOK || observation.ErrorCode != "" {
+		t.Fatalf("probe observation = %#v", observation)
+	}
+	if observation.Dimensions["probe_bucket"] != "provider-a" || observation.Dimensions["probe_shape"] != "sha256:test" {
+		t.Fatalf("probe dimensions = %#v", observation.Dimensions)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", observation), "provider-secret") {
+		t.Fatalf("probe observation leaked response body: %#v", observation)
+	}
+}
+
 func TestStreamingExecutorRejectsHTTP200WithoutDone(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "text/event-stream")

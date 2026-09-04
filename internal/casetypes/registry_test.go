@@ -13,10 +13,11 @@ func TestBuiltinRegistryPublishesAndValidatesVersionedCaseTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptors := registry.Descriptors()
-	if len(descriptors) != 3 {
-		t.Fatalf("descriptor count = %d, want 3", len(descriptors))
+	if len(descriptors) != 4 {
+		t.Fatalf("descriptor count = %d, want 4", len(descriptors))
 	}
-	if descriptors[0].Type != TypeInputLatencyLadder || descriptors[1].Type != TypeLegacyAPIAudit || descriptors[2].Type != TypeRequestSingle {
+	if descriptors[0].Type != TypeInputLatencyLadder || descriptors[1].Type != TypeLegacyAPIAudit ||
+		descriptors[2].Type != TypeRequestSingle || descriptors[3].Type != TypeResponseProbe {
 		t.Fatalf("descriptor order = %#v", descriptors)
 	}
 	if descriptors[0].TypeVersion != 2 {
@@ -129,6 +130,48 @@ func TestInputLatencyLadderAcceptsUniformDefaultsAndPerStageOverrides(t *testing
 	definition.Spec = spec
 	if err := registry.Validate(domain.ProtocolOpenAIChat, definition); err == nil {
 		t.Fatal("zero per-stage samples override was accepted")
+	}
+}
+
+func TestResponseProbeDescriptorValidatesSafeSignatureRules(t *testing.T) {
+	registry := MustBuiltinRegistry()
+	descriptor, ok := registry.Descriptor(domain.CaseType("response.probe"), 1)
+	if !ok {
+		t.Fatal("response.probe@1 descriptor is missing")
+	}
+	if !descriptor.Creatable || descriptor.SchedulingOwner != SchedulingOwnerPlan ||
+		!supportsProtocol(descriptor.SupportedProtocols, domain.ProtocolOpenAIChat) ||
+		!supportsProtocol(descriptor.SupportedProtocols, domain.ProtocolKimiK3) {
+		t.Fatalf("response probe descriptor = %#v", descriptor)
+	}
+
+	valid := domain.TestCaseDefinition{
+		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:          domain.CaseType("response.probe"),
+		TypeVersion:   1,
+		Spec: json.RawMessage(`{
+			"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"仅输出 OK"}],"stream":false}},
+			"signatures":[
+				{"label":"provider-a","match":[{"pointer":"/provider","operator":"equals","value":"a"}]},
+				{"label":"provider-b","match":[{"pointer":"/usage/prompt_tokens_details","operator":"type","value":"object"}]}
+			]
+		}`),
+	}
+	if err := registry.Validate(domain.ProtocolOpenAIChat, valid); err != nil {
+		t.Fatalf("valid response probe rejected: %v", err)
+	}
+
+	invalidSpecs := []json.RawMessage{
+		json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{}},"signatures":[{"label":"duplicate","match":[{"pointer":"/a","operator":"exists"}]},{"label":"duplicate","match":[{"pointer":"/b","operator":"exists"}]}]}`),
+		json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{}},"signatures":[{"label":"bad-pointer","match":[{"pointer":"provider","operator":"exists"}]}]}`),
+		json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{}},"signatures":[{"label":"bad-exists","match":[{"pointer":"/provider","operator":"exists","value":true}]}]}`),
+	}
+	for index, spec := range invalidSpecs {
+		definition := valid
+		definition.Spec = spec
+		if err := registry.Validate(domain.ProtocolOpenAIChat, definition); err == nil {
+			t.Fatalf("invalid response probe spec %d was accepted", index)
+		}
 	}
 }
 

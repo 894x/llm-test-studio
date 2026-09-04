@@ -142,7 +142,7 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 		Environment: snapshot.Environment,
 		Conclusion:  domain.ReportConclusion{Passed: passed, Verdict: verdict, Issues: issues},
 		SLA:         slaMetrics, Metrics: metrics,
-		Timeline: resultTimeline(requestResults), Distributions: resultDistributions(requestResults),
+		Timeline: resultTimeline(requestResults), Distributions: append(resultDistributions(requestResults), probeDistributions(requestResults)...),
 		CaseResults: append([]domain.Result{}, caseResults...), ErrorClusters: errorClusters,
 		Evidence: append([]domain.Evidence{}, evidence...), Baseline: json.RawMessage(`{}`),
 		Attachments: []domain.ReportAttachment{},
@@ -390,6 +390,61 @@ func resultDistributions(results []domain.Result) []json.RawMessage {
 			"min": values[0], "max": values[len(values)-1],
 			"p50": interpolatedPercentile(values, .50), "p90": interpolatedPercentile(values, .90),
 			"p95": interpolatedPercentile(values, .95), "p99": interpolatedPercentile(values, .99),
+		})
+		distributions = append(distributions, item)
+	}
+	return distributions
+}
+
+type probeDistributionKey struct {
+	caseID         string
+	bucket         string
+	classification string
+	format         string
+	shape          string
+}
+
+func probeDistributions(results []domain.Result) []json.RawMessage {
+	counts := make(map[probeDistributionKey]int)
+	totals := make(map[string]int)
+	for _, result := range results {
+		classification := result.Dimensions["probe_classification"]
+		bucket := result.Dimensions["probe_bucket"]
+		caseID := result.Dimensions["probe_case_id"]
+		if result.RequestID == "" || !domain.IsUUID(caseID) || classification == "" || bucket == "" {
+			continue
+		}
+		key := probeDistributionKey{
+			caseID: caseID, bucket: bucket, classification: classification,
+			format: result.Dimensions["probe_format"], shape: result.Dimensions["probe_shape"],
+		}
+		counts[key]++
+		totals[caseID]++
+	}
+	keys := make([]probeDistributionKey, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool {
+		if keys[left].caseID != keys[right].caseID {
+			return keys[left].caseID < keys[right].caseID
+		}
+		if counts[keys[left]] != counts[keys[right]] {
+			return counts[keys[left]] > counts[keys[right]]
+		}
+		if keys[left].bucket != keys[right].bucket {
+			return keys[left].bucket < keys[right].bucket
+		}
+		return keys[left].shape < keys[right].shape
+	})
+	distributions := make([]json.RawMessage, 0, len(keys))
+	for _, key := range keys {
+		count := counts[key]
+		item, _ := json.Marshal(map[string]any{
+			"kind": "response_probe", "case_id": key.caseID,
+			"bucket": key.bucket, "classification": key.classification,
+			"format": key.format, "shape": key.shape,
+			"count": count, "share_percent": float64(count) * 100 / float64(totals[key.caseID]),
 		})
 		distributions = append(distributions, item)
 	}

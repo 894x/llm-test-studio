@@ -46,6 +46,16 @@ export interface ReportResult {
   metrics: Record<string, number>
 }
 
+export interface ResponseProbeDistribution {
+  case_id: string
+  bucket: string
+  classification: "matched" | "unknown" | "ambiguous" | "failed"
+  format: string
+  shape: string
+  count: number
+  share_percent: number
+}
+
 export interface FormalReportDetail {
   schema_version: 1
   source: "run"
@@ -67,6 +77,7 @@ export interface FormalReportDetail {
     conclusion: { passed: boolean; verdict: string; issues: string[] }
     sla: Record<string, ReportMetric>
     metrics: Record<string, ReportMetric>
+    probe_distributions?: ResponseProbeDistribution[]
     case_results: ReportResult[]
   }
   request_results: ReportResult[]
@@ -122,7 +133,8 @@ export function parseReportDetail(value: unknown): ReportDetail {
     !isUUID(report.id) || !isUUID(report.run_id) || !isRunStatus(report.run_status) ||
     !isUTCTimestamp(report.generated_at) || !isSubject(report.model) || !isSubject(report.channel) ||
     !isEnvironment(report.environment) || !isConclusion(report.conclusion) ||
-    !isRecord(report.sla) || !isRecord(report.metrics) || !Array.isArray(report.case_results)
+    !isRecord(report.sla) || !isRecord(report.metrics) ||
+    (report.distributions !== undefined && !Array.isArray(report.distributions)) || !Array.isArray(report.case_results)
   ) {
     throw new Error("桌面报告详情数据无效")
   }
@@ -134,10 +146,41 @@ export function parseReportDetail(value: unknown): ReportDetail {
       generated_at: report.generated_at, model: report.model, channel: report.channel,
       environment: report.environment, conclusion: report.conclusion,
       sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
+      probe_distributions: parseProbeDistributions(Array.isArray(report.distributions) ? report.distributions : []),
       case_results: report.case_results.map(parseResult),
     },
     request_results: value.request_results.map(parseResult),
   }
+}
+
+function parseProbeDistributions(values: unknown[]): ResponseProbeDistribution[] {
+  const distributions: ResponseProbeDistribution[] = []
+  for (const value of values) {
+    if (!isRecord(value) || value.kind !== "response_probe") continue
+    if (
+      !isUUID(value.case_id) || !isNonBlank(value.bucket) || !isProbeClassification(value.classification) ||
+      typeof value.format !== "string" || typeof value.shape !== "string" ||
+      !Number.isSafeInteger(value.count) || (value.count as number) <= 0 ||
+      typeof value.share_percent !== "number" || !Number.isFinite(value.share_percent) || value.share_percent < 0 || value.share_percent > 100 ||
+      (value.classification !== "failed" && (!isNonBlank(value.format) || !isNonBlank(value.shape)))
+    ) {
+      throw new Error("桌面报告上游探测分布无效")
+    }
+    distributions.push({
+      case_id: value.case_id,
+      bucket: value.bucket,
+      classification: value.classification,
+      format: value.format,
+      shape: value.shape,
+      count: value.count as number,
+      share_percent: value.share_percent,
+    })
+  }
+  return distributions
+}
+
+function isProbeClassification(value: unknown): value is ResponseProbeDistribution["classification"] {
+  return value === "matched" || value === "unknown" || value === "ambiguous" || value === "failed"
 }
 
 export function parseExportedReport(value: unknown): ExportedReport {

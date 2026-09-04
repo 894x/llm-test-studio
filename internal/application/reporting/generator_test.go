@@ -80,6 +80,27 @@ func TestGeneratorFailsConclusionWhenObservedSLAIsBreached(t *testing.T) {
 	}
 }
 
+func TestProbeDistributionsGroupByCaseBucketAndShape(t *testing.T) {
+	caseID := "40000000-0000-4000-8000-000000000004"
+	results := []domain.Result{
+		{RequestID: "request-1", Dimensions: map[string]string{"probe_case_id": caseID, "probe_bucket": "provider-a", "probe_classification": "matched", "probe_format": "json", "probe_shape": "sha256:known"}},
+		{RequestID: "request-2", Dimensions: map[string]string{"probe_case_id": caseID, "probe_bucket": "provider-a", "probe_classification": "matched", "probe_format": "json", "probe_shape": "sha256:known"}},
+		{RequestID: "request-3", Dimensions: map[string]string{"probe_case_id": caseID, "probe_bucket": "unknown", "probe_classification": "unknown", "probe_format": "json", "probe_shape": "sha256:mystery"}},
+	}
+	distributions := probeDistributions(results)
+	if len(distributions) != 2 {
+		t.Fatalf("probe distribution count = %d", len(distributions))
+	}
+	var first map[string]any
+	if err := json.Unmarshal(distributions[0], &first); err != nil {
+		t.Fatal(err)
+	}
+	if first["kind"] != "response_probe" || first["case_id"] != caseID || first["bucket"] != "provider-a" ||
+		first["count"] != float64(2) || first["share_percent"] != 200.0/3.0 {
+		t.Fatalf("first probe distribution = %#v", first)
+	}
+}
+
 func TestSLAObservationSupportsLegacyDesktopAliases(t *testing.T) {
 	results := []domain.Result{{
 		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},

@@ -49,21 +49,22 @@ type Request struct {
 // Observation contains only measurement and classification data. Request and
 // response evidence belongs to the redacted artifact boundary, not the scheduler.
 type Observation struct {
-	Index            uint64           `json:"index"`
-	ScheduledOffset  time.Duration    `json:"scheduled_offset"`
-	StartedOffset    time.Duration    `json:"started_offset"`
-	FinishedOffset   time.Duration    `json:"finished_offset"`
-	ScheduleLag      time.Duration    `json:"schedule_lag"`
-	E2E              time.Duration    `json:"e2e"`
-	TTFT             time.Duration    `json:"ttft"`
-	HTTPStatus       int              `json:"http_status"`
-	Success          bool             `json:"success"`
-	TimedOut         bool             `json:"timed_out"`
-	StreamComplete   bool             `json:"stream_complete"`
-	PromptTokens     uint64           `json:"prompt_tokens"`
-	CompletionTokens uint64           `json:"completion_tokens"`
-	CachedTokens     uint64           `json:"cached_tokens"`
-	ErrorCode        domain.ErrorCode `json:"error_code,omitempty"`
+	Index            uint64            `json:"index"`
+	ScheduledOffset  time.Duration     `json:"scheduled_offset"`
+	StartedOffset    time.Duration     `json:"started_offset"`
+	FinishedOffset   time.Duration     `json:"finished_offset"`
+	ScheduleLag      time.Duration     `json:"schedule_lag"`
+	E2E              time.Duration     `json:"e2e"`
+	TTFT             time.Duration     `json:"ttft"`
+	HTTPStatus       int               `json:"http_status"`
+	Success          bool              `json:"success"`
+	TimedOut         bool              `json:"timed_out"`
+	StreamComplete   bool              `json:"stream_complete"`
+	PromptTokens     uint64            `json:"prompt_tokens"`
+	CompletionTokens uint64            `json:"completion_tokens"`
+	CachedTokens     uint64            `json:"cached_tokens"`
+	ErrorCode        domain.ErrorCode  `json:"error_code,omitempty"`
+	Dimensions       map[string]string `json:"dimensions,omitempty"`
 }
 
 type Executor func(context.Context, Request) Observation

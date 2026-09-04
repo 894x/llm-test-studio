@@ -55,6 +55,34 @@ func readSynchronous(state *executionState, body io.Reader, endpoint endpointKin
 	return observation
 }
 
+func readProbe(state *executionState, body io.Reader, observation load.Observation, classifier ProbeClassifier) load.Observation {
+	encoded, tooLarge, err := readBounded(body, state.maxResponseBytes)
+	if tooLarge {
+		observation.ErrorCode = load.ErrorResponseTooLarge
+		return observation
+	}
+	if err != nil {
+		observation.ErrorCode, observation.TimedOut = state.classify(err)
+		return observation
+	}
+	if code, timedOut, classified := state.contextClassification(); classified {
+		observation.ErrorCode, observation.TimedOut = code, timedOut
+		return observation
+	}
+	dimensions, err := classifier(encoded)
+	if err != nil || len(dimensions) == 0 {
+		observation.ErrorCode = load.ErrorProtocol
+		return observation
+	}
+	observation.Dimensions = make(map[string]string, len(dimensions))
+	for name, value := range dimensions {
+		observation.Dimensions[name] = value
+	}
+	observation.StreamComplete = true
+	observation.Success = true
+	return observation
+}
+
 func readStream(state *executionState, body io.Reader, endpoint endpointKind, started time.Time, observation load.Observation) load.Observation {
 	reader := bufio.NewReaderSize(body, streamReadBufferBytes)
 	var event bytes.Buffer

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { ReportWorkspace } from "./report-workspace"
-import type { ReportDetail, ReportSnapshot } from "./data"
+import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./data"
 
 describe("ReportWorkspace", () => {
   it("keeps row selection in the inspector and opens report content only from the action column", async () => {
@@ -148,6 +148,35 @@ describe("ReportWorkspace", () => {
     expect(requestDetail).toHaveTextContent("quota exhausted")
     expect(requestDetail).not.toHaveTextContent("sk-report-private")
   })
+
+  it("shows Go-aggregated upstream response probe distributions", async () => {
+		const user = userEvent.setup()
+		const reportID = "66666666-6666-4666-8666-666666666662"
+		const snapshot = {
+			schema_version: 1,
+			reports: [{
+				id: reportID, source: "run", run_id: "55555555-5555-4555-8555-555555555552",
+				generated_at: "2026-09-05T08:00:00Z", run_status: "completed", plan_name: "渠道探测", model_name: "gpt-probe", channel_name: "聚合上游",
+				passed: true, verdict: "pass", issue_count: 0, case_count: 1, failed_case_count: 0, attachment_count: 0,
+			}],
+		} as unknown as ReportSnapshot
+		const detail = parseReportDetail(formalProbeDetail(reportID))
+
+		render(
+			<ReportWorkspace
+				snapshot={snapshot}
+				getDetail={vi.fn(async () => detail)}
+				exportReport={vi.fn(async () => ({ filename: `${reportID}.json`, media_type: "application/json", data_base64: "e30=" }))}
+				saveReportExport={vi.fn(async () => true)}
+				copyReportPNG={vi.fn(async () => undefined)}
+			/>,
+		)
+
+		await user.click(screen.getByRole("button", { name: "查看报告：pass" }))
+		const distribution = await screen.findByRole("table", { name: "上游响应分布" })
+		expect(within(distribution).getByRole("row", { name: /provider-a.*已匹配.*sha256:known.*2.*66.67%/ })).toBeInTheDocument()
+		expect(within(distribution).getByRole("row", { name: /unknown.*未知格式.*sha256:mystery.*1.*33.33%/ })).toBeInTheDocument()
+	})
 })
 
 function quickDetail(reportID: string) {
@@ -224,4 +253,31 @@ function failedQuickDetail(reportID: string) {
       failures: [{ error_code: "authentication_failed", count: 1 }],
     },
   }
+}
+
+function formalProbeDetail(reportID: string) {
+	const runID = "55555555-5555-4555-8555-555555555552"
+	const caseID = "44444444-4444-4444-8444-444444444442"
+	return {
+		schema_version: 1,
+		source: "run",
+		report: {
+			id: reportID,
+			run_id: runID,
+			run_status: "completed",
+			generated_at: "2026-09-05T08:00:00Z",
+			model: { id: "33333333-3333-4333-8333-333333333332", name: "gpt-probe" },
+			channel: { id: "22222222-2222-4222-8222-222222222222", name: "聚合上游" },
+			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "test" },
+			conclusion: { passed: true, verdict: "pass", issues: [] },
+			sla: {},
+			metrics: {},
+			distributions: [
+				{ kind: "response_probe", case_id: caseID, bucket: "provider-a", classification: "matched", format: "json", shape: "sha256:known", count: 2, share_percent: 200 / 3 },
+				{ kind: "response_probe", case_id: caseID, bucket: "unknown", classification: "unknown", format: "json", shape: "sha256:mystery", count: 1, share_percent: 100 / 3 },
+			],
+			case_results: [{ id: "11111111-1111-4111-8111-111111111111", case_id: caseID, success: { transport: true, protocol: true, semantic: true, sla: true }, metrics: {} }],
+		},
+		request_results: [],
+	}
 }

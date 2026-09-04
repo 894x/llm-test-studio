@@ -197,7 +197,10 @@ type preparedRequest struct {
 	body     []byte
 	stream   bool
 	endpoint endpointKind
+	probe    ProbeClassifier
 }
+
+type ProbeClassifier func([]byte) (map[string]string, error)
 
 type endpointKind uint8
 
@@ -281,6 +284,58 @@ func (client *Client) Executor(request domain.TestRequest) (load.Executor, error
 	prepared := preparedRequest{
 		method: string(request.Method), url: baseURL + request.Path,
 		headers: headers, body: body, stream: stream, endpoint: endpoint,
+	}
+	return func(ctx context.Context, scheduled load.Request) load.Observation {
+		return client.execute(ctx, scheduled, prepared)
+	}, nil
+}
+
+func (client *Client) ProbeExecutor(request domain.TestRequest, classifier ProbeClassifier) (load.Executor, error) {
+	if client == nil || client.state == nil {
+		return nil, ErrClientClosed
+	}
+	if classifier == nil || request.Validate() != nil {
+		return nil, ErrInvalidRequest
+	}
+	endpoint := classifyEndpoint(request)
+	if endpoint == endpointUnknown {
+		return nil, ErrInvalidRequest
+	}
+
+	state := client.state
+	state.mu.Lock()
+	if state.closed {
+		state.mu.Unlock()
+		return nil, ErrClientClosed
+	}
+	baseURL := state.baseURL
+	model := state.upstreamModel
+	state.mu.Unlock()
+
+	bodyObject, err := decodeObject(request.Body)
+	if err != nil {
+		return nil, ErrInvalidRequest
+	}
+	if endpoint == endpointChatCompletions || endpoint == endpointEmbeddings {
+		bodyObject["model"] = model
+	}
+	if configured, exists := bodyObject["stream"]; exists && configured != false {
+		return nil, ErrInvalidRequest
+	}
+	var body []byte
+	if request.Method != domain.RequestGET || len(bodyObject) > 0 {
+		body, err = json.Marshal(bodyObject)
+		if err != nil {
+			return nil, ErrInvalidRequest
+		}
+	}
+	headers := make(map[string]string, len(request.Headers))
+	for name, value := range request.Headers {
+		headers[name] = value
+	}
+	prepared := preparedRequest{
+		method: string(request.Method), url: baseURL + request.Path,
+		headers: headers, body: body, endpoint: endpoint, probe: classifier,
 	}
 	return func(ctx context.Context, scheduled load.Request) load.Observation {
 		return client.execute(ctx, scheduled, prepared)
@@ -505,7 +560,9 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 		state.publishFailureEvidence(scheduled.Index, response, capture)
 		return observation
 	}
-	if prepared.stream {
+	if prepared.probe != nil {
+		observation = readProbe(state, responseBody, observation, prepared.probe)
+	} else if prepared.stream {
 		observation = readStream(state, responseBody, prepared.endpoint, started, observation)
 	} else {
 		observation = readSynchronous(state, responseBody, prepared.endpoint, observation)

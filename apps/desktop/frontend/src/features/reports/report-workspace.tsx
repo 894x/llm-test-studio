@@ -17,7 +17,7 @@ import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
-import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary } from "./data"
+import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary, ResponseProbeDistribution } from "./data"
 
 export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
@@ -165,7 +165,9 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
   detail: Extract<ReportDetail, { source: "run" }>
   visibleResults?: Extract<ReportDetail, { source: "run" }>["request_results"]
 }) {
+  const probeDistributions = detail.report.probe_distributions ?? []
   return <>
+      {probeDistributions.length ? <ResponseProbeDistributionTable distributions={probeDistributions} /> : null}
       {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">当前显示前 1,000 条请求；完整 {detail.request_results.length.toLocaleString("zh-CN")} 条可导出 JSON。</div> : null}
       <Table aria-label="请求级结果" className="min-w-[900px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95"><TableRow>
@@ -173,7 +175,7 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
         </TableRow></TableHeader>
         <TableBody>{visibleResults.length ? visibleResults.map((result) => (
           <TableRow key={result.id} className="h-9">
-            <TableCell className="py-1 pl-4 font-mono text-[10px]">{result.request_id ?? result.id}</TableCell><TableCell className="py-1 text-[10px] tabular-nums">{result.dimensions?.input_tokens_target ? `${result.dimensions.input_tokens_target} token · #${result.dimensions.sample ?? "—"}/${result.dimensions.stage_samples ?? "—"}` : "—"}</TableCell><TableCell className="py-1"><ConclusionBadge passed={Object.values(result.success).every(Boolean)} /></TableCell>
+            <TableCell className="py-1 pl-4 font-mono text-[10px]">{result.request_id ?? result.id}</TableCell><TableCell className="py-1 text-[10px] tabular-nums">{requestDimensionLabel(result.dimensions)}</TableCell><TableCell className="py-1"><ConclusionBadge passed={Object.values(result.success).every(Boolean)} /></TableCell>
             <MetricCell value={result.metrics.e2e_ms} unit="ms" /><MetricCell value={result.metrics.ttft_ms} unit="ms" /><MetricCell value={result.metrics.tpot_ms} unit="ms" /><MetricCell value={result.metrics.schedule_lag_ms} unit="ms" />
             <TableCell className="py-1 text-xs tabular-nums">{metric(result.metrics.prompt_tokens)} / {metric(result.metrics.completion_tokens)}</TableCell><TableCell className="py-1 text-xs text-destructive">{result.error_code ?? "—"}</TableCell>
           </TableRow>
@@ -188,6 +190,42 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
       <QuickPerformanceBody detail={detail} includeRequestAnalysis />
     </ScrollArea>
   )
+}
+
+function ResponseProbeDistributionTable({ distributions }: { distributions: ResponseProbeDistribution[] }) {
+  return <section aria-label="上游响应探测统计" className="border-b px-4 py-3">
+    <div className="mb-2">
+      <h4 className="text-xs font-semibold">上游响应分布</h4>
+      <p className="mt-0.5 text-[10px] text-muted-foreground">按响应体签名与结构指纹聚合；unknown 表示未命中已配置规则，并不等同于请求失败。</p>
+    </div>
+    <Table aria-label="上游响应分布" className="min-w-[720px] rounded-md border">
+      <TableHeader><TableRow>
+        <TableHead className="h-8 text-[11px]">分类标签</TableHead><TableHead className="h-8 text-[11px]">判定</TableHead><TableHead className="h-8 text-[11px]">格式</TableHead><TableHead className="h-8 text-[11px]">结构指纹</TableHead><TableHead className="h-8 text-right text-[11px]">请求数</TableHead><TableHead className="h-8 pr-4 text-right text-[11px]">占比</TableHead>
+      </TableRow></TableHeader>
+      <TableBody>{distributions.map((distribution) => <TableRow key={`${distribution.case_id}:${distribution.bucket}:${distribution.shape}`} className="h-9">
+        <TableCell className="py-1 text-xs font-medium">{distribution.bucket}</TableCell>
+        <TableCell className="py-1"><ProbeClassificationBadge classification={distribution.classification} /></TableCell>
+        <TableCell className="py-1 font-mono text-[10px]">{distribution.format || "—"}</TableCell>
+        <TableCell className="py-1 font-mono text-[10px]">{distribution.shape || "—"}</TableCell>
+        <TableCell className="py-1 text-right text-xs tabular-nums">{distribution.count.toLocaleString("zh-CN")}</TableCell>
+        <TableCell className="py-1 pr-4 text-right text-xs tabular-nums">{formatMetric(distribution.share_percent)}%</TableCell>
+      </TableRow>)}</TableBody>
+    </Table>
+  </section>
+}
+
+function ProbeClassificationBadge({ classification }: { classification: ResponseProbeDistribution["classification"] }) {
+  const label = classification === "matched" ? "已匹配" : classification === "unknown" ? "未知格式" : classification === "ambiguous" ? "规则歧义" : "请求失败"
+  const tone = classification === "matched" ? "border-success/25 bg-success-soft text-success-strong"
+    : classification === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
+    : "border-warning/30 bg-warning-soft text-warning-strong"
+  return <Badge variant="outline" className={tone}>{label}</Badge>
+}
+
+function requestDimensionLabel(dimensions?: Record<string, string>): string {
+  if (dimensions?.probe_bucket) return `${dimensions.probe_bucket} · ${dimensions.probe_classification ?? "—"}`
+  if (dimensions?.input_tokens_target) return `${dimensions.input_tokens_target} token · #${dimensions.sample ?? "—"}/${dimensions.stage_samples ?? "—"}`
+  return "—"
 }
 
 function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {

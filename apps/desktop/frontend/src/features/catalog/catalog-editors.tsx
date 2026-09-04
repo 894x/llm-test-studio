@@ -260,7 +260,9 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
       <div className="grid grid-cols-2 gap-3"><NumberField label="输出 Token 上限" value={value.output_tokens} minimum={1} maximum={65_536} onChange={(v) => set("output_tokens", v)} /><NumberField label="单请求超时毫秒" value={value.timeout_ms} minimum={1} maximum={600_000} onChange={(v) => set("timeout_ms", v)} /></div>
       <SelectField label="缓存模式" value={value.cache_mode} options={[["cold","冷缓存（每次变化探针）"],["warm","热缓存（复用探针）"]]} onChange={(v) => set("cache_mode", v as "cold" | "warm")} />
       <TextAreaField label="高级配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description="请求模板保存在这里；上方阶梯参数保存时会覆盖同名字段。" />
-    </> : <TextAreaField label="用例配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description="配置结构由所选 type@version 定义并由后端校验。" />}
+    </> : <TextAreaField label="用例配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description={value.type === "response.probe"
+      ? "signatures 使用 JSON Pointer 匹配响应；探测次数与并发沿用计划配置。未命中规则的成功响应会按匿名结构指纹归入 unknown。"
+      : "配置结构由所选 type@version 定义并由后端校验。"} />}
   </FormShell>
 }
 

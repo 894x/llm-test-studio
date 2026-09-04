@@ -16,6 +16,7 @@ const (
 	TypeInputLatencyLadder domain.CaseType = "latency.input_ladder"
 	TypeLegacyAPIAudit     domain.CaseType = "legacy.apiaudit"
 	TypeRequestSingle      domain.CaseType = "request.single"
+	TypeResponseProbe      domain.CaseType = "response.probe"
 )
 
 type SchedulingOwner string
@@ -46,6 +47,22 @@ type LegacyAPIAuditSpec struct {
 	Kind    string             `json:"kind"`
 	Request domain.TestRequest `json:"request"`
 	Options map[string]any     `json:"options"`
+}
+
+type ResponseProbeSpec struct {
+	Request    domain.TestRequest       `json:"request"`
+	Signatures []ResponseProbeSignature `json:"signatures"`
+}
+
+type ResponseProbeSignature struct {
+	Label string                 `json:"label"`
+	Match []ResponseProbeMatcher `json:"match"`
+}
+
+type ResponseProbeMatcher struct {
+	Pointer  string          `json:"pointer"`
+	Operator string          `json:"operator"`
+	Value    json.RawMessage `json:"value,omitempty"`
 }
 
 type CacheMode string
@@ -96,6 +113,7 @@ func NewBuiltinRegistry() (*Registry, error) {
 	definitions := []caseType{
 		{descriptor: descriptorInputLatencyLadder(), validate: validateInputLatencyLadder},
 		{descriptor: descriptorLegacyAPIAudit(), validate: validateLegacyAPIAudit},
+		{descriptor: descriptorResponseProbe(), validate: validateResponseProbe},
 		{descriptor: descriptorRequestSingle(), validate: validateRequestSingle},
 	}
 	for _, definition := range definitions {
@@ -215,6 +233,21 @@ func descriptorRequestSingle() Descriptor {
 	}
 }
 
+func descriptorResponseProbe() Descriptor {
+	return Descriptor{
+		Type: TypeResponseProbe, TypeVersion: 1, Label: "响应指纹探测", Category: "routing",
+		SchedulingOwner: SchedulingOwnerPlan, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3},
+		Creatable: true,
+		DefaultSpec: mustJSON(ResponseProbeSpec{
+			Request: domain.TestRequest{
+				Method: domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{},
+				Body: json.RawMessage(`{"messages":[{"role":"user","content":"仅输出 OK"}],"max_tokens":16,"stream":false}`),
+			},
+			Signatures: []ResponseProbeSignature{},
+		}),
+	}
+}
+
 func descriptorLegacyAPIAudit() Descriptor {
 	return Descriptor{
 		Type: TypeLegacyAPIAudit, TypeVersion: 1, Label: "内置兼容性审计", Category: "compatibility",
@@ -265,6 +298,100 @@ func validateRequestSingle(_ domain.Protocol, raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+func validateResponseProbe(_ domain.Protocol, raw json.RawMessage) error {
+	var spec ResponseProbeSpec
+	if err := decodeStrict(raw, &spec); err != nil {
+		return fmt.Errorf("decode response.probe spec: %w", err)
+	}
+	if err := spec.Request.Validate(); err != nil {
+		return err
+	}
+	if spec.Request.Method != domain.RequestPOST {
+		return errors.New("response.probe requires POST")
+	}
+	var body map[string]any
+	if err := json.Unmarshal(spec.Request.Body, &body); err != nil || body == nil {
+		return errors.New("response.probe request body must be a JSON object")
+	}
+	if stream, exists := body["stream"]; exists && stream != false {
+		return errors.New("response.probe requires a non-streaming request")
+	}
+	if len(spec.Signatures) > 32 {
+		return errors.New("response.probe supports at most 32 signatures")
+	}
+	labels := make(map[string]struct{}, len(spec.Signatures))
+	for signatureIndex, signature := range spec.Signatures {
+		label := strings.TrimSpace(signature.Label)
+		if label == "" || label != signature.Label || len(label) > 64 {
+			return fmt.Errorf("response.probe signature %d has an invalid label", signatureIndex)
+		}
+		labelKey := strings.ToLower(label)
+		if _, duplicate := labels[labelKey]; duplicate {
+			return fmt.Errorf("response.probe signature label %q is duplicated", label)
+		}
+		labels[labelKey] = struct{}{}
+		if len(signature.Match) == 0 || len(signature.Match) > 16 {
+			return fmt.Errorf("response.probe signature %q requires 1 to 16 matchers", label)
+		}
+		for matcherIndex, matcher := range signature.Match {
+			if err := validateResponseProbeMatcher(matcher); err != nil {
+				return fmt.Errorf("response.probe signature %q matcher %d: %w", label, matcherIndex, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateResponseProbeMatcher(matcher ResponseProbeMatcher) error {
+	if !validJSONPointer(matcher.Pointer) {
+		return errors.New("pointer must be a valid non-root JSON Pointer")
+	}
+	switch matcher.Operator {
+	case "exists", "not_exists":
+		if len(matcher.Value) != 0 {
+			return fmt.Errorf("operator %s does not accept a value", matcher.Operator)
+		}
+	case "equals":
+		if len(matcher.Value) == 0 || !json.Valid(matcher.Value) {
+			return errors.New("equals requires a JSON value")
+		}
+	case "type":
+		var valueType string
+		if err := json.Unmarshal(matcher.Value, &valueType); err != nil {
+			return errors.New("type requires a string value")
+		}
+		switch valueType {
+		case "null", "boolean", "number", "string", "array", "object":
+		default:
+			return fmt.Errorf("unsupported JSON type %q", valueType)
+		}
+	case "contains":
+		var fragment string
+		if err := json.Unmarshal(matcher.Value, &fragment); err != nil || fragment == "" || len(fragment) > 256 {
+			return errors.New("contains requires a non-empty string value of at most 256 bytes")
+		}
+	default:
+		return fmt.Errorf("unsupported operator %q", matcher.Operator)
+	}
+	return nil
+}
+
+func validJSONPointer(pointer string) bool {
+	if pointer == "" || !strings.HasPrefix(pointer, "/") || len(pointer) > 512 {
+		return false
+	}
+	for index := 0; index < len(pointer); index++ {
+		if pointer[index] != '~' {
+			continue
+		}
+		if index+1 >= len(pointer) || (pointer[index+1] != '0' && pointer[index+1] != '1') {
+			return false
+		}
+		index++
+	}
+	return true
 }
 
 func validateLegacyAPIAudit(protocol domain.Protocol, raw json.RawMessage) error {

@@ -73,6 +73,7 @@ func (executor *LoadExecutor) Execute(ctx context.Context, request ExecutionRequ
 func draftFromObservation(caseID string, observation load.Observation) ResultDraft {
 	draft := ResultDraft{
 		CaseID: caseID, RequestID: fmt.Sprintf("request-%d", observation.Index+1),
+		Dimensions: cloneDimensions(observation.Dimensions),
 		Metrics: map[string]float64{
 			"scheduled_offset_ms": milliseconds(observation.ScheduledOffset),
 			"started_offset_ms":   milliseconds(observation.StartedOffset),

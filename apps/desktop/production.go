@@ -168,6 +168,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{
 				casetypes.TypeLegacyAPIAudit:     runs.NewLegacyAPIAuditExecutor(nil),
 				casetypes.TypeRequestSingle:      runs.NewLoadExecutor(nil),
+				casetypes.TypeResponseProbe:      runs.NewResponseProbeExecutor(nil),
 				casetypes.TypeInputLatencyLadder: runs.NewInputLatencyLadderExecutor(nil),
 			}),
 			Clock:            productionClock{},
