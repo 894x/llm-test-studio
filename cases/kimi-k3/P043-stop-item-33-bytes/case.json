@@ -4,6 +4,7 @@
   "name": "Stop · 单项 33 字节应拒绝",
   "dimension": "parameters",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

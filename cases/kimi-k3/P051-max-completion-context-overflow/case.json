@@ -4,6 +4,7 @@
   "name": "输出长度 · 1M 输出预算加输入超过上下文应拒绝",
   "dimension": "parameters",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

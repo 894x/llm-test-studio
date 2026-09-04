@@ -170,12 +170,13 @@ describe("QuickTestWorkspace", () => {
     expect(within(dialog).getByLabelText("并发数")).toHaveValue(1)
     expect(within(dialog).getByLabelText("单请求超时（秒）")).toHaveValue(60)
     expect(within(dialog).getByLabelText("近似输入 Token")).toHaveValue(100)
+    expect(within(dialog).getByLabelText("近似输入 Token")).toHaveAttribute("max", "1000000")
     expect(within(dialog).getByLabelText("最大输出 Token")).toHaveValue(100)
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "4")
     await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
     await replaceNumber(user, within(dialog).getByLabelText("并发数"), "2")
     await replaceNumber(user, within(dialog).getByLabelText("单请求超时（秒）"), "30")
-    await replaceNumber(user, within(dialog).getByLabelText("近似输入 Token"), "20")
+    await replaceNumber(user, within(dialog).getByLabelText("近似输入 Token"), "1000000")
     await replaceNumber(user, within(dialog).getByLabelText("最大输出 Token"), "32")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
@@ -188,7 +189,7 @@ describe("QuickTestWorkspace", () => {
       duration_ms: 1_000,
       concurrency: 2,
       timeout_ms: 30_000,
-      input_tokens: 20,
+      input_tokens: 1_000_000,
       output_tokens: 32,
     }, expect.any(Function)))
     const report = await within(dialog).findByRole("region", { name: "性能报告" })

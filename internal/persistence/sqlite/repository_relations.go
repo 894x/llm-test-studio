@@ -172,10 +172,12 @@ func validatePlanStorage(ctx context.Context, queryer relationQueryer, plan doma
 		if suiteID.Valid || suiteRevision.Valid {
 			return storageCorrupt("plan suite relation")
 		}
-	} else if !suiteID.Valid || !suiteRevision.Valid || suiteID.String != plan.SuiteID || suiteRevision.Int64 < 1 || uint64(suiteRevision.Int64) != plan.SuiteRevision {
+	} else if suiteID.Valid != suiteRevision.Valid {
+		return storageCorrupt("plan suite relation")
+	} else if suiteID.Valid && (suiteID.String != plan.SuiteID || suiteRevision.Int64 < 1 || uint64(suiteRevision.Int64) != plan.SuiteRevision) {
 		return storageCorrupt("plan suite relation")
 	}
-	if plan.SuiteID != "" {
+	if plan.SuiteID != "" && suiteID.Valid {
 		document, err := exactDocument(ctx, queryer, "test_suites", plan.SuiteID, plan.SuiteRevision, "suite")
 		if err != nil {
 			return relationStorageError(ctx, "plan suite revision", err)

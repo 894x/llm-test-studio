@@ -54,8 +54,8 @@ func TestPruneUnreferencedTestCaseSnapshotsKeepsPinnedLegacyRevision(t *testing.
 	imported := state.Cases[0]
 	suite := domain.Suite{
 		EntityMeta: entityMeta("72000000-0000-4000-8000-000000000001", 1),
-		Name:       "Pinned legacy case",
-		Cases:      []domain.CaseRevisionRef{{CaseID: imported.ID, Revision: imported.Revision}},
+		Key:        "pinned-legacy-case", Name: "Pinned legacy case", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "legacy-model",
+		Cases: []domain.CaseRevisionRef{{CaseID: imported.ID, Revision: imported.Revision}},
 	}
 	if err := repository.CreateSuite(context.Background(), suite); err != nil {
 		t.Fatalf("CreateSuite() error = %v", err)

@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"time"
@@ -21,11 +19,13 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
+	suitebundle "github.com/894x/llm-test-studio/suites"
 )
 
 var desktopApplicationVersion = "dev"
@@ -34,8 +34,8 @@ type productionOptions struct {
 	userConfigDir       func() (string, error)
 	appVersion          string
 	caseBundle          fs.FS
+	suiteBundle         fs.FS
 	executablePath      func() (string, error)
-	reportCaseConflicts func(int)
 	reportRunDiagnostic func(runs.Diagnostic)
 }
 
@@ -50,10 +50,8 @@ func defaultProductionOptions() productionOptions {
 		userConfigDir:  os.UserConfigDir,
 		appVersion:     desktopApplicationVersion,
 		caseBundle:     casebundle.Bundle,
+		suiteBundle:    suitebundle.Bundle,
 		executablePath: os.Executable,
-		reportCaseConflicts: func(count int) {
-			log.Printf("llm-test-studio: %d built-in case update conflict(s) retained user revisions", count)
-		},
 	}
 }
 
@@ -112,9 +110,19 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create filesystem case catalog: %w", err)
 		}
-		if err := cutoverLegacyCaseCatalog(ctx, repository, caseFiles, options.reportCaseConflicts); err != nil {
+		suiteBundleFS := options.suiteBundle
+		if isNilInterface(suiteBundleFS) {
+			suiteBundleFS = suitebundle.Bundle
+		}
+		userSuiteRoot, err := suitecatalog.UserRootForExecutable(executable)
+		if err != nil {
 			_ = repository.Close()
-			return desktopDependencies{}, fmt.Errorf("cut over filesystem case catalog: %w", err)
+			return desktopDependencies{}, fmt.Errorf("locate executable suite directory: %w", err)
+		}
+		suiteFiles, err := suitecatalog.New(suitecatalog.Options{Builtin: suiteBundleFS, UserRoot: userSuiteRoot, Cases: caseFiles})
+		if err != nil {
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create filesystem suite catalog: %w", err)
 		}
 		if err := runs.RecoverInterrupted(ctx, repository, productionClock{}); err != nil {
 			_ = repository.Close()
@@ -122,8 +130,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		}
 		workspaceQuery := workspace.New(repository)
 		caseTypes := casetypes.MustBuiltinRegistry()
+		catalogRepository := filesystemCatalogRepository{Repository: repository, cases: caseFiles, suites: suiteFiles}
 		catalogQuery, err := catalog.New(catalog.Dependencies{
-			Repository: repository,
+			Repository: catalogRepository,
 			Clock:      productionClock{},
 			CaseTypes:  caseTypes,
 			RepositoryErrors: catalog.RepositoryErrorSet{
@@ -187,7 +196,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
 		serializedCatalog := serializedCatalogService{
 			gate: gate, query: catalogQuery, commands: catalogQuery, channels: channelService,
-			caseTypes: caseTypes, caseFiles: caseFiles, caseSnapshots: repository,
+			caseTypes: caseTypes, caseFiles: caseFiles, suiteFiles: suiteFiles, caseSnapshots: repository,
 		}
 		return desktopDependencies{
 			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
@@ -206,59 +215,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		}, nil
 	}
-}
-
-type legacyCaseCutoverRepository interface {
-	ListTestCases(context.Context) ([]domain.TestCase, error)
-	CaseCatalogCutoverCompleted(context.Context) (bool, error)
-	CompleteCaseCatalogCutover(context.Context, time.Time) error
-	PruneUnreferencedTestCaseSnapshots(context.Context) error
-}
-
-func cutoverLegacyCaseCatalog(ctx context.Context, repository legacyCaseCutoverRepository, files *casecatalog.Service, report func(int)) error {
-	completed, err := repository.CaseCatalogCutoverCompleted(ctx)
-	if err != nil {
-		return err
-	}
-	exported := 0
-	if !completed {
-		legacyCases, err := repository.ListTestCases(ctx)
-		if err != nil {
-			return err
-		}
-		entries, err := files.Entries(ctx)
-		if err != nil {
-			return err
-		}
-		byID := make(map[string]casecatalog.Entry, len(entries))
-		for _, entry := range entries {
-			byID[entry.TestCase.ID] = entry
-		}
-		for _, testCase := range legacyCases {
-			entry, found := byID[testCase.ID]
-			if found && reflect.DeepEqual(entry.TestCase, testCase) {
-				continue
-			}
-			directory := filesystemCaseDirectory(testCase.Key)
-			if found {
-				directory = entry.Directory
-			}
-			if err := files.SaveCase(ctx, string(testCase.Protocol), directory, testCase); err != nil {
-				return fmt.Errorf("export legacy case %s: %w", testCase.ID, err)
-			}
-			exported++
-		}
-		if err := repository.CompleteCaseCatalogCutover(ctx, time.Now().UTC()); err != nil {
-			return err
-		}
-	}
-	if err := repository.PruneUnreferencedTestCaseSnapshots(ctx); err != nil {
-		return err
-	}
-	if exported != 0 && report != nil {
-		report(exported)
-	}
-	return nil
 }
 
 func productionStoragePaths(configurationRoot string) (directory string, database string, err error) {

@@ -1,10 +1,11 @@
 {
   "schema_version": 2,
   "key": "thinking_default_on",
-  "name": "思考 · 默认行为（K3 始终开启）",
+  "name": "思考 · K2.7 Code 默认保留思考",
   "dimension": "reasoning-parameters",
   "protocol": "kimi-k3",
-  "enabled": false,
+  "model_targets": ["kimi-k2.7-code", "kimi-k2.7-code-highspeed"],
+  "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",

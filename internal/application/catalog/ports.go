@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -11,11 +12,12 @@ import (
 )
 
 var (
-	ErrInvalid     = errors.New("catalog: invalid input")
-	ErrNotFound    = errors.New("catalog: record not found")
-	ErrConflict    = errors.New("catalog: revision conflict")
-	ErrCorrupt     = errors.New("catalog: inconsistent data")
-	ErrUnavailable = errors.New("catalog: repository unavailable")
+	ErrInvalid              = errors.New("catalog: invalid input")
+	ErrPlanProtocolMismatch = fmt.Errorf("%w: plan target protocol mismatch", ErrInvalid)
+	ErrNotFound             = errors.New("catalog: record not found")
+	ErrConflict             = errors.New("catalog: revision conflict")
+	ErrCorrupt              = errors.New("catalog: inconsistent data")
+	ErrUnavailable          = errors.New("catalog: repository unavailable")
 )
 
 // Repository is implemented structurally by persistence adapters, including

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -124,8 +125,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Suites)+len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 137 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want only 137 file-backed cases",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 137 || len(catalogSnapshot.Suites) != 4 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 137 file-backed cases and four per-model suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -140,8 +141,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 115 || disabled != 16 || manual != 6 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 115/16/6", runnable, disabled, manual)
+	if runnable != 117 || disabled != 14 || manual != 6 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 117/14/6", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -199,9 +200,10 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatal(err)
 	}
 	storedCases, err := repository.ListTestCases(context.Background())
+	storedSuites, suitesErr := repository.ListSuites(context.Background())
 	_ = repository.Close()
-	if err != nil || len(storedCases) != 0 {
-		t.Fatalf("database case rows = %d, %v, want none", len(storedCases), err)
+	if err != nil || suitesErr != nil || len(firstSnapshot.Suites) != 4 || len(storedCases) != 0 || len(storedSuites) != 0 {
+		t.Fatalf("file suites = %d, database case snapshots = %d, database suites = %d, errors = %v/%v; want 4/0/0", len(firstSnapshot.Suites), len(storedCases), len(storedSuites), err, suitesErr)
 	}
 
 	second, err := initialize(context.Background())
@@ -221,9 +223,43 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if len(firstSnapshot.TestCases) != 137 || len(secondSnapshot.TestCases) != 137 {
 		t.Fatalf("case counts across restart = %d/%d, want 137/137", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 0 || len(secondSnapshot.Suites) != 0 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want all empty",
+	if len(firstSnapshot.Suites) != 4 || len(secondSnapshot.Suites) != 4 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
+		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want four per-model suites and no plans",
 			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
+	}
+	wantSuites := map[string]struct {
+		target string
+		count  int
+	}{
+		"Kimi K3 官方基础套件":                  {target: "kimi-k3", count: 60},
+		"Kimi K2.7 Code 官方基础套件":           {target: "kimi-k2.7-code", count: 10},
+		"Kimi K2.7 Code Highspeed 官方基础套件": {target: "kimi-k2.7-code-highspeed", count: 10},
+		"Kimi K2.6 官方基础套件":                {target: "kimi-k2.6", count: 11},
+	}
+	firstByName := make(map[string]catalog.SuiteSummary, len(firstSnapshot.Suites))
+	secondByName := make(map[string]catalog.SuiteSummary, len(secondSnapshot.Suites))
+	caseByID := make(map[string]catalog.TestCaseSummary, len(firstSnapshot.TestCases))
+	for _, testCase := range firstSnapshot.TestCases {
+		caseByID[testCase.ID] = testCase
+	}
+	for _, suite := range firstSnapshot.Suites {
+		firstByName[suite.Name] = suite
+	}
+	for _, suite := range secondSnapshot.Suites {
+		secondByName[suite.Name] = suite
+	}
+	for name, want := range wantSuites {
+		firstSuite, firstFound := firstByName[name]
+		secondSuite, secondFound := secondByName[name]
+		if !firstFound || !secondFound || firstSuite.ID != secondSuite.ID || firstSuite.Revision != secondSuite.Revision || firstSuite.CaseCount != want.count || firstSuite.CaseCount != len(firstSuite.Cases) {
+			t.Fatalf("per-model suite %q across restart = %+v / %+v, want %d cases", name, firstSuite, secondSuite, want.count)
+		}
+		for _, ref := range firstSuite.Cases {
+			testCase, found := caseByID[ref.CaseID]
+			if !found || !containsString(testCase.ModelTargets, want.target) {
+				t.Fatalf("suite %q includes case %+v with targets %#v", name, ref, testCase.ModelTargets)
+			}
+		}
 	}
 	for index, firstCase := range firstSnapshot.TestCases {
 		secondCase := secondSnapshot.TestCases[index]
@@ -231,6 +267,15 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 			t.Fatalf("case %d changed across idempotent restart: first=%+v second=%+v", index, firstCase, secondCase)
 		}
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing.T) {
@@ -243,6 +288,7 @@ func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing
 		userConfigDir:  func() (string, error) { return configurationRoot, nil },
 		appVersion:     "desktop-test",
 		caseBundle:     firstBundle,
+		suiteBundle:    fstest.MapFS{},
 		executablePath: func() (string, error) { return executable, nil },
 	})
 	first, err := initialize(context.Background())
@@ -266,6 +312,7 @@ func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing
 		userConfigDir:  func() (string, error) { return configurationRoot, nil },
 		appVersion:     "desktop-test",
 		caseBundle:     secondBundle,
+		suiteBundle:    fstest.MapFS{},
 		executablePath: func() (string, error) { return executable, nil },
 	})(context.Background())
 	if err != nil {
@@ -285,6 +332,7 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 		userConfigDir:  func() (string, error) { return t.TempDir(), nil },
 		appVersion:     "desktop-test",
 		caseBundle:     fstest.MapFS{},
+		suiteBundle:    fstest.MapFS{},
 		executablePath: func() (string, error) { return executable, nil },
 	})(context.Background())
 	if err != nil {
@@ -293,7 +341,8 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	defer dependencies.close()
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
 		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
+		ModelTargets: []string{"gpt-5.2", "gpt-4.1-mini"},
+		Enabled:      true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
 		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
 		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
@@ -302,7 +351,7 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
 	path := filepath.Join(executableDirectory, "cases", "openai-chat", "T900", "case.json")
-	if raw, err := os.ReadFile(path); err != nil || !json.Valid(raw) {
+	if raw, err := os.ReadFile(path); err != nil || !json.Valid(raw) || !strings.Contains(string(raw), `"model_targets"`) || !strings.Contains(string(raw), `"gpt-5.2"`) {
 		t.Fatalf("shareable case file = %q, %v", raw, err)
 	}
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
@@ -326,12 +375,100 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 		t.Fatalf("reserved CreateTestCase() error = %v, want ErrInvalid", err)
 	}
 	snapshot, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Key != "T900" || snapshot.TestCases[0].Name != "shareable" {
+	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Key != "T900" || snapshot.TestCases[0].Name != "shareable" || len(snapshot.TestCases[0].ModelTargets) != 2 {
 		t.Fatalf("filesystem catalog after create = %#v, %v", snapshot.TestCases, err)
 	}
 }
 
-func TestProductionCutsOverLegacyDatabaseCasesToExeRelativeFiles(t *testing.T) {
+func TestProductionSuiteCreateWritesShareableFileBesideExecutableWithoutDatabaseWrites(t *testing.T) {
+	executableDirectory := t.TempDir()
+	executable := filepath.Join(executableDirectory, "llm-test-studio.exe")
+	configurationRoot := t.TempDir()
+	dependencies, err := newProductionInitializer(productionOptions{
+		userConfigDir:  func() (string, error) { return configurationRoot, nil },
+		appVersion:     "desktop-test",
+		caseBundle:     fstest.MapFS{},
+		suiteBundle:    fstest.MapFS{},
+		executablePath: func() (string, error) { return executable, nil },
+	})(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dependencies.close()
+
+	createdCase, err := dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
+		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
+		ModelTargets: []string{"gpt-5.2"}, Enabled: true, Default: false,
+		Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
+		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
+		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateTestCase() error = %v", err)
+	}
+	createdSuite, err := dependencies.catalogCommands.CreateSuite(context.Background(), catalog.CreateSuiteCommand{
+		Key: "gpt-5.2-smoke", Name: "GPT-5.2 smoke", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "gpt-5.2",
+		Cases: []catalog.CaseRevisionInput{{CaseID: createdCase.ID, Revision: createdCase.Revision}},
+	})
+	if err != nil {
+		t.Fatalf("CreateSuite() error = %v", err)
+	}
+
+	path := filepath.Join(executableDirectory, "suites", "openai-chat", "gpt-5.2-smoke", "suite.json")
+	raw, err := os.ReadFile(path)
+	if err != nil || !json.Valid(raw) || !strings.Contains(string(raw), `"case_keys"`) || strings.Contains(string(raw), `"case_id"`) {
+		t.Fatalf("shareable suite file = %q, %v", raw, err)
+	}
+	snapshot, err := dependencies.catalog.Snapshot(context.Background())
+	if err != nil || len(snapshot.Suites) != 1 || snapshot.Suites[0].ID != createdSuite.ID || snapshot.Suites[0].ModelTarget != "gpt-5.2" {
+		t.Fatalf("filesystem suite catalog = %#v, %v", snapshot.Suites, err)
+	}
+
+	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
+	repository, err := persistence.OpenRepository(context.Background(), database, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedSuites, err := repository.ListSuites(context.Background())
+	_ = repository.Close()
+	if err != nil || len(storedSuites) != 0 {
+		t.Fatalf("database suites = %#v, %v; want none", storedSuites, err)
+	}
+}
+
+func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *testing.T) {
+	configurationRoot := t.TempDir()
+	executable := filepath.Join(t.TempDir(), "llm-test-studio.exe")
+	dependencies, err := newProductionInitializer(productionOptions{
+		userConfigDir:  func() (string, error) { return configurationRoot, nil },
+		appVersion:     "desktop-test",
+		executablePath: func() (string, error) { return executable, nil },
+	})(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dependencies.close()
+	snapshot, err := dependencies.catalog.Snapshot(context.Background())
+	if err != nil || len(snapshot.Suites) == 0 {
+		t.Fatalf("filesystem suites = %#v, %v", snapshot.Suites, err)
+	}
+	suite := snapshot.Suites[0]
+	_, err = dependencies.catalogCommands.CreatePlan(context.Background(), catalog.CreatePlanCommand{
+		Name: "filesystem suite plan", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases,
+		LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+		SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000},
+	})
+	if err != nil {
+		t.Fatalf("CreatePlan() with filesystem suite error = %v", err)
+	}
+	updated, err := dependencies.catalog.Snapshot(context.Background())
+	if err != nil || len(updated.Plans) != 1 || updated.Plans[0].SuiteID != suite.ID || updated.Plans[0].SuiteRevision != suite.Revision {
+		t.Fatalf("plan referencing filesystem suite = %#v, %v", updated.Plans, err)
+	}
+}
+
+func TestProductionReadsCaseCatalogOnlyFromFilesWithoutLegacyDatabaseCutover(t *testing.T) {
 	configurationRoot := t.TempDir()
 	_, database, err := productionStoragePaths(configurationRoot)
 	if err != nil {
@@ -369,18 +506,18 @@ func TestProductionCutsOverLegacyDatabaseCasesToExeRelativeFiles(t *testing.T) {
 	executable := filepath.Join(executableDirectory, "llm-test-studio.exe")
 	dependencies, err := newProductionInitializer(productionOptions{
 		userConfigDir: func() (string, error) { return configurationRoot, nil }, appVersion: "desktop-test",
-		caseBundle: fstest.MapFS{}, executablePath: func() (string, error) { return executable, nil },
+		caseBundle: fstest.MapFS{}, suiteBundle: fstest.MapFS{}, executablePath: func() (string, error) { return executable, nil },
 	})(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Name != legacyCase.Name {
-		t.Fatalf("cut-over catalog = %#v, %v", snapshot.TestCases, err)
+	if err != nil || len(snapshot.TestCases) != 0 {
+		t.Fatalf("file-only catalog = %#v, %v; want no cases from SQLite", snapshot.TestCases, err)
 	}
 	casePath := filepath.Join(executableDirectory, "cases", "openai-chat", "T777", "case.json")
-	if raw, err := os.ReadFile(casePath); err != nil || !json.Valid(raw) {
-		t.Fatalf("cut-over case file = %q, %v", raw, err)
+	if _, err := os.Stat(casePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy database case was exported to %s: %v", casePath, err)
 	}
 	if err := dependencies.close(); err != nil {
 		t.Fatal(err)
@@ -391,8 +528,8 @@ func TestProductionCutsOverLegacyDatabaseCasesToExeRelativeFiles(t *testing.T) {
 	}
 	defer repository.Close()
 	remaining, err := repository.ListTestCases(context.Background())
-	if err != nil || len(remaining) != 0 {
-		t.Fatalf("legacy unreferenced database cases = %#v, %v", remaining, err)
+	if err != nil || len(remaining) != 1 || remaining[0].ID != legacyCase.ID {
+		t.Fatalf("legacy database cases after file-only startup = %#v, %v; want untouched legacy row", remaining, err)
 	}
 }
 

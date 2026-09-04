@@ -276,7 +276,10 @@ func TestCreateCommandsOwnMetadataAndDoNotAcceptEntityMeta(t *testing.T) {
 	assertMutation(t, mappingResult, ids[2], err)
 	caseResult, err := service.CreateTestCase(ctx, validCreateTestCaseCommand("New case"))
 	assertMutation(t, caseResult, ids[3], err)
-	suiteResult, err := service.CreateSuite(ctx, CreateSuiteCommand{Name: "New suite", Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}}})
+	suiteResult, err := service.CreateSuite(ctx, CreateSuiteCommand{
+		Key: "gpt-smoke", Name: "New suite", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "alpha-upstream",
+		Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}},
+	})
 	assertMutation(t, suiteResult, ids[4], err)
 	planResult, err := service.CreatePlan(ctx, validCreatePlanCommand("New plan"))
 	assertMutation(t, planResult, ids[5], err)
@@ -309,7 +312,11 @@ func TestUpdateCommandsPreserveCreatedAtAndAdvanceRevisionAndTime(t *testing.T) 
 	caseCommand := validUpdateTestCaseCommand(caseID, "Renamed case")
 	caseResult, err := service.UpdateTestCase(ctx, caseCommand)
 	assertUpdate(t, caseResult, caseID, err, repository.updatedTestCase.EntityMeta)
-	suiteResult, err := service.UpdateSuite(ctx, UpdateSuiteCommand{ID: suiteID, ExpectedRevision: 1, Name: "Renamed suite", Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}}})
+	suiteResult, err := service.UpdateSuite(ctx, UpdateSuiteCommand{
+		ID: suiteID, ExpectedRevision: 1, Key: "gpt-smoke", Name: "Renamed suite",
+		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "alpha-upstream",
+		Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}},
+	})
 	assertUpdate(t, suiteResult, suiteID, err, repository.updatedSuite.EntityMeta)
 	planCommand := validUpdatePlanCommand(planID, "Renamed plan")
 	planResult, err := service.UpdatePlan(ctx, planCommand)
@@ -390,14 +397,14 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 	protocolMismatch := validRepository()
 	protocolMismatch.testCases[0].Protocol = domain.ProtocolKimiK3
 	protocolService := newTestService(t, protocolMismatch, fixtureTime())
-	if _, err := protocolService.CreatePlan(context.Background(), validCreatePlanCommand("bad protocol plan")); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("CreatePlan(case protocol mismatch) error = %v, want ErrInvalid", err)
+	if _, err := protocolService.CreatePlan(context.Background(), validCreatePlanCommand("bad protocol plan")); !errors.Is(err, ErrInvalid) || err == ErrInvalid || err.Error() != "catalog: invalid input: plan target protocol mismatch" {
+		t.Fatalf("CreatePlan(case protocol mismatch) error = %v, want safe protocol-specific ErrInvalid", err)
 	}
 	if protocolMismatch.createPlanCalls != 0 {
 		t.Fatalf("CreatePlan(case protocol mismatch) writes = %d, want 0", protocolMismatch.createPlanCalls)
 	}
-	if _, err := protocolService.UpdatePlan(context.Background(), validUpdatePlanCommand(planID, "bad protocol update")); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("UpdatePlan(case protocol mismatch) error = %v, want ErrInvalid", err)
+	if _, err := protocolService.UpdatePlan(context.Background(), validUpdatePlanCommand(planID, "bad protocol update")); !errors.Is(err, ErrInvalid) || err == ErrInvalid || err.Error() != "catalog: invalid input: plan target protocol mismatch" {
+		t.Fatalf("UpdatePlan(case protocol mismatch) error = %v, want safe protocol-specific ErrInvalid", err)
 	}
 	if protocolMismatch.updatePlanCalls != 0 {
 		t.Fatalf("UpdatePlan(case protocol mismatch) writes = %d, want 0", protocolMismatch.updatePlanCalls)
@@ -785,7 +792,10 @@ func validRepository() *fakeRepository {
 			Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
 			Definition: definition,
 		}},
-		suites: []domain.Suite{{EntityMeta: meta(suiteID), Name: "Smoke", Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}}}},
+		suites: []domain.Suite{{
+			EntityMeta: meta(suiteID), Key: "gpt-smoke", Name: "Smoke", Protocol: domain.ProtocolOpenAIChat,
+			ModelTarget: "alpha-upstream", Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
+		}},
 		plans: []domain.Plan{{
 			EntityMeta: meta(planID), Name: "Baseline", ModelIDs: []string{modelAID, modelBID}, ChannelIDs: []string{channelID},
 			SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},

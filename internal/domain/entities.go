@@ -166,16 +166,28 @@ func (ref CredentialRef) Validate() error {
 
 type Suite struct {
 	EntityMeta
-	Name  string            `json:"name"`
-	Cases []CaseRevisionRef `json:"cases"`
+	Key         string            `json:"key"`
+	Name        string            `json:"name"`
+	Protocol    Protocol          `json:"protocol"`
+	ModelTarget string            `json:"model_target"`
+	Cases       []CaseRevisionRef `json:"cases"`
 }
 
 func (suite Suite) Validate() error {
 	if err := suite.EntityMeta.Validate(); err != nil {
 		return fmt.Errorf("invalid suite metadata: %w", err)
 	}
+	if !isSafeCaseKey(suite.Key) {
+		return errors.New("suite key must contain only letters, digits, dot, underscore, or hyphen")
+	}
 	if strings.TrimSpace(suite.Name) == "" {
 		return errors.New("suite name must not be empty")
+	}
+	if err := suite.Protocol.Validate(); err != nil {
+		return err
+	}
+	if !isSafeModelTarget(suite.ModelTarget) {
+		return errors.New("suite model target must be a trimmed, non-empty identifier without control characters")
 	}
 	return validateCaseRevisionRefs(suite.Cases)
 }

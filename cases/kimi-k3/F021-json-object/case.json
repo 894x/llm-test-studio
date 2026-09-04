@@ -4,6 +4,7 @@
   "name": "结构化输出 · JSON Object",
   "dimension": "structured-output",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
   "enabled": true,
   "default": false,
   "severity": "critical",

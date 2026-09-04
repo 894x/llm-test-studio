@@ -53,6 +53,7 @@ export interface CatalogTestCase {
   name: string
   dimension: string
   protocol: CatalogProtocol
+  model_targets: string[]
   enabled: boolean
   default: boolean
   severity: CatalogCaseSeverity
@@ -66,7 +67,10 @@ export interface CatalogTestCase {
 export interface CatalogSuite {
   id: string
   revision: number
+  key: string
   name: string
+  protocol: CatalogProtocol
+  model_target: string
   case_count: number
   cases: CatalogCaseRevision[]
 }
@@ -100,10 +104,10 @@ export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" |
 export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name"> & { id: string; expected_revision: number }
 export type CreateTestCaseCommand = Pick<CatalogTestCase,
   "key" | "name" | "dimension" | "protocol" | "enabled" | "default" | "severity" |
-  "execution_mode" | "definition_schema_version" | "type" | "type_version" | "spec"
+  "model_targets" | "execution_mode" | "definition_schema_version" | "type" | "type_version" | "spec"
 >
 export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
-export type CreateSuiteCommand = Pick<CatalogSuite, "name" | "cases">
+export type CreateSuiteCommand = Pick<CatalogSuite, "key" | "name" | "protocol" | "model_target" | "cases">
 export type UpdateSuiteCommand = CreateSuiteCommand & { id: string; expected_revision: number }
 export type CreatePlanCommand = Pick<CatalogPlan,
   "name" | "model_ids" | "channel_ids" | "suite_id" | "suite_revision" | "cases" | "load_mode" |
@@ -323,6 +327,10 @@ function parseTestCase(value: unknown): CatalogTestCase {
     !isNonBlank(value.name) ||
     !isSafeDimension(value.dimension) ||
     !isProtocol(value.protocol) ||
+    !Array.isArray(value.model_targets) ||
+    value.model_targets.length > 32 ||
+    !value.model_targets.every((target) => isNonBlank(target) && target.trim() === target && target.length <= 256) ||
+    new Set(value.model_targets).size !== value.model_targets.length ||
     typeof value.enabled !== "boolean" ||
     typeof value.default !== "boolean" ||
     (value.default && !value.enabled) ||
@@ -343,6 +351,7 @@ function parseTestCase(value: unknown): CatalogTestCase {
     name: value.name,
     dimension: value.dimension,
     protocol: value.protocol,
+    model_targets: [...value.model_targets],
     enabled: value.enabled,
     default: value.default,
     severity: value.severity,
@@ -377,7 +386,10 @@ function parseSuite(value: unknown): CatalogSuite {
     !isRecord(value) ||
     !isUUID(value.id) ||
     !isPositiveInteger(value.revision) ||
+    !isSafeCaseKey(value.key) ||
     !isNonBlank(value.name) ||
+    !isProtocol(value.protocol) ||
+    !isNonBlank(value.model_target) || value.model_target.trim() !== value.model_target || value.model_target.length > 256 ||
     !isPositiveInteger(value.case_count) ||
     !Array.isArray(value.cases)
   ) {
@@ -390,7 +402,10 @@ function parseSuite(value: unknown): CatalogSuite {
   return {
     id: value.id,
     revision: value.revision,
+    key: value.key,
     name: value.name,
+    protocol: value.protocol,
+    model_target: value.model_target,
     case_count: value.case_count,
     cases,
   }

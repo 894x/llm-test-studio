@@ -4,6 +4,7 @@
   "name": "Stop · 6 个字符串应拒绝",
   "dimension": "parameters",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

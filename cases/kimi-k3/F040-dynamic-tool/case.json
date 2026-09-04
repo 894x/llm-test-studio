@@ -4,6 +4,7 @@
   "name": "动态工具 · system tools 消息可调用",
   "dimension": "tools",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

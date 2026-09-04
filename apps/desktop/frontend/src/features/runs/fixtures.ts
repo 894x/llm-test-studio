@@ -93,13 +93,13 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
     { id: "77777777-7777-4777-8777-777777777776", revision: 1, channel_id: CHANNEL_IDS.compatible, model_id: MODEL_IDS.deepseek, upstream_model_name: "deepseek-v3.2" },
   ],
   test_cases: [
-    { id: CASE_IDS.chat, revision: 3, key: "T001", name: "基础对话", dimension: "must", protocol: "openai-chat", enabled: true, default: true, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "text"]) },
-    { id: CASE_IDS.json, revision: 2, key: "T016", name: "JSON 模式", dimension: "response", protocol: "openai-chat", enabled: true, default: false, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "json"]) },
-    { id: CASE_IDS.tools, revision: 1, key: "T037", name: "工具调用", dimension: "tools", protocol: "openai-chat", enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["response_schema", "tool_call"]) },
-    { id: CASE_IDS.stream, revision: 2, key: "T008", name: "流式结束", dimension: "streaming", protocol: "openai-chat", enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["stream_end", "text"]) },
+    { id: CASE_IDS.chat, revision: 3, key: "T001", name: "基础对话", dimension: "must", protocol: "openai-chat", model_targets: [], enabled: true, default: true, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "text"]) },
+    { id: CASE_IDS.json, revision: 2, key: "T016", name: "JSON 模式", dimension: "response", protocol: "openai-chat", model_targets: [], enabled: true, default: false, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "json"]) },
+    { id: CASE_IDS.tools, revision: 1, key: "T037", name: "工具调用", dimension: "tools", protocol: "openai-chat", model_targets: ["gpt-4o", "kimi-k3", "kimi-k2.6"], enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["response_schema", "tool_call"]) },
+    { id: CASE_IDS.stream, revision: 2, key: "T008", name: "流式结束", dimension: "streaming", protocol: "openai-chat", model_targets: [], enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["stream_end", "text"]) },
   ],
   suites: [
-    { id: SUITE_ID, revision: 2, name: "OpenAI 回归套件", case_count: 4, cases: ALL_CASE_REVISIONS },
+    { id: SUITE_ID, revision: 2, key: "openai-regression", name: "OpenAI 回归套件", protocol: "openai-chat", model_target: "gpt-4o", case_count: 4, cases: ALL_CASE_REVISIONS },
   ],
   plans: [
     { id: PLAN_IDS.copy, revision: 1, name: "营销文案基准", model_count: 1, channel_count: 1, case_count: 4, load_mode: "fixed_concurrency", concurrency: 4, request_count: 120, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000, model_ids: [MODEL_IDS.openai], channel_ids: [CHANNEL_IDS.openai], suite_id: SUITE_ID, suite_revision: 2, cases: ALL_CASE_REVISIONS, sla_thresholds: { p95_ms: 2000 } },

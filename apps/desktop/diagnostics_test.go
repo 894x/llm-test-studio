@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 )
@@ -49,6 +50,43 @@ func TestDesktopErrorReporterPersistsStructuredDiagnosticsUnderUserConfig(t *tes
 	} {
 		if got := entry[key]; got != expected {
 			t.Errorf("entry[%q] = %#v, want %#v", key, got, expected)
+		}
+	}
+}
+
+func TestDesktopDiagnosticsFallsBackToProcessLogWhenPrimaryLogIsOwned(t *testing.T) {
+	root := t.TempDir()
+	options := productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	}
+	primary, err := openDesktopDiagnostics(options)
+	if err != nil {
+		t.Fatalf("open primary diagnostics: %v", err)
+	}
+	defer primary.Close()
+
+	fallback, primaryErr := openDesktopDiagnosticsWithFallback(options, 4242)
+	if fallback == nil {
+		t.Fatalf("fallback diagnostics = nil; error = %v", primaryErr)
+	}
+	if primaryErr == nil {
+		t.Fatal("primary diagnostics error = nil, want ownership failure")
+	}
+	path := fallback.Path()
+	if err := fallback.Close(); err != nil {
+		t.Fatalf("close fallback diagnostics: %v", err)
+	}
+	if filepath.Base(path) != "llm-test-studio-fallback-4242.log" {
+		t.Fatalf("fallback path = %q", path)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fallback diagnostics: %v", err)
+	}
+	for _, want := range []string{"primary desktop diagnostics unavailable", "diagnostics_startup", "diagnostics_fallback"} {
+		if !bytes.Contains(contents, []byte(want)) {
+			t.Fatalf("fallback log missing %q: %s", want, contents)
 		}
 	}
 }
@@ -148,6 +186,119 @@ func TestDesktopErrorReporterClassifiesStartupFailure(t *testing.T) {
 	}
 	if entry["operation"] != "startup" || entry["error_code"] != desktopCodeStartupFailed {
 		t.Fatalf("startup diagnostic = %#v, want dedicated operation and code", entry)
+	}
+}
+
+func TestDesktopErrorReporterClassifiesPlanProtocolMismatch(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatalf("openDesktopDiagnostics() error = %v", err)
+	}
+	desktopErrorReporter(operator, log.New(io.Discard, "", 0))(
+		fmt.Errorf("create plan: %w", catalog.ErrPlanProtocolMismatch),
+	)
+	if err := operator.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(contents, &entry); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if entry["msg"] != "plan save failed" || entry["operation"] != "save_plan" || entry["error_code"] != desktopCodePlanProtocolMismatch {
+		t.Fatalf("plan protocol diagnostic = %#v, want dedicated message, operation, and code", entry)
+	}
+	if entry["error"] != "create plan: catalog: invalid input: plan target protocol mismatch" {
+		t.Fatalf("plan protocol diagnostic error = %q, want safe actionable cause", entry["error"])
+	}
+}
+
+func TestDesktopFrontendDiagnosticPersistsClearRedactedReason(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatalf("openDesktopDiagnostics() error = %v", err)
+	}
+	app := newDesktopApp(nil)
+	configureDesktopDiagnostics(app, operator, nil)
+
+	err = app.ReportFrontendDiagnostic(FrontendDiagnostic{
+		Operation: "load_catalog",
+		ErrorCode: "frontend_data_invalid",
+		Detail:    `桌面目录测试用例数据无效 api_key="sk-private-frontend-key"`,
+	})
+	if err != nil {
+		t.Fatalf("ReportFrontendDiagnostic() error = %v", err)
+	}
+	if err := operator.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	entries, contents := readDesktopDiagnosticEntries(t, root)
+	if len(entries) != 1 {
+		t.Fatalf("diagnostic entries = %d, want 1; log = %s", len(entries), contents)
+	}
+	for key, want := range map[string]any{
+		"level":      "ERROR",
+		"msg":        "frontend desktop operation failed",
+		"component":  "frontend",
+		"operation":  "load_catalog",
+		"error_code": "frontend_data_invalid",
+	} {
+		if got := entries[0][key]; got != want {
+			t.Errorf("frontend diagnostic[%q] = %#v, want %#v", key, got, want)
+		}
+	}
+	loggedError, _ := entries[0]["error"].(string)
+	if !strings.Contains(loggedError, "桌面目录测试用例数据无效") || !strings.Contains(loggedError, "[REDACTED]") {
+		t.Errorf("frontend diagnostic error = %q, want clear reason and redaction marker", loggedError)
+	}
+	if strings.Contains(contents, "sk-private-frontend-key") {
+		t.Fatalf("frontend diagnostic leaked a credential: %s", contents)
+	}
+}
+
+func TestWailsRuntimeFallbackPreservesFrontendDiagnosticFields(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatalf("openDesktopDiagnostics() error = %v", err)
+	}
+	report := desktopErrorReporter(operator, log.New(io.Discard, "", 0))
+	configured := desktopOptions(newDesktopApp(nil), nil, report)
+	configured.Logger.Error(`{"component":"frontend","operation":"load_workspace","error_code":"frontend_operation_failed","detail":"Wails desktop binding did not become ready before startup timeout"}`)
+	if err := operator.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	entries, contents := readDesktopDiagnosticEntries(t, root)
+	if len(entries) != 1 {
+		t.Fatalf("diagnostic entries = %d, want 1; log = %s", len(entries), contents)
+	}
+	for key, want := range map[string]any{
+		"msg":        "frontend desktop operation failed",
+		"component":  "frontend",
+		"operation":  "load_workspace",
+		"error_code": "frontend_operation_failed",
+		"error":      "Wails desktop binding did not become ready before startup timeout",
+	} {
+		if got := entries[0][key]; got != want {
+			t.Errorf("runtime fallback diagnostic[%q] = %#v, want %#v", key, got, want)
+		}
 	}
 }
 

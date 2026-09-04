@@ -532,18 +532,29 @@ func (repository *Repository) ListSuites(ctx context.Context) ([]domain.Suite, e
 }
 
 func (repository *Repository) CreatePlan(ctx context.Context, plan domain.Plan) error {
-	return repository.writePlan(ctx, nil, plan)
+	return repository.writePlan(ctx, nil, plan, false)
 }
 
 func (repository *Repository) UpdatePlan(ctx context.Context, expectedRevision uint64, plan domain.Plan) error {
-	return repository.writePlan(ctx, &expectedRevision, plan)
+	return repository.writePlan(ctx, &expectedRevision, plan, false)
+}
+
+// CreatePlanWithExternalSuite persists a plan whose Suite definition is owned
+// by the filesystem catalog. The immutable suite identity stays in the plan
+// document and deliberately has no SQLite foreign-key row.
+func (repository *Repository) CreatePlanWithExternalSuite(ctx context.Context, plan domain.Plan) error {
+	return repository.writePlan(ctx, nil, plan, true)
+}
+
+func (repository *Repository) UpdatePlanWithExternalSuite(ctx context.Context, expectedRevision uint64, plan domain.Plan) error {
+	return repository.writePlan(ctx, &expectedRevision, plan, true)
 }
 
 func (repository *Repository) DeletePlan(ctx context.Context, id string, expectedRevision uint64) error {
 	return repository.deleteVersionedEntity(ctx, "test_plans", "plan", id, expectedRevision)
 }
 
-func (repository *Repository) writePlan(ctx context.Context, expected *uint64, plan domain.Plan) error {
+func (repository *Repository) writePlan(ctx context.Context, expected *uint64, plan domain.Plan, externalSuite bool) error {
 	if err := plan.Validate(); err != nil {
 		return fmt.Errorf("validate plan: %w", err)
 	}
@@ -561,7 +572,7 @@ func (repository *Repository) writePlan(ctx context.Context, expected *uint64, p
 	}
 	var suiteID any
 	var suiteRevision any
-	if plan.SuiteID != "" {
+	if plan.SuiteID != "" && !externalSuite {
 		if err := requireExactVersion(ctx, tx, "test_suites", plan.SuiteID, plan.SuiteRevision, "suite"); err != nil {
 			return err
 		}

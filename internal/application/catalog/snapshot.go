@@ -281,7 +281,8 @@ func buildSnapshot(
 		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
 			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 			Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
-			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
+			ModelTargets: append([]string{}, testCase.ModelTargets...),
+			Severity:     testCase.Severity, ExecutionMode: testCase.ExecutionMode,
 			DefinitionSchemaVersion: testCase.Definition.SchemaVersion,
 			Type:                    testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
 			Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),
@@ -295,7 +296,10 @@ func buildSnapshot(
 		for index, ref := range suite.Cases {
 			cases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
 		}
-		snapshot.Suites = append(snapshot.Suites, SuiteSummary{ID: suite.ID, Revision: suite.Revision, Name: suite.Name, CaseCount: len(suite.Cases), Cases: cases})
+		snapshot.Suites = append(snapshot.Suites, SuiteSummary{
+			ID: suite.ID, Revision: suite.Revision, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol,
+			ModelTarget: suite.ModelTarget, CaseCount: len(suite.Cases), Cases: cases,
+		})
 	}
 	for _, plan := range plans {
 		if err := ctx.Err(); err != nil {

@@ -4,6 +4,7 @@
   "name": "缓存键 · prompt_cache_key 字符串应接受",
   "dimension": "cache",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "normal",

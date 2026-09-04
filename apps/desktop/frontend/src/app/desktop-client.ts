@@ -61,25 +61,27 @@ export type DesktopErrorCode =
   | "invalid_identifier"
   | "operation_cancelled"
   | "operation_failed"
+  | "plan_protocol_mismatch"
   | "catalog_invalid"
   | "catalog_revision_conflict"
   | "catalog_not_found"
 
 const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
-  desktop_not_started: "桌面应用尚未启动",
-  desktop_startup_failed: "桌面应用初始化失败",
+  desktop_not_started: "桌面服务仍在启动，请稍候重试；日志操作名：startup",
+  desktop_startup_failed: "桌面服务初始化失败，请查看日志中的 startup 记录",
   desktop_stopped: "桌面应用已停止",
-  workspace_unavailable: "本地工作区暂不可用",
-  catalog_unavailable: "测试目录暂不可用",
-  reports_unavailable: "测试报告暂不可用",
+  workspace_unavailable: "无法读取运行工作区，请重试；若仍失败，请查看日志中的 load_workspace 记录",
+  catalog_unavailable: "无法读取模型、渠道与用例目录，请重试；日志操作名：load_catalog",
+  reports_unavailable: "无法读取测试报告，请重试；日志操作名：load_reports",
   run_commands_unavailable: "运行命令暂不可用",
-  comparison_unavailable: "渠道对比暂不可用",
+  comparison_unavailable: "无法读取渠道对比，请重试；日志操作名：load_comparisons",
   diagnostics_unavailable: "诊断日志暂不可用",
   quick_test_unavailable: "快速测试暂不可用",
   quick_test_save_partial: "连接已部分保存，请前往模型与渠道检查并完成配置",
   invalid_identifier: "操作对象无效",
   operation_cancelled: "操作已取消",
   operation_failed: "桌面操作失败，请检查本地日志",
+  plan_protocol_mismatch: "计划中的用例、模型和渠道协议不一致，请选择与用例协议一致的模型和渠道，或调整用例/套件",
   catalog_invalid: "目录内容无效，请检查表单字段",
   catalog_revision_conflict: "对象版本已变化或仍被引用，请刷新并解除引用后重试",
   catalog_not_found: "对象已删除或不存在，请刷新目录",
@@ -144,6 +146,7 @@ export type DesktopDiagnosticsSnapshot = {
 type WailsDesktopBinding = {
   GetDiagnostics(): Promise<unknown>
   OpenDiagnosticsDirectory(): Promise<unknown>
+  ReportFrontendDiagnostic(diagnostic: FrontendDiagnostic): Promise<unknown>
   GetWorkspace(): Promise<unknown>
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
@@ -180,11 +183,44 @@ type WailsDesktopBinding = {
   DeletePlan(command: DeleteCommand): Promise<unknown>
 }
 
+type FrontendDiagnosticBinding = Pick<WailsDesktopBinding, "ReportFrontendDiagnostic">
+
+type FrontendDiagnostic = {
+  operation: "load_workspace" | "load_catalog" | "load_reports" | "load_comparisons"
+  error_code: "frontend_data_invalid" | "frontend_operation_failed"
+  detail: string
+}
+
+const REQUIRED_WAILS_BINDING_METHODS = [
+  "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
+  "GetWorkspace", "GetCatalog", "GetReports", "GetReportDetail", "ExportReport",
+  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget",
+  "StopSending", "CancelRun", "StartComparison", "RunQuickTest", "RunQuickPerformanceTest",
+  "SaveQuickTestConnection", "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
+  "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
+  "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
+  "UpdateSuite", "DeleteSuite", "CreatePlan", "UpdatePlan", "DeletePlan",
+] as const satisfies ReadonlyArray<keyof WailsDesktopBinding>
+
+const WAILS_BINDING_WAIT_TIMEOUT_MS = 1_500
+const WAILS_BINDING_POLL_INTERVAL_MS = 25
+
+class WailsBindingUnavailableError extends DesktopClientError {
+  readonly diagnosticDetail: string
+
+  constructor(diagnosticDetail: string) {
+    super("workspace_unavailable")
+    this.name = "WailsBindingUnavailableError"
+    this.diagnosticDetail = diagnosticDetail
+  }
+}
+
 export function createDesktopClient(): DesktopClient {
-  const binding = readWailsBinding()
+  const candidate = readWailsBindingCandidate()
+  const binding = readWailsBinding(candidate)
   if (binding) return wailsClient(binding)
-  if (import.meta.env.DEV) return createLazyFixtureClient()
-  return unavailableClient()
+  if (import.meta.env.DEV && !candidate) return createLazyFixtureClient()
+  return wailsClient(deferredWailsBinding(candidate))
 }
 
 export function createFixtureClient(
@@ -414,11 +450,11 @@ export function createFixtureClient(
       return structuredClone(catalogState)
     },
     async updateSuite(command) {
+      const { id, expected_revision, ...editable } = command
       catalogState.suites = replaceByID(catalogState.suites, command.id, {
-        id: command.id,
-        revision: command.expected_revision + 1,
-        name: command.name,
-        cases: structuredClone(command.cases),
+        id,
+        revision: expected_revision + 1,
+        ...structuredClone(editable),
         case_count: command.cases.length,
       })
       return structuredClone(catalogState)
@@ -495,11 +531,26 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     openDiagnosticsDirectory: async () =>
       callBinding(() => binding.OpenDiagnosticsDirectory(), parseVoid),
     getWorkspace: async () =>
-      callBinding(() => binding.GetWorkspace(), parseSnapshot),
+      callBinding(
+        () => binding.GetWorkspace(),
+        parseSnapshot,
+        reportFrontendFailure(binding, "load_workspace"),
+        "workspace_unavailable",
+      ),
     getCatalog: async () =>
-      callBinding(() => binding.GetCatalog(), parseCatalogSnapshot),
+      callBinding(
+        () => binding.GetCatalog(),
+        parseCatalogSnapshot,
+        reportFrontendFailure(binding, "load_catalog"),
+        "catalog_unavailable",
+      ),
     getReports: async () =>
-      callBinding(() => binding.GetReports(), parseReportSnapshot),
+      callBinding(
+        () => binding.GetReports(),
+        parseReportSnapshot,
+        reportFrontendFailure(binding, "load_reports"),
+        "reports_unavailable",
+      ),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
 		exportReport: async (reportId, format, watermark) =>
@@ -509,7 +560,12 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 		copyReportPNG: async (dataBase64) =>
 			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
 		getComparisons: async () =>
-			callBinding(() => binding.GetComparisons(), parseComparisonSnapshot),
+			callBinding(
+				() => binding.GetComparisons(),
+				parseComparisonSnapshot,
+				reportFrontendFailure(binding, "load_comparisons"),
+				"comparison_unavailable",
+			),
     startRun: async (planId) =>
       callBinding(() => binding.StartRun(planId), parseSnapshot),
 		startRunTarget: async (command) =>
@@ -556,88 +612,84 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   }
 }
 
-function unavailableClient(): DesktopClient {
-  const reject = async <T>(): Promise<T> => {
-    throw new DesktopClientError("workspace_unavailable")
-  }
-  return {
-    getDiagnostics: async () => {
-      throw new DesktopClientError("diagnostics_unavailable")
-    },
-    openDiagnosticsDirectory: async () => {
-      throw new DesktopClientError("diagnostics_unavailable")
-    },
-    getWorkspace: () => reject(),
-    getCatalog: () => reject(),
-    getReports: () => reject(),
-		getReportDetail: () => reject(),
-		exportReport: () => reject(),
-		saveReportExport: () => reject(),
-		copyReportPNG: () => reject(),
-		getComparisons: () => reject(),
-    startRun: () => reject(),
-		startRunTarget: () => reject(),
-    stopSending: () => reject(),
-    cancelRun: () => reject(),
-		startComparison: () => reject(),
-    runQuickTest: () => reject(),
-    runQuickPerformanceTest: () => reject(),
-    saveQuickTestConnection: () => reject(),
-    createModel: () => reject(),
-    updateModel: () => reject(),
-    deleteModel: () => reject(),
-    createChannel: () => reject(),
-    updateChannel: () => reject(),
-    deleteChannel: () => reject(),
-    createChannelModel: () => reject(),
-    updateChannelModel: () => reject(),
-    deleteChannelModel: () => reject(),
-    createTestCase: () => reject(),
-    updateTestCase: () => reject(),
-    deleteTestCase: () => reject(),
-    createSuite: () => reject(),
-    updateSuite: () => reject(),
-    deleteSuite: () => reject(),
-    createPlan: () => reject(),
-    updatePlan: () => reject(),
-    deletePlan: () => reject(),
-  }
+function deferredWailsBinding(
+	initialCandidate?: Partial<WailsDesktopBinding>,
+): WailsDesktopBinding {
+	let resolution: Promise<WailsDesktopBinding> | undefined
+	const resolve = () => {
+		resolution ??= waitForWailsBinding(initialCandidate)
+		return resolution
+	}
+	return new Proxy({} as WailsDesktopBinding, {
+		get(_target, property) {
+			if (property === "ReportFrontendDiagnostic") {
+				return async (diagnostic: FrontendDiagnostic) => {
+					const candidate = readWailsBindingCandidate() ?? initialCandidate
+					const reporter = candidate && readFrontendDiagnosticBinding(candidate)
+					if (reporter) return reporter.ReportFrontendDiagnostic(diagnostic)
+					return (await resolve()).ReportFrontendDiagnostic(diagnostic)
+				}
+			}
+			return async (...args: unknown[]) => {
+				const binding = await resolve()
+				const method = Reflect.get(binding, property)
+				if (typeof method !== "function") {
+					throw new WailsBindingUnavailableError(bindingAvailabilityDetail(binding))
+				}
+				return Reflect.apply(method, binding, args)
+			}
+		},
+	})
 }
 
-function readWailsBinding(): WailsDesktopBinding | undefined {
+async function waitForWailsBinding(
+	initialCandidate?: Partial<WailsDesktopBinding>,
+): Promise<WailsDesktopBinding> {
+	const deadline = Date.now() + WAILS_BINDING_WAIT_TIMEOUT_MS
+	for (;;) {
+		const candidate = readWailsBindingCandidate() ?? initialCandidate
+		const binding = readWailsBinding(candidate)
+		if (binding) return binding
+		if (Date.now() >= deadline) {
+			throw new WailsBindingUnavailableError(bindingAvailabilityDetail(candidate))
+		}
+		await new Promise((resolve) => window.setTimeout(resolve, WAILS_BINDING_POLL_INTERVAL_MS))
+	}
+}
+
+function bindingAvailabilityDetail(candidate?: Partial<WailsDesktopBinding>): string {
+	if (!candidate) {
+		return "Wails desktop binding did not become ready before startup timeout"
+	}
+	const missing = REQUIRED_WAILS_BINDING_METHODS.filter(
+		(method) => typeof candidate[method] !== "function",
+	)
+	return missing.length > 0
+		? `Wails desktop binding is incomplete; missing methods: ${missing.join(", ")}`
+		: "Wails desktop binding did not become callable before startup timeout"
+}
+
+function readWailsBindingCandidate(): Partial<WailsDesktopBinding> | undefined {
   const root = window as typeof window & {
     go?: { main?: { DesktopApp?: Partial<WailsDesktopBinding> } }
   }
-  const candidate = root.go?.main?.DesktopApp
-  const catalogMethods = [
-    "CreateModel", "UpdateModel", "DeleteModel",
-    "CreateChannel", "UpdateChannel", "DeleteChannel",
-    "CreateChannelModel", "UpdateChannelModel", "DeleteChannelModel",
-    "CreateTestCase", "UpdateTestCase", "DeleteTestCase",
-    "CreateSuite", "UpdateSuite", "DeleteSuite",
-    "CreatePlan", "UpdatePlan", "DeletePlan",
-  ] as const satisfies ReadonlyArray<keyof WailsDesktopBinding>
-  if (
-    typeof candidate?.GetDiagnostics !== "function" ||
-    typeof candidate.OpenDiagnosticsDirectory !== "function" ||
-    typeof candidate.GetWorkspace !== "function" ||
-    typeof candidate.GetCatalog !== "function" ||
-    typeof candidate.GetReports !== "function" ||
-		typeof candidate.GetReportDetail !== "function" ||
-		typeof candidate.ExportReport !== "function" ||
-		typeof candidate.SaveReportExport !== "function" ||
-		typeof candidate.CopyReportPNG !== "function" ||
-		typeof candidate.GetComparisons !== "function" ||
-    typeof candidate.StartRun !== "function" ||
-		typeof candidate.StartRunTarget !== "function" ||
-    typeof candidate.StopSending !== "function" ||
-    typeof candidate.CancelRun !== "function" ||
-		typeof candidate.StartComparison !== "function" ||
-		typeof candidate.RunQuickTest !== "function" ||
-		typeof candidate.RunQuickPerformanceTest !== "function" ||
-    typeof candidate.SaveQuickTestConnection !== "function" ||
-    catalogMethods.some((method) => typeof candidate[method] !== "function")
-  ) {
+  return root.go?.main?.DesktopApp
+}
+
+function readFrontendDiagnosticBinding(
+	candidate: Partial<WailsDesktopBinding>,
+): FrontendDiagnosticBinding | undefined {
+	return typeof candidate.ReportFrontendDiagnostic === "function"
+		? candidate as FrontendDiagnosticBinding
+		: undefined
+}
+
+function readWailsBinding(
+	candidate: Partial<WailsDesktopBinding> | undefined = readWailsBindingCandidate(),
+): WailsDesktopBinding | undefined {
+	if (!candidate || REQUIRED_WAILS_BINDING_METHODS.some(
+		(method) => typeof candidate[method] !== "function",
+	)) {
     return undefined
   }
   return candidate as WailsDesktopBinding
@@ -860,13 +912,69 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
 async function callBinding<T>(
   invoke: () => Promise<unknown>,
   parse: (value: unknown) => T,
+  reportFailure?: (error: unknown) => Promise<void>,
+  operationFallbackCode?: DesktopErrorCode,
 ): Promise<T> {
   try {
     return parse(await invoke())
   } catch (error) {
+    if (reportFailure) await reportFailure(error)
     if (isProtocolError(error)) throw error
-    throw normalizeBindingError(error)
+    const normalized = normalizeBindingError(error)
+    if (normalized.code === "operation_failed" && operationFallbackCode) {
+      throw new DesktopClientError(operationFallbackCode)
+    }
+    throw normalized
   }
+}
+
+function reportFrontendFailure(
+  binding: FrontendDiagnosticBinding | undefined,
+  operation: FrontendDiagnostic["operation"],
+): (error: unknown) => Promise<void> {
+  return async (error) => {
+    const diagnostic: FrontendDiagnostic = {
+      operation,
+      error_code: isProtocolError(error) ? "frontend_data_invalid" : "frontend_operation_failed",
+      detail: frontendDiagnosticDetail(error),
+    }
+    try {
+		if (!binding) throw new Error("frontend diagnostic binding unavailable")
+      await binding.ReportFrontendDiagnostic(diagnostic)
+    } catch {
+		reportWailsRuntimeFailure(diagnostic)
+    }
+  }
+}
+
+function reportWailsRuntimeFailure(diagnostic: FrontendDiagnostic): void {
+	const runtime = (window as typeof window & {
+		runtime?: { LogError?: (message: string) => void }
+	}).runtime
+	if (typeof runtime?.LogError !== "function") return
+	try {
+		runtime.LogError(JSON.stringify({
+			component: "frontend",
+			operation: diagnostic.operation,
+			error_code: diagnostic.error_code,
+			detail: diagnostic.detail,
+		}))
+	} catch {
+		// Preserve the original desktop failure if the Wails runtime is unavailable.
+	}
+}
+
+function frontendDiagnosticDetail(error: unknown): string {
+  const detail = error instanceof WailsBindingUnavailableError
+    ? error.diagnosticDetail
+    : error instanceof Error
+    ? error.message.trim()
+    : typeof error === "string"
+      ? error.trim()
+      : isRecord(error) && typeof error.code === "string"
+        ? `desktop binding error: ${error.code.trim()}`
+        : "unknown frontend desktop error"
+  return (detail || "unknown frontend desktop error").slice(0, 2048)
 }
 
 function normalizeBindingError(error: unknown): DesktopClientError {

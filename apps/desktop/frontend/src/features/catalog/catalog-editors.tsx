@@ -170,6 +170,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const [value, setValue] = useState(() => ({
     key: item?.key ?? "", name: item?.name ?? "", dimension: item?.dimension ?? "compatibility",
     protocol: item?.protocol ?? "openai-chat" as CatalogProtocol, enabled: item?.enabled ?? true,
+    model_targets: item?.model_targets.join(", ") ?? "",
     default: item?.default ?? false, severity: item?.severity ?? "normal", execution_mode: item?.execution_mode ?? "automatic",
     type: item?.type ?? initialDescriptor?.type ?? "", type_version: item?.type_version ?? initialDescriptor?.type_version ?? 1,
     spec: json(initialSpec),
@@ -216,6 +217,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     const command = {
       key: required(value.key, "用例键"), name: required(value.name, "用例名称"), dimension: required(value.dimension, "维度"),
       protocol: value.protocol, enabled: value.enabled, default: value.default, severity: value.severity as "normal" | "critical",
+      model_targets: list(value.model_targets),
       execution_mode: value.execution_mode as "automatic" | "manual", definition_schema_version: 2,
       type: value.type, type_version: value.type_version, spec,
     }
@@ -223,6 +225,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   }}>
     <div className="grid grid-cols-2 gap-3"><TextField label="用例键" value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label="用例名称" value={value.name} onChange={(v) => set("name", v)} /></div>
     <div className="grid grid-cols-2 gap-3"><TextField label="维度" value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label="协议" value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
+    <TextField label="适用模型" value={value.model_targets} onChange={(v) => set("model_targets", v)} description="填写精确的上游模型 ID，多个用逗号分隔；留空表示适用于该协议下全部模型。" />
     <SelectField label="用例类型" value={`${value.type}@${value.type_version}`} options={typeOptions} onChange={selectType} />
     {descriptor ? <FieldDescription>{descriptor.category} · 调度由{descriptor.scheduling_owner === "case" ? "用例" : "计划"}负责 · {descriptor.type}@{descriptor.type_version}</FieldDescription> : null}
     <div className="grid grid-cols-2 gap-3"><SelectField label="严重度" value={value.severity} options={[["normal","普通"],["critical","关键"]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label="执行方式" value={value.execution_mode} options={[["automatic","自动"],["manual","人工"]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
@@ -251,15 +254,28 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
 }
 
 function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogSuite>) {
+  const [key, setKey] = useState(item?.key ?? "")
   const [name, setName] = useState(item?.name ?? "")
+  const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
+  const [modelTarget, setModelTarget] = useState(item?.model_target ?? "")
   const [selected, setSelected] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
+  const availableCases = catalog.test_cases.filter((testCase) =>
+    testCase.protocol === protocol && (!modelTarget.trim() || testCase.model_targets.length === 0 || testCase.model_targets.includes(modelTarget.trim())),
+  )
   return <FormShell pending={pending} label="保存套件" formTitle={formTitle} onSubmit={async () => {
     const pinned = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
-    const command = { name: required(name, "套件名称"), cases: catalog.test_cases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision })) }
+    const command = {
+      key: required(key, "套件标识"), name: required(name, "套件名称"), protocol,
+      model_target: required(modelTarget, "目标模型"),
+      cases: availableCases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision })),
+    }
     await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), `${formTitle}保存`); onSaved()
   }}>
+    <TextField label="套件标识" value={key} onChange={setKey} disabled={!!item} description="用于 suite.json 的稳定标识，例如 gpt-5.2-smoke。" />
     <TextField label="套件名称" value={name} onChange={setName} />
-    <ChoiceList label="包含用例" values={catalog.test_cases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
+    <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <TextField label="目标模型" value={modelTarget} onChange={setModelTarget} description="填写渠道实际调用的模型标识；每个套件只对应一个模型。" />
+    <ChoiceList label="包含用例" values={availableCases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
   </FormShell>
 }
 

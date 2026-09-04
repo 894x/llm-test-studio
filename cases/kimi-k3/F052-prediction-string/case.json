@@ -4,6 +4,7 @@
   "name": "Predicted Output · content 字符串",
   "dimension": "workflow",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "normal",

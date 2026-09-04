@@ -252,7 +252,10 @@ func (service *Service) CreateSuite(ctx context.Context, command CreateSuiteComm
 	if err != nil {
 		return MutationResult{}, err
 	}
-	suite := domain.Suite{EntityMeta: meta, Name: command.Name, Cases: cloneCaseRefs(command.Cases)}
+	suite := domain.Suite{
+		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
+		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases),
+	}
 	if err := suite.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
@@ -284,7 +287,10 @@ func (service *Service) UpdateSuite(ctx context.Context, command UpdateSuiteComm
 	if err != nil {
 		return MutationResult{}, err
 	}
-	suite := domain.Suite{EntityMeta: meta, Name: command.Name, Cases: cloneCaseRefs(command.Cases)}
+	suite := domain.Suite{
+		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
+		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases),
+	}
 	if err := suite.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
@@ -519,7 +525,7 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 		if targetProtocol == "" {
 			targetProtocol = testCase.Protocol
 		} else if testCase.Protocol != targetProtocol {
-			return ErrInvalid
+			return ErrPlanProtocolMismatch
 		}
 	}
 	for _, modelID := range plan.ModelIDs {
@@ -534,7 +540,7 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 			return ErrCorrupt
 		}
 		if model.Protocol != targetProtocol {
-			return ErrInvalid
+			return ErrPlanProtocolMismatch
 		}
 	}
 	for _, channelID := range plan.ChannelIDs {
@@ -549,7 +555,7 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 			return ErrCorrupt
 		}
 		if channel.Protocol != targetProtocol {
-			return ErrInvalid
+			return ErrPlanProtocolMismatch
 		}
 	}
 	return nil
@@ -593,7 +599,8 @@ func testCaseFromCreate(meta domain.EntityMeta, command CreateTestCaseCommand) d
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
 		Protocol: command.Protocol, Enabled: command.Enabled, Default: command.Default,
-		Severity: command.Severity, ExecutionMode: command.ExecutionMode,
+		ModelTargets: append([]string(nil), command.ModelTargets...),
+		Severity:     command.Severity, ExecutionMode: command.ExecutionMode,
 		Definition: definitionFromCreate(command),
 	}
 }
@@ -602,7 +609,8 @@ func testCaseFromUpdate(meta domain.EntityMeta, command UpdateTestCaseCommand) d
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
 		Protocol: command.Protocol, Enabled: command.Enabled, Default: command.Default,
-		Severity: command.Severity, ExecutionMode: command.ExecutionMode,
+		ModelTargets: append([]string(nil), command.ModelTargets...),
+		Severity:     command.Severity, ExecutionMode: command.ExecutionMode,
 		Definition: definitionFromUpdate(command),
 	}
 }

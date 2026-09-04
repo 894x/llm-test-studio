@@ -237,7 +237,7 @@ describe("desktop run workspace", () => {
 		await user.click(within(dialog).getByRole("button", { name: "对比 2 个渠道" }))
 
 		expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-			"启动渠道对比（计划：营销文案基准，模型：gpt-5.2，渠道：2 个）失败：渠道对比暂不可用",
+			"启动渠道对比（计划：营销文案基准，模型：gpt-5.2，渠道：2 个）失败：无法读取渠道对比，请重试；日志操作名：load_comparisons",
 		)
 	})
 
@@ -649,6 +649,7 @@ describe("desktop run workspace", () => {
     Object.assign(catalog.test_cases[2], {
       key: "T010",
       dimension: "manual",
+      model_targets: ["kimi-k3", "kimi-k2.6"],
       enabled: true,
       default: false,
       severity: "normal",
@@ -662,6 +663,7 @@ describe("desktop run workspace", () => {
     expect(within(table).getByText("默认启用")).toBeInTheDocument()
     expect(within(table).getByText("已停用")).toBeInTheDocument()
     expect(within(table).getByText("人工判定")).toBeInTheDocument()
+    expect(within(table).getByText("kimi-k3 · kimi-k2.6")).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "查看用例 工具调用" }))
     const inspector = screen.getByRole("complementary", { name: "用例详情" })
@@ -772,7 +774,7 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "JSON" }))
 
     expect(await screen.findByText(
-      "导出 JSON 报告（兼容性门禁通过）失败：测试报告暂不可用",
+      "导出 JSON 报告（兼容性门禁通过）失败：无法读取测试报告，请重试；日志操作名：load_reports",
     )).toBeInTheDocument()
   })
 
@@ -875,6 +877,27 @@ describe("desktop run workspace", () => {
     expect(alert).not.toHaveTextContent("provider.example")
     expect(screen.queryByText("营销文案基准")).not.toBeInTheDocument()
   })
+
+	it("identifies the failed workspace load and lets the user retry it", async () => {
+		const user = userEvent.setup()
+		const client = desktopClient()
+		vi.mocked(client.getWorkspace)
+			.mockRejectedValueOnce(new DesktopClientError("workspace_unavailable"))
+			.mockResolvedValue(structuredClone(client.workspace))
+
+		render(<App client={client} />)
+
+		const alert = await screen.findByRole("alert")
+		expect(alert).toHaveTextContent(
+			"无法读取运行工作区，请重试；若仍失败，请查看日志中的 load_workspace 记录",
+		)
+		await user.click(within(alert).getByRole("button", { name: "重试打开" }))
+
+		expect(
+			await screen.findByRole("heading", { name: "运行工作区" }),
+		).toBeInTheDocument()
+		expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+	})
 
   it("uses the Core conclusion and never infers pass from request counts", async () => {
     const client = desktopClient()

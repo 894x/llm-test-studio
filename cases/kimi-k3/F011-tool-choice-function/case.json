@@ -4,6 +4,7 @@
   "name": "工具调用 · 指定函数与 K3 始终思考不兼容",
   "dimension": "tools",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

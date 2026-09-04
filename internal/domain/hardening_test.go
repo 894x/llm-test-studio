@@ -222,8 +222,8 @@ func TestCredentialReferenceOnlyKeepsFourSafeSuffixCharacters(t *testing.T) {
 func TestSuiteAndPlanPinEveryCaseRevision(t *testing.T) {
 	suite := Suite{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174021"),
-		Name:       "admission",
-		Cases:      []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
+		Key:        "admission", Name: "admission", Protocol: ProtocolOpenAIChat, ModelTarget: "gpt-test",
+		Cases: []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
 	}
 	if err := suite.Validate(); err != nil {
 		t.Fatalf("Suite.Validate() error = %v", err)

@@ -220,6 +220,7 @@ type TestCase struct {
 	Name          string             `json:"name"`
 	Dimension     string             `json:"dimension"`
 	Protocol      Protocol           `json:"protocol"`
+	ModelTargets  []string           `json:"model_targets"`
 	Enabled       bool               `json:"enabled"`
 	Default       bool               `json:"default"`
 	Severity      CaseSeverity       `json:"severity"`
@@ -275,6 +276,19 @@ func (testCase TestCase) Validate() error {
 	if err := testCase.Protocol.Validate(); err != nil {
 		return err
 	}
+	if len(testCase.ModelTargets) > 32 {
+		return errors.New("test case model targets must not exceed 32 values")
+	}
+	seenTargets := make(map[string]struct{}, len(testCase.ModelTargets))
+	for _, target := range testCase.ModelTargets {
+		if !isSafeModelTarget(target) {
+			return errors.New("test case model targets must contain trimmed, non-empty identifiers without control characters")
+		}
+		if _, duplicate := seenTargets[target]; duplicate {
+			return errors.New("test case model targets must be unique")
+		}
+		seenTargets[target] = struct{}{}
+	}
 	if testCase.Default && !testCase.Enabled {
 		return errors.New("a default test case must be enabled")
 	}
@@ -288,6 +302,25 @@ func (testCase TestCase) Validate() error {
 		return fmt.Errorf("invalid test case definition: %w", err)
 	}
 	return nil
+}
+
+func isSafeModelTarget(value string) bool {
+	return strings.TrimSpace(value) != "" && strings.TrimSpace(value) == value && len(value) <= 256 && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
+// AppliesToModel reports whether this case belongs in a run for the exact
+// upstream model identifier. An empty target list intentionally means all
+// upstream models supported by the case protocol.
+func (testCase TestCase) AppliesToModel(upstreamModel string) bool {
+	if len(testCase.ModelTargets) == 0 {
+		return strings.TrimSpace(upstreamModel) != ""
+	}
+	for _, target := range testCase.ModelTargets {
+		if target == upstreamModel {
+			return true
+		}
+	}
+	return false
 }
 
 func isSafeCaseKey(value string) bool {

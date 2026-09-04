@@ -14,6 +14,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
+	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -101,6 +102,12 @@ type serializedCatalogService struct {
 		Entries(context.Context) ([]casecatalog.Entry, error)
 		Find(context.Context, string) (casecatalog.Entry, error)
 		SaveCase(context.Context, string, string, domain.TestCase) error
+		Delete(context.Context, string, uint64) error
+	}
+	suiteFiles interface {
+		Entries(context.Context) ([]suitecatalog.Entry, error)
+		Find(context.Context, string) (suitecatalog.Entry, error)
+		SaveSuite(context.Context, string, string, domain.Suite) error
 		Delete(context.Context, string, uint64) error
 	}
 	caseSnapshots interface {
@@ -217,7 +224,8 @@ func (service serializedCatalogService) UpdateTestCase(ctx context.Context, comm
 		}
 		updated := filesystemCaseFromCommand(entry.TestCase.EntityMeta, catalog.CreateTestCaseCommand{
 			Key: command.Key, Name: command.Name, Dimension: command.Dimension, Protocol: command.Protocol,
-			Enabled: command.Enabled, Default: command.Default, Severity: command.Severity,
+			ModelTargets: append([]string(nil), command.ModelTargets...),
+			Enabled:      command.Enabled, Default: command.Default, Severity: command.Severity,
 			ExecutionMode: command.ExecutionMode, DefinitionSchemaVersion: command.DefinitionSchemaVersion,
 			Type: command.Type, TypeVersion: command.TypeVersion, Spec: command.Spec,
 		})
@@ -264,34 +272,56 @@ func (service serializedCatalogService) DeleteTestCase(ctx context.Context, comm
 func (service serializedCatalogService) CreateSuite(ctx context.Context, command catalog.CreateSuiteCommand) (catalog.MutationResult, error) {
 	release := service.gate.enter()
 	defer release()
-	created, err := service.materializeCases(ctx, command.Cases)
-	if err != nil {
-		return catalog.MutationResult{}, err
+	if service.suiteFiles != nil {
+		return service.saveNewFilesystemSuite(ctx, command)
 	}
-	result, err := service.commands.CreateSuite(ctx, command)
-	if err != nil {
-		return catalog.MutationResult{}, errors.Join(err, service.cleanupMaterializedCases(created))
-	}
-	return result, nil
+	return service.commands.CreateSuite(ctx, command)
 }
 
 func (service serializedCatalogService) UpdateSuite(ctx context.Context, command catalog.UpdateSuiteCommand) (catalog.MutationResult, error) {
 	release := service.gate.enter()
 	defer release()
-	created, err := service.materializeCases(ctx, command.Cases)
-	if err != nil {
-		return catalog.MutationResult{}, err
+	if service.suiteFiles != nil {
+		entry, err := service.suiteFiles.Find(ctx, command.ID)
+		if err != nil || entry.Suite.Revision != command.ExpectedRevision || entry.Suite.Key != command.Key || entry.Suite.Protocol != command.Protocol {
+			return catalog.MutationResult{}, catalog.ErrInvalid
+		}
+		updated := domain.Suite{
+			EntityMeta: entry.Suite.EntityMeta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
+			ModelTarget: command.ModelTarget, Cases: cloneSuiteCaseInputs(command.Cases),
+		}
+		if err := updated.Validate(); err != nil {
+			return catalog.MutationResult{}, catalog.ErrInvalid
+		}
+		if err := service.suiteFiles.SaveSuite(ctx, entry.Group, entry.Directory, updated); err != nil {
+			return catalog.MutationResult{}, catalog.ErrInvalid
+		}
+		return service.findFilesystemSuiteResult(ctx, command.Protocol, command.Key)
 	}
-	result, err := service.commands.UpdateSuite(ctx, command)
-	if err != nil {
-		return catalog.MutationResult{}, errors.Join(err, service.cleanupMaterializedCases(created))
-	}
-	return result, nil
+	return service.commands.UpdateSuite(ctx, command)
 }
 
 func (service serializedCatalogService) DeleteSuite(ctx context.Context, command catalog.DeleteCommand) error {
 	release := service.gate.enter()
 	defer release()
+	if service.suiteFiles != nil {
+		snapshot, err := service.query.Snapshot(ctx)
+		if err != nil {
+			return err
+		}
+		for _, plan := range snapshot.Plans {
+			if plan.SuiteID == command.ID {
+				return catalog.ErrConflict
+			}
+		}
+		if err := service.suiteFiles.Delete(ctx, command.ID, command.ExpectedRevision); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return catalog.ErrNotFound
+			}
+			return catalog.ErrInvalid
+		}
+		return nil
+	}
 	return service.commands.DeleteSuite(ctx, command)
 }
 
@@ -356,6 +386,35 @@ func (service serializedCatalogService) saveNewFilesystemCase(ctx context.Contex
 	return service.findFilesystemCaseResult(ctx, command.Protocol, command.Key)
 }
 
+func (service serializedCatalogService) saveNewFilesystemSuite(ctx context.Context, command catalog.CreateSuiteCommand) (catalog.MutationResult, error) {
+	meta, err := domain.NewEntityMeta(time.Now().UTC())
+	if err != nil {
+		return catalog.MutationResult{}, catalog.ErrInvalid
+	}
+	suite := domain.Suite{
+		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
+		ModelTarget: command.ModelTarget, Cases: cloneSuiteCaseInputs(command.Cases),
+	}
+	if err := suite.Validate(); err != nil {
+		return catalog.MutationResult{}, catalog.ErrInvalid
+	}
+	directory := filesystemSuiteDirectory(command.Key)
+	entries, err := service.suiteFiles.Entries(ctx)
+	if err != nil {
+		return catalog.MutationResult{}, err
+	}
+	for _, entry := range entries {
+		if entry.Suite.Protocol == command.Protocol && entry.Suite.Key == command.Key ||
+			entry.Group == string(command.Protocol) && entry.Directory == directory {
+			return catalog.MutationResult{}, catalog.ErrConflict
+		}
+	}
+	if err := service.suiteFiles.SaveSuite(ctx, string(command.Protocol), directory, suite); err != nil {
+		return catalog.MutationResult{}, catalog.ErrInvalid
+	}
+	return service.findFilesystemSuiteResult(ctx, command.Protocol, command.Key)
+}
+
 func (service serializedCatalogService) caseTypeRegistry() *casetypes.Registry {
 	if service.caseTypes != nil {
 		return service.caseTypes
@@ -374,6 +433,27 @@ func (service serializedCatalogService) findFilesystemCaseResult(ctx context.Con
 		}
 	}
 	return catalog.MutationResult{}, catalog.ErrNotFound
+}
+
+func (service serializedCatalogService) findFilesystemSuiteResult(ctx context.Context, protocol domain.Protocol, key string) (catalog.MutationResult, error) {
+	entries, err := service.suiteFiles.Entries(ctx)
+	if err != nil {
+		return catalog.MutationResult{}, err
+	}
+	for _, entry := range entries {
+		if entry.Suite.Protocol == protocol && entry.Suite.Key == key {
+			return catalog.MutationResult{ID: entry.Suite.ID, Revision: entry.Suite.Revision}, nil
+		}
+	}
+	return catalog.MutationResult{}, catalog.ErrNotFound
+}
+
+func cloneSuiteCaseInputs(values []catalog.CaseRevisionInput) []domain.CaseRevisionRef {
+	result := make([]domain.CaseRevisionRef, len(values))
+	for index, value := range values {
+		result[index] = domain.CaseRevisionRef{CaseID: value.CaseID, Revision: value.Revision}
+	}
+	return result
 }
 
 func (service serializedCatalogService) materializeCases(ctx context.Context, refs []catalog.CaseRevisionInput) ([]domain.CaseRevisionRef, error) {
@@ -421,7 +501,8 @@ func (service serializedCatalogService) cleanupMaterializedCases(refs []domain.C
 func filesystemCaseFromCommand(meta domain.EntityMeta, command catalog.CreateTestCaseCommand) domain.TestCase {
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension, Protocol: command.Protocol,
-		Enabled: command.Enabled, Default: command.Default, Severity: command.Severity, ExecutionMode: command.ExecutionMode,
+		ModelTargets: append([]string(nil), command.ModelTargets...),
+		Enabled:      command.Enabled, Default: command.Default, Severity: command.Severity, ExecutionMode: command.ExecutionMode,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: command.DefinitionSchemaVersion,
 			Type:          command.Type,
@@ -448,10 +529,15 @@ func filesystemCaseDirectory(key string) string {
 	return value
 }
 
+func filesystemSuiteDirectory(key string) string {
+	return filesystemCaseDirectory(key)
+}
+
 func caseSummary(testCase domain.TestCase) catalog.TestCaseSummary {
 	return catalog.TestCaseSummary{
 		ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 		Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
+		ModelTargets:  append([]string{}, testCase.ModelTargets...),
 		ExecutionMode: testCase.ExecutionMode, DefinitionSchemaVersion: testCase.Definition.SchemaVersion,
 		Type: testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
 		Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),

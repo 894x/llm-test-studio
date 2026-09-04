@@ -4,6 +4,7 @@
   "name": "Partial Mode · assistant 前缀续写",
   "dimension": "workflow",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

@@ -665,7 +665,7 @@ func TestRepositoryRelationFailureRollsBackAggregate(t *testing.T) {
 	defer repository.Close()
 	suite := domain.Suite{
 		EntityMeta: entityMeta("10000000-0000-4000-8000-000000000020", 1),
-		Name:       "Missing case suite",
+		Key:        "missing-case", Name: "Missing case suite", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream-fixture",
 		Cases: []domain.CaseRevisionRef{{
 			CaseID: "10000000-0000-4000-8000-000000000099", Revision: 1,
 		}},
@@ -924,7 +924,10 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		},
 	}
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
-	suite := domain.Suite{EntityMeta: entityMeta(suiteID, 1), Name: "Fixture suite", Cases: []domain.CaseRevisionRef{caseRef}}
+	suite := domain.Suite{
+		EntityMeta: entityMeta(suiteID, 1), Key: "fixture-suite", Name: "Fixture suite",
+		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream-fixture", Cases: []domain.CaseRevisionRef{caseRef},
+	}
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 5000}}
 	plan := domain.Plan{EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID}, SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{caseRef}, Load: load, SLA: sla}

@@ -83,6 +83,21 @@ func TestDesktopOptionsConfigureNativeStaticWorkspaceShell(t *testing.T) {
 	}
 }
 
+func TestDesktopOptionsRoutesWailsRuntimeErrorsToDiagnostics(t *testing.T) {
+	app := newDesktopApp(nil)
+	var reported error
+	configured := desktopOptions(app, fstest.MapFS{}, func(err error) { reported = err })
+
+	if configured.Logger == nil {
+		t.Fatal("desktop shell has no Wails runtime logger")
+	}
+	configured.Logger.Error(`{"component":"frontend","operation":"load_catalog","error_code":"frontend_data_invalid","detail":"catalog payload invalid"}`)
+
+	if reported == nil || !strings.Contains(reported.Error(), "load_catalog") || !strings.Contains(reported.Error(), "catalog payload invalid") {
+		t.Fatalf("reported runtime error = %v, want frontend load failure", reported)
+	}
+}
+
 func TestFrontendEmbedMarkerSurvivesCleanCheckoutAndFrontendBuild(t *testing.T) {
 	const markerPath = "wails-embed.txt"
 	source, err := os.ReadFile(filepath.Join("frontend", "public", markerPath))
@@ -115,6 +130,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		{name: "quick test", err: ErrQuickTestUnavailable, want: "quick_test_unavailable"},
 		{name: "partial quick test save", err: ErrQuickTestSavePartial, want: "quick_test_save_partial"},
 		{name: "identifier", err: ErrInvalidIdentifier, want: "invalid_identifier"},
+		{name: "plan protocol mismatch", err: catalog.ErrPlanProtocolMismatch, want: "plan_protocol_mismatch"},
 		{name: "catalog invalid", err: catalog.ErrInvalid, want: "catalog_invalid"},
 		{name: "catalog conflict", err: catalog.ErrConflict, want: "catalog_revision_conflict"},
 		{name: "catalog not found", err: catalog.ErrNotFound, want: "catalog_not_found"},
@@ -164,6 +180,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeInvalidIdentifier:    {},
 		desktopCodeOperationCancelled:   {},
 		desktopCodeOperationFailed:      {},
+		desktopCodePlanProtocolMismatch: {},
 		desktopCodeCatalogInvalid:       {},
 		desktopCodeCatalogConflict:      {},
 		desktopCodeCatalogNotFound:      {},
@@ -178,7 +195,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 	}
 }
 
-func TestDesktopErrorFormatterProducesStructuredCodeOnlyWailsRejection(t *testing.T) {
+func TestDesktopErrorFormatterProducesStringCodeWailsCanPreserve(t *testing.T) {
 	const sensitive = "https://provider.example/v1 api-key=sk-sensitive-value"
 	internal := errors.New(sensitive)
 	var reported error
@@ -198,8 +215,8 @@ func TestDesktopErrorFormatterProducesStructuredCodeOnlyWailsRejection(t *testin
 		t.Fatalf("marshal Wails callback error: %v", err)
 	}
 
-	if got := string(callback); got != `{"error":{"code":"operation_failed"}}` {
-		t.Fatalf("Wails callback error = %s, want structured stable code", got)
+	if got := string(callback); got != `{"error":"operation_failed"}` {
+		t.Fatalf("Wails callback error = %s, want string stable code", got)
 	}
 	if strings.Contains(string(callback), "provider.example") || strings.Contains(string(callback), "sk-sensitive-value") {
 		t.Fatalf("Wails callback leaked sensitive detail: %s", callback)

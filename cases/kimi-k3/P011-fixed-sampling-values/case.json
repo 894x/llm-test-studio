@@ -4,6 +4,7 @@
   "name": "固定采样 · 官方固定值组合应接受",
   "dimension": "parameters",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

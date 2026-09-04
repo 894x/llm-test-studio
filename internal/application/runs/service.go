@@ -211,6 +211,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		return "", ErrNotRunnable
 	}
 	cases := make([]domain.TestCase, 0, len(plan.Cases))
+	applicableRefs := make([]domain.CaseRevisionRef, 0, len(plan.Cases))
 	for _, ref := range plan.Cases {
 		testCase, caseErr := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
 		if caseErr != nil {
@@ -220,7 +221,11 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 			testCase.ExecutionMode != domain.CaseExecutionAutomatic || testCase.Protocol != model.Protocol {
 			return "", ErrNotRunnable
 		}
+		if !testCase.AppliesToModel(mapping.UpstreamModelName) {
+			continue
+		}
 		cases = append(cases, testCase)
+		applicableRefs = append(applicableRefs, ref)
 	}
 	if len(cases) == 0 || channel.CredentialID == "" || !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
 		return "", ErrNotRunnable
@@ -253,7 +258,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
-		Cases:         append([]domain.CaseRevisionRef(nil), plan.Cases...), Load: plan.Load, SLA: plan.SLA,
+		Cases:         applicableRefs, Load: plan.Load, SLA: plan.SLA,
 		Environment: service.environment(),
 	}
 	run, err := domain.NewRun(meta, plan.ID, snapshot)

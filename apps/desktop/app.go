@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
@@ -47,6 +48,7 @@ const (
 	desktopCodeInvalidIdentifier    = "invalid_identifier"
 	desktopCodeOperationCancelled   = "operation_cancelled"
 	desktopCodeOperationFailed      = "operation_failed"
+	desktopCodePlanProtocolMismatch = "plan_protocol_mismatch"
 	desktopCodeCatalogInvalid       = "catalog_invalid"
 	desktopCodeCatalogConflict      = "catalog_revision_conflict"
 	desktopCodeCatalogNotFound      = "catalog_not_found"
@@ -142,34 +144,35 @@ type desktopInitializer func(context.Context) (desktopDependencies, error)
 // DesktopApp is the Wails binding. It owns only desktop lifecycle and
 // delegation; business decisions remain in Application services.
 type DesktopApp struct {
-	lifecycleMu      sync.Mutex
-	mu               sync.Mutex
-	drained          *sync.Cond
-	startupDone      *sync.Cond
-	initialize       desktopInitializer
-	starting         bool
-	started          bool
-	stopping         bool
-	stopped          bool
-	active           int
-	ctx              context.Context
-	cancel           context.CancelFunc
-	query            WorkspaceQuery
-	catalog          CatalogQuery
-	catalogCommands  CatalogCommands
-	reports          ReportingQuery
-	commands         RunCommands
-	comparisons      ComparisonService
-	quickTests       QuickTestRunner
-	close            func() error
-	startupErr       error
-	shutdownErr      error
-	reportError      func(error)
-	diagnostics      DesktopDiagnosticsSnapshot
-	openDiagnostics  func() error
-	emitEvent        desktopEventEmitter
-	saveReportExport reportExportSaver
-	copyReportPNG    reportPNGClipboardWriter
+	lifecycleMu              sync.Mutex
+	mu                       sync.Mutex
+	drained                  *sync.Cond
+	startupDone              *sync.Cond
+	initialize               desktopInitializer
+	starting                 bool
+	started                  bool
+	stopping                 bool
+	stopped                  bool
+	active                   int
+	ctx                      context.Context
+	cancel                   context.CancelFunc
+	query                    WorkspaceQuery
+	catalog                  CatalogQuery
+	catalogCommands          CatalogCommands
+	reports                  ReportingQuery
+	commands                 RunCommands
+	comparisons              ComparisonService
+	quickTests               QuickTestRunner
+	close                    func() error
+	startupErr               error
+	shutdownErr              error
+	reportError              func(error)
+	diagnostics              DesktopDiagnosticsSnapshot
+	openDiagnostics          func() error
+	reportFrontendDiagnostic func(FrontendDiagnostic) error
+	emitEvent                desktopEventEmitter
+	saveReportExport         reportExportSaver
+	copyReportPNG            reportPNGClipboardWriter
 }
 
 // DesktopDiagnosticsSnapshot is an allow-listed operator view. The filesystem
@@ -183,6 +186,15 @@ type DesktopDiagnosticsSnapshot struct {
 	BackupFiles        int    `json:"backup_files"`
 	RunCorrelation     bool   `json:"run_correlation"`
 	RequestCorrelation bool   `json:"request_correlation"`
+}
+
+// FrontendDiagnostic is the bounded, secret-redacted diagnostic payload that
+// React may send back to the desktop adapter when a successful binding response
+// cannot be consumed locally.
+type FrontendDiagnostic struct {
+	Operation string `json:"operation"`
+	ErrorCode string `json:"error_code"`
+	Detail    string `json:"detail"`
 }
 
 type desktopRequirements struct {
@@ -276,6 +288,15 @@ func (app *DesktopApp) setDiagnostics(snapshot DesktopDiagnosticsSnapshot, open 
 	app.mu.Unlock()
 }
 
+func (app *DesktopApp) setFrontendDiagnosticReporter(report func(FrontendDiagnostic) error) {
+	if app == nil {
+		return
+	}
+	app.mu.Lock()
+	app.reportFrontendDiagnostic = report
+	app.mu.Unlock()
+}
+
 func (app *DesktopApp) GetDiagnostics() DesktopDiagnosticsSnapshot {
 	if app == nil {
 		return DesktopDiagnosticsSnapshot{}
@@ -300,6 +321,48 @@ func (app *DesktopApp) OpenDiagnosticsDirectory() error {
 		return app.safeBindingError(fmt.Errorf("open diagnostics directory: %w", err))
 	}
 	return nil
+}
+
+func (app *DesktopApp) ReportFrontendDiagnostic(diagnostic FrontendDiagnostic) error {
+	if app == nil {
+		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
+	}
+	diagnostic.Operation = strings.TrimSpace(diagnostic.Operation)
+	diagnostic.ErrorCode = strings.TrimSpace(diagnostic.ErrorCode)
+	diagnostic.Detail = strings.TrimSpace(diagnostic.Detail)
+	if !isFrontendDiagnosticOperation(diagnostic.Operation) ||
+		!isFrontendDiagnosticCode(diagnostic.ErrorCode) ||
+		diagnostic.Detail == "" || len(diagnostic.Detail) > 2048 {
+		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
+	}
+	app.mu.Lock()
+	report := app.reportFrontendDiagnostic
+	app.mu.Unlock()
+	if report == nil {
+		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
+	}
+	if err := report(diagnostic); err != nil {
+		return DesktopBindingError{Code: desktopCodeOperationFailed}
+	}
+	return nil
+}
+
+func isFrontendDiagnosticOperation(operation string) bool {
+	switch operation {
+	case "load_workspace", "load_catalog", "load_reports", "load_comparisons":
+		return true
+	default:
+		return false
+	}
+}
+
+func isFrontendDiagnosticCode(code string) bool {
+	switch code {
+	case "frontend_data_invalid", "frontend_operation_failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func (app *DesktopApp) onStartup(ctx context.Context) {
@@ -851,6 +914,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeQuickTestSavePartial}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
+	case errors.Is(internal, catalog.ErrPlanProtocolMismatch):
+		return DesktopBindingError{Code: desktopCodePlanProtocolMismatch}
 	case errors.Is(internal, catalog.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeCatalogInvalid}
 	case errors.Is(internal, catalog.ErrConflict):
@@ -880,6 +945,7 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,
+		desktopCodePlanProtocolMismatch,
 		desktopCodeCatalogInvalid,
 		desktopCodeCatalogConflict,
 		desktopCodeCatalogNotFound:

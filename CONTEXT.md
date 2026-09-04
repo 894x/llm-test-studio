@@ -37,7 +37,7 @@ _Avoid_: Free-form Metadata、Driver Options Blob
 _Avoid_: Executor Flag、Custom Assertion
 
 **Suite（测试套件）**:
-一组明确版本的测试用例，可被多个执行计划复用。
+面向一个明确目标模型、由一组明确版本测试用例构成的可分享配置；内置套件和用户套件遵循同一生命周期。
 _Avoid_: Case Folder、Latest Cases
 
 **Plan（执行计划）**:

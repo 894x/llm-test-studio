@@ -57,6 +57,7 @@ type TestCaseSummary struct {
 	Name                    string                   `json:"name"`
 	Dimension               string                   `json:"dimension"`
 	Protocol                domain.Protocol          `json:"protocol"`
+	ModelTargets            []string                 `json:"model_targets"`
 	Enabled                 bool                     `json:"enabled"`
 	Default                 bool                     `json:"default"`
 	Severity                domain.CaseSeverity      `json:"severity"`
@@ -68,11 +69,14 @@ type TestCaseSummary struct {
 }
 
 type SuiteSummary struct {
-	ID        string              `json:"id"`
-	Revision  uint64              `json:"revision"`
-	Name      string              `json:"name"`
-	CaseCount int                 `json:"case_count"`
-	Cases     []CaseRevisionInput `json:"cases"`
+	ID          string              `json:"id"`
+	Revision    uint64              `json:"revision"`
+	Key         string              `json:"key"`
+	Name        string              `json:"name"`
+	Protocol    domain.Protocol     `json:"protocol"`
+	ModelTarget string              `json:"model_target"`
+	CaseCount   int                 `json:"case_count"`
+	Cases       []CaseRevisionInput `json:"cases"`
 }
 
 type PlanSummary struct {
@@ -158,6 +162,7 @@ type CreateTestCaseCommand struct {
 	Name                    string                   `json:"name"`
 	Dimension               string                   `json:"dimension"`
 	Protocol                domain.Protocol          `json:"protocol"`
+	ModelTargets            []string                 `json:"model_targets"`
 	Enabled                 bool                     `json:"enabled"`
 	Default                 bool                     `json:"default"`
 	Severity                domain.CaseSeverity      `json:"severity"`
@@ -175,6 +180,7 @@ type UpdateTestCaseCommand struct {
 	Name                    string                   `json:"name"`
 	Dimension               string                   `json:"dimension"`
 	Protocol                domain.Protocol          `json:"protocol"`
+	ModelTargets            []string                 `json:"model_targets"`
 	Enabled                 bool                     `json:"enabled"`
 	Default                 bool                     `json:"default"`
 	Severity                domain.CaseSeverity      `json:"severity"`
@@ -191,14 +197,20 @@ type CaseRevisionInput struct {
 }
 
 type CreateSuiteCommand struct {
-	Name  string              `json:"name"`
-	Cases []CaseRevisionInput `json:"cases"`
+	Key         string              `json:"key"`
+	Name        string              `json:"name"`
+	Protocol    domain.Protocol     `json:"protocol"`
+	ModelTarget string              `json:"model_target"`
+	Cases       []CaseRevisionInput `json:"cases"`
 }
 
 type UpdateSuiteCommand struct {
 	ID               string              `json:"id"`
 	ExpectedRevision uint64              `json:"expected_revision"`
+	Key              string              `json:"key"`
 	Name             string              `json:"name"`
+	Protocol         domain.Protocol     `json:"protocol"`
+	ModelTarget      string              `json:"model_target"`
 	Cases            []CaseRevisionInput `json:"cases"`
 }
 

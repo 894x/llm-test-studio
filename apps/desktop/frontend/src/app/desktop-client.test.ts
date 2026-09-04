@@ -13,6 +13,8 @@ describe("Wails desktop client", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "go")
 		Reflect.deleteProperty(window, "runtime")
+		vi.unstubAllEnvs()
+		vi.useRealTimers()
   })
 
   it("uses the typed Wails methods and forwards command identifiers", async () => {
@@ -350,8 +352,8 @@ describe("Wails desktop client", () => {
 		["CreateTestCase", "createTestCase", withoutIdentity(testCase)],
 		["UpdateTestCase", "updateTestCase", { ...withoutIdentity(testCase), id: testCase.id, expected_revision: testCase.revision }],
 		["DeleteTestCase", "deleteTestCase", deletion(testCase.id, testCase.revision)],
-		["CreateSuite", "createSuite", { name: "new suite", cases: suite.cases }],
-		["UpdateSuite", "updateSuite", { id: suite.id, expected_revision: suite.revision, name: suite.name, cases: suite.cases }],
+		["CreateSuite", "createSuite", { key: "new-suite", name: "new suite", protocol: suite.protocol, model_target: suite.model_target, cases: suite.cases }],
+		["UpdateSuite", "updateSuite", { id: suite.id, expected_revision: suite.revision, key: suite.key, name: suite.name, protocol: suite.protocol, model_target: suite.model_target, cases: suite.cases }],
 		["DeleteSuite", "deleteSuite", deletion(suite.id, suite.revision)],
 		["CreatePlan", "createPlan", withoutIdentity(plan)],
 		["UpdatePlan", "updatePlan", { ...withoutIdentity(plan), id: plan.id, expected_revision: plan.revision }],
@@ -553,17 +555,38 @@ describe("Wails desktop client", () => {
   })
 
   it.each([
-    ["catalog_unavailable", "测试目录暂不可用", "GetCatalog", "getCatalog"],
-    ["reports_unavailable", "测试报告暂不可用", "GetReports", "getReports"],
+    ["catalog_unavailable", "无法读取模型、渠道与用例目录", "GetCatalog", "getCatalog"],
+    ["reports_unavailable", "无法读取测试报告", "GetReports", "getReports"],
+    ["plan_protocol_mismatch", "计划中的用例、模型和渠道协议不一致", "CreatePlan", "createPlan"],
     ["catalog_invalid", "目录内容无效", "CreateModel", "createModel"],
     ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
     ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],
   ] as const)("maps the public %s binding error", async (code, message, bindingMethod, clientMethod) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
-    binding[bindingMethod].mockRejectedValueOnce({ code })
+    binding[bindingMethod].mockRejectedValueOnce(new Error(code))
 
     await expect((createDesktopClient()[clientMethod] as (command?: never) => Promise<unknown>)()).rejects.toThrow(message)
   })
+
+  it.each([
+    ["GetWorkspace", "getWorkspace", "无法读取运行工作区", "load_workspace"],
+    ["GetCatalog", "getCatalog", "无法读取模型、渠道与用例目录", "load_catalog"],
+    ["GetReports", "getReports", "无法读取测试报告", "load_reports"],
+    ["GetComparisons", "getComparisons", "无法读取渠道对比", "load_comparisons"],
+  ] as const)(
+    "identifies %s when Wails only returns operation_failed",
+    async (bindingMethod, clientMethod, message, operation) => {
+      const binding = installBinding(FIXTURE_WORKSPACE)
+      binding[bindingMethod].mockRejectedValueOnce(new Error("operation_failed"))
+
+      await expect(
+        (createDesktopClient()[clientMethod] as () => Promise<unknown>)(),
+      ).rejects.toThrow(message)
+      expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({ operation }),
+      )
+    },
+  )
 
   it("rejects corrupt catalog references and contradictory report conclusions", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
@@ -577,6 +600,87 @@ describe("Wails desktop client", () => {
     await expect(client.getCatalog()).rejects.toThrow("模型映射引用")
     await expect(client.getReports()).rejects.toThrow("报告摘要")
   })
+
+	it("reports a clear diagnostic when catalog data cannot be consumed", async () => {
+		const catalog = structuredClone(FIXTURE_CATALOG) as unknown as {
+			test_cases: Array<Record<string, unknown>>
+		}
+		catalog.test_cases[0].model_targets = [42]
+		const binding = installBinding(FIXTURE_WORKSPACE, catalog)
+
+		await expect(createDesktopClient().getCatalog()).rejects.toThrow("桌面目录测试用例数据无效")
+		expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith({
+			operation: "load_catalog",
+			error_code: "frontend_data_invalid",
+			detail: "桌面目录测试用例数据无效",
+		})
+	})
+
+	it("falls back to the Wails runtime when the diagnostic binding rejects", async () => {
+		const catalog = structuredClone(FIXTURE_CATALOG) as unknown as {
+			test_cases: Array<Record<string, unknown>>
+		}
+		catalog.test_cases[0].model_targets = [42]
+		const binding = installBinding(FIXTURE_WORKSPACE, catalog)
+		binding.ReportFrontendDiagnostic.mockRejectedValueOnce(new Error("diagnostics unavailable"))
+		const logError = vi.fn()
+		Object.defineProperty(window, "runtime", {
+			configurable: true,
+			value: { LogError: logError },
+		})
+
+		await expect(createDesktopClient().getCatalog()).rejects.toThrow("桌面目录测试用例数据无效")
+		expect(logError).toHaveBeenCalledOnce()
+		expect(logError).toHaveBeenCalledWith(expect.stringContaining("load_catalog"))
+		expect(logError).toHaveBeenCalledWith(expect.stringContaining("frontend_data_invalid"))
+		expect(logError).toHaveBeenCalledWith(expect.stringContaining("桌面目录测试用例数据无效"))
+	})
+
+	it("reports an incomplete Wails binding before rejecting initial workspace access", async () => {
+		vi.useFakeTimers()
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		Reflect.deleteProperty(binding, "GetCatalog")
+		const pendingWorkspace = createDesktopClient().getWorkspace()
+		const rejection = expect(pendingWorkspace).rejects.toThrow("无法读取运行工作区")
+
+		await vi.advanceTimersByTimeAsync(2_000)
+		await rejection
+		expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith({
+			operation: "load_workspace",
+			error_code: "frontend_operation_failed",
+			detail: "Wails desktop binding is incomplete; missing methods: GetCatalog",
+		})
+	})
+
+	it("waits for a late Wails binding instead of permanently failing initial workspace access", async () => {
+		vi.stubEnv("DEV", false)
+		const client = createDesktopClient()
+		const pendingWorkspace = client.getWorkspace()
+
+		queueMicrotask(() => installBinding(FIXTURE_WORKSPACE))
+
+		await expect(pendingWorkspace).resolves.toEqual(FIXTURE_WORKSPACE)
+	})
+
+	it("reports a binding startup timeout after the Wails runtime becomes available", async () => {
+		vi.useFakeTimers()
+		vi.stubEnv("DEV", false)
+		const logError = vi.fn()
+		const pendingWorkspace = createDesktopClient().getWorkspace()
+		const rejection = expect(pendingWorkspace).rejects.toThrow("无法读取运行工作区")
+
+		queueMicrotask(() => {
+			Object.defineProperty(window, "runtime", {
+				configurable: true,
+				value: { LogError: logError },
+			})
+		})
+		await vi.advanceTimersByTimeAsync(2_000)
+		await rejection
+
+		expect(logError).toHaveBeenCalledWith(expect.stringContaining("load_workspace"))
+		expect(logError).toHaveBeenCalledWith(expect.stringContaining("frontend_operation_failed"))
+	})
 })
 
 function installBinding(
@@ -595,6 +699,7 @@ function installBinding(
 			path: "C:\\secret-log-path",
 		})),
 		OpenDiagnosticsDirectory: vi.fn(async () => undefined),
+		ReportFrontendDiagnostic: vi.fn(async () => undefined),
 		GetReportDetail: vi.fn(async (reportID: string) => structuredClone(reportDetailFixture(reportID))),
 			ExportReport: vi.fn(async (reportID: string, format: string, _watermark: string) => ({
 			filename: `llm-test-studio-report-${reportID}.${format}`,

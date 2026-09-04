@@ -4,6 +4,7 @@
   "name": "工具定义 · 函数名 128 字符上边界",
   "dimension": "tools",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "normal",

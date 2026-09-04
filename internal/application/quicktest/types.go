@@ -23,7 +23,7 @@ const (
 	MaxPerformanceConcurrency  uint32 = 256
 	MaxPerformanceDurationMS   uint64 = 3_600_000
 	MaxPerformanceTimeoutMS    uint64 = 600_000
-	MaxPerformanceInputTokens  uint32 = 200_000
+	MaxPerformanceInputTokens  uint32 = 1_000_000
 	MaxPerformanceOutputTokens uint32 = 65_536
 
 	PerformancePhaseNotStarted load.Phase = "not_started"

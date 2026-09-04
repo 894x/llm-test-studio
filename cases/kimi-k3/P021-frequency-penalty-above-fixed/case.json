@@ -4,6 +4,7 @@
   "name": "固定采样 · frequency_penalty=0.1 应拒绝",
   "dimension": "parameters",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

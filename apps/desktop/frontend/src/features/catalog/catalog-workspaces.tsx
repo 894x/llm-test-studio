@@ -355,11 +355,12 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
         <CatalogEmpty title="还没有测试用例" description="添加用例后可组合成可复用套件与计划。" />
       ) : tab === "cases" ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
-          <Table aria-label="测试用例目录" className="min-w-[680px]">
+          <Table aria-label="测试用例目录" className="min-w-[820px]">
             <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-4 text-[11px]">用例</TableHead>
                 <TableHead className="h-8 text-[11px]">用例类型</TableHead>
+                <TableHead className="h-8 text-[11px]">适用模型</TableHead>
                 <TableHead className="h-8 text-[11px]">策略</TableHead>
               </TableRow>
             </TableHeader>
@@ -378,7 +379,8 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
                   </TableCell>
-                  <TableCell className="py-1 font-mono text-[11px]">{catalog.case_types.find((value) => value.type === testCase.type && value.type_version === testCase.type_version)?.label ?? testCase.type}</TableCell>
+                  <TableCell className="py-1 text-[11px]">{catalog.case_types.find((value) => value.type === testCase.type && value.type_version === testCase.type_version)?.label ?? testCase.type}</TableCell>
+                  <TableCell className="max-w-56 py-1 text-[11px] text-muted-foreground">{modelTargetSummary(testCase)}</TableCell>
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />
                   </TableCell>
@@ -399,7 +401,7 @@ function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; 
 }
 
 function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {
-  const names = new Map(catalog.test_cases.map(testCase => [testCase.id, testCase.name]))
+  const cases = new Map(catalog.test_cases.map(testCase => [testCase.id, testCase]))
   return <div className="flex h-full min-h-0 flex-col">
     <InspectorHeader title={suite.name} subtitle={suite.id} />
     <Separator />
@@ -418,7 +420,8 @@ function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: Cata
                   <li key={ref.case_id} className="flex min-w-0 items-start gap-2 py-1.5">
                     <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
                     <span className="min-w-0 break-words text-xs font-medium leading-4">
-                      {names.get(ref.case_id) ?? "未知用例"}
+                      {cases.get(ref.case_id)?.name ?? "未知用例"}
+                      {cases.get(ref.case_id) ? <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{modelTargetLabel(cases.get(ref.case_id)!)}</span> : null}
                     </span>
                   </li>
                 ))}
@@ -440,6 +443,7 @@ function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catal
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label="来源键" value={testCase.key} />
         <InspectorRow label="协议" value={PROTOCOL_LABELS[testCase.protocol]} />
+        <InspectorRow label="适用模型" value={modelTargetLabel(testCase)} />
         <InspectorRow label="维度" value={testCase.dimension} />
         <InspectorRow label="执行策略" value={casePolicyLabel(testCase)} />
         <InspectorRow label="严重度" value={testCase.severity === "critical" ? "关键" : "普通"} />
@@ -474,6 +478,15 @@ function casePolicyLabel(testCase: CatalogTestCase): string {
   if (testCase.execution_mode === "manual") return "人工判定"
   if (testCase.default) return "默认启用"
   return "自动"
+}
+
+function modelTargetLabel(testCase: CatalogTestCase): string {
+  return testCase.model_targets.length ? testCase.model_targets.join(" · ") : "全部模型"
+}
+
+function modelTargetSummary(testCase: CatalogTestCase): string {
+  if (testCase.model_targets.length <= 2) return modelTargetLabel(testCase)
+  return `${testCase.model_targets[0]} 等 ${testCase.model_targets.length} 个模型`
 }
 
 export function PlansWorkspace({

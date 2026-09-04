@@ -218,6 +218,50 @@ func TestStartTargetUsesAnExplicitModelAndChannelForComparisonRuns(t *testing.T)
 	}
 }
 
+func TestPrepareTargetFiltersSuiteCasesByUpstreamModel(t *testing.T) {
+	fixture := newRunFixture(t)
+	fixture.mapping.UpstreamModelName = "kimi-k2.6"
+	k3Case := fixture.testCase
+	k3Case.ModelTargets = []string{"kimi-k3"}
+	k26Case := fixture.testCase
+	k26Case.ID = "30000000-0000-4000-8000-000000000015"
+	k26Case.Key = "K026"
+	k26Case.Name = "K2.6 thinking"
+	k26Case.ModelTargets = []string{"kimi-k2.6"}
+	fixture.plan.Cases = []domain.CaseRevisionRef{
+		{CaseID: k3Case.ID, Revision: k3Case.Revision},
+		{CaseID: k26Case.ID, Revision: k26Case.Revision},
+	}
+	repository := &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{
+		k3Case.ID:  k3Case,
+		k26Case.ID: k26Case,
+	}}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	runID, err := service.PrepareTarget(context.Background(), runs.StartCommand{
+		PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelID: fixture.channel.ID,
+	})
+	if err != nil {
+		t.Fatalf("PrepareTarget() error = %v", err)
+	}
+	if !domain.IsUUID(runID) {
+		t.Fatalf("PrepareTarget() run id = %q", runID)
+	}
+	snapshot := repository.run.Snapshot()
+	if len(snapshot.Cases) != 1 || snapshot.Cases[0].CaseID != k26Case.ID {
+		t.Fatalf("snapshot cases = %#v, want only K2.6 case", snapshot.Cases)
+	}
+}
+
 func TestPrepareTargetStaysQueuedUntilExplicitActivation(t *testing.T) {
 	fixture := newRunFixture(t)
 	repository := &fakeRepository{fixture: fixture}
@@ -775,6 +819,7 @@ type fakeRepository struct {
 	failUpdateStatus  domain.RunStatus
 	updateErr         error
 	failSummaryAppend error
+	testCases         map[string]domain.TestCase
 }
 
 func (repository *fakeRepository) GetPlan(context.Context, string) (domain.Plan, error) {
@@ -787,7 +832,10 @@ func (repository *fakeRepository) ResolvePlanTargetSelection(_ context.Context, 
 	return repository.fixture.model, repository.fixture.channel, repository.fixture.mapping, nil
 }
 
-func (repository *fakeRepository) GetTestCaseRevision(context.Context, string, uint64) (domain.TestCase, error) {
+func (repository *fakeRepository) GetTestCaseRevision(_ context.Context, id string, _ uint64) (domain.TestCase, error) {
+	if repository.testCases != nil {
+		return repository.testCases[id], nil
+	}
 	return repository.fixture.testCase, nil
 }
 

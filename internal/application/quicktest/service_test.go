@@ -444,6 +444,32 @@ func TestRunPerformanceDoesNotArchiveValidationFailure(t *testing.T) {
 	}
 }
 
+func TestRunPerformanceAcceptsOneMillionInputTokens(t *testing.T) {
+	var calls atomic.Int64
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n" +
+					"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1000000,\"completion_tokens\":1}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		}, nil
+	})
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 30_000, InputTokens: 1_000_000, OutputTokens: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Success || report.ErrorCode != "" || report.Profile.InputTokens != 1_000_000 || calls.Load() != 1 {
+		t.Fatalf("report = %#v, transport calls = %d", report, calls.Load())
+	}
+}
+
 func TestRunPerformanceRejectsUnsafeOrUnboundedProfilesBeforeTransport(t *testing.T) {
 	var calls atomic.Int64
 	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {

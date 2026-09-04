@@ -1,10 +1,11 @@
 {
   "schema_version": 2,
   "key": "must.thinking_thinking_type_disabled",
-  "name": "思考 · thinking.type=disabled（报告兼容行为）",
+  "name": "思考 · K2.6 thinking.type=disabled",
   "dimension": "reasoning",
   "protocol": "kimi-k3",
-  "enabled": false,
+  "model_targets": ["kimi-k2.6"],
+  "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",

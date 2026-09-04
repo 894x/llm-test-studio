@@ -7,6 +7,7 @@ import {
   type DesktopClient,
 } from "@/app/desktop-client"
 import { ThemeProvider } from "@/app/theme"
+import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   CasesWorkspace,
@@ -34,7 +35,13 @@ import {
   type DesktopPage,
 } from "@/features/shell/navigation"
 
-function AppWorkspace({ client }: { client: DesktopClient }) {
+function AppWorkspace({
+  client,
+  onRecreateClient,
+}: {
+  client: DesktopClient
+  onRecreateClient: () => void
+}) {
   const [page, setPage] = useState<DesktopPage>(() =>
     desktopPageFromHash(window.location.hash),
   )
@@ -48,6 +55,7 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
   const [commandPending, setCommandPending] = useState(false)
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
   const [catalogMutationError, setCatalogMutationError] = useState("")
+  const [loadAttempt, setLoadAttempt] = useState(0)
 
   useEffect(() => {
     const syncPage = () => setPage(desktopPageFromHash(window.location.hash))
@@ -80,7 +88,13 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
     return () => {
       active = false
     }
-  }, [client])
+  }, [client, loadAttempt])
+
+  const retryInitialLoad = useCallback(() => {
+    setLoadError("")
+    onRecreateClient()
+    setLoadAttempt((attempt) => attempt + 1)
+  }, [onRecreateClient])
 
   useEffect(() => {
 		const activeRun = snapshot?.runs.some((run) => ["queued", "starting", "running", "draining"].includes(run.status))
@@ -197,6 +211,9 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
         <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
           <div className="text-sm font-semibold">无法打开本地工作台</div>
           <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+          <Button className="mt-3" size="sm" variant="outline" onClick={retryInitialLoad}>
+            重试打开
+          </Button>
         </div>
       </div>
     )
@@ -291,12 +308,22 @@ function AppWorkspace({ client }: { client: DesktopClient }) {
 }
 
 function App({ client }: { client?: DesktopClient }) {
-  const desktopClient = useMemo(() => client ?? createDesktopClient(), [client])
+  const [clientGeneration, setClientGeneration] = useState(0)
+  const desktopClient = useMemo(
+    () => {
+      void clientGeneration
+      return client ?? createDesktopClient()
+    },
+    [client, clientGeneration],
+  )
 
   return (
     <ThemeProvider>
       <TooltipProvider delayDuration={250}>
-        <AppWorkspace client={desktopClient} />
+        <AppWorkspace
+          client={desktopClient}
+          onRecreateClient={() => setClientGeneration((generation) => generation + 1)}
+        />
       </TooltipProvider>
     </ThemeProvider>
   )

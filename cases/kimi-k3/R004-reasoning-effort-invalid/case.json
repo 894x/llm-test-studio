@@ -4,6 +4,7 @@
   "name": "推理强度 · 非法枚举 reasoning_effort=medium",
   "dimension": "reasoning-parameters",
   "protocol": "kimi-k3",
+  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",

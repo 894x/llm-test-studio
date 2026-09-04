@@ -652,7 +652,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
                 <PerformanceNumberField label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} onChange={(value) => update("durationSeconds", value)} />
                 <PerformanceNumberField label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} onChange={(value) => update("concurrency", value)} />
                 <PerformanceNumberField label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} onChange={(value) => update("timeoutSeconds", value)} />
-                <PerformanceNumberField label="近似输入 Token" value={form.inputTokens} min={1} max={200_000} disabled={pending} onChange={(value) => update("inputTokens", value)} />
+                <PerformanceNumberField label="近似输入 Token" value={form.inputTokens} min={1} max={1_000_000} disabled={pending} onChange={(value) => update("inputTokens", value)} />
                 <PerformanceNumberField label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} onChange={(value) => update("outputTokens", value)} />
               </div>
               <FieldDescription>
@@ -835,7 +835,7 @@ function validPerformanceForm(form: PerformanceForm): boolean {
     (form.requestCount > 0 || form.durationSeconds > 0) &&
     Number.isInteger(form.concurrency) && form.concurrency >= 1 && form.concurrency <= 256 &&
     Number.isInteger(form.timeoutSeconds) && form.timeoutSeconds >= 1 && form.timeoutSeconds <= 600 &&
-    Number.isInteger(form.inputTokens) && form.inputTokens >= 1 && form.inputTokens <= 200_000 &&
+    Number.isInteger(form.inputTokens) && form.inputTokens >= 1 && form.inputTokens <= 1_000_000 &&
     Number.isInteger(form.outputTokens) && form.outputTokens >= 1 && form.outputTokens <= 65_536
 }
 

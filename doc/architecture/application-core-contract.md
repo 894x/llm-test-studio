@@ -121,6 +121,7 @@ JSON 是权威数据；HTML 是权威视觉渲染；PNG 与 PDF 从同一 HTML/C
 - 迁移前创建一致性备份，迁移后执行 foreign key 和 quick check；
 - 首次 migration 只接管现有 `runs`、`run_results`、`audit_runs`、`audit_case_results`，不改写历史 ID；
 - 新领域表在后续 migration 创建，并通过显式 import/cutover 迁移旧数据；
+- Case 与 Suite 作者配置是上述规则的明确例外：按 ADR-0003 直接读取 JSON 文件，启动时不得从 SQLite 导入、导出或 seed；
 - SQLite 只保存 artifact 相对路径、SHA-256 和索引。
 
 ## 凭据边界
