@@ -224,6 +224,10 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			InputTokensStdDev:  command.InputTokensStdDev,
 			OutputTokensStdDev: command.OutputTokensStdDev,
 			SharedPrefixTokens: command.SharedPrefixTokens,
+			WarmupRequests:     command.WarmupRequests,
+			RampDurationMS:     command.RampDurationMS,
+			RampRequestCap:     command.RampRequestCap,
+			SliceDurationMS:    command.SliceDurationMS,
 		},
 		Failures: []PerformanceFailure{},
 		Samples:  []PerformanceSample{},
@@ -253,20 +257,13 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		return report, nil
 	}
 
-	profile := domain.LoadProfile{
-		Mode: command.LoadMode, Concurrency: command.Concurrency,
-		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
-		RatePerSecond:    command.RatePerSecond,
-		RequestTimeoutMS: command.TimeoutMS,
+	requestBudget, measuredCap, budgetErr := buildPerformanceRequestBudget(report.Profile)
+	if budgetErr != nil {
+		report.ErrorCode = ErrorInvalidRequest
+		return report, nil
 	}
-	if profile.Mode == domain.LoadOpenLoop {
-		// LoadProfile keeps Concurrency mandatory for compatibility, but open-loop
-		// admission is controlled independently by MaxInFlight.
-		profile.Concurrency = 1
-	}
-	if profile.Mode == domain.LoadFixedConcurrency && profile.RequestCount == 0 {
-		profile.RequestCount = MaxPerformanceRequests
-	}
+	report.RequestBudget = requestBudget
+	profile := performanceLoadProfile(report.Profile, measuredCap)
 	if err := profile.Validate(); err != nil {
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
@@ -304,23 +301,74 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	}
 	defer cleanup()
 
-	options := load.Options{}
-	if command.LoadMode == domain.LoadOpenLoop {
-		options.MaxOpenLoopInFlight = uint64(command.MaxInFlight)
-		options.MaxScheduledRequests = MaxPerformanceRequests
-	}
-	options.ArrivalPattern = command.ArrivalPattern
-	options.RandomSeed = command.RandomSeed
-	if onProgress != nil {
-		options.OnProgress = func(progress load.Progress) {
-			onProgress(performanceProgress(progress))
+	if command.WarmupRequests > 0 {
+		warmupProfile := performanceWarmupProfile(report.Profile)
+		warmupOutcome, warmupErr := load.Run(
+			ctx,
+			warmupProfile,
+			namespacedPerformanceExecutor(executor, performanceWarmupRequestIndexBase),
+			load.Options{
+				MaxScheduledRequests: command.WarmupRequests,
+				OnProgress:           performancePhaseProgressCallback(onProgress, PerformancePhaseWarmingUp),
+			},
+		)
+		report.Warmup = performanceTrafficSummary(command.WarmupRequests, warmupOutcome)
+		if preparationRunFailed(ctx, warmupOutcome, warmupErr, &report) {
+			return report, nil
 		}
 	}
+
+	if command.RampDurationMS > 0 {
+		rampProfile := performanceRampProfile(report.Profile, requestBudget.RampCap)
+		rampOptions := load.Options{
+			Ramp:                 true,
+			MaxScheduledRequests: requestBudget.RampCap,
+			ArrivalPattern:       command.ArrivalPattern,
+			RandomSeed:           command.RandomSeed,
+			OnProgress:           performancePhaseProgressCallback(onProgress, PerformancePhaseRamping),
+		}
+		if command.LoadMode == domain.LoadOpenLoop {
+			rampOptions.MaxOpenLoopInFlight = uint64(command.MaxInFlight)
+		}
+		rampOutcome, rampErr := load.Run(
+			ctx,
+			rampProfile,
+			namespacedPerformanceExecutor(executor, performanceRampRequestIndexBase),
+			rampOptions,
+		)
+		rampTraffic := performanceTrafficSummary(requestBudget.RampCap, rampOutcome)
+		report.Ramp = &PerformanceRampSummary{
+			Shape:           "linear_staircase",
+			DurationMS:      command.RampDurationMS,
+			Steps:           load.LinearRampStepCount(rampProfile),
+			CompletedWindow: rampOutcome.Progress.Phase == load.PhaseCompleted && !rampOutcome.Progress.Stopped && !rampOutcome.Progress.Capped,
+			Traffic:         *rampTraffic,
+		}
+		if command.LoadMode == domain.LoadFixedConcurrency {
+			report.Ramp.TargetConcurrency = command.Concurrency
+		} else {
+			report.Ramp.TargetRatePerSecond = command.RatePerSecond
+		}
+		if preparationRunFailed(ctx, rampOutcome, rampErr, &report) {
+			return report, nil
+		}
+	}
+
+	evidenceRecorder.enableFresh()
+	options := performanceLoadOptions(report.Profile, measuredCap, onProgress)
 	outcome, runErr := load.Run(ctx, profile, executor, options)
+	outcome.Progress = performanceMeasuredProgress(report.Profile, measuredCap, outcome.Progress)
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
 	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
+	if command.SliceDurationMS > 0 {
+		report.TimeSlices = buildPerformanceTimeSlices(
+			outcome.Results,
+			outcome.Progress.TotalDuration,
+			time.Duration(command.SliceDurationMS)*time.Millisecond,
+		)
+	}
 	report.Success = outcome.Progress.Phase == load.PhaseCompleted && outcome.Metrics.Completed > 0 && outcome.Metrics.Failed == 0
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -333,6 +381,150 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		service.archivePerformanceReport(ctx, &report)
 	}
 	return report, nil
+}
+
+const (
+	performanceRampRequestIndexBase   uint64 = 1 << 62
+	performanceWarmupRequestIndexBase uint64 = 1 << 63
+)
+
+func performanceLoadProfile(profile PerformanceProfile, measuredCap uint64) domain.LoadProfile {
+	result := domain.LoadProfile{
+		Mode: profile.LoadMode, Concurrency: profile.Concurrency,
+		RequestCount: profile.RequestCount, DurationMS: profile.DurationMS,
+		RatePerSecond: profile.RatePerSecond, RequestTimeoutMS: profile.TimeoutMS,
+	}
+	if result.Mode == domain.LoadOpenLoop {
+		// LoadProfile keeps Concurrency mandatory for compatibility, but open-loop
+		// admission is controlled independently by MaxInFlight.
+		result.Concurrency = 1
+	}
+	if result.Mode == domain.LoadFixedConcurrency && result.RequestCount == 0 {
+		result.RequestCount = measuredCap
+	}
+	return result
+}
+
+func performanceWarmupProfile(profile PerformanceProfile) domain.LoadProfile {
+	concurrency := profile.Concurrency
+	if profile.LoadMode == domain.LoadOpenLoop {
+		concurrency = profile.MaxInFlight
+	}
+	if uint64(concurrency) > profile.WarmupRequests {
+		concurrency = uint32(profile.WarmupRequests)
+	}
+	return domain.LoadProfile{
+		Mode:             domain.LoadFixedConcurrency,
+		Concurrency:      concurrency,
+		RequestCount:     profile.WarmupRequests,
+		RequestTimeoutMS: profile.TimeoutMS,
+	}
+}
+
+func performanceRampProfile(profile PerformanceProfile, requestCap uint64) domain.LoadProfile {
+	result := domain.LoadProfile{
+		Mode: profile.LoadMode, Concurrency: profile.Concurrency,
+		DurationMS: profile.RampDurationMS, RatePerSecond: profile.RatePerSecond,
+		RequestTimeoutMS: profile.TimeoutMS,
+	}
+	if profile.LoadMode == domain.LoadFixedConcurrency {
+		result.RequestCount = requestCap
+	} else {
+		result.Concurrency = 1
+	}
+	return result
+}
+
+func performanceLoadOptions(profile PerformanceProfile, requestCap uint64, onProgress func(PerformanceProgress)) load.Options {
+	options := load.Options{
+		MaxScheduledRequests: requestCap,
+		ArrivalPattern:       normalizedArrivalPattern(profile.ArrivalPattern),
+		RandomSeed:           profile.RandomSeed,
+	}
+	if profile.LoadMode == domain.LoadOpenLoop {
+		options.MaxOpenLoopInFlight = uint64(profile.MaxInFlight)
+	}
+	if onProgress != nil {
+		options.OnProgress = func(progress load.Progress) {
+			onProgress(performanceProgress(performanceMeasuredProgress(profile, requestCap, progress)))
+		}
+	}
+	return options
+}
+
+func performanceMeasuredProgress(profile PerformanceProfile, requestCap uint64, progress load.Progress) load.Progress {
+	if !progress.Capped && performanceMeasuredBudgetCapped(
+		profile,
+		requestCap,
+		progress.Offered,
+		durationMilliseconds(progress.SendDuration),
+	) {
+		progress.Capped = true
+	}
+	return progress
+}
+
+func performanceMeasuredBudgetCapped(profile PerformanceProfile, requestCap, offered uint64, sendDurationMS float64) bool {
+	return profile.LoadMode == domain.LoadFixedConcurrency && profile.RequestCount == 0 && profile.DurationMS > 0 &&
+		requestCap > 0 && offered >= requestCap && sendDurationMS < float64(profile.DurationMS)
+}
+
+func performancePhaseProgressCallback(onProgress func(PerformanceProgress), phase load.Phase) func(load.Progress) {
+	if onProgress == nil {
+		return nil
+	}
+	return func(progress load.Progress) {
+		converted := performanceProgress(progress)
+		if progress.Phase != load.PhaseCancelled {
+			converted.Phase = phase
+		}
+		onProgress(converted)
+	}
+}
+
+func namespacedPerformanceExecutor(executor load.Executor, base uint64) load.Executor {
+	return func(ctx context.Context, request load.Request) load.Observation {
+		request.Index += base
+		return executor(ctx, request)
+	}
+}
+
+func preparationRunFailed(ctx context.Context, outcome load.Outcome, runErr error, report *PerformanceReport) bool {
+	if runErr == nil && outcome.Progress.Phase != load.PhaseCancelled {
+		return false
+	}
+	report.Progress = PerformanceProgress{Phase: outcome.Progress.Phase, Stopped: outcome.Progress.Stopped}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		report.Progress.Phase = load.PhaseCancelled
+		report.Progress.Stopped = true
+		report.ErrorCode = classifyContext(ctxErr)
+	} else {
+		report.ErrorCode = load.ErrorRequestFailed
+	}
+	return true
+}
+
+func performanceTrafficSummary(requestCap uint64, outcome load.Outcome) *PerformanceTrafficSummary {
+	return &PerformanceTrafficSummary{
+		RequestCap:       requestCap,
+		Offered:          outcome.Progress.Offered,
+		Launched:         outcome.Progress.Launched,
+		Completed:        outcome.Progress.Completed,
+		Succeeded:        outcome.Progress.Succeeded,
+		Failed:           outcome.Progress.Failed,
+		TimedOut:         outcome.Metrics.TimedOut,
+		Rejected:         outcome.Progress.Rejected,
+		PeakInFlight:     outcome.Progress.PeakInFlight,
+		PromptTokens:     outcome.Metrics.PromptTokens,
+		CompletionTokens: outcome.Metrics.CompletionTokens,
+		CachedTokens:     outcome.Metrics.CachedTokens,
+		SendDurationMS:   durationMilliseconds(outcome.Progress.SendDuration),
+		DrainDurationMS:  durationMilliseconds(outcome.Progress.DrainDuration),
+		TotalDurationMS:  durationMilliseconds(outcome.Progress.TotalDuration),
+		Failures:         performanceFailures(outcome.Results),
+		Stopped:          outcome.Progress.Stopped,
+		Capped:           outcome.Progress.Capped,
+	}
 }
 
 func (service *Service) applySelectedChannel(ctx context.Context, channelID string, addressMode *AddressMode, address, apiKey *string) domain.ErrorCode {
@@ -383,7 +575,8 @@ func validPerformanceProfile(command PerformanceCommand) bool {
 		Concurrency: command.Concurrency, RatePerSecond: command.RatePerSecond, MaxInFlight: command.MaxInFlight,
 		TimeoutMS: command.TimeoutMS, InputTokens: command.InputTokens, OutputTokens: command.OutputTokens,
 		InputTokensStdDev: command.InputTokensStdDev, OutputTokensStdDev: command.OutputTokensStdDev,
-		SharedPrefixTokens: command.SharedPrefixTokens,
+		SharedPrefixTokens: command.SharedPrefixTokens, WarmupRequests: command.WarmupRequests,
+		RampDurationMS: command.RampDurationMS, RampRequestCap: command.RampRequestCap, SliceDurationMS: command.SliceDurationMS,
 	})
 }
 
@@ -420,9 +613,10 @@ func validPerformanceProfileValues(profile PerformanceProfile) bool {
 	if needsSeed != (profile.RandomSeed > 0) {
 		return false
 	}
+	validLoad := false
 	switch profile.LoadMode {
 	case domain.LoadFixedConcurrency:
-		return profile.Concurrency > 0 && profile.Concurrency <= MaxPerformanceConcurrency &&
+		validLoad = profile.Concurrency > 0 && profile.Concurrency <= MaxPerformanceConcurrency &&
 			profile.RatePerSecond == 0 && profile.MaxInFlight == 0 && arrival == load.ArrivalConstant
 	case domain.LoadOpenLoop:
 		if profile.Concurrency != 0 || profile.MaxInFlight == 0 || profile.MaxInFlight > MaxPerformanceInFlight ||
@@ -431,18 +625,19 @@ func validPerformanceProfileValues(profile PerformanceProfile) bool {
 			return false
 		}
 		if profile.RequestCount > 0 {
-			return true
+			validLoad = true
+			break
 		}
-		expected := float64(profile.DurationMS) * profile.RatePerSecond / 1_000
-		if arrival == load.ArrivalPoisson {
-			// Poisson counts have an unbounded tail. Require 2x expected-count
-			// headroom plus the immediate request, then enforce the hard runtime cap.
-			return math.Ceil(expected*2)+1 <= float64(MaxPerformanceRequests)
-		}
-		return math.Ceil(expected) <= float64(MaxPerformanceRequests)
+		_, err := estimateOpenLoopRequestCap(profile.RatePerSecond, profile.DurationMS, arrival)
+		validLoad = err == nil
 	default:
 		return false
 	}
+	if !validLoad {
+		return false
+	}
+	_, _, err := buildPerformanceRequestBudget(profile)
+	return err == nil
 }
 
 func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, workload *performanceWorkload, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
@@ -523,7 +718,7 @@ func performanceProgress(progress load.Progress) PerformanceProgress {
 		Phase: progress.Phase, Planned: progress.Planned, Launched: progress.Launched,
 		Offered:   progress.Offered,
 		Completed: progress.Completed, InFlight: progress.InFlight, PeakInFlight: progress.PeakInFlight,
-		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected, Stopped: progress.Stopped,
+		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected, Stopped: progress.Stopped, Capped: progress.Capped,
 		SendDurationMS:  float64(progress.SendDuration) / float64(time.Millisecond),
 		DrainDurationMS: float64(progress.DrainDuration) / float64(time.Millisecond),
 		TotalDurationMS: float64(progress.TotalDuration) / float64(time.Millisecond),
@@ -572,10 +767,11 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 		} else {
 			code = ""
 		}
-		tpot := 0.0
-		if observation.TTFT > 0 && observation.E2E > observation.TTFT && observation.CompletionTokens > 1 {
-			tpot = durationMilliseconds(observation.E2E-observation.TTFT) / float64(observation.CompletionTokens-1)
-		}
+		tpot := performanceTPOTMilliseconds(
+			durationMilliseconds(observation.TTFT),
+			durationMilliseconds(observation.E2E),
+			observation.CompletionTokens,
+		)
 		sample := PerformanceSample{
 			RequestIndex:      observation.Index,
 			ScheduledOffsetMS: durationMilliseconds(observation.ScheduledOffset),
@@ -600,6 +796,7 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 
 type performanceEvidenceRecorder struct {
 	mu        sync.Mutex
+	enabled   bool
 	remaining int
 	byIndex   map[uint64]*PerformanceResponseEvidence
 }
@@ -617,6 +814,9 @@ func (recorder *performanceEvidenceRecorder) record(value openai.FailureResponse
 	}
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
+	if !recorder.enabled {
+		return
+	}
 	body := value.Body
 	status := PerformanceEvidenceCaptured
 	if body == "" {
@@ -642,6 +842,17 @@ func (recorder *performanceEvidenceRecorder) record(value openai.FailureResponse
 		Truncated:     value.Truncated || status == PerformanceEvidenceOmitted,
 		Redacted:      true,
 	}
+}
+
+func (recorder *performanceEvidenceRecorder) enableFresh() {
+	if recorder == nil {
+		return
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.enabled = true
+	recorder.remaining = MaxPerformanceEvidenceTotalBytes
+	recorder.byIndex = make(map[uint64]*PerformanceResponseEvidence)
 }
 
 func (recorder *performanceEvidenceRecorder) snapshot() map[uint64]*PerformanceResponseEvidence {

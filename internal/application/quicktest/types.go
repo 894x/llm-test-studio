@@ -33,6 +33,8 @@ const (
 	MaxPerformanceEvidenceTotalBytes        = 2 << 20
 
 	PerformancePhaseNotStarted load.Phase = "not_started"
+	PerformancePhaseWarmingUp  load.Phase = "warming_up"
+	PerformancePhaseRamping    load.Phase = "ramping"
 )
 
 type AddressMode string
@@ -103,6 +105,10 @@ type PerformanceCommand struct {
 	InputTokensStdDev  uint32                  `json:"input_tokens_stddev,omitempty"`
 	OutputTokensStdDev uint32                  `json:"output_tokens_stddev,omitempty"`
 	SharedPrefixTokens uint32                  `json:"shared_prefix_tokens,omitempty"`
+	WarmupRequests     uint64                  `json:"warmup_requests,omitempty"`
+	RampDurationMS     uint64                  `json:"ramp_duration_ms,omitempty"`
+	RampRequestCap     uint64                  `json:"ramp_request_cap,omitempty"`
+	SliceDurationMS    uint64                  `json:"slice_duration_ms,omitempty"`
 }
 
 type PerformanceProfile struct {
@@ -121,6 +127,10 @@ type PerformanceProfile struct {
 	InputTokensStdDev  uint32                  `json:"input_tokens_stddev,omitempty"`
 	OutputTokensStdDev uint32                  `json:"output_tokens_stddev,omitempty"`
 	SharedPrefixTokens uint32                  `json:"shared_prefix_tokens,omitempty"`
+	WarmupRequests     uint64                  `json:"warmup_requests,omitempty"`
+	RampDurationMS     uint64                  `json:"ramp_duration_ms,omitempty"`
+	RampRequestCap     uint64                  `json:"ramp_request_cap,omitempty"`
+	SliceDurationMS    uint64                  `json:"slice_duration_ms,omitempty"`
 }
 
 type PerformanceProgress struct {
@@ -135,6 +145,7 @@ type PerformanceProgress struct {
 	Failed          uint64     `json:"failed"`
 	Rejected        uint64     `json:"rejected"`
 	Stopped         bool       `json:"stopped,omitempty"`
+	Capped          bool       `json:"capped,omitempty"`
 	SendDurationMS  float64    `json:"send_duration_ms"`
 	DrainDurationMS float64    `json:"drain_duration_ms"`
 	TotalDurationMS float64    `json:"total_duration_ms"`
@@ -143,6 +154,71 @@ type PerformanceProgress struct {
 type PerformanceFailure struct {
 	ErrorCode domain.ErrorCode `json:"error_code"`
 	Count     uint64           `json:"count"`
+}
+
+type PerformanceRequestBudget struct {
+	Limit       uint64 `json:"limit"`
+	WarmupCap   uint64 `json:"warmup_cap"`
+	RampCap     uint64 `json:"ramp_cap"`
+	MeasuredCap uint64 `json:"measured_cap"`
+	TotalCap    uint64 `json:"total_cap"`
+}
+
+type PerformanceTrafficSummary struct {
+	RequestCap       uint64               `json:"request_cap"`
+	Offered          uint64               `json:"offered"`
+	Launched         uint64               `json:"launched"`
+	Completed        uint64               `json:"completed"`
+	Succeeded        uint64               `json:"succeeded"`
+	Failed           uint64               `json:"failed"`
+	TimedOut         uint64               `json:"timed_out"`
+	Rejected         uint64               `json:"rejected"`
+	PeakInFlight     uint64               `json:"peak_in_flight"`
+	PromptTokens     uint64               `json:"prompt_tokens"`
+	CompletionTokens uint64               `json:"completion_tokens"`
+	CachedTokens     uint64               `json:"cached_tokens"`
+	SendDurationMS   float64              `json:"send_duration_ms"`
+	DrainDurationMS  float64              `json:"drain_duration_ms"`
+	TotalDurationMS  float64              `json:"total_duration_ms"`
+	Failures         []PerformanceFailure `json:"failures"`
+	Stopped          bool                 `json:"stopped"`
+	Capped           bool                 `json:"capped"`
+}
+
+type PerformanceRampSummary struct {
+	Shape               string                    `json:"shape"`
+	DurationMS          uint64                    `json:"duration_ms"`
+	Steps               uint32                    `json:"steps"`
+	TargetConcurrency   uint32                    `json:"target_concurrency,omitempty"`
+	TargetRatePerSecond float64                   `json:"target_rate_per_second,omitempty"`
+	CompletedWindow     bool                      `json:"completed_window"`
+	Traffic             PerformanceTrafficSummary `json:"traffic"`
+}
+
+type PerformanceLatencySlice struct {
+	Count uint64  `json:"count"`
+	P50MS float64 `json:"p50_ms"`
+	P95MS float64 `json:"p95_ms"`
+	P99MS float64 `json:"p99_ms"`
+}
+
+type PerformanceTimeSlice struct {
+	SliceIndex       uint64                  `json:"slice_index"`
+	StartMS          float64                 `json:"start_ms"`
+	EndMS            float64                 `json:"end_ms"`
+	Partial          bool                    `json:"partial"`
+	Offered          uint64                  `json:"offered"`
+	Launched         uint64                  `json:"launched"`
+	Completed        uint64                  `json:"completed"`
+	Succeeded        uint64                  `json:"succeeded"`
+	Failed           uint64                  `json:"failed"`
+	Rejected         uint64                  `json:"rejected"`
+	PromptTokens     uint64                  `json:"prompt_tokens"`
+	CompletionTokens uint64                  `json:"completion_tokens"`
+	CachedTokens     uint64                  `json:"cached_tokens"`
+	TTFT             PerformanceLatencySlice `json:"ttft"`
+	TPOT             PerformanceLatencySlice `json:"tpot"`
+	E2E              PerformanceLatencySlice `json:"e2e"`
 }
 
 type PerformanceEvidenceCaptureStatus string
@@ -200,22 +276,26 @@ type PerformanceSample struct {
 // PerformanceReport is an ephemeral, bounded report. It contains no Model,
 // Channel, Case, Plan, credential, prompt, provider payload, or raw error.
 type PerformanceReport struct {
-	SchemaVersion int                      `json:"schema_version"`
-	ReportID      string                   `json:"report_id,omitempty"`
-	GeneratedAt   string                   `json:"generated_at,omitempty"`
-	Archived      bool                     `json:"archived"`
-	ArchiveStatus PerformanceArchiveStatus `json:"archive_status"`
-	Success       bool                     `json:"success"`
-	AddressMode   AddressMode              `json:"address_mode"`
-	BaseURL       string                   `json:"base_url"`
-	Endpoint      string                   `json:"endpoint"`
-	ModelID       string                   `json:"model_id"`
-	Profile       PerformanceProfile       `json:"profile"`
-	Progress      PerformanceProgress      `json:"progress"`
-	Metrics       load.Metrics             `json:"metrics"`
-	Failures      []PerformanceFailure     `json:"failures"`
-	Samples       []PerformanceSample      `json:"samples"`
-	ErrorCode     domain.ErrorCode         `json:"error_code,omitempty"`
+	SchemaVersion int                        `json:"schema_version"`
+	ReportID      string                     `json:"report_id,omitempty"`
+	GeneratedAt   string                     `json:"generated_at,omitempty"`
+	Archived      bool                       `json:"archived"`
+	ArchiveStatus PerformanceArchiveStatus   `json:"archive_status"`
+	Success       bool                       `json:"success"`
+	AddressMode   AddressMode                `json:"address_mode"`
+	BaseURL       string                     `json:"base_url"`
+	Endpoint      string                     `json:"endpoint"`
+	ModelID       string                     `json:"model_id"`
+	Profile       PerformanceProfile         `json:"profile"`
+	RequestBudget *PerformanceRequestBudget  `json:"request_budget,omitempty"`
+	Warmup        *PerformanceTrafficSummary `json:"warmup,omitempty"`
+	Ramp          *PerformanceRampSummary    `json:"ramp,omitempty"`
+	TimeSlices    []PerformanceTimeSlice     `json:"time_slices,omitempty"`
+	Progress      PerformanceProgress        `json:"progress"`
+	Metrics       load.Metrics               `json:"metrics"`
+	Failures      []PerformanceFailure       `json:"failures"`
+	Samples       []PerformanceSample        `json:"samples"`
+	ErrorCode     domain.ErrorCode           `json:"error_code,omitempty"`
 }
 
 type PerformanceArchive interface {

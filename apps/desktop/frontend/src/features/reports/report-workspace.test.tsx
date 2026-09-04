@@ -68,6 +68,13 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("8 Token")
     expect(archivedReport).toHaveTextContent("采样目标范围（输入 / 输出）")
     expect(archivedReport).toHaveTextContent("18–22 / 28–36")
+    expect(archivedReport).toHaveTextContent("热身请求")
+    expect(archivedReport).toHaveTextContent("爬坡配置")
+    expect(archivedReport).toHaveTextContent("1 s · 上限 2")
+    expect(archivedReport).toHaveTextContent("切片粒度")
+    expect(archivedReport).toHaveTextContent("准备阶段与预算")
+    expect(archivedReport).toHaveTextContent("10,000 / 10,000")
+    expect(archivedReport).toHaveTextContent("爬坡窗口未完整执行")
     expect(archivedReport).toHaveTextContent("https://api.example.test/v1/chat/completions")
     expect(archivedReport).toHaveTextContent("峰值在途 / 配置并发")
     expect(archivedReport).toHaveTextContent("2 / 2")
@@ -77,6 +84,14 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("失败")
     expect(archivedReport).toHaveTextContent("104,000 TPM")
     expect(within(archivedReport).getByRole("table", { name: "延迟分布统计" })).toHaveTextContent("客户端排队（本地调度延迟）")
+    const timeSlices = within(archivedReport).getByRole("table", { name: "时间切片" })
+    expect(timeSlices.parentElement).toHaveClass("overflow-x-auto")
+    expect(within(timeSlices).getByRole("columnheader", { name: "TTFT P95" })).toBeInTheDocument()
+    expect(within(timeSlices).getByRole("columnheader", { name: "TPOT P95" })).toBeInTheDocument()
+    expect(within(timeSlices).getByRole("columnheader", { name: "E2E P95" })).toBeInTheDocument()
+    expect(within(timeSlices).getByRole("row", { name: /#0/ })).toHaveTextContent(/0–1 s.*3.*3.*3.*0.*0.*60 \/ 96 \/ 0.*40 ms.*6 ms.*80 ms/)
+    expect(within(timeSlices).getByRole("row", { name: /#2/ })).toHaveTextContent(/2–2\.5 s · 部分.*0.*0.*0.*0.*0.*0 \/ 0 \/ 0.*—.*—.*—/)
+    expect(within(timeSlices).queryByRole("row", { name: /#1/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("table", { name: "测试报告目录" })).not.toBeInTheDocument()
     expect(screen.getByRole("complementary", { name: "报告详情" })).toHaveTextContent(quickID)
     const charts = screen.getByRole("region", { name: "性能图表" })
@@ -158,6 +173,36 @@ describe("ReportWorkspace", () => {
     expect(requestDetail).toHaveTextContent("quota exhausted")
     expect(requestDetail).not.toHaveTextContent("sk-report-private")
   })
+
+  it("renders earlier schema-v2 reports with legacy constant and fixed defaults without phase-three sections", async () => {
+    const user = userEvent.setup()
+    const quickID = "77777777-7777-4777-8777-777777777773"
+    const snapshot = {
+      schema_version: 1,
+      reports: [{
+        id: quickID, source: "quick_performance", generated_at: "2026-08-31T14:30:00Z", run_status: "completed",
+        plan_name: "旧版快速性能测试", model_name: "gpt-fast", channel_name: "api.example.test", passed: true,
+        verdict: "旧版快速性能测试通过", issue_count: 0, case_count: 3, failed_case_count: 0, attachment_count: 0,
+      }],
+    } as unknown as ReportSnapshot
+
+    render(
+      <ReportWorkspace
+        snapshot={snapshot}
+        getDetail={vi.fn(async () => legacyQuickDetail(quickID) as unknown as ReportDetail)}
+        exportReport={vi.fn()}
+        saveReportExport={vi.fn()}
+        copyReportPNG={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole("button", { name: "查看报告：旧版快速性能测试通过" }))
+
+    const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(archivedReport).toHaveTextContent("恒定间隔（旧报告）")
+    expect(archivedReport).toHaveTextContent("固定 Token（旧报告）")
+    expect(archivedReport).not.toHaveTextContent("准备阶段与预算")
+    expect(within(archivedReport).queryByRole("table", { name: "时间切片" })).not.toBeInTheDocument()
+  })
 })
 
 function quickDetail(reportID: string) {
@@ -179,9 +224,10 @@ function quickDetail(reportID: string) {
         load_mode: "fixed_concurrency", request_count: 0, duration_ms: 1_000, concurrency: 2,
         arrival_pattern: "constant", workload_mode: "normal", random_seed: 424242,
         input_tokens_stddev: 2, output_tokens_stddev: 4, shared_prefix_tokens: 8,
+        warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 2, slice_duration_ms: 1_000,
         timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
       },
-      progress: { phase: "completed", planned: 10_000, offered: 3, launched: 3, completed: 3, in_flight: 0, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, send_duration_ms: 60, drain_duration_ms: 30, total_duration_ms: 90 },
+      progress: { phase: "completed", planned: 9_997, offered: 3, launched: 3, completed: 3, in_flight: 0, peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 0, capped: false, send_duration_ms: 2_400, drain_duration_ms: 100, total_duration_ms: 2_500 },
       metrics: {
         completed: 3, succeeded: 3, failed: 0, timed_out: 0, success_rate_percent: 100,
         offered_qps: 50, launched_qps: 50, completed_qps: 33.3, successful_request_qps: 33.3, request_qps: 33.3, rpm: 2_000,
@@ -196,6 +242,16 @@ function quickDetail(reportID: string) {
         sample(0, 60, 60, 30, 4), sample(1, 75, 74, 40, 5), sample(2, 90, 88, 44, 7),
       ],
       failures: [],
+      request_budget: { limit: 10_000, warmup_cap: 1, ramp_cap: 2, measured_cap: 9_997, total_cap: 10_000 },
+      warmup: trafficSummary(1, 1),
+      ramp: {
+        shape: "linear_staircase", duration_ms: 1_000, steps: 2, target_concurrency: 2,
+        completed_window: false, traffic: { ...trafficSummary(2, 2), capped: true },
+      },
+      time_slices: [
+        { ...timeSlice(0, 0, 1_000, false, true), offered: 3, launched: 3, completed: 3, succeeded: 3, prompt_tokens: 60, completion_tokens: 96 },
+        timeSlice(2, 2_000, 2_500, true, false, 0),
+      ],
     },
   }
 }
@@ -204,6 +260,67 @@ function sample(requestIndex: number, finished: number, e2e: number, ttft: numbe
   const targetInput = [18, 20, 22][requestIndex]
   const targetOutput = [28, 32, 36][requestIndex]
   return { request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished, schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 0, target_input_tokens: targetInput, target_output_tokens: targetOutput }
+}
+
+function trafficSummary(requestCap: number, completed: number) {
+  return {
+    request_cap: requestCap, offered: completed, launched: completed, completed, succeeded: completed,
+    failed: 0, timed_out: 0, rejected: 0, peak_in_flight: Math.min(2, completed),
+    prompt_tokens: completed * 20, completion_tokens: completed * 32, cached_tokens: 0,
+    send_duration_ms: 60, drain_duration_ms: 10, total_duration_ms: 70,
+    failures: [], stopped: false, capped: false,
+  }
+}
+
+function timeSlice(sliceIndex: number, startMS: number, endMS: number, partial: boolean, withLatency: boolean, completed = 1) {
+  const empty = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 }
+  return {
+    slice_index: sliceIndex, start_ms: startMS, end_ms: endMS, partial,
+    offered: completed, launched: completed, completed, succeeded: completed, failed: 0, rejected: 0,
+    prompt_tokens: completed * 20, completion_tokens: completed * 32, cached_tokens: 0,
+    ttft: withLatency ? { count: completed, p50_ms: 30, p95_ms: 40, p99_ms: 45 } : empty,
+    tpot: withLatency ? { count: completed, p50_ms: 4, p95_ms: 6, p99_ms: 7 } : empty,
+    e2e: withLatency ? { count: completed, p50_ms: 60, p95_ms: 80, p99_ms: 90 } : empty,
+  }
+}
+
+function legacyQuickDetail(reportID: string) {
+  const detail = quickDetail(reportID)
+  const {
+    request_budget: _budget,
+    warmup: _warmup,
+    ramp: _ramp,
+    time_slices: _slices,
+    ...legacyPerformance
+  } = detail.performance
+  const {
+    arrival_pattern: _arrival,
+    workload_mode: _workload,
+    random_seed: _seed,
+    input_tokens_stddev: _inputDeviation,
+    output_tokens_stddev: _outputDeviation,
+    shared_prefix_tokens: _sharedPrefix,
+    warmup_requests: _warmupRequests,
+    ramp_duration_ms: _rampDuration,
+    ramp_request_cap: _rampCap,
+    slice_duration_ms: _sliceDuration,
+    ...legacyProfile
+  } = legacyPerformance.profile
+  const { capped: _capped, ...legacyProgress } = legacyPerformance.progress
+  return {
+    ...detail,
+    performance: {
+      ...legacyPerformance,
+      profile: {
+        ...legacyProfile,
+        load_mode: "open_loop",
+        concurrency: 0,
+        rate_per_second: 10,
+        max_in_flight: 2,
+      },
+      progress: legacyProgress,
+    },
+  }
 }
 
 function failedQuickDetail(reportID: string) {

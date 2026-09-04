@@ -89,6 +89,7 @@ type Progress struct {
 	Failed        uint64        `json:"failed"`
 	Rejected      uint64        `json:"rejected"`
 	Stopped       bool          `json:"stopped"`
+	Capped        bool          `json:"capped,omitempty"`
 	SendDuration  time.Duration `json:"send_duration"`
 	DrainDuration time.Duration `json:"drain_duration"`
 	TotalDuration time.Duration `json:"total_duration"`
@@ -112,8 +113,12 @@ type Options struct {
 	// open-loop work. RandomSeed is intentionally request-order independent.
 	ArrivalPattern ArrivalPattern
 	RandomSeed     uint32
+	// Ramp turns a duration-bounded fixed-concurrency or open-loop run into a
+	// linear staircase from its minimum load to the configured target.
+	Ramp bool
 	// MaxScheduledRequests may lower, but never raise, the process-wide request
 	// cap. Explicit count-limited profiles above it fail; duration-only profiles
-	// stop offering at the cap but still keep their configured send window.
+	// stop offering at the cap. Open-loop runs keep their configured send window;
+	// fixed-concurrency runs drain immediately once the cap is exhausted.
 	MaxScheduledRequests uint64
 }

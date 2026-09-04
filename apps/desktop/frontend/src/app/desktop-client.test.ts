@@ -7,7 +7,7 @@ import {
 } from "@/features/runs/fixtures"
 import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 
-import { createDesktopClient } from "./desktop-client"
+import { createDesktopClient, createFixtureClient } from "./desktop-client"
 
 describe("Wails desktop client", () => {
   afterEach(() => {
@@ -63,6 +63,10 @@ describe("Wails desktop client", () => {
       input_tokens_stddev: 0,
       output_tokens_stddev: 0,
       shared_prefix_tokens: 0,
+      warmup_requests: 0,
+      ramp_duration_ms: 0,
+      ramp_request_cap: 0,
+      slice_duration_ms: 0,
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
@@ -89,6 +93,45 @@ describe("Wails desktop client", () => {
     expect(binding.RunQuickTest).toHaveBeenCalledWith(quickCommand)
     expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(performanceCommand, "")
     expect(binding.SaveQuickTestConnection).toHaveBeenCalledWith(saveCommand)
+  })
+
+  it("keeps idle fixture windows sparse while retaining an empty final partial slice", async () => {
+    const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "sk-private-value",
+      model_id: "gpt-test",
+      load_mode: "fixed_concurrency",
+      request_count: 4,
+      duration_ms: 2_500,
+      concurrency: 2,
+      rate_per_second: 0,
+      max_in_flight: 0,
+      arrival_pattern: "constant",
+      workload_mode: "fixed",
+      random_seed: 0,
+      input_tokens_stddev: 0,
+      output_tokens_stddev: 0,
+      shared_prefix_tokens: 0,
+      warmup_requests: 0,
+      ramp_duration_ms: 0,
+      ramp_request_cap: 0,
+      slice_duration_ms: 1_000,
+      timeout_ms: 30_000,
+      input_tokens: 20,
+      output_tokens: 32,
+    })
+
+    expect(report.time_slices?.map((slice) => slice.slice_index)).toEqual([0, 2])
+    expect(report.time_slices?.[1]).toMatchObject({
+      start_ms: 2_000,
+      end_ms: 2_500,
+      partial: true,
+      offered: 0,
+      launched: 0,
+      completed: 0,
+      ttft: { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 },
+    })
   })
 
   it("rejects malformed quick-test DTOs and drops unexpected payload fields", async () => {
@@ -190,7 +233,8 @@ describe("Wails desktop client", () => {
       api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
       duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
       arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_seed: 0,
-      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
+      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     }
     const report = await createDesktopClient().runQuickPerformanceTest(command)
@@ -260,7 +304,8 @@ describe("Wails desktop client", () => {
       api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
       duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
       arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
-      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
+      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     })
 
@@ -290,7 +335,7 @@ describe("Wails desktop client", () => {
 		})
 		binding.RunQuickPerformanceTest.mockImplementationOnce(async (_command, progressID) => {
 			const progress = {
-				phase: "sending", planned: 4, launched: 2, completed: 1,
+				phase: "ramping", planned: 4, launched: 2, completed: 1, capped: true,
 				peak_in_flight: 2, succeeded: 1, failed: 0, rejected: 0,
 				send_duration_ms: 100, drain_duration_ms: 0, total_duration_ms: 100,
 			}
@@ -304,7 +349,8 @@ describe("Wails desktop client", () => {
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
 			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
 			arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_seed: 0,
-			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
+			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		}
 
@@ -313,7 +359,7 @@ describe("Wails desktop client", () => {
 		expect(eventsOn).toHaveBeenCalledWith("quick-performance-progress", expect.any(Function))
 		expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(command, expect.stringMatching(/^[0-9a-f-]{36}$/))
 		expect(progress).toHaveBeenCalledTimes(1)
-		expect(progress).toHaveBeenCalledWith(expect.objectContaining({ phase: "sending", completed: 1 }))
+		expect(progress).toHaveBeenCalledWith(expect.objectContaining({ phase: "ramping", completed: 1, capped: true }))
 		expect(JSON.stringify(progress.mock.calls)).not.toContain("sk-secret")
 		expect(JSON.stringify(progress.mock.calls)).not.toContain("raw_response")
 		expect(report.metrics.schedule_lag_p90_ms).toBe(2.7)
@@ -339,7 +385,8 @@ describe("Wails desktop client", () => {
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
 			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
 			arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
-			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0, timeout_ms: 30_000,
+			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		})
 
@@ -365,8 +412,12 @@ describe("Wails desktop client", () => {
 				input_tokens_stddev: 4,
 				output_tokens_stddev: 8,
 				shared_prefix_tokens: 10,
+				warmup_requests: 1,
+				ramp_duration_ms: 1_000,
+				ramp_request_cap: 0,
+				slice_duration_ms: 1_000,
 			},
-			progress: { ...fixture.progress, offered: 6 },
+			progress: { ...fixture.progress, offered: 4, capped: false },
 			metrics: {
 				...fixture.metrics,
 				offered_qps: 15,
@@ -381,6 +432,23 @@ describe("Wails desktop client", () => {
 				target_output_tokens: 28 + index,
 				provider_target: "must be dropped",
 			})),
+			request_budget: { limit: 10_000, warmup_cap: 1, ramp_cap: 15, measured_cap: 4, total_cap: 20, provider_internal: "drop" },
+			warmup: phaseThreeTrafficSummary(1, 1),
+			ramp: {
+				shape: "linear_staircase", duration_ms: 1_000, steps: 10, target_rate_per_second: 12.5,
+				completed_window: true,
+				traffic: { ...phaseThreeTrafficSummary(15, 15), send_duration_ms: 1_000, total_duration_ms: 1_020 },
+				provider_internal: "drop",
+			},
+			time_slices: [{
+				slice_index: 0, start_ms: 0, end_ms: 320, partial: true,
+				offered: 4, launched: 4, completed: 4, succeeded: 4, failed: 0, rejected: 0,
+				prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20,
+				ttft: { count: 4, p50_ms: 30, p95_ms: 42, p99_ms: 44 },
+				tpot: { count: 4, p50_ms: 4, p95_ms: 6, p99_ms: 7 },
+				e2e: { count: 4, p50_ms: 60, p95_ms: 80, p99_ms: 84 },
+				provider_internal: "drop",
+			}],
 		} as never)
 
 		const v2 = await createDesktopClient().runQuickPerformanceTest({
@@ -389,15 +457,21 @@ describe("Wails desktop client", () => {
 			request_count: 4, duration_ms: 0, concurrency: 0, rate_per_second: 12.5,
 			max_in_flight: 37, arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
 			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
+			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0, slice_duration_ms: 1_000,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
 		expect(v2.schema_version).toBe(2)
-		expect(v2.profile).toMatchObject({
+			expect(v2.profile).toMatchObject({
 			load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37,
 			arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
 			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
+			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0, slice_duration_ms: 1_000,
 		})
-		expect(v2.progress.offered).toBe(6)
+		expect(v2.progress.offered).toBe(4)
+		expect(v2.progress.capped).toBe(false)
+		expect(v2.request_budget).toEqual({ limit: 10_000, warmup_cap: 1, ramp_cap: 15, measured_cap: 4, total_cap: 20 })
+		expect(v2.ramp).toMatchObject({ shape: "linear_staircase", steps: 10, target_rate_per_second: 12.5 })
+		expect(v2.time_slices?.[0]).toMatchObject({ slice_index: 0, offered: 4, completed: 4 })
 		expect(v2.metrics).toMatchObject({ offered_qps: 15, launched_qps: 12.5, completed_qps: 11, successful_request_qps: 10 })
 		expect(v2.samples[0]).toMatchObject({ target_input_tokens: 18, target_output_tokens: 28 })
 		expect(JSON.stringify(v2.samples)).not.toContain("must be dropped")
@@ -421,6 +495,7 @@ describe("Wails desktop client", () => {
 			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
 			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
 			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		} as never)
 		expect(phaseOneV2.profile.arrival_pattern).toBeUndefined()
@@ -434,6 +509,7 @@ describe("Wails desktop client", () => {
 			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
 			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
 			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
 		expect(legacy.schema_version).toBe(1)
@@ -939,6 +1015,16 @@ function performanceReportFixture() {
 
 function performanceSample(requestIndex: number, finished: number, e2e: number, ttft: number, tpot: number) {
   return { request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished, schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 }
+}
+
+function phaseThreeTrafficSummary(requestCap: number, completed: number) {
+  return {
+    request_cap: requestCap, offered: completed, launched: completed, completed, succeeded: completed,
+    failed: 0, timed_out: 0, rejected: 0, peak_in_flight: Math.min(2, completed),
+    prompt_tokens: completed * 20, completion_tokens: completed * 32, cached_tokens: completed * 5,
+    send_duration_ms: 100, drain_duration_ms: 20, total_duration_ms: 120,
+    failures: [], stopped: false, capped: false, provider_internal: "drop",
+  }
 }
 
 function zeroPerformanceMetrics() {

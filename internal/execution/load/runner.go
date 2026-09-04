@@ -16,6 +16,8 @@ var (
 	errRequestLimit     = errors.New("load request limit exceeded")
 )
 
+const maxLinearRampSteps uint64 = 10
+
 type runState struct {
 	progress      Progress
 	results       []Observation
@@ -33,6 +35,181 @@ type runState struct {
 	cancelled     bool
 	capacityErr   error
 	openLoopLimit uint64
+	ramp          bool
+	rampSteps     uint64
+}
+
+// LinearRampStepCount reports the staircase shape used by Run for a ramped
+// profile. Unsupported modes do not have a ramp shape.
+func LinearRampStepCount(profile domain.LoadProfile) uint32 {
+	switch profile.Mode {
+	case domain.LoadFixedConcurrency:
+		return min(profile.Concurrency, uint32(maxLinearRampSteps))
+	case domain.LoadOpenLoop:
+		return uint32(maxLinearRampSteps)
+	default:
+		return 0
+	}
+}
+
+// EstimateLinearRampRequestCap returns the deterministic schedule size for a
+// constant-arrival ramp and bounded headroom for a seeded Poisson ramp.
+func EstimateLinearRampRequestCap(rate float64, duration time.Duration, arrival ArrivalPattern) (uint64, error) {
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
+		return 0, errors.New("linear ramp rate must be finite and positive")
+	}
+	if duration <= 0 {
+		return 0, errors.New("linear ramp duration must be positive")
+	}
+	if arrival == "" {
+		arrival = ArrivalConstant
+	}
+	if arrival != ArrivalConstant && arrival != ArrivalPoisson {
+		return 0, fmt.Errorf("unsupported arrival pattern %q", arrival)
+	}
+
+	intensity := linearRampIntensity(rate, duration, maxLinearRampSteps)
+	if math.IsNaN(intensity) || math.IsInf(intensity, 0) || intensity < 0 {
+		return 0, errors.New("linear ramp request estimate overflow")
+	}
+	estimate := intensity
+	if arrival == ArrivalPoisson {
+		estimate *= 2
+	}
+	estimate = math.Ceil(estimate)
+	if arrival == ArrivalPoisson {
+		estimate++
+	}
+	if math.IsNaN(estimate) || math.IsInf(estimate, 0) || estimate >= math.Ldexp(1, 64) {
+		return 0, errors.New("linear ramp request estimate overflow")
+	}
+	return uint64(estimate), nil
+}
+
+// EstimateOpenLoopRampSchedule returns the exact seeded schedule size Run
+// would materialize for a duration-only open-loop ramp and reports whether
+// maxScheduled truncates that schedule.
+func EstimateOpenLoopRampSchedule(
+	rate float64,
+	duration time.Duration,
+	arrival ArrivalPattern,
+	seed uint32,
+	maxScheduled uint64,
+) (uint64, bool, error) {
+	if maxScheduled == 0 || maxScheduled > MaxRequests {
+		return 0, false, fmt.Errorf("open-loop ramp schedule limit must be between 1 and %d", MaxRequests)
+	}
+	if arrival == "" {
+		arrival = ArrivalConstant
+	}
+	if arrival != ArrivalConstant && arrival != ArrivalPoisson {
+		return 0, false, fmt.Errorf("unsupported arrival pattern %q", arrival)
+	}
+	if _, err := openLoopInterval(rate); err != nil {
+		return 0, false, err
+	}
+	schedule, capped, err := buildLinearRampSchedule(rate, seed, arrival, duration, maxScheduled)
+	if err != nil {
+		return 0, false, err
+	}
+	return uint64(len(schedule)), capped, nil
+}
+
+// EstimateOpenLoopDurationSchedule returns the number of requests Run plans
+// for a duration-only open-loop profile and whether maxScheduled truncates the
+// schedule. Constant arrivals use the scheduler's interval-first ceiling;
+// Poisson arrivals use the supplied seed's exact schedule.
+func EstimateOpenLoopDurationSchedule(
+	rate float64,
+	duration time.Duration,
+	arrival ArrivalPattern,
+	seed uint32,
+	maxScheduled uint64,
+) (uint64, bool, error) {
+	plan, err := buildOpenLoopDurationPlan(rate, duration, arrival, seed, maxScheduled)
+	if err != nil {
+		return 0, false, err
+	}
+	return plan.planned, plan.capped, nil
+}
+
+type openLoopDurationPlan struct {
+	interval time.Duration
+	schedule []time.Duration
+	planned  uint64
+	capped   bool
+}
+
+func buildOpenLoopDurationPlan(
+	rate float64,
+	duration time.Duration,
+	arrival ArrivalPattern,
+	seed uint32,
+	maxScheduled uint64,
+) (openLoopDurationPlan, error) {
+	if duration <= 0 {
+		return openLoopDurationPlan{}, errors.New("open-loop duration schedule requires a positive duration")
+	}
+	if maxScheduled == 0 || maxScheduled > MaxRequests {
+		return openLoopDurationPlan{}, fmt.Errorf("open-loop duration schedule limit must be between 1 and %d", MaxRequests)
+	}
+	if arrival == "" {
+		arrival = ArrivalConstant
+	}
+	if arrival != ArrivalConstant && arrival != ArrivalPoisson {
+		return openLoopDurationPlan{}, fmt.Errorf("unsupported arrival pattern %q", arrival)
+	}
+	interval, err := openLoopInterval(rate)
+	if err != nil {
+		return openLoopDurationPlan{}, err
+	}
+
+	plan := openLoopDurationPlan{interval: interval}
+	if arrival == ArrivalPoisson {
+		plan.schedule, plan.capped, err = buildPoissonSchedule(rate, seed, 0, duration, false, maxScheduled)
+		if err != nil {
+			return openLoopDurationPlan{}, err
+		}
+		plan.planned = uint64(len(plan.schedule))
+		return plan, nil
+	}
+
+	intervalFloat := float64(time.Second) / rate
+	plannedFloat := math.Ceil(float64(duration) / intervalFloat)
+	if math.IsNaN(plannedFloat) || math.IsInf(plannedFloat, 0) || plannedFloat < 1 || plannedFloat >= math.Ldexp(1, 64) {
+		return openLoopDurationPlan{}, errors.New("open-loop duration schedule estimate overflow")
+	}
+	planned := uint64(plannedFloat)
+	if planned > maxScheduled {
+		plan.planned = maxScheduled
+		plan.capped = true
+	} else {
+		plan.planned = planned
+	}
+	return plan, nil
+}
+
+func openLoopInterval(rate float64) (time.Duration, error) {
+	intervalFloat := float64(time.Second) / rate
+	if math.IsNaN(intervalFloat) || math.IsInf(intervalFloat, 0) || intervalFloat < 1 || intervalFloat > float64(math.MaxInt64) {
+		return 0, errors.New("open-loop rate cannot be represented with nanosecond precision")
+	}
+	interval := time.Duration(intervalFloat)
+	if interval <= 0 {
+		return 0, errors.New("open-loop rate cannot be represented with nanosecond precision")
+	}
+	return interval, nil
+}
+
+func linearRampIntensity(rate float64, duration time.Duration, steps uint64) float64 {
+	intensity := 0.0
+	for step := uint64(0); step < steps; step++ {
+		start := linearRampBoundary(duration, steps, step)
+		end := linearRampBoundary(duration, steps, step+1)
+		stepRate := rate * float64(step+1) / float64(steps)
+		intensity += stepRate * float64(end-start) / float64(time.Second)
+	}
+	return intensity
 }
 
 func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, options Options) (Outcome, error) {
@@ -152,6 +329,7 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	}
 	state.progress.DrainDuration = finishedAt.Sub(state.sendEndedAt)
 	state.progress.TotalDuration = finishedAt.Sub(state.startedAt)
+	state.progress = normalizeObservedProgressDurations(state.progress)
 	if state.cancelled {
 		state.progress.Phase = PhaseCancelled
 	} else {
@@ -173,6 +351,20 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	return outcome, nil
 }
 
+func normalizeObservedProgressDurations(progress Progress) Progress {
+	if progress.Offered == 0 && progress.Completed == 0 {
+		return progress
+	}
+	if progress.SendDuration <= 0 {
+		progress.SendDuration = time.Nanosecond
+	}
+	if progress.TotalDuration < progress.SendDuration {
+		progress.TotalDuration = progress.SendDuration
+	}
+	progress.DrainDuration = progress.TotalDuration - progress.SendDuration
+	return progress
+}
+
 func newRunState(profile domain.LoadProfile, options Options) (*runState, error) {
 	if err := profile.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid load profile: %w", err)
@@ -185,6 +377,17 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 	}
 	if profile.Mode == domain.LoadSingle && (profile.RequestCount != 1 || profile.DurationMS != 0 || profile.Concurrency != 1) {
 		return nil, errors.New("single load requires exactly one request, concurrency one, and no send duration")
+	}
+	if options.Ramp {
+		if profile.Mode != domain.LoadFixedConcurrency && profile.Mode != domain.LoadOpenLoop {
+			return nil, errors.New("ramp requires fixed-concurrency or open-loop load")
+		}
+		if profile.DurationMS == 0 {
+			return nil, errors.New("ramp requires a positive load duration")
+		}
+		if profile.Mode == domain.LoadOpenLoop && profile.RequestCount > 0 {
+			return nil, errors.New("open-loop ramp requires a duration-only profile")
+		}
 	}
 	arrival := options.ArrivalPattern
 	if arrival == "" {
@@ -221,6 +424,14 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 		sendWindow:   sendWindow,
 		timeout:      timeout,
 		arrival:      arrival,
+		ramp:         options.Ramp,
+	}
+	if options.Ramp && profile.Mode == domain.LoadFixedConcurrency {
+		state.rampSteps = uint64(LinearRampStepCount(profile))
+	}
+	if profile.Mode == domain.LoadFixedConcurrency && !state.countLimited {
+		state.requestCap = maxScheduledRequests
+		state.progress.Planned = state.requestCap
 	}
 	if profile.Mode == domain.LoadOpenLoop {
 		state.openLoopLimit = MaxOpenLoopInFlight
@@ -230,32 +441,54 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 		if options.MaxOpenLoopInFlight > 0 {
 			state.openLoopLimit = options.MaxOpenLoopInFlight
 		}
-		intervalFloat := float64(time.Second) / profile.RatePerSecond
-		if math.IsNaN(intervalFloat) || math.IsInf(intervalFloat, 0) || intervalFloat < 1 || intervalFloat > float64(math.MaxInt64) {
-			return nil, errors.New("open-loop rate cannot be represented with nanosecond precision")
+		interval, err := openLoopInterval(profile.RatePerSecond)
+		if err != nil {
+			return nil, err
 		}
-		state.interval = time.Duration(intervalFloat)
-		if arrival == ArrivalPoisson {
-			schedule, err := buildPoissonSchedule(profile.RatePerSecond, options.RandomSeed, state.requestCap, sendWindow, state.countLimited, maxScheduledRequests)
+		state.interval = interval
+		if options.Ramp {
+			schedule, capped, err := buildLinearRampSchedule(
+				profile.RatePerSecond,
+				options.RandomSeed,
+				arrival,
+				sendWindow,
+				maxScheduledRequests,
+			)
 			if err != nil {
 				return nil, err
 			}
 			state.schedule = schedule
+			state.requestCap = uint64(len(schedule))
+			state.progress.Planned = state.requestCap
+			state.progress.Capped = capped
+		} else if !state.countLimited {
+			plan, err := buildOpenLoopDurationPlan(
+				profile.RatePerSecond,
+				sendWindow,
+				arrival,
+				options.RandomSeed,
+				maxScheduledRequests,
+			)
+			if err != nil {
+				return nil, err
+			}
+			state.interval = plan.interval
+			state.schedule = plan.schedule
+			state.requestCap = plan.planned
+			state.progress.Planned = plan.planned
+			state.progress.Capped = plan.capped
+		} else if arrival == ArrivalPoisson {
+			schedule, capped, err := buildPoissonSchedule(profile.RatePerSecond, options.RandomSeed, state.requestCap, sendWindow, state.countLimited, maxScheduledRequests)
+			if err != nil {
+				return nil, err
+			}
+			state.schedule = schedule
+			state.progress.Capped = capped
 			if !state.countLimited {
 				state.requestCap = uint64(len(schedule))
 				state.progress.Planned = state.requestCap
 			}
 		} else {
-			if state.requestCap == 0 {
-				state.requestCap = uint64(math.Ceil(float64(sendWindow) / intervalFloat))
-				if state.requestCap == 0 {
-					state.requestCap = 1
-				}
-				if state.requestCap > maxScheduledRequests {
-					return nil, fmt.Errorf("open-loop schedule exceeds %d requests", maxScheduledRequests)
-				}
-				state.progress.Planned = state.requestCap
-			}
 			if state.requestCap > 1 && uint64(state.interval) > uint64(math.MaxInt64)/(state.requestCap-1) {
 				return nil, errors.New("open-loop schedule exceeds time.Duration range")
 			}
@@ -265,7 +498,7 @@ func newRunState(profile domain.LoadProfile, options Options) (*runState, error)
 }
 
 func (state *runState) scheduledOffset(index uint64) time.Duration {
-	if state.arrival == ArrivalPoisson {
+	if state.schedule != nil {
 		if index < uint64(len(state.schedule)) {
 			return state.schedule[index]
 		}
@@ -274,41 +507,118 @@ func (state *runState) scheduledOffset(index uint64) time.Duration {
 	return time.Duration(index) * state.interval
 }
 
+func buildLinearRampSchedule(
+	rate float64,
+	seed uint32,
+	arrival ArrivalPattern,
+	sendWindow time.Duration,
+	maxScheduled uint64,
+) ([]time.Duration, bool, error) {
+	if sendWindow <= 0 {
+		return nil, false, errors.New("linear ramp schedule requires a positive duration")
+	}
+	if maxScheduled == 0 {
+		return nil, false, errors.New("linear ramp schedule requires a positive request limit")
+	}
+	steps := maxLinearRampSteps
+	totalIntensity := linearRampIntensity(rate, sendWindow, steps)
+	if math.IsNaN(totalIntensity) || math.IsInf(totalIntensity, 0) || totalIntensity <= 0 {
+		return nil, false, errors.New("linear ramp intensity must be finite and positive")
+	}
+
+	schedule := make([]time.Duration, 0, min(maxScheduled, 1_024))
+	hazard := 0.0
+	randomState := uint64(seed) ^ 0xe7037ed1a0b428db
+	for {
+		offset, inWindow, err := linearRampOffsetForHazard(rate, sendWindow, steps, totalIntensity, hazard)
+		if err != nil {
+			return nil, false, err
+		}
+		if !inWindow {
+			return schedule, false, nil
+		}
+		if uint64(len(schedule)) >= maxScheduled {
+			return schedule, true, nil
+		}
+		if len(schedule) > 0 && offset <= schedule[len(schedule)-1] {
+			offset = schedule[len(schedule)-1] + 1
+			if offset >= sendWindow {
+				return schedule, false, nil
+			}
+		}
+		schedule = append(schedule, offset)
+
+		switch arrival {
+		case ArrivalConstant:
+			hazard++
+		case ArrivalPoisson:
+			randomState += 0x9e3779b97f4a7c15
+			mixed := randomState
+			mixed = (mixed ^ (mixed >> 30)) * 0xbf58476d1ce4e5b9
+			mixed = (mixed ^ (mixed >> 27)) * 0x94d049bb133111eb
+			mixed ^= mixed >> 31
+			uniform := (float64(mixed>>11) + 0.5) / (1 << 53)
+			hazard += -math.Log1p(-uniform)
+		default:
+			return nil, false, fmt.Errorf("unsupported arrival pattern %q", arrival)
+		}
+	}
+}
+
+func linearRampOffsetForHazard(
+	rate float64,
+	duration time.Duration,
+	steps uint64,
+	totalIntensity float64,
+	hazard float64,
+) (time.Duration, bool, error) {
+	if math.IsNaN(hazard) || math.IsInf(hazard, 0) || hazard < 0 {
+		return 0, false, errors.New("linear ramp hazard must be finite and non-negative")
+	}
+	if hazard >= totalIntensity {
+		return 0, false, nil
+	}
+	cumulative := 0.0
+	for step := uint64(0); step < steps; step++ {
+		start := linearRampBoundary(duration, steps, step)
+		end := linearRampBoundary(duration, steps, step+1)
+		stepRate := rate * float64(step+1) / float64(steps)
+		stepIntensity := stepRate * float64(end-start) / float64(time.Second)
+		nextCumulative := cumulative + stepIntensity
+		if hazard < nextCumulative {
+			offsetFloat := float64(start) + (hazard-cumulative)*float64(time.Second)/stepRate
+			if math.IsNaN(offsetFloat) || math.IsInf(offsetFloat, 0) || offsetFloat < 0 || offsetFloat > float64(math.MaxInt64) {
+				return 0, false, errors.New("linear ramp schedule exceeds time.Duration range")
+			}
+			offset := time.Duration(math.Round(offsetFloat))
+			return offset, offset < duration, nil
+		}
+		cumulative = nextCumulative
+	}
+	return 0, false, nil
+}
+
 // buildPoissonSchedule uses SplitMix64 and inverse-transform sampling rather
 // than math/rand, keeping the seed-to-schedule mapping stable across Go
 // releases. The first request starts at zero; each later gap is exponentially
 // distributed with the configured mean rate and rounded to at least 1ns.
-func buildPoissonSchedule(rate float64, seed uint32, requestCap uint64, sendWindow time.Duration, countLimited bool, maxScheduled uint64) ([]time.Duration, error) {
+func buildPoissonSchedule(rate float64, seed uint32, requestCap uint64, sendWindow time.Duration, countLimited bool, maxScheduled uint64) ([]time.Duration, bool, error) {
 	limit := requestCap
 	if !countLimited {
 		limit = maxScheduled
 	}
 	if limit == 0 {
-		return nil, errors.New("poisson schedule requires a positive request limit")
+		return nil, false, errors.New("poisson schedule requires a positive request limit")
 	}
 	schedule := make([]time.Duration, 1, min(limit, 1_024))
 	schedule[0] = 0
 	state := uint64(seed) ^ 0xa0761d6478bd642f
 	for uint64(len(schedule)) < limit {
-		state += 0x9e3779b97f4a7c15
-		mixed := state
-		mixed = (mixed ^ (mixed >> 30)) * 0xbf58476d1ce4e5b9
-		mixed = (mixed ^ (mixed >> 27)) * 0x94d049bb133111eb
-		mixed ^= mixed >> 31
-		uniform := (float64(mixed>>11) + 0.5) / (1 << 53)
-		gapFloat := -math.Log1p(-uniform) * float64(time.Second) / rate
-		if math.IsNaN(gapFloat) || math.IsInf(gapFloat, 0) || gapFloat > float64(math.MaxInt64) {
-			return nil, errors.New("poisson schedule exceeds time.Duration range")
-		}
-		gap := time.Duration(math.Round(gapFloat))
-		if gap < 1 {
-			gap = 1
-		}
 		previous := schedule[len(schedule)-1]
-		if gap > time.Duration(math.MaxInt64)-previous {
-			return nil, errors.New("poisson schedule exceeds time.Duration range")
+		next, err := nextPoissonOffset(previous, rate, &state)
+		if err != nil {
+			return nil, false, err
 		}
-		next := previous + gap
 		if sendWindow > 0 && next >= sendWindow {
 			if countLimited {
 				schedule = append(schedule, next)
@@ -317,7 +627,35 @@ func buildPoissonSchedule(rate float64, seed uint32, requestCap uint64, sendWind
 		}
 		schedule = append(schedule, next)
 	}
-	return schedule, nil
+	if !countLimited && uint64(len(schedule)) == limit {
+		next, err := nextPoissonOffset(schedule[len(schedule)-1], rate, &state)
+		if err != nil {
+			return nil, false, err
+		}
+		return schedule, sendWindow <= 0 || next < sendWindow, nil
+	}
+	return schedule, false, nil
+}
+
+func nextPoissonOffset(previous time.Duration, rate float64, state *uint64) (time.Duration, error) {
+	*state += 0x9e3779b97f4a7c15
+	mixed := *state
+	mixed = (mixed ^ (mixed >> 30)) * 0xbf58476d1ce4e5b9
+	mixed = (mixed ^ (mixed >> 27)) * 0x94d049bb133111eb
+	mixed ^= mixed >> 31
+	uniform := (float64(mixed>>11) + 0.5) / (1 << 53)
+	gapFloat := -math.Log1p(-uniform) * float64(time.Second) / rate
+	if math.IsNaN(gapFloat) || math.IsInf(gapFloat, 0) || gapFloat > float64(math.MaxInt64) {
+		return 0, errors.New("poisson schedule exceeds time.Duration range")
+	}
+	gap := time.Duration(math.Round(gapFloat))
+	if gap < 1 {
+		gap = 1
+	}
+	if gap > time.Duration(math.MaxInt64)-previous {
+		return 0, errors.New("poisson schedule exceeds time.Duration range")
+	}
+	return previous + gap, nil
 }
 
 func runBounded(
@@ -331,17 +669,26 @@ func runBounded(
 	stop *<-chan struct{},
 	callerDone *<-chan struct{},
 ) {
-	limit := uint64(profile.Concurrency)
 	for {
 		if !state.sendingDone && state.requestCap > 0 && state.lastIndex >= state.requestCap {
+			if (state.ramp || !state.countLimited) && state.sendWindow > 0 && time.Since(state.startedAt) < state.sendWindow {
+				state.progress.Capped = true
+			}
 			finishSending(false, false)
 		}
 		if !state.sendingDone && state.sendWindow > 0 && time.Since(state.startedAt) >= state.sendWindow {
 			finishSending(false, false)
 		}
 		checkSignals()
+		limit := uint64(profile.Concurrency)
+		if state.ramp {
+			limit, _ = fixedRampLimit(profile.Concurrency, state.rampSteps, state.sendWindow, time.Since(state.startedAt))
+		}
 		for !state.sendingDone && state.progress.InFlight < limit {
 			if state.requestCap > 0 && state.lastIndex >= state.requestCap {
+				if (state.ramp || !state.countLimited) && state.sendWindow > 0 && time.Since(state.startedAt) < state.sendWindow {
+					state.progress.Capped = true
+				}
 				finishSending(false, false)
 				break
 			}
@@ -363,6 +710,9 @@ func runBounded(
 			launch(index, 0)
 		}
 		if !state.sendingDone && state.requestCap > 0 && state.lastIndex >= state.requestCap {
+			if (state.ramp || !state.countLimited) && state.sendWindow > 0 && time.Since(state.startedAt) < state.sendWindow {
+				state.progress.Capped = true
+			}
 			finishSending(false, false)
 		}
 		if state.sendingDone && state.progress.InFlight == 0 {
@@ -372,9 +722,12 @@ func runBounded(
 		var deadline <-chan time.Time
 		var timer *time.Timer
 		if !state.sendingDone && state.sendWindow > 0 {
-			remaining := time.Until(state.startedAt.Add(state.sendWindow))
+			wakeOffset := state.sendWindow
+			if state.ramp {
+				_, wakeOffset = fixedRampLimit(profile.Concurrency, state.rampSteps, state.sendWindow, time.Since(state.startedAt))
+			}
+			remaining := time.Until(state.startedAt.Add(wakeOffset))
 			if remaining <= 0 {
-				finishSending(false, false)
 				continue
 			}
 			timer = time.NewTimer(remaining)
@@ -393,9 +746,39 @@ func runBounded(
 			finishSending(true, true)
 			*callerDone = nil
 		case <-deadline:
-			finishSending(false, false)
+			// A ramp boundary is a scheduler wake-up, not a drain boundary. The
+			// next loop recomputes the active concurrency level.
 		}
 	}
+}
+
+func fixedRampLimit(target uint32, steps uint64, duration time.Duration, elapsed time.Duration) (uint64, time.Duration) {
+	if target <= 1 || steps <= 1 {
+		return uint64(target), duration
+	}
+	step := uint64(0)
+	for step+1 < steps && elapsed >= linearRampBoundary(duration, steps, step+1) {
+		step++
+	}
+	level := uint64(1) + (uint64(target)-1)*step/(steps-1)
+	nextBoundary := duration
+	if step+1 < steps {
+		nextBoundary = linearRampBoundary(duration, steps, step+1)
+	}
+	return level, nextBoundary
+}
+
+func linearRampBoundary(duration time.Duration, steps uint64, index uint64) time.Duration {
+	if steps == 0 || index >= steps {
+		return duration
+	}
+	quotient := duration / time.Duration(steps)
+	remainder := duration % time.Duration(steps)
+	extra := time.Duration(index)
+	if extra > remainder {
+		extra = remainder
+	}
+	return quotient*time.Duration(index) + extra
 }
 
 func runOpenLoop(
@@ -414,7 +797,12 @@ func runOpenLoop(
 			if state.countLimited && state.lastIndex >= state.requestCap {
 				finishSending(false, false)
 			} else if state.sendWindow > 0 && time.Since(state.startedAt) >= state.sendWindow {
-				finishSending(false, false)
+				// A ramp schedule is materialized for the whole window. If the timer
+				// wakes late, offer every already-due offset before draining so the
+				// same seed always produces the same schedule.
+				if !state.ramp || state.lastIndex >= state.requestCap {
+					finishSending(false, false)
+				}
 			}
 		}
 		checkSignals()

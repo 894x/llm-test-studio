@@ -615,6 +615,10 @@ interface PerformanceForm {
   outputTokensStdDev: number
   sharedPrefixTokens: number
   randomSeed: number
+  warmupRequests: number
+  rampDurationSeconds: number
+  rampRequestCap: number
+  sliceDurationSeconds: number
 }
 
 type PerformanceNumberFieldName = Exclude<keyof PerformanceForm, "loadMode" | "arrivalPattern" | "workloadMode">
@@ -641,6 +645,10 @@ const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
   outputTokensStdDev: 10,
   sharedPrefixTokens: 0,
   randomSeed: 1,
+  warmupRequests: 0,
+  rampDurationSeconds: 0,
+  rampRequestCap: 1_000,
+  sliceDurationSeconds: 0,
 }
 
 function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchived, onOpenReport }: {
@@ -657,6 +665,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
   const [fieldErrors, setFieldErrors] = useState<PerformanceFieldErrors>({})
   const [operationError, setOperationError] = useState("")
+  const budgetPreview = performanceRequestBudget(form)
 
   const resetOutput = () => {
     setReport(null)
@@ -668,12 +677,10 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
     setForm((current) => ({ ...current, [key]: value }))
     setFieldErrors((current) => {
       let next = omitFieldError(current, key)
-      if (key === "requestCount" || key === "durationSeconds" || key === "ratePerSecond") {
-        next = omitFieldError(next, "ratePerSecond")
-      }
-      if ((key === "requestCount" || key === "durationSeconds") &&
-        (current.requestCount === PERFORMANCE_TARGET_ERRORS.requestCount || current.durationSeconds === PERFORMANCE_TARGET_ERRORS.durationSeconds)) {
-        next = omitFieldError(omitFieldError(next, "requestCount"), "durationSeconds")
+      if (["requestCount", "durationSeconds", "ratePerSecond", "warmupRequests", "rampDurationSeconds", "rampRequestCap"].includes(key)) {
+        for (const field of ["requestCount", "durationSeconds", "ratePerSecond", "warmupRequests", "rampDurationSeconds", "rampRequestCap"] as const) {
+          next = omitFieldError(next, field)
+        }
       }
       return next
     })
@@ -685,10 +692,11 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
     setFieldErrors((current) => {
       const next = loadMode === "fixed_concurrency"
         ? omitFieldError(omitFieldError(current, "ratePerSecond"), "maxInFlight")
-        : omitFieldError(current, "concurrency")
+        : omitFieldError(omitFieldError(current, "concurrency"), "rampRequestCap")
+      const withoutBudgetErrors = omitFieldError(omitFieldError(next, "requestCount"), "warmupRequests")
       return loadMode === "fixed_concurrency" && form.workloadMode === "fixed"
-        ? omitFieldError(next, "randomSeed")
-        : next
+        ? omitFieldError(withoutBudgetErrors, "randomSeed")
+        : withoutBudgetErrors
     })
     resetOutput()
   }
@@ -749,6 +757,10 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       input_tokens_stddev: form.workloadMode === "normal" ? form.inputTokensStdDev : 0,
       output_tokens_stddev: form.workloadMode === "normal" ? form.outputTokensStdDev : 0,
       shared_prefix_tokens: form.workloadMode === "normal" ? form.sharedPrefixTokens : 0,
+      warmup_requests: form.warmupRequests,
+      ramp_duration_ms: form.rampDurationSeconds * 1_000,
+      ramp_request_cap: form.loadMode === "fixed_concurrency" && form.rampDurationSeconds > 0 ? form.rampRequestCap : 0,
+      slice_duration_ms: form.sliceDurationSeconds * 1_000,
       timeout_ms: form.timeoutSeconds * 1_000,
       input_tokens: form.inputTokens,
       output_tokens: form.outputTokens,
@@ -850,6 +862,23 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
                   <PerformanceNumberField field="randomSeed" label="随机种子" value={form.randomSeed} min={1} max={4_294_967_295} disabled={pending} error={fieldErrors.randomSeed} onChange={(value) => update("randomSeed", value)} />
                 ) : null}
               </div>
+              <div className="rounded-lg border bg-surface-subtle p-3">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h3 className="text-xs font-semibold">阶段与采样</h3>
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    预算：热身 {formatNumber(budgetPreview.warmupCap)} · 爬坡 {formatNumber(budgetPreview.rampCap)} · 稳态 {formatNumber(budgetPreview.measuredCap)} · 合计 {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <PerformanceNumberField field="warmupRequests" label="热身请求数" value={form.warmupRequests} min={0} max={10_000} disabled={pending} error={fieldErrors.warmupRequests} onChange={(value) => update("warmupRequests", value)} />
+                  <PerformanceNumberField field="rampDurationSeconds" label="爬坡时间（秒）" value={form.rampDurationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.rampDurationSeconds} onChange={(value) => update("rampDurationSeconds", value)} />
+                  {form.loadMode === "fixed_concurrency" && form.rampDurationSeconds > 0 ? (
+                    <PerformanceNumberField field="rampRequestCap" label="爬坡请求上限" value={form.rampRequestCap} min={1} max={10_000} disabled={pending} error={fieldErrors.rampRequestCap} onChange={(value) => update("rampRequestCap", value)} />
+                  ) : null}
+                  <PerformanceNumberField field="sliceDurationSeconds" label="时间切片（秒）" value={form.sliceDurationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.sliceDurationSeconds} onChange={(value) => update("sliceDurationSeconds", value)} />
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">0 表示跳过对应阶段或不生成时间切片；爬坡使用 10 阶线性阶梯，稳态指标不包含热身与爬坡。</p>
+              </div>
               <FieldDescription>
                 {form.loadMode === "open_loop"
                   ? form.arrivalPattern === "poisson"
@@ -921,6 +950,7 @@ function PerformanceNumberField({ field, label, value, min, max, step = 1, disab
 
 function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPerformanceReport; onOpenReport?: (reportID: string) => void | Promise<void> }) {
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
+  const hasPreparationData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined
   const completedWithFailures = !report.success && !report.error_code && report.metrics.completed > 0
   const title = report.success
     ? "性能测试完成"
@@ -938,13 +968,26 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{title}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            {report.success ? "全部请求完成且通过协议与语义校验。" : "可按失败原因筛选请求，并查看经过脱敏和限长处理的响应详情。"}
+            {report.success ? "稳态请求全部完成且通过协议与语义校验。" : "可按失败原因筛选稳态请求，并查看经过脱敏和限长处理的响应详情。"}
           </p>
         </div>
       </div>
       <Separator />
       <div className="space-y-4 p-4">
-        <MetricSection title="执行摘要">
+        <p className="rounded-md border bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">主指标仅统计稳态阶段；热身与爬坡流量单独汇总。</p>
+        {hasPreparationData ? (
+          <div>
+            <h4 className="mb-2 text-xs font-semibold">准备阶段</h4>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              {report.request_budget ? <ResultValue label="请求预算" value={formatPerformanceBudget(report.request_budget)} numeric wide /> : null}
+              {report.warmup ? <ResultValue label="热身" value={formatTrafficCompletion(report.warmup)} numeric /> : null}
+              {report.ramp ? <ResultValue label="爬坡" value={formatTrafficCompletion(report.ramp.traffic)} numeric /> : null}
+              {report.time_slices ? <ResultValue label="时间切片" value={`${formatNumber(report.time_slices.length)} 段 · ${formatDuration(report.profile.slice_duration_ms ?? 0)} 粒度`} numeric wide /> : null}
+            </dl>
+            {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">爬坡窗口未完整执行；请结合请求上限或提前停止状态解读准备阶段。</p> : null}
+          </div>
+        ) : null}
+        <MetricSection title="稳态执行摘要">
           <ResultValue label={completion.label} value={completion.value} numeric />
           <ResultValue label="成功" value={String(report.metrics.succeeded)} numeric />
           <ResultValue label="失败" value={String(report.metrics.failed)} numeric />
@@ -959,7 +1002,7 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <ResultValue label="共享前缀" value={performanceSharedPrefix(report)} numeric />
           {performanceTargetRanges(report) ? <ResultValue label="采样目标范围（输入 / 输出）" value={performanceTargetRanges(report)!} numeric wide /> : null}
         </MetricSection>
-        <MetricSection title="吞吐">
+        <MetricSection title="稳态吞吐">
           <ResultValue label="目标发送" value={performanceTargetRate(report)} numeric />
           <ResultValue label="调度需求" value={formatOptionalRate(report.metrics.offered_qps)} numeric />
           <ResultValue label="实际发送" value={formatOptionalRate(report.metrics.launched_qps)} numeric />
@@ -1007,11 +1050,16 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
 }
 
 function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: QuickPerformanceProgress; requestCount: number }) {
-  const percentage = requestCount > 0 && progress.planned > 0
+  const isPreparation = progress.phase === "warming_up" || progress.phase === "ramping"
+  const percentage = (requestCount > 0 || isPreparation) && progress.planned > 0
     ? Math.min(100, progress.completed / progress.planned * 100)
     : undefined
   const phaseLabel = performanceProgressPhaseLabel(progress.phase)
-  const completion = performanceCompletion(requestCount, progress.completed, progress.planned)
+  const completion = progress.phase === "warming_up"
+    ? { label: "热身完成 / 计划", value: `${progress.completed} / ${progress.planned}` }
+    : progress.phase === "ramping"
+      ? { label: "爬坡完成 / 计划", value: `${progress.completed} / ${progress.planned}` }
+      : performanceCompletion(requestCount, progress.completed, progress.planned)
   return (
     <section role="status" aria-label="性能测试进度" className="rounded-lg border bg-surface-subtle p-4">
       <div className="flex items-center justify-between gap-3">
@@ -1038,6 +1086,7 @@ function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: Q
         <ResultValue label="失败" value={String(progress.failed)} numeric />
         <ResultValue label="在途" value={String(progress.in_flight)} numeric />
       </dl>
+      {progress.capped ? <p className="mt-3 border-t pt-2 text-[11px] text-warning">当前阶段已达到请求上限。</p> : null}
     </section>
   )
 }
@@ -1055,27 +1104,19 @@ function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors 
   const errors: PerformanceFieldErrors = {}
   if (!integerInRange(form.requestCount, 0, 10_000)) errors.requestCount = "请求数需为 0–10,000 的整数。"
   if (!integerInRange(form.durationSeconds, 0, 3_600)) errors.durationSeconds = "持续时间需为 0–3,600 秒的整数。"
+  if (!integerInRange(form.warmupRequests, 0, 10_000)) errors.warmupRequests = "热身请求数需为 0–10,000 的整数。"
+  if (!integerInRange(form.rampDurationSeconds, 0, 3_600)) errors.rampDurationSeconds = "爬坡时间需为 0–3,600 秒的整数。"
+  if (!integerInRange(form.sliceDurationSeconds, 0, 3_600)) errors.sliceDurationSeconds = "时间切片需为 0–3,600 秒的整数。"
   if (!errors.requestCount && !errors.durationSeconds && form.requestCount === 0 && form.durationSeconds === 0) {
     errors.requestCount = PERFORMANCE_TARGET_ERRORS.requestCount
     errors.durationSeconds = PERFORMANCE_TARGET_ERRORS.durationSeconds
   }
   if (form.loadMode === "fixed_concurrency") {
     if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
+    if (form.rampDurationSeconds > 0 && !integerInRange(form.rampRequestCap, 1, 10_000)) errors.rampRequestCap = "爬坡请求上限需为 1–10,000 的整数。"
   } else {
     if (!finiteInRange(form.ratePerSecond, 0.01, 100_000)) errors.ratePerSecond = "目标发送 RPS 需为 0.01–100,000。"
     if (!integerInRange(form.maxInFlight, 1, 2_000)) errors.maxInFlight = "最大在途需为 1–2,000 的整数。"
-    if (!errors.requestCount && !errors.durationSeconds && !errors.ratePerSecond &&
-      form.requestCount === 0 && form.durationSeconds > 0) {
-      const expectedRequests = form.durationSeconds * form.ratePerSecond
-      const scheduledRequests = form.arrivalPattern === "poisson"
-        ? Math.ceil(2 * expectedRequests) + 1
-        : Math.ceil(expectedRequests)
-      if (scheduledRequests > MAX_PERFORMANCE_REQUESTS) {
-        errors.ratePerSecond = form.arrivalPattern === "poisson"
-          ? `Poisson 到达需预留两倍调度余量；当前预计上限 ${formatNumber(scheduledRequests)} 个请求，超过 10,000 个上限。`
-          : `当前持续时间与 RPS 预计调度 ${formatNumber(scheduledRequests)} 个请求，超过 10,000 个上限。`
-      }
-    }
   }
   if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = "单请求超时需为 1–600 秒的整数。"
   if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = "近似输入 Token 需为 1–1,000,000 的整数。"
@@ -1091,7 +1132,63 @@ function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors 
   if (performanceNeedsSeed(form) && !integerInRange(form.randomSeed, 1, 4_294_967_295)) {
     errors.randomSeed = "随机种子需为 1–4,294,967,295 的整数。"
   }
+  const canCalculateBudget = !errors.requestCount && !errors.durationSeconds && !errors.warmupRequests &&
+    !errors.rampDurationSeconds && !errors.rampRequestCap &&
+    (form.loadMode === "fixed_concurrency" || !errors.ratePerSecond) &&
+    (form.requestCount > 0 || form.durationSeconds > 0)
+  if (canCalculateBudget) {
+    const budget = performanceRequestBudget(form)
+    if (form.loadMode === "fixed_concurrency" && form.requestCount === 0 && budget.measuredCap < 1) {
+      const field = form.rampDurationSeconds > 0 ? "rampRequestCap" : "warmupRequests"
+      errors[field] = "热身与爬坡已用完 10,000 请求预算；持续时间稳态至少需要保留 1 个请求。"
+    } else if (budget.totalCap > MAX_PERFORMANCE_REQUESTS) {
+      if (form.loadMode === "open_loop" && form.requestCount === 0 && budget.warmupCap === 0 && budget.rampCap === 0) {
+        errors.ratePerSecond = form.arrivalPattern === "poisson"
+          ? `Poisson 到达需预留两倍调度余量；当前预计上限 ${formatNumber(budget.measuredCap)} 个请求，超过 10,000 个上限。`
+          : `当前持续时间与 RPS 预计调度 ${formatNumber(budget.measuredCap)} 个请求，超过 10,000 个上限。`
+      } else {
+        const message = `热身 ${formatNumber(budget.warmupCap)} + 爬坡 ${formatNumber(budget.rampCap)} + 稳态 ${formatNumber(budget.measuredCap)} = ${formatNumber(budget.totalCap)}，超过总请求预算 10,000。`
+        if (form.requestCount > 0) errors.requestCount = message
+        else if (form.loadMode === "open_loop") errors.ratePerSecond = message
+        else if (form.rampDurationSeconds > 0) errors.rampRequestCap = message
+        else errors.warmupRequests = message
+      }
+    }
+  }
   return errors
+}
+
+interface PerformanceRequestBudgetPreview {
+  warmupCap: number
+  rampCap: number
+  measuredCap: number
+  totalCap: number
+}
+
+function performanceRequestBudget(form: PerformanceForm): PerformanceRequestBudgetPreview {
+  const warmupCap = nonNegativeFiniteOrZero(form.warmupRequests)
+  const rampDurationSeconds = nonNegativeFiniteOrZero(form.rampDurationSeconds)
+  const rampCap = rampDurationSeconds === 0
+    ? 0
+    : form.loadMode === "fixed_concurrency"
+      ? nonNegativeFiniteOrZero(form.rampRequestCap)
+      : performanceOpenLoopRequestCap(rampDurationSeconds * nonNegativeFiniteOrZero(form.ratePerSecond) * 0.55, form.arrivalPattern)
+  const measuredCap = form.requestCount > 0
+    ? nonNegativeFiniteOrZero(form.requestCount)
+    : form.durationSeconds <= 0
+      ? 0
+      : form.loadMode === "fixed_concurrency"
+        ? Math.max(0, MAX_PERFORMANCE_REQUESTS - warmupCap - rampCap)
+        : performanceOpenLoopRequestCap(nonNegativeFiniteOrZero(form.durationSeconds) * nonNegativeFiniteOrZero(form.ratePerSecond), form.arrivalPattern)
+  return { warmupCap, rampCap, measuredCap, totalCap: warmupCap + rampCap + measuredCap }
+}
+
+function performanceOpenLoopRequestCap(intensity: number, arrivalPattern: QuickPerformanceArrivalPattern): number {
+  return arrivalPattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
+}
+
+function nonNegativeFiniteOrZero(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 0
 }
 
 function ResultValue({ label, value, numeric = false, wide = false, mono = false }: {
@@ -1242,6 +1339,18 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value)
 }
 
+function formatDuration(valueMS: number): string {
+  return valueMS >= 1_000 ? `${formatNumber(valueMS / 1_000)} s` : `${formatNumber(valueMS)} ms`
+}
+
+function formatPerformanceBudget(budget: NonNullable<QuickPerformanceReport["request_budget"]>): string {
+  return `${formatNumber(budget.total_cap)} / ${formatNumber(budget.limit)}（热身 ${formatNumber(budget.warmup_cap)} · 爬坡 ${formatNumber(budget.ramp_cap)} · 稳态 ${formatNumber(budget.measured_cap)}）`
+}
+
+function formatTrafficCompletion(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
+  return `${formatNumber(traffic.completed)} / ${formatNumber(traffic.request_cap)} · 成功 ${formatNumber(traffic.succeeded)} · 失败 ${formatNumber(traffic.failed)} · 拒绝 ${formatNumber(traffic.rejected)}`
+}
+
 function formatOptionalRate(value: number | undefined): string {
   return value === undefined ? "—" : `${formatNumber(value)} req/s`
 }
@@ -1359,7 +1468,8 @@ function firstConnectionErrorField(errors: ConnectionFieldErrors): ConnectionFie
 
 function firstPerformanceErrorField(errors: PerformanceFieldErrors): PerformanceNumberFieldName | undefined {
   return ([
-    "requestCount", "durationSeconds", "concurrency", "ratePerSecond", "maxInFlight", "timeoutSeconds",
+    "requestCount", "durationSeconds", "warmupRequests", "rampDurationSeconds", "rampRequestCap",
+    "concurrency", "ratePerSecond", "maxInFlight", "sliceDurationSeconds", "timeoutSeconds",
     "inputTokens", "outputTokens", "inputTokensStdDev", "outputTokensStdDev", "sharedPrefixTokens", "randomSeed",
   ] as const)
     .find((field) => errors[field])

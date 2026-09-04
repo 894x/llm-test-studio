@@ -15,6 +15,10 @@ export function performanceProgressPhaseLabel(phase: QuickPerformancePhase): str
   switch (phase) {
     case "not_started":
       return "准备中"
+    case "warming_up":
+      return "正在热身"
+    case "ramping":
+      return "正在爬坡"
     case "sending":
       return "发送中"
     case "draining":

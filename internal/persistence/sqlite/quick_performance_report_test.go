@@ -114,6 +114,33 @@ func TestRepositoryQuickPerformanceSinglePoissonRequestUsesNominalWindow(t *test
 	}
 }
 
+func TestRepositoryQuickPerformancePhaseThreeRoundTrip(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777769", "2026-08-31T15:38:00Z")
+	addPhaseThreeFixture(&report)
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, report) {
+		t.Fatalf("loaded report = %#v, want %#v", loaded, report)
+	}
+}
+
+func TestRepositoryQuickPerformanceOpenDurationPhaseThreeRoundTrip(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777761", "2026-08-31T15:39:00Z")
+	addOpenDurationPhaseThreeFixture(&report)
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+}
+
 func TestRepositoryOnlyWritesCurrentQuickPerformanceSchema(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
@@ -141,6 +168,7 @@ func TestRepositoryRejectsNonCanonicalOrUnsupportedQuickPerformanceDocuments(t *
 		{name: "v2 field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"input_tokens":10,`, `"input_tokens":10,"load_mode":"fixed_concurrency",`, 1)},
 		{name: "phase two profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"profile":{"concurrency":`, `"profile":{"arrival_pattern":"poisson","concurrency":`, 1)},
 		{name: "phase two sample field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timed_out":false,`, `"target_input_tokens":10,"timed_out":false,`, 1)},
+		{name: "phase three profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timeout_ms":2000}`, `"timeout_ms":2000,"warmup_requests":1}`, 1)},
 		{name: "noncanonical whitespace", document: " " + frozenSchemaV1QuickPerformanceReport},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -246,8 +274,6 @@ func TestRepositoryQuickPerformanceReportRoundTripPreservesFailureResponseEviden
 }
 
 func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) {
-	repository := openRepository(t)
-	defer repository.Close()
 	for _, test := range []struct {
 		name   string
 		mutate func(*quicktest.PerformanceReport)
@@ -274,6 +300,139 @@ func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) 
 			report.Profile.SharedPrefixTokens = 2
 			report.Samples[0].TargetInputTokens = 3
 			report.Samples[0].TargetOutputTokens = 3
+		}},
+		{name: "phase three budget mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.RequestBudget.TotalCap++
+		}},
+		{name: "phase three measured count incomplete", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Profile.RequestCount = 2
+			report.RequestBudget.MeasuredCap = 2
+			report.RequestBudget.TotalCap = 4
+			report.Progress.Planned = 2
+		}},
+		{name: "phase three fixed duration cap hidden", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Profile.RequestCount = 0
+			report.Profile.DurationMS = 60_000
+			report.Profile.WarmupRequests = quicktest.MaxPerformanceRequests - 2
+			report.RequestBudget.WarmupCap = quicktest.MaxPerformanceRequests - 2
+			report.RequestBudget.MeasuredCap = 1
+			report.RequestBudget.TotalCap = quicktest.MaxPerformanceRequests
+			report.Warmup.RequestCap = quicktest.MaxPerformanceRequests - 2
+			report.Warmup.Offered = quicktest.MaxPerformanceRequests - 2
+			report.Warmup.Launched = quicktest.MaxPerformanceRequests - 2
+			report.Warmup.Completed = quicktest.MaxPerformanceRequests - 2
+			report.Warmup.Succeeded = quicktest.MaxPerformanceRequests - 2
+			report.Progress.Capped = false
+		}},
+		{name: "phase three explicit count marked capped", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Progress.Capped = true
+		}},
+		{name: "phase three open duration marked capped", mutate: func(report *quicktest.PerformanceReport) {
+			addOpenDurationPhaseThreeFixture(report)
+			report.Progress.Capped = true
+		}},
+		{name: "phase three sample TPOT and slice coordinated tamper", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Samples[0].TPOTMS = 99
+			report.TimeSlices[0].TPOT = quicktest.PerformanceLatencySlice{Count: 1, P50MS: 99, P95MS: 99, P99MS: 99}
+		}},
+		{name: "phase three sample TTFT exceeds E2E", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Samples[0].TTFTMS = 12
+		}},
+		{name: "phase three sample schedule lag tamper", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Samples[0].ScheduleLagMS = 2
+		}},
+		{name: "phase three sample E2E exceeds observed wall time", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Samples[0].E2EMS = 12
+			report.Samples[0].TPOTMS = 5
+			report.TimeSlices[0].E2E = quicktest.PerformanceLatencySlice{Count: 1, P50MS: 12, P95MS: 12, P99MS: 12}
+			report.TimeSlices[0].TPOT = quicktest.PerformanceLatencySlice{Count: 1, P50MS: 5, P95MS: 5, P99MS: 5}
+		}},
+		{name: "phase three warmup zero observed duration", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Warmup.SendDurationMS = 0
+			report.Warmup.TotalDurationMS = 0
+		}},
+		{name: "phase three fixed ramp cap hidden", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Ramp.Traffic.Capped = false
+			report.Ramp.CompletedWindow = true
+			report.Ramp.Traffic.SendDurationMS = 1_000
+			report.Ramp.Traffic.TotalDurationMS = 1_000
+		}},
+		{name: "phase three warmup count mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Warmup.Completed++
+		}},
+		{name: "phase three slice sum mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.TimeSlices[0].Completed++
+		}},
+		{name: "phase three summary without configuration", mutate: func(report *quicktest.PerformanceReport) {
+			report.Warmup = &quicktest.PerformanceTrafficSummary{RequestCap: 1}
+		}},
+		{name: "phase three missing warmup summary", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Warmup = nil
+		}},
+		{name: "phase three slice boundary mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.TimeSlices[0].StartMS = 1
+		}},
+		{name: "phase three slice latency mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.TimeSlices[0].TTFT.P95MS = 3
+		}},
+		{name: "phase three slice totals disagree with headline", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			makeQuickPerformanceReportFailed(report, load.ErrorSchedulerOverload)
+			report.TimeSlices[0].Launched = 0
+			report.TimeSlices[0].Succeeded = 0
+			report.TimeSlices[0].Failed = 1
+			report.TimeSlices[0].Rejected = 1
+			report.TimeSlices[0].PromptTokens = 0
+			report.TimeSlices[0].CompletionTokens = 0
+			report.TimeSlices[0].CachedTokens = 0
+			report.TimeSlices[0].TTFT = quicktest.PerformanceLatencySlice{}
+			report.TimeSlices[0].TPOT = quicktest.PerformanceLatencySlice{}
+			report.TimeSlices[0].E2E = quicktest.PerformanceLatencySlice{}
+		}},
+		{name: "phase three ramp shape mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Ramp.Shape = "linear"
+		}},
+		{name: "phase three ramp completion mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Ramp.CompletedWindow = true
+		}},
+		{name: "phase three ramp rejection failure mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Ramp.Traffic.Launched = 0
+			report.Ramp.Traffic.Succeeded = 0
+			report.Ramp.Traffic.Failed = 1
+			report.Ramp.Traffic.Rejected = 1
+			report.Ramp.Traffic.PeakInFlight = 0
+			report.Ramp.Traffic.PromptTokens = 0
+			report.Ramp.Traffic.CompletionTokens = 0
+			report.Ramp.Traffic.CachedTokens = 0
+			report.Ramp.Traffic.Failures = []quicktest.PerformanceFailure{{ErrorCode: load.ErrorHTTP, Count: 1}}
+		}},
+		{name: "phase three ramp timeout failure mismatch", mutate: func(report *quicktest.PerformanceReport) {
+			addPhaseThreeFixture(report)
+			report.Ramp.Traffic.Succeeded = 0
+			report.Ramp.Traffic.Failed = 1
+			report.Ramp.Traffic.TimedOut = 1
+			report.Ramp.Traffic.PromptTokens = 0
+			report.Ramp.Traffic.CompletionTokens = 0
+			report.Ramp.Traffic.CachedTokens = 0
+			report.Ramp.Traffic.Failures = []quicktest.PerformanceFailure{{ErrorCode: load.ErrorHTTP, Count: 1}}
 		}},
 		{name: "unsafe url", mutate: func(report *quicktest.PerformanceReport) { report.BaseURL = "http://example.com/v1" }},
 		{name: "unsafe top level error code", mutate: func(report *quicktest.PerformanceReport) {
@@ -305,6 +464,8 @@ func TestRepositoryRejectsInvalidQuickPerformanceArchiveDocuments(t *testing.T) 
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			repository := openRepository(t)
+			defer repository.Close()
 			report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777779", "2026-08-31T15:30:00Z")
 			test.mutate(&report)
 			err := repository.SaveQuickPerformanceReport(context.Background(), report)
@@ -359,7 +520,71 @@ func validQuickPerformanceReport(id, generatedAt string) quicktest.PerformanceRe
 			TTFTP50: 2, TPOTP50: 4.5, E2EP50: 11,
 		},
 		Failures:  []quicktest.PerformanceFailure{},
-		Samples:   []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
+		Samples:   []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, ScheduleLagMS: 1, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
 		ErrorCode: domain.ErrorCode(""),
 	}
+}
+
+func addPhaseThreeFixture(report *quicktest.PerformanceReport) {
+	report.Profile.WarmupRequests = 1
+	report.Profile.RampDurationMS = 1_000
+	report.Profile.RampRequestCap = 1
+	report.Profile.SliceDurationMS = 100
+	report.RequestBudget = &quicktest.PerformanceRequestBudget{
+		Limit: 10_000, WarmupCap: 1, RampCap: 1, MeasuredCap: 1, TotalCap: 3,
+	}
+	report.Warmup = &quicktest.PerformanceTrafficSummary{
+		RequestCap: 1, Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
+		PeakInFlight: 1, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+		SendDurationMS: 5, TotalDurationMS: 5, Failures: []quicktest.PerformanceFailure{},
+	}
+	report.Ramp = &quicktest.PerformanceRampSummary{
+		Shape: "linear_staircase", DurationMS: 1_000, Steps: 1, TargetConcurrency: 1, CompletedWindow: false,
+		Traffic: quicktest.PerformanceTrafficSummary{
+			RequestCap: 1, Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
+			PeakInFlight: 1, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+			SendDurationMS: 5, TotalDurationMS: 5, Failures: []quicktest.PerformanceFailure{}, Capped: true,
+		},
+	}
+	report.TimeSlices = []quicktest.PerformanceTimeSlice{{
+		SliceIndex: 0, StartMS: 0, EndMS: 12.5, Partial: true,
+		Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
+		PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+		TTFT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2},
+		TPOT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5},
+		E2E:  quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11},
+	}}
+}
+
+func addOpenDurationPhaseThreeFixture(report *quicktest.PerformanceReport) {
+	report.Profile.LoadMode = domain.LoadOpenLoop
+	report.Profile.RequestCount = 0
+	report.Profile.DurationMS = 1_000
+	report.Profile.Concurrency = 0
+	report.Profile.RatePerSecond = 1
+	report.Profile.MaxInFlight = 1
+	report.Profile.SliceDurationMS = 1_000
+	report.RequestBudget = &quicktest.PerformanceRequestBudget{Limit: 10_000, MeasuredCap: 1, TotalCap: 1}
+	report.Progress.Planned = 1
+	report.Progress.SendDurationMS = 1_000
+	report.Progress.DrainDurationMS = 0
+	report.Progress.TotalDurationMS = 1_000
+	report.Metrics.OfferedQPS = 1
+	report.Metrics.LaunchedQPS = 1
+	report.Metrics.CompletedQPS = 1
+	report.Metrics.SuccessfulRequestQPS = 1
+	report.Metrics.RequestQPS = 1
+	report.Metrics.RPM = 60
+	report.Metrics.InputTPM = 600
+	report.Metrics.OutputTPM = 180
+	report.Metrics.TotalTPM = 780
+	report.Metrics.GenerationTPS = 3
+	report.TimeSlices = []quicktest.PerformanceTimeSlice{{
+		SliceIndex: 0, StartMS: 0, EndMS: 1_000,
+		Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
+		PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
+		TTFT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2},
+		TPOT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5},
+		E2E:  quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11},
+	}}
 }

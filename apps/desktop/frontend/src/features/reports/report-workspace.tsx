@@ -197,6 +197,8 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   const targetRanges = performanceTargetRanges(report)
+  const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
+    report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
   return <section aria-label="归档性能报告" className="space-y-4 p-4">
     <div>
       <h4 className="mb-2 text-xs font-semibold">测试配置</h4>
@@ -214,11 +216,34 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <ContextValue label="随机种子" value={performanceSeed(report)} />
         <ContextValue label="共享前缀" value={performanceSharedPrefix(report)} />
         {targetRanges ? <ContextValue label="采样目标范围（输入 / 输出）" value={targetRanges} /> : null}
+        {hasPhaseThreeData ? <ContextValue label="热身请求" value={performanceWarmupConfiguration(report)} /> : null}
+        {hasPhaseThreeData ? <ContextValue label="爬坡配置" value={performanceRampConfiguration(report)} /> : null}
+        {hasPhaseThreeData ? <ContextValue label="切片粒度" value={performanceSliceConfiguration(report)} /> : null}
       </dl>
     </div>
+    {hasPhaseThreeData ? (
+      <>
+        <Separator />
+        <div>
+          <h4 className="mb-2 text-xs font-semibold">准备阶段与预算</h4>
+          <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
+            {report.request_budget ? <SummaryValue label="请求预算" value={formatRequestBudget(report)} /> : null}
+            {report.warmup ? <SummaryValue label="热身流量" value={formatTrafficSummary(report.warmup)} /> : null}
+            {report.warmup ? <SummaryValue label="热身 Token（输入 / 输出 / 缓存）" value={formatTrafficTokens(report.warmup)} /> : null}
+            {report.ramp ? <SummaryValue label="爬坡流量" value={formatTrafficSummary(report.ramp.traffic)} /> : null}
+            {report.ramp ? <SummaryValue label="爬坡目标" value={formatRampTarget(report)} /> : null}
+            {report.ramp ? <SummaryValue label="爬坡耗时（发送 / 排空 / 总计）" value={formatTrafficDuration(report.ramp.traffic)} /> : null}
+          </div>
+          {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">爬坡窗口未完整执行；主指标仍只统计稳态阶段，请结合上限与停止状态解读爬坡数据。</p> : null}
+        </div>
+      </>
+    ) : null}
     <Separator />
     <div>
-      <h4 className="mb-2 text-xs font-semibold">运行结果</h4>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h4 className="text-xs font-semibold">稳态运行结果</h4>
+        <span className="text-[10px] text-muted-foreground">主指标仅统计稳态阶段</span>
+      </div>
       <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
         <SummaryValue label={completion.label} value={completion.value} />
         <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
@@ -240,6 +265,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
       </div>
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
+    {report.time_slices !== undefined ? <PerformanceTimeSliceTable slices={report.time_slices} /> : null}
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
     {includeRequestAnalysis ? (
       <>
@@ -353,6 +379,47 @@ function performanceArrivalPattern(report: QuickPerformanceReport): string {
   if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
   return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"
 }
+
+function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerformanceReport["time_slices"]> }) {
+  return <div>
+    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+      <h4 className="text-xs font-semibold">时间切片</h4>
+      <span className="text-[10px] text-muted-foreground">仅列出后端实际记录的稳态窗口</span>
+    </div>
+    <div className="overflow-x-auto rounded-lg border">
+      <Table aria-label="时间切片" className="min-w-[1040px]">
+        <TableHeader><TableRow className="hover:bg-transparent">
+          <TableHead className="h-8 pl-3 text-[11px]">段</TableHead>
+          <TableHead className="h-8 text-[11px]">窗口</TableHead>
+          <TableHead className="h-8 text-[11px]">调度</TableHead>
+          <TableHead className="h-8 text-[11px]">发送</TableHead>
+          <TableHead className="h-8 text-[11px]">成功</TableHead>
+          <TableHead className="h-8 text-[11px]">失败</TableHead>
+          <TableHead className="h-8 text-[11px]">拒绝</TableHead>
+          <TableHead className="h-8 text-[11px]">Token（输入 / 输出 / 缓存）</TableHead>
+          <TableHead className="h-8 text-[11px]">TTFT P95</TableHead>
+          <TableHead className="h-8 text-[11px]">TPOT P95</TableHead>
+          <TableHead className="h-8 pr-3 text-[11px]">E2E P95</TableHead>
+        </TableRow></TableHeader>
+        <TableBody>{slices.length ? slices.map((slice) => (
+          <TableRow key={slice.slice_index} className="h-9">
+            <TableCell className="py-1 pl-3 text-xs tabular-nums">#{slice.slice_index}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatSliceWindow(slice.start_ms, slice.end_ms, slice.partial)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatMetric(slice.offered)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatMetric(slice.launched)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatMetric(slice.succeeded)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatMetric(slice.failed)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatMetric(slice.rejected)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatMetric(slice.prompt_tokens)} / {formatMetric(slice.completion_tokens)} / {formatMetric(slice.cached_tokens)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatSliceP95(slice.ttft)}</TableCell>
+            <TableCell className="py-1 text-xs tabular-nums">{formatSliceP95(slice.tpot)}</TableCell>
+            <TableCell className="py-1 pr-3 text-xs tabular-nums">{formatSliceP95(slice.e2e)}</TableCell>
+          </TableRow>
+        )) : <TableRow><TableCell colSpan={11} className="h-20 text-center text-xs text-muted-foreground">未记录有效时间切片</TableCell></TableRow>}</TableBody>
+      </Table>
+    </div>
+  </div>
+}
 function performanceWorkloadMode(report: QuickPerformanceReport): string {
   if (report.profile.workload_mode === "normal") return "正态分布"
   return report.profile.workload_mode === "fixed" ? "固定 Token" : "固定 Token（旧报告）"
@@ -364,6 +431,51 @@ function performanceSeed(report: QuickPerformanceReport): string {
 function performanceSharedPrefix(report: QuickPerformanceReport): string {
   if (report.profile.shared_prefix_tokens === undefined) return "0 Token（旧报告）"
   return `${formatMetric(report.profile.shared_prefix_tokens)} Token`
+}
+function performanceWarmupConfiguration(report: QuickPerformanceReport): string {
+  const requests = report.profile.warmup_requests ?? 0
+  return requests > 0 ? `${formatMetric(requests)} 次` : "0（禁用）"
+}
+function performanceRampConfiguration(report: QuickPerformanceReport): string {
+  const durationMS = report.profile.ramp_duration_ms ?? 0
+  if (durationMS === 0) return "0（禁用）"
+  if (report.profile.load_mode === "fixed_concurrency") {
+    return `${formatDuration(durationMS)} · 上限 ${formatMetric(report.profile.ramp_request_cap ?? 0)}`
+  }
+  return `${formatDuration(durationMS)} · 10 阶线性阶梯`
+}
+function performanceSliceConfiguration(report: QuickPerformanceReport): string {
+  const durationMS = report.profile.slice_duration_ms ?? 0
+  return durationMS > 0 ? formatDuration(durationMS) : "0（禁用）"
+}
+function formatRequestBudget(report: QuickPerformanceReport): string {
+  const budget = report.request_budget
+  if (!budget) return "—"
+  return `${formatMetric(budget.total_cap)} / ${formatMetric(budget.limit)} · 热身 ${formatMetric(budget.warmup_cap)} · 爬坡 ${formatMetric(budget.ramp_cap)} · 稳态 ${formatMetric(budget.measured_cap)}`
+}
+function formatTrafficSummary(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
+  const flags = `${traffic.capped ? " · 已触及上限" : ""}${traffic.stopped ? " · 提前停止" : ""}`
+  return `${formatMetric(traffic.completed)} / ${formatMetric(traffic.request_cap)} 完成 · 调度 ${formatMetric(traffic.offered)} · 发送 ${formatMetric(traffic.launched)} · 成功 ${formatMetric(traffic.succeeded)} · 失败 ${formatMetric(traffic.failed)} · 拒绝 ${formatMetric(traffic.rejected)}${flags}`
+}
+function formatTrafficTokens(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
+  return `${formatMetric(traffic.prompt_tokens)} / ${formatMetric(traffic.completion_tokens)} / ${formatMetric(traffic.cached_tokens)}`
+}
+function formatTrafficDuration(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
+  return `${formatDuration(traffic.send_duration_ms)} / ${formatDuration(traffic.drain_duration_ms)} / ${formatDuration(traffic.total_duration_ms)}`
+}
+function formatRampTarget(report: QuickPerformanceReport): string {
+  const ramp = report.ramp
+  if (!ramp) return "—"
+  const target = ramp.target_concurrency !== undefined
+    ? `目标并发 ${formatMetric(ramp.target_concurrency)}`
+    : `目标 ${formatMetric(ramp.target_rate_per_second ?? 0)} req/s`
+  return `${formatMetric(ramp.steps)} 阶线性阶梯 · ${target} · ${ramp.completed_window ? "完整窗口" : "未完整窗口"}`
+}
+function formatSliceWindow(startMS: number, endMS: number, partial: boolean): string {
+  return `${formatMetric(startMS / 1_000)}–${formatMetric(endMS / 1_000)} s${partial ? " · 部分" : ""}`
+}
+function formatSliceP95(latency: NonNullable<QuickPerformanceReport["time_slices"]>[number]["ttft"]): string {
+  return latency.count === 0 ? "—" : `${formatMetric(latency.p95_ms)} ms`
 }
 function performanceTargetRanges(report: QuickPerformanceReport): string | undefined {
   const inputTargets = report.samples.flatMap((sample) => sample.target_input_tokens === undefined ? [] : [sample.target_input_tokens])

@@ -43,13 +43,12 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			return time.Time{}, errors.New("quick performance report load profile is invalid")
 		}
 		if !finiteNonNegative(report.Progress.SendDurationMS) || !finiteNonNegative(report.Progress.DrainDurationMS) ||
-			report.Progress.SendDurationMS <= 0 || !approximatelyEqual(report.Progress.TotalDurationMS, report.Progress.SendDurationMS+report.Progress.DrainDurationMS) {
+			!approximatelyEqual(report.Progress.TotalDurationMS, report.Progress.SendDurationMS+report.Progress.DrainDurationMS) {
 			return time.Time{}, errors.New("quick performance report timing windows are invalid")
 		}
 		if !finiteNonNegative(report.Metrics.OfferedQPS) || !finiteNonNegative(report.Metrics.LaunchedQPS) ||
 			!finiteNonNegative(report.Metrics.CompletedQPS) || !finiteNonNegative(report.Metrics.SuccessfulRequestQPS) ||
-			report.Progress.TotalDurationMS <= 0 || report.Metrics.OfferedQPS <= 0 || report.Metrics.LaunchedQPS <= 0 ||
-			report.Metrics.CompletedQPS <= 0 || report.Metrics.LaunchedQPS > report.Metrics.OfferedQPS ||
+			report.Progress.TotalDurationMS <= 0 || report.Metrics.CompletedQPS <= 0 || report.Metrics.LaunchedQPS > report.Metrics.OfferedQPS ||
 			report.Metrics.SuccessfulRequestQPS > report.Metrics.CompletedQPS {
 			return time.Time{}, errors.New("quick performance report throughput is invalid")
 		}
@@ -57,11 +56,14 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		if !approximatelyEqual(report.Metrics.CompletedQPS, float64(report.Progress.Launched)/seconds) ||
 			!approximatelyEqual(report.Metrics.SuccessfulRequestQPS, float64(report.Progress.Succeeded)/seconds) ||
 			!approximatelyEqual(report.Metrics.RequestQPS, float64(report.Progress.Completed)/seconds) ||
-			!approximatelyEqual(report.Metrics.RPM, report.Metrics.RequestQPS*60) ||
-			!approximatelyEqual(report.Metrics.LaunchedQPS/report.Metrics.OfferedQPS, float64(report.Progress.Launched)/float64(report.Progress.Offered)) {
+			!approximatelyEqual(report.Metrics.RPM, report.Metrics.RequestQPS*60) {
 			return time.Time{}, errors.New("quick performance report throughput is inconsistent")
 		}
-		if report.Profile.LoadMode == domain.LoadFixedConcurrency {
+		if report.Progress.SendDurationMS == 0 {
+			if report.Profile.LoadMode != domain.LoadFixedConcurrency || report.Metrics.OfferedQPS != 0 || report.Metrics.LaunchedQPS != 0 {
+				return time.Time{}, errors.New("quick performance report zero send window is inconsistent")
+			}
+		} else if report.Profile.LoadMode == domain.LoadFixedConcurrency {
 			sendSeconds := report.Progress.SendDurationMS / 1_000
 			if !approximatelyEqual(report.Metrics.OfferedQPS, float64(report.Progress.Offered)/sendSeconds) ||
 				!approximatelyEqual(report.Metrics.LaunchedQPS, report.Metrics.OfferedQPS) {
@@ -81,6 +83,10 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 				!approximatelyEqual(report.Metrics.LaunchedQPS, float64(report.Progress.Launched)/rateWindowSeconds) {
 				return time.Time{}, errors.New("quick performance report open-loop throughput is inconsistent")
 			}
+		}
+		if report.Progress.SendDurationMS > 0 &&
+			!approximatelyEqual(report.Metrics.LaunchedQPS/report.Metrics.OfferedQPS, float64(report.Progress.Launched)/float64(report.Progress.Offered)) {
+			return time.Time{}, errors.New("quick performance report load rate ratio is inconsistent")
 		}
 	}
 	if report.Progress.Launched == 0 || report.Progress.Completed != uint64(len(report.Samples)) || report.Metrics.Completed != report.Progress.Completed ||
@@ -171,7 +177,231 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	if len(failureCounts) != 0 {
 		return time.Time{}, errors.New("quick performance report failures are incomplete")
 	}
+	if report.SchemaVersion == PerformanceSchemaVersion {
+		if err := validatePerformancePhaseThree(report); err != nil {
+			return time.Time{}, err
+		}
+	}
 	return generatedAt, nil
+}
+
+func validatePerformancePhaseThree(report PerformanceReport) error {
+	expectedBudget, _, err := buildPerformanceRequestBudget(report.Profile)
+	if err != nil {
+		return errors.New("quick performance report request budget is invalid")
+	}
+	configured := phaseThreeConfigured(report.Profile)
+	if !configured {
+		if report.RequestBudget != nil || report.Warmup != nil || report.Ramp != nil || report.TimeSlices != nil {
+			return errors.New("quick performance report has unconfigured phase-three data")
+		}
+		return nil
+	}
+	if report.RequestBudget == nil || expectedBudget == nil || *report.RequestBudget != *expectedBudget {
+		return errors.New("quick performance report request budget is inconsistent")
+	}
+	if !validPerformancePhaseThreeSamples(report.Samples, report.Progress.TotalDurationMS) {
+		return errors.New("quick performance report phase-three sample timing is inconsistent")
+	}
+	if report.Progress.Planned == 0 || report.Progress.Planned > expectedBudget.MeasuredCap ||
+		report.Progress.Offered > expectedBudget.MeasuredCap || report.Progress.Launched > expectedBudget.MeasuredCap ||
+		report.Progress.Completed > expectedBudget.MeasuredCap {
+		return errors.New("quick performance report measured traffic exceeds its request budget")
+	}
+	if report.Progress.Phase == load.PhaseCompleted && !report.Progress.Stopped && report.Profile.DurationMS == 0 &&
+		(report.Progress.Planned != report.Profile.RequestCount || report.Progress.Offered != report.Profile.RequestCount) {
+		return errors.New("quick performance report measured count is incomplete")
+	}
+	if report.Profile.RequestCount > 0 {
+		if report.Progress.Capped {
+			return errors.New("quick performance report count-bounded run is marked capped")
+		}
+	} else if report.Profile.LoadMode == domain.LoadFixedConcurrency && report.Profile.DurationMS > 0 {
+		if report.Progress.Capped != performanceMeasuredBudgetCapped(
+			report.Profile,
+			expectedBudget.MeasuredCap,
+			report.Progress.Offered,
+			report.Progress.SendDurationMS,
+		) {
+			return errors.New("quick performance report measured cap is inconsistent")
+		}
+	} else if report.Profile.LoadMode == domain.LoadOpenLoop && report.Profile.DurationMS > 0 {
+		planned, capped, planErr := load.EstimateOpenLoopDurationSchedule(
+			report.Profile.RatePerSecond,
+			time.Duration(report.Profile.DurationMS)*time.Millisecond,
+			normalizedArrivalPattern(report.Profile.ArrivalPattern),
+			report.Profile.RandomSeed,
+			expectedBudget.MeasuredCap,
+		)
+		if planErr != nil || report.Progress.Planned != planned || report.Progress.Capped != capped {
+			return errors.New("quick performance report open-loop measured cap is inconsistent")
+		}
+	}
+
+	if report.Profile.WarmupRequests == 0 {
+		if report.Warmup != nil {
+			return errors.New("quick performance report has an unconfigured warmup")
+		}
+	} else {
+		if report.Warmup == nil || validatePerformanceTrafficSummary(*report.Warmup, expectedBudget.WarmupCap) != nil ||
+			report.Warmup.Stopped || report.Warmup.Capped || report.Warmup.Offered != expectedBudget.WarmupCap ||
+			report.Warmup.Launched != expectedBudget.WarmupCap || report.Warmup.Rejected != 0 {
+			return errors.New("quick performance report warmup is inconsistent")
+		}
+	}
+
+	if report.Profile.RampDurationMS == 0 {
+		if report.Ramp != nil {
+			return errors.New("quick performance report has an unconfigured ramp")
+		}
+	} else {
+		if report.Ramp == nil || report.Ramp.Shape != "linear_staircase" || report.Ramp.DurationMS != report.Profile.RampDurationMS ||
+			validatePerformanceTrafficSummary(report.Ramp.Traffic, expectedBudget.RampCap) != nil || report.Ramp.Traffic.Stopped ||
+			report.Ramp.CompletedWindow != !report.Ramp.Traffic.Capped {
+			return errors.New("quick performance report ramp is inconsistent")
+		}
+		rampProfile := performanceRampProfile(report.Profile, expectedBudget.RampCap)
+		if report.Ramp.Steps != load.LinearRampStepCount(rampProfile) {
+			return errors.New("quick performance report ramp steps are inconsistent")
+		}
+		if report.Profile.LoadMode == domain.LoadFixedConcurrency {
+			if report.Ramp.TargetConcurrency != report.Profile.Concurrency || report.Ramp.TargetRatePerSecond != 0 {
+				return errors.New("quick performance report fixed ramp target is inconsistent")
+			}
+			expectedCapped := report.Ramp.Traffic.Offered >= expectedBudget.RampCap
+			if report.Ramp.Traffic.Capped != expectedCapped {
+				return errors.New("quick performance report fixed ramp cap is inconsistent")
+			}
+		} else {
+			if report.Ramp.TargetConcurrency != 0 || !approximatelyEqual(report.Ramp.TargetRatePerSecond, report.Profile.RatePerSecond) {
+				return errors.New("quick performance report open ramp target is inconsistent")
+			}
+			planned, capped, planErr := load.EstimateOpenLoopRampSchedule(
+				report.Profile.RatePerSecond,
+				time.Duration(report.Profile.RampDurationMS)*time.Millisecond,
+				normalizedArrivalPattern(report.Profile.ArrivalPattern),
+				report.Profile.RandomSeed,
+				expectedBudget.RampCap,
+			)
+			if planErr != nil || report.Ramp.Traffic.Offered != planned || report.Ramp.Traffic.Capped != capped {
+				return errors.New("quick performance report open ramp cap is inconsistent")
+			}
+		}
+		if report.Ramp.Traffic.Capped && report.Ramp.Traffic.Offered != expectedBudget.RampCap {
+			return errors.New("quick performance report ramp cap is inconsistent")
+		}
+		if report.Ramp.CompletedWindow && report.Ramp.Traffic.SendDurationMS < float64(report.Profile.RampDurationMS) {
+			return errors.New("quick performance report ramp window is incomplete")
+		}
+	}
+
+	if report.Profile.SliceDurationMS == 0 {
+		if report.TimeSlices != nil {
+			return errors.New("quick performance report has unconfigured time slices")
+		}
+		return nil
+	}
+	expectedSlices := buildPerformanceTimeSlicesFromSamples(
+		report.Samples,
+		report.Progress.TotalDurationMS,
+		float64(report.Profile.SliceDurationMS),
+	)
+	if len(expectedSlices) == 0 || len(report.TimeSlices) != len(expectedSlices) {
+		return errors.New("quick performance report time slices are incomplete")
+	}
+	for index := range expectedSlices {
+		if !equalPerformanceTimeSlice(report.TimeSlices[index], expectedSlices[index]) {
+			return errors.New("quick performance report time slices are inconsistent")
+		}
+	}
+	if !performanceTimeSliceTotalsMatch(report.TimeSlices, report.Progress, report.Metrics) {
+		return errors.New("quick performance report time slice totals are inconsistent")
+	}
+	return nil
+}
+
+func validatePerformanceTrafficSummary(summary PerformanceTrafficSummary, expectedCap uint64) error {
+	if expectedCap == 0 || summary.RequestCap != expectedCap || summary.Offered == 0 || summary.Offered > summary.RequestCap ||
+		summary.Offered != summary.Launched+summary.Rejected || summary.Completed != summary.Offered ||
+		summary.Succeeded+summary.Failed != summary.Completed || summary.TimedOut > summary.Failed || summary.Rejected > summary.Failed ||
+		summary.PeakInFlight > summary.Launched || (summary.Launched > 0 && summary.PeakInFlight == 0) ||
+		summary.CachedTokens > summary.PromptTokens || summary.Failures == nil ||
+		!finiteNonNegative(summary.SendDurationMS) || !finiteNonNegative(summary.DrainDurationMS) || !finiteNonNegative(summary.TotalDurationMS) ||
+		summary.SendDurationMS <= 0 || summary.TotalDurationMS <= 0 ||
+		!approximatelyEqual(summary.TotalDurationMS, summary.SendDurationMS+summary.DrainDurationMS) {
+		return errors.New("quick performance traffic summary is invalid")
+	}
+	var failed, rejected, timedOut uint64
+	var previous domain.ErrorCode
+	for index, failure := range summary.Failures {
+		if failure.Count == 0 || !safePerformanceErrorCode(failure.ErrorCode) ||
+			(index > 0 && failure.ErrorCode <= previous) || failed > math.MaxUint64-failure.Count {
+			return errors.New("quick performance traffic failures are invalid")
+		}
+		failed += failure.Count
+		if failure.ErrorCode == load.ErrorSchedulerOverload {
+			rejected = failure.Count
+		}
+		if failure.ErrorCode == load.ErrorTimeout {
+			timedOut = failure.Count
+		}
+		previous = failure.ErrorCode
+	}
+	if failed != summary.Failed || rejected != summary.Rejected || timedOut != summary.TimedOut {
+		return errors.New("quick performance traffic failures are inconsistent")
+	}
+	return nil
+}
+
+func validPerformancePhaseThreeSamples(samples []PerformanceSample, totalDurationMS float64) bool {
+	for _, sample := range samples {
+		if sample.ScheduledOffsetMS > totalDurationMS || sample.StartedOffsetMS > totalDurationMS || sample.FinishedOffsetMS > totalDurationMS {
+			return false
+		}
+		expectedLag := math.Max(0, sample.StartedOffsetMS-sample.ScheduledOffsetMS)
+		elapsed := sample.FinishedOffsetMS - sample.StartedOffsetMS
+		coarseClockMinimum := elapsed == 0 && approximatelyEqual(sample.E2EMS, durationMilliseconds(time.Nanosecond))
+		if !approximatelyEqual(sample.ScheduleLagMS, expectedLag) ||
+			(sample.E2EMS > elapsed && !approximatelyEqual(sample.E2EMS, elapsed) && !coarseClockMinimum) ||
+			sample.TTFTMS > sample.E2EMS ||
+			!approximatelyEqual(sample.TPOTMS, performanceTPOTMilliseconds(sample.TTFTMS, sample.E2EMS, sample.CompletionTokens)) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalPerformanceTimeSlice(left, right PerformanceTimeSlice) bool {
+	return left.SliceIndex == right.SliceIndex && approximatelyEqual(left.StartMS, right.StartMS) && approximatelyEqual(left.EndMS, right.EndMS) &&
+		left.Partial == right.Partial && left.Offered == right.Offered && left.Launched == right.Launched && left.Completed == right.Completed &&
+		left.Succeeded == right.Succeeded && left.Failed == right.Failed && left.Rejected == right.Rejected &&
+		left.PromptTokens == right.PromptTokens && left.CompletionTokens == right.CompletionTokens && left.CachedTokens == right.CachedTokens &&
+		equalPerformanceLatencySlice(left.TTFT, right.TTFT) && equalPerformanceLatencySlice(left.TPOT, right.TPOT) &&
+		equalPerformanceLatencySlice(left.E2E, right.E2E)
+}
+
+func performanceTimeSliceTotalsMatch(slices []PerformanceTimeSlice, progress PerformanceProgress, metrics load.Metrics) bool {
+	var offered, launched, completed, succeeded, failed, rejected uint64
+	var promptTokens, completionTokens, cachedTokens uint64
+	for _, slice := range slices {
+		offered += slice.Offered
+		launched += slice.Launched
+		completed += slice.Completed
+		succeeded += slice.Succeeded
+		failed += slice.Failed
+		rejected += slice.Rejected
+		promptTokens += slice.PromptTokens
+		completionTokens += slice.CompletionTokens
+		cachedTokens += slice.CachedTokens
+	}
+	return offered == progress.Offered && launched == progress.Launched && completed == progress.Completed &&
+		succeeded == progress.Succeeded && failed == progress.Failed && rejected == progress.Rejected &&
+		promptTokens == metrics.PromptTokens && completionTokens == metrics.CompletionTokens && cachedTokens == metrics.CachedTokens
+}
+
+func equalPerformanceLatencySlice(left, right PerformanceLatencySlice) bool {
+	return left.Count == right.Count && approximatelyEqual(left.P50MS, right.P50MS) &&
+		approximatelyEqual(left.P95MS, right.P95MS) && approximatelyEqual(left.P99MS, right.P99MS)
 }
 
 func validArchivedPerformanceProfile(profile PerformanceProfile) bool {

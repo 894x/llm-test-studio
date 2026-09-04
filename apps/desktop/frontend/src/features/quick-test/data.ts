@@ -84,6 +84,10 @@ export interface QuickPerformanceCommand {
   input_tokens_stddev: number
   output_tokens_stddev: number
   shared_prefix_tokens: number
+  warmup_requests: number
+  ramp_duration_ms: number
+  ramp_request_cap: number
+  slice_duration_ms: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
@@ -106,12 +110,16 @@ export interface QuickPerformanceProfile {
   input_tokens_stddev?: number
   output_tokens_stddev?: number
   shared_prefix_tokens?: number
+  warmup_requests?: number
+  ramp_duration_ms?: number
+  ramp_request_cap?: number
+  slice_duration_ms?: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
 }
 
-export type QuickPerformancePhase = "not_started" | "sending" | "draining" | "completed" | "cancelled"
+export type QuickPerformancePhase = "not_started" | "warming_up" | "ramping" | "sending" | "draining" | "completed" | "cancelled"
 
 export interface QuickPerformanceProgress {
   phase: QuickPerformancePhase
@@ -124,6 +132,7 @@ export interface QuickPerformanceProgress {
   succeeded: number
   failed: number
   rejected: number
+  capped?: boolean
   send_duration_ms: number
   drain_duration_ms: number
   total_duration_ms: number
@@ -206,6 +215,71 @@ export interface QuickPerformanceSample {
   response_evidence?: QuickPerformanceResponseEvidence
 }
 
+export interface QuickPerformanceRequestBudget {
+  limit: number
+  warmup_cap: number
+  ramp_cap: number
+  measured_cap: number
+  total_cap: number
+}
+
+export interface QuickPerformanceTrafficSummary {
+  request_cap: number
+  offered: number
+  launched: number
+  completed: number
+  succeeded: number
+  failed: number
+  timed_out: number
+  rejected: number
+  peak_in_flight: number
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
+  send_duration_ms: number
+  drain_duration_ms: number
+  total_duration_ms: number
+  failures: Array<{ error_code: QuickTestErrorCode; count: number }>
+  stopped: boolean
+  capped: boolean
+}
+
+export interface QuickPerformanceRamp {
+  shape: "linear_staircase"
+  duration_ms: number
+  steps: number
+  target_concurrency?: number
+  target_rate_per_second?: number
+  completed_window: boolean
+  traffic: QuickPerformanceTrafficSummary
+}
+
+export interface QuickPerformanceSliceLatency {
+  count: number
+  p50_ms: number
+  p95_ms: number
+  p99_ms: number
+}
+
+export interface QuickPerformanceTimeSlice {
+  slice_index: number
+  start_ms: number
+  end_ms: number
+  partial: boolean
+  offered: number
+  launched: number
+  completed: number
+  succeeded: number
+  failed: number
+  rejected: number
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
+  ttft: QuickPerformanceSliceLatency
+  tpot: QuickPerformanceSliceLatency
+  e2e: QuickPerformanceSliceLatency
+}
+
 export interface QuickPerformanceReport {
   schema_version: 1 | 2
   report_id?: string
@@ -222,6 +296,10 @@ export interface QuickPerformanceReport {
   metrics: QuickPerformanceMetrics
   samples: QuickPerformanceSample[]
   failures: Array<{ error_code: QuickTestErrorCode; count: number }>
+  request_budget?: QuickPerformanceRequestBudget
+  warmup?: QuickPerformanceTrafficSummary
+  ramp?: QuickPerformanceRamp
+  time_slices?: QuickPerformanceTimeSlice[]
   error_code?: QuickTestErrorCode
 }
 
@@ -375,6 +453,18 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   const progress = value.progress
   const metrics = value.metrics
   const samples = value.samples.map((sample) => parsePerformanceSample(sample, schemaVersion === 2))
+  const requestBudget = schemaVersion === 2 && value.request_budget !== undefined
+    ? parsePerformanceRequestBudget(value.request_budget)
+    : undefined
+  const warmup = schemaVersion === 2 && value.warmup !== undefined
+    ? parsePerformanceTrafficSummary(value.warmup)
+    : undefined
+  const ramp = schemaVersion === 2 && value.ramp !== undefined
+    ? parsePerformanceRamp(value.ramp)
+    : undefined
+  const timeSlices = schemaVersion === 2 && value.time_slices !== undefined
+    ? parsePerformanceTimeSlices(value.time_slices, value.profile, progress.total_duration_ms)
+    : undefined
   const evidenceBytes = samples.reduce((sum, sample) => sum + new TextEncoder().encode(sample.response_evidence?.body ?? "").length, 0)
   const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
   if (
@@ -385,6 +475,16 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     failureCount !== metrics.failed ||
     samples.length !== metrics.completed ||
     (schemaVersion === 2 && !performanceSampleTargetsMatchWorkload(value.profile, samples)) ||
+    (schemaVersion === 2 && !performancePhaseThreeReportMatches(
+      value.profile,
+      progress,
+      metrics,
+      requestBudget,
+      warmup,
+      ramp,
+      timeSlices,
+      value.error_code !== undefined,
+    )) ||
     evidenceBytes > 2 * 1024 * 1024 ||
     new Set(samples.map((sample) => sample.request_index)).size !== samples.length ||
     (value.archived !== (value.archive_status === "archived")) ||
@@ -414,6 +514,10 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     metrics: pickPerformanceMetrics(metrics, schemaVersion),
     samples,
     failures,
+    ...(requestBudget === undefined ? {} : { request_budget: requestBudget }),
+    ...(warmup === undefined ? {} : { warmup }),
+    ...(ramp === undefined ? {} : { ramp }),
+    ...(timeSlices === undefined ? {} : { time_slices: timeSlices }),
     ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
   }
 }
@@ -462,6 +566,294 @@ function parsePerformanceSample(value: unknown, includeTargets: boolean): QuickP
   }
 }
 
+function parsePerformanceRequestBudget(value: unknown): QuickPerformanceRequestBudget {
+  if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
+  const fields = ["limit", "warmup_cap", "ramp_cap", "measured_cap", "total_cap"] as const
+  if (!fields.every((field) => isNonNegativeInteger(value[field])) || value.limit !== 10_000) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const budget = {
+    limit: Number(value.limit),
+    warmup_cap: Number(value.warmup_cap),
+    ramp_cap: Number(value.ramp_cap),
+    measured_cap: Number(value.measured_cap),
+    total_cap: Number(value.total_cap),
+  }
+  if (budget.total_cap !== budget.warmup_cap + budget.ramp_cap + budget.measured_cap || budget.total_cap > budget.limit) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  return budget
+}
+
+function parsePerformanceTrafficSummary(value: unknown): QuickPerformanceTrafficSummary {
+  if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
+  const integerFields = [
+    "request_cap", "offered", "launched", "completed", "succeeded", "failed", "timed_out", "rejected",
+    "peak_in_flight", "prompt_tokens", "completion_tokens", "cached_tokens",
+  ] as const
+  const durationFields = ["send_duration_ms", "drain_duration_ms", "total_duration_ms"] as const
+  if (
+    !integerFields.every((field) => isNonNegativeInteger(value[field])) ||
+    !durationFields.every((field) => isNonNegativeFinite(value[field])) ||
+    !Array.isArray(value.failures) ||
+    typeof value.stopped !== "boolean" ||
+    typeof value.capped !== "boolean"
+  ) throw new Error("快速性能报告数据结构无效")
+  const failures: QuickPerformanceTrafficSummary["failures"] = []
+  const seen = new Set<QuickTestErrorCode>()
+  let previousErrorCode: QuickTestErrorCode | undefined
+  for (const failure of value.failures) {
+    if (!isRecord(failure) || !isErrorCode(failure.error_code) || !isPositiveInteger(failure.count) ||
+      seen.has(failure.error_code) || (previousErrorCode !== undefined && failure.error_code <= previousErrorCode)) {
+      throw new Error("快速性能报告数据结构无效")
+    }
+    seen.add(failure.error_code)
+    previousErrorCode = failure.error_code
+    failures.push({ error_code: failure.error_code, count: failure.count })
+  }
+  const summary: QuickPerformanceTrafficSummary = {
+    request_cap: Number(value.request_cap),
+    offered: Number(value.offered),
+    launched: Number(value.launched),
+    completed: Number(value.completed),
+    succeeded: Number(value.succeeded),
+    failed: Number(value.failed),
+    timed_out: Number(value.timed_out),
+    rejected: Number(value.rejected),
+    peak_in_flight: Number(value.peak_in_flight),
+    prompt_tokens: Number(value.prompt_tokens),
+    completion_tokens: Number(value.completion_tokens),
+    cached_tokens: Number(value.cached_tokens),
+    send_duration_ms: Number(value.send_duration_ms),
+    drain_duration_ms: Number(value.drain_duration_ms),
+    total_duration_ms: Number(value.total_duration_ms),
+    failures,
+    stopped: value.stopped,
+    capped: value.capped,
+  }
+  const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
+  if (
+    summary.request_cap === 0 ||
+    summary.offered > summary.request_cap ||
+    summary.launched + summary.rejected !== summary.offered ||
+    summary.completed !== summary.offered ||
+    summary.succeeded + summary.failed !== summary.completed ||
+    summary.timed_out > summary.failed ||
+    summary.rejected > summary.failed ||
+    summary.peak_in_flight > summary.launched ||
+    (summary.launched > 0 && summary.peak_in_flight === 0) ||
+    summary.cached_tokens > summary.prompt_tokens ||
+    failureCount !== summary.failed ||
+    !approximatelyEqual(summary.total_duration_ms, summary.send_duration_ms + summary.drain_duration_ms)
+  ) throw new Error("快速性能报告数据结构无效")
+  return summary
+}
+
+function parsePerformanceRamp(value: unknown): QuickPerformanceRamp {
+  if (!isRecord(value) || value.shape !== "linear_staircase" || !isPositiveInteger(value.duration_ms) ||
+    !isPositiveInteger(value.steps) || value.steps > 10 || typeof value.completed_window !== "boolean") {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const targetConcurrency = value.target_concurrency
+  const targetRate = value.target_rate_per_second
+  if ((targetConcurrency !== undefined && !isPositiveInteger(targetConcurrency)) ||
+    (targetRate !== undefined && !isPositiveFinite(targetRate)) ||
+    ((targetConcurrency === undefined) === (targetRate === undefined))) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const traffic = parsePerformanceTrafficSummary(value.traffic)
+  if (value.completed_window !== (!traffic.stopped && !traffic.capped)) throw new Error("快速性能报告数据结构无效")
+  return {
+    shape: "linear_staircase",
+    duration_ms: value.duration_ms,
+    steps: value.steps,
+    ...(targetConcurrency === undefined ? {} : { target_concurrency: targetConcurrency }),
+    ...(targetRate === undefined ? {} : { target_rate_per_second: targetRate }),
+    completed_window: value.completed_window,
+    traffic,
+  }
+}
+
+function parsePerformanceTimeSlices(
+  value: unknown,
+  profile: QuickPerformanceProfile,
+  totalDurationMS: number,
+): QuickPerformanceTimeSlice[] {
+  if (!Array.isArray(value) || value.length === 0 || (profile.slice_duration_ms ?? 0) <= 0 || totalDurationMS <= 0) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const durationMS = profile.slice_duration_ms ?? 0
+  const slices = value.map(parsePerformanceTimeSlice)
+  for (let index = 0; index < slices.length; index += 1) {
+    const slice = slices[index]
+    const previous = slices[index - 1]
+    const expectedStartMS = slice.slice_index * durationMS
+    const expectedEndMS = Math.min(expectedStartMS + durationMS, totalDurationMS)
+    const expectedPartial = expectedEndMS < expectedStartMS + durationMS
+    const hasRecordedEvent = slice.offered > 0 || slice.launched > 0 || slice.completed > 0
+    if (
+      !approximatelyEqual(slice.start_ms, expectedStartMS) ||
+      !approximatelyEqual(slice.end_ms, expectedEndMS) ||
+      slice.partial !== expectedPartial ||
+      (slice.partial && index !== slices.length - 1) ||
+      (!hasRecordedEvent && !(slice.partial && index === slices.length - 1)) ||
+      (previous !== undefined && (slice.slice_index <= previous.slice_index || slice.start_ms < previous.end_ms))
+    ) throw new Error("快速性能报告数据结构无效")
+  }
+  if (totalDurationMS % durationMS !== 0) {
+    const finalSlice = slices[slices.length - 1]
+    if (finalSlice.slice_index !== Math.ceil(totalDurationMS / durationMS) - 1 || !finalSlice.partial) {
+      throw new Error("快速性能报告数据结构无效")
+    }
+  }
+  return slices
+}
+
+function parsePerformanceTimeSlice(value: unknown): QuickPerformanceTimeSlice {
+  if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
+  const integerFields = [
+    "slice_index", "offered", "launched", "completed", "succeeded", "failed", "rejected",
+    "prompt_tokens", "completion_tokens", "cached_tokens",
+  ] as const
+  if (
+    !integerFields.every((field) => isNonNegativeInteger(value[field])) ||
+    !isNonNegativeFinite(value.start_ms) ||
+    !isNonNegativeFinite(value.end_ms) ||
+    value.end_ms <= value.start_ms ||
+    typeof value.partial !== "boolean" ||
+    Number(value.succeeded) + Number(value.failed) !== Number(value.completed) ||
+    Number(value.rejected) > Number(value.failed) ||
+    Number(value.cached_tokens) > Number(value.prompt_tokens)
+  ) throw new Error("快速性能报告数据结构无效")
+  const ttft = parsePerformanceSliceLatency(value.ttft)
+  const tpot = parsePerformanceSliceLatency(value.tpot)
+  const e2e = parsePerformanceSliceLatency(value.e2e)
+  if (ttft.count > Number(value.launched) || tpot.count > ttft.count || e2e.count > Number(value.launched)) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  return {
+    slice_index: Number(value.slice_index),
+    start_ms: Number(value.start_ms),
+    end_ms: Number(value.end_ms),
+    partial: value.partial,
+    offered: Number(value.offered),
+    launched: Number(value.launched),
+    completed: Number(value.completed),
+    succeeded: Number(value.succeeded),
+    failed: Number(value.failed),
+    rejected: Number(value.rejected),
+    prompt_tokens: Number(value.prompt_tokens),
+    completion_tokens: Number(value.completion_tokens),
+    cached_tokens: Number(value.cached_tokens),
+    ttft,
+    tpot,
+    e2e,
+  }
+}
+
+function parsePerformanceSliceLatency(value: unknown): QuickPerformanceSliceLatency {
+  if (!isRecord(value) || !isNonNegativeInteger(value.count) || !isNonNegativeFinite(value.p50_ms) ||
+    !isNonNegativeFinite(value.p95_ms) || !isNonNegativeFinite(value.p99_ms) ||
+    value.p50_ms > value.p95_ms || value.p95_ms > value.p99_ms ||
+    (value.count === 0 && (value.p50_ms !== 0 || value.p95_ms !== 0 || value.p99_ms !== 0))) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  return { count: value.count, p50_ms: value.p50_ms, p95_ms: value.p95_ms, p99_ms: value.p99_ms }
+}
+
+function performancePhaseThreeReportMatches(
+  profile: QuickPerformanceProfile,
+  progress: QuickPerformanceProgress,
+  metrics: QuickPerformanceMetrics,
+  budget: QuickPerformanceRequestBudget | undefined,
+  warmup: QuickPerformanceTrafficSummary | undefined,
+  ramp: QuickPerformanceRamp | undefined,
+  slices: QuickPerformanceTimeSlice[] | undefined,
+  hasReportError: boolean,
+): boolean {
+  const configured = (profile.warmup_requests ?? 0) > 0 || (profile.ramp_duration_ms ?? 0) > 0 ||
+    (profile.ramp_request_cap ?? 0) > 0 || (profile.slice_duration_ms ?? 0) > 0
+  const hasPhaseThreeData = budget !== undefined || warmup !== undefined || ramp !== undefined || slices !== undefined
+  if (!configured) return !hasPhaseThreeData
+  if (budget === undefined) return hasReportError && !hasPhaseThreeData
+  if (budget !== undefined && !performanceRequestBudgetMatchesProfile(profile, budget)) return false
+  if (
+    progress.planned > budget.measured_cap ||
+    (progress.offered ?? 0) > budget.measured_cap ||
+    progress.launched > budget.measured_cap ||
+    progress.completed > budget.measured_cap ||
+    (!hasReportError && (progress.planned === 0 || progress.offered === undefined))
+  ) return false
+  if (warmup !== undefined && (
+    (profile.warmup_requests ?? 0) === 0 ||
+    warmup.request_cap !== budget.warmup_cap ||
+    (!hasReportError && (warmup.stopped || warmup.capped || warmup.offered !== budget.warmup_cap ||
+      warmup.launched !== budget.warmup_cap || warmup.rejected !== 0))
+  )) return false
+  if (!hasReportError && (profile.warmup_requests ?? 0) > 0 && warmup === undefined) return false
+  if (ramp !== undefined && (
+    (profile.ramp_duration_ms ?? 0) === 0 ||
+    ramp.duration_ms !== profile.ramp_duration_ms ||
+    ramp.traffic.request_cap !== budget.ramp_cap ||
+    ramp.steps !== (profile.load_mode === "fixed_concurrency" ? Math.min(profile.concurrency, 10) : 10) ||
+    (!hasReportError && (ramp.traffic.stopped ||
+      (ramp.traffic.capped && ramp.traffic.offered !== budget.ramp_cap) ||
+      (ramp.completed_window && ramp.traffic.send_duration_ms < ramp.duration_ms))) ||
+    (profile.load_mode === "fixed_concurrency"
+      ? ramp.target_concurrency !== profile.concurrency || ramp.target_rate_per_second !== undefined
+      : ramp.target_rate_per_second !== profile.rate_per_second || ramp.target_concurrency !== undefined)
+  )) return false
+  if (!hasReportError && (profile.ramp_duration_ms ?? 0) > 0 && ramp === undefined) return false
+  if ((profile.slice_duration_ms ?? 0) === 0 && slices !== undefined) return false
+  if (!hasReportError && (profile.slice_duration_ms ?? 0) > 0 && slices === undefined) return false
+  if (slices !== undefined) {
+    const totals = slices.reduce((sum, slice) => ({
+      offered: sum.offered + slice.offered,
+      launched: sum.launched + slice.launched,
+      completed: sum.completed + slice.completed,
+      succeeded: sum.succeeded + slice.succeeded,
+      failed: sum.failed + slice.failed,
+      rejected: sum.rejected + slice.rejected,
+      prompt_tokens: sum.prompt_tokens + slice.prompt_tokens,
+      completion_tokens: sum.completion_tokens + slice.completion_tokens,
+      cached_tokens: sum.cached_tokens + slice.cached_tokens,
+    }), { offered: 0, launched: 0, completed: 0, succeeded: 0, failed: 0, rejected: 0, prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0 })
+    if (
+      (progress.offered !== undefined && totals.offered !== progress.offered) ||
+      totals.launched !== progress.launched ||
+      totals.completed !== metrics.completed ||
+      totals.succeeded !== metrics.succeeded ||
+      totals.failed !== metrics.failed ||
+      totals.rejected !== progress.rejected ||
+      totals.prompt_tokens !== metrics.prompt_tokens ||
+      totals.completion_tokens !== metrics.completion_tokens ||
+      totals.cached_tokens !== metrics.cached_tokens
+    ) return false
+  }
+  return true
+}
+
+function performanceRequestBudgetMatchesProfile(profile: QuickPerformanceProfile, budget: QuickPerformanceRequestBudget): boolean {
+  const warmupCap = profile.warmup_requests ?? 0
+  const rampDurationSeconds = (profile.ramp_duration_ms ?? 0) / 1_000
+  const rampCap = rampDurationSeconds === 0
+    ? 0
+    : profile.load_mode === "fixed_concurrency"
+      ? profile.ramp_request_cap ?? 0
+      : estimateOpenLoopRequestCap(rampDurationSeconds * (profile.rate_per_second ?? 0) * 0.55, profile.arrival_pattern ?? "constant")
+  const measuredCap = profile.request_count > 0
+    ? profile.request_count
+    : profile.load_mode === "fixed_concurrency"
+      ? budget.limit - warmupCap - rampCap
+      : estimateOpenLoopRequestCap(profile.duration_ms / 1_000 * (profile.rate_per_second ?? 0), profile.arrival_pattern ?? "constant")
+  return measuredCap > 0 && budget.warmup_cap === warmupCap && budget.ramp_cap === rampCap &&
+    budget.measured_cap === measuredCap && budget.total_cap === warmupCap + rampCap + measuredCap
+}
+
+function estimateOpenLoopRequestCap(intensity: number, pattern: QuickPerformanceArrivalPattern): number {
+  return pattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
+}
+
 function isPerformanceProfile(value: unknown, schemaVersion: 1 | 2): value is QuickPerformanceProfile {
   if (!(isRecord(value) &&
     isNonNegativeInteger(value.request_count) &&
@@ -479,7 +871,11 @@ function isPerformanceProfile(value: unknown, schemaVersion: 1 | 2): value is Qu
     (value.random_seed === undefined || isUint32(value.random_seed)) &&
     (value.input_tokens_stddev === undefined || isUint32(value.input_tokens_stddev)) &&
     (value.output_tokens_stddev === undefined || isUint32(value.output_tokens_stddev)) &&
-    (value.shared_prefix_tokens === undefined || isUint32(value.shared_prefix_tokens))
+    (value.shared_prefix_tokens === undefined || isUint32(value.shared_prefix_tokens)) &&
+    (value.warmup_requests === undefined || (isNonNegativeInteger(value.warmup_requests) && value.warmup_requests <= 10_000)) &&
+    (value.ramp_duration_ms === undefined || (isNonNegativeInteger(value.ramp_duration_ms) && value.ramp_duration_ms <= 3_600_000)) &&
+    (value.ramp_request_cap === undefined || (isNonNegativeInteger(value.ramp_request_cap) && value.ramp_request_cap <= 10_000)) &&
+    (value.slice_duration_ms === undefined || (isNonNegativeInteger(value.slice_duration_ms) && value.slice_duration_ms <= 3_600_000))
 }
 
 function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1 | 2): boolean {
@@ -498,8 +894,13 @@ function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVers
   const inputStdDev = value.input_tokens_stddev ?? 0
   const outputStdDev = value.output_tokens_stddev ?? 0
   const sharedPrefix = value.shared_prefix_tokens ?? 0
+  const rampDurationMS = value.ramp_duration_ms ?? 0
+  const rampRequestCap = value.ramp_request_cap ?? 0
   if (arrivalPattern === "poisson" && value.load_mode !== "open_loop") return false
   if ((arrivalPattern === "poisson" || workloadMode === "normal") !== (randomSeed > 0)) return false
+  if (value.load_mode === "fixed_concurrency") {
+    if ((rampDurationMS > 0) !== (rampRequestCap > 0)) return false
+  } else if (rampRequestCap !== 0) return false
   if (workloadMode === "fixed") return inputStdDev === 0 && outputStdDev === 0 && sharedPrefix === 0
   return inputStdDev <= value.input_tokens && outputStdDev <= value.output_tokens && sharedPrefix < value.input_tokens
 }
@@ -518,6 +919,10 @@ function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1
     ...(schemaVersion === 2 && value.input_tokens_stddev !== undefined ? { input_tokens_stddev: value.input_tokens_stddev } : {}),
     ...(schemaVersion === 2 && value.output_tokens_stddev !== undefined ? { output_tokens_stddev: value.output_tokens_stddev } : {}),
     ...(schemaVersion === 2 && value.shared_prefix_tokens !== undefined ? { shared_prefix_tokens: value.shared_prefix_tokens } : {}),
+    ...(schemaVersion === 2 && value.warmup_requests !== undefined ? { warmup_requests: value.warmup_requests } : {}),
+    ...(schemaVersion === 2 && value.ramp_duration_ms !== undefined ? { ramp_duration_ms: value.ramp_duration_ms } : {}),
+    ...(schemaVersion === 2 && value.ramp_request_cap !== undefined ? { ramp_request_cap: value.ramp_request_cap } : {}),
+    ...(schemaVersion === 2 && value.slice_duration_ms !== undefined ? { slice_duration_ms: value.slice_duration_ms } : {}),
     timeout_ms: value.timeout_ms,
     input_tokens: value.input_tokens,
     output_tokens: value.output_tokens,
@@ -536,6 +941,7 @@ function pickPerformanceProgress(value: QuickPerformanceProgress, includeOffered
     succeeded: value.succeeded,
     failed: value.failed,
     rejected: value.rejected,
+    ...(!includeOffered || value.capped === undefined ? {} : { capped: value.capped }),
     send_duration_ms: value.send_duration_ms,
     drain_duration_ms: value.drain_duration_ms,
     total_duration_ms: value.total_duration_ms,
@@ -598,6 +1004,7 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
     isNonNegativeInteger(value.succeeded) &&
     isNonNegativeInteger(value.failed) &&
     isNonNegativeInteger(value.rejected) &&
+    (value.capped === undefined || typeof value.capped === "boolean") &&
     isNonNegativeFinite(value.send_duration_ms) &&
     isNonNegativeFinite(value.drain_duration_ms) &&
     isNonNegativeFinite(value.total_duration_ms)
@@ -623,7 +1030,7 @@ function isPerformanceMetrics(value: unknown, schemaVersion: 1 | 2 = 1): value i
 }
 
 function isPerformancePhase(value: unknown): value is QuickPerformancePhase {
-  return value === "not_started" || value === "sending" || value === "draining" || value === "completed" || value === "cancelled"
+  return value === "not_started" || value === "warming_up" || value === "ramping" || value === "sending" || value === "draining" || value === "completed" || value === "cancelled"
 }
 
 function isPerformanceLoadMode(value: unknown): value is QuickPerformanceLoadMode {
@@ -697,6 +1104,15 @@ function isUTCTimestamp(value: unknown): value is string {
 
 function isNonNegativeFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
+}
+
+function isPositiveFinite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+}
+
+function approximatelyEqual(left: number, right: number): boolean {
+  const scale = Math.max(1, Math.abs(left), Math.abs(right))
+  return Math.abs(left - right) <= scale * 1e-9
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

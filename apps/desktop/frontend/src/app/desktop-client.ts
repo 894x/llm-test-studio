@@ -732,11 +732,32 @@ function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerforma
 
 function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
   const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
-  const completed = command.request_count || Math.max(1, configuredInFlight * 2)
+  const requestBudget = fixtureQuickPerformanceBudget(command)
+  const completed = command.request_count || Math.min(requestBudget.measured_cap, Math.max(1, configuredInFlight * 2))
   const totalDurationMS = Math.max(320, command.duration_ms)
   const seconds = totalDurationMS / 1_000
   const promptTokens = completed * command.input_tokens
   const completionTokens = completed * command.output_tokens
+  const samples: QuickPerformanceReport["samples"] = Array.from({ length: completed }, (_, index) => ({
+    request_index: index,
+    scheduled_offset_ms: 0,
+    started_offset_ms: index,
+    finished_offset_ms: 120 + index,
+    schedule_lag_ms: index,
+    e2e_ms: 120,
+    ttft_ms: 35,
+    tpot_ms: 5,
+    http_status: 200,
+    success: true,
+    timed_out: false,
+    prompt_tokens: command.input_tokens,
+    completion_tokens: command.output_tokens,
+    cached_tokens: 0,
+    ...(command.workload_mode === "normal" ? {
+      target_input_tokens: command.input_tokens,
+      target_output_tokens: command.output_tokens,
+    } : {}),
+  }))
   return {
     schema_version: 2,
     archived: false,
@@ -758,14 +779,18 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       input_tokens_stddev: command.input_tokens_stddev,
       output_tokens_stddev: command.output_tokens_stddev,
       shared_prefix_tokens: command.shared_prefix_tokens,
+      ...(command.warmup_requests > 0 ? { warmup_requests: command.warmup_requests } : {}),
+      ...(command.ramp_duration_ms > 0 ? { ramp_duration_ms: command.ramp_duration_ms } : {}),
+      ...(command.ramp_request_cap > 0 ? { ramp_request_cap: command.ramp_request_cap } : {}),
+      ...(command.slice_duration_ms > 0 ? { slice_duration_ms: command.slice_duration_ms } : {}),
       timeout_ms: command.timeout_ms,
       input_tokens: command.input_tokens, output_tokens: command.output_tokens,
     },
     progress: {
-      phase: "completed", planned: completed, offered: completed, launched: completed, completed,
+      phase: "completed", planned: requestBudget.measured_cap, offered: completed, launched: completed, completed,
       in_flight: 0,
       peak_in_flight: Math.min(configuredInFlight, completed), succeeded: completed,
-      failed: 0, rejected: 0, send_duration_ms: totalDurationMS,
+      failed: 0, rejected: 0, capped: false, send_duration_ms: totalDurationMS,
       drain_duration_ms: 0, total_duration_ms: totalDurationMS,
     },
     metrics: {
@@ -785,33 +810,188 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       prompt_tokens: promptTokens, completion_tokens: completionTokens,
       cached_tokens: 0, cache_rate_percent: 0,
     },
-    samples: Array.from({ length: completed }, (_, index) => ({
-      request_index: index,
-      scheduled_offset_ms: 0,
-      started_offset_ms: index,
-      finished_offset_ms: 120 + index,
-      schedule_lag_ms: index,
-      e2e_ms: 120,
-      ttft_ms: 35,
-      tpot_ms: 5,
-      http_status: 200,
-      success: true,
-      timed_out: false,
-      prompt_tokens: command.input_tokens,
-      completion_tokens: command.output_tokens,
-      cached_tokens: 0,
-      ...(command.workload_mode === "normal" ? {
-        target_input_tokens: command.input_tokens,
-        target_output_tokens: command.output_tokens,
-      } : {}),
-    })),
+    samples,
     failures: [],
+    ...(fixtureHasPhaseThreeConfiguration(command) ? { request_budget: requestBudget } : {}),
+    ...(command.warmup_requests > 0 ? { warmup: fixtureQuickPerformanceTraffic(command, command.warmup_requests, command.warmup_requests) } : {}),
+    ...(command.ramp_duration_ms > 0 ? {
+      ramp: fixtureQuickPerformanceRamp(command, requestBudget.ramp_cap),
+    } : {}),
+    ...(command.slice_duration_ms > 0 ? {
+      time_slices: fixtureQuickPerformanceTimeSlices(command, samples, totalDurationMS),
+    } : {}),
   }
+}
+
+function fixtureHasPhaseThreeConfiguration(command: QuickPerformanceCommand): boolean {
+  return command.warmup_requests > 0 || command.ramp_duration_ms > 0 || command.slice_duration_ms > 0
+}
+
+function fixtureQuickPerformanceBudget(command: QuickPerformanceCommand): NonNullable<QuickPerformanceReport["request_budget"]> {
+  const rampIntensity = command.ramp_duration_ms / 1_000 * command.rate_per_second * 0.55
+  const rampCap = command.ramp_duration_ms === 0
+    ? 0
+    : command.load_mode === "fixed_concurrency"
+      ? command.ramp_request_cap
+      : fixtureOpenLoopRequestCap(rampIntensity, command.arrival_pattern)
+  const measuredCap = command.request_count > 0
+    ? command.request_count
+    : command.load_mode === "fixed_concurrency"
+      ? Math.max(1, 10_000 - command.warmup_requests - rampCap)
+      : fixtureOpenLoopRequestCap(command.duration_ms / 1_000 * command.rate_per_second, command.arrival_pattern)
+  return {
+    limit: 10_000,
+    warmup_cap: command.warmup_requests,
+    ramp_cap: rampCap,
+    measured_cap: measuredCap,
+    total_cap: command.warmup_requests + rampCap + measuredCap,
+  }
+}
+
+function fixtureOpenLoopRequestCap(intensity: number, pattern: QuickPerformanceCommand["arrival_pattern"]): number {
+  return pattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
+}
+
+function fixtureQuickPerformanceTraffic(
+  command: QuickPerformanceCommand,
+  requestCap: number,
+  completed: number,
+): NonNullable<QuickPerformanceReport["warmup"]> {
+  const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
+  return {
+    request_cap: requestCap,
+    offered: completed,
+    launched: completed,
+    completed,
+    succeeded: completed,
+    failed: 0,
+    timed_out: 0,
+    rejected: 0,
+    peak_in_flight: Math.min(configuredInFlight, completed),
+    prompt_tokens: completed * command.input_tokens,
+    completion_tokens: completed * command.output_tokens,
+    cached_tokens: 0,
+    send_duration_ms: 100,
+    drain_duration_ms: 0,
+    total_duration_ms: 100,
+    failures: [],
+    stopped: false,
+    capped: false,
+  }
+}
+
+function fixtureQuickPerformanceRamp(
+  command: QuickPerformanceCommand,
+  requestCap: number,
+): NonNullable<QuickPerformanceReport["ramp"]> {
+  return {
+    shape: "linear_staircase",
+    duration_ms: command.ramp_duration_ms,
+    steps: command.load_mode === "fixed_concurrency" ? Math.min(command.concurrency, 10) : 10,
+    ...(command.load_mode === "fixed_concurrency"
+      ? { target_concurrency: command.concurrency }
+      : { target_rate_per_second: command.rate_per_second }),
+    completed_window: true,
+    traffic: {
+      ...fixtureQuickPerformanceTraffic(command, requestCap, requestCap),
+      send_duration_ms: command.ramp_duration_ms,
+      total_duration_ms: command.ramp_duration_ms,
+    },
+  }
+}
+
+function fixtureQuickPerformanceTimeSlices(
+  command: QuickPerformanceCommand,
+  samples: QuickPerformanceReport["samples"],
+  totalDurationMS: number,
+): NonNullable<QuickPerformanceReport["time_slices"]> {
+  type Slice = NonNullable<QuickPerformanceReport["time_slices"]>[number]
+  type Accumulator = { slice: Slice; ttft: number[]; tpot: number[]; e2e: number[] }
+  const byIndex = new Map<number, Accumulator>()
+  const get = (offsetMS: number) => {
+    const finalOffsetMS = totalDurationMS - Math.max(Number.EPSILON, Math.abs(totalDurationMS) * Number.EPSILON)
+    const boundedOffset = Math.max(0, Math.min(offsetMS, finalOffsetMS))
+    const sliceIndex = Math.floor(boundedOffset / command.slice_duration_ms)
+    const startMS = sliceIndex * command.slice_duration_ms
+    const nominalEndMS = startMS + command.slice_duration_ms
+    const endMS = Math.min(nominalEndMS, totalDurationMS)
+    let accumulator = byIndex.get(sliceIndex)
+    if (!accumulator) {
+      const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 }
+      accumulator = {
+        slice: {
+          slice_index: sliceIndex,
+          start_ms: startMS,
+          end_ms: endMS,
+          partial: endMS < nominalEndMS,
+          offered: 0,
+          launched: 0,
+          completed: 0,
+          succeeded: 0,
+          failed: 0,
+          rejected: 0,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cached_tokens: 0,
+          ttft: emptyLatency,
+          tpot: emptyLatency,
+          e2e: emptyLatency,
+        },
+        ttft: [],
+        tpot: [],
+        e2e: [],
+      }
+      byIndex.set(sliceIndex, accumulator)
+    }
+    return accumulator
+  }
+  for (const sample of samples) {
+    get(sample.scheduled_offset_ms).slice.offered += 1
+    const launched = get(sample.started_offset_ms)
+    launched.slice.launched += 1
+    if (sample.success && sample.ttft_ms > 0) launched.ttft.push(sample.ttft_ms)
+    if (sample.success && sample.tpot_ms > 0) launched.tpot.push(sample.tpot_ms)
+    if (sample.success && sample.e2e_ms > 0) launched.e2e.push(sample.e2e_ms)
+
+    const completed = get(sample.finished_offset_ms)
+    completed.slice.completed += 1
+    if (sample.success) {
+      completed.slice.succeeded += 1
+      completed.slice.prompt_tokens += sample.prompt_tokens
+      completed.slice.completion_tokens += sample.completion_tokens
+      completed.slice.cached_tokens += sample.cached_tokens
+    } else {
+      completed.slice.failed += 1
+      if (sample.error_code === "scheduler_overload") completed.slice.rejected += 1
+    }
+  }
+  if (totalDurationMS % command.slice_duration_ms !== 0) get(totalDurationMS)
+  return [...byIndex.values()]
+    .sort((left, right) => left.slice.slice_index - right.slice.slice_index)
+    .map((accumulator) => ({
+      ...accumulator.slice,
+      ttft: fixturePerformanceLatencySlice(accumulator.ttft),
+      tpot: fixturePerformanceLatencySlice(accumulator.tpot),
+      e2e: fixturePerformanceLatencySlice(accumulator.e2e),
+    }))
+}
+
+function fixturePerformanceLatencySlice(values: number[]): NonNullable<QuickPerformanceReport["time_slices"]>[number]["ttft"] {
+  if (values.length === 0) return { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 }
+  const sorted = [...values].sort((left, right) => left - right)
+  const percentile = (quantile: number) => {
+    const position = (sorted.length - 1) * quantile
+    const lower = Math.floor(position)
+    const upper = Math.ceil(position)
+    if (lower === upper) return sorted[lower]
+    return sorted[lower] * (upper - position) + sorted[upper] * (position - lower)
+  }
+  return { count: sorted.length, p50_ms: percentile(0.5), p95_ms: percentile(0.95), p99_ms: percentile(0.99) }
 }
 
 function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {
   const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
-  const planned = command.request_count || Math.max(1, configuredInFlight * 2)
+  const planned = fixtureQuickPerformanceBudget(command).measured_cap
   const totalDurationMS = phase === "completed" ? Math.max(320, command.duration_ms) : 0
   return {
     phase,
@@ -824,6 +1004,7 @@ function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase
     succeeded: completed,
     failed: 0,
     rejected: 0,
+    capped: false,
     send_duration_ms: totalDurationMS,
     drain_duration_ms: 0,
     total_duration_ms: totalDurationMS,
