@@ -48,8 +48,8 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 	config := apiaudit.RunConfig{
 		Suite: string(snapshot.Channel.Protocol), BaseURL: snapshot.Channel.BaseURL,
 		APIKey: string(secret), Model: snapshot.Channel.UpstreamModelName,
-		ConfirmPaidSuite: true, PollInterval: 10 * time.Second,
-		Timeout: time.Duration(snapshot.Load.RequestTimeoutMS) * time.Millisecond,
+		PollInterval: 10 * time.Second,
+		Timeout:      time.Duration(snapshot.Load.RequestTimeoutMS) * time.Millisecond,
 	}
 	for index, testCase := range request.Cases {
 		if stopped(request.StopSending) {
@@ -68,6 +68,8 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 			result = apiaudit.RunKimiK3Case(caseContext, executor.httpDoer, config, definition)
 		case domain.ProtocolSeedance:
 			result = apiaudit.RunSeedanceCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
+		case domain.ProtocolWanVideo:
+			result = apiaudit.RunWanVideoCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
 		default:
 			cancel()
 			return ErrUnsupportedExecutionProtocol
@@ -103,9 +105,9 @@ func legacyCaseDefinition(testCase domain.TestCase) (apiaudit.CaseDefinition, er
 	}
 	return apiaudit.CaseDefinition{
 		ID: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-		Protocol: string(testCase.Protocol), Kind: spec.Kind,
+		Protocol: string(testCase.Protocol), ModelTargets: append([]string(nil), testCase.ModelTargets...), Kind: spec.Kind,
 		Default: testCase.Default, Disabled: !testCase.Enabled, Severity: string(testCase.Severity),
-		Request: apiaudit.RequestDefinition{Method: string(spec.Request.Method), Path: spec.Request.Path, Body: body},
+		Request: apiaudit.RequestDefinition{Method: string(spec.Request.Method), Path: spec.Request.Path, Headers: spec.Request.Headers, Body: body},
 		Options: spec.Options,
 	}, nil
 }

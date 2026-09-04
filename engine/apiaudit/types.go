@@ -10,23 +10,25 @@ const (
 )
 
 type RequestDefinition struct {
-	Method string         `json:"method"`
-	Path   string         `json:"path"`
-	Body   map[string]any `json:"body,omitempty"`
+	Method  string            `json:"method"`
+	Path    string            `json:"path"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Body    map[string]any    `json:"body,omitempty"`
 }
 
 type CaseDefinition struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Dimension string            `json:"dimension"`
-	Protocol  string            `json:"protocol"`
-	Kind      string            `json:"kind"`
-	Default   bool              `json:"default"`
-	Disabled  bool              `json:"disabled,omitempty"`
-	Severity  string            `json:"severity,omitempty"`
-	Request   RequestDefinition `json:"request"`
-	Options   map[string]any    `json:"options,omitempty"`
-	Dir       string            `json:"-"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Dimension    string            `json:"dimension"`
+	Protocol     string            `json:"protocol"`
+	ModelTargets []string          `json:"model_targets,omitempty"`
+	Kind         string            `json:"kind"`
+	Default      bool              `json:"default"`
+	Disabled     bool              `json:"disabled,omitempty"`
+	Severity     string            `json:"severity,omitempty"`
+	Request      RequestDefinition `json:"request"`
+	Options      map[string]any    `json:"options,omitempty"`
+	Dir          string            `json:"-"`
 }
 
 type RunConfig struct {

@@ -184,6 +184,30 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
 	}
 }
 
+func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
+	casesRoot := filepath.Clean(filepath.Join("..", "..", "..", "cases"))
+	var written apiaudit.Report
+	service := compatibility.New(compatibility.Dependencies{
+		HTTPDoer: panicHTTPDoer{}, Emit: func(compatibility.Event) {},
+		WriteReport: func(_ string, report apiaudit.Report) error { written = report; return nil }, Now: time.Now,
+	})
+	_, err := service.Run(context.Background(), compatibility.RunRequest{
+		Suite: "wan-video", CasesRoot: casesRoot, BaseURL: "https://workspace.example", Model: "wan2.6-t2v", AllCases: true,
+		DryRun: true, OutputDir: t.TempDir(), PollInterval: time.Second, Timeout: time.Second, Concurrency: 1,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(written.Results) != 4 {
+		t.Fatalf("results = %#v", written.Results)
+	}
+	for _, result := range written.Results {
+		if result.Protocol != "wan-video" || result.Model != "wan2.6-t2v" || result.Exchanges[0].RequestBody["model"] != "wan2.6-t2v" {
+			t.Fatalf("version-filtered result = %#v", result)
+		}
+	}
+}
+
 func TestListLoadsCasesThroughApplicationService(t *testing.T) {
 	t.Parallel()
 

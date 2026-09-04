@@ -19,10 +19,11 @@ import (
 )
 
 var (
-	ErrInvalid     = errors.New("runs: invalid input")
-	ErrNotActive   = errors.New("runs: run is not active")
-	ErrNotRunnable = errors.New("runs: plan target is not runnable")
-	ErrClosed      = errors.New("runs: service is closed")
+	ErrInvalid                  = errors.New("runs: invalid input")
+	ErrNotActive                = errors.New("runs: run is not active")
+	ErrNotRunnable              = errors.New("runs: plan target is not runnable")
+	ErrPaidConfirmationRequired = errors.New("runs: paid video confirmation is required")
+	ErrClosed                   = errors.New("runs: service is closed")
 )
 
 type Repository interface {
@@ -37,9 +38,10 @@ type Repository interface {
 }
 
 type StartCommand struct {
-	PlanID    string `json:"plan_id"`
-	ModelID   string `json:"model_id"`
-	ChannelID string `json:"channel_id"`
+	PlanID           string `json:"plan_id"`
+	ModelID          string `json:"model_id"`
+	ChannelID        string `json:"channel_id"`
+	ConfirmPaidVideo bool   `json:"confirm_paid_video"`
 }
 
 type CredentialStore interface {
@@ -210,6 +212,9 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if !channel.Enabled || model.Protocol != channel.Protocol || mapping.ModelID != model.ID || mapping.ChannelID != channel.ID {
 		return "", ErrNotRunnable
 	}
+	if model.Protocol == domain.ProtocolWanVideo && !command.ConfirmPaidVideo {
+		return "", ErrPaidConfirmationRequired
+	}
 	cases := make([]domain.TestCase, 0, len(plan.Cases))
 	applicableRefs := make([]domain.CaseRevisionRef, 0, len(plan.Cases))
 	for _, ref := range plan.Cases {
@@ -219,6 +224,9 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		}
 		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || !testCase.Enabled ||
 			testCase.ExecutionMode != domain.CaseExecutionAutomatic || testCase.Protocol != model.Protocol {
+			return "", ErrNotRunnable
+		}
+		if testCase.Protocol == domain.ProtocolWanVideo && len(testCase.ModelTargets) == 0 {
 			return "", ErrNotRunnable
 		}
 		if !testCase.AppliesToModel(mapping.UpstreamModelName) {

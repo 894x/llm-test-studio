@@ -10,6 +10,7 @@ import {
 } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import {
   Field,
@@ -410,6 +411,7 @@ export function NewRunSheet({
   const [selectedPlan, setSelectedPlan] = useState(plans[0]?.id ?? "")
 	const [selectedModel, setSelectedModel] = useState("")
 	const [selectedChannel, setSelectedChannel] = useState("")
+  const [paidVideoConfirmed, setPaidVideoConfirmed] = useState(false)
   const [startError, setStartError] = useState("")
   const effectiveSelectedPlan = plans.some((plan) => plan.id === selectedPlan)
     ? selectedPlan
@@ -421,12 +423,19 @@ export function NewRunSheet({
 		[catalog, effectiveSelectedPlan, effectiveSelectedModel],
 	)
 	const effectiveSelectedChannel = channels.some((channel) => channel.id === selectedChannel) ? selectedChannel : (channels[0]?.id ?? "")
+  const selectedModelDefinition = models.find((model) => model.id === effectiveSelectedModel)
+  const requiresPaidVideoConfirmation = selectedModelDefinition?.protocol === "wan-video"
 
   const start = async () => {
     if (!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel) return
     setStartError("")
     try {
-      await onStartRun({ plan_id: effectiveSelectedPlan, model_id: effectiveSelectedModel, channel_id: effectiveSelectedChannel })
+      await onStartRun({
+        plan_id: effectiveSelectedPlan,
+        model_id: effectiveSelectedModel,
+        channel_id: effectiveSelectedChannel,
+        confirm_paid_video: requiresPaidVideoConfirmation && paidVideoConfirmed,
+      })
       setOpen(false)
     } catch (error) {
       setStartError(
@@ -440,7 +449,7 @@ export function NewRunSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setPaidVideoConfirmed(false) }}>
       <SheetTrigger asChild>
         <Button size="sm" className="ml-1">
           <PlusIcon data-icon="inline-start" />
@@ -459,7 +468,7 @@ export function NewRunSheet({
           <RadioGroup
             aria-label="测试计划"
             value={effectiveSelectedPlan}
-            onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel("") }}
+            onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel(""); setPaidVideoConfirmed(false) }}
           >
             {plans.map((plan) => {
               const selected = effectiveSelectedPlan === plan.id
@@ -492,7 +501,7 @@ export function NewRunSheet({
 							label="逻辑模型"
 							value={effectiveSelectedModel}
 							options={models.map((model) => [model.id, model.name])}
-							onChange={(value) => { setSelectedModel(value); setSelectedChannel("") }}
+							onChange={(value) => { setSelectedModel(value); setSelectedChannel(""); setPaidVideoConfirmed(false) }}
 						/>
 						<RuntimeTargetSelect
 							label="执行渠道"
@@ -503,6 +512,22 @@ export function NewRunSheet({
 						{models.length === 0 ? <p className="text-xs text-destructive">当前计划没有协议兼容且已映射的可用模型。</p> : null}
 						{models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">当前模型没有已启用、已配置密钥且已映射的可用渠道。</p> : null}
 					</div>
+          {requiresPaidVideoConfirmation ? (
+            <div role="alert" className="rounded-md border border-warning/30 bg-warning-soft p-3 text-xs text-warning-strong">
+              <p className="font-medium">Wan 视频生成会产生费用。</p>
+              <p className="mt-1 leading-5">运行将向上游提交真实视频任务，费用受模型、分辨率和时长影响。</p>
+              <Field className="mt-3">
+                <Checkbox
+                  id="confirm-paid-video"
+                  checked={paidVideoConfirmed}
+                  onCheckedChange={(value) => setPaidVideoConfirmed(value === true)}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="confirm-paid-video">我确认本次 Wan 视频运行会调用计费接口</FieldLabel>
+                </FieldContent>
+              </Field>
+            </div>
+          ) : null}
           <div className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
             凭据将由 Go Core 从系统密钥环按需租用，不会进入前端状态或本地存储。
           </div>
@@ -517,10 +542,10 @@ export function NewRunSheet({
             <Button variant="outline">取消</Button>
           </SheetClose>
           <Button
-            disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending}
+            disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending || (requiresPaidVideoConfirmation && !paidVideoConfirmed)}
             onClick={() => void start()}
           >
-            {commandPending ? "正在创建…" : "开始运行"}
+            {commandPending ? "正在创建…" : requiresPaidVideoConfirmation ? "开始付费运行" : "开始运行"}
           </Button>
         </SheetFooter>
       </SheetContent>

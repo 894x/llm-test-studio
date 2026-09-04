@@ -46,6 +46,9 @@ func performRequest(ctx context.Context, doer HTTPDoer, config RunConfig, defini
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	for name, value := range definition.Headers {
+		request.Header.Set(name, value)
+	}
 	if config.APIKey != "" {
 		request.Header.Set("Authorization", "Bearer "+config.APIKey)
 	}

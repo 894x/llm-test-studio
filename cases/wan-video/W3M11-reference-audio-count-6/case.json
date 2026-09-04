@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "key": "wan30.media.reference_audio_count_6",
+  "name": "Wan 3.0 · 参考音频数量 6 超限",
+  "dimension": "boundary",
+  "protocol": "wan-video",
+  "model_targets": [
+    "wan3.0-video",
+    "wan3.0-video-prime"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "wan_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": {
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "input": {
+            "media": [
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/valid-2s-1.mp3"
+              },
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/valid-2s-2.mp3"
+              },
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/valid-2s-3.mp3"
+              },
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/valid-2s-4.mp3"
+              },
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/valid-2s-5.mp3"
+              },
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/valid-2s-6.mp3"
+              }
+            ]
+          },
+          "parameters": {
+            "resolution": "480P",
+            "ratio": "adaptive",
+            "duration": 2,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false,
+            "audio": false
+          }
+        }
+      },
+      "options": {
+        "reason": "需要 6 个合法音频以隔离数量错误",
+        "precondition": "需要将 fixture:// 别名解析为同地域可访问且满足边界属性的确定性素材"
+      }
+    }
+  }
+}

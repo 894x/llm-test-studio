@@ -38,6 +38,7 @@ const PROTOCOL_LABELS = {
   "openai-chat": "OpenAI Chat",
   "kimi-k3": "Kimi K3",
   seedance: "Seedance",
+  "wan-video": "Wan Video",
 } as const
 
 const LOAD_LABELS = {

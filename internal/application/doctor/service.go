@@ -68,7 +68,7 @@ type Service struct {
 func New(dependencies Dependencies) *Service {
 	suites := append([]string(nil), dependencies.Suites...)
 	if len(suites) == 0 {
-		suites = []string{"openai-chat", "kimi-k3", "seedance"}
+		suites = []string{"openai-chat", "kimi-k3", "seedance", "wan-video"}
 	}
 	return &Service{filesystem: dependencies.FileSystem, catalog: dependencies.Catalog, suites: suites}
 }

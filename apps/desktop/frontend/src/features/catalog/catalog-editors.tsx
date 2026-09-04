@@ -420,7 +420,7 @@ function StageNumberField({ label, value, minimum, maximum, placeholder, onChang
   return <div data-invalid={validation.invalid || undefined} data-field-name={label}><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} value={value} placeholder={placeholder} onChange={(event) => { validation.clear(); onChange(event.target.value) }} />{validation.message ? <FieldError id={errorID} className="mt-1">{validation.message}</FieldError> : null}</div>
 }
 
-const protocolOptions = [["openai-chat","OpenAI Chat"],["kimi-k3","Kimi K3"],["seedance","Seedance"]] as const
+const protocolOptions = [["openai-chat","OpenAI Chat"],["kimi-k3","Kimi K3"],["seedance","Seedance"],["wan-video","Wan Video"]] as const
 class FormValidationError extends Error {
   readonly field: string
 

@@ -14,6 +14,7 @@ func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 		"openai-chat": 44,
 		"kimi-k3":     87,
 		"seedance":    6,
+		"wan-video":   213,
 	}
 	for protocol, want := range protocols {
 		matches, err := fs.Glob(casebundle.Bundle, protocol+"/*/case.json")

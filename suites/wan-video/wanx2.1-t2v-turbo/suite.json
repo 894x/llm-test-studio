@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "key": "wan-video.wanx2.1-t2v-turbo",
+  "name": "Wan 2.1 Turbo 边界套件",
+  "protocol": "wan-video",
+  "model_target": "wanx2.1-t2v-turbo",
+  "case_keys": [
+    "wan21.turbo.duration_5",
+    "wan21.turbo.duration_invalid",
+    "wan21.turbo.size_invalid"
+  ]
+}

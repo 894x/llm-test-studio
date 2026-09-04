@@ -160,6 +160,61 @@ func TestStartRunRejectsManualCasesBeforeCreatingDurableState(t *testing.T) {
 	}
 }
 
+func TestPrepareTargetRequiresExplicitWanPaidConfirmationAndVersionScope(t *testing.T) {
+	fixture := newRunFixture(t)
+	fixture.model.Protocol = domain.ProtocolWanVideo
+	fixture.channel.Protocol = domain.ProtocolWanVideo
+	fixture.mapping.UpstreamModelName = "wan3.0-video"
+	fixture.testCase.Protocol = domain.ProtocolWanVideo
+	fixture.testCase.ModelTargets = []string{"wan3.0-video"}
+	fixture.testCase.Definition = domain.TestCaseDefinition{
+		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:          casetypes.TypeLegacyAPIAudit,
+		TypeVersion:   1,
+		Spec:          json.RawMessage(`{"kind":"wan_task_success","request":{"method":"POST","path":"/api/v1/services/aigc/video-generation/video-synthesis","headers":{"X-DashScope-Async":"enable"},"body":{"input":{"prompt":"cat"},"parameters":{"duration":2}}},"options":{}}`),
+	}
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, err := credentials.StoreRefFromCredential(fixture.credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set(context.Background(), storeRef, []byte("test-secret")); err != nil {
+		t.Fatal(err)
+	}
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: &controlledExecutor{entered: make(chan runs.ExecutionRequest, 1), release: make(chan struct{})},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+
+	command := runs.StartCommand{PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelID: fixture.channel.ID}
+	if _, err := service.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrPaidConfirmationRequired) {
+		t.Fatalf("PrepareTarget() error = %v, want ErrPaidConfirmationRequired", err)
+	}
+	command.ConfirmPaidVideo = true
+	runID, err := service.PrepareTarget(context.Background(), command)
+	if err != nil || !domain.IsUUID(runID) {
+		t.Fatalf("confirmed PrepareTarget() = %q, %v", runID, err)
+	}
+
+	fixture.testCase.ModelTargets = nil
+	unscopedService, err := runs.New(runs.Dependencies{
+		Repository: &fakeRepository{fixture: fixture}, Credentials: store, Executor: &controlledExecutor{entered: make(chan runs.ExecutionRequest, 1), release: make(chan struct{})},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unscopedService.Close() })
+	if _, err := unscopedService.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrNotRunnable) {
+		t.Fatalf("unscoped PrepareTarget() error = %v, want ErrNotRunnable", err)
+	}
+}
+
 func TestStartRunRejectsInsecureEndpointBeforeCredentialLease(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.channel.BaseURL = "http://api.example.test/v1"

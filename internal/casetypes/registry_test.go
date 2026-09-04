@@ -55,6 +55,25 @@ func TestBuiltinRegistryPublishesAndValidatesVersionedCaseTypes(t *testing.T) {
 	}
 }
 
+func TestLegacyAPIAuditDescriptorSupportsWanVideo(t *testing.T) {
+	registry, err := NewBuiltinRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, descriptor := range registry.Descriptors() {
+		if descriptor.Type != TypeLegacyAPIAudit {
+			continue
+		}
+		for _, protocol := range descriptor.SupportedProtocols {
+			if protocol == domain.ProtocolWanVideo {
+				return
+			}
+		}
+		t.Fatalf("legacy.apiaudit protocols = %v, want %q", descriptor.SupportedProtocols, domain.ProtocolWanVideo)
+	}
+	t.Fatal("legacy.apiaudit descriptor not found")
+}
+
 func TestInputLatencyLadderAcceptsUniformDefaultsAndPerStageOverrides(t *testing.T) {
 	registry, err := NewBuiltinRegistry()
 	if err != nil {

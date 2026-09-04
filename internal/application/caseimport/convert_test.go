@@ -24,6 +24,11 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	kimiTargets := map[string]struct{}{
 		"kimi-k3": {}, "kimi-k2.7-code": {}, "kimi-k2.7-code-highspeed": {}, "kimi-k2.6": {},
 	}
+	wanCoverage := map[string]int{}
+	wanTargets := map[string]struct{}{
+		"wan3.0-video": {}, "wan3.0-video-prime": {}, "wan2.7-t2v": {}, "wan2.7-t2v-2026-06-12": {},
+		"wan2.6-t2v": {}, "wan2.5-t2v-preview": {}, "wan2.2-t2v-plus": {}, "wanx2.1-t2v-turbo": {}, "wanx2.1-t2v-plus": {},
+	}
 	err := fs.WalkDir(root, "cases", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() || entry.Name() != "case.json" {
 			return walkErr
@@ -66,6 +71,20 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 				kimiCoverage[target]++
 			}
 		}
+		if candidate.Protocol == domain.ProtocolWanVideo && candidate.Enabled && candidate.ExecutionMode == domain.CaseExecutionAutomatic {
+			if candidate.Default {
+				t.Errorf("%s must not be in the default paid-capable plan", path)
+			}
+			if len(candidate.ModelTargets) == 0 {
+				t.Errorf("%s runnable Wan case has no explicit model targets", path)
+			}
+			for _, target := range candidate.ModelTargets {
+				if _, known := wanTargets[target]; !known {
+					t.Errorf("%s has unsupported Wan model target %q", path, target)
+				}
+				wanCoverage[target]++
+			}
+		}
 		switch {
 		case !candidate.Enabled:
 			disabled++
@@ -79,18 +98,23 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WalkDir() error = %v", err)
 	}
-	if counts[domain.ProtocolOpenAIChat] != 44 || counts[domain.ProtocolKimiK3] != 87 || counts[domain.ProtocolSeedance] != 6 {
+	if counts[domain.ProtocolOpenAIChat] != 44 || counts[domain.ProtocolKimiK3] != 87 || counts[domain.ProtocolSeedance] != 6 || counts[domain.ProtocolWanVideo] != 213 {
 		t.Fatalf("protocol counts = %#v", counts)
 	}
-	if runnable != 117 || disabled != 14 || manual != 6 {
+	if runnable != 213 || disabled != 131 || manual != 6 {
 		t.Fatalf("policy counts = runnable:%d disabled:%d manual:%d", runnable, disabled, manual)
 	}
-	if typeCounts[casetypes.TypeLegacyAPIAudit] != 136 || typeCounts[casetypes.TypeInputLatencyLadder] != 1 {
+	if typeCounts[casetypes.TypeLegacyAPIAudit] != 349 || typeCounts[casetypes.TypeInputLatencyLadder] != 1 {
 		t.Fatalf("case type counts = %#v", typeCounts)
 	}
 	for target := range kimiTargets {
 		if kimiCoverage[target] == 0 {
 			t.Errorf("Kimi model %q has no runnable case in the multi-model suite", target)
+		}
+	}
+	for target := range wanTargets {
+		if wanCoverage[target] == 0 {
+			t.Errorf("Wan model %q has no runnable version-scoped case", target)
 		}
 	}
 }

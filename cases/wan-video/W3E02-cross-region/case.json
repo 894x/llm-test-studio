@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "key": "wan30.environment.cross_region",
+  "name": "Wan 3.0 · Endpoint 与模型跨地域",
+  "dimension": "environment",
+  "protocol": "wan-video",
+  "model_targets": [
+    "wan3.0-video",
+    "wan3.0-video-prime"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "wan_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": {
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "input": {
+            "prompt": "一只小猫在月光下奔跑"
+          },
+          "parameters": {
+            "resolution": "480P",
+            "ratio": "adaptive",
+            "duration": 2,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false,
+            "audio": false
+          }
+        }
+      },
+      "options": {
+        "reason": "需要跨地域配置并使用独立环境错误断言，不能按参数错误误判",
+        "precondition": "运行配置提供可撤销的跨地域测试 Workspace"
+      }
+    }
+  }
+}

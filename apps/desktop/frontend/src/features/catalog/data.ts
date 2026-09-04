@@ -1,4 +1,4 @@
-export type CatalogProtocol = "openai-chat" | "kimi-k3" | "seedance"
+export type CatalogProtocol = "openai-chat" | "kimi-k3" | "seedance" | "wan-video"
 export type CatalogLoadMode = "single" | "fixed_concurrency" | "open_loop"
 export type CatalogCaseSeverity = "normal" | "critical"
 export type CatalogCaseExecutionMode = "automatic" | "manual"
@@ -524,7 +524,7 @@ function isOptionalSuiteRef(id: unknown, revision: unknown): boolean {
 }
 
 function isProtocol(value: unknown): value is CatalogProtocol {
-  return value === "openai-chat" || value === "kimi-k3" || value === "seedance"
+  return value === "openai-chat" || value === "kimi-k3" || value === "seedance" || value === "wan-video"
 }
 
 function isLoadMode(value: unknown): value is CatalogLoadMode {

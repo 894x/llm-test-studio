@@ -64,6 +64,25 @@ func TestInspectReturnsTypedReadyResultWhenOneSupportedSuiteLoads(t *testing.T) 
 	}
 }
 
+func TestInspectRecognizesWanVideoAsABuiltinSuite(t *testing.T) {
+	t.Parallel()
+
+	service := doctor.New(doctor.Dependencies{
+		FileSystem: fileSystemFunc(func(context.Context, string) (bool, error) { return true, nil }),
+		Catalog: catalogFunc(func(_ context.Context, _, suite string) (int, error) {
+			if suite == "wan-video" {
+				return 30, nil
+			}
+			return 0, nil
+		}),
+	})
+
+	result := service.Inspect(context.Background(), doctor.InspectRequest{CasesRoot: "cases"})
+	if result.Status != doctor.OverallReady {
+		t.Fatalf("status = %q, want ready", result.Status)
+	}
+}
+
 func TestInspectFailsSafelyForMissingPortsEmptyRootsAndCancellation(t *testing.T) {
 	t.Parallel()
 

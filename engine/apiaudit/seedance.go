@@ -50,6 +50,9 @@ func ExpandRuns(config RunConfig, cases []CaseDefinition) ([]PlannedRun, error) 
 	if config.Suite == "seedance" && !config.DryRun && len(runs) > 1 && !config.ConfirmPaidSuite {
 		return nil, fmt.Errorf("live Seedance plan contains %d paid tasks; pass --confirm-paid-suite", len(runs))
 	}
+	if config.Suite == "wan-video" && !config.DryRun && len(runs) > 0 && !config.ConfirmPaidSuite {
+		return nil, fmt.Errorf("live Wan video plan contains %d paid-capable tasks; pass --confirm-paid-suite", len(runs))
+	}
 	return runs, nil
 }
 

@@ -1,14 +1,15 @@
 package apiaudit
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/894x/llm-test-studio/engine/common"
 )
 
 var safeCaseIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -30,7 +31,8 @@ var supportedKinds = map[string]map[string]bool{
 		"usage_growth": true, "needle_retrieval": true,
 		"error_no_usage": true, "padding_ratio": true,
 	},
-	"seedance": {"seedance_task": true},
+	"seedance":  {"seedance_task": true},
+	"wan-video": {"wan_task_success": true, "wan_task_rejected": true},
 }
 
 func LoadSuite(root, suite string) ([]CaseDefinition, error) {
@@ -50,18 +52,13 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 			continue
 		}
 		dir := filepath.Join(suiteDir, entry.Name())
-		file, err := os.Open(filepath.Join(dir, "case.json"))
+		raw, err := os.ReadFile(filepath.Join(dir, "case.json"))
 		if err != nil {
 			return nil, fmt.Errorf("open case %s: %w", entry.Name(), err)
 		}
-		var definition CaseDefinition
-		decodeErr := common.DecodeJson(file, &definition)
-		closeErr := file.Close()
+		definition, decodeErr := decodeFilesystemCase(raw)
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode case %s: %w", entry.Name(), decodeErr)
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("close case %s: %w", entry.Name(), closeErr)
 		}
 		if definition.Disabled {
 			continue
@@ -72,6 +69,12 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		definition.Protocol = strings.TrimSpace(definition.Protocol)
 		definition.Kind = strings.TrimSpace(definition.Kind)
 		definition.Severity = strings.TrimSpace(definition.Severity)
+		for index := range definition.ModelTargets {
+			definition.ModelTargets[index] = strings.TrimSpace(definition.ModelTargets[index])
+			if definition.ModelTargets[index] == "" {
+				return nil, fmt.Errorf("case %s has an empty model target", definition.ID)
+			}
+		}
 		if definition.Severity == "" {
 			definition.Severity = "normal"
 		}
@@ -83,6 +86,9 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		}
 		if definition.Protocol != suite {
 			return nil, fmt.Errorf("case %s protocol %q does not match suite %q", definition.ID, definition.Protocol, suite)
+		}
+		if suite == "wan-video" && len(definition.ModelTargets) == 0 {
+			return nil, fmt.Errorf("case %s requires version-scoped model targets", definition.ID)
 		}
 		if !supportedKinds[suite][definition.Kind] {
 			return nil, fmt.Errorf("case %s has unsupported kind %q for suite %q", definition.ID, definition.Kind, suite)
@@ -101,7 +107,7 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if definition.Request.Method != "" && definition.Request.Method != "GET" && definition.Request.Method != "POST" {
 			return nil, fmt.Errorf("case %s request method %q is not supported", definition.ID, definition.Request.Method)
 		}
-		if suite == "seedance" && definition.Request.Body == nil {
+		if (suite == "seedance" || suite == "wan-video") && definition.Request.Body == nil {
 			return nil, fmt.Errorf("case %s request body is required", definition.ID)
 		}
 		if err := validateCaseOptions(definition); err != nil {
@@ -121,8 +127,96 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 	return cases, nil
 }
 
+type filesystemCaseV2 struct {
+	SchemaVersion int      `json:"schema_version"`
+	Key           string   `json:"key"`
+	Name          string   `json:"name"`
+	Dimension     string   `json:"dimension"`
+	Protocol      string   `json:"protocol"`
+	ModelTargets  []string `json:"model_targets,omitempty"`
+	Enabled       bool     `json:"enabled"`
+	Default       bool     `json:"default"`
+	Severity      string   `json:"severity"`
+	ExecutionMode string   `json:"execution_mode"`
+	Definition    struct {
+		SchemaVersion int    `json:"schema_version"`
+		Type          string `json:"type"`
+		TypeVersion   int    `json:"type_version"`
+		Spec          struct {
+			Kind    string            `json:"kind"`
+			Request RequestDefinition `json:"request"`
+			Options map[string]any    `json:"options"`
+		} `json:"spec"`
+	} `json:"definition"`
+}
+
+func decodeFilesystemCase(raw []byte) (CaseDefinition, error) {
+	var envelope struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return CaseDefinition{}, err
+	}
+	if envelope.SchemaVersion != 2 {
+		var legacy CaseDefinition
+		if err := decodeStrictJSON(raw, &legacy); err != nil {
+			return CaseDefinition{}, err
+		}
+		return legacy, nil
+	}
+
+	var document filesystemCaseV2
+	if err := decodeStrictJSON(raw, &document); err != nil {
+		return CaseDefinition{}, err
+	}
+	if document.Definition.SchemaVersion != 2 || document.Definition.Type != "legacy.apiaudit" || document.Definition.TypeVersion != 1 {
+		return CaseDefinition{}, fmt.Errorf("unsupported v2 case definition %s@%d", document.Definition.Type, document.Definition.TypeVersion)
+	}
+	return CaseDefinition{
+		ID: document.Key, Name: document.Name, Dimension: document.Dimension, Protocol: document.Protocol,
+		ModelTargets: append([]string(nil), document.ModelTargets...), Kind: document.Definition.Spec.Kind,
+		Default: document.Default, Disabled: !document.Enabled || document.ExecutionMode != "automatic", Severity: document.Severity,
+		Request: document.Definition.Spec.Request, Options: document.Definition.Spec.Options,
+	}, nil
+}
+
+func decodeStrictJSON(raw []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("case JSON must contain exactly one value")
+		}
+		return err
+	}
+	return nil
+}
+
+func FilterCasesForModel(cases []CaseDefinition, model string) []CaseDefinition {
+	model = strings.TrimSpace(model)
+	result := make([]CaseDefinition, 0, len(cases))
+	for _, definition := range cases {
+		if len(definition.ModelTargets) == 0 || containsModelTarget(definition.ModelTargets, model) {
+			result = append(result, definition)
+		}
+	}
+	return result
+}
+
+func containsModelTarget(targets []string, model string) bool {
+	for _, target := range targets {
+		if target == model {
+			return true
+		}
+	}
+	return false
+}
+
 func validateCaseOptions(definition CaseDefinition) error {
-	stringOptions := []string{"reason", "expected_exact", "expected_digit_sequence", "stop_text", "short_prompt", "long_prompt", "needle"}
+	stringOptions := []string{"reason", "expected_exact", "expected_digit_sequence", "stop_text", "short_prompt", "long_prompt", "needle", "model_mode"}
 	for _, key := range stringOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(string); !ok {
@@ -138,7 +232,7 @@ func validateCaseOptions(definition CaseDefinition) error {
 			}
 		}
 	}
-	numberOptions := []string{"max_completion_tokens", "max_elapsed_ms", "min_prompt_tokens", "repetitions", "max_channels", "max_first_frame_ms"}
+	numberOptions := []string{"max_completion_tokens", "max_elapsed_ms", "min_prompt_tokens", "repetitions", "max_channels", "max_first_frame_ms", "prompt_length"}
 	for _, key := range numberOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(float64); !ok {
@@ -167,6 +261,28 @@ func validateCaseOptions(definition CaseDefinition) error {
 	}
 	if value, ok := definition.Options["max_first_frame_ms"].(float64); ok && value <= 0 {
 		return fmt.Errorf("case %s option max_first_frame_ms must be positive", definition.ID)
+	}
+	if value, ok := definition.Options["model_mode"].(string); ok && value != "target" && value != "body" && value != "omit" {
+		return fmt.Errorf("case %s option model_mode must be one of target, body, or omit", definition.ID)
+	}
+	if value, ok := definition.Options["prompt_length"].(float64); ok && (value < 1 || value > 20001 || value != float64(int(value))) {
+		return fmt.Errorf("case %s option prompt_length must be an integer between 1 and 20001", definition.ID)
+	}
+	if value, exists := definition.Options["expected_usage"]; exists {
+		usage, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("case %s option expected_usage must be an object", definition.ID)
+		}
+		for key, expected := range usage {
+			if strings.TrimSpace(key) == "" {
+				return fmt.Errorf("case %s option expected_usage keys must not be empty", definition.ID)
+			}
+			switch expected.(type) {
+			case string, float64, bool, nil:
+			default:
+				return fmt.Errorf("case %s option expected_usage.%s must be a scalar", definition.ID, key)
+			}
+		}
 	}
 	return nil
 }

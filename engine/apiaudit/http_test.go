@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/894x/llm-test-studio/engine/common"
 )
 
 type userAgentCaptureDoer struct {
@@ -71,5 +73,35 @@ func TestAuditRequestsUseLLMTestStudioUserAgent(t *testing.T) {
 				t.Fatalf("User-Agent = %q, want %q", got, "llm-test-studio/1.0")
 			}
 		})
+	}
+}
+
+func TestPerformRequestForwardsCaseDefinedHeaders(t *testing.T) {
+	var definition RequestDefinition
+	if err := common.Unmarshal([]byte(`{"method":"POST","path":"/video","headers":{"X-DashScope-Async":"enable"}}`), &definition); err != nil {
+		t.Fatalf("decode request definition: %v", err)
+	}
+	doer := &userAgentCaptureDoer{responseBody: `{}`}
+	if _, _, err := performRequest(context.Background(), doer, RunConfig{BaseURL: "https://example.test"}, definition, map[string]any{}); err != nil {
+		t.Fatalf("perform request: %v", err)
+	}
+	if got := doer.request.Header.Get("X-DashScope-Async"); got != "enable" {
+		t.Fatalf("X-DashScope-Async = %q, want enable", got)
+	}
+}
+
+func TestPerformRequestAllowsCaseToOverrideContentTypeForBoundaryTesting(t *testing.T) {
+	doer := &userAgentCaptureDoer{responseBody: `{}`}
+	definition := RequestDefinition{
+		Method:  http.MethodPost,
+		Path:    "/boundary",
+		Headers: map[string]string{"Content-Type": "text/plain"},
+	}
+	_, _, err := performRequest(context.Background(), doer, RunConfig{BaseURL: "https://workspace.example"}, definition, map[string]any{"input": map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := doer.request.Header.Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("Content-Type = %q, want case-defined boundary value", got)
 	}
 }

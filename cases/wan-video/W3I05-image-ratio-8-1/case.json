@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "key": "wan30.image.ratio_8_1",
+  "name": "Wan 3.0 · 图片宽高比 8:1",
+  "dimension": "media-boundary",
+  "protocol": "wan-video",
+  "model_targets": [
+    "wan3.0-video",
+    "wan3.0-video-prime"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "wan_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": {
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "input": {
+            "media": [
+              {
+                "type": "reference_image",
+                "url": "fixture://wan3/image/jpeg-ratio-8x1.jpg"
+              }
+            ]
+          },
+          "parameters": {
+            "resolution": "480P",
+            "ratio": "adaptive",
+            "duration": 2,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false,
+            "audio": false
+          }
+        }
+      },
+      "options": {
+        "reason": "合法比例边界应成功",
+        "precondition": "将 fixture:// 别名解析为同地域可访问、属性已校验的确定性素材"
+      }
+    }
+  }
+}

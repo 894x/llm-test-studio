@@ -218,7 +218,7 @@ func descriptorRequestSingle() Descriptor {
 func descriptorLegacyAPIAudit() Descriptor {
 	return Descriptor{
 		Type: TypeLegacyAPIAudit, TypeVersion: 1, Label: "内置兼容性审计", Category: "compatibility",
-		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3, domain.ProtocolSeedance},
+		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3, domain.ProtocolSeedance, domain.ProtocolWanVideo},
 		Creatable: false,
 		DefaultSpec: mustJSON(LegacyAPIAuditSpec{
 			Kind:    "chat_sync",
@@ -373,4 +373,5 @@ var legacyKinds = map[domain.Protocol]map[string]struct{}{
 		"kimi_reasoning_visible", "kimi_reasoning_hidden", "kimi_error_400",
 	),
 	domain.ProtocolSeedance: makeKindSet("seedance_task"),
+	domain.ProtocolWanVideo: makeKindSet("wan_task_success", "wan_task_rejected"),
 }

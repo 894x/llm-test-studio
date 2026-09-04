@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "key": "wan21.turbo.duration_5",
+  "name": "Wan 2.1 Turbo · 固定时长 5 秒",
+  "dimension": "compatibility",
+  "protocol": "wan-video",
+  "model_targets": [
+    "wanx2.1-t2v-turbo"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "wan_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": {
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "input": {
+            "prompt": "一只小猫在月光下奔跑"
+          },
+          "parameters": {
+            "size": "832*480",
+            "duration": 5,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false
+          }
+        }
+      },
+      "options": {}
+    }
+  }
+}

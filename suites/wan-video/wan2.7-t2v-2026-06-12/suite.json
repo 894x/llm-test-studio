@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "key": "wan-video.wan2.7-t2v-2026-06-12",
+  "name": "Wan 2.7 2026-06-12 快照边界套件",
+  "protocol": "wan-video",
+  "model_target": "wan2.7-t2v-2026-06-12",
+  "case_keys": [
+    "wan27.t2v.min_duration",
+    "wan27.t2v.duration_below_min",
+    "wan27.t2v.duration_above_max",
+    "wan27.t2v.resolution_invalid",
+    "wan27.t2v.ratio_invalid",
+    "wan27.t2v.seed_below_min",
+    "wan27.t2v.seed_above_max"
+  ]
+}

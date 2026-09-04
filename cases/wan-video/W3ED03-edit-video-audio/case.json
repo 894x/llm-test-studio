@@ -1,0 +1,58 @@
+{
+  "schema_version": 2,
+  "key": "wan30.video_edit.video_audio",
+  "name": "Wan 3.0 · 视频+音频编辑",
+  "dimension": "semantic",
+  "protocol": "wan-video",
+  "model_targets": [
+    "wan3.0-video",
+    "wan3.0-video-prime"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "wan_task_success",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": {
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "input": {
+            "media": [
+              {
+                "type": "reference_video",
+                "url": "fixture://wan3/video/edit-source.mp4"
+              },
+              {
+                "type": "reference_audio",
+                "url": "fixture://wan3/audio/edit-reference.mp3"
+              }
+            ],
+            "prompt": "编辑视频中的主体与风格，同时保留动作连续性"
+          },
+          "parameters": {
+            "resolution": "480P",
+            "ratio": "adaptive",
+            "duration": 2,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false,
+            "audio": false
+          }
+        }
+      },
+      "options": {
+        "reason": "需要对应素材与可复现编辑语义 oracle",
+        "precondition": "将 fixture:// 别名解析为同地域可访问、属性已校验的确定性素材"
+      }
+    }
+  }
+}

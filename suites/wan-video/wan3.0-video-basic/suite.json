@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "key": "wan-video.wan3.0-video.basic",
+  "name": "Wan 3.0 标准版 · 基本功能测试",
+  "protocol": "wan-video",
+  "model_target": "wan3.0-video",
+  "case_keys": [
+    "wan30.t2v.min_duration",
+    "wan30.input.prompt_or_media_required",
+    "wan30.ratio.16_9",
+    "wan30.audio.true",
+    "wan30.prompt_extend.true",
+    "wan30.watermark.true"
+  ]
+}

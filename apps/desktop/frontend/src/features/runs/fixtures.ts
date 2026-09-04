@@ -66,7 +66,7 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
   schema_version: 2,
   case_types: [
     { type: "latency.input_ladder", type_version: 2, label: "输入阶梯延迟", category: "performance", scheduling_owner: "case", supported_protocols: ["openai-chat", "kimi-k3"], creatable: true, default_spec: { request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: { messages: [{ role: "user", content: "placeholder" }], stream: true } }, stages: [{ input_tokens: 128 }, { input_tokens: 512 }, { input_tokens: 2048 }, { input_tokens: 8192 }], warmups_per_step: 1, samples_per_step: 3, output_tokens: 16, timeout_ms: 600000, cache_mode: "cold" } },
-    { type: "legacy.apiaudit", type_version: 1, label: "内置兼容性审计", category: "compatibility", scheduling_owner: "case", supported_protocols: ["openai-chat", "kimi-k3", "seedance"], creatable: false, default_spec: { kind: "chat_sync", request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: {} }, options: {} } },
+    { type: "legacy.apiaudit", type_version: 1, label: "内置兼容性审计", category: "compatibility", scheduling_owner: "case", supported_protocols: ["openai-chat", "kimi-k3", "seedance", "wan-video"], creatable: false, default_spec: { kind: "chat_sync", request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: {} }, options: {} } },
     { type: "request.single", type_version: 1, label: "单请求验证", category: "compatibility", scheduling_owner: "plan", supported_protocols: ["openai-chat", "kimi-k3"], creatable: true, default_spec: caseEditor(["text"]).spec },
   ],
   models: [

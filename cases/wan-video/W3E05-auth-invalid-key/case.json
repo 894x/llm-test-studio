@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "key": "wan30.authorization.invalid_key",
+  "name": "Wan 3.0 · Bearer Key 无效",
+  "dimension": "authorization",
+  "protocol": "wan-video",
+  "model_targets": [
+    "wan3.0-video",
+    "wan3.0-video-prime"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "wan_task_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
+        "headers": {
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "input": {
+            "prompt": "一只小猫在月光下奔跑"
+          },
+          "parameters": {
+            "resolution": "480P",
+            "ratio": "adaptive",
+            "duration": 2,
+            "seed": 0,
+            "prompt_extend": false,
+            "watermark": false,
+            "audio": false
+          }
+        }
+      },
+      "options": {
+        "reason": "需要按 Case 覆盖无效 Key，且认证失败不能按参数拒绝通过",
+        "precondition": "使用不可用的专用测试 Key"
+      }
+    }
+  }
+}

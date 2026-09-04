@@ -49,4 +49,49 @@ describe("CasesWorkspace", () => {
 
     expect(screen.getByRole("cell", { name: "内置兼容性审计" })).not.toHaveClass("font-mono")
   })
+
+  it("renders the Wan video protocol label", () => {
+    const catalog: CatalogSnapshot = {
+      ...EMPTY_CATALOG,
+      case_types: [{
+        type: "legacy.apiaudit",
+        type_version: 1,
+        label: "内置兼容性审计",
+        category: "compatibility",
+        scheduling_owner: "case",
+        supported_protocols: ["wan-video"],
+        creatable: false,
+        default_spec: { kind: "wan_task_success" },
+      }],
+      test_cases: [{
+        id: "123e4567-e89b-42d3-a456-426614174021",
+        revision: 1,
+        key: "wan30.t2v_smoke",
+        name: "Wan 3.0 文生视频冒烟",
+        dimension: "compatibility",
+        protocol: "wan-video",
+        model_targets: ["wan3.0-video"],
+        enabled: true,
+        default: false,
+        severity: "critical",
+        execution_mode: "automatic",
+        definition_schema_version: 2,
+        type: "legacy.apiaudit",
+        type_version: 1,
+        spec: { kind: "wan_task_success" },
+      }],
+    }
+
+    render(
+      <CasesWorkspace
+        catalog={catalog}
+        actions={{} as CatalogActions}
+        mutate={async (operation) => { await operation() }}
+        mutationPending={false}
+        mutationError=""
+      />,
+    )
+
+    expect(screen.getAllByText("Wan Video").length).toBeGreaterThan(0)
+  })
 })

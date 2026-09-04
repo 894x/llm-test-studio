@@ -125,8 +125,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 137 || len(catalogSnapshot.Suites) != 4 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 137 file-backed cases and four per-model suites",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 350 || len(catalogSnapshot.Suites) != 21 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 350 file-backed cases and 21 version-scoped suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -141,8 +141,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 117 || disabled != 14 || manual != 6 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 117/14/6", runnable, disabled, manual)
+	if runnable != 213 || disabled != 131 || manual != 6 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 213/131/6", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -202,8 +202,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	storedCases, err := repository.ListTestCases(context.Background())
 	storedSuites, suitesErr := repository.ListSuites(context.Background())
 	_ = repository.Close()
-	if err != nil || suitesErr != nil || len(firstSnapshot.Suites) != 4 || len(storedCases) != 0 || len(storedSuites) != 0 {
-		t.Fatalf("file suites = %d, database case snapshots = %d, database suites = %d, errors = %v/%v; want 4/0/0", len(firstSnapshot.Suites), len(storedCases), len(storedSuites), err, suitesErr)
+	if err != nil || suitesErr != nil || len(firstSnapshot.Suites) != 21 || len(storedCases) != 0 || len(storedSuites) != 0 {
+		t.Fatalf("file suites = %d, database case snapshots = %d, database suites = %d, errors = %v/%v; want 21/0/0", len(firstSnapshot.Suites), len(storedCases), len(storedSuites), err, suitesErr)
 	}
 
 	second, err := initialize(context.Background())
@@ -220,11 +220,11 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 137 || len(secondSnapshot.TestCases) != 137 {
-		t.Fatalf("case counts across restart = %d/%d, want 137/137", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
+	if len(firstSnapshot.TestCases) != 350 || len(secondSnapshot.TestCases) != 350 {
+		t.Fatalf("case counts across restart = %d/%d, want 350/350", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 4 || len(secondSnapshot.Suites) != 4 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want four per-model suites and no plans",
+	if len(firstSnapshot.Suites) != 21 || len(secondSnapshot.Suites) != 21 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
+		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 21 version-scoped suites and no plans",
 			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
 	}
 	wantSuites := map[string]struct {
@@ -235,6 +235,23 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		"Kimi K2.7 Code 官方基础套件":           {target: "kimi-k2.7-code", count: 10},
 		"Kimi K2.7 Code Highspeed 官方基础套件": {target: "kimi-k2.7-code-highspeed", count: 10},
 		"Kimi K2.6 官方基础套件":                {target: "kimi-k2.6", count: 11},
+		"Wan 3.0 标准版 · 连通性测试":             {target: "wan3.0-video", count: 1},
+		"Wan 3.0 标准版 · 基本功能测试":            {target: "wan3.0-video", count: 6},
+		"Wan 3.0 标准版 · 参数拒绝测试":            {target: "wan3.0-video", count: 39},
+		"Wan 3.0 标准版 · 完整测试（自动可执行）":       {target: "wan3.0-video", count: 74},
+		"Wan 3.0 标准版 · 完整矩阵（含禁用模板）":       {target: "wan3.0-video", count: 191},
+		"Wan 3.0 Prime · 连通性测试":           {target: "wan3.0-video-prime", count: 1},
+		"Wan 3.0 Prime · 基本功能测试":          {target: "wan3.0-video-prime", count: 6},
+		"Wan 3.0 Prime · 参数拒绝测试":          {target: "wan3.0-video-prime", count: 39},
+		"Wan 3.0 Prime · 完整测试（自动可执行）":     {target: "wan3.0-video-prime", count: 74},
+		"Wan 3.0 Prime · 完整矩阵（含禁用模板）":     {target: "wan3.0-video-prime", count: 191},
+		"Wan 2.7 文生视频边界套件":                {target: "wan2.7-t2v", count: 7},
+		"Wan 2.7 2026-06-12 快照边界套件":       {target: "wan2.7-t2v-2026-06-12", count: 7},
+		"Wan 2.6 文生视频边界套件":                {target: "wan2.6-t2v", count: 4},
+		"Wan 2.5 文生视频边界套件":                {target: "wan2.5-t2v-preview", count: 2},
+		"Wan 2.2 文生视频边界套件":                {target: "wan2.2-t2v-plus", count: 3},
+		"Wan 2.1 Turbo 边界套件":              {target: "wanx2.1-t2v-turbo", count: 3},
+		"Wan 2.1 Plus 边界套件":               {target: "wanx2.1-t2v-plus", count: 3},
 	}
 	firstByName := make(map[string]catalog.SuiteSummary, len(firstSnapshot.Suites))
 	secondByName := make(map[string]catalog.SuiteSummary, len(secondSnapshot.Suites))

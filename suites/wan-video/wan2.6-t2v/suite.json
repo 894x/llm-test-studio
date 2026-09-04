@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "key": "wan-video.wan2.6-t2v",
+  "name": "Wan 2.6 文生视频边界套件",
+  "protocol": "wan-video",
+  "model_target": "wan2.6-t2v",
+  "case_keys": [
+    "wan26.t2v.min_duration",
+    "wan26.t2v.duration_below_min",
+    "wan26.t2v.duration_above_max",
+    "wan26.t2v.size_invalid"
+  ]
+}

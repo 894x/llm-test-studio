@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "key": "wan-video.wan2.5-t2v-preview",
+  "name": "Wan 2.5 文生视频边界套件",
+  "protocol": "wan-video",
+  "model_target": "wan2.5-t2v-preview",
+  "case_keys": [
+    "wan25.t2v.duration_5",
+    "wan25.t2v.duration_invalid"
+  ]
+}

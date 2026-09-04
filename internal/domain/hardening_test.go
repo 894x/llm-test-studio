@@ -401,6 +401,12 @@ func TestAssertionKindCoversV1EvaluatorExtensionPoints(t *testing.T) {
 	}
 }
 
+func TestWanVideoIsAValidCatalogProtocol(t *testing.T) {
+	if err := Protocol("wan-video").Validate(); err != nil {
+		t.Fatalf("wan-video protocol rejected: %v", err)
+	}
+}
+
 func TestRunSnapshotIsCompleteAndDefensivelyCopied(t *testing.T) {
 	snapshot := validRunSnapshot()
 	run, err := NewRun(validEntityMeta(testRunID), testPlanID, snapshot)
