@@ -11,7 +11,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
-import { performanceCompletion } from "@/features/quick-test/performance-summary"
+import { QUICK_TEST_ERROR_MESSAGES } from "@/features/quick-test/data"
+import {
+  performanceCapacitySummary,
+  performanceCompletion,
+  performanceSLOStatusLabel,
+} from "@/features/quick-test/performance-summary"
 import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-performance-request-analysis"
 import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
@@ -197,6 +202,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   const targetRanges = performanceTargetRanges(report)
+  const hasSLOCapacityData = report.slo_assessment !== undefined || report.capacity_result !== undefined
   const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
     report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
   return <section aria-label="归档性能报告" className="space-y-4 p-4">
@@ -221,6 +227,40 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         {hasPhaseThreeData ? <ContextValue label="切片粒度" value={performanceSliceConfiguration(report)} /> : null}
       </dl>
     </div>
+    {hasSLOCapacityData ? (
+      <>
+        <Separator />
+        <div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold">SLO 与容量</h4>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline" className={report.success ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>
+                传输与协议{report.success ? "通过" : "未通过"}
+              </Badge>
+              {report.slo_assessment ? <SLOStatusBadge status={report.slo_assessment.status} /> : null}
+            </div>
+          </div>
+          {report.slo_assessment ? (
+            <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
+              <InlineSummaryValue label="阈值" value={formatSLOThresholds(report.slo_assessment.thresholds)} />
+              <InlineSummaryValue label="目标达标率" value={`${formatMetric(report.slo_assessment.target_percent)}%`} />
+              <InlineSummaryValue label="好请求" value={`${formatMetric(report.slo_assessment.good_requests)} / ${formatMetric(report.slo_assessment.total_requests)}`} />
+              <InlineSummaryValue label="实际达标率" value={`${formatMetric(report.slo_assessment.good_request_percent)}%`} />
+              <InlineSummaryValue label="Goodput" value={`${formatMetric(report.slo_assessment.goodput_qps)} req/s`} />
+              <InlineSummaryValue label="违反" value={formatSLOViolations(report.slo_assessment.violations)} />
+            </div>
+          ) : null}
+          {report.capacity_result ? (
+            <>
+              <p className="mt-3 rounded-md border bg-background/70 px-3 py-2 text-xs font-semibold tabular-nums">
+                {performanceCapacitySummary(report.capacity_result, report.profile.load_mode ?? "fixed_concurrency")}
+              </p>
+              <CapacityRungTable report={report} />
+            </>
+          ) : null}
+        </div>
+      </>
+    ) : null}
     {hasPhaseThreeData ? (
       <>
         <Separator />
@@ -249,13 +289,13 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
         <SummaryValue label="失败" value={String(report.metrics.failed)} />
         <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
-        <SummaryValue label="目标发送" value={performanceTargetRate(report.profile.load_mode, report.profile.rate_per_second)} />
+        <SummaryValue label="目标发送" value={performanceTargetRate(report)} />
         <SummaryValue label="调度需求" value={optionalRequestRate(report.metrics.offered_qps)} />
         <SummaryValue label="实际发送" value={optionalRequestRate(report.metrics.launched_qps)} />
         <SummaryValue label="已发送完成吞吐" value={optionalRequestRate(report.metrics.completed_qps)} />
         <SummaryValue label="成功吞吐" value={optionalRequestRate(report.metrics.successful_request_qps)} />
         {report.schema_version === 1 ? <SummaryValue label="旧版请求吞吐" value={`${formatMetric(report.metrics.request_qps)} req/s`} /> : null}
-        <SummaryValue label={report.profile.load_mode === "open_loop" ? "峰值在途 / 上限" : "峰值在途 / 配置并发"} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : report.profile.concurrency}`} />
+        <SummaryValue label={report.profile.load_mode === "open_loop" ? "峰值在途 / 上限" : "峰值在途 / 配置并发"} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : (report.progress.capacity_target ?? report.profile.concurrency)}`} />
         <SummaryValue label="总耗时" value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
         <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
         <SummaryValue label="输入 TPM" value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
@@ -301,6 +341,55 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
 
 function SummaryValue({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><div className="text-[10px] text-muted-foreground">{label}</div><div className="mt-0.5 truncate font-medium tabular-nums" title={value}>{value}</div></div>
+}
+
+function InlineSummaryValue({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0 rounded-md border bg-background/70 px-3 py-2 font-medium tabular-nums" title={`${label} ${value}`}>{label} {value}</div>
+}
+
+function SLOStatusBadge({ status }: { status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"] }) {
+  return <Badge
+    variant={status === "failed" ? "destructive" : "outline"}
+    className={status === "passed" ? "border-success/25 bg-success-soft text-success-strong" : status === "not_evaluated" ? "border-warning/25 bg-warning-soft text-warning" : undefined}
+  >{performanceSLOStatusLabel(status)}</Badge>
+}
+
+function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
+  const capacity = report.capacity_result
+  if (!capacity) return null
+  const unit = report.profile.load_mode === "open_loop" ? "RPS" : "并发"
+  return <div className="mt-3 overflow-x-auto rounded-lg border">
+    <Table aria-label="容量阶梯结果" className="min-w-[1120px]">
+      <TableHeader><TableRow className="hover:bg-transparent">
+        <TableHead className="h-8 pl-3 text-[11px]">档位</TableHead>
+        <TableHead className="h-8 text-[11px]">目标</TableHead>
+        <TableHead className="h-8 text-[11px]">传输</TableHead>
+        <TableHead className="h-8 text-[11px]">SLO</TableHead>
+        <TableHead className="h-8 text-[11px]">好请求</TableHead>
+        <TableHead className="h-8 text-[11px]">达标率</TableHead>
+        <TableHead className="h-8 text-[11px]">Goodput</TableHead>
+        <TableHead className="h-8 text-[11px]">TTFT P95</TableHead>
+        <TableHead className="h-8 text-[11px]">TPOT P95</TableHead>
+        <TableHead className="h-8 text-[11px]">E2E P95</TableHead>
+        <TableHead className="h-8 pr-3 text-[11px]">失败原因</TableHead>
+      </TableRow></TableHeader>
+      <TableBody>{capacity.rungs.map((rung) => (
+        <TableRow key={rung.index} className="h-9">
+          <TableCell className="py-1 pl-3 text-xs tabular-nums">#{rung.index + 1}</TableCell>
+          <TableCell className="py-1 text-xs font-medium tabular-nums">{formatMetric(rung.target)} {unit}</TableCell>
+          <TableCell className="py-1 text-xs">{rung.success ? "通过" : "未通过"}</TableCell>
+          <TableCell className="py-1 text-xs">{shortSLOStatus(rung.slo_assessment.status)}</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{rung.slo_assessment.good_requests} / {rung.slo_assessment.total_requests}</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.slo_assessment.good_request_percent)}%</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.slo_assessment.goodput_qps)} req/s</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.ttft_p95_ms)} ms</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.tpot_p95_ms)} ms/token</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.e2e_p95_ms)} ms</TableCell>
+          <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${QUICK_TEST_ERROR_MESSAGES[failure.error_code]} ${failure.count}`).join(" · ") : "—"}</TableCell>
+        </TableRow>
+      ))}</TableBody>
+    </Table>
+  </div>
 }
 
 function ContextValue({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -373,8 +462,25 @@ function metric(value?: number): string { return value === undefined ? "—" : f
 function formatMetric(value: number): string { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value) }
 function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatMetric(value)} req/s` }
 function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? "开放到达（RPS）" : mode === "fixed_concurrency" ? "固定并发" : "旧版固定并发" }
-function performanceTargetRate(mode?: "fixed_concurrency" | "open_loop", rate?: number): string { return mode === "open_loop" && rate !== undefined ? `${formatMetric(rate)} req/s` : "—（固定并发）" }
 type QuickPerformanceReport = Extract<ReportDetail, { source: "quick_performance" }>["performance"]
+function performanceTargetRate(report: QuickPerformanceReport): string {
+  const target = report.progress.capacity_target ?? report.profile.rate_per_second
+  return report.profile.load_mode === "open_loop" && target !== undefined ? `${formatMetric(target)} req/s` : "—（固定并发）"
+}
+function formatSLOThresholds(thresholds: NonNullable<QuickPerformanceReport["slo_assessment"]>["thresholds"]): string {
+  const enabled = [
+    thresholds.ttft_ms > 0 ? `TTFT ≤ ${formatMetric(thresholds.ttft_ms)} ms` : "",
+    thresholds.tpot_ms > 0 ? `TPOT ≤ ${formatMetric(thresholds.tpot_ms)} ms/token` : "",
+    thresholds.e2e_ms > 0 ? `E2E ≤ ${formatMetric(thresholds.e2e_ms)} ms` : "",
+  ].filter(Boolean)
+  return enabled.join(" · ") || "未启用"
+}
+function formatSLOViolations(violations: NonNullable<QuickPerformanceReport["slo_assessment"]>["violations"]): string {
+  return `传输 ${violations.transport} · TTFT ${violations.ttft} · TPOT ${violations.tpot} · E2E ${violations.e2e}`
+}
+function shortSLOStatus(status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"]): string {
+  return status === "passed" ? "通过" : status === "failed" ? "未通过" : "未评估"
+}
 function performanceArrivalPattern(report: QuickPerformanceReport): string {
   if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
   return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"

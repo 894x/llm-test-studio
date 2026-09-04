@@ -109,6 +109,13 @@ type PerformanceCommand struct {
 	RampDurationMS     uint64                  `json:"ramp_duration_ms,omitempty"`
 	RampRequestCap     uint64                  `json:"ramp_request_cap,omitempty"`
 	SliceDurationMS    uint64                  `json:"slice_duration_ms,omitempty"`
+	SLOTTFTMS          float64                 `json:"slo_ttft_ms,omitempty"`
+	SLOTPOTMS          float64                 `json:"slo_tpot_ms,omitempty"`
+	SLOE2EMS           float64                 `json:"slo_e2e_ms,omitempty"`
+	SLOTargetPercent   float64                 `json:"slo_target_percent,omitempty"`
+	CapacityEnabled    bool                    `json:"capacity_enabled,omitempty"`
+	CapacityStart      float64                 `json:"capacity_start,omitempty"`
+	CapacityStep       float64                 `json:"capacity_step,omitempty"`
 }
 
 type PerformanceProfile struct {
@@ -131,24 +138,34 @@ type PerformanceProfile struct {
 	RampDurationMS     uint64                  `json:"ramp_duration_ms,omitempty"`
 	RampRequestCap     uint64                  `json:"ramp_request_cap,omitempty"`
 	SliceDurationMS    uint64                  `json:"slice_duration_ms,omitempty"`
+	SLOTTFTMS          float64                 `json:"slo_ttft_ms,omitempty"`
+	SLOTPOTMS          float64                 `json:"slo_tpot_ms,omitempty"`
+	SLOE2EMS           float64                 `json:"slo_e2e_ms,omitempty"`
+	SLOTargetPercent   float64                 `json:"slo_target_percent,omitempty"`
+	CapacityEnabled    bool                    `json:"capacity_enabled,omitempty"`
+	CapacityStart      float64                 `json:"capacity_start,omitempty"`
+	CapacityStep       float64                 `json:"capacity_step,omitempty"`
 }
 
 type PerformanceProgress struct {
-	Phase           load.Phase `json:"phase"`
-	Planned         uint64     `json:"planned"`
-	Offered         uint64     `json:"offered,omitempty"`
-	Launched        uint64     `json:"launched"`
-	Completed       uint64     `json:"completed"`
-	InFlight        uint64     `json:"in_flight,omitempty"`
-	PeakInFlight    uint64     `json:"peak_in_flight"`
-	Succeeded       uint64     `json:"succeeded"`
-	Failed          uint64     `json:"failed"`
-	Rejected        uint64     `json:"rejected"`
-	Stopped         bool       `json:"stopped,omitempty"`
-	Capped          bool       `json:"capped,omitempty"`
-	SendDurationMS  float64    `json:"send_duration_ms"`
-	DrainDurationMS float64    `json:"drain_duration_ms"`
-	TotalDurationMS float64    `json:"total_duration_ms"`
+	Phase              load.Phase `json:"phase"`
+	Planned            uint64     `json:"planned"`
+	Offered            uint64     `json:"offered,omitempty"`
+	Launched           uint64     `json:"launched"`
+	Completed          uint64     `json:"completed"`
+	InFlight           uint64     `json:"in_flight,omitempty"`
+	PeakInFlight       uint64     `json:"peak_in_flight"`
+	Succeeded          uint64     `json:"succeeded"`
+	Failed             uint64     `json:"failed"`
+	Rejected           uint64     `json:"rejected"`
+	Stopped            bool       `json:"stopped,omitempty"`
+	Capped             bool       `json:"capped,omitempty"`
+	CapacityRungNumber uint32     `json:"capacity_rung_number,omitempty"`
+	CapacityRungCount  uint32     `json:"capacity_rung_count,omitempty"`
+	CapacityTarget     float64    `json:"capacity_target,omitempty"`
+	SendDurationMS     float64    `json:"send_duration_ms"`
+	DrainDurationMS    float64    `json:"drain_duration_ms"`
+	TotalDurationMS    float64    `json:"total_duration_ms"`
 }
 
 type PerformanceFailure struct {
@@ -200,6 +217,56 @@ type PerformanceLatencySlice struct {
 	P50MS float64 `json:"p50_ms"`
 	P95MS float64 `json:"p95_ms"`
 	P99MS float64 `json:"p99_ms"`
+}
+
+type PerformanceSLOStatus string
+
+const (
+	PerformanceSLONotEvaluated PerformanceSLOStatus = "not_evaluated"
+	PerformanceSLOPassed       PerformanceSLOStatus = "passed"
+	PerformanceSLOFailed       PerformanceSLOStatus = "failed"
+)
+
+type PerformanceSLOThresholds struct {
+	TTFTMS float64 `json:"ttft_ms"`
+	TPOTMS float64 `json:"tpot_ms"`
+	E2EMS  float64 `json:"e2e_ms"`
+}
+
+type PerformanceSLOViolations struct {
+	Transport uint64 `json:"transport"`
+	TTFT      uint64 `json:"ttft"`
+	TPOT      uint64 `json:"tpot"`
+	E2E       uint64 `json:"e2e"`
+}
+
+type PerformanceSLOAssessment struct {
+	Status             PerformanceSLOStatus     `json:"status"`
+	Thresholds         PerformanceSLOThresholds `json:"thresholds"`
+	TargetPercent      float64                  `json:"target_percent"`
+	TotalRequests      uint64                   `json:"total_requests"`
+	GoodRequests       uint64                   `json:"good_requests"`
+	BadRequests        uint64                   `json:"bad_requests"`
+	GoodRequestPercent float64                  `json:"good_request_percent"`
+	GoodputQPS         float64                  `json:"goodput_qps"`
+	Violations         PerformanceSLOViolations `json:"violations"`
+}
+
+type PerformanceCapacityRung struct {
+	Index         uint32                   `json:"index"`
+	Target        float64                  `json:"target"`
+	Success       bool                     `json:"success"`
+	Progress      PerformanceProgress      `json:"progress"`
+	Metrics       load.Metrics             `json:"metrics"`
+	Failures      []PerformanceFailure     `json:"failures"`
+	SLOAssessment PerformanceSLOAssessment `json:"slo_assessment"`
+}
+
+type PerformanceCapacityResult struct {
+	Status                  PerformanceSLOStatus      `json:"status"`
+	SelectedRungIndex       *uint32                   `json:"selected_rung_index,omitempty"`
+	HighestPassingRungIndex *uint32                   `json:"highest_passing_rung_index,omitempty"`
+	Rungs                   []PerformanceCapacityRung `json:"rungs"`
 }
 
 type PerformanceTimeSlice struct {
@@ -276,26 +343,28 @@ type PerformanceSample struct {
 // PerformanceReport is an ephemeral, bounded report. It contains no Model,
 // Channel, Case, Plan, credential, prompt, provider payload, or raw error.
 type PerformanceReport struct {
-	SchemaVersion int                        `json:"schema_version"`
-	ReportID      string                     `json:"report_id,omitempty"`
-	GeneratedAt   string                     `json:"generated_at,omitempty"`
-	Archived      bool                       `json:"archived"`
-	ArchiveStatus PerformanceArchiveStatus   `json:"archive_status"`
-	Success       bool                       `json:"success"`
-	AddressMode   AddressMode                `json:"address_mode"`
-	BaseURL       string                     `json:"base_url"`
-	Endpoint      string                     `json:"endpoint"`
-	ModelID       string                     `json:"model_id"`
-	Profile       PerformanceProfile         `json:"profile"`
-	RequestBudget *PerformanceRequestBudget  `json:"request_budget,omitempty"`
-	Warmup        *PerformanceTrafficSummary `json:"warmup,omitempty"`
-	Ramp          *PerformanceRampSummary    `json:"ramp,omitempty"`
-	TimeSlices    []PerformanceTimeSlice     `json:"time_slices,omitempty"`
-	Progress      PerformanceProgress        `json:"progress"`
-	Metrics       load.Metrics               `json:"metrics"`
-	Failures      []PerformanceFailure       `json:"failures"`
-	Samples       []PerformanceSample        `json:"samples"`
-	ErrorCode     domain.ErrorCode           `json:"error_code,omitempty"`
+	SchemaVersion  int                        `json:"schema_version"`
+	ReportID       string                     `json:"report_id,omitempty"`
+	GeneratedAt    string                     `json:"generated_at,omitempty"`
+	Archived       bool                       `json:"archived"`
+	ArchiveStatus  PerformanceArchiveStatus   `json:"archive_status"`
+	Success        bool                       `json:"success"`
+	AddressMode    AddressMode                `json:"address_mode"`
+	BaseURL        string                     `json:"base_url"`
+	Endpoint       string                     `json:"endpoint"`
+	ModelID        string                     `json:"model_id"`
+	Profile        PerformanceProfile         `json:"profile"`
+	RequestBudget  *PerformanceRequestBudget  `json:"request_budget,omitempty"`
+	Warmup         *PerformanceTrafficSummary `json:"warmup,omitempty"`
+	Ramp           *PerformanceRampSummary    `json:"ramp,omitempty"`
+	TimeSlices     []PerformanceTimeSlice     `json:"time_slices,omitempty"`
+	SLOAssessment  *PerformanceSLOAssessment  `json:"slo_assessment,omitempty"`
+	CapacityResult *PerformanceCapacityResult `json:"capacity_result,omitempty"`
+	Progress       PerformanceProgress        `json:"progress"`
+	Metrics        load.Metrics               `json:"metrics"`
+	Failures       []PerformanceFailure       `json:"failures"`
+	Samples        []PerformanceSample        `json:"samples"`
+	ErrorCode      domain.ErrorCode           `json:"error_code,omitempty"`
 }
 
 type PerformanceArchive interface {

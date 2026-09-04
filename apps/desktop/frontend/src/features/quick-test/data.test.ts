@@ -1,6 +1,43 @@
 import { describe, expect, it } from "vitest"
 
-import { parseQuickPerformanceReport } from "./data"
+import {
+  estimateQuickPerformanceOpenLoopRequestCap,
+  parseQuickPerformanceReport,
+  type QuickPerformanceCapacityResult,
+  type QuickPerformanceCapacityRung,
+  type QuickPerformanceSLOAssessment,
+} from "./data"
+
+type PhaseFourFixture = ReturnType<typeof phaseThreeReport> & {
+  profile: ReturnType<typeof phaseThreeReport>["profile"] & {
+    slo_ttft_ms: number
+    slo_tpot_ms: number
+    slo_e2e_ms: number
+    slo_target_percent: number
+    capacity_enabled: boolean
+    capacity_start: number
+    capacity_step: number
+  }
+  progress: ReturnType<typeof phaseThreeReport>["progress"] & {
+    stopped?: boolean
+    capacity_rung_number?: number
+    capacity_rung_count?: number
+    capacity_target?: number
+  }
+  slo_assessment: QuickPerformanceSLOAssessment & { provider_internal?: string }
+  capacity_result: Omit<QuickPerformanceCapacityResult, "rungs"> & {
+    rungs: Array<Omit<QuickPerformanceCapacityRung, "progress"> & {
+      progress: ReturnType<typeof phaseThreeReport>["progress"] & {
+        stopped?: boolean
+        capacity_rung_number?: number
+        capacity_rung_count?: number
+        capacity_target?: number
+      }
+      provider_internal?: string
+    }>
+    provider_internal?: string
+  }
+}
 
 describe("parseQuickPerformanceReport phase-three fields", () => {
   it("keeps validated preparation, budget, and sparse time-slice data while dropping unknown fields", () => {
@@ -184,6 +221,221 @@ describe("parseQuickPerformanceReport phase-three fields", () => {
   })
 })
 
+describe("parseQuickPerformanceReport phase-four fields", () => {
+  it("matches the scheduler's interval-first constant duration estimate at a floating-point boundary", () => {
+    expect(estimateQuickPerformanceOpenLoopRequestCap(1, 29_000, "constant")).toBe(30)
+    expect(estimateQuickPerformanceOpenLoopRequestCap(1, 29_000, "poisson")).toBe(59)
+  })
+
+  it("keeps an allow-listed SLO assessment and a capacity prefix through the selected rung", () => {
+    const report = parseQuickPerformanceReport(phaseFourReport())
+
+    expect(report.profile).toMatchObject({
+      slo_ttft_ms: 50,
+      slo_tpot_ms: 7,
+      slo_e2e_ms: 100,
+      slo_target_percent: 90,
+      capacity_enabled: true,
+      capacity_start: 1,
+      capacity_step: 1,
+    })
+    expect(report.slo_assessment).toEqual({
+      status: "passed",
+      thresholds: { ttft_ms: 50, tpot_ms: 7, e2e_ms: 100 },
+      target_percent: 90,
+      total_requests: 2,
+      good_requests: 2,
+      bad_requests: 0,
+      good_request_percent: 100,
+      goodput_qps: 0.8,
+      violations: { transport: 0, ttft: 0, tpot: 0, e2e: 0 },
+    })
+    expect(report.capacity_result).toMatchObject({
+      status: "passed",
+      selected_rung_index: 1,
+      highest_passing_rung_index: 1,
+    })
+    expect(report.capacity_result?.rungs.map(({ index, target }) => ({ index, target }))).toEqual([
+      { index: 0, target: 1 },
+      { index: 1, target: 2 },
+    ])
+    expect(report.samples[0]).not.toHaveProperty("capacity_result")
+    expect(JSON.stringify(report)).not.toContain("provider_internal")
+  })
+
+  it("accepts a capacity step larger than the terminal target and still appends the exact maximum", () => {
+    const raw = phaseFourReport()
+    raw.profile.capacity_step = 5
+    expect(parseQuickPerformanceReport(raw).capacity_result?.rungs.map((rung) => rung.target)).toEqual([1, 2])
+  })
+
+  it("preserves a near-maximum open-loop start as its own rung before the exact maximum", () => {
+    const raw = phaseFourReport()
+    const nearMaximum = 2 - 1e-10
+    Object.assign(raw.profile, {
+      load_mode: "open_loop",
+      concurrency: 0,
+      rate_per_second: 2,
+      max_in_flight: 2,
+      capacity_start: nearMaximum,
+      capacity_step: 3,
+    })
+    raw.capacity_result.rungs = [capacityRung(raw, 0, nearMaximum), capacityRung(raw, 1, 2)]
+    for (const rung of raw.capacity_result.rungs) rung.progress.capacity_rung_count = 2
+    raw.progress = structuredClone(raw.capacity_result.rungs[1].progress)
+
+    expect(parseQuickPerformanceReport(raw).capacity_result?.rungs.map((rung) => rung.target)).toEqual([nearMaximum, 2])
+  })
+
+  it("rejects an ordinary SLO report whose positive timing window is below one nanosecond", () => {
+    const raw = phaseFourSLOOnlyReport()
+    raw.profile.warmup_requests = 0
+    raw.profile.slice_duration_ms = 0
+    raw.request_budget = undefined as never
+    raw.warmup = undefined as never
+    raw.time_slices = undefined as never
+    raw.progress.send_duration_ms = Number.MIN_VALUE
+    raw.progress.drain_duration_ms = 0
+    raw.progress.total_duration_ms = Number.MIN_VALUE
+    raw.slo_assessment.goodput_qps = Number.MAX_VALUE
+
+    expect(() => parseQuickPerformanceReport(raw)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it("rejects a capacity rung whose positive timing window is below one nanosecond", () => {
+    const raw = phaseFourReport()
+    const rung = raw.capacity_result.rungs[0]
+    rung.progress.send_duration_ms = Number.MIN_VALUE
+    rung.progress.drain_duration_ms = 0
+    rung.progress.total_duration_ms = Number.MIN_VALUE
+    rung.slo_assessment.goodput_qps = Number.MAX_VALUE
+
+    expect(() => parseQuickPerformanceReport(raw)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it.each([
+    ["more good requests than transport successes", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.slo_assessment.good_requests = 3
+      raw.slo_assessment.bad_requests = -1
+    }],
+    ["a fabricated good-request percentage", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.slo_assessment.good_request_percent = 99
+    }],
+    ["a fabricated goodput", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.slo_assessment.goodput_qps = 80
+    }],
+    ["a verdict that disagrees with target attainment", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.slo_assessment.status = "failed"
+    }],
+    ["a violation counter that disagrees with samples", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.slo_assessment.violations.ttft = 1
+    }],
+  ])("rejects %s", (_name, mutate) => {
+    const raw = phaseFourReport()
+    mutate(raw)
+    expect(() => parseQuickPerformanceReport(raw)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it("treats missing configured TTFT and TPOT as SLO violations", () => {
+    const raw = phaseFourSLOOnlyReport()
+    raw.samples[0].ttft_ms = 0
+    raw.samples[0].tpot_ms = 0
+    raw.slo_assessment = {
+      ...raw.slo_assessment,
+      status: "failed",
+      good_requests: 1,
+      bad_requests: 1,
+      good_request_percent: 50,
+      goodput_qps: 0.4,
+      violations: { transport: 0, ttft: 1, tpot: 1, e2e: 0 },
+    }
+    expect(parseQuickPerformanceReport(raw).slo_assessment).toMatchObject({
+      status: "failed",
+      good_requests: 1,
+      violations: { ttft: 1, tpot: 1 },
+    })
+  })
+
+  it("keeps a stopped run explicitly not evaluated even when observed good requests meet the target", () => {
+    const raw = phaseFourSLOOnlyReport()
+    raw.progress.stopped = true
+    raw.slo_assessment.status = "not_evaluated"
+
+    const report = parseQuickPerformanceReport(raw)
+    expect(report.progress.stopped).toBe(true)
+    expect(report.slo_assessment?.status).toBe("not_evaluated")
+  })
+
+  it.each([
+    ["twenty-one planned rungs", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.profile.concurrency = 21
+      raw.profile.capacity_step = 1
+      raw.capacity_result.rungs = Array.from({ length: 21 }, (_, index) => capacityRung(raw, index, index + 1))
+      raw.capacity_result.selected_rung_index = 20
+      raw.capacity_result.highest_passing_rung_index = 20
+    }],
+    ["a skipped planned target", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.capacity_result.rungs[1].target = 1.5
+    }],
+    ["a rung after the first failure", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.capacity_result.rungs[0].slo_assessment.status = "failed"
+    }],
+    ["a selected index that is not the highest passing rung", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.capacity_result.selected_rung_index = 0
+    }],
+    ["top-level metrics that are not the selected rung projection", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.capacity_result.rungs[1].metrics.rpm = 999
+    }],
+    ["a capacity rung missing its progress context", (raw: ReturnType<typeof phaseFourReport>) => {
+      delete raw.capacity_result.rungs[0].progress.capacity_rung_count
+    }],
+    ["top-level progress missing its capacity context", (raw: ReturnType<typeof phaseFourReport>) => {
+      delete raw.progress.capacity_rung_count
+    }],
+    ["good requests that are not explained by any enabled latency violation", (raw: ReturnType<typeof phaseFourReport>) => {
+      raw.profile.slo_target_percent = 50
+      raw.slo_assessment.target_percent = 50
+      for (const rung of raw.capacity_result.rungs) rung.slo_assessment.target_percent = 50
+      Object.assign(raw.capacity_result.rungs[0].slo_assessment, {
+        good_requests: 1,
+        bad_requests: 1,
+        good_request_percent: 50,
+        goodput_qps: 0.4,
+        violations: { transport: 0, ttft: 0, tpot: 0, e2e: 0 },
+      })
+    }],
+  ])("rejects capacity data with %s", (_name, mutate) => {
+    const raw = phaseFourReport()
+    mutate(raw)
+    expect(() => parseQuickPerformanceReport(raw)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it("accepts twenty fixed-concurrency rungs but rejects a configuration that plans twenty-one", () => {
+    const twenty = phaseFourReport()
+    twenty.profile.concurrency = 20
+    twenty.profile.capacity_step = 1
+    twenty.request_budget.measured_cap = 40
+    twenty.request_budget.total_cap = 41
+    twenty.capacity_result.rungs = Array.from({ length: 20 }, (_, index) => capacityRung(twenty, index, index + 1))
+    twenty.capacity_result.selected_rung_index = 19
+    twenty.capacity_result.highest_passing_rung_index = 19
+    twenty.progress = { ...twenty.progress, capacity_rung_number: 20, capacity_rung_count: 20, capacity_target: 20 }
+    expect(parseQuickPerformanceReport(twenty).capacity_result?.rungs).toHaveLength(20)
+
+    const twentyOne = structuredClone(twenty)
+    twentyOne.profile.concurrency = 21
+    twentyOne.request_budget.measured_cap = 42
+    twentyOne.request_budget.total_cap = 43
+    expect(() => parseQuickPerformanceReport(twentyOne)).toThrow("快速性能报告数据结构无效")
+  })
+
+  it("keeps earlier schema-v2 reports free of empty SLO and capacity objects", () => {
+    const report = parseQuickPerformanceReport(phaseThreeReport())
+    expect(report.slo_assessment).toBeUndefined()
+    expect(report.capacity_result).toBeUndefined()
+  })
+})
+
 function phaseThreeReport() {
   const traffic = {
     request_cap: 1,
@@ -317,6 +569,99 @@ function phaseThreeReport() {
         e2e: { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 },
       },
     ],
+    provider_internal: "drop me",
+  }
+}
+
+function phaseFourReport(): PhaseFourFixture {
+  const raw = phaseThreeReport()
+  raw.profile.ramp_duration_ms = 0
+  raw.profile.ramp_request_cap = 0
+  raw.ramp = undefined as never
+  raw.request_budget.measured_cap = 4
+  raw.request_budget.ramp_cap = 0
+  raw.request_budget.total_cap = 5
+  const slo: PhaseFourFixture["slo_assessment"] = {
+    status: "passed",
+    thresholds: { ttft_ms: 50, tpot_ms: 7, e2e_ms: 100 },
+    target_percent: 90,
+    total_requests: 2,
+    good_requests: 2,
+    bad_requests: 0,
+    good_request_percent: 100,
+    goodput_qps: 0.8,
+    violations: { transport: 0, ttft: 0, tpot: 0, e2e: 0 },
+    provider_internal: "drop me",
+  }
+  const result: PhaseFourFixture = {
+    ...raw,
+    progress: {
+      ...raw.progress,
+      capacity_rung_number: 2,
+      capacity_rung_count: 2,
+      capacity_target: 2,
+    },
+    profile: {
+      ...raw.profile,
+      slo_ttft_ms: 50,
+      slo_tpot_ms: 7,
+      slo_e2e_ms: 100,
+      slo_target_percent: 90,
+      capacity_enabled: true,
+      capacity_start: 1,
+      capacity_step: 1,
+    },
+    slo_assessment: slo,
+    capacity_result: {
+      status: "passed",
+      selected_rung_index: 1,
+      highest_passing_rung_index: 1,
+      rungs: [],
+      provider_internal: "drop me",
+    },
+  }
+  result.capacity_result.rungs = [capacityRung(result, 0, 1), capacityRung(result, 1, 2)]
+  return result
+}
+
+function phaseFourSLOOnlyReport() {
+  const raw = phaseFourReport()
+  const {
+    capacity_enabled: _enabled,
+    capacity_start: _start,
+    capacity_step: _step,
+    ...profile
+  } = raw.profile
+  const { capacity_result: _capacity, ...withoutCapacity } = raw
+  const {
+    capacity_rung_number: _rungNumber,
+    capacity_rung_count: _rungCount,
+    capacity_target: _capacityTarget,
+    ...progress
+  } = raw.progress
+  return {
+    ...withoutCapacity,
+    profile,
+    progress,
+    request_budget: { ...raw.request_budget, measured_cap: 2, total_cap: 3 },
+  }
+}
+
+function capacityRung(raw: PhaseFourFixture, index: number, target: number): PhaseFourFixture["capacity_result"]["rungs"][number] {
+  const rungCount = raw.profile.concurrency
+  return {
+    index,
+    target,
+    success: raw.success,
+    progress: {
+      ...structuredClone(raw.progress),
+      capacity_rung_number: index + 1,
+      capacity_rung_count: rungCount,
+      capacity_target: target,
+    },
+    metrics: structuredClone(raw.metrics),
+    failures: structuredClone(raw.failures),
+    slo_assessment: structuredClone(raw.slo_assessment),
     provider_internal: "drop me",
   }
 }

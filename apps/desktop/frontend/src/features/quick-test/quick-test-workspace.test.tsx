@@ -6,7 +6,7 @@ import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopClientError } from "@/app/desktop-client"
 
 import { QuickTestWorkspace } from "./quick-test-workspace"
-import { updateQuickTestForm, type QuickPerformanceProgress, type QuickPerformanceReport, type QuickTestResult } from "./data"
+import { updateQuickTestForm, type QuickPerformanceProgress, type QuickPerformanceReport, type QuickPerformanceSLOAssessment, type QuickTestResult } from "./data"
 
 describe("QuickTestWorkspace", () => {
   it("identifies every missing connection input and focuses the first field", async () => {
@@ -269,6 +269,13 @@ describe("QuickTestWorkspace", () => {
       ramp_duration_ms: 0,
       ramp_request_cap: 0,
       slice_duration_ms: 0,
+      slo_ttft_ms: 0,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 0,
+      capacity_enabled: false,
+      capacity_start: 0,
+      capacity_step: 0,
       timeout_ms: 30_000,
       input_tokens: 1_000_000,
       output_tokens: 32,
@@ -356,10 +363,204 @@ describe("QuickTestWorkspace", () => {
       ramp_duration_ms: 0,
       ramp_request_cap: 0,
       slice_duration_ms: 0,
+      slo_ttft_ms: 0,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 0,
+      capacity_enabled: false,
+      capacity_start: 0,
+      capacity_step: 0,
       timeout_ms: 60_000,
       input_tokens: 100,
       output_tokens: 100,
     }, expect.any(Function)))
+  })
+
+  it("sends seven explicit disabled SLO and capacity fields by default and focuses the first SLO error", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+
+    expect(within(dialog).getByLabelText("SLO TTFT（ms）")).toHaveValue(0)
+    expect(within(dialog).getByLabelText("SLO TPOT（ms/token）")).toHaveValue(0)
+    expect(within(dialog).getByLabelText("SLO E2E（ms）")).toHaveValue(0)
+    expect(within(dialog).getByLabelText("SLO 目标达标率（%）")).toHaveValue(0)
+    expect(within(dialog).getByRole("checkbox", { name: "容量阶梯" })).not.toBeChecked()
+
+    const target = within(dialog).getByLabelText("SLO 目标达标率（%）")
+    await replaceNumber(user, target, "95")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    expect(await within(dialog).findByText("设置目标达标率时，至少启用一个延迟阈值。")).toHaveAttribute("data-slot", "field-error")
+    expect(target).toHaveFocus()
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+
+    await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slo_ttft_ms: 50,
+        slo_tpot_ms: 0,
+        slo_e2e_ms: 0,
+        slo_target_percent: 95,
+        capacity_enabled: false,
+        capacity_start: 0,
+        capacity_step: 0,
+      }),
+      expect.any(Function),
+    ))
+  })
+
+  it("keeps fixed and open-loop capacity drafts while disabling ramp and sending only the active mode", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
+    await replaceNumber(user, within(dialog).getByLabelText("SLO 目标达标率（%）"), "90")
+    await replaceNumber(user, within(dialog).getByLabelText("爬坡时间（秒）"), "3601")
+    await user.click(within(dialog).getByRole("checkbox", { name: "容量阶梯" }))
+
+    expect(within(dialog).queryByLabelText("并发数")).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText("终止并发")).toHaveValue(1)
+    expect(within(dialog).getByLabelText("爬坡时间（秒）")).toBeDisabled()
+    expect(within(dialog).getByLabelText("爬坡时间（秒）")).toHaveValue(3601)
+    await replaceNumber(user, within(dialog).getByLabelText("终止并发"), "4")
+    await replaceNumber(user, within(dialog).getByLabelText("起始并发"), "2")
+    await replaceNumber(user, within(dialog).getByLabelText("并发步长"), "1")
+    expect(within(dialog).getByText("2 → 3 → 4 · 3 档")).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    await replaceNumber(user, within(dialog).getByLabelText("终止 RPS"), "3.5")
+    await replaceNumber(user, within(dialog).getByLabelText("起始 RPS"), "0.01")
+    await replaceNumber(user, within(dialog).getByLabelText("RPS 步长"), "1")
+    expect(within(dialog).getByText("0.01 → 1.01 → 2.01 → 3.01 → 3.5 · 5 档")).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "固定并发" }))
+    expect(within(dialog).getByLabelText("起始并发")).toHaveValue(2)
+    expect(within(dialog).getByLabelText("并发步长")).toHaveValue(1)
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    expect(within(dialog).getByLabelText("起始 RPS")).toHaveValue(0.01)
+    expect(within(dialog).getByLabelText("RPS 步长")).toHaveValue(1)
+
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        load_mode: "open_loop",
+        rate_per_second: 3.5,
+        ramp_duration_ms: 0,
+        ramp_request_cap: 0,
+        capacity_enabled: true,
+        capacity_start: 0.01,
+        capacity_step: 1,
+      }),
+      expect.any(Function),
+    ))
+  })
+
+  it("accepts a twenty-rung 10,000-request capacity budget and blocks a twenty-first rung", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
+    await replaceNumber(user, within(dialog).getByLabelText("SLO 目标达标率（%）"), "90")
+    await user.click(within(dialog).getByRole("checkbox", { name: "容量阶梯" }))
+    await replaceNumber(user, within(dialog).getByLabelText("请求数"), "500")
+    await replaceNumber(user, within(dialog).getByLabelText("终止并发"), "21")
+
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    expect(await within(dialog).findByText("容量阶梯最多支持 20 档；请增大步长或减小终止目标。")).toHaveAttribute("data-slot", "field-error")
+    expect(within(dialog).getByLabelText("并发步长")).toHaveFocus()
+    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+
+    await replaceNumber(user, within(dialog).getByLabelText("终止并发"), "20")
+    expect(within(dialog).getByText(/容量 10,000 · 合计 10,000 \/ 10,000/)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({ request_count: 500, concurrency: 20, capacity_enabled: true, capacity_start: 1, capacity_step: 1 }),
+      expect.any(Function),
+    ))
+  })
+
+  it("keeps a near-terminal open-loop start as a separate rung even when the step exceeds the maximum", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
+    await replaceNumber(user, within(dialog).getByLabelText("SLO 目标达标率（%）"), "90")
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    await replaceNumber(user, within(dialog).getByLabelText("目标发送 RPS"), "2")
+    await user.click(within(dialog).getByRole("checkbox", { name: "容量阶梯" }))
+    await replaceNumber(user, within(dialog).getByLabelText("起始 RPS"), "1.9999999999")
+    await replaceNumber(user, within(dialog).getByLabelText("RPS 步长"), "3")
+
+    expect(within(dialog).getByText("1.9999999999 → 2 · 2 档")).toBeInTheDocument()
+    expect(within(dialog).getByText(/容量 20 · 合计 20 \/ 10,000/)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        load_mode: "open_loop",
+        rate_per_second: 2,
+        capacity_enabled: true,
+        capacity_start: 1.9999999999,
+        capacity_step: 3,
+      }),
+      expect.any(Function),
+    ))
   })
 
   it("keeps workload drafts and sends a reproducible Poisson normal workload", async () => {
@@ -427,6 +628,13 @@ describe("QuickTestWorkspace", () => {
       ramp_duration_ms: 0,
       ramp_request_cap: 0,
       slice_duration_ms: 0,
+      slo_ttft_ms: 0,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 0,
+      capacity_enabled: false,
+      capacity_start: 0,
+      capacity_step: 0,
       timeout_ms: 60_000,
       input_tokens: 120,
       output_tokens: 40,
@@ -560,7 +768,7 @@ describe("QuickTestWorkspace", () => {
   })
 
   it.each([
-    { arrival: "恒定间隔", rejectedRate: "6452", acceptedRate: "6451", total: "10,001" },
+    { arrival: "恒定间隔", rejectedRate: "6451", acceptedRate: "6450", total: "10,001" },
     { arrival: "Poisson 到达", rejectedRate: "3225.1", acceptedRate: "3225", total: "10,001" },
   ])("uses ramp intensity headroom at the $arrival 10,000-request boundary", async ({ arrival, rejectedRate, acceptedRate, total }) => {
     const user = userEvent.setup()
@@ -760,6 +968,100 @@ describe("QuickTestWorkspace", () => {
 
     resolvePerformance(successfulPerformanceReport())
     await within(dialog).findByRole("region", { name: "性能报告" })
+  })
+
+  it("adds authoritative capacity rung context to the existing progress phase", async () => {
+    const user = userEvent.setup()
+    let resolvePerformance!: (report: QuickPerformanceReport) => void
+    const runQuickPerformanceTest = vi.fn((_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
+      onProgress?.({
+        phase: "sending", planned: 10, offered: 6, launched: 5, completed: 3, in_flight: 2,
+        peak_in_flight: 2, succeeded: 3, failed: 0, rejected: 1,
+        capacity_rung_number: 2, capacity_rung_count: 4, capacity_target: 0.01,
+        send_duration_ms: 120, drain_duration_ms: 0, total_duration_ms: 120,
+      })
+      return new Promise<QuickPerformanceReport>((resolve) => { resolvePerformance = resolve })
+    })
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
+    await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const status = await within(dialog).findByRole("status", { name: "性能测试进度" })
+    expect(status).toHaveTextContent("档位 2 / 4")
+    expect(status).toHaveTextContent("当前目标 0.01 RPS")
+    expect(status).toHaveTextContent("发送中")
+
+    resolvePerformance(successfulPerformanceReport())
+    await within(dialog).findByRole("region", { name: "性能报告" })
+  })
+
+  it("shows transport, selected-rung SLO, and capacity conclusions independently", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn(async () => capacityPerformanceReport())
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={runQuickPerformanceTest}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    expect(report).toHaveTextContent("传输与协议通过")
+    expect(report).toHaveTextContent("SLO 通过")
+    expect(report).toHaveTextContent("最高通过并发 2")
+    expect(report).toHaveTextContent("首次未通过 3")
+    expect(report).toHaveTextContent("好请求 4 / 4")
+    expect(report).toHaveTextContent("Goodput 12.5 req/s")
+    expect(report).toHaveTextContent(/峰值在途 \/ 配置并发\s*2 \/ 2/)
+  })
+
+  it("uses the selected open-loop capacity rung as the steady-state send target", async () => {
+    const user = userEvent.setup()
+    const selectedReport = capacityPerformanceReport()
+    selectedReport.profile.load_mode = "open_loop"
+    selectedReport.profile.rate_per_second = 3
+    selectedReport.profile.max_in_flight = 4
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={vi.fn(async () => selectedReport)}
+        saveQuickTestConnection={vi.fn()}
+        refreshCatalog={vi.fn()}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+
+    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    expect(report).toHaveTextContent(/目标发送\s*2 req\/s/)
   })
 
   it("identifies warmup progress and an authoritative request-cap stop", async () => {
@@ -1381,6 +1683,70 @@ function successfulPerformanceReport(): QuickPerformanceReport {
       { request_index: 3, scheduled_offset_ms: 0, started_offset_ms: 2, finished_offset_ms: 90, schedule_lag_ms: 2, e2e_ms: 88, ttft_ms: 42, tpot_ms: 6, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 },
     ],
     failures: [],
+  }
+}
+
+function capacityPerformanceReport(): QuickPerformanceReport {
+  const report = successfulPerformanceReport()
+  const passed = {
+    status: "passed" as const,
+    thresholds: { ttft_ms: 50, tpot_ms: 0, e2e_ms: 0 },
+    target_percent: 90,
+    total_requests: 4,
+    good_requests: 4,
+    bad_requests: 0,
+    good_request_percent: 100,
+    goodput_qps: 12.5,
+    violations: { transport: 0, ttft: 0, tpot: 0, e2e: 0 },
+  }
+  const failed = {
+    ...passed,
+    status: "failed" as const,
+    good_requests: 2,
+    bad_requests: 2,
+    good_request_percent: 50,
+    goodput_qps: 6.25,
+    violations: { transport: 0, ttft: 2, tpot: 0, e2e: 0 },
+  }
+  const rung = (index: number, target: number, slo: QuickPerformanceSLOAssessment = passed) => ({
+    index,
+    target,
+    success: true,
+    progress: {
+      ...report.progress,
+      capacity_rung_number: index + 1,
+      capacity_rung_count: 3,
+      capacity_target: target,
+    },
+    metrics: report.metrics,
+    failures: report.failures,
+    slo_assessment: slo,
+  })
+  return {
+    ...report,
+    profile: {
+      ...report.profile,
+      concurrency: 3,
+      slo_ttft_ms: 50,
+      slo_target_percent: 90,
+      capacity_enabled: true,
+      capacity_start: 1,
+      capacity_step: 1,
+    },
+    progress: {
+      ...report.progress,
+      capacity_rung_number: 2,
+      capacity_rung_count: 3,
+      capacity_target: 2,
+    },
+    request_budget: { limit: 10_000, warmup_cap: 0, ramp_cap: 0, measured_cap: 12, total_cap: 12 },
+    slo_assessment: passed,
+    capacity_result: {
+      status: "failed",
+      selected_rung_index: 1,
+      highest_passing_rung_index: 1,
+      rungs: [rung(0, 1), rung(1, 2), rung(2, 3, failed)],
+    },
   }
 }
 

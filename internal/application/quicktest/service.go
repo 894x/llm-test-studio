@@ -228,6 +228,13 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			RampDurationMS:     command.RampDurationMS,
 			RampRequestCap:     command.RampRequestCap,
 			SliceDurationMS:    command.SliceDurationMS,
+			SLOTTFTMS:          command.SLOTTFTMS,
+			SLOTPOTMS:          command.SLOTPOTMS,
+			SLOE2EMS:           command.SLOE2EMS,
+			SLOTargetPercent:   command.SLOTargetPercent,
+			CapacityEnabled:    command.CapacityEnabled,
+			CapacityStart:      command.CapacityStart,
+			CapacityStep:       command.CapacityStep,
 		},
 		Failures: []PerformanceFailure{},
 		Samples:  []PerformanceSample{},
@@ -263,7 +270,11 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		return report, nil
 	}
 	report.RequestBudget = requestBudget
-	profile := performanceLoadProfile(report.Profile, measuredCap)
+	perRunCap := measuredCap
+	if report.Profile.CapacityEnabled {
+		perRunCap = report.Profile.RequestCount
+	}
+	profile := performanceLoadProfile(report.Profile, perRunCap)
 	if err := profile.Validate(); err != nil {
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
@@ -354,6 +365,17 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		}
 	}
 
+	if report.Profile.CapacityEnabled {
+		return service.runPerformanceCapacity(
+			ctx,
+			report,
+			executor,
+			evidenceRecorder,
+			workload,
+			onProgress,
+		)
+	}
+
 	evidenceRecorder.enableFresh()
 	options := performanceLoadOptions(report.Profile, measuredCap, onProgress)
 	outcome, runErr := load.Run(ctx, profile, executor, options)
@@ -362,6 +384,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
 	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
+	report.SLOAssessment = buildPerformanceSLOAssessment(report.Profile, report.Samples, report.Progress)
 	if command.SliceDurationMS > 0 {
 		report.TimeSlices = buildPerformanceTimeSlices(
 			outcome.Results,
@@ -381,6 +404,163 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		service.archivePerformanceReport(ctx, &report)
 	}
 	return report, nil
+}
+
+type performanceCapacityProjection struct {
+	success       bool
+	progress      PerformanceProgress
+	metrics       load.Metrics
+	failures      []PerformanceFailure
+	samples       []PerformanceSample
+	timeSlices    []PerformanceTimeSlice
+	sloAssessment *PerformanceSLOAssessment
+	runErr        error
+}
+
+func (service *Service) runPerformanceCapacity(
+	ctx context.Context,
+	report PerformanceReport,
+	executor load.Executor,
+	evidenceRecorder *performanceEvidenceRecorder,
+	workload *performanceWorkload,
+	onProgress func(PerformanceProgress),
+) (PerformanceReport, error) {
+	targets, err := buildPerformanceCapacityTargets(report.Profile)
+	if err != nil {
+		report.ErrorCode = ErrorInvalidRequest
+		return report, nil
+	}
+	capacity := &PerformanceCapacityResult{
+		Status: PerformanceSLONotEvaluated,
+		Rungs:  make([]PerformanceCapacityRung, 0, len(targets)),
+	}
+	var selected *performanceCapacityProjection
+	var selectedIndex uint32
+
+	for targetIndex, target := range targets {
+		rungIndex := uint32(targetIndex)
+		effectiveProfile := performanceCapacityProfile(report.Profile, target)
+		evidenceRecorder.enableFresh()
+		progressCallback := capacityProgressCallback(onProgress, rungIndex, uint32(len(targets)), target)
+		options := performanceLoadOptions(effectiveProfile, effectiveProfile.RequestCount, progressCallback)
+		outcome, runErr := load.Run(
+			ctx,
+			performanceLoadProfile(effectiveProfile, effectiveProfile.RequestCount),
+			executor,
+			options,
+		)
+		outcome.Progress = performanceMeasuredProgress(effectiveProfile, effectiveProfile.RequestCount, outcome.Progress)
+		progress := performanceProgress(outcome.Progress)
+		decorateCapacityProgress(&progress, rungIndex, uint32(len(targets)), target)
+		failures := performanceFailures(outcome.Results)
+		samples := performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
+		assessment := buildPerformanceSLOAssessment(report.Profile, samples, progress)
+		if assessment == nil {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+		if runErr != nil {
+			assessment.Status = PerformanceSLONotEvaluated
+		}
+		timeSlices := []PerformanceTimeSlice(nil)
+		if report.Profile.SliceDurationMS > 0 {
+			timeSlices = buildPerformanceTimeSlices(
+				outcome.Results,
+				outcome.Progress.TotalDuration,
+				time.Duration(report.Profile.SliceDurationMS)*time.Millisecond,
+			)
+		}
+		transportSuccess := outcome.Progress.Phase == load.PhaseCompleted && outcome.Metrics.Completed > 0 && outcome.Metrics.Failed == 0
+		capacity.Rungs = append(capacity.Rungs, PerformanceCapacityRung{
+			Index:         rungIndex,
+			Target:        target,
+			Success:       transportSuccess,
+			Progress:      progress,
+			Metrics:       outcome.Metrics,
+			Failures:      failures,
+			SLOAssessment: *assessment,
+		})
+		projection := &performanceCapacityProjection{
+			success: transportSuccess, progress: progress, metrics: outcome.Metrics,
+			failures: failures, samples: samples, timeSlices: timeSlices,
+			sloAssessment: assessment, runErr: runErr,
+		}
+
+		switch assessment.Status {
+		case PerformanceSLOPassed:
+			selected = projection
+			selectedIndex = rungIndex
+			highest := rungIndex
+			capacity.HighestPassingRungIndex = &highest
+			if targetIndex == len(targets)-1 {
+				capacity.Status = PerformanceSLOPassed
+			}
+		case PerformanceSLOFailed:
+			capacity.Status = PerformanceSLOFailed
+			if selected == nil {
+				selected = projection
+				selectedIndex = rungIndex
+			}
+		case PerformanceSLONotEvaluated:
+			capacity.Status = PerformanceSLONotEvaluated
+			selected = projection
+			selectedIndex = rungIndex
+		}
+		if ctx.Err() != nil {
+			capacity.Status = PerformanceSLONotEvaluated
+			break
+		}
+		if assessment.Status != PerformanceSLOPassed {
+			break
+		}
+	}
+
+	if selected == nil {
+		report.ErrorCode = load.ErrorRequestFailed
+		return report, nil
+	}
+	selectedCopy := selectedIndex
+	capacity.SelectedRungIndex = &selectedCopy
+	report.CapacityResult = capacity
+	report.Success = selected.success
+	report.Progress = selected.progress
+	report.Metrics = selected.metrics
+	report.Failures = selected.failures
+	report.Samples = selected.samples
+	report.TimeSlices = selected.timeSlices
+	report.SLOAssessment = selected.sloAssessment
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		report.ErrorCode = classifyContext(ctxErr)
+	} else if selected.runErr != nil {
+		report.ErrorCode = load.ErrorRequestFailed
+	}
+	if capacity.Status == PerformanceSLONotEvaluated || ctx.Err() != nil {
+		return report, nil
+	}
+	if report.Progress.Launched > 0 {
+		service.archivePerformanceReport(ctx, &report)
+	}
+	return report, nil
+}
+
+func capacityProgressCallback(
+	onProgress func(PerformanceProgress),
+	rungIndex, rungCount uint32,
+	target float64,
+) func(PerformanceProgress) {
+	if onProgress == nil {
+		return nil
+	}
+	return func(progress PerformanceProgress) {
+		decorateCapacityProgress(&progress, rungIndex, rungCount, target)
+		onProgress(progress)
+	}
+}
+
+func decorateCapacityProgress(progress *PerformanceProgress, rungIndex, rungCount uint32, target float64) {
+	progress.CapacityRungNumber = rungIndex + 1
+	progress.CapacityRungCount = rungCount
+	progress.CapacityTarget = target
 }
 
 const (
@@ -577,6 +757,8 @@ func validPerformanceProfile(command PerformanceCommand) bool {
 		InputTokensStdDev: command.InputTokensStdDev, OutputTokensStdDev: command.OutputTokensStdDev,
 		SharedPrefixTokens: command.SharedPrefixTokens, WarmupRequests: command.WarmupRequests,
 		RampDurationMS: command.RampDurationMS, RampRequestCap: command.RampRequestCap, SliceDurationMS: command.SliceDurationMS,
+		SLOTTFTMS: command.SLOTTFTMS, SLOTPOTMS: command.SLOTPOTMS, SLOE2EMS: command.SLOE2EMS, SLOTargetPercent: command.SLOTargetPercent,
+		CapacityEnabled: command.CapacityEnabled, CapacityStart: command.CapacityStart, CapacityStep: command.CapacityStep,
 	})
 }
 
@@ -634,6 +816,9 @@ func validPerformanceProfileValues(profile PerformanceProfile) bool {
 		return false
 	}
 	if !validLoad {
+		return false
+	}
+	if !validPerformanceSLOConfiguration(profile) || !validPerformanceCapacityConfiguration(profile) {
 		return false
 	}
 	_, _, err := buildPerformanceRequestBudget(profile)

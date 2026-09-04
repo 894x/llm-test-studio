@@ -88,6 +88,13 @@ export interface QuickPerformanceCommand {
   ramp_duration_ms: number
   ramp_request_cap: number
   slice_duration_ms: number
+  slo_ttft_ms: number
+  slo_tpot_ms: number
+  slo_e2e_ms: number
+  slo_target_percent: number
+  capacity_enabled: boolean
+  capacity_start: number
+  capacity_step: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
@@ -114,6 +121,13 @@ export interface QuickPerformanceProfile {
   ramp_duration_ms?: number
   ramp_request_cap?: number
   slice_duration_ms?: number
+  slo_ttft_ms?: number
+  slo_tpot_ms?: number
+  slo_e2e_ms?: number
+  slo_target_percent?: number
+  capacity_enabled?: boolean
+  capacity_start?: number
+  capacity_step?: number
   timeout_ms: number
   input_tokens: number
   output_tokens: number
@@ -132,7 +146,11 @@ export interface QuickPerformanceProgress {
   succeeded: number
   failed: number
   rejected: number
+  stopped?: boolean
   capped?: boolean
+  capacity_rung_number?: number
+  capacity_rung_count?: number
+  capacity_target?: number
   send_duration_ms: number
   drain_duration_ms: number
   total_duration_ms: number
@@ -280,6 +298,46 @@ export interface QuickPerformanceTimeSlice {
   e2e: QuickPerformanceSliceLatency
 }
 
+export type QuickPerformanceSLOStatus = "not_evaluated" | "passed" | "failed"
+
+export interface QuickPerformanceSLOAssessment {
+  status: QuickPerformanceSLOStatus
+  thresholds: {
+    ttft_ms: number
+    tpot_ms: number
+    e2e_ms: number
+  }
+  target_percent: number
+  total_requests: number
+  good_requests: number
+  bad_requests: number
+  good_request_percent: number
+  goodput_qps: number
+  violations: {
+    transport: number
+    ttft: number
+    tpot: number
+    e2e: number
+  }
+}
+
+export interface QuickPerformanceCapacityRung {
+  index: number
+  target: number
+  success: boolean
+  progress: QuickPerformanceProgress
+  metrics: QuickPerformanceMetrics
+  failures: Array<{ error_code: QuickTestErrorCode; count: number }>
+  slo_assessment: QuickPerformanceSLOAssessment
+}
+
+export interface QuickPerformanceCapacityResult {
+  status: QuickPerformanceSLOStatus
+  selected_rung_index?: number
+  highest_passing_rung_index?: number
+  rungs: QuickPerformanceCapacityRung[]
+}
+
 export interface QuickPerformanceReport {
   schema_version: 1 | 2
   report_id?: string
@@ -300,6 +358,8 @@ export interface QuickPerformanceReport {
   warmup?: QuickPerformanceTrafficSummary
   ramp?: QuickPerformanceRamp
   time_slices?: QuickPerformanceTimeSlice[]
+  slo_assessment?: QuickPerformanceSLOAssessment
+  capacity_result?: QuickPerformanceCapacityResult
   error_code?: QuickTestErrorCode
 }
 
@@ -465,6 +525,12 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   const timeSlices = schemaVersion === 2 && value.time_slices !== undefined
     ? parsePerformanceTimeSlices(value.time_slices, value.profile, progress.total_duration_ms)
     : undefined
+  const sloAssessment = schemaVersion === 2 && value.slo_assessment !== undefined
+    ? parsePerformanceSLOAssessment(value.slo_assessment, value.profile, progress, metrics, samples)
+    : undefined
+  const capacityResult = schemaVersion === 2 && value.capacity_result !== undefined
+    ? parsePerformanceCapacityResult(value.capacity_result, value.profile)
+    : undefined
   const evidenceBytes = samples.reduce((sum, sample) => sum + new TextEncoder().encode(sample.response_evidence?.body ?? "").length, 0)
   const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
   if (
@@ -483,6 +549,16 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
       warmup,
       ramp,
       timeSlices,
+      value.error_code !== undefined,
+    )) ||
+    (schemaVersion === 2 && !performancePhaseFourReportMatches(
+      value.profile,
+      value.success,
+      progress,
+      metrics,
+      failures,
+      sloAssessment,
+      capacityResult,
       value.error_code !== undefined,
     )) ||
     evidenceBytes > 2 * 1024 * 1024 ||
@@ -518,6 +594,8 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     ...(warmup === undefined ? {} : { warmup }),
     ...(ramp === undefined ? {} : { ramp }),
     ...(timeSlices === undefined ? {} : { time_slices: timeSlices }),
+    ...(sloAssessment === undefined ? {} : { slo_assessment: sloAssessment }),
+    ...(capacityResult === undefined ? {} : { capacity_result: capacityResult }),
     ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
   }
 }
@@ -566,6 +644,189 @@ function parsePerformanceSample(value: unknown, includeTargets: boolean): QuickP
   }
 }
 
+function parsePerformanceSLOAssessment(
+  value: unknown,
+  profile: QuickPerformanceProfile,
+  progress: QuickPerformanceProgress,
+  metrics: QuickPerformanceMetrics,
+  samples?: QuickPerformanceSample[],
+): QuickPerformanceSLOAssessment {
+  if (!isRecord(value) || !isPerformanceSLOStatus(value.status) || !isRecord(value.thresholds) || !isRecord(value.violations)) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const thresholdFields = ["ttft_ms", "tpot_ms", "e2e_ms"] as const
+  const countFields = ["total_requests", "good_requests", "bad_requests"] as const
+  const violationFields = ["transport", "ttft", "tpot", "e2e"] as const
+  if (
+    !thresholdFields.every((field) => isNonNegativeFinite((value.thresholds as Record<string, unknown>)[field])) ||
+    !countFields.every((field) => isNonNegativeInteger(value[field])) ||
+    !violationFields.every((field) => isNonNegativeInteger((value.violations as Record<string, unknown>)[field])) ||
+    !isPositiveFinite(value.target_percent) || Number(value.target_percent) > 100 ||
+    !isNonNegativeFinite(value.good_request_percent) || Number(value.good_request_percent) > 100 ||
+    !isNonNegativeFinite(value.goodput_qps)
+  ) throw new Error("快速性能报告数据结构无效")
+
+  const assessment: QuickPerformanceSLOAssessment = {
+    status: value.status,
+    thresholds: {
+      ttft_ms: Number(value.thresholds.ttft_ms),
+      tpot_ms: Number(value.thresholds.tpot_ms),
+      e2e_ms: Number(value.thresholds.e2e_ms),
+    },
+    target_percent: Number(value.target_percent),
+    total_requests: Number(value.total_requests),
+    good_requests: Number(value.good_requests),
+    bad_requests: Number(value.bad_requests),
+    good_request_percent: Number(value.good_request_percent),
+    goodput_qps: Number(value.goodput_qps),
+    violations: {
+      transport: Number(value.violations.transport),
+      ttft: Number(value.violations.ttft),
+      tpot: Number(value.violations.tpot),
+      e2e: Number(value.violations.e2e),
+    },
+  }
+  const expectedPercent = assessment.total_requests === 0 ? 0 : assessment.good_requests / assessment.total_requests * 100
+  const expectedGoodput = progress.total_duration_ms === 0 ? 0 : assessment.good_requests / (progress.total_duration_ms / 1_000)
+  const expectedStatus: QuickPerformanceSLOStatus = progress.phase !== "completed" || progress.stopped === true || assessment.total_requests === 0
+    ? "not_evaluated"
+    : expectedPercent >= assessment.target_percent
+      ? "passed"
+      : "failed"
+  const latencyViolationCounts = [assessment.violations.ttft, assessment.violations.tpot, assessment.violations.e2e]
+  const latencyBad = assessment.bad_requests - assessment.violations.transport
+  if (
+    !performanceSLOEnabled(profile) ||
+    !approximatelyEqual(assessment.thresholds.ttft_ms, profile.slo_ttft_ms ?? 0) ||
+    !approximatelyEqual(assessment.thresholds.tpot_ms, profile.slo_tpot_ms ?? 0) ||
+    !approximatelyEqual(assessment.thresholds.e2e_ms, profile.slo_e2e_ms ?? 0) ||
+    !approximatelyEqual(assessment.target_percent, profile.slo_target_percent ?? 0) ||
+    assessment.total_requests !== metrics.completed ||
+    assessment.good_requests > metrics.succeeded ||
+    assessment.bad_requests !== assessment.total_requests - assessment.good_requests ||
+    !approximatelyEqual(assessment.good_request_percent, expectedPercent) ||
+    !approximatelyEqual(assessment.goodput_qps, expectedGoodput) ||
+    assessment.status !== expectedStatus ||
+    assessment.violations.transport !== metrics.failed ||
+    assessment.bad_requests < assessment.violations.transport ||
+    latencyBad > metrics.succeeded ||
+    latencyBad < Math.max(...latencyViolationCounts) ||
+    latencyBad > latencyViolationCounts.reduce((sum, count) => sum + count, 0) ||
+    assessment.violations.ttft > metrics.succeeded ||
+    assessment.violations.tpot > metrics.succeeded ||
+    assessment.violations.e2e > metrics.succeeded ||
+    (assessment.thresholds.ttft_ms === 0 && assessment.violations.ttft !== 0) ||
+    (assessment.thresholds.tpot_ms === 0 && assessment.violations.tpot !== 0) ||
+    (assessment.thresholds.e2e_ms === 0 && assessment.violations.e2e !== 0)
+  ) throw new Error("快速性能报告数据结构无效")
+
+  if (samples !== undefined) {
+    const observed = samples.reduce((summary, sample) => {
+      const transport = !sample.success
+      const ttft = sample.success && assessment.thresholds.ttft_ms > 0 && (sample.ttft_ms <= 0 || sample.ttft_ms > assessment.thresholds.ttft_ms)
+      const tpot = sample.success && assessment.thresholds.tpot_ms > 0 && (sample.tpot_ms <= 0 || sample.tpot_ms > assessment.thresholds.tpot_ms)
+      const e2e = sample.success && assessment.thresholds.e2e_ms > 0 && (sample.e2e_ms <= 0 || sample.e2e_ms > assessment.thresholds.e2e_ms)
+      if (sample.success && !ttft && !tpot && !e2e) summary.good += 1
+      if (transport) summary.transport += 1
+      if (ttft) summary.ttft += 1
+      if (tpot) summary.tpot += 1
+      if (e2e) summary.e2e += 1
+      return summary
+    }, { good: 0, transport: 0, ttft: 0, tpot: 0, e2e: 0 })
+    if (
+      assessment.total_requests !== samples.length ||
+      assessment.good_requests !== observed.good ||
+      assessment.violations.transport !== observed.transport ||
+      assessment.violations.ttft !== observed.ttft ||
+      assessment.violations.tpot !== observed.tpot ||
+      assessment.violations.e2e !== observed.e2e
+    ) throw new Error("快速性能报告数据结构无效")
+  }
+  return assessment
+}
+
+function parsePerformanceCapacityResult(value: unknown, profile: QuickPerformanceProfile): QuickPerformanceCapacityResult {
+  if (!isRecord(value) || !isPerformanceSLOStatus(value.status) || !Array.isArray(value.rungs)) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const targets = performanceCapacityTargets(profile)
+  if (!targets || value.rungs.length === 0 || value.rungs.length > targets.length || value.rungs.length > 20) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const selected = value.selected_rung_index
+  const highest = value.highest_passing_rung_index
+  if (!isNonNegativeInteger(selected) || Number(selected) >= value.rungs.length ||
+    (highest !== undefined && (!isNonNegativeInteger(highest) || Number(highest) >= value.rungs.length))) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const rungs = value.rungs.map((rung, index) => parsePerformanceCapacityRung(rung, profile, index, targets[index], targets.length))
+  const passing = rungs.filter((rung) => rung.slo_assessment.status === "passed")
+  const highestPassing = passing.length === 0 ? undefined : passing[passing.length - 1].index
+  const last = rungs[rungs.length - 1]
+  const firstNonPassing = rungs.findIndex((rung) => rung.slo_assessment.status !== "passed")
+  if (firstNonPassing >= 0 && firstNonPassing !== rungs.length - 1) throw new Error("快速性能报告数据结构无效")
+
+  let expectedSelected: number
+  if (last.slo_assessment.status === "failed") {
+    if (value.status !== "failed") throw new Error("快速性能报告数据结构无效")
+    expectedSelected = highestPassing ?? last.index
+  } else if (last.slo_assessment.status === "not_evaluated") {
+    if (value.status !== "not_evaluated") throw new Error("快速性能报告数据结构无效")
+    expectedSelected = last.index
+  } else {
+    if (value.status !== "passed" || rungs.length !== targets.length) throw new Error("快速性能报告数据结构无效")
+    expectedSelected = last.index
+  }
+  if (Number(selected) !== expectedSelected || highest !== highestPassing) throw new Error("快速性能报告数据结构无效")
+  return {
+    status: value.status,
+    selected_rung_index: Number(selected),
+    ...(highestPassing === undefined ? {} : { highest_passing_rung_index: highestPassing }),
+    rungs,
+  }
+}
+
+function parsePerformanceCapacityRung(
+  value: unknown,
+  profile: QuickPerformanceProfile,
+  expectedIndex: number,
+  expectedTarget: number,
+  rungCount: number,
+): QuickPerformanceCapacityRung {
+  if (!isRecord(value) || value.index !== expectedIndex || !isPositiveFinite(value.target) ||
+    !approximatelyEqual(Number(value.target), expectedTarget) || typeof value.success !== "boolean" ||
+    !isPerformanceProgress(value.progress) || !isPerformanceMetrics(value.metrics, 2) || !Array.isArray(value.failures)) {
+    throw new Error("快速性能报告数据结构无效")
+  }
+  const progress = pickPerformanceProgress(value.progress, true)
+  const metrics = pickPerformanceMetrics(value.metrics, 2)
+  const failures = parsePerformanceFailures(value.failures)
+  const assessment = parsePerformanceSLOAssessment(value.slo_assessment, profile, progress, metrics)
+  const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
+  const expectedSuccess = progress.phase === "completed" && metrics.completed > 0 && metrics.failed === 0
+  if (
+    progress.completed !== metrics.completed || progress.succeeded !== metrics.succeeded || progress.failed !== metrics.failed ||
+    metrics.succeeded + metrics.failed !== metrics.completed || failureCount !== metrics.failed || value.success !== expectedSuccess ||
+    progress.capacity_rung_number !== expectedIndex + 1 ||
+    progress.capacity_rung_count !== rungCount ||
+    !approximatelyEqual(progress.capacity_target ?? -1, expectedTarget)
+  ) throw new Error("快速性能报告数据结构无效")
+  return { index: expectedIndex, target: Number(value.target), success: value.success, progress, metrics, failures, slo_assessment: assessment }
+}
+
+function parsePerformanceFailures(value: unknown[]): Array<{ error_code: QuickTestErrorCode; count: number }> {
+  const failures: Array<{ error_code: QuickTestErrorCode; count: number }> = []
+  const seen = new Set<QuickTestErrorCode>()
+  for (const failure of value) {
+    if (!isRecord(failure) || !isErrorCode(failure.error_code) || !isPositiveInteger(failure.count) || seen.has(failure.error_code)) {
+      throw new Error("快速性能报告数据结构无效")
+    }
+    seen.add(failure.error_code)
+    failures.push({ error_code: failure.error_code, count: failure.count })
+  }
+  return failures
+}
+
 function parsePerformanceRequestBudget(value: unknown): QuickPerformanceRequestBudget {
   if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
   const fields = ["limit", "warmup_cap", "ramp_cap", "measured_cap", "total_cap"] as const
@@ -594,7 +855,7 @@ function parsePerformanceTrafficSummary(value: unknown): QuickPerformanceTraffic
   const durationFields = ["send_duration_ms", "drain_duration_ms", "total_duration_ms"] as const
   if (
     !integerFields.every((field) => isNonNegativeInteger(value[field])) ||
-    !durationFields.every((field) => isNonNegativeFinite(value[field])) ||
+    !durationFields.every((field) => isRepresentableDurationMS(value[field])) ||
     !Array.isArray(value.failures) ||
     typeof value.stopped !== "boolean" ||
     typeof value.capped !== "boolean"
@@ -772,7 +1033,7 @@ function performancePhaseThreeReportMatches(
   hasReportError: boolean,
 ): boolean {
   const configured = (profile.warmup_requests ?? 0) > 0 || (profile.ramp_duration_ms ?? 0) > 0 ||
-    (profile.ramp_request_cap ?? 0) > 0 || (profile.slice_duration_ms ?? 0) > 0
+    (profile.ramp_request_cap ?? 0) > 0 || (profile.slice_duration_ms ?? 0) > 0 || profile.capacity_enabled === true
   const hasPhaseThreeData = budget !== undefined || warmup !== undefined || ramp !== undefined || slices !== undefined
   if (!configured) return !hasPhaseThreeData
   if (budget === undefined) return hasReportError && !hasPhaseThreeData
@@ -833,6 +1094,72 @@ function performancePhaseThreeReportMatches(
   return true
 }
 
+function performancePhaseFourReportMatches(
+  profile: QuickPerformanceProfile,
+  success: boolean,
+  progress: QuickPerformanceProgress,
+  metrics: QuickPerformanceMetrics,
+  failures: Array<{ error_code: QuickTestErrorCode; count: number }>,
+  assessment: QuickPerformanceSLOAssessment | undefined,
+  capacity: QuickPerformanceCapacityResult | undefined,
+  hasReportError: boolean,
+): boolean {
+  const sloEnabled = performanceSLOEnabled(profile)
+  const capacityEnabled = profile.capacity_enabled === true
+  if (!sloEnabled) return assessment === undefined && capacity === undefined && !capacityEnabled
+  if (assessment === undefined) return hasReportError && capacity === undefined
+  if (!capacityEnabled) return capacity === undefined
+  if (capacity === undefined) return hasReportError
+  const selectedIndex = capacity.selected_rung_index
+  if (selectedIndex === undefined) return false
+  const selected = capacity.rungs[selectedIndex]
+  return selected !== undefined && success === selected.success &&
+    performanceProgressEqual(progress, selected.progress) &&
+    performanceMetricsEqual(metrics, selected.metrics) &&
+    performanceFailuresEqual(failures, selected.failures) &&
+    performanceSLOAssessmentEqual(assessment, selected.slo_assessment)
+}
+
+function performanceSLOEnabled(profile: QuickPerformanceProfile): boolean {
+  return (profile.slo_target_percent ?? 0) > 0
+}
+
+function performanceCapacityTargets(profile: QuickPerformanceProfile): number[] | undefined {
+  if (profile.capacity_enabled !== true) return undefined
+  const maximum = profile.load_mode === "fixed_concurrency" ? profile.concurrency : profile.rate_per_second ?? 0
+  const start = profile.capacity_start ?? 0
+  const step = profile.capacity_step ?? 0
+  if (!(start > 0 && step > 0 && maximum > 0 && start <= maximum)) return undefined
+  const targets: number[] = []
+  for (let index = 0; index < 20; index += 1) {
+    const target = start + index * step
+    if (target >= maximum) break
+    targets.push(target)
+  }
+  if (targets.length >= 20) return undefined
+  targets.push(maximum)
+  return targets
+}
+
+function performanceProgressEqual(left: QuickPerformanceProgress, right: QuickPerformanceProgress): boolean {
+  return JSON.stringify(pickPerformanceProgress(left, true)) === JSON.stringify(pickPerformanceProgress(right, true))
+}
+
+function performanceMetricsEqual(left: QuickPerformanceMetrics, right: QuickPerformanceMetrics): boolean {
+  return JSON.stringify(pickPerformanceMetrics(left, 2)) === JSON.stringify(pickPerformanceMetrics(right, 2))
+}
+
+function performanceFailuresEqual(
+  left: Array<{ error_code: QuickTestErrorCode; count: number }>,
+  right: Array<{ error_code: QuickTestErrorCode; count: number }>,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function performanceSLOAssessmentEqual(left: QuickPerformanceSLOAssessment, right: QuickPerformanceSLOAssessment): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
 function performanceRequestBudgetMatchesProfile(profile: QuickPerformanceProfile, budget: QuickPerformanceRequestBudget): boolean {
   const warmupCap = profile.warmup_requests ?? 0
   const rampDurationSeconds = (profile.ramp_duration_ms ?? 0) / 1_000
@@ -841,17 +1168,29 @@ function performanceRequestBudgetMatchesProfile(profile: QuickPerformanceProfile
     : profile.load_mode === "fixed_concurrency"
       ? profile.ramp_request_cap ?? 0
       : estimateOpenLoopRequestCap(rampDurationSeconds * (profile.rate_per_second ?? 0) * 0.55, profile.arrival_pattern ?? "constant")
+  const capacityTargets = performanceCapacityTargets(profile)
   const measuredCap = profile.request_count > 0
-    ? profile.request_count
+    ? profile.request_count * (capacityTargets?.length ?? 1)
     : profile.load_mode === "fixed_concurrency"
       ? budget.limit - warmupCap - rampCap
-      : estimateOpenLoopRequestCap(profile.duration_ms / 1_000 * (profile.rate_per_second ?? 0), profile.arrival_pattern ?? "constant")
+      : estimateQuickPerformanceOpenLoopRequestCap(profile.duration_ms, profile.rate_per_second ?? 0, profile.arrival_pattern ?? "constant")
   return measuredCap > 0 && budget.warmup_cap === warmupCap && budget.ramp_cap === rampCap &&
     budget.measured_cap === measuredCap && budget.total_cap === warmupCap + rampCap + measuredCap
 }
 
 function estimateOpenLoopRequestCap(intensity: number, pattern: QuickPerformanceArrivalPattern): number {
   return pattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
+}
+
+export function estimateQuickPerformanceOpenLoopRequestCap(
+  durationMS: number,
+  ratePerSecond: number,
+  pattern: QuickPerformanceArrivalPattern,
+): number {
+  const intensity = durationMS * ratePerSecond / 1_000
+  if (pattern === "poisson") return Math.ceil(2 * intensity) + 1
+  const intervalNanoseconds = 1_000_000_000 / ratePerSecond
+  return Math.ceil(durationMS * 1_000_000 / intervalNanoseconds)
 }
 
 function isPerformanceProfile(value: unknown, schemaVersion: 1 | 2): value is QuickPerformanceProfile {
@@ -875,7 +1214,14 @@ function isPerformanceProfile(value: unknown, schemaVersion: 1 | 2): value is Qu
     (value.warmup_requests === undefined || (isNonNegativeInteger(value.warmup_requests) && value.warmup_requests <= 10_000)) &&
     (value.ramp_duration_ms === undefined || (isNonNegativeInteger(value.ramp_duration_ms) && value.ramp_duration_ms <= 3_600_000)) &&
     (value.ramp_request_cap === undefined || (isNonNegativeInteger(value.ramp_request_cap) && value.ramp_request_cap <= 10_000)) &&
-    (value.slice_duration_ms === undefined || (isNonNegativeInteger(value.slice_duration_ms) && value.slice_duration_ms <= 3_600_000))
+    (value.slice_duration_ms === undefined || (isNonNegativeInteger(value.slice_duration_ms) && value.slice_duration_ms <= 3_600_000)) &&
+    (value.slo_ttft_ms === undefined || isNonNegativeFinite(value.slo_ttft_ms)) &&
+    (value.slo_tpot_ms === undefined || isNonNegativeFinite(value.slo_tpot_ms)) &&
+    (value.slo_e2e_ms === undefined || isNonNegativeFinite(value.slo_e2e_ms)) &&
+    (value.slo_target_percent === undefined || (isNonNegativeFinite(value.slo_target_percent) && value.slo_target_percent <= 100)) &&
+    (value.capacity_enabled === undefined || typeof value.capacity_enabled === "boolean") &&
+    (value.capacity_start === undefined || isNonNegativeFinite(value.capacity_start)) &&
+    (value.capacity_step === undefined || isNonNegativeFinite(value.capacity_step))
 }
 
 function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1 | 2): boolean {
@@ -896,11 +1242,22 @@ function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVers
   const sharedPrefix = value.shared_prefix_tokens ?? 0
   const rampDurationMS = value.ramp_duration_ms ?? 0
   const rampRequestCap = value.ramp_request_cap ?? 0
+  const sloTargetPercent = value.slo_target_percent ?? 0
+  const hasSLOThreshold = (value.slo_ttft_ms ?? 0) > 0 || (value.slo_tpot_ms ?? 0) > 0 || (value.slo_e2e_ms ?? 0) > 0
   if (arrivalPattern === "poisson" && value.load_mode !== "open_loop") return false
   if ((arrivalPattern === "poisson" || workloadMode === "normal") !== (randomSeed > 0)) return false
   if (value.load_mode === "fixed_concurrency") {
     if ((rampDurationMS > 0) !== (rampRequestCap > 0)) return false
   } else if (rampRequestCap !== 0) return false
+  if ((sloTargetPercent > 0) !== hasSLOThreshold) return false
+  if (value.capacity_enabled === true) {
+    const start = value.capacity_start ?? 0
+    const step = value.capacity_step ?? 0
+    if (!hasSLOThreshold || value.request_count === 0 || rampDurationMS !== 0 || performanceCapacityTargets(value) === undefined) return false
+    if (value.load_mode === "fixed_concurrency") {
+      if (!Number.isInteger(start) || !Number.isInteger(step)) return false
+    } else if (start < 0.01) return false
+  } else if ((value.capacity_start ?? 0) !== 0 || (value.capacity_step ?? 0) !== 0) return false
   if (workloadMode === "fixed") return inputStdDev === 0 && outputStdDev === 0 && sharedPrefix === 0
   return inputStdDev <= value.input_tokens && outputStdDev <= value.output_tokens && sharedPrefix < value.input_tokens
 }
@@ -923,6 +1280,13 @@ function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: 1
     ...(schemaVersion === 2 && value.ramp_duration_ms !== undefined ? { ramp_duration_ms: value.ramp_duration_ms } : {}),
     ...(schemaVersion === 2 && value.ramp_request_cap !== undefined ? { ramp_request_cap: value.ramp_request_cap } : {}),
     ...(schemaVersion === 2 && value.slice_duration_ms !== undefined ? { slice_duration_ms: value.slice_duration_ms } : {}),
+    ...(schemaVersion === 2 && value.slo_ttft_ms !== undefined ? { slo_ttft_ms: value.slo_ttft_ms } : {}),
+    ...(schemaVersion === 2 && value.slo_tpot_ms !== undefined ? { slo_tpot_ms: value.slo_tpot_ms } : {}),
+    ...(schemaVersion === 2 && value.slo_e2e_ms !== undefined ? { slo_e2e_ms: value.slo_e2e_ms } : {}),
+    ...(schemaVersion === 2 && value.slo_target_percent !== undefined ? { slo_target_percent: value.slo_target_percent } : {}),
+    ...(schemaVersion === 2 && value.capacity_enabled !== undefined ? { capacity_enabled: value.capacity_enabled } : {}),
+    ...(schemaVersion === 2 && value.capacity_start !== undefined ? { capacity_start: value.capacity_start } : {}),
+    ...(schemaVersion === 2 && value.capacity_step !== undefined ? { capacity_step: value.capacity_step } : {}),
     timeout_ms: value.timeout_ms,
     input_tokens: value.input_tokens,
     output_tokens: value.output_tokens,
@@ -941,7 +1305,13 @@ function pickPerformanceProgress(value: QuickPerformanceProgress, includeOffered
     succeeded: value.succeeded,
     failed: value.failed,
     rejected: value.rejected,
+    ...(!includeOffered || value.stopped === undefined ? {} : { stopped: value.stopped }),
     ...(!includeOffered || value.capped === undefined ? {} : { capped: value.capped }),
+    ...(!includeOffered || value.capacity_rung_number === undefined ? {} : {
+      capacity_rung_number: value.capacity_rung_number,
+      capacity_rung_count: value.capacity_rung_count,
+      capacity_target: value.capacity_target,
+    }),
     send_duration_ms: value.send_duration_ms,
     drain_duration_ms: value.drain_duration_ms,
     total_duration_ms: value.total_duration_ms,
@@ -993,8 +1363,11 @@ function pickPerformanceMetrics(value: QuickPerformanceMetrics, schemaVersion: 1
 }
 
 function isPerformanceProgress(value: unknown): value is QuickPerformanceProgress {
-  return isRecord(value) &&
-    isPerformancePhase(value.phase) &&
+  if (!isRecord(value)) return false
+  const hasCapacityRung = value.capacity_rung_number !== undefined || value.capacity_rung_count !== undefined || value.capacity_target !== undefined
+  if (hasCapacityRung && (!isPositiveInteger(value.capacity_rung_number) || !isPositiveInteger(value.capacity_rung_count) ||
+    Number(value.capacity_rung_number) > Number(value.capacity_rung_count) || !isPositiveFinite(value.capacity_target))) return false
+  return isPerformancePhase(value.phase) &&
     isNonNegativeInteger(value.planned) &&
     (value.offered === undefined || isNonNegativeInteger(value.offered)) &&
     isNonNegativeInteger(value.launched) &&
@@ -1004,10 +1377,11 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
     isNonNegativeInteger(value.succeeded) &&
     isNonNegativeInteger(value.failed) &&
     isNonNegativeInteger(value.rejected) &&
+    (value.stopped === undefined || typeof value.stopped === "boolean") &&
     (value.capped === undefined || typeof value.capped === "boolean") &&
-    isNonNegativeFinite(value.send_duration_ms) &&
-    isNonNegativeFinite(value.drain_duration_ms) &&
-    isNonNegativeFinite(value.total_duration_ms)
+    isRepresentableDurationMS(value.send_duration_ms) &&
+    isRepresentableDurationMS(value.drain_duration_ms) &&
+    isRepresentableDurationMS(value.total_duration_ms)
 }
 
 function isPerformanceMetrics(value: unknown, schemaVersion: 1 | 2 = 1): value is QuickPerformanceMetrics {
@@ -1043,6 +1417,10 @@ function isPerformanceArrivalPattern(value: unknown): value is QuickPerformanceA
 
 function isPerformanceWorkloadMode(value: unknown): value is QuickPerformanceWorkloadMode {
   return value === "fixed" || value === "normal"
+}
+
+function isPerformanceSLOStatus(value: unknown): value is QuickPerformanceSLOStatus {
+  return value === "not_evaluated" || value === "passed" || value === "failed"
 }
 
 function performanceSampleTargetsMatchWorkload(profile: QuickPerformanceProfile, samples: QuickPerformanceSample[]): boolean {
@@ -1111,8 +1489,13 @@ function isPositiveFinite(value: unknown): value is number {
 }
 
 function approximatelyEqual(left: number, right: number): boolean {
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false
   const scale = Math.max(1, Math.abs(left), Math.abs(right))
   return Math.abs(left - right) <= scale * 1e-9
+}
+
+function isRepresentableDurationMS(value: unknown): value is number {
+  return isNonNegativeFinite(value) && (value === 0 || value >= 1e-6)
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

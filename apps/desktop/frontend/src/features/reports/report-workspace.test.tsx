@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import { ReportWorkspace } from "./report-workspace"
 import type { ReportDetail, ReportSnapshot } from "./data"
+import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
   it("keeps row selection in the inspector and opens report content only from the action column", async () => {
@@ -174,6 +175,92 @@ describe("ReportWorkspace", () => {
     expect(requestDetail).not.toHaveTextContent("sk-report-private")
   })
 
+  it("renders SLO goodput, violation counters, and the capacity rung table in the shared report DOM", async () => {
+    const user = userEvent.setup()
+    const quickID = "77777777-7777-4777-8777-777777777774"
+    render(
+      <ReportWorkspace
+        snapshot={quickSnapshot(quickID, "容量评估未通过")}
+        getDetail={vi.fn(async () => phaseFourQuickDetail(quickID, "failed") as unknown as ReportDetail)}
+        exportReport={vi.fn()}
+        saveReportExport={vi.fn()}
+        copyReportPNG={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole("button", { name: "查看报告：容量评估未通过" }))
+
+    const report = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(report).toHaveTextContent("SLO 与容量")
+    expect(report).toHaveTextContent("TTFT ≤ 50 ms")
+    expect(report).toHaveTextContent("目标达标率 90%")
+    expect(report).toHaveTextContent("传输与协议通过")
+    expect(report).toHaveTextContent("SLO 通过")
+    expect(report).toHaveTextContent("好请求 4 / 4")
+    expect(report).toHaveTextContent("Goodput 12.5 req/s")
+    expect(report).toHaveTextContent("传输 0 · TTFT 0 · TPOT 0 · E2E 0")
+    expect(report).toHaveTextContent("最高通过并发 2")
+    expect(report).toHaveTextContent("首次未通过 3")
+    expect(report).toHaveTextContent(/峰值在途 \/ 配置并发\s*2 \/ 2/)
+    const rungs = within(report).getByRole("table", { name: "容量阶梯结果" })
+    expect(rungs.parentElement).toHaveClass("overflow-x-auto")
+    expect(within(rungs).getByRole("columnheader", { name: "目标" })).toBeInTheDocument()
+    expect(within(rungs).getByRole("columnheader", { name: "传输" })).toBeInTheDocument()
+    expect(within(rungs).getByRole("columnheader", { name: "SLO" })).toBeInTheDocument()
+    expect(within(rungs).getByRole("columnheader", { name: "Goodput" })).toBeInTheDocument()
+    expect(within(rungs).getByRole("row", { name: /#3.*3 并发.*未通过/ })).toBeInTheDocument()
+
+    const exportSurface = document.querySelector<HTMLElement>("[data-report-export-document]")
+    expect(exportSurface).not.toBeNull()
+    expect(within(exportSurface!).getByRole("table", { name: "容量阶梯结果", hidden: true })).toBeInTheDocument()
+  })
+
+  it("uses the selected open-loop capacity rung as the archived steady-state send target", async () => {
+    const user = userEvent.setup()
+    const quickID = "77777777-7777-4777-8777-777777777778"
+    const detail = phaseFourQuickDetail(quickID, "failed") as unknown as Extract<ReportDetail, { source: "quick_performance" }>
+    detail.performance.profile = {
+      ...detail.performance.profile,
+      load_mode: "open_loop",
+      rate_per_second: 3,
+      max_in_flight: 4,
+    }
+    render(
+      <ReportWorkspace
+        snapshot={quickSnapshot(quickID, "开放到达容量评估")}
+        getDetail={vi.fn(async () => detail)}
+        exportReport={vi.fn()}
+        saveReportExport={vi.fn()}
+        copyReportPNG={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole("button", { name: "查看报告：开放到达容量评估" }))
+
+    const report = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(report).toHaveTextContent(/目标发送\s*2 req\/s/)
+  })
+
+  it.each([
+    ["passed", "SLO 通过"],
+    ["failed", "SLO 未通过"],
+    ["not_evaluated", "SLO 未评估"],
+  ] as const)("renders the %s SLO conclusion independently from transport", async (status, label) => {
+    const user = userEvent.setup()
+    const quickID = `77777777-7777-4777-8777-77777777777${status === "passed" ? "5" : status === "failed" ? "6" : "7"}`
+    render(
+      <ReportWorkspace
+        snapshot={quickSnapshot(quickID, `${label}报告`)}
+        getDetail={vi.fn(async () => phaseFourQuickDetail(quickID, status, false) as unknown as ReportDetail)}
+        exportReport={vi.fn()}
+        saveReportExport={vi.fn()}
+        copyReportPNG={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole("button", { name: `查看报告：${label}报告` }))
+    const report = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(report).toHaveTextContent("传输与协议通过")
+    expect(report).toHaveTextContent(label)
+  })
+
   it("renders earlier schema-v2 reports with legacy constant and fixed defaults without phase-three sections", async () => {
     const user = userEvent.setup()
     const quickID = "77777777-7777-4777-8777-777777777773"
@@ -201,9 +288,31 @@ describe("ReportWorkspace", () => {
     expect(archivedReport).toHaveTextContent("恒定间隔（旧报告）")
     expect(archivedReport).toHaveTextContent("固定 Token（旧报告）")
     expect(archivedReport).not.toHaveTextContent("准备阶段与预算")
+    expect(archivedReport).not.toHaveTextContent("SLO 与容量")
     expect(within(archivedReport).queryByRole("table", { name: "时间切片" })).not.toBeInTheDocument()
   })
 })
+
+function quickSnapshot(reportID: string, verdict: string): ReportSnapshot {
+  return {
+    schema_version: 1,
+    reports: [{
+      id: reportID,
+      source: "quick_performance",
+      generated_at: "2026-08-31T14:30:00Z",
+      run_status: "completed",
+      plan_name: "快速性能测试",
+      model_name: "gpt-fast",
+      channel_name: "api.example.test",
+      passed: true,
+      verdict,
+      issue_count: 0,
+      case_count: 4,
+      failed_case_count: 0,
+      attachment_count: 0,
+    }],
+  }
+}
 
 function quickDetail(reportID: string) {
   return {
@@ -252,6 +361,85 @@ function quickDetail(reportID: string) {
         { ...timeSlice(0, 0, 1_000, false, true), offered: 3, launched: 3, completed: 3, succeeded: 3, prompt_tokens: 60, completion_tokens: 96 },
         timeSlice(2, 2_000, 2_500, true, false, 0),
       ],
+    },
+  }
+}
+
+function phaseFourQuickDetail(
+  reportID: string,
+  status: "passed" | "failed" | "not_evaluated",
+  withCapacity = true,
+) {
+  const detail = quickDetail(reportID)
+  const passed = {
+    status: "passed" as const,
+    thresholds: { ttft_ms: 50, tpot_ms: 0, e2e_ms: 0 },
+    target_percent: 90,
+    total_requests: 4,
+    good_requests: 4,
+    bad_requests: 0,
+    good_request_percent: 100,
+    goodput_qps: 12.5,
+    violations: { transport: 0, ttft: 0, tpot: 0, e2e: 0 },
+  }
+  const assessment = status === "passed" ? passed : status === "not_evaluated" ? {
+    ...passed,
+    status: "not_evaluated" as const,
+  } : {
+    ...passed,
+    status: "failed" as const,
+    good_requests: 2,
+    bad_requests: 2,
+    good_request_percent: 50,
+    goodput_qps: 6.25,
+    violations: { transport: 0, ttft: 2, tpot: 0, e2e: 0 },
+  }
+  const failed = { ...assessment, status: "failed" as const }
+  const rung = (index: number, target: number, slo: QuickPerformanceSLOAssessment = passed) => ({
+    index,
+    target,
+    success: true,
+    progress: {
+      ...detail.performance.progress,
+      planned: 4,
+      offered: 4,
+      launched: 4,
+      completed: 4,
+      succeeded: 4,
+      capacity_rung_number: index + 1,
+      capacity_rung_count: 3,
+      capacity_target: target,
+    },
+    metrics: { ...detail.performance.metrics, completed: 4, succeeded: 4 },
+    failures: [],
+    slo_assessment: slo,
+  })
+  const selectedRung = rung(1, 2)
+  return {
+    ...detail,
+    performance: {
+      ...detail.performance,
+      profile: {
+        ...detail.performance.profile,
+        request_count: 4,
+        duration_ms: 0,
+        concurrency: 3,
+        slo_ttft_ms: 50,
+        slo_target_percent: 90,
+        ...(withCapacity ? { capacity_enabled: true, capacity_start: 1, capacity_step: 1 } : {}),
+      },
+      progress: withCapacity ? selectedRung.progress : detail.performance.progress,
+      metrics: withCapacity ? selectedRung.metrics : detail.performance.metrics,
+      slo_assessment: withCapacity ? passed : assessment,
+      ...(withCapacity ? {
+        request_budget: { limit: 10_000, warmup_cap: 0, ramp_cap: 0, measured_cap: 12, total_cap: 12 },
+        capacity_result: {
+          status: "failed" as const,
+          selected_rung_index: 1,
+          highest_passing_rung_index: 1,
+          rungs: [rung(0, 1), selectedRung, rung(2, 3, failed)],
+        },
+      } : {}),
     },
   }
 }

@@ -67,6 +67,13 @@ describe("Wails desktop client", () => {
       ramp_duration_ms: 0,
       ramp_request_cap: 0,
       slice_duration_ms: 0,
+      slo_ttft_ms: 0,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 0,
+      capacity_enabled: false,
+      capacity_start: 0,
+      capacity_step: 0,
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
@@ -117,6 +124,13 @@ describe("Wails desktop client", () => {
       ramp_duration_ms: 0,
       ramp_request_cap: 0,
       slice_duration_ms: 1_000,
+      slo_ttft_ms: 0,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 0,
+      capacity_enabled: false,
+      capacity_start: 0,
+      capacity_step: 0,
       timeout_ms: 30_000,
       input_tokens: 20,
       output_tokens: 32,
@@ -132,6 +146,93 @@ describe("Wails desktop client", () => {
       completed: 0,
       ttft: { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 },
     })
+  })
+
+  it("builds a coherent SLO capacity ladder in the desktop fixture", async () => {
+    const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "sk-private-value",
+      model_id: "gpt-test",
+      load_mode: "fixed_concurrency",
+      request_count: 2,
+      duration_ms: 0,
+      concurrency: 3,
+      rate_per_second: 0,
+      max_in_flight: 0,
+      arrival_pattern: "constant",
+      workload_mode: "fixed",
+      random_seed: 0,
+      input_tokens_stddev: 0,
+      output_tokens_stddev: 0,
+      shared_prefix_tokens: 0,
+      warmup_requests: 0,
+      ramp_duration_ms: 0,
+      ramp_request_cap: 0,
+      slice_duration_ms: 0,
+      slo_ttft_ms: 50,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 90,
+      capacity_enabled: true,
+      capacity_start: 1,
+      capacity_step: 1,
+      timeout_ms: 30_000,
+      input_tokens: 20,
+      output_tokens: 32,
+    })
+
+    expect(report.request_budget).toMatchObject({ measured_cap: 6, total_cap: 6 })
+    expect(report.slo_assessment).toMatchObject({ status: "passed", total_requests: 2, good_requests: 2 })
+    expect(report.capacity_result).toMatchObject({
+      status: "passed",
+      selected_rung_index: 2,
+      highest_passing_rung_index: 2,
+      rungs: [
+        { index: 0, target: 1 },
+        { index: 1, target: 2 },
+        { index: 2, target: 3 },
+      ],
+    })
+    expect(report.progress).toMatchObject({ capacity_rung_number: 3, capacity_rung_count: 3, capacity_target: 3 })
+  })
+
+  it("keeps a near-terminal fixture target before the exact open-loop maximum", async () => {
+    const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
+      address_mode: "base_url",
+      url: "https://api.example.test/v1",
+      api_key: "sk-private-value",
+      model_id: "gpt-test",
+      load_mode: "open_loop",
+      request_count: 2,
+      duration_ms: 0,
+      concurrency: 0,
+      rate_per_second: 2,
+      max_in_flight: 4,
+      arrival_pattern: "constant",
+      workload_mode: "fixed",
+      random_seed: 0,
+      input_tokens_stddev: 0,
+      output_tokens_stddev: 0,
+      shared_prefix_tokens: 0,
+      warmup_requests: 0,
+      ramp_duration_ms: 0,
+      ramp_request_cap: 0,
+      slice_duration_ms: 0,
+      slo_ttft_ms: 50,
+      slo_tpot_ms: 0,
+      slo_e2e_ms: 0,
+      slo_target_percent: 90,
+      capacity_enabled: true,
+      capacity_start: 1.9999999999,
+      capacity_step: 3,
+      timeout_ms: 30_000,
+      input_tokens: 20,
+      output_tokens: 32,
+    })
+
+    expect(report.capacity_result?.rungs.map((rung) => rung.target)).toEqual([1.9999999999, 2])
+    expect(report.progress).toMatchObject({ capacity_rung_number: 2, capacity_rung_count: 2, capacity_target: 2 })
   })
 
   it("rejects malformed quick-test DTOs and drops unexpected payload fields", async () => {
@@ -234,7 +335,9 @@ describe("Wails desktop client", () => {
       duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
       arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_seed: 0,
       input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
+      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
+      slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+      capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     }
     const report = await createDesktopClient().runQuickPerformanceTest(command)
@@ -305,7 +408,9 @@ describe("Wails desktop client", () => {
       duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
       arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
       input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
+      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
+      slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+      capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
       input_tokens: 20, output_tokens: 32,
     })
 
@@ -350,7 +455,9 @@ describe("Wails desktop client", () => {
 			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
 			arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_seed: 0,
 			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
+			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
+			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+			capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		}
 
@@ -386,7 +493,9 @@ describe("Wails desktop client", () => {
 			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
 			arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
 			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0, timeout_ms: 30_000,
+			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
+			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+			capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
 			input_tokens: 20, output_tokens: 32,
 		})
 
@@ -458,6 +567,8 @@ describe("Wails desktop client", () => {
 			max_in_flight: 37, arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
 			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
 			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0, slice_duration_ms: 1_000,
+			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
 		expect(v2.schema_version).toBe(2)
@@ -496,6 +607,8 @@ describe("Wails desktop client", () => {
 			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
 			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
 			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
+			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		} as never)
 		expect(phaseOneV2.profile.arrival_pattern).toBeUndefined()
@@ -510,6 +623,8 @@ describe("Wails desktop client", () => {
 			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_seed: 0,
 			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
 			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
+			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
 		expect(legacy.schema_version).toBe(1)

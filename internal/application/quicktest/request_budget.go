@@ -10,7 +10,8 @@ import (
 )
 
 func phaseThreeConfigured(profile PerformanceProfile) bool {
-	return profile.WarmupRequests > 0 || profile.RampDurationMS > 0 || profile.RampRequestCap > 0 || profile.SliceDurationMS > 0
+	return profile.WarmupRequests > 0 || profile.RampDurationMS > 0 || profile.RampRequestCap > 0 ||
+		profile.SliceDurationMS > 0 || profile.CapacityEnabled
 }
 
 func buildPerformanceRequestBudget(profile PerformanceProfile) (*PerformanceRequestBudget, uint64, error) {
@@ -56,6 +57,12 @@ func buildPerformanceRequestBudget(profile PerformanceProfile) (*PerformanceRequ
 
 	var measuredCap uint64
 	switch {
+	case profile.CapacityEnabled:
+		targets, err := buildPerformanceCapacityTargets(profile)
+		if err != nil || profile.RequestCount == 0 || uint64(len(targets)) > MaxPerformanceRequests/profile.RequestCount {
+			return nil, 0, errors.New("performance capacity ladder exceeds request budget")
+		}
+		measuredCap = profile.RequestCount * uint64(len(targets))
 	case profile.RequestCount > 0:
 		measuredCap = profile.RequestCount
 	case profile.LoadMode == domain.LoadFixedConcurrency:

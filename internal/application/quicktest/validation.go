@@ -37,13 +37,16 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	}
 	arrival := normalizedArrivalPattern(report.Profile.ArrivalPattern)
 	workloadMode := normalizedWorkloadMode(report.Profile.WorkloadMode)
+	effectiveProfile := performanceReportEffectiveProfile(report)
 	if report.SchemaVersion == PerformanceSchemaVersion {
 		if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
 			report.Progress.Completed != report.Progress.Offered {
 			return time.Time{}, errors.New("quick performance report load profile is invalid")
 		}
 		if !finiteNonNegative(report.Progress.SendDurationMS) || !finiteNonNegative(report.Progress.DrainDurationMS) ||
-			!approximatelyEqual(report.Progress.TotalDurationMS, report.Progress.SendDurationMS+report.Progress.DrainDurationMS) {
+			!approximatelyEqual(report.Progress.TotalDurationMS, report.Progress.SendDurationMS+report.Progress.DrainDurationMS) ||
+			report.Progress.TotalDurationMS < durationMilliseconds(time.Nanosecond) ||
+			(report.Progress.SendDurationMS > 0 && report.Progress.SendDurationMS < durationMilliseconds(time.Nanosecond)) {
 			return time.Time{}, errors.New("quick performance report timing windows are invalid")
 		}
 		if !finiteNonNegative(report.Metrics.OfferedQPS) || !finiteNonNegative(report.Metrics.LaunchedQPS) ||
@@ -60,10 +63,10 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			return time.Time{}, errors.New("quick performance report throughput is inconsistent")
 		}
 		if report.Progress.SendDurationMS == 0 {
-			if report.Profile.LoadMode != domain.LoadFixedConcurrency || report.Metrics.OfferedQPS != 0 || report.Metrics.LaunchedQPS != 0 {
+			if effectiveProfile.LoadMode != domain.LoadFixedConcurrency || report.Metrics.OfferedQPS != 0 || report.Metrics.LaunchedQPS != 0 {
 				return time.Time{}, errors.New("quick performance report zero send window is inconsistent")
 			}
-		} else if report.Profile.LoadMode == domain.LoadFixedConcurrency {
+		} else if effectiveProfile.LoadMode == domain.LoadFixedConcurrency {
 			sendSeconds := report.Progress.SendDurationMS / 1_000
 			if !approximatelyEqual(report.Metrics.OfferedQPS, float64(report.Progress.Offered)/sendSeconds) ||
 				!approximatelyEqual(report.Metrics.LaunchedQPS, report.Metrics.OfferedQPS) {
@@ -74,7 +77,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			countLimitReached := !report.Progress.Stopped && report.Profile.RequestCount > 0 && report.Progress.Offered >= report.Profile.RequestCount
 			useNominalCountWindow := arrival != load.ArrivalPoisson || report.Progress.Offered == 1
 			if countLimitReached && useNominalCountWindow {
-				minimumScheduleWindow := float64(report.Progress.Offered) / report.Profile.RatePerSecond
+				minimumScheduleWindow := float64(report.Progress.Offered) / effectiveProfile.RatePerSecond
 				if rateWindowSeconds < minimumScheduleWindow {
 					rateWindowSeconds = minimumScheduleWindow
 				}
@@ -165,6 +168,15 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		promptTokens != report.Metrics.PromptTokens || completionTokens != report.Metrics.CompletionTokens || cachedTokens != report.Metrics.CachedTokens {
 		return time.Time{}, errors.New("quick performance report sample totals are inconsistent")
 	}
+	if report.SchemaVersion == PerformanceSchemaVersion {
+		if !validPerformanceMetricScalars(report.Metrics) {
+			return time.Time{}, errors.New("quick performance report metrics are invalid")
+		}
+		expectedMetrics := rebuildPerformanceMetrics(report.Samples, report.Progress, effectiveProfile, arrival)
+		if !equalPerformanceMetrics(report.Metrics, expectedMetrics) {
+			return time.Time{}, errors.New("quick performance report metrics are inconsistent with its samples")
+		}
+	}
 	if !sort.SliceIsSorted(report.Failures, func(left, right int) bool { return report.Failures[left].ErrorCode < report.Failures[right].ErrorCode }) {
 		return time.Time{}, errors.New("quick performance report failures are not stable")
 	}
@@ -178,6 +190,12 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		return time.Time{}, errors.New("quick performance report failures are incomplete")
 	}
 	if report.SchemaVersion == PerformanceSchemaVersion {
+		if err := validatePerformanceSLO(report); err != nil {
+			return time.Time{}, err
+		}
+		if err := validatePerformanceCapacity(report); err != nil {
+			return time.Time{}, err
+		}
 		if err := validatePerformancePhaseThree(report); err != nil {
 			return time.Time{}, err
 		}
@@ -371,6 +389,92 @@ func validPerformancePhaseThreeSamples(samples []PerformanceSample, totalDuratio
 	return true
 }
 
+func rebuildPerformanceMetrics(
+	samples []PerformanceSample,
+	progress PerformanceProgress,
+	profile PerformanceProfile,
+	arrival load.ArrivalPattern,
+) load.Metrics {
+	observations := make([]load.Observation, 0, len(samples))
+	for _, sample := range samples {
+		observations = append(observations, load.Observation{
+			Index:            sample.RequestIndex,
+			ScheduledOffset:  performanceDurationFromMilliseconds(sample.ScheduledOffsetMS),
+			StartedOffset:    performanceDurationFromMilliseconds(sample.StartedOffsetMS),
+			FinishedOffset:   performanceDurationFromMilliseconds(sample.FinishedOffsetMS),
+			ScheduleLag:      performanceDurationFromMilliseconds(sample.ScheduleLagMS),
+			E2E:              performanceDurationFromMilliseconds(sample.E2EMS),
+			TTFT:             performanceDurationFromMilliseconds(sample.TTFTMS),
+			HTTPStatus:       sample.HTTPStatus,
+			Success:          sample.Success,
+			TimedOut:         sample.TimedOut,
+			PromptTokens:     sample.PromptTokens,
+			CompletionTokens: sample.CompletionTokens,
+			CachedTokens:     sample.CachedTokens,
+			ErrorCode:        sample.ErrorCode,
+		})
+	}
+	loadProgress := load.Progress{
+		Phase:         progress.Phase,
+		Planned:       progress.Planned,
+		Offered:       progress.Offered,
+		Launched:      progress.Launched,
+		Completed:     progress.Completed,
+		InFlight:      progress.InFlight,
+		PeakInFlight:  progress.PeakInFlight,
+		Succeeded:     progress.Succeeded,
+		Failed:        progress.Failed,
+		Rejected:      progress.Rejected,
+		Stopped:       progress.Stopped,
+		Capped:        progress.Capped,
+		SendDuration:  performanceDurationFromMilliseconds(progress.SendDurationMS),
+		DrainDuration: performanceDurationFromMilliseconds(progress.DrainDurationMS),
+		TotalDuration: performanceDurationFromMilliseconds(progress.TotalDurationMS),
+	}
+	return load.ComputeMetricsWithArrival(
+		observations,
+		loadProgress,
+		performanceLoadProfile(profile, profile.RequestCount),
+		arrival,
+	)
+}
+
+func performanceDurationFromMilliseconds(value float64) time.Duration {
+	return time.Duration(math.Round(value * float64(time.Millisecond)))
+}
+
+func equalPerformanceMetrics(left, right load.Metrics) bool {
+	if left.Completed != right.Completed || left.Succeeded != right.Succeeded || left.Failed != right.Failed ||
+		left.TimedOut != right.TimedOut || left.PromptTokens != right.PromptTokens ||
+		left.CompletionTokens != right.CompletionTokens || left.CachedTokens != right.CachedTokens {
+		return false
+	}
+	leftValues := []float64{
+		left.SuccessRatePercent, left.OfferedQPS, left.LaunchedQPS, left.CompletedQPS, left.SuccessfulRequestQPS,
+		left.RequestQPS, left.RPM, left.InputTPM, left.OutputTPM, left.TotalTPM, left.GenerationTPS,
+		left.TTFTP50, left.TTFTP90, left.TTFTP95, left.TTFTP99, left.TTFTAverage,
+		left.TPOTP50, left.TPOTP90, left.TPOTP95, left.TPOTP99, left.TPOTAverage,
+		left.E2EP50, left.E2EP90, left.E2EP95, left.E2EP99, left.E2EAverage,
+		left.ScheduleLagP50, left.ScheduleLagP90, left.ScheduleLagP95, left.ScheduleLagP99, left.ScheduleLagAverage,
+		left.CacheRatePercent,
+	}
+	rightValues := []float64{
+		right.SuccessRatePercent, right.OfferedQPS, right.LaunchedQPS, right.CompletedQPS, right.SuccessfulRequestQPS,
+		right.RequestQPS, right.RPM, right.InputTPM, right.OutputTPM, right.TotalTPM, right.GenerationTPS,
+		right.TTFTP50, right.TTFTP90, right.TTFTP95, right.TTFTP99, right.TTFTAverage,
+		right.TPOTP50, right.TPOTP90, right.TPOTP95, right.TPOTP99, right.TPOTAverage,
+		right.E2EP50, right.E2EP90, right.E2EP95, right.E2EP99, right.E2EAverage,
+		right.ScheduleLagP50, right.ScheduleLagP90, right.ScheduleLagP95, right.ScheduleLagP99, right.ScheduleLagAverage,
+		right.CacheRatePercent,
+	}
+	for index := range leftValues {
+		if !approximatelyEqual(leftValues[index], rightValues[index]) {
+			return false
+		}
+	}
+	return true
+}
+
 func equalPerformanceTimeSlice(left, right PerformanceTimeSlice) bool {
 	return left.SliceIndex == right.SliceIndex && approximatelyEqual(left.StartMS, right.StartMS) && approximatelyEqual(left.EndMS, right.EndMS) &&
 		left.Partial == right.Partial && left.Offered == right.Offered && left.Launched == right.Launched && left.Completed == right.Completed &&
@@ -481,6 +585,9 @@ func finiteNonNegative(value float64) bool {
 }
 
 func approximatelyEqual(left, right float64) bool {
+	if math.IsNaN(left) || math.IsNaN(right) || math.IsInf(left, 0) || math.IsInf(right, 0) {
+		return false
+	}
 	scale := math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
 	return math.Abs(left-right) <= scale*1e-9
 }

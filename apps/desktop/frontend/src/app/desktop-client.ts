@@ -35,6 +35,7 @@ import {
   type ReportSnapshot,
 } from "@/features/reports/data"
 import {
+  estimateQuickPerformanceOpenLoopRequestCap,
   parseQuickPerformanceProgress,
   parseQuickPerformanceReport,
   parseQuickTestResult,
@@ -758,6 +759,74 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       target_output_tokens: command.output_tokens,
     } : {}),
   }))
+  const baseProgress: QuickPerformanceProgress = {
+    phase: "completed",
+    planned: command.capacity_enabled ? command.request_count : requestBudget.measured_cap,
+    offered: completed,
+    launched: completed,
+    completed,
+    in_flight: 0,
+    peak_in_flight: Math.min(configuredInFlight, completed),
+    succeeded: completed,
+    failed: 0,
+    rejected: 0,
+    capped: false,
+    send_duration_ms: totalDurationMS,
+    drain_duration_ms: 0,
+    total_duration_ms: totalDurationMS,
+  }
+  const metrics: QuickPerformanceReport["metrics"] = {
+    completed, succeeded: completed, failed: 0, timed_out: 0,
+    success_rate_percent: 100, offered_qps: completed / seconds,
+    launched_qps: completed / seconds, completed_qps: completed / seconds,
+    successful_request_qps: completed / seconds, request_qps: completed / seconds,
+    rpm: completed / seconds * 60, input_tpm: promptTokens / seconds * 60,
+    output_tpm: completionTokens / seconds * 60,
+    total_tpm: (promptTokens + completionTokens) / seconds * 60,
+    generation_tps: completionTokens / seconds,
+    ttft_p50_ms: 35, ttft_p90_ms: 45, ttft_p95_ms: 48, ttft_p99_ms: 50, ttft_average_ms: 38,
+    tpot_p50_ms: 5, tpot_p90_ms: 6, tpot_p95_ms: 6.5, tpot_p99_ms: 7, tpot_average_ms: 5.2,
+    e2e_p50_ms: 120, e2e_p90_ms: 150, e2e_p95_ms: 160, e2e_p99_ms: 170, e2e_average_ms: 128,
+    schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
+    schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
+    prompt_tokens: promptTokens, completion_tokens: completionTokens,
+    cached_tokens: 0, cache_rate_percent: 0,
+  }
+  const sloAssessment = command.slo_target_percent > 0
+    ? fixtureQuickPerformanceSLOAssessment(command, samples, totalDurationMS)
+    : undefined
+  const capacityTargets = fixtureQuickPerformanceCapacityTargets(command)
+  const executedTargets = command.capacity_enabled && sloAssessment
+    ? sloAssessment.status === "passed" ? capacityTargets : capacityTargets.slice(0, 1)
+    : []
+  const capacityRungs: NonNullable<QuickPerformanceReport["capacity_result"]>["rungs"] = executedTargets.map((target, index) => ({
+    index,
+    target,
+    success: true,
+    progress: {
+      ...baseProgress,
+      peak_in_flight: Math.min(command.load_mode === "fixed_concurrency" ? target : command.max_in_flight, completed),
+      capacity_rung_number: index + 1,
+      capacity_rung_count: capacityTargets.length,
+      capacity_target: target,
+    },
+    metrics,
+    failures: [],
+    slo_assessment: sloAssessment!,
+  }))
+  const capacityResult: QuickPerformanceReport["capacity_result"] = capacityRungs.length > 0 && sloAssessment
+    ? sloAssessment.status === "passed"
+      ? {
+        status: "passed",
+        selected_rung_index: capacityRungs.length - 1,
+        highest_passing_rung_index: capacityRungs.length - 1,
+        rungs: capacityRungs,
+      }
+      : { status: "failed", selected_rung_index: 0, rungs: capacityRungs }
+    : undefined
+  const selectedRung = capacityResult?.selected_rung_index === undefined
+    ? undefined
+    : capacityResult.rungs[capacityResult.selected_rung_index]
   return {
     schema_version: 2,
     archived: false,
@@ -783,35 +852,24 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       ...(command.ramp_duration_ms > 0 ? { ramp_duration_ms: command.ramp_duration_ms } : {}),
       ...(command.ramp_request_cap > 0 ? { ramp_request_cap: command.ramp_request_cap } : {}),
       ...(command.slice_duration_ms > 0 ? { slice_duration_ms: command.slice_duration_ms } : {}),
+      ...(command.slo_ttft_ms > 0 ? { slo_ttft_ms: command.slo_ttft_ms } : {}),
+      ...(command.slo_tpot_ms > 0 ? { slo_tpot_ms: command.slo_tpot_ms } : {}),
+      ...(command.slo_e2e_ms > 0 ? { slo_e2e_ms: command.slo_e2e_ms } : {}),
+      ...(command.slo_target_percent > 0 ? { slo_target_percent: command.slo_target_percent } : {}),
+      ...(command.capacity_enabled ? {
+        capacity_enabled: true,
+        capacity_start: command.capacity_start,
+        capacity_step: command.capacity_step,
+      } : {}),
       timeout_ms: command.timeout_ms,
       input_tokens: command.input_tokens, output_tokens: command.output_tokens,
     },
-    progress: {
-      phase: "completed", planned: requestBudget.measured_cap, offered: completed, launched: completed, completed,
-      in_flight: 0,
-      peak_in_flight: Math.min(configuredInFlight, completed), succeeded: completed,
-      failed: 0, rejected: 0, capped: false, send_duration_ms: totalDurationMS,
-      drain_duration_ms: 0, total_duration_ms: totalDurationMS,
-    },
-    metrics: {
-      completed, succeeded: completed, failed: 0, timed_out: 0,
-      success_rate_percent: 100, offered_qps: completed / seconds,
-      launched_qps: completed / seconds, completed_qps: completed / seconds,
-      successful_request_qps: completed / seconds, request_qps: completed / seconds,
-      rpm: completed / seconds * 60, input_tpm: promptTokens / seconds * 60,
-      output_tpm: completionTokens / seconds * 60,
-      total_tpm: (promptTokens + completionTokens) / seconds * 60,
-      generation_tps: completionTokens / seconds,
-      ttft_p50_ms: 35, ttft_p90_ms: 45, ttft_p95_ms: 48, ttft_p99_ms: 50, ttft_average_ms: 38,
-      tpot_p50_ms: 5, tpot_p90_ms: 6, tpot_p95_ms: 6.5, tpot_p99_ms: 7, tpot_average_ms: 5.2,
-      e2e_p50_ms: 120, e2e_p90_ms: 150, e2e_p95_ms: 160, e2e_p99_ms: 170, e2e_average_ms: 128,
-      schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 1.8, schedule_lag_p95_ms: 2,
-      schedule_lag_p99_ms: 2.8, schedule_lag_average_ms: 0.5,
-      prompt_tokens: promptTokens, completion_tokens: completionTokens,
-      cached_tokens: 0, cache_rate_percent: 0,
-    },
+    progress: selectedRung?.progress ?? baseProgress,
+    metrics: selectedRung?.metrics ?? metrics,
     samples,
     failures: [],
+    ...(sloAssessment ? { slo_assessment: selectedRung?.slo_assessment ?? sloAssessment } : {}),
+    ...(capacityResult ? { capacity_result: capacityResult } : {}),
     ...(fixtureHasPhaseThreeConfiguration(command) ? { request_budget: requestBudget } : {}),
     ...(command.warmup_requests > 0 ? { warmup: fixtureQuickPerformanceTraffic(command, command.warmup_requests, command.warmup_requests) } : {}),
     ...(command.ramp_duration_ms > 0 ? {
@@ -824,7 +882,7 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
 }
 
 function fixtureHasPhaseThreeConfiguration(command: QuickPerformanceCommand): boolean {
-  return command.warmup_requests > 0 || command.ramp_duration_ms > 0 || command.slice_duration_ms > 0
+  return command.warmup_requests > 0 || command.ramp_duration_ms > 0 || command.slice_duration_ms > 0 || command.capacity_enabled
 }
 
 function fixtureQuickPerformanceBudget(command: QuickPerformanceCommand): NonNullable<QuickPerformanceReport["request_budget"]> {
@@ -834,17 +892,67 @@ function fixtureQuickPerformanceBudget(command: QuickPerformanceCommand): NonNul
     : command.load_mode === "fixed_concurrency"
       ? command.ramp_request_cap
       : fixtureOpenLoopRequestCap(rampIntensity, command.arrival_pattern)
-  const measuredCap = command.request_count > 0
-    ? command.request_count
+  const measuredCap = command.capacity_enabled
+    ? command.request_count * fixtureQuickPerformanceCapacityTargets(command).length
+    : command.request_count > 0
+      ? command.request_count
     : command.load_mode === "fixed_concurrency"
       ? Math.max(1, 10_000 - command.warmup_requests - rampCap)
-      : fixtureOpenLoopRequestCap(command.duration_ms / 1_000 * command.rate_per_second, command.arrival_pattern)
+      : estimateQuickPerformanceOpenLoopRequestCap(command.duration_ms, command.rate_per_second, command.arrival_pattern)
   return {
     limit: 10_000,
     warmup_cap: command.warmup_requests,
     ramp_cap: rampCap,
     measured_cap: measuredCap,
     total_cap: command.warmup_requests + rampCap + measuredCap,
+  }
+}
+
+function fixtureQuickPerformanceCapacityTargets(command: QuickPerformanceCommand): number[] {
+  if (!command.capacity_enabled) return []
+  const maximum = command.load_mode === "fixed_concurrency" ? command.concurrency : command.rate_per_second
+  const targets: number[] = []
+  for (let index = 0; index <= 20; index += 1) {
+    const candidate = command.capacity_start + index * command.capacity_step
+    if (candidate >= maximum) {
+      targets.push(maximum)
+      break
+    }
+    targets.push(candidate)
+  }
+  return targets
+}
+
+function fixtureQuickPerformanceSLOAssessment(
+  command: QuickPerformanceCommand,
+  samples: QuickPerformanceReport["samples"],
+  totalDurationMS: number,
+): NonNullable<QuickPerformanceReport["slo_assessment"]> {
+  const violations = { transport: 0, ttft: 0, tpot: 0, e2e: 0 }
+  let goodRequests = 0
+  for (const sample of samples) {
+    const transportViolation = !sample.success
+    const ttftViolation = command.slo_ttft_ms > 0 && (sample.ttft_ms <= 0 || sample.ttft_ms > command.slo_ttft_ms)
+    const tpotViolation = command.slo_tpot_ms > 0 && (sample.tpot_ms <= 0 || sample.tpot_ms > command.slo_tpot_ms)
+    const e2eViolation = command.slo_e2e_ms > 0 && (sample.e2e_ms <= 0 || sample.e2e_ms > command.slo_e2e_ms)
+    if (transportViolation) violations.transport += 1
+    if (ttftViolation) violations.ttft += 1
+    if (tpotViolation) violations.tpot += 1
+    if (e2eViolation) violations.e2e += 1
+    if (!transportViolation && !ttftViolation && !tpotViolation && !e2eViolation) goodRequests += 1
+  }
+  const totalRequests = samples.length
+  const goodRequestPercent = totalRequests > 0 ? goodRequests / totalRequests * 100 : 0
+  return {
+    status: goodRequestPercent >= command.slo_target_percent ? "passed" : "failed",
+    thresholds: { ttft_ms: command.slo_ttft_ms, tpot_ms: command.slo_tpot_ms, e2e_ms: command.slo_e2e_ms },
+    target_percent: command.slo_target_percent,
+    total_requests: totalRequests,
+    good_requests: goodRequests,
+    bad_requests: totalRequests - goodRequests,
+    good_request_percent: goodRequestPercent,
+    goodput_qps: totalDurationMS > 0 ? goodRequests / (totalDurationMS / 1_000) : 0,
+    violations,
   }
 }
 
@@ -990,8 +1098,11 @@ function fixturePerformanceLatencySlice(values: number[]): NonNullable<QuickPerf
 }
 
 function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {
-  const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
-  const planned = fixtureQuickPerformanceBudget(command).measured_cap
+  const capacityTargets = fixtureQuickPerformanceCapacityTargets(command)
+  const configuredInFlight = command.load_mode === "open_loop"
+    ? command.max_in_flight
+    : command.capacity_enabled ? capacityTargets[0] : command.concurrency
+  const planned = command.capacity_enabled ? command.request_count : fixtureQuickPerformanceBudget(command).measured_cap
   const totalDurationMS = phase === "completed" ? Math.max(320, command.duration_ms) : 0
   return {
     phase,
@@ -1008,6 +1119,11 @@ function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase
     send_duration_ms: totalDurationMS,
     drain_duration_ms: 0,
     total_duration_ms: totalDurationMS,
+    ...(command.capacity_enabled ? {
+      capacity_rung_number: 1,
+      capacity_rung_count: capacityTargets.length,
+      capacity_target: capacityTargets[0],
+    } : {}),
   }
 }
 

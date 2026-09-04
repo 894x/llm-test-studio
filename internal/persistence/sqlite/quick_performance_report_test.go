@@ -131,6 +131,23 @@ func TestRepositoryQuickPerformancePhaseThreeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRepositoryQuickPerformancePhaseFourCapacityRoundTrip(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777758", "2026-09-05T06:07:08Z")
+	addPhaseFourCapacityFixture(&report)
+	if err := repository.SaveQuickPerformanceReport(context.Background(), report); err != nil {
+		t.Fatalf("SaveQuickPerformanceReport() error = %v", err)
+	}
+	loaded, err := repository.GetQuickPerformanceReport(context.Background(), report.ReportID)
+	if err != nil {
+		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, report) {
+		t.Fatalf("loaded report = %#v, want %#v", loaded, report)
+	}
+}
+
 func TestRepositoryQuickPerformanceOpenDurationPhaseThreeRoundTrip(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
@@ -169,6 +186,9 @@ func TestRepositoryRejectsNonCanonicalOrUnsupportedQuickPerformanceDocuments(t *
 		{name: "phase two profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"profile":{"concurrency":`, `"profile":{"arrival_pattern":"poisson","concurrency":`, 1)},
 		{name: "phase two sample field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timed_out":false,`, `"target_input_tokens":10,"timed_out":false,`, 1)},
 		{name: "phase three profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timeout_ms":2000}`, `"timeout_ms":2000,"warmup_requests":1}`, 1)},
+		{name: "phase four profile field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"timeout_ms":2000}`, `"timeout_ms":2000,"slo_e2e_ms":20}`, 1)},
+		{name: "phase four progress field in v1", document: strings.Replace(frozenSchemaV1QuickPerformanceReport, `"completed":1,`, `"capacity_target":1,"completed":1,`, 1)},
+		{name: "phase four report field in v1", document: strings.TrimSuffix(frozenSchemaV1QuickPerformanceReport, "}") + `,"slo_assessment":{}}`},
 		{name: "noncanonical whitespace", document: " " + frozenSchemaV1QuickPerformanceReport},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -490,6 +510,26 @@ func makeQuickPerformanceReportFailed(report *quicktest.PerformanceReport, code 
 	report.Metrics.PromptTokens = 0
 	report.Metrics.CompletionTokens = 0
 	report.Metrics.CachedTokens = 0
+	report.Metrics.InputTPM = 0
+	report.Metrics.OutputTPM = 0
+	report.Metrics.TotalTPM = 0
+	report.Metrics.GenerationTPS = 0
+	report.Metrics.CacheRatePercent = 0
+	report.Metrics.TTFTP50 = 0
+	report.Metrics.TTFTP90 = 0
+	report.Metrics.TTFTP95 = 0
+	report.Metrics.TTFTP99 = 0
+	report.Metrics.TTFTAverage = 0
+	report.Metrics.TPOTP50 = 0
+	report.Metrics.TPOTP90 = 0
+	report.Metrics.TPOTP95 = 0
+	report.Metrics.TPOTP99 = 0
+	report.Metrics.TPOTAverage = 0
+	report.Metrics.E2EP50 = 0
+	report.Metrics.E2EP90 = 0
+	report.Metrics.E2EP95 = 0
+	report.Metrics.E2EP99 = 0
+	report.Metrics.E2EAverage = 0
 	report.Samples[0].Success = false
 	report.Samples[0].PromptTokens = 0
 	report.Samples[0].CompletionTokens = 0
@@ -517,7 +557,12 @@ func validQuickPerformanceReport(id, generatedAt string) quicktest.PerformanceRe
 			Completed: 1, Succeeded: 1, SuccessRatePercent: 100,
 			OfferedQPS: 80, LaunchedQPS: 80, CompletedQPS: 80, SuccessfulRequestQPS: 80,
 			RequestQPS: 80, RPM: 4800, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
-			TTFTP50: 2, TPOTP50: 4.5, E2EP50: 11,
+			InputTPM: 48_000, OutputTPM: 14_400, TotalTPM: 62_400, GenerationTPS: 240,
+			TTFTP50: 2, TTFTP90: 2, TTFTP95: 2, TTFTP99: 2, TTFTAverage: 2,
+			TPOTP50: 4.5, TPOTP90: 4.5, TPOTP95: 4.5, TPOTP99: 4.5, TPOTAverage: 4.5,
+			E2EP50: 11, E2EP90: 11, E2EP95: 11, E2EP99: 11, E2EAverage: 11,
+			ScheduleLagP50: 1, ScheduleLagP90: 1, ScheduleLagP95: 1, ScheduleLagP99: 1, ScheduleLagAverage: 1,
+			CacheRatePercent: 20,
 		},
 		Failures:  []quicktest.PerformanceFailure{},
 		Samples:   []quicktest.PerformanceSample{{RequestIndex: 0, StartedOffsetMS: 1, FinishedOffsetMS: 12, ScheduleLagMS: 1, E2EMS: 11, TTFTMS: 2, TPOTMS: 4.5, HTTPStatus: 200, Success: true, PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2}},
@@ -587,4 +632,50 @@ func addOpenDurationPhaseThreeFixture(report *quicktest.PerformanceReport) {
 		TPOT: quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5},
 		E2E:  quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11},
 	}}
+}
+
+func addPhaseFourCapacityFixture(report *quicktest.PerformanceReport) {
+	report.Profile.SLOE2EMS = 20
+	report.Profile.SLOTargetPercent = 100
+	report.Profile.CapacityEnabled = true
+	report.Profile.CapacityStart = 1
+	report.Profile.CapacityStep = 1
+	report.Profile.Concurrency = 2
+	report.RequestBudget = &quicktest.PerformanceRequestBudget{
+		Limit: quicktest.MaxPerformanceRequests, MeasuredCap: 2, TotalCap: 2,
+	}
+	report.Progress.CapacityRungNumber = 2
+	report.Progress.CapacityRungCount = 2
+	report.Progress.CapacityTarget = 2
+	report.Metrics.InputTPM = 48_000
+	report.Metrics.OutputTPM = 14_400
+	report.Metrics.TotalTPM = 62_400
+	report.Metrics.GenerationTPS = 240
+	report.Metrics.CacheRatePercent = 20
+	report.SLOAssessment = &quicktest.PerformanceSLOAssessment{
+		Status:             quicktest.PerformanceSLOPassed,
+		Thresholds:         quicktest.PerformanceSLOThresholds{E2EMS: 20},
+		TargetPercent:      100,
+		TotalRequests:      1,
+		GoodRequests:       1,
+		GoodRequestPercent: 100,
+		GoodputQPS:         80,
+	}
+	rungs := make([]quicktest.PerformanceCapacityRung, 2)
+	for index := range rungs {
+		progress := report.Progress
+		progress.CapacityRungNumber = uint32(index + 1)
+		progress.CapacityTarget = float64(index + 1)
+		rungs[index] = quicktest.PerformanceCapacityRung{
+			Index: uint32(index), Target: float64(index + 1), Success: true,
+			Progress: progress, Metrics: report.Metrics, Failures: []quicktest.PerformanceFailure{},
+			SLOAssessment: *report.SLOAssessment,
+		}
+	}
+	selected := uint32(1)
+	highest := uint32(1)
+	report.CapacityResult = &quicktest.PerformanceCapacityResult{
+		Status: quicktest.PerformanceSLOPassed, SelectedRungIndex: &selected,
+		HighestPassingRungIndex: &highest, Rungs: rungs,
+	}
 }
