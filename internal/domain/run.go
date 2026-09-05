@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
 
-const CurrentRunSnapshotSchemaVersion = 1
+const (
+	legacyRunSnapshotSchemaVersion  = 1
+	CurrentRunSnapshotSchemaVersion = 2
+)
 
 type RunStatus string
 
@@ -91,18 +95,21 @@ func (snapshot ChannelSnapshot) Validate() error {
 }
 
 type RunSnapshot struct {
-	SchemaVersion int                 `json:"schema_version"`
-	Plan          EntityRevisionRef   `json:"plan"`
-	Model         ModelSnapshot       `json:"model"`
-	Channel       ChannelSnapshot     `json:"channel"`
-	Cases         []CaseRevisionRef   `json:"cases"`
-	Load          LoadProfile         `json:"load"`
-	SLA           SLAProfile          `json:"sla"`
-	Environment   EnvironmentSnapshot `json:"environment"`
+	SchemaVersion   int                 `json:"schema_version"`
+	Plan            EntityRevisionRef   `json:"plan"`
+	Model           ModelSnapshot       `json:"model"`
+	Channel         ChannelSnapshot     `json:"channel"`
+	Cases           []CaseRevisionRef   `json:"cases"`
+	Load            LoadProfile         `json:"load"`
+	SLA             SLAProfile          `json:"sla"`
+	Environment     EnvironmentSnapshot `json:"environment"`
+	PlanDocument    *Plan               `json:"plan_document,omitempty"`
+	Mapping         *ChannelModel       `json:"mapping,omitempty"`
+	CaseDefinitions []TestCase          `json:"case_definitions,omitempty"`
 }
 
 func (snapshot RunSnapshot) Validate() error {
-	if snapshot.SchemaVersion != CurrentRunSnapshotSchemaVersion {
+	if snapshot.SchemaVersion != legacyRunSnapshotSchemaVersion && snapshot.SchemaVersion != CurrentRunSnapshotSchemaVersion {
 		return fmt.Errorf("unsupported run snapshot schema version %d", snapshot.SchemaVersion)
 	}
 	if err := snapshot.Plan.Validate("plan"); err != nil {
@@ -126,14 +133,113 @@ func (snapshot RunSnapshot) Validate() error {
 	if err := snapshot.SLA.Validate(); err != nil {
 		return err
 	}
-	return snapshot.Environment.Validate()
+	if err := snapshot.Environment.Validate(); err != nil {
+		return err
+	}
+	if snapshot.SchemaVersion == legacyRunSnapshotSchemaVersion {
+		if snapshot.PlanDocument != nil || snapshot.Mapping != nil || len(snapshot.CaseDefinitions) != 0 {
+			return errors.New("legacy run snapshot must not contain v2 configuration documents")
+		}
+		return nil
+	}
+	if snapshot.PlanDocument == nil || snapshot.Mapping == nil {
+		return errors.New("run snapshot requires complete plan and mapping documents")
+	}
+	if err := snapshot.PlanDocument.Validate(); err != nil {
+		return fmt.Errorf("invalid run plan document: %w", err)
+	}
+	if snapshot.PlanDocument.ID != snapshot.Plan.ID || snapshot.PlanDocument.Revision != snapshot.Plan.Revision ||
+		!caseRefsAreOrderedSubset(snapshot.PlanDocument.Cases, snapshot.Cases) ||
+		!reflect.DeepEqual(snapshot.PlanDocument.Load, snapshot.Load) ||
+		!reflect.DeepEqual(snapshot.PlanDocument.SLA, snapshot.SLA) {
+		return errors.New("run plan document does not match the pinned plan snapshot")
+	}
+	if len(snapshot.PlanDocument.ModelIDs) > 0 &&
+		(!containsValue(snapshot.PlanDocument.ModelIDs, snapshot.Model.ID) || !containsValue(snapshot.PlanDocument.ChannelIDs, snapshot.Channel.ID)) {
+		return errors.New("run target is outside the pinned plan document")
+	}
+	if err := snapshot.Mapping.Validate(); err != nil {
+		return fmt.Errorf("invalid run mapping document: %w", err)
+	}
+	if snapshot.Mapping.ChannelID != snapshot.Channel.ID || snapshot.Mapping.ModelID != snapshot.Model.ID ||
+		snapshot.Mapping.UpstreamModelName != snapshot.Channel.UpstreamModelName {
+		return errors.New("run mapping document does not match the selected target")
+	}
+	if len(snapshot.CaseDefinitions) != len(snapshot.Cases) {
+		return errors.New("run snapshot case definitions do not match case references")
+	}
+	for index, testCase := range snapshot.CaseDefinitions {
+		if err := testCase.Validate(); err != nil {
+			return fmt.Errorf("invalid run case definition at index %d: %w", index, err)
+		}
+		ref := snapshot.Cases[index]
+		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Protocol != snapshot.Model.Protocol {
+			return errors.New("run case definition does not match its pinned reference")
+		}
+	}
+	return nil
 }
 
 func (snapshot RunSnapshot) clone() RunSnapshot {
 	snapshot.Model = snapshot.Model.clone()
 	snapshot.Cases = append([]CaseRevisionRef(nil), snapshot.Cases...)
 	snapshot.SLA = snapshot.SLA.clone()
+	if snapshot.PlanDocument != nil {
+		plan := cloneRunPlan(*snapshot.PlanDocument)
+		snapshot.PlanDocument = &plan
+	}
+	if snapshot.Mapping != nil {
+		mapping := *snapshot.Mapping
+		snapshot.Mapping = &mapping
+	}
+	snapshot.CaseDefinitions = cloneRunCases(snapshot.CaseDefinitions)
 	return snapshot
+}
+
+func cloneRunPlan(plan Plan) Plan {
+	if plan.ModelIDs != nil {
+		plan.ModelIDs = append([]string{}, plan.ModelIDs...)
+	}
+	if plan.ChannelIDs != nil {
+		plan.ChannelIDs = append([]string{}, plan.ChannelIDs...)
+	}
+	if plan.Cases != nil {
+		plan.Cases = append([]CaseRevisionRef{}, plan.Cases...)
+	}
+	plan.SLA = plan.SLA.clone()
+	return plan
+}
+
+func cloneRunCases(values []TestCase) []TestCase {
+	if values == nil {
+		return nil
+	}
+	result := make([]TestCase, len(values))
+	for index, value := range values {
+		value.ModelTargets = append([]string(nil), value.ModelTargets...)
+		value.Definition.Spec = append(json.RawMessage(nil), value.Definition.Spec...)
+		result[index] = value
+	}
+	return result
+}
+
+func containsValue(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func caseRefsAreOrderedSubset(all, selected []CaseRevisionRef) bool {
+	next := 0
+	for _, candidate := range all {
+		if next < len(selected) && candidate == selected[next] {
+			next++
+		}
+	}
+	return next == len(selected)
 }
 
 type Run struct {

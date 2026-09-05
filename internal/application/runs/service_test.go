@@ -46,8 +46,14 @@ func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 		t.Fatalf("StartRun() error = %v", err)
 	}
 	request := <-executor.entered
-	if request.Run.Snapshot().Model.ID != fixture.model.ID || request.Run.Snapshot().Channel.ID != fixture.channel.ID {
-		t.Fatalf("execution snapshot target = %#v", request.Run.Snapshot())
+	snapshot := request.Run.Snapshot()
+	if snapshot.Model.ID != fixture.model.ID || snapshot.Channel.ID != fixture.channel.ID {
+		t.Fatalf("execution snapshot target = %#v", snapshot)
+	}
+	if snapshot.PlanDocument == nil || snapshot.PlanDocument.ID != fixture.plan.ID ||
+		snapshot.Mapping == nil || snapshot.Mapping.ID != fixture.mapping.ID ||
+		len(snapshot.CaseDefinitions) != 1 || snapshot.CaseDefinitions[0].ID != fixture.testCase.ID {
+		t.Fatalf("immutable run configuration snapshot = %#v", snapshot)
 	}
 	if len(request.Cases) != 1 || request.Cases[0].Revision != fixture.testCase.Revision {
 		t.Fatalf("execution cases = %#v", request.Cases)
@@ -958,6 +964,26 @@ type runFixture struct {
 	testCase    domain.TestCase
 	plan        domain.Plan
 	environment domain.EnvironmentSnapshot
+}
+
+func (fixture runFixture) snapshot() domain.RunSnapshot {
+	plan := fixture.plan
+	mapping := fixture.mapping
+	return domain.RunSnapshot{
+		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
+		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
+		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.model.ID, Revision: fixture.model.Revision}, Name: fixture.model.Name, Protocol: fixture.model.Protocol, Capabilities: append([]string(nil), fixture.model.Capabilities...)},
+		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.channel.ID, Revision: fixture.channel.Revision}, Name: fixture.channel.Name, BaseURL: fixture.channel.BaseURL, Protocol: fixture.channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
+		Cases:         append([]domain.CaseRevisionRef(nil), plan.Cases...),
+		Load:          plan.Load,
+		SLA:           plan.SLA,
+		Environment:   fixture.environment,
+		PlanDocument:  &plan,
+		Mapping:       &mapping,
+		CaseDefinitions: []domain.TestCase{
+			fixture.testCase,
+		},
+	}
 }
 
 func newRunFixture(t *testing.T) runFixture {

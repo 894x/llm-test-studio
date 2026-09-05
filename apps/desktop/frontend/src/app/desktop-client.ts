@@ -65,6 +65,7 @@ export type DesktopErrorCode =
   | "catalog_invalid"
   | "catalog_revision_conflict"
   | "catalog_not_found"
+  | "catalog_saved_refresh_failed"
 
 const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   desktop_not_started: "桌面服务仍在启动，请稍候重试；日志操作名：startup",
@@ -85,6 +86,7 @@ const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
   catalog_invalid: "目录内容无效，请检查表单字段",
   catalog_revision_conflict: "对象版本已变化或仍被引用，请刷新并解除引用后重试",
   catalog_not_found: "对象已删除或不存在，请刷新目录",
+  catalog_saved_refresh_failed: "已保存，但目录刷新失败，请刷新或重新打开应用",
 }
 
 export class DesktopClientError extends Error {
@@ -110,6 +112,10 @@ export function publicDesktopOperationErrorMessage(
   fallback: string,
 ): string {
   return `${operation}失败：${publicDesktopErrorMessage(error, fallback)}`
+}
+
+export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopClientError {
+  return error instanceof DesktopClientError && error.code === "catalog_saved_refresh_failed"
 }
 
 export interface DesktopClient extends CatalogActions {
@@ -590,25 +596,25 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       }
     },
     saveQuickTestConnection: async (command) =>
-      callBinding(() => binding.SaveQuickTestConnection(command), parseCatalogSnapshot),
-    createModel: async (command) => callBinding(() => binding.CreateModel(command), parseCatalogSnapshot),
-    updateModel: async (command) => callBinding(() => binding.UpdateModel(command), parseCatalogSnapshot),
-    deleteModel: async (command) => callBinding(() => binding.DeleteModel(command), parseCatalogSnapshot),
-    createChannel: async (command) => callBinding(() => binding.CreateChannel(command), parseCatalogSnapshot),
-    updateChannel: async (command) => callBinding(() => binding.UpdateChannel(command), parseCatalogSnapshot),
-    deleteChannel: async (command) => callBinding(() => binding.DeleteChannel(command), parseCatalogSnapshot),
-    createChannelModel: async (command) => callBinding(() => binding.CreateChannelModel(command), parseCatalogSnapshot),
-    updateChannelModel: async (command) => callBinding(() => binding.UpdateChannelModel(command), parseCatalogSnapshot),
-    deleteChannelModel: async (command) => callBinding(() => binding.DeleteChannelModel(command), parseCatalogSnapshot),
-    createTestCase: async (command) => callBinding(() => binding.CreateTestCase(command), parseCatalogSnapshot),
-    updateTestCase: async (command) => callBinding(() => binding.UpdateTestCase(command), parseCatalogSnapshot),
-    deleteTestCase: async (command) => callBinding(() => binding.DeleteTestCase(command), parseCatalogSnapshot),
-    createSuite: async (command) => callBinding(() => binding.CreateSuite(command), parseCatalogSnapshot),
-    updateSuite: async (command) => callBinding(() => binding.UpdateSuite(command), parseCatalogSnapshot),
-    deleteSuite: async (command) => callBinding(() => binding.DeleteSuite(command), parseCatalogSnapshot),
-    createPlan: async (command) => callBinding(() => binding.CreatePlan(command), parseCatalogSnapshot),
-    updatePlan: async (command) => callBinding(() => binding.UpdatePlan(command), parseCatalogSnapshot),
-    deletePlan: async (command) => callBinding(() => binding.DeletePlan(command), parseCatalogSnapshot),
+      callCatalogMutation(binding, () => binding.SaveQuickTestConnection(command)),
+    createModel: async (command) => callCatalogMutation(binding, () => binding.CreateModel(command)),
+    updateModel: async (command) => callCatalogMutation(binding, () => binding.UpdateModel(command)),
+    deleteModel: async (command) => callCatalogMutation(binding, () => binding.DeleteModel(command)),
+    createChannel: async (command) => callCatalogMutation(binding, () => binding.CreateChannel(command)),
+    updateChannel: async (command) => callCatalogMutation(binding, () => binding.UpdateChannel(command)),
+    deleteChannel: async (command) => callCatalogMutation(binding, () => binding.DeleteChannel(command)),
+    createChannelModel: async (command) => callCatalogMutation(binding, () => binding.CreateChannelModel(command)),
+    updateChannelModel: async (command) => callCatalogMutation(binding, () => binding.UpdateChannelModel(command)),
+    deleteChannelModel: async (command) => callCatalogMutation(binding, () => binding.DeleteChannelModel(command)),
+    createTestCase: async (command) => callCatalogMutation(binding, () => binding.CreateTestCase(command)),
+    updateTestCase: async (command) => callCatalogMutation(binding, () => binding.UpdateTestCase(command)),
+    deleteTestCase: async (command) => callCatalogMutation(binding, () => binding.DeleteTestCase(command)),
+    createSuite: async (command) => callCatalogMutation(binding, () => binding.CreateSuite(command)),
+    updateSuite: async (command) => callCatalogMutation(binding, () => binding.UpdateSuite(command)),
+    deleteSuite: async (command) => callCatalogMutation(binding, () => binding.DeleteSuite(command)),
+    createPlan: async (command) => callCatalogMutation(binding, () => binding.CreatePlan(command)),
+    updatePlan: async (command) => callCatalogMutation(binding, () => binding.UpdatePlan(command)),
+    deletePlan: async (command) => callCatalogMutation(binding, () => binding.DeletePlan(command)),
   }
 }
 
@@ -925,6 +931,19 @@ async function callBinding<T>(
       throw new DesktopClientError(operationFallbackCode)
     }
     throw normalized
+  }
+}
+
+async function callCatalogMutation(
+  binding: FrontendDiagnosticBinding,
+  invoke: () => Promise<unknown>,
+): Promise<CatalogSnapshot> {
+  const payload = await callBinding(invoke, (value) => value)
+  try {
+    return parseCatalogSnapshot(payload)
+  } catch (error) {
+    await reportFrontendFailure(binding, "load_catalog")(error)
+    throw new DesktopClientError("catalog_saved_refresh_failed")
   }
 }
 

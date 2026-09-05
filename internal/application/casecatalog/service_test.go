@@ -2,6 +2,7 @@ package casecatalog_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -72,6 +73,129 @@ func TestSaveSafelyReplacesAnExistingUserCase(t *testing.T) {
 	path := filepath.Join(root, "openai-chat", "T901-replace", "case.json")
 	if got, err := os.ReadFile(path); err != nil || string(got) != string(replacement) {
 		t.Fatalf("replacement case = %q, %v", got, err)
+	}
+}
+
+func TestSavePreservesThePreviousRevisionForPinnedPlans(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	catalog, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Save(ctx, "openai-chat", "T902-history", []byte(caseJSON("T902", "first revision"))); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := catalog.Entries(ctx)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("Entries() = %#v, %v", entries, err)
+	}
+	first := entries[0].TestCase
+
+	if err := catalog.Save(ctx, "openai-chat", "T902-history", []byte(caseJSON("T902", "second revision"))); err != nil {
+		t.Fatalf("second Save() error = %v", err)
+	}
+	current, err := catalog.Find(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.TestCase.Revision == first.Revision || current.TestCase.Name != "second revision" {
+		t.Fatalf("current case = %#v", current.TestCase)
+	}
+
+	pinned, err := catalog.FindRevision(ctx, first.ID, first.Revision)
+	if err != nil {
+		t.Fatalf("FindRevision(old) error = %v", err)
+	}
+	if pinned.TestCase.ID != first.ID || pinned.TestCase.Revision != first.Revision || pinned.TestCase.Name != "first revision" {
+		t.Fatalf("pinned case = %#v, want first revision", pinned.TestCase)
+	}
+}
+
+func TestStoreRevisionPreservesAnExactLegacyDatabaseRevision(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	catalog, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Save(ctx, "openai-chat", "T903-legacy", []byte(caseJSON("T903", "current file"))); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := catalog.Entries(ctx)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("Entries() = %#v, %v", entries, err)
+	}
+	legacy := entries[0].TestCase
+	legacy.Revision = 7
+	legacy.Name = "legacy pinned definition"
+	if err := legacy.Validate(); err != nil {
+		t.Fatalf("legacy fixture is invalid: %v", err)
+	}
+
+	if err := catalog.StoreRevision(ctx, legacy); err != nil {
+		t.Fatalf("StoreRevision() error = %v", err)
+	}
+	if err := catalog.StoreRevision(ctx, legacy); err != nil {
+		t.Fatalf("StoreRevision(idempotent retry) error = %v", err)
+	}
+	pinned, err := catalog.FindRevision(ctx, legacy.ID, legacy.Revision)
+	if err != nil {
+		t.Fatalf("FindRevision() error = %v", err)
+	}
+	if pinned.TestCase.Revision != 7 || pinned.TestCase.Name != legacy.Name {
+		t.Fatalf("pinned case = %#v", pinned.TestCase)
+	}
+	current, err := catalog.Find(ctx, legacy.ID)
+	if err != nil || current.TestCase.Name != "current file" {
+		t.Fatalf("current case changed = %#v, %v", current.TestCase, err)
+	}
+	conflict := legacy
+	conflict.Name = "different content under the same revision"
+	if err := catalog.StoreRevision(ctx, conflict); !errors.Is(err, casecatalog.ErrCollision) {
+		t.Fatalf("StoreRevision(conflict) error = %v, want ErrCollision", err)
+	}
+	pinned, err = catalog.FindRevision(ctx, legacy.ID, legacy.Revision)
+	if err != nil || pinned.TestCase.Name != legacy.Name {
+		t.Fatalf("conflicting store changed pinned case = %#v, %v", pinned.TestCase, err)
+	}
+}
+
+func TestStoreRevisionMaterializesTheCurrentRevisionBeforeAnExternalEdit(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	catalog, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Save(ctx, "openai-chat", "T904-current", []byte(caseJSON("T904", "current pinned case"))); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := catalog.Entries(ctx)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("Entries() = %#v, %v", entries, err)
+	}
+	pinned := entries[0]
+	if err := catalog.StoreRevision(ctx, pinned.TestCase); err != nil {
+		t.Fatalf("StoreRevision(current) error = %v", err)
+	}
+
+	// Simulate a user editing the shareable case.json without going through
+	// Save, which cannot archive the previous active document for us.
+	writeUserCase(t, root, pinned.Group, pinned.Directory, caseJSON("T904", "externally edited case"))
+	current, err := catalog.Find(ctx, pinned.TestCase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.TestCase.Revision == pinned.TestCase.Revision {
+		t.Fatal("external edit did not produce a distinct active Case revision")
+	}
+	exact, err := catalog.FindRevision(ctx, pinned.TestCase.ID, pinned.TestCase.Revision)
+	if err != nil {
+		t.Fatalf("FindRevision(pinned after external edit) error = %v", err)
+	}
+	if exact.TestCase.Name != pinned.TestCase.Name {
+		t.Fatalf("FindRevision() = %#v, want exact pinned %#v", exact.TestCase, pinned.TestCase)
 	}
 }
 

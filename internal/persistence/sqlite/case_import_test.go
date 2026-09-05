@@ -277,10 +277,12 @@ func TestCaseImportStoreFailsClosedWhenImportedMaterializedHashIsCorrupt(t *test
 		t.Fatalf("close corruption fixture: %v", err)
 	}
 
-	repository = openExistingCaseImportRepository(t, path)
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
+	}
 	defer repository.Close()
-	_, err := repository.LoadCaseImportState(context.Background(), caseimport.Namespace)
-	if !errors.Is(err, persistence.ErrCorrupt) {
+	if _, err := repository.LoadCaseImportState(context.Background(), caseimport.Namespace); !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("LoadCaseImportState() error = %v, want ErrCorrupt", err)
 	}
 }
@@ -309,11 +311,12 @@ func TestCaseImportStoreFailsClosedWhenImportedRevisionIsMissing(t *testing.T) {
 		t.Fatalf("close corruption fixture: %v", err)
 	}
 
-	repository = openExistingCaseImportRepository(t, path)
-	defer repository.Close()
-	_, err := repository.LoadCaseImportState(context.Background(), caseimport.Namespace)
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if repository != nil {
+		_ = repository.Close()
+	}
 	if !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("LoadCaseImportState() error = %v, want ErrCorrupt", err)
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v, want ErrCorrupt", err)
 	}
 }
 
@@ -520,9 +523,9 @@ func openCaseImportRepository(t *testing.T, path string) *persistence.Repository
 
 func openExistingCaseImportRepository(t *testing.T, path string) *persistence.Repository {
 	t.Helper()
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
-		t.Fatalf("OpenRepository() error = %v", err)
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
 	}
 	return repository
 }

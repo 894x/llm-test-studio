@@ -19,39 +19,41 @@ import (
 )
 
 var (
-	ErrDesktopNotStarted      = errors.New("desktop application has not started")
-	ErrDesktopStartup         = errors.New("desktop application startup failed")
-	ErrDesktopStopped         = errors.New("desktop application is shutting down or stopped")
-	ErrWorkspaceUnavailable   = errors.New("workspace query is unavailable")
-	ErrCatalogUnavailable     = errors.New("catalog query is unavailable")
-	ErrReportingUnavailable   = errors.New("reporting query is unavailable")
-	ErrRunCommandsUnavailable = errors.New("run commands are unavailable")
-	ErrComparisonUnavailable  = errors.New("comparison service is unavailable")
-	ErrDiagnosticsUnavailable = errors.New("desktop diagnostics are unavailable")
-	ErrQuickTestUnavailable   = errors.New("quick test service is unavailable")
-	ErrQuickTestSavePartial   = errors.New("quick test connection was only partially saved")
-	ErrInvalidIdentifier      = errors.New("desktop command identifier is invalid")
+	ErrDesktopNotStarted         = errors.New("desktop application has not started")
+	ErrDesktopStartup            = errors.New("desktop application startup failed")
+	ErrDesktopStopped            = errors.New("desktop application is shutting down or stopped")
+	ErrWorkspaceUnavailable      = errors.New("workspace query is unavailable")
+	ErrCatalogUnavailable        = errors.New("catalog query is unavailable")
+	ErrReportingUnavailable      = errors.New("reporting query is unavailable")
+	ErrRunCommandsUnavailable    = errors.New("run commands are unavailable")
+	ErrComparisonUnavailable     = errors.New("comparison service is unavailable")
+	ErrDiagnosticsUnavailable    = errors.New("desktop diagnostics are unavailable")
+	ErrQuickTestUnavailable      = errors.New("quick test service is unavailable")
+	ErrQuickTestSavePartial      = errors.New("quick test connection was only partially saved")
+	ErrCatalogSavedRefreshFailed = errors.New("catalog mutation was saved but the refreshed snapshot is unavailable")
+	ErrInvalidIdentifier         = errors.New("desktop command identifier is invalid")
 )
 
 const (
-	desktopCodeNotStarted           = "desktop_not_started"
-	desktopCodeStartupFailed        = "desktop_startup_failed"
-	desktopCodeStopped              = "desktop_stopped"
-	desktopCodeWorkspaceMissing     = "workspace_unavailable"
-	desktopCodeCatalogMissing       = "catalog_unavailable"
-	desktopCodeReportsMissing       = "reports_unavailable"
-	desktopCodeCommandsMissing      = "run_commands_unavailable"
-	desktopCodeComparisonMissing    = "comparison_unavailable"
-	desktopCodeDiagnosticsMissing   = "diagnostics_unavailable"
-	desktopCodeQuickTestMissing     = "quick_test_unavailable"
-	desktopCodeQuickTestSavePartial = "quick_test_save_partial"
-	desktopCodeInvalidIdentifier    = "invalid_identifier"
-	desktopCodeOperationCancelled   = "operation_cancelled"
-	desktopCodeOperationFailed      = "operation_failed"
-	desktopCodePlanProtocolMismatch = "plan_protocol_mismatch"
-	desktopCodeCatalogInvalid       = "catalog_invalid"
-	desktopCodeCatalogConflict      = "catalog_revision_conflict"
-	desktopCodeCatalogNotFound      = "catalog_not_found"
+	desktopCodeNotStarted                = "desktop_not_started"
+	desktopCodeStartupFailed             = "desktop_startup_failed"
+	desktopCodeStopped                   = "desktop_stopped"
+	desktopCodeWorkspaceMissing          = "workspace_unavailable"
+	desktopCodeCatalogMissing            = "catalog_unavailable"
+	desktopCodeReportsMissing            = "reports_unavailable"
+	desktopCodeCommandsMissing           = "run_commands_unavailable"
+	desktopCodeComparisonMissing         = "comparison_unavailable"
+	desktopCodeDiagnosticsMissing        = "diagnostics_unavailable"
+	desktopCodeQuickTestMissing          = "quick_test_unavailable"
+	desktopCodeQuickTestSavePartial      = "quick_test_save_partial"
+	desktopCodeInvalidIdentifier         = "invalid_identifier"
+	desktopCodeOperationCancelled        = "operation_cancelled"
+	desktopCodeOperationFailed           = "operation_failed"
+	desktopCodePlanProtocolMismatch      = "plan_protocol_mismatch"
+	desktopCodeCatalogInvalid            = "catalog_invalid"
+	desktopCodeCatalogConflict           = "catalog_revision_conflict"
+	desktopCodeCatalogNotFound           = "catalog_not_found"
+	desktopCodeCatalogSavedRefreshFailed = "catalog_saved_refresh_failed"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -580,6 +582,28 @@ func (app *DesktopApp) DeletePlan(command catalog.DeleteCommand) (catalog.Snapsh
 	})
 }
 
+// catalogCommandDiagnosticError preserves the catalog operation and its
+// internal cause until the desktop diagnostic boundary. The binding still
+// returns only a stable public error code, while the local log can name the
+// failed operation and retain a redacted, actionable cause.
+type catalogCommandDiagnosticError struct {
+	operation string
+	err       error
+	committed bool
+}
+
+func (err catalogCommandDiagnosticError) Error() string {
+	return fmt.Sprintf("%s: %v", err.operation, err.err)
+}
+
+func (err catalogCommandDiagnosticError) Unwrap() error {
+	return err.err
+}
+
+func (err catalogCommandDiagnosticError) Is(target error) bool {
+	return err.committed && target == ErrCatalogSavedRefreshFailed
+}
+
 func (app *DesktopApp) executeCatalogCommand(name string, execute func(context.Context, CatalogCommands) error) (catalog.Snapshot, error) {
 	lease, err := app.acquire(desktopRequirements{catalog: true, catalogCommands: true})
 	if err != nil {
@@ -587,11 +611,15 @@ func (app *DesktopApp) executeCatalogCommand(name string, execute func(context.C
 	}
 	defer lease.release()
 	if err := execute(lease.ctx, lease.catalogCommands); err != nil {
-		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("%s: %w", name, err))
+		return catalog.Snapshot{}, app.safeBindingError(catalogCommandDiagnosticError{operation: name, err: err})
 	}
 	snapshot, err := lease.catalog.Snapshot(lease.ctx)
 	if err != nil {
-		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("query catalog after %s: %w", name, err))
+		return catalog.Snapshot{}, app.safeBindingError(catalogCommandDiagnosticError{
+			operation: name,
+			err:       fmt.Errorf("refresh catalog snapshot: %w", err),
+			committed: true,
+		})
 	}
 	return snapshot, nil
 }
@@ -914,6 +942,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeQuickTestSavePartial}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
+	case errors.Is(internal, ErrCatalogSavedRefreshFailed):
+		return DesktopBindingError{Code: desktopCodeCatalogSavedRefreshFailed}
 	case errors.Is(internal, catalog.ErrPlanProtocolMismatch):
 		return DesktopBindingError{Code: desktopCodePlanProtocolMismatch}
 	case errors.Is(internal, catalog.ErrInvalid):
@@ -948,7 +978,8 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodePlanProtocolMismatch,
 		desktopCodeCatalogInvalid,
 		desktopCodeCatalogConflict,
-		desktopCodeCatalogNotFound:
+		desktopCodeCatalogNotFound,
+		desktopCodeCatalogSavedRefreshFailed:
 		return true
 	default:
 		return false

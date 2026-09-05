@@ -2,8 +2,6 @@ package quicktest
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -68,16 +66,11 @@ func TestRunResolvesSelectedChannelCredentialInsideApplicationCore(t *testing.T)
 }
 
 type storedChannelRepository struct {
-	channel    domain.Channel
-	credential domain.CredentialRef
+	channel domain.Channel
 }
 
 func (repository storedChannelRepository) GetChannel(context.Context, string) (domain.Channel, error) {
 	return repository.channel, nil
-}
-
-func (repository storedChannelRepository) GetCredentialRef(context.Context, string) (domain.CredentialRef, error) {
-	return repository.credential, nil
 }
 
 func TestStoredChannelConnectionResolverReadsTheBoundCredentialStore(t *testing.T) {
@@ -92,18 +85,12 @@ func TestStoredChannelConnectionResolverReadsTheBoundCredentialStore(t *testing.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Delete(context.Background(), storeRef) })
-	digest := sha256.Sum256([]byte("stored-secret"))
 	now := time.Now().UTC()
 	repository := storedChannelRepository{
 		channel: domain.Channel{
 			EntityMeta: domain.EntityMeta{ID: channelID, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
 			Name:       "OpenAI 主渠道", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
 			Enabled: true, CredentialID: credentialID,
-		},
-		credential: domain.CredentialRef{
-			EntityMeta: domain.EntityMeta{ID: credentialID, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-			StoreRef:   storeRef.Value(), Purpose: domain.CredentialChannelAPIKey, MaskedSuffix: "cret",
-			Fingerprint: "sha256:" + hex.EncodeToString(digest[:]),
 		},
 	}
 

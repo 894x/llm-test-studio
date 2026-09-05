@@ -54,6 +54,166 @@ func TestDesktopErrorReporterPersistsStructuredDiagnosticsUnderUserConfig(t *tes
 	}
 }
 
+func TestDesktopErrorReporterNamesCatalogOperationAndKeepsRedactedCause(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desktopErrorReporter(operator, log.New(io.Discard, "", 0))(catalogCommandDiagnosticError{
+		operation: "create channel",
+		err:       errors.New("persist channel file: permission denied for api_key=sk-sensitive-value"),
+	})
+	if err := operator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(contents, &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry["component"] != "catalog" || entry["operation"] != "create_channel" || entry["error_code"] != desktopCodeOperationFailed {
+		t.Fatalf("catalog diagnostic = %#v", entry)
+	}
+	cause, _ := entry["error"].(string)
+	if !strings.Contains(cause, "persist channel file: permission denied") || strings.Contains(cause, "sk-sensitive-value") {
+		t.Fatalf("catalog diagnostic cause = %q", cause)
+	}
+}
+
+func TestDesktopErrorReporterMarksCommittedCatalogRefreshFailureAsSaved(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desktopErrorReporter(operator, log.New(io.Discard, "", 0))(catalogCommandDiagnosticError{
+		operation: "create channel",
+		err:       errors.New("refresh catalog snapshot: channels.json temporarily unavailable"),
+		committed: true,
+	})
+	if err := operator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(contents, &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry["component"] != "catalog" || entry["operation"] != "create_channel" ||
+		entry["error_code"] != desktopCodeCatalogSavedRefreshFailed ||
+		entry["msg"] != "catalog saved but refresh failed" {
+		t.Fatalf("committed catalog refresh diagnostic = %#v", entry)
+	}
+	if cause, _ := entry["error"].(string); !strings.Contains(cause, "channels.json temporarily unavailable") {
+		t.Fatalf("committed catalog refresh cause = %q", cause)
+	}
+}
+
+func TestDesktopErrorReporterKeepsQuickTestSaveStepAndRedactedCause(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation string
+		cause     error
+		public    error
+		wantCode  string
+		wantMsg   string
+		wantCause string
+	}{
+		{
+			name: "partial mapping", operation: "save_connection_create_mapping",
+			cause:  errors.New("write mappings.json: access denied for api_key=sk-sensitive-value"),
+			public: ErrQuickTestSavePartial, wantCode: desktopCodeQuickTestSavePartial,
+			wantMsg: "quick test connection partially saved", wantCause: "write mappings.json: access denied",
+		},
+		{
+			name: "committed refresh", operation: "save_connection_refresh_catalog",
+			cause:  errors.New("read channels.json: access denied"),
+			public: ErrCatalogSavedRefreshFailed, wantCode: desktopCodeCatalogSavedRefreshFailed,
+			wantMsg: "quick test connection saved but catalog refresh failed", wantCause: "read channels.json: access denied",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			operator, err := openDesktopDiagnostics(productionOptions{
+				userConfigDir: func() (string, error) { return root, nil },
+				appVersion:    "test-version",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			desktopErrorReporter(operator, log.New(io.Discard, "", 0))(
+				newQuickTestSaveDiagnosticError(test.operation, test.cause, test.public),
+			)
+			if err := operator.Close(); err != nil {
+				t.Fatal(err)
+			}
+			contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(contents, &entry); err != nil {
+				t.Fatal(err)
+			}
+			if entry["component"] != "quick_test" || entry["operation"] != test.operation ||
+				entry["error_code"] != test.wantCode || entry["msg"] != test.wantMsg {
+				t.Fatalf("quick-test save diagnostic = %#v", entry)
+			}
+			cause, _ := entry["error"].(string)
+			if !strings.Contains(cause, test.wantCause) || strings.Contains(cause, "sk-sensitive-value") {
+				t.Fatalf("quick-test save cause = %q", cause)
+			}
+		})
+	}
+}
+
+func TestDesktopErrorReporterRecordsCredentialCleanupFailureWithoutFailingTheSavedChannel(t *testing.T) {
+	root := t.TempDir()
+	operator, err := openDesktopDiagnostics(productionOptions{
+		userConfigDir: func() (string, error) { return root, nil },
+		appVersion:    "test-version",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desktopErrorReporter(operator, log.New(io.Discard, "", 0))(credentialCleanupDiagnosticError{
+		err: errors.New("keyring delete denied for api_key=sk-cleanup-sensitive"),
+	})
+	if err := operator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(contents, &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry["level"] != "WARN" || entry["component"] != "credentials" ||
+		entry["operation"] != "delete_obsolete_channel_credential" || entry["error_code"] != "credential_cleanup_failed" {
+		t.Fatalf("credential cleanup diagnostic = %#v", entry)
+	}
+	cause, _ := entry["error"].(string)
+	if !strings.Contains(cause, "keyring delete denied") || strings.Contains(cause, "sk-cleanup-sensitive") {
+		t.Fatalf("credential cleanup cause = %q", cause)
+	}
+}
+
 func TestDesktopDiagnosticsFallsBackToProcessLogWhenPrimaryLogIsOwned(t *testing.T) {
 	root := t.TempDir()
 	options := productionOptions{

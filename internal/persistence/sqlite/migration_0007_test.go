@@ -17,14 +17,14 @@ func TestMigrateAddsBuiltInCatalogSeedStateV7(t *testing.T) {
 	}
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
-		t.Fatalf("user_version = %d, want %d", got, persistence.CurrentSchemaVersion)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CatalogExportSchemaVersion {
+		t.Fatalf("user_version = %d, want %d", got, persistence.CatalogExportSchemaVersion)
 	}
 	if !tableExists(t, db, "builtin_catalog_seeds") {
 		t.Fatal("migration did not create builtin_catalog_seeds")
 	}
 
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -52,6 +52,35 @@ func TestReportProjectionsReturnOnlyBoundedSummaryScalars(t *testing.T) {
 	}
 }
 
+func TestReportProjectionsUseV2RunSnapshotAfterPlanCatalogRowIsDeleted(t *testing.T) {
+	path, repository, fixture := openHardeningRepository(t)
+	snapshot := fixture.run.Snapshot()
+	snapshot.SchemaVersion = domain.CurrentRunSnapshotSchemaVersion
+	planDocument := fixture.plan
+	mappingDocument := fixture.mapping
+	snapshot.PlanDocument = &planDocument
+	snapshot.Mapping = &mappingDocument
+	snapshot.CaseDefinitions = []domain.TestCase{fixture.testCase}
+	run, err := domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
+	if err != nil {
+		t.Fatalf("NewRun(v2 snapshot) error = %v", err)
+	}
+	fixture.run = run
+	fixture.report.PlanSnapshot = snapshot
+	storeFixtureReport(t, repository, fixture)
+	closeForTamper(t, repository)
+	repository = retireAndReopenOperationalRepository(t, path)
+	defer repository.Close()
+
+	projections, err := repository.ListReportProjections(context.Background())
+	if err != nil {
+		t.Fatalf("ListReportProjections() after deleting plan catalog row error = %v", err)
+	}
+	if len(projections) != 1 || projections[0].PlanName != fixture.plan.Name {
+		t.Fatalf("projections = %#v, want plan name %q", projections, fixture.plan.Name)
+	}
+}
+
 func TestReportProjectionsMeasureDocumentBudgetsInUTF8Bytes(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	defer repository.Close()
@@ -71,7 +100,7 @@ func TestReportProjectionsMeasureDocumentBudgetsInUTF8Bytes(t *testing.T) {
 func TestReportProjectionsPreserveContextTermination(t *testing.T) {
 	t.Parallel()
 
-	repository := openRepository(t)
+	repository := openOperationalRepository(t)
 	defer repository.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -137,12 +166,10 @@ func TestReportProjectionsRejectReportScalarAndAggregateCorruption(t *testing.T)
 			storeFixtureReport(t, repository, fixture)
 			closeForTamper(t, repository)
 			tamper(t, path, test.statement, test.args(fixture)...)
-			repository = reopenHardeningRepository(t, path)
-			defer repository.Close()
-
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-			}
+			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+				_, err := repository.ListReportProjections(context.Background())
+				return err
+			})
 		})
 	}
 }
@@ -162,13 +189,6 @@ func TestReportProjectionsRejectOwnerPlanAndAttachmentCorruption(t *testing.T) {
 			name:      "run owner is missing",
 			statement: `DELETE FROM execution_runs WHERE id = ?`,
 			args:      func(fixture repositoryFixture) []any { return []any{fixture.run.Meta().ID} },
-		},
-		{
-			name:      "pinned plan name is blank",
-			statement: `UPDATE test_plans SET document_json = json_set(document_json, '$.name', '') WHERE id = ? AND revision = ?`,
-			args: func(fixture repositoryFixture) []any {
-				return []any{fixture.plan.ID, fixture.plan.Revision}
-			},
 		},
 		{
 			name:      "attachment link is missing",
@@ -192,12 +212,10 @@ func TestReportProjectionsRejectOwnerPlanAndAttachmentCorruption(t *testing.T) {
 			} else {
 				tamper(t, path, test.statement, test.args(fixture)...)
 			}
-			repository = reopenHardeningRepository(t, path)
-			defer repository.Close()
-
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-			}
+			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+				_, err := repository.ListReportProjections(context.Background())
+				return err
+			})
 		})
 	}
 }
@@ -215,12 +233,10 @@ func TestReportProjectionsRejectInvalidUUIDAtTheStorageBoundary(t *testing.T) {
 		"not-a-uuid",
 		fixture.report.ID,
 	)
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-	}
+	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+		_, err := repository.ListReportProjections(context.Background())
+		return err
+	})
 }
 
 func TestReportProjectionsRejectJointReportAndResultShapeCorruption(t *testing.T) {
@@ -229,12 +245,10 @@ func TestReportProjectionsRejectJointReportAndResultShapeCorruption(t *testing.T
 	closeForTamper(t, repository)
 	tamper(t, path, `UPDATE case_results SET document_json = json_remove(document_json, '$.success') WHERE id = ?`, fixture.result.ID)
 	tamper(t, path, `UPDATE reports SET document_json = json_remove(document_json, '$.case_results[0].success') WHERE id = ?`, fixture.report.ID)
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-	}
+	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+		_, err := repository.ListReportProjections(context.Background())
+		return err
+	})
 }
 
 func TestReportProjectionsRejectJointlyMissingNestedRequiredFields(t *testing.T) {
@@ -269,12 +283,10 @@ func TestReportProjectionsRejectJointlyMissingNestedRequiredFields(t *testing.T)
 			closeForTamper(t, repository)
 			tamper(t, path, test.storedStatement, test.storedID(fixture))
 			tamper(t, path, test.reportStatement, fixture.report.ID)
-			repository = reopenHardeningRepository(t, path)
-			defer repository.Close()
-
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-			}
+			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+				_, err := repository.ListReportProjections(context.Background())
+				return err
+			})
 		})
 	}
 }
@@ -298,7 +310,7 @@ func TestReportProjectionsRejectInvalidIntermediateRunTransition(t *testing.T) {
 	}
 }
 
-func TestReportProjectionsRejectPinnedPlanWithUnsupportedSchema(t *testing.T) {
+func TestReportProjectionsIgnoreRetiredCatalogPlanSchema(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
 	closeForTamper(t, repository)
@@ -310,8 +322,12 @@ func TestReportProjectionsRejectPinnedPlanWithUnsupportedSchema(t *testing.T) {
 	repository = reopenHardeningRepository(t, path)
 	defer repository.Close()
 
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
+	projections, err := repository.ListReportProjections(context.Background())
+	if err != nil {
+		t.Fatalf("ListReportProjections() error = %v", err)
+	}
+	if len(projections) != 1 || projections[0].PlanName != fixture.plan.Name {
+		t.Fatalf("snapshot-backed projections = %#v, want plan name %q", projections, fixture.plan.Name)
 	}
 }
 
@@ -359,12 +375,10 @@ func TestReportProjectionsRejectSemanticallyEquivalentNonCanonicalJSON(t *testin
 			storeFixtureReport(t, repository, fixture)
 			closeForTamper(t, repository)
 			test.tamper(t, path, fixture)
-			repository = reopenHardeningRepository(t, path)
-			defer repository.Close()
-
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-			}
+			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+				_, err := repository.ListReportProjections(context.Background())
+				return err
+			})
 		})
 	}
 }
@@ -382,12 +396,10 @@ func TestReportProjectionsRejectNonCanonicalScalarEscape(t *testing.T) {
 		)
 		WHERE id = ? AND instr(document_json, '"run_status":"completed"') > 0
 	`, fixture.report.ID)
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-	}
+	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+		_, err := repository.ListReportProjections(context.Background())
+		return err
+	})
 }
 
 func TestReportProjectionsReturnOnlyTheLatestPublishedLimit(t *testing.T) {
@@ -490,11 +502,10 @@ func TestReportProjectionsRejectNonCanonicalTimestampOutsideLatestWindow(t *test
 	cloneFixtureReports(t, path, fixture, totalReports)
 	tamper(t, path, `UPDATE reports SET generated_at = '0001-01-01T00:00:00.0Z' WHERE id = ?`, fixture.report.ID)
 
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-	}
+	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+		_, err := repository.ListReportProjections(context.Background())
+		return err
+	})
 }
 
 func TestReportProjectionOrderingPreflightRejectsHiddenDocumentIdentityCorruption(t *testing.T) {
@@ -564,11 +575,10 @@ func TestReportProjectionOrderingPreflightRejectsHiddenDocumentIdentityCorruptio
 			cloneFixtureReports(t, path, fixture, totalReports)
 			test.tamper(t, path, fixture)
 
-			repository = reopenHardeningRepository(t, path)
-			defer repository.Close()
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-			}
+			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+				_, err := repository.ListReportProjections(context.Background())
+				return err
+			})
 		})
 	}
 }
@@ -611,12 +621,10 @@ func TestReportProjectionsRejectMissingOwnersInsideTheExactLatestWindow(t *testi
 			if test.name == "pinned plan" {
 				restoreRunRevisionUpdateTrigger(t, path)
 			}
-			repository = reopenHardeningRepository(t, path)
-			defer repository.Close()
-
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-			}
+			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+				_, err := repository.ListReportProjections(context.Background())
+				return err
+			})
 		})
 	}
 }
@@ -704,12 +712,10 @@ func TestReportProjectionsClassifyMalformedJSONAsCorrupt(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("close malformed JSON tamper database: %v", err)
 	}
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
-	}
+	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+		_, err := repository.ListReportProjections(context.Background())
+		return err
+	})
 }
 
 func TestProjectionDocumentByteBudgetsRejectWrites(t *testing.T) {

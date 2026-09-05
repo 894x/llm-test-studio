@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/diagnostics"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -47,6 +49,44 @@ type quickTestDiagnosticEvent struct {
 	ReportID     string
 	Duration     time.Duration
 	FailureCount uint64
+}
+
+// quickTestSaveDiagnosticError keeps the failed save step and a redacted
+// actionable cause for the local log while exposing only a stable public
+// binding classification. The raw catalog error never crosses this boundary.
+type quickTestSaveDiagnosticError struct {
+	operation   string
+	err         error
+	publicError error
+}
+
+func (err quickTestSaveDiagnosticError) Error() string {
+	return err.operation + ": " + err.err.Error()
+}
+
+func (err quickTestSaveDiagnosticError) Unwrap() error {
+	return err.err
+}
+
+func (err quickTestSaveDiagnosticError) Is(target error) bool {
+	return err.publicError != nil && target == err.publicError
+}
+
+func newQuickTestSaveDiagnosticError(operation string, cause, publicError error, secretValues ...string) quickTestSaveDiagnosticError {
+	if cause == nil {
+		cause = errQuickTestOperationFailed
+	}
+	redactedCause := diagnostics.RedactText(cause.Error())
+	for _, secret := range secretValues {
+		if secret != "" {
+			redactedCause = strings.ReplaceAll(redactedCause, secret, "[REDACTED]")
+		}
+	}
+	return quickTestSaveDiagnosticError{
+		operation:   operation,
+		err:         errors.New(redactedCause),
+		publicError: publicError,
+	}
 }
 
 func (event quickTestDiagnosticEvent) Error() string {
@@ -201,7 +241,9 @@ func (app *DesktopApp) SaveQuickTestConnection(command SaveQuickTestConnectionCo
 
 	before, err := lease.catalog.Snapshot(lease.ctx)
 	if err != nil {
-		return catalog.Snapshot{}, app.safeBindingError(errQuickTestOperationFailed)
+		return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+			"save_connection_load_catalog", err, safeQuickTestMutationError(err), command.APIKey,
+		))
 	}
 	modelID := command.ExistingModelID
 	var createdModel catalog.MutationResult
@@ -222,10 +264,14 @@ func (app *DesktopApp) SaveQuickTestConnection(command SaveQuickTestConnectionCo
 			Name: command.ModelName, Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"},
 		})
 		if err != nil {
-			return catalog.Snapshot{}, app.safeBindingError(safeQuickTestMutationError(err))
+			return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+				"save_connection_create_model", err, safeQuickTestMutationError(err), command.APIKey,
+			))
 		}
 		if !validMutationResult(createdModel) {
-			return catalog.Snapshot{}, app.safeBindingError(ErrQuickTestSavePartial)
+			return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+				"save_connection_create_model", errors.New("create model returned an invalid mutation result"), ErrQuickTestSavePartial, command.APIKey,
+			))
 		}
 		modelID = createdModel.ID
 	}
@@ -240,16 +286,25 @@ func (app *DesktopApp) SaveQuickTestConnection(command SaveQuickTestConnectionCo
 				ID: createdModel.ID, ExpectedRevision: createdModel.Revision,
 			})
 			if rollbackErr != nil {
-				return catalog.Snapshot{}, app.safeBindingError(ErrQuickTestSavePartial)
+				return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+					"save_connection_rollback_model",
+					errors.Join(fmt.Errorf("create channel: %w", err), fmt.Errorf("rollback model: %w", rollbackErr)),
+					ErrQuickTestSavePartial,
+					command.APIKey,
+				))
 			}
 		}
-		return catalog.Snapshot{}, app.safeBindingError(safeQuickTestMutationError(err))
+		return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+			"save_connection_create_channel", err, safeQuickTestMutationError(err), command.APIKey,
+		))
 	}
 	if !validMutationResult(channel) {
 		// The channel owns an OS credential at this point. Catalog deletion does
 		// not currently remove that credential, so retaining the visible channel
 		// is safer than creating an inaccessible credential orphan.
-		return catalog.Snapshot{}, app.safeBindingError(ErrQuickTestSavePartial)
+		return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+			"save_connection_create_channel", errors.New("create channel returned an invalid mutation result"), ErrQuickTestSavePartial, command.APIKey,
+		))
 	}
 
 	_, err = lease.catalogCommands.CreateChannelModel(lease.ctx, catalog.CreateChannelModelCommand{
@@ -258,12 +313,16 @@ func (app *DesktopApp) SaveQuickTestConnection(command SaveQuickTestConnectionCo
 	if err != nil {
 		// Keep the usable model and credential-owning channel visible. The caller
 		// receives an explicit partial-save code and can finish or remove them.
-		return catalog.Snapshot{}, app.safeBindingError(ErrQuickTestSavePartial)
+		return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+			"save_connection_create_mapping", err, ErrQuickTestSavePartial, command.APIKey,
+		))
 	}
 
 	after, err := lease.catalog.Snapshot(lease.ctx)
 	if err != nil {
-		return catalog.Snapshot{}, app.safeBindingError(ErrQuickTestSavePartial)
+		return catalog.Snapshot{}, app.safeBindingError(newQuickTestSaveDiagnosticError(
+			"save_connection_refresh_catalog", err, ErrCatalogSavedRefreshFailed, command.APIKey,
+		))
 	}
 	return after, nil
 }

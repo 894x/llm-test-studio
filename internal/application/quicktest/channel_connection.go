@@ -21,7 +21,6 @@ type ChannelConnectionResolver interface {
 
 type ChannelConnectionRepository interface {
 	GetChannel(context.Context, string) (domain.Channel, error)
-	GetCredentialRef(context.Context, string) (domain.CredentialRef, error)
 }
 
 type StoredChannelConnectionResolver struct {
@@ -41,11 +40,7 @@ func (resolver *StoredChannelConnectionResolver) Resolve(ctx context.Context, ch
 	if err != nil || !channel.Enabled || channel.Protocol != domain.ProtocolOpenAIChat || channel.CredentialID == "" {
 		return ChannelConnection{}, errChannelConnectionUnavailable
 	}
-	credential, err := resolver.repository.GetCredentialRef(ctx, channel.CredentialID)
-	if err != nil || credential.Purpose != domain.CredentialChannelAPIKey {
-		return ChannelConnection{}, errChannelConnectionUnavailable
-	}
-	storeRef, err := credentials.StoreRefFromCredential(credential)
+	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
 	if err != nil {
 		return ChannelConnection{}, errChannelConnectionUnavailable
 	}

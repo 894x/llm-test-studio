@@ -409,13 +409,48 @@ func TestDesktopAppCatalogCommandErrorsKeepStablePublicMeaning(t *testing.T) {
 			app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
 				return desktopDependencies{catalog: query, catalogCommands: commands}, nil
 			})
+			var reported error
+			app.setErrorReporter(func(err error) { reported = err })
 			app.onStartup(context.Background())
 			_, err := app.CreateModel(catalog.CreateModelCommand{})
 			assertBindingErrorCode(t, err, test.code)
+			var diagnostic catalogCommandDiagnosticError
+			if !errors.As(reported, &diagnostic) || diagnostic.operation != "create model" || !errors.Is(reported, test.failure) {
+				t.Fatalf("reported catalog diagnostic = %#v, want create model wrapping %v", reported, test.failure)
+			}
 			if query.calls != 0 {
 				t.Fatalf("catalog query calls = %d, want 0", query.calls)
 			}
 		})
+	}
+}
+
+func TestDesktopAppCatalogCommandReportsCommittedRefreshFailureWithoutRepeatingMutation(t *testing.T) {
+	refreshFailure := errors.New("catalog file became temporarily unreadable")
+	query := &recordingCatalogQuery{err: refreshFailure}
+	commands := &recordingCatalogCommands{}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{catalog: query, catalogCommands: commands}, nil
+	})
+	var reported error
+	app.setErrorReporter(func(err error) { reported = err })
+	app.onStartup(context.Background())
+
+	_, err := app.CreateModel(catalog.CreateModelCommand{})
+
+	assertBindingErrorCode(t, err, desktopCodeCatalogSavedRefreshFailed)
+	if len(commands.calls) != 1 || commands.calls[0] != "create_model" {
+		t.Fatalf("catalog mutation calls = %v, want one create_model", commands.calls)
+	}
+	if query.calls != 1 {
+		t.Fatalf("catalog snapshot calls = %d, want 1", query.calls)
+	}
+	var diagnostic catalogCommandDiagnosticError
+	if !errors.As(reported, &diagnostic) || diagnostic.operation != "create model" {
+		t.Fatalf("reported catalog diagnostic = %#v, want create model refresh diagnostic", reported)
+	}
+	if !errors.Is(reported, ErrCatalogSavedRefreshFailed) || !errors.Is(reported, refreshFailure) {
+		t.Fatalf("reported catalog diagnostic = %v, want committed marker and refresh cause", reported)
 	}
 }
 

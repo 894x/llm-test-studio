@@ -778,6 +778,38 @@ describe("QuickTestWorkspace", () => {
     await waitFor(() => expect(refreshCatalog).toHaveBeenCalledTimes(1))
     expect(onCatalogUpdated).toHaveBeenCalledWith(refreshedCatalog)
     expect(screen.getByRole("button", { name: "打开模型与渠道" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "部分保存" })).toBeDisabled()
+  })
+
+  it("does not replay a committed quick-test save when catalog refresh also fails", async () => {
+    const user = userEvent.setup()
+    const saveQuickTestConnection = vi.fn(async () => {
+      throw new DesktopClientError("catalog_saved_refresh_failed")
+    })
+    const refreshCatalog = vi.fn(async () => {
+      throw new Error("catalog still unavailable")
+    })
+    render(
+      <QuickTestWorkspace
+        modelCandidates={[]}
+        runQuickTest={successfulQuickTest}
+        runQuickPerformanceTest={vi.fn()}
+        saveQuickTestConnection={saveQuickTestConnection}
+        refreshCatalog={refreshCatalog}
+        onCatalogUpdated={vi.fn()}
+        onOpenCatalog={vi.fn()}
+      />,
+    )
+    await fillAndRun(user)
+    await user.click(await screen.findByRole("button", { name: "保存为模型与渠道" }))
+    await user.click(screen.getByRole("button", { name: "确认保存" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("已保存，但目录刷新失败")
+    await waitFor(() => expect(refreshCatalog).toHaveBeenCalledTimes(1))
+    const committedButton = screen.getByRole("button", { name: "已保存" })
+    expect(committedButton).toBeDisabled()
+    await user.click(committedButton)
+    expect(saveQuickTestConnection).toHaveBeenCalledTimes(1)
   })
 
   it("does not refresh catalog or show partial guidance for an ordinary save failure", async () => {

@@ -556,6 +556,34 @@ describe("desktop run workspace", () => {
     expect(within(dialog).queryByText("请求数和持续时间不能同时为 0。")).not.toBeInTheDocument()
   })
 
+  it("treats a committed catalog refresh failure as saved and closes the editor", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "新增模型" }))
+    await user.type(screen.getByLabelText("模型名称"), "gpt-committed")
+    vi.mocked(client.createModel).mockRejectedValueOnce(
+      new DesktopClientError("catalog_saved_refresh_failed"),
+    )
+    vi.mocked(client.getCatalog).mockRejectedValueOnce(new Error("refresh still unavailable"))
+
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "新增模型" })).not.toBeInTheDocument()
+    })
+    expect(client.createModel).toHaveBeenCalledTimes(1)
+    expect(client.getCatalog).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "已保存，但目录刷新失败，请刷新或重新打开应用",
+    )
+    expect(screen.getAllByText(FIXTURE_CATALOG.models[0].name).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/保存未完成/)).not.toBeInTheDocument()
+  })
+
   it("exposes CRUD entry points for mappings, cases, suites, and plans", async () => {
     const user = userEvent.setup()
     const client = desktopClient()

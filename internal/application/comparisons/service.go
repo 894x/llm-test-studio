@@ -20,7 +20,6 @@ var (
 
 type Repository interface {
 	GetPlan(context.Context, string) (domain.Plan, error)
-	GetPlanRevision(context.Context, string, uint64) (domain.Plan, error)
 	ResolvePlanTargetSelection(context.Context, domain.Plan, string, string) (domain.Model, domain.Channel, domain.ChannelModel, error)
 	CreateComparison(context.Context, domain.Comparison) error
 	GetComparison(context.Context, string) (domain.Comparison, error)
@@ -37,6 +36,10 @@ type Runner interface {
 type readRepository interface {
 	ListComparisons(context.Context) ([]domain.Comparison, error)
 	ListReportsForRuns(context.Context, []string) ([]domain.Report, error)
+}
+
+type legacyPlanRevisionReader interface {
+	GetPlanRevision(context.Context, string, uint64) (domain.Plan, error)
 }
 
 type Clock interface{ Now() time.Time }
@@ -276,13 +279,9 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	summaries := make([]Summary, 0, len(comparisons))
 	for _, comparison := range comparisons {
-		plan, err := service.repository.GetPlanRevision(ctx, comparison.Plan().ID, comparison.Plan().Revision)
-		if err != nil {
-			return Snapshot{}, ErrNotReady
-		}
 		summary := Summary{
 			ID: comparison.Meta().ID, CreatedAt: comparison.Meta().CreatedAt, Status: string(comparison.Status()),
-			PlanID: plan.ID, PlanName: plan.Name, ModelID: comparison.Model().ID, Channels: []ChannelResult{},
+			PlanID: comparison.Plan().ID, ModelID: comparison.Model().ID, Channels: []ChannelResult{},
 		}
 		for _, item := range comparison.Runs() {
 			run, err := service.runner.GetRun(ctx, item.RunID)
@@ -290,6 +289,16 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 				return Snapshot{}, err
 			}
 			runSnapshot := run.Snapshot()
+			if runSnapshot.PlanDocument != nil {
+				if runSnapshot.PlanDocument.ID != comparison.Plan().ID || runSnapshot.PlanDocument.Revision != comparison.Plan().Revision {
+					return Snapshot{}, ErrNotReady
+				}
+				if summary.PlanName == "" {
+					summary.PlanName = runSnapshot.PlanDocument.Name
+				} else if summary.PlanName != runSnapshot.PlanDocument.Name {
+					return Snapshot{}, ErrNotReady
+				}
+			}
 			if summary.ModelName == "" {
 				summary.ModelName = runSnapshot.Model.Name
 			}
@@ -304,6 +313,17 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 				result.Metrics = report.Metrics
 			}
 			summary.Channels = append(summary.Channels, result)
+		}
+		if summary.PlanName == "" {
+			legacy, ok := service.repository.(legacyPlanRevisionReader)
+			if !ok {
+				return Snapshot{}, ErrNotReady
+			}
+			plan, err := legacy.GetPlanRevision(ctx, comparison.Plan().ID, comparison.Plan().Revision)
+			if err != nil {
+				return Snapshot{}, ErrNotReady
+			}
+			summary.PlanName = plan.Name
 		}
 		summaries = append(summaries, summary)
 	}

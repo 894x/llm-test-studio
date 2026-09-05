@@ -2,6 +2,7 @@ package comparisons_test
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ func (repository *comparisonRepository) GetPlan(context.Context, string) (domain
 	return repository.fixture.plan, nil
 }
 func (repository *comparisonRepository) GetPlanRevision(context.Context, string, uint64) (domain.Plan, error) {
-	return repository.fixture.plan, nil
+	return domain.Plan{}, context.Canceled
 }
 func (repository *comparisonRepository) ResolvePlanTargetSelection(_ context.Context, _ domain.Plan, _ string, channelID string) (domain.Model, domain.Channel, domain.ChannelModel, error) {
 	for index, channel := range repository.fixture.channels {
@@ -174,11 +175,31 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 		{EntityMeta: meta("60000000-0000-4000-8000-000000000005"), ChannelID: channels[1].ID, ModelID: model.ID, UpstreamModelName: "model-b"},
 	}
 	caseID := "60000000-0000-4000-8000-000000000006"
+	testCase := domain.TestCase{
+		EntityMeta: meta(caseID), Key: "T001", Name: "comparison", Dimension: "compatibility",
+		Protocol: model.Protocol, Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
+		Definition: domain.TestCaseDefinition{
+			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+			Type:          domain.CaseType("request.single"),
+			TypeVersion:   1,
+			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
+		},
+	}
 	plan := domain.Plan{EntityMeta: meta("60000000-0000-4000-8000-000000000007"), Name: "compare", ModelIDs: []string{model.ID}, ChannelIDs: []string{channels[0].ID, channels[1].ID}, Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}}, Load: domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000}, SLA: domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}}}
 	runIDs := []string{"60000000-0000-4000-8000-000000000010", "60000000-0000-4000-8000-000000000011"}
 	completed := make([]domain.Run, 2)
 	for index := range channels {
-		snapshot := domain.RunSnapshot{SchemaVersion: 1, Plan: domain.EntityRevisionRef{ID: plan.ID, Revision: 1}, Model: domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: 1}, Name: model.Name, Protocol: model.Protocol}, Channel: domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channels[index].ID, Revision: 1}, Name: channels[index].Name, BaseURL: channels[index].BaseURL, Protocol: model.Protocol, UpstreamModelName: mappings[index].UpstreamModelName}, Cases: plan.Cases, Load: plan.Load, SLA: plan.SLA, Environment: domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"}}
+		planDocument := plan
+		mappingDocument := mappings[index]
+		snapshot := domain.RunSnapshot{
+			SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
+			Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: 1},
+			Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: 1}, Name: model.Name, Protocol: model.Protocol},
+			Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channels[index].ID, Revision: 1}, Name: channels[index].Name, BaseURL: channels[index].BaseURL, Protocol: model.Protocol, UpstreamModelName: mappings[index].UpstreamModelName},
+			Cases:         plan.Cases, Load: plan.Load, SLA: plan.SLA,
+			Environment:  domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
+			PlanDocument: &planDocument, Mapping: &mappingDocument, CaseDefinitions: []domain.TestCase{testCase},
+		}
 		run, err := domain.NewRun(meta(runIDs[index]), plan.ID, snapshot)
 		if err != nil {
 			t.Fatal(err)

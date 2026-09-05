@@ -18,6 +18,7 @@ const (
 	channelID = "33333333-3333-4333-8333-333333333333"
 	caseID    = "44444444-4444-4444-8444-444444444444"
 	runID     = "55555555-5555-4555-8555-555555555555"
+	mappingID = "66666666-6666-4666-8666-666666666666"
 )
 
 type fakeCatalog struct {
@@ -142,6 +143,55 @@ func TestSnapshotUsesTwoPortCallsForManyRunsAndPinnedHistoricalLabels(t *testing
 	}
 	if catalog.plansCalls != 1 || catalog.runsCalls != 1 {
 		t.Fatalf("port calls grew with runs: plans=%d runs=%d", catalog.plansCalls, catalog.runsCalls)
+	}
+}
+
+func TestSnapshotKeepsHistoricalV2RunAfterCurrentPlanIsDeleted(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
+	plan, run := validPlanAndRun(t, now, domain.LoadProfile{
+		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+	})
+	catalog := &fakeCatalog{
+		projections: []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}},
+	}
+
+	snapshot, err := New(catalog).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() after current plan deletion error = %v", err)
+	}
+	if len(snapshot.Plans) != 0 {
+		t.Fatalf("current plans = %#v, want none", snapshot.Plans)
+	}
+	if len(snapshot.Runs) != 1 || snapshot.Runs[0].PlanID != plan.ID || snapshot.Runs[0].PlanName != plan.Name {
+		t.Fatalf("historical runs = %#v, want snapshot-backed run", snapshot.Runs)
+	}
+}
+
+func TestSnapshotAcceptsModelFilteredCaseSubsetPinnedByV2Run(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
+	plan, original := validPlanAndRun(t, now, domain.LoadProfile{
+		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+	})
+	plan.Cases = append(plan.Cases, domain.CaseRevisionRef{
+		CaseID: "77777777-7777-4777-8777-777777777777", Revision: 1,
+	})
+	snapshot := original.Snapshot()
+	snapshot.PlanDocument = &plan
+	run, err := domain.NewRun(original.Meta(), plan.ID, snapshot)
+	if err != nil {
+		t.Fatalf("NewRun(model-filtered snapshot) error = %v", err)
+	}
+	catalog := &fakeCatalog{
+		plans:       []domain.Plan{plan},
+		projections: []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}},
+	}
+
+	got, err := New(catalog).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() model-filtered case subset error = %v", err)
+	}
+	if len(got.Runs) != 1 || got.Runs[0].PlanName != plan.Name {
+		t.Fatalf("model-filtered run projection = %#v", got.Runs)
 	}
 }
 
@@ -281,9 +331,6 @@ func TestSnapshotRejectsInvalidConclusionsCountsDuplicatesAndPinnedPlans(t *test
 	if _, err := New(nil).Snapshot(context.Background()); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("nil catalog error = %v, want ErrUnavailable", err)
 	}
-	if _, err := New(&fakeCatalog{projections: []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}}}).Snapshot(context.Background()); !errors.Is(err, ErrInconsistent) {
-		t.Fatalf("missing current plan error = %v, want ErrInconsistent", err)
-	}
 }
 
 func TestConclusionValidateIsClosed(t *testing.T) {
@@ -313,6 +360,23 @@ func validPlanAndRun(t *testing.T, now time.Time, load domain.LoadProfile) (doma
 
 func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.Run {
 	t.Helper()
+	caseMeta := meta(caseID, now)
+	caseMeta.Revision = plan.Cases[0].Revision
+	testCase := domain.TestCase{
+		EntityMeta: caseMeta, Key: "T001", Name: "workspace case", Dimension: "boundary",
+		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
+		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
+		Definition: domain.TestCaseDefinition{
+			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+			Type:          domain.CaseType("request.single"),
+			TypeVersion:   1,
+			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`),
+		},
+	}
+	mapping := domain.ChannelModel{
+		EntityMeta: meta(mappingID, now), ChannelID: channelID, ModelID: modelID,
+		UpstreamModelName: "gpt-upstream",
+	}
 	run, err := domain.NewRun(meta(id, now), plan.ID, domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
@@ -330,6 +394,9 @@ func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.R
 			OS: "windows", Arch: "amd64", NetworkEgress: "corp-egress",
 			AppVersion: "test", EngineVersion: "test",
 		},
+		PlanDocument:    &plan,
+		Mapping:         &mapping,
+		CaseDefinitions: []domain.TestCase{testCase},
 	})
 	if err != nil {
 		t.Fatalf("NewRun() error = %v", err)

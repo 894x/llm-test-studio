@@ -28,6 +28,36 @@ func validEntityMeta(id string) EntityMeta {
 }
 
 func validRunSnapshot() RunSnapshot {
+	plan := Plan{
+		EntityMeta: validEntityMeta(testPlanID),
+		Name:       "Plan",
+		ModelIDs:   []string{testModelID},
+		ChannelIDs: []string{testChannelID},
+		Cases:      []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
+		Load: LoadProfile{
+			Mode: LoadFixedConcurrency, Concurrency: 2, RequestCount: 10,
+			RequestTimeoutMS: 30_000,
+		},
+		SLA: SLAProfile{Thresholds: map[string]float64{
+			"max_error_rate": 0.01,
+			"max_ttft_ms":    2_000,
+		}},
+	}
+	plan.Revision = 3
+	mapping := ChannelModel{
+		EntityMeta:        validEntityMeta("123e4567-e89b-42d3-a456-426614174019"),
+		ChannelID:         testChannelID,
+		ModelID:           testModelID,
+		UpstreamModelName: "model-upstream",
+	}
+	testCase := TestCase{
+		EntityMeta: validEntityMeta(testCaseID),
+		Key:        "T001", Name: "basic", Dimension: "compatibility",
+		Protocol: ProtocolOpenAIChat, Enabled: true, Default: true,
+		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic,
+		Definition: validTestCaseDefinition(),
+	}
+	testCase.Revision = 7
 	return RunSnapshot{
 		SchemaVersion: CurrentRunSnapshotSchemaVersion,
 		Plan:          EntityRevisionRef{ID: testPlanID, Revision: 3},
@@ -40,19 +70,49 @@ func validRunSnapshot() RunSnapshot {
 			Name:              "primary", BaseURL: "https://api.example.test/v1",
 			Protocol: ProtocolOpenAIChat, UpstreamModelName: "model-upstream",
 		},
-		Cases: []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
-		Load: LoadProfile{
-			Mode: LoadFixedConcurrency, Concurrency: 2, RequestCount: 10,
-			RequestTimeoutMS: 30_000,
+		Cases:        append([]CaseRevisionRef(nil), plan.Cases...),
+		Load:         plan.Load,
+		SLA:          plan.SLA,
+		PlanDocument: &plan,
+		Mapping:      &mapping,
+		CaseDefinitions: []TestCase{
+			testCase,
 		},
-		SLA: SLAProfile{Thresholds: map[string]float64{
-			"max_error_rate": 0.01,
-			"max_ttft_ms":    2_000,
-		}},
 		Environment: EnvironmentSnapshot{
 			OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct",
 			AppVersion: "dev", EngineVersion: "v1",
 		},
+	}
+}
+
+func TestLegacyRunSnapshotClonePreservesAbsentV2Documents(t *testing.T) {
+	snapshot := validRunSnapshot()
+	snapshot.SchemaVersion = legacyRunSnapshotSchemaVersion
+	snapshot.PlanDocument = nil
+	snapshot.Mapping = nil
+	snapshot.CaseDefinitions = nil
+
+	run, err := NewRun(validEntityMeta(testRunID), snapshot.Plan.ID, snapshot)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	if cloned := run.Snapshot(); cloned.CaseDefinitions != nil {
+		t.Fatalf("legacy CaseDefinitions = %#v, want nil", cloned.CaseDefinitions)
+	}
+}
+
+func TestRunSnapshotClonePreservesTargetlessPlanEmptyArrays(t *testing.T) {
+	snapshot := validRunSnapshot()
+	snapshot.PlanDocument.ModelIDs = []string{}
+	snapshot.PlanDocument.ChannelIDs = []string{}
+
+	run, err := NewRun(validEntityMeta(testRunID), snapshot.Plan.ID, snapshot)
+	if err != nil {
+		t.Fatalf("NewRun() error = %v", err)
+	}
+	cloned := run.Snapshot()
+	if cloned.PlanDocument.ModelIDs == nil || cloned.PlanDocument.ChannelIDs == nil {
+		t.Fatalf("targetless plan arrays = models:%#v channels:%#v, want non-nil empty arrays", cloned.PlanDocument.ModelIDs, cloned.PlanDocument.ChannelIDs)
 	}
 }
 

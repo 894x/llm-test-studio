@@ -138,6 +138,54 @@ func (repository *Repository) ListCredentialRefs(ctx context.Context) ([]domain.
 	return result, nil
 }
 
+// ListCredentialRefHistory returns every canonical credential reference
+// revision for the one-time v10 keyring retirement. Normal application code
+// should use ListCredentialRefs, which exposes only current entities.
+func (repository *Repository) ListCredentialRefHistory(ctx context.Context) ([]domain.CredentialRef, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	rows, err := repository.conn.QueryContext(ctx, `
+		SELECT id, schema_version, revision, created_at, updated_at,
+		       store_ref, purpose, masked_suffix, fingerprint, document_json
+		FROM credential_refs
+		ORDER BY id, revision
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list credential reference history: %w", err)
+	}
+	defer rows.Close()
+	result := make([]domain.CredentialRef, 0)
+	for rows.Next() {
+		var id, createdAt, updatedAt, storeRef, purpose, suffix, fingerprint string
+		var schemaVersion, revision int64
+		var document []byte
+		if err := rows.Scan(
+			&id, &schemaVersion, &revision, &createdAt, &updatedAt,
+			&storeRef, &purpose, &suffix, &fingerprint, &document,
+		); err != nil {
+			return nil, fmt.Errorf("scan credential reference history: %w", err)
+		}
+		if err := verifyEntityRow(document, id, schemaVersion, revision, createdAt, updatedAt); err != nil {
+			return nil, fmt.Errorf("%w: credential reference history row does not match document", ErrCorrupt)
+		}
+		var credential domain.CredentialRef
+		if err := decodeCanonical(document, &credential, func() error { return credential.Validate() }); err != nil {
+			return nil, fmt.Errorf("%w: credential reference history document", ErrCorrupt)
+		}
+		canonical, err := credentials.StoreRefFromCredential(credential)
+		if err != nil || canonical.Value() != storeRef || string(credential.Purpose) != purpose ||
+			credential.MaskedSuffix != suffix || credential.Fingerprint != fingerprint {
+			return nil, fmt.Errorf("%w: credential reference history columns", ErrCorrupt)
+		}
+		result = append(result, credential)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate credential reference history: %w", err)
+	}
+	return result, nil
+}
+
 func (repository *Repository) CreateChannel(ctx context.Context, channel domain.Channel) error {
 	return repository.writeChannel(ctx, nil, channel)
 }
@@ -499,6 +547,23 @@ func (repository *Repository) writeSuite(ctx context.Context, expected *uint64, 
 
 func (repository *Repository) GetSuite(ctx context.Context, id string) (domain.Suite, error) {
 	document, err := repository.getLatestDocument(ctx, "test_suites", id, "suite")
+	if err != nil {
+		return domain.Suite{}, err
+	}
+	var suite domain.Suite
+	if err := decodeCanonical(document, &suite, func() error { return suite.Validate() }); err != nil {
+		return domain.Suite{}, fmt.Errorf("%w: suite document", ErrCorrupt)
+	}
+	if err := validateSuiteStorage(ctx, repository.conn, suite); err != nil {
+		return domain.Suite{}, err
+	}
+	return suite, nil
+}
+
+// GetSuiteRevision resolves the exact immutable Suite document pinned by a
+// legacy Plan while the authored SQLite catalog is being exported.
+func (repository *Repository) GetSuiteRevision(ctx context.Context, id string, revision uint64) (domain.Suite, error) {
+	document, err := repository.getExactDocument(ctx, "test_suites", id, revision, "suite")
 	if err != nil {
 		return domain.Suite{}, err
 	}

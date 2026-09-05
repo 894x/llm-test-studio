@@ -233,8 +233,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
       throw new Error("桌面目录测试计划引用无效")
     }
     if (plan.suite_id !== undefined) {
-      const suite = suiteByID.get(plan.suite_id)
-      if (!suite || plan.suite_revision === undefined || plan.suite_revision > suite.revision) {
+      if (!suiteByID.has(plan.suite_id)) {
         throw new Error("桌面目录测试计划套件引用无效")
       }
     }
@@ -417,8 +416,8 @@ function parsePlan(value: unknown): CatalogPlan {
     !isUUID(value.id) ||
     !isPositiveInteger(value.revision) ||
     !isNonBlank(value.name) ||
-    !isPositiveInteger(value.model_count) ||
-    !isPositiveInteger(value.channel_count) ||
+    !isNonNegativeInteger(value.model_count) ||
+    !isNonNegativeInteger(value.channel_count) ||
     !isPositiveInteger(value.case_count) ||
     !isLoadMode(value.load_mode) ||
     !isPositiveInteger(value.concurrency) ||
@@ -429,6 +428,7 @@ function parsePlan(value: unknown): CatalogPlan {
     !isPositiveInteger(value.request_timeout_ms)
     || !isUUIDList(value.model_ids)
     || !isUUIDList(value.channel_ids)
+    || (value.model_ids.length === 0) !== (value.channel_ids.length === 0)
     || !Array.isArray(value.cases)
     || !isFiniteNumberRecord(value.sla_thresholds)
     || !isOptionalSuiteRef(value.suite_id, value.suite_revision)
@@ -512,7 +512,7 @@ function isUniqueStrings(value: unknown): value is string[] {
 }
 
 function isUUIDList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length > 0 && value.every(isUUID) && new Set(value).size === value.length
+  return Array.isArray(value) && value.every(isUUID) && new Set(value).size === value.length
 }
 
 function isFiniteNumberRecord(value: unknown): value is Record<string, number> {

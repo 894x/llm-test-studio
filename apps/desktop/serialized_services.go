@@ -12,6 +12,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
+	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
@@ -97,6 +98,7 @@ type serializedCatalogService struct {
 	channels  interface {
 		Create(context.Context, channelconfig.CreateCommand) (channelconfig.MutationResult, error)
 		Update(context.Context, channelconfig.UpdateCommand) (channelconfig.MutationResult, error)
+		Delete(context.Context, string, uint64) error
 	}
 	caseFiles interface {
 		Entries(context.Context) ([]casecatalog.Entry, error)
@@ -116,6 +118,28 @@ type serializedCatalogService struct {
 		GetTestCaseRevision(context.Context, string, uint64) (domain.TestCase, error)
 		IsTestCaseSnapshotReferenced(context.Context, string, uint64) (bool, error)
 	}
+	plansAreFiles bool
+}
+
+type planDocumentReader interface {
+	GetPlanDocument(context.Context, string) (plancatalog.Document, error)
+}
+
+type releasedCredentialCleaner interface {
+	ScheduleCredentialCleanup(context.Context, ...string) error
+	CleanupCredentialIfUnreferenced(string)
+}
+
+// catalogCommandsWithPlanDocuments keeps the public command surface narrow
+// while giving the desktop coordinator read access to the pre-mutation Plan
+// bindings required for safe keyring cleanup.
+type catalogCommandsWithPlanDocuments struct {
+	CatalogCommands
+	documents planDocumentReader
+}
+
+func (commands catalogCommandsWithPlanDocuments) GetPlanDocument(ctx context.Context, id string) (plancatalog.Document, error) {
+	return commands.documents.GetPlanDocument(ctx, id)
 }
 
 func (service serializedCatalogService) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
@@ -184,6 +208,9 @@ func (service serializedCatalogService) UpdateChannel(ctx context.Context, comma
 func (service serializedCatalogService) DeleteChannel(ctx context.Context, command catalog.DeleteCommand) error {
 	release := service.gate.enter()
 	defer release()
+	if service.channels != nil {
+		return service.channels.Delete(ctx, command.ID, command.ExpectedRevision)
+	}
 	return service.commands.DeleteChannel(ctx, command)
 }
 
@@ -211,7 +238,11 @@ func (service serializedCatalogService) CreateTestCase(ctx context.Context, comm
 	if service.caseFiles != nil {
 		return service.saveNewFilesystemCase(ctx, command)
 	}
-	return service.commands.CreateTestCase(ctx, command)
+	result, err := service.commands.CreateTestCase(ctx, command)
+	if err != nil || !service.plansAreFiles {
+		return result, err
+	}
+	return service.canonicalCaseMutationResult(ctx, command.Protocol, command.Key, result)
 }
 
 func (service serializedCatalogService) UpdateTestCase(ctx context.Context, command catalog.UpdateTestCaseCommand) (catalog.MutationResult, error) {
@@ -242,13 +273,43 @@ func (service serializedCatalogService) UpdateTestCase(ctx context.Context, comm
 		}
 		return service.findFilesystemCaseResult(ctx, command.Protocol, command.Key)
 	}
-	return service.commands.UpdateTestCase(ctx, command)
+	result, err := service.commands.UpdateTestCase(ctx, command)
+	if err != nil || !service.plansAreFiles {
+		return result, err
+	}
+	return service.canonicalCaseMutationResult(ctx, command.Protocol, command.Key, result)
 }
 
 func (service serializedCatalogService) DeleteTestCase(ctx context.Context, command catalog.DeleteCommand) error {
 	release := service.gate.enter()
 	defer release()
 	if service.caseFiles != nil {
+		if service.suiteFiles != nil {
+			suites, err := service.suiteFiles.Entries(ctx)
+			if err != nil {
+				return err
+			}
+			for _, entry := range suites {
+				for _, ref := range entry.Suite.Cases {
+					if ref.CaseID == command.ID {
+						return catalog.ErrConflict
+					}
+				}
+			}
+		}
+		if service.plansAreFiles {
+			snapshot, err := service.query.Snapshot(ctx)
+			if err != nil {
+				return err
+			}
+			for _, plan := range snapshot.Plans {
+				for _, ref := range plan.Cases {
+					if ref.CaseID == command.ID {
+						return catalog.ErrConflict
+					}
+				}
+			}
+		}
 		if service.caseSnapshots != nil {
 			referenced, err := service.caseSnapshots.IsTestCaseSnapshotReferenced(ctx, command.ID, command.ExpectedRevision)
 			if err != nil {
@@ -275,7 +336,11 @@ func (service serializedCatalogService) CreateSuite(ctx context.Context, command
 	if service.suiteFiles != nil {
 		return service.saveNewFilesystemSuite(ctx, command)
 	}
-	return service.commands.CreateSuite(ctx, command)
+	result, err := service.commands.CreateSuite(ctx, command)
+	if err != nil || !service.plansAreFiles {
+		return result, err
+	}
+	return service.canonicalSuiteMutationResult(ctx, command.Protocol, command.Key, result)
 }
 
 func (service serializedCatalogService) UpdateSuite(ctx context.Context, command catalog.UpdateSuiteCommand) (catalog.MutationResult, error) {
@@ -298,7 +363,47 @@ func (service serializedCatalogService) UpdateSuite(ctx context.Context, command
 		}
 		return service.findFilesystemSuiteResult(ctx, command.Protocol, command.Key)
 	}
-	return service.commands.UpdateSuite(ctx, command)
+	result, err := service.commands.UpdateSuite(ctx, command)
+	if err != nil || !service.plansAreFiles {
+		return result, err
+	}
+	return service.canonicalSuiteMutationResult(ctx, command.Protocol, command.Key, result)
+}
+
+func (service serializedCatalogService) canonicalCaseMutationResult(
+	ctx context.Context,
+	protocol domain.Protocol,
+	key string,
+	fallback catalog.MutationResult,
+) (catalog.MutationResult, error) {
+	snapshot, err := service.query.Snapshot(ctx)
+	if err != nil {
+		return fallback, nil
+	}
+	for _, testCase := range snapshot.TestCases {
+		if testCase.Protocol == protocol && testCase.Key == key {
+			return catalog.MutationResult{ID: testCase.ID, Revision: testCase.Revision}, nil
+		}
+	}
+	return fallback, nil
+}
+
+func (service serializedCatalogService) canonicalSuiteMutationResult(
+	ctx context.Context,
+	protocol domain.Protocol,
+	key string,
+	fallback catalog.MutationResult,
+) (catalog.MutationResult, error) {
+	snapshot, err := service.query.Snapshot(ctx)
+	if err != nil {
+		return fallback, nil
+	}
+	for _, suite := range snapshot.Suites {
+		if suite.Protocol == protocol && suite.Key == key {
+			return catalog.MutationResult{ID: suite.ID, Revision: suite.Revision}, nil
+		}
+	}
+	return fallback, nil
 }
 
 func (service serializedCatalogService) DeleteSuite(ctx context.Context, command catalog.DeleteCommand) error {
@@ -328,6 +433,9 @@ func (service serializedCatalogService) DeleteSuite(ctx context.Context, command
 func (service serializedCatalogService) CreatePlan(ctx context.Context, command catalog.CreatePlanCommand) (catalog.MutationResult, error) {
 	release := service.gate.enter()
 	defer release()
+	if service.plansAreFiles {
+		return service.commands.CreatePlan(ctx, command)
+	}
 	created, err := service.materializeCases(ctx, command.Cases)
 	if err != nil {
 		return catalog.MutationResult{}, err
@@ -342,6 +450,18 @@ func (service serializedCatalogService) CreatePlan(ctx context.Context, command 
 func (service serializedCatalogService) UpdatePlan(ctx context.Context, command catalog.UpdatePlanCommand) (catalog.MutationResult, error) {
 	release := service.gate.enter()
 	defer release()
+	if service.plansAreFiles {
+		credentials, err := service.planCredentialCleanupCandidates(ctx, command.ID)
+		if err != nil {
+			return catalog.MutationResult{}, err
+		}
+		if err := service.scheduleReleasedPlanCredentials(ctx, credentials); err != nil {
+			return catalog.MutationResult{}, err
+		}
+		result, err := service.commands.UpdatePlan(ctx, command)
+		service.cleanupReleasedPlanCredentials(credentials)
+		return result, err
+	}
 	created, err := service.materializeCases(ctx, command.Cases)
 	if err != nil {
 		return catalog.MutationResult{}, err
@@ -351,6 +471,73 @@ func (service serializedCatalogService) UpdatePlan(ctx context.Context, command 
 		return catalog.MutationResult{}, errors.Join(err, service.cleanupMaterializedCases(created))
 	}
 	return result, nil
+}
+
+func (service serializedCatalogService) DeletePlan(ctx context.Context, command catalog.DeleteCommand) error {
+	release := service.gate.enter()
+	defer release()
+	credentials, err := service.planCredentialCleanupCandidates(ctx, command.ID)
+	if err != nil {
+		return err
+	}
+	if err := service.scheduleReleasedPlanCredentials(ctx, credentials); err != nil {
+		return err
+	}
+	if err := service.commands.DeletePlan(ctx, command); err != nil {
+		service.cleanupReleasedPlanCredentials(credentials)
+		return err
+	}
+	service.cleanupReleasedPlanCredentials(credentials)
+	return nil
+}
+
+func (service serializedCatalogService) planCredentialCleanupCandidates(ctx context.Context, planID string) ([]string, error) {
+	if !service.plansAreFiles {
+		return nil, nil
+	}
+	if _, ok := service.channels.(releasedCredentialCleaner); !ok {
+		return nil, nil
+	}
+	documents, ok := service.commands.(planDocumentReader)
+	if !ok || isNilInterface(documents) {
+		return nil, nil
+	}
+	document, err := documents.GetPlanDocument(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(document.TargetBindings))
+	credentials := make([]string, 0, len(document.TargetBindings))
+	for _, binding := range document.TargetBindings {
+		credentialID := binding.Channel.CredentialID
+		if !domain.IsUUID(credentialID) {
+			continue
+		}
+		if _, exists := seen[credentialID]; exists {
+			continue
+		}
+		seen[credentialID] = struct{}{}
+		credentials = append(credentials, credentialID)
+	}
+	return credentials, nil
+}
+
+func (service serializedCatalogService) scheduleReleasedPlanCredentials(ctx context.Context, credentials []string) error {
+	cleaner, ok := service.channels.(releasedCredentialCleaner)
+	if !ok || isNilInterface(cleaner) || len(credentials) == 0 {
+		return nil
+	}
+	return cleaner.ScheduleCredentialCleanup(ctx, credentials...)
+}
+
+func (service serializedCatalogService) cleanupReleasedPlanCredentials(credentials []string) {
+	cleaner, ok := service.channels.(releasedCredentialCleaner)
+	if !ok || isNilInterface(cleaner) {
+		return
+	}
+	for _, credentialID := range credentials {
+		cleaner.CleanupCredentialIfUnreferenced(credentialID)
+	}
 }
 
 func (service serializedCatalogService) saveNewFilesystemCase(ctx context.Context, command catalog.CreateTestCaseCommand) (catalog.MutationResult, error) {
@@ -542,10 +729,4 @@ func caseSummary(testCase domain.TestCase) catalog.TestCaseSummary {
 		Type: testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
 		Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),
 	}
-}
-
-func (service serializedCatalogService) DeletePlan(ctx context.Context, command catalog.DeleteCommand) error {
-	release := service.gate.enter()
-	defer release()
-	return service.commands.DeletePlan(ctx, command)
 }

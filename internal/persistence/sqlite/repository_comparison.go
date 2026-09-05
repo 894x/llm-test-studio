@@ -270,6 +270,34 @@ func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id str
 }
 
 func validateComparisonReferences(ctx context.Context, queryer relationQueryer, comparison domain.Comparison) error {
+	allSnapshotBacked := true
+	planRef, modelRef := comparison.Plan(), comparison.Model()
+	for _, item := range comparison.Runs() {
+		run, err := queryCurrentRun(ctx, queryer, item.RunID)
+		if err != nil {
+			return err
+		}
+		snapshot := run.Snapshot()
+		if snapshot.Plan != planRef || snapshot.Model.EntityRevisionRef != modelRef || snapshot.Channel.EntityRevisionRef != item.Channel {
+			return errors.New("comparison run snapshot does not match its pinned target")
+		}
+		if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
+			allSnapshotBacked = false
+			continue
+		}
+		if snapshot.PlanDocument.ID != planRef.ID || snapshot.PlanDocument.Revision != planRef.Revision ||
+			!containsString(snapshot.PlanDocument.ModelIDs, modelRef.ID) ||
+			!containsString(snapshot.PlanDocument.ChannelIDs, item.Channel.ID) {
+			return errors.New("comparison run configuration does not match its pinned target")
+		}
+	}
+	if allSnapshotBacked {
+		return nil
+	}
+	return validateLegacyComparisonReferences(ctx, queryer, comparison)
+}
+
+func validateLegacyComparisonReferences(ctx context.Context, queryer relationQueryer, comparison domain.Comparison) error {
 	planRef, modelRef := comparison.Plan(), comparison.Model()
 	planDocument, err := exactDocument(ctx, queryer, "test_plans", planRef.ID, planRef.Revision, "plan")
 	if err != nil {

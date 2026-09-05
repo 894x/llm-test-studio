@@ -109,6 +109,54 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	}
 }
 
+func TestWorkspaceRunProjectionsValidateResultMembershipFromV2SnapshotCases(t *testing.T) {
+	t.Parallel()
+
+	path, repository, fixture := openHardeningRepository(t)
+	fixture = withCompleteRunSnapshot(t, fixture)
+	createRunGraph(t, repository, fixture)
+	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
+	result := fixture.result
+	result.EvidenceIDs = nil
+	if err := repository.AppendResult(context.Background(), result); err != nil {
+		t.Fatalf("AppendResult() error = %v", err)
+	}
+	closeForTamper(t, repository)
+	tamperWithoutForeignKeys(t, path, `DELETE FROM plan_cases WHERE plan_id = ?`, fixture.plan.ID)
+	repository = reopenHardeningRepository(t, path)
+	defer repository.Close()
+
+	projections, err := repository.ListRunProjections(context.Background())
+	if err != nil {
+		t.Fatalf("ListRunProjections() without plan_cases error = %v", err)
+	}
+	if len(projections) != 1 || projections[0].Completed != 1 || !reflect.DeepEqual(projections[0].Run, run) {
+		t.Fatalf("snapshot-backed result projection = %#v", projections)
+	}
+}
+
+func TestWorkspaceRunProjectionsUseV2SnapshotAfterCatalogPlanRowIsDeleted(t *testing.T) {
+	t.Parallel()
+
+	path, repository, fixture := openHardeningRepository(t)
+	fixture = withCompleteRunSnapshot(t, fixture)
+	createRunGraph(t, repository, fixture)
+	closeForTamper(t, repository)
+	repository = retireAndReopenOperationalRepository(t, path)
+	defer repository.Close()
+
+	projections, err := repository.ListRunProjections(context.Background())
+	if err != nil {
+		t.Fatalf("ListRunProjections() after catalog plan deletion error = %v", err)
+	}
+	if len(projections) != 1 {
+		t.Fatalf("ListRunProjections() count = %d, want 1", len(projections))
+	}
+	if !reflect.DeepEqual(projections[0].PinnedPlan, fixture.plan) {
+		t.Fatalf("PinnedPlan = %#v, want snapshot plan %#v", projections[0].PinnedPlan, fixture.plan)
+	}
+}
+
 func TestWorkspaceRunProjectionsRejectSummaryCriticalCorruption(t *testing.T) {
 	t.Parallel()
 
@@ -165,12 +213,10 @@ func TestWorkspaceRunProjectionsRejectCorruptSealedReportConclusion(t *testing.T
 	}
 	closeForTamper(t, repository)
 	tamper(t, path, `UPDATE reports SET document_json = json_set(document_json, '$.conclusion.passed', 'yes') WHERE id = ?`, report.ID)
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	if _, err := repository.ListRunProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("ListRunProjections() error = %v, want ErrCorrupt", err)
-	}
+	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+		_, err := repository.ListRunProjections(context.Background())
+		return err
+	})
 }
 
 func TestWorkspaceRunProjectionsUseFailedSealedReportConclusion(t *testing.T) {
@@ -200,11 +246,28 @@ func TestWorkspaceRunProjectionsUseFailedSealedReportConclusion(t *testing.T) {
 func TestWorkspaceRunProjectionsPreserveContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	repository := openRepository(t)
+	repository := openOperationalRepository(t)
 	defer repository.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := repository.ListRunProjections(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListRunProjections(cancelled) error = %v, want context.Canceled", err)
 	}
+}
+
+func withCompleteRunSnapshot(t *testing.T, fixture repositoryFixture) repositoryFixture {
+	t.Helper()
+	snapshot := fixture.run.Snapshot()
+	snapshot.SchemaVersion = domain.CurrentRunSnapshotSchemaVersion
+	plan := fixture.plan
+	mapping := fixture.mapping
+	snapshot.PlanDocument = &plan
+	snapshot.Mapping = &mapping
+	snapshot.CaseDefinitions = []domain.TestCase{fixture.testCase}
+	run, err := domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
+	if err != nil {
+		t.Fatalf("NewRun(v2 workspace fixture) error = %v", err)
+	}
+	fixture.run = run
+	return fixture
 }

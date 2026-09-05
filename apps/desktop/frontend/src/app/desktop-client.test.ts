@@ -413,6 +413,51 @@ describe("Wails desktop client", () => {
 	}
   })
 
+	it("treats an invalid catalog mutation response as committed and reports the parse cause", async () => {
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		binding.CreateChannel.mockResolvedValueOnce({
+			...structuredClone(FIXTURE_CATALOG),
+			schema_version: 3,
+		} as never)
+		const client = createDesktopClient()
+
+		const result = client.createChannel({
+			name: "new channel",
+			base_url: "https://example.test/v1",
+			api_key: "test-key-1234",
+			protocol: "openai-chat",
+			enabled: true,
+		})
+
+		await expect(result).rejects.toMatchObject({
+			code: "catalog_saved_refresh_failed",
+		})
+		expect(binding.CreateChannel).toHaveBeenCalledOnce()
+		expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith({
+			operation: "load_catalog",
+			error_code: "frontend_data_invalid",
+			detail: "桌面目录数据协议版本不受支持",
+		})
+	})
+
+	it("keeps a rejected catalog mutation in the unsaved failure path", async () => {
+		const binding = installBinding(FIXTURE_WORKSPACE)
+		binding.CreateChannel.mockRejectedValueOnce(new Error("catalog_invalid"))
+		const client = createDesktopClient()
+
+		const result = client.createChannel({
+			name: "new channel",
+			base_url: "https://example.test/v1",
+			api_key: "test-key-1234",
+			protocol: "openai-chat",
+			enabled: true,
+		})
+
+		await expect(result).rejects.toMatchObject({ code: "catalog_invalid" })
+		expect(binding.CreateChannel).toHaveBeenCalledOnce()
+		expect(binding.ReportFrontendDiagnostic).not.toHaveBeenCalled()
+	})
+
   it.each([
     [{ ...FIXTURE_WORKSPACE, schema_version: 2 }, "协议版本"],
     [{ ...FIXTURE_WORKSPACE, plans: [{ id: "broken" }] }, "测试计划"],
@@ -608,6 +653,7 @@ describe("Wails desktop client", () => {
     ["catalog_invalid", "目录内容无效", "CreateModel", "createModel"],
     ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
     ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],
+    ["catalog_saved_refresh_failed", "已保存，但目录刷新失败", "CreateModel", "createModel"],
   ] as const)("maps the public %s binding error", async (code, message, bindingMethod, clientMethod) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce(new Error(code))

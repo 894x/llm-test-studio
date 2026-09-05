@@ -167,9 +167,6 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 			return Snapshot{}, ErrInconsistent
 		}
 		runIDs[meta.ID] = struct{}{}
-		if _, found := planByID[projection.Run.PlanID()]; !found {
-			return Snapshot{}, ErrInconsistent
-		}
 		if err := validateProjection(projection); err != nil {
 			return Snapshot{}, ErrInconsistent
 		}
@@ -237,7 +234,11 @@ func validateProjection(projection RunProjection) error {
 	if plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision {
 		return errors.New("run does not match pinned plan")
 	}
-	if !contains(plan.ModelIDs, snapshot.Model.ID) || !contains(plan.ChannelIDs, snapshot.Channel.ID) ||
+	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
+		if snapshot.PlanDocument == nil || !reflect.DeepEqual(plan, *snapshot.PlanDocument) {
+			return errors.New("run snapshot differs from pinned plan")
+		}
+	} else if !contains(plan.ModelIDs, snapshot.Model.ID) || !contains(plan.ChannelIDs, snapshot.Channel.ID) ||
 		!reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) ||
 		!reflect.DeepEqual(plan.SLA, snapshot.SLA) {
 		return errors.New("run snapshot differs from pinned plan")

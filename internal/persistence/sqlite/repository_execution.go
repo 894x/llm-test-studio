@@ -15,6 +15,9 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 	if err := run.Validate(); err != nil {
 		return fmt.Errorf("validate run: %w", err)
 	}
+	if err := validateWritableRunSnapshot(run.Snapshot()); err != nil {
+		return err
+	}
 	meta := run.Meta()
 	if meta.Revision != 1 || run.Status() != domain.RunQueued {
 		return errors.New("new run must be queued at revision 1")
@@ -59,6 +62,9 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision uint64, run domain.Run) error {
 	if err := run.Validate(); err != nil {
 		return fmt.Errorf("validate run: %w", err)
+	}
+	if err := validateWritableRunSnapshot(run.Snapshot()); err != nil {
+		return err
 	}
 	meta := run.Meta()
 	if err := validateNextRevision(expectedRevision, meta); err != nil {
@@ -386,6 +392,34 @@ func decodeRunDocument(document []byte) (domain.Run, error) {
 }
 
 func validateRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if run.Snapshot().SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
+		if err := run.Validate(); err != nil {
+			return fmt.Errorf("validate run snapshot: %w", err)
+		}
+		return nil
+	}
+	return validateLegacyRunReferences(ctx, queryer, run)
+}
+
+func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
+	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion {
+		return fmt.Errorf(
+			"%w: writable run snapshot schema version %d, want %d",
+			ErrCorrupt,
+			snapshot.SchemaVersion,
+			domain.CurrentRunSnapshotSchemaVersion,
+		)
+	}
+	if err := snapshot.Validate(); err != nil {
+		return fmt.Errorf("validate writable run snapshot: %w", err)
+	}
+	return nil
+}
+
+func validateLegacyRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
 	snapshot := run.Snapshot()
 	planDocument, err := exactDocument(ctx, queryer, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
 	if err != nil {
@@ -899,6 +933,9 @@ func decodeResultDocument(document []byte) (domain.Result, error) {
 func (repository *Repository) CreateReport(ctx context.Context, report domain.Report) error {
 	if err := report.Validate(); err != nil {
 		return fmt.Errorf("validate report: %w", err)
+	}
+	if err := validateWritableRunSnapshot(report.PlanSnapshot); err != nil {
+		return err
 	}
 	if err := checkReportProjectionItemBudgets(report); err != nil {
 		return fmt.Errorf("validate report byte budget: %w", err)

@@ -48,6 +48,7 @@ type coreRepositoryContract interface {
 	ListTestCases(context.Context) ([]domain.TestCase, error)
 	CreateSuite(context.Context, domain.Suite) error
 	GetSuite(context.Context, string) (domain.Suite, error)
+	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
 	UpdateSuite(context.Context, uint64, domain.Suite) error
 	DeleteSuite(context.Context, string, uint64) error
 	ListSuites(context.Context) ([]domain.Suite, error)
@@ -180,6 +181,8 @@ func TestRepositoryResolvesCurrentCompatibleTargetForRuntimeTargetPlan(t *testin
 	assertRoundTrip(t, "resolved channel", fixture.channel, channel)
 	assertRoundTrip(t, "resolved mapping", fixture.mapping, mapping)
 	runSnapshot := fixture.run.Snapshot()
+	targetlessPlan := fixture.plan
+	runSnapshot.PlanDocument = &targetlessPlan
 	runSnapshot.Model = domain.ModelSnapshot{
 		EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision},
 		Name:              model.Name,
@@ -239,6 +242,8 @@ func TestRepositoryComparisonRoundTripAndTerminalRevision(t *testing.T) {
 
 	firstSnapshot := fixture.run.Snapshot()
 	firstSnapshot.Plan.Revision = fixture.plan.Revision
+	comparisonPlan := fixture.plan
+	firstSnapshot.PlanDocument = &comparisonPlan
 	firstRun, err := domain.NewRun(entityMeta(fixture.run.Meta().ID, 1), fixture.plan.ID, firstSnapshot)
 	if err != nil {
 		t.Fatal(err)
@@ -249,6 +254,8 @@ func TestRepositoryComparisonRoundTripAndTerminalRevision(t *testing.T) {
 		Name:              secondChannel.Name, BaseURL: secondChannel.BaseURL, Protocol: secondChannel.Protocol,
 		UpstreamModelName: secondMapping.UpstreamModelName,
 	}
+	secondMappingDocument := secondMapping
+	secondSnapshot.Mapping = &secondMappingDocument
 	secondRun, err := domain.NewRun(entityMeta("10000000-0000-4000-8000-000000000024", 1), fixture.plan.ID, secondSnapshot)
 	if err != nil {
 		t.Fatal(err)
@@ -430,7 +437,7 @@ func TestRepositoryCatalogDeletePreservesHistoryAndRetiresIdentity(t *testing.T)
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)
 	}
@@ -686,7 +693,7 @@ func TestRepositoryStoresCredentialMetadataWithoutSecretBytes(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)
 	}
@@ -762,6 +769,45 @@ func TestRepositoryRetainsPinnedTestCaseRevision(t *testing.T) {
 	}
 }
 
+func TestRepositoryRetainsPinnedSuiteRevision(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	ctx := context.Background()
+	if err := repository.CreateTestCase(ctx, fixture.testCase); err != nil {
+		t.Fatalf("CreateTestCase() error = %v", err)
+	}
+	if err := repository.CreateSuite(ctx, fixture.suite); err != nil {
+		t.Fatalf("CreateSuite() error = %v", err)
+	}
+	nextMeta, err := fixture.suite.EntityMeta.NextRevision(repositoryEpoch.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("NextRevision() error = %v", err)
+	}
+	updated := fixture.suite
+	updated.EntityMeta = nextMeta
+	updated.Name = "Fixture suite revised"
+	if err := repository.UpdateSuite(ctx, fixture.suite.Revision, updated); err != nil {
+		t.Fatalf("UpdateSuite() error = %v", err)
+	}
+	pinned, err := repository.GetSuiteRevision(ctx, fixture.suite.ID, fixture.suite.Revision)
+	if err != nil {
+		t.Fatalf("GetSuiteRevision(1) error = %v", err)
+	}
+	if !reflect.DeepEqual(pinned, fixture.suite) {
+		t.Fatalf("pinned revision = %#v, want original %#v", pinned, fixture.suite)
+	}
+	latest, err := repository.GetSuite(ctx, fixture.suite.ID)
+	if err != nil {
+		t.Fatalf("GetSuite() error = %v", err)
+	}
+	if !reflect.DeepEqual(latest, updated) {
+		t.Fatalf("latest revision = %#v, want %#v", latest, updated)
+	}
+}
+
 func TestRepositoryRejectsCorruptDomainDocument(t *testing.T) {
 	t.Parallel()
 
@@ -769,7 +815,7 @@ func TestRepositoryRejectsCorruptDomainDocument(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)
 	}
@@ -789,9 +835,12 @@ func TestRepositoryRejectsCorruptDomainDocument(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("close tampered database: %v", err)
 	}
-	repository, err = persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err = persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
-		t.Fatalf("OpenRepository() after row tamper error = %v", err)
+		if !errors.Is(err, persistence.ErrCorrupt) {
+			t.Fatalf("OpenLegacyCatalogRepository() after row tamper error = %v, want ErrCorrupt", err)
+		}
+		return
 	}
 	defer repository.Close()
 	if _, err := repository.GetModel(context.Background(), model.ID); !errors.Is(err, persistence.ErrCorrupt) {
@@ -806,7 +855,7 @@ func TestRepositoryRejectsCorruptRunSnapshotDocument(t *testing.T) {
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)
 	}
@@ -855,9 +904,12 @@ func TestRepositoryRejectsCorruptRunSnapshotDocument(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("close tampered database: %v", err)
 	}
-	repository, err = persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	repository, err = persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
-		t.Fatalf("OpenRepository() after row tamper error = %v", err)
+		if !errors.Is(err, persistence.ErrCorrupt) {
+			t.Fatalf("OpenLegacyCatalogRepository() after row tamper error = %v, want ErrCorrupt", err)
+		}
+		return
 	}
 	defer repository.Close()
 	if _, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
@@ -933,11 +985,17 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	plan := domain.Plan{EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID}, SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{caseRef}, Load: load, SLA: sla}
 	environment := domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "go-test"}
 	snapshot := domain.RunSnapshot{
-		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
-		Plan:          domain.EntityRevisionRef{ID: planID, Revision: 1},
-		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
-		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
-		Cases:         []domain.CaseRevisionRef{caseRef}, Load: load, SLA: sla, Environment: environment,
+		SchemaVersion:   domain.CurrentRunSnapshotSchemaVersion,
+		Plan:            domain.EntityRevisionRef{ID: planID, Revision: 1},
+		Model:           domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
+		Channel:         domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
+		Cases:           []domain.CaseRevisionRef{caseRef},
+		Load:            load,
+		SLA:             sla,
+		Environment:     environment,
+		PlanDocument:    &plan,
+		Mapping:         &mapping,
+		CaseDefinitions: []domain.TestCase{testCase},
 	}
 	run, err := domain.NewRun(entityMeta(runID, 1), planID, snapshot)
 	if err != nil {
@@ -1086,6 +1144,52 @@ func openRepository(t *testing.T) *persistence.Repository {
 	path := filepath.Join(t.TempDir(), "repository.db")
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
+	}
+	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
+	}
+	return repository
+}
+
+func openOperationalRepository(t *testing.T) *persistence.Repository {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "operational-repository.db")
+	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test-v10"}); err != nil {
+		t.Fatalf("Migrate(v10) error = %v", err)
+	}
+	digest, err := persistence.AuthoredCatalogDigest(context.Background(), path)
+	if err != nil {
+		t.Fatalf("AuthoredCatalogDigest() error = %v", err)
+	}
+	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{
+		AppVersion:                      "repository-test-v11",
+		RetireAuthoredCatalog:           true,
+		ExpectedAuthoredCatalogDigest:   digest,
+		BeforeAuthoredCatalogRetirement: func(context.Context) error { return nil },
+	}); err != nil {
+		t.Fatalf("Migrate(v11) error = %v", err)
+	}
+	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
+	if err != nil {
+		t.Fatalf("OpenRepository() error = %v", err)
+	}
+	return repository
+}
+
+func retireAndReopenOperationalRepository(t *testing.T, path string) *persistence.Repository {
+	t.Helper()
+	digest, err := persistence.AuthoredCatalogDigest(context.Background(), path)
+	if err != nil {
+		t.Fatalf("AuthoredCatalogDigest() error = %v", err)
+	}
+	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{
+		AppVersion:                      "repository-test-v11",
+		RetireAuthoredCatalog:           true,
+		ExpectedAuthoredCatalogDigest:   digest,
+		BeforeAuthoredCatalogRetirement: func(context.Context) error { return nil },
+	}); err != nil {
+		t.Fatalf("Migrate(v11) error = %v", err)
 	}
 	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
 	if err != nil {
