@@ -207,19 +207,47 @@ func aggregateMetrics(results []domain.Result) map[string]domain.MetricValue {
 				metrics["generation_tps"] = domain.MetricValue{Value: completion / generationSeconds, Unit: "tokens/second", Samples: len(results)}
 			}
 		}
-		for _, metricName := range []string{"schedule_lag_ms", "e2e_ms", "ttft_ms", "tpot_ms"} {
-			values := metricSamples(results, metricName)
+		type distributionMetric struct {
+			name        string
+			successOnly bool
+			percentiles []int
+		}
+		distributionMetrics := []distributionMetric{
+			{name: "schedule_lag_ms", percentiles: []int{50, 90, 95, 99}},
+			{name: "e2e_ms", successOnly: true, percentiles: []int{50, 90, 95, 99}},
+			{name: "ttft_ms", successOnly: true, percentiles: []int{50, 90, 95, 99}},
+			{name: "tpot_ms", successOnly: true, percentiles: []int{50, 90, 95, 99}},
+			{name: "ttfb_ms", successOnly: true, percentiles: []int{50, 95, 99}},
+			{name: "ttft_any_ms", successOnly: true, percentiles: []int{50, 95, 99}},
+			{name: "ttft_visible_ms", successOnly: true, percentiles: []int{50, 95, 99}},
+			{name: "ttst_ms", successOnly: true, percentiles: []int{50, 95, 99}},
+			{name: "observed_icl_ms", successOnly: true, percentiles: []int{50, 95, 99}},
+			{name: "semantic_chunk_count", successOnly: true, percentiles: []int{50, 95, 99}},
+		}
+		for _, metric := range distributionMetrics {
+			values := metricSamples(results, metric.name)
+			if metric.successOnly {
+				values = successfulMetricSamples(results, metric.name)
+				delete(metrics, metric.name)
+			}
 			if len(values) == 0 {
 				continue
 			}
 			sort.Float64s(values)
-			stem, suffix := metricName, ""
-			if strings.HasSuffix(metricName, "_ms") {
-				stem, suffix = strings.TrimSuffix(metricName, "_ms"), "_ms"
+			stem, suffix := metric.name, ""
+			if strings.HasSuffix(metric.name, "_ms") {
+				stem, suffix = strings.TrimSuffix(metric.name, "_ms"), "_ms"
 			}
-			for _, percentile := range []int{50, 90, 95, 99} {
+			average := 0.0
+			for _, value := range values {
+				average += value
+			}
+			average /= float64(len(values))
+			metrics[metric.name] = domain.MetricValue{Value: average, Unit: metricUnit(metric.name), Samples: len(values)}
+			metrics[fmt.Sprintf("%s_average%s", stem, suffix)] = domain.MetricValue{Value: average, Unit: metricUnit(metric.name), Samples: len(values)}
+			for _, percentile := range metric.percentiles {
 				metrics[fmt.Sprintf("%s_p%d%s", stem, percentile, suffix)] = domain.MetricValue{
-					Value: interpolatedPercentile(values, float64(percentile)/100), Unit: metricUnit(metricName), Samples: len(values),
+					Value: interpolatedPercentile(values, float64(percentile)/100), Unit: metricUnit(metric.name), Samples: len(values),
 				}
 			}
 		}
@@ -360,37 +388,65 @@ func metricSamples(results []domain.Result, name string) []float64 {
 	return values
 }
 
+func successfulMetricSamples(results []domain.Result, name string) []float64 {
+	values := make([]float64, 0, len(results))
+	for _, result := range results {
+		if !result.Success.Overall() {
+			continue
+		}
+		if value, ok := result.Metrics[name]; ok {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
 func resultTimeline(results []domain.Result) []json.RawMessage {
 	items := make([]json.RawMessage, 0, len(results))
 	for _, result := range results {
-		item, _ := json.Marshal(map[string]any{
+		values := map[string]any{
 			"result_id": result.ID, "request_id": result.RequestID,
 			"case_id": result.CaseID, "success": result.Success.Overall(),
-			"started_offset_ms":  result.Metrics["started_offset_ms"],
-			"finished_offset_ms": result.Metrics["finished_offset_ms"],
-			"schedule_lag_ms":    result.Metrics["schedule_lag_ms"],
-			"e2e_ms":             result.Metrics["e2e_ms"], "ttft_ms": result.Metrics["ttft_ms"],
-			"tpot_ms": result.Metrics["tpot_ms"], "http_status": result.Metrics["http_status"],
-		})
+		}
+		for _, name := range []string{
+			"started_offset_ms", "finished_offset_ms", "schedule_lag_ms", "e2e_ms", "ttfb_ms", "ttft_ms", "ttft_any_ms",
+			"ttft_visible_ms", "ttst_ms", "observed_icl_ms", "semantic_chunk_count", "tpot_ms", "http_status",
+		} {
+			if value, ok := result.Metrics[name]; ok {
+				values[name] = value
+			}
+		}
+		item, _ := json.Marshal(values)
 		items = append(items, item)
 	}
 	return items
 }
 
 func resultDistributions(results []domain.Result) []json.RawMessage {
-	distributions := make([]json.RawMessage, 0, 4)
-	for _, name := range []string{"schedule_lag_ms", "e2e_ms", "ttft_ms", "tpot_ms"} {
+	distributions := make([]json.RawMessage, 0, 10)
+	for _, name := range []string{
+		"schedule_lag_ms", "e2e_ms", "ttft_ms", "tpot_ms", "ttfb_ms", "ttft_any_ms", "ttft_visible_ms", "ttst_ms",
+		"observed_icl_ms", "semantic_chunk_count",
+	} {
 		values := metricSamples(results, name)
+		if name != "schedule_lag_ms" {
+			values = successfulMetricSamples(results, name)
+		}
 		if len(values) == 0 {
 			continue
 		}
 		sort.Float64s(values)
-		item, _ := json.Marshal(map[string]any{
+		fields := map[string]any{
 			"metric": name, "unit": metricUnit(name), "samples": len(values),
 			"min": values[0], "max": values[len(values)-1],
-			"p50": interpolatedPercentile(values, .50), "p90": interpolatedPercentile(values, .90),
-			"p95": interpolatedPercentile(values, .95), "p99": interpolatedPercentile(values, .99),
-		})
+			"average": averageSamples(values),
+			"p50":     interpolatedPercentile(values, .50),
+			"p95":     interpolatedPercentile(values, .95), "p99": interpolatedPercentile(values, .99),
+		}
+		if name == "schedule_lag_ms" || name == "e2e_ms" || name == "ttft_ms" || name == "tpot_ms" {
+			fields["p90"] = interpolatedPercentile(values, .90)
+		}
+		item, _ := json.Marshal(fields)
 		distributions = append(distributions, item)
 	}
 	return distributions
@@ -449,6 +505,14 @@ func probeDistributions(results []domain.Result) []json.RawMessage {
 		distributions = append(distributions, item)
 	}
 	return distributions
+}
+
+func averageSamples(values []float64) float64 {
+	average := 0.0
+	for _, value := range values {
+		average += value
+	}
+	return average / float64(len(values))
 }
 
 func metricUnit(name string) string {

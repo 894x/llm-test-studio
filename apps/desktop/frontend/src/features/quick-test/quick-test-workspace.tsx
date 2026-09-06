@@ -20,6 +20,7 @@ import {
   AutocompleteList,
 } from "@/components/ui/autocomplete"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Field,
   FieldContent,
@@ -47,19 +48,29 @@ import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { PerformanceCharts } from "@/features/reports/performance-charts"
 import { PerformanceLatencyTable } from "@/features/reports/performance-latency-table"
+import { PerformanceStreamingTimingTable } from "@/features/reports/performance-streaming-timing-table"
 
 import {
   QUICK_TEST_ERROR_MESSAGES,
+  estimateQuickPerformanceOpenLoopRequestCap,
   updateQuickTestForm,
+  type QuickPerformanceArrivalPattern,
   type QuickPerformanceCommand,
+  type QuickPerformanceLoadMode,
   type QuickPerformanceProgress,
   type QuickPerformanceReport,
+  type QuickPerformanceWorkloadMode,
   type QuickTestAddressMode,
   type QuickTestCommand,
   type QuickTestResult,
   type SaveQuickTestConnectionCommand,
 } from "./data"
-import { performanceCompletion, performanceProgressPhaseLabel } from "./performance-summary"
+import {
+  performanceCapacitySummary,
+  performanceCompletion,
+  performanceProgressPhaseLabel,
+  performanceSLOStatusLabel,
+} from "./performance-summary"
 import { QuickPerformanceRequestAnalysis } from "./quick-performance-request-analysis"
 
 type QuickTestActions = Pick<
@@ -69,6 +80,7 @@ type QuickTestActions = Pick<
 
 const DEFAULT_PROMPT = "Reply with OK only."
 const DEFAULT_TIMEOUT_MS = 30_000
+const MAX_PERFORMANCE_REQUESTS = 10_000
 
 export interface QuickTestModelCandidate {
   id: string
@@ -597,15 +609,38 @@ function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, on
 }
 
 interface PerformanceForm {
+  loadMode: QuickPerformanceLoadMode
+  arrivalPattern: QuickPerformanceArrivalPattern
+  workloadMode: QuickPerformanceWorkloadMode
   requestCount: number
   durationSeconds: number
   concurrency: number
+  ratePerSecond: number
+  maxInFlight: number
   timeoutSeconds: number
   inputTokens: number
   outputTokens: number
+  inputTokensStdDev: number
+  outputTokensStdDev: number
+  sharedPrefixTokens: number
+  randomSeed: number
+  warmupRequests: number
+  rampDurationSeconds: number
+  rampRequestCap: number
+  sliceDurationSeconds: number
+  sloTTFTMS: number
+  sloTPOTMS: number
+  sloE2EMS: number
+  sloTargetPercent: number
+  capacityEnabled: boolean
+  fixedCapacityStart: number
+  fixedCapacityStep: number
+  openCapacityStart: number
+  openCapacityStep: number
 }
 
-type PerformanceFieldErrors = Partial<Record<keyof PerformanceForm, string>>
+type PerformanceNumberFieldName = Exclude<keyof PerformanceForm, "loadMode" | "arrivalPattern" | "workloadMode" | "capacityEnabled">
+type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
 const PERFORMANCE_TARGET_ERRORS = {
   requestCount: "请输入大于 0 的请求数，或填写持续时间。",
@@ -613,12 +648,34 @@ const PERFORMANCE_TARGET_ERRORS = {
 } as const
 
 const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
+  loadMode: "fixed_concurrency",
+  arrivalPattern: "constant",
+  workloadMode: "fixed",
   requestCount: 10,
   durationSeconds: 0,
   concurrency: 1,
+  ratePerSecond: 1,
+  maxInFlight: 256,
   timeoutSeconds: 60,
   inputTokens: 100,
   outputTokens: 100,
+  inputTokensStdDev: 10,
+  outputTokensStdDev: 10,
+  sharedPrefixTokens: 0,
+  randomSeed: 1,
+  warmupRequests: 0,
+  rampDurationSeconds: 0,
+  rampRequestCap: 1_000,
+  sliceDurationSeconds: 0,
+  sloTTFTMS: 0,
+  sloTPOTMS: 0,
+  sloE2EMS: 0,
+  sloTargetPercent: 0,
+  capacityEnabled: false,
+  fixedCapacityStart: 1,
+  fixedCapacityStep: 1,
+  openCapacityStart: 1,
+  openCapacityStep: 1,
 }
 
 function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchived, onOpenReport }: {
@@ -635,20 +692,78 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
   const [fieldErrors, setFieldErrors] = useState<PerformanceFieldErrors>({})
   const [operationError, setOperationError] = useState("")
+  const budgetPreview = performanceRequestBudget(form)
+  const capacityTargets = performanceCapacityTargets(form)
 
-  const update = (key: keyof PerformanceForm, value: number) => {
-    setForm((current) => ({ ...current, [key]: value }))
-    setFieldErrors((current) => {
-      let next = omitFieldError(current, key)
-      if ((key === "requestCount" || key === "durationSeconds") &&
-        (current.requestCount === PERFORMANCE_TARGET_ERRORS.requestCount || current.durationSeconds === PERFORMANCE_TARGET_ERRORS.durationSeconds)) {
-        next = omitFieldError(omitFieldError(next, "requestCount"), "durationSeconds")
-      }
-      return next
-    })
+  const resetOutput = () => {
     setReport(null)
     setProgress(null)
     setOperationError("")
+  }
+
+  const update = (key: PerformanceNumberFieldName, value: number) => {
+    setForm((current) => ({ ...current, [key]: value }))
+    setFieldErrors((current) => {
+      let next = omitFieldError(current, key)
+      if ([
+        "requestCount", "durationSeconds", "concurrency", "ratePerSecond", "warmupRequests",
+        "rampDurationSeconds", "rampRequestCap", "sloTTFTMS", "sloTPOTMS", "sloE2EMS",
+        "sloTargetPercent", "fixedCapacityStart", "fixedCapacityStep", "openCapacityStart", "openCapacityStep",
+      ].includes(key)) {
+        for (const field of [
+          "requestCount", "durationSeconds", "concurrency", "ratePerSecond", "warmupRequests",
+          "rampDurationSeconds", "rampRequestCap", "sloTTFTMS", "sloTPOTMS", "sloE2EMS",
+          "sloTargetPercent", "fixedCapacityStart", "fixedCapacityStep", "openCapacityStart", "openCapacityStep",
+        ] as const) {
+          next = omitFieldError(next, field)
+        }
+      }
+      return next
+    })
+    resetOutput()
+  }
+
+  const updateCapacityEnabled = (capacityEnabled: boolean) => {
+    setForm((current) => ({ ...current, capacityEnabled }))
+    setFieldErrors({})
+    resetOutput()
+  }
+
+  const updateLoadMode = (loadMode: QuickPerformanceLoadMode) => {
+    setForm((current) => ({ ...current, loadMode }))
+    setFieldErrors((current) => {
+      const next = loadMode === "fixed_concurrency"
+        ? omitFieldError(omitFieldError(current, "ratePerSecond"), "maxInFlight")
+        : omitFieldError(omitFieldError(current, "concurrency"), "rampRequestCap")
+      const withoutBudgetErrors = omitFieldError(omitFieldError(next, "requestCount"), "warmupRequests")
+      return loadMode === "fixed_concurrency" && form.workloadMode === "fixed"
+        ? omitFieldError(withoutBudgetErrors, "randomSeed")
+        : withoutBudgetErrors
+    })
+    resetOutput()
+  }
+
+  const updateArrivalPattern = (arrivalPattern: QuickPerformanceArrivalPattern) => {
+    setForm((current) => ({ ...current, arrivalPattern }))
+    setFieldErrors((current) => {
+      const next = omitFieldError(current, "ratePerSecond")
+      return arrivalPattern === "constant" && form.workloadMode === "fixed"
+        ? omitFieldError(next, "randomSeed")
+        : next
+    })
+    resetOutput()
+  }
+
+  const updateWorkloadMode = (workloadMode: QuickPerformanceWorkloadMode) => {
+    setForm((current) => ({ ...current, workloadMode }))
+    if (workloadMode === "fixed") {
+      setFieldErrors((current) => {
+        let next = omitFieldError(omitFieldError(omitFieldError(current, "inputTokensStdDev"), "outputTokensStdDev"), "sharedPrefixTokens")
+        if (form.loadMode !== "open_loop" || form.arrivalPattern !== "poisson") next = omitFieldError(next, "randomSeed")
+        return next
+      })
+    }
+    resetOutput()
   }
 
   const submit = (event: FormEvent) => {
@@ -672,9 +787,33 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
       api_key: testedCommand.api_key,
       ...(testedCommand.channel_id ? { channel_id: testedCommand.channel_id } : {}),
       model_id: testedCommand.model_id,
+      load_mode: form.loadMode,
       request_count: form.requestCount,
       duration_ms: form.durationSeconds * 1_000,
-      concurrency: form.concurrency,
+      concurrency: form.loadMode === "fixed_concurrency" ? form.concurrency : 0,
+      rate_per_second: form.loadMode === "open_loop" ? form.ratePerSecond : 0,
+      max_in_flight: form.loadMode === "open_loop" ? form.maxInFlight : 0,
+      arrival_pattern: form.loadMode === "open_loop" ? form.arrivalPattern : "constant",
+      workload_mode: form.workloadMode,
+      random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
+      input_tokens_stddev: form.workloadMode === "normal" ? form.inputTokensStdDev : 0,
+      output_tokens_stddev: form.workloadMode === "normal" ? form.outputTokensStdDev : 0,
+      shared_prefix_tokens: form.workloadMode === "normal" ? form.sharedPrefixTokens : 0,
+      warmup_requests: form.warmupRequests,
+      ramp_duration_ms: form.capacityEnabled ? 0 : form.rampDurationSeconds * 1_000,
+      ramp_request_cap: !form.capacityEnabled && form.loadMode === "fixed_concurrency" && form.rampDurationSeconds > 0 ? form.rampRequestCap : 0,
+      slice_duration_ms: form.sliceDurationSeconds * 1_000,
+      slo_ttft_ms: form.sloTTFTMS,
+      slo_tpot_ms: form.sloTPOTMS,
+      slo_e2e_ms: form.sloE2EMS,
+      slo_target_percent: form.sloTargetPercent,
+      capacity_enabled: form.capacityEnabled,
+      capacity_start: form.capacityEnabled
+        ? form.loadMode === "fixed_concurrency" ? form.fixedCapacityStart : form.openCapacityStart
+        : 0,
+      capacity_step: form.capacityEnabled
+        ? form.loadMode === "fixed_concurrency" ? form.fixedCapacityStep : form.openCapacityStep
+        : 0,
       timeout_ms: form.timeoutSeconds * 1_000,
       input_tokens: form.inputTokens,
       output_tokens: form.outputTokens,
@@ -702,21 +841,160 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
           <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4" noValidate>
             <FieldGroup>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <Field className="block min-w-0">
+                  <FieldLabel htmlFor="quick-performance-loadMode">负载模式</FieldLabel>
+                  <FieldContent>
+                    <Select value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)}>
+                      <SelectTrigger id="quick-performance-loadMode" aria-label="负载模式" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="fixed_concurrency">固定并发</SelectItem>
+                          <SelectItem value="open_loop">开放到达（RPS）</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
+                {form.loadMode === "open_loop" ? (
+                  <Field className="block min-w-0">
+                    <FieldLabel htmlFor="quick-performance-arrivalPattern">到达分布</FieldLabel>
+                    <FieldContent>
+                      <Select value={form.arrivalPattern} disabled={pending} onValueChange={(value) => updateArrivalPattern(value as QuickPerformanceArrivalPattern)}>
+                        <SelectTrigger id="quick-performance-arrivalPattern" aria-label="到达分布" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="constant">恒定间隔</SelectItem>
+                            <SelectItem value="poisson">Poisson 到达</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </FieldContent>
+                  </Field>
+                ) : null}
+                <Field className="block min-w-0">
+                  <FieldLabel htmlFor="quick-performance-workloadMode">工作负载</FieldLabel>
+                  <FieldContent>
+                    <Select value={form.workloadMode} disabled={pending} onValueChange={(value) => updateWorkloadMode(value as QuickPerformanceWorkloadMode)}>
+                      <SelectTrigger id="quick-performance-workloadMode" aria-label="工作负载" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="fixed">固定 Token</SelectItem>
+                          <SelectItem value="normal">正态分布</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FieldContent>
+                </Field>
                 <PerformanceNumberField field="requestCount" label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} error={fieldErrors.requestCount} onChange={(value) => update("requestCount", value)} />
                 <PerformanceNumberField field="durationSeconds" label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.durationSeconds} onChange={(value) => update("durationSeconds", value)} />
-                <PerformanceNumberField field="concurrency" label="并发数" value={form.concurrency} min={1} max={256} disabled={pending} error={fieldErrors.concurrency} onChange={(value) => update("concurrency", value)} />
+                {form.loadMode === "fixed_concurrency" ? (
+                  <PerformanceNumberField field="concurrency" label={form.capacityEnabled ? "终止并发" : "并发数"} value={form.concurrency} min={1} max={256} disabled={pending} error={fieldErrors.concurrency} onChange={(value) => update("concurrency", value)} />
+                ) : (
+                  <>
+                    <PerformanceNumberField field="ratePerSecond" label={form.capacityEnabled ? "终止 RPS" : "目标发送 RPS"} value={form.ratePerSecond} min={0.01} max={100_000} step={0.01} disabled={pending} error={fieldErrors.ratePerSecond} onChange={(value) => update("ratePerSecond", value)} />
+                    <PerformanceNumberField field="maxInFlight" label="最大在途" value={form.maxInFlight} min={1} max={2_000} disabled={pending} error={fieldErrors.maxInFlight} onChange={(value) => update("maxInFlight", value)} />
+                  </>
+                )}
                 <PerformanceNumberField field="timeoutSeconds" label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} error={fieldErrors.timeoutSeconds} onChange={(value) => update("timeoutSeconds", value)} />
-                <PerformanceNumberField field="inputTokens" label="近似输入 Token" value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
-                <PerformanceNumberField field="outputTokens" label="最大输出 Token" value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
+                <PerformanceNumberField field="inputTokens" label={form.workloadMode === "normal" ? "近似输入 Token 均值" : "近似输入 Token"} value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
+                <PerformanceNumberField field="outputTokens" label={form.workloadMode === "normal" ? "最大输出 Token 均值" : "最大输出 Token"} value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
+                {form.workloadMode === "normal" ? (
+                  <>
+                    <PerformanceNumberField field="inputTokensStdDev" label="输入 Token 标准差" value={form.inputTokensStdDev} min={0} max={1_000_000} disabled={pending} error={fieldErrors.inputTokensStdDev} onChange={(value) => update("inputTokensStdDev", value)} />
+                    <PerformanceNumberField field="outputTokensStdDev" label="输出 Token 标准差" value={form.outputTokensStdDev} min={0} max={65_536} disabled={pending} error={fieldErrors.outputTokensStdDev} onChange={(value) => update("outputTokensStdDev", value)} />
+                    <PerformanceNumberField field="sharedPrefixTokens" label="共享前缀 Token" value={form.sharedPrefixTokens} min={0} max={999_999} disabled={pending} error={fieldErrors.sharedPrefixTokens} onChange={(value) => update("sharedPrefixTokens", value)} />
+                  </>
+                ) : null}
+                {performanceNeedsSeed(form) ? (
+                  <PerformanceNumberField field="randomSeed" label="随机种子" value={form.randomSeed} min={1} max={4_294_967_295} disabled={pending} error={fieldErrors.randomSeed} onChange={(value) => update("randomSeed", value)} />
+                ) : null}
+              </div>
+              <div className="rounded-lg border bg-surface-subtle p-3">
+                <div className="mb-3">
+                  <h3 className="text-xs font-semibold">SLO 与容量</h3>
+                  <p className="mt-1 text-[10px] text-muted-foreground">0 表示不启用；达标请求必须同时通过传输校验和所有已启用的延迟阈值。</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <PerformanceNumberField field="sloTTFTMS" label="SLO TTFT（ms）" value={form.sloTTFTMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.sloTTFTMS} onChange={(value) => update("sloTTFTMS", value)} />
+                  <PerformanceNumberField field="sloTPOTMS" label="SLO TPOT（ms/token）" value={form.sloTPOTMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.sloTPOTMS} onChange={(value) => update("sloTPOTMS", value)} />
+                  <PerformanceNumberField field="sloE2EMS" label="SLO E2E（ms）" value={form.sloE2EMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.sloE2EMS} onChange={(value) => update("sloE2EMS", value)} />
+                  <PerformanceNumberField field="sloTargetPercent" label="SLO 目标达标率（%）" value={form.sloTargetPercent} min={0} max={100} step={0.01} disabled={pending} error={fieldErrors.sloTargetPercent} onChange={(value) => update("sloTargetPercent", value)} />
+                </div>
+                <Field className="mt-3 gap-2">
+                  <FieldLabel htmlFor="quick-performance-capacityEnabled" className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5">
+                    <Checkbox
+                      id="quick-performance-capacityEnabled"
+                      aria-label="容量阶梯"
+                      checked={form.capacityEnabled}
+                      disabled={pending}
+                      onCheckedChange={(checked) => updateCapacityEnabled(checked === true)}
+                    />
+                    <span>容量阶梯</span>
+                    <span className="ml-auto text-[10px] font-normal text-muted-foreground">逐档执行，首个未达标后停止</span>
+                  </FieldLabel>
+                </Field>
+                {form.capacityEnabled ? (
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2fr]">
+                    {form.loadMode === "fixed_concurrency" ? (
+                      <>
+                        <PerformanceNumberField field="fixedCapacityStart" label="起始并发" value={form.fixedCapacityStart} min={1} max={256} disabled={pending} error={fieldErrors.fixedCapacityStart} onChange={(value) => update("fixedCapacityStart", value)} />
+                        <PerformanceNumberField field="fixedCapacityStep" label="并发步长" value={form.fixedCapacityStep} min={1} max={Number.MAX_SAFE_INTEGER} disabled={pending} error={fieldErrors.fixedCapacityStep} onChange={(value) => update("fixedCapacityStep", value)} />
+                      </>
+                    ) : (
+                      <>
+                        <PerformanceNumberField field="openCapacityStart" label="起始 RPS" value={form.openCapacityStart} min={0.01} max={100_000} step={0.01} disabled={pending} error={fieldErrors.openCapacityStart} onChange={(value) => update("openCapacityStart", value)} />
+                        <PerformanceNumberField field="openCapacityStep" label="RPS 步长" value={form.openCapacityStep} min={0.01} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.openCapacityStep} onChange={(value) => update("openCapacityStep", value)} />
+                      </>
+                    )}
+                    <div className="col-span-2 flex min-h-8 min-w-0 items-center rounded-md border bg-background px-3 text-[11px] tabular-nums text-muted-foreground sm:col-span-1">
+                      <span className="truncate">
+                        {capacityTargets?.length
+                          ? `${capacityTargets.map(formatCapacityTarget).join(" → ")} · ${formatNumber(capacityTargets.length)} 档`
+                          : "请填写有效的起始值、步长与终止目标"}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="rounded-lg border bg-surface-subtle p-3">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h3 className="text-xs font-semibold">阶段与采样</h3>
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    {form.capacityEnabled
+                      ? <>预算：热身 {formatNumber(budgetPreview.warmupCap)} · 容量 {formatNumber(budgetPreview.measuredCap)} · 合计 {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}</>
+                      : <>预算：热身 {formatNumber(budgetPreview.warmupCap)} · 爬坡 {formatNumber(budgetPreview.rampCap)} · 稳态 {formatNumber(budgetPreview.measuredCap)} · 合计 {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}</>}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <PerformanceNumberField field="warmupRequests" label="热身请求数" value={form.warmupRequests} min={0} max={10_000} disabled={pending} error={fieldErrors.warmupRequests} onChange={(value) => update("warmupRequests", value)} />
+                  <PerformanceNumberField field="rampDurationSeconds" label="爬坡时间（秒）" value={form.rampDurationSeconds} min={0} max={3_600} disabled={pending || form.capacityEnabled} error={fieldErrors.rampDurationSeconds} onChange={(value) => update("rampDurationSeconds", value)} />
+                  {!form.capacityEnabled && form.loadMode === "fixed_concurrency" && form.rampDurationSeconds > 0 ? (
+                    <PerformanceNumberField field="rampRequestCap" label="爬坡请求上限" value={form.rampRequestCap} min={1} max={10_000} disabled={pending} error={fieldErrors.rampRequestCap} onChange={(value) => update("rampRequestCap", value)} />
+                  ) : null}
+                  <PerformanceNumberField field="sliceDurationSeconds" label="时间切片（秒）" value={form.sliceDurationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.sliceDurationSeconds} onChange={(value) => update("sliceDurationSeconds", value)} />
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">0 表示跳过对应阶段或不生成时间切片；{form.capacityEnabled ? "容量模式跳过爬坡，每档指标独立统计。" : "爬坡使用 10 阶线性阶梯，稳态指标不包含热身与爬坡。"}</p>
               </div>
               <FieldDescription>
+                {form.loadMode === "open_loop"
+                  ? form.arrivalPattern === "poisson"
+                    ? "按可复现的 Poisson 到达过程调度请求；达到最大在途后会记录本地拒绝。"
+                    : "按恒定间隔的目标 RPS 独立调度请求；达到最大在途后会记录本地拒绝。"
+                  : "固定并发会在请求完成后补发，维持配置的在途请求数。"}
+                {form.workloadMode === "normal" ? " 正态工作负载会用种子复现每个请求的 Token 目标与唯一后缀。" : ""}
                 同时填写请求数和持续时间时，任一目标先达到即停止发送；输出 Token 是请求上限，不保证模型实际生成到该数值。
               </FieldDescription>
               {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{operationError}</FieldError> : null}
             </FieldGroup>
           </form>
           {pending && progress ? (
-            <QuickPerformanceProgressPanel progress={progress} requestCount={form.requestCount} />
+            <QuickPerformanceProgressPanel progress={progress} requestCount={form.requestCount} loadMode={form.loadMode} />
           ) : pending ? (
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Spinner className="size-5" />
@@ -735,12 +1013,13 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   )
 }
 
-function PerformanceNumberField({ field, label, value, min, max, disabled, error, onChange }: {
-  field: keyof PerformanceForm
+function PerformanceNumberField({ field, label, value, min, max, step = 1, disabled, error, onChange }: {
+  field: PerformanceNumberFieldName
   label: string
   value: number
   min: number
   max: number
+  step?: number
   disabled: boolean
   error?: string
   onChange: (value: number) => void
@@ -759,7 +1038,7 @@ function PerformanceNumberField({ field, label, value, min, max, disabled, error
           type="number"
           min={min}
           max={max}
-          step={1}
+          step={step}
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(Number(event.target.value))}
@@ -773,6 +1052,7 @@ function PerformanceNumberField({ field, label, value, min, max, disabled, error
 
 function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPerformanceReport; onOpenReport?: (reportID: string) => void | Promise<void> }) {
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
+  const hasPreparationData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined
   const completedWithFailures = !report.success && !report.error_code && report.metrics.completed > 0
   const title = report.success
     ? "性能测试完成"
@@ -789,23 +1069,79 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
         )}
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">{title}</h3>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Badge variant="outline" className={report.success ? "border-success/30 bg-success-soft text-success" : "border-warning/30 bg-warning-soft text-warning"}>
+              传输与协议{report.success ? "通过" : "未通过"}
+            </Badge>
+            {report.slo_assessment ? (
+              <Badge
+                variant={report.slo_assessment.status === "failed" ? "destructive" : "outline"}
+                className={report.slo_assessment.status === "passed" ? "border-success/30 bg-success-soft text-success" : report.slo_assessment.status === "not_evaluated" ? "border-warning/30 bg-warning-soft text-warning" : undefined}
+              >
+                {performanceSLOStatusLabel(report.slo_assessment.status)}
+              </Badge>
+            ) : null}
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {report.success ? "全部请求完成且通过协议与语义校验。" : "可按失败原因筛选请求，并查看经过脱敏和限长处理的响应详情。"}
+            {report.success ? "稳态请求全部完成且通过协议与语义校验。" : "可按失败原因筛选稳态请求，并查看经过脱敏和限长处理的响应详情。"}
           </p>
         </div>
       </div>
       <Separator />
       <div className="space-y-4 p-4">
-        <MetricSection title="执行摘要">
+        <p className="rounded-md border bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">主指标仅统计稳态阶段；热身与爬坡流量单独汇总。</p>
+        {hasPreparationData ? (
+          <div>
+            <h4 className="mb-2 text-xs font-semibold">准备阶段</h4>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              {report.request_budget ? <ResultValue label="请求预算" value={formatPerformanceBudget(report.request_budget)} numeric wide /> : null}
+              {report.warmup ? <ResultValue label="热身" value={formatTrafficCompletion(report.warmup)} numeric /> : null}
+              {report.ramp ? <ResultValue label="爬坡" value={formatTrafficCompletion(report.ramp.traffic)} numeric /> : null}
+              {report.time_slices ? <ResultValue label="时间切片" value={`${formatNumber(report.time_slices.length)} 段 · ${formatDuration(report.profile.slice_duration_ms ?? 0)} 粒度`} numeric wide /> : null}
+            </dl>
+            {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">爬坡窗口未完整执行；请结合请求上限或提前停止状态解读准备阶段。</p> : null}
+          </div>
+        ) : null}
+        {report.slo_assessment ? (
+          <MetricSection title="SLO 与 Goodput">
+            <InlineResultValue label="好请求" value={`${formatNumber(report.slo_assessment.good_requests)} / ${formatNumber(report.slo_assessment.total_requests)}`} numeric />
+            <ResultValue label="达标率 / 目标" value={`${formatNumber(report.slo_assessment.good_request_percent)}% / ${formatNumber(report.slo_assessment.target_percent)}%`} numeric />
+            <InlineResultValue label="Goodput" value={`${formatNumber(report.slo_assessment.goodput_qps)} req/s`} numeric />
+            <ResultValue label="违反（传输 / TTFT / TPOT / E2E）" value={`${report.slo_assessment.violations.transport} / ${report.slo_assessment.violations.ttft} / ${report.slo_assessment.violations.tpot} / ${report.slo_assessment.violations.e2e}`} numeric wide />
+          </MetricSection>
+        ) : null}
+        {report.capacity_result ? (
+          <div className="rounded-md border bg-background/70 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">容量结论</p>
+            <p className="mt-1 text-xs font-semibold tabular-nums">{performanceCapacitySummary(report.capacity_result, report.profile.load_mode ?? "fixed_concurrency")}</p>
+          </div>
+        ) : null}
+        <MetricSection title="稳态执行摘要">
           <ResultValue label={completion.label} value={completion.value} numeric />
           <ResultValue label="成功" value={String(report.metrics.succeeded)} numeric />
           <ResultValue label="失败" value={String(report.metrics.failed)} numeric />
           <ResultValue label="成功率" value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
           <ResultValue label="总耗时" value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
-          <ResultValue label="峰值在途" value={String(report.progress.peak_in_flight)} numeric />
+          {report.profile.load_mode === "open_loop" ? (
+            <ResultValue label="峰值在途 / 上限" value={`${report.progress.peak_in_flight} / ${report.profile.max_in_flight === undefined ? "—" : formatNumber(report.profile.max_in_flight)}`} numeric />
+          ) : (
+            <ResultValue label="峰值在途 / 配置并发" value={`${report.progress.peak_in_flight} / ${formatCapacityTarget(report.progress.capacity_target ?? report.profile.concurrency)}`} numeric />
+          )}
         </MetricSection>
-        <MetricSection title="吞吐">
-          <ResultValue label="请求速率" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric />
+        <MetricSection title="工作负载">
+          {report.profile.load_mode === "open_loop" ? <ResultValue label="到达分布" value={performanceArrivalPattern(report)} /> : null}
+          <ResultValue label="Token 分布" value={performanceWorkloadMode(report)} />
+          <ResultValue label="随机种子" value={performanceSeed(report)} numeric />
+          <ResultValue label="共享前缀" value={performanceSharedPrefix(report)} numeric />
+          {performanceTargetRanges(report) ? <ResultValue label="采样目标范围（输入 / 输出）" value={performanceTargetRanges(report)!} numeric wide /> : null}
+        </MetricSection>
+        <MetricSection title="稳态吞吐">
+          <ResultValue label="目标发送" value={performanceTargetRate(report)} numeric />
+          <ResultValue label="调度需求" value={formatOptionalRate(report.metrics.offered_qps)} numeric />
+          <ResultValue label="实际发送" value={formatOptionalRate(report.metrics.launched_qps)} numeric />
+          <ResultValue label="已发送完成吞吐" value={formatOptionalRate(report.metrics.completed_qps)} numeric />
+          <ResultValue label="成功吞吐" value={formatOptionalRate(report.metrics.successful_request_qps)} numeric />
+          {report.schema_version === 1 ? <ResultValue label="旧版请求吞吐" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric /> : null}
           <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
           <ResultValue label="输入 TPM" value={`${formatNumber(report.metrics.input_tpm)} TPM`} numeric />
           <ResultValue label="输出 TPM" value={`${formatNumber(report.metrics.output_tpm)} TPM`} numeric />
@@ -813,6 +1149,7 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <ResultValue label="生成速度" value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
         </MetricSection>
         <PerformanceLatencyTable metrics={report.metrics} />
+        <PerformanceStreamingTimingTable schemaVersion={report.schema_version} metrics={report.metrics} />
         <MetricSection title="Token">
           <ResultValue label="Prompt / Completion / Cached" value={`${report.metrics.prompt_tokens} / ${report.metrics.completion_tokens} / ${report.metrics.cached_tokens}`} numeric />
           <ResultValue label="KV 缓存命中率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
@@ -846,18 +1183,26 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
   )
 }
 
-function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: QuickPerformanceProgress; requestCount: number }) {
-  const percentage = requestCount > 0 && progress.planned > 0
+function QuickPerformanceProgressPanel({ progress, requestCount, loadMode }: { progress: QuickPerformanceProgress; requestCount: number; loadMode: QuickPerformanceLoadMode }) {
+  const isPreparation = progress.phase === "warming_up" || progress.phase === "ramping"
+  const percentage = (requestCount > 0 || isPreparation) && progress.planned > 0
     ? Math.min(100, progress.completed / progress.planned * 100)
     : undefined
   const phaseLabel = performanceProgressPhaseLabel(progress.phase)
-  const completion = performanceCompletion(requestCount, progress.completed, progress.planned)
+  const completion = progress.phase === "warming_up"
+    ? { label: "热身完成 / 计划", value: `${progress.completed} / ${progress.planned}` }
+    : progress.phase === "ramping"
+      ? { label: "爬坡完成 / 计划", value: `${progress.completed} / ${progress.planned}` }
+      : performanceCompletion(requestCount, progress.completed, progress.planned)
   return (
     <section role="status" aria-label="性能测试进度" className="rounded-lg border bg-surface-subtle p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Spinner className="size-4 shrink-0" />
           <span className="text-sm font-medium">{phaseLabel}</span>
+          {progress.capacity_rung_number !== undefined ? (
+            <Badge variant="outline" className="tabular-nums">档位 {progress.capacity_rung_number} / {progress.capacity_rung_count}</Badge>
+          ) : null}
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
           {percentage === undefined ? "持续时间模式" : `${formatNumber(percentage)}%`}
@@ -873,10 +1218,13 @@ function QuickPerformanceProgressPanel({ progress, requestCount }: { progress: Q
       />
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
         <ResultValue label={completion.label} value={completion.value} numeric />
+        {progress.offered === undefined ? null : <ResultValue label="调度需求" value={String(progress.offered)} numeric />}
         <ResultValue label="成功" value={String(progress.succeeded)} numeric />
         <ResultValue label="失败" value={String(progress.failed)} numeric />
         <ResultValue label="在途" value={String(progress.in_flight)} numeric />
+        {progress.capacity_target === undefined ? null : <InlineResultValue label="当前目标" value={`${formatCapacityTarget(progress.capacity_target)} ${loadMode === "fixed_concurrency" ? "并发" : "RPS"}`} numeric />}
       </dl>
+      {progress.capped ? <p className="mt-3 border-t pt-2 text-[11px] text-warning">当前阶段已达到请求上限。</p> : null}
     </section>
   )
 }
@@ -894,15 +1242,159 @@ function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors 
   const errors: PerformanceFieldErrors = {}
   if (!integerInRange(form.requestCount, 0, 10_000)) errors.requestCount = "请求数需为 0–10,000 的整数。"
   if (!integerInRange(form.durationSeconds, 0, 3_600)) errors.durationSeconds = "持续时间需为 0–3,600 秒的整数。"
+  if (!integerInRange(form.warmupRequests, 0, 10_000)) errors.warmupRequests = "热身请求数需为 0–10,000 的整数。"
+  if (!form.capacityEnabled && !integerInRange(form.rampDurationSeconds, 0, 3_600)) errors.rampDurationSeconds = "爬坡时间需为 0–3,600 秒的整数。"
+  if (!integerInRange(form.sliceDurationSeconds, 0, 3_600)) errors.sliceDurationSeconds = "时间切片需为 0–3,600 秒的整数。"
+  if (!Number.isFinite(form.sloTTFTMS) || form.sloTTFTMS < 0) errors.sloTTFTMS = "SLO TTFT 阈值需为大于或等于 0 的有限数字。"
+  if (!Number.isFinite(form.sloTPOTMS) || form.sloTPOTMS < 0) errors.sloTPOTMS = "SLO TPOT 阈值需为大于或等于 0 的有限数字。"
+  if (!Number.isFinite(form.sloE2EMS) || form.sloE2EMS < 0) errors.sloE2EMS = "SLO E2E 阈值需为大于或等于 0 的有限数字。"
+  if (!finiteInRange(form.sloTargetPercent, 0, 100)) errors.sloTargetPercent = "SLO 目标达标率需为 0–100。"
+  const hasSLOThreshold = form.sloTTFTMS > 0 || form.sloTPOTMS > 0 || form.sloE2EMS > 0
+  if (!errors.sloTargetPercent && form.sloTargetPercent > 0 && !hasSLOThreshold) {
+    errors.sloTargetPercent = "设置目标达标率时，至少启用一个延迟阈值。"
+  } else if (!errors.sloTargetPercent && hasSLOThreshold && form.sloTargetPercent <= 0) {
+    errors.sloTargetPercent = "启用延迟阈值时，目标达标率必须大于 0。"
+  }
   if (!errors.requestCount && !errors.durationSeconds && form.requestCount === 0 && form.durationSeconds === 0) {
     errors.requestCount = PERFORMANCE_TARGET_ERRORS.requestCount
     errors.durationSeconds = PERFORMANCE_TARGET_ERRORS.durationSeconds
   }
-  if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
+  if (form.loadMode === "fixed_concurrency") {
+    if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
+    if (!form.capacityEnabled && form.rampDurationSeconds > 0 && !integerInRange(form.rampRequestCap, 1, 10_000)) errors.rampRequestCap = "爬坡请求上限需为 1–10,000 的整数。"
+  } else {
+    if (!finiteInRange(form.ratePerSecond, 0.01, 100_000)) errors.ratePerSecond = "目标发送 RPS 需为 0.01–100,000。"
+    if (!integerInRange(form.maxInFlight, 1, 2_000)) errors.maxInFlight = "最大在途需为 1–2,000 的整数。"
+  }
   if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = "单请求超时需为 1–600 秒的整数。"
   if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = "近似输入 Token 需为 1–1,000,000 的整数。"
   if (!integerInRange(form.outputTokens, 1, 65_536)) errors.outputTokens = "最大输出 Token 需为 1–65,536 的整数。"
+  if (form.workloadMode === "normal") {
+    if (!integerInRange(form.inputTokensStdDev, 0, 1_000_000)) errors.inputTokensStdDev = "输入 Token 标准差需为 0–1,000,000 的整数。"
+    else if (!errors.inputTokens && form.inputTokensStdDev > form.inputTokens) errors.inputTokensStdDev = "输入 Token 标准差不能大于输入均值。"
+    if (!integerInRange(form.outputTokensStdDev, 0, 65_536)) errors.outputTokensStdDev = "输出 Token 标准差需为 0–65,536 的整数。"
+    else if (!errors.outputTokens && form.outputTokensStdDev > form.outputTokens) errors.outputTokensStdDev = "输出 Token 标准差不能大于输出均值。"
+    if (!integerInRange(form.sharedPrefixTokens, 0, 999_999)) errors.sharedPrefixTokens = "共享前缀 Token 需为 0–999,999 的整数。"
+    else if (!errors.inputTokens && form.sharedPrefixTokens >= form.inputTokens) errors.sharedPrefixTokens = "共享前缀 Token 必须小于输入均值。"
+  }
+  if (performanceNeedsSeed(form) && !integerInRange(form.randomSeed, 1, 4_294_967_295)) {
+    errors.randomSeed = "随机种子需为 1–4,294,967,295 的整数。"
+  }
+  if (form.capacityEnabled) {
+    if (!hasSLOThreshold || form.sloTargetPercent <= 0) {
+      if (!errors.sloTargetPercent) errors.sloTargetPercent = "容量阶梯需要先配置有效的 SLO。"
+    }
+    if (form.requestCount <= 0 && !errors.requestCount) errors.requestCount = "容量阶梯需要大于 0 的请求数。"
+    if (form.loadMode === "fixed_concurrency") {
+      if (!integerInRange(form.fixedCapacityStart, 1, form.concurrency)) errors.fixedCapacityStart = "起始并发需为不超过终止并发的正整数。"
+      if (!Number.isSafeInteger(form.fixedCapacityStep) || form.fixedCapacityStep <= 0) errors.fixedCapacityStep = "并发步长需为正整数。"
+    } else {
+      if (!finiteInRange(form.openCapacityStart, 0.01, form.ratePerSecond)) errors.openCapacityStart = "起始 RPS 需为 0.01 到终止 RPS。"
+      if (!Number.isFinite(form.openCapacityStep) || form.openCapacityStep <= 0) errors.openCapacityStep = "RPS 步长需为大于 0 的有限数字。"
+    }
+    const targets = performanceCapacityTargets(form)
+    if (targets && targets.length > 20) {
+      errors[form.loadMode === "fixed_concurrency" ? "fixedCapacityStep" : "openCapacityStep"] = "容量阶梯最多支持 20 档；请增大步长或减小终止目标。"
+    }
+  }
+  const canCalculateBudget = !errors.requestCount && !errors.durationSeconds && !errors.warmupRequests &&
+    (!form.capacityEnabled || (
+      !errors.fixedCapacityStart && !errors.fixedCapacityStep && !errors.openCapacityStart && !errors.openCapacityStep &&
+      (performanceCapacityTargets(form)?.length ?? 21) <= 20
+    )) &&
+    (form.capacityEnabled || (!errors.rampDurationSeconds && !errors.rampRequestCap)) &&
+    (form.loadMode === "fixed_concurrency" || !errors.ratePerSecond) &&
+    (form.requestCount > 0 || form.durationSeconds > 0)
+  if (canCalculateBudget) {
+    const budget = performanceRequestBudget(form)
+    if (!form.capacityEnabled && form.loadMode === "fixed_concurrency" && form.requestCount === 0 && budget.measuredCap < 1) {
+      const field = form.rampDurationSeconds > 0 ? "rampRequestCap" : "warmupRequests"
+      errors[field] = "热身与爬坡已用完 10,000 请求预算；持续时间稳态至少需要保留 1 个请求。"
+    } else if (budget.totalCap > MAX_PERFORMANCE_REQUESTS) {
+      if (form.capacityEnabled) {
+        errors.requestCount = `热身 ${formatNumber(budget.warmupCap)} + 容量 ${formatNumber(budget.measuredCap)} = ${formatNumber(budget.totalCap)}，超过总请求预算 10,000。`
+      } else if (form.loadMode === "open_loop" && form.requestCount === 0 && budget.warmupCap === 0 && budget.rampCap === 0) {
+        errors.ratePerSecond = form.arrivalPattern === "poisson"
+          ? `Poisson 到达需预留两倍调度余量；当前预计上限 ${formatNumber(budget.measuredCap)} 个请求，超过 10,000 个上限。`
+          : `当前持续时间与 RPS 预计调度 ${formatNumber(budget.measuredCap)} 个请求，超过 10,000 个上限。`
+      } else {
+        const message = `热身 ${formatNumber(budget.warmupCap)} + 爬坡 ${formatNumber(budget.rampCap)} + 稳态 ${formatNumber(budget.measuredCap)} = ${formatNumber(budget.totalCap)}，超过总请求预算 10,000。`
+        if (form.requestCount > 0) errors.requestCount = message
+        else if (form.loadMode === "open_loop") errors.ratePerSecond = message
+        else if (form.rampDurationSeconds > 0) errors.rampRequestCap = message
+        else errors.warmupRequests = message
+      }
+    }
+  }
   return errors
+}
+
+interface PerformanceRequestBudgetPreview {
+  warmupCap: number
+  rampCap: number
+  measuredCap: number
+  totalCap: number
+}
+
+function performanceRequestBudget(form: PerformanceForm): PerformanceRequestBudgetPreview {
+  const warmupCap = nonNegativeFiniteOrZero(form.warmupRequests)
+  const rampDurationSeconds = form.capacityEnabled ? 0 : nonNegativeFiniteOrZero(form.rampDurationSeconds)
+  const rampCap = rampDurationSeconds === 0
+    ? 0
+    : form.loadMode === "fixed_concurrency"
+      ? nonNegativeFiniteOrZero(form.rampRequestCap)
+      : performanceOpenLoopRequestCap(rampDurationSeconds * nonNegativeFiniteOrZero(form.ratePerSecond) * 0.55, form.arrivalPattern)
+  const capacityTargets = performanceCapacityTargets(form)
+  const measuredCap = form.capacityEnabled && capacityTargets
+    ? nonNegativeFiniteOrZero(form.requestCount) * capacityTargets.length
+    : form.requestCount > 0
+      ? nonNegativeFiniteOrZero(form.requestCount)
+    : form.durationSeconds <= 0
+      ? 0
+      : form.loadMode === "fixed_concurrency"
+        ? Math.max(0, MAX_PERFORMANCE_REQUESTS - warmupCap - rampCap)
+        : estimateQuickPerformanceOpenLoopRequestCap(
+          nonNegativeFiniteOrZero(form.durationSeconds) * 1_000,
+          nonNegativeFiniteOrZero(form.ratePerSecond),
+          form.arrivalPattern,
+        )
+  return { warmupCap, rampCap, measuredCap, totalCap: warmupCap + rampCap + measuredCap }
+}
+
+function performanceCapacityTargets(form: PerformanceForm): number[] | undefined {
+  if (!form.capacityEnabled) return undefined
+  const maximum = form.loadMode === "fixed_concurrency" ? form.concurrency : form.ratePerSecond
+  const start = form.loadMode === "fixed_concurrency" ? form.fixedCapacityStart : form.openCapacityStart
+  const step = form.loadMode === "fixed_concurrency" ? form.fixedCapacityStep : form.openCapacityStep
+  if (!Number.isFinite(maximum) || !Number.isFinite(start) || !Number.isFinite(step) || maximum <= 0 || start <= 0 || step <= 0 || start > maximum) return undefined
+  if (form.loadMode === "fixed_concurrency" && (!Number.isInteger(start) || !Number.isInteger(step))) return undefined
+  if (form.loadMode === "open_loop" && start < 0.01) return undefined
+  const targets: number[] = []
+  for (let index = 0; index <= 20; index += 1) {
+    const candidate = start + index * step
+    if (!Number.isFinite(candidate) || candidate <= 0) return undefined
+    if (candidate >= maximum) {
+      targets.push(maximum)
+      break
+    }
+    if (targets.length > 0 && candidate <= targets[targets.length - 1]) return undefined
+    targets.push(candidate)
+  }
+  if (targets.length === 0 || targets[targets.length - 1] !== maximum) {
+    // Preserve one extra sentinel rung so field validation can distinguish a
+    // valid ladder that exceeds the supported twenty-rung UI/Core contract.
+    if (targets.length === 21) return targets
+    return undefined
+  }
+  return targets
+}
+
+function performanceOpenLoopRequestCap(intensity: number, arrivalPattern: QuickPerformanceArrivalPattern): number {
+  return arrivalPattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
+}
+
+function nonNegativeFiniteOrZero(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 0
 }
 
 function ResultValue({ label, value, numeric = false, wide = false, mono = false }: {
@@ -1065,6 +1557,84 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value)
 }
 
+function formatCapacityTarget(value: number): string {
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 10 }).format(value)
+}
+
+function InlineResultValue({ label, value, numeric = false }: { label: string; value: string; numeric?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="sr-only">{label}</dt>
+      <dd className={`truncate ${numeric ? "tabular-nums" : ""}`} title={`${label} ${value}`}>
+        {label} {value}
+      </dd>
+    </div>
+  )
+}
+
+function formatDuration(valueMS: number): string {
+  return valueMS >= 1_000 ? `${formatNumber(valueMS / 1_000)} s` : `${formatNumber(valueMS)} ms`
+}
+
+function formatPerformanceBudget(budget: NonNullable<QuickPerformanceReport["request_budget"]>): string {
+  return `${formatNumber(budget.total_cap)} / ${formatNumber(budget.limit)}（热身 ${formatNumber(budget.warmup_cap)} · 爬坡 ${formatNumber(budget.ramp_cap)} · 稳态 ${formatNumber(budget.measured_cap)}）`
+}
+
+function formatTrafficCompletion(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
+  return `${formatNumber(traffic.completed)} / ${formatNumber(traffic.request_cap)} · 成功 ${formatNumber(traffic.succeeded)} · 失败 ${formatNumber(traffic.failed)} · 拒绝 ${formatNumber(traffic.rejected)}`
+}
+
+function formatOptionalRate(value: number | undefined): string {
+  return value === undefined ? "—" : `${formatNumber(value)} req/s`
+}
+
+function performanceNeedsSeed(form: PerformanceForm): boolean {
+  return form.workloadMode === "normal" || (form.loadMode === "open_loop" && form.arrivalPattern === "poisson")
+}
+
+function performanceArrivalPattern(report: QuickPerformanceReport): string {
+  if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
+  return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"
+}
+
+function performanceWorkloadMode(report: QuickPerformanceReport): string {
+  if (report.profile.workload_mode === "normal") {
+    return `正态分布（输入 σ ${formatNumber(report.profile.input_tokens_stddev ?? 0)} / 输出 σ ${formatNumber(report.profile.output_tokens_stddev ?? 0)}）`
+  }
+  return report.profile.workload_mode === "fixed" ? "固定 Token" : "固定 Token（旧报告）"
+}
+
+function performanceSeed(report: QuickPerformanceReport): string {
+  if (report.profile.random_seed === undefined) return "—（旧报告）"
+  return report.profile.random_seed > 0 ? formatNumber(report.profile.random_seed) : "—（未使用）"
+}
+
+function performanceSharedPrefix(report: QuickPerformanceReport): string {
+  if (report.profile.shared_prefix_tokens === undefined) return "0 Token（旧报告）"
+  return `${formatNumber(report.profile.shared_prefix_tokens)} Token`
+}
+
+function performanceTargetRanges(report: QuickPerformanceReport): string | undefined {
+  const inputTargets = report.samples.flatMap((sample) => sample.target_input_tokens === undefined ? [] : [sample.target_input_tokens])
+  const outputTargets = report.samples.flatMap((sample) => sample.target_output_tokens === undefined ? [] : [sample.target_output_tokens])
+  if (inputTargets.length === 0 && outputTargets.length === 0) return undefined
+  return `${formatIntegerRange(inputTargets)} / ${formatIntegerRange(outputTargets)}`
+}
+
+function formatIntegerRange(values: number[]): string {
+  if (values.length === 0) return "—"
+  const minimum = Math.min(...values)
+  const maximum = Math.max(...values)
+  return minimum === maximum ? formatNumber(minimum) : `${formatNumber(minimum)}–${formatNumber(maximum)}`
+}
+
+function performanceTargetRate(report: QuickPerformanceReport): string {
+  const target = report.progress.capacity_target ?? report.profile.rate_per_second
+  return report.profile.load_mode === "open_loop" && target !== undefined
+    ? `${formatCapacityTarget(target)} req/s`
+    : "—（固定并发）"
+}
+
 function connectionFieldForCommandKey(key: keyof QuickTestCommand): ConnectionField | undefined {
   return ({
     url: "url",
@@ -1122,12 +1692,22 @@ function integerInRange(value: number, minimum: number, maximum: number): boolea
   return Number.isInteger(value) && value >= minimum && value <= maximum
 }
 
+function finiteInRange(value: number, minimum: number, maximum: number): boolean {
+  return Number.isFinite(value) && value >= minimum && value <= maximum
+}
+
 function firstConnectionErrorField(errors: ConnectionFieldErrors): ConnectionField | undefined {
   return (["url", "apiKey", "modelID", "prompt", "timeout"] as const).find((field) => errors[field])
 }
 
-function firstPerformanceErrorField(errors: PerformanceFieldErrors): keyof PerformanceForm | undefined {
-  return (["requestCount", "durationSeconds", "concurrency", "timeoutSeconds", "inputTokens", "outputTokens"] as const)
+function firstPerformanceErrorField(errors: PerformanceFieldErrors): PerformanceNumberFieldName | undefined {
+  return ([
+    "requestCount", "durationSeconds", "concurrency", "ratePerSecond", "maxInFlight", "timeoutSeconds",
+    "inputTokens", "outputTokens", "inputTokensStdDev", "outputTokensStdDev", "sharedPrefixTokens", "randomSeed",
+    "sloTTFTMS", "sloTPOTMS", "sloE2EMS", "sloTargetPercent",
+    "fixedCapacityStart", "fixedCapacityStep", "openCapacityStart", "openCapacityStep",
+    "warmupRequests", "rampDurationSeconds", "rampRequestCap", "sliceDurationSeconds",
+  ] as const)
     .find((field) => errors[field])
 }
 

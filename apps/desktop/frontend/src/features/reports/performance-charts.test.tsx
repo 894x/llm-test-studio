@@ -15,19 +15,19 @@ describe("PerformanceCharts", () => {
 
     expect(screen.getByTestId("distribution-chart-list")).toHaveClass("sm:grid-cols-3")
     expect(screen.getByTestId("timeline-chart-list")).toHaveClass("sm:grid-cols-3")
-    expect(screen.getByRole("img", { name: /TTFT 延迟直方分布/ })).toHaveClass("h-28")
+    expect(screen.getByRole("img", { name: /TTFT（含推理） 延迟直方分布/ })).toHaveClass("h-28")
 
     rerender(<PerformanceCharts layout="stacked" samples={[sample(true, 60)]} percentiles={PERCENTILES} />)
 
     expect(screen.getByTestId("distribution-chart-list")).toHaveClass("grid-cols-1")
     expect(screen.getByTestId("timeline-chart-list")).toHaveClass("grid-cols-1")
-    expect(screen.getByRole("img", { name: /TTFT 延迟直方分布/ })).toHaveClass("h-36")
+    expect(screen.getByRole("img", { name: /TTFT（含推理） 延迟直方分布/ })).toHaveClass("h-36")
   })
 
   it("plots only successful latency samples so curves match Core percentiles", () => {
     render(<PerformanceCharts samples={[sample(true, 60), sample(false, 600)]} percentiles={PERCENTILES} />)
 
-    expect(screen.getByRole("img", { name: "TTFT 延迟直方分布，1 个成功请求样本" })).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "TTFT（含推理） 延迟直方分布，1 个成功请求样本" })).toBeInTheDocument()
     expect(screen.getByRole("img", { name: "TPOT 随完成时间变化曲线，1 个成功请求样本" })).toBeInTheDocument()
     expect(screen.queryByRole("img", { name: /2 个成功请求样本/ })).not.toBeInTheDocument()
     expect(screen.getByRole("img", { name: "吞吐与并发时间线，2 个完成请求" })).toBeInTheDocument()
@@ -36,7 +36,7 @@ describe("PerformanceCharts", () => {
   it("shows an explicit empty state when every request failed", () => {
     render(<PerformanceCharts samples={[sample(false, 600)]} percentiles={PERCENTILES} />)
 
-    const ttftDistribution = screen.getByRole("figure", { name: "TTFT 分布图" })
+    const ttftDistribution = screen.getByRole("figure", { name: "TTFT（含推理） 分布图" })
     const e2eTimeline = screen.getByRole("figure", { name: "E2E 时间曲线" })
     expect(within(ttftDistribution).getByText("暂无成功请求样本")).toBeInTheDocument()
     expect(within(e2eTimeline).getByText("暂无成功请求样本")).toBeInTheDocument()

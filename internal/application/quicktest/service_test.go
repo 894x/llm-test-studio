@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
@@ -452,6 +454,273 @@ func TestRunPerformanceWithProgressPublishesAuthoritativeLifecycleSnapshots(t *t
 	}
 	if !foundInFlight {
 		t.Fatalf("progress never exposed in-flight work: %#v", progress)
+	}
+}
+
+func TestRunPerformanceSupportsRateControlledOpenLoop(t *testing.T) {
+	var mu sync.Mutex
+	startedAt := make([]time.Time, 0, 3)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		startedAt = append(startedAt, time.Now())
+		mu.Unlock()
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+		LoadMode: domain.LoadOpenLoop, RatePerSecond: 50, RequestCount: 3, MaxInFlight: 3,
+		TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Success || report.Profile.LoadMode != domain.LoadOpenLoop || report.Profile.RatePerSecond != 50 || report.Profile.MaxInFlight != 3 {
+		t.Fatalf("report = %#v", report)
+	}
+	if report.Metrics.OfferedQPS <= 0 || report.Metrics.LaunchedQPS <= 0 || report.Metrics.SuccessfulRequestQPS <= 0 || report.Metrics.CompletedQPS <= 0 {
+		t.Fatalf("throughput metrics = %#v", report.Metrics)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(startedAt) != 3 {
+		t.Fatalf("request starts = %d, want 3", len(startedAt))
+	}
+	if gap := startedAt[1].Sub(startedAt[0]); gap < 8*time.Millisecond {
+		t.Fatalf("open-loop request gap = %v, want scheduled pacing", gap)
+	}
+}
+
+func TestRunPerformanceNormalWorkloadRecordsTargetsWithoutPromptLeakage(t *testing.T) {
+	type receivedRequest struct {
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+		MaxTokens uint32 `json:"max_tokens"`
+	}
+	var mu sync.Mutex
+	received := make([]receivedRequest, 0, 3)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body receivedRequest
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		received = append(received, body)
+		mu.Unlock()
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+		RequestCount: 3, Concurrency: 1, TimeoutMS: 2_000,
+		WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 91,
+		InputTokens: 20, InputTokensStdDev: 4, SharedPrefixTokens: 5,
+		OutputTokens: 8, OutputTokensStdDev: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Success || report.Profile.WorkloadMode != PerformanceWorkloadNormal || report.Profile.ArrivalPattern != load.ArrivalConstant {
+		t.Fatalf("report profile = %#v", report.Profile)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(received) != len(report.Samples) || len(received) != 3 {
+		t.Fatalf("requests/samples = %d/%d", len(received), len(report.Samples))
+	}
+	for index, sample := range report.Samples {
+		if sample.TargetInputTokens == 0 || sample.TargetOutputTokens == 0 || len(received[index].Messages) != 1 {
+			t.Fatalf("sample/request %d = %#v / %#v", index, sample, received[index])
+		}
+		if got := len(strings.Fields(received[index].Messages[0].Content)); got != int(sample.TargetInputTokens) {
+			t.Fatalf("request %d words = %d, target = %d", index, got, sample.TargetInputTokens)
+		}
+		if received[index].MaxTokens != sample.TargetOutputTokens {
+			t.Fatalf("request %d max_tokens = %d, target = %d", index, received[index].MaxTokens, sample.TargetOutputTokens)
+		}
+	}
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range received {
+		if strings.Contains(string(encoded), request.Messages[0].Content) {
+			t.Fatalf("report leaked generated prompt: %s", encoded)
+		}
+	}
+}
+
+func TestPerformanceInputBudgetGatesDynamicRunsWithoutTouchingFixedFastPath(t *testing.T) {
+	releaseBudget, err := sharedPerformanceInputTokenBudget.acquire(context.Background(), uint32(maxPerformanceInputTokensInFlight))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseBudget()
+	var calls atomic.Uint64
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		}, nil
+	})
+	service := New(Dependencies{Transport: transport})
+	command := PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 500, InputTokens: 10, OutputTokens: 2,
+	}
+	fixed, err := service.RunPerformance(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fixed.Success || calls.Load() != 1 {
+		t.Fatalf("fixed report = %#v, transport calls = %d", fixed, calls.Load())
+	}
+
+	command.WorkloadMode = PerformanceWorkloadNormal
+	command.RandomSeed = 1
+	command.TimeoutMS = 20
+	blocked, err := service.RunPerformance(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked.Success || len(blocked.Samples) != 1 || !blocked.Samples[0].TimedOut || calls.Load() != 1 {
+		t.Fatalf("blocked dynamic report = %#v, transport calls = %d", blocked, calls.Load())
+	}
+
+	releaseBudget()
+	command.TimeoutMS = 2_000
+	dynamic, err := service.RunPerformance(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dynamic.Success || calls.Load() != 2 {
+		t.Fatalf("released dynamic report = %#v, transport calls = %d", dynamic, calls.Load())
+	}
+}
+
+func TestRunPerformanceRejectsInvalidLoadModeCombinations(t *testing.T) {
+	base := PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
+		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
+	}
+	for name, mutate := range map[string]func(*PerformanceCommand){
+		"open loop without rate": func(command *PerformanceCommand) {
+			command.LoadMode = domain.LoadOpenLoop
+			command.Concurrency = 0
+			command.MaxInFlight = 2
+		},
+		"fixed concurrency with rate": func(command *PerformanceCommand) { command.RatePerSecond = 10 },
+		"duration schedule exceeds sample cap": func(command *PerformanceCommand) {
+			command.LoadMode = domain.LoadOpenLoop
+			command.RequestCount = 0
+			command.DurationMS = MaxPerformanceDurationMS
+			command.Concurrency = 0
+			command.RatePerSecond = 100
+			command.MaxInFlight = 2
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			command := base
+			mutate(&command)
+			report, err := New(Dependencies{}).RunPerformance(context.Background(), command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.ErrorCode != ErrorInvalidRequest {
+				t.Fatalf("error code = %q, want %q", report.ErrorCode, ErrorInvalidRequest)
+			}
+		})
+	}
+}
+
+func TestRunPerformanceRejectsInvalidArrivalAndWorkloadCombinations(t *testing.T) {
+	base := PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
+		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
+	}
+	for name, mutate := range map[string]func(*PerformanceCommand){
+		"poisson requires open loop": func(command *PerformanceCommand) {
+			command.ArrivalPattern = load.ArrivalPoisson
+			command.RandomSeed = 1
+		},
+		"unknown arrival":                      func(command *PerformanceCommand) { command.ArrivalPattern = "bursty" },
+		"fixed workload rejects stddev":        func(command *PerformanceCommand) { command.InputTokensStdDev = 1 },
+		"fixed workload rejects shared prefix": func(command *PerformanceCommand) { command.SharedPrefixTokens = 1 },
+		"unused seed":                          func(command *PerformanceCommand) { command.RandomSeed = 1 },
+		"unknown workload":                     func(command *PerformanceCommand) { command.WorkloadMode = "trace" },
+		"normal workload requires seed": func(command *PerformanceCommand) {
+			command.WorkloadMode = PerformanceWorkloadNormal
+		},
+		"poisson arrival requires seed": func(command *PerformanceCommand) {
+			command.LoadMode = domain.LoadOpenLoop
+			command.ArrivalPattern = load.ArrivalPoisson
+			command.Concurrency = 0
+			command.RatePerSecond = 10
+			command.MaxInFlight = 2
+		},
+		"input stddev exceeds mean": func(command *PerformanceCommand) {
+			command.WorkloadMode = PerformanceWorkloadNormal
+			command.RandomSeed = 1
+			command.InputTokensStdDev = command.InputTokens + 1
+		},
+		"output stddev exceeds mean": func(command *PerformanceCommand) {
+			command.WorkloadMode = PerformanceWorkloadNormal
+			command.RandomSeed = 1
+			command.OutputTokensStdDev = command.OutputTokens + 1
+		},
+		"shared prefix consumes input": func(command *PerformanceCommand) {
+			command.WorkloadMode = PerformanceWorkloadNormal
+			command.RandomSeed = 1
+			command.SharedPrefixTokens = command.InputTokens
+		},
+		"poisson duration lacks headroom": func(command *PerformanceCommand) {
+			command.LoadMode = domain.LoadOpenLoop
+			command.ArrivalPattern = load.ArrivalPoisson
+			command.RequestCount = 0
+			command.DurationMS = 1_000
+			command.Concurrency = 0
+			command.RatePerSecond = 6_000
+			command.MaxInFlight = 2
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			command := base
+			mutate(&command)
+			report, err := New(Dependencies{}).RunPerformance(context.Background(), command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.ErrorCode != ErrorInvalidRequest {
+				t.Fatalf("error code = %q, want %q; profile = %#v", report.ErrorCode, ErrorInvalidRequest, report.Profile)
+			}
+		})
+	}
+}
+
+func TestValidPerformanceProfileAcceptsNormalStddevAtMeanBoundary(t *testing.T) {
+	command := PerformanceCommand{
+		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: load.ArrivalConstant,
+		WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 1,
+		RequestCount: 1, Concurrency: 1, TimeoutMS: 1_000,
+		InputTokens: 10, InputTokensStdDev: 10,
+		OutputTokens: 4, OutputTokensStdDev: 4,
+	}
+	if !validPerformanceProfile(command) {
+		t.Fatalf("boundary profile rejected: %#v", command)
 	}
 }
 

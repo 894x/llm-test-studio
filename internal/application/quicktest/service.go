@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -197,18 +198,43 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	if service == nil {
 		return PerformanceReport{}, ErrServiceUnavailable
 	}
+	if command.LoadMode == "" {
+		command.LoadMode = domain.LoadFixedConcurrency
+	}
+	command.ArrivalPattern = normalizedArrivalPattern(command.ArrivalPattern)
+	command.WorkloadMode = normalizedWorkloadMode(command.WorkloadMode)
 	report := PerformanceReport{
 		SchemaVersion: PerformanceSchemaVersion,
 		AddressMode:   command.AddressMode,
 		ModelID:       command.ModelID,
 		ArchiveStatus: PerformanceArchiveNotAttempted,
 		Profile: PerformanceProfile{
-			RequestCount: command.RequestCount,
-			DurationMS:   command.DurationMS,
-			Concurrency:  command.Concurrency,
-			TimeoutMS:    command.TimeoutMS,
-			InputTokens:  command.InputTokens,
-			OutputTokens: command.OutputTokens,
+			LoadMode:           command.LoadMode,
+			ArrivalPattern:     command.ArrivalPattern,
+			WorkloadMode:       command.WorkloadMode,
+			RandomSeed:         command.RandomSeed,
+			RequestCount:       command.RequestCount,
+			DurationMS:         command.DurationMS,
+			Concurrency:        command.Concurrency,
+			RatePerSecond:      command.RatePerSecond,
+			MaxInFlight:        command.MaxInFlight,
+			TimeoutMS:          command.TimeoutMS,
+			InputTokens:        command.InputTokens,
+			OutputTokens:       command.OutputTokens,
+			InputTokensStdDev:  command.InputTokensStdDev,
+			OutputTokensStdDev: command.OutputTokensStdDev,
+			SharedPrefixTokens: command.SharedPrefixTokens,
+			WarmupRequests:     command.WarmupRequests,
+			RampDurationMS:     command.RampDurationMS,
+			RampRequestCap:     command.RampRequestCap,
+			SliceDurationMS:    command.SliceDurationMS,
+			SLOTTFTMS:          command.SLOTTFTMS,
+			SLOTPOTMS:          command.SLOTPOTMS,
+			SLOE2EMS:           command.SLOE2EMS,
+			SLOTargetPercent:   command.SLOTargetPercent,
+			CapacityEnabled:    command.CapacityEnabled,
+			CapacityStart:      command.CapacityStart,
+			CapacityStep:       command.CapacityStep,
 		},
 		Failures: []PerformanceFailure{},
 		Samples:  []PerformanceSample{},
@@ -238,49 +264,135 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		return report, nil
 	}
 
-	profile := domain.LoadProfile{
-		Mode: domain.LoadFixedConcurrency, Concurrency: command.Concurrency,
-		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
-		RequestTimeoutMS: command.TimeoutMS,
+	requestBudget, measuredCap, budgetErr := buildPerformanceRequestBudget(report.Profile)
+	if budgetErr != nil {
+		report.ErrorCode = ErrorInvalidRequest
+		return report, nil
 	}
-	if profile.RequestCount == 0 {
-		profile.RequestCount = MaxPerformanceRequests
+	report.RequestBudget = requestBudget
+	perRunCap := measuredCap
+	if report.Profile.CapacityEnabled {
+		perRunCap = report.Profile.RequestCount
 	}
+	profile := performanceLoadProfile(report.Profile, perRunCap)
 	if err := profile.Validate(); err != nil {
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
 	}
-	prompt := strings.TrimSpace(strings.Repeat("test ", int(command.InputTokens)))
-	body, err := json.Marshal(map[string]any{
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
-		"max_tokens": command.OutputTokens,
-		"stream":     true,
-	})
-	if err != nil {
-		report.ErrorCode = load.ErrorRequestFailed
-		return report, nil
+	var (
+		body     json.RawMessage
+		workload *performanceWorkload
+		err      error
+	)
+	if command.WorkloadMode == PerformanceWorkloadNormal {
+		workload, err = newPerformanceWorkload(report.Profile)
+		if err != nil {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+	} else {
+		prompt := strings.TrimSpace(strings.Repeat("test ", int(command.InputTokens)))
+		body, err = json.Marshal(map[string]any{
+			"messages":   []map[string]string{{"role": "user", "content": prompt}},
+			"max_tokens": command.OutputTokens,
+			"stream":     true,
+		})
+		if err != nil {
+			report.ErrorCode = load.ErrorRequestFailed
+			return report, nil
+		}
 	}
 
 	evidenceRecorder := newPerformanceEvidenceRecorder()
-	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body, evidenceRecorder.record)
+	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body, workload, evidenceRecorder.record)
 	command.APIKey = ""
 	if code != "" {
 		report.ErrorCode = code
 		return report, nil
 	}
 	defer cleanup()
+	executor = streamingPerformanceExecutor(executor)
 
-	options := load.Options{}
-	if onProgress != nil {
-		options.OnProgress = func(progress load.Progress) {
-			onProgress(performanceProgress(progress))
+	if command.WarmupRequests > 0 {
+		warmupProfile := performanceWarmupProfile(report.Profile)
+		warmupOutcome, warmupErr := load.Run(
+			ctx,
+			warmupProfile,
+			namespacedPerformanceExecutor(executor, performanceWarmupRequestIndexBase),
+			load.Options{
+				MaxScheduledRequests: command.WarmupRequests,
+				OnProgress:           performancePhaseProgressCallback(onProgress, PerformancePhaseWarmingUp),
+			},
+		)
+		report.Warmup = performanceTrafficSummary(command.WarmupRequests, warmupOutcome)
+		if preparationRunFailed(ctx, warmupOutcome, warmupErr, &report) {
+			return report, nil
 		}
 	}
+
+	if command.RampDurationMS > 0 {
+		rampProfile := performanceRampProfile(report.Profile, requestBudget.RampCap)
+		rampOptions := load.Options{
+			Ramp:                 true,
+			MaxScheduledRequests: requestBudget.RampCap,
+			ArrivalPattern:       command.ArrivalPattern,
+			RandomSeed:           command.RandomSeed,
+			OnProgress:           performancePhaseProgressCallback(onProgress, PerformancePhaseRamping),
+		}
+		if command.LoadMode == domain.LoadOpenLoop {
+			rampOptions.MaxOpenLoopInFlight = uint64(command.MaxInFlight)
+		}
+		rampOutcome, rampErr := load.Run(
+			ctx,
+			rampProfile,
+			namespacedPerformanceExecutor(executor, performanceRampRequestIndexBase),
+			rampOptions,
+		)
+		rampTraffic := performanceTrafficSummary(requestBudget.RampCap, rampOutcome)
+		report.Ramp = &PerformanceRampSummary{
+			Shape:           "linear_staircase",
+			DurationMS:      command.RampDurationMS,
+			Steps:           load.LinearRampStepCount(rampProfile),
+			CompletedWindow: rampOutcome.Progress.Phase == load.PhaseCompleted && !rampOutcome.Progress.Stopped && !rampOutcome.Progress.Capped,
+			Traffic:         *rampTraffic,
+		}
+		if command.LoadMode == domain.LoadFixedConcurrency {
+			report.Ramp.TargetConcurrency = command.Concurrency
+		} else {
+			report.Ramp.TargetRatePerSecond = command.RatePerSecond
+		}
+		if preparationRunFailed(ctx, rampOutcome, rampErr, &report) {
+			return report, nil
+		}
+	}
+
+	if report.Profile.CapacityEnabled {
+		return service.runPerformanceCapacity(
+			ctx,
+			report,
+			executor,
+			evidenceRecorder,
+			workload,
+			onProgress,
+		)
+	}
+
+	evidenceRecorder.enableFresh()
+	options := performanceLoadOptions(report.Profile, measuredCap, onProgress)
 	outcome, runErr := load.Run(ctx, profile, executor, options)
+	outcome.Progress = performanceMeasuredProgress(report.Profile, measuredCap, outcome.Progress)
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
 	report.Failures = performanceFailures(outcome.Results)
-	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot())
+	report.Samples = performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
+	report.SLOAssessment = buildPerformanceSLOAssessment(report.Profile, report.Samples, report.Progress)
+	if command.SliceDurationMS > 0 {
+		report.TimeSlices = buildPerformanceTimeSlices(
+			outcome.Results,
+			outcome.Progress.TotalDuration,
+			time.Duration(command.SliceDurationMS)*time.Millisecond,
+		)
+	}
 	report.Success = outcome.Progress.Phase == load.PhaseCompleted && outcome.Metrics.Completed > 0 && outcome.Metrics.Failed == 0
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -293,6 +405,322 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		service.archivePerformanceReport(ctx, &report)
 	}
 	return report, nil
+}
+
+func streamingPerformanceExecutor(executor load.Executor) load.Executor {
+	return func(ctx context.Context, request load.Request) load.Observation {
+		observation := executor(ctx, request)
+		observation.Streaming = true
+		if observation.TTFTAny <= 0 {
+			observation.TTFTAny = observation.TTFT
+		}
+		observation.TTFT = observation.TTFTAny
+		if observation.TTFTAny > 0 && observation.SemanticChunkCount == 0 {
+			observation.SemanticChunkCount = 1
+		}
+		return observation
+	}
+}
+
+type performanceCapacityProjection struct {
+	success       bool
+	progress      PerformanceProgress
+	metrics       load.Metrics
+	failures      []PerformanceFailure
+	samples       []PerformanceSample
+	timeSlices    []PerformanceTimeSlice
+	sloAssessment *PerformanceSLOAssessment
+	runErr        error
+}
+
+func (service *Service) runPerformanceCapacity(
+	ctx context.Context,
+	report PerformanceReport,
+	executor load.Executor,
+	evidenceRecorder *performanceEvidenceRecorder,
+	workload *performanceWorkload,
+	onProgress func(PerformanceProgress),
+) (PerformanceReport, error) {
+	targets, err := buildPerformanceCapacityTargets(report.Profile)
+	if err != nil {
+		report.ErrorCode = ErrorInvalidRequest
+		return report, nil
+	}
+	capacity := &PerformanceCapacityResult{
+		Status: PerformanceSLONotEvaluated,
+		Rungs:  make([]PerformanceCapacityRung, 0, len(targets)),
+	}
+	var selected *performanceCapacityProjection
+	var selectedIndex uint32
+
+	for targetIndex, target := range targets {
+		rungIndex := uint32(targetIndex)
+		effectiveProfile := performanceCapacityProfile(report.Profile, target)
+		evidenceRecorder.enableFresh()
+		progressCallback := capacityProgressCallback(onProgress, rungIndex, uint32(len(targets)), target)
+		options := performanceLoadOptions(effectiveProfile, effectiveProfile.RequestCount, progressCallback)
+		outcome, runErr := load.Run(
+			ctx,
+			performanceLoadProfile(effectiveProfile, effectiveProfile.RequestCount),
+			executor,
+			options,
+		)
+		outcome.Progress = performanceMeasuredProgress(effectiveProfile, effectiveProfile.RequestCount, outcome.Progress)
+		progress := performanceProgress(outcome.Progress)
+		decorateCapacityProgress(&progress, rungIndex, uint32(len(targets)), target)
+		failures := performanceFailures(outcome.Results)
+		samples := performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
+		assessment := buildPerformanceSLOAssessment(report.Profile, samples, progress)
+		if assessment == nil {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+		if runErr != nil {
+			assessment.Status = PerformanceSLONotEvaluated
+		}
+		timeSlices := []PerformanceTimeSlice(nil)
+		if report.Profile.SliceDurationMS > 0 {
+			timeSlices = buildPerformanceTimeSlices(
+				outcome.Results,
+				outcome.Progress.TotalDuration,
+				time.Duration(report.Profile.SliceDurationMS)*time.Millisecond,
+			)
+		}
+		transportSuccess := outcome.Progress.Phase == load.PhaseCompleted && outcome.Metrics.Completed > 0 && outcome.Metrics.Failed == 0
+		capacity.Rungs = append(capacity.Rungs, PerformanceCapacityRung{
+			Index:         rungIndex,
+			Target:        target,
+			Success:       transportSuccess,
+			Progress:      progress,
+			Metrics:       outcome.Metrics,
+			Failures:      failures,
+			SLOAssessment: *assessment,
+		})
+		projection := &performanceCapacityProjection{
+			success: transportSuccess, progress: progress, metrics: outcome.Metrics,
+			failures: failures, samples: samples, timeSlices: timeSlices,
+			sloAssessment: assessment, runErr: runErr,
+		}
+
+		switch assessment.Status {
+		case PerformanceSLOPassed:
+			selected = projection
+			selectedIndex = rungIndex
+			highest := rungIndex
+			capacity.HighestPassingRungIndex = &highest
+			if targetIndex == len(targets)-1 {
+				capacity.Status = PerformanceSLOPassed
+			}
+		case PerformanceSLOFailed:
+			capacity.Status = PerformanceSLOFailed
+			if selected == nil {
+				selected = projection
+				selectedIndex = rungIndex
+			}
+		case PerformanceSLONotEvaluated:
+			capacity.Status = PerformanceSLONotEvaluated
+			selected = projection
+			selectedIndex = rungIndex
+		}
+		if ctx.Err() != nil {
+			capacity.Status = PerformanceSLONotEvaluated
+			break
+		}
+		if assessment.Status != PerformanceSLOPassed {
+			break
+		}
+	}
+
+	if selected == nil {
+		report.ErrorCode = load.ErrorRequestFailed
+		return report, nil
+	}
+	selectedCopy := selectedIndex
+	capacity.SelectedRungIndex = &selectedCopy
+	report.CapacityResult = capacity
+	report.Success = selected.success
+	report.Progress = selected.progress
+	report.Metrics = selected.metrics
+	report.Failures = selected.failures
+	report.Samples = selected.samples
+	report.TimeSlices = selected.timeSlices
+	report.SLOAssessment = selected.sloAssessment
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		report.ErrorCode = classifyContext(ctxErr)
+	} else if selected.runErr != nil {
+		report.ErrorCode = load.ErrorRequestFailed
+	}
+	if capacity.Status == PerformanceSLONotEvaluated || ctx.Err() != nil {
+		return report, nil
+	}
+	if report.Progress.Launched > 0 {
+		service.archivePerformanceReport(ctx, &report)
+	}
+	return report, nil
+}
+
+func capacityProgressCallback(
+	onProgress func(PerformanceProgress),
+	rungIndex, rungCount uint32,
+	target float64,
+) func(PerformanceProgress) {
+	if onProgress == nil {
+		return nil
+	}
+	return func(progress PerformanceProgress) {
+		decorateCapacityProgress(&progress, rungIndex, rungCount, target)
+		onProgress(progress)
+	}
+}
+
+func decorateCapacityProgress(progress *PerformanceProgress, rungIndex, rungCount uint32, target float64) {
+	progress.CapacityRungNumber = rungIndex + 1
+	progress.CapacityRungCount = rungCount
+	progress.CapacityTarget = target
+}
+
+const (
+	performanceRampRequestIndexBase   uint64 = 1 << 62
+	performanceWarmupRequestIndexBase uint64 = 1 << 63
+)
+
+func performanceLoadProfile(profile PerformanceProfile, measuredCap uint64) domain.LoadProfile {
+	result := domain.LoadProfile{
+		Mode: profile.LoadMode, Concurrency: profile.Concurrency,
+		RequestCount: profile.RequestCount, DurationMS: profile.DurationMS,
+		RatePerSecond: profile.RatePerSecond, RequestTimeoutMS: profile.TimeoutMS,
+	}
+	if result.Mode == domain.LoadOpenLoop {
+		// LoadProfile keeps Concurrency mandatory for compatibility, but open-loop
+		// admission is controlled independently by MaxInFlight.
+		result.Concurrency = 1
+	}
+	if result.Mode == domain.LoadFixedConcurrency && result.RequestCount == 0 {
+		result.RequestCount = measuredCap
+	}
+	return result
+}
+
+func performanceWarmupProfile(profile PerformanceProfile) domain.LoadProfile {
+	concurrency := profile.Concurrency
+	if profile.LoadMode == domain.LoadOpenLoop {
+		concurrency = profile.MaxInFlight
+	}
+	if uint64(concurrency) > profile.WarmupRequests {
+		concurrency = uint32(profile.WarmupRequests)
+	}
+	return domain.LoadProfile{
+		Mode:             domain.LoadFixedConcurrency,
+		Concurrency:      concurrency,
+		RequestCount:     profile.WarmupRequests,
+		RequestTimeoutMS: profile.TimeoutMS,
+	}
+}
+
+func performanceRampProfile(profile PerformanceProfile, requestCap uint64) domain.LoadProfile {
+	result := domain.LoadProfile{
+		Mode: profile.LoadMode, Concurrency: profile.Concurrency,
+		DurationMS: profile.RampDurationMS, RatePerSecond: profile.RatePerSecond,
+		RequestTimeoutMS: profile.TimeoutMS,
+	}
+	if profile.LoadMode == domain.LoadFixedConcurrency {
+		result.RequestCount = requestCap
+	} else {
+		result.Concurrency = 1
+	}
+	return result
+}
+
+func performanceLoadOptions(profile PerformanceProfile, requestCap uint64, onProgress func(PerformanceProgress)) load.Options {
+	options := load.Options{
+		MaxScheduledRequests: requestCap,
+		ArrivalPattern:       normalizedArrivalPattern(profile.ArrivalPattern),
+		RandomSeed:           profile.RandomSeed,
+	}
+	if profile.LoadMode == domain.LoadOpenLoop {
+		options.MaxOpenLoopInFlight = uint64(profile.MaxInFlight)
+	}
+	if onProgress != nil {
+		options.OnProgress = func(progress load.Progress) {
+			onProgress(performanceProgress(performanceMeasuredProgress(profile, requestCap, progress)))
+		}
+	}
+	return options
+}
+
+func performanceMeasuredProgress(profile PerformanceProfile, requestCap uint64, progress load.Progress) load.Progress {
+	if !progress.Capped && performanceMeasuredBudgetCapped(
+		profile,
+		requestCap,
+		progress.Offered,
+		durationMilliseconds(progress.SendDuration),
+	) {
+		progress.Capped = true
+	}
+	return progress
+}
+
+func performanceMeasuredBudgetCapped(profile PerformanceProfile, requestCap, offered uint64, sendDurationMS float64) bool {
+	return profile.LoadMode == domain.LoadFixedConcurrency && profile.RequestCount == 0 && profile.DurationMS > 0 &&
+		requestCap > 0 && offered >= requestCap && sendDurationMS < float64(profile.DurationMS)
+}
+
+func performancePhaseProgressCallback(onProgress func(PerformanceProgress), phase load.Phase) func(load.Progress) {
+	if onProgress == nil {
+		return nil
+	}
+	return func(progress load.Progress) {
+		converted := performanceProgress(progress)
+		if progress.Phase != load.PhaseCancelled {
+			converted.Phase = phase
+		}
+		onProgress(converted)
+	}
+}
+
+func namespacedPerformanceExecutor(executor load.Executor, base uint64) load.Executor {
+	return func(ctx context.Context, request load.Request) load.Observation {
+		request.Index += base
+		return executor(ctx, request)
+	}
+}
+
+func preparationRunFailed(ctx context.Context, outcome load.Outcome, runErr error, report *PerformanceReport) bool {
+	if runErr == nil && outcome.Progress.Phase != load.PhaseCancelled {
+		return false
+	}
+	report.Progress = PerformanceProgress{Phase: outcome.Progress.Phase, Stopped: outcome.Progress.Stopped}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		report.Progress.Phase = load.PhaseCancelled
+		report.Progress.Stopped = true
+		report.ErrorCode = classifyContext(ctxErr)
+	} else {
+		report.ErrorCode = load.ErrorRequestFailed
+	}
+	return true
+}
+
+func performanceTrafficSummary(requestCap uint64, outcome load.Outcome) *PerformanceTrafficSummary {
+	return &PerformanceTrafficSummary{
+		RequestCap:       requestCap,
+		Offered:          outcome.Progress.Offered,
+		Launched:         outcome.Progress.Launched,
+		Completed:        outcome.Progress.Completed,
+		Succeeded:        outcome.Progress.Succeeded,
+		Failed:           outcome.Progress.Failed,
+		TimedOut:         outcome.Metrics.TimedOut,
+		Rejected:         outcome.Progress.Rejected,
+		PeakInFlight:     outcome.Progress.PeakInFlight,
+		PromptTokens:     outcome.Metrics.PromptTokens,
+		CompletionTokens: outcome.Metrics.CompletionTokens,
+		CachedTokens:     outcome.Metrics.CachedTokens,
+		SendDurationMS:   durationMilliseconds(outcome.Progress.SendDuration),
+		DrainDurationMS:  durationMilliseconds(outcome.Progress.DrainDuration),
+		TotalDurationMS:  durationMilliseconds(outcome.Progress.TotalDuration),
+		Failures:         performanceFailures(outcome.Results),
+		Stopped:          outcome.Progress.Stopped,
+		Capped:           outcome.Progress.Capped,
+	}
 }
 
 func (service *Service) applySelectedChannel(ctx context.Context, channelID string, addressMode *AddressMode, address, apiKey *string) domain.ErrorCode {
@@ -337,16 +765,83 @@ func (service *Service) archivePerformanceReport(ctx context.Context, report *Pe
 }
 
 func validPerformanceProfile(command PerformanceCommand) bool {
-	return (command.RequestCount > 0 || command.DurationMS > 0) &&
-		command.RequestCount <= MaxPerformanceRequests &&
-		command.Concurrency > 0 && command.Concurrency <= MaxPerformanceConcurrency &&
-		command.DurationMS <= MaxPerformanceDurationMS &&
-		command.TimeoutMS > 0 && command.TimeoutMS <= MaxPerformanceTimeoutMS &&
-		command.InputTokens > 0 && command.InputTokens <= MaxPerformanceInputTokens &&
-		command.OutputTokens > 0 && command.OutputTokens <= MaxPerformanceOutputTokens
+	return validPerformanceProfileValues(PerformanceProfile{
+		LoadMode: command.LoadMode, ArrivalPattern: command.ArrivalPattern, WorkloadMode: command.WorkloadMode, RandomSeed: command.RandomSeed,
+		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
+		Concurrency: command.Concurrency, RatePerSecond: command.RatePerSecond, MaxInFlight: command.MaxInFlight,
+		TimeoutMS: command.TimeoutMS, InputTokens: command.InputTokens, OutputTokens: command.OutputTokens,
+		InputTokensStdDev: command.InputTokensStdDev, OutputTokensStdDev: command.OutputTokensStdDev,
+		SharedPrefixTokens: command.SharedPrefixTokens, WarmupRequests: command.WarmupRequests,
+		RampDurationMS: command.RampDurationMS, RampRequestCap: command.RampRequestCap, SliceDurationMS: command.SliceDurationMS,
+		SLOTTFTMS: command.SLOTTFTMS, SLOTPOTMS: command.SLOTPOTMS, SLOE2EMS: command.SLOE2EMS, SLOTargetPercent: command.SLOTargetPercent,
+		CapacityEnabled: command.CapacityEnabled, CapacityStart: command.CapacityStart, CapacityStep: command.CapacityStep,
+	})
 }
 
-func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
+func validPerformanceProfileValues(profile PerformanceProfile) bool {
+	arrival := normalizedArrivalPattern(profile.ArrivalPattern)
+	workload := normalizedWorkloadMode(profile.WorkloadMode)
+	if !((profile.RequestCount > 0 || profile.DurationMS > 0) &&
+		profile.RequestCount <= MaxPerformanceRequests &&
+		profile.DurationMS <= MaxPerformanceDurationMS &&
+		profile.TimeoutMS > 0 && profile.TimeoutMS <= MaxPerformanceTimeoutMS &&
+		profile.InputTokens > 0 && profile.InputTokens <= MaxPerformanceInputTokens &&
+		profile.OutputTokens > 0 && profile.OutputTokens <= MaxPerformanceOutputTokens &&
+		profile.InputTokensStdDev <= MaxPerformanceInputTokens &&
+		profile.OutputTokensStdDev <= MaxPerformanceOutputTokens) {
+		return false
+	}
+	if arrival != load.ArrivalConstant && arrival != load.ArrivalPoisson {
+		return false
+	}
+	switch workload {
+	case PerformanceWorkloadFixed:
+		if profile.InputTokensStdDev != 0 || profile.OutputTokensStdDev != 0 || profile.SharedPrefixTokens != 0 {
+			return false
+		}
+	case PerformanceWorkloadNormal:
+		if profile.InputTokensStdDev > profile.InputTokens || profile.OutputTokensStdDev > profile.OutputTokens ||
+			profile.SharedPrefixTokens >= profile.InputTokens || profile.SharedPrefixTokens >= MaxPerformanceInputTokens {
+			return false
+		}
+	default:
+		return false
+	}
+	needsSeed := arrival == load.ArrivalPoisson || workload == PerformanceWorkloadNormal
+	if needsSeed != (profile.RandomSeed > 0) {
+		return false
+	}
+	validLoad := false
+	switch profile.LoadMode {
+	case domain.LoadFixedConcurrency:
+		validLoad = profile.Concurrency > 0 && profile.Concurrency <= MaxPerformanceConcurrency &&
+			profile.RatePerSecond == 0 && profile.MaxInFlight == 0 && arrival == load.ArrivalConstant
+	case domain.LoadOpenLoop:
+		if profile.Concurrency != 0 || profile.MaxInFlight == 0 || profile.MaxInFlight > MaxPerformanceInFlight ||
+			math.IsNaN(profile.RatePerSecond) || math.IsInf(profile.RatePerSecond, 0) ||
+			profile.RatePerSecond < MinPerformanceRatePerSecond || profile.RatePerSecond > MaxPerformanceRatePerSecond {
+			return false
+		}
+		if profile.RequestCount > 0 {
+			validLoad = true
+			break
+		}
+		_, err := estimateOpenLoopRequestCap(profile.RatePerSecond, profile.DurationMS, arrival)
+		validLoad = err == nil
+	default:
+		return false
+	}
+	if !validLoad {
+		return false
+	}
+	if !validPerformanceSLOConfiguration(profile) || !validPerformanceCapacityConfiguration(profile) {
+		return false
+	}
+	_, _, err := buildPerformanceRequestBudget(profile)
+	return err == nil
+}
+
+func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, workload *performanceWorkload, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, quickTestCredentialID)
 	if err != nil {
 		return nil, func() {}, load.ErrorRequestFailed
@@ -381,13 +876,36 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 		_ = store.Delete(context.Background(), storeRef)
 		return nil, func() {}, classifyConstruction(err)
 	}
-	executor, err := client.Executor(domain.TestRequest{
-		Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: body,
-	})
-	if err != nil {
-		client.Close()
-		_ = store.Delete(context.Background(), storeRef)
-		return nil, func() {}, ErrorInvalidRequest
+	var executor load.Executor
+	if workload == nil {
+		executor, err = client.Executor(domain.TestRequest{
+			Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: body,
+		})
+		if err != nil {
+			client.Close()
+			_ = store.Delete(context.Background(), storeRef)
+			return nil, func() {}, ErrorInvalidRequest
+		}
+	} else {
+		executor = func(requestContext context.Context, request load.Request) load.Observation {
+			target := workload.target(request.Index)
+			release, budgetErr := sharedPerformanceInputTokenBudget.acquire(requestContext, target.InputTokens)
+			if budgetErr != nil {
+				return load.Observation{Index: request.Index, ErrorCode: classifyContext(budgetErr)}
+			}
+			defer release()
+			requestBody, bodyErr := workload.requestBodyForTarget(request.Index, target)
+			if bodyErr != nil {
+				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
+			}
+			requestExecutor, executorErr := client.Executor(domain.TestRequest{
+				Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: requestBody,
+			})
+			if executorErr != nil {
+				return load.Observation{Index: request.Index, ErrorCode: load.ErrorRequestFailed}
+			}
+			return requestExecutor(requestContext, request)
+		}
 	}
 	cleanup := func() {
 		client.Close()
@@ -399,8 +917,9 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 func performanceProgress(progress load.Progress) PerformanceProgress {
 	return PerformanceProgress{
 		Phase: progress.Phase, Planned: progress.Planned, Launched: progress.Launched,
+		Offered:   progress.Offered,
 		Completed: progress.Completed, InFlight: progress.InFlight, PeakInFlight: progress.PeakInFlight,
-		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected,
+		Succeeded: progress.Succeeded, Failed: progress.Failed, Rejected: progress.Rejected, Stopped: progress.Stopped, Capped: progress.Capped,
 		SendDurationMS:  float64(progress.SendDuration) / float64(time.Millisecond),
 		DrainDurationMS: float64(progress.DrainDuration) / float64(time.Millisecond),
 		TotalDurationMS: float64(progress.TotalDuration) / float64(time.Millisecond),
@@ -435,7 +954,7 @@ func performanceFailures(observations []load.Observation) []PerformanceFailure {
 	return failures
 }
 
-func performanceSamples(observations []load.Observation, evidence map[uint64]*PerformanceResponseEvidence) []PerformanceSample {
+func performanceSamples(observations []load.Observation, evidence map[uint64]*PerformanceResponseEvidence, workload *performanceWorkload) []PerformanceSample {
 	samples := make([]PerformanceSample, 0, len(observations))
 	for _, observation := range observations {
 		code := observation.ErrorCode
@@ -449,28 +968,48 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 		} else {
 			code = ""
 		}
-		tpot := 0.0
-		if observation.TTFT > 0 && observation.E2E > observation.TTFT && observation.CompletionTokens > 1 {
-			tpot = durationMilliseconds(observation.E2E-observation.TTFT) / float64(observation.CompletionTokens-1)
+		ttftAnyMS := durationMilliseconds(observation.TTFTAny)
+		if ttftAnyMS <= 0 {
+			ttftAnyMS = durationMilliseconds(observation.TTFT)
 		}
-		samples = append(samples, PerformanceSample{
-			RequestIndex:      observation.Index,
-			ScheduledOffsetMS: durationMilliseconds(observation.ScheduledOffset),
-			StartedOffsetMS:   durationMilliseconds(observation.StartedOffset),
-			FinishedOffsetMS:  durationMilliseconds(observation.FinishedOffset),
-			ScheduleLagMS:     durationMilliseconds(observation.ScheduleLag),
-			E2EMS:             durationMilliseconds(observation.E2E), TTFTMS: durationMilliseconds(observation.TTFT), TPOTMS: tpot,
-			HTTPStatus: observation.HTTPStatus, Success: observation.Success, TimedOut: observation.TimedOut,
+		tpot := performanceTPOTMilliseconds(
+			ttftAnyMS,
+			durationMilliseconds(observation.E2E),
+			observation.CompletionTokens,
+		)
+		sample := PerformanceSample{
+			RequestIndex:       observation.Index,
+			ScheduledOffsetMS:  durationMilliseconds(observation.ScheduledOffset),
+			StartedOffsetMS:    durationMilliseconds(observation.StartedOffset),
+			FinishedOffsetMS:   durationMilliseconds(observation.FinishedOffset),
+			ScheduleLagMS:      durationMilliseconds(observation.ScheduleLag),
+			E2EMS:              durationMilliseconds(observation.E2E),
+			TTFBMS:             durationMilliseconds(observation.TTFB),
+			TTFTAnyMS:          ttftAnyMS,
+			TTFTVisibleMS:      durationMilliseconds(observation.TTFTVisible),
+			TTFTMS:             ttftAnyMS,
+			TTSTMS:             durationMilliseconds(observation.TTST),
+			ObservedICLMS:      durationMilliseconds(observation.ObservedICL),
+			SemanticChunkCount: observation.SemanticChunkCount,
+			TPOTMS:             tpot,
+			HTTPStatus:         observation.HTTPStatus, Success: observation.Success, TimedOut: observation.TimedOut,
 			PromptTokens: observation.PromptTokens, CompletionTokens: observation.CompletionTokens, CachedTokens: observation.CachedTokens,
 			ErrorCode:        code,
 			ResponseEvidence: evidence[observation.Index],
-		})
+		}
+		if workload != nil {
+			target := workload.target(observation.Index)
+			sample.TargetInputTokens = target.InputTokens
+			sample.TargetOutputTokens = target.OutputTokens
+		}
+		samples = append(samples, sample)
 	}
 	return samples
 }
 
 type performanceEvidenceRecorder struct {
 	mu        sync.Mutex
+	enabled   bool
 	remaining int
 	byIndex   map[uint64]*PerformanceResponseEvidence
 }
@@ -488,6 +1027,9 @@ func (recorder *performanceEvidenceRecorder) record(value openai.FailureResponse
 	}
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
+	if !recorder.enabled {
+		return
+	}
 	body := value.Body
 	status := PerformanceEvidenceCaptured
 	if body == "" {
@@ -513,6 +1055,17 @@ func (recorder *performanceEvidenceRecorder) record(value openai.FailureResponse
 		Truncated:     value.Truncated || status == PerformanceEvidenceOmitted,
 		Redacted:      true,
 	}
+}
+
+func (recorder *performanceEvidenceRecorder) enableFresh() {
+	if recorder == nil {
+		return
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	recorder.enabled = true
+	recorder.remaining = MaxPerformanceEvidenceTotalBytes
+	recorder.byIndex = make(map[uint64]*PerformanceResponseEvidence)
 }
 
 func (recorder *performanceEvidenceRecorder) snapshot() map[uint64]*PerformanceResponseEvidence {

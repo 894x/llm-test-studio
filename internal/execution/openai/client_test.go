@@ -190,6 +190,17 @@ func TestStreamingExecutorRejectsHTTP200WithoutDone(t *testing.T) {
 	if observation.Success || observation.StreamComplete || observation.ErrorCode != "incomplete_stream" {
 		t.Fatalf("observation = %#v", observation)
 	}
+	if !observation.Streaming || observation.TTFB <= 0 || observation.TTFTAny <= 0 ||
+		observation.TTFT != observation.TTFTAny || observation.TTFTVisible != observation.TTFTAny ||
+		observation.SemanticChunkCount != 1 || observation.TTST != 0 || observation.ObservedICL != 0 {
+		t.Fatalf("partial stream telemetry = %#v", observation)
+	}
+	metrics := load.ComputeMetrics([]load.Observation{observation}, time.Second)
+	if metrics.TTFBSamples != 0 || metrics.TTFTSamples != 0 || metrics.TTFTAnySamples != 0 ||
+		metrics.TTFTVisibleSamples != 0 || metrics.TTSTSamples != 0 || metrics.ObservedICLSamples != 0 ||
+		metrics.SemanticChunkCountSamples != 0 {
+		t.Fatalf("failed partial stream entered aggregate cohorts: %#v", metrics)
+	}
 }
 
 func TestSynchronousChatRequiresSemanticOutputAndReadsUsage(t *testing.T) {

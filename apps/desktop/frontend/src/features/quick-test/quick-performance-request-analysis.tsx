@@ -71,7 +71,7 @@ export function QuickPerformanceRequestAnalysis({ report }: { report: QuickPerfo
       </div>
 
       <ScrollArea className="h-96 rounded-md border bg-background">
-        <Table aria-label="逐请求结果" className="min-w-[780px] text-xs">
+        <Table aria-label="逐请求结果" className="min-w-[840px] text-xs">
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead className="h-8">请求</TableHead>
@@ -79,7 +79,7 @@ export function QuickPerformanceRequestAnalysis({ report }: { report: QuickPerfo
               <TableHead className="h-8 text-right">HTTP</TableHead>
               <TableHead className="h-8">错误原因</TableHead>
               <TableHead className="h-8 text-right">E2E</TableHead>
-              <TableHead className="h-8 text-right">TTFT</TableHead>
+              <TableHead className="h-8 text-right">TTFT（含推理）</TableHead>
               <TableHead className="h-8 text-right">Token</TableHead>
               <TableHead className="h-8 text-right">操作</TableHead>
             </TableRow>
@@ -167,8 +167,16 @@ function RequestDetail({ sample }: { sample: QuickPerformanceSample }) {
         <DetailValue label="HTTP 状态" value={sample.http_status ? String(sample.http_status) : "未收到响应"} numeric />
         <DetailValue label="请求 ID" value={evidence?.request_id || "未提供"} mono />
         <DetailValue label="Content-Type" value={evidence?.content_type || "未提供"} mono />
-        <DetailValue label="E2E / TTFT / TPOT" value={`${formatMS(sample.e2e_ms)} / ${formatMS(sample.ttft_ms)} / ${formatMS(sample.tpot_ms)}`} numeric />
+        <DetailValue label="E2E / TPOT" value={`${formatMS(sample.e2e_ms)} / ${formatMS(sample.tpot_ms)}`} numeric />
         <DetailValue label="Prompt / Completion / Cached" value={`${sample.prompt_tokens} / ${sample.completion_tokens} / ${sample.cached_tokens}`} numeric />
+        {sample.ttfb_ms !== undefined ? <>
+          <DetailValue label="TTFB" value={formatMilestone(sample.ttfb_ms)} numeric />
+          <DetailValue label="TTFT（含推理）" value={formatMilestone(sample.ttft_any_ms ?? 0)} numeric />
+          <DetailValue label="TTFT（可见内容）" value={formatMilestone(sample.ttft_visible_ms ?? 0)} numeric />
+          <DetailValue label="TTST（第二语义块）" value={formatMilestone(sample.ttst_ms ?? 0)} numeric />
+          <DetailValue label="Observed ICL（语义块间隔，非 Token ITL）" value={(sample.semantic_chunk_count ?? 0) >= 2 ? formatMS(sample.observed_icl_ms ?? 0) : "—"} numeric />
+          <DetailValue label="语义块数" value={String(sample.semantic_chunk_count ?? 0)} numeric />
+        </> : null}
       </dl>
       <ResponseBody sample={sample} />
     </section>
@@ -212,4 +220,8 @@ function matchesFilter(sample: QuickPerformanceSample, filter: RequestFilter): b
 
 function formatMS(value: number): string {
   return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)} ms`
+}
+
+function formatMilestone(value: number): string {
+  return value > 0 ? formatMS(value) : "—"
 }
