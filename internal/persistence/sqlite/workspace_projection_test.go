@@ -5,14 +5,11 @@ import (
 	"errors"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/domain"
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
-
-var _ workspace.Catalog = (*persistence.Repository)(nil)
 
 func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testing.T) {
 	t.Parallel()
@@ -75,13 +72,6 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 		t.Fatalf("AppendResult(second fail) error = %v", err)
 	}
 
-	latest := fixture.plan
-	latest.EntityMeta = nextEntityMeta(t, latest.EntityMeta, repositoryEpoch.Add(20*time.Minute))
-	latest.Name = "Renamed latest plan"
-	if err := repository.UpdatePlan(ctx, 1, latest); err != nil {
-		t.Fatalf("UpdatePlan(latest) error = %v", err)
-	}
-
 	projections, err := repository.ListRunProjections(ctx)
 	if err != nil {
 		t.Fatalf("ListRunProjections() error = %v", err)
@@ -106,32 +96,6 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	}
 	if !reflect.DeepEqual(first.Run, firstRun) || !reflect.DeepEqual(second.Run, secondRun) {
 		t.Fatalf("projected runs do not match authoritative current runs")
-	}
-}
-
-func TestWorkspaceRunProjectionsValidateResultMembershipFromV2SnapshotCases(t *testing.T) {
-	t.Parallel()
-
-	path, repository, fixture := openHardeningRepository(t)
-	fixture = withCompleteRunSnapshot(t, fixture)
-	createRunGraph(t, repository, fixture)
-	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
-	result := fixture.result
-	result.EvidenceIDs = nil
-	if err := repository.AppendResult(context.Background(), result); err != nil {
-		t.Fatalf("AppendResult() error = %v", err)
-	}
-	closeForTamper(t, repository)
-	tamperWithoutForeignKeys(t, path, `DELETE FROM plan_cases WHERE plan_id = ?`, fixture.plan.ID)
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	projections, err := repository.ListRunProjections(context.Background())
-	if err != nil {
-		t.Fatalf("ListRunProjections() without plan_cases error = %v", err)
-	}
-	if len(projections) != 1 || projections[0].Completed != 1 || !reflect.DeepEqual(projections[0].Run, run) {
-		t.Fatalf("snapshot-backed result projection = %#v", projections)
 	}
 }
 

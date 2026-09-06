@@ -275,22 +275,8 @@ func openRepositoryWithQuickPerformanceDocument(t *testing.T, document string) *
 	t.Helper()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "repository.db")
-	if err := persistence.Migrate(ctx, path, persistence.MigrateOptions{AppVersion: "repository-test-v10"}); err != nil {
-		t.Fatalf("Migrate(v10) error = %v", err)
-	}
-	digest, err := persistence.AuthoredCatalogDigest(ctx, path)
-	if err != nil {
-		t.Fatalf("AuthoredCatalogDigest() error = %v", err)
-	}
-	if err := persistence.Migrate(ctx, path, persistence.MigrateOptions{
-		AppVersion:                    "repository-test-v11",
-		RetireAuthoredCatalog:         true,
-		ExpectedAuthoredCatalogDigest: digest,
-		BeforeAuthoredCatalogRetirement: func(context.Context) error {
-			return nil
-		},
-	}); err != nil {
-		t.Fatalf("Migrate(v11) error = %v", err)
+	if err := persistence.Migrate(ctx, path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
 	}
 	generatedAt := time.Date(2026, 8, 31, 15, 32, 0, 0, time.UTC)
 	db, err := sql.Open("sqlite", path)

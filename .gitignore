@@ -6,6 +6,7 @@ __pycache__/
 
 # Local state and potentially sensitive test output
 data/
+.tmp/backups/
 load-result*.json
 loadtest_history.db
 /cmd/llm-test-studio/output/

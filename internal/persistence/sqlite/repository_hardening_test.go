@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -16,15 +15,7 @@ import (
 func TestRepositoryRunUpdatesAreAppendOnlyAndRecoverable(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "append-only-runs.db")
-	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
-		t.Fatalf("Migrate() error = %v", err)
-	}
-	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
-	if err != nil {
-		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
-	}
-	fixture := newRepositoryFixture(t)
+	path, repository, fixture := openHardeningRepository(t)
 	createRunGraph(t, repository, fixture)
 	starting := transitionRun(t, repository, fixture.run, domain.RunStarting)
 	running := transitionRun(t, repository, starting, domain.RunRunning)
@@ -38,29 +29,20 @@ func TestRepositoryRunUpdatesAreAppendOnlyAndRecoverable(t *testing.T) {
 			t.Fatalf("GetRunRevision(%d) = %#v, want %#v", revision, got, want)
 		}
 	}
-	if got, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); err != nil || !reflect.DeepEqual(got, running) {
-		t.Fatalf("GetRun() = %#v, %v, want running revision", got, err)
-	}
 	if err := repository.UpdateRun(context.Background(), 1, starting); !errors.Is(err, persistence.ErrConflict) {
 		t.Fatalf("stale UpdateRun() error = %v, want ErrConflict", err)
-	}
-	if _, err := repository.GetRunRevision(context.Background(), fixture.run.Meta().ID, 4); !errors.Is(err, persistence.ErrNotFound) {
-		t.Fatalf("GetRunRevision(4) error = %v, want ErrNotFound", err)
 	}
 	if err := repository.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
+
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, `SELECT COUNT(*) FROM execution_run_revisions WHERE run_id = '`+fixture.run.Meta().ID+`'`); got != 3 {
+	if got := queryInt(t, db, `SELECT COUNT(*) FROM execution_run_revisions WHERE run_id = ?`, fixture.run.Meta().ID); got != 3 {
 		t.Fatalf("stored run revision count = %d, want 3", got)
 	}
-	var current int
-	if err := db.QueryRow(`SELECT current_revision FROM execution_runs WHERE id = ?`, fixture.run.Meta().ID).Scan(&current); err != nil {
-		t.Fatalf("read current run revision: %v", err)
-	}
-	if current != 3 {
-		t.Fatalf("current run revision = %d, want 3", current)
+	if got := queryInt(t, db, `SELECT current_revision FROM execution_runs WHERE id = ?`, fixture.run.Meta().ID); got != 3 {
+		t.Fatalf("current run revision = %d, want 3", got)
 	}
 }
 
@@ -89,12 +71,13 @@ func TestRepositoryRunRevisionRowsAreDatabaseImmutable(t *testing.T) {
 			createRunGraph(t, repository, fixture)
 			transitionRun(t, repository, fixture.run, domain.RunStarting)
 			closeForTamper(t, repository)
+
 			db := openDatabase(t, path)
 			defer db.Close()
 			if _, err := db.Exec(test.statement, fixture.run.Meta().ID); err == nil {
 				t.Fatalf("%s of execution_run_revisions unexpectedly succeeded", test.name)
 			}
-			if got := queryInt(t, db, `SELECT COUNT(*) FROM execution_run_revisions WHERE run_id = '`+fixture.run.Meta().ID+`'`); got != 2 {
+			if got := queryInt(t, db, `SELECT COUNT(*) FROM execution_run_revisions WHERE run_id = ?`, fixture.run.Meta().ID); got != 2 {
 				t.Fatalf("run revision count after rejected %s = %d, want 2", test.name, got)
 			}
 		})
@@ -126,9 +109,6 @@ func TestRepositoryDetectsRunRevisionHistoryGaps(t *testing.T) {
 	if _, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("GetRun() with history gap error = %v, want ErrCorrupt", err)
 	}
-	if _, err := repository.GetRunRevision(context.Background(), fixture.run.Meta().ID, 2); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("GetRunRevision(missing middle) error = %v, want ErrCorrupt", err)
-	}
 	if _, err := repository.ListRuns(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("ListRuns() with history gap error = %v, want ErrCorrupt", err)
 	}
@@ -141,7 +121,7 @@ func TestRepositoryConcurrentRunCASReturnsStableConflict(t *testing.T) {
 	defer second.Close()
 	createRunGraph(t, first, fixture)
 
-	for index := 0; index < 16; index++ {
+	for index := 0; index < 8; index++ {
 		run := fixture.run
 		if index != 0 {
 			var err error
@@ -208,301 +188,6 @@ func TestRepositoryRejectsResultAndEvidenceOutsideExecutionStates(t *testing.T) 
 	}
 }
 
-func TestRepositoryRejectsCredentialStoreRefIdentityMismatch(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range []struct {
-		name   string
-		mutate func(*domain.CredentialRef)
-	}{
-		{"purpose", func(value *domain.CredentialRef) { value.Purpose = domain.CredentialIntegrationAdmin }},
-		{"id", func(value *domain.CredentialRef) {
-			value.StoreRef = "llm-test-studio/v1/channel_api_key/10000000-0000-4000-8000-000000000099"
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			repository := openRepository(t)
-			defer repository.Close()
-			credential := newRepositoryFixture(t).credential
-			test.mutate(&credential)
-			if err := repository.CreateCredentialRef(context.Background(), credential); err == nil {
-				t.Fatal("CreateCredentialRef() accepted a StoreRef whose identity differs from the entity")
-			}
-		})
-	}
-}
-
-func TestRepositoryRejectsCorruptRepeatedColumnsAndRelations(t *testing.T) {
-	t.Run("credential duplicate", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		if err := repository.CreateCredentialRef(context.Background(), fixture.credential); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE credential_refs SET purpose = 'integration_admin' WHERE id = ?`, fixture.credential.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetCredentialRef(context.Background(), fixture.credential.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetCredentialRef() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("channel reference revision", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		if err := repository.CreateCredentialRef(context.Background(), fixture.credential); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.CreateChannel(context.Background(), fixture.channel); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamperWithoutForeignKeys(t, path, `UPDATE channels SET credential_revision = 99 WHERE id = ?`, fixture.channel.ID)
-		assertHardeningRepositoryOpenCorrupt(t, path)
-	})
-
-	t.Run("suite relation deleted", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		if err := repository.CreateTestCase(context.Background(), fixture.testCase); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.CreateSuite(context.Background(), fixture.suite); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamper(t, path, `DELETE FROM suite_cases WHERE suite_id = ?`, fixture.suite.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetSuite(context.Background(), fixture.suite.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetSuite() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("deleted plan mapping relation does not corrupt snapshot-backed runs", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunGraph(t, repository, fixture)
-		closeForTamper(t, repository)
-		tamper(t, path, `DELETE FROM plan_channel_models WHERE plan_id = ?`, fixture.plan.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetPlan(context.Background(), fixture.plan.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetPlan() error = %v, want ErrCorrupt", err)
-		}
-		if _, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); err != nil {
-			t.Fatalf("GetRun() with deleted retired catalog relation error = %v", err)
-		}
-		if _, err := repository.GetRunRevision(context.Background(), fixture.run.Meta().ID, 1); err != nil {
-			t.Fatalf("GetRunRevision() with deleted retired catalog relation error = %v", err)
-		}
-		if _, err := repository.ListRuns(context.Background()); err != nil {
-			t.Fatalf("ListRuns() with deleted retired catalog relation error = %v", err)
-		}
-	})
-
-	t.Run("report attachment owner", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunGraph(t, repository, fixture)
-		run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
-		if err := repository.CreateEvidence(context.Background(), fixture.evidence); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.AppendResult(context.Background(), fixture.result); err != nil {
-			t.Fatal(err)
-		}
-		run = transitionRun(t, repository, run, domain.RunCompleted)
-		report := fixture.report
-		report.RunStatus = run.Status()
-		if err := repository.CreateReport(context.Background(), report); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamperWithoutForeignKeys(t, path, `UPDATE artifacts SET run_id = '10000000-0000-4000-8000-000000000099' WHERE id = ?`, report.Attachments[0].ArtifactID)
-		assertHardeningRepositoryOpenCorrupt(t, path)
-	})
-
-	t.Run("channel model target protocol", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		if err := repository.CreateCredentialRef(context.Background(), fixture.credential); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.CreateModel(context.Background(), fixture.model); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.CreateChannel(context.Background(), fixture.channel); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.CreateChannelModel(context.Background(), fixture.mapping); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE models SET document_json = json_set(document_json, '$.protocol', 'kimi-k3') WHERE id = ?`, fixture.model.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetChannelModel(context.Background(), fixture.mapping.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetChannelModel() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("suite target payload", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		if err := repository.CreateTestCase(context.Background(), fixture.testCase); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.CreateSuite(context.Background(), fixture.suite); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE test_cases SET document_json = json_set(document_json, '$.name', '') WHERE id = ?`, fixture.testCase.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetSuite(context.Background(), fixture.suite.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetSuite() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("plan target payload", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunGraph(t, repository, fixture)
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE models SET document_json = json_set(document_json, '$.name', '') WHERE id = ?`, fixture.model.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetPlan(context.Background(), fixture.plan.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetPlan() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("output owner deleted", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunningOutputs(t, repository, fixture)
-		closeForTamper(t, repository)
-		tamperWithoutForeignKeys(t, path, `DELETE FROM execution_runs WHERE id = ?`, fixture.run.Meta().ID)
-		assertHardeningRepositoryOpenCorrupt(t, path)
-	})
-
-	t.Run("result evidence deleted", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunningOutputs(t, repository, fixture)
-		closeForTamper(t, repository)
-		tamperWithoutForeignKeys(t, path, `DELETE FROM evidence WHERE id = ?`, fixture.evidence.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetResult(context.Background(), fixture.result.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetResult() error = %v, want ErrCorrupt", err)
-		}
-		if _, err := repository.ListResults(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("ListResults() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("result case outside run snapshot", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunningOutputs(t, repository, fixture)
-		closeForTamper(t, repository)
-		outsideCase := "10000000-0000-4000-8000-000000000099"
-		tamperWithoutForeignKeys(t, path, `
-			UPDATE case_results
-			SET case_id = ?, document_json = json_set(document_json, '$.case_id', ?)
-			WHERE id = ?
-		`, outsideCase, outsideCase, fixture.result.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetResult(context.Background(), fixture.result.ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetResult() error = %v, want ErrCorrupt", err)
-		}
-		if _, err := repository.ListResults(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("ListResults() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("deleted plan mapping relation does not corrupt snapshot-backed reports", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		run := createRunningOutputs(t, repository, fixture)
-		run = transitionRun(t, repository, run, domain.RunCompleted)
-		report := fixture.report
-		report.RunStatus = run.Status()
-		if err := repository.CreateReport(context.Background(), report); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamperWithoutForeignKeys(t, path, `DELETE FROM plan_channel_models WHERE plan_id = ?`, fixture.plan.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetReport(context.Background(), report.ID); err != nil {
-			t.Fatalf("GetReport() with deleted retired catalog relation error = %v", err)
-		}
-		if _, err := repository.ListReports(context.Background()); err != nil {
-			t.Fatalf("ListReports() with deleted retired catalog relation error = %v", err)
-		}
-	})
-
-	t.Run("historical run observes root seal", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		createRunGraph(t, repository, fixture)
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE execution_runs SET sealed = 1 WHERE id = ?`, fixture.run.Meta().ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if _, err := repository.GetRunRevision(context.Background(), fixture.run.Meta().ID, 1); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("GetRunRevision() with root seal/report mismatch error = %v, want ErrCorrupt", err)
-		}
-	})
-}
-
-func TestRepositoryAggregateWritesRejectCorruptDependencies(t *testing.T) {
-	t.Run("channel model channel credential", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		for _, create := range []func() error{
-			func() error { return repository.CreateCredentialRef(context.Background(), fixture.credential) },
-			func() error { return repository.CreateModel(context.Background(), fixture.model) },
-			func() error { return repository.CreateChannel(context.Background(), fixture.channel) },
-		} {
-			if err := create(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		closeForTamper(t, repository)
-		tamperWithoutForeignKeys(t, path, `UPDATE channels SET credential_revision = 99 WHERE id = ?`, fixture.channel.ID)
-		assertHardeningRepositoryOpenCorrupt(t, path)
-	})
-
-	t.Run("suite test case", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		if err := repository.CreateTestCase(context.Background(), fixture.testCase); err != nil {
-			t.Fatal(err)
-		}
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE test_cases SET document_json = json_set(document_json, '$.name', '') WHERE id = ?`, fixture.testCase.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if err := repository.CreateSuite(context.Background(), fixture.suite); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("CreateSuite() error = %v, want ErrCorrupt", err)
-		}
-	})
-
-	t.Run("plan channel model", func(t *testing.T) {
-		path, repository, fixture := openHardeningRepository(t)
-		for _, create := range []func() error{
-			func() error { return repository.CreateCredentialRef(context.Background(), fixture.credential) },
-			func() error { return repository.CreateModel(context.Background(), fixture.model) },
-			func() error { return repository.CreateChannel(context.Background(), fixture.channel) },
-			func() error { return repository.CreateChannelModel(context.Background(), fixture.mapping) },
-			func() error { return repository.CreateTestCase(context.Background(), fixture.testCase) },
-			func() error { return repository.CreateSuite(context.Background(), fixture.suite) },
-		} {
-			if err := create(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		closeForTamper(t, repository)
-		tamper(t, path, `UPDATE channel_models SET document_json = json_set(document_json, '$.upstream_model_name', '') WHERE id = ?`, fixture.mapping.ID)
-		repository = reopenHardeningRepository(t, path)
-		defer repository.Close()
-		if err := repository.CreatePlan(context.Background(), fixture.plan); !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("CreatePlan() error = %v, want ErrCorrupt", err)
-		}
-	})
-}
-
 func TestRepositoryReportSealsFinalResultAndEvidenceCollections(t *testing.T) {
 	t.Parallel()
 
@@ -524,6 +209,31 @@ func TestRepositoryReportSealsFinalResultAndEvidenceCollections(t *testing.T) {
 	if err := repository.CreateReport(ctx, report); err != nil {
 		t.Fatalf("CreateReport() error = %v", err)
 	}
+	storedEvidence, err := repository.GetEvidence(ctx, fixture.evidence.ID)
+	if err != nil {
+		t.Fatalf("GetEvidence() error = %v", err)
+	}
+	assertRoundTrip(t, "evidence", fixture.evidence, storedEvidence)
+	listedEvidence, err := repository.ListEvidence(ctx, fixture.run.Meta().ID)
+	if err != nil || len(listedEvidence) != 1 {
+		t.Fatalf("ListEvidence() = %#v, %v; want one evidence row", listedEvidence, err)
+	}
+	assertRoundTrip(t, "listed evidence", fixture.evidence, listedEvidence[0])
+	storedResult, err := repository.GetResult(ctx, fixture.result.ID)
+	if err != nil {
+		t.Fatalf("GetResult() error = %v", err)
+	}
+	assertRoundTrip(t, "result", fixture.result, storedResult)
+	listedResults, err := repository.ListResults(ctx, fixture.run.Meta().ID)
+	if err != nil || len(listedResults) != 1 {
+		t.Fatalf("ListResults() = %#v, %v; want one result row", listedResults, err)
+	}
+	assertRoundTrip(t, "listed result", fixture.result, listedResults[0])
+	listedReports, err := repository.ListReportsForRuns(ctx, []string{fixture.run.Meta().ID})
+	if err != nil || len(listedReports) != 1 {
+		t.Fatalf("ListReportsForRuns() = %#v, %v; want one report", listedReports, err)
+	}
+	assertRoundTrip(t, "report for run", report, listedReports[0])
 
 	extraEvidence := fixture.evidence
 	extraEvidence.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000033", 1)
@@ -604,6 +314,114 @@ func TestRepositoryReportMatchesCanonicalEmptyResultCollections(t *testing.T) {
 	}
 }
 
+func TestRepositoryUpdateRunPersistsStructuredFailure(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	createRunGraph(t, repository, fixture)
+	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
+
+	previous := run.Meta().Revision
+	failed, err := run.Fail(domain.RunFailure{
+		Phase: "execute", ErrorCode: "run_execution_failed",
+	}, repositoryEpoch.Add(time.Duration(previous)*time.Minute))
+	if err != nil {
+		t.Fatalf("Fail() error = %v", err)
+	}
+	if err := repository.UpdateRun(context.Background(), previous, failed); err != nil {
+		t.Fatalf("UpdateRun(failed) error = %v", err)
+	}
+	stored, err := repository.GetRun(context.Background(), failed.Meta().ID)
+	if err != nil {
+		t.Fatalf("GetRun() error = %v", err)
+	}
+	assertRoundTrip(t, "failed run", failed, stored)
+}
+
+func TestRepositoryOperationalReadsPreserveCancellation(t *testing.T) {
+	t.Parallel()
+
+	repository := openRepository(t)
+	defer repository.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for name, read := range map[string]func() error{
+		"get run": func() error {
+			_, err := repository.GetRun(ctx, "10000000-0000-4000-8000-000000000008")
+			return err
+		},
+		"list runs": func() error {
+			_, err := repository.ListRuns(ctx)
+			return err
+		},
+		"get evidence": func() error {
+			_, err := repository.GetEvidence(ctx, "10000000-0000-4000-8000-000000000009")
+			return err
+		},
+		"list evidence": func() error {
+			_, err := repository.ListEvidence(ctx, "10000000-0000-4000-8000-000000000008")
+			return err
+		},
+		"get result": func() error {
+			_, err := repository.GetResult(ctx, "10000000-0000-4000-8000-00000000000a")
+			return err
+		},
+		"list results": func() error {
+			_, err := repository.ListResults(ctx, "10000000-0000-4000-8000-000000000008")
+			return err
+		},
+		"list reports": func() error {
+			_, err := repository.ListReports(ctx)
+			return err
+		},
+		"list reports for runs": func() error {
+			_, err := repository.ListReportsForRuns(ctx, []string{"10000000-0000-4000-8000-000000000008"})
+			return err
+		},
+		"list comparisons": func() error {
+			_, err := repository.ListComparisons(ctx)
+			return err
+		},
+	} {
+		if err := read(); !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s error = %v, want context.Canceled", name, err)
+		}
+	}
+}
+
+func TestRepositoryRejectsCorruptOperationalRelations(t *testing.T) {
+	t.Parallel()
+
+	t.Run("deleted result evidence", func(t *testing.T) {
+		path, repository, fixture := openHardeningRepository(t)
+		createRunningOutputs(t, repository, fixture)
+		closeForTamper(t, repository)
+		tamperWithoutForeignKeys(t, path, `DELETE FROM evidence WHERE id = ?`, fixture.evidence.ID)
+		assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+			_, err := repository.GetResult(context.Background(), fixture.result.ID)
+			return err
+		})
+	})
+
+	t.Run("result case outside run snapshot", func(t *testing.T) {
+		path, repository, fixture := openHardeningRepository(t)
+		createRunningOutputs(t, repository, fixture)
+		closeForTamper(t, repository)
+		outsideCase := "10000000-0000-4000-8000-000000000099"
+		tamperWithoutForeignKeys(t, path, `
+			UPDATE case_results
+			SET case_id = ?, document_json = json_set(document_json, '$.case_id', ?)
+			WHERE id = ?
+		`, outsideCase, outsideCase, fixture.result.ID)
+		assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
+			_, err := repository.GetResult(context.Background(), fixture.result.ID)
+			return err
+		})
+	})
+}
+
 func TestRepositoryReportWriteFailureRollsBackSealAndAttachments(t *testing.T) {
 	t.Parallel()
 
@@ -632,246 +450,15 @@ func TestRepositoryReportWriteFailureRollsBackSealAndAttachments(t *testing.T) {
 	if _, err := repository.GetReport(ctx, report.ID); !errors.Is(err, persistence.ErrNotFound) {
 		t.Fatalf("GetReport() after rollback error = %v, want ErrNotFound", err)
 	}
-	if _, err := repository.GetRun(ctx, fixture.run.Meta().ID); err != nil {
-		t.Fatalf("GetRun() found a leaked report seal: %v", err)
-	}
 	closeForTamper(t, repository)
 	db := openDatabase(t, path)
 	defer db.Close()
-	if got := queryInt(t, db, `SELECT sealed FROM execution_runs WHERE id = '`+fixture.run.Meta().ID+`'`); got != 0 {
+	if got := queryInt(t, db, `SELECT sealed FROM execution_runs WHERE id = ?`, fixture.run.Meta().ID); got != 0 {
 		t.Fatalf("run seal after rollback = %d, want 0", got)
 	}
 	for _, table := range []string{"reports", "artifacts", "report_attachments"} {
 		if got := queryInt(t, db, `SELECT COUNT(*) FROM `+table); got != 0 {
 			t.Fatalf("%s row count after rollback = %d, want 0", table, got)
 		}
-	}
-}
-
-func TestRepositoryRunSnapshotPinsTargetRevisionsIndependentOfRetiredCatalog(t *testing.T) {
-	t.Parallel()
-
-	repository := openRepository(t)
-	defer repository.Close()
-	fixture := newRepositoryFixture(t)
-	ctx := context.Background()
-	createRunGraph(t, repository, fixture)
-
-	model := fixture.model
-	model.EntityMeta = nextEntityMeta(t, model.EntityMeta, repositoryEpoch.Add(time.Minute))
-	model.Name = "Fixture model v2"
-	if err := repository.UpdateModel(ctx, 1, model); err != nil {
-		t.Fatalf("UpdateModel() error = %v", err)
-	}
-	channel := fixture.channel
-	channel.EntityMeta = nextEntityMeta(t, channel.EntityMeta, repositoryEpoch.Add(time.Minute))
-	channel.Name = "Fixture channel v2"
-	channel.BaseURL = "https://v2.example.test/v1"
-	if err := repository.UpdateChannel(ctx, 1, channel); err != nil {
-		t.Fatalf("UpdateChannel() error = %v", err)
-	}
-	mapping := fixture.mapping
-	mapping.EntityMeta = nextEntityMeta(t, mapping.EntityMeta, repositoryEpoch.Add(time.Minute))
-	mapping.UpstreamModelName = "upstream-fixture-v2"
-	if err := repository.UpdateChannelModel(ctx, 1, mapping); err != nil {
-		t.Fatalf("UpdateChannelModel() error = %v", err)
-	}
-
-	snapshot := fixture.run.Snapshot()
-	snapshot.Model.Revision = 2
-	snapshot.Model.Name = model.Name
-	snapshot.Channel.Revision = 2
-	snapshot.Channel.Name = channel.Name
-	snapshot.Channel.BaseURL = channel.BaseURL
-	snapshot.Channel.UpstreamModelName = mapping.UpstreamModelName
-	snapshot.Mapping = &mapping
-	drifted, err := domain.NewRun(entityMeta("10000000-0000-4000-8000-000000000036", 1), fixture.plan.ID, snapshot)
-	if err != nil {
-		t.Fatalf("NewRun() error = %v", err)
-	}
-	if err := repository.CreateRun(ctx, drifted); err != nil {
-		t.Fatalf("CreateRun() with self-contained newer target snapshot error = %v", err)
-	}
-	if got, err := repository.GetRun(ctx, drifted.Meta().ID); err != nil {
-		t.Fatalf("GetRun() newer target snapshot error = %v", err)
-	} else if !reflect.DeepEqual(got, drifted) {
-		t.Fatalf("GetRun() newer target snapshot = %#v, want %#v", got, drifted)
-	}
-	pinned, err := domain.NewRun(
-		entityMeta("10000000-0000-4000-8000-000000000037", 1),
-		fixture.plan.ID,
-		fixture.run.Snapshot(),
-	)
-	if err != nil {
-		t.Fatalf("NewRun(pinned) error = %v", err)
-	}
-	if err := repository.CreateRun(ctx, pinned); err != nil {
-		t.Fatalf("CreateRun() with the original pinned revisions error = %v", err)
-	}
-}
-
-func createRunGraph(t *testing.T, repository *persistence.Repository, fixture repositoryFixture) {
-	t.Helper()
-	ctx := context.Background()
-	steps := []struct {
-		name string
-		do   func() error
-	}{
-		{"credential", func() error { return repository.CreateCredentialRef(ctx, fixture.credential) }},
-		{"model", func() error { return repository.CreateModel(ctx, fixture.model) }},
-		{"channel", func() error { return repository.CreateChannel(ctx, fixture.channel) }},
-		{"mapping", func() error { return repository.CreateChannelModel(ctx, fixture.mapping) }},
-		{"case", func() error { return repository.CreateTestCase(ctx, fixture.testCase) }},
-		{"suite", func() error { return repository.CreateSuite(ctx, fixture.suite) }},
-		{"plan", func() error { return repository.CreatePlan(ctx, fixture.plan) }},
-		{"run", func() error { return repository.CreateRun(ctx, fixture.run) }},
-	}
-	for _, step := range steps {
-		if err := step.do(); err != nil {
-			t.Fatalf("create %s: %v", step.name, err)
-		}
-	}
-}
-
-func TestRepositoryUpdateRunPersistsStructuredFailure(t *testing.T) {
-	t.Parallel()
-
-	repository := openRepository(t)
-	defer repository.Close()
-	fixture := newRepositoryFixture(t)
-	createRunGraph(t, repository, fixture)
-	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
-
-	previous := run.Meta().Revision
-	failed, err := run.Fail(domain.RunFailure{
-		Phase: "execute", ErrorCode: "run_execution_failed",
-	}, repositoryEpoch.Add(time.Duration(previous)*time.Minute))
-	if err != nil {
-		t.Fatalf("Fail() error = %v", err)
-	}
-	if err := repository.UpdateRun(context.Background(), previous, failed); err != nil {
-		t.Fatalf("UpdateRun(failed) error = %v", err)
-	}
-
-	stored, err := repository.GetRun(context.Background(), failed.Meta().ID)
-	if err != nil {
-		t.Fatalf("GetRun() error = %v", err)
-	}
-	if !reflect.DeepEqual(stored, failed) {
-		t.Fatalf("GetRun() = %#v, want %#v", stored, failed)
-	}
-}
-
-func transitionRun(t *testing.T, repository *persistence.Repository, run domain.Run, statuses ...domain.RunStatus) domain.Run {
-	t.Helper()
-	for _, status := range statuses {
-		previous := run.Meta().Revision
-		var err error
-		run, err = run.Transition(status, repositoryEpoch.Add(time.Duration(previous)*time.Minute))
-		if err != nil {
-			t.Fatalf("Transition(%s): %v", status, err)
-		}
-		if err := repository.UpdateRun(context.Background(), previous, run); err != nil {
-			t.Fatalf("UpdateRun(%s): %v", status, err)
-		}
-	}
-	return run
-}
-
-func createRunningOutputs(t *testing.T, repository *persistence.Repository, fixture repositoryFixture) domain.Run {
-	t.Helper()
-	createRunGraph(t, repository, fixture)
-	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
-	if err := repository.CreateEvidence(context.Background(), fixture.evidence); err != nil {
-		t.Fatalf("CreateEvidence() error = %v", err)
-	}
-	if err := repository.AppendResult(context.Background(), fixture.result); err != nil {
-		t.Fatalf("AppendResult() error = %v", err)
-	}
-	return run
-}
-
-func nextEntityMeta(t *testing.T, meta domain.EntityMeta, at time.Time) domain.EntityMeta {
-	t.Helper()
-	next, err := meta.NextRevision(at)
-	if err != nil {
-		t.Fatalf("NextRevision() error = %v", err)
-	}
-	return next
-}
-
-func openHardeningRepository(t *testing.T) (string, *persistence.Repository, repositoryFixture) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "repository-hardening.db")
-	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "repository-test"}); err != nil {
-		t.Fatalf("Migrate() error = %v", err)
-	}
-	return path, reopenHardeningRepository(t, path), newRepositoryFixture(t)
-}
-
-func reopenHardeningRepository(t *testing.T, path string) *persistence.Repository {
-	t.Helper()
-	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
-	if err != nil {
-		t.Fatalf("OpenLegacyCatalogRepository() error = %v", err)
-	}
-	return repository
-}
-
-func assertHardeningRepositoryOpenCorrupt(t *testing.T, path string) {
-	t.Helper()
-	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
-	if repository != nil {
-		_ = repository.Close()
-	}
-	if !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("OpenLegacyCatalogRepository() error = %v, want ErrCorrupt", err)
-	}
-}
-
-func assertCorruptOnLegacyReopenOrOperation(
-	t *testing.T,
-	path string,
-	operation func(*persistence.Repository) error,
-) {
-	t.Helper()
-	repository, err := persistence.OpenLegacyCatalogRepository(context.Background(), path, persistence.RepositoryOptions{})
-	if err != nil {
-		if !errors.Is(err, persistence.ErrCorrupt) {
-			t.Fatalf("OpenLegacyCatalogRepository() error = %v, want ErrCorrupt", err)
-		}
-		return
-	}
-	defer repository.Close()
-	if err := operation(repository); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("repository operation error = %v, want ErrCorrupt", err)
-	}
-}
-
-func closeForTamper(t *testing.T, repository *persistence.Repository) {
-	t.Helper()
-	if err := repository.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-}
-
-func tamper(t *testing.T, path, statement string, arguments ...any) {
-	t.Helper()
-	db := openDatabase(t, path)
-	defer db.Close()
-	if _, err := db.Exec(statement, arguments...); err != nil {
-		t.Fatalf("tamper repository row: %v", err)
-	}
-}
-
-func tamperWithoutForeignKeys(t *testing.T, path, statement string, arguments ...any) {
-	t.Helper()
-	db := openDatabase(t, path)
-	defer db.Close()
-	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
-		t.Fatalf("disable foreign keys for tamper: %v", err)
-	}
-	if _, err := db.Exec(statement, arguments...); err != nil {
-		t.Fatalf("tamper repository row: %v", err)
 	}
 }

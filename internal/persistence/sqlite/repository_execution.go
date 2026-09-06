@@ -391,17 +391,14 @@ func decodeRunDocument(document []byte) (domain.Run, error) {
 	return run, nil
 }
 
-func validateRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
+func validateRunReferences(ctx context.Context, _ relationQueryer, run domain.Run) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if run.Snapshot().SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
-		if err := run.Validate(); err != nil {
-			return fmt.Errorf("validate run snapshot: %w", err)
-		}
-		return nil
+	if err := run.Validate(); err != nil {
+		return fmt.Errorf("validate run snapshot: %w", err)
 	}
-	return validateLegacyRunReferences(ctx, queryer, run)
+	return validateWritableRunSnapshot(run.Snapshot())
 }
 
 func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
@@ -415,122 +412,6 @@ func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
 	}
 	if err := snapshot.Validate(); err != nil {
 		return fmt.Errorf("validate writable run snapshot: %w", err)
-	}
-	return nil
-}
-
-func validateLegacyRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
-	snapshot := run.Snapshot()
-	planDocument, err := exactDocument(ctx, queryer, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
-	if err != nil {
-		return err
-	}
-	plan, err := decodePlanDocument(planDocument)
-	if err != nil {
-		return err
-	}
-	if err := validatePlanStorage(ctx, queryer, plan); err != nil {
-		return err
-	}
-	if !reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) || !reflect.DeepEqual(plan.SLA, snapshot.SLA) {
-		return errors.New("run snapshot does not match its pinned plan")
-	}
-	runtimeSelectedTarget := len(plan.ModelIDs) == 0
-	if !runtimeSelectedTarget {
-		if !containsString(plan.ModelIDs, snapshot.Model.ID) || !containsString(plan.ChannelIDs, snapshot.Channel.ID) {
-			return errors.New("run target does not match its pinned plan")
-		}
-		var pinnedModelRevision int64
-		if err := queryer.QueryRowContext(ctx, `
-			SELECT model_revision FROM plan_models
-			WHERE plan_id = ? AND plan_revision = ? AND model_id = ?
-		`, run.PlanID(), snapshot.Plan.Revision, snapshot.Model.ID).Scan(&pinnedModelRevision); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: plan model relation", ErrCorrupt)
-			}
-			return fmt.Errorf("read plan model relation: %w", err)
-		}
-		if uint64(pinnedModelRevision) != snapshot.Model.Revision {
-			return errors.New("run model revision differs from its pinned plan revision")
-		}
-		var pinnedChannelRevision int64
-		if err := queryer.QueryRowContext(ctx, `
-			SELECT channel_revision FROM plan_channels
-			WHERE plan_id = ? AND plan_revision = ? AND channel_id = ?
-		`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID).Scan(&pinnedChannelRevision); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: plan channel relation", ErrCorrupt)
-			}
-			return fmt.Errorf("read plan channel relation: %w", err)
-		}
-		if uint64(pinnedChannelRevision) != snapshot.Channel.Revision {
-			return errors.New("run channel revision differs from its pinned plan revision")
-		}
-	}
-	modelDocument, err := exactDocument(ctx, queryer, "models", snapshot.Model.ID, snapshot.Model.Revision, "model")
-	if err != nil {
-		return err
-	}
-	var model domain.Model
-	if err := decodeCanonical(modelDocument, &model, func() error { return model.Validate() }); err != nil {
-		return fmt.Errorf("%w: model document", ErrCorrupt)
-	}
-	if model.Name != snapshot.Model.Name || model.Protocol != snapshot.Model.Protocol || !reflect.DeepEqual(model.Capabilities, snapshot.Model.Capabilities) {
-		return errors.New("run model snapshot does not match its pinned model revision")
-	}
-	channelDocument, err := exactDocument(ctx, queryer, "channels", snapshot.Channel.ID, snapshot.Channel.Revision, "channel")
-	if err != nil {
-		return err
-	}
-	var channel domain.Channel
-	if err := decodeCanonical(channelDocument, &channel, func() error { return channel.Validate() }); err != nil {
-		return fmt.Errorf("%w: channel document", ErrCorrupt)
-	}
-	if err := validateChannelStorage(ctx, queryer, channel); err != nil {
-		return err
-	}
-	if channel.Name != snapshot.Channel.Name || channel.BaseURL != snapshot.Channel.BaseURL || channel.Protocol != snapshot.Channel.Protocol {
-		return errors.New("run channel snapshot does not match its pinned channel revision")
-	}
-	var mappingID string
-	var mappingRevision int64
-	if runtimeSelectedTarget {
-		// Runtime-selected plans bind mappings by the logical model/channel IDs.
-		// A later metadata-only revision of either endpoint must not invalidate the
-		// mapping; the Run snapshot separately pins the exact endpoint revisions.
-		err = queryer.QueryRowContext(ctx, `
-			SELECT id, revision FROM channel_models
-			WHERE channel_id = ? AND model_id = ?
-			  AND json_extract(document_json, '$.upstream_model_name') = ?
-			ORDER BY revision DESC LIMIT 1
-		`, snapshot.Channel.ID, snapshot.Model.ID, snapshot.Channel.UpstreamModelName).Scan(&mappingID, &mappingRevision)
-	} else {
-		err = queryer.QueryRowContext(ctx, `
-			SELECT mapping_id, mapping_revision
-			FROM plan_channel_models
-			WHERE plan_id = ? AND plan_revision = ? AND channel_id = ? AND model_id = ?
-		`, run.PlanID(), snapshot.Plan.Revision, snapshot.Channel.ID, snapshot.Model.ID).Scan(&mappingID, &mappingRevision)
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: plan channel model relation", ErrCorrupt)
-	}
-	if err != nil {
-		return fmt.Errorf("get plan channel model relation: %w", err)
-	}
-	mappingDocument, err := exactDocument(ctx, queryer, "channel_models", mappingID, uint64(mappingRevision), "channel model")
-	if err != nil {
-		return err
-	}
-	var mapping domain.ChannelModel
-	if err := decodeCanonical(mappingDocument, &mapping, func() error { return mapping.Validate() }); err != nil {
-		return fmt.Errorf("%w: channel model document", ErrCorrupt)
-	}
-	if err := validateChannelModelStorage(ctx, queryer, mapping); err != nil {
-		return err
-	}
-	if mapping.ChannelID != snapshot.Channel.ID || mapping.ModelID != snapshot.Model.ID ||
-		mapping.UpstreamModelName != snapshot.Channel.UpstreamModelName {
-		return errors.New("run channel snapshot does not match its pinned channel model mapping")
 	}
 	return nil
 }
@@ -1186,23 +1067,6 @@ func writableRun(ctx context.Context, queryer relationQueryer, id string) (domai
 		return domain.Run{}, fmt.Errorf("%w: run output is sealed", ErrConflict)
 	}
 	return run, nil
-}
-
-func exactDocument(ctx context.Context, queryer rowQueryer, table, id string, revision uint64, kind string) ([]byte, error) {
-	var schemaVersion, storedRevision int64
-	var createdAt, updatedAt string
-	var document []byte
-	err := queryer.QueryRowContext(ctx, fmt.Sprintf(`SELECT schema_version, revision, created_at, updated_at, document_json FROM %s WHERE id = ? AND revision = ?`, table), id, revision).Scan(&schemaVersion, &storedRevision, &createdAt, &updatedAt, &document)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w: %s revision", ErrNotFound, kind)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get %s revision: %w", kind, err)
-	}
-	if err := verifyEntityRow(document, id, schemaVersion, storedRevision, createdAt, updatedAt); err != nil {
-		return nil, fmt.Errorf("%w: %s row does not match document", ErrCorrupt, kind)
-	}
-	return document, nil
 }
 
 func containsString(values []string, target string) bool {

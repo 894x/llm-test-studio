@@ -20,8 +20,8 @@ var (
 	ErrUnavailable          = errors.New("catalog: repository unavailable")
 )
 
-// Repository is implemented structurally by persistence adapters, including
-// sqlite.Repository. Its values remain inside the application layer.
+// Repository is implemented by the file-backed authored-catalog adapter. Its
+// values remain inside the application layer.
 type Repository interface {
 	ListModels(context.Context) ([]domain.Model, error)
 	ListChannels(context.Context) ([]domain.Channel, error)

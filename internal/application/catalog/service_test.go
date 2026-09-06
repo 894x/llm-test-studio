@@ -11,7 +11,6 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
-	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
 const (
@@ -25,8 +24,6 @@ const (
 	planID       = "88888888-8888-4888-8888-888888888888"
 	credentialID = "99999999-9999-4999-8999-999999999999"
 )
-
-var _ Repository = (*sqlite.Repository)(nil)
 
 func TestNewRejectsNilAndTypedNilDependencies(t *testing.T) {
 	var typedNilRepository *fakeRepository
@@ -79,6 +76,13 @@ func TestSnapshotIsStableSecretFreeAndReadsEachCollectionOnce(t *testing.T) {
 		if calls != 1 {
 			t.Fatalf("Snapshot() %s list calls = %d, want 1", name, calls)
 		}
+	}
+	if repository.testCaseRevisionCalls != 0 || repository.suiteRevisionCalls != 0 {
+		t.Fatalf(
+			"Snapshot() current revision reads = (cases %d, suites %d), want (0, 0)",
+			repository.testCaseRevisionCalls,
+			repository.suiteRevisionCalls,
+		)
 	}
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {
@@ -659,14 +663,16 @@ func (ctx *cancelAfterErrChecks) Err() error {
 func (*cancelAfterErrChecks) Value(any) any { return nil }
 
 type fakeRepository struct {
-	models            []domain.Model
-	channels          []domain.Channel
-	mappings          []domain.ChannelModel
-	testCases         []domain.TestCase
-	suites            []domain.Suite
-	plans             []domain.Plan
-	testCaseRevisions map[exactCaseRevisionKey]domain.TestCase
-	suiteRevisions    map[exactSuiteRevisionKey]domain.Suite
+	models                []domain.Model
+	channels              []domain.Channel
+	mappings              []domain.ChannelModel
+	testCases             []domain.TestCase
+	suites                []domain.Suite
+	plans                 []domain.Plan
+	testCaseRevisions     map[exactCaseRevisionKey]domain.TestCase
+	suiteRevisions        map[exactSuiteRevisionKey]domain.Suite
+	testCaseRevisionCalls int
+	suiteRevisionCalls    int
 
 	listCalls       map[string]int
 	listModelsErr   error
@@ -781,6 +787,7 @@ func (repository *fakeRepository) GetTestCase(_ context.Context, id string) (dom
 	return domain.TestCase{}, ErrNotFound
 }
 func (repository *fakeRepository) GetTestCaseRevision(_ context.Context, id string, revision uint64) (domain.TestCase, error) {
+	repository.testCaseRevisionCalls++
 	if value, ok := repository.testCaseRevisions[exactCaseRevisionKey{caseID: id, revision: revision}]; ok {
 		return value, nil
 	}
@@ -800,6 +807,7 @@ func (repository *fakeRepository) GetSuite(_ context.Context, id string) (domain
 	return domain.Suite{}, ErrNotFound
 }
 func (repository *fakeRepository) GetSuiteRevision(_ context.Context, id string, revision uint64) (domain.Suite, error) {
+	repository.suiteRevisionCalls++
 	if value, ok := repository.suiteRevisions[exactSuiteRevisionKey{suiteID: id, revision: revision}]; ok {
 		return value, nil
 	}

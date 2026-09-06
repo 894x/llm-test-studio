@@ -235,29 +235,12 @@ func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedRep
 	}, nil
 }
 
-func reportProjectionPinnedPlan(ctx context.Context, tx *sql.Tx, run domain.Run) (domain.Plan, error) {
+func reportProjectionPinnedPlan(_ context.Context, _ *sql.Tx, run domain.Run) (domain.Plan, error) {
 	snapshot := run.Snapshot()
-	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
-		if snapshot.PlanDocument == nil {
-			return domain.Plan{}, fmt.Errorf("%w: report pinned plan document", ErrCorrupt)
-		}
-		return *snapshot.PlanDocument, nil
+	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
+		return domain.Plan{}, fmt.Errorf("%w: report pinned plan document", ErrCorrupt)
 	}
-	document, err := exactDocument(ctx, tx, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
-	if err != nil {
-		return domain.Plan{}, reportProjectionCorrupt(ctx, "report legacy pinned plan", err)
-	}
-	plan, err := decodePlanDocument(document)
-	if err != nil {
-		return domain.Plan{}, err
-	}
-	if err := validatePlanStorage(ctx, tx, plan); err != nil {
-		return domain.Plan{}, reportProjectionCorrupt(ctx, "report legacy pinned plan storage", err)
-	}
-	if err := validateWorkspacePinnedPlan(run, plan); err != nil {
-		return domain.Plan{}, fmt.Errorf("%w: report legacy pinned plan", ErrCorrupt)
-	}
-	return plan, nil
+	return *snapshot.PlanDocument, nil
 }
 
 func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map[string]reportRunExpectation) error {

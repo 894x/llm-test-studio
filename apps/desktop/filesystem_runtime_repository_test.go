@@ -142,17 +142,6 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 	if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{AppVersion: "test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	authoredCatalogDigest, err := sqlite.AuthoredCatalogDigest(ctx, database)
-	if err != nil {
-		t.Fatalf("AuthoredCatalogDigest() error = %v", err)
-	}
-	if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
-		AppVersion:                    "test",
-		RetireAuthoredCatalog:         true,
-		ExpectedAuthoredCatalogDigest: authoredCatalogDigest,
-	}); err != nil {
-		t.Fatalf("Migrate(retire authored catalog) error = %v", err)
-	}
 	operational, err := sqlite.OpenRepository(ctx, database, sqlite.RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)

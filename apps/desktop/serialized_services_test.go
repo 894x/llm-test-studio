@@ -3,14 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
-	"testing/fstest"
 	"time"
 
-	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
@@ -108,50 +104,6 @@ func (query staticCatalogQuery) Snapshot(context.Context) (catalog.Snapshot, err
 	return query.snapshot, nil
 }
 
-func TestSerializedCatalogServiceRefusesToDeleteCaseReferencedByAFilePlan(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	root := t.TempDir()
-	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	testCase := filesystemCatalogTestCase(1)
-	if err := cases.SaveCase(ctx, string(testCase.Protocol), testCase.Key, testCase); err != nil {
-		t.Fatal(err)
-	}
-	entries, err := cases.Entries(ctx)
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("Entries() = %#v, %v", entries, err)
-	}
-	testCase = entries[0].TestCase
-	path := filepath.Join(root, string(testCase.Protocol), testCase.Key, "case.json")
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := serializedCatalogService{
-		gate:          &productionServiceGate{},
-		query:         staticCatalogQuery{snapshot: catalog.Snapshot{Plans: []catalog.PlanSummary{{Cases: []catalog.CaseRevisionInput{{CaseID: testCase.ID, Revision: 99}}}}}},
-		caseFiles:     cases,
-		plansAreFiles: true,
-	}
-	if err := service.DeleteTestCase(ctx, catalog.DeleteCommand{ID: testCase.ID, ExpectedRevision: testCase.Revision}); !errors.Is(err, catalog.ErrConflict) {
-		t.Fatalf("DeleteTestCase() error = %v, want %v", err, catalog.ErrConflict)
-	}
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(after) != string(before) {
-		t.Fatal("case.json changed after a rejected case deletion")
-	}
-	entry, err := cases.Find(ctx, testCase.ID)
-	if err != nil || entry.TestCase.ID != testCase.ID {
-		t.Fatalf("Find(case after rejected delete) = %#v, %v", entry, err)
-	}
-}
-
 func TestSerializedCatalogServiceCleansCredentialAfterPlanUpdateRemovesItsLastReference(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -177,7 +129,6 @@ func TestSerializedCatalogServiceCleansCredentialAfterPlanUpdateRemovesItsLastRe
 	}
 	service := serializedCatalogService{
 		gate: &productionServiceGate{}, commands: commands, channels: channelService,
-		plansAreFiles: true,
 	}
 
 	result, err := service.UpdatePlan(ctx, catalog.UpdatePlanCommand{
@@ -222,7 +173,6 @@ func TestSerializedCatalogServiceReportsPlanCredentialCleanupFailureWithoutRolli
 	}
 	service := serializedCatalogService{
 		gate: &productionServiceGate{}, commands: commands, channels: channelService,
-		plansAreFiles: true,
 	}
 
 	err = service.DeletePlan(ctx, catalog.DeleteCommand{ID: state.document.ID, ExpectedRevision: state.document.Revision})

@@ -191,6 +191,7 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, ErrCorrupt
 		}
 		testCaseByID[testCase.ID] = testCase
+		caseRevisionCache[caseRevisionKey{id: testCase.ID, revision: testCase.Revision}] = testCase
 	}
 
 	mappingByBinding := make(map[string]domain.ChannelModel, len(mappings))
@@ -241,6 +242,7 @@ func (service *Service) buildSnapshot(
 			}
 		}
 		suiteByID[suite.ID] = suite
+		suiteRevisionCache[suiteRevisionKey{id: suite.ID, revision: suite.Revision}] = suite
 	}
 	planIDs := make(map[string]struct{}, len(plans))
 	for _, plan := range plans {

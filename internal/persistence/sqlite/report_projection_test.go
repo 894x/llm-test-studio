@@ -310,27 +310,6 @@ func TestReportProjectionsRejectInvalidIntermediateRunTransition(t *testing.T) {
 	}
 }
 
-func TestReportProjectionsIgnoreRetiredCatalogPlanSchema(t *testing.T) {
-	path, repository, fixture := openHardeningRepository(t)
-	storeFixtureReport(t, repository, fixture)
-	closeForTamper(t, repository)
-	tamper(t, path, `
-		UPDATE test_plans
-		SET schema_version = 99, document_json = json_set(document_json, '$.schema_version', 99)
-		WHERE id = ? AND revision = ?
-	`, fixture.plan.ID, fixture.plan.Revision)
-	repository = reopenHardeningRepository(t, path)
-	defer repository.Close()
-
-	projections, err := repository.ListReportProjections(context.Background())
-	if err != nil {
-		t.Fatalf("ListReportProjections() error = %v", err)
-	}
-	if len(projections) != 1 || projections[0].PlanName != fixture.plan.Name {
-		t.Fatalf("snapshot-backed projections = %#v, want plan name %q", projections, fixture.plan.Name)
-	}
-}
-
 func TestReportProjectionsRejectSemanticallyEquivalentNonCanonicalJSON(t *testing.T) {
 	for _, test := range []struct {
 		name   string

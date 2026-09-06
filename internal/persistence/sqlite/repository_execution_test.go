@@ -148,6 +148,27 @@ func TestRepositoryComparisonV2RoundTripWithoutCatalogRows(t *testing.T) {
 		t.Fatalf("GetComparison() without catalog rows error = %v", err)
 	}
 	assertRoundTrip(t, "comparison backed by v2 run snapshots", comparison, got)
+	listed, err := repository.ListComparisons(ctx)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("ListComparisons() = %#v, %v; want one comparison", listed, err)
+	}
+	assertRoundTrip(t, "listed comparison", comparison, listed[0])
+
+	completed, err := comparison.Transition(domain.ComparisonCompleted, repositoryEpoch.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.UpdateComparison(ctx, comparison.Meta().Revision, completed); err != nil {
+		t.Fatalf("UpdateComparison() error = %v", err)
+	}
+	updated, err := repository.GetComparison(ctx, comparison.Meta().ID)
+	if err != nil {
+		t.Fatalf("GetComparison() after terminal update error = %v", err)
+	}
+	assertRoundTrip(t, "completed comparison", completed, updated)
+	if err := repository.UpdateComparison(ctx, comparison.Meta().Revision, completed); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("stale UpdateComparison() error = %v, want ErrConflict", err)
+	}
 }
 
 func runWithCompleteSnapshot(t *testing.T) domain.Run {

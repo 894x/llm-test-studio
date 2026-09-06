@@ -167,27 +167,12 @@ func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQuer
 	}, nil
 }
 
-func workspacePinnedPlan(ctx context.Context, queryer rowQueryer, run domain.Run) (domain.Plan, error) {
+func workspacePinnedPlan(_ context.Context, _ rowQueryer, run domain.Run) (domain.Plan, error) {
 	snapshot := run.Snapshot()
-	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
-		if snapshot.PlanDocument == nil {
-			return domain.Plan{}, fmt.Errorf("%w: workspace v2 plan document", ErrCorrupt)
-		}
-		return *snapshot.PlanDocument, nil
+	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
+		return domain.Plan{}, fmt.Errorf("%w: workspace plan document", ErrCorrupt)
 	}
-
-	document, err := exactDocument(ctx, queryer, "test_plans", run.PlanID(), snapshot.Plan.Revision, "plan")
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return domain.Plan{}, fmt.Errorf("%w: workspace legacy pinned plan row", ErrCorrupt)
-		}
-		return domain.Plan{}, err
-	}
-	plan, err := decodePlanDocument(document)
-	if err != nil {
-		return domain.Plan{}, err
-	}
-	return plan, nil
+	return *snapshot.PlanDocument, nil
 }
 
 func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
@@ -201,15 +186,8 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 	if plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision {
 		return errors.New("run plan reference differs from pinned plan")
 	}
-	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
-		if snapshot.PlanDocument == nil || !reflect.DeepEqual(plan, *snapshot.PlanDocument) {
-			return errors.New("run snapshot differs from pinned plan")
-		}
-		return nil
-	}
-	if !containsString(plan.ModelIDs, snapshot.Model.ID) || !containsString(plan.ChannelIDs, snapshot.Channel.ID) ||
-		!reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) ||
-		!reflect.DeepEqual(plan.SLA, snapshot.SLA) {
+	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
+		!reflect.DeepEqual(plan, *snapshot.PlanDocument) {
 		return errors.New("run snapshot differs from pinned plan")
 	}
 	return nil

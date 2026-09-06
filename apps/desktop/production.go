@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
@@ -90,7 +88,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("secure desktop data directory: %w", err)
 		}
 		if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
-			AppVersion: options.appVersion, RetireAuthoredCatalog: false,
+			AppVersion: options.appVersion,
 		}); err != nil {
 			return desktopDependencies{}, fmt.Errorf("migrate desktop database: %w", err)
 		}
@@ -144,18 +142,15 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			models:   modelFiles, channels: channelFiles,
 			cases: caseFiles, suites: suiteFiles, plans: planFiles,
 		}
-		// Keep the original filename so an existing schema-v1 checkpoint can be
-		// discovered and upgraded; the JSON payload carries its own schema version.
-		migrationMarker := filepath.Join(executableDirectory, ".llm-test-studio-authored-catalog-v1.json")
-		legacyCredentialStore := options.credentialStore
-		if isNilInterface(legacyCredentialStore) {
-			legacyCredentialStore = credentials.NewOSStore()
+		baseCredentialStore := options.credentialStore
+		if isNilInterface(baseCredentialStore) {
+			baseCredentialStore = credentials.NewOSStore()
 		}
 		credentialScope, err := credentialScopeForAuthoredCatalogRoot(executableDirectory)
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("scope credential keyring to authored catalog: %w", err)
 		}
-		credentialStore, err := credentials.NewScopedStore(legacyCredentialStore, credentialScope)
+		credentialStore, err := credentials.NewScopedStore(baseCredentialStore, credentialScope)
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create authored-catalog credential store: %w", err)
 		}
@@ -167,12 +162,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create credential cleanup queue: %w", err)
 		}
-		repository, err := openProductionRepositoryAfterCatalogCutover(
-			ctx, database, options.appVersion, catalogRepository, migrationMarker,
-			legacyCredentialStore, credentialStore, cleanupQueue,
-		)
+		repository, err := sqlite.OpenRepository(ctx, database, sqlite.RepositoryOptions{})
 		if err != nil {
-			return desktopDependencies{}, err
+			return desktopDependencies{}, fmt.Errorf("open desktop repository: %w", err)
 		}
 		if err := runs.RecoverInterrupted(ctx, repository, productionClock{}); err != nil {
 			_ = repository.Close()
@@ -255,7 +247,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		catalogCommands := catalogCommandsWithPlanDocuments{CatalogCommands: catalogQuery, documents: catalogRepository}
 		serializedCatalog := serializedCatalogService{
 			gate: gate, query: catalogQuery, commands: catalogCommands, channels: channelService,
-			caseTypes: caseTypes, plansAreFiles: true,
 		}
 		return desktopDependencies{
 			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
@@ -274,481 +265,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		}, nil
 	}
-}
-
-func openProductionRepositoryAfterCatalogCutover(
-	ctx context.Context,
-	database string,
-	appVersion string,
-	catalogRepository legacyAuthoredCatalogMigrationTarget,
-	migrationMarker string,
-	legacyCredentialStore credentials.Store,
-	credentialStore credentials.Store,
-	cleanupQueue credentials.CleanupQueue,
-) (*sqlite.Repository, error) {
-	if isNilInterface(legacyCredentialStore) || isNilInterface(credentialStore) || isNilInterface(cleanupQueue) {
-		return nil, errors.New("credential retirement dependencies are unavailable")
-	}
-	version, err := sqlite.SchemaVersion(ctx, database)
-	if err != nil {
-		return nil, fmt.Errorf("inspect desktop database after catalog export migrations: %w", err)
-	}
-	switch version {
-	case sqlite.CatalogExportSchemaVersion:
-		legacyRepository, err := sqlite.OpenLegacyCatalogRepository(ctx, database, sqlite.RepositoryOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("open legacy desktop catalog for file export: %w", err)
-		}
-		authoredCatalogDigest, snapshotErr := legacyRepository.BeginAuthoredCatalogExport(ctx)
-		if snapshotErr != nil {
-			closeErr := legacyRepository.Close()
-			return nil, fmt.Errorf(
-				"begin stable legacy authored catalog file export: %w",
-				errors.Join(snapshotErr, closeErr),
-			)
-		}
-		legacyCredentialRefs, credentialSnapshotErr := legacyRepository.ListCredentialRefHistory(ctx)
-		if credentialSnapshotErr != nil {
-			closeErr := legacyRepository.Close()
-			return nil, fmt.Errorf(
-				"snapshot legacy credential references before file export: %w",
-				errors.Join(credentialSnapshotErr, closeErr),
-			)
-		}
-		legacyClosed := false
-		retirementErr := catalogRepository.WithAuthoredCatalogRetirementLock(ctx, func(lockedCtx context.Context) error {
-			// Keep cooperating authored-file writers blocked across the complete
-			// export, receipt write, receipt validation, and SQLite DROP. Repository
-			// mutations reuse the lock token carried by lockedCtx.
-			if err := migrateLegacyAuthoredCatalog(lockedCtx, legacyRepository, catalogRepository, migrationMarker); err != nil {
-				return fmt.Errorf("migrate legacy authored catalog to files: %w", err)
-			}
-			// Recompute the marker's logical source fingerprint while the exact
-			// BEGIN IMMEDIATE export snapshot is still held. The SQLite retirement
-			// digest below is intentionally separate: it guards every retired table,
-			// while this digest selects the matching source->target file receipt.
-			stableSnapshot, err := loadLegacyAuthoredCatalogSnapshot(lockedCtx, legacyRepository)
-			if err != nil {
-				return fmt.Errorf("fingerprint stable legacy authored catalog after file export: %w", err)
-			}
-			migrationSourceDigest, err := digestLegacyAuthoredCatalogSnapshot(stableSnapshot)
-			if err != nil {
-				return fmt.Errorf("fingerprint stable legacy authored catalog after file export: %w", err)
-			}
-
-			// Release the source snapshot only after its target receipt exists and
-			// while the target lock remains held. Any later SQLite write is caught
-			// by migration 0011's digest recheck.
-			legacyClosed = true
-			if err := legacyRepository.Close(); err != nil {
-				return fmt.Errorf("close stable legacy desktop catalog after file export: %w", err)
-			}
-			if err := validateCompletedLegacyAuthoredCatalogMigrationForSource(
-				lockedCtx, catalogRepository, migrationMarker, migrationSourceDigest,
-			); err != nil {
-				return fmt.Errorf("validate legacy authored catalog file export receipt: %w", err)
-			}
-			if err := sqlite.Migrate(lockedCtx, database, sqlite.MigrateOptions{
-				AppVersion:                    appVersion,
-				RetireAuthoredCatalog:         true,
-				ExpectedAuthoredCatalogDigest: authoredCatalogDigest,
-				BeforeAuthoredCatalogRetirement: func(retirementCtx context.Context) error {
-					// Consume the crash-window receipt before DROP. If retirement
-					// later fails, v10 remains authoritative and the next startup
-					// safely replays the idempotent export instead of reusing a
-					// receipt across a different operational database lifetime.
-					if err := consumeLegacyAuthoredCatalogMigrationMarker(retirementCtx, migrationMarker); err != nil {
-						return err
-					}
-					return retireLegacyCredentialReferences(
-						retirementCtx, legacyCredentialRefs, catalogRepository,
-						legacyCredentialStore, credentialStore, cleanupQueue,
-					)
-				},
-			}); err != nil {
-				return fmt.Errorf("retire authored sqlite catalog: %w", err)
-			}
-			return nil
-		})
-		if !legacyClosed {
-			closeErr := legacyRepository.Close()
-			if closeErr != nil {
-				closeErr = fmt.Errorf("close legacy desktop catalog after retirement lock failure: %w", closeErr)
-			}
-			retirementErr = errors.Join(retirementErr, closeErr)
-		}
-		if retirementErr != nil {
-			return nil, retirementErr
-		}
-	case sqlite.AuthoredCatalogRetirementSchemaVersion:
-		// A committed v11 migration already proves that the crash-window
-		// receipt was validated. Current files may now be edited normally; only
-		// structural validation applies, and stale pre-v3 receipts are consumed.
-		if err := catalogRepository.WithAuthoredCatalogRetirementLock(ctx, func(lockedCtx context.Context) error {
-			if err := validateMigratedFileCatalog(lockedCtx, catalogRepository); err != nil {
-				return err
-			}
-			if err := migrateUnscopedReferencedCredentials(
-				lockedCtx, catalogRepository, legacyCredentialStore, credentialStore, cleanupQueue,
-			); err != nil {
-				return fmt.Errorf("migrate earlier unscoped channel credentials: %w", err)
-			}
-			return consumeLegacyAuthoredCatalogMigrationMarker(lockedCtx, migrationMarker)
-		}); err != nil {
-			return nil, fmt.Errorf("validate retired authored catalog files: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf(
-			"desktop database schema version %d is not ready for authored catalog cutover",
-			version,
-		)
-	}
-
-	repository, err := sqlite.OpenRepository(ctx, database, sqlite.RepositoryOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("open desktop repository: %w", err)
-	}
-	return repository, nil
-}
-
-func consumeLegacyAuthoredCatalogMigrationMarker(ctx context.Context, markerPath string) error {
-	if ctx == nil || strings.TrimSpace(markerPath) == "" || !filepath.IsAbs(markerPath) {
-		return errLegacyAuthoredCatalogMigrationInvalid
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := os.Remove(filepath.Clean(markerPath)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("consume legacy authored catalog migration marker: %w", err)
-	}
-	return nil
-}
-
-func retireLegacyCredentialReferences(
-	ctx context.Context,
-	legacyRefs []domain.CredentialRef,
-	target legacyAuthoredCatalogMigrationTarget,
-	legacyStore credentials.Store,
-	scopedStore credentials.Store,
-	queue credentials.CleanupQueue,
-) error {
-	if isNilInterface(legacyStore) || isNilInterface(scopedStore) || isNilInterface(queue) {
-		return errors.New("legacy credential retirement dependencies are unavailable")
-	}
-	channels, err := target.ListChannels(ctx)
-	if err != nil {
-		return fmt.Errorf("list migrated channels before credential retirement: %w", err)
-	}
-	documents, err := target.ListPlanDocuments(ctx)
-	if err != nil {
-		return fmt.Errorf("list migrated plans before credential retirement: %w", err)
-	}
-	referenced := make(map[string]struct{}, len(channels))
-	for _, channel := range channels {
-		if domain.IsUUID(channel.CredentialID) {
-			referenced[channel.CredentialID] = struct{}{}
-		}
-	}
-	for _, document := range documents {
-		for _, binding := range document.TargetBindings {
-			if domain.IsUUID(binding.Channel.CredentialID) {
-				referenced[binding.Channel.CredentialID] = struct{}{}
-			}
-		}
-	}
-	registryIDs := make([]string, 0, len(referenced))
-	for credentialID := range referenced {
-		registryIDs = append(registryIDs, credentialID)
-	}
-	sort.Strings(registryIDs)
-	type obsoleteCredential struct {
-		credential domain.CredentialRef
-		ref        credentials.StoreRef
-	}
-	retainedByStoreRef := make(map[string]obsoleteCredential, len(referenced))
-	retainedIDs := make(map[string]struct{}, len(referenced))
-	legacyRefsToDelete := make(map[string]credentials.StoreRef, len(legacyRefs))
-	obsoleteChannelIDs := make(map[string]struct{})
-	for _, credential := range legacyRefs {
-		ref, err := credentials.StoreRefFromCredential(credential)
-		if err != nil {
-			return fmt.Errorf("validate legacy credential reference %s: %w", credential.ID, err)
-		}
-		_, retainedID := referenced[credential.ID]
-		retained := retainedID && credential.Purpose == domain.CredentialChannelAPIKey
-		if retained {
-			expected, expectedErr := credentials.NewStoreRef(domain.CredentialChannelAPIKey, credential.ID)
-			retained = expectedErr == nil && ref == expected
-		}
-		if retained {
-			retainedByStoreRef[ref.Value()] = obsoleteCredential{credential: credential, ref: ref}
-			retainedIDs[credential.ID] = struct{}{}
-		}
-		// No authored root can prove that a legacy channel key is obsolete in
-		// every other root created by an unscoped build. Preserve all v1 channel
-		// entries as migration sources; non-channel history has no file consumer.
-		if credential.Purpose != domain.CredentialChannelAPIKey {
-			legacyRefsToDelete[ref.Value()] = ref
-		}
-		if !retained && credential.Purpose == domain.CredentialChannelAPIKey && !retainedID {
-			obsoleteChannelIDs[credential.ID] = struct{}{}
-		}
-	}
-	retainedStoreRefs := make([]string, 0, len(retainedByStoreRef))
-	for storeRef := range retainedByStoreRef {
-		retainedStoreRefs = append(retainedStoreRefs, storeRef)
-	}
-	sort.Strings(retainedStoreRefs)
-	obsoleteIDs := make([]string, 0, len(obsoleteChannelIDs))
-	for credentialID := range obsoleteChannelIDs {
-		obsoleteIDs = append(obsoleteIDs, credentialID)
-	}
-	sort.Strings(obsoleteIDs)
-	journalIDs := append(append([]string(nil), registryIDs...), obsoleteIDs...)
-	if err := queue.Enqueue(ctx, journalIDs...); err != nil {
-		return fmt.Errorf("record legacy credential retirement retry list: %w", err)
-	}
-	// Copy every still-referenced v1 credential before deleting any legacy
-	// keyring entries. A retry observes an existing scoped entry and continues,
-	// so crashes cannot require the source key to remain after it was copied.
-	for _, storeRef := range retainedStoreRefs {
-		retained := retainedByStoreRef[storeRef]
-		if err := copyLegacyCredentialToScopedStore(ctx, legacyStore, scopedStore, retained.credential); err != nil {
-			return fmt.Errorf("scope retained legacy credential %s: %w", retained.credential.ID, err)
-		}
-	}
-	// Existing authored files can contain credentials not present in this
-	// SQLite database (for example, a portable catalog beside a fresh DB).
-	// Reconcile those canonical v1 entries without a legacy fingerprint.
-	for _, credentialID := range registryIDs {
-		ref, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, credentialID)
-		if err != nil {
-			return fmt.Errorf("create referenced credential %s: %w", credentialID, err)
-		}
-		if _, hasLegacyMetadata := retainedIDs[credentialID]; hasLegacyMetadata {
-			continue
-		}
-		if err := reconcileLegacyCredentialWithScopedStore(ctx, legacyStore, scopedStore, ref, ""); err != nil {
-			return fmt.Errorf("scope file-referenced credential %s: %w", credentialID, err)
-		}
-	}
-	// Global v1 channel entries are deliberately retained as a read-only
-	// migration bridge. Older unscoped builds could have shared one key across
-	// multiple authored roots, and no single root can prove that an unreferenced
-	// key is also unused by every other root. New writes use only v2 entries.
-	legacyStoreRefs := make([]string, 0, len(legacyRefsToDelete))
-	for storeRef := range legacyRefsToDelete {
-		legacyStoreRefs = append(legacyStoreRefs, storeRef)
-	}
-	sort.Strings(legacyStoreRefs)
-	for _, storeRef := range legacyStoreRefs {
-		ref := legacyRefsToDelete[storeRef]
-		if err := legacyStore.Delete(ctx, ref); err != nil && !errors.Is(err, credentials.ErrNotFound) {
-			return fmt.Errorf("delete legacy credential %s: %w", ref.ID(), err)
-		}
-	}
-	if err := queue.Remove(ctx, obsoleteIDs...); err != nil {
-		return fmt.Errorf("finish legacy credential retirement retry list: %w", err)
-	}
-	return nil
-}
-
-func copyLegacyCredentialToScopedStore(
-	ctx context.Context,
-	legacyStore credentials.Store,
-	scopedStore credentials.Store,
-	credential domain.CredentialRef,
-) error {
-	ref, err := credentials.StoreRefFromCredential(credential)
-	if err != nil {
-		return fmt.Errorf("validate legacy credential metadata: %w", err)
-	}
-	return reconcileLegacyCredentialWithScopedStore(
-		ctx, legacyStore, scopedStore, ref, credential.Fingerprint,
-	)
-}
-
-func migrateUnscopedReferencedCredentials(
-	ctx context.Context,
-	target legacyAuthoredCatalogMigrationTarget,
-	legacyStore credentials.Store,
-	scopedStore credentials.Store,
-	queue credentials.CleanupQueue,
-) error {
-	channels, err := target.ListChannels(ctx)
-	if err != nil {
-		return fmt.Errorf("list channels before unscoped credential migration: %w", err)
-	}
-	documents, err := target.ListPlanDocuments(ctx)
-	if err != nil {
-		return fmt.Errorf("list plans before unscoped credential migration: %w", err)
-	}
-	referenced := make(map[string]struct{}, len(channels))
-	for _, channel := range channels {
-		if domain.IsUUID(channel.CredentialID) {
-			referenced[channel.CredentialID] = struct{}{}
-		}
-	}
-	for _, document := range documents {
-		for _, binding := range document.TargetBindings {
-			if domain.IsUUID(binding.Channel.CredentialID) {
-				referenced[binding.Channel.CredentialID] = struct{}{}
-			}
-		}
-	}
-	ids := make([]string, 0, len(referenced))
-	for id := range referenced {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	if err := queue.Enqueue(ctx, ids...); err != nil {
-		return fmt.Errorf("record scoped credential registry: %w", err)
-	}
-	for _, id := range ids {
-		ref, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, id)
-		if err != nil {
-			return fmt.Errorf("create unscoped credential reference %s: %w", id, err)
-		}
-		if err := reconcileLegacyCredentialWithScopedStore(ctx, legacyStore, scopedStore, ref, ""); err != nil {
-			return fmt.Errorf("scope credential %s: %w", id, err)
-		}
-	}
-	// Keep referenced v1 entries as a read-only migration bridge for other
-	// authored roots created by earlier unscoped builds. New channel mutations
-	// never write this namespace.
-	return nil
-}
-
-func reconcileLegacyCredentialWithScopedStore(
-	ctx context.Context,
-	legacyStore credentials.Store,
-	scopedStore credentials.Store,
-	ref credentials.StoreRef,
-	expectedFingerprint string,
-) error {
-	legacySecret, legacyFound, err := readCredentialSecret(ctx, legacyStore, ref)
-	if err != nil {
-		return fmt.Errorf("read legacy credential: %w", err)
-	}
-	defer clear(legacySecret)
-	scopedSecret, scopedFound, err := readCredentialSecret(ctx, scopedStore, ref)
-	if err != nil {
-		return fmt.Errorf("read scoped credential: %w", err)
-	}
-	defer clear(scopedSecret)
-	if expectedFingerprint != "" {
-		if legacyFound && !credentialMatchesFingerprint(legacySecret, expectedFingerprint) {
-			return errors.New("legacy credential does not match its stored fingerprint")
-		}
-		if scopedFound && !credentialMatchesFingerprint(scopedSecret, expectedFingerprint) {
-			return errors.New("scoped credential does not match the legacy fingerprint")
-		}
-	}
-	if legacyFound && scopedFound {
-		if !credentialSecretsEqual(legacySecret, scopedSecret) {
-			return errors.New("legacy and scoped credential values conflict")
-		}
-		return nil
-	}
-	if !legacyFound {
-		// Both missing preserves the pre-cutover missing-key state. Scoped-only
-		// is the expected state after a crash between v1 deletion and SQLite DROP.
-		return nil
-	}
-
-	setErr := scopedStore.Set(ctx, ref, legacySecret)
-	storedSecret, stored, readErr := readCredentialSecret(ctx, scopedStore, ref)
-	defer clear(storedSecret)
-	if readErr != nil {
-		return errors.Join(fmt.Errorf("verify scoped credential write: %w", readErr), setErr)
-	}
-	if !stored || !credentialSecretsEqual(legacySecret, storedSecret) {
-		if setErr == nil {
-			setErr = errors.New("scoped credential write did not preserve the legacy value")
-		}
-		return fmt.Errorf("write scoped credential: %w", setErr)
-	}
-	// A platform adapter can commit the keyring write and still return an
-	// uncertain error. Matching read-back proves this operation completed.
-	return nil
-}
-
-func readCredentialSecret(
-	ctx context.Context,
-	store credentials.Store,
-	ref credentials.StoreRef,
-) ([]byte, bool, error) {
-	lease, err := store.Get(ctx, ref)
-	if errors.Is(err, credentials.ErrNotFound) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	secret, bytesErr := lease.Bytes()
-	closeErr := lease.Close()
-	if bytesErr != nil || closeErr != nil {
-		clear(secret)
-		return nil, false, errors.Join(bytesErr, closeErr)
-	}
-	return secret, true, nil
-}
-
-func credentialSecretsEqual(left, right []byte) bool {
-	leftDigest := sha256.Sum256(left)
-	rightDigest := sha256.Sum256(right)
-	return subtle.ConstantTimeCompare(leftDigest[:], rightDigest[:]) == 1
-}
-
-func credentialMatchesFingerprint(secret []byte, fingerprint string) bool {
-	const prefix = "sha256:"
-	if !strings.HasPrefix(fingerprint, prefix) {
-		return false
-	}
-	expected, err := hex.DecodeString(strings.TrimPrefix(fingerprint, prefix))
-	if err != nil || len(expected) != sha256.Size {
-		clear(expected)
-		return false
-	}
-	actual := sha256.Sum256(secret)
-	matched := subtle.ConstantTimeCompare(actual[:], expected) == 1
-	clear(expected)
-	return matched
-}
-
-func validateCompletedLegacyAuthoredCatalogMigrationForSource(
-	ctx context.Context,
-	target legacyAuthoredCatalogMigrationTarget,
-	markerPath string,
-	sourceDigest string,
-) error {
-	marker, complete, err := legacyAuthoredCatalogMigrationComplete(ctx, markerPath)
-	if err != nil {
-		return err
-	}
-	if !complete {
-		return fmt.Errorf("%w: completion marker is missing", errLegacyAuthoredCatalogMigrationMarker)
-	}
-	expectedTargetDigest, exists := marker.TargetDigestsBySource[sourceDigest]
-	if !exists {
-		return fmt.Errorf("%w: completion marker has no target receipt for source %s", errLegacyAuthoredCatalogMigrationMarker, sourceDigest)
-	}
-	actualTargetDigest, err := digestMigratedFileCatalog(ctx, target)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		return fmt.Errorf("%w: fingerprint completed target manifest: %v", errLegacyAuthoredCatalogMigrationConflict, err)
-	}
-	if actualTargetDigest != expectedTargetDigest {
-		return fmt.Errorf(
-			"%w: completed target manifest changed (got %s, want %s)",
-			errLegacyAuthoredCatalogMigrationConflict,
-			actualTargetDigest,
-			expectedTargetDigest,
-		)
-	}
-	return nil
 }
 
 func productionStoragePaths(configurationRoot string) (directory string, database string, err error) {

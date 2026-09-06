@@ -35,7 +35,6 @@ func TestReportProjectionQuerySortsBeforeLoadingWideDocuments(t *testing.T) {
 	if err := Migrate(context.Background(), path, MigrateOptions{AppVersion: "projection-plan-test"}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
-	retireCoordinatorVersion10(t, path, "projection-plan-test-v11")
 	repository, err := OpenRepository(context.Background(), path, RepositoryOptions{})
 	if err != nil {
 		t.Fatalf("OpenRepository() error = %v", err)

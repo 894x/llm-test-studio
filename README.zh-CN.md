@@ -186,7 +186,7 @@ Wails + React desktop ──┐
                         ├── Go Application Core ──┬── 执行引擎
 llm-test-studio CLI ────┘                         ├── SQLite repository
                                                   ├── 操作系统凭据存储
-                                                  ├── 文件系统 Case 目录
+                                                  ├── 文件系统 authored 目录
                                                   └── 报告渲染器
 ```
 
@@ -199,7 +199,7 @@ llm-test-studio CLI ────┘                         ├── SQLite rep
 - `cmd/llm-test-studio` — 具有版本协议的 CLI 命令与 JSON/JSONL 输出。
 - `internal/application` — 目录、运行、对比、报告和工作区编排。
 - `internal/execution` 与 `engine` — 负载和兼容性执行引擎。
-- `internal/persistence/sqlite` — Schema migration 与 repository。
+- `internal/persistence/sqlite` — 运行态 Schema 与运行证据 repository。
 - `cases` — 按协议分组的内置可分享 Case。
 - `definitions` — 不含秘密的模型定义 fixture。
 
@@ -211,7 +211,7 @@ llm-test-studio CLI ────┘                         ├── SQLite rep
 - Channel Key 通过操作系统凭据服务保存；更新 Key 会创建新的凭据修订。
 - 持久化应用数据只包含凭据引用、脱敏后缀和指纹，不包含明文秘密。
 - 报告与结果只包含测量数据和脱敏证据元数据，不包含 Authorization Header 或凭据字节。
-- SQLite 保存目录实体、固定快照、Run、Result、Comparison 和封存 Report；可移植 Case 继续作为文件系统资产保存。
+- Model、Channel、Channel Model、Test Case、Suite 与 Plan 定义全部由文件保存。SQLite 只保存运行态数据：不可变 Run 快照、Result、Evidence、Comparison、性能报告与封存 Report。
 - 默认拒绝明文 HTTP Endpoint，显式启用的 loopback 测试除外。
 
 ## 当前范围

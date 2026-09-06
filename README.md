@@ -186,7 +186,7 @@ Wails + React desktop ──┐
                         ├── Go Application Core ──┬── execution engines
 llm-test-studio CLI ────┘                         ├── SQLite repository
                                                   ├── OS credential store
-                                                  ├── filesystem case catalog
+                                                  ├── filesystem authored catalog
                                                   └── report renderer
 ```
 
@@ -199,7 +199,7 @@ The desktop and CLI share the same application services and domain rules. There 
 - `cmd/llm-test-studio` — versioned CLI commands and JSON/JSONL output.
 - `internal/application` — catalog, run, comparison, reporting, and workspace orchestration.
 - `internal/execution` and `engine` — load and compatibility execution engines.
-- `internal/persistence/sqlite` — schema migrations and repositories.
+- `internal/persistence/sqlite` — operational schema and runtime-evidence repositories.
 - `cases` — embedded, shareable cases grouped by protocol.
 - `definitions` — non-secret model definition fixtures.
 
@@ -211,7 +211,7 @@ The desktop and CLI share the same application services and domain rules. There 
 - Channel keys are stored through the operating-system credential service. Updating a key creates a new credential revision.
 - Persistent application data contains credential references, masked suffixes, and fingerprints, not plaintext secrets.
 - Reports and results contain measurements and redacted evidence metadata, not authorization headers or credential bytes.
-- SQLite stores catalog entities, pinned snapshots, runs, results, comparisons, and sealed reports. Portable cases remain filesystem assets.
+- Model, Channel, Channel Model, Test Case, Suite, and Plan definitions are file-backed. SQLite stores only operational data: immutable Run snapshots, Results, Evidence, Comparisons, performance reports, and sealed Reports.
 - Plain HTTP endpoints are rejected except for explicitly enabled loopback testing.
 
 ## Current scope
