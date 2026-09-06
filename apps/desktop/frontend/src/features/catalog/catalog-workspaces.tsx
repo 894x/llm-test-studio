@@ -57,7 +57,7 @@ interface CatalogWorkspaceProps {
 }
 
 export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPending, mutationError }: CatalogWorkspaceProps) {
-  const [tab, setTab] = useState<"models" | "channels" | "mappings">("models")
+  const [tab, setTab] = useState<"models" | "channels" | "mappings" | "matrix">("models")
   const [selectedModelID, setSelectedModelID] = useState("")
   const [selectedChannelID, setSelectedChannelID] = useState("")
   const [selectedMappingID, setSelectedMappingID] = useState("")
@@ -84,7 +84,7 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
       )
     ) : tab === "channels" && selectedChannel ? (
       <ChannelInspector channel={selectedChannel} catalog={catalog} modelNames={modelNames} />
-    ) : tab === "mappings" && selectedMapping ? (
+    ) : (tab === "mappings" || tab === "matrix") && selectedMapping ? (
       <MappingInspector mapping={selectedMapping} channelNames={channelNames} modelNames={modelNames} />
     ) : (
       <EmptyInspector label="尚未选择对象" />
@@ -106,7 +106,7 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as "models" | "channels" | "mappings")}
+        onValueChange={(value) => setTab(value as "models" | "channels" | "mappings" | "matrix")}
         className="min-h-0 flex-1 gap-0"
       >
         <TabsList variant="line" className="mx-4 h-8">
@@ -118,6 +118,9 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
           </TabsTrigger>
           <TabsTrigger value="mappings" className="text-xs">
             映射 {catalog.channel_models.length}
+          </TabsTrigger>
+          <TabsTrigger value="matrix" className="text-xs">
+            矩阵
           </TabsTrigger>
         </TabsList>
         <Separator />
@@ -133,11 +136,135 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
             selectedID={selectedChannel?.id ?? ""}
             onSelect={setSelectedChannelID}
           />
-        ) : (
+        ) : tab === "mappings" ? (
           <MappingTable mappings={catalog.channel_models} selectedID={selectedMapping?.id ?? ""} onSelect={setSelectedMappingID} channelNames={channelNames} modelNames={modelNames} />
+        ) : (
+          <ModelChannelMatrix
+            catalog={catalog}
+            selectedID={selectedMapping?.id ?? ""}
+            onSelect={setSelectedMappingID}
+          />
         )}
       </Tabs>
     </PageFrame>
+  )
+}
+
+function ModelChannelMatrix({
+  catalog,
+  selectedID,
+  onSelect,
+}: {
+  catalog: CatalogSnapshot
+  selectedID: string
+  onSelect: (id: string) => void
+}) {
+  const mappingsByBinding = useMemo(
+    () => new Map(
+      catalog.channel_models.map((mapping) => [
+        `${mapping.model_id}\u0000${mapping.channel_id}`,
+        mapping,
+      ]),
+    ),
+    [catalog.channel_models],
+  )
+
+  if (catalog.models.length === 0 || catalog.channels.length === 0) {
+    return (
+      <CatalogEmpty
+        title="暂无可用矩阵"
+        description={catalog.models.length === 0 ? "添加模型后即可查看渠道配置矩阵。" : "添加渠道后即可查看模型配置矩阵。"}
+      />
+    )
+  }
+
+  return (
+    <ScrollArea className="min-h-0 flex-1">
+      <Table aria-label="模型渠道配置矩阵" className="w-max min-w-full table-fixed">
+        <TableHeader className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="sticky left-0 z-30 h-12 w-[176px] min-w-[176px] border-r bg-background/95 pl-4 text-[11px]">
+              逻辑模型 / 渠道
+            </TableHead>
+            {catalog.channels.map((channel) => (
+              <TableHead
+                key={channel.id}
+                aria-label={channel.name}
+                className="h-12 w-[184px] min-w-[184px] px-3 py-1.5"
+              >
+                <div className="max-w-[160px] truncate text-xs font-medium" title={channel.name}>
+                  {channel.name}
+                </div>
+                <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
+                  {channel.enabled ? "已启用" : "已停用"} · {PROTOCOL_LABELS[channel.protocol]}
+                </div>
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {catalog.models.map((model) => (
+            <TableRow key={model.id} className="hover:bg-transparent">
+              <TableHead
+                scope="row"
+                className="sticky left-0 z-10 h-16 w-[176px] min-w-[176px] border-r bg-background pl-4"
+              >
+                <div className="max-w-[152px] truncate text-xs font-medium" title={model.name}>
+                  {model.name}
+                </div>
+                <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
+                  {PROTOCOL_LABELS[model.protocol]}
+                </div>
+              </TableHead>
+              {catalog.channels.map((channel) => {
+                const mapping = mappingsByBinding.get(`${model.id}\u0000${channel.id}`)
+                if (!mapping) {
+                  return (
+                    <TableCell
+                      key={channel.id}
+                      aria-label={`${model.name} 在 ${channel.name}未配置`}
+                      className="h-16 w-[184px] min-w-[184px] border-l bg-muted/20 px-3 py-2 text-center text-[11px] text-muted-foreground"
+                    >
+                      未配置
+                    </TableCell>
+                  )
+                }
+                return (
+                  <TableCell
+                    key={channel.id}
+                    data-state={mapping.id === selectedID ? "selected" : undefined}
+                    className="h-16 w-[184px] min-w-[184px] border-l p-0 data-[state=selected]:bg-muted"
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      aria-pressed={mapping.id === selectedID}
+                      aria-label={`查看 ${model.name} 在 ${channel.name}的映射：${mapping.upstream_model_name}`}
+                      onClick={() => onSelect(mapping.id)}
+                      className="h-full w-full min-w-0 flex-col items-start gap-0.5 rounded-none px-3 py-2 text-left"
+                    >
+                      <Badge variant="outline" className="h-4 border-success/25 bg-success-soft px-1.5 text-[10px] text-success-strong">
+                        已配置
+                      </Badge>
+                      <span className="flex w-full min-w-0 items-center gap-1">
+                        <span className="shrink-0 text-[10px] font-normal text-muted-foreground">模型</span>
+                        <span className="truncate text-xs font-medium">{model.name}</span>
+                      </span>
+                      <span className="flex w-full min-w-0 items-center gap-1">
+                        <span className="shrink-0 text-[10px] font-normal text-muted-foreground">上游</span>
+                        <span className="truncate font-mono text-[10px] font-normal text-muted-foreground">
+                          {mapping.upstream_model_name}
+                        </span>
+                      </span>
+                    </Button>
+                  </TableCell>
+                )
+              })}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </ScrollArea>
   )
 }
 
