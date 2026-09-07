@@ -63,7 +63,7 @@ export function OverviewWorkspace({
                   <dt className="text-muted-foreground">{t("activeRun.plan")}</dt><dd className="font-medium">{activeRun.title}</dd>
                   <dt className="text-muted-foreground">{t("activeRun.modelChannel")}</dt><dd>{activeRun.model} · {activeRun.channel}</dd>
                   <dt className="text-muted-foreground">{t("activeRun.load")}</dt><dd>{activeRun.loadProfile}</dd>
-                  <dt className="text-muted-foreground">{t("activeRun.completed")}</dt><dd className="tabular-nums">{activeRun.completed}/{activeRun.total || t("activeRun.timed")}</dd>
+                  <dt className="text-muted-foreground">{t("activeRun.completed")}</dt><dd className="tabular-nums">{activeRun.quickTask ? activeRun.completed : `${activeRun.completed}/${activeRun.total || t("activeRun.timed")}`}</dd>
                   <dt className="text-muted-foreground">{t("activeRun.coreStatus")}</dt><dd>{activeRun.coreStatus}</dd>
                 </dl>
               ) : (

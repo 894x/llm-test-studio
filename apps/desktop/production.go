@@ -213,6 +213,8 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		}
 		runService, err := runs.New(runs.Dependencies{
 			Repository:  runtimeRepository,
+			QuickTasks:  catalogRepository,
+			CaseTypes:   caseTypes,
 			Credentials: credentialStore,
 			Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{
 				casetypes.TypeLegacyAPIAudit:     runs.NewLegacyAPIAuditExecutor(nil),

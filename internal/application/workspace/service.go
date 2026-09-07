@@ -90,6 +90,7 @@ type PlanSummary struct {
 }
 
 type RunSummary struct {
+	Source          string           `json:"source,omitempty"`
 	ID              string           `json:"id"`
 	Revision        uint64           `json:"revision"`
 	PlanID          string           `json:"plan_id"`
@@ -246,7 +247,7 @@ func validateProjection(projection RunProjection) error {
 	if projection.Completed != projection.Passed+projection.Failed {
 		return errors.New("run result counts are inconsistent")
 	}
-	if snapshot.Load.RequestCount > 0 && projection.Completed > snapshot.Load.RequestCount {
+	if snapshot.QuickTask == nil && snapshot.Load.RequestCount > 0 && projection.Completed > snapshot.Load.RequestCount {
 		return errors.New("run completed more requests than planned")
 	}
 	switch projection.Conclusion {
@@ -293,6 +294,11 @@ func summarizeRun(projection RunProjection) RunSummary {
 	if failure := run.Failure(); failure != nil {
 		summary.FailurePhase = failure.Phase
 		summary.ErrorCode = failure.ErrorCode
+	}
+	if snapshot.QuickTask != nil {
+		// A task executes each member once; a member can own a variable number
+		// of observations. Its Case count is not a request budget.
+		summary.Source, summary.Planned = "quick_task", 0
 	}
 	return summary
 }

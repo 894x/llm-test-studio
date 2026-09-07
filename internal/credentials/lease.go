@@ -17,6 +17,16 @@ func newLease(secret []byte) *Lease {
 	return &Lease{secret: append([]byte(nil), secret...)}
 }
 
+// NewTemporaryLease copies a transient credential without creating a keyring
+// entry. The caller retains ownership of its input bytes and must close the
+// returned lease when the operation ends.
+func NewTemporaryLease(secret []byte) (*Lease, error) {
+	if len(secret) == 0 {
+		return nil, ErrInvalid
+	}
+	return newLease(secret), nil
+}
+
 // Bytes returns a defensive copy that the caller should zero after use.
 func (lease *Lease) Bytes() ([]byte, error) {
 	if lease == nil {

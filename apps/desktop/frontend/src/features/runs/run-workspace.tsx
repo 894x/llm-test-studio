@@ -58,7 +58,7 @@ import {
   type TestPlan,
   type WorkspaceSnapshot,
 } from "./data"
-import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
+import { eligibleRuntimeChannels, eligibleRuntimeModels, paidRuntimeProtocol } from "./run-targets"
 
 type ActiveTaskState = "queued" | "starting" | "running" | "draining"
 
@@ -270,7 +270,7 @@ function RunTable({
                         <span className="tabular-nums">{t("table.completedCount", { count: run.completed })}</span>
                       </div>
                       <div className="mt-1 text-[10px] text-muted-foreground">
-                        {t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}
+                        {run.quickTask ? t("presentation.quickSuite") : t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}
                       </div>
                     </>
                   )}
@@ -313,10 +313,10 @@ function DefinitionRow({
 function RunInspectorContent({ run }: { run: RunRecord }) {
   const { t } = useTranslation("runs")
   const durationOnly = run.total === 0 && run.targetDurationMS > 0
-  const targetDetail = durationOnly
+  const targetDetail = run.quickTask ? t("presentation.quickSuite") : durationOnly
     ? t("inspector.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })
     : t("inspector.fixedRequests", { count: run.total })
-  const progressDetail = durationOnly
+  const progressDetail = run.total === 0
     ? t("inspector.completedRequests", { count: run.completed })
     : t("inspector.completedFraction", { completed: run.completed, total: run.total })
 
@@ -425,9 +425,9 @@ export function NewRunSheet({
 		[catalog, effectiveSelectedPlan, effectiveSelectedModel],
 	)
 	const effectiveSelectedChannel = channels.some((channel) => channel.id === selectedChannel) ? selectedChannel : (channels[0]?.id ?? "")
-  const selectedModelDefinition = models.find((model) => model.id === effectiveSelectedModel)
-  const requiresPaidVideoConfirmation = selectedModelDefinition?.protocol === "wan-video" || selectedModelDefinition?.protocol === "minimax-video"
-  const paidVideoProvider = selectedModelDefinition?.protocol === "minimax-video" ? "MiniMax" : "Wan"
+  const paidProtocol = paidRuntimeProtocol(catalog, effectiveSelectedPlan, effectiveSelectedModel, effectiveSelectedChannel)
+  const requiresPaidVideoConfirmation = paidProtocol !== undefined
+  const paidVideoProvider = paidProtocol?.label.replace(/ Video$/, "") ?? ""
 
   const start = async () => {
     if (!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel) return
@@ -510,7 +510,7 @@ export function NewRunSheet({
                             label={t("newRun.channel")}
 							value={effectiveSelectedChannel}
 							options={channels.map((channel) => [channel.id, channel.name])}
-							onChange={setSelectedChannel}
+							onChange={(value) => { setSelectedChannel(value); setPaidVideoConfirmed(false) }}
 						/>
                         {models.length === 0 ? <p className="text-xs text-destructive">{t("newRun.noModels")}</p> : null}
                         {models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">{t("newRun.noChannels")}</p> : null}
@@ -672,7 +672,7 @@ function ActiveTaskBar({
           <span className="hidden tabular-nums text-muted-foreground sm:inline">
             {run.total > 0
               ? `${run.completed}/${run.total}`
-              : t("task.completedTarget", { count: run.completed, duration: formatTargetDuration(run.targetDurationMS) })}
+              : run.quickTask ? t("inspector.completedRequests", { count: run.completed }) : t("task.completedTarget", { count: run.completed, duration: formatTargetDuration(run.targetDurationMS) })}
           </span>
         </div>
         {run.total > 0 ? (
@@ -683,7 +683,7 @@ function ActiveTaskBar({
           />
         ) : (
           <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <Spinner /> {t("task.timedHint")}
+            <Spinner /> {run.quickTask ? t("presentation.quickSuite") : t("task.timedHint")}
           </div>
         )}
       </div>

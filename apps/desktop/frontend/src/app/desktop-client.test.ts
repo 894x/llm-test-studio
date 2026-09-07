@@ -897,6 +897,25 @@ describe("Wails desktop client", () => {
     expect(snapshot.runs[0]).not.toHaveProperty("error_code")
   })
 
+  it("accepts Suite history whose Case members own a variable request schedule", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    Object.assign(payload.runs[0], { source: "quick_task", planned: 0, duration_ms: 0, completed: 6, passed: 5, failed: 1 })
+    installBinding(payload)
+    expect((await createDesktopClient().getWorkspace()).runs[0]).toMatchObject({ source: "quick_task", planned: 0, completed: 6 })
+  })
+
+  it.each([
+    { source: "quick_task", planned: 1, duration_ms: 0 },
+    { source: "quick_task", planned: 0, duration_ms: 1000 },
+    { source: "unknown", planned: 0, duration_ms: 0 },
+    { planned: 0, duration_ms: 0 },
+  ])("rejects inconsistent task progress metadata %j", async (progress) => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    Object.assign(payload.runs[0], progress)
+    installBinding(payload)
+    await expect(createDesktopClient().getWorkspace()).rejects.toThrow("运行记录")
+  })
+
   it("drops unexpected secret-bearing fields from catalog and report payloads", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG) as unknown as Record<string, unknown>
     catalog.api_key = "opaque-catalog-secret"

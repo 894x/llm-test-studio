@@ -83,6 +83,7 @@
     "details": "详情"
   },
   "presentation": {
+	"quickSuite": "按 Suite 执行",
     "failedRequests": "{{count}} 个请求未通过完整成功判定。",
     "failedConclusion": "运行结论未通过，请检查报告中的 SLA 与汇总。",
     "continuous": "{{rate}}持续 {{duration}}",

@@ -1,9 +1,28 @@
 import { describe, expect, it } from "vitest"
 
 import { FIXTURE_CATALOG } from "./fixtures"
-import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
+import { eligibleRuntimeChannels, eligibleRuntimeModels, paidRuntimeProtocol } from "./run-targets"
 
 describe("runtime plan target selection", () => {
+  it("uses protocol metadata and applicable pinned members for Seedance billing acknowledgement", () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    const plan = catalog.plans[0]
+    const model = catalog.models.find((item) => item.id === plan.model_ids[0])!
+    const channelID = plan.channel_ids[0]
+    const mapping = catalog.channel_models.find((item) => item.model_id === model.id && item.channel_id === channelID)!
+    model.protocol = "seedance"
+    plan.cases = plan.cases.slice(0, 2)
+    for (const ref of plan.cases) {
+      const testCase = catalog.test_cases.find((item) => item.id === ref.case_id)!
+      testCase.model_targets = []
+    }
+    expect(paidRuntimeProtocol(catalog, plan.id, model.id, channelID)?.id).toBe("seedance")
+    const second = catalog.test_cases.find((item) => item.id === plan.cases[1].case_id)!
+    second.model_targets = [`${mapping.upstream_model_name}-other`]
+    expect(paidRuntimeProtocol(catalog, plan.id, model.id, channelID)).toBeUndefined()
+    second.revision++
+    expect(paidRuntimeProtocol(catalog, plan.id, model.id, channelID)?.id).toBe("seedance")
+  })
   it("uses a plan's allowlists when they are configured", () => {
 		const catalog = structuredClone(FIXTURE_CATALOG)
 		const plan = catalog.plans[0]

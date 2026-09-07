@@ -30,6 +30,7 @@ export type WorkspacePlan = {
 }
 
 export type WorkspaceRun = {
+  source?: "quick_task"
   id: string
   revision: number
   plan_id: string
@@ -83,6 +84,7 @@ export type TestPlan = {
 }
 
 export type RunRecord = {
+  quickTask?: boolean
   id: string
   title: string
   planId: string
@@ -131,6 +133,7 @@ export function presentWorkspace(
       runCount: item.run_count,
     })),
     runs: snapshot.runs.map((item) => ({
+      quickTask: item.source === "quick_task",
       id: item.id,
       title: item.plan_name,
       planId: item.plan_id,
@@ -175,6 +178,7 @@ function describeLoad(plan: WorkspacePlan, t: RunTranslator): string {
 }
 
 function describeRunLoad(run: WorkspaceRun, t: RunTranslator): string {
+  if (run.source === "quick_task") return t("presentation.quickSuite")
   if (run.planned === 0 && run.duration_ms > 0) {
     const rate = run.load_mode === "open_loop" ? `${run.rate_per_second} RPS · ` : ""
     return t("presentation.continuous", { rate, duration: formatTargetDuration(run.duration_ms) })
@@ -218,6 +222,7 @@ function formatStartedAt(value: string, locale: string): string {
 }
 
 const DEFAULT_RUN_MESSAGES: Record<string, string> = {
+  "presentation.quickSuite": "runs:presentation.quickSuite",
   "presentation.failedRequests": "desktop:runs_value_requests_failed_the_full_success_criteria",
   "presentation.failedConclusion": "desktop:runs_the_run_did_not_pass_check_the_report_sla_and",
   "presentation.continuous": "desktop:runs_value_for_value",

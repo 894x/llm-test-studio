@@ -194,20 +194,29 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 }
 
 const workspaceProjectionQuery = `
-WITH result_stats AS (
+WITH result_observations AS (
+	SELECT item.*,
+	       CASE WHEN item.request_id IS NOT NULL OR
+	         MAX(item.request_id IS NOT NULL) OVER (PARTITION BY item.run_id) = 0
+	         THEN 1 ELSE 0 END AS observation
+	FROM case_results AS item
+),
+result_stats AS (
 	SELECT item.run_id,
-	       COUNT(*) AS completed,
+	       SUM(item.observation) AS completed,
 	       SUM(CASE WHEN
+	           item.observation = 1 AND
 	           json_extract(item.document_json, '$.success.transport') = 1 AND
 	           json_extract(item.document_json, '$.success.protocol') = 1 AND
 	           json_extract(item.document_json, '$.success.semantic') = 1 AND
 	           json_extract(item.document_json, '$.success.sla') = 1
 	         THEN 1 ELSE 0 END) AS passed,
 	       SUM(CASE WHEN
+	           item.observation = 0 OR (
 	           json_extract(item.document_json, '$.success.transport') = 1 AND
 	           json_extract(item.document_json, '$.success.protocol') = 1 AND
 	           json_extract(item.document_json, '$.success.semantic') = 1 AND
-	           json_extract(item.document_json, '$.success.sla') = 1
+	           json_extract(item.document_json, '$.success.sla') = 1)
 	         THEN 0 ELSE 1 END) AS failed,
 	       SUM(CASE WHEN
 	           item.schema_version = ? AND item.revision = 1 AND
@@ -250,7 +259,7 @@ WITH result_stats AS (
 	                   json_extract(planned_case.value, '$.case_id') = item.case_id
 	           ))
 	         THEN 0 ELSE 1 END) AS corrupt
-	FROM case_results AS item
+	FROM result_observations AS item
 	GROUP BY item.run_id
 ),
 evidence_stats AS (

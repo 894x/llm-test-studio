@@ -1539,7 +1539,10 @@ function isWorkspaceRun(value: unknown): boolean {
     isNonNegativeFinite(value.rate_per_second) &&
     isNonNegativeSafeInteger(value.planned) &&
     isNonNegativeSafeInteger(value.duration_ms) &&
-    ((value.planned as number) > 0 || (value.duration_ms as number) > 0) &&
+    (value.source === undefined || value.source === "quick_task") &&
+    (value.source === "quick_task"
+      ? value.planned === 0 && value.duration_ms === 0
+      : (value.planned as number) > 0 || (value.duration_ms as number) > 0) &&
     isConclusion(value.conclusion) &&
     (!hasFailure ||
       (value.status === "failed" &&
@@ -1560,6 +1563,7 @@ function parseRun(value: unknown) {
   if (!isWorkspaceRun(value)) throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   const record = value as Record<string, unknown>
   return {
+    ...(record.source === "quick_task" ? { source: "quick_task" as const } : {}),
     id: record.id as string,
     revision: record.revision as number,
     plan_id: record.plan_id as string,

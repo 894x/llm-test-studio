@@ -3,11 +3,26 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { EMPTY_CATALOG, type CatalogSnapshot } from "@/features/catalog/data"
+import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 
-import { NewRunSheet } from "./run-workspace"
+import { NewRunSheet, RunWorkspace } from "./run-workspace"
+import { FIXTURE_WORKSPACE } from "./fixtures"
+
+it("shows task observations without a fictitious request total or timed target", () => {
+  const snapshot = structuredClone(FIXTURE_WORKSPACE)
+  snapshot.plans = []
+  snapshot.runs = [snapshot.runs[0]]
+  Object.assign(snapshot.runs[0], { source: "quick_task", status: "running", planned: 0, duration_ms: 0, completed: 6, passed: 6, failed: 0 })
+  snapshot.active_run_id = snapshot.runs[0].id
+  render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
+  expect(screen.getAllByText("按 Suite 执行").length).toBeGreaterThan(0)
+  expect(screen.getAllByText("6 个请求已完成").length).toBeGreaterThan(0)
+  expect(screen.queryByText(/6\/0|目标时长 0|定时运行/)).not.toBeInTheDocument()
+})
 
 describe("NewRunSheet paid video confirmation", () => {
-  it("requires an explicit Wan billing acknowledgement", async () => {
+  it.each(["wan-video", "seedance"] as const)("requires an explicit %s billing acknowledgement", async (protocol) => {
+    const provider = protocol === "seedance" ? "Seedance" : "Wan"
     const user = userEvent.setup()
     const caseID = "44444444-4444-4444-8444-444444444449"
     const modelID = "22222222-2222-4222-8222-222222222229"
@@ -30,6 +45,18 @@ describe("NewRunSheet paid video confirmation", () => {
       }],
     }
     const onStartRun = vi.fn(async () => undefined)
+	const secondChannelID = "33333333-3333-4333-8333-333333333338"
+	catalog.channels.push({ ...catalog.channels[0], id: secondChannelID, name: "第二渠道" })
+	catalog.channel_models.push({ ...catalog.channel_models[0], id: "77777777-7777-4777-8777-777777777778", channel_id: secondChannelID })
+	catalog.plans[0].channel_ids.push(secondChannelID)
+	if (protocol === "seedance") {
+		catalog.models[0].protocol = protocol
+		for (const channel of catalog.channels) channel.protocol = protocol
+		catalog.test_cases[0].protocol = protocol
+		const second = { ...catalog.test_cases[0], id: "44444444-4444-4444-8444-444444444448", key: "seedance.second" }
+		catalog.test_cases.push(second)
+		catalog.plans[0].cases.push({ case_id: second.id, revision: second.revision })
+	}
 
     render(<NewRunSheet
       plans={[{ id: planID, name: "Wan 3.0 边界", description: "版本边界", caseCount: 1, runCount: 0 }]}
@@ -40,16 +67,20 @@ describe("NewRunSheet paid video confirmation", () => {
 
     await user.click(screen.getByRole("button", { name: "新建运行" }))
     const dialog = screen.getByRole("dialog", { name: "新建运行" })
-    expect(within(dialog).getByText(/Wan 视频生成会产生费用/)).toBeInTheDocument()
+    expect(within(dialog).getByText(new RegExp(`${provider} 视频生成会产生费用`))).toBeInTheDocument()
     expect(within(dialog).getByRole("button", { name: "开始付费运行" })).toBeDisabled()
 
-    await user.click(within(dialog).getByRole("checkbox", { name: "我确认本次 Wan 视频运行会调用计费接口" }))
+    await user.click(within(dialog).getByRole("checkbox", { name: `我确认本次 ${provider} 视频运行会调用计费接口` }))
+	await user.click(within(dialog).getByRole("combobox", { name: "执行渠道" }))
+	await user.click(screen.getByRole("option", { name: "第二渠道" }))
+	expect(within(dialog).getByRole("button", { name: "开始付费运行" })).toBeDisabled()
+	await user.click(within(dialog).getByRole("checkbox", { name: `我确认本次 ${provider} 视频运行会调用计费接口` }))
     await user.click(within(dialog).getByRole("button", { name: "开始付费运行" }))
 
     expect(onStartRun).toHaveBeenCalledWith({
       plan_id: planID,
       model_id: modelID,
-      channel_id: channelID,
+      channel_id: secondChannelID,
       confirm_paid_video: true,
     })
   })

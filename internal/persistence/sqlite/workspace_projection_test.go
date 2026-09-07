@@ -71,6 +71,14 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	if err := repository.AppendResult(ctx, failing); err != nil {
 		t.Fatalf("AppendResult(second fail) error = %v", err)
 	}
+	// Case summaries and request observations are separate views of the same
+	// execution. Counting both doubles progress and failure totals.
+	summary := failing
+	summary.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000045", 1)
+	summary.RequestID = ""
+	if err := repository.AppendResult(ctx, summary); err != nil {
+		t.Fatalf("AppendResult(second summary) error = %v", err)
+	}
 
 	projections, err := repository.ListRunProjections(ctx)
 	if err != nil {
@@ -96,6 +104,24 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	}
 	if !reflect.DeepEqual(first.Run, firstRun) || !reflect.DeepEqual(second.Run, secondRun) {
 		t.Fatalf("projected runs do not match authoritative current runs")
+	}
+}
+
+func TestWorkspaceRunProjectionsStillValidateUncountedSummaries(t *testing.T) {
+	path, repository, fixture := openHardeningRepository(t)
+	createRunningOutputs(t, repository, fixture)
+	observation := fixture.result
+	observation.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000046", 1)
+	observation.RequestID = "request-observation"
+	if err := repository.AppendResult(context.Background(), observation); err != nil {
+		t.Fatal(err)
+	}
+	closeForTamper(t, repository)
+	tamper(t, path, `UPDATE case_results SET document_json = json_set(document_json, '$.success.semantic', 'yes') WHERE id = ?`, fixture.result.ID)
+	repository = reopenHardeningRepository(t, path)
+	defer repository.Close()
+	if _, err := repository.ListRunProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+		t.Fatalf("corrupt summary was ignored: %v", err)
 	}
 }
 

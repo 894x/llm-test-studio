@@ -51,6 +51,7 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 		PollInterval: 10 * time.Second,
 		Timeout:      time.Duration(snapshot.Load.RequestTimeoutMS) * time.Millisecond,
 	}
+	started := time.Now()
 	for index, testCase := range request.Cases {
 		if stopped(request.StopSending) {
 			return nil
@@ -60,12 +61,16 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 			return fmt.Errorf("prepare legacy case %s: %w", testCase.ID, convertErr)
 		}
 		caseContext, cancel := context.WithTimeout(ctx, config.Timeout)
+		startedOffset := milliseconds(time.Since(started))
 		result, runErr := apiaudit.RunCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
+		finishedOffset := milliseconds(time.Since(started))
 		cancel()
 		if runErr != nil {
 			return fmt.Errorf("%w: %v", ErrUnsupportedExecutionProtocol, runErr)
 		}
-		if err := emit(draftFromLegacyResult(testCase.ID, index, result)); err != nil {
+		draft := draftFromLegacyResult(testCase.ID, index, result)
+		draft.Metrics["scheduled_offset_ms"], draft.Metrics["started_offset_ms"], draft.Metrics["finished_offset_ms"] = startedOffset, startedOffset, finishedOffset
+		if err := emit(draft); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {

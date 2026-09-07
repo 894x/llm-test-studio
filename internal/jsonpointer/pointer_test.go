@@ -2,6 +2,24 @@ package jsonpointer
 
 import "testing"
 
+func TestReplaceUpdatesOnlyAnExistingField(t *testing.T) {
+	root := map[string]any{"items": []any{map[string]any{"text": "original"}}}
+	if !Replace(root, "/items/0/text", "edited") {
+		t.Fatal("existing field not updated")
+	}
+	if got, _ := Lookup(root, "/items/0/text"); got != "edited" {
+		t.Fatal(got)
+	}
+	for _, pointer := range []string{"", "/missing", "/items/1", "/items/00/text", "/items/0/missing"} {
+		if Replace(root, pointer, "wrong") {
+			t.Fatalf("invalid replacement accepted: %s", pointer)
+		}
+	}
+	if got, _ := Lookup(root, "/items/0/text"); got != "edited" {
+		t.Fatal("invalid replacement changed valid field")
+	}
+}
+
 func TestLookupEscapesObjectsAndRejectsArrayAliases(t *testing.T) {
 	root := map[string]any{"items": []any{"first"}, "a/b": map[string]any{"~1": "escaped"}, "00": "key"}
 	for _, test := range []struct {

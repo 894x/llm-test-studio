@@ -4,8 +4,8 @@ A quick task uses an existing Suite identity and its pinned Cases. An optional
 `quick_test` object makes the Suite eligible for the quick entry. Adding a task
 must not require another task list in the frontend or a new execution switch.
 
-This stage implements the definition, validation, catalog DTO, and editing
-round trip. The quick-test execution page, bundled task profiles, and history
+This stage implements definitions, catalog editing, and shared durable Suite
+execution. The quick-test execution page, bundled task profiles, and history
 integration remain tracked in [the delivery plan](task-entry-structure-plan.md).
 
 ## Definition
@@ -74,11 +74,41 @@ while the current catalog remains readable. Compatible edits still archive the
 previous Suite revision. Uncertain-write recovery compares all authored Suite
 fields, including quick metadata, before reporting that a save succeeded.
 
-Authored definitions remain in files. Future execution must record effective
-inputs alongside their source revisions in operational history and validate
-the resulting Case specs before execution. It must not silently label an edited
-request as an unchanged authored definition. Credentials stay outside these
-definitions and task parameters.
+Authored definitions remain in files. Execution records resolved inputs alongside
+the source Suite and original Case revisions in operational history. It validates
+the resulting Case specs before execution and runs copies with the resolved
+values. Credentials stay outside these definitions and task parameters.
+
+## Shared execution
+
+`runs.PrepareQuickTask` accepts an exact Suite ID/revision, an upstream model
+identifier, resolved/overridden task inputs, and either a saved channel ID or a
+temporary endpoint/API key. Saved-channel and temporary connection fields are
+mutually exclusive. `StartQuickTask` also activates the durable queued Run.
+
+Preparation does not write model, channel, or Plan files. A transient Plan and
+mapping live inside the existing v2 Run snapshot; the Plan identity is the Run
+identity. Optional `quick_task` provenance includes the Suite, every effective
+input including defaults, and the saved channel ID when used. Case definitions
+in the snapshot retain their authored values. A temporary API key is held only
+in a lease closed by the shared lifecycle; no keyring entry is created.
+
+The router runs members sequentially in Suite order. Plan-scheduled members
+receive one request each; Case-scheduled members keep their own sample schedule.
+Request IDs are distinct across members and time offsets share a Run origin.
+The workspace therefore labels these records `source: "quick_task"` and reports
+observed request counts with `planned: 0`; the member count is not a request
+budget. Original Plan progress contracts remain unchanged.
+
+Both CLI and desktop preparation use the protocol registry's task-count billing
+policy. Seedance batches require acknowledgement; Wan and MiniMax require it for
+every nonempty selection. The desktop prompt uses generated metadata and keeps
+unresolved historical members in its conservative acknowledgement count.
+
+Successful and failed observations, sealed reports, and task provenance use the
+same SQLite persistence as other Runs. The new task API is currently an
+application-service capability. Native bindings, quick-entry UI, drafts, replay,
+and explicit credential remembering remain separate delivery work.
 
 ## Shared validation
 

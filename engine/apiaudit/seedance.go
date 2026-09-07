@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/engine/common"
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 const DefaultSeedanceModel = "doubao-seedance-2-0-260128"
@@ -47,14 +48,9 @@ func ExpandRuns(config RunConfig, cases []CaseDefinition) ([]PlannedRun, error) 
 			runs = append(runs, PlannedRun{Case: definition, Model: model, ResultID: resultID})
 		}
 	}
-	if config.Suite == "seedance" && !config.DryRun && len(runs) > 1 && !config.ConfirmPaidSuite {
-		return nil, fmt.Errorf("live Seedance plan contains %d paid tasks; pass --confirm-paid-suite", len(runs))
-	}
-	if config.Suite == "wan-video" && !config.DryRun && len(runs) > 0 && !config.ConfirmPaidSuite {
-		return nil, fmt.Errorf("live Wan video plan contains %d paid-capable tasks; pass --confirm-paid-suite", len(runs))
-	}
-	if config.Suite == "minimax-video" && !config.DryRun && len(runs) > 0 && !config.ConfirmPaidSuite {
-		return nil, fmt.Errorf("live MiniMax video plan contains %d paid-capable tasks; pass --confirm-paid-suite", len(runs))
+	info, _ := protocol.Lookup(config.Suite)
+	if !config.DryRun && info.RequiresPaidConfirmation(uint64(len(runs))) && !config.ConfirmPaidSuite {
+		return nil, fmt.Errorf("live %s plan contains %d paid-capable tasks; pass --confirm-paid-suite", info.Label, len(runs))
 	}
 	return runs, nil
 }

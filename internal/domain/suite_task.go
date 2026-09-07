@@ -84,8 +84,11 @@ func (input SuiteInput) Accepts(value any) bool {
 		_, ok := value.(string)
 		return ok
 	case "number":
-		_, ok := value.(float64)
-		return ok
+		switch value.(type) {
+		case float64, json.Number:
+			return true
+		}
+		return false
 	case "boolean":
 		_, ok := value.(bool)
 		return ok

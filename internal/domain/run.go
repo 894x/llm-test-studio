@@ -106,6 +106,7 @@ type RunSnapshot struct {
 	PlanDocument    *Plan               `json:"plan_document,omitempty"`
 	Mapping         *ChannelModel       `json:"mapping,omitempty"`
 	CaseDefinitions []TestCase          `json:"case_definitions,omitempty"`
+	QuickTask       *QuickTaskSnapshot  `json:"quick_task,omitempty"`
 }
 
 func (snapshot RunSnapshot) Validate() error {
@@ -137,7 +138,7 @@ func (snapshot RunSnapshot) Validate() error {
 		return err
 	}
 	if snapshot.SchemaVersion == legacyRunSnapshotSchemaVersion {
-		if snapshot.PlanDocument != nil || snapshot.Mapping != nil || len(snapshot.CaseDefinitions) != 0 {
+		if snapshot.PlanDocument != nil || snapshot.Mapping != nil || len(snapshot.CaseDefinitions) != 0 || snapshot.QuickTask != nil {
 			return errors.New("legacy run snapshot must not contain v2 configuration documents")
 		}
 		return nil
@@ -177,6 +178,9 @@ func (snapshot RunSnapshot) Validate() error {
 			return errors.New("run case definition does not match its pinned reference")
 		}
 	}
+	if snapshot.QuickTask != nil {
+		return snapshot.QuickTask.validate(snapshot)
+	}
 	return nil
 }
 
@@ -193,6 +197,7 @@ func (snapshot RunSnapshot) clone() RunSnapshot {
 		snapshot.Mapping = &mapping
 	}
 	snapshot.CaseDefinitions = cloneRunCases(snapshot.CaseDefinitions)
+	snapshot.QuickTask = snapshot.QuickTask.clone()
 	return snapshot
 }
 
@@ -271,6 +276,9 @@ func NewRun(meta EntityMeta, planID string, snapshot RunSnapshot) (Run, error) {
 	if snapshot.Plan.ID != planID {
 		return Run{}, errors.New("run plan id does not match its snapshot")
 	}
+	if snapshot.QuickTask != nil && planID != meta.ID {
+		return Run{}, errors.New("quick run requires a run-local execution plan identity")
+	}
 	return Run{
 		meta: meta, planID: planID, status: RunQueued, planSnapshot: snapshot.clone(),
 	}, nil
@@ -323,6 +331,9 @@ func (run Run) Validate() error {
 	}
 	if run.planSnapshot.Plan.ID != run.planID {
 		return errors.New("run plan id does not match its snapshot")
+	}
+	if run.planSnapshot.QuickTask != nil && run.planID != run.meta.ID {
+		return errors.New("quick run requires a run-local execution plan identity")
 	}
 	return nil
 }

@@ -68,7 +68,7 @@ func (executor *ResponseProbeExecutor) Execute(ctx context.Context, request Exec
 	composite := func(executionContext context.Context, scheduled load.Request) load.Observation {
 		return caseExecutors[int(scheduled.Index%uint64(len(caseExecutors)))](executionContext, scheduled)
 	}
-	outcome, runErr := load.Run(ctx, snapshot.Load, composite, load.Options{StopSending: request.StopSending})
+	outcome, runErr := load.Run(ctx, request.LoadProfile(), composite, load.Options{StopSending: request.StopSending})
 	for _, observation := range outcome.Results {
 		caseIndex := int(observation.Index % uint64(len(request.Cases)))
 		if err := emit(draftFromProbeObservation(request.Cases[caseIndex].ID, observation)); err != nil {

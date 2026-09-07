@@ -67,10 +67,10 @@ check. The build retains the existing large-chunk warning. A read-only reviewer
 found no runtime regression; the unconditional paid-confirmation flag was
 renamed `AlwaysConfirmPaid` to distinguish it from Seedance batch policy.
 
-Remaining follow-through: during shared task preparation, replace the CLI's
-Seedance batch and Wan/MiniMax paid-task branches with an explicit task-count
-policy, and derive the UI acknowledgement from that policy. Do not treat
-`AlwaysConfirmPaid: false` as permission to execute an unconfirmed batch.
+Shared task preparation now completes the paid-policy follow-through: CLI and
+desktop use the protocol registry's task-count rule, and the desktop
+acknowledgement uses generated metadata. `AlwaysConfirmPaid: false` alone is
+not permission to execute an unconfirmed batch.
 
 ## Video output correctness
 
@@ -109,3 +109,36 @@ write recovery and Case edits invalidating dependent quick Suites; focused
 repository regressions reproduce those failures and cover compatible edits with
 historical references. The final repository/catalog checks passed after the
 fixes; read-only review has no remaining findings. No provider calls were made.
+
+## Stage 3 execution foundation
+
+Quick Suites now prepare temporary or saved-channel targets through the shared
+Run queue, activation, cancellation, and reporting service. The operational Run
+owns transient execution configuration, original source definitions, and resolved
+inputs. Temporary credentials use a memory lease. The router keeps Suite order,
+one invocation per member, distinct observation IDs, and a shared time origin.
+
+Integration exposed and fixed two misleading aggregates: workspace progress
+counted both request observations and Case summaries, and sequential driver
+invocations restarted their report time offsets. Workspace summaries now count
+observations once, preserve summary-only historical records, and validate even
+uncounted summary rows. Quick tasks do not present Case cardinality as a request
+budget because Case-owned schedules can produce several observations.
+
+Controlled HTTPS integration covers mixed request/probe/latency members, input
+overrides, original-file preservation, temporary targets, successful and failed
+observations, report sealing, timeline ordering, workspace projections, and
+SQLite close/reopen. Domain tests reject inconsistent task provenance; lease
+tests verify copying, erasure, and refusal to serialize secrets.
+
+This remains an application-service foundation. Bundled task profiles, native
+entry bindings, the quick-entry UI, drafts, history replay, and explicit key
+remembering are unfinished. No paid upstream verification has been performed.
+
+Validation: `go test -p 1 ./... -count=1`, `go vet -p 1 ./...`, generated protocol
+contract check, the full frontend suite (262 tests), lint, and build passed.
+Subsequent focused tests also passed for mutable input isolation, sequential
+timeline ordering, Suite progress rendering, and clearing billing acknowledgement
+when the selected channel changes. The build retains the existing chunk-size
+warning. Source review prompted the time-origin and channel-acknowledgement fixes;
+the code graph was unavailable during this stage, so review used direct source.

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/protocol"
@@ -61,6 +62,18 @@ type ExecutionRequest struct {
 	StopSending <-chan struct{}
 }
 
+// LoadProfile assigns each load-scheduled quick-task member one request.
+// The Run snapshot retains the whole Suite's count when a router dispatches
+// only a subset of its Cases to a particular driver.
+func (request ExecutionRequest) LoadProfile() domain.LoadProfile {
+	snapshot := request.Run.Snapshot()
+	profile := snapshot.Load
+	if snapshot.QuickTask != nil {
+		profile.RequestCount = uint64(len(request.Cases))
+	}
+	return profile
+}
+
 type ResultDraft struct {
 	CaseID      string
 	RequestID   string
@@ -94,6 +107,8 @@ type Diagnostic struct {
 
 type Dependencies struct {
 	Repository       Repository
+	QuickTasks       QuickTaskCatalog
+	CaseTypes        *casetypes.Registry
 	Credentials      CredentialStore
 	Executor         Executor
 	Clock            Clock
@@ -109,6 +124,8 @@ type Dependencies struct {
 
 type Service struct {
 	repository            Repository
+	quickTasks            QuickTaskCatalog
+	caseTypes             *casetypes.Registry
 	credentials           CredentialStore
 	executor              Executor
 	clock                 Clock
@@ -149,8 +166,13 @@ func New(dependencies Dependencies) (*Service, error) {
 	if err := environment.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: environment: %v", ErrInvalid, err)
 	}
+	caseTypes := dependencies.CaseTypes
+	if caseTypes == nil {
+		caseTypes = casetypes.MustBuiltinRegistry()
+	}
 	return &Service{
 		repository: dependencies.Repository, credentials: dependencies.Credentials,
+		quickTasks: dependencies.QuickTasks, caseTypes: caseTypes,
 		executor: dependencies.Executor, clock: dependencies.Clock,
 		metaFactory: factory, environment: dependencies.Environment,
 		reporter: dependencies.Reporter, reportError: dependencies.ReportError,
@@ -167,6 +189,10 @@ func (service *Service) StartRun(ctx context.Context, planID string) error {
 
 func (service *Service) StartTarget(ctx context.Context, command StartCommand) (string, error) {
 	runID, err := service.PrepareTarget(ctx, command)
+	return service.activatePrepared(ctx, runID, err)
+}
+
+func (service *Service) activatePrepared(ctx context.Context, runID string, err error) (string, error) {
 	if err != nil {
 		return "", err
 	}
@@ -213,9 +239,6 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		return "", ErrNotRunnable
 	}
 	protocolInfo, _ := protocol.Lookup(string(model.Protocol))
-	if protocolInfo.AlwaysConfirmPaid && !command.ConfirmPaidVideo {
-		return "", ErrPaidConfirmationRequired
-	}
 	cases := make([]domain.TestCase, 0, len(plan.Cases))
 	applicableRefs := make([]domain.CaseRevisionRef, 0, len(plan.Cases))
 	for _, ref := range plan.Cases {
@@ -239,6 +262,9 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if len(cases) == 0 || channel.CredentialID == "" || !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
 		return "", ErrNotRunnable
 	}
+	if protocolInfo.RequiresPaidConfirmation(uint64(len(cases))) && !command.ConfirmPaidVideo {
+		return "", ErrPaidConfirmationRequired
+	}
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
 	if err != nil {
 		return "", ErrNotRunnable
@@ -247,15 +273,9 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err != nil {
 		return "", fmt.Errorf("lease channel credential: %w", err)
 	}
-	owned := true
-	defer func() {
-		if owned {
-			_ = lease.Close()
-		}
-	}()
-
 	meta, err := service.metaFactory(service.clock.Now())
 	if err != nil {
+		_ = lease.Close()
 		return "", fmt.Errorf("create run identity: %w", err)
 	}
 	planDocument := plan
@@ -270,7 +290,25 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		PlanDocument: &planDocument, Mapping: &mappingDocument,
 		CaseDefinitions: append([]domain.TestCase(nil), cases...),
 	}
-	run, err := domain.NewRun(meta, plan.ID, snapshot)
+	return service.prepareRun(ctx, meta, plan.ID, snapshot, cases, lease)
+}
+
+// prepareRun takes ownership of the lease on every path. Both authored Plans
+// and quick Suite invocations enter the same durable queue and lifecycle.
+func (service *Service) prepareRun(ctx context.Context, meta domain.EntityMeta, planID string, snapshot domain.RunSnapshot, cases []domain.TestCase, lease *credentials.Lease) (string, error) {
+	owned := true
+	defer func() {
+		if owned {
+			_ = lease.Close()
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if lease == nil {
+		return "", ErrNotRunnable
+	}
+	run, err := domain.NewRun(meta, planID, snapshot)
 	if err != nil {
 		return "", fmt.Errorf("build run: %w", err)
 	}

@@ -45,6 +45,35 @@ func Lookup(root any, pointer string) (any, bool) {
 	return current, true
 }
 
+// Replace changes one existing field; it never creates paths or replaces the
+// root object. Traversal uses the same rules as Lookup.
+func Replace(root any, pointer string, replacement any) bool {
+	tokens, valid := Parse(pointer)
+	if !valid || len(tokens) == 0 {
+		return false
+	}
+	parent := root
+	for _, token := range tokens[:len(tokens)-1] {
+		var found bool
+		parent, found = child(parent, token)
+		if !found {
+			return false
+		}
+	}
+	last := tokens[len(tokens)-1]
+	if _, found := child(parent, last); !found {
+		return false
+	}
+	switch value := parent.(type) {
+	case map[string]any:
+		value[last] = replacement
+	case []any:
+		index, _ := strconv.Atoi(last) // child already validated this index.
+		value[index] = replacement
+	}
+	return true
+}
+
 func child(parent any, token string) (any, bool) {
 	switch value := parent.(type) {
 	case map[string]any:

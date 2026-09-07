@@ -83,6 +83,7 @@
     "details": "Details"
   },
   "presentation": {
+	"quickSuite": "Run Suite members",
     "failedRequests": "{{count}} requests did not meet the complete success criteria.",
     "failedConclusion": "The run did not pass; review the SLA and summary in the report.",
     "continuous": "{{rate}}continuous for {{duration}}",

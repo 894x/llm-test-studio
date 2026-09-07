@@ -39,6 +39,7 @@ func (executor *InputLatencyLadderExecutor) Execute(ctx context.Context, request
 	}
 	defer client.Close()
 
+	started := time.Now()
 	for _, testCase := range request.Cases {
 		if !testCase.Enabled || testCase.Protocol != snapshot.Channel.Protocol ||
 			testCase.Definition.Type != casetypes.TypeInputLatencyLadder || testCase.Definition.TypeVersion != 2 {
@@ -48,14 +49,14 @@ func (executor *InputLatencyLadderExecutor) Execute(ctx context.Context, request
 		if err := json.Unmarshal(testCase.Definition.Spec, &spec); err != nil {
 			return fmt.Errorf("decode case %s: %w", testCase.ID, err)
 		}
-		if err := executeInputLadderCase(ctx, client, testCase, spec, request.StopSending, emit); err != nil {
+		if err := executeInputLadderCase(ctx, client, testCase, spec, request.StopSending, started, emit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func executeInputLadderCase(ctx context.Context, client *openai.Client, testCase domain.TestCase, spec casetypes.InputLatencyLadderSpec, stop <-chan struct{}, emit func(ResultDraft) error) error {
+func executeInputLadderCase(ctx context.Context, client *openai.Client, testCase domain.TestCase, spec casetypes.InputLatencyLadderSpec, stop <-chan struct{}, started time.Time, emit func(ResultDraft) error) error {
 	requestIndex := uint64(0)
 	for stageIndex, stage := range spec.Stages {
 		target := stage.InputTokens
@@ -74,7 +75,9 @@ func executeInputLadderCase(ctx context.Context, client *openai.Client, testCase
 				return fmt.Errorf("prepare case %s stage %d transport: %w", testCase.ID, stageIndex+1, err)
 			}
 			requestContext, cancel := context.WithTimeout(ctx, time.Duration(spec.TimeoutMS)*time.Millisecond)
+			startedOffset := time.Since(started)
 			observation := execute(requestContext, load.Request{Index: requestIndex})
+			observation.ScheduledOffset, observation.StartedOffset, observation.FinishedOffset = startedOffset, startedOffset, time.Since(started)
 			cancel()
 			requestIndex++
 			if attempt < int(warmups) {
