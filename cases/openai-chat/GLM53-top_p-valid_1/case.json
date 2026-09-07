@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "key": "glm53.top_p.valid_1",
+  "name": "GLM 5.3 · top_p=0.5",
+  "dimension": "glm53.top_p",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "glm53_sync",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low",
+          "top_p": 0.5
+        }
+      },
+      "options": {
+        "contract_row": "top_p",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T1",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases."
+      }
+    }
+  }
+}

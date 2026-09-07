@@ -14,6 +14,9 @@ import (
 )
 
 func RunOpenAIChatCase(ctx context.Context, doer HTTPDoer, config RunConfig, definition CaseDefinition) (result CaseResult) {
+	if strings.HasPrefix(definition.Kind, "glm53_") {
+		return runGLM53Case(ctx, doer, config, definition)
+	}
 	started := time.Now()
 	result = CaseResult{
 		ID: definition.ID, Name: definition.Name, Dimension: definition.Dimension,

@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "key": "glm53.sampling.disabled_high",
+  "name": "GLM 5.3 · 禁用采样与high参数",
+  "dimension": "glm53.sampling_dependency",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "glm53_sync",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low",
+          "do_sample": false,
+          "temperature": 1,
+          "top_p": 1
+        }
+      },
+      "options": {
+        "contract_row": "sampling_dependency",
+        "source_urls": [
+          "https://docs.bigmodel.cn/cn/guide/start/concept-param"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T1",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases."
+      }
+    }
+  }
+}

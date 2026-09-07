@@ -176,8 +176,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 499 || len(catalogSnapshot.Suites) != 39 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 499 file-backed cases and 39 scenario suites",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 711 || len(catalogSnapshot.Suites) != 44 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 711 file-backed cases and 44 scenario suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -192,8 +192,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 261 || disabled != 131 || manual != 107 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 261/131/107", runnable, disabled, manual)
+	if runnable != 426 || disabled != 178 || manual != 107 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 426/178/107", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -247,8 +247,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	assertProductionOperationalSchemaV1(t, database)
-	if len(firstSnapshot.Suites) != 39 {
-		t.Fatalf("file suites = %d, want 39", len(firstSnapshot.Suites))
+	if len(firstSnapshot.Suites) != 44 {
+		t.Fatalf("file suites = %d, want 44", len(firstSnapshot.Suites))
 	}
 
 	second, err := initialize(context.Background())
@@ -265,11 +265,11 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 499 || len(secondSnapshot.TestCases) != 499 {
-		t.Fatalf("case counts across restart = %d/%d, want 499/499", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
+	if len(firstSnapshot.TestCases) != 711 || len(secondSnapshot.TestCases) != 711 {
+		t.Fatalf("case counts across restart = %d/%d, want 711/711", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 39 || len(secondSnapshot.Suites) != 39 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 39 scenario suites and no plans",
+	if len(firstSnapshot.Suites) != 44 || len(secondSnapshot.Suites) != 44 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
+		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 44 scenario suites and no plans",
 			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
 	}
 	wantSuites := map[string]struct {
@@ -302,6 +302,11 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		"MiniMax H3 参数拒绝测试套件":             {target: "MiniMax-H3", count: 45},
 		"MiniMax H3 自动化核心回归套件":            {target: "MiniMax-H3", count: 48},
 		"MiniMax H3 视频生成完整边界套件":           {target: "MiniMax-H3", count: 149},
+		"GLM 5.3 连通性套件":                   {target: "glm-5.3", count: 3},
+		"GLM 5.3 基本功能套件":                  {target: "glm-5.3", count: 12},
+		"GLM 5.3 参数拒绝套件":                  {target: "glm-5.3", count: 101},
+		"GLM 5.3 自动回归套件":                  {target: "glm-5.3", count: 165},
+		"GLM 5.3 完整设计（含禁用模板）套件":           {target: "glm-5.3", count: 212},
 	}
 	firstByName := make(map[string]catalog.SuiteSummary, len(firstSnapshot.Suites))
 	secondByName := make(map[string]catalog.SuiteSummary, len(secondSnapshot.Suites))

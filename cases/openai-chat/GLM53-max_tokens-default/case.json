@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "key": "glm53.max_tokens.default",
+  "name": "GLM 5.3 · 省略 max_tokens（默认 65536）",
+  "dimension": "glm53.max_tokens",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "glm53_sync",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "reasoning_effort": "low"
+        }
+      },
+      "options": {
+        "contract_row": "max_tokens",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+          "https://docs.bigmodel.cn/cn/guide/start/concept-param"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T3",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases."
+      }
+    }
+  }
+}

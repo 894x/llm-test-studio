@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "key": "glm53.stop.count_4",
+  "name": "GLM 5.3 · stop.count_4（待验证模板）",
+  "dimension": "glm53.stop",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low",
+          "stop": [
+            "STOP_0",
+            "STOP_1",
+            "STOP_2",
+            "STOP_3"
+          ]
+        }
+      },
+      "options": {
+        "contract_row": "stop",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+          "https://docs.z.ai/api-reference/llm/chat-completion"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T2",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "reason": "Resolve 1-versus-4 official conflict, then assert success",
+        "required_scenarios": [
+          "omitted",
+          "one delimiter excluded with stop finish",
+          "4 accepted/5 rejected under CN contract",
+          "empty/null/wrong item characterization"
+        ]
+      }
+    }
+  }
+}

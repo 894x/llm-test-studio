@@ -1,0 +1,1608 @@
+{
+  "scope": {
+    "provider": "Zhipu BigModel General Model API",
+    "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    "model": "glm-5.3",
+    "protocol": "openai-chat",
+    "retrieved_at": "2026-09-08",
+    "included": "Complete documented text Chat Completions request, response, stream and tool lifecycle inventory.",
+    "deferred_transports": "Responses, Anthropic and Coding Plan use separate contracts; tracked as deferred, not covered."
+  },
+  "sources": {
+    "model": "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+    "api": "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+    "params": "https://docs.bigmodel.cn/cn/guide/start/concept-param",
+    "errors": "https://docs.bigmodel.cn/cn/api/api-code",
+    "thinking": "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode",
+    "effort": "https://docs.z.ai/guides/capabilities/thinking",
+    "tools": "https://docs.z.ai/guides/capabilities/function-calling",
+    "streamtools": "https://docs.bigmodel.cn/cn/guide/capabilities/stream-tool",
+    "json": "https://docs.z.ai/guides/capabilities/struct-output",
+    "cache": "https://docs.z.ai/guides/capabilities/cache",
+    "zapi": "https://docs.z.ai/api-reference/llm/chat-completion"
+  },
+  "rows": [
+    {
+      "id": "transport",
+      "parameter": "POST /api/paas/v4/chat/completions; Content-Type; Authorization",
+      "shape": "HTTP + JSON + Bearer",
+      "presence": "required",
+      "default": "-",
+      "boundaries": "-",
+      "required_scenarios": [
+        "valid credentials -> 200 final answer",
+        "missing auth -> 401/1001",
+        "invalid auth -> 401/1000",
+        "wrong method; absent/wrong Content-Type: admission policy needs verification"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Valid HTTP/JSON/Bearer envelope and missing/invalid auth implemented; wrong method and missing/wrong Content-Type admission behavior not asserted.",
+      "cases": [
+        "glm53.connectivity",
+        "glm53.auth.missing",
+        "glm53.auth.invalid"
+      ]
+    },
+    {
+      "id": "model",
+      "parameter": "model",
+      "shape": "string",
+      "presence": "required",
+      "default": "schema example glm-5.3; still required",
+      "boundaries": "exact glm-5.3",
+      "required_scenarios": [
+        "routed glm-5.3",
+        "missing/null/empty/wrong type",
+        "unknown model -> 1211"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.model.valid",
+        "glm53.model.missing",
+        "glm53.model.null",
+        "glm53.model.empty",
+        "glm53.model.wrong_type",
+        "glm53.model.unknown"
+      ]
+    },
+    {
+      "id": "messages",
+      "parameter": "messages",
+      "shape": "array of role messages",
+      "presence": "required",
+      "default": "-",
+      "boundaries": "minItems=1; no documented maximum",
+      "required_scenarios": [
+        "one user",
+        "system+user",
+        "user/assistant/user",
+        "missing/null/empty/wrong type",
+        "system-only/assistant-only rejected"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.messages.one",
+        "glm53.messages.system",
+        "glm53.messages.history",
+        "glm53.messages.missing",
+        "glm53.messages.null",
+        "glm53.messages.empty",
+        "glm53.messages.object",
+        "glm53.messages.system_only",
+        "glm53.messages.assistant_only"
+      ]
+    },
+    {
+      "id": "message_fields",
+      "parameter": "messages[user/system].role; messages[user/system].content",
+      "shape": "role enum + text string",
+      "presence": "required",
+      "default": "-",
+      "boundaries": "text only; no content minLength documented",
+      "required_scenarios": [
+        "valid user/system in messages cases",
+        "role missing/null/unknown/wrong type",
+        "content missing/null/wrong type",
+        "empty text characterization"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Empty string behavior unspecified; no asserted rejection for empty text.",
+      "cases": [
+        "glm53.message.user.missing_role",
+        "glm53.message.user.null_role",
+        "glm53.message.user.bad_role",
+        "glm53.message.user.role_type",
+        "glm53.message.user.missing_content",
+        "glm53.message.user.null_content",
+        "glm53.message.user.content_type",
+        "glm53.message.system.missing_role",
+        "glm53.message.system.null_role",
+        "glm53.message.system.bad_role",
+        "glm53.message.system.role_type",
+        "glm53.message.system.missing_content",
+        "glm53.message.system.null_content",
+        "glm53.message.system.content_type",
+        "glm53.message.empty_text"
+      ]
+    },
+    {
+      "id": "temperature",
+      "parameter": "temperature",
+      "shape": "number",
+      "presence": "optional",
+      "default": "1.0",
+      "boundaries": "[0,1], two decimal places",
+      "required_scenarios": [
+        "omitted",
+        "accept 0",
+        "accept 0.5",
+        "accept 1",
+        "reject -0.01",
+        "reject 1.01",
+        "reject 'hot'",
+        "reject None"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.temperature.omitted",
+        "glm53.temperature.valid_0",
+        "glm53.temperature.valid_1",
+        "glm53.temperature.valid_2",
+        "glm53.temperature.invalid_0",
+        "glm53.temperature.invalid_1",
+        "glm53.temperature.invalid_2",
+        "glm53.temperature.invalid_3"
+      ]
+    },
+    {
+      "id": "top_p",
+      "parameter": "top_p",
+      "shape": "number",
+      "presence": "optional",
+      "default": "0.95",
+      "boundaries": "[0.01,1], two decimal places",
+      "required_scenarios": [
+        "omitted",
+        "accept 0.01",
+        "accept 0.5",
+        "accept 0.95",
+        "accept 1",
+        "reject 0",
+        "reject 1.01",
+        "reject 'wide'",
+        "reject None"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.top_p.omitted",
+        "glm53.top_p.valid_0",
+        "glm53.top_p.valid_1",
+        "glm53.top_p.valid_2",
+        "glm53.top_p.valid_3",
+        "glm53.top_p.invalid_0",
+        "glm53.top_p.invalid_1",
+        "glm53.top_p.invalid_2",
+        "glm53.top_p.invalid_3"
+      ]
+    },
+    {
+      "id": "do_sample",
+      "parameter": "do_sample",
+      "shape": "boolean",
+      "presence": "optional",
+      "default": "true",
+      "boundaries": "",
+      "required_scenarios": [
+        "omitted",
+        "accept True",
+        "accept False",
+        "reject 'false'",
+        "reject None"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.do_sample.omitted",
+        "glm53.do_sample.valid_0",
+        "glm53.do_sample.valid_1",
+        "glm53.do_sample.invalid_0",
+        "glm53.do_sample.invalid_1"
+      ]
+    },
+    {
+      "id": "sampling_dependency",
+      "parameter": "do_sample=false with temperature/top_p",
+      "shape": "decision table",
+      "presence": "optional",
+      "default": "sampling enabled",
+      "boundaries": "parameters ignored when false",
+      "required_scenarios": [
+        "true + valid sampling",
+        "false + valid low sampling",
+        "false + valid high sampling",
+        "false + out-of-range sampling: validation order undocumented"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/start/concept-param"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Acceptance does not prove distribution equivalence; statistical observation deferred.",
+      "cases": [
+        "glm53.sampling.disabled_low",
+        "glm53.sampling.disabled_high",
+        "glm53.sampling.ignored_statistics"
+      ]
+    },
+    {
+      "id": "max_tokens",
+      "parameter": "max_tokens",
+      "shape": "integer",
+      "presence": "optional",
+      "default": "65536",
+      "boundaries": "[1,131072]",
+      "required_scenarios": [
+        "omitted/default",
+        "0/1/1024/131072/131073",
+        "wrong type/null/fraction",
+        "1 token must truncate with usage <=1"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/guide/start/concept-param"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Large and default output allowances are disabled T3; configured maximum acceptance does not prove generation all the way to 128K.",
+      "cases": [
+        "glm53.max_tokens.one",
+        "glm53.max_tokens.interior",
+        "glm53.max_tokens.zero",
+        "glm53.max_tokens.over",
+        "glm53.max_tokens.fraction",
+        "glm53.max_tokens.wrong_type",
+        "glm53.max_tokens.null",
+        "glm53.max_tokens.maximum",
+        "glm53.max_tokens.default",
+        "glm53.max_tokens.exhaust_default",
+        "glm53.max_tokens.exhaust_maximum"
+      ]
+    },
+    {
+      "id": "thinking",
+      "parameter": "thinking; thinking.type",
+      "shape": "object with enum",
+      "presence": "optional",
+      "default": "enabled",
+      "boundaries": "enabled only",
+      "required_scenarios": [
+        "omitted",
+        "empty object default",
+        "enabled",
+        "disabled/unknown/null/type errors"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+        "https://docs.z.ai/guides/capabilities/thinking"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.thinking.omitted",
+        "glm53.thinking.empty",
+        "glm53.thinking.enabled",
+        "glm53.thinking.disabled",
+        "glm53.thinking.unknown",
+        "glm53.thinking.type",
+        "glm53.thinking.null_type",
+        "glm53.thinking.object_type",
+        "glm53.thinking.null"
+      ]
+    },
+    {
+      "id": "reasoning_effort",
+      "parameter": "reasoning_effort",
+      "shape": "enum",
+      "presence": "optional",
+      "default": "max",
+      "boundaries": "Model API only; Coding Plan has aliases",
+      "required_scenarios": [
+        "omitted",
+        "accept 'low'",
+        "accept 'high'",
+        "accept 'max'",
+        "reject 'none'",
+        "reject 'minimal'",
+        "reject 'medium'",
+        "reject 'xhigh'",
+        "reject 'invalid'",
+        "reject 5",
+        "reject None"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+        "https://docs.z.ai/guides/capabilities/thinking"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.reasoning_effort.omitted",
+        "glm53.reasoning_effort.valid_0",
+        "glm53.reasoning_effort.valid_1",
+        "glm53.reasoning_effort.valid_2",
+        "glm53.reasoning_effort.invalid_0",
+        "glm53.reasoning_effort.invalid_1",
+        "glm53.reasoning_effort.invalid_2",
+        "glm53.reasoning_effort.invalid_3",
+        "glm53.reasoning_effort.invalid_4",
+        "glm53.reasoning_effort.invalid_5",
+        "glm53.reasoning_effort.invalid_6"
+      ]
+    },
+    {
+      "id": "clear_thinking",
+      "parameter": "thinking.clear_thinking; messages[assistant].reasoning_content",
+      "shape": "boolean + replayed text",
+      "presence": "optional",
+      "default": "true on General API; false on Coding Plan",
+      "boundaries": "preserve original generated message unchanged",
+      "required_scenarios": [
+        "omitted/true/false replay with original reasoning",
+        "wrong type/null rejected",
+        "corrupted/reordered reasoning: quality behavior only"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Roundtrip proves transport/replay acceptance; backend use of historical reasoning is not externally guaranteed.",
+      "cases": [
+        "glm53.thinking.replay_omitted",
+        "glm53.thinking.replay_true",
+        "glm53.thinking.replay_false",
+        "glm53.thinking.clear_type",
+        "glm53.thinking.clear_null",
+        "glm53.thinking.corrupt_history"
+      ]
+    },
+    {
+      "id": "stream",
+      "parameter": "stream; SSE data; [DONE]; choices[].delta; finish_reason",
+      "shape": "boolean + SSE lifecycle",
+      "presence": "optional",
+      "default": "false",
+      "boundaries": "one terminal finish then DONE; separate reasoning and final content",
+      "required_scenarios": [
+        "omitted/false -> JSON",
+        "true -> ordered SSE + final answer + usage",
+        "wrong type/null -> structured rejection"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/guide/capabilities/stream-tool"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.stream.false",
+        "glm53.stream.true",
+        "glm53.stream.type",
+        "glm53.stream.null"
+      ]
+    },
+    {
+      "id": "response_format",
+      "parameter": "response_format; response_format.type",
+      "shape": "object + enum",
+      "presence": "optional",
+      "default": "text",
+      "boundaries": "text/json_object",
+      "required_scenarios": [
+        "omitted/text",
+        "json_object parse object with expected boolean",
+        "missing type/unknown/null/type/json_schema rejected"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/guides/capabilities/struct-output"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.format.omitted",
+        "glm53.format.text",
+        "glm53.format.json",
+        "glm53.format.missing_type",
+        "glm53.format.unknown",
+        "glm53.format.schema",
+        "glm53.format.type",
+        "glm53.format.null_type",
+        "glm53.format.null",
+        "glm53.format.object_type"
+      ]
+    },
+    {
+      "id": "stop",
+      "parameter": "stop; stop[]",
+      "shape": "array of strings",
+      "presence": "optional",
+      "default": "none",
+      "boundaries": "CN schema maxItems=4; EN prose says one while EN schema says four",
+      "required_scenarios": [
+        "omitted",
+        "one delimiter excluded with stop finish",
+        "4 accepted/5 rejected under CN contract",
+        "empty/null/wrong item characterization"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/api-reference/llm/chat-completion"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "documentation conflict",
+      "gap": "1 versus 4 differs between prose and schema; 4/5 disabled pending provider confirmation. No documented item byte limit.",
+      "cases": [
+        "glm53.stop.one",
+        "glm53.stop.count_4",
+        "glm53.stop.count_5",
+        "glm53.stop.type",
+        "glm53.stop.item_type",
+        "glm53.stop.empty_null"
+      ]
+    },
+    {
+      "id": "request_id",
+      "parameter": "request_id",
+      "shape": "string",
+      "presence": "optional",
+      "default": "generated for request_id; absent for user_id",
+      "boundaries": "6..64 characters",
+      "required_scenarios": [
+        "lengths 0,5,6,16,64,65",
+        "omitted",
+        "null/wrong type",
+        "Unicode character counting"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.request_id.omitted",
+        "glm53.request_id.length_6",
+        "glm53.request_id.length_16",
+        "glm53.request_id.length_64",
+        "glm53.request_id.length_0",
+        "glm53.request_id.length_5",
+        "glm53.request_id.length_65",
+        "glm53.request_id.unicode",
+        "glm53.request_id.null",
+        "glm53.request_id.type"
+      ]
+    },
+    {
+      "id": "user_id",
+      "parameter": "user_id",
+      "shape": "string",
+      "presence": "optional",
+      "default": "generated for request_id; absent for user_id",
+      "boundaries": "6..128 characters",
+      "required_scenarios": [
+        "lengths 0,5,6,16,128,129",
+        "omitted",
+        "null/wrong type",
+        "Unicode character counting"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.user_id.omitted",
+        "glm53.user_id.length_6",
+        "glm53.user_id.length_16",
+        "glm53.user_id.length_128",
+        "glm53.user_id.length_0",
+        "glm53.user_id.length_5",
+        "glm53.user_id.length_129",
+        "glm53.user_id.unicode",
+        "glm53.user_id.null",
+        "glm53.user_id.type"
+      ]
+    },
+    {
+      "id": "tools",
+      "parameter": "tools; tools[].type; tools[].function",
+      "shape": "array of tagged objects",
+      "presence": "optional",
+      "default": "none",
+      "boundaries": "max 128 function tools; only auto selection",
+      "required_scenarios": [
+        "omitted/one/128/129",
+        "empty characterization",
+        "wrong type/null/unknown tag/missing tag/missing function"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/guides/capabilities/function-calling"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "128/129 T3 disabled; empty tools unspecified.",
+      "cases": [
+        "glm53.tools.omitted",
+        "glm53.tools.one",
+        "glm53.tools.count_128",
+        "glm53.tools.count_129",
+        "glm53.tools.type",
+        "glm53.tools.null",
+        "glm53.tools.missing_type",
+        "glm53.tools.unknown_type",
+        "glm53.tools.missing_function",
+        "glm53.tools.empty"
+      ]
+    },
+    {
+      "id": "function_name",
+      "parameter": "tools[].function.name",
+      "shape": "string",
+      "presence": "required",
+      "default": "-",
+      "boundaries": "1..64 ASCII letters/digits/_/-",
+      "required_scenarios": [
+        "1/interior/64 accepted",
+        "missing/empty/65/invalid character/null/type rejected"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.function.name_1",
+        "glm53.function.name_16",
+        "glm53.function.name_64",
+        "glm53.function.name_empty",
+        "glm53.function.name_over",
+        "glm53.function.name_punctuation",
+        "glm53.function.name_unicode",
+        "glm53.function.name_null",
+        "glm53.function.name_type",
+        "glm53.function.name_missing"
+      ]
+    },
+    {
+      "id": "function_schema",
+      "parameter": "tools[].function.description; tools[].function.parameters; parameters JSON Schema",
+      "shape": "string + object",
+      "presence": "required in schema; no-parameter omission prose conflict",
+      "default": "-",
+      "boundaries": "JSON Schema object; no documented keyword/complexity cap",
+      "required_scenarios": [
+        "ordinary object schema",
+        "no-argument object schema",
+        "description missing/null/type",
+        "parameters null/type",
+        "parameters omitted conflict"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/guides/capabilities/function-calling"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Arbitrary JSON Schema dialect/keywords/complexity and empty description unspecified; omission conflict disabled.",
+      "cases": [
+        "glm53.function.schema",
+        "glm53.function.no_arguments",
+        "glm53.function.description_null",
+        "glm53.function.description_type",
+        "glm53.function.parameters_null",
+        "glm53.function.parameters_type",
+        "glm53.function.description_missing",
+        "glm53.function.parameters_omitted",
+        "glm53.function.schema_dialect"
+      ]
+    },
+    {
+      "id": "tool_choice",
+      "parameter": "tool_choice",
+      "shape": "enum string",
+      "presence": "optional",
+      "default": "auto",
+      "boundaries": "only auto in General API",
+      "required_scenarios": [
+        "omitted/auto acceptance",
+        "none/required/named object/unknown/null/type rejected"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/guides/capabilities/function-calling"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.tool_choice.omitted",
+        "glm53.tool_choice.auto",
+        "glm53.tool_choice.none",
+        "glm53.tool_choice.required",
+        "glm53.tool_choice.named",
+        "glm53.tool_choice.unknown",
+        "glm53.tool_choice.null",
+        "glm53.tool_choice.type"
+      ]
+    },
+    {
+      "id": "tool_lifecycle",
+      "parameter": "messages[assistant].tool_calls[].{id,type,function.name,function.arguments}; messages[tool].{role,content,tool_call_id}; response tool_calls",
+      "shape": "stateful messages",
+      "presence": "tool call/result paired",
+      "default": "-",
+      "boundaries": "nonempty unique IDs; arguments JSON string; original assistant replay",
+      "required_scenarios": [
+        "tool selected -> validate arguments -> deterministic result -> final answer",
+        "original reasoning retained",
+        "malformed/missing nested replay fields"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/guides/capabilities/function-calling",
+        "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Valid lifecycle implemented. Invalid history sequence/error details and all malformed replay partitions require provider-specific authority; no external tools execute.",
+      "cases": [
+        "glm53.tools.roundtrip",
+        "glm53.tools.invalid_replay"
+      ]
+    },
+    {
+      "id": "tool_stream",
+      "parameter": "tool_stream with stream; delta.tool_calls[].{index,id,type,function.name,function.arguments}",
+      "shape": "boolean + fragments",
+      "presence": "optional",
+      "default": "false",
+      "boundaries": "stream=true required for incremental tool calls",
+      "required_scenarios": [
+        "stream true + tool_stream omitted/false/true",
+        "wrong type/null",
+        "tool_stream=true + stream=false: undocumented admission behavior"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/guide/capabilities/stream-tool"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Incremental function arguments validated; nonstream dependency admission policy unspecified.",
+      "cases": [
+        "glm53.tools.stream_omitted",
+        "glm53.tools.stream_false",
+        "glm53.tools.stream_true",
+        "glm53.tool_stream.type",
+        "glm53.tool_stream.null",
+        "glm53.tool_stream.nonstream"
+      ]
+    },
+    {
+      "id": "response",
+      "parameter": "id; request_id; created; model; choices[].{index,message.role,message.content,message.reasoning_content,finish_reason}; usage.{prompt_tokens,completion_tokens,total_tokens}",
+      "shape": "JSON envelope",
+      "presence": "documented response fields",
+      "default": "-",
+      "boundaries": "stop/tool_calls/length success modes; sensitive/network/context are not success",
+      "required_scenarios": [
+        "final content plus reasoning distinct",
+        "nonempty identity and assistant role",
+        "usage nonnegative integer arithmetic",
+        "do not pass on error finish reason"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "covered",
+      "gap": "",
+      "cases": [
+        "glm53.response.contract"
+      ]
+    },
+    {
+      "id": "cache",
+      "parameter": "usage.prompt_tokens_details.cached_tokens; cache lifecycle",
+      "shape": "optional detail + multi-request state",
+      "presence": "optional",
+      "default": "automatic",
+      "boundaries": "0 <= cached_tokens <= prompt_tokens; threshold/TTL not specified",
+      "required_scenarios": [
+        "field present zero or positive",
+        "same prefix repeat",
+        "changed prefix",
+        "cross-tenant isolation",
+        "expiry"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.z.ai/guides/capabilities/cache"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "partial",
+      "gap": "Visible counter validated; deterministic cache hit, threshold, TTL and tenant isolation require controlled T3 environment.",
+      "cases": [
+        "glm53.cache.counter",
+        "glm53.cache.lifecycle"
+      ]
+    },
+    {
+      "id": "context",
+      "parameter": "input token budget + output <= context window",
+      "shape": "token budget",
+      "presence": "required",
+      "default": "-",
+      "boundaries": "1M context; exact integer and combined admission formula not established by cited model page",
+      "required_scenarios": [
+        "tokenizer/version pinned; input+output at C-1,C,C+1",
+        "input-only overflow -> 400/1261 or terminal model_context_window_exceeded",
+        "long-context retrieval"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "blocked",
+      "gap": "Needs authoritative exact C, model tokenizer and accounting formula; never substitute character length for token count.",
+      "cases": [
+        "glm53.context.boundaries"
+      ]
+    },
+    {
+      "id": "modality",
+      "parameter": "messages content text versus image/video/audio/file parts",
+      "shape": "modality",
+      "presence": "text only",
+      "default": "-",
+      "boundaries": "glm-5.3 is distinct from glm-5.3-flash",
+      "required_scenarios": [
+        "text accepted",
+        "image/video/audio/file inputs unsupported; admission outcome to characterize"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "blocked",
+      "gap": "Text-only documented, exact rejected multimodal schema and error code not model-specific; fixtures and explicit unsupported-modality assertion needed.",
+      "cases": [
+        "glm53.modality.unsupported"
+      ]
+    },
+    {
+      "id": "retrieval_knowledge_id",
+      "parameter": "tools[type=retrieval].retrieval.knowledge_id",
+      "shape": "string",
+      "presence": "required",
+      "default": "see source",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.retrieval.knowledge_id"
+      ]
+    },
+    {
+      "id": "retrieval_prompt_template",
+      "parameter": "tools[type=retrieval].retrieval.prompt_template",
+      "shape": "string",
+      "presence": "optional",
+      "default": "provider template with knowledge and question placeholders",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.retrieval.prompt_template"
+      ]
+    },
+    {
+      "id": "web_search_enable",
+      "parameter": "tools[type=web_search].web_search.enable",
+      "shape": "boolean",
+      "presence": "optional",
+      "default": false,
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.enable"
+      ]
+    },
+    {
+      "id": "web_search_search_engine",
+      "parameter": "tools[type=web_search].web_search.search_engine",
+      "shape": "string",
+      "presence": "required",
+      "default": "search_std (schema still marks required)",
+      "boundaries": "{\"enum\": [\"search_std\", \"search_pro\", \"search_pro_sogou\", \"search_pro_quark\"]}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_engine"
+      ]
+    },
+    {
+      "id": "web_search_search_query",
+      "parameter": "tools[type=web_search].web_search.search_query",
+      "shape": "string",
+      "presence": "optional",
+      "default": "see source",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_query"
+      ]
+    },
+    {
+      "id": "web_search_search_intent",
+      "parameter": "tools[type=web_search].web_search.search_intent",
+      "shape": "string",
+      "presence": "optional",
+      "default": "true; schema string versus prose boolean needs confirmation",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_intent"
+      ]
+    },
+    {
+      "id": "web_search_count",
+      "parameter": "tools[type=web_search].web_search.count",
+      "shape": "integer",
+      "presence": "optional",
+      "default": 10,
+      "boundaries": "{\"minimum\": 1, \"maximum\": 50}",
+      "required_scenarios": [
+        "omitted=10; 0/1/10/50/51",
+        "search_std/search_pro: 1..50",
+        "search_pro_sogou: 10/20/30/40/50, reject 1/11/51",
+        "search_pro_quark: count unsupported; characterize omission and supplied count",
+        "wrong type/null"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.count"
+      ]
+    },
+    {
+      "id": "web_search_search_domain_filter",
+      "parameter": "tools[type=web_search].web_search.search_domain_filter",
+      "shape": "string",
+      "presence": "optional",
+      "default": "see source",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted; matching domain; domain with no results",
+        "search_std/search_pro/search_pro_sogou support",
+        "search_pro_quark unsupported",
+        "malformed domain/null/type characterization"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_domain_filter"
+      ]
+    },
+    {
+      "id": "web_search_search_recency_filter",
+      "parameter": "tools[type=web_search].web_search.search_recency_filter",
+      "shape": "string",
+      "presence": "optional",
+      "default": "noLimit",
+      "boundaries": "{\"enum\": [\"oneDay\", \"oneWeek\", \"oneMonth\", \"oneYear\", \"noLimit\"]}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_recency_filter"
+      ]
+    },
+    {
+      "id": "web_search_content_size",
+      "parameter": "tools[type=web_search].web_search.content_size",
+      "shape": "string",
+      "presence": "optional",
+      "default": "medium",
+      "boundaries": "{\"enum\": [\"medium\", \"high\"]}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.content_size"
+      ]
+    },
+    {
+      "id": "web_search_result_sequence",
+      "parameter": "tools[type=web_search].web_search.result_sequence",
+      "shape": "string",
+      "presence": "optional",
+      "default": "after",
+      "boundaries": "{\"enum\": [\"before\", \"after\"]}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.result_sequence"
+      ]
+    },
+    {
+      "id": "web_search_search_result",
+      "parameter": "tools[type=web_search].web_search.search_result",
+      "shape": "boolean",
+      "presence": "optional",
+      "default": false,
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_result"
+      ]
+    },
+    {
+      "id": "web_search_require_search",
+      "parameter": "tools[type=web_search].web_search.require_search",
+      "shape": "boolean",
+      "presence": "optional",
+      "default": false,
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.require_search"
+      ]
+    },
+    {
+      "id": "web_search_search_prompt",
+      "parameter": "tools[type=web_search].web_search.search_prompt",
+      "shape": "string",
+      "presence": "optional",
+      "default": "provider prompt with current_date placeholder",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.web_search.search_prompt"
+      ]
+    },
+    {
+      "id": "mcp_server_label",
+      "parameter": "tools[type=mcp].mcp.server_label",
+      "shape": "string",
+      "presence": "required",
+      "default": "see source",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.mcp.server_label"
+      ]
+    },
+    {
+      "id": "mcp_server_url",
+      "parameter": "tools[type=mcp].mcp.server_url",
+      "shape": "string",
+      "presence": "optional",
+      "default": "see source",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "built-in server_label code without URL",
+        "external server_label with controlled server_url",
+        "external label without URL",
+        "unreachable or malformed URL: terminal tool error, not text success"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.mcp.server_url"
+      ]
+    },
+    {
+      "id": "mcp_transport_type",
+      "parameter": "tools[type=mcp].mcp.transport_type",
+      "shape": "string",
+      "presence": "optional",
+      "default": "streamable-http",
+      "boundaries": "{\"enum\": [\"sse\", \"streamable-http\"], \"default\": \"streamable-http\"}",
+      "required_scenarios": [
+        "omitted/default or required rejection",
+        "valid representative and all enum behaviors",
+        "wrong type/null/unknown enum",
+        "documented numeric edges and dependencies"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.mcp.transport_type"
+      ]
+    },
+    {
+      "id": "mcp_allowed_tools",
+      "parameter": "tools[type=mcp].mcp.allowed_tools",
+      "shape": "array",
+      "presence": "optional",
+      "default": "see source",
+      "boundaries": "{\"items\": {\"type\": \"string\"}}",
+      "required_scenarios": [
+        "omitted",
+        "empty list",
+        "one known tool",
+        "several known tools",
+        "unknown tool and wrong item type",
+        "no denied tool invoked"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.mcp.allowed_tools"
+      ]
+    },
+    {
+      "id": "mcp_headers",
+      "parameter": "tools[type=mcp].mcp.headers",
+      "shape": "object",
+      "presence": "optional",
+      "default": "see source",
+      "boundaries": "{}",
+      "required_scenarios": [
+        "omitted for unauthenticated fixture",
+        "runtime credential injected for authenticated controlled fixture",
+        "invalid/expired credential",
+        "verify no credential material in case file or result evidence"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs controlled provider tool/knowledge or MCP fixture, model capability confirmation, and tool-result assertions; no fabricated provider IDs.",
+      "cases": [
+        "glm53.mcp.headers"
+      ]
+    },
+    {
+      "id": "builtin_tool_envelope",
+      "parameter": "tools[retrieval/web_search/mcp].{type,retrieval,web_search,mcp}; extra properties",
+      "shape": "tagged objects",
+      "presence": "required tags and matching config",
+      "default": "-",
+      "boundaries": "additionalProperties=false in tool wrapper",
+      "required_scenarios": [
+        "each tag valid",
+        "missing/mismatched config",
+        "unknown tag/extra fields",
+        "mixed tools"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Provider tool applicability and controlled fixtures required.",
+      "cases": [
+        "glm53.builtin.envelope"
+      ]
+    },
+    {
+      "id": "builtin_tool_response",
+      "parameter": "web_search[].{icon,title,link,media,publish_date,content,refer}; choices[].message.tool_calls[].mcp.{id,type,server_label,error,tools,arguments,name,output}; mcp.tools[].{name,description,annotations,input_schema}; input_schema.{type,properties,required,additionalProperties}",
+      "shape": "conditional result objects",
+      "presence": "when built-in tools run",
+      "default": "-",
+      "boundaries": "MCP list/call state; search before/after ordering",
+      "required_scenarios": [
+        "search success with sources",
+        "MCP list then call with valid output",
+        "MCP error distinct from success",
+        "input_schema object and required/tool whitelist"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "No controlled server/search/knowledge fixtures or result assertion yet.",
+      "cases": [
+        "glm53.builtin.response"
+      ]
+    },
+    {
+      "id": "safety",
+      "parameter": "content_filter[].{role,level}; finish_reason=sensitive; error 1301",
+      "shape": "environment / lifecycle",
+      "presence": "conditional",
+      "default": "-",
+      "boundaries": "see scenarios",
+      "required_scenarios": [
+        "approved deterministic safety fixture; role=user/assistant/history; level 0..3; admission/terminal safety"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code",
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Requires approved deterministic provider fixture; policy changes make ordinary prompt assertions unstable.",
+      "cases": [
+        "glm53.safety.lifecycle"
+      ]
+    },
+    {
+      "id": "rate_limit",
+      "parameter": "HTTP 429; error 1113/1302/1305/1308/1309",
+      "shape": "environment / lifecycle",
+      "presence": "conditional",
+      "default": "-",
+      "boundaries": "see scenarios",
+      "required_scenarios": [
+        "quota versus rate versus congestion separation; retries with bounded backoff; no duplicate request assumption"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code",
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Account-specific quota/RPM/TPM/concurrency limits; explicit T3 environment required.",
+      "cases": [
+        "glm53.rate_limit.lifecycle"
+      ]
+    },
+    {
+      "id": "disconnect",
+      "parameter": "stream disconnect/cancellation/network_error",
+      "shape": "environment / lifecycle",
+      "presence": "conditional",
+      "default": "-",
+      "boundaries": "see scenarios",
+      "required_scenarios": [
+        "disconnect before/after final finish; cancellation; timeout; no success without DONE"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code",
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Transport negative tests simulated locally; provider accounting and retry semantics undocumented.",
+      "cases": [
+        "glm53.disconnect.lifecycle"
+      ]
+    },
+    {
+      "id": "auth_expiry",
+      "parameter": "expired credentials / tenant separation",
+      "shape": "environment / lifecycle",
+      "presence": "conditional",
+      "default": "-",
+      "boundaries": "see scenarios",
+      "required_scenarios": [
+        "401/1003 expired; permission 403/1220; cross-tenant isolation"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code",
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Needs expiring and alternate-account credentials; never store credentials in cases.",
+      "cases": [
+        "glm53.auth_expiry.lifecycle"
+      ]
+    },
+    {
+      "id": "other_protocols",
+      "parameter": "Responses /api/v1; Anthropic /api/anthropic; Coding Plan",
+      "shape": "environment / lifecycle",
+      "presence": "conditional",
+      "default": "-",
+      "boundaries": "see scenarios",
+      "required_scenarios": [
+        "each has separate request/response/stream/tool contract and eligibility"
+      ],
+      "sources": [
+        "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+        "https://docs.bigmodel.cn/cn/api/api-code",
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "deferred",
+      "gap": "Catalog uses existing openai-chat model protocol; these separate transports require dedicated adapters and a separate contract inventory.",
+      "cases": [
+        "glm53.other_protocols.lifecycle"
+      ]
+    },
+    {
+      "id": "language_header",
+      "parameter": "Accept-Language",
+      "shape": "string",
+      "presence": "optional",
+      "default": "CN not specified; EN en-US,en",
+      "boundaries": "language header does not promise model response language",
+      "required_scenarios": [
+        "omitted/explicit documented header",
+        "error localization without matching exact prose"
+      ],
+      "sources": [
+        "https://docs.z.ai/api-reference/llm/chat-completion"
+      ],
+      "retrieved_at": "2026-09-08",
+      "model_target": "glm-5.3",
+      "design_status": "designed",
+      "execution_evidence": "T0: case schema/load and generated membership validated; no provider execution",
+      "status": "blocked",
+      "gap": "Header contract belongs to Z.AI; CN API does not specify it. No automatic rejection for unknown language.",
+      "cases": [
+        "glm53.header.language"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "key": "glm53.thinking.null",
+  "name": "GLM 5.3 · thinking.null",
+  "dimension": "glm53.thinking",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "glm53_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low",
+          "thinking": null
+        }
+      },
+      "options": {
+        "contract_row": "thinking",
+        "source_urls": [
+          "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+          "https://docs.z.ai/guides/capabilities/thinking"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T2",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "expected_http_status": 400,
+        "error_codes": [
+          "1210",
+          "1213",
+          "1214"
+        ]
+      }
+    }
+  }
+}

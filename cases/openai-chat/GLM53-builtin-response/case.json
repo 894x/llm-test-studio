@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "key": "glm53.builtin.response",
+  "name": "GLM 5.3 · builtin.response（待验证模板）",
+  "dimension": "glm53.builtin_tool_response",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low"
+        }
+      },
+      "options": {
+        "contract_row": "builtin_tool_response",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T3",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "reason": "Validate every conditional built-in result field and state against controlled fixtures, including nested MCP input schema and errors; do not execute arbitrary returned tools.",
+        "required_scenarios": [
+          "search success with sources",
+          "MCP list then call with valid output",
+          "MCP error distinct from success",
+          "input_schema object and required/tool whitelist"
+        ]
+      }
+    }
+  }
+}

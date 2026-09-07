@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "key": "openai-chat.glm-5.3.basic",
+  "name": "GLM 5.3 基本功能套件",
+  "protocol": "openai-chat",
+  "model_target": "glm-5.3",
+  "case_keys": [
+    "glm53.connectivity",
+    "glm53.auth.missing",
+    "glm53.auth.invalid",
+    "glm53.thinking.enabled",
+    "glm53.reasoning_effort.valid_0",
+    "glm53.stream.true",
+    "glm53.format.json",
+    "glm53.tools.roundtrip",
+    "glm53.tools.stream_true",
+    "glm53.thinking.replay_false",
+    "glm53.cache.counter",
+    "glm53.thinking.disabled"
+  ]
+}

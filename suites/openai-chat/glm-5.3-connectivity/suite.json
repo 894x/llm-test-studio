@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "key": "openai-chat.glm-5.3.connectivity",
+  "name": "GLM 5.3 连通性套件",
+  "protocol": "openai-chat",
+  "model_target": "glm-5.3",
+  "case_keys": [
+    "glm53.connectivity",
+    "glm53.auth.missing",
+    "glm53.auth.invalid"
+  ],
+  "quick_test": {
+    "description": "验证 GLM 5.3 的思考、最终回答，以及缺失和无效凭据的拒绝响应。适用于普通 Model API。",
+    "timeout_ms": 120000,
+    "inputs": [
+      {
+        "key": "prompt",
+        "label": "提示词",
+        "type": "text",
+        "default": "Reply with the word GLM_OK.",
+        "bindings": [
+          {
+            "case_key": "glm53.connectivity",
+            "pointer": "/request/body/messages/0/content"
+          }
+        ]
+      }
+    ]
+  }
+}

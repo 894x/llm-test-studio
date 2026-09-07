@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "key": "glm53.context.boundaries",
+  "name": "GLM 5.3 · context.boundaries（待验证模板）",
+  "dimension": "glm53.context",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low"
+        }
+      },
+      "options": {
+        "contract_row": "context",
+        "source_urls": [
+          "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+          "https://docs.bigmodel.cn/cn/api/api-code"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T3",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "reason": "Pin provider tokenizer and exact context value C first. Construct input tokens=C-output_budget-1, C-output_budget, C-output_budget+1, verify accounting and terminal state; explicit T3 authorization required.",
+        "required_scenarios": [
+          "tokenizer/version pinned; input+output at C-1,C,C+1",
+          "input-only overflow -> 400/1261 or terminal model_context_window_exceeded",
+          "long-context retrieval"
+        ]
+      }
+    }
+  }
+}

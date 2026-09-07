@@ -27,7 +27,7 @@ var chatKinds = []string{
 // Each legacy driver declares both its accepted kinds and its implementation.
 // Filesystem loading, typed Case validation, CLI, and desktop use this registry.
 var drivers = map[string]driver{
-	protocol.OpenAIChat:   {kinds: chatKinds, run: singleCaseRunner(RunOpenAIChatCase)},
+	protocol.OpenAIChat:   {kinds: append(slices.Clone(chatKinds), glm53Kinds...), run: singleCaseRunner(RunOpenAIChatCase)},
 	protocol.KimiK3:       {kinds: append(slices.Clone(chatKinds), "kimi_success", "kimi_tool_call", "kimi_reasoning_visible", "kimi_reasoning_hidden", "kimi_error_400"), run: singleCaseRunner(RunKimiK3Case)},
 	protocol.Seedance:     {kinds: []string{"seedance_task"}, run: RunSeedanceCase},
 	protocol.WanVideo:     {kinds: []string{"wan_task_success", "wan_task_rejected"}, run: RunWanVideoCase},

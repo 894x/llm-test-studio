@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "key": "glm53.auth_expiry.lifecycle",
+  "name": "GLM 5.3 · auth_expiry.lifecycle（待验证模板）",
+  "dimension": "glm53.auth_expiry",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low"
+        }
+      },
+      "options": {
+        "contract_row": "auth_expiry",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+          "https://docs.bigmodel.cn/cn/api/api-code",
+          "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T3",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "reason": "Needs expiring and alternate-account credentials; never store credentials in cases. Required scenarios: 401/1003 expired; permission 403/1220; cross-tenant isolation",
+        "required_scenarios": [
+          "401/1003 expired; permission 403/1220; cross-tenant isolation"
+        ]
+      }
+    }
+  }
+}

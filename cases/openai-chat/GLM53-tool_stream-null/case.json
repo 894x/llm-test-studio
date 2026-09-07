@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "key": "glm53.tool_stream.null",
+  "name": "GLM 5.3 · tool_stream.null",
+  "dimension": "glm53.tool_stream",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "glm53_rejected",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low",
+          "tool_stream": null,
+          "stream": true
+        }
+      },
+      "options": {
+        "contract_row": "tool_stream",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
+          "https://docs.bigmodel.cn/cn/guide/capabilities/stream-tool"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T2",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "expected_http_status": 400,
+        "error_codes": [
+          "1210",
+          "1213",
+          "1214"
+        ]
+      }
+    }
+  }
+}

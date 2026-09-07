@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "key": "glm53.web_search.search_engine",
+  "name": "GLM 5.3 · web_search.search_engine（待验证模板）",
+  "dimension": "glm53.web_search_search_engine",
+  "protocol": "openai-chat",
+  "model_targets": [
+    "glm-5.3"
+  ],
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "manual",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "manual_unknown",
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with the word GLM_OK."
+            }
+          ],
+          "max_tokens": 1024,
+          "reasoning_effort": "low"
+        }
+      },
+      "options": {
+        "contract_row": "web_search_search_engine",
+        "source_urls": [
+          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
+        ],
+        "retrieved_at": "2026-09-08",
+        "execution_tier": "T3",
+        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
+        "reason": "Design with provider-owned deterministic web_search fixture. Validate tool execution result and this field independently, not merely HTTP 200.",
+        "required_scenarios": [
+          "omitted/default or required rejection",
+          "valid representative and all enum behaviors",
+          "wrong type/null/unknown enum",
+          "documented numeric edges and dependencies"
+        ]
+      }
+    }
+  }
+}
