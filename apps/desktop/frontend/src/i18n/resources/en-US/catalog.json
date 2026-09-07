@@ -1,4 +1,25 @@
 {
+  "search": {
+    "models": "Search models",
+    "modelsPlaceholder": "Name, protocol, or capability",
+    "channels": "Search channels",
+    "channelsPlaceholder": "Name, protocol, or service URL",
+    "mappings": "Search mappings",
+    "mappingsPlaceholder": "Channel, model, or upstream name",
+    "matrix": "Search model and channel matrix",
+    "matrixPlaceholder": "Model, configured channel, or upstream",
+    "cases": "Search cases",
+    "casesPlaceholder": "Key, name, type, or model",
+    "suites": "Search suites",
+    "suitesPlaceholder": "Key, name, protocol, or model",
+    "plans": "Search plans",
+    "plansPlaceholder": "Name, model, channel, or suite",
+    "matches": "{{matches}} / {{total}} items",
+    "clear": "Clear search",
+    "reset": "Show all",
+    "empty": "No matches found",
+    "emptyDescription": "Try another keyword or clear the search to show all items."
+  },
   "common": {
     "version": "Version",
     "protocol": "Protocol",

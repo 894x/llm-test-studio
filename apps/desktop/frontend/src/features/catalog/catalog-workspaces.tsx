@@ -36,6 +36,8 @@ import type {
   CatalogTestCase,
 } from "./data"
 import { CatalogEditor, DeleteCatalogButton, type CatalogMutation } from "./catalog-editors"
+import { CatalogSearch, CatalogSearchEmpty } from "./catalog-search"
+import { useCatalogSearch } from "./use-catalog-search"
 
 import { PROTOCOL_LABELS } from "./protocols"
 
@@ -54,11 +56,6 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
   const [selectedModelID, setSelectedModelID] = useState("")
   const [selectedChannelID, setSelectedChannelID] = useState("")
   const [selectedMappingID, setSelectedMappingID] = useState("")
-  const selectedModel =
-    catalog.models.find((model) => model.id === selectedModelID) ?? catalog.models[0]
-  const selectedChannel =
-    catalog.channels.find((channel) => channel.id === selectedChannelID) ?? catalog.channels[0]
-  const selectedMapping = catalog.channel_models.find((mapping) => mapping.id === selectedMappingID) ?? catalog.channel_models[0]
   const channelNames = useMemo(
     () => new Map(catalog.channels.map((channel) => [channel.id, channel.name])),
     [catalog.channels],
@@ -67,6 +64,38 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
     () => new Map(catalog.models.map((model) => [model.id, model.name])),
     [catalog.models],
   )
+  const modelSearch = useCatalogSearch(catalog.models, (model) => [
+    model.id, model.name, model.protocol, PROTOCOL_LABELS[model.protocol], ...model.capabilities,
+  ])
+  const channelSearch = useCatalogSearch(catalog.channels, (channel) => [
+    channel.id, channel.name, channel.protocol, PROTOCOL_LABELS[channel.protocol], channel.base_url,
+    t(channel.enabled ? "common.enabled" : "common.disabled"),
+  ])
+  const mappingValues = (mapping: CatalogChannelModel) => [
+    mapping.id, channelNames.get(mapping.channel_id) ?? "", modelNames.get(mapping.model_id) ?? "", mapping.upstream_model_name,
+  ]
+  const mappingSearch = useCatalogSearch(catalog.channel_models, mappingValues)
+  const matrixValues = useMemo(() => {
+    const values = new Map<string, string[]>()
+    for (const mapping of catalog.channel_models) {
+      const row = values.get(mapping.model_id) ?? []
+      row.push(channelNames.get(mapping.channel_id) ?? "", mapping.upstream_model_name)
+      values.set(mapping.model_id, row)
+    }
+    return values
+  }, [catalog.channel_models, channelNames])
+  // Search matrix rows; keep all channel columns so configuration stays comparable.
+  const matrixSearch = useCatalogSearch(catalog.models, (model) => [
+    model.name, model.protocol, PROTOCOL_LABELS[model.protocol], ...(matrixValues.get(model.id) ?? []),
+  ])
+  const matrixModelIDs = new Set(matrixSearch.rows.map((model) => model.id))
+  const visibleMappings = tab === "matrix"
+    ? catalog.channel_models.filter((mapping) => matrixModelIDs.has(mapping.model_id))
+    : mappingSearch.rows
+  const selectedModel = modelSearch.rows.find((model) => model.id === selectedModelID) ?? modelSearch.rows[0]
+  const selectedChannel = channelSearch.rows.find((channel) => channel.id === selectedChannelID) ?? channelSearch.rows[0]
+  const selectedMapping = visibleMappings.find((mapping) => mapping.id === selectedMappingID) ?? visibleMappings[0]
+  const search = { models: modelSearch, channels: channelSearch, mappings: mappingSearch, matrix: matrixSearch }[tab]
 
   const inspector =
     tab === "models" ? (
@@ -102,37 +131,42 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
         onValueChange={(value) => setTab(value as "models" | "channels" | "mappings" | "matrix")}
         className="min-h-0 flex-1 gap-0"
       >
-        <TabsList variant="line" className="mx-4 h-8">
-          <TabsTrigger value="models" className="text-xs">
-            {t("models.tabs.models", { count: catalog.models.length })}
-          </TabsTrigger>
-          <TabsTrigger value="channels" className="text-xs">
-            {t("models.tabs.channels", { count: catalog.channels.length })}
-          </TabsTrigger>
-          <TabsTrigger value="mappings" className="text-xs">
-            {t("models.tabs.mappings", { count: catalog.channel_models.length })}
-          </TabsTrigger>
-          <TabsTrigger value="matrix" className="text-xs">
-             {tx("desktop:catalog_matrix")} </TabsTrigger>
-        </TabsList>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2">
+          <TabsList variant="line" className="h-8">
+            <TabsTrigger value="models" className="text-xs">
+              {t("models.tabs.models", { count: catalog.models.length })}
+            </TabsTrigger>
+            <TabsTrigger value="channels" className="text-xs">
+              {t("models.tabs.channels", { count: catalog.channels.length })}
+            </TabsTrigger>
+            <TabsTrigger value="mappings" className="text-xs">
+              {t("models.tabs.mappings", { count: catalog.channel_models.length })}
+            </TabsTrigger>
+            <TabsTrigger value="matrix" className="text-xs">
+              {tx("desktop:catalog_matrix")}
+            </TabsTrigger>
+          </TabsList>
+          <CatalogSearch search={search} label={t(`search.${tab}`)} placeholder={t(`search.${tab}Placeholder`)} />
+        </div>
         <Separator />
-        {tab === "models" ? (
+        {search.empty ? <CatalogSearchEmpty onClear={search.clear} /> : tab === "models" ? (
           <ModelTable
-            models={catalog.models}
+            models={modelSearch.rows}
             selectedID={selectedModel?.id ?? ""}
             onSelect={setSelectedModelID}
           />
         ) : tab === "channels" ? (
           <ChannelTable
-            channels={catalog.channels}
+            channels={channelSearch.rows}
             selectedID={selectedChannel?.id ?? ""}
             onSelect={setSelectedChannelID}
           />
         ) : tab === "mappings" ? (
-          <MappingTable mappings={catalog.channel_models} selectedID={selectedMapping?.id ?? ""} onSelect={setSelectedMappingID} channelNames={channelNames} modelNames={modelNames} />
+          <MappingTable mappings={mappingSearch.rows} selectedID={selectedMapping?.id ?? ""} onSelect={setSelectedMappingID} channelNames={channelNames} modelNames={modelNames} />
         ) : (
           <ModelChannelMatrix
             catalog={catalog}
+            models={matrixSearch.rows}
             selectedID={selectedMapping?.id ?? ""}
             onSelect={setSelectedMappingID}
           />
@@ -144,10 +178,12 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
 
 function ModelChannelMatrix({
   catalog,
+  models,
   selectedID,
   onSelect,
 }: {
   catalog: CatalogSnapshot
+  models: CatalogModel[]
   selectedID: string
   onSelect: (id: string) => void
 }) {
@@ -195,7 +231,7 @@ function ModelChannelMatrix({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {catalog.models.map((model) => (
+          {models.map((model) => (
             <TableRow key={model.id} className="hover:bg-transparent">
               <TableHead
                 scope="row"
@@ -461,8 +497,19 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
   const [tab, setTab] = useState<"cases" | "suites">("cases")
   const [selectedID, setSelectedID] = useState("")
   const [selectedSuiteID, setSelectedSuiteID] = useState("")
-  const selected = catalog.test_cases.find((item) => item.id === selectedID) ?? catalog.test_cases[0]
-  const selectedSuite = catalog.suites.find((item) => item.id === selectedSuiteID) ?? catalog.suites[0]
+  const typeLabels = new Map(catalog.case_types.map((descriptor) => [
+    `${descriptor.type}@${descriptor.type_version}`, caseTypeLabel(descriptor.type, descriptor.label),
+  ]))
+  const caseSearch = useCatalogSearch(catalog.test_cases, (testCase) => [
+    testCase.key, testCase.name, testCase.type, typeLabels.get(`${testCase.type}@${testCase.type_version}`) ?? caseTypeLabel(testCase.type),
+    testCase.protocol, PROTOCOL_LABELS[testCase.protocol], modelTargetLabel(testCase), t(casePolicyKey(testCase)),
+  ])
+  const suiteSearch = useCatalogSearch(catalog.suites, (suite) => [
+    suite.key, suite.name, suite.protocol, PROTOCOL_LABELS[suite.protocol], suite.model_target,
+  ])
+  const search = tab === "cases" ? caseSearch : suiteSearch
+  const selected = caseSearch.rows.find((item) => item.id === selectedID) ?? caseSearch.rows[0]
+  const selectedSuite = suiteSearch.rows.find((item) => item.id === selectedSuiteID) ?? suiteSearch.rows[0]
   const selectedEntity = tab === "cases" ? selected : selectedSuite
   const kind = tab === "cases" ? "case" : "suite"
   return (
@@ -476,9 +523,12 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
     >
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       <Tabs value={tab} onValueChange={(value) => setTab(value as "cases" | "suites")} className="min-h-0 flex-1 gap-0">
-        <TabsList variant="line" className="mx-4 h-8"><TabsTrigger value="cases" className="text-xs">{t("cases.tabs.cases", { count: catalog.test_cases.length })}</TabsTrigger><TabsTrigger value="suites" className="text-xs">{t("cases.tabs.suites", { count: catalog.suites.length })}</TabsTrigger></TabsList>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2">
+          <TabsList variant="line" className="h-8"><TabsTrigger value="cases" className="text-xs">{t("cases.tabs.cases", { count: catalog.test_cases.length })}</TabsTrigger><TabsTrigger value="suites" className="text-xs">{t("cases.tabs.suites", { count: catalog.suites.length })}</TabsTrigger></TabsList>
+          <CatalogSearch search={search} label={t(`search.${tab}`)} placeholder={t(`search.${tab}Placeholder`)} />
+        </div>
         <Separator />
-      {tab === "cases" && catalog.test_cases.length === 0 ? (
+      {search.empty ? <CatalogSearchEmpty onClear={search.clear} /> : tab === "cases" && catalog.test_cases.length === 0 ? (
         <CatalogEmpty title={t("cases.empty")} description={t("cases.emptyDescription")} />
       ) : tab === "cases" ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
@@ -492,7 +542,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
               </TableRow>
             </TableHeader>
             <TableBody>
-              {catalog.test_cases.map((testCase) => (
+              {caseSearch.rows.map((testCase) => (
                 <TableRow
                   key={testCase.id}
                   data-state={testCase.id === selected?.id ? "selected" : undefined}
@@ -506,7 +556,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
                   </TableCell>
-                  <TableCell className="py-1 text-[11px]">{caseTypeLabel(testCase.type, catalog.case_types.find((value) => value.type === testCase.type && value.type_version === testCase.type_version)?.label)}</TableCell>
+                  <TableCell className="py-1 text-[11px]">{typeLabels.get(`${testCase.type}@${testCase.type_version}`) ?? caseTypeLabel(testCase.type)}</TableCell>
                   <TableCell className="max-w-56 py-1 text-[11px] text-muted-foreground">{modelTargetSummary(testCase)}</TableCell>
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />
@@ -516,7 +566,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
             </TableBody>
           </Table>
         </ScrollArea>
-      ) : <SuiteTable suites={catalog.suites} selectedID={selectedSuite?.id ?? ""} onSelect={setSelectedSuiteID} />}
+      ) : <SuiteTable suites={suiteSearch.rows} selectedID={selectedSuite?.id ?? ""} onSelect={setSelectedSuiteID} />}
       </Tabs>
     </PageFrame>
   )
@@ -641,7 +691,17 @@ export function PlansWorkspace({
 }) {
   const { t } = useTranslation("catalog")
   const [selectedID, setSelectedID] = useState("")
-  const selected = catalog.plans.find((item) => item.id === selectedID) ?? catalog.plans[0]
+  const modelNames = new Map(catalog.models.map((model) => [model.id, model.name]))
+  const channelNames = new Map(catalog.channels.map((channel) => [channel.id, channel.name]))
+  const suiteNames = new Map(catalog.suites.map((suite) => [suite.id, `${suite.key} ${suite.name}`]))
+  const search = useCatalogSearch(catalog.plans, (plan) => [
+    plan.id, plan.name, plan.load_mode,
+    t(`plans.load${plan.load_mode === "single" ? "Single" : plan.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`),
+    ...plan.model_ids.map((id) => modelNames.get(id) ?? ""),
+    ...plan.channel_ids.map((id) => channelNames.get(id) ?? ""),
+    suiteNames.get(plan.suite_id ?? "") ?? "",
+  ])
+  const selected = search.rows.find((item) => item.id === selectedID) ?? search.rows[0]
   return (
     <PageFrame
       title={t("plans.title")}
@@ -658,7 +718,10 @@ export function PlansWorkspace({
       actions={<><CatalogEditor kind="plan" catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`plan-${selected.id}`} kind="plan" item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind="plan" item={selected} action={actions.deletePlan} mutate={mutate} pending={mutationPending} /></>}
     >
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
-      {catalog.plans.length === 0 ? (
+      <div className="flex shrink-0 items-center px-4 py-2">
+        <CatalogSearch search={search} label={t("search.plans")} placeholder={t("search.plansPlaceholder")} />
+      </div>
+      {search.empty ? <CatalogSearchEmpty onClear={search.clear} /> : catalog.plans.length === 0 ? (
         <CatalogEmpty title={t("plans.empty")} description={t("plans.emptyDescription")} />
       ) : (
         <ScrollArea className="min-h-0 flex-1 border-t">
@@ -672,7 +735,7 @@ export function PlansWorkspace({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {catalog.plans.map((plan) => (
+              {search.rows.map((plan) => (
                 <TableRow
                   key={plan.id}
                   data-state={plan.id === selected?.id ? "selected" : undefined}

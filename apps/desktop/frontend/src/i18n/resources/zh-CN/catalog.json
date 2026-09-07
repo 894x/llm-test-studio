@@ -1,4 +1,25 @@
 {
+  "search": {
+    "models": "搜索模型",
+    "modelsPlaceholder": "名称、协议或能力",
+    "channels": "搜索渠道",
+    "channelsPlaceholder": "名称、协议或服务地址",
+    "mappings": "搜索映射",
+    "mappingsPlaceholder": "渠道、模型或上游名称",
+    "matrix": "搜索模型渠道矩阵",
+    "matrixPlaceholder": "模型、已配置渠道或上游名称",
+    "cases": "搜索用例",
+    "casesPlaceholder": "编号、名称、类型或适用模型",
+    "suites": "搜索套件",
+    "suitesPlaceholder": "编号、名称、协议或适用模型",
+    "plans": "搜索计划",
+    "plansPlaceholder": "名称、模型、渠道或套件",
+    "matches": "{{matches}} / {{total}} 项",
+    "clear": "清空搜索",
+    "reset": "显示全部",
+    "empty": "未找到匹配项",
+    "emptyDescription": "请尝试其他关键词，或清空搜索查看全部内容。"
+  },
   "common": {
     "version": "版本",
     "protocol": "协议",
