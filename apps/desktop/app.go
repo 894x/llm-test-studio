@@ -29,7 +29,6 @@ var (
 	ErrComparisonUnavailable     = errors.New("comparison service is unavailable")
 	ErrDiagnosticsUnavailable    = errors.New("desktop diagnostics are unavailable")
 	ErrQuickTestUnavailable      = errors.New("quick test service is unavailable")
-	ErrQuickTestSavePartial      = errors.New("quick test connection was only partially saved")
 	ErrCatalogSavedRefreshFailed = errors.New("catalog mutation was saved but the refreshed snapshot is unavailable")
 	ErrInvalidIdentifier         = errors.New("desktop command identifier is invalid")
 )
@@ -45,7 +44,6 @@ const (
 	desktopCodeComparisonMissing         = "comparison_unavailable"
 	desktopCodeDiagnosticsMissing        = "diagnostics_unavailable"
 	desktopCodeQuickTestMissing          = "quick_test_unavailable"
-	desktopCodeQuickTestSavePartial      = "quick_test_save_partial"
 	desktopCodeInvalidIdentifier         = "invalid_identifier"
 	desktopCodeOperationCancelled        = "operation_cancelled"
 	desktopCodeOperationFailed           = "operation_failed"
@@ -127,12 +125,11 @@ type ComparisonService interface {
 	Snapshot(context.Context) (comparisons.Snapshot, error)
 }
 
-type QuickTestRunner interface {
-	Run(context.Context, quicktest.Command) (quicktest.Result, error)
+type QuickPerformanceRunner interface {
 	RunPerformance(context.Context, quicktest.PerformanceCommand) (quicktest.PerformanceReport, error)
 }
 
-type QuickTestProgressRunner interface {
+type QuickPerformanceProgressRunner interface {
 	RunPerformanceWithProgress(context.Context, quicktest.PerformanceCommand, func(quicktest.PerformanceProgress)) (quicktest.PerformanceReport, error)
 }
 
@@ -145,7 +142,7 @@ type desktopDependencies struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
-	quickTests      QuickTestRunner
+	quickTests      QuickPerformanceRunner
 	close           func() error
 }
 
@@ -172,7 +169,7 @@ type DesktopApp struct {
 	reports                  ReportingQuery
 	commands                 RunCommands
 	comparisons              ComparisonService
-	quickTests               QuickTestRunner
+	quickTests               QuickPerformanceRunner
 	close                    func() error
 	startupErr               error
 	shutdownErr              error
@@ -225,7 +222,7 @@ type desktopLease struct {
 	reports         ReportingQuery
 	commands        RunCommands
 	comparisons     ComparisonService
-	quickTests      QuickTestRunner
+	quickTests      QuickPerformanceRunner
 	release         func()
 }
 
@@ -954,8 +951,6 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
 	case errors.Is(internal, ErrQuickTestUnavailable):
 		return DesktopBindingError{Code: desktopCodeQuickTestMissing}
-	case errors.Is(internal, ErrQuickTestSavePartial):
-		return DesktopBindingError{Code: desktopCodeQuickTestSavePartial}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, ErrCatalogSavedRefreshFailed):
@@ -993,7 +988,6 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeComparisonMissing,
 		desktopCodeDiagnosticsMissing,
 		desktopCodeQuickTestMissing,
-		desktopCodeQuickTestSavePartial,
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,

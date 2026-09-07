@@ -1,9 +1,9 @@
 import { translateDesktop as tx } from "@/i18n/runtime"
-import type { QuickTestCommand } from "./data"
+import type { QuickTestAddressMode } from "./data"
 
 export function connectionURLHint(
   value: string,
-  mode: QuickTestCommand["address_mode"],
+  mode: QuickTestAddressMode,
 ): string | undefined {
   if (value.trim() !== value)
     return tx("desktop:quick-test_the_endpoint_must_not_have_leading_or_trailing_spaces")

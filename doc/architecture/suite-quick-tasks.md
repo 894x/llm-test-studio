@@ -182,3 +182,12 @@ checks. Catalog mutations, snapshots, historical repository reads, and file
 materialization resolve the relevant definitions and invoke that rule.
 `internal/jsonpointer` is shared with response probe assertions to keep path
 decoding and lookup consistent.
+
+
+## Entry ownership
+
+`StartQuickTask` is the connectivity/task entry across supported protocols.
+The old synchronous `RunQuickTest` and catalog-creating
+`SaveQuickTestConnection` bindings have been removed. The separate
+`RunQuickPerformanceTest` binding retains streaming workload controls and report
+archival; its native adapter lives in `apps/desktop/quick_performance.go`.

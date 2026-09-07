@@ -2,58 +2,28 @@ import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 export type QuickTestAddressMode = "base_url" | "full_url"
 
-export type QuickTestErrorCode =
-  | "invalid_request"
-  | "insecure_endpoint"
-  | "credential_required"
-  | "authentication_failed"
-  | "network_error"
-  | "timeout"
-  | "cancelled"
-  | "http_error"
-  | "rate_limited"
-  | "protocol_error"
-  | "incomplete_stream"
-  | "semantic_empty"
-  | "response_too_large"
-  | "client_closed"
-  | "executor_panic"
-  | "scheduler_overload"
-  | "request_failed"
-  | "unclassified_error"
+export const QUICK_TEST_ERROR_CODES = [
+  "invalid_request",
+  "insecure_endpoint",
+  "credential_required",
+  "authentication_failed",
+  "network_error",
+  "timeout",
+  "cancelled",
+  "http_error",
+  "rate_limited",
+  "protocol_error",
+  "incomplete_stream",
+  "semantic_empty",
+  "response_too_large",
+  "client_closed",
+  "executor_panic",
+  "scheduler_overload",
+  "request_failed",
+  "unclassified_error",
+] as const
 
-export interface QuickTestCommand {
-  address_mode: QuickTestAddressMode
-  url: string
-  api_key: string
-  channel_id?: string
-  model_id: string
-  prompt: string
-  timeout_ms: number
-}
-
-export interface QuickTestResult {
-  schema_version: 1
-  success: boolean
-  address_mode: QuickTestAddressMode
-  base_url: string
-  endpoint: string
-  http_status: number
-  e2e_ms: number
-  prompt_tokens: number
-  completion_tokens: number
-  cached_tokens: number
-  error_code?: QuickTestErrorCode
-}
-
-export interface SaveQuickTestConnectionCommand {
-  base_url: string
-  api_key: string
-  model_id: string
-  model_name: string
-  channel_name: string
-  existing_model_id?: string
-}
+export type QuickTestErrorCode = (typeof QUICK_TEST_ERROR_CODES)[number]
 
 export interface QuickPerformanceCommand {
   credential_run_id?: string
@@ -412,66 +382,7 @@ export function parseQuickPerformanceProgress(value: unknown): QuickPerformanceP
   return pickPerformanceProgress(value, true)
 }
 
-const ERROR_CODES = new Set<QuickTestErrorCode>([
-  "invalid_request",
-  "insecure_endpoint",
-  "credential_required",
-  "authentication_failed",
-  "network_error",
-  "timeout",
-  "cancelled",
-  "http_error",
-  "rate_limited",
-  "protocol_error",
-  "incomplete_stream",
-  "semantic_empty",
-  "response_too_large",
-  "client_closed",
-  "executor_panic",
-  "scheduler_overload",
-  "request_failed",
-  "unclassified_error",
-])
-
-export const QUICK_TEST_ERROR_MESSAGES = zhQuickTest.errorCode as Record<QuickTestErrorCode, string>
-
-export function parseQuickTestResult(value: unknown): QuickTestResult {
-  if (!isRecord(value) || value.schema_version !== 1) {
-    throw new DesktopDataError(tx("desktop:quick-test_unsupported_quick_test_protocol_version"))
-  }
-  if (
-    typeof value.success !== "boolean" ||
-    !isAddressMode(value.address_mode) ||
-    !isOptionalSafeURL(value.base_url) ||
-    !isOptionalSafeURL(value.endpoint) ||
-    !isStatus(value.http_status) ||
-    !isNonNegativeFinite(value.e2e_ms) ||
-    !isNonNegativeInteger(value.prompt_tokens) ||
-    !isNonNegativeInteger(value.completion_tokens) ||
-    !isNonNegativeInteger(value.cached_tokens) ||
-    (value.error_code !== undefined && !isErrorCode(value.error_code)) ||
-    (value.success && value.error_code !== undefined) ||
-    (!value.success && value.error_code === undefined)
-  ) {
-    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_test_data_structure"))
-  }
-  if (value.success && (!value.base_url || !value.endpoint)) {
-    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_test_data_structure"))
-  }
-  return {
-    schema_version: 1,
-    success: value.success,
-    address_mode: value.address_mode,
-    base_url: value.base_url,
-    endpoint: value.endpoint,
-    http_status: value.http_status,
-    e2e_ms: value.e2e_ms,
-    prompt_tokens: value.prompt_tokens,
-    completion_tokens: value.completion_tokens,
-    cached_tokens: value.cached_tokens,
-    ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
-  }
-}
+const ERROR_CODES = new Set<string>(QUICK_TEST_ERROR_CODES)
 
 function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceResponseEvidence {
   if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_response_evidence"))
@@ -1935,4 +1846,3 @@ function isNonNegativeInteger(value: unknown): value is number {
 function isPositiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0
 }
-import zhQuickTest from "@/i18n/resources/zh-CN/quick-test.json"

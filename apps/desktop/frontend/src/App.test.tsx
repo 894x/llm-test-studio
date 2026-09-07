@@ -74,20 +74,8 @@ function desktopClient(): DesktopClient & {
       return structuredClone(client.workspace)
     }),
 		startComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		runQuickTest: vi.fn(async () => ({
-			schema_version: 1 as const,
-			success: true,
-			address_mode: "base_url" as const,
-			base_url: "https://api.example.test/v1",
-			endpoint: "https://api.example.test/v1/chat/completions",
-			http_status: 200,
-			e2e_ms: 42,
-			prompt_tokens: 8,
-			completion_tokens: 1,
-			cached_tokens: 0,
-		})),
 		runQuickPerformanceTest: vi.fn(),
-		saveQuickTestConnection: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
+
     ...catalogMutationMocks(),
   }
   return client
@@ -1029,9 +1017,9 @@ describe("desktop run workspace", () => {
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),
-			runQuickTest: vi.fn(),
+
 			runQuickPerformanceTest: vi.fn(),
-			saveQuickTestConnection: vi.fn(),
+
       ...catalogMutationMocks(),
     }
 

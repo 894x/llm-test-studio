@@ -27,7 +27,6 @@
     "comparison_unavailable": "无法读取渠道对比，请重试；日志操作名：load_comparisons",
     "diagnostics_unavailable": "诊断日志暂不可用",
     "quick_test_unavailable": "快速测试暂不可用",
-    "quick_test_save_partial": "连接已部分保存，请前往模型与渠道检查并完成配置",
     "invalid_identifier": "操作对象无效",
     "operation_cancelled": "操作已取消",
     "operation_failed": "桌面操作失败，请检查本地日志",

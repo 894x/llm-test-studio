@@ -27,7 +27,6 @@
     "comparison_unavailable": "Unable to read channel comparisons. Retry; log operation: load_comparisons.",
     "diagnostics_unavailable": "Diagnostics logging is unavailable",
     "quick_test_unavailable": "Quick Test is unavailable",
-    "quick_test_save_partial": "The connection was partially saved. Open Models & Channels to finish configuring it.",
     "invalid_identifier": "The target object is invalid",
     "operation_cancelled": "The operation was cancelled",
     "operation_failed": "The desktop operation failed; check local logs",

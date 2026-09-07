@@ -179,8 +179,6 @@
   "comparisons_invalid_channel_comparison_result": "Invalid channel comparison result",
   "comparisons_invalid_channel_comparison_metrics": "Invalid channel comparison metrics",
   "quick-test_invalid_quick_performance_progress_structure": "Invalid quick performance progress structure",
-  "quick-test_unsupported_quick_test_protocol_version": "Unsupported quick test protocol version",
-  "quick-test_invalid_quick_test_data_structure": "Invalid quick test data structure",
   "quick-test_invalid_quick_performance_response_evidence": "Invalid quick performance response evidence",
   "quick-test_unsupported_quick_performance_report_protocol_version": "Unsupported quick performance report protocol version",
   "quick-test_invalid_quick_performance_report_structure": "Invalid quick performance report structure",

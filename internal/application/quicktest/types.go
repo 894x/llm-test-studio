@@ -1,5 +1,5 @@
-// Package quicktest provides a zero-persistence Application Core workflow for
-// checking one OpenAI-compatible chat-completions connection.
+// Package quicktest executes bounded performance tests for OpenAI-compatible
+// connections and archives operational reports without creating authored targets.
 package quicktest
 
 import (
@@ -14,11 +14,6 @@ import (
 )
 
 const (
-	SchemaVersion          = 1
-	DefaultPrompt          = "Reply with OK only."
-	DefaultTimeoutMS int64 = 30_000
-	MaxTimeoutMS     int64 = 120_000
-
 	PerformanceSchemaVersion                = 3
 	PerformanceSchemaVersionV2              = 2
 	LegacyPerformanceSchemaVersion          = 1
@@ -57,35 +52,8 @@ var ErrServiceUnavailable = errors.New("quick test service is unavailable")
 
 var ErrPerformanceArchiveNotFound = errors.New("quick performance report not found")
 
-type Command struct {
-	AddressMode AddressMode `json:"address_mode"`
-	URL         string      `json:"url"`
-	APIKey      string      `json:"api_key"`
-	ChannelID   string      `json:"channel_id,omitempty"`
-	ModelID     string      `json:"model_id"`
-	Prompt      string      `json:"prompt"`
-	TimeoutMS   int64       `json:"timeout_ms"`
-}
-
-// Result is deliberately allowlisted. Provider errors, credentials, and
-// request/response payloads never cross this Application Core boundary.
-type Result struct {
-	SchemaVersion    int              `json:"schema_version"`
-	Success          bool             `json:"success"`
-	AddressMode      AddressMode      `json:"address_mode"`
-	BaseURL          string           `json:"base_url"`
-	Endpoint         string           `json:"endpoint"`
-	HTTPStatus       int              `json:"http_status"`
-	E2EMS            float64          `json:"e2e_ms"`
-	PromptTokens     uint64           `json:"prompt_tokens"`
-	CompletionTokens uint64           `json:"completion_tokens"`
-	CachedTokens     uint64           `json:"cached_tokens"`
-	ErrorCode        domain.ErrorCode `json:"error_code,omitempty"`
-}
-
-// PerformanceCommand deliberately repeats only the tested connection fields.
-// It must remain independent from persisted Model, Channel, Case, and Plan
-// entities so a quick performance run stays zero-persistence.
+// PerformanceCommand accepts a temporary or saved connection and optional Suite
+// provenance. It does not create authored Model, Channel, Case, or Plan entities.
 type PerformanceCommand struct {
 	CredentialRunID    string                  `json:"credential_run_id,omitempty"`
 	Task               *TaskReference          `json:"task,omitempty"`

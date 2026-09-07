@@ -122,65 +122,6 @@ func TestDesktopErrorReporterMarksCommittedCatalogRefreshFailureAsSaved(t *testi
 	}
 }
 
-func TestDesktopErrorReporterKeepsQuickTestSaveStepAndRedactedCause(t *testing.T) {
-	tests := []struct {
-		name      string
-		operation string
-		cause     error
-		public    error
-		wantCode  string
-		wantMsg   string
-		wantCause string
-	}{
-		{
-			name: "partial mapping", operation: "save_connection_create_mapping",
-			cause:  errors.New("write mappings.json: access denied for api_key=sk-sensitive-value"),
-			public: ErrQuickTestSavePartial, wantCode: desktopCodeQuickTestSavePartial,
-			wantMsg: "quick test connection partially saved", wantCause: "write mappings.json: access denied",
-		},
-		{
-			name: "committed refresh", operation: "save_connection_refresh_catalog",
-			cause:  errors.New("read channels.json: access denied"),
-			public: ErrCatalogSavedRefreshFailed, wantCode: desktopCodeCatalogSavedRefreshFailed,
-			wantMsg: "quick test connection saved but catalog refresh failed", wantCause: "read channels.json: access denied",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			root := t.TempDir()
-			operator, err := openDesktopDiagnostics(productionOptions{
-				userConfigDir: func() (string, error) { return root, nil },
-				appVersion:    "test-version",
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			desktopErrorReporter(operator, log.New(io.Discard, "", 0))(
-				newQuickTestSaveDiagnosticError(test.operation, test.cause, test.public),
-			)
-			if err := operator.Close(); err != nil {
-				t.Fatal(err)
-			}
-			contents, err := os.ReadFile(filepath.Join(root, "llm-test-studio", "logs", "llm-test-studio.log"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var entry map[string]any
-			if err := json.Unmarshal(contents, &entry); err != nil {
-				t.Fatal(err)
-			}
-			if entry["component"] != "quick_test" || entry["operation"] != test.operation ||
-				entry["error_code"] != test.wantCode || entry["msg"] != test.wantMsg {
-				t.Fatalf("quick-test save diagnostic = %#v", entry)
-			}
-			cause, _ := entry["error"].(string)
-			if !strings.Contains(cause, test.wantCause) || strings.Contains(cause, "sk-sensitive-value") {
-				t.Fatalf("quick-test save cause = %q", cause)
-			}
-		})
-	}
-}
-
 func TestDesktopErrorReporterRecordsCredentialCleanupFailureWithoutFailingTheSavedChannel(t *testing.T) {
 	root := t.TempDir()
 	operator, err := openDesktopDiagnostics(productionOptions{
@@ -484,7 +425,7 @@ func TestDesktopDiagnosticFallbacksRedactSecrets(t *testing.T) {
 	}
 }
 
-func TestQuickTestFailureProducesSafeStructuredDiagnostic(t *testing.T) {
+func TestQuickPerformanceFailureProducesSafeStructuredDiagnostic(t *testing.T) {
 	root := t.TempDir()
 	operator, err := openDesktopDiagnostics(productionOptions{
 		userConfigDir: func() (string, error) { return root, nil },
@@ -493,11 +434,11 @@ func TestQuickTestFailureProducesSafeStructuredDiagnostic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openDesktopDiagnostics() error = %v", err)
 	}
-	runner := &recordingQuickTestRunner{result: quicktest.Result{
-		SchemaVersion: quicktest.SchemaVersion,
+	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{
+		SchemaVersion: quicktest.PerformanceSchemaVersion,
 		Success:       false,
 		ErrorCode:     quicktest.ErrorAuthenticationFailed,
-		E2EMS:         125,
+		Progress:      quicktest.PerformanceProgress{TotalDurationMS: 125},
 	}}
 	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
 		return desktopDependencies{quickTests: runner}, nil
@@ -505,11 +446,11 @@ func TestQuickTestFailureProducesSafeStructuredDiagnostic(t *testing.T) {
 	app.setErrorReporter(desktopErrorReporter(operator, log.New(io.Discard, "", 0)))
 	app.onStartup(context.Background())
 
-	_, err = app.RunQuickTest(quicktest.Command{
+	_, err = app.RunQuickPerformanceTest(quicktest.PerformanceCommand{
 		URL: "https://private-provider.example/v1", APIKey: "sk-private-quick-key", ModelID: "private-model",
-	})
+	}, "")
 	if err != nil {
-		t.Fatalf("RunQuickTest() error = %v", err)
+		t.Fatalf("RunQuickPerformanceTest() error = %v", err)
 	}
 	if err := operator.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -523,7 +464,7 @@ func TestQuickTestFailureProducesSafeStructuredDiagnostic(t *testing.T) {
 	for key, want := range map[string]any{
 		"level":       "WARN",
 		"component":   "quick_test",
-		"operation":   "connection_test",
+		"operation":   "performance_test",
 		"error_code":  "authentication_failed",
 		"duration_ms": float64(125),
 	} {
@@ -548,7 +489,7 @@ func TestQuickPerformanceFailuresAndArchiveFailureProduceCorrelatedDiagnostics(t
 		t.Fatalf("openDesktopDiagnostics() error = %v", err)
 	}
 	const reportID = "77777777-7777-4777-8777-777777777777"
-	runner := &recordingQuickTestRunner{performanceReport: quicktest.PerformanceReport{
+	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{
 		SchemaVersion: quicktest.PerformanceSchemaVersion,
 		ReportID:      reportID,
 		ArchiveStatus: quicktest.PerformanceArchiveFailed,

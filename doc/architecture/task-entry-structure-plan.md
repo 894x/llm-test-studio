@@ -23,7 +23,7 @@ without requiring authored models, channels, or Plans.
   combinations from history; restore parameters for repeat and edited runs.
   Keep credentials in the keyring or temporary memory, with references only in
   history. Credential remembering must be explicit for temporary targets.
-- [ ] Verify the complete user flow, review changes, and commit coherent stages.
+- [x] Verify the complete user flow, review changes, and commit coherent stages.
 
 ## Boundaries and acceptance
 
@@ -41,7 +41,7 @@ without requiring authored models, channels, or Plans.
   and rendered UI checks for the eventual workflow.
 - Keep Wails and its CLI at v2.15.0. Do not push unless requested.
 
-## Current evidence
+## Initial evidence
 
 The initial source audit found independent protocol lists in Doctor, CLI
 validation/help, domain validation, and frontend controls; duplicated legacy
@@ -49,8 +49,9 @@ kind sets and desktop/CLI dispatch; explicit Case bundle group patterns; and a
 quick-test service tied to one synchronous Chat Completions request. Desktop
 Case/Suite discovery already uses filesystem traversal and should be reused.
 
-This document tracks unfinished scope across staged commits. A stage does not
-establish completion of the overall objective.
+The checklist records current delivery status. Stage notes below retain the
+state and validation evidence at each commit; their unfinished items are
+resolved by subsequent stages.
 
 ## Stage 1 outcome
 
@@ -242,6 +243,37 @@ horizontal overflow or browser errors. Fixture evidence does not establish a
 live provider or native OS keyring test. The existing chunk-size warning remains.
 
 Read-only source review found no actionable issue; the code graph remained
-unavailable. Final structural cleanup remains before overall completion: remove
-the unused synchronous text-only command and catalog-save path left behind by
-the page replacement, preserving shared performance execution and diagnostics.
+unavailable. The remaining synchronous command and catalog-save cleanup is
+completed by the final stage below.
+
+
+## Retired text-only path and final structural audit
+
+Removed the unused synchronous `RunQuickTest` and `SaveQuickTestConnection`
+commands through the Core, desktop bindings, frontend adapters, fixtures, and
+DTOs. The obsolete catalog transaction/compensation logic and its dedicated
+save diagnostics are gone. The native performance adapter now lives in
+`apps/desktop/quick_performance.go` and its runner interface exposes performance
+operations only. Shared performance URL validation, saved-channel resolution,
+progress, safe errors, response evidence, and archive diagnostics remain covered.
+Connection-validation and credential-clearing tests now exercise that active
+entry. The frontend error-code type and parser Set derive from one constant
+array; unused old page/save translations and a fixed-Chinese export are removed.
+
+The bounded audit verified directory-based Case/Suite discovery and shared
+protocol metadata/dispatch consumption by catalog validation, Doctor, CLI, and
+frontend generation. Tests compare bundled resource bytes with source files and
+validate quick task model scopes and input bindings. No retired text command or
+payment-confirmation symbol remains in the production scopes searched. Explicit
+Suite memberships remain authored task definitions; they are not duplicated
+catalog-loading lists. This audit does not claim every duplication in the
+repository has been eliminated.
+
+Verification: full Go tests and vet, protocol generation check, frontend full
+suite (275 tests), lint, build, and Wails v2.15.0 binding generation passed.
+Subsequent focused frontend checks (117 tests) cover the error-code/translation
+cleanup. Read-only review, including the final translation delta, found no
+actionable issue. All delivery stages in the checklist are complete.
+Controlled fixtures cover the request behavior; browser checks from the prior
+stage cover the unchanged task interface. The existing bundle-size warning
+remains. There were no live provider calls or native OS keyring smoke tests.

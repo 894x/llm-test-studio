@@ -22,13 +22,13 @@ func (resolver *stubChannelConnectionResolver) Resolve(_ context.Context, channe
 	return resolver.connection, nil
 }
 
-func TestRunResolvesSelectedChannelCredentialInsideApplicationCore(t *testing.T) {
+func TestPerformanceResolvesSelectedChannelCredentialInsideApplicationCore(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer stored-secret" {
 			t.Errorf("authorization header was not populated from the selected channel")
 		}
-		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"choices":[{"message":{"content":"ok"}}]}`)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer server.Close()
 
@@ -42,12 +42,12 @@ func TestRunResolvesSelectedChannelCredentialInsideApplicationCore(t *testing.T)
 		ChannelConnections: resolver,
 	})
 	const channelID = "10000000-0000-4000-8000-000000000001"
-	result, err := service.Run(context.Background(), Command{
+	result, err := service.RunPerformance(context.Background(), PerformanceCommand{
 		AddressMode: AddressModeBaseURL,
 		URL:         "https://stale.example.test/v1",
 		ChannelID:   channelID,
 		ModelID:     "model-a",
-		TimeoutMS:   2_000,
+		TimeoutMS:   2_000, RequestCount: 1, Concurrency: 1, InputTokens: 2, OutputTokens: 2,
 	})
 	if err != nil {
 		t.Fatal(err)

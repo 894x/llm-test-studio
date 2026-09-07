@@ -186,7 +186,6 @@ func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) fu
 		failureCount := uint64(0)
 		eventErr := err
 		var quickDiagnostic quickTestDiagnosticEvent
-		var quickSaveDiagnostic quickTestSaveDiagnosticError
 		var frontendDiagnostic frontendRuntimeDiagnosticError
 		var catalogDiagnostic catalogCommandDiagnosticError
 		var credentialCleanupDiagnostic credentialCleanupDiagnosticError
@@ -196,25 +195,6 @@ func desktopErrorReporter(operator *diagnostics.Logger, fallback *log.Logger) fu
 			errorCode = frontendDiagnostic.ErrorCode
 			message = "frontend desktop operation failed"
 			eventErr = errors.New(frontendDiagnostic.Detail)
-		} else if errors.As(err, &quickSaveDiagnostic) {
-			component = "quick_test"
-			operation = strings.TrimSpace(quickSaveDiagnostic.operation)
-			message = "quick test connection save failed"
-			eventErr = quickSaveDiagnostic.err
-			switch {
-			case errors.Is(err, ErrCatalogSavedRefreshFailed):
-				errorCode = desktopCodeCatalogSavedRefreshFailed
-				message = "quick test connection saved but catalog refresh failed"
-			case errors.Is(err, ErrQuickTestSavePartial):
-				errorCode = desktopCodeQuickTestSavePartial
-				message = "quick test connection partially saved"
-			case errors.Is(err, catalog.ErrInvalid):
-				errorCode = desktopCodeCatalogInvalid
-			case errors.Is(err, catalog.ErrConflict):
-				errorCode = desktopCodeCatalogConflict
-			case errors.Is(err, catalog.ErrNotFound):
-				errorCode = desktopCodeCatalogNotFound
-			}
 		} else if errors.As(err, &quickDiagnostic) {
 			level = diagnostics.LevelWarn
 			component = "quick_test"

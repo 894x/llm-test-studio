@@ -179,8 +179,6 @@
   "comparisons_invalid_channel_comparison_result": "渠道对比结果无效",
   "comparisons_invalid_channel_comparison_metrics": "渠道对比指标无效",
   "quick-test_invalid_quick_performance_progress_structure": "快速性能进度数据结构无效",
-  "quick-test_unsupported_quick_test_protocol_version": "快速测试数据协议版本不受支持",
-  "quick-test_invalid_quick_test_data_structure": "快速测试数据结构无效",
   "quick-test_invalid_quick_performance_response_evidence": "快速性能报告响应证据无效",
   "quick-test_unsupported_quick_performance_report_protocol_version": "快速性能报告数据协议版本不受支持",
   "quick-test_invalid_quick_performance_report_structure": "快速性能报告数据结构无效",

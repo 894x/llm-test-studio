@@ -74,19 +74,6 @@ describe("Wails desktop client", () => {
 		await client.startRunTarget(targetCommand)
     await client.stopSending(FIXTURE_WORKSPACE.runs[0].id)
     await client.cancelRun(FIXTURE_WORKSPACE.runs[0].id)
-    const quickCommand = {
-      address_mode: "base_url" as const,
-      url: "https://api.example.test/v1",
-      api_key: "sk-private-value",
-      model_id: "gpt-test",
-      prompt: "Reply with OK only.",
-      timeout_ms: 30_000,
-    }
-    await expect(client.runQuickTest(quickCommand)).resolves.toMatchObject({
-      schema_version: 1,
-      success: true,
-      endpoint: "https://api.example.test/v1/chat/completions",
-    })
     const performanceCommand = {
       address_mode: "base_url" as const,
       url: "https://api.example.test/v1",
@@ -124,23 +111,13 @@ describe("Wails desktop client", () => {
       success: true,
       metrics: { completed: 4, succeeded: 4 },
     })
-    const saveCommand = {
-      base_url: "https://api.example.test/v1",
-      api_key: "sk-private-value",
-      model_id: "gpt-test",
-      model_name: "GPT Test",
-      channel_name: "Example",
-      existing_model_id: FIXTURE_CATALOG.models[0].id,
-    }
-    await expect(client.saveQuickTestConnection(saveCommand)).resolves.toEqual(FIXTURE_CATALOG)
-
     expect(binding.StartRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.plans[0].id)
 		expect(binding.StartRunTarget).toHaveBeenCalledWith(targetCommand)
     expect(binding.StopSending).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
     expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
-    expect(binding.RunQuickTest).toHaveBeenCalledWith(quickCommand)
+
     expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(performanceCommand, "")
-    expect(binding.SaveQuickTestConnection).toHaveBeenCalledWith(saveCommand)
+
   })
 
   it("keeps fixture quick Runs separate from authored targets and supports cancellation", async () => {
@@ -339,89 +316,6 @@ describe("Wails desktop client", () => {
 
     expect(report.capacity_result?.rungs.map((rung) => rung.target)).toEqual([1.9999999999, 2])
     expect(report.progress).toMatchObject({ capacity_rung_number: 2, capacity_rung_count: 2, capacity_target: 2 })
-  })
-
-  it("rejects malformed quick-test DTOs and drops unexpected payload fields", async () => {
-    const binding = installBinding(FIXTURE_WORKSPACE)
-    binding.RunQuickTest.mockResolvedValueOnce({
-      schema_version: 1,
-      success: true,
-      address_mode: "base_url",
-      base_url: "https://api.example.test/v1",
-      endpoint: "https://api.example.test/v1/chat/completions",
-      http_status: 200,
-      e2e_ms: 42,
-      prompt_tokens: 8,
-      completion_tokens: 1,
-      cached_tokens: 0,
-      response_body: "secret provider output",
-      api_key: "sk-secret",
-    } as never)
-
-    const result = await createDesktopClient().runQuickTest({
-      address_mode: "base_url",
-      url: "https://api.example.test/v1",
-      api_key: "sk-secret",
-      model_id: "gpt-test",
-      prompt: "Reply with OK only.",
-      timeout_ms: 30_000,
-    })
-    expect(JSON.stringify(result)).not.toContain("secret provider output")
-    expect(JSON.stringify(result)).not.toContain("sk-secret")
-
-    binding.RunQuickTest.mockResolvedValueOnce({ ...result, schema_version: 2 })
-    await expect(createDesktopClient().runQuickTest({
-      address_mode: "base_url",
-      url: "https://api.example.test/v1",
-      api_key: "sk-secret",
-      model_id: "gpt-test",
-      prompt: "Reply with OK only.",
-      timeout_ms: 30_000,
-    })).rejects.toThrow("快速测试数据协议版本")
-
-    binding.RunQuickTest.mockResolvedValueOnce({
-      schema_version: 1,
-      success: false,
-      address_mode: "base_url",
-      base_url: "",
-      endpoint: "",
-      http_status: 0,
-      e2e_ms: 0,
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      cached_tokens: 0,
-      error_code: "insecure_endpoint",
-    } as never)
-    await expect(createDesktopClient().runQuickTest({
-      address_mode: "base_url",
-      url: "http://api.example.test/v1",
-      api_key: "sk-secret",
-      model_id: "gpt-test",
-      prompt: "Reply with OK only.",
-      timeout_ms: 30_000,
-    })).resolves.toMatchObject({ error_code: "insecure_endpoint", endpoint: "" })
-
-    binding.RunQuickTest.mockResolvedValueOnce({
-      schema_version: 1,
-      success: false,
-      address_mode: "base_url",
-      base_url: "",
-      endpoint: "",
-      http_status: 0,
-      e2e_ms: 0,
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      cached_tokens: 0,
-      error_code: "provider_said_sk-secret",
-    } as never)
-    await expect(createDesktopClient().runQuickTest({
-      address_mode: "base_url",
-      url: "https://api.example.test/v1",
-      api_key: "sk-secret",
-      model_id: "gpt-test",
-      prompt: "Reply with OK only.",
-      timeout_ms: 30_000,
-    })).rejects.toThrow("快速测试数据结构无效")
   })
 
   it("rejects malformed quick-performance reports and drops raw provider fields", async () => {
@@ -1240,15 +1134,8 @@ function installBinding(
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
 		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		RunQuickTest: vi.fn(async () => ({
-			schema_version: 1, success: true, address_mode: "base_url",
-			base_url: "https://api.example.test/v1",
-			endpoint: "https://api.example.test/v1/chat/completions",
-			http_status: 200, e2e_ms: 42, prompt_tokens: 8,
-			completion_tokens: 1, cached_tokens: 0,
-		})),
 		RunQuickPerformanceTest: vi.fn(async (_command?: unknown, _progressID?: string) => performanceReportFixture()),
-		SaveQuickTestConnection: vi.fn(async () => structuredClone(catalog)),
+
 	CreateModel: vi.fn(async () => structuredClone(catalog)),
 	UpdateModel: vi.fn(async () => structuredClone(catalog)),
 	DeleteModel: vi.fn(async () => structuredClone(catalog)),

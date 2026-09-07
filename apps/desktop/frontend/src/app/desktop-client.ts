@@ -41,15 +41,11 @@ import {
   estimateQuickPerformanceOpenLoopRequestCap,
   parseQuickPerformanceProgress,
   parseQuickPerformanceReport,
-  parseQuickTestResult,
   type QuickPerformanceCommand,
   type QuickPerformanceProgress,
   type QuickPerformanceReport,
   type QuickPerformanceSliceCount,
   type QuickPerformanceSliceLatency,
-  type QuickTestCommand,
-  type QuickTestResult,
-  type SaveQuickTestConnectionCommand,
 } from "@/features/quick-test/data"
 import enCommon from "@/i18n/resources/en-US/common.json"
 import zhCommon from "@/i18n/resources/zh-CN/common.json"
@@ -65,7 +61,6 @@ export type DesktopErrorCode =
   | "comparison_unavailable"
   | "diagnostics_unavailable"
   | "quick_test_unavailable"
-  | "quick_test_save_partial"
   | "invalid_identifier"
   | "operation_cancelled"
   | "operation_failed"
@@ -146,9 +141,7 @@ export interface DesktopClient extends CatalogActions {
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
-  runQuickTest(command: QuickTestCommand): Promise<QuickTestResult>
   runQuickPerformanceTest(command: QuickPerformanceCommand, onProgress?: (progress: QuickPerformanceProgress) => void): Promise<QuickPerformanceReport>
-  saveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<CatalogSnapshot>
 }
 
 export type DesktopDiagnosticsSnapshot = {
@@ -182,9 +175,7 @@ type WailsDesktopBinding = {
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
-  RunQuickTest(command: QuickTestCommand): Promise<unknown>
   RunQuickPerformanceTest(command: QuickPerformanceCommand, progressId: string): Promise<unknown>
-  SaveQuickTestConnection(command: SaveQuickTestConnectionCommand): Promise<unknown>
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
   DeleteModel(command: DeleteCommand): Promise<unknown>
@@ -217,8 +208,8 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
-  "StopSending", "CancelRun", "StartComparison", "RunQuickTest", "RunQuickPerformanceTest",
-  "SaveQuickTestConnection", "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
+  "StopSending", "CancelRun", "StartComparison", "RunQuickPerformanceTest",
+  "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
   "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
   "UpdateSuite", "DeleteSuite", "CreatePlan", "UpdatePlan", "DeletePlan",
@@ -376,56 +367,10 @@ export function createFixtureClient(
 			})
 			return structuredClone(comparisonState)
 		},
-    async runQuickTest(command) {
-      const normalizedURL = command.url.replace(/\/+$/, "")
-      const endpoint = command.address_mode === "base_url"
-        ? `${normalizedURL}/chat/completions`
-        : command.url
-      return {
-        schema_version: 1,
-        success: true,
-        address_mode: command.address_mode,
-        base_url: command.address_mode === "base_url"
-          ? normalizedURL
-          : normalizedURL.replace(/\/chat\/completions$/, ""),
-        endpoint,
-        http_status: 200,
-        e2e_ms: 42,
-        prompt_tokens: 8,
-        completion_tokens: 1,
-        cached_tokens: 0,
-      }
-    },
     async runQuickPerformanceTest(command, onProgress) {
       onProgress?.(fixtureQuickPerformanceProgress(command, "sending", 0))
       onProgress?.(fixtureQuickPerformanceProgress(command, "completed", command.request_count || Math.max(1, command.concurrency * 2)))
       return fixtureQuickPerformanceReport(command)
-    },
-    async saveQuickTestConnection(command) {
-      let modelID = command.existing_model_id
-      if (modelID) {
-        const existing = catalogState.models.find((model) => model.id === modelID)
-        if (!existing || existing.protocol !== "openai-chat") {
-          throw new DesktopClientError("catalog_not_found")
-        }
-      } else {
-        modelID = nextID()
-        catalogState.models.push({
-          id: modelID, revision: 1, name: command.model_name,
-          protocol: "openai-chat", capabilities: ["chat"],
-        })
-      }
-      const channelID = nextID()
-      catalogState.channels.push({
-        id: channelID, revision: 1, name: command.channel_name,
-        base_url: command.base_url, protocol: "openai-chat", enabled: true,
-        credential_configured: true, model_count: 1,
-      })
-      catalogState.channel_models.push({
-        id: nextID(), revision: 1, channel_id: channelID, model_id: modelID,
-        upstream_model_name: command.model_id,
-      })
-      return structuredClone(catalogState)
     },
     async createModel(command) {
       catalogState.models.push({ id: nextID(), revision: 1, ...structuredClone(command) })
@@ -564,9 +509,7 @@ function createLazyFixtureClient(): DesktopClient {
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
-    runQuickTest: async (command) => (await client).runQuickTest(command),
     runQuickPerformanceTest: async (command, onProgress) => (await client).runQuickPerformanceTest(command, onProgress),
-    saveQuickTestConnection: async (command) => (await client).saveQuickTestConnection(command),
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
     deleteModel: async (command) => (await client).deleteModel(command),
@@ -652,8 +595,6 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
     rememberQuickTaskCredential: async (command) => callBinding(() => binding.RememberQuickTaskCredential(command), () => undefined),
     forgetQuickTaskCredential: async (runId) => callBinding(() => binding.ForgetQuickTaskCredential(runId), () => undefined),
-    runQuickTest: async (command) =>
-      callBinding(() => binding.RunQuickTest(command), parseQuickTestResult),
     runQuickPerformanceTest: async (command, onProgress) => {
       const subscription = subscribeQuickPerformanceProgress(onProgress)
       try {
@@ -665,8 +606,6 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
         subscription.unsubscribe()
       }
     },
-    saveQuickTestConnection: async (command) =>
-      callCatalogMutation(binding, () => binding.SaveQuickTestConnection(command)),
     createModel: async (command) => callCatalogMutation(binding, () => binding.CreateModel(command)),
     updateModel: async (command) => callCatalogMutation(binding, () => binding.UpdateModel(command)),
     deleteModel: async (command) => callCatalogMutation(binding, () => binding.DeleteModel(command)),
