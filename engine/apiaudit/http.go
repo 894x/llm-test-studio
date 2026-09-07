@@ -16,7 +16,10 @@ type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-const auditUserAgent = "llm-test-studio/1.0"
+const (
+	auditUserAgent        = "llm-test-studio/1.0"
+	maxAuditResponseBytes = 32 << 20
+)
 
 func performRequest(ctx context.Context, doer HTTPDoer, config RunConfig, definition RequestDefinition, body map[string]any) (HTTPExchange, []byte, error) {
 	baseURL := strings.TrimRight(config.BaseURL, "/")
@@ -57,17 +60,21 @@ func performRequest(ctx context.Context, doer HTTPDoer, config RunConfig, defini
 		return HTTPExchange{Method: method, URL: requestURL, RequestBody: body}, nil, err
 	}
 	defer response.Body.Close()
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
+	// Read one extra byte so reaching the budget cannot masquerade as EOF.
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxAuditResponseBytes+1))
 	if err != nil {
 		return HTTPExchange{Method: method, URL: requestURL, RequestBody: body, StatusCode: response.StatusCode}, nil, fmt.Errorf("read response: %w", err)
 	}
 	exchange := HTTPExchange{
-		Method:       method,
-		URL:          requestURL,
-		RequestBody:  body,
-		StatusCode:   response.StatusCode,
-		ResponseBody: string(responseBody),
+		Method:      method,
+		URL:         requestURL,
+		RequestBody: body,
+		StatusCode:  response.StatusCode,
 	}
+	if len(responseBody) > maxAuditResponseBytes {
+		return exchange, nil, fmt.Errorf("response exceeds %d-byte limit", maxAuditResponseBytes)
+	}
+	exchange.ResponseBody = string(responseBody)
 	return exchange, responseBody, nil
 }
 

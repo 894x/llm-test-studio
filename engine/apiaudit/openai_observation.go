@@ -111,9 +111,13 @@ func observeStream(ctx context.Context, doer HTTPDoer, config RunConfig, definit
 	content := strings.Builder{}
 	reasoning := strings.Builder{}
 	ids := make(map[string]bool)
-	scanner := bufio.NewScanner(io.LimitReader(response.Body, 32<<20))
+	limited := &io.LimitedReader{R: response.Body, N: maxAuditResponseBytes + 1}
+	scanner := bufio.NewScanner(limited)
 	scanner.Buffer(make([]byte, 64*1024), 8<<20)
 	for scanner.Scan() {
+		if limited.N == 0 {
+			break
+		}
 		line := scanner.Text()
 		responseText.WriteString(line)
 		responseText.WriteByte('\n')
@@ -167,6 +171,9 @@ func observeStream(ctx context.Context, doer HTTPDoer, config RunConfig, definit
 	}
 	sort.Strings(observation.IDs)
 	observation.Exchange = HTTPExchange{Method: method, URL: requestURL, RequestBody: body, StatusCode: response.StatusCode, ResponseBody: responseText.String()}
+	if limited.N == 0 {
+		return observation, fmt.Errorf("response exceeds %d-byte limit", maxAuditResponseBytes)
+	}
 	if err := scanner.Err(); err != nil {
 		return observation, fmt.Errorf("read SSE: %w", err)
 	}
