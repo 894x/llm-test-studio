@@ -264,7 +264,7 @@ func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id str
 		return domain.Comparison{}, fmt.Errorf("%w: comparison run relations", ErrCorrupt)
 	}
 	if err := validateComparisonReferences(ctx, queryer, comparison); err != nil {
-		return domain.Comparison{}, fmt.Errorf("%w: comparison references: %v", ErrCorrupt, err)
+		return domain.Comparison{}, relationStorageError(ctx, "comparison references", err)
 	}
 	return comparison, nil
 }
