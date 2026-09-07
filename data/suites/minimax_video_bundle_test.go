@@ -5,8 +5,8 @@ import (
 	"io/fs"
 	"testing"
 
-	casebundle "github.com/894x/llm-test-studio/cases"
-	suitebundle "github.com/894x/llm-test-studio/suites"
+	casebundle "github.com/894x/llm-test-studio/data/cases"
+	suitebundle "github.com/894x/llm-test-studio/data/suites"
 )
 
 type miniMaxSuiteDocument struct {

@@ -103,7 +103,7 @@ List the built-in Kimi K3 cases:
 ```bash
 go run ./cmd/llm-test-studio audit list \
   --suite kimi-k3 \
-  --cases-root cases \
+  --cases-root data/cases \
   --format human
 ```
 
@@ -112,7 +112,7 @@ Run one compatibility case in Bash or another POSIX shell:
 ```bash
 API_AUDIT_API_KEY='replace-me' go run ./cmd/llm-test-studio audit run \
   --suite kimi-k3 \
-  --cases-root cases \
+  --cases-root data/cases \
   --base-url https://gateway.example/v1 \
   --model kimi-k3 \
   --case F004 \
@@ -134,7 +134,7 @@ go run ./cmd/llm-test-studio load run \
   --output load-result.json
 ```
 
-Use `--rate` with `--duration` for open-loop scheduling. Use `--request-file cases/<group>/<case>/case.json` to load a case request body. Plain HTTP is rejected unless `--allow-insecure-loopback` explicitly enables a localhost test server.
+Use `--rate` with `--duration` for open-loop scheduling. Use `--request-file data/cases/<group>/<case>/case.json` to load a case request body. Plain HTTP is rejected unless `--allow-insecure-loopback` explicitly enables a localhost test server.
 
 Avoid passing credentials directly as command arguments because shells may retain them in history. Windows PowerShell users can set the same variables with `$env:VARIABLE_NAME = 'value'` before running a command.
 
@@ -164,7 +164,22 @@ The repository currently includes 89 portable cases:
 
 Built-in cases are starting points, not a claim that every case applies to every model. Protocol compatibility is validated before a plan can run.
 
-User cases are stored as `cases/<group>/<case>/case.json` beside the desktop executable. They can be copied, reviewed, versioned, and shared without including API keys. A user case overrides a built-in case with the same identity when the two sources are merged.
+User cases are stored as `data/cases/<group>/<case>/case.json` beside the desktop executable. They can be copied, reviewed, versioned, and shared without including API keys. A user case overrides a built-in case with the same identity when the two sources are merged.
+
+Authored data uses the following layout. Source paths are relative to the repository root; desktop paths are relative to the executable, including `apps/desktop/build/bin` during Wails development and local builds.
+
+| Data | Source / desktop path |
+| --- | --- |
+| Cases | `data/cases/<group>/<case>/case.json` |
+| Suites | `data/suites/<group>/<suite>/suite.json` |
+| Model profile fixtures (source only) | `data/definitions/models/*.json` |
+| User models | `data/models.json` |
+| Channels and model mappings | `data/channels.json` |
+| Plans | `data/plans/<id>.json` |
+
+Built-in Cases and Suites are embedded from `data/` into the executable; a fresh release needs no external catalog copy. Desktop edits and catalog lock files are written under the executable's `data/` directory. CLI commands default `--cases-root` to `data/cases` relative to the working directory; use an explicit path when launching elsewhere.
+
+For an existing installation, close the app and move its adjacent `cases/`, `suites/`, `plans/`, `models.json`, and `channels.json` into `data/`, including revision files and lock sidecars. Keep the executable in the same installation directory so existing keyring credentials remain accessible. The app reads only the new paths. SQLite run history, reports, and logs retain their existing user-configuration locations.
 
 ## Domain model
 
@@ -200,8 +215,9 @@ The desktop and CLI share the same application services and domain rules. There 
 - `internal/application` — catalog, run, comparison, reporting, and workspace orchestration.
 - `internal/execution` and `engine` — load and compatibility execution engines.
 - `internal/persistence/sqlite` — operational schema and runtime-evidence repositories.
-- `cases` — embedded, shareable cases grouped by protocol.
-- `definitions` — non-secret model definition fixtures.
+- `data/cases` — embedded, shareable cases grouped by protocol.
+- `data/suites` — embedded suite definitions and scenario manifests.
+- `data/definitions` — non-secret model definition fixtures.
 
 </details>
 
@@ -241,7 +257,7 @@ bash scripts/test_llm_benchmark.sh
 
 ## License
 
-LLM Test Studio source code, built-in case definitions, and project-owned media fixtures are available under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE), [third-party notices](THIRD_PARTY_NOTICES.md), and the [case and media provenance statement](cases/PROVENANCE.md) for attribution and scope details.
+LLM Test Studio source code, built-in case definitions, and project-owned media fixtures are available under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE), [third-party notices](THIRD_PARTY_NOTICES.md), and the [case and media provenance statement](data/cases/PROVENANCE.md) for attribution and scope details.
 
 ## Open-source status
 

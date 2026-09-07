@@ -113,7 +113,7 @@ func TestLoadSuiteAcceptsMiniMaxBoundaryOptionsAndAuthenticationKind(t *testing.
 }
 
 func TestLoadSuiteReadsRepositoryV2WanCasesAndFiltersByModel(t *testing.T) {
-	root := filepath.Clean(filepath.Join("..", "..", "cases"))
+	root := filepath.Clean(filepath.Join("..", "..", "data", "cases"))
 	cases, err := LoadSuite(root, "wan-video")
 	if err != nil {
 		t.Fatalf("LoadSuite(repository Wan cases): %v", err)

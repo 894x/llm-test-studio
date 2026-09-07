@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	casebundle "github.com/894x/llm-test-studio/cases"
+	casebundle "github.com/894x/llm-test-studio/data/cases"
 )
 
 func TestBundleContainsCompleteV2Catalog(t *testing.T) {

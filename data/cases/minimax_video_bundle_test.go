@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"testing"
 
-	casebundle "github.com/894x/llm-test-studio/cases"
+	casebundle "github.com/894x/llm-test-studio/data/cases"
 )
 
 func TestBundleContainsMiniMaxH3BoundaryCatalog(t *testing.T) {

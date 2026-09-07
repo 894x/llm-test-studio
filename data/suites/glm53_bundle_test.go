@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	casebundle "github.com/894x/llm-test-studio/cases"
+	casebundle "github.com/894x/llm-test-studio/data/cases"
+	suitebundle "github.com/894x/llm-test-studio/data/suites"
 	"github.com/894x/llm-test-studio/internal/casecodec"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
-	suitebundle "github.com/894x/llm-test-studio/suites"
 )
 
 func TestGLM53ScenarioSuitesMatchModelAndExecutionPolicy(t *testing.T) {

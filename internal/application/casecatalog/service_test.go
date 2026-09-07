@@ -205,7 +205,7 @@ func TestUserRootForExecutableUsesTheExecutableDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if root != filepath.Join(filepath.Dir(executable), "cases") {
+	if root != filepath.Join(filepath.Dir(executable), "data", "cases") {
 		t.Fatalf("user root = %q", root)
 	}
 	if _, err := casecatalog.UserRootForExecutable("relative.exe"); err == nil {

@@ -243,7 +243,7 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	flags := flag.NewFlagSet("audit run", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	suite := flags.String("suite", "", "case suite: "+strings.Join(apiaudit.SupportedProtocols(), ", "))
-	casesRoot := flags.String("cases-root", "cases", "case definition root")
+	casesRoot := flags.String("cases-root", "data/cases", "case definition root")
 	baseURL := flags.String("base-url", "", "HTTPS gateway base URL")
 	model := flags.String("model", "", "model to audit")
 	allCases := flags.Bool("all-cases", false, "run every case in the suite")
@@ -498,7 +498,7 @@ func runAuditList(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	flags := flag.NewFlagSet("audit list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	suite := flags.String("suite", "", "case suite: "+strings.Join(apiaudit.SupportedProtocols(), ", "))
-	casesRoot := flags.String("cases-root", "cases", "case definition root")
+	casesRoot := flags.String("cases-root", "data/cases", "case definition root")
 	format := flags.String("format", "json", "output format: json or human")
 	diagnosticDetail := flags.Bool("diagnostic-detail", false, "include a redacted internal error detail")
 	if err := flags.Parse(args); err != nil {
@@ -588,7 +588,7 @@ type doctorResponse struct {
 func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer, dependencies dependencies) int {
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	casesRoot := flags.String("cases-root", "cases", "case definition root")
+	casesRoot := flags.String("cases-root", "data/cases", "case definition root")
 	format := flags.String("format", "json", "output format: json or human")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

@@ -67,7 +67,7 @@ Cost controls execution, not design completeness. Define expensive or asset-depe
 Use `scripts/audit_case_coverage.py` to inventory repository-owned `case.json` files before making exhaustive claims:
 
 ```powershell
-python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py cases/kimi-k3 --model kimi-k3
+python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py data/cases/kimi-k3 --model kimi-k3
 ```
 
 The script reports observed dimensions, request parameters, assertion kinds, and heuristic negative-case counts. It does not know the official contract and cannot detect a documented parameter that is absent from both the matrix and case files. Compare its output with the independently built contract inventory and current primary documentation; never use the inventory output alone to claim completeness.

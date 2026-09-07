@@ -371,7 +371,7 @@ func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing
 		t.Fatalf("close first production initialization: %v", err)
 	}
 
-	userDirectory := filepath.Join(executableDirectory, "cases", "openai-chat", "T001")
+	userDirectory := filepath.Join(executableDirectory, "data", "cases", "openai-chat", "T001")
 	if err := os.MkdirAll(userDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
-	path := filepath.Join(executableDirectory, "cases", "openai-chat", "T900", "case.json")
+	path := filepath.Join(executableDirectory, "data", "cases", "openai-chat", "T900", "case.json")
 	if raw, err := os.ReadFile(path); err != nil || !json.Valid(raw) || !strings.Contains(string(raw), `"model_targets"`) || !strings.Contains(string(raw), `"gpt-5.2"`) {
 		t.Fatalf("shareable case file = %q, %v", raw, err)
 	}
@@ -494,15 +494,19 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
 
-	modelsPath := filepath.Join(executableDirectory, "models.json")
+	modelsPath := filepath.Join(executableDirectory, "data", "models.json")
 	modelsRaw, err := os.ReadFile(modelsPath)
 	if err != nil || !json.Valid(modelsRaw) || !strings.Contains(string(modelsRaw), createdModel.ID) || !strings.Contains(string(modelsRaw), "file-backed model") {
 		t.Fatalf("model catalog file = %q, %v", modelsRaw, err)
 	}
-	planPath := filepath.Join(executableDirectory, "plans", createdPlan.ID+".json")
+	planPath := filepath.Join(executableDirectory, "data", "plans", createdPlan.ID+".json")
 	planRaw, err := os.ReadFile(planPath)
 	if err != nil || !json.Valid(planRaw) || !strings.Contains(string(planRaw), createdPlan.ID) || !strings.Contains(string(planRaw), createdCase.ID) {
 		t.Fatalf("plan file = %q, %v", planRaw, err)
+	}
+	entries, err := os.ReadDir(executableDirectory)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "data" || !entries[0].IsDir() {
+		t.Fatalf("authored files and locks must stay under data: entries = %v, err = %v", entries, err)
 	}
 
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
@@ -548,7 +552,7 @@ func TestProductionChannelCreateWritesOnlyMetadataToFileAndSecretToKeyring(t *te
 		t.Fatalf("CreateChannelModel() error = %v", err)
 	}
 
-	channelsPath := filepath.Join(executableDirectory, "channels.json")
+	channelsPath := filepath.Join(executableDirectory, "data", "channels.json")
 	channelsRaw, err := os.ReadFile(channelsPath)
 	if err != nil || !json.Valid(channelsRaw) {
 		t.Fatalf("channel catalog file = %q, %v", channelsRaw, err)
@@ -620,11 +624,14 @@ func TestProductionCopiedChannelMetadataCannotDeleteAnotherAuthoredRootSecret(t 
 		t.Fatal(err)
 	}
 
-	channelsRaw, err := os.ReadFile(filepath.Join(rootA, "channels.json"))
+	channelsRaw, err := os.ReadFile(filepath.Join(rootA, "data", "channels.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(rootB, "channels.json"), channelsRaw, 0o600); err != nil {
+	if err := os.MkdirAll(filepath.Join(rootB, "data"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootB, "data", "channels.json"), channelsRaw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	dependenciesB, err := newProductionInitializer(optionsForRoot(rootB))(ctx)
@@ -699,7 +706,7 @@ func TestProductionSuiteCreateWritesShareableFileBesideExecutableWithoutDatabase
 		t.Fatalf("CreateSuite() error = %v", err)
 	}
 
-	path := filepath.Join(executableDirectory, "suites", "openai-chat", "gpt-5.2-smoke", "suite.json")
+	path := filepath.Join(executableDirectory, "data", "suites", "openai-chat", "gpt-5.2-smoke", "suite.json")
 	raw, err := os.ReadFile(path)
 	if err != nil || !json.Valid(raw) || !strings.Contains(string(raw), `"case_keys"`) || strings.Contains(string(raw), `"case_id"`) {
 		t.Fatalf("shareable suite file = %q, %v", raw, err)

@@ -6,7 +6,7 @@ Thank you for helping improve reusable, multi-model LLM testing.
 
 - Search existing issues before opening a new one.
 - Keep changes focused and avoid committing credentials, production endpoints, personal data, generated reports, or local databases.
-- For new built-in cases or media, follow [`cases/PROVENANCE.md`](cases/PROVENANCE.md) and state the source, license, and whether AI-assisted generation was used.
+- For new built-in cases or media, follow [`data/cases/PROVENANCE.md`](data/cases/PROVENANCE.md) and state the source, license, and whether AI-assisted generation was used.
 - Discuss large behavior, storage-schema, or public API changes in an issue first.
 
 ## Development environment

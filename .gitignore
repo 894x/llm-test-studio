@@ -5,7 +5,9 @@ __pycache__/
 .pytest_cache/
 
 # Local state and potentially sensitive test output
-data/
+# Authored data is versioned; ignore only catalog locks and atomic-write files.
+/data/**/*.lock
+/data/**/.config-*.tmp
 .tmp/
 load-result*.json
 loadtest_history.db

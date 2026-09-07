@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 本目录包含仓库级 Go module 中的兼容性执行包和旧版 JSONL CLI adapter。它运行
-`cases/` 下的协议测试套件，并生成已脱敏的 JSON 与 HTML 报告。
+`data/cases/` 下的协议测试套件，并生成已脱敏的 JSON 与 HTML 报告。
 
 所有构建命令都从仓库根目录执行。
 
@@ -11,7 +11,7 @@
 
 ```sh
 GOWORK=off go build -o engine/bin/llm-compat-engine ./engine/cmd/llm-compat-engine
-./engine/bin/llm-compat-engine list --suite openai-chat --cases-root cases --jsonl
+./engine/bin/llm-compat-engine list --suite openai-chat --cases-root data/cases --jsonl
 ```
 
 不发起网络请求地 dry-run 一个测试套件：
@@ -19,7 +19,7 @@ GOWORK=off go build -o engine/bin/llm-compat-engine ./engine/cmd/llm-compat-engi
 ```sh
 ./engine/bin/llm-compat-engine run \
   --suite openai-chat \
-  --cases-root cases \
+  --cases-root data/cases \
   --base-url https://gateway.example \
   --model example-model \
   --dry-run \

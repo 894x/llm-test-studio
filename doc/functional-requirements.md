@@ -25,8 +25,8 @@
 
 | 对象 | 说明 | 持久化位置 |
 | --- | --- | --- |
-| Model Profile | 模型 ID、协议、端点、能力和可用测试套件，不含凭据 | `definitions/models/*.json` |
-| Test Case | 协议、维度、runner kind、请求定义和判定选项 | `cases/<protocol>/<case>/case.json` |
+| Model Profile | 模型 ID、协议、端点、能力和可用测试套件，不含凭据 | `data/definitions/models/*.json` |
+| Test Case | 协议、维度、runner kind、请求定义和判定选项 | `data/cases/<protocol>/<case>/case.json` |
 | Performance Plan | 请求数、分发窗口、连接上限、超时、token 与多模态配置 | 运行时对象；摘要保存到 SQLite |
 | Audit Plan | suite、模型、用例选择、dry-run、并发和 Seedance 安全选项 | Go 引擎 JSONL `plan` 事件；摘要保存到 SQLite |
 | Request Result | 单请求状态、延迟、token、流式 chunk、错误与采样响应 | SQLite `run_results` |
@@ -58,12 +58,12 @@
 
 ### FR-300 测试用例管理
 
-- FR-301：系统必须递归读取 `cases/` 下所有 `case.json` 并验证其目录协议与内容协议一致。
+- FR-301：系统必须递归读取 `data/cases/` 下所有 `case.json` 并验证其目录协议与内容协议一致。
 - FR-302：Catalog 必须支持按协议、维度、runner kind、启用状态、默认状态和关键词筛选用例；Dashboard 必须提供关键词、协议、维度和严重度筛选。
 - FR-303：用户必须能够创建和编辑用例；已存在用例的 ID 与协议不可在编辑时修改。
 - FR-304：用例必须包含非空的 `id`、`name`、`dimension`、`protocol`、`kind` 和 JSON 对象 `request`。
-- FR-305：新用例必须显式提供 `cases/` 下的相对路径，并保持 `<protocol>/<case-directory>/case.json` 结构。
-- FR-306：系统必须拒绝逃逸 `cases/` 目录、错误文件名、错误协议目录和非 JSON 兼容值。
+- FR-305：新用例必须显式提供 `data/cases/` 下的相对路径，并保持 `<protocol>/<case-directory>/case.json` 结构。
+- FR-306：系统必须拒绝逃逸 `data/cases/` 目录、错误文件名、错误协议目录和非 JSON 兼容值。
 - FR-307：用例可通过 `default` 控制默认选择、通过 `disabled` 禁用、通过 `severity` 标记严重度、通过 `options` 提供 runner 专用判定参数。
 - FR-308：系统必须原子写入用例文件。
 

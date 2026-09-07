@@ -1,6 +1,6 @@
 # Built-in case and media provenance
 
-This statement applies to the built-in case definitions, load profiles, fixtures, and media embedded in case payloads under `cases/`.
+This statement applies to the built-in case definitions, load profiles, fixtures, and media embedded in case payloads under `data/cases/`.
 
 - The material was created by 894x for LLM Test Studio or generated for the project with AI-assisted tools.
 - To the extent copyright or related rights apply, the project-owned material is distributed under Apache-2.0 with the rest of the repository.

@@ -32,7 +32,7 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	}
 	miniMaxCoverage := map[string]int{}
 	miniMaxTargets := map[string]struct{}{"MiniMax-H3": {}}
-	err := fs.WalkDir(root, "cases", func(path string, entry fs.DirEntry, walkErr error) error {
+	err := fs.WalkDir(root, "data/cases", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() || entry.Name() != "case.json" {
 			return walkErr
 		}
@@ -156,7 +156,7 @@ func TestDecodeFilesystemCaseRejectsV1UnknownAndCredentialMaterial(t *testing.T)
 }
 
 func TestFilesystemCaseV2RoundTrip(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), "cases", "openai-chat", "T001-sync-response", "case.json"))
+	raw, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), "data", "cases", "openai-chat", "T001-sync-response", "case.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

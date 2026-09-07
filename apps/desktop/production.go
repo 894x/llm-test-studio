@@ -13,7 +13,8 @@ import (
 	"strings"
 	"time"
 
-	casebundle "github.com/894x/llm-test-studio/cases"
+	casebundle "github.com/894x/llm-test-studio/data/cases"
+	suitebundle "github.com/894x/llm-test-studio/data/suites"
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
@@ -30,7 +31,6 @@ import (
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
-	suitebundle "github.com/894x/llm-test-studio/suites"
 )
 
 var desktopApplicationVersion = "dev"
@@ -105,15 +105,16 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("locate desktop executable: %w", err)
 		}
 		executableDirectory := filepath.Dir(executable)
-		modelFiles, err := modelcatalog.New(filepath.Join(executableDirectory, "models.json"))
+		dataDirectory := filepath.Join(executableDirectory, "data")
+		modelFiles, err := modelcatalog.New(filepath.Join(dataDirectory, "models.json"))
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create filesystem model catalog: %w", err)
 		}
-		channelFiles, err := channelcatalog.New(filepath.Join(executableDirectory, "channels.json"))
+		channelFiles, err := channelcatalog.New(filepath.Join(dataDirectory, "channels.json"))
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create filesystem channel catalog: %w", err)
 		}
-		planFiles, err := plancatalog.New(filepath.Join(executableDirectory, "plans"))
+		planFiles, err := plancatalog.New(filepath.Join(dataDirectory, "plans"))
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create filesystem plan catalog: %w", err)
 		}
@@ -138,7 +139,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("create filesystem suite catalog: %w", err)
 		}
 		catalogRepository := filesystemCatalogRepository{
-			lockPath: filepath.Join(executableDirectory, ".llm-test-studio-authored-catalog.lock"),
+			lockPath: filepath.Join(dataDirectory, ".llm-test-studio-authored-catalog.lock"),
 			models:   modelFiles, channels: channelFiles,
 			cases: caseFiles, suites: suiteFiles, plans: planFiles,
 		}
@@ -146,6 +147,8 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if isNilInterface(baseCredentialStore) {
 			baseCredentialStore = credentials.NewOSStore()
 		}
+		// Keep the installation scope stable when catalogs move into data so
+		// existing keyring entries and cleanup registrations remain accessible.
 		credentialScope, err := credentialScopeForRoot(executableDirectory)
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("scope credential keyring to authored catalog: %w", err)

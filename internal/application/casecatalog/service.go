@@ -101,7 +101,7 @@ func UserRootForExecutable(executablePath string) (string, error) {
 	if directory == "." || directory == string(filepath.Separator) {
 		return "", ErrInvalid
 	}
-	return filepath.Join(directory, "cases"), nil
+	return filepath.Join(directory, "data", "cases"), nil
 }
 
 func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {

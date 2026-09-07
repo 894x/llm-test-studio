@@ -103,7 +103,7 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 ```bash
 go run ./cmd/llm-test-studio audit list \
   --suite kimi-k3 \
-  --cases-root cases \
+  --cases-root data/cases \
   --format human
 ```
 
@@ -112,7 +112,7 @@ go run ./cmd/llm-test-studio audit list \
 ```bash
 API_AUDIT_API_KEY='replace-me' go run ./cmd/llm-test-studio audit run \
   --suite kimi-k3 \
-  --cases-root cases \
+  --cases-root data/cases \
   --base-url https://gateway.example/v1 \
   --model kimi-k3 \
   --case F004 \
@@ -134,7 +134,7 @@ go run ./cmd/llm-test-studio load run \
   --output load-result.json
 ```
 
-使用 `--rate` 和 `--duration` 配置开放环调度。使用 `--request-file cases/<group>/<case>/case.json` 读取 Case 请求体。默认拒绝明文 HTTP；只有显式指定 `--allow-insecure-loopback` 时才允许 localhost 测试服务器。
+使用 `--rate` 和 `--duration` 配置开放环调度。使用 `--request-file data/cases/<group>/<case>/case.json` 读取 Case 请求体。默认拒绝明文 HTTP；只有显式指定 `--allow-insecure-loopback` 时才允许 localhost 测试服务器。
 
 不要直接通过命令参数传递凭据，因为 shell 可能把它们保留在历史记录中。Windows PowerShell 用户可以先通过 `$env:VARIABLE_NAME = 'value'` 设置相同变量，再运行命令。
 
@@ -164,7 +164,22 @@ go run ./cmd/llm-test-studio load run \
 
 内置 Case 是测试起点，不代表每个 Case 都适用于每个模型。Plan 执行前会验证协议兼容性。
 
-用户 Case 以 `cases/<group>/<case>/case.json` 形式保存在桌面可执行文件旁，可以在不携带 API Key 的情况下复制、审查、版本管理和分享。合并两个来源时，相同身份的用户 Case 会覆盖内置 Case。
+用户 Case 以 `data/cases/<group>/<case>/case.json` 形式保存在桌面可执行文件旁，可以在不携带 API Key 的情况下复制、审查、版本管理和分享。合并两个来源时，相同身份的用户 Case 会覆盖内置 Case。
+
+定义数据统一采用以下布局。源码路径相对于仓库根目录；桌面路径相对于可执行文件，Wails 开发和本地构建时位于 `apps/desktop/build/bin` 下。
+
+| 数据 | 源码 / 桌面路径 |
+| --- | --- |
+| Case | `data/cases/<group>/<case>/case.json` |
+| Suite | `data/suites/<group>/<suite>/suite.json` |
+| 模型说明 fixture（仅源码） | `data/definitions/models/*.json` |
+| 用户模型 | `data/models.json` |
+| 渠道及模型映射 | `data/channels.json` |
+| 计划 | `data/plans/<id>.json` |
+
+内置 Case 和 Suite 从 `data/` 嵌入可执行文件，全新发行包无需另行复制目录。桌面编辑的数据和目录锁文件写入可执行文件旁的 `data/`。CLI 的 `--cases-root` 默认为相对于工作目录的 `data/cases`，从其他位置启动时请显式指定路径。
+
+已有安装请先关闭应用，再将原先位于可执行文件旁的 `cases/`、`suites/`、`plans/`、`models.json`、`channels.json` 连同修订文件和锁文件一起移动到 `data/`。保持可执行文件的安装目录不变，即可继续使用现有密钥环凭据。应用只读取新路径。SQLite 运行历史、报告和日志继续使用原有用户配置目录。
 
 ## 领域模型
 
@@ -200,8 +215,9 @@ llm-test-studio CLI ────┘                         ├── SQLite rep
 - `internal/application` — 目录、运行、对比、报告和工作区编排。
 - `internal/execution` 与 `engine` — 负载和兼容性执行引擎。
 - `internal/persistence/sqlite` — 运行态 Schema 与运行证据 repository。
-- `cases` — 按协议分组的内置可分享 Case。
-- `definitions` — 不含秘密的模型定义 fixture。
+- `data/cases` — 按协议分组的内置可分享 Case。
+- `data/suites` — 内置 Suite 定义及场景清单。
+- `data/definitions` — 不含秘密的模型定义 fixture。
 
 </details>
 
@@ -241,7 +257,7 @@ bash scripts/test_llm_benchmark.sh
 
 ## 许可证
 
-LLM Test Studio 源代码、内置 Case 定义和项目自有媒体 fixture 均采用 [Apache License 2.0](LICENSE)。归属和授权范围详见 [NOTICE](NOTICE)、[第三方声明](THIRD_PARTY_NOTICES.md)与 [Case 及媒体来源声明](cases/PROVENANCE.md)。
+LLM Test Studio 源代码、内置 Case 定义和项目自有媒体 fixture 均采用 [Apache License 2.0](LICENSE)。归属和授权范围详见 [NOTICE](NOTICE)、[第三方声明](THIRD_PARTY_NOTICES.md)与 [Case 及媒体来源声明](data/cases/PROVENANCE.md)。
 
 ## 开源状态
 

@@ -38,9 +38,9 @@
 
 ```powershell
 python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root cases/minimax-video `
-  --suites-root suites/minimax-video `
-  --manifest suites/minimax-video/MiniMax-H3.suite-profiles.json `
+  --cases-root data/cases/minimax-video `
+  --suites-root data/suites/minimax-video `
+  --manifest data/suites/minimax-video/MiniMax-H3.suite-profiles.json `
   --write
 ```
 

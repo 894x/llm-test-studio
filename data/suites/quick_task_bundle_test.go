@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	casebundle "github.com/894x/llm-test-studio/cases"
+	casebundle "github.com/894x/llm-test-studio/data/cases"
+	suitebundle "github.com/894x/llm-test-studio/data/suites"
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/protocol"
-	suitebundle "github.com/894x/llm-test-studio/suites"
 )
 
 func TestBundledQuickTasksCoverProtocolsAndAuthoredModelScopes(t *testing.T) {

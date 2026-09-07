@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"testing"
 
-	suitebundle "github.com/894x/llm-test-studio/suites"
+	suitebundle "github.com/894x/llm-test-studio/data/suites"
 )
 
 func TestBundleContainsVersionScopedWanSuites(t *testing.T) {

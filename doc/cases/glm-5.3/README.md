@@ -1,5 +1,7 @@
 # GLM-5.3 cases 与 suites
 
+[English](README.en.md)
+
 基于 2026-09-08 检索的[智谱 GLM-5.3 官方文档](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3)，为普通 Model API 的 Chat Completions 构建。精确模型 ID 为 `glm-5.3`，沿用 `openai-chat` 协议。
 
 共 212 个 case：165 个启用的自动用例、47 个禁用模板。完整的 54 行契约清单、来源和缺口见 [覆盖矩阵](coverage-matrix.md) 与 [机器可读清单](contract-inventory.json)。仍有待验证和阻塞项，因此这不是已实现完整覆盖或已通过实测的边界套件。
@@ -12,7 +14,7 @@
 | GLM 5.3 自动回归套件 | 165 | 全部已启用自动用例 |
 | GLM 5.3 完整设计（含禁用模板）套件 | 212 | 所有设计及明确保留的缺口 |
 
-所有用例都设置 `default=false`，适用模型仅为 `glm-5.3`。机械套件用 `glm53.*` 维度筛选，避免混入全模型通用用例。配置在 `suites/openai-chat/glm-5.3.suite-profiles.json`，产物由项目技能的生成器维护。
+所有用例都设置 `default=false`，适用模型仅为 `glm-5.3`。机械套件用 `glm53.*` 维度筛选，避免混入全模型通用用例。配置在 `data/suites/openai-chat/glm-5.3.suite-profiles.json`，产物由项目技能的生成器维护。
 
 ## 在 Studio 中使用
 
@@ -40,8 +42,8 @@
 在仓库根目录运行：
 
 ```powershell
-python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py --cases-root cases/openai-chat --suites-root suites/openai-chat --manifest suites/openai-chat/glm-5.3.suite-profiles.json --check
-python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py cases/openai-chat --model glm-5.3
+python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py --cases-root data/cases/openai-chat --suites-root data/suites/openai-chat --manifest data/suites/openai-chat/glm-5.3.suite-profiles.json --check
+python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py data/cases/openai-chat --model glm-5.3
 go test -p 1 ./... -count=1
 ```
 

@@ -1,6 +1,6 @@
 # Scenario Suite generation for LLM Test Studio
 
-Use this reference when creating or materially extending a model case catalog under `cases/<protocol>`. It turns one model-scoped case corpus into deterministic scenario Suite files without duplicating case definitions.
+Use this reference when creating or materially extending a model case catalog under `data/cases/<protocol>`. It turns one model-scoped case corpus into deterministic scenario Suite files without duplicating case definitions.
 
 ## Profile design
 
@@ -20,7 +20,7 @@ Starting a test executes the selected Suite without a separate payment checkbox.
 
 ## Manifest
 
-Check in one manifest per model near its Suite files, for example `suites/minimax-video/MiniMax-H3.suite-profiles.json`:
+Check in one manifest per model near its Suite files, for example `data/suites/minimax-video/MiniMax-H3.suite-profiles.json`:
 
 ```json
 {
@@ -78,18 +78,18 @@ Preview without writing:
 
 ```powershell
 python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root cases/<protocol> `
-  --suites-root suites/<protocol> `
-  --manifest suites/<protocol>/<model>.suite-profiles.json
+  --cases-root data/cases/<protocol> `
+  --suites-root data/suites/<protocol> `
+  --manifest data/suites/<protocol>/<model>.suite-profiles.json
 ```
 
 After reviewing profile counts, write the generated files:
 
 ```powershell
 python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root cases/<protocol> `
-  --suites-root suites/<protocol> `
-  --manifest suites/<protocol>/<model>.suite-profiles.json `
+  --cases-root data/cases/<protocol> `
+  --suites-root data/suites/<protocol> `
+  --manifest data/suites/<protocol>/<model>.suite-profiles.json `
   --write
 ```
 
@@ -97,9 +97,9 @@ Check for missing or stale generated files in validation and CI:
 
 ```powershell
 python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root cases/<protocol> `
-  --suites-root suites/<protocol> `
-  --manifest suites/<protocol>/<model>.suite-profiles.json `
+  --cases-root data/cases/<protocol> `
+  --suites-root data/suites/<protocol> `
+  --manifest data/suites/<protocol>/<model>.suite-profiles.json `
   --check
 ```
 

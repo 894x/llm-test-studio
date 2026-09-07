@@ -185,7 +185,7 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
 }
 
 func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
-	casesRoot := filepath.Clean(filepath.Join("..", "..", "..", "cases"))
+	casesRoot := filepath.Clean(filepath.Join("..", "..", "..", "data", "cases"))
 	var written apiaudit.Report
 	service := compatibility.New(compatibility.Dependencies{
 		HTTPDoer: panicHTTPDoer{}, Emit: func(compatibility.Event) {},
