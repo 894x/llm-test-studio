@@ -30,7 +30,7 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 	if err != nil {
 		return fmt.Errorf("encode run snapshot: %w", err)
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin run create: %w", err)
 	}
@@ -70,7 +70,7 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	if err := validateNextRevision(expectedRevision, meta); err != nil {
 		return err
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin run update: %w", err)
 	}
@@ -150,11 +150,11 @@ func (repository *Repository) GetRun(ctx context.Context, id string) (domain.Run
 	if err := ctx.Err(); err != nil {
 		return domain.Run{}, err
 	}
-	run, err := queryCurrentRun(ctx, repository.conn, id)
+	run, err := queryCurrentRun(ctx, repository.db, id)
 	if err != nil {
 		return domain.Run{}, err
 	}
-	if err := validateStoredRunReferences(ctx, repository.conn, run); err != nil {
+	if err := validateStoredRunReferences(ctx, repository.db, run); err != nil {
 		return domain.Run{}, err
 	}
 	return run, nil
@@ -164,7 +164,7 @@ func (repository *Repository) GetRunRevision(ctx context.Context, id string, rev
 	if err := ctx.Err(); err != nil {
 		return domain.Run{}, err
 	}
-	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.Run{}, fmt.Errorf("begin run revision read: %w", err)
 	}
@@ -186,7 +186,7 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("begin run list: %w", err)
 	}
@@ -440,7 +440,7 @@ func (repository *Repository) CreateEvidence(ctx context.Context, evidence domai
 	if len(document) > MaxReportProjectionItemBytes {
 		return fmt.Errorf("evidence exceeds %d-byte storage budget", MaxReportProjectionItemBytes)
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin evidence create: %w", err)
 	}
@@ -465,7 +465,7 @@ func (repository *Repository) GetEvidence(ctx context.Context, id string) (domai
 		return domain.Evidence{}, err
 	}
 	var row storedEvidenceRow
-	err := row.scan(repository.conn.QueryRowContext(ctx, `
+	err := row.scan(repository.db.QueryRowContext(ctx, `
 		SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
 		FROM evidence WHERE id = ?
 	`, id))
@@ -479,7 +479,7 @@ func (repository *Repository) GetEvidence(ctx context.Context, id string) (domai
 	if err != nil {
 		return domain.Evidence{}, err
 	}
-	if err := validateStoredEvidenceReferences(ctx, repository.conn, evidence); err != nil {
+	if err := validateStoredEvidenceReferences(ctx, repository.db, evidence); err != nil {
 		return domain.Evidence{}, err
 	}
 	return evidence, nil
@@ -489,7 +489,7 @@ func (repository *Repository) ListEvidence(ctx context.Context, runID string) ([
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.conn.QueryContext(ctx, `
+	rows, err := repository.db.QueryContext(ctx, `
 		SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
 		FROM evidence WHERE run_id = ? ORDER BY created_at, id
 	`, runID)
@@ -513,14 +513,14 @@ func (repository *Repository) ListEvidence(ctx context.Context, runID string) ([
 	}
 	var owner domain.Run
 	if len(stored) != 0 {
-		owner, err = queryCurrentRun(ctx, repository.conn, runID)
+		owner, err = queryCurrentRun(ctx, repository.db, runID)
 		if err != nil {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}
 			return nil, fmt.Errorf("%w: evidence owner", ErrCorrupt)
 		}
-		if err := validateStoredRunReferences(ctx, repository.conn, owner); err != nil {
+		if err := validateStoredRunReferences(ctx, repository.db, owner); err != nil {
 			return nil, err
 		}
 	}
@@ -595,7 +595,7 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 	if len(document) > MaxReportProjectionItemBytes {
 		return fmt.Errorf("result exceeds %d-byte storage budget", MaxReportProjectionItemBytes)
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin result append: %w", err)
 	}
@@ -654,7 +654,7 @@ func (repository *Repository) GetResult(ctx context.Context, id string) (domain.
 		return domain.Result{}, err
 	}
 	var row storedResultRow
-	err := row.scan(repository.conn.QueryRowContext(ctx, `
+	err := row.scan(repository.db.QueryRowContext(ctx, `
 		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
 		FROM case_results WHERE id = ?
 	`, id))
@@ -668,7 +668,7 @@ func (repository *Repository) GetResult(ctx context.Context, id string) (domain.
 	if err != nil {
 		return domain.Result{}, err
 	}
-	if err := validateStoredResultReferences(ctx, repository.conn, result); err != nil {
+	if err := validateStoredResultReferences(ctx, repository.db, result); err != nil {
 		return domain.Result{}, err
 	}
 	return result, nil
@@ -678,7 +678,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.conn.QueryContext(ctx, `
+	rows, err := repository.db.QueryContext(ctx, `
 		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
 		FROM case_results WHERE run_id = ? ORDER BY created_at, id
 	`, runID)
@@ -702,14 +702,14 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 	}
 	var owner domain.Run
 	if len(stored) != 0 {
-		owner, err = queryCurrentRun(ctx, repository.conn, runID)
+		owner, err = queryCurrentRun(ctx, repository.db, runID)
 		if err != nil {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}
 			return nil, fmt.Errorf("%w: result owner", ErrCorrupt)
 		}
-		if err := validateStoredRunReferences(ctx, repository.conn, owner); err != nil {
+		if err := validateStoredRunReferences(ctx, repository.db, owner); err != nil {
 			return nil, err
 		}
 	}
@@ -720,7 +720,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 		if err != nil {
 			return nil, err
 		}
-		if err := validateStoredResultAgainstRun(ctx, repository.conn, item, owner, evidenceCache); err != nil {
+		if err := validateStoredResultAgainstRun(ctx, repository.db, item, owner, evidenceCache); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -828,7 +828,7 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if len(document) > MaxReportProjectionDocumentBytes {
 		return fmt.Errorf("report exceeds %d-byte storage budget", MaxReportProjectionDocumentBytes)
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin report create: %w", err)
 	}
@@ -898,7 +898,7 @@ func (repository *Repository) GetReport(ctx context.Context, id string) (domain.
 		return domain.Report{}, err
 	}
 	var row storedReportRow
-	err := row.scan(repository.conn.QueryRowContext(ctx, `
+	err := row.scan(repository.db.QueryRowContext(ctx, `
 		SELECT id, schema_version, run_id, generated_at, document_json FROM reports WHERE id = ?
 	`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -911,7 +911,7 @@ func (repository *Repository) GetReport(ctx context.Context, id string) (domain.
 	if err != nil {
 		return domain.Report{}, err
 	}
-	if err := validateReportStorage(ctx, repository.conn, report); err != nil {
+	if err := validateReportStorage(ctx, repository.db, report); err != nil {
 		return domain.Report{}, err
 	}
 	return report, nil
@@ -921,7 +921,7 @@ func (repository *Repository) ListReports(ctx context.Context) ([]domain.Report,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.conn.QueryContext(ctx, `
+	rows, err := repository.db.QueryContext(ctx, `
 		SELECT id, schema_version, run_id, generated_at, document_json
 		FROM reports
 		ORDER BY `+reportGeneratedAtSortKeySQL+`, id
@@ -950,7 +950,7 @@ func (repository *Repository) ListReports(ctx context.Context) ([]domain.Report,
 		if err != nil {
 			return nil, err
 		}
-		if err := validateReportStorage(ctx, repository.conn, report); err != nil {
+		if err := validateReportStorage(ctx, repository.db, report); err != nil {
 			return nil, err
 		}
 		result = append(result, report)
@@ -974,7 +974,7 @@ func (repository *Repository) ListReportsForRuns(ctx context.Context, runIDs []s
 	}
 	query := `SELECT id, schema_version, run_id, generated_at, document_json FROM reports WHERE run_id IN (` +
 		strings.TrimSuffix(strings.Repeat("?,", len(runIDs)), ",") + `) ORDER BY ` + reportGeneratedAtSortKeySQL + `, id`
-	rows, err := repository.conn.QueryContext(ctx, query, arguments...)
+	rows, err := repository.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list reports for runs: %w", err)
 	}
@@ -996,7 +996,7 @@ func (repository *Repository) ListReportsForRuns(ctx context.Context, runIDs []s
 		if err != nil {
 			return nil, err
 		}
-		if err := validateReportStorage(ctx, repository.conn, report); err != nil {
+		if err := validateReportStorage(ctx, repository.db, report); err != nil {
 			return nil, err
 		}
 		result = append(result, report)

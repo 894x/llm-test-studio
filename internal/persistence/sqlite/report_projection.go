@@ -27,7 +27,7 @@ func (repository *Repository) ListReportProjections(ctx context.Context) ([]repo
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, reportProjectionReadError(ctx, "begin report projection read", err)
 	}

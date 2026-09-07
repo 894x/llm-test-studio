@@ -26,11 +26,10 @@ type RepositoryOptions struct {
 	BusyTimeout time.Duration
 }
 
-// Repository owns one configured SQLite connection used only for operational
-// Run, Result, Evidence, Report, Comparison, and performance-report data.
+// Repository uses a one-connection pool. database/sql reserves that connection
+// for each complete transaction and queues other operations with their context.
 type Repository struct {
-	db   *sql.DB
-	conn *sql.Conn
+	db *sql.DB
 }
 
 type rowQueryer interface {
@@ -48,7 +47,7 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 	if err != nil {
 		return nil, err
 	}
-	dsn, err := repositoryDSN(path)
+	dsn, err := repositoryPoolDSN(path, busyTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +89,35 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 		}
 		return nil, fmt.Errorf("%w: validate operational repository integrity: %v", ErrCorrupt, err)
 	}
-	return &Repository{db: db, conn: conn}, nil
+	// Return the configured connection to the pool; keeping a shared *sql.Conn
+	// bypasses transaction reservation and permits overlapping BEGIN statements.
+	if err := conn.Close(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("release sqlite repository connection: %w", err)
+	}
+	return &Repository{db: db}, nil
+}
+
+func repositoryPoolDSN(value string, busyTimeout time.Duration) (string, error) {
+	dsn, err := repositoryDSN(value)
+	if err != nil {
+		return "", err
+	}
+	base, rawQuery, _ := strings.Cut(dsn, "?")
+	query, _ := url.ParseQuery(rawQuery)
+	pragmas := make([]string, 0, len(query["_pragma"])+2)
+	for _, pragma := range query["_pragma"] {
+		name := strings.ToLower(strings.TrimSpace(pragma))
+		if strings.HasPrefix(name, "foreign_keys") || strings.HasPrefix(name, "busy_timeout") {
+			continue
+		}
+		pragmas = append(pragmas, pragma)
+	}
+	milliseconds := max(int64(1), busyTimeout.Milliseconds())
+	// Connection-local settings must also apply after cancellation or a driver
+	// error makes database/sql replace the physical connection.
+	query["_pragma"] = append(pragmas, "foreign_keys(1)", fmt.Sprintf("busy_timeout(%d)", milliseconds))
+	return base + "?" + query.Encode(), nil
 }
 
 func repositoryDSN(value string) (string, error) {
@@ -107,18 +134,10 @@ func (repository *Repository) Close() error {
 	if repository == nil {
 		return nil
 	}
-	var result error
-	if repository.conn != nil {
-		result = repository.conn.Close()
-		repository.conn = nil
-	}
 	if repository.db != nil {
-		if err := repository.db.Close(); result == nil {
-			result = err
-		}
-		repository.db = nil
+		return repository.db.Close()
 	}
-	return result
+	return nil
 }
 
 func validateNextRevision(expected uint64, meta domain.EntityMeta) error {

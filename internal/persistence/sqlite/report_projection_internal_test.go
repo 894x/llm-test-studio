@@ -41,7 +41,7 @@ func TestReportProjectionQuerySortsBeforeLoadingWideDocuments(t *testing.T) {
 	}
 	defer repository.Close()
 
-	rows, err := repository.conn.QueryContext(
+	rows, err := repository.db.QueryContext(
 		context.Background(),
 		"EXPLAIN QUERY PLAN "+reportProjectionQuery,
 		reporting.MaxSnapshotReports,

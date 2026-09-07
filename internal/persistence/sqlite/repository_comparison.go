@@ -22,7 +22,7 @@ func (repository *Repository) CreateComparison(ctx context.Context, comparison d
 	if err != nil {
 		return fmt.Errorf("encode comparison: %w", err)
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin comparison create: %w", err)
 	}
@@ -60,7 +60,7 @@ func (repository *Repository) UpdateComparison(ctx context.Context, expectedRevi
 	if err != nil {
 		return fmt.Errorf("encode comparison: %w", err)
 	}
-	tx, err := repository.conn.BeginTx(ctx, nil)
+	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin comparison update: %w", err)
 	}
@@ -109,14 +109,14 @@ func (repository *Repository) GetComparison(ctx context.Context, id string) (dom
 	if err := ctx.Err(); err != nil {
 		return domain.Comparison{}, err
 	}
-	return queryCurrentComparison(ctx, repository.conn, id)
+	return queryCurrentComparison(ctx, repository.db, id)
 }
 
 func (repository *Repository) ListComparisons(ctx context.Context) ([]domain.Comparison, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.conn.QueryContext(ctx, `SELECT id FROM comparisons ORDER BY created_at DESC, id`)
+	rows, err := repository.db.QueryContext(ctx, `SELECT id FROM comparisons ORDER BY created_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list comparison ids: %w", err)
 	}
@@ -138,7 +138,7 @@ func (repository *Repository) ListComparisons(ctx context.Context) ([]domain.Com
 	}
 	values := make([]domain.Comparison, 0, len(ids))
 	for _, id := range ids {
-		value, err := queryCurrentComparison(ctx, repository.conn, id)
+		value, err := queryCurrentComparison(ctx, repository.db, id)
 		if err != nil {
 			return nil, err
 		}

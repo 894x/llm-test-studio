@@ -19,7 +19,7 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	tx, err := repository.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("begin workspace projection read: %w", err)
 	}

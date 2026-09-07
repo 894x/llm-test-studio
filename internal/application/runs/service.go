@@ -135,6 +135,8 @@ type Service struct {
 	reportError           func(error)
 	diagnostics           *diagnosticDispatcher
 	allowInsecureLoopback bool
+	recoveryContext       context.Context
+	stopRecovery          context.CancelFunc
 
 	mu     sync.Mutex
 	active map[string]*runControl
@@ -170,6 +172,7 @@ func New(dependencies Dependencies) (*Service, error) {
 	if caseTypes == nil {
 		caseTypes = casetypes.MustBuiltinRegistry()
 	}
+	recoveryContext, stopRecovery := context.WithCancel(context.Background())
 	return &Service{
 		repository: dependencies.Repository, credentials: dependencies.Credentials,
 		quickTasks: dependencies.QuickTasks, caseTypes: caseTypes,
@@ -179,7 +182,8 @@ func New(dependencies Dependencies) (*Service, error) {
 		reporter: dependencies.Reporter, reportError: dependencies.ReportError,
 		diagnostics:           newDiagnosticDispatcher(dependencies.ReportDiagnostic),
 		allowInsecureLoopback: dependencies.AllowInsecureLoopback,
-		active:                make(map[string]*runControl),
+		recoveryContext:       recoveryContext, stopRecovery: stopRecovery,
+		active: make(map[string]*runControl),
 	}, nil
 }
 
@@ -458,6 +462,7 @@ func (service *Service) Close() error {
 		return nil
 	}
 	service.closed = true
+	service.stopRecovery()
 	controls := make([]*runControl, 0, len(service.active))
 	for _, control := range service.active {
 		controls = append(controls, control)
@@ -560,6 +565,9 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 		return nil
 	}
 	executionErr := service.executor.Execute(ctx, request, emit)
+	// No provider work is repeated during terminal-state recovery, and recovery
+	// must not keep the credential lease alive while storage is unavailable.
+	_ = control.lease.Close()
 	pendingDiagnostics := make([]Diagnostic, 0, 2)
 	failure := domain.RunFailure{}
 	if executionErr != nil {
@@ -605,12 +613,9 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			Err:       errors.New("execution completed without results for every case"),
 		})
 	}
-	var transitionErr error
-	if terminal == domain.RunFailed {
-		transitionErr = service.fail(context.Background(), control, failure)
-	} else {
-		transitionErr = service.transition(context.Background(), control, terminal)
-	}
+	transitionContext, cancelTransition := context.WithTimeout(context.Background(), 5*time.Second)
+	transitionErr := service.saveTerminal(transitionContext, control, terminal, failure)
+	cancelTransition()
 	runID = control.run.Meta().ID
 	control.mu.Unlock()
 	for _, diagnostic := range pendingDiagnostics {
@@ -621,6 +626,7 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			RunID: runID, Operation: "transition_" + string(terminal),
 			ErrorCode: "run_state_transition_failed", Err: transitionErr,
 		})
+		transitionErr = service.recoverTerminal(control, terminal, failure)
 	}
 	if transitionErr == nil && !isNil(service.reporter) {
 		if err := service.reporter.Generate(context.Background(), runID); err != nil {

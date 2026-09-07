@@ -31,7 +31,7 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 	if len(document) > maxQuickPerformanceReportBytes {
 		return errors.New("quick performance report exceeds storage byte limit")
 	}
-	_, err = repository.conn.ExecContext(ctx, `
+	_, err = repository.db.ExecContext(ctx, `
 		INSERT INTO quick_performance_reports(
 			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -50,7 +50,7 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 	var generatedAt string
 	var generatedAtUnixNano int64
 	var document []byte
-	err := repository.conn.QueryRowContext(ctx, `
+	err := repository.db.QueryRowContext(ctx, `
 		SELECT generated_at, generated_at_unix_nano, document_json
 		FROM quick_performance_reports WHERE id = ?
 	`, reportID).Scan(&generatedAt, &generatedAtUnixNano, &document)
@@ -71,7 +71,7 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 }
 
 func (repository *Repository) ListQuickPerformanceReportSummaries(ctx context.Context) ([]quicktest.PerformanceArchiveSummary, error) {
-	rows, err := repository.conn.QueryContext(ctx, `
+	rows, err := repository.db.QueryContext(ctx, `
 		SELECT id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed
 		FROM quick_performance_reports
 		ORDER BY generated_at_unix_nano DESC, id DESC
