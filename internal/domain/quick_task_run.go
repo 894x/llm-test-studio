@@ -13,12 +13,16 @@ import (
 // Mapping in the enclosing Run are transient execution configuration, not
 // authored catalog records. CaseDefinitions retain the original Suite members.
 type QuickTaskSnapshot struct {
-	Suite          Suite                      `json:"suite"`
-	Inputs         map[string]json.RawMessage `json:"inputs"`
-	SavedChannelID string                     `json:"saved_channel_id,omitempty"`
+	Suite           Suite                      `json:"suite"`
+	Inputs          map[string]json.RawMessage `json:"inputs"`
+	SavedChannelID  string                     `json:"saved_channel_id,omitempty"`
+	CredentialRunID string                     `json:"credential_run_id,omitempty"`
 }
 
 func (task *QuickTaskSnapshot) validate(snapshot RunSnapshot) error {
+	if task.CredentialRunID != "" && (!IsUUID(task.CredentialRunID) || task.SavedChannelID != "") {
+		return errors.New("quick run credential reference is invalid or conflicts with a saved channel")
+	}
 	if task.Suite.QuickTest == nil || task.Inputs == nil || len(task.Inputs) != len(task.Suite.QuickTest.Inputs) {
 		return errors.New("quick run requires a task and every resolved input")
 	}

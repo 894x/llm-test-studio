@@ -205,6 +205,7 @@ func TestDesktopQuickTaskUsesSafeRunErrorsAndLifecycle(t *testing.T) {
 		code string
 	}{
 		{runs.ErrInvalid, "run_invalid"}, {runs.ErrNotRunnable, "run_not_runnable"},
+		{runs.ErrQuickTaskCredential, "quick_task_credential_unavailable"},
 		{errors.New("Bearer private-test-key"), "operation_failed"},
 	} {
 		t.Run(scenario.code, func(t *testing.T) {

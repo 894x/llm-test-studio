@@ -19,7 +19,8 @@ export interface StartRunTargetCommand {
 }
 
 export interface StartQuickTaskCommand {
-	 source_run_id?: string
+  source_run_id?: string
+  credential_run_id?: string
   suite_id: string
   suite_revision: number
   model: string

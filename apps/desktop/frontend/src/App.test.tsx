@@ -53,6 +53,7 @@ function desktopClient(): DesktopClient & {
 		startRunTarget: vi.fn(async () => structuredClone(client.workspace)),
 		startQuickTask: vi.fn(async () => client.workspace.runs[0].id),
 		getQuickTask: vi.fn(),
+    rememberQuickTaskCredential: vi.fn(async () => undefined), forgetQuickTaskCredential: vi.fn(async () => undefined),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
         ...client.workspace,
@@ -1024,6 +1025,7 @@ describe("desktop run workspace", () => {
 			startRunTarget: vi.fn(),
 			startQuickTask: vi.fn(),
 			getQuickTask: vi.fn(),
+    rememberQuickTaskCredential: vi.fn(async () => undefined), forgetQuickTaskCredential: vi.fn(async () => undefined),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),

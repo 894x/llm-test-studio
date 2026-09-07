@@ -146,13 +146,21 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if isNilInterface(baseCredentialStore) {
 			baseCredentialStore = credentials.NewOSStore()
 		}
-		credentialScope, err := credentialScopeForAuthoredCatalogRoot(executableDirectory)
+		credentialScope, err := credentialScopeForRoot(executableDirectory)
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("scope credential keyring to authored catalog: %w", err)
 		}
 		credentialStore, err := credentials.NewScopedStore(baseCredentialStore, credentialScope)
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create authored-catalog credential store: %w", err)
+		}
+		quickTaskScope, err := credentialScopeForRoot(directory)
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("scope quick task credentials: %w", err)
+		}
+		quickTaskCredentials, err := credentials.NewScopedStore(baseCredentialStore, quickTaskScope)
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("create quick task credential store: %w", err)
 		}
 		cleanupQueuePath, err := credentialCleanupRegistryPath(directory, executableDirectory)
 		if err != nil {
@@ -212,10 +220,11 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			options.reportCredentialCleanup(credentialCleanupDiagnosticError{err: err})
 		}
 		runService, err := runs.New(runs.Dependencies{
-			Repository:  runtimeRepository,
-			QuickTasks:  catalogRepository,
-			CaseTypes:   caseTypes,
-			Credentials: credentialStore,
+			QuickTaskCredentials: quickTaskCredentials,
+			Repository:           runtimeRepository,
+			QuickTasks:           catalogRepository,
+			CaseTypes:            caseTypes,
+			Credentials:          credentialStore,
 			Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{
 				casetypes.TypeLegacyAPIAudit:     runs.NewLegacyAPIAuditExecutor(nil),
 				casetypes.TypeRequestSingle:      runs.NewLoadExecutor(nil),
@@ -258,6 +267,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			commands:        runService,
 			comparisons:     comparisonService,
 			quickTests: quicktest.New(quicktest.Dependencies{
+				TaskCredential: func(ctx context.Context, runID, baseURL string) (*credentials.Lease, error) {
+					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, domain.ProtocolOpenAIChat)
+				},
 				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string) (string, error) {
 					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SuiteRevision: task.SuiteRevision, SourceRunID: task.SourceRunID, Model: model})
 				},
@@ -297,20 +309,20 @@ func credentialCleanupRegistryPath(configurationDirectory, authoredCatalogRoot s
 	if configurationDirectory == "." || !filepath.IsAbs(configurationDirectory) {
 		return "", errors.New("credential cleanup registry paths must be absolute")
 	}
-	scope, err := credentialScopeForAuthoredCatalogRoot(authoredCatalogRoot)
+	scope, err := credentialScopeForRoot(authoredCatalogRoot)
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(configurationDirectory, "credential-keyring-registries", scope+".json"), nil
 }
 
-func credentialScopeForAuthoredCatalogRoot(authoredCatalogRoot string) (string, error) {
-	authoredCatalogRoot = filepath.Clean(strings.TrimSpace(authoredCatalogRoot))
-	if authoredCatalogRoot == "." || !filepath.IsAbs(authoredCatalogRoot) {
-		return "", errors.New("authored catalog root must be an absolute path")
+func credentialScopeForRoot(root string) (string, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "." || !filepath.IsAbs(root) {
+		return "", errors.New("credential storage root must be an absolute path")
 	}
-	canonicalRoot := authoredCatalogRoot
-	if resolved, err := filepath.EvalSymlinks(authoredCatalogRoot); err == nil {
+	canonicalRoot := root
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
 		canonicalRoot = filepath.Clean(resolved)
 	}
 	if runtime.GOOS == "windows" {

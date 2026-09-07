@@ -104,17 +104,18 @@ type Diagnostic struct {
 }
 
 type Dependencies struct {
-	Repository       Repository
-	QuickTasks       QuickTaskCatalog
-	CaseTypes        *casetypes.Registry
-	Credentials      CredentialStore
-	Executor         Executor
-	Clock            Clock
-	MetaFactory      MetaFactory
-	Environment      EnvironmentProvider
-	Reporter         ReportGenerator
-	ReportError      func(error)
-	ReportDiagnostic func(Diagnostic)
+	Repository           Repository
+	QuickTasks           QuickTaskCatalog
+	CaseTypes            *casetypes.Registry
+	Credentials          CredentialStore
+	QuickTaskCredentials credentials.Store
+	Executor             Executor
+	Clock                Clock
+	MetaFactory          MetaFactory
+	Environment          EnvironmentProvider
+	Reporter             ReportGenerator
+	ReportError          func(error)
+	ReportDiagnostic     func(Diagnostic)
 	// AllowInsecureLoopback is restricted to explicit test harnesses. Desktop
 	// production construction deliberately leaves it false.
 	AllowInsecureLoopback bool
@@ -125,6 +126,7 @@ type Service struct {
 	quickTasks            QuickTaskCatalog
 	caseTypes             *casetypes.Registry
 	credentials           CredentialStore
+	quickTaskCredentials  credentials.Store
 	executor              Executor
 	clock                 Clock
 	metaFactory           MetaFactory
@@ -171,7 +173,8 @@ func New(dependencies Dependencies) (*Service, error) {
 	return &Service{
 		repository: dependencies.Repository, credentials: dependencies.Credentials,
 		quickTasks: dependencies.QuickTasks, caseTypes: caseTypes,
-		executor: dependencies.Executor, clock: dependencies.Clock,
+		quickTaskCredentials: dependencies.QuickTaskCredentials,
+		executor:             dependencies.Executor, clock: dependencies.Clock,
 		metaFactory: factory, environment: dependencies.Environment,
 		reporter: dependencies.Reporter, reportError: dependencies.ReportError,
 		diagnostics:           newDiagnosticDispatcher(dependencies.ReportDiagnostic),

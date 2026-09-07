@@ -50,6 +50,8 @@ function setup(
   const actions = {
     startQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
     getQuickTask: vi.fn(),
+    rememberQuickTaskCredential: vi.fn(async () => undefined),
+    forgetQuickTaskCredential: vi.fn(async () => undefined),
     cancelRun: vi.fn(async () => FIXTURE_WORKSPACE),
     runQuickPerformanceTest: vi.fn(),
   }
@@ -237,5 +239,78 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(screen.getByRole("combobox", { name: "从渠道填充" })).toHaveFocus()
     expect(actions.startQuickTask).not.toHaveBeenCalled()
+  })
+  it("remembers a tested temporary connection explicitly, reuses its reference, and forgets it", async () => {
+    const user = userEvent.setup()
+    const actions = setup({
+      ...createTaskDraft(task),
+      base_url: "https://example.test",
+      api_key: "temporary-key",
+      model: "video-model",
+    })
+    expect(screen.queryByRole("button", { name: "记住此连接的密钥" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "开始测试" }))
+    expect(actions.rememberQuickTaskCredential).not.toHaveBeenCalled()
+    await user.click(await screen.findByRole("button", { name: "记住此连接的密钥" }))
+    expect(actions.rememberQuickTaskCredential).toHaveBeenCalledExactlyOnceWith({
+      run_id: FIXTURE_WORKSPACE.runs[0].id,
+      base_url: "https://example.test",
+      protocol: "seedance",
+      api_key: "temporary-key",
+    })
+    expect(screen.getByLabelText("API Key")).toHaveValue("")
+    expect(screen.getByLabelText("API Key")).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "开始测试" }))
+    expect(actions.startQuickTask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id }),
+    )
+    expect(actions.startQuickTask).not.toHaveBeenLastCalledWith(
+      expect.objectContaining({ api_key: expect.any(String) }),
+    )
+    await user.click(screen.getByRole("button", { name: "忘记已保存的密钥" }))
+    expect(actions.forgetQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(
+      FIXTURE_WORKSPACE.runs[0].id,
+    )
+    expect(screen.getByLabelText("API Key")).toBeEnabled()
+  })
+
+  it("keeps the entered key when remembering fails and never replays the Run", async () => {
+    const user = userEvent.setup()
+    const actions = setup({
+      ...createTaskDraft(task),
+      source_run_id: FIXTURE_WORKSPACE.runs[0].id,
+      base_url: "https://example.test",
+      api_key: "temporary-key",
+      model: "model",
+    })
+    actions.rememberQuickTaskCredential.mockRejectedValueOnce(new Error("private OS error"))
+    await user.click(screen.getByRole("button", { name: "记住此连接的密钥" }))
+    expect(await screen.findByRole("alert")).not.toHaveTextContent("private OS error")
+    expect(screen.getByLabelText("API Key")).toHaveValue("temporary-key")
+    expect(actions.startQuickTask).not.toHaveBeenCalled()
+  })
+
+  it("reuses a remembered key for performance and drops it when the endpoint changes", async () => {
+    const user = userEvent.setup()
+    const selected = FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!
+    const actions = setup({
+      ...createTaskDraft(selected),
+      base_url: "https://example.test",
+      credential_run_id: FIXTURE_WORKSPACE.runs[0].id,
+      model: "model",
+    })
+    actions.runQuickPerformanceTest.mockRejectedValue(new Error("fixture only"))
+    await user.click(screen.getByRole("button", { name: "快速性能测试" }))
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    expect(actions.runQuickPerformanceTest).toHaveBeenCalledWith(
+      expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id, api_key: "" }),
+      expect.any(Function),
+    )
+    await screen.findByText(/快速性能测试暂不可用/)
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    await user.type(screen.getByLabelText("接口地址"), "/other")
+    expect(screen.getByLabelText("API Key")).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "忘记已保存的密钥" })).not.toBeInTheDocument()
   })
 })

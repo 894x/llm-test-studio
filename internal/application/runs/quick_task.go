@@ -20,14 +20,15 @@ type QuickTaskCatalog interface {
 // QuickTaskCommand selects an immutable task and either a saved channel or a
 // temporary connection. Model is the upstream identifier, not a catalog ID.
 type QuickTaskCommand struct {
-	SuiteID       string                     `json:"suite_id"`
-	SuiteRevision uint64                     `json:"suite_revision"`
-	Model         string                     `json:"model"`
-	ChannelID     string                     `json:"channel_id,omitempty"`
-	BaseURL       string                     `json:"base_url,omitempty"`
-	APIKey        string                     `json:"api_key,omitempty"`
-	Inputs        map[string]json.RawMessage `json:"inputs"`
-	SourceRunID   string                     `json:"source_run_id,omitempty"`
+	SuiteID         string                     `json:"suite_id"`
+	SuiteRevision   uint64                     `json:"suite_revision"`
+	Model           string                     `json:"model"`
+	ChannelID       string                     `json:"channel_id,omitempty"`
+	BaseURL         string                     `json:"base_url,omitempty"`
+	APIKey          string                     `json:"api_key,omitempty"`
+	Inputs          map[string]json.RawMessage `json:"inputs"`
+	SourceRunID     string                     `json:"source_run_id,omitempty"`
+	CredentialRunID string                     `json:"credential_run_id,omitempty"`
 }
 
 func (service *Service) StartQuickTask(ctx context.Context, command QuickTaskCommand) (string, error) {
@@ -49,7 +50,10 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if closed {
 		return "", ErrClosed
 	}
-	if command.ChannelID != "" && (!domain.IsUUID(command.ChannelID) || command.BaseURL != "" || command.APIKey != "") {
+	if command.ChannelID != "" && (!domain.IsUUID(command.ChannelID) || command.BaseURL != "" || command.APIKey != "" || command.CredentialRunID != "") {
+		return "", ErrInvalid
+	}
+	if command.CredentialRunID != "" && (!domain.IsUUID(command.CredentialRunID) || command.APIKey != "") {
 		return "", ErrInvalid
 	}
 	suite, cases, err := service.quickTaskDefinitions(ctx, command)
@@ -99,7 +103,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 			return "", ErrNotRunnable
 		}
 	} else {
-		if len(command.BaseURL) > 4096 || len(command.APIKey) == 0 || len(command.APIKey) > 16384 || strings.TrimSpace(command.APIKey) != command.APIKey || strings.ContainsFunc(command.APIKey, unicode.IsControl) {
+		if len(command.BaseURL) > 4096 || (command.CredentialRunID == "" && !validQuickTaskAPIKey(command.APIKey)) {
 			return "", ErrInvalid
 		}
 		endpoint, err := url.Parse(command.BaseURL)
@@ -122,7 +126,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		Model:   domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelMeta.ID, Revision: modelMeta.Revision}, Name: command.Model, Protocol: suite.Protocol},
 		Channel: domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: suite.Protocol, UpstreamModelName: command.Model},
 		Cases:   append([]domain.CaseRevisionRef(nil), suite.Cases...), CaseDefinitions: cases, Load: load, SLA: sla, Environment: service.environment(),
-		QuickTask: &domain.QuickTaskSnapshot{Suite: suite, Inputs: inputs, SavedChannelID: command.ChannelID},
+		QuickTask: &domain.QuickTaskSnapshot{Suite: suite, Inputs: inputs, SavedChannelID: command.ChannelID, CredentialRunID: command.CredentialRunID},
 	}
 	if snapshot.Validate() != nil {
 		return "", ErrNotRunnable
@@ -137,6 +141,8 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 			return "", ErrNotRunnable
 		}
 		lease, err = service.credentials.Get(ctx, ref)
+	} else if command.CredentialRunID != "" {
+		lease, err = service.LeaseQuickTaskCredential(ctx, command.CredentialRunID, channel.BaseURL, suite.Protocol)
 	} else {
 		secret := []byte(command.APIKey)
 		lease, err = credentials.NewTemporaryLease(secret)

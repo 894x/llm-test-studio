@@ -56,6 +56,7 @@ export interface SaveQuickTestConnectionCommand {
 }
 
 export interface QuickPerformanceCommand {
+  credential_run_id?: string
   task?: { suite_id: string; suite_revision: number; source_run_id?: string }
   address_mode: QuickTestAddressMode
   url: string

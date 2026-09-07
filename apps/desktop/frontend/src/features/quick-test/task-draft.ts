@@ -13,6 +13,7 @@ export type TaskDraft = {
   api_key: string
   inputs: Record<string, string | boolean>
   source_run_id?: string
+  credential_run_id?: string
 }
 
 export type QuickTaskDetail = {
@@ -22,7 +23,15 @@ export type QuickTaskDetail = {
   model: string
   base_url: string
   channel_id?: string
+  credential_run_id?: string
   inputs: StartQuickTaskCommand["inputs"]
+}
+
+export type RememberQuickTaskCredentialCommand = {
+  run_id: string
+  base_url: string
+  protocol: CatalogSuite["protocol"]
+  api_key: string
 }
 
 export function createTaskDraft(task: CatalogSuite | null): TaskDraft {
@@ -52,7 +61,10 @@ export function quickTaskCommand(draft: TaskDraft): {
     if (!draft.base_url.trim()) errors.base_url = tx("desktop:quick-test_enter_an_endpoint")
     else if (connectionURLHint(draft.base_url.trim(), "base_url"))
       errors.base_url = connectionURLHint(draft.base_url.trim(), "base_url")!
-    if (!draft.api_key.trim() || draft.api_key.length > 16384 || /\p{Cc}/u.test(draft.api_key))
+    if (
+      !draft.credential_run_id &&
+      (!draft.api_key.trim() || draft.api_key.length > 16384 || /\p{Cc}/u.test(draft.api_key))
+    )
       errors.api_key = tx("desktop:quick-test_enter_an_api_key_or_select_a_channel_with_saved")
   }
   if (!draft.model.trim() || draft.model.trim().length > 256 || /\p{Cc}/u.test(draft.model))
@@ -82,7 +94,12 @@ export function quickTaskCommand(draft: TaskDraft): {
       ...(draft.source_run_id ? { source_run_id: draft.source_run_id } : {}),
       ...(draft.channel_id
         ? { channel_id: draft.channel_id }
-        : { base_url: draft.base_url.trim(), api_key: draft.api_key.trim() }),
+        : {
+            base_url: draft.base_url.trim(),
+            ...(draft.credential_run_id
+              ? { credential_run_id: draft.credential_run_id }
+              : { api_key: draft.api_key.trim() }),
+          }),
     },
   }
 }
@@ -97,6 +114,7 @@ export function encodeTaskDraft(draft: TaskDraft): string {
     base_url: baseURL,
     channel_id: draft.channel_id,
     inputs: draft.inputs,
+    ...(draft.credential_run_id && baseURL ? { credential_run_id: draft.credential_run_id } : {}),
     ...(draft.source_run_id ? { source_run_id: draft.source_run_id } : {}),
   })
 }
@@ -112,7 +130,9 @@ export function decodeTaskDraft(raw: string | null): TaskDraft | null {
       typeof value.base_url !== "string" ||
       typeof value.channel_id !== "string" ||
       (value.channel_id && !isUUID(value.channel_id)) ||
-      (value.source_run_id !== undefined && !isUUID(value.source_run_id))
+      (value.source_run_id !== undefined && !isUUID(value.source_run_id)) ||
+      (value.credential_run_id !== undefined &&
+        (!isUUID(value.credential_run_id) || !!value.channel_id))
     )
       return null
     const task = value.task === null ? null : parseSuite(value.task)
@@ -136,6 +156,9 @@ export function decodeTaskDraft(raw: string | null): TaskDraft | null {
       api_key: "",
       inputs,
       ...(typeof value.source_run_id === "string" ? { source_run_id: value.source_run_id } : {}),
+      ...(typeof value.credential_run_id === "string"
+        ? { credential_run_id: value.credential_run_id }
+        : {}),
     }
   } catch {
     return null
@@ -153,6 +176,8 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
     typeof value.base_url !== "string" ||
     connectionURLHint(value.base_url, "base_url") ||
     (value.channel_id !== undefined && !isUUID(value.channel_id)) ||
+    (value.credential_run_id !== undefined &&
+      (!isUUID(value.credential_run_id) || !!value.channel_id)) ||
     !record(value.inputs)
   )
     throw invalid()
@@ -182,6 +207,9 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
     base_url: value.base_url,
     inputs,
     ...(typeof value.channel_id === "string" ? { channel_id: value.channel_id } : {}),
+    ...(typeof value.credential_run_id === "string"
+      ? { credential_run_id: value.credential_run_id }
+      : {}),
   }
 }
 
@@ -192,8 +220,10 @@ export function restoreTaskDraft(detail: QuickTaskDetail, previous: TaskDraft): 
     base_url: detail.base_url,
     channel_id: detail.channel_id ?? "",
     source_run_id: detail.run_id,
+    ...(detail.credential_run_id ? { credential_run_id: detail.credential_run_id } : {}),
     api_key:
       !detail.channel_id &&
+      !detail.credential_run_id &&
       previous.task?.protocol === detail.suite.protocol &&
       previous.base_url === detail.base_url
         ? previous.api_key

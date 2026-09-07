@@ -127,12 +127,13 @@ type CredentialPurpose string
 
 const (
 	CredentialChannelAPIKey    CredentialPurpose = "channel_api_key"
+	CredentialQuickTaskAPIKey  CredentialPurpose = "quick_task_api_key"
 	CredentialIntegrationAdmin CredentialPurpose = "integration_admin"
 )
 
 func (purpose CredentialPurpose) Validate() error {
 	switch purpose {
-	case CredentialChannelAPIKey, CredentialIntegrationAdmin:
+	case CredentialChannelAPIKey, CredentialQuickTaskAPIKey, CredentialIntegrationAdmin:
 		return nil
 	default:
 		return fmt.Errorf("unsupported credential purpose %q", purpose)

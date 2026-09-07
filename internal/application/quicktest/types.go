@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
@@ -86,6 +87,7 @@ type Result struct {
 // It must remain independent from persisted Model, Channel, Case, and Plan
 // entities so a quick performance run stays zero-persistence.
 type PerformanceCommand struct {
+	CredentialRunID    string                  `json:"credential_run_id,omitempty"`
 	Task               *TaskReference          `json:"task,omitempty"`
 	AddressMode        AddressMode             `json:"address_mode"`
 	URL                string                  `json:"url"`
@@ -414,6 +416,7 @@ type PerformanceClock interface {
 type PerformanceReportIDFactory func(time.Time) (string, error)
 
 type Dependencies struct {
+	TaskCredential              func(context.Context, string, string) (*credentials.Lease, error)
 	TaskPath                    func(context.Context, TaskReference, string) (string, error)
 	Transport                   http.RoundTripper
 	AllowLoopbackHTTPForTesting bool

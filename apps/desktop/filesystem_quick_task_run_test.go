@@ -141,7 +141,8 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(),
+	rememberedStore := credentials.NewMemoryStore()
+	service, err := runs.New(runs.Dependencies{QuickTaskCredentials: rememberedStore, Repository: repository, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(),
 		Reporter: reporter,
 		Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{casetypes.TypeRequestSingle: runs.NewLoadExecutor(server.Client().Transport), casetypes.TypeResponseProbe: runs.NewResponseProbeExecutor(server.Client().Transport), casetypes.TypeInputLatencyLadder: runs.NewInputLatencyLadderExecutor(server.Client().Transport)}),
 		Clock:    productionClock{}, Environment: func() domain.EnvironmentSnapshot {
@@ -173,6 +174,9 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	}
 	if stored.Status() != domain.RunCompleted {
 		t.Fatalf("task status=%s failure=%+v", stored.Status(), stored.Failure())
+	}
+	if err := app.RememberQuickTaskCredential(runs.RememberQuickTaskCredentialCommand{RunID: id, BaseURL: server.URL, Protocol: suite.Protocol, APIKey: "test-temporary-key"}); err != nil {
+		t.Fatal(err)
 	}
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
@@ -226,7 +230,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if restored, err := reopened.GetReport(ctx, report.ID); err != nil || restored.PlanSnapshot.QuickTask == nil || restored.Conclusion.Passed == failRequests {
 		t.Fatalf("task history did not survive reopening SQLite: %v", err)
 	}
-	replayService, err := runs.New(runs.Dependencies{Repository: filesystemRuntimeRepository{Repository: reopened, catalog: catalog}, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(), Executor: runs.NewLoadExecutor(server.Client().Transport), Clock: productionClock{}, Environment: func() domain.EnvironmentSnapshot { return stored.Snapshot().Environment }})
+	replayService, err := runs.New(runs.Dependencies{QuickTaskCredentials: rememberedStore, Repository: filesystemRuntimeRepository{Repository: reopened, catalog: catalog}, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(), Executor: runs.NewLoadExecutor(server.Client().Transport), Clock: productionClock{}, Environment: func() domain.EnvironmentSnapshot { return stored.Snapshot().Environment }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,19 +239,32 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	replayApp.onStartup(ctx)
 	defer replayApp.shutdown()
 	history, err := replayApp.GetQuickTask(id)
-	if err != nil || history.RunID != id || history.Model != "arbitrary-model" || string(history.Inputs["prompt"]) != `"edited"` {
+	if err != nil || history.RunID != id || history.CredentialRunID != id || history.Model != "arbitrary-model" || string(history.Inputs["prompt"]) != `"edited"` {
 		t.Fatalf("native history after reopening: %+v, %v", history, err)
 	}
 	historyJSON, _ := json.Marshal(history)
 	if strings.Contains(string(historyJSON), "test-temporary-key") || strings.Contains(string(historyJSON), "case_definitions") {
 		t.Fatal("native history leaked private data")
 	}
-	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, SuiteRevision: history.Suite.Revision, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, APIKey: "new-test-key", Inputs: history.Inputs})
+	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, SuiteRevision: history.Suite.Revision, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs})
 	if err != nil || replayID == id {
 		t.Fatalf("replay after restart: %s, %v", replayID, err)
 	}
 	if err := replayService.CancelRun(ctx, replayID); err != nil {
 		t.Fatal(err)
+	}
+	replayed, err := replayApp.GetQuickTask(replayID)
+	if err != nil || replayed.CredentialRunID != id {
+		t.Fatalf("replayed history lost remembered key reference: %+v, %v", replayed, err)
+	}
+	for range 2 {
+		if err := replayApp.ForgetQuickTaskCredential(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	forgotten, err := replayApp.GetQuickTask(replayID)
+	if err != nil || forgotten.CredentialRunID != "" || forgotten.Model != replayed.Model {
+		t.Fatalf("forget did not preserve history without key: %+v, %v", forgotten, err)
 	}
 	encoded, err := json.Marshal(stored)
 	if err != nil || strings.Contains(string(encoded), "test-temporary-key") || stored.Snapshot().QuickTask == nil {

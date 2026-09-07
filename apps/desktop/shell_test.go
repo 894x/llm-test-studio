@@ -177,6 +177,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeComparisonMissing:         {},
 		desktopCodeDiagnosticsMissing:        {},
 		desktopCodeQuickTestMissing:          {},
+		desktopCodeQuickTaskCredential:       {},
 		desktopCodeQuickTestSavePartial:      {},
 		desktopCodeInvalidIdentifier:         {},
 		desktopCodeOperationCancelled:        {},

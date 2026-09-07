@@ -27,6 +27,7 @@ const (
 )
 
 type Service struct {
+	taskCredential     func(context.Context, string, string) (*credentials.Lease, error)
 	taskPath           func(context.Context, TaskReference, string) (string, error)
 	transport          http.RoundTripper
 	allowLoopbackHTTP  bool
@@ -49,6 +50,7 @@ func New(dependencies Dependencies) *Service {
 		}
 	}
 	return &Service{
+		taskCredential:     dependencies.TaskCredential,
 		taskPath:           dependencies.TaskPath,
 		transport:          dependencies.Transport,
 		allowLoopbackHTTP:  dependencies.AllowLoopbackHTTPForTesting,
@@ -249,6 +251,25 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	if code := service.applySelectedChannel(ctx, command.ChannelID, &command.AddressMode, &command.URL, &command.APIKey); code != "" {
 		report.ErrorCode = code
 		return report, nil
+	}
+	if command.CredentialRunID != "" {
+		if command.ChannelID != "" || command.APIKey != "" || command.Task == nil || command.AddressMode != AddressModeBaseURL || service.taskCredential == nil {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+		lease, err := service.taskCredential(ctx, command.CredentialRunID, command.URL)
+		if err != nil {
+			report.ErrorCode = ErrorCredentialRequired
+			return report, nil
+		}
+		secret, err := lease.Bytes()
+		_ = lease.Close()
+		if err != nil {
+			report.ErrorCode = ErrorCredentialRequired
+			return report, nil
+		}
+		command.APIKey = string(secret)
+		clear(secret)
 	}
 	report.AddressMode = command.AddressMode
 	if command.Task != nil {

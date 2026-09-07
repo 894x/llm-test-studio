@@ -165,7 +165,7 @@
     "refresh": "Refresh progress",
     "progress": "Run progress",
     "observed": "{{completed}} requests completed · {{passed}} passed · {{failed}} failed",
-    "draftNote": "Inputs are kept as a draft. A temporary API key stays in memory for this app session only.",
+    "draftNote": "Inputs are kept as a draft. Temporary API keys stay in this session; after running, you can explicitly remember the key.",
     "historyVersion": "Historical task revision and inputs restored. Edit them to run again.",
     "missingChannel": "The original channel is unavailable. Choose another channel or enter a temporary connection.",
     "endpointHint": "The task defines the request path. Enter the service Base URL.",
@@ -178,6 +178,14 @@
     "runID": "Run ID",
     "localTime": "Local time",
     "catalog": "Models and channels",
-    "newDefinition": "Use current task revision"
+    "newDefinition": "Use current task revision",
+    "rememberKey": "Remember this connection key",
+    "remembering": "Remembering…",
+    "rememberedKey": "The key is stored in the system credential store and is never displayed.",
+    "forgetKey": "Forget remembered key",
+    "forgetting": "Forgetting…",
+    "useOtherKey": "Use another key",
+    "rememberFailed": "Could not remember the key. Run this connection once, then retry. The accepted test is unaffected.",
+    "forgetFailed": "Could not remove the remembered key. Check the system credential store and retry."
   }
 }

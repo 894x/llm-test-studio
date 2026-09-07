@@ -1,4 +1,11 @@
-import { useRef, useState, type FormEvent, type ReactNode } from "react"
+import {
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
 import { useTranslation } from "react-i18next"
 import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
@@ -37,7 +44,12 @@ import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } f
 
 type Actions = Pick<
   DesktopClient,
-  "startQuickTask" | "getQuickTask" | "cancelRun" | "runQuickPerformanceTest"
+  | "startQuickTask"
+  | "getQuickTask"
+  | "rememberQuickTaskCredential"
+  | "forgetQuickTaskCredential"
+  | "cancelRun"
+  | "runQuickPerformanceTest"
 >
 
 export function QuickTaskWorkspace({
@@ -58,7 +70,7 @@ export function QuickTaskWorkspace({
   workspace: WorkspaceSnapshot
   reports: ReportSnapshot
   draft: TaskDraft
-  onDraftChange: (draft: TaskDraft) => void
+  onDraftChange: Dispatch<SetStateAction<TaskDraft>>
   runID: string
   onRunSelected: (id: string) => void
   actions: Actions
@@ -69,7 +81,9 @@ export function QuickTaskWorkspace({
 }) {
   const { t } = useTranslation("quickTest")
   const { i18n } = useTranslation()
-  const [pending, setPending] = useState<"start" | "history" | "cancel" | null>(null)
+  const [pending, setPending] = useState<
+    "start" | "history" | "cancel" | "remember" | "forget" | null
+  >(null)
   const inFlight = useRef(false)
   const performanceTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -128,6 +142,7 @@ export function QuickTaskWorkspace({
         base_url: form.base_url,
         api_key: form.api_key,
         channel_id: form.channel_id,
+        credential_run_id: form.credential_run_id,
         model: selected.model_target || form.model,
       })
     update(next)
@@ -165,6 +180,7 @@ export function QuickTaskWorkspace({
     try {
       const id = await actions.startQuickTask(command)
       onRunSelected(id)
+      onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
       await refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
@@ -203,6 +219,49 @@ export function QuickTaskWorkspace({
       setPending(null)
     }
   }
+  const rememberCredential = async () => {
+    if (inFlight.current || !form.source_run_id || !task || form.channel_id) return
+    inFlight.current = true
+    setPending("remember")
+    setError("")
+    try {
+      await actions.rememberQuickTaskCredential({
+        run_id: form.source_run_id,
+        base_url: form.base_url.trim(),
+        protocol: task.protocol,
+        api_key: form.api_key.trim(),
+      })
+      onDraftChange((current) =>
+        current === form
+          ? { ...form, api_key: "", credential_run_id: form.source_run_id }
+          : current,
+      )
+    } catch (reason) {
+      setError(publicDesktopErrorMessage(reason, t("task.rememberFailed")))
+    } finally {
+      inFlight.current = false
+      setPending(null)
+    }
+  }
+  const forgetCredential = async () => {
+    if (inFlight.current || !form.credential_run_id) return
+    inFlight.current = true
+    setPending("forget")
+    setError("")
+    try {
+      await actions.forgetQuickTaskCredential(form.credential_run_id)
+      onDraftChange((current) =>
+        current.credential_run_id === form.credential_run_id
+          ? { ...current, api_key: "", credential_run_id: undefined }
+          : current,
+      )
+    } catch (reason) {
+      setError(publicDesktopErrorMessage(reason, t("task.forgetFailed")))
+    } finally {
+      inFlight.current = false
+      setPending(null)
+    }
+  }
   const openPerformance = (element: HTMLElement) => {
     const formElement = element.closest("form")
     if (!formElement || !validCommand(formElement)) return
@@ -214,7 +273,8 @@ export function QuickTaskWorkspace({
       },
       address_mode: "base_url",
       url: channel?.base_url ?? form.base_url.trim(),
-      api_key: form.channel_id ? "" : form.api_key.trim(),
+      api_key: form.channel_id || form.credential_run_id ? "" : form.api_key.trim(),
+      ...(form.credential_run_id ? { credential_run_id: form.credential_run_id } : {}),
       model_id: form.model.trim(),
       ...(form.channel_id ? { channel_id: form.channel_id } : {}),
     })
@@ -284,6 +344,7 @@ export function QuickTaskWorkspace({
                           channel_id: selected?.id ?? "",
                           base_url: selected?.base_url ?? form.base_url,
                           api_key: "",
+                          credential_run_id: undefined,
                         })
                       }}
                     >
@@ -319,7 +380,12 @@ export function QuickTaskWorkspace({
                       aria-invalid={!!errors.base_url || undefined}
                       aria-describedby={errors.base_url ? "quick-task-base_url-error" : undefined}
                       onChange={(event) =>
-                        update({ ...form, base_url: event.target.value, api_key: "" })
+                        update({
+                          ...form,
+                          base_url: event.target.value,
+                          api_key: "",
+                          credential_run_id: undefined,
+                        })
                       }
                       placeholder="https://api.example.com"
                     />
@@ -331,12 +397,61 @@ export function QuickTaskWorkspace({
                       type="password"
                       autoComplete="off"
                       value={form.api_key}
-                      disabled={!!pending || !!form.channel_id}
+                      disabled={!!pending || !!form.channel_id || !!form.credential_run_id}
                       aria-invalid={!!errors.api_key || undefined}
                       aria-describedby={errors.api_key ? "quick-task-api_key-error" : undefined}
-                      placeholder={channel ? t("savedCredential", { name: channel.name }) : ""}
+                      placeholder={
+                        channel
+                          ? t("savedCredential", { name: channel.name })
+                          : form.credential_run_id
+                            ? t("task.rememberedKey")
+                            : ""
+                      }
                       onChange={(event) => update({ ...form, api_key: event.target.value })}
                     />
+                    {!form.channel_id &&
+                      (form.credential_run_id ? (
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-muted-foreground">
+                            {t("task.rememberedKey")}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                              disabled={!!pending}
+                              onClick={() => {
+                                update({ ...form, credential_run_id: undefined, api_key: "" })
+                                requestAnimationFrame(() =>
+                                  document.getElementById("quick-task-api_key")?.focus(),
+                                )
+                              }}
+                            >
+                              {t("task.useOtherKey")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                              disabled={!!pending}
+                              onClick={() => void forgetCredential()}
+                            >
+                              {pending === "forget" ? t("task.forgetting") : t("task.forgetKey")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : form.source_run_id && form.api_key.trim() ? (
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          disabled={!!pending}
+                          onClick={() => void rememberCredential()}
+                        >
+                          {pending === "remember" ? t("task.remembering") : t("task.rememberKey")}
+                        </Button>
+                      ) : null)}
                   </TaskField>
                   <TaskField id="model" label={t("model.label")} error={errors.model}>
                     <Autocomplete

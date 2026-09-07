@@ -165,7 +165,7 @@
     "refresh": "刷新进度",
     "progress": "运行进度",
     "observed": "已完成 {{completed}} 次请求 · 通过 {{passed}} · 失败 {{failed}}",
-    "draftNote": "输入会保留为草稿；临时 API Key 仅在本次打开应用期间保留。",
+    "draftNote": "输入会保留为草稿；临时 API Key 仅在本次会话中保留。运行后可选择记住密钥。",
     "historyVersion": "已恢复历史任务版本和参数，可编辑后再次运行。",
     "missingChannel": "原渠道已不可用，请选择其他渠道或填写临时连接。",
     "endpointHint": "任务定义负责请求路径；填写服务的 Base URL。",
@@ -178,6 +178,14 @@
     "runID": "运行 ID",
     "localTime": "本机时间",
     "catalog": "模型与渠道",
-    "newDefinition": "使用当前任务版本"
+    "newDefinition": "使用当前任务版本",
+    "rememberKey": "记住此连接的密钥",
+    "remembering": "正在记住…",
+    "rememberedKey": "密钥已保存在系统凭据库中，不会回显。",
+    "forgetKey": "忘记已保存的密钥",
+    "forgetting": "正在忘记…",
+    "useOtherKey": "使用其他密钥",
+    "rememberFailed": "无法记住密钥。请先对此连接运行一次测试，再重试；已启动的测试不受影响。",
+    "forgetFailed": "无法移除已保存的密钥，请检查系统凭据库后重试。"
   }
 }

@@ -1,5 +1,5 @@
 import { DesktopDataError } from "@/app/data-error"
-import { parseQuickTaskDetail, type QuickTaskDetail } from "@/features/quick-test/task-draft"
+import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import type { StartQuickTaskCommand, StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
 import {
@@ -71,6 +71,7 @@ export type DesktopErrorCode =
   | "operation_failed"
   | "run_invalid"
   | "run_not_runnable"
+  | "quick_task_credential_unavailable"
   | "plan_protocol_mismatch"
   | "catalog_invalid"
   | "catalog_revision_conflict"
@@ -140,6 +141,8 @@ export interface DesktopClient extends CatalogActions {
   startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
   startQuickTask(command: StartQuickTaskCommand): Promise<string>
   getQuickTask(runId: string): Promise<QuickTaskDetail>
+  rememberQuickTaskCredential(command: RememberQuickTaskCredentialCommand): Promise<void>
+  forgetQuickTaskCredential(runId: string): Promise<void>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
@@ -174,6 +177,8 @@ type WailsDesktopBinding = {
   StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
   StartQuickTask(command: StartQuickTaskCommand): Promise<unknown>
   GetQuickTask(runId: string): Promise<unknown>
+  RememberQuickTaskCredential(command: RememberQuickTaskCredentialCommand): Promise<unknown>
+  ForgetQuickTaskCredential(runId: string): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
@@ -211,7 +216,7 @@ type FrontendDiagnostic = {
 const REQUIRED_WAILS_BINDING_METHODS = [
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget", "StartQuickTask", "GetQuickTask",
+  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "StopSending", "CancelRun", "StartComparison", "RunQuickTest", "RunQuickPerformanceTest",
   "SaveQuickTestConnection", "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
@@ -251,6 +256,7 @@ export function createFixtureClient(
 	let comparisonState = structuredClone(comparisons)
   const nextID = () => crypto.randomUUID()
   const quickTasks = new Map<string, QuickTaskDetail>()
+  const rememberedTaskCredentials = new Set<string>()
   const refreshChannelCounts = () => {
     catalogState.channels = catalogState.channels.map((channel) => ({
       ...channel,
@@ -310,7 +316,11 @@ export function createFixtureClient(
       if (!suite?.quick_test || (suite.model_target && suite.model_target !== command.model)) throw new DesktopClientError("run_not_runnable")
       const channel = catalogState.channels.find((item) => item.id === command.channel_id)
       if (command.channel_id && (!channel?.enabled || channel.protocol !== suite.protocol || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")
-      if (!command.model || (!channel && (!command.base_url || !command.api_key)) || (channel && (command.base_url || command.api_key))) throw new DesktopClientError("run_invalid")
+      if (!command.model || (!channel && (!command.base_url || (!command.api_key && !command.credential_run_id))) || (channel && (command.base_url || command.api_key))) throw new DesktopClientError("run_invalid")
+      if (command.credential_run_id) {
+        const source = quickTasks.get(command.credential_run_id)
+        if (channel || command.api_key || !source || !rememberedTaskCredentials.has(command.credential_run_id) || source.base_url !== command.base_url || source.suite.protocol !== suite.protocol) throw new DesktopClientError("quick_task_credential_unavailable")
+      }
       const id = nextID()
       const now = new Date().toISOString()
       workspace.runs.unshift({
@@ -322,14 +332,21 @@ export function createFixtureClient(
         artifact_count: 0, started_at: now, updated_at: now,
       })
       workspace.active_run_id = id
-      quickTasks.set(id, { schema_version: 1, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: structuredClone(command.inputs) })
+      quickTasks.set(id, { schema_version: 1, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.quick_test.inputs.map((input) => [input.key, input.default])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
       return id
     },
     async getQuickTask(runId) {
       const detail = quickTasks.get(runId)
       if (!detail) throw new DesktopClientError("run_not_runnable")
-      return structuredClone(detail)
+      const credentialRunID = rememberedTaskCredentials.has(runId) ? runId : detail.credential_run_id && rememberedTaskCredentials.has(detail.credential_run_id) ? detail.credential_run_id : undefined
+      return { ...structuredClone(detail), credential_run_id: credentialRunID }
     },
+    async rememberQuickTaskCredential(command) {
+      const source = quickTasks.get(command.run_id)
+      if (!source || source.channel_id || !command.api_key || source.base_url !== command.base_url || source.suite.protocol !== command.protocol) throw new DesktopClientError("run_not_runnable")
+      rememberedTaskCredentials.add(command.run_id)
+    },
+    async forgetQuickTaskCredential(runId) { rememberedTaskCredentials.delete(runId) },
     async stopSending(runId) {
       workspace = updateRun(workspace, runId, "draining")
       return cloneSnapshot(workspace)
@@ -542,6 +559,8 @@ function createLazyFixtureClient(): DesktopClient {
 		startRunTarget: async (command) => (await client).startRunTarget(command),
 		startQuickTask: async (command) => (await client).startQuickTask(command),
 		getQuickTask: async (runId) => (await client).getQuickTask(runId),
+    rememberQuickTaskCredential: async (command) => (await client).rememberQuickTaskCredential(command),
+    forgetQuickTaskCredential: async (runId) => (await client).forgetQuickTaskCredential(runId),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
@@ -631,6 +650,8 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       callBinding(() => binding.CancelRun(runId), parseSnapshot),
 		startComparison: async (command) =>
 			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
+    rememberQuickTaskCredential: async (command) => callBinding(() => binding.RememberQuickTaskCredential(command), () => undefined),
+    forgetQuickTaskCredential: async (runId) => callBinding(() => binding.ForgetQuickTaskCredential(runId), () => undefined),
     runQuickTest: async (command) =>
       callBinding(() => binding.RunQuickTest(command), parseQuickTestResult),
     runQuickPerformanceTest: async (command, onProgress) => {

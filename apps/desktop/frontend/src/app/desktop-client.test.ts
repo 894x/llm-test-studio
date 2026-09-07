@@ -159,6 +159,38 @@ describe("Wails desktop client", () => {
     expect((await client.cancelRun(secondID)).runs.find((run) => run.id === secondID)?.status).toBe("cancelled")
   })
 
+  it("forwards explicit credential actions without restarting or refreshing the task", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    const command = { run_id: FIXTURE_WORKSPACE.runs[0].id, base_url: "https://example.test", protocol: "seedance" as const, api_key: "private-test-key" }
+    await client.rememberQuickTaskCredential(command)
+    await client.forgetQuickTaskCredential(command.run_id)
+    expect(binding.RememberQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(command)
+    expect(binding.ForgetQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(command.run_id)
+    expect(binding.StartQuickTask).not.toHaveBeenCalled()
+    expect(binding.GetWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("replays remembered fixture targets without storing secret values and forgets all references", async () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    const suite = catalog.suites.find((item) => item.quick_test)!
+    const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
+    const command = { suite_id: suite.id, suite_revision: suite.revision, model: suite.model_target || "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+    const runID = await client.startQuickTask(command)
+    expect((await client.getQuickTask(runID)).credential_run_id).toBeUndefined()
+    await client.rememberQuickTaskCredential({ run_id: runID, base_url: command.base_url, protocol: suite.protocol, api_key: command.api_key })
+    const history = await client.getQuickTask(runID)
+    expect(history.credential_run_id).toBe(runID)
+    expect(JSON.stringify(history)).not.toContain(command.api_key)
+    const replay = { ...command, api_key: undefined, credential_run_id: runID }
+    await expect(client.startQuickTask({ ...replay, base_url: "https://different.test" })).rejects.toThrow()
+    const secondID = await client.startQuickTask(replay)
+    expect((await client.getQuickTask(secondID)).credential_run_id).toBe(runID)
+    await client.forgetQuickTaskCredential(runID)
+    expect((await client.getQuickTask(secondID)).credential_run_id).toBeUndefined()
+    await expect(client.startQuickTask(replay)).rejects.toThrow()
+  })
+
   it("keeps idle fixture windows sparse while retaining an empty final partial slice", async () => {
     const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
       address_mode: "base_url",
@@ -1204,6 +1236,7 @@ function installBinding(
 		StartRunTarget: vi.fn(async () => structuredClone(payload)),
 		StartQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
 		GetQuickTask: vi.fn(),
+    RememberQuickTaskCredential: vi.fn(async () => undefined), ForgetQuickTaskCredential: vi.fn(async () => undefined),
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
 		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),

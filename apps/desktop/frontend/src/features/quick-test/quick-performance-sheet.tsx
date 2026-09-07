@@ -138,7 +138,7 @@ const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
 
 export type QuickPerformanceConnection = Pick<
   QuickPerformanceCommand,
-  "address_mode" | "url" | "api_key" | "channel_id" | "model_id" | "task"
+  "address_mode" | "url" | "api_key" | "channel_id" | "credential_run_id" | "model_id" | "task"
 >
 
 export function QuickPerformanceSheet({
@@ -318,6 +318,9 @@ export function QuickPerformanceSheet({
         url: connection.url,
         api_key: connection.api_key,
         ...(connection.channel_id ? { channel_id: connection.channel_id } : {}),
+        ...(connection.credential_run_id
+          ? { credential_run_id: connection.credential_run_id }
+          : {}),
         model_id: connection.model_id,
         load_mode: form.loadMode,
         request_count: form.requestCount,

@@ -96,4 +96,21 @@ describe("quick task drafts", () => {
       expect(draft.base_url).toBe(base_url)
     }
   })
+  it("retains only a remembered credential reference and rejects malformed references", () => {
+    const credential_run_id = "123e4567-e89b-42d3-a456-426614174099"
+    const draft = {
+      ...createTaskDraft(task),
+      base_url: "https://example.test",
+      model: "model",
+      credential_run_id,
+    }
+    expect(decodeTaskDraft(encodeTaskDraft(draft))).toEqual(draft)
+    expect(quickTaskCommand(draft).command).toMatchObject({ credential_run_id })
+    expect(quickTaskCommand(draft).command).not.toHaveProperty("api_key")
+    expect(
+      decodeTaskDraft(
+        JSON.stringify({ ...JSON.parse(encodeTaskDraft(draft)), credential_run_id: "bad" }),
+      ),
+    ).toBeNull()
+  })
 })

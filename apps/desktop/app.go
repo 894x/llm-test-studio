@@ -51,6 +51,7 @@ const (
 	desktopCodeOperationFailed           = "operation_failed"
 	desktopCodeRunInvalid                = "run_invalid"
 	desktopCodeRunNotRunnable            = "run_not_runnable"
+	desktopCodeQuickTaskCredential       = "quick_task_credential_unavailable"
 	desktopCodePlanProtocolMismatch      = "plan_protocol_mismatch"
 	desktopCodeCatalogInvalid            = "catalog_invalid"
 	desktopCodeCatalogConflict           = "catalog_revision_conflict"
@@ -971,6 +972,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeRunInvalid}
 	case errors.Is(internal, runs.ErrNotRunnable):
 		return DesktopBindingError{Code: desktopCodeRunNotRunnable}
+	case errors.Is(internal, runs.ErrQuickTaskCredential):
+		return DesktopBindingError{Code: desktopCodeQuickTaskCredential}
 	case errors.Is(internal, context.Canceled), errors.Is(internal, context.DeadlineExceeded):
 		return DesktopBindingError{Code: desktopCodeOperationCancelled}
 	default:
@@ -996,6 +999,7 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeOperationFailed,
 		desktopCodeRunInvalid,
 		desktopCodeRunNotRunnable,
+		desktopCodeQuickTaskCredential,
 		desktopCodePlanProtocolMismatch,
 		desktopCodeCatalogInvalid,
 		desktopCodeCatalogConflict,

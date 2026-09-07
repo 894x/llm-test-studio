@@ -7,7 +7,7 @@ import (
 )
 
 // ScopedStore transparently binds otherwise stable credential IDs to one
-// authored-catalog root. Sharing a channels.json file therefore shares only
+// storage root. Sharing a channels.json file or Run database therefore shares only
 // non-secret metadata; each root must have its own keyring entry.
 type ScopedStore struct {
 	store Store

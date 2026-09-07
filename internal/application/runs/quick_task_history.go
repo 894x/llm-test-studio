@@ -12,13 +12,14 @@ import (
 // QuickTaskDetail exposes only fields needed to restore a task form. Credentials,
 // request definitions, response bodies, and environment details stay in Core.
 type QuickTaskDetail struct {
-	SchemaVersion int                        `json:"schema_version"`
-	RunID         string                     `json:"run_id"`
-	Suite         QuickTaskSuite             `json:"suite"`
-	Model         string                     `json:"model"`
-	BaseURL       string                     `json:"base_url"`
-	ChannelID     string                     `json:"channel_id,omitempty"`
-	Inputs        map[string]json.RawMessage `json:"inputs"`
+	SchemaVersion   int                        `json:"schema_version"`
+	RunID           string                     `json:"run_id"`
+	Suite           QuickTaskSuite             `json:"suite"`
+	Model           string                     `json:"model"`
+	BaseURL         string                     `json:"base_url"`
+	ChannelID       string                     `json:"channel_id,omitempty"`
+	CredentialRunID string                     `json:"credential_run_id,omitempty"`
+	Inputs          map[string]json.RawMessage `json:"inputs"`
 }
 
 // QuickTaskPerformancePath resolves the unique chat endpoint from the selected
@@ -71,7 +72,7 @@ func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskD
 	}
 	task := snapshot.QuickTask
 	return QuickTaskDetail{SchemaVersion: 1, RunID: runID, Suite: QuickTaskSuite{Suite: task.Suite, CaseCount: len(task.Suite.Cases)}, Model: snapshot.Channel.UpstreamModelName,
-		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID, Inputs: task.Inputs}, nil
+		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID, CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot), Inputs: task.Inputs}, nil
 }
 
 func (service *Service) quickTaskSnapshot(ctx context.Context, runID string) (domain.RunSnapshot, error) {

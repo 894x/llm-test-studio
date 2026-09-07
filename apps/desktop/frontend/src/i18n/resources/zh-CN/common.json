@@ -37,6 +37,7 @@
     "catalog_saved_refresh_failed": "已保存，但目录刷新失败，请刷新或重新打开应用",
     "plan_protocol_mismatch": "计划中的用例、模型和渠道协议不一致，请选择与用例协议一致的模型和渠道，或调整用例/套件",
     "run_invalid": "测试输入无效，请检查任务参数、模型和连接信息",
-    "run_not_runnable": "所选任务或目标无法执行，请检查任务适用版本、用例状态和渠道凭据"
+    "run_not_runnable": "所选任务或目标无法执行，请检查任务适用版本、用例状态和渠道凭据",
+    "quick_task_credential_unavailable": "记住的密钥不可用，请重新输入密钥或恢复系统凭据库后重试"
   }
 }

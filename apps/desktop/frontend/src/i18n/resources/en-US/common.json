@@ -37,6 +37,7 @@
     "catalog_saved_refresh_failed": "Saved, but the catalog could not refresh. Refresh or reopen the app.",
     "plan_protocol_mismatch": "The cases, model and channel use different protocols. Select a model and channel compatible with the cases, or adjust the cases or suite.",
     "run_invalid": "Invalid test inputs. Check task parameters, model, and connection details.",
-    "run_not_runnable": "The selected task or target cannot run. Check model applicability, Case status, and channel credentials."
+    "run_not_runnable": "The selected task or target cannot run. Check model applicability, Case status, and channel credentials.",
+    "quick_task_credential_unavailable": "The remembered key is unavailable. Enter a key again or restore access to the system credential store."
   }
 }

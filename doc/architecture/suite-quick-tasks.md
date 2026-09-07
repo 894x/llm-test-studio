@@ -124,8 +124,18 @@ Drafts survive page navigation and application reload. Local storage contains
 only the task reference/metadata, parameters, model, and a validated connection
 address. Rejected URLs (including userinfo, query strings, and fragments) are not
 persisted. The API key stays in App memory and is cleared on reload or endpoint
-change; existing channels resolve their credential in Core. Explicit remembering
-for a new temporary credential remains separate delivery work.
+change; existing channels resolve their credential in Core.
+
+After a Run is accepted, an explicit Remember action can save its temporary key
+in the OS keyring. Its owner is that operational Run, scoped to the application
+storage directory. No authored target or credential metadata file is created.
+Only `credential_run_id` is persisted in drafts and replay snapshots. Core binds
+the key to the original complete base URL and protocol; other models or Suites
+at that connection can reuse it. Historical reads return an available reference,
+never the key. Forget removes the key while preserving all Run history. Normal
+starts never remember credentials automatically. Remember and Forget can be
+retried independently without replaying a test. The performance entry uses the
+same Core credential lease and pinned Suite path.
 
 `GetQuickTask` returns allow-listed form data from the stored Run snapshot.
 Restoring history includes `source_run_id` when starting again, so Core resolves

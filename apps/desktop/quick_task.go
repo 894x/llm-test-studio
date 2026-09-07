@@ -12,6 +12,43 @@ type QuickTaskHistoryQuery interface {
 	QuickTask(context.Context, string) (runs.QuickTaskDetail, error)
 }
 
+type QuickTaskCredentialCommands interface {
+	RememberQuickTaskCredential(context.Context, runs.RememberQuickTaskCredentialCommand) error
+	ForgetQuickTaskCredential(context.Context, string) error
+}
+
+func (app *DesktopApp) RememberQuickTaskCredential(command runs.RememberQuickTaskCredentialCommand) error {
+	if !domain.IsUUID(command.RunID) {
+		return app.safeBindingError(ErrInvalidIdentifier)
+	}
+	lease, err := app.acquire(desktopRequirements{commands: true})
+	if err != nil {
+		return app.safeBindingError(err)
+	}
+	defer lease.release()
+	commands, ok := lease.commands.(QuickTaskCredentialCommands)
+	if !ok {
+		return app.safeBindingError(ErrQuickTestUnavailable)
+	}
+	return app.safeBindingError(commands.RememberQuickTaskCredential(lease.ctx, command))
+}
+
+func (app *DesktopApp) ForgetQuickTaskCredential(runID string) error {
+	if !domain.IsUUID(runID) {
+		return app.safeBindingError(ErrInvalidIdentifier)
+	}
+	lease, err := app.acquire(desktopRequirements{commands: true})
+	if err != nil {
+		return app.safeBindingError(err)
+	}
+	defer lease.release()
+	commands, ok := lease.commands.(QuickTaskCredentialCommands)
+	if !ok {
+		return app.safeBindingError(ErrQuickTestUnavailable)
+	}
+	return app.safeBindingError(commands.ForgetQuickTaskCredential(lease.ctx, runID))
+}
+
 func (app *DesktopApp) GetQuickTask(runID string) (runs.QuickTaskDetail, error) {
 	if !domain.IsUUID(runID) {
 		return runs.QuickTaskDetail{}, app.safeBindingError(ErrInvalidIdentifier)

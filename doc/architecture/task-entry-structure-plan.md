@@ -19,7 +19,7 @@ without requiring authored models, channels, or Plans.
   execution, cancellation, progress, snapshots, and result handling. Preserve
   the existing performance entry without treating performance as a text-only
   prerequisite for every task.
-- [ ] Retain form drafts and persist run history. Derive recent task/target
+- [x] Retain form drafts and persist run history. Derive recent task/target
   combinations from history; restore parameters for repeat and edited runs.
   Keep credentials in the keyring or temporary memory, with references only in
   history. Credential remembering must be explicit for temporary targets.
@@ -220,3 +220,28 @@ Explicit credential remembering for temporary targets remains unfinished. The
 current page retains a key in memory across navigation and uses existing saved
 channel credentials, but does not persist a new temporary key. The overall goal
 therefore remains open.
+
+
+## Explicit temporary credential remembering
+
+Temporary tasks can explicitly remember a connection key after a Run exists,
+reuse its reference for another task or performance run, and forget it without
+removing history. The OS keyring owns the secret; operational snapshots and
+browser drafts contain only the owning Run reference. Core verifies the complete
+base URL and protocol before leasing a key. Normal test starts remain transient.
+
+Validation covers native binding calls, successful/failed Run history after
+SQLite close/reopen with a shared credential store, key replacement/forget
+retries, endpoint/protocol isolation, and controlled HTTPS performance requests.
+Frontend validation passed 276 tests, lint, and build. All Go packages passed
+(the desktop contract fixture was updated and its full suite rerun), as did
+full vet and generated protocol checks. Wails v2.15.0 regenerated bindings
+without module changes. Rendered browser fixtures at 960x640 verified explicit
+remember/reuse/forget, navigation, secret exclusion from local storage, and no
+horizontal overflow or browser errors. Fixture evidence does not establish a
+live provider or native OS keyring test. The existing chunk-size warning remains.
+
+Read-only source review found no actionable issue; the code graph remained
+unavailable. Final structural cleanup remains before overall completion: remove
+the unused synchronous text-only command and catalog-save path left behind by
+the page replacement, preserving shared performance execution and diagnostics.

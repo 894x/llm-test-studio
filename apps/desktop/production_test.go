@@ -567,7 +567,7 @@ func TestProductionChannelCreateWritesOnlyMetadataToFileAndSecretToKeyring(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	credentialScope, err := credentialScopeForAuthoredCatalogRoot(executableDirectory)
+	credentialScope, err := credentialScopeForRoot(executableDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -646,7 +646,7 @@ func TestProductionCopiedChannelMetadataCannotDeleteAnotherAuthoredRootSecret(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	scopeA, err := credentialScopeForAuthoredCatalogRoot(rootA)
+	scopeA, err := credentialScopeForRoot(rootA)
 	if err != nil {
 		t.Fatal(err)
 	}
