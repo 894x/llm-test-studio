@@ -32,6 +32,8 @@ jobs:
           cache: true
       - name: Verify modules
         run: go mod verify
+      - name: Verify generated protocol contract
+        run: go run ./scripts/generate-protocols -check
       - name: Run tests
         run: go test ./... -count=1
       - name: Run vet

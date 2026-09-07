@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/894x/llm-test-studio/engine/apiaudit"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -251,7 +252,7 @@ func descriptorResponseProbe() Descriptor {
 func descriptorLegacyAPIAudit() Descriptor {
 	return Descriptor{
 		Type: TypeLegacyAPIAudit, TypeVersion: 1, Label: "内置兼容性审计", Category: "compatibility",
-		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3, domain.ProtocolSeedance, domain.ProtocolWanVideo, domain.ProtocolMiniMaxVideo},
+		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: legacyProtocols(),
 		Creatable: false,
 		DefaultSpec: mustJSON(LegacyAPIAuditSpec{
 			Kind:    "chat_sync",
@@ -405,7 +406,7 @@ func validateLegacyAPIAudit(protocol domain.Protocol, raw json.RawMessage) error
 	if err := spec.Request.Validate(); err != nil {
 		return err
 	}
-	if _, supported := legacyKinds[protocol][spec.Kind]; !supported {
+	if !apiaudit.SupportsKind(string(protocol), spec.Kind) {
 		return fmt.Errorf("legacy.apiaudit kind %q is not supported for %s", spec.Kind, protocol)
 	}
 	return nil
@@ -473,33 +474,11 @@ func mustJSON(value any) json.RawMessage {
 	return raw
 }
 
-func makeKindSet(values ...string) map[string]struct{} {
-	result := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		result[value] = struct{}{}
+func legacyProtocols() []domain.Protocol {
+	ids := apiaudit.SupportedProtocols()
+	result := make([]domain.Protocol, len(ids))
+	for i, id := range ids {
+		result[i] = domain.Protocol(id)
 	}
 	return result
-}
-
-var legacyKinds = map[domain.Protocol]map[string]struct{}{
-	domain.ProtocolOpenAIChat: makeKindSet(
-		"manual_unknown", "id_consistency", "stream_usage", "chat_stream", "error_schema", "models_contains",
-		"response_id", "stop_parameter", "structured_json", "tool_call", "chat_sync", "usage_baseline",
-		"stream_parity", "sse_integrity", "reasoning_visibility", "logprobs_contract", "deterministic_stability",
-		"multi_turn_usage", "structured_stability", "concurrency_probe", "stream_ttft", "long_stream_stability",
-		"cache_visibility", "stream_throughput", "sampling_effect", "parameter_boundaries", "usage_growth",
-		"needle_retrieval", "error_no_usage", "padding_ratio",
-	),
-	domain.ProtocolKimiK3: makeKindSet(
-		"manual_unknown", "id_consistency", "stream_usage", "chat_stream", "error_schema", "models_contains",
-		"response_id", "stop_parameter", "structured_json", "tool_call", "chat_sync", "usage_baseline",
-		"stream_parity", "sse_integrity", "reasoning_visibility", "logprobs_contract", "deterministic_stability",
-		"multi_turn_usage", "structured_stability", "concurrency_probe", "stream_ttft", "long_stream_stability",
-		"cache_visibility", "stream_throughput", "sampling_effect", "parameter_boundaries", "usage_growth",
-		"needle_retrieval", "error_no_usage", "padding_ratio", "kimi_success", "kimi_tool_call",
-		"kimi_reasoning_visible", "kimi_reasoning_hidden", "kimi_error_400",
-	),
-	domain.ProtocolSeedance:     makeKindSet("seedance_task"),
-	domain.ProtocolWanVideo:     makeKindSet("wan_task_success", "wan_task_rejected"),
-	domain.ProtocolMiniMaxVideo: makeKindSet("minimax_video_task_success", "minimax_video_task_rejected", "minimax_video_auth_rejected"),
 }

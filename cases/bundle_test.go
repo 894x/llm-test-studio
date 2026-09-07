@@ -1,7 +1,9 @@
 package casebundle_test
 
 import (
+	"bytes"
 	"io/fs"
+	"os"
 	"testing"
 
 	casebundle "github.com/894x/llm-test-studio/cases"
@@ -10,29 +12,23 @@ import (
 func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 	t.Parallel()
 
-	protocols := map[string]int{
-		"openai-chat":   44,
-		"kimi-k3":       87,
-		"seedance":      6,
-		"wan-video":     213,
-		"minimax-video": 149,
+	source := os.DirFS(".")
+	matches, err := fs.Glob(source, "*/*/case.json")
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("discover source cases: %v", err)
 	}
-	for protocol, want := range protocols {
-		matches, err := fs.Glob(casebundle.Bundle, protocol+"/*/case.json")
-		if err != nil {
-			t.Fatalf("glob %s cases: %v", protocol, err)
+	embedded, err := fs.Glob(casebundle.Bundle, "*/*/case.json")
+	if err != nil || len(embedded) != len(matches) {
+		t.Fatalf("embedded cases = %d, source cases = %d, err = %v", len(embedded), len(matches), err)
+	}
+	for _, path := range matches {
+		contents, readErr := fs.ReadFile(casebundle.Bundle, path)
+		if readErr != nil {
+			t.Fatalf("read embedded %s: %v", path, readErr)
 		}
-		if got := len(matches); got != want {
-			t.Fatalf("%s embedded cases = %d, want %d", protocol, got, want)
-		}
-		for _, path := range matches {
-			contents, readErr := fs.ReadFile(casebundle.Bundle, path)
-			if readErr != nil {
-				t.Fatalf("read embedded %s: %v", path, readErr)
-			}
-			if len(contents) == 0 {
-				t.Fatalf("embedded %s is empty", path)
-			}
+		expected, readErr := fs.ReadFile(source, path)
+		if readErr != nil || len(contents) == 0 || !bytes.Equal(contents, expected) {
+			t.Fatalf("embedded %s does not match source: %v", path, readErr)
 		}
 	}
 

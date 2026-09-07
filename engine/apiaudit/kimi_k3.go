@@ -9,19 +9,6 @@ import (
 
 const DefaultKimiK3Model = "kimi-k3"
 
-func init() {
-	kinds := make(map[string]bool, len(supportedKinds["openai-chat"])+5)
-	for kind, supported := range supportedKinds["openai-chat"] {
-		kinds[kind] = supported
-	}
-	kinds["kimi_success"] = true
-	kinds["kimi_tool_call"] = true
-	kinds["kimi_reasoning_visible"] = true
-	kinds["kimi_reasoning_hidden"] = true
-	kinds["kimi_error_400"] = true
-	supportedKinds["kimi-k3"] = kinds
-}
-
 // RunKimiK3Case runs Kimi-K3-specific assertions and delegates shared
 // OpenAI-compatible behavior to the regular chat-completions runner.
 func RunKimiK3Case(ctx context.Context, doer HTTPDoer, config RunConfig, definition CaseDefinition) (result CaseResult) {

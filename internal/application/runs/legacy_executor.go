@@ -60,23 +60,11 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 			return fmt.Errorf("prepare legacy case %s: %w", testCase.ID, convertErr)
 		}
 		caseContext, cancel := context.WithTimeout(ctx, config.Timeout)
-		var result apiaudit.CaseResult
-		switch testCase.Protocol {
-		case domain.ProtocolOpenAIChat:
-			result = apiaudit.RunOpenAIChatCase(caseContext, executor.httpDoer, config, definition)
-		case domain.ProtocolKimiK3:
-			result = apiaudit.RunKimiK3Case(caseContext, executor.httpDoer, config, definition)
-		case domain.ProtocolSeedance:
-			result = apiaudit.RunSeedanceCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
-		case domain.ProtocolWanVideo:
-			result = apiaudit.RunWanVideoCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
-		case domain.ProtocolMiniMaxVideo:
-			result = apiaudit.RunMiniMaxVideoCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
-		default:
-			cancel()
-			return ErrUnsupportedExecutionProtocol
-		}
+		result, runErr := apiaudit.RunCase(caseContext, executor.httpDoer, config, apiaudit.PlannedRun{Case: definition, Model: config.Model, ResultID: definition.ID})
 		cancel()
+		if runErr != nil {
+			return fmt.Errorf("%w: %v", ErrUnsupportedExecutionProtocol, runErr)
+		}
 		if err := emit(draftFromLegacyResult(testCase.ID, index, result)); err != nil {
 			return err
 		}

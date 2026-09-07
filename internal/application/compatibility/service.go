@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/894x/llm-test-studio/engine/apiaudit"
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 type RunRequest struct {
@@ -302,24 +304,10 @@ func (service *Service) runLive(ctx context.Context, config apiaudit.RunConfig, 
 func (service *Service) runPlannedCase(parent context.Context, config apiaudit.RunConfig, planned apiaudit.PlannedRun) apiaudit.CaseResult {
 	caseContext, cancelCase := context.WithTimeout(parent, config.Timeout)
 	defer cancelCase()
-	if config.Suite == "seedance" {
-		return apiaudit.RunSeedanceCase(caseContext, service.httpDoer, config, planned)
+	result, err := apiaudit.RunCase(caseContext, service.httpDoer, config, planned)
+	if err != nil {
+		return apiaudit.CaseResult{ID: planned.ResultID, Name: planned.Case.Name, Dimension: planned.Case.Dimension, Protocol: planned.Case.Protocol, Model: planned.Model, Severity: planned.Case.Severity, Status: apiaudit.StatusFail, Evidence: err.Error()}
 	}
-	if config.Suite == "wan-video" {
-		return apiaudit.RunWanVideoCase(caseContext, service.httpDoer, config, planned)
-	}
-	if config.Suite == "minimax-video" {
-		return apiaudit.RunMiniMaxVideoCase(caseContext, service.httpDoer, config, planned)
-	}
-	caseConfig := config
-	caseConfig.Model = planned.Model
-	if config.Suite == "kimi-k3" {
-		result := apiaudit.RunKimiK3Case(caseContext, service.httpDoer, caseConfig, planned.Case)
-		result.ID = planned.ResultID
-		return result
-	}
-	result := apiaudit.RunOpenAIChatCase(caseContext, service.httpDoer, caseConfig, planned.Case)
-	result.ID = planned.ResultID
 	return result
 }
 
@@ -334,8 +322,14 @@ func (service *Service) emitProgress(completed, total int, result apiaudit.CaseR
 }
 
 func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
-	if request.Suite != "openai-chat" && request.Suite != "kimi-k3" && request.Suite != "seedance" && request.Suite != "wan-video" && request.Suite != "minimax-video" {
-		return apiaudit.RunConfig{}, fmt.Errorf("--suite must be openai-chat, kimi-k3, seedance, wan-video, or minimax-video")
+	descriptor, known := protocol.Lookup(request.Suite)
+	supported := apiaudit.SupportedProtocols()
+	if !known || !slices.Contains(supported, request.Suite) {
+		choices := strings.Join(supported, ", ")
+		if len(supported) > 1 {
+			choices = strings.Join(supported[:len(supported)-1], ", ") + ", or " + supported[len(supported)-1]
+		}
+		return apiaudit.RunConfig{}, fmt.Errorf("--suite must be %s", choices)
 	}
 	parsedBase, err := url.Parse(request.BaseURL)
 	if err != nil || parsedBase.Scheme != "https" || parsedBase.Host == "" {
@@ -359,7 +353,7 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 	if request.Concurrency < 1 || request.Concurrency > 32 {
 		return apiaudit.RunConfig{}, fmt.Errorf("--concurrency must be between 1 and 32")
 	}
-	if (request.Suite == "seedance" || request.Suite == "wan-video" || request.Suite == "minimax-video") && request.Concurrency != 1 {
+	if descriptor.Async && request.Concurrency != 1 {
 		return apiaudit.RunConfig{}, fmt.Errorf("--concurrency is not supported for %s", request.Suite)
 	}
 	if !request.DryRun && strings.TrimSpace(request.APIKey) == "" {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 var (
@@ -211,7 +212,8 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if !channel.Enabled || model.Protocol != channel.Protocol || mapping.ModelID != model.ID || mapping.ChannelID != channel.ID {
 		return "", ErrNotRunnable
 	}
-	if (model.Protocol == domain.ProtocolWanVideo || model.Protocol == domain.ProtocolMiniMaxVideo) && !command.ConfirmPaidVideo {
+	protocolInfo, _ := protocol.Lookup(string(model.Protocol))
+	if protocolInfo.AlwaysConfirmPaid && !command.ConfirmPaidVideo {
 		return "", ErrPaidConfirmationRequired
 	}
 	cases := make([]domain.TestCase, 0, len(plan.Cases))
@@ -225,7 +227,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 			testCase.ExecutionMode != domain.CaseExecutionAutomatic || testCase.Protocol != model.Protocol {
 			return "", ErrNotRunnable
 		}
-		if (testCase.Protocol == domain.ProtocolWanVideo || testCase.Protocol == domain.ProtocolMiniMaxVideo) && len(testCase.ModelTargets) == 0 {
+		if protocolInfo.RequiresModelTargets && len(testCase.ModelTargets) == 0 {
 			return "", ErrNotRunnable
 		}
 		if !testCase.AppliesToModel(mapping.UpstreamModelName) {

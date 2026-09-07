@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/894x/llm-test-studio/engine/apiaudit"
 	"github.com/894x/llm-test-studio/internal/application/compatibility"
 	appdoctor "github.com/894x/llm-test-studio/internal/application/doctor"
 	"github.com/894x/llm-test-studio/internal/diagnostics"
@@ -241,7 +242,7 @@ func (doer outputGuardedDoer) Do(request *http.Request) (*http.Response, error) 
 func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, dependencies dependencies) int {
 	flags := flag.NewFlagSet("audit run", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, seedance, wan-video, or minimax-video")
+	suite := flags.String("suite", "", "case suite: "+strings.Join(apiaudit.SupportedProtocols(), ", "))
 	casesRoot := flags.String("cases-root", "cases", "case definition root")
 	baseURL := flags.String("base-url", "", "HTTPS gateway base URL")
 	model := flags.String("model", "", "model to audit")
@@ -498,7 +499,7 @@ func runAuditList(ctx context.Context, args []string, stdout, stderr io.Writer, 
 	ctx = nonNilContext(ctx)
 	flags := flag.NewFlagSet("audit list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	suite := flags.String("suite", "", "case suite: openai-chat, kimi-k3, seedance, wan-video, or minimax-video")
+	suite := flags.String("suite", "", "case suite: "+strings.Join(apiaudit.SupportedProtocols(), ", "))
 	casesRoot := flags.String("cases-root", "cases", "case definition root")
 	format := flags.String("format", "json", "output format: json or human")
 	diagnosticDetail := flags.Bool("diagnostic-detail", false, "include a redacted internal error detail")

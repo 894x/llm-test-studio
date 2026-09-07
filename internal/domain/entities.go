@@ -13,25 +13,25 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 type Protocol string
 
 const (
-	ProtocolOpenAIChat   Protocol = "openai-chat"
-	ProtocolKimiK3       Protocol = "kimi-k3"
-	ProtocolSeedance     Protocol = "seedance"
-	ProtocolWanVideo     Protocol = "wan-video"
-	ProtocolMiniMaxVideo Protocol = "minimax-video"
+	ProtocolOpenAIChat   Protocol = protocol.OpenAIChat
+	ProtocolKimiK3       Protocol = protocol.KimiK3
+	ProtocolSeedance     Protocol = protocol.Seedance
+	ProtocolWanVideo     Protocol = protocol.WanVideo
+	ProtocolMiniMaxVideo Protocol = protocol.MiniMaxVideo
 )
 
-func (protocol Protocol) Validate() error {
-	switch protocol {
-	case ProtocolOpenAIChat, ProtocolKimiK3, ProtocolSeedance, ProtocolWanVideo, ProtocolMiniMaxVideo:
-		return nil
-	default:
-		return fmt.Errorf("unsupported protocol %q", protocol)
+func (value Protocol) Validate() error {
+	if _, ok := protocol.Lookup(string(value)); !ok {
+		return fmt.Errorf("unsupported protocol %q", value)
 	}
+	return nil
 }
 
 type EntityRevisionRef struct {

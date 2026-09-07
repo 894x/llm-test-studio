@@ -1,6 +1,7 @@
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
-export type CatalogProtocol = "openai-chat" | "kimi-k3" | "seedance" | "wan-video" | "minimax-video"
+import { isProtocol, type ProtocolID } from "./protocols"
+export type CatalogProtocol = ProtocolID
 export type CatalogLoadMode = "single" | "fixed_concurrency" | "open_loop"
 export type CatalogCaseSeverity = "normal" | "critical"
 export type CatalogCaseExecutionMode = "automatic" | "manual"
@@ -523,10 +524,6 @@ function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
 
 function isOptionalSuiteRef(id: unknown, revision: unknown): boolean {
   return (id === undefined && revision === undefined) || (isUUID(id) && isPositiveInteger(revision))
-}
-
-function isProtocol(value: unknown): value is CatalogProtocol {
-  return value === "openai-chat" || value === "kimi-k3" || value === "seedance" || value === "wan-video" || value === "minimax-video"
 }
 
 function isLoadMode(value: unknown): value is CatalogLoadMode {

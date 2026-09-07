@@ -10,35 +10,20 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 var safeCaseIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 var safeResultIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]*$`)
 
-var supportedKinds = map[string]map[string]bool{
-	"openai-chat": {
-		"manual_unknown": true, "id_consistency": true, "stream_usage": true,
-		"chat_stream": true, "error_schema": true, "models_contains": true,
-		"response_id": true, "stop_parameter": true, "structured_json": true,
-		"tool_call": true, "chat_sync": true,
-		"usage_baseline": true, "stream_parity": true, "sse_integrity": true,
-		"reasoning_visibility": true, "logprobs_contract": true,
-		"deterministic_stability": true, "multi_turn_usage": true,
-		"structured_stability": true, "concurrency_probe": true,
-		"stream_ttft": true, "long_stream_stability": true,
-		"cache_visibility": true, "stream_throughput": true,
-		"sampling_effect": true, "parameter_boundaries": true,
-		"usage_growth": true, "needle_retrieval": true,
-		"error_no_usage": true, "padding_ratio": true,
-	},
-	"seedance":      {"seedance_task": true},
-	"wan-video":     {"wan_task_success": true, "wan_task_rejected": true},
-	"minimax-video": {"minimax_video_task_success": true, "minimax_video_task_rejected": true, "minimax_video_auth_rejected": true},
-}
-
 func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 	if strings.TrimSpace(suite) == "" {
 		return nil, fmt.Errorf("suite is required")
+	}
+	descriptor, supported := protocol.Lookup(suite)
+	if !supported {
+		return nil, fmt.Errorf("unsupported protocol %q", suite)
 	}
 	suiteDir := filepath.Join(root, suite)
 	entries, err := os.ReadDir(suiteDir)
@@ -88,10 +73,10 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if definition.Protocol != suite {
 			return nil, fmt.Errorf("case %s protocol %q does not match suite %q", definition.ID, definition.Protocol, suite)
 		}
-		if (suite == "wan-video" || suite == "minimax-video") && len(definition.ModelTargets) == 0 {
+		if descriptor.RequiresModelTargets && len(definition.ModelTargets) == 0 {
 			return nil, fmt.Errorf("case %s requires version-scoped model targets", definition.ID)
 		}
-		if !supportedKinds[suite][definition.Kind] {
+		if !SupportsKind(suite, definition.Kind) {
 			return nil, fmt.Errorf("case %s has unsupported kind %q for suite %q", definition.ID, definition.Kind, suite)
 		}
 		definition.Request.Method = strings.ToUpper(strings.TrimSpace(definition.Request.Method))
@@ -108,7 +93,7 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if definition.Request.Method != "" && definition.Request.Method != "GET" && definition.Request.Method != "POST" {
 			return nil, fmt.Errorf("case %s request method %q is not supported", definition.ID, definition.Request.Method)
 		}
-		if (suite == "seedance" || suite == "wan-video" || suite == "minimax-video") && definition.Request.Body == nil {
+		if descriptor.Async && definition.Request.Body == nil {
 			return nil, fmt.Errorf("case %s request body is required", definition.ID)
 		}
 		if err := validateCaseOptions(definition); err != nil {

@@ -37,13 +37,7 @@ import type {
 } from "./data"
 import { CatalogEditor, DeleteCatalogButton, type CatalogMutation } from "./catalog-editors"
 
-const PROTOCOL_LABELS = {
-  "openai-chat": "OpenAI Chat",
-  "kimi-k3": "Kimi K3",
-  seedance: "Seedance",
-  "wan-video": "Wan Video",
-  "minimax-video": "MiniMax Video",
-} as const
+import { PROTOCOL_LABELS } from "./protocols"
 
 interface CatalogWorkspaceProps {
   catalog: CatalogSnapshot
