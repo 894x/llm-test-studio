@@ -38,7 +38,7 @@
 - GUI 和 CLI 只负责交互，业务规则、校验、执行、持久化和报告必须进入共享核心。
 - V1 本地优先、离线可用，不依赖账号或远程服务。
 - V1 即为主要对象分配稳定 UUID，并保存 schema version、revision 和时间戳，为 V2 同步预留条件。
-- 本地结构化数据使用 SQLite；大体积请求证据和报告附件使用本地文件存储，SQLite 只保存索引、哈希和相对路径。
+- 模型、渠道、Case、Suite、Plan 使用文件化配置；SQLite 保存运行、结果、报告和不可变运行快照，大体积附件使用本地文件。
 - Credential 使用操作系统安全存储，SQLite 只保存凭据引用和脱敏元数据。
 - HTML 是可视化报告的标准渲染结果；PNG 和 PDF 从同一 HTML/CSS 渲染链路导出，JSON 是结构化数据源。
 - 本地和远程执行共享 Plan、Run、Result、Evidence、Report 协议，避免 V2 重写产品。
@@ -112,7 +112,7 @@ llm-test-studio doctor
 ### SQLite 与本地数据
 
 - [ ] 建立数据库 migration 机制，不允许仅依赖启动时临时建表。
-- [ ] 建立核心表：models、channels、channel_models、test_cases、test_suites、test_plans、plan_cases。
+- [x] 作者配置采用文件目录，移除 models、channels、test_cases、test_suites、test_plans 等作者数据的 SQLite 持久化与启动导入。
 - [ ] 建立执行表：runs、request_results、case_results、report_records、artifact_records。
 - [ ] 建立 integrations 表，但只保存外部连接的非秘密配置与 Credential 引用。
 - [ ] Run 必须保存模型、渠道、用例、负载参数和环境的不可变快照。
@@ -182,7 +182,7 @@ llm-test-studio doctor
 - [ ] SQLite、日志、报告和导出包中不存在明文 Key。
 - [ ] 模型、渠道、Key、用例、Suite、Plan、Run 和 Report 形成完整闭环。
 - [ ] 压测和兼容测试均可导出 JSON、HTML、PNG、PDF。
-- [ ] 旧数据可通过 migration 升级，失败时能够回滚或恢复备份。
+- [x] 当前 operational schema v1 对不兼容的旧库返回 `ErrSchemaResetRequired`，保留原库；不恢复作者数据的旧导入或兼容迁移。
 
 ---
 
@@ -337,14 +337,15 @@ Remote Execution Plane
 - **P1**：统一压测与兼容引擎、GUI/CLI 功能闭环、四格式报告、三平台打包。
 - **P2**：账号同步、远程执行、new-api 一键上架。
 
-## 当前已验证的窄交付（2026-08-30）
+## 当前目录与执行边界（2026-09-07）
 
 - [x] 为领域 `TestCase` 增加 key、维度、启停、默认、严重度、执行模式和版本化 definition。
-- [x] 将 89 个 legacy case 严格转换并幂等导入 SQLite，记录稳定 UUID、四类哈希、CAS、冲突和退休状态。
-- [x] 通过 schema v3 回填旧 `TestCase` 文档，保持原 ID、revision 和时间元数据。
-- [x] Wails production 启动时使用用户配置目录中的 SQLite，并接通 Catalog 与最新 100 条报告摘要查询。
+- [x] 作者配置从文件读取；SQLite 仅承载运行数据，不执行内置 Case 导入或 Suite seed。
+- [x] 移除旧批量导入服务，将仍在使用的 Case JSON 编解码、稳定 ID 和内容 revision 收敛到 `internal/casecodec`。
+- [x] Case/Suite 保存与历史版本写入共用 `internal/fileconfig` 的原子写入能力。
+- [x] 当前运行数据库采用 operational schema v1，拒绝不兼容旧库并保持原库不变。
 - [x] React 桌面主导航的总览、模型与渠道、用例、计划、运行、报告均有可访问工作区。
-- [ ] 实现 `legacy.apiaudit.v1` 的纯 Go evaluator runtime，并证明与旧执行行为等价。
+- [x] 桌面执行器通过 `legacy.apiaudit` 类型调用 Go API audit runtime；现有协议和版本边界仍由注册表及测试约束。
 - [ ] 用真实三平台安装包完成 Wails、系统 WebView、系统凭据、签名和升级回滚验收。
 
-详细证据、边界与后续顺序见 [`doc/architecture/case-catalog-migration.md`](doc/architecture/case-catalog-migration.md)。
+当前文件目录边界见 [ADR-0003](doc/adr/0003-json-case-suite-catalog.md)。旧 SQLite 导入切片与迁移计划仅保留为[历史说明](doc/archive/2026-08-30-case-catalog-migration.md)和[历史计划](doc/archive/2026-08-30-refactor-implementation-plan.md)，不再作为当前待办。

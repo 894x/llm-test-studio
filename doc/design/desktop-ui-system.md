@@ -125,4 +125,4 @@ shadcn/ui，不引入 Naive UI 运行时，也不复制 Animetown 的组件代�
 - light、dark、system 三种偏好、首次绘制、系统主题变化和 overlay 同步。
 - Browser/IAB 中走通：筛选 -> 选择运行 -> 打开检查器 -> 新建运行 -> 启动 -> 停止发送或取消。
 
-仓库中的旧 `design/overview-concept.png` 与 `design/models-concept.png` 仅保留为历史探索，不是桌面实现的视觉规范。
+桌面实现以本文和 `apps/desktop/frontend/src/index.css` 为视觉规范；早期概念图已移除，可从 Git 历史追溯。

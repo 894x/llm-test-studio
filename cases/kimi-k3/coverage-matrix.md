@@ -37,7 +37,7 @@ This matrix distinguishes runnable contract cases from deferred cost-heavy or ru
 - T3: media, long-context, caching, concurrency, or repeated-call scenarios. They are never part of the default case selection and require explicit operator selection or a separate profile.
 - No live Kimi request was made while creating this matrix.
 
-The deferred 1M profile should use a tokenizer-generated prompt near 999,000 tokens, `max_completion_tokens=512`, one request, and concurrency 1. It must first prove that input plus requested output stays within 1,048,576 tokens. It is intentionally not stored as a top-level JSON file because the repository importer rejects non-case JSON outside its explicit `load-profile-32k.json` exception.
+The deferred 1M profile should use a tokenizer-generated prompt near 999,000 tokens, `max_completion_tokens=512`, one request, and concurrency 1. It must first prove that input plus requested output stays within 1,048,576 tokens. It remains a design note rather than an executable case; normal Case discovery reads `case.json` documents, while `load-profile-32k.json` is retained separately as a reference workload.
 
 ## Primary sources
 

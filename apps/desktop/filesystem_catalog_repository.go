@@ -11,12 +11,12 @@ import (
 	"strings"
 
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
-	"github.com/894x/llm-test-studio/internal/application/caseimport"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
+	"github.com/894x/llm-test-studio/internal/casecodec"
 	"github.com/894x/llm-test-studio/internal/diagnostics"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
@@ -1136,7 +1136,7 @@ func (repository filesystemCatalogRepository) isCredentialReferencedUnlocked(ctx
 }
 
 func (repository filesystemCatalogRepository) authoredCaseMatches(ctx context.Context, desired domain.TestCase) (bool, error) {
-	desiredDigest, err := caseimport.MaterializedSHA256(desired)
+	desiredDigest, err := casecodec.MaterializedSHA256(desired)
 	if err != nil {
 		return false, err
 	}
@@ -1149,7 +1149,7 @@ func (repository filesystemCatalogRepository) authoredCaseMatches(ctx context.Co
 		if current.Protocol != desired.Protocol || current.Key != desired.Key {
 			continue
 		}
-		currentDigest, err := caseimport.MaterializedSHA256(current)
+		currentDigest, err := casecodec.MaterializedSHA256(current)
 		if err != nil {
 			return false, err
 		}

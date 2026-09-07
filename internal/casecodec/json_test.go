@@ -1,4 +1,4 @@
-package caseimport
+package casecodec
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		candidate, err := convertFilesystemCase(path, raw)
+		candidate, err := DecodeFilesystemCase(path, raw)
 		if err != nil {
 			t.Errorf("convert %s: %v", path, err)
 			return nil
@@ -191,6 +191,15 @@ func TestFilesystemCaseV2RoundTripsModelTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Captured before removing the database importer: existing plans and snapshots
+	// must continue resolving the same file identity, revision and materialized hash.
+	if testCase.ID != "38f7fa73-3daa-5485-aa72-9bd86c801bf1" || testCase.Revision != 8890788633403125 {
+		t.Fatalf("stable file identity changed: %s revision %d", testCase.ID, testCase.Revision)
+	}
+	digest, err := MaterializedSHA256(testCase)
+	if err != nil || digest != "adff96200a445ef5e8b677b197c02b09bbad735a07bf17def06de42f3eb837d7" {
+		t.Fatalf("materialized hash changed: %q, %v", digest, err)
+	}
 	encoded, err := EncodeFilesystemCase(testCase)
 	if err != nil {
 		t.Fatal(err)
@@ -210,5 +219,5 @@ func testRepositoryRoot(t *testing.T) string {
 	if !ok {
 		t.Fatal("runtime.Caller() failed")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(current), "..", "..", ".."))
+	return filepath.Clean(filepath.Join(filepath.Dir(current), "..", ".."))
 }

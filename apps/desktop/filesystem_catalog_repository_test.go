@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
-	"github.com/894x/llm-test-studio/internal/application/caseimport"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
+	"github.com/894x/llm-test-studio/internal/casecodec"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -605,7 +605,7 @@ func TestFilesystemCatalogRepositoryPlanPinsSurviveExternalCaseAndSuiteEdits(t *
 	for _, pinned := range []casecatalog.Entry{directCase, suiteCase} {
 		edited := pinned.TestCase
 		edited.Name += " externally edited"
-		raw, err := caseimport.EncodeFilesystemCase(edited)
+		raw, err := casecodec.EncodeFilesystemCase(edited)
 		if err != nil {
 			t.Fatal(err)
 		}

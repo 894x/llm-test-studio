@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/894x/llm-test-studio/internal/application/caseimport"
+	"github.com/894x/llm-test-studio/internal/casecodec"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
@@ -251,7 +251,7 @@ func (service *Service) StoreRevision(ctx context.Context, testCase domain.TestC
 }
 
 func (service *Service) SaveCase(ctx context.Context, group, directory string, testCase domain.TestCase) error {
-	raw, err := caseimport.EncodeFilesystemCase(testCase)
+	raw, err := casecodec.EncodeFilesystemCase(testCase)
 	if err != nil {
 		return ErrInvalid
 	}
@@ -293,7 +293,7 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 		return ErrInvalid
 	}
 	sourcePath := group + "/" + directory + "/case.json"
-	testCase, err := caseimport.DecodeFilesystemCase(sourcePath, raw)
+	testCase, err := casecodec.DecodeFilesystemCase(sourcePath, raw)
 	if err != nil || testCase.Protocol != protocol {
 		return ErrInvalid
 	}
@@ -319,36 +319,7 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	if !withinRoot(service.userRoot, target) {
 		return ErrInvalid
 	}
-	if err := os.MkdirAll(targetDirectory, 0o700); err != nil {
-		return fmt.Errorf("create user case directory: %w", err)
-	}
-	file, err := os.CreateTemp(targetDirectory, ".case-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create case temp file: %w", err)
-	}
-	temporary := file.Name()
-	cleanup := func() { _ = os.Remove(temporary) }
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		cleanup()
-		return err
-	}
-	if _, err := file.Write(raw); err != nil {
-		_ = file.Close()
-		cleanup()
-		return fmt.Errorf("write case temp file: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		cleanup()
-		return fmt.Errorf("sync case temp file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("close case temp file: %w", err)
-	}
-	if err := replaceCaseFile(temporary, target); err != nil {
-		cleanup()
+	if err := fileconfig.WriteAtomically(ctx, target, raw); err != nil {
 		return fmt.Errorf("install case file: %w", err)
 	}
 	return nil
@@ -440,7 +411,7 @@ func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]
 		if err != nil {
 			return err
 		}
-		testCase, err := caseimport.DecodeFilesystemCase(path, raw)
+		testCase, err := casecodec.DecodeFilesystemCase(path, raw)
 		if err != nil || string(testCase.Protocol) != parts[0] {
 			return fmt.Errorf("invalid case file %q", path)
 		}

@@ -323,36 +323,7 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	if !withinRoot(service.userRoot, target) {
 		return ErrInvalid
 	}
-	if err := os.MkdirAll(targetDirectory, 0o700); err != nil {
-		return fmt.Errorf("create user suite directory: %w", err)
-	}
-	file, err := os.CreateTemp(targetDirectory, ".suite-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create suite temp file: %w", err)
-	}
-	temporary := file.Name()
-	cleanup := func() { _ = os.Remove(temporary) }
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		cleanup()
-		return err
-	}
-	if _, err := file.Write(raw); err != nil {
-		_ = file.Close()
-		cleanup()
-		return fmt.Errorf("write suite temp file: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		cleanup()
-		return fmt.Errorf("sync suite temp file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("close suite temp file: %w", err)
-	}
-	if err := replaceSuiteFile(temporary, target); err != nil {
-		cleanup()
+	if err := fileconfig.WriteAtomically(ctx, target, raw); err != nil {
 		return fmt.Errorf("install suite file: %w", err)
 	}
 	return nil

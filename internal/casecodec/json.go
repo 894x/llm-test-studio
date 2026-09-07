@@ -1,4 +1,6 @@
-package caseimport
+// Package casecodec encodes and decodes shareable Case documents while preserving
+// the stable identities and content revisions used by catalogs and run snapshots.
+package casecodec
 
 import (
 	"bytes"
@@ -31,20 +33,17 @@ type shareableFilesystemCase struct {
 }
 
 type convertedCase struct {
-	SourcePath         string
-	SourceBytesSHA256  string
-	SemanticSHA256     string
-	MaterializedSHA256 string
-	Key                string
-	Name               string
-	Dimension          string
-	Protocol           domain.Protocol
-	ModelTargets       []string
-	Enabled            bool
-	Default            bool
-	Severity           domain.CaseSeverity
-	ExecutionMode      domain.CaseExecutionMode
-	Definition         domain.TestCaseDefinition
+	SemanticSHA256 string
+	Key            string
+	Name           string
+	Dimension      string
+	Protocol       domain.Protocol
+	ModelTargets   []string
+	Enabled        bool
+	Default        bool
+	Severity       domain.CaseSeverity
+	ExecutionMode  domain.CaseExecutionMode
+	Definition     domain.TestCaseDefinition
 }
 
 // DecodeFilesystemCase accepts the v2 shareable case document only.
@@ -115,14 +114,13 @@ func convertFilesystemCase(sourcePath string, raw []byte) (convertedCase, error)
 		return convertedCase{}, err
 	}
 	candidate := convertedCase{
-		SourcePath: sourcePath, SourceBytesSHA256: sha256Hex(raw), SemanticSHA256: sha256Hex(semantic),
-		Key: entity.Key, Name: entity.Name, Dimension: entity.Dimension, Protocol: entity.Protocol,
+		SemanticSHA256: sha256Hex(semantic),
+		Key:            entity.Key, Name: entity.Name, Dimension: entity.Dimension, Protocol: entity.Protocol,
 		ModelTargets: append([]string(nil), entity.ModelTargets...),
 		Enabled:      entity.Enabled, Default: entity.Default, Severity: entity.Severity,
 		ExecutionMode: entity.ExecutionMode, Definition: entity.Definition,
 	}
-	candidate.MaterializedSHA256, err = materializedHash(entity)
-	return candidate, err
+	return candidate, nil
 }
 
 func (candidate convertedCase) materialize(meta domain.EntityMeta) domain.TestCase {

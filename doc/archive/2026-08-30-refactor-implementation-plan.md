@@ -1,12 +1,14 @@
 # 现有代码收敛实施计划
 
+> 历史归档：本文保留 2026-08-30 的迁移计划，不再作为当前实施清单。当前边界见 [Application Core 契约](../architecture/application-core-contract.md)、[ADR-0003](../adr/0003-json-case-suite-catalog.md) 与[当前待办](../../todos.md)。文中的旧数据库导入、旧目录和未完成状态仅对应当时提交。
+
 本计划按依赖顺序重构现有系统。每个阶段必须独立提交、可验证、保留迁移期兼容入口，并减少重复业务规则。
 
 最终形态是完整 Go Core。旧 Dashboard 与脚本实现仅曾作为迁移期行为 fixture；迁移后的产品不再包含第二套业务运行时。
 
 ## 当前交付检查点（2026-08-30）
 
-提交 `0b6c07a`、`d8672f8`、`c1cf044`、`38a5391`、`98de454`、`eec4e92` 已依次交付领域用例策略、类型化 Catalog、89 个内置用例的 SQLite v3 导入、报告摘要投影、Wails production 接线和六个桌面工作区。迁移字段、稳定身份、冲突策略、开发 fixture 与生产 SQLite 边界及未完成项见[《内置测试用例目录迁移与桌面读取边界》](case-catalog-migration.md)。
+提交 `0b6c07a`、`d8672f8`、`c1cf044`、`38a5391`、`98de454`、`eec4e92` 已依次交付领域用例策略、类型化 Catalog、89 个内置用例的 SQLite v3 导入、报告摘要投影、Wails production 接线和六个桌面工作区。迁移字段、稳定身份、冲突策略、开发 fixture 与生产 SQLite 边界及未完成项见[《内置测试用例目录迁移与桌面读取边界》](2026-08-30-case-catalog-migration.md)。
 
 本检查点不表示 M2/M3/M4 已完成：`legacy.apiaudit.v1` 当前只保存 evaluator 语义，纯 Go runtime 等价、完整报告导出和三平台安装验收仍按下文顺序推进。
 

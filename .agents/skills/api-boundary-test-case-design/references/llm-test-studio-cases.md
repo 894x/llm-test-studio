@@ -5,7 +5,7 @@ Use this reference only inside `E:\GITHUB\llm-test`.
 ## Discovery
 
 1. Follow the repository `AGENTS.md` graph-first discovery rules.
-2. Inspect `internal/application/caseimport`, `internal/application/casecatalog`, `internal/domain/test_case.go`, `cases/bundle.go`, and neighboring `case.json` definitions relevant to the target suite.
+2. Inspect `internal/casecodec`, `internal/application/casecatalog`, `internal/domain/test_case.go`, `cases/bundle.go`, and neighboring `case.json` definitions relevant to the target suite.
 3. Trace how the selected assertion `kind` is executed before claiming it proves a business outcome.
 4. Check built-in suite filtering, `model_targets`, enabled/default flags, execution mode, and persisted revision behavior.
 5. When creating or materially extending a model catalog, read [suite-generation.md](suite-generation.md) and classify cases into execution profiles before finalizing the catalog.
