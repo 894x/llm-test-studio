@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "key": "wan-video.wan3.0-video-prime.connectivity",
-  "name": "Wan 3.0 Prime · 连通性测试",
-  "protocol": "wan-video",
-  "model_target": "wan3.0-video-prime",
+  "key": "seedance.connectivity",
+  "name": "Seedance 连通性测试",
+  "protocol": "seedance",
+  "model_target": "",
   "case_keys": [
-    "wan30.t2v.min_duration"
+    "V001"
   ],
   "quick_test": {
     "description": "提交一次文生视频任务，等待终态并检查视频输出。",
@@ -15,11 +15,11 @@
         "key": "prompt",
         "label": "提示词",
         "type": "text",
-        "default": "一只小猫在月光下奔跑",
+        "default": "A cute cat running through a sunny meadow, cinematic shot",
         "bindings": [
           {
-            "case_key": "wan30.t2v.min_duration",
-            "pointer": "/request/body/input/prompt"
+            "case_key": "V001",
+            "pointer": "/request/body/content/0/text"
           }
         ]
       }

@@ -49,6 +49,8 @@ const (
 	desktopCodeInvalidIdentifier         = "invalid_identifier"
 	desktopCodeOperationCancelled        = "operation_cancelled"
 	desktopCodeOperationFailed           = "operation_failed"
+	desktopCodeRunInvalid                = "run_invalid"
+	desktopCodeRunNotRunnable            = "run_not_runnable"
 	desktopCodePlanProtocolMismatch      = "plan_protocol_mismatch"
 	desktopCodeCatalogInvalid            = "catalog_invalid"
 	desktopCodeCatalogConflict           = "catalog_revision_conflict"
@@ -114,6 +116,7 @@ type LocalizedReportExporter interface {
 type RunCommands interface {
 	StartRun(context.Context, string) error
 	StartTarget(context.Context, runs.StartCommand) (string, error)
+	StartQuickTask(context.Context, runs.QuickTaskCommand) (string, error)
 	StopSending(context.Context, string) error
 	CancelRun(context.Context, string) error
 }
@@ -964,6 +967,10 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeCatalogConflict}
 	case errors.Is(internal, catalog.ErrNotFound):
 		return DesktopBindingError{Code: desktopCodeCatalogNotFound}
+	case errors.Is(internal, runs.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeRunInvalid}
+	case errors.Is(internal, runs.ErrNotRunnable):
+		return DesktopBindingError{Code: desktopCodeRunNotRunnable}
 	case errors.Is(internal, context.Canceled), errors.Is(internal, context.DeadlineExceeded):
 		return DesktopBindingError{Code: desktopCodeOperationCancelled}
 	default:
@@ -987,6 +994,8 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeInvalidIdentifier,
 		desktopCodeOperationCancelled,
 		desktopCodeOperationFailed,
+		desktopCodeRunInvalid,
+		desktopCodeRunNotRunnable,
 		desktopCodePlanProtocolMismatch,
 		desktopCodeCatalogInvalid,
 		desktopCodeCatalogConflict,

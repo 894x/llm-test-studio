@@ -193,19 +193,21 @@ def build_documents(
         seen_directories.add(directory)
         seen_suite_keys.add(suite_key)
         case_keys = select_case_keys(profile, label, all_cases, applicable, model_target)
-        documents.append(
-            (
-                directory,
-                {
-                    "schema_version": 1,
-                    "key": suite_key,
-                    "name": name,
-                    "protocol": protocol,
-                    "model_target": model_target,
-                    "case_keys": case_keys,
-                },
-            )
-        )
+        document = {
+            "schema_version": 1,
+            "key": suite_key,
+            "name": name,
+            "protocol": protocol,
+            "model_target": model_target,
+            "case_keys": case_keys,
+        }
+        if "quick_test" in profile:
+            if not isinstance(profile["quick_test"], dict):
+                raise SuiteBuildError(f"{label}.quick_test must be an object")
+            # Keep Suite metadata intact; the catalog's shared domain validation
+            # checks input types, bindings, and applicability against real Cases.
+            document["quick_test"] = profile["quick_test"]
+        documents.append((directory, document))
     return documents
 
 

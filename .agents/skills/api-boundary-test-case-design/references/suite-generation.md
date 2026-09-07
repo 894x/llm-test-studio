@@ -16,7 +16,7 @@ Prefer these profiles when they match the model and runner. Omit or rename a pro
 
 Connectivity and basic membership require product judgment, so list their case keys explicitly. Selector-derived profiles must stay mechanical. Do not use name substrings such as `invalid` or `error` to classify rejection cases; select the exact assertion kind or kinds traced through the runner.
 
-Suite membership does not change execution authorization. A Suite containing a paid success case still requires the repository's paid-run confirmation, and manual cases still require their fixtures.
+Starting a test executes the selected Suite without a separate payment checkbox. Manual cases still require their fixtures. Designing or generating Suites does not authorize an agent to call a live provider.
 
 ## Manifest
 
@@ -64,6 +64,11 @@ Check in one manifest per model near its Suite files, for example `suites/minima
 ```
 
 Each profile must define exactly one of `case_keys` or `selector`. Selectors support `enabled`, `execution_modes`, `kinds`, `dimensions`, and `severities`. All selector fields are conjunctive; values within an array are alternatives.
+
+A profile may include the Suite's optional `quick_test` object. The generator
+preserves this metadata and includes it in drift checks. Use the domain Suite
+validation through the catalog to verify typed inputs, defaults, bindings, and
+automatic members; do not duplicate those rules in the generator.
 
 The generator always filters by `protocol` and model applicability. Empty `model_targets` apply globally; otherwise the manifest's `model_target` must be present. Explicit unknown or inapplicable keys are errors. Source order is the sorted case-file path, while explicit profile order is preserved.
 

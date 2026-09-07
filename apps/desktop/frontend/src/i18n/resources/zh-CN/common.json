@@ -35,6 +35,8 @@
     "catalog_revision_conflict": "对象版本已变化或仍被引用，请刷新并解除引用后重试",
     "catalog_not_found": "对象已删除或不存在，请刷新目录",
     "catalog_saved_refresh_failed": "已保存，但目录刷新失败，请刷新或重新打开应用",
-    "plan_protocol_mismatch": "计划中的用例、模型和渠道协议不一致，请选择与用例协议一致的模型和渠道，或调整用例/套件"
+    "plan_protocol_mismatch": "计划中的用例、模型和渠道协议不一致，请选择与用例协议一致的模型和渠道，或调整用例/套件",
+    "run_invalid": "测试输入无效，请检查任务参数、模型和连接信息",
+    "run_not_runnable": "所选任务或目标无法执行，请检查任务适用版本、用例状态和渠道凭据"
   }
 }

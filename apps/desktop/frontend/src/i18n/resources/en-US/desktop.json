@@ -512,5 +512,6 @@
   "catalog_type_request_single": "Single request validation",
   "catalog_type_response_probe": "Response fingerprint probe",
   "catalog_type_legacy_apiaudit": "Built-in compatibility audit",
-  "catalog_type_latency_input_ladder": "Input latency ladder"
+  "catalog_type_latency_input_ladder": "Input latency ladder",
+  "quick_task_invalid_run_identity": "The quick task start response has no valid Run identity."
 }

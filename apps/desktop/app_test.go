@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -154,12 +157,80 @@ func (query *recordingReportingQuery) ExportLocalized(ctx context.Context, _ str
 type recordingRunCommands struct {
 	startIDs     []string
 	startTargets []runs.StartCommand
+	quickTasks   []runs.QuickTaskCommand
 	stopIDs      []string
 	cancelIDs    []string
 	startErr     error
 	stopErr      error
 	cancelErr    error
 	commandEnded *bool
+}
+
+func (commands *recordingRunCommands) StartQuickTask(_ context.Context, command runs.QuickTaskCommand) (string, error) {
+	commands.quickTasks = append(commands.quickTasks, command)
+	return "44444444-4444-4444-8444-444444444444", commands.startErr
+}
+
+func TestDesktopQuickTaskReturnsRunIdentityWithoutARefreshMutation(t *testing.T) {
+	query := &recordingWorkspaceQuery{err: errors.New("refresh unavailable")}
+	commands := &recordingRunCommands{}
+	app := NewDesktopApp(query, commands)
+	app.onStartup(context.Background())
+	starter, ok := any(app).(interface {
+		StartQuickTask(runs.QuickTaskCommand) (string, error)
+	})
+	if !ok {
+		t.Fatal("native desktop binding does not expose Suite quick tasks")
+	}
+	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", SuiteRevision: 2, Model: "temporary-model", BaseURL: "https://example.test", APIKey: "private-test-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"hello"`)}}
+	id, err := starter.StartQuickTask(command)
+	if err != nil || id != "44444444-4444-4444-8444-444444444444" || len(commands.quickTasks) != 1 || !reflect.DeepEqual(commands.quickTasks[0], command) {
+		t.Fatalf("quick task command did not return its Run: id=%q err=%v calls=%d", id, err, len(commands.quickTasks))
+	}
+	if query.calls != 0 {
+		t.Fatal("starting a task must not depend on a later workspace refresh")
+	}
+	command.SuiteID = "invalid"
+	_, err = starter.StartQuickTask(command)
+	assertBindingErrorCode(t, err, desktopCodeInvalidIdentifier)
+	if len(commands.quickTasks) != 1 {
+		t.Fatal("invalid task identity reached commands")
+	}
+}
+
+func TestDesktopQuickTaskUsesSafeRunErrorsAndLifecycle(t *testing.T) {
+	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", SuiteRevision: 1, Model: "model"}
+	for _, scenario := range []struct {
+		err  error
+		code string
+	}{
+		{runs.ErrInvalid, "run_invalid"}, {runs.ErrNotRunnable, "run_not_runnable"},
+		{errors.New("Bearer private-test-key"), "operation_failed"},
+	} {
+		t.Run(scenario.code, func(t *testing.T) {
+			commands := &recordingRunCommands{startErr: fmt.Errorf("private-test-key: %w", scenario.err)}
+			app := NewDesktopApp(nil, commands)
+			starter, ok := any(app).(interface {
+				StartQuickTask(runs.QuickTaskCommand) (string, error)
+			})
+			if !ok {
+				t.Fatal("missing native quick task binding")
+			}
+			_, err := starter.StartQuickTask(command)
+			assertBindingErrorCode(t, err, desktopCodeNotStarted)
+			app.onStartup(context.Background())
+			id, err := starter.StartQuickTask(command)
+			assertBindingErrorCode(t, err, scenario.code)
+			if id != "" || strings.Contains(err.Error(), "private-test-key") {
+				t.Fatal("failure exposed Run identity or sensitive details")
+			}
+			if err := app.shutdown(); err != nil {
+				t.Fatal(err)
+			}
+			_, err = starter.StartQuickTask(command)
+			assertBindingErrorCode(t, err, desktopCodeStopped)
+		})
+	}
 }
 
 func (commands *recordingRunCommands) StartTarget(_ context.Context, command runs.StartCommand) (string, error) {

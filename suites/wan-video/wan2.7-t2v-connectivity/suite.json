@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "key": "wan-video.wan3.0-video-prime.connectivity",
-  "name": "Wan 3.0 Prime · 连通性测试",
+  "key": "wan-video.wan2.7-t2v.connectivity",
+  "name": "wan2.7-t2v 连通性测试",
   "protocol": "wan-video",
-  "model_target": "wan3.0-video-prime",
+  "model_target": "wan2.7-t2v",
   "case_keys": [
-    "wan30.t2v.min_duration"
+    "wan27.t2v.min_duration"
   ],
   "quick_test": {
     "description": "提交一次文生视频任务，等待终态并检查视频输出。",
@@ -18,7 +18,7 @@
         "default": "一只小猫在月光下奔跑",
         "bindings": [
           {
-            "case_key": "wan30.t2v.min_duration",
+            "case_key": "wan27.t2v.min_duration",
             "pointer": "/request/body/input/prompt"
           }
         ]

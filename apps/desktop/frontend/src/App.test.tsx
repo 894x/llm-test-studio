@@ -51,6 +51,7 @@ function desktopClient(): DesktopClient & {
 		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     startRun: vi.fn(async () => structuredClone(client.workspace)),
 		startRunTarget: vi.fn(async () => structuredClone(client.workspace)),
+		startQuickTask: vi.fn(async () => client.workspace.runs[0].id),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
         ...client.workspace,
@@ -1021,6 +1022,7 @@ describe("desktop run workspace", () => {
 			getComparisons: vi.fn(),
       startRun: vi.fn(),
 			startRunTarget: vi.fn(),
+			startQuickTask: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),

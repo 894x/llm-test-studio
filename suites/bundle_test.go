@@ -15,8 +15,8 @@ func TestBundleContainsVersionScopedWanSuites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 17 {
-		t.Fatalf("Wan suite count = %d, want 17", len(matches))
+	if len(matches) != 24 {
+		t.Fatalf("Wan suite count = %d, want 24", len(matches))
 	}
 	wantTargets := map[string]bool{
 		"wan3.0-video": false, "wan3.0-video-prime": false, "wan2.7-t2v": false, "wan2.7-t2v-2026-06-12": false,

@@ -176,8 +176,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 499 || len(catalogSnapshot.Suites) != 26 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 499 file-backed cases and 26 scenario suites",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 499 || len(catalogSnapshot.Suites) != 39 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 499 file-backed cases and 39 scenario suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -247,8 +247,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	assertProductionOperationalSchemaV1(t, database)
-	if len(firstSnapshot.Suites) != 26 {
-		t.Fatalf("file suites = %d, want 26", len(firstSnapshot.Suites))
+	if len(firstSnapshot.Suites) != 39 {
+		t.Fatalf("file suites = %d, want 39", len(firstSnapshot.Suites))
 	}
 
 	second, err := initialize(context.Background())
@@ -268,8 +268,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if len(firstSnapshot.TestCases) != 499 || len(secondSnapshot.TestCases) != 499 {
 		t.Fatalf("case counts across restart = %d/%d, want 499/499", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 26 || len(secondSnapshot.Suites) != 26 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 26 scenario suites and no plans",
+	if len(firstSnapshot.Suites) != 39 || len(secondSnapshot.Suites) != 39 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
+		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 39 scenario suites and no plans",
 			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
 	}
 	wantSuites := map[string]struct {

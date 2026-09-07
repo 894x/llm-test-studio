@@ -35,6 +35,8 @@
     "catalog_revision_conflict": "The object version changed or is still referenced. Refresh, remove references, and try again.",
     "catalog_not_found": "The object was deleted or does not exist. Refresh the catalog.",
     "catalog_saved_refresh_failed": "Saved, but the catalog could not refresh. Refresh or reopen the app.",
-    "plan_protocol_mismatch": "The cases, model and channel use different protocols. Select a model and channel compatible with the cases, or adjust the cases or suite."
+    "plan_protocol_mismatch": "The cases, model and channel use different protocols. Select a model and channel compatible with the cases, or adjust the cases or suite.",
+    "run_invalid": "Invalid test inputs. Check task parameters, model, and connection details.",
+    "run_not_runnable": "The selected task or target cannot run. Check model applicability, Case status, and channel credentials."
   }
 }

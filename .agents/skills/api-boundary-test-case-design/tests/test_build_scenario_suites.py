@@ -203,6 +203,30 @@ class BuildScenarioSuitesTest(unittest.TestCase):
         self.assertNotEqual(checked.returncode, 0)
         self.assertIn("out of date", checked.stderr)
 
+    def test_quick_task_metadata_round_trips_and_participates_in_drift_check(self) -> None:
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        task = {"description": "Run connectivity", "timeout_ms": 30000, "inputs": []}
+        manifest["profiles"][0]["quick_test"] = task
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        written = self.run_script("--write")
+        self.assertEqual(written.returncode, 0, written.stderr)
+        self.assertEqual(self.read_suite("demo-v1-connectivity").get("quick_test"), task)
+        self.assertNotIn("quick_test", self.read_suite("demo-v1-basic"))
+        self.assertEqual(self.run_script("--check").returncode, 0)
+        manifest["profiles"][0]["quick_test"]["timeout_ms"] = 40000
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        self.assertNotEqual(self.run_script("--check").returncode, 0)
+
+    def test_quick_task_metadata_requires_an_object(self) -> None:
+        for value in (None, [], "task"):
+            with self.subTest(value=value):
+                manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+                manifest["profiles"][0]["quick_test"] = value
+                self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                result = self.run_script("--write")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("quick_test must be an object", result.stderr)
+
     def test_explicit_profile_rejects_unknown_or_inapplicable_keys(self) -> None:
         for invalid_key in ("demo.missing", "demo.other"):
             with self.subTest(invalid_key=invalid_key):

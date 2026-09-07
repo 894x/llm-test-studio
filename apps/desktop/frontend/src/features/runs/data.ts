@@ -14,6 +14,16 @@ export interface StartRunTargetCommand {
   channel_id: string
 }
 
+export interface StartQuickTaskCommand {
+  suite_id: string
+  suite_revision: number
+  model: string
+  channel_id?: string
+  base_url?: string
+  api_key?: string
+  inputs: Record<string, string | number | boolean>
+}
+
 export type WorkspacePlan = {
   id: string
   revision: number

@@ -9,6 +9,7 @@ import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
 import { createDesktopClient, createFixtureClient } from "./desktop-client"
+import { DesktopDataError } from "./data-error"
 
 describe("Wails desktop client", () => {
   afterEach(() => {
@@ -24,6 +25,26 @@ describe("Wails desktop client", () => {
     binding.GetWorkspace.mockResolvedValueOnce({})
     await expect(createDesktopClient().getWorkspace()).rejects.toThrow("Unsupported desktop data protocol version")
     expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ operation: "load_workspace", error_code: "frontend_data_invalid" }))
+  })
+
+  it("starts a Suite task once and returns its Run identity without refreshing", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.GetWorkspace.mockRejectedValueOnce(new Error("refresh failed"))
+    const command = {
+      suite_id: "11111111-1111-4111-8111-111111111111", suite_revision: 2,
+      model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key",
+      inputs: { prompt: "hello", duration: 4, audio: false },
+    }
+    await expect(createDesktopClient().startQuickTask(command)).resolves.toBe(FIXTURE_WORKSPACE.runs[0].id)
+    expect(binding.StartQuickTask).toHaveBeenCalledExactlyOnceWith(command)
+    expect(binding.GetWorkspace).not.toHaveBeenCalled()
+  })
+
+  it.each(["", "not-a-run", null, { run_id: "private-test-key" }])("rejects malformed quick task acceptance %j", async (payload) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.StartQuickTask.mockResolvedValueOnce(payload as never)
+    await expect(createDesktopClient().startQuickTask({ suite_id: "11111111-1111-4111-8111-111111111111", suite_revision: 1, model: "model", inputs: {} })).rejects.toBeInstanceOf(DesktopDataError)
+    expect(binding.StartQuickTask).toHaveBeenCalledTimes(1)
   })
 
   it("uses the typed Wails methods and forwards command identifiers", async () => {
@@ -109,6 +130,22 @@ describe("Wails desktop client", () => {
     expect(binding.RunQuickTest).toHaveBeenCalledWith(quickCommand)
     expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(performanceCommand, "")
     expect(binding.SaveQuickTestConnection).toHaveBeenCalledWith(saveCommand)
+  })
+
+  it("keeps fixture quick Runs separate from authored targets and supports cancellation", async () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    const suite = catalog.suites[0]
+    suite.quick_test = { description: "Connectivity", timeout_ms: 30000, inputs: [] }
+    const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
+    const command = { suite_id: suite.id, suite_revision: suite.revision, model: suite.model_target || "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+    const firstID = await client.startQuickTask(command)
+    const secondID = await client.startQuickTask(command)
+    expect(firstID).not.toBe(secondID)
+    const snapshot = await client.getWorkspace()
+    expect(snapshot.runs.find((run) => run.id === firstID)).toMatchObject({ source: "quick_task", status: "queued", plan_id: firstID, planned: 0 })
+    expect(JSON.stringify(snapshot)).not.toContain("private-test-key")
+    expect(await client.getCatalog()).toEqual(catalog)
+    expect((await client.cancelRun(secondID)).runs.find((run) => run.id === secondID)?.status).toBe("cancelled")
   })
 
   it("keeps idle fixture windows sparse while retaining an empty final partial slice", async () => {
@@ -998,6 +1035,8 @@ describe("Wails desktop client", () => {
     ["catalog_unavailable", "无法读取模型、渠道与用例目录", "GetCatalog", "getCatalog"],
     ["reports_unavailable", "无法读取测试报告", "GetReports", "getReports"],
     ["plan_protocol_mismatch", "计划中的用例、模型和渠道协议不一致", "CreatePlan", "createPlan"],
+    ["run_invalid", "测试输入无效", "StartQuickTask", "startQuickTask"],
+    ["run_not_runnable", "所选任务或目标无法执行", "StartQuickTask", "startQuickTask"],
     ["catalog_invalid", "目录内容无效", "CreateModel", "createModel"],
     ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
     ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],
@@ -1152,6 +1191,7 @@ function installBinding(
 			GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
     StartRun: vi.fn(async () => structuredClone(payload)),
 		StartRunTarget: vi.fn(async () => structuredClone(payload)),
+		StartQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
 		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),

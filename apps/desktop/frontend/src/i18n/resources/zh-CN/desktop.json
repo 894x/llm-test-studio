@@ -512,5 +512,6 @@
   "catalog_type_request_single": "单请求验证",
   "catalog_type_response_probe": "响应指纹探测",
   "catalog_type_legacy_apiaudit": "内置兼容性审计",
-  "catalog_type_latency_input_ladder": "输入阶梯延迟"
+  "catalog_type_latency_input_ladder": "输入阶梯延迟",
+  "quick_task_invalid_run_identity": "快速任务启动响应缺少有效的运行标识"
 }

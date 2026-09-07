@@ -12,7 +12,7 @@ without requiring authored models, channels, or Plans.
 - [x] Consolidate protocol metadata, legacy kind validation, and execution
   dispatch; discover bundled resources by layout; derive frontend protocol
   options and validation from the same source.
-- [ ] Express quick-test tasks through Suite metadata and provide connectivity
+- [x] Express quick-test tasks through Suite metadata and provide connectivity
   tasks for text and the existing version-scoped video adapters. Keep task
   selection, protocol applicability, and editable inputs driven by definitions.
 - [ ] Prepare quick Suite runs with temporary or saved targets and use shared
@@ -138,6 +138,32 @@ timeline ordering, Suite progress rendering, and clearing billing acknowledgemen
 when the selected channel changes. The build retains the existing chunk-size
 warning. Source review prompted the time-origin and channel-acknowledgement fixes;
 the code graph was unavailable during this stage, so review used direct source.
+
+## Bundled tasks and desktop invocation
+
+Sixteen connectivity tasks now cover all five protocols and the existing Kimi,
+Wan, and MiniMax model scopes. Thirteen new Suite files complement quick metadata
+on the three existing Wan 3.0/MiniMax connectivity Suites. No Case definitions or
+provider contracts changed. Task prompt defaults and bindings live in the Suite
+files. MiniMax's existing profile manifest drives its generated metadata.
+
+The native desktop binding and frontend client now expose `StartQuickTask` and
+return the accepted Run ID. They do not combine the mutation with a workspace
+refresh. The existing shared cancellation, persistence, and reporting lifecycle
+continues to own the Run. Tests cover native lifecycle, safe error codes, strict
+response parsing, and the HTTPS/SQLite integration through this desktop entry.
+
+The execution-page replacement, drafts, history replay, and explicit credential
+remembering remain unfinished. The stage 3 checkbox stays open until the new
+task flow is usable from the quick-entry UI.
+
+Validation: all Go packages passed tests (desktop rerun after updating its error
+contract fixture), full Go vet and protocol generation check passed, and the
+frontend passed 270 tests, lint, and build. The App tests were rerun after adding
+the new mock method. The Suite generator's five tests and MiniMax drift check
+passed. Wails v2.15.0 generated the native method without module changes. Direct
+source review found no actionable issue; the code graph remained unavailable.
+No provider calls or rendered quick-entry UI verification were performed here.
 
 ## Execution action simplification
 

@@ -152,7 +152,10 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 		t.Fatal(err)
 	}
 	defer service.Close()
-	id, err := service.StartQuickTask(ctx, runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
+	app := NewDesktopApp(nil, service)
+	app.onStartup(ctx)
+	defer app.shutdown()
+	id, err := app.StartQuickTask(runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
 	if err != nil {
 		t.Fatal(err)
 	}

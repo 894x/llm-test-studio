@@ -181,6 +181,8 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeInvalidIdentifier:         {},
 		desktopCodeOperationCancelled:        {},
 		desktopCodeOperationFailed:           {},
+		desktopCodeRunInvalid:                {},
+		desktopCodeRunNotRunnable:            {},
 		desktopCodePlanProtocolMismatch:      {},
 		desktopCodeCatalogInvalid:            {},
 		desktopCodeCatalogConflict:           {},

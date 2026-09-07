@@ -4,8 +4,8 @@ A quick task uses an existing Suite identity and its pinned Cases. An optional
 `quick_test` object makes the Suite eligible for the quick entry. Adding a task
 must not require another task list in the frontend or a new execution switch.
 
-This stage implements definitions, catalog editing, and shared durable Suite
-execution. The quick-test execution page, bundled task profiles, and history
+This stage implements definitions, catalog editing, bundled connectivity tasks,
+shared durable Suite execution, and the native desktop entry. The execution page and history
 integration remain tracked in [the delivery plan](task-entry-structure-plan.md).
 
 ## Definition
@@ -107,9 +107,39 @@ limits, timeouts, video concurrency constraints, and dry-run remain execution
 controls.
 
 Successful and failed observations, sealed reports, and task provenance use the
-same SQLite persistence as other Runs. The new task API is currently an
-application-service capability. Native bindings, quick-entry UI, drafts, replay,
-and explicit credential remembering remain separate delivery work.
+same SQLite persistence as other Runs. Native `DesktopApp.StartQuickTask` and
+the frontend client's `startQuickTask` return the accepted Run ID. They do not
+query the workspace after mutation: progress refresh is a separate query and
+its failure cannot disguise an accepted start. Cancellation uses the ordinary
+Run command. Native input and applicability errors use stable, translated codes;
+underlying errors are not exposed to the frontend.
+
+The quick-entry UI, drafts, replay, and explicit credential remembering remain
+separate delivery work.
+
+## Bundled connectivity tasks
+
+The bundle currently contains 16 quick tasks. Selection depends only on the
+Suite's `quick_test` metadata. Prompt bindings reuse existing enabled automatic
+Cases, preserving their other parameters, assertions, and version scope.
+
+| Protocol | Model scope | Cases | Timeout per Case |
+|---|---|---|---|
+| OpenAI Chat | Generic | Synchronous response (`T001`) | 30 seconds |
+| Kimi | Four existing Kimi model targets, one Suite each | Non-stream response and usage | 60 seconds |
+| Seedance | Generic, as declared by `V001` | Text-to-video task through terminal output | 10 minutes |
+| Wan | Nine existing model targets, one Suite each | Version-specific text-to-video success | 10 minutes |
+| MiniMax | MiniMax-H3 | Text-to-video success, missing auth, invalid auth | 10 minutes |
+
+The only editable input in these initial tasks is the prompt. Its default is
+the original Case value. MiniMax's existing profile manifest owns its metadata;
+the scenario generator preserves that object and checks it for drift. Other
+connectivity memberships are authored semantic selections in Suite files.
+
+The bundle test loads actual Cases and Suites through the production catalog
+services, checks every protocol and authored model scope has a quick task, and
+validates both default and overridden inputs without changing source Cases.
+These are static catalog checks, not live provider contract verification.
 
 ## Shared validation
 
