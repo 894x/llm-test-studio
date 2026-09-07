@@ -1,3 +1,5 @@
+import { DesktopDataError } from "@/app/data-error"
+import { translateDesktop as tx } from "@/i18n/runtime"
 import { parseQuickPerformanceReport, type QuickPerformanceReport } from "@/features/quick-test/data"
 
 export type ReportSource = "run" | "quick_performance"
@@ -104,30 +106,45 @@ export const EMPTY_REPORTS: ReportSnapshot = {
   reports: [],
 }
 
+export function reportVerdictTranslationKey(report: ReportSummary): "system.quickPassed" | "system.quickFailed" | "system.passed" | "system.failed" | "system.cancelled" | null {
+  if (report.source === "quick_performance") {
+    if (["全部请求成功", "快速性能测试通过"].includes(report.verdict)) return "system.quickPassed"
+    if (["性能测试未通过", "快速性能测试未通过"].includes(report.verdict)) return "system.quickFailed"
+  }
+  if (report.verdict === "pass") return "system.passed"
+  if (report.verdict === "fail") return "system.failed"
+  if (report.verdict === "cancelled") return "system.cancelled"
+  return null
+}
+
+export function reportPlanTranslationKey(report: ReportSummary): "system.quickPerformance" | null {
+  return report.source === "quick_performance" ? "system.quickPerformance" : null
+}
+
 export function parseReportSnapshot(value: unknown): ReportSnapshot {
   if (!isRecord(value) || value.schema_version !== 1) {
-    throw new Error("桌面报告数据协议版本不受支持")
+    throw new DesktopDataError(tx("desktop:reports_unsupported_desktop_report_protocol_version"))
   }
   if (!Array.isArray(value.reports)) {
-    throw new Error("桌面报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_data_structure"))
   }
   const reports = value.reports.map(parseReport)
   if (new Set(reports.map((report) => report.id)).size !== reports.length) {
-    throw new Error("桌面报告数据包含重复标识")
+    throw new DesktopDataError(tx("desktop:reports_duplicate_desktop_report_identifiers"))
   }
   return { schema_version: 1, reports }
 }
 
 export function parseReportDetail(value: unknown): ReportDetail {
   if (!isRecord(value) || value.schema_version !== 1 || !isReportSource(value.source)) {
-    throw new Error("桌面报告详情数据无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
   }
   if (value.source === "quick_performance") {
     const performance = parseQuickPerformanceReport(value.performance)
-    if (!performance.archived || !performance.report_id) throw new Error("桌面报告详情数据无效")
+    if (!performance.archived || !performance.report_id) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
     return { schema_version: 1, source: "quick_performance", performance }
   }
-  if (!isRecord(value.report) || !Array.isArray(value.request_results)) throw new Error("桌面报告详情数据无效")
+  if (!isRecord(value.report) || !Array.isArray(value.request_results)) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
   const report = value.report
   if (
     !isUUID(report.id) || !isUUID(report.run_id) || !isRunStatus(report.run_status) ||
@@ -136,7 +153,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
     !isRecord(report.sla) || !isRecord(report.metrics) ||
     (report.distributions !== undefined && !Array.isArray(report.distributions)) || !Array.isArray(report.case_results)
   ) {
-    throw new Error("桌面报告详情数据无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
   }
   return {
     schema_version: 1,
@@ -164,7 +181,7 @@ function parseProbeDistributions(values: unknown[]): ResponseProbeDistribution[]
       typeof value.share_percent !== "number" || !Number.isFinite(value.share_percent) || value.share_percent < 0 || value.share_percent > 100 ||
       (value.classification !== "failed" && (!isNonBlank(value.format) || !isNonBlank(value.shape)))
     ) {
-      throw new Error("桌面报告上游探测分布无效")
+      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_upstream_probe_distribution"))
     }
     distributions.push({
       case_id: value.case_id,
@@ -188,7 +205,7 @@ export function parseExportedReport(value: unknown): ExportedReport {
     !isRecord(value) || !isNonBlank(value.filename) || !isNonBlank(value.media_type) ||
     typeof value.data_base64 !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data_base64)
   ) {
-    throw new Error("桌面报告导出数据无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_export_data"))
   }
   return { filename: value.filename, media_type: value.media_type, data_base64: value.data_base64 }
 }
@@ -197,7 +214,7 @@ function parseMetricMap(value: Record<string, unknown>): Record<string, ReportMe
   const parsed: Record<string, ReportMetric> = {}
   for (const [name, item] of Object.entries(value)) {
     if (!isNonBlank(name) || !isRecord(item) || typeof item.value !== "number" || !Number.isFinite(item.value) || !isNonBlank(item.unit) || !isNonNegativeInteger(item.samples)) {
-      throw new Error("桌面报告指标数据无效")
+      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_metrics"))
     }
     parsed[name] = { value: item.value, unit: item.unit, samples: item.samples }
   }
@@ -206,15 +223,15 @@ function parseMetricMap(value: Record<string, unknown>): Record<string, ReportMe
 
 function parseResult(value: unknown): ReportResult {
   if (!isRecord(value) || !isUUID(value.id) || !isRecord(value.success) || (value.metrics !== undefined && !isRecord(value.metrics)) || (value.dimensions !== undefined && !isStringRecord(value.dimensions))) {
-    throw new Error("桌面报告结果数据无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_result_data"))
   }
   const success = value.success
   if ([success.transport, success.protocol, success.semantic, success.sla].some((item) => typeof item !== "boolean")) {
-    throw new Error("桌面报告结果状态无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_result_status"))
   }
   const metrics: Record<string, number> = {}
   for (const [name, metric] of Object.entries((value.metrics ?? {}) as Record<string, unknown>)) {
-    if (!isNonBlank(name) || typeof metric !== "number" || !Number.isFinite(metric)) throw new Error("桌面报告请求指标无效")
+    if (!isNonBlank(name) || typeof metric !== "number" || !Number.isFinite(metric)) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_request_metrics"))
     metrics[name] = metric
   }
   return {
@@ -261,7 +278,7 @@ function parseReport(value: unknown): ReportSummary {
     !isNonNegativeInteger(value.attachment_count) ||
     (value.passed && (value.run_status !== "completed" || value.failed_case_count !== 0))
   ) {
-    throw new Error("桌面报告摘要数据无效")
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_summary"))
   }
   return {
     id: value.id,

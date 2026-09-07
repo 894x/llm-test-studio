@@ -1,5 +1,7 @@
+import { desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { useEffect, useMemo, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
+import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
@@ -11,7 +13,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyInspector, InspectorHeader, InspectorRow, PageFrame } from "@/features/shell/page-frame"
-import { QUICK_TEST_ERROR_MESSAGES } from "@/features/quick-test/data"
 import {
   performanceCapacitySummary,
   performanceCompletion,
@@ -23,20 +24,21 @@ import { PerformanceLatencyTable } from "./performance-latency-table"
 import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
-import type { ExportedReport, ReportDetail, ReportExportFormat, ReportSnapshot, ReportSummary, ResponseProbeDistribution } from "./data"
+import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportSnapshot, type ReportSummary, type ResponseProbeDistribution } from "./data"
 
 export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
   preferredReportID?: string
   getDetail: (reportId: string) => Promise<ReportDetail>
-  exportReport: (reportId: string, format: ReportExportFormat, watermark: string) => Promise<ExportedReport>
-  saveReportExport: (filename: string, mediaType: string, dataBase64: string) => Promise<boolean>
+  exportReport: (reportId: string, format: ReportExportFormat, watermark: string, locale: string) => Promise<ExportedReport>
+  saveReportExport: (filename: string, mediaType: string, dataBase64: string, locale: string) => Promise<boolean>
   copyReportPNG: (dataBase64: string) => Promise<void>
   exportVisualReport?: typeof createVisualReportExport
 }) {
+  const { t, i18n } = useTranslation("reports")
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
   const [viewingReportID, setViewingReportID] = useState(preferredReportID ?? "")
-  const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: string }>({ reportID: "" })
+  const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: boolean }>({ reportID: "" })
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
   const [exportError, setExportError] = useState("")
   const [watermark, setWatermark] = useState("rhzs")
@@ -44,15 +46,16 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   const selected = snapshot.reports.find((report) => report.id === selectedID) ?? snapshot.reports[0]
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
-  const detailError = detailState.reportID === selectedReportID ? detailState.error ?? "" : ""
+  const detailError = detailState.reportID === selectedReportID && detailState.error ? t("detailError") : ""
   const isViewingReport = viewingReportID !== "" && viewingReportID === selectedReportID
+  const selectedVerdict = selected ? displayReportVerdict(selected, t) : t("generic")
 
   useEffect(() => {
     if (!selectedReportID) return
     let active = true
     void getDetail(selectedReportID).then(
       (value) => { if (active) setDetailState({ reportID: selectedReportID, detail: value }) },
-      () => { if (active) setDetailState({ reportID: selectedReportID, error: "无法读取报告详情，请检查本地日志" }) },
+      () => { if (active) setDetailState({ reportID: selectedReportID, error: true }) },
     )
     return () => { active = false }
   }, [getDetail, selectedReportID])
@@ -63,18 +66,18 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExportError("")
     try {
       if (format === "json") {
-        const exported = await exportReport(selected.id, format, watermark)
-        await saveReportExport(exported.filename, exported.media_type, exported.data_base64)
+        const exported = await exportReport(selected.id, format, watermark, i18n.resolvedLanguage ?? i18n.language)
+        await saveReportExport(exported.filename, exported.media_type, exported.data_base64, i18n.resolvedLanguage ?? i18n.language)
       } else {
         if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
         const exported = await exportVisualReport(exportDocumentRef.current, format, selected.id)
-        await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob))
+        await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob), i18n.resolvedLanguage ?? i18n.language)
       }
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
         error,
-        `导出 ${format.toUpperCase()} 报告（${selected.verdict}）`,
-        "报告导出失败，请检查本地日志",
+        t("export.operation", { format: format.toUpperCase(), name: selectedVerdict }),
+        t("export.error"),
       ))
     } finally {
       setExporting("")
@@ -98,8 +101,8 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
         error,
-        `复制 PNG 报告（${selected.verdict}）`,
-        "无法写入系统剪贴板，请检查本地日志",
+        t("export.copyOperation", { name: selectedVerdict }),
+        t("export.copyError"),
       ))
     } finally {
       setExporting("")
@@ -108,18 +111,18 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
 
   return <>
     <PageFrame
-      title={isViewingReport ? "报告详情" : "测试报告"}
-      description={isViewingReport ? `查看 ${selected?.verdict ?? "报告"} 的指标与请求明细` : "查看 Go Core 封存的结论、指标、请求明细与同源导出"}
-      count={isViewingReport ? undefined : `${snapshot.reports.length} 份报告`}
-      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />返回报告列表</Button> : undefined}
+      title={t(isViewingReport ? "detailTitle" : "title")}
+      description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
+      count={isViewingReport ? undefined : t("count", { count: snapshot.reports.length })}
+      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : undefined}
       inspector={selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG} />
-      ) : <EmptyInspector label="尚未选择报告" />}
-      inspectorLabel="报告详情"
+      ) : <EmptyInspector label={t("noneSelected")} />}
+      inspectorLabel={t("detailTitle")}
     >
       {snapshot.reports.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
-          <Empty><EmptyTitle>还没有测试报告</EmptyTitle><EmptyDescription>运行完成并封存结论后，报告会出现在这里。</EmptyDescription></Empty>
+          <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>
         </ScrollArea>
       ) : isViewingReport ? (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -128,18 +131,18 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
       ) : (
         <div className="flex min-h-0 flex-1 flex-col border-t">
           <ScrollArea className="min-h-0 flex-1">
-            <Table aria-label="测试报告目录" className="min-w-[840px]">
+            <Table aria-label={t("catalogAria")} className="min-w-[840px]">
               <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm"><TableRow className="hover:bg-transparent">
-                <TableHead className="h-8 w-[88px] pl-4 text-[11px]">结论</TableHead><TableHead className="h-8 text-[11px]">报告 / 计划</TableHead><TableHead className="h-8 text-[11px]">目标</TableHead><TableHead className="h-8 text-[11px]">用例</TableHead><TableHead className="h-8 text-[11px]">生成时间</TableHead><TableHead className="h-8 w-[96px] pr-4 text-right text-[11px]">查看报告</TableHead>
+                <TableHead className="h-8 w-[88px] pl-4 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-4 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
               <TableBody>{snapshot.reports.map((report) => (
                 <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="dense-table-row h-11">
                   <TableCell className="py-1 pl-4"><ConclusionBadge passed={report.passed} /></TableCell>
-                  <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{report.verdict}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.plan_name}</div></TableCell>
+                  <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
                   <TableCell className="py-1"><div className="truncate text-xs">{report.model_name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.channel_name}</div></TableCell>
                   <TableCell className="py-1 text-xs tabular-nums">{report.case_count - report.failed_case_count}/{report.case_count}</TableCell>
-                  <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(report.generated_at)}</TableCell>
-                  <TableCell className="py-1 pr-4 text-right"><Button variant="outline" size="xs" aria-label={`查看报告：${report.verdict}`} onClick={(event) => { event.stopPropagation(); setSelectedID(report.id); setViewingReportID(report.id) }}>查看报告</Button></TableCell>
+                  <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(report.generated_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
+                  <TableCell className="py-1 pr-4 text-right"><Button variant="outline" size="xs" aria-label={t("viewAria", { name: displayReportVerdict(report, t) })} onClick={(event) => { event.stopPropagation(); setSelectedID(report.id); setViewingReportID(report.id) }}>{t("view")}</Button></TableCell>
                 </TableRow>
               ))}</TableBody>
             </Table>
@@ -152,8 +155,9 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
 }
 
 function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
+  const { t } = useTranslation("reports")
   if (error) return <div role="alert" className="border-t px-4 py-3 text-xs text-destructive">{error}</div>
-  if (!detail) return <div className="border-t px-4 py-3 text-xs text-muted-foreground">正在读取请求明细…</div>
+  if (!detail) return <div className="border-t px-4 py-3 text-xs text-muted-foreground">{t("detailLoading")}</div>
   if (detail.source === "quick_performance") return <QuickPerformanceDetail detail={detail} />
   return <RunReportDetail detail={detail} />
 }
@@ -171,13 +175,14 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
   detail: Extract<ReportDetail, { source: "run" }>
   visibleResults?: Extract<ReportDetail, { source: "run" }>["request_results"]
 }) {
+  const { t: tx } = useTranslation()
   const probeDistributions = detail.report.probe_distributions ?? []
   return <>
       {probeDistributions.length ? <ResponseProbeDistributionTable distributions={probeDistributions} /> : null}
-      {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">当前显示前 1,000 条请求；完整 {detail.request_results.length.toLocaleString("zh-CN")} 条可导出 JSON。</div> : null}
-      <Table aria-label="请求级结果" className="min-w-[900px]">
+      {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">{tx("desktop:reports_showing_the_first_1_000_requests_all")} {detail.request_results.length.toLocaleString(desktopLocale())}  {tx("desktop:reports_requests_can_be_exported_as_json")}</div> : null}
+      <Table aria-label={tx("desktop:reports_request_level_results")} className="min-w-[900px]">
         <TableHeader className="sticky top-0 z-10 bg-background/95"><TableRow>
-          <TableHead className="h-8 pl-4 text-[11px]">请求</TableHead><TableHead className="h-8 text-[11px]">阶段</TableHead><TableHead className="h-8 text-[11px]">状态</TableHead><TableHead className="h-8 text-[11px]">E2E</TableHead><TableHead className="h-8 text-[11px]">TTFT</TableHead><TableHead className="h-8 text-[11px]">TPOT</TableHead><TableHead className="h-8 text-[11px]">排队</TableHead><TableHead className="h-8 text-[11px]">Token</TableHead><TableHead className="h-8 text-[11px]">错误</TableHead>
+          <TableHead className="h-8 pl-4 text-[11px]">{tx("desktop:quick-test_request")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_phase")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_status")}</TableHead><TableHead className="h-8 text-[11px]">E2E</TableHead><TableHead className="h-8 text-[11px]">TTFT</TableHead><TableHead className="h-8 text-[11px]">TPOT</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_queue")}</TableHead><TableHead className="h-8 text-[11px]">Token</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_error")}</TableHead>
         </TableRow></TableHeader>
         <TableBody>{visibleResults.length ? visibleResults.map((result) => (
           <TableRow key={result.id} className="h-9">
@@ -185,7 +190,7 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
             <MetricCell value={result.metrics.e2e_ms} unit="ms" /><MetricCell value={result.metrics.ttft_ms} unit="ms" /><MetricCell value={result.metrics.tpot_ms} unit="ms" /><MetricCell value={result.metrics.schedule_lag_ms} unit="ms" />
             <TableCell className="py-1 text-xs tabular-nums">{metric(result.metrics.prompt_tokens)} / {metric(result.metrics.completion_tokens)}</TableCell><TableCell className="py-1 text-xs text-destructive">{result.error_code ?? "—"}</TableCell>
           </TableRow>
-        )) : <TableRow><TableCell colSpan={9} className="h-24 text-center text-xs text-muted-foreground">此报告没有请求级结果</TableCell></TableRow>}</TableBody>
+        )) : <TableRow><TableCell colSpan={9} className="h-24 text-center text-xs text-muted-foreground">{tx("desktop:reports_this_report_has_no_request_level_results")}</TableCell></TableRow>}</TableBody>
       </Table>
     </>
 }
@@ -199,21 +204,22 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
 }
 
 function ResponseProbeDistributionTable({ distributions }: { distributions: ResponseProbeDistribution[] }) {
-  return <section aria-label="上游响应探测统计" className="border-b px-4 py-3">
+  const { t: tx } = useTranslation()
+  return <section aria-label={tx("desktop:reports_upstream_response_probe_statistics")} className="border-b px-4 py-3">
     <div className="mb-2">
-      <h4 className="text-xs font-semibold">上游响应分布</h4>
-      <p className="mt-0.5 text-[10px] text-muted-foreground">按响应体签名与结构指纹聚合；unknown 表示未命中已配置规则，并不等同于请求失败。</p>
+      <h4 className="text-xs font-semibold">{tx("desktop:reports_upstream_response_distribution")}</h4>
+      <p className="mt-0.5 text-[10px] text-muted-foreground">{tx("desktop:reports_grouped_by_response_body_signatures_and_structure_fingerprints_unknown_means")}</p>
     </div>
-    <Table aria-label="上游响应分布" className="min-w-[720px] rounded-md border">
+    <Table aria-label={tx("desktop:reports_upstream_response_distribution")} className="min-w-[720px] rounded-md border">
       <TableHeader><TableRow>
-        <TableHead className="h-8 text-[11px]">分类标签</TableHead><TableHead className="h-8 text-[11px]">判定</TableHead><TableHead className="h-8 text-[11px]">格式</TableHead><TableHead className="h-8 text-[11px]">结构指纹</TableHead><TableHead className="h-8 text-right text-[11px]">请求数</TableHead><TableHead className="h-8 pr-4 text-right text-[11px]">占比</TableHead>
+        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_category_label")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_classification")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_format")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_structure_fingerprint")}</TableHead><TableHead className="h-8 text-right text-[11px]">{tx("desktop:catalog_request_count")}</TableHead><TableHead className="h-8 pr-4 text-right text-[11px]">{tx("desktop:reports_share")}</TableHead>
       </TableRow></TableHeader>
       <TableBody>{distributions.map((distribution) => <TableRow key={`${distribution.case_id}:${distribution.bucket}:${distribution.shape}`} className="h-9">
         <TableCell className="py-1 text-xs font-medium">{distribution.bucket}</TableCell>
         <TableCell className="py-1"><ProbeClassificationBadge classification={distribution.classification} /></TableCell>
         <TableCell className="py-1 font-mono text-[10px]">{distribution.format || "—"}</TableCell>
         <TableCell className="py-1 font-mono text-[10px]">{distribution.shape || "—"}</TableCell>
-        <TableCell className="py-1 text-right text-xs tabular-nums">{distribution.count.toLocaleString("zh-CN")}</TableCell>
+        <TableCell className="py-1 text-right text-xs tabular-nums">{distribution.count.toLocaleString(desktopLocale())}</TableCell>
         <TableCell className="py-1 pr-4 text-right text-xs tabular-nums">{formatMetric(distribution.share_percent)}%</TableCell>
       </TableRow>)}</TableBody>
     </Table>
@@ -221,7 +227,8 @@ function ResponseProbeDistributionTable({ distributions }: { distributions: Resp
 }
 
 function ProbeClassificationBadge({ classification }: { classification: ResponseProbeDistribution["classification"] }) {
-  const label = classification === "matched" ? "已匹配" : classification === "unknown" ? "未知格式" : classification === "ambiguous" ? "规则歧义" : "请求失败"
+  const { t: tx } = useTranslation()
+  const label = classification === "matched" ? tx("desktop:reports_matched") : classification === "unknown" ? tx("desktop:reports_unknown_format") : classification === "ambiguous" ? tx("desktop:reports_ambiguous_rules") : tx("desktop:reports_request_failed")
   const tone = classification === "matched" ? "border-success/25 bg-success-soft text-success-strong"
     : classification === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
     : "border-warning/30 bg-warning-soft text-warning-strong"
@@ -238,32 +245,34 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
   detail: Extract<ReportDetail, { source: "quick_performance" }>
   includeRequestAnalysis?: boolean
 }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("reports")
   const report = detail.performance
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   const targetRanges = performanceTargetRanges(report)
   const hasSLOCapacityData = report.slo_assessment !== undefined || report.capacity_result !== undefined
   const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
     report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
-  return <section aria-label="归档性能报告" className="space-y-4 p-4">
+  return <section aria-label={tx("desktop:reports_archived_performance_report")} className="space-y-4 p-4">
     <div>
-      <h4 className="mb-2 text-xs font-semibold">测试配置</h4>
+      <h4 className="mb-2 text-xs font-semibold">{t("performance.config")}</h4>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
-        <ContextValue label="模型" value={report.model_id} />
-        <ContextValue label="接口地址" value={report.endpoint} mono />
-        <ContextValue label="负载模式" value={performanceLoadMode(report.profile.load_mode)} />
-        {report.profile.load_mode === "open_loop" ? <ContextValue label="到达分布" value={performanceArrivalPattern(report)} /> : null}
-        <ContextValue label="工作负载" value={performanceWorkloadMode(report)} />
-        <ContextValue label="停止条件" value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
-        <ContextValue label={report.profile.load_mode === "open_loop" ? "最大在途" : "配置并发"} value={formatMetric(report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? 0) : report.profile.concurrency)} />
-        <ContextValue label="请求超时" value={formatDuration(report.profile.timeout_ms)} />
-        <ContextValue label={report.profile.workload_mode === "normal" ? "Token 均值（输入 / 输出）" : "Token 目标（输入 / 输出）"} value={`${formatMetric(report.profile.input_tokens)} / ${formatMetric(report.profile.output_tokens)}`} />
-        {report.profile.workload_mode === "normal" ? <ContextValue label="Token 标准差（输入 / 输出）" value={`${formatMetric(report.profile.input_tokens_stddev ?? 0)} / ${formatMetric(report.profile.output_tokens_stddev ?? 0)}`} /> : null}
-        <ContextValue label="随机种子" value={performanceSeed(report)} />
-        <ContextValue label="共享前缀" value={performanceSharedPrefix(report)} />
-        {targetRanges ? <ContextValue label="采样目标范围（输入 / 输出）" value={targetRanges} /> : null}
-        {hasPhaseThreeData ? <ContextValue label="热身请求" value={performanceWarmupConfiguration(report)} /> : null}
-        {hasPhaseThreeData ? <ContextValue label="爬坡配置" value={performanceRampConfiguration(report)} /> : null}
-        {hasPhaseThreeData ? <ContextValue label="切片粒度" value={performanceSliceConfiguration(report)} /> : null}
+        <ContextValue label={tx("desktop:catalog_model")} value={report.model_id} />
+        <ContextValue label={tx("desktop:quick-test_endpoint")} value={report.endpoint} mono />
+        <ContextValue label={tx("desktop:catalog_load_mode")} value={performanceLoadMode(report.profile.load_mode)} />
+        {report.profile.load_mode === "open_loop" ? <ContextValue label={tx("desktop:quick-test_arrival_distribution")} value={performanceArrivalPattern(report)} /> : null}
+        <ContextValue label={tx("desktop:quick-test_workload")} value={performanceWorkloadMode(report)} />
+        <ContextValue label={tx("desktop:reports_stop_condition")} value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
+        <ContextValue label={report.profile.load_mode === "open_loop" ? tx("desktop:quick-test_maximum_in_flight") : tx("desktop:reports_configured_concurrency")} value={formatMetric(report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? 0) : report.profile.concurrency)} />
+        <ContextValue label={tx("desktop:reports_request_timeout")} value={formatDuration(report.profile.timeout_ms)} />
+        <ContextValue label={report.profile.workload_mode === "normal" ? tx("desktop:reports_mean_tokens_input_output") : tx("desktop:reports_target_tokens_input_output")} value={`${formatMetric(report.profile.input_tokens)} / ${formatMetric(report.profile.output_tokens)}`} />
+        {report.profile.workload_mode === "normal" ? <ContextValue label={tx("desktop:reports_token_standard_deviation_input_output")} value={`${formatMetric(report.profile.input_tokens_stddev ?? 0)} / ${formatMetric(report.profile.output_tokens_stddev ?? 0)}`} /> : null}
+        <ContextValue label={tx("desktop:quick-test_random_seed")} value={performanceSeed(report)} />
+        <ContextValue label={tx("desktop:quick-test_shared_prefix")} value={performanceSharedPrefix(report)} />
+        {targetRanges ? <ContextValue label={tx("desktop:quick-test_sampled_target_range_input_output")} value={targetRanges} /> : null}
+        {hasPhaseThreeData ? <ContextValue label={tx("desktop:reports_warmup_requests")} value={performanceWarmupConfiguration(report)} /> : null}
+        {hasPhaseThreeData ? <ContextValue label={tx("desktop:reports_ramp_configuration")} value={performanceRampConfiguration(report)} /> : null}
+        {hasPhaseThreeData ? <ContextValue label={tx("desktop:reports_slice_resolution")} value={performanceSliceConfiguration(report)} /> : null}
       </dl>
     </div>
     {hasSLOCapacityData ? (
@@ -271,22 +280,22 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <Separator />
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-xs font-semibold">SLO 与容量</h4>
+            <h4 className="text-xs font-semibold">{tx("desktop:quick-test_slo_and_capacity")}</h4>
             <div className="flex flex-wrap gap-1.5">
               <Badge variant="outline" className={report.success ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>
-                传输与协议{report.success ? "通过" : "未通过"}
+                 {tx("desktop:quick-test_transport_and_protocol")}{report.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}
               </Badge>
               {report.slo_assessment ? <SLOStatusBadge status={report.slo_assessment.status} /> : null}
             </div>
           </div>
           {report.slo_assessment ? (
             <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
-              <InlineSummaryValue label="阈值" value={formatSLOThresholds(report.slo_assessment.thresholds)} />
-              <InlineSummaryValue label="目标达标率" value={`${formatMetric(report.slo_assessment.target_percent)}%`} />
-              <InlineSummaryValue label="好请求" value={`${formatMetric(report.slo_assessment.good_requests)} / ${formatMetric(report.slo_assessment.total_requests)}`} />
-              <InlineSummaryValue label="实际达标率" value={`${formatMetric(report.slo_assessment.good_request_percent)}%`} />
+              <InlineSummaryValue label={tx("desktop:reports_thresholds")} value={formatSLOThresholds(report.slo_assessment.thresholds)} />
+              <InlineSummaryValue label={tx("desktop:reports_target_compliance")} value={`${formatMetric(report.slo_assessment.target_percent)}%`} />
+              <InlineSummaryValue label={tx("desktop:quick-test_good_requests")} value={`${formatMetric(report.slo_assessment.good_requests)} / ${formatMetric(report.slo_assessment.total_requests)}`} />
+              <InlineSummaryValue label={tx("desktop:reports_actual_compliance")} value={`${formatMetric(report.slo_assessment.good_request_percent)}%`} />
               <InlineSummaryValue label="Goodput" value={`${formatMetric(report.slo_assessment.goodput_qps)} req/s`} />
-              <InlineSummaryValue label="违反" value={formatSLOViolations(report.slo_assessment.violations)} />
+              <InlineSummaryValue label={tx("desktop:reports_violations")} value={formatSLOViolations(report.slo_assessment.violations)} />
             </div>
           ) : null}
           {report.capacity_result ? (
@@ -304,43 +313,43 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
       <>
         <Separator />
         <div>
-          <h4 className="mb-2 text-xs font-semibold">准备阶段与预算</h4>
+          <h4 className="mb-2 text-xs font-semibold">{tx("desktop:reports_preparation_and_budget")}</h4>
           <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
-            {report.request_budget ? <SummaryValue label="请求预算" value={formatRequestBudget(report)} /> : null}
-            {report.warmup ? <SummaryValue label="热身流量" value={formatTrafficSummary(report.warmup)} /> : null}
-            {report.warmup ? <SummaryValue label="热身 Token（输入 / 输出 / 缓存）" value={formatTrafficTokens(report.warmup)} /> : null}
-            {report.ramp ? <SummaryValue label="爬坡流量" value={formatTrafficSummary(report.ramp.traffic)} /> : null}
-            {report.ramp ? <SummaryValue label="爬坡目标" value={formatRampTarget(report)} /> : null}
-            {report.ramp ? <SummaryValue label="爬坡耗时（发送 / 排空 / 总计）" value={formatTrafficDuration(report.ramp.traffic)} /> : null}
+            {report.request_budget ? <SummaryValue label={tx("desktop:quick-test_request_budget")} value={formatRequestBudget(report)} /> : null}
+            {report.warmup ? <SummaryValue label={tx("desktop:reports_warmup_traffic")} value={formatTrafficSummary(report.warmup)} /> : null}
+            {report.warmup ? <SummaryValue label={tx("desktop:reports_warmup_tokens_input_output_cached")} value={formatTrafficTokens(report.warmup)} /> : null}
+            {report.ramp ? <SummaryValue label={tx("desktop:reports_ramp_traffic")} value={formatTrafficSummary(report.ramp.traffic)} /> : null}
+            {report.ramp ? <SummaryValue label={tx("desktop:reports_ramp_target")} value={formatRampTarget(report)} /> : null}
+            {report.ramp ? <SummaryValue label={tx("desktop:reports_ramp_duration_sending_draining_total")} value={formatTrafficDuration(report.ramp.traffic)} /> : null}
           </div>
-          {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">爬坡窗口未完整执行；主指标仍只统计稳态阶段，请结合上限与停止状态解读爬坡数据。</p> : null}
+          {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">{tx("desktop:reports_the_ramp_window_did_not_complete_primary_metrics_still_cover")}</p> : null}
         </div>
       </>
     ) : null}
     <Separator />
     <div>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h4 className="text-xs font-semibold">稳态运行结果</h4>
-        <span className="text-[10px] text-muted-foreground">主指标仅统计稳态阶段</span>
+        <h4 className="text-xs font-semibold">{tx("desktop:reports_steady_state_results")}</h4>
+        <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_primary_metrics_cover_steady_state_only")}</span>
       </div>
       <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
         <SummaryValue label={completion.label} value={completion.value} />
-        <SummaryValue label="成功" value={String(report.metrics.succeeded)} />
-        <SummaryValue label="失败" value={String(report.metrics.failed)} />
-        <SummaryValue label="成功率" value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
-        <SummaryValue label="目标发送" value={performanceTargetRate(report)} />
-        <SummaryValue label="调度需求" value={optionalRequestRate(report.metrics.offered_qps)} />
-        <SummaryValue label="实际发送" value={optionalRequestRate(report.metrics.launched_qps)} />
-        <SummaryValue label="已发送完成吞吐" value={optionalRequestRate(report.metrics.completed_qps)} />
-        <SummaryValue label="成功吞吐" value={optionalRequestRate(report.metrics.successful_request_qps)} />
-        {report.schema_version === 1 ? <SummaryValue label="旧版请求吞吐" value={`${formatMetric(report.metrics.request_qps)} req/s`} /> : null}
-        <SummaryValue label={report.profile.load_mode === "open_loop" ? "峰值在途 / 上限" : "峰值在途 / 配置并发"} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : (report.progress.capacity_target ?? report.profile.concurrency)}`} />
-        <SummaryValue label="总耗时" value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
+        <SummaryValue label={tx("desktop:quick-test_succeeded")} value={String(report.metrics.succeeded)} />
+        <SummaryValue label={tx("desktop:quick-test_failed")} value={String(report.metrics.failed)} />
+        <SummaryValue label={tx("desktop:quick-test_success_rate")} value={`${formatMetric(report.metrics.success_rate_percent)}%`} />
+        <SummaryValue label={tx("desktop:quick-test_target_send_rate")} value={performanceTargetRate(report)} />
+        <SummaryValue label={tx("desktop:quick-test_offered_load")} value={optionalRequestRate(report.metrics.offered_qps)} />
+        <SummaryValue label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(report.metrics.launched_qps)} />
+        <SummaryValue label={tx("desktop:quick-test_completed_request_throughput")} value={optionalRequestRate(report.metrics.completed_qps)} />
+        <SummaryValue label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(report.metrics.successful_request_qps)} />
+        {report.schema_version === 1 ? <SummaryValue label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatMetric(report.metrics.request_qps)} req/s`} /> : null}
+        <SummaryValue label={report.profile.load_mode === "open_loop" ? tx("desktop:quick-test_peak_in_flight_limit") : tx("desktop:quick-test_peak_in_flight_configured_concurrency")} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : (report.progress.capacity_target ?? report.profile.concurrency)}`} />
+        <SummaryValue label={tx("desktop:quick-test_total_duration")} value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
         <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
-        <SummaryValue label="输入 TPM" value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
-        <SummaryValue label="输出 TPM" value={`${formatMetric(report.metrics.output_tpm)} TPM`} />
-        <SummaryValue label="总 TPM" value={`${formatMetric(report.metrics.total_tpm)} TPM`} />
-        <SummaryValue label="聚合输出吞吐" value={`${formatMetric(report.metrics.generation_tps)} token/s`} />
+        <SummaryValue label={tx("desktop:reports_input_tpm")} value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
+        <SummaryValue label={tx("desktop:reports_output_tpm")} value={`${formatMetric(report.metrics.output_tpm)} TPM`} />
+        <SummaryValue label={tx("desktop:reports_total_tpm")} value={`${formatMetric(report.metrics.total_tpm)} TPM`} />
+        <SummaryValue label={tx("desktop:reports_aggregate_output_throughput")} value={`${formatMetric(report.metrics.generation_tps)} token/s`} />
       </div>
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
@@ -362,12 +371,13 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
   detail: ReportDetail
   watermark: string
 }) {
+  const { t } = useTranslation("reports")
   const label = watermark.trim() || "rhzs"
   return <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0 z-[-1] w-[1200px]">
     <article ref={ref} data-report-export-document className="relative w-[1200px] overflow-hidden bg-background text-foreground">
       <header className="px-4 py-3">
-        <h1 className="text-lg font-semibold tracking-tight">报告详情</h1>
-        <p className="mt-1 text-[11px] text-muted-foreground">查看 {report.verdict} 的指标与请求明细</p>
+        <h1 className="text-lg font-semibold tracking-tight">{t("detailTitle")}</h1>
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("detailDescription", { name: displayReportVerdict(report, t) })}</p>
       </header>
       <div className="border-t">
         {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} /> : <RunReportBody detail={detail} />}
@@ -395,29 +405,30 @@ function SLOStatusBadge({ status }: { status: NonNullable<QuickPerformanceReport
 }
 
 function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
+  const { t: tx } = useTranslation()
   const capacity = report.capacity_result
   if (!capacity) return null
-  const unit = report.profile.load_mode === "open_loop" ? "RPS" : "并发"
+  const unit = report.profile.load_mode === "open_loop" ? "RPS" : tx("desktop:quick-test_concurrency")
   return <div className="mt-3 overflow-x-auto rounded-lg border">
-    <Table aria-label="容量阶梯结果" className="min-w-[1120px]">
+    <Table aria-label={tx("desktop:reports_capacity_ladder_results")} className="min-w-[1120px]">
       <TableHeader><TableRow className="hover:bg-transparent">
-        <TableHead className="h-8 pl-3 text-[11px]">档位</TableHead>
-        <TableHead className="h-8 text-[11px]">目标</TableHead>
-        <TableHead className="h-8 text-[11px]">传输</TableHead>
+        <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:quick-test_step")}</TableHead>
+        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_target")}</TableHead>
+        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_transport")}</TableHead>
         <TableHead className="h-8 text-[11px]">SLO</TableHead>
-        <TableHead className="h-8 text-[11px]">好请求</TableHead>
-        <TableHead className="h-8 text-[11px]">达标率</TableHead>
+        <TableHead className="h-8 text-[11px]">{tx("desktop:quick-test_good_requests")}</TableHead>
+        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_compliance")}</TableHead>
         <TableHead className="h-8 text-[11px]">Goodput</TableHead>
         <TableHead className="h-8 text-[11px]">TTFT P95</TableHead>
         <TableHead className="h-8 text-[11px]">TPOT P95</TableHead>
         <TableHead className="h-8 text-[11px]">E2E P95</TableHead>
-        <TableHead className="h-8 pr-3 text-[11px]">失败原因</TableHead>
+        <TableHead className="h-8 pr-3 text-[11px]">{tx("desktop:reports_failure_reason")}</TableHead>
       </TableRow></TableHeader>
       <TableBody>{capacity.rungs.map((rung) => (
         <TableRow key={rung.index} className="h-9">
           <TableCell className="py-1 pl-3 text-xs tabular-nums">#{rung.index + 1}</TableCell>
           <TableCell className="py-1 text-xs font-medium tabular-nums">{formatMetric(rung.target)} {unit}</TableCell>
-          <TableCell className="py-1 text-xs">{rung.success ? "通过" : "未通过"}</TableCell>
+          <TableCell className="py-1 text-xs">{rung.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}</TableCell>
           <TableCell className="py-1 text-xs">{shortSLOStatus(rung.slo_assessment.status)}</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{rung.slo_assessment.good_requests} / {rung.slo_assessment.total_requests}</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.slo_assessment.good_request_percent)}%</TableCell>
@@ -425,7 +436,7 @@ function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
           <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.ttft_p95_ms)} ms</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.tpot_p95_ms)} ms/token</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.e2e_p95_ms)} ms</TableCell>
-          <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${QUICK_TEST_ERROR_MESSAGES[failure.error_code]} ${failure.count}`).join(" · ") : "—"}</TableCell>
+          <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${tx(`quickTest:errorCode.${failure.error_code}`)} ${failure.count}`).join(" · ") : "—"}</TableCell>
         </TableRow>
       ))}</TableBody>
     </Table>
@@ -437,7 +448,8 @@ function ContextValue({ label, value, mono = false }: { label: string; value: st
 }
 
 function MetricCell({ value, unit }: { value?: number; unit: string }) {
-  return <TableCell className="py-1 text-xs tabular-nums">{metric(value)} {value === undefined ? "" : unit}</TableCell>
+  const { i18n } = useTranslation()
+  return <TableCell className="py-1 text-xs tabular-nums">{metric(value, i18n.resolvedLanguage ?? i18n.language)} {value === undefined ? "" : unit}</TableCell>
 }
 
 function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG }: {
@@ -451,31 +463,35 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   onExport: (format: ReportExportFormat) => Promise<void>
   onCopyPNG: () => Promise<void>
 }) {
+  const { t: tx } = useTranslation()
+  const { t, i18n } = useTranslation("reports")
+  const locale = i18n.resolvedLanguage ?? i18n.language
   const metrics = useMemo(() => detail?.source === "run" ? Object.entries(detail.report.metrics).slice(0, 8) : [], [detail])
   const quick = detail?.source === "quick_performance" ? detail.performance : null
   return <ScrollArea className="h-full">
-    <InspectorHeader title={report.verdict} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} />} />
+    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} />} />
     <Separator />
     <dl className="space-y-1 px-4 py-2">
-      <InspectorRow label="来源" value={report.source === "quick_performance" ? "快速性能测试" : "执行计划"} />{report.run_id ? <InspectorRow label="运行" value={`${report.run_status} · ${report.run_id}`} /> : null}<InspectorRow label="测试计划" value={report.plan_name} /><InspectorRow label="模型与渠道" value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={report.source === "quick_performance" ? "请求结论" : "用例结论"} value={`${report.case_count - report.failed_case_count}/${report.case_count} 通过 · ${report.failed_case_count} 失败`} /><InspectorRow label="问题" value={`${report.issue_count} 项`} /><InspectorRow label="生成时间" value={formatTimestamp(report.generated_at)} />
+      <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.case_count - report.failed_case_count, total: report.case_count, failed: report.failed_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
     </dl>
     <Separator />
-    <div className="grid grid-cols-2 gap-2 px-4 py-3" aria-label="报告导出">
+    <div className="grid grid-cols-2 gap-2 px-4 py-3" aria-label={t("inspector.exportAria")}>
       <Field className="col-span-2 block space-y-1">
-        <FieldLabel htmlFor="report-watermark">导出水印</FieldLabel>
+        <FieldLabel htmlFor="report-watermark">{t("inspector.watermark")}</FieldLabel>
         <Input id="report-watermark" value={watermark} maxLength={64} disabled={Boolean(exporting)} onChange={(event) => onWatermarkChange(event.target.value)} placeholder="rhzs" />
       </Field>
-      {(["json", "html", "png", "pdf"] as const).map((format) => <Button key={format} variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onExport(format)}>{exporting === format ? "生成中…" : format.toUpperCase()}</Button>)}
-      <Button className="col-span-2" variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onCopyPNG()}>{exporting === "copy" ? "复制中…" : "复制 PNG"}</Button>
+      {(["json", "html", "png", "pdf"] as const).map((format) => <Button key={format} variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onExport(format)}>{exporting === format ? t("inspector.generating") : format.toUpperCase()}</Button>)}
+      <Button className="col-span-2" variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onCopyPNG()}>{t(exporting === "copy" ? "inspector.copying" : "inspector.copyPng")}</Button>
     </div>
     {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
-    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">核心指标</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label="目标" value={quick.model_id} /><InspectorRow label="实际发送" value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label="成功吞吐" value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label="旧版请求吞吐" value={`${formatMetric(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatMetric(quick.metrics.ttft_p50_ms)} / ${formatMetric(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatMetric(quick.metrics.tpot_p50_ms)} / ${formatMetric(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatMetric(quick.metrics.e2e_p50_ms)} / ${formatMetric(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
+    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatMetric(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatMetric(quick.metrics.ttft_p50_ms)} / ${formatMetric(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatMetric(quick.metrics.tpot_p50_ms)} / ${formatMetric(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatMetric(quick.metrics.e2e_p50_ms)} / ${formatMetric(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
   </ScrollArea>
 }
 
 function ConclusionBadge({ passed }: { passed: boolean }) {
-  return <Badge variant="outline" className={passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>{passed ? "通过" : "未通过"}</Badge>
+  const { t } = useTranslation("reports")
+  return <Badge variant="outline" className={passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>{t(passed ? "conclusion.passed" : "conclusion.failed")}</Badge>
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -498,14 +514,14 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
-function metric(value?: number): string { return value === undefined ? "—" : formatMetric(value) }
-function formatMetric(value: number): string { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value) }
+function metric(value?: number, locale: string = desktopLocale()): string { return value === undefined ? "—" : formatMetric(value, locale) }
+function formatMetric(value: number, locale: string = desktopLocale()): string { return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value) }
 function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatMetric(value)} req/s` }
-function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? "开放到达（RPS）" : mode === "fixed_concurrency" ? "固定并发" : "旧版固定并发" }
+function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? tx("desktop:quick-test_open_arrival_rps") : mode === "fixed_concurrency" ? tx("desktop:catalog_fixed_concurrency") : tx("desktop:reports_legacy_fixed_concurrency") }
 type QuickPerformanceReport = Extract<ReportDetail, { source: "quick_performance" }>["performance"]
 function performanceTargetRate(report: QuickPerformanceReport): string {
   const target = report.progress.capacity_target ?? report.profile.rate_per_second
-  return report.profile.load_mode === "open_loop" && target !== undefined ? `${formatMetric(target)} req/s` : "—（固定并发）"
+  return report.profile.load_mode === "open_loop" && target !== undefined ? `${formatMetric(target)} req/s` : tx("desktop:quick-test_fixed_concurrency")
 }
 function formatSLOThresholds(thresholds: NonNullable<QuickPerformanceReport["slo_assessment"]>["thresholds"]): string {
   const enabled = [
@@ -513,36 +529,37 @@ function formatSLOThresholds(thresholds: NonNullable<QuickPerformanceReport["slo
     thresholds.tpot_ms > 0 ? `TPOT ≤ ${formatMetric(thresholds.tpot_ms)} ms/token` : "",
     thresholds.e2e_ms > 0 ? `E2E ≤ ${formatMetric(thresholds.e2e_ms)} ms` : "",
   ].filter(Boolean)
-  return enabled.join(" · ") || "未启用"
+  return enabled.join(" · ") || tx("desktop:reports_disabled")
 }
 function formatSLOViolations(violations: NonNullable<QuickPerformanceReport["slo_assessment"]>["violations"]): string {
-  return `传输 ${violations.transport} · TTFT ${violations.ttft} · TPOT ${violations.tpot} · E2E ${violations.e2e}`
+  return tx("desktop:reports_transport_value_ttft_value_tpot_value_e2e_value", { value1: violations.transport, value2: violations.ttft, value3: violations.tpot, value4: violations.e2e })
 }
 function shortSLOStatus(status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"]): string {
-  return status === "passed" ? "通过" : status === "failed" ? "未通过" : "未评估"
+  return status === "passed" ? tx("desktop:quick-test_passed") : status === "failed" ? tx("desktop:quick-test_failed_301") : tx("desktop:reports_not_evaluated")
 }
 function performanceArrivalPattern(report: QuickPerformanceReport): string {
-  if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
-  return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"
+  if (report.profile.arrival_pattern === "poisson") return tx("desktop:quick-test_poisson_arrivals")
+  return report.profile.arrival_pattern === "constant" ? tx("desktop:quick-test_constant_interval") : tx("desktop:quick-test_constant_interval_legacy_report")
 }
 
 function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerformanceReport["time_slices"]> }) {
+  const { t: tx } = useTranslation()
   return <div>
     <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-      <h4 className="text-xs font-semibold">时间切片</h4>
-      <span className="text-[10px] text-muted-foreground">仅列出后端实际记录的稳态窗口</span>
+      <h4 className="text-xs font-semibold">{tx("desktop:quick-test_time_slices")}</h4>
+      <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_only_steady_state_windows_recorded_by_the_backend_are_listed")}</span>
     </div>
     <div className="overflow-x-auto rounded-lg border">
-      <Table aria-label="时间切片" className="min-w-[1040px]">
+      <Table aria-label={tx("desktop:quick-test_time_slices")} className="min-w-[1040px]">
         <TableHeader><TableRow className="hover:bg-transparent">
-          <TableHead className="h-8 pl-3 text-[11px]">段</TableHead>
-          <TableHead className="h-8 text-[11px]">窗口</TableHead>
-          <TableHead className="h-8 text-[11px]">调度</TableHead>
-          <TableHead className="h-8 text-[11px]">发送</TableHead>
-          <TableHead className="h-8 text-[11px]">成功</TableHead>
-          <TableHead className="h-8 text-[11px]">失败</TableHead>
-          <TableHead className="h-8 text-[11px]">拒绝</TableHead>
-          <TableHead className="h-8 text-[11px]">Token（输入 / 输出 / 缓存）</TableHead>
+          <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:reports_slices")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:reports_window")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:reports_offered")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:reports_sent")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:quick-test_succeeded")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:quick-test_failed")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:reports_rejected")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{tx("desktop:reports_tokens_input_output_cached")}</TableHead>
           <TableHead className="h-8 text-[11px]">TTFT P95</TableHead>
           <TableHead className="h-8 text-[11px]">TPOT P95</TableHead>
           <TableHead className="h-8 pr-3 text-[11px]">E2E P95</TableHead>
@@ -561,47 +578,47 @@ function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerfor
             <TableCell className="py-1 text-xs tabular-nums">{formatSliceP95(slice.tpot)}</TableCell>
             <TableCell className="py-1 pr-3 text-xs tabular-nums">{formatSliceP95(slice.e2e)}</TableCell>
           </TableRow>
-        )) : <TableRow><TableCell colSpan={11} className="h-20 text-center text-xs text-muted-foreground">未记录有效时间切片</TableCell></TableRow>}</TableBody>
+        )) : <TableRow><TableCell colSpan={11} className="h-20 text-center text-xs text-muted-foreground">{tx("desktop:reports_no_valid_time_slices_recorded")}</TableCell></TableRow>}</TableBody>
       </Table>
     </div>
   </div>
 }
 function performanceWorkloadMode(report: QuickPerformanceReport): string {
-  if (report.profile.workload_mode === "normal") return "正态分布"
-  return report.profile.workload_mode === "fixed" ? "固定 Token" : "固定 Token（旧报告）"
+  if (report.profile.workload_mode === "normal") return tx("desktop:quick-test_normal_distribution")
+  return report.profile.workload_mode === "fixed" ? tx("desktop:quick-test_fixed_tokens") : tx("desktop:quick-test_fixed_tokens_legacy_report")
 }
 function performanceSeed(report: QuickPerformanceReport): string {
-  if (report.profile.random_seed === undefined) return "—（旧报告）"
-  return report.profile.random_seed > 0 ? formatMetric(report.profile.random_seed) : "—（未使用）"
+  if (report.profile.random_seed === undefined) return tx("desktop:quick-test_legacy_report")
+  return report.profile.random_seed > 0 ? formatMetric(report.profile.random_seed) : tx("desktop:quick-test_not_used")
 }
 function performanceSharedPrefix(report: QuickPerformanceReport): string {
-  if (report.profile.shared_prefix_tokens === undefined) return "0 Token（旧报告）"
+  if (report.profile.shared_prefix_tokens === undefined) return tx("desktop:quick-test_0_tokens_legacy_report")
   return `${formatMetric(report.profile.shared_prefix_tokens)} Token`
 }
 function performanceWarmupConfiguration(report: QuickPerformanceReport): string {
   const requests = report.profile.warmup_requests ?? 0
-  return requests > 0 ? `${formatMetric(requests)} 次` : "0（禁用）"
+  return requests > 0 ? tx("desktop:reports_value_requests", { value1: formatMetric(requests) }) : tx("desktop:reports_0_disabled")
 }
 function performanceRampConfiguration(report: QuickPerformanceReport): string {
   const durationMS = report.profile.ramp_duration_ms ?? 0
-  if (durationMS === 0) return "0（禁用）"
+  if (durationMS === 0) return tx("desktop:reports_0_disabled")
   if (report.profile.load_mode === "fixed_concurrency") {
-    return `${formatDuration(durationMS)} · 上限 ${formatMetric(report.profile.ramp_request_cap ?? 0)}`
+    return tx("desktop:reports_value_cap_value", { value1: formatDuration(durationMS), value2: formatMetric(report.profile.ramp_request_cap ?? 0) })
   }
-  return `${formatDuration(durationMS)} · 10 阶线性阶梯`
+  return tx("desktop:reports_value_10_linear_steps", { value1: formatDuration(durationMS) })
 }
 function performanceSliceConfiguration(report: QuickPerformanceReport): string {
   const durationMS = report.profile.slice_duration_ms ?? 0
-  return durationMS > 0 ? formatDuration(durationMS) : "0（禁用）"
+  return durationMS > 0 ? formatDuration(durationMS) : tx("desktop:reports_0_disabled")
 }
 function formatRequestBudget(report: QuickPerformanceReport): string {
   const budget = report.request_budget
   if (!budget) return "—"
-  return `${formatMetric(budget.total_cap)} / ${formatMetric(budget.limit)} · 热身 ${formatMetric(budget.warmup_cap)} · 爬坡 ${formatMetric(budget.ramp_cap)} · 稳态 ${formatMetric(budget.measured_cap)}`
+  return tx("desktop:reports_value_value_warmup_value_ramp_value_steady_state_value", { value1: formatMetric(budget.total_cap), value2: formatMetric(budget.limit), value3: formatMetric(budget.warmup_cap), value4: formatMetric(budget.ramp_cap), value5: formatMetric(budget.measured_cap) })
 }
 function formatTrafficSummary(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
-  const flags = `${traffic.capped ? " · 已触及上限" : ""}${traffic.stopped ? " · 提前停止" : ""}`
-  return `${formatMetric(traffic.completed)} / ${formatMetric(traffic.request_cap)} 完成 · 调度 ${formatMetric(traffic.offered)} · 发送 ${formatMetric(traffic.launched)} · 成功 ${formatMetric(traffic.succeeded)} · 失败 ${formatMetric(traffic.failed)} · 拒绝 ${formatMetric(traffic.rejected)}${flags}`
+  const flags = `${traffic.capped ? tx("desktop:reports_cap_reached") : ""}${traffic.stopped ? tx("desktop:reports_stopped_early") : ""}`
+  return tx("desktop:reports_value_value_completed_offered_value_sent_value_succeeded_value_failed", { value1: formatMetric(traffic.completed), value2: formatMetric(traffic.request_cap), value3: formatMetric(traffic.offered), value4: formatMetric(traffic.launched), value5: formatMetric(traffic.succeeded), value6: formatMetric(traffic.failed), value7: formatMetric(traffic.rejected), value8: flags })
 }
 function formatTrafficTokens(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
   return `${formatMetric(traffic.prompt_tokens)} / ${formatMetric(traffic.completion_tokens)} / ${formatMetric(traffic.cached_tokens)}`
@@ -613,12 +630,12 @@ function formatRampTarget(report: QuickPerformanceReport): string {
   const ramp = report.ramp
   if (!ramp) return "—"
   const target = ramp.target_concurrency !== undefined
-    ? `目标并发 ${formatMetric(ramp.target_concurrency)}`
-    : `目标 ${formatMetric(ramp.target_rate_per_second ?? 0)} req/s`
-  return `${formatMetric(ramp.steps)} 阶线性阶梯 · ${target} · ${ramp.completed_window ? "完整窗口" : "未完整窗口"}`
+    ? tx("desktop:reports_target_concurrency_value", { value1: formatMetric(ramp.target_concurrency) })
+    : tx("desktop:reports_target_value_req_s", { value1: formatMetric(ramp.target_rate_per_second ?? 0) })
+  return tx("desktop:reports_value_linear_steps_value_value", { value1: formatMetric(ramp.steps), value2: target, value3: ramp.completed_window ? tx("desktop:reports_complete_window") : tx("desktop:reports_incomplete_window") })
 }
 function formatSliceWindow(startMS: number, endMS: number, partial: boolean): string {
-  return `${formatMetric(startMS / 1_000)}–${formatMetric(endMS / 1_000)} s${partial ? " · 部分" : ""}`
+  return `${formatMetric(startMS / 1_000)}–${formatMetric(endMS / 1_000)} s${partial ? tx("desktop:reports_partial") : ""}`
 }
 function formatSliceP95(latency: NonNullable<QuickPerformanceReport["time_slices"]>[number]["ttft"]): string {
   return latency.count === 0 ? "—" : `${formatMetric(latency.p95_ms)} ms`
@@ -637,8 +654,18 @@ function formatIntegerRange(values: number[]): string {
 }
 function formatDuration(valueMS: number): string { return valueMS >= 1_000 ? `${formatMetric(valueMS / 1_000)} s` : `${formatMetric(valueMS)} ms` }
 function performanceMode(requestCount: number, durationMS: number): string {
-  return requestCount > 0 ? `固定请求 · ${formatMetric(requestCount)} 次` : `持续时间 · ${formatDuration(durationMS)}`
+  return requestCount > 0 ? tx("desktop:reports_fixed_count_value_requests", { value1: formatMetric(requestCount) }) : tx("desktop:reports_duration_value", { value1: formatDuration(durationMS) })
 }
-function formatTimestamp(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)).replaceAll("/", "-")
+function formatTimestamp(value: string, locale: string = desktopLocale()): string {
+  return new Intl.DateTimeFormat(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)).replaceAll("/", "-")
+}
+
+function displayReportVerdict(report: ReportSummary, t: (key: string) => string): string {
+  const key = reportVerdictTranslationKey(report)
+  return key ? t(key) : report.verdict
+}
+
+function displayReportPlan(report: ReportSummary, t: (key: string) => string): string {
+  const key = reportPlanTranslationKey(report)
+  return key ? t(key) : report.plan_name
 }

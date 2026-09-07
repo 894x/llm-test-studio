@@ -1,3 +1,5 @@
+import { desktopLocale } from "@/i18n/runtime"
+import { useTranslation } from "react-i18next"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { QuickPerformanceMetrics, QuickPerformanceSchemaVersion } from "@/features/quick-test/data"
@@ -16,15 +18,16 @@ export function PerformanceStreamingTimingTable({ schemaVersion, metrics }: {
   schemaVersion: QuickPerformanceSchemaVersion
   metrics: QuickPerformanceMetrics
 }) {
+  const { t: tx } = useTranslation()
   if (schemaVersion !== 3 || metrics.ttfb_samples === undefined) return null
   const rows: StreamingTimingRow[] = [
     latencyRow("TTFB", metrics.ttfb_samples, metrics.ttfb_average_ms, metrics.ttfb_p50_ms, metrics.ttfb_p95_ms, metrics.ttfb_p99_ms),
-    latencyRow("TTFT（含推理）", metrics.ttft_any_samples, metrics.ttft_any_average_ms, metrics.ttft_any_p50_ms, metrics.ttft_any_p95_ms, metrics.ttft_any_p99_ms),
-    latencyRow("TTFT（可见内容）", metrics.ttft_visible_samples, metrics.ttft_visible_average_ms, metrics.ttft_visible_p50_ms, metrics.ttft_visible_p95_ms, metrics.ttft_visible_p99_ms),
-    latencyRow("TTST（第二语义块）", metrics.ttst_samples, metrics.ttst_average_ms, metrics.ttst_p50_ms, metrics.ttst_p95_ms, metrics.ttst_p99_ms),
-    latencyRow("Observed ICL（语义块间隔，非 Token ITL）", metrics.observed_icl_samples, metrics.observed_icl_average_ms, metrics.observed_icl_p50_ms, metrics.observed_icl_p95_ms, metrics.observed_icl_p99_ms),
+    latencyRow(tx("desktop:quick-test_ttft_includes_reasoning"), metrics.ttft_any_samples, metrics.ttft_any_average_ms, metrics.ttft_any_p50_ms, metrics.ttft_any_p95_ms, metrics.ttft_any_p99_ms),
+    latencyRow(tx("desktop:quick-test_ttft_visible_content"), metrics.ttft_visible_samples, metrics.ttft_visible_average_ms, metrics.ttft_visible_p50_ms, metrics.ttft_visible_p95_ms, metrics.ttft_visible_p99_ms),
+    latencyRow(tx("desktop:quick-test_ttst_second_semantic_chunk"), metrics.ttst_samples, metrics.ttst_average_ms, metrics.ttst_p50_ms, metrics.ttst_p95_ms, metrics.ttst_p99_ms),
+    latencyRow(tx("desktop:quick-test_observed_icl_semantic_chunk_interval_not_token_itl"), metrics.observed_icl_samples, metrics.observed_icl_average_ms, metrics.observed_icl_p50_ms, metrics.observed_icl_p95_ms, metrics.observed_icl_p99_ms),
     {
-      label: "语义块数",
+      label: tx("desktop:quick-test_semantic_chunks"),
       unit: "",
       samples: metrics.semantic_chunk_count_samples ?? 0,
       average: metrics.semantic_chunk_count_average ?? 0,
@@ -37,15 +40,15 @@ export function PerformanceStreamingTimingTable({ schemaVersion, metrics }: {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <h4 className="text-xs font-semibold">流式时序</h4>
-        <span className="text-[10px] text-muted-foreground">Observed ICL 是语义块间隔，不是 Token ITL</span>
+        <h4 className="text-xs font-semibold">{tx("desktop:reports_streaming_timing")}</h4>
+        <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_observed_icl_measures_semantic_chunk_intervals_not_token_itl")}</span>
       </div>
       <ScrollArea className="w-full rounded-md border">
-        <Table aria-label="流式时序统计" className="min-w-[680px] text-xs">
+        <Table aria-label={tx("desktop:reports_streaming_timing_statistics")} className="min-w-[680px] text-xs">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="h-8 pl-3 text-[11px]">指标</TableHead>
-              {["平均", "P50", "P95", "P99", "Samples"].map((label) => <TableHead key={label} className="h-8 text-right text-[11px]">{label}</TableHead>)}
+              <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:reports_metric")}</TableHead>
+              {[tx("desktop:reports_average"), "P50", "P95", "P99", tx("reports:inspector.samples")].map((label) => <TableHead key={label} className="h-8 text-right text-[11px]">{label}</TableHead>)}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -82,5 +85,5 @@ function formatStreamingValue(value: number, samples: number, unit: StreamingTim
 }
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)
+  return new Intl.NumberFormat(desktopLocale(), { maximumFractionDigits: 2 }).format(value)
 }

@@ -1,0 +1,50 @@
+{
+  "title": "Workspace overview",
+  "description": "A summary of the local catalog, active runs, and recent reports",
+  "summary": {
+    "aria": "Local object summary",
+    "models": "{{count}} models",
+    "logicalModels": "Logical models",
+    "channels": "{{count}} channels",
+    "enabled": "{{count}} enabled",
+    "cases": "{{count}} cases",
+    "suites": "{{count}} suites",
+    "plans": "{{count}} plans",
+    "fixedVersions": "Pinned versions",
+    "runs": "{{count}} runs",
+    "activeRun": "1 active run",
+    "noActiveRun": "No active run",
+    "reports": "{{count}} reports",
+    "archivedConclusions": "Archived conclusions"
+  },
+  "activeRun": {
+    "title": "Active run",
+    "plan": "Plan",
+    "modelChannel": "Model and channel",
+    "load": "Load",
+    "completed": "Completed",
+    "timed": "Timed",
+    "coreStatus": "Core status",
+    "emptyTitle": "No active run",
+    "emptyDescription": "Authoritative lifecycle status appears here after a run starts from a test plan."
+  },
+  "readiness": {
+    "title": "Catalog readiness",
+    "enabledChannels": "Enabled channels",
+    "configuredCredentials": "Configured credentials",
+    "modelMappings": "Model mappings",
+    "mappingCount": "{{count}} mappings",
+    "reusableSuites": "Reusable suites",
+    "suiteCount": "{{count}} suites",
+    "localSecrets": "Local secrets",
+    "localSecretsValue": "Stored only in the operating system keychain"
+  },
+  "reports": {
+    "title": "Recent reports",
+    "source": "Conclusions provided by Go Core",
+    "empty": "No archived reports yet.",
+    "passed": "Passed",
+    "failed": "Failed",
+    "failureCount": "{{failed}}/{{total}} failed"
+  }
+}

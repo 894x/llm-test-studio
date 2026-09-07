@@ -1,3 +1,5 @@
+import { DesktopDataError } from "@/app/data-error"
+import { translateDesktop as tx } from "@/i18n/runtime"
 import type { CoreRunStatus } from "@/features/runs/data"
 
 export interface ComparisonMetric {
@@ -46,11 +48,11 @@ export const EMPTY_COMPARISONS: ComparisonSnapshot = {
 
 export function parseComparisonSnapshot(value: unknown): ComparisonSnapshot {
   if (!isRecord(value) || value.schema_version !== 1 || !Array.isArray(value.comparisons)) {
-    throw new Error("渠道对比数据协议无效")
+    throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_data_protocol"))
   }
   const comparisons = value.comparisons.map(parseComparison)
   if (new Set(comparisons.map((item) => item.id)).size !== comparisons.length) {
-    throw new Error("渠道对比数据包含重复标识")
+    throw new DesktopDataError(tx("desktop:comparisons_duplicate_channel_comparison_identifiers"))
   }
   return { schema_version: 1, comparisons }
 }
@@ -61,14 +63,14 @@ function parseComparison(value: unknown): ComparisonSummary {
     !isComparisonStatus(value.status) || !isUUID(value.plan_id) || !isNonBlank(value.plan_name) ||
     !isUUID(value.model_id) || !isNonBlank(value.model_name) || !Array.isArray(value.channels) || value.channels.length < 2
   ) {
-    throw new Error("渠道对比摘要无效")
+    throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_summary"))
   }
   const channels = value.channels.map(parseChannel)
   if (
     new Set(channels.map((item) => item.channel_id)).size !== channels.length ||
     new Set(channels.map((item) => item.run_id)).size !== channels.length
   ) {
-    throw new Error("渠道对比运行引用重复")
+    throw new DesktopDataError(tx("desktop:comparisons_duplicate_channel_comparison_run_reference"))
   }
   return {
     id: value.id, created_at: value.created_at, status: value.status,
@@ -84,18 +86,18 @@ function parseChannel(value: unknown): ComparisonChannelResult {
     typeof value.report_ready !== "boolean" || typeof value.passed !== "boolean" ||
     typeof value.verdict !== "string" || !isRecord(value.metrics)
   ) {
-    throw new Error("渠道对比结果无效")
+    throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_result"))
   }
   const metrics: Record<string, ComparisonMetric> = {}
   for (const [name, metric] of Object.entries(value.metrics)) {
 		if (!isNonBlank(name) || !isRecord(metric)) {
-			throw new Error("渠道对比指标无效")
+			throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_metrics"))
 		}
 		const metricValue = metric.value
 		const samples = metric.samples
 		if (typeof metricValue !== "number" || !Number.isFinite(metricValue) ||
 			!isNonBlank(metric.unit) || typeof samples !== "number" || !Number.isInteger(samples) || samples < 0) {
-      throw new Error("渠道对比指标无效")
+      throw new DesktopDataError(tx("desktop:comparisons_invalid_channel_comparison_metrics"))
     }
 		metrics[name] = { value: metricValue, unit: metric.unit, samples }
   }

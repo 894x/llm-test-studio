@@ -1,0 +1,9 @@
+{
+  "loadError": "无法读取本地工作区",
+  "commandError": "桌面操作失败，请检查本地日志",
+  "catalogRefreshError": "{{operation}}已完成，但运行计划列表刷新失败，请重新打开应用",
+  "catalogError": "目录操作失败，请检查对象是否仍被引用",
+  "comparisonError": "无法启动渠道对比，请检查本地日志",
+  "openErrorTitle": "无法打开本地工作台",
+  "loading": "正在读取本地工作区…"
+}

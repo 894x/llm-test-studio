@@ -1,5 +1,8 @@
+import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
+import { caseTypeLabel } from "./presentation"
 import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from "react"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
+import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import {
@@ -30,10 +33,6 @@ export type CatalogMutation = (
   operationLabel: string,
 ) => Promise<void>
 
-const TITLES: Record<CatalogEntityKind, string> = {
-  model: "模型", channel: "渠道", mapping: "映射", case: "用例", suite: "套件", plan: "计划",
-}
-
 export function CatalogEditor({
   kind, item, catalog, actions, mutate, pending,
 }: {
@@ -44,8 +43,10 @@ export function CatalogEditor({
   mutate: CatalogMutation
   pending: boolean
 }) {
+  const { t } = useTranslation("catalog")
   const [open, setOpen] = useState(false)
-  const title = `${item ? "编辑" : "新增"}${TITLES[kind]}`
+  const noun = t(`editor.noun.${kind}`)
+  const title = t(item ? "editor.editTitle" : "editor.newTitle", { noun })
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -56,7 +57,7 @@ export function CatalogEditor({
       <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>保存后将刷新整个本地目录；编辑会检查当前版本，避免覆盖其他修改。</SheetDescription>
+          <SheetDescription>{t("editor.description")}</SheetDescription>
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1 px-4">
           <EditorForm kind={kind} item={item} catalog={catalog} actions={actions} mutate={mutate} pending={pending} formTitle={title} onSaved={() => setOpen(false)} />
@@ -75,19 +76,20 @@ export function DeleteCatalogButton({
   mutate: CatalogMutation
   pending: boolean
 }) {
+  const { t } = useTranslation("catalog")
   if (!item) return null
-  const noun = TITLES[kind]
+  const noun = t(`editor.noun.${kind}`)
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>删除{noun}</Button></AlertDialogTrigger>
+      <AlertDialogTrigger asChild><Button size="sm" variant="destructive" disabled={pending}>{t("editor.delete", { noun })}</Button></AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>删除{noun}？</AlertDialogTitle>
-          <AlertDialogDescription>此对象会从当前目录隐藏，历史版本与已停用的 ID 会保留。对象可能被渠道映射或测试计划引用，存在当前引用时后端会拒绝删除。</AlertDialogDescription>
+          <AlertDialogTitle>{t("editor.deleteTitle", { noun })}</AlertDialogTitle>
+          <AlertDialogDescription>{t("editor.deleteDescription")}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction onClick={() => void mutate(() => action({ id: item.id, expected_revision: item.revision }), `删除${noun}`).catch(() => undefined)}>确认删除{noun}</AlertDialogAction>
+          <AlertDialogCancel>{t("editor.cancel")}</AlertDialogCancel>
+          <AlertDialogAction onClick={() => void mutate(() => action({ id: item.id, expected_revision: item.revision }), t("editor.delete", { noun })).catch(() => undefined)}>{t("editor.confirmDelete", { noun })}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -112,62 +114,69 @@ type FormProps<T> = {
 }
 
 function ModelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogModel>) {
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [capabilities, setCapabilities] = useState(item?.capabilities.join(", ") ?? "")
-  return <FormShell pending={pending} label="保存模型" formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, "模型名称"), protocol, capabilities: list(capabilities) }
-    await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), `${formTitle}保存`); onSaved()
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.model") })} formTitle={formTitle} onSubmit={async () => {
+    const command = { name: required(name, t("editor.fields.modelName")), protocol, capabilities: list(capabilities) }
+    await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label="模型名称" value={name} onChange={setName} />
-    <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <TextField label="模型能力" value={capabilities} onChange={setCapabilities} description="使用逗号分隔，例如 chat, tools, vision。" />
+    <TextField label={t("editor.fields.modelName")} value={name} onChange={setName} />
+    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <TextField label={t("editor.fields.modelCapabilities")} value={capabilities} onChange={setCapabilities} description={t("editor.fields.capabilityHint")} />
   </FormShell>
 }
 
 function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannel>) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [baseURL, setBaseURL] = useState(item?.base_url ?? "https://")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
   const [apiKey, setAPIKey] = useState("")
-  return <FormShell pending={pending} label="保存渠道" formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, "渠道名称"), base_url: serviceURL(baseURL), api_key: required(apiKey, "API Key"), protocol, enabled }
-    await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), `${formTitle}保存`); onSaved()
+  return <FormShell pending={pending} label={tx("desktop:catalog_save_channel")} formTitle={formTitle} onSubmit={async () => {
+    const command = { name: required(name, tx("desktop:catalog_channel_name")), base_url: serviceURL(baseURL), api_key: required(apiKey, "API Key"), protocol, enabled }
+    await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), tx("desktop:catalog_save_value", { value1: formTitle })); onSaved()
   }}>
-    <TextField label="渠道名称" value={name} onChange={setName} />
-    <TextField label="服务地址" value={baseURL} onChange={setBaseURL} />
-    <TextField label="API Key" type="password" value={apiKey} onChange={setAPIKey} description={item ? "保存为渠道新版本的独立凭据；历史计划继续使用旧版本。" : "仅写入系统密钥环，不会保存到数据库或前端快照。"} />
-    <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <CheckField label="启用渠道" checked={enabled} onChange={setEnabled} />
-    <FieldDescription>服务地址和 API Key 会作为同一个渠道配置一起保存。</FieldDescription>
+    <TextField label={t("editor.fields.channelName")} value={name} onChange={setName} />
+    <TextField label={t("editor.fields.serviceUrl")} value={baseURL} onChange={setBaseURL} />
+    <TextField label={t("editor.fields.apiKey")} type="password" value={apiKey} onChange={setAPIKey} description={t(item ? "editor.fields.apiKeyEditHint" : "editor.fields.apiKeyNewHint")} />
+    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <CheckField label={t("editor.fields.enabledChannel")} checked={enabled} onChange={setEnabled} />
+    <FieldDescription>{t("editor.fields.channelSaveHint")}</FieldDescription>
   </FormShell>
 }
 
 function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannelModel>) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("catalog")
   const [channelID, setChannelID] = useState(item?.channel_id ?? catalog.channels[0]?.id ?? "")
   const compatibleModels = catalog.models.filter((model) => model.protocol === catalog.channels.find((channel) => channel.id === channelID)?.protocol)
   const [modelID, setModelID] = useState(item?.model_id ?? compatibleModels[0]?.id ?? "")
   const [upstreamName, setUpstreamName] = useState(item?.upstream_model_name ?? "")
-  return <FormShell pending={pending} label="保存映射" formTitle={formTitle} onSubmit={async () => {
-    if (!channelID) throw new FormValidationError("渠道", "请选择渠道。")
-    if (!modelID) throw new FormValidationError("逻辑模型", "请选择逻辑模型。")
+  return <FormShell pending={pending} label={tx("desktop:catalog_save_mapping")} formTitle={formTitle} onSubmit={async () => {
+    if (!channelID) throw new FormValidationError(tx("desktop:catalog_channel"), tx("desktop:catalog_select_a_channel"))
+    if (!modelID) throw new FormValidationError(tx("desktop:catalog_logical_model"), tx("desktop:catalog_select_a_logical_model"))
     await mutate(() => item
-      ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, upstream_model_name: required(upstreamName, "上游模型名称") })
-      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, "上游模型名称") }), `${formTitle}保存`)
+      ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel")) })
+      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel")) }), t("editor.savedOperation", { title: formTitle }))
     onSaved()
   }}>
-    <SelectField label="渠道" value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={(value) => { setChannelID(value); const protocol = catalog.channels.find((channel) => channel.id === value)?.protocol; setModelID(catalog.models.find((model) => model.protocol === protocol)?.id ?? "") }} />
-    <SelectField label="逻辑模型" value={modelID} disabled={!!item} options={compatibleModels.map((value) => [value.id, value.name])} onChange={setModelID} />
-    <TextField label="上游模型名称" value={upstreamName} onChange={setUpstreamName} />
+    <SelectField label={t("common.channel")} value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={(value) => { setChannelID(value); const protocol = catalog.channels.find((channel) => channel.id === value)?.protocol; setModelID(catalog.models.find((model) => model.protocol === protocol)?.id ?? "") }} />
+    <SelectField label={t("editor.fields.logicalModel")} value={modelID} disabled={!!item} options={compatibleModels.map((value) => [value.id, value.name])} onChange={setModelID} />
+    <TextField label={t("editor.fields.upstreamModel")} value={upstreamName} onChange={setUpstreamName} />
   </FormShell>
 }
 
 function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
+  const { t: tx } = useTranslation()
   const availableTypes = catalog.case_types.filter((descriptor) => descriptor.creatable || descriptor.type === item?.type)
   const initialDescriptor = catalog.case_types.find((descriptor) => descriptor.type === item?.type && descriptor.type_version === item.type_version)
     ?? availableTypes.find((descriptor) => descriptor.supported_protocols.includes(item?.protocol ?? "openai-chat"))
   const initialSpec = item?.spec ?? initialDescriptor?.default_spec ?? {}
+  const { t } = useTranslation("catalog")
   const [value, setValue] = useState(() => ({
     key: item?.key ?? "", name: item?.name ?? "", dimension: item?.dimension ?? "compatibility",
     protocol: item?.protocol ?? "openai-chat" as CatalogProtocol, enabled: item?.enabled ?? true,
@@ -184,7 +193,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   }))
   const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue((current) => ({ ...current, [key]: next }))
   const descriptor = catalog.case_types.find((candidate) => candidate.type === value.type && candidate.type_version === value.type_version)
-  const typeOptions = availableTypes.filter((candidate) => candidate.supported_protocols.includes(value.protocol)).map((candidate) => [`${candidate.type}@${candidate.type_version}`, `${candidate.label} · v${candidate.type_version}`] as [string, string])
+  const typeOptions = availableTypes.filter((candidate) => candidate.supported_protocols.includes(value.protocol)).map((candidate) => [`${candidate.type}@${candidate.type_version}`, `${caseTypeLabel(candidate.type, candidate.label)} · v${candidate.type_version}`] as [string, string])
   const selectType = (key: string) => {
     const next = catalog.case_types.find((candidate) => `${candidate.type}@${candidate.type_version}` === key)
     if (!next) return
@@ -205,68 +214,69 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     return { ...current, stages: [...current.stages, { input_tokens: Math.min(previous * 2, 1_000_000), warmups: "", samples: "" }] }
   })
   const removeStage = (index: number) => setValue((current) => ({ ...current, stages: current.stages.filter((_, stageIndex) => stageIndex !== index) }))
-  return <FormShell pending={pending} label="保存用例" formTitle={formTitle} onSubmit={async () => {
-    if (!descriptor) throw new FormValidationError("用例类型", "请选择可用的用例类型。")
+  return <FormShell pending={pending} label={tx("desktop:catalog_save_case")} formTitle={formTitle} onSubmit={async () => {
+    if (!descriptor) throw new FormValidationError(tx("desktop:catalog_case_type"), tx("desktop:catalog_select_an_available_case_type"))
     if (value.type === "latency.input_ladder") {
-      integerField(value.warmups_per_step, "默认每档预热次数", 0, 10)
-      integerField(value.samples_per_step, "默认每档采样次数", 1, 100)
-      integerField(value.output_tokens, "输出 Token 上限", 1, 65_536)
-      integerField(value.timeout_ms, "单请求超时毫秒", 1, 600_000)
+      integerField(value.warmups_per_step, tx("desktop:catalog_default_warmups_per_step"), 0, 10)
+      integerField(value.samples_per_step, tx("desktop:catalog_default_samples_per_step"), 1, 100)
+      integerField(value.output_tokens, tx("desktop:catalog_output_token_limit"), 1, 65_536)
+      integerField(value.timeout_ms, tx("desktop:catalog_request_timeout_ms"), 1, 600_000)
     }
     const spec = value.type === "latency.input_ladder"
       ? {
-          ...recordJSON<unknown>(value.spec, "用例配置"),
+          ...recordJSON<unknown>(value.spec, tx("desktop:catalog_case_configuration")),
           stages: latencyStageSpecs(value.stages), warmups_per_step: value.warmups_per_step,
           samples_per_step: value.samples_per_step, output_tokens: value.output_tokens,
           timeout_ms: value.timeout_ms, cache_mode: value.cache_mode,
         }
-      : recordJSON<unknown>(value.spec, "用例配置")
+      : recordJSON<unknown>(value.spec, tx("desktop:catalog_case_configuration"))
     const modelTargets = list(value.model_targets)
-    if (modelTargets.length > 32) throw new FormValidationError("适用模型", "最多填写 32 个模型 ID。")
-    modelTargets.forEach((target) => safeModelTarget(target, "适用模型"))
-    if (value.default && !value.enabled) throw new FormValidationError("默认启用", "默认用例必须同时启用。")
+    if (modelTargets.length > 32) throw new FormValidationError(tx("desktop:catalog_applicable_models"), tx("desktop:catalog_enter_at_most_32_model_ids"))
+    modelTargets.forEach((target) => safeModelTarget(target, tx("desktop:catalog_applicable_models")))
+    if (value.default && !value.enabled) throw new FormValidationError(tx("desktop:catalog_enabled_by_default"), tx("desktop:catalog_default_cases_must_also_be_enabled"))
     const command = {
-      key: safeCatalogKey(value.key, "用例键"), name: required(value.name, "用例名称"), dimension: required(value.dimension, "维度"),
+      key: safeCatalogKey(value.key, tx("desktop:catalog_case_key")), name: required(value.name, tx("desktop:catalog_case_name")), dimension: required(value.dimension, tx("desktop:catalog_dimension")),
       protocol: value.protocol, enabled: value.enabled, default: value.default, severity: value.severity as "normal" | "critical",
       model_targets: modelTargets,
       execution_mode: value.execution_mode as "automatic" | "manual", definition_schema_version: 2,
       type: value.type, type_version: value.type_version, spec,
     }
-    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), `${formTitle}保存`); onSaved()
+    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <div className="grid grid-cols-2 gap-3"><TextField label="用例键" value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label="用例名称" value={value.name} onChange={(v) => set("name", v)} /></div>
-    <div className="grid grid-cols-2 gap-3"><TextField label="维度" value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label="协议" value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
-    <TextField label="适用模型" value={value.model_targets} onChange={(v) => set("model_targets", v)} description="填写精确的上游模型 ID，多个用逗号分隔；留空表示适用于该协议下全部模型。" />
-    <SelectField label="用例类型" value={`${value.type}@${value.type_version}`} options={typeOptions} onChange={selectType} />
-    {descriptor ? <FieldDescription>{descriptor.category} · 调度由{descriptor.scheduling_owner === "case" ? "用例" : "计划"}负责 · {descriptor.type}@{descriptor.type_version}</FieldDescription> : null}
-    <div className="grid grid-cols-2 gap-3"><SelectField label="严重度" value={value.severity} options={[["normal","普通"],["critical","关键"]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label="执行方式" value={value.execution_mode} options={[["automatic","自动"],["manual","人工"]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
-    <div className="grid grid-cols-2 gap-3"><CheckField label="启用" checked={value.enabled} clearFields={["默认启用"]} onChange={(v) => set("enabled", v)} /><CheckField label="默认启用" checked={value.default} clearFields={["启用"]} onChange={(v) => set("default", v)} /></div>
+    <div className="grid grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_case_key")} value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label={tx("desktop:catalog_case_name")} value={value.name} onChange={(v) => set("name", v)} /></div>
+    <div className="grid grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_dimension")} value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label={tx("desktop:catalog_protocol")} value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
+    <TextField label={tx("desktop:catalog_applicable_models")} value={value.model_targets} onChange={(v) => set("model_targets", v)} description={tx("desktop:catalog_enter_exact_upstream_model_ids_separated_by_commas_leave_empty")} />
+    <SelectField label={tx("desktop:catalog_case_type")} value={`${value.type}@${value.type_version}`} options={typeOptions} onChange={selectType} />
+    {descriptor ? <FieldDescription>{descriptor.category}  {tx("desktop:catalog_scheduled_by")}{descriptor.scheduling_owner === "case" ? tx("desktop:catalog_case") : tx("desktop:catalog_plan")}{tx("desktop:catalog_separator")} {descriptor.type}@{descriptor.type_version}</FieldDescription> : null}
+    <div className="grid grid-cols-2 gap-3"><SelectField label={tx("desktop:catalog_severity")} value={value.severity} options={[["normal",tx("desktop:catalog_normal")],["critical",tx("desktop:catalog_critical")]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label={tx("desktop:catalog_execution_mode")} value={value.execution_mode} options={[["automatic",tx("desktop:catalog_automatic")],["manual",tx("desktop:catalog_manual")]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
+    <div className="grid grid-cols-2 gap-3"><CheckField label={tx("desktop:catalog_enabled")} checked={value.enabled} clearFields={[tx("desktop:catalog_enabled_by_default")]} onChange={(v) => set("enabled", v)} /><CheckField label={tx("desktop:catalog_enabled_by_default")} checked={value.default} clearFields={[tx("desktop:catalog_enabled")]} onChange={(v) => set("default", v)} /></div>
     {value.type === "latency.input_ladder" ? <>
-      <div className="grid grid-cols-2 gap-3"><NumberField label="默认每档预热次数" value={value.warmups_per_step} maximum={10} onChange={(v) => set("warmups_per_step", v)} /><NumberField label="默认每档采样次数" value={value.samples_per_step} minimum={1} maximum={100} onChange={(v) => set("samples_per_step", v)} /></div>
+      <div className="grid grid-cols-2 gap-3"><NumberField label={tx("desktop:catalog_default_warmups_per_step")} value={value.warmups_per_step} maximum={10} onChange={(v) => set("warmups_per_step", v)} /><NumberField label={tx("desktop:catalog_default_samples_per_step")} value={value.samples_per_step} minimum={1} maximum={100} onChange={(v) => set("samples_per_step", v)} /></div>
       <fieldset className="space-y-2 rounded-lg border p-3">
-        <legend className="px-1 text-xs font-medium">输入 Token 阶梯</legend>
-        <FieldDescription>预热或采样留空时继承上方默认值；填写后仅覆盖当前阶梯。</FieldDescription>
+        <legend className="px-1 text-xs font-medium">{tx("desktop:catalog_input_token_ladder")}</legend>
+        <FieldDescription>{tx("desktop:catalog_leave_warmups_or_samples_empty_to_inherit_the_defaults_above")}</FieldDescription>
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 px-1 text-[10px] text-muted-foreground" aria-hidden="true">
-          <span>输入 Token</span><span>预热覆盖</span><span>采样覆盖</span><span className="w-12" />
+          <span>{tx("desktop:catalog_input_tokens")}</span><span>{tx("desktop:catalog_warmup_override")}</span><span>{tx("desktop:catalog_sample_override")}</span><span className="w-12" />
         </div>
         {value.stages.map((stage, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-start gap-2">
-          <StageNumberField label={`阶梯 ${index + 1} 输入 Token`} minimum={1} maximum={1_000_000} value={stage.input_tokens} onChange={(next) => updateStage(index, { input_tokens: Number(next) })} />
-          <StageNumberField label={`阶梯 ${index + 1} 预热次数`} minimum={0} maximum={10} value={stage.warmups} placeholder={`继承 ${value.warmups_per_step}`} onChange={(next) => updateStage(index, { warmups: next })} />
-          <StageNumberField label={`阶梯 ${index + 1} 采样次数`} minimum={1} maximum={100} value={stage.samples} placeholder={`继承 ${value.samples_per_step}`} onChange={(next) => updateStage(index, { samples: next })} />
-          <Button type="button" size="sm" variant="ghost" className="w-12" disabled={value.stages.length === 1} onClick={() => removeStage(index)} aria-label={`删除阶梯 ${index + 1}`}>删除</Button>
+          <StageNumberField label={tx("desktop:catalog_step_value_input_tokens", { value1: index + 1 })} minimum={1} maximum={1_000_000} value={stage.input_tokens} onChange={(next) => updateStage(index, { input_tokens: Number(next) })} />
+          <StageNumberField label={tx("desktop:catalog_step_value_warmups", { value1: index + 1 })} minimum={0} maximum={10} value={stage.warmups} placeholder={tx("desktop:catalog_inherit_value", { value1: value.warmups_per_step })} onChange={(next) => updateStage(index, { warmups: next })} />
+          <StageNumberField label={tx("desktop:catalog_step_value_samples", { value1: index + 1 })} minimum={1} maximum={100} value={stage.samples} placeholder={tx("desktop:catalog_inherit_value", { value1: value.samples_per_step })} onChange={(next) => updateStage(index, { samples: next })} />
+          <Button type="button" size="sm" variant="ghost" className="w-12" disabled={value.stages.length === 1} onClick={() => removeStage(index)} aria-label={tx("desktop:catalog_delete_step_value", { value1: index + 1 })}>{tx("desktop:catalog_delete")}</Button>
         </div>)}
-        <Button type="button" size="sm" variant="outline" disabled={value.stages.length >= 32 || (value.stages.at(-1)?.input_tokens ?? 0) >= 1_000_000} onClick={addStage}><PlusIcon data-icon="inline-start" />新增阶梯</Button>
+        <Button type="button" size="sm" variant="outline" disabled={value.stages.length >= 32 || (value.stages.at(-1)?.input_tokens ?? 0) >= 1_000_000} onClick={addStage}><PlusIcon data-icon="inline-start" />{tx("desktop:catalog_add_step")}</Button>
       </fieldset>
-      <div className="grid grid-cols-2 gap-3"><NumberField label="输出 Token 上限" value={value.output_tokens} minimum={1} maximum={65_536} onChange={(v) => set("output_tokens", v)} /><NumberField label="单请求超时毫秒" value={value.timeout_ms} minimum={1} maximum={600_000} onChange={(v) => set("timeout_ms", v)} /></div>
-      <SelectField label="缓存模式" value={value.cache_mode} options={[["cold","冷缓存（每次变化探针）"],["warm","热缓存（复用探针）"]]} onChange={(v) => set("cache_mode", v as "cold" | "warm")} />
-      <TextAreaField label="高级配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description="请求模板保存在这里；上方阶梯参数保存时会覆盖同名字段。" />
-    </> : <TextAreaField label="用例配置 JSON" value={value.spec} onChange={(v) => set("spec", v)} description={value.type === "response.probe"
-      ? "signatures 使用 JSON Pointer 匹配响应；探测次数与并发沿用计划配置。未命中规则的成功响应会按匿名结构指纹归入 unknown。"
-      : "配置结构由所选 type@version 定义并由后端校验。"} />}
+      <div className="grid grid-cols-2 gap-3"><NumberField label={tx("desktop:catalog_output_token_limit")} value={value.output_tokens} minimum={1} maximum={65_536} onChange={(v) => set("output_tokens", v)} /><NumberField label={tx("desktop:catalog_request_timeout_ms")} value={value.timeout_ms} minimum={1} maximum={600_000} onChange={(v) => set("timeout_ms", v)} /></div>
+      <SelectField label={tx("desktop:catalog_cache_mode")} value={value.cache_mode} options={[["cold",tx("desktop:catalog_cold_cache_vary_the_probe")],["warm",tx("desktop:catalog_warm_cache_reuse_the_probe")]]} onChange={(v) => set("cache_mode", v as "cold" | "warm")} />
+      <TextAreaField label={tx("desktop:catalog_advanced_configuration_json")} value={value.spec} onChange={(v) => set("spec", v)} description={tx("desktop:catalog_the_request_template_is_stored_here_saving_replaces_matching_fields")} />
+    </> : <TextAreaField label={tx("desktop:catalog_case_configuration_json")} value={value.spec} onChange={(v) => set("spec", v)} description={value.type === "response.probe"
+      ? tx("desktop:catalog_signatures_match_responses_using_json_pointer_probe_count_and_concurrency")
+      : tx("desktop:catalog_the_selected_type_version_defines_the_configuration_structure_which_the")} />}
   </FormShell>
 }
 
 function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogSuite>) {
+  const { t: tx } = useTranslation()
   const [key, setKey] = useState(item?.key ?? "")
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
@@ -275,29 +285,31 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
   const availableCases = catalog.test_cases.filter((testCase) =>
     testCase.protocol === protocol && (!modelTarget.trim() || testCase.model_targets.length === 0 || testCase.model_targets.includes(modelTarget.trim())),
   )
-  return <FormShell pending={pending} label="保存套件" formTitle={formTitle} onSubmit={async () => {
+  return <FormShell pending={pending} label={tx("desktop:catalog_save_suite")} formTitle={formTitle} onSubmit={async () => {
     const pinned = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
-    const validatedKey = safeCatalogKey(key, "套件标识")
-    const validatedName = required(name, "套件名称")
-    const validatedModelTarget = safeModelTarget(modelTarget, "目标模型")
+    const validatedKey = safeCatalogKey(key, tx("desktop:catalog_suite_key"))
+    const validatedName = required(name, tx("desktop:catalog_suite_name"))
+    const validatedModelTarget = safeModelTarget(modelTarget, tx("desktop:catalog_target_model"))
     const cases = availableCases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision }))
-    if (cases.length === 0) throw new FormValidationError("包含用例", "请至少选择一个用例。")
+    if (cases.length === 0) throw new FormValidationError(tx("desktop:catalog_included_cases"), tx("desktop:catalog_select_at_least_one_case"))
     const command = {
       key: validatedKey, name: validatedName, protocol,
       model_target: validatedModelTarget,
       cases,
     }
-    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), `${formTitle}保存`); onSaved()
+    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), tx("desktop:catalog_save_value", { value1: formTitle })); onSaved()
   }}>
-    <TextField label="套件标识" value={key} onChange={setKey} disabled={!!item} description="用于 suite.json 的稳定标识，例如 gpt-5.2-smoke。" />
-    <TextField label="套件名称" value={name} onChange={setName} />
-    <SelectField label="协议" value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <TextField label="目标模型" value={modelTarget} onChange={setModelTarget} description="填写渠道实际调用的模型标识；每个套件只对应一个模型。" />
-    <ChoiceList label="包含用例" values={availableCases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
+    <TextField label={tx("desktop:catalog_suite_key")} value={key} onChange={setKey} disabled={!!item} description={tx("desktop:catalog_a_stable_identifier_for_suite_json_such_as_gpt_5")} />
+    <TextField label={tx("desktop:catalog_suite_name")} value={name} onChange={setName} />
+    <SelectField label={tx("desktop:catalog_protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <TextField label={tx("desktop:catalog_target_model")} value={modelTarget} onChange={setModelTarget} description={tx("desktop:catalog_enter_the_model_identifier_used_by_the_channel_each_suite")} />
+    <ChoiceList label={tx("desktop:catalog_included_cases")} values={availableCases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
   </FormShell>
 }
 
 function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [models, setModels] = useState(() => new Set(item?.model_ids ?? []))
   const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? []))
@@ -306,35 +318,35 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const [loadMode, setLoadMode] = useState<CatalogLoadMode>(item?.load_mode ?? "single")
   const [numbers, setNumbers] = useState({ concurrency: item?.concurrency ?? 1, request_count: item?.request_count ?? 1, rate_per_second: item?.rate_per_second ?? 0, duration_ms: item?.duration_ms ?? 0, request_timeout_ms: item?.request_timeout_ms ?? 60000 })
   const [sla, setSla] = useState(json(item?.sla_thresholds ?? { e2e_p95_ms: 3000 }))
-  return <FormShell pending={pending} label="保存计划" formTitle={formTitle} onSubmit={async () => {
-		const validatedName = required(name, "计划名称")
+  return <FormShell pending={pending} label={tx("desktop:catalog_save_plan")} formTitle={formTitle} onSubmit={async () => {
+		const validatedName = required(name, tx("desktop:catalog_plan_name"))
 		if ((models.size === 0) !== (channels.size === 0)) {
-      throw new FormValidationError(models.size === 0 ? "模型" : "渠道", "模型和渠道限制必须同时留空或同时配置。")
+      throw new FormValidationError(models.size === 0 ? tx("desktop:catalog_model") : tx("desktop:catalog_channel"), tx("desktop:catalog_configure_both_model_and_channel_restrictions_or_leave_both_empty"))
     }
     const suite = catalog.suites.find((value) => value.id === suiteID)
     const pinnedCases = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
     const caseRefs = catalog.test_cases.filter((testCase) => cases.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinnedCases.get(testCase.id) ?? testCase.revision }))
-    if (caseRefs.length === 0) throw new FormValidationError("直接用例", "请至少选择一个直接用例。")
+    if (caseRefs.length === 0) throw new FormValidationError(tx("desktop:catalog_direct_cases"), tx("desktop:catalog_select_at_least_one_direct_case"))
     validatePlanLoad(loadMode, numbers)
     const command = {
       name: validatedName, model_ids: [...models], channel_ids: [...channels],
       suite_id: suite?.id, suite_revision: suite?.id === item?.suite_id ? item?.suite_revision : suite?.revision,
       cases: caseRefs,
-      load_mode: loadMode, ...numbers, sla_thresholds: nonNegativeNumberRecord(sla, "SLA 阈值 JSON"),
+      load_mode: loadMode, ...numbers, sla_thresholds: nonNegativeNumberRecord(sla, tx("desktop:catalog_sla_thresholds_json")),
     }
-    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), `${formTitle}保存`); onSaved()
+    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label="计划名称" value={name} onChange={setName} />
-    <ChoiceList label="模型" values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} clearFields={["渠道"]} onChange={setModels} />
-    <ChoiceList label="渠道" values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} clearFields={["模型"]} onChange={setChannels} />
-		<FieldDescription>模型和渠道均留空时，在每次运行开始前选择一个协议兼容、已映射的目标；一旦启动，具体修订会固定到运行快照。</FieldDescription>
-    <ChoiceList label="直接用例" values={catalog.test_cases.map(v => ({ id: v.id, label: `${v.name} · r${v.revision}` }))} selected={cases} onChange={setCases} />
-    <SelectField label="套件" value={suiteID} options={[["none","不使用套件"], ...catalog.suites.map(v => [v.id, `${v.name} · r${v.revision}`] as [string,string])]} onChange={setSuiteID} />
-    <SelectField label="负载模式" value={loadMode} options={[["single","单次"],["fixed_concurrency","固定并发"],["open_loop","开放环"]]} onChange={(v) => setLoadMode(v as CatalogLoadMode)} />
+    <TextField label={tx("desktop:catalog_plan_name")} value={name} onChange={setName} />
+    <ChoiceList label={tx("desktop:catalog_model")} values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} clearFields={[tx("desktop:catalog_channel")]} onChange={setModels} />
+    <ChoiceList label={tx("desktop:catalog_channel")} values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} clearFields={[tx("desktop:catalog_model")]} onChange={setChannels} />
+		<FieldDescription>{tx("desktop:catalog_when_model_and_channel_are_empty_choose_a_mapped_target")}</FieldDescription>
+    <ChoiceList label={tx("desktop:catalog_direct_cases")} values={catalog.test_cases.map(v => ({ id: v.id, label: `${v.name} · r${v.revision}` }))} selected={cases} onChange={setCases} />
+    <SelectField label={tx("desktop:catalog_suite")} value={suiteID} options={[["none",tx("desktop:catalog_no_suite")], ...catalog.suites.map(v => [v.id, `${v.name} · r${v.revision}`] as [string,string])]} onChange={setSuiteID} />
+    <SelectField label={tx("desktop:catalog_load_mode")} value={loadMode} options={[["single",tx("desktop:catalog_single_request")],["fixed_concurrency",tx("desktop:catalog_fixed_concurrency")],["open_loop",tx("desktop:catalog_open_loop")]]} onChange={(v) => setLoadMode(v as CatalogLoadMode)} />
     <div className="grid grid-cols-2 gap-3">
-      {Object.entries({ concurrency: "并发数", request_count: "请求数", rate_per_second: "每秒请求数", duration_ms: "持续时间毫秒", request_timeout_ms: "单请求超时毫秒" }).map(([key, label]) => <NumberField key={key} label={label} value={numbers[key as keyof typeof numbers]} clearFields={label === "请求数" ? ["持续时间毫秒"] : label === "持续时间毫秒" ? ["请求数"] : undefined} onChange={(v) => setNumbers(current => ({ ...current, [key]: v }))} />)}
+      {Object.entries({ concurrency: tx("desktop:catalog_concurrency"), request_count: tx("desktop:catalog_request_count"), rate_per_second: tx("desktop:catalog_requests_per_second"), duration_ms: tx("desktop:catalog_duration_ms"), request_timeout_ms: tx("desktop:catalog_request_timeout_ms") }).map(([key, label]) => <NumberField key={key} label={label} value={numbers[key as keyof typeof numbers]} clearFields={label === tx("desktop:catalog_request_count") ? [tx("desktop:catalog_duration_ms")] : label === tx("desktop:catalog_duration_ms") ? [tx("desktop:catalog_request_count")] : undefined} onChange={(v) => setNumbers(current => ({ ...current, [key]: v }))} />)}
     </div>
-    <TextAreaField label="SLA 阈值 JSON" value={sla} onChange={setSla} />
+    <TextAreaField label={t("editor.fields.slaJson")} value={sla} onChange={setSla} />
   </FormShell>
 }
 
@@ -346,6 +358,7 @@ type CatalogValidationContextValue = {
 const CatalogValidationContext = createContext<CatalogValidationContextValue | null>(null)
 
 function FormShell({ children, label, pending, formTitle, onSubmit }: { children: ReactNode; label: string; pending: boolean; formTitle: string; onSubmit: () => Promise<void> }) {
+  const { t: tx } = useTranslation()
   const formRef = useRef<HTMLFormElement>(null)
   const [validationError, setValidationError] = useState<FormValidationError | null>(null)
   const [operationError, setOperationError] = useState("")
@@ -359,22 +372,22 @@ function FormShell({ children, label, pending, formTitle, onSubmit }: { children
         focusCatalogField(formRef.current, reason.field)
         return
       }
-      setOperationError(publicDesktopOperationErrorMessage(reason, `${formTitle}保存`, "保存未完成，请检查本地日志"))
+      setOperationError(publicDesktopOperationErrorMessage(reason, tx("desktop:catalog_save_value", { value1: formTitle }), tx("desktop:catalog_save_did_not_complete_check_the_local_logs")))
     })
   }
-  const clear = (...fields: string[]) => setValidationError((current) => current && fields.includes(current.field) ? null : current)
+  const clear = (...fields: string[]) => setValidationError((current) => current && fields.includes(localizeStoredMessage(current.field, tx)) ? null : current)
   return <CatalogValidationContext.Provider value={{ error: validationError, clear }}>
     <form ref={formRef} className="pb-4" onSubmit={submit} noValidate>
       <FieldGroup>
         {children}
         {validationError ? (
           <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
-            {formTitle}中“{validationError.field}”需要修改：{validationError.message}
+            {tx("desktop:catalog_validation_summary", { title: formTitle, field: localizeStoredMessage(validationError.field, tx), message: localizeStoredMessage(validationError.message, tx) })}
           </FieldError>
         ) : null}
-        {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{operationError}</FieldError> : null}
+        {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{localizeStoredMessage(operationError, tx)}</FieldError> : null}
       </FieldGroup>
-      <SheetFooter className="px-0"><Button type="submit" className="min-w-24" disabled={pending}>{pending ? <><Spinner data-icon="inline-start" />正在保存…</> : label}</Button></SheetFooter>
+      <SheetFooter className="px-0"><Button type="submit" className="min-w-24" disabled={pending}>{pending ? <><Spinner data-icon="inline-start" />{tx("desktop:catalog_saving")}</> : label}</Button></SheetFooter>
     </form>
   </CatalogValidationContext.Provider>
 }
@@ -410,9 +423,10 @@ function CheckField({ label, checked, onChange, clearFields = [], controlID }: {
   return <Field data-invalid={validation.invalid || undefined} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
 function ChoiceList({ label, values, selected, onChange, clearFields = [] }: { label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
+  const { t: tx } = useTranslation()
   const validation = useCatalogValidation(label, clearFields)
   const errorID = `${catalogFieldID(label)}-error`
-  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} controlID={`${catalogFieldID(label)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>暂无可选项</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
+  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} controlID={`${catalogFieldID(label)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
 }
 
 function StageNumberField({ label, value, minimum, maximum, placeholder, onChange }: { label: string; value: string | number; minimum: number; maximum: number; placeholder?: string; onChange: (value: string) => void }) {
@@ -431,69 +445,69 @@ class FormValidationError extends Error {
     this.field = field
   }
 }
-function required(value: string, label: string) { const result = value.trim(); if (!result) throw new FormValidationError(label, `请输入${label}。`); return result }
+function required(value: string, label: string) { const result = value.trim(); if (!result) throw new FormValidationError(label, tx("desktop:catalog_enter_value", { value1: label })); return result }
 function serviceURL(value: string) {
-  const result = required(value, "服务地址")
+  const result = required(value, tx("desktop:catalog_service_url"))
   let parsed: URL
   try {
     parsed = new URL(result)
   } catch {
-    throw new FormValidationError("服务地址", "请输入包含主机名的 http:// 或 https:// 服务地址。")
+    throw new FormValidationError(tx("desktop:catalog_service_url"), tx("desktop:catalog_enter_an_http_or_https_service_url_with_a_hostname"))
   }
   if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname) {
-    throw new FormValidationError("服务地址", "请输入包含主机名的 http:// 或 https:// 服务地址。")
+    throw new FormValidationError(tx("desktop:catalog_service_url"), tx("desktop:catalog_enter_an_http_or_https_service_url_with_a_hostname"))
   }
-  if (parsed.username || parsed.password) throw new FormValidationError("服务地址", "服务地址不能包含账号或密码。")
-  if (parsed.search || parsed.hash) throw new FormValidationError("服务地址", "服务地址不能包含查询参数或片段。")
+  if (parsed.username || parsed.password) throw new FormValidationError(tx("desktop:catalog_service_url"), tx("desktop:catalog_the_service_url_must_not_contain_a_username_or_password"))
+  if (parsed.search || parsed.hash) throw new FormValidationError(tx("desktop:catalog_service_url"), tx("desktop:catalog_the_service_url_must_not_contain_a_query_string_or"))
   return result
 }
 function safeCatalogKey(value: string, label: string) {
   const result = required(value, label)
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(result)) {
-    throw new FormValidationError(label, "只能使用字母、数字、点、下划线或连字符，并以字母或数字开头。")
+    throw new FormValidationError(label, tx("desktop:catalog_use_only_letters_digits_dots_underscores_or_hyphens_starting_with"))
   }
   return result
 }
 function safeModelTarget(value: string, label: string) {
   const result = required(value, label)
-  if (new TextEncoder().encode(result).length > 256 || /\p{Cc}/u.test(result)) throw new FormValidationError(label, "模型 ID 的 UTF-8 编码不能超过 256 字节，且不能包含控制字符。")
+  if (new TextEncoder().encode(result).length > 256 || /\p{Cc}/u.test(result)) throw new FormValidationError(label, tx("desktop:catalog_model_ids_must_be_at_most_256_utf_8_bytes"))
   return result
 }
 function list(value: string) { return [...new Set(value.split(",").map(v => v.trim()).filter(Boolean))] }
 function json(value: unknown) { return JSON.stringify(value, null, 2) }
-function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(label, "请输入有效的 JSON。") } }
-function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(label, "请输入 JSON 对象。"); return parsed as Record<string,T> }
+function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(label, tx("desktop:catalog_enter_valid_json")) } }
+function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(label, tx("desktop:catalog_enter_a_json_object")); return parsed as Record<string,T> }
 function finiteNumber(value: unknown, fallback: number): number { return typeof value === "number" && Number.isFinite(value) ? value : fallback }
 
 function integerField(value: number, label: string, minimum: number, maximum: number) {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    throw new FormValidationError(label, `请输入 ${minimum.toLocaleString("zh-CN")}–${maximum.toLocaleString("zh-CN")} 的整数。`)
+    throw new FormValidationError(label, tx("desktop:catalog_enter_an_integer_between_value_and_value", { value1: minimum.toLocaleString(desktopLocale()), value2: maximum.toLocaleString(desktopLocale()) }))
   }
 }
 
 function validatePlanLoad(loadMode: CatalogLoadMode, numbers: { concurrency: number; request_count: number; rate_per_second: number; duration_ms: number; request_timeout_ms: number }) {
-  integerField(numbers.concurrency, "并发数", 1, Number.MAX_SAFE_INTEGER)
-  integerField(numbers.request_count, "请求数", 0, Number.MAX_SAFE_INTEGER)
-  integerField(numbers.duration_ms, "持续时间毫秒", 0, Number.MAX_SAFE_INTEGER)
+  integerField(numbers.concurrency, tx("desktop:catalog_concurrency"), 1, Number.MAX_SAFE_INTEGER)
+  integerField(numbers.request_count, tx("desktop:catalog_request_count"), 0, Number.MAX_SAFE_INTEGER)
+  integerField(numbers.duration_ms, tx("desktop:catalog_duration_ms"), 0, Number.MAX_SAFE_INTEGER)
   if (numbers.request_count === 0 && numbers.duration_ms === 0) {
-    throw new FormValidationError("请求数", "请求数和持续时间不能同时为 0。")
+    throw new FormValidationError(tx("desktop:catalog_request_count"), tx("desktop:catalog_request_count_and_duration_cannot_both_be_0"))
   }
   if (!Number.isFinite(numbers.rate_per_second) || numbers.rate_per_second < 0) {
-    throw new FormValidationError("每秒请求数", "请输入大于或等于 0 的有限数值。")
+    throw new FormValidationError(tx("desktop:catalog_requests_per_second"), tx("desktop:catalog_enter_a_finite_number_greater_than_or_equal_to_0"))
   }
   if (loadMode === "open_loop" && numbers.rate_per_second <= 0) {
-    throw new FormValidationError("每秒请求数", "开放环负载的每秒请求数必须大于 0。")
+    throw new FormValidationError(tx("desktop:catalog_requests_per_second"), tx("desktop:catalog_requests_per_second_must_be_greater_than_0_for_open"))
   }
-  integerField(numbers.request_timeout_ms, "单请求超时毫秒", 1, Number.MAX_SAFE_INTEGER)
+  integerField(numbers.request_timeout_ms, tx("desktop:catalog_request_timeout_ms"), 1, Number.MAX_SAFE_INTEGER)
 }
 
 function nonNegativeNumberRecord(value: string, label: string): Record<string, number> {
   const record = recordJSON<unknown>(value, label)
   const entries = Object.entries(record)
-  if (entries.length === 0) throw new FormValidationError(label, "请至少填写一个 SLA 阈值。")
+  if (entries.length === 0) throw new FormValidationError(label, tx("desktop:catalog_enter_at_least_one_sla_threshold"))
   for (const [name, threshold] of entries) {
     if (!name.trim() || typeof threshold !== "number" || !Number.isFinite(threshold) || threshold < 0) {
-      throw new FormValidationError(label, `阈值“${name || "未命名"}”必须是大于或等于 0 的有限数值。`)
+      throw new FormValidationError(label, tx("desktop:catalog_threshold_value_must_be_a_finite_number_greater_than_or", { value1: name || tx("desktop:catalog_unnamed") }))
     }
   }
   return record as Record<string, number>
@@ -517,15 +531,15 @@ function latencyStages(value: unknown): LatencyStageDraft[] {
 }
 
 function latencyStageSpecs(stages: LatencyStageDraft[]) {
-  if (!stages.length) throw new FormValidationError("输入 Token 阶梯", "请至少添加一个输入 Token 阶梯。")
+  if (!stages.length) throw new FormValidationError(tx("desktop:catalog_input_token_ladder"), tx("desktop:catalog_add_at_least_one_input_token_step"))
   let previous = 0
   return stages.map((stage, index) => {
     if (!Number.isInteger(stage.input_tokens) || stage.input_tokens <= previous || stage.input_tokens > 1_000_000) {
-      throw new FormValidationError(`阶梯 ${index + 1} 输入 Token`, "请输入递增且不超过 1,000,000 的整数。")
+      throw new FormValidationError(tx("desktop:catalog_step_value_input_tokens", { value1: index + 1 }), tx("desktop:catalog_enter_increasing_integers_no_greater_than_1_000_000"))
     }
     previous = stage.input_tokens
-    const warmups = optionalInteger(stage.warmups, `阶梯 ${index + 1} 预热次数`, 0, 10)
-    const samples = optionalInteger(stage.samples, `阶梯 ${index + 1} 采样次数`, 1, 100)
+    const warmups = optionalInteger(stage.warmups, tx("desktop:catalog_step_value_warmups", { value1: index + 1 }), 0, 10)
+    const samples = optionalInteger(stage.samples, tx("desktop:catalog_step_value_samples", { value1: index + 1 }), 1, 100)
     return { input_tokens: stage.input_tokens, ...(warmups === undefined ? {} : { warmups }), ...(samples === undefined ? {} : { samples }) }
   })
 }
@@ -533,13 +547,14 @@ function latencyStageSpecs(stages: LatencyStageDraft[]) {
 function optionalInteger(value: string, label: string, minimum: number, maximum: number): number | undefined {
   if (!value.trim()) return undefined
   const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) throw new FormValidationError(label, `请输入 ${minimum}–${maximum} 的整数。`)
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) throw new FormValidationError(label, tx("desktop:catalog_enter_an_integer_between_value_and_value", { value1: minimum, value2: maximum }))
   return parsed
 }
 
 function useCatalogValidation(field: string, clearFields: string[] = []) {
+  const { t } = useTranslation()
   const context = useContext(CatalogValidationContext)
-  const message = context?.error?.field === field ? context.error.message : ""
+  const message = context?.error && localizeStoredMessage(context.error.field, t) === field ? localizeStoredMessage(context.error.message, t) : ""
   return {
     invalid: Boolean(message),
     message,

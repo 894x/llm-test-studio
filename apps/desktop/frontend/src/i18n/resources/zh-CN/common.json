@@ -1,0 +1,40 @@
+{
+  "actions": {
+    "close": "关闭",
+    "showOptions": "显示候选"
+  },
+  "status": {
+    "running": "运行中",
+    "draining": "排空中",
+    "passed": "通过",
+    "completed": "已完成",
+    "failed": "失败",
+    "queued": "排队中",
+    "cancelled": "已取消"
+  },
+  "page": {
+    "details": "{{title}}详情"
+  },
+  "error": {
+    "operationFailed": "{{operation}}失败：{{message}}",
+    "desktop_not_started": "桌面服务仍在启动，请稍候重试；日志操作名：startup",
+    "desktop_startup_failed": "桌面服务初始化失败，请查看日志中的 startup 记录",
+    "desktop_stopped": "桌面应用已停止",
+    "workspace_unavailable": "无法读取运行工作区，请重试；若仍失败，请查看日志中的 load_workspace 记录",
+    "catalog_unavailable": "无法读取模型、渠道与用例目录，请重试；日志操作名：load_catalog",
+    "reports_unavailable": "无法读取测试报告，请重试；日志操作名：load_reports",
+    "run_commands_unavailable": "运行命令暂不可用",
+    "comparison_unavailable": "无法读取渠道对比，请重试；日志操作名：load_comparisons",
+    "diagnostics_unavailable": "诊断日志暂不可用",
+    "quick_test_unavailable": "快速测试暂不可用",
+    "quick_test_save_partial": "连接已部分保存，请前往模型与渠道检查并完成配置",
+    "invalid_identifier": "操作对象无效",
+    "operation_cancelled": "操作已取消",
+    "operation_failed": "桌面操作失败，请检查本地日志",
+    "catalog_invalid": "目录内容无效，请检查表单字段",
+    "catalog_revision_conflict": "对象版本已变化或仍被引用，请刷新并解除引用后重试",
+    "catalog_not_found": "对象已删除或不存在，请刷新目录",
+    "catalog_saved_refresh_failed": "已保存，但目录刷新失败，请刷新或重新打开应用",
+    "plan_protocol_mismatch": "计划中的用例、模型和渠道协议不一致，请选择与用例协议一致的模型和渠道，或调整用例/套件"
+  }
+}

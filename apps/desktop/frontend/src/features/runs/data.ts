@@ -1,3 +1,4 @@
+import { translateDesktop as tx } from "@/i18n/runtime"
 export type CoreRunStatus =
   | "queued"
   | "starting"
@@ -104,17 +105,20 @@ export type RunRecord = {
   failureSummary?: string
 }
 
-export const STATUS_LABELS: Record<RunStatus, string> = {
-  running: "运行中",
-  draining: "排空中",
-  passed: "通过",
-  completed: "已完成",
-  failed: "失败",
-  queued: "排队中",
-  cancelled: "已取消",
+export type RunTranslator = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string
+
+export type RunPresentationOptions = {
+  locale?: string
+  t?: RunTranslator
 }
 
-export function presentWorkspace(snapshot: WorkspaceSnapshot): {
+export function presentWorkspace(
+  snapshot: WorkspaceSnapshot,
+  options: RunPresentationOptions = {},
+): {
   plans: TestPlan[]
   runs: RunRecord[]
 } {
@@ -122,7 +126,7 @@ export function presentWorkspace(snapshot: WorkspaceSnapshot): {
     plans: snapshot.plans.map((item) => ({
       id: item.id,
       name: item.name,
-      description: describeLoad(item),
+      description: describeLoad(item, options.t ?? defaultRunTranslator),
       caseCount: item.case_count,
       runCount: item.run_count,
     })),
@@ -142,42 +146,42 @@ export function presentWorkspace(snapshot: WorkspaceSnapshot): {
       targetDurationMS: item.duration_ms,
       passed: item.passed,
       p95: "—",
-      started: formatStartedAt(item.started_at),
+      started: formatStartedAt(item.started_at, options.locale ?? "zh-CN"),
       duration: formatDuration(item),
-      loadProfile: describeRunLoad(item),
+      loadProfile: describeRunLoad(item, options.t ?? defaultRunTranslator),
       artifactCount: item.artifact_count,
       failureSummary:
         item.error_code
           ? `${item.failure_phase ?? "run"} · ${item.error_code}`
           : item.failed > 0
-          ? `${item.failed} 个请求未通过完整成功判定。`
+          ? (options.t ?? defaultRunTranslator)("presentation.failedRequests", { count: item.failed })
           : item.conclusion === "failed"
-            ? "运行结论未通过，请检查报告中的 SLA 与汇总。"
+            ? (options.t ?? defaultRunTranslator)("presentation.failedConclusion")
             : undefined,
     })),
   }
 }
 
-function describeLoad(plan: WorkspacePlan): string {
+function describeLoad(plan: WorkspacePlan, t: RunTranslator): string {
   if (plan.request_count === 0 && plan.duration_ms > 0) {
     const rate = plan.load_mode === "open_loop" ? `${plan.rate_per_second} RPS · ` : ""
-    return `${rate}持续 ${formatTargetDuration(plan.duration_ms)}`
+    return t("presentation.continuous", { rate, duration: formatTargetDuration(plan.duration_ms) })
   }
   if (plan.load_mode === "open_loop") {
-    return `${plan.rate_per_second} RPS · ${plan.request_count} 请求`
+    return t("presentation.openLoopRequests", { rate: plan.rate_per_second, count: plan.request_count })
   }
-  if (plan.load_mode === "single") return "单请求检查"
-  return `${plan.concurrency} 并发 · ${plan.request_count} 请求`
+  if (plan.load_mode === "single") return t("presentation.single")
+  return t("presentation.fixedConcurrency", { concurrency: plan.concurrency, count: plan.request_count })
 }
 
-function describeRunLoad(run: WorkspaceRun): string {
+function describeRunLoad(run: WorkspaceRun, t: RunTranslator): string {
   if (run.planned === 0 && run.duration_ms > 0) {
     const rate = run.load_mode === "open_loop" ? `${run.rate_per_second} RPS · ` : ""
-    return `${rate}持续 ${formatTargetDuration(run.duration_ms)}`
+    return t("presentation.continuous", { rate, duration: formatTargetDuration(run.duration_ms) })
   }
-  if (run.load_mode === "open_loop") return `开放模型 · ${run.rate_per_second} RPS`
-  if (run.load_mode === "single") return "单请求检查"
-  return `固定总量 · ${run.concurrency} 并发`
+  if (run.load_mode === "open_loop") return t("presentation.openLoop", { rate: run.rate_per_second })
+  if (run.load_mode === "single") return t("presentation.single")
+  return t("presentation.fixedTotal", { concurrency: run.concurrency })
 }
 
 function presentStatus(run: WorkspaceRun): RunStatus {
@@ -201,16 +205,37 @@ export function formatTargetDuration(durationMS: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 }
 
-function formatStartedAt(value: string): string {
+function formatStartedAt(value: string, locale: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "—"
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(date)
+}
+
+const DEFAULT_RUN_MESSAGES: Record<string, string> = {
+  "presentation.failedRequests": "desktop:runs_value_requests_failed_the_full_success_criteria",
+  "presentation.failedConclusion": "desktop:runs_the_run_did_not_pass_check_the_report_sla_and",
+  "presentation.continuous": "desktop:runs_value_for_value",
+  "presentation.openLoopRequests": "desktop:runs_value_rps_value_requests",
+  "presentation.single": "desktop:runs_single_request_check",
+  "presentation.fixedConcurrency": "desktop:runs_value_concurrency_value_requests",
+  "presentation.openLoop": "desktop:runs_open_model_value_rps",
+  "presentation.fixedTotal": "desktop:runs_fixed_count_value_concurrency",
+}
+
+function defaultRunTranslator(
+  key: string,
+  values: Record<string, string | number> = {},
+): string {
+  return Object.entries(values).reduce(
+    (message, [name, value]) => message.replaceAll(`{{${name}}}`, String(value)),
+    tx(DEFAULT_RUN_MESSAGES[key] ?? key, values),
+  )
 }
 
 function formatDuration(run: WorkspaceRun): string {

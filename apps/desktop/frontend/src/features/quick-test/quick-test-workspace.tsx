@@ -1,4 +1,6 @@
+import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { useState, type ComponentProps, type FormEvent } from "react"
+import { useTranslation } from "react-i18next"
 import ArrowRightIcon from "lucide-react/dist/esm/icons/arrow-right.mjs"
 import CheckCircle2Icon from "lucide-react/dist/esm/icons/check-circle-2.mjs"
 import CircleAlertIcon from "lucide-react/dist/esm/icons/circle-alert.mjs"
@@ -51,7 +53,6 @@ import { PerformanceLatencyTable } from "@/features/reports/performance-latency-
 import { PerformanceStreamingTimingTable } from "@/features/reports/performance-streaming-timing-table"
 
 import {
-  QUICK_TEST_ERROR_MESSAGES,
   estimateQuickPerformanceOpenLoopRequestCap,
   updateQuickTestForm,
   type QuickPerformanceArrivalPattern,
@@ -122,6 +123,8 @@ export function QuickTestWorkspace({
   onPerformanceArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
 }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("quickTest")
   const [form, setForm] = useState<QuickTestCommand>({
     address_mode: "base_url",
     url: "",
@@ -210,7 +213,7 @@ export function QuickTestWorkspace({
       }))
       .catch((error: unknown) => {
         setRequestError(
-          publicDesktopErrorMessage(error, "快速测试暂不可用，请检查本地日志"),
+          publicDesktopErrorMessage(error, t("error")),
         )
       })
       .finally(() => setPending(false))
@@ -221,14 +224,14 @@ export function QuickTestWorkspace({
       <header className="flex shrink-0 items-start justify-between gap-4 border-b px-4 py-3">
         <div className="min-w-0">
           <h1 id="quick-test-heading" className="text-lg font-semibold tracking-tight">
-            快速测试
+            {t("title")}
           </h1>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            无需预先创建模型、渠道或计划，直接验证 OpenAI Chat 兼容接口。
+            {t("description")}
           </p>
         </div>
         <Badge variant="outline" className="shrink-0">
-          临时连接 · 不自动保存
+          {t("temporary")}
         </Badge>
       </header>
 
@@ -237,24 +240,24 @@ export function QuickTestWorkspace({
           <section aria-labelledby="quick-test-form-heading" className="min-w-0 border-b p-4 lg:border-r lg:border-b-0">
             <div className="mb-4">
               <h2 id="quick-test-form-heading" className="text-sm font-semibold">
-                连接信息
+                {t("connection")}
               </h2>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                API Key 仅用于本次测试；只有确认保存后才会交给 Core 凭据链路。
+                {t("keyNote")}
               </p>
             </div>
             <form onSubmit={submit} noValidate>
               <FieldGroup>
                 <Field className="block">
-                  <FieldLabel>从渠道填充</FieldLabel>
+                  <FieldLabel>{t("fillChannel")}</FieldLabel>
                   <FieldContent>
                     <Select value={form.channel_id ?? "manual"} onValueChange={selectChannel}>
-                      <SelectTrigger aria-label="从渠道填充" className="w-full">
+                      <SelectTrigger aria-label={t("fillChannel")} className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value="manual">手动输入地址与 API Key</SelectItem>
+                          <SelectItem value="manual">{t("manual")}</SelectItem>
                           {channelCandidates.map((channel) => (
                             <SelectItem key={channel.id} value={channel.id}>{channel.name}</SelectItem>
                           ))}
@@ -263,15 +266,15 @@ export function QuickTestWorkspace({
                     </Select>
                     <FieldDescription>
                       {selectedChannel
-                        ? `已填入 ${selectedChannel.name} 的地址；保存的 API Key 由 Core 安全读取。`
+                        ? t("filled", { name: selectedChannel.name })
                         : channelCandidates.length
-                          ? "可选择已启用渠道自动填充，也可以继续手动粘贴。"
-                          : "当前没有可用于快速测试的已启用渠道，请手动输入。"}
+                          ? t("chooseChannel")
+                          : t("noChannel")}
                     </FieldDescription>
                   </FieldContent>
                 </Field>
                 <fieldset>
-                  <legend className="mb-2 text-xs font-medium">地址模式</legend>
+                  <legend className="mb-2 text-xs font-medium">{t("addressMode")}</legend>
                   <RadioGroup
                     value={form.address_mode}
                     onValueChange={(value) => update("address_mode", value as QuickTestAddressMode)}
@@ -281,23 +284,23 @@ export function QuickTestWorkspace({
                       id="quick-test-base-url"
                       value="base_url"
                       label="Base URL"
-                      description="自动拼接 /chat/completions"
+                      description={t("baseUrlHint")}
                     />
                     <ModeOption
                       id="quick-test-full-url"
                       value="full_url"
-                      label="完整 URL"
-                      description="按填写地址原样请求"
+                      label={t("fullUrl")}
+                      description={t("fullUrlHint")}
                     />
                   </RadioGroup>
                 </fieldset>
 
                 <TextField
                   id="quick-test-url"
-                  label="接口地址"
+                  label={tx("desktop:quick-test_endpoint")}
                   value={form.url}
                   onChange={(value) => update("url", value)}
-                  error={fieldErrors.url}
+                  error={localizeStoredMessage(fieldErrors.url ?? "", tx)}
                   placeholder={form.address_mode === "base_url" ? "https://api.example.com/v1" : "https://api.example.com/v1/chat/completions"}
                   required
                 />
@@ -309,9 +312,9 @@ export function QuickTestWorkspace({
                     autoComplete="new-password"
                     value={form.api_key}
                     onChange={(value) => update("api_key", value)}
-                    error={fieldErrors.apiKey}
+                    error={localizeStoredMessage(fieldErrors.apiKey ?? "", tx)}
                     disabled={!!selectedChannel}
-                    placeholder={selectedChannel ? `已使用 ${selectedChannel.name} 的保存凭据` : undefined}
+                    placeholder={selectedChannel ? t("savedCredential", { name: selectedChannel.name }) : undefined}
                     required={!selectedChannel}
                   />
                   <ModelIDField
@@ -320,15 +323,15 @@ export function QuickTestWorkspace({
                     optionNames={modelOptionNames}
                     existingModel={existingModel}
                     ambiguous={ambiguousModelName}
-                    error={fieldErrors.modelID}
+                    error={localizeStoredMessage(fieldErrors.modelID ?? "", tx)}
                   />
                 </div>
                 <Field className="block" data-invalid={fieldErrors.prompt ? true : undefined}>
-                  <FieldLabel htmlFor="quick-test-prompt">测试消息</FieldLabel>
+                  <FieldLabel htmlFor="quick-test-prompt">{tx("desktop:quick-test_test_message")}</FieldLabel>
                   <FieldContent>
                     <Textarea
                       id="quick-test-prompt"
-                      aria-label="测试消息"
+                      aria-label={tx("desktop:quick-test_test_message")}
                       aria-invalid={fieldErrors.prompt ? true : undefined}
                       aria-describedby={fieldErrors.prompt ? "quick-test-prompt-error" : undefined}
                       className="min-h-20 resize-y"
@@ -340,11 +343,11 @@ export function QuickTestWorkspace({
                   </FieldContent>
                 </Field>
                 <Field className="block max-w-52" data-invalid={fieldErrors.timeout ? true : undefined}>
-                  <FieldLabel htmlFor="quick-test-timeout">超时（毫秒）</FieldLabel>
+                  <FieldLabel htmlFor="quick-test-timeout">{tx("desktop:quick-test_timeout_ms")}</FieldLabel>
                   <FieldContent>
                     <Input
                       id="quick-test-timeout"
-                      aria-label="超时（毫秒）"
+                      aria-label={tx("desktop:quick-test_timeout_ms")}
                       aria-invalid={fieldErrors.timeout ? true : undefined}
                       aria-describedby={fieldErrors.timeout ? "quick-test-timeout-error" : undefined}
                       type="number"
@@ -355,20 +358,20 @@ export function QuickTestWorkspace({
                       onChange={(event) => update("timeout_ms", Number(event.target.value))}
                       required
                     />
-                    <FieldDescription>默认 30 秒，端到端计时由 Core 返回。</FieldDescription>
+                    <FieldDescription>{tx("desktop:quick-test_defaults_to_30_seconds_core_provides_end_to_end_timing")}</FieldDescription>
                     {fieldErrors.timeout ? <FieldError id="quick-test-timeout-error">{fieldErrors.timeout}</FieldError> : null}
                   </FieldContent>
                 </Field>
                 {requestError ? (
                   <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
-                    {requestError}
+                    {localizeStoredMessage(requestError, tx)}
                   </FieldError>
                 ) : null}
                 <Button type="submit" className="w-fit min-w-24" disabled={pending}>
                   {pending ? (
-                    <><Spinner data-icon="inline-start" />正在测试…</>
+                    <><Spinner data-icon="inline-start" />{t("testing")}</>
                   ) : (
-                    <><PlugZapIcon data-icon="inline-start" />发送测试</>
+                    <><PlugZapIcon data-icon="inline-start" />{t("send")}</>
                   )}
                 </Button>
               </FieldGroup>
@@ -376,9 +379,9 @@ export function QuickTestWorkspace({
           </section>
 
           <section aria-labelledby="quick-test-result-heading" className="min-w-0 p-4">
-            <h2 id="quick-test-result-heading" className="text-sm font-semibold">测试结果</h2>
+            <h2 id="quick-test-result-heading" className="text-sm font-semibold">{t("result")}</h2>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              仅展示稳定诊断、计时和计数，不展示响应正文或内部错误。
+              {t("resultHint")}
             </p>
             <div className="mt-4">
               {tested ? (
@@ -393,9 +396,9 @@ export function QuickTestWorkspace({
               ) : (
                 <div className="flex min-h-52 flex-col items-center justify-center rounded-lg border border-dashed px-6 text-center">
                   <PlugZapIcon className="size-5 text-muted-foreground" />
-                  <p className="mt-3 text-sm font-medium">等待测试</p>
+                  <p className="mt-3 text-sm font-medium">{t("waiting")}</p>
                   <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                    填写连接信息并发送后，这里会显示连通性、HTTP 状态和耗时。
+                    {t("waitingHint")}
                   </p>
                 </div>
               )}
@@ -478,7 +481,7 @@ function TextField({ label, value, onChange, type = "text", error, ...props }: {
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
-        {error ? <FieldError id={errorID}>{error}</FieldError> : null}
+        {error ? <FieldError id={errorID}>{localizeStoredMessage(error, tx)}</FieldError> : null}
       </FieldContent>
     </Field>
   )
@@ -492,9 +495,11 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous, 
   ambiguous: boolean
   error?: string
 }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("quickTest")
   return (
     <Field className="block" data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor="quick-test-model-id">模型 ID</FieldLabel>
+      <FieldLabel htmlFor="quick-test-model-id">{tx("desktop:quick-test_model_id")}</FieldLabel>
       <FieldContent>
         <Autocomplete
           items={optionNames}
@@ -505,17 +510,17 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous, 
         >
           <AutocompleteInput
             id="quick-test-model-id"
-            aria-label="模型 ID"
+            aria-label={tx("desktop:quick-test_model_id")}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? "quick-test-model-id-error" : undefined}
-            placeholder="选择目录模型或手动输入"
+            placeholder={tx("desktop:quick-test_select_a_catalog_model_or_enter_an_id")}
             required
-            triggerLabel="显示模型候选"
+            triggerLabel={t("model.trigger")}
             triggerDisabled={optionNames.length === 0}
           />
           {optionNames.length > 0 ? (
             <AutocompleteContent>
-              <AutocompleteEmpty>无匹配模型，可继续使用当前输入</AutocompleteEmpty>
+              <AutocompleteEmpty>{t("model.empty")}</AutocompleteEmpty>
               <AutocompleteList>
                 {(name) => (
                   <AutocompleteItem key={name} value={name}>
@@ -528,14 +533,14 @@ function ModelIDField({ value, onChange, optionNames, existingModel, ambiguous, 
         </Autocomplete>
         <FieldDescription>
           {existingModel
-            ? `已匹配目录模型 ${existingModel.name}，保存连接时将直接复用。`
+            ? t("model.matched", { name: existingModel.name })
             : ambiguous
-              ? "目录中存在多个同名模型，无法自动复用；请手动输入唯一的上游模型 ID。"
+              ? t("model.ambiguous")
               : optionNames.length
-              ? "可选择已有 OpenAI 模型，也可以继续手动输入上游模型 ID。"
-              : "当前目录没有 OpenAI 模型，可直接手动输入上游模型 ID。"}
+              ? t("model.choose")
+              : t("model.none")}
         </FieldDescription>
-        {error ? <FieldError id="quick-test-model-id-error">{error}</FieldError> : null}
+        {error ? <FieldError id="quick-test-model-id-error">{localizeStoredMessage(error, tx)}</FieldError> : null}
       </FieldContent>
     </Field>
   )
@@ -549,9 +554,10 @@ function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, on
   onPerformance: () => void
   onOpenCatalog: () => void
 }) {
+  const { t } = useTranslation("quickTest")
   const title = result.success
-    ? "连接成功"
-    : QUICK_TEST_ERROR_MESSAGES[result.error_code ?? "request_failed"]
+    ? t("resultPanel.success")
+    : t(`errorCode.${result.error_code ?? "request_failed"}`)
   return (
     <div className="rounded-lg border bg-surface-subtle">
       <div className="flex items-start gap-3 p-4">
@@ -564,43 +570,43 @@ function ResultPanel({ result, saved, catalogChannelSelected = false, onSave, on
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold">{title}</h3>
             <Badge variant={result.success ? "secondary" : "destructive"}>
-              {result.success ? "可用" : "未通过"}
+              {t(result.success ? "resultPanel.available" : "resultPanel.failed")}
             </Badge>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {result.success ? "接口已完成一次有效模型请求。" : "请根据稳定分类检查地址、凭据或上游服务。"}
+            {t(result.success ? "resultPanel.successHint" : "resultPanel.failedHint")}
           </p>
         </div>
       </div>
       <Separator />
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 text-xs">
-        <ResultValue label="HTTP 状态" value={String(result.http_status)} numeric />
-        <ResultValue label="端到端耗时" value={`${formatNumber(result.e2e_ms)} ms`} numeric />
+        <ResultValue label={t("resultPanel.http")} value={`${result.http_status}`} numeric />
+        <ResultValue label={t("resultPanel.e2e")} value={`${formatNumber(result.e2e_ms)} ms`} numeric />
         <ResultValue label="Prompt / Completion / Cached" value={`${result.prompt_tokens} / ${result.completion_tokens} / ${result.cached_tokens}`} numeric />
-        <ResultValue label="地址模式" value={result.address_mode === "base_url" ? "Base URL" : "完整 URL"} />
-        <ResultValue label="实际端点" value={result.endpoint} wide mono />
+        <ResultValue label={t("resultPanel.mode")} value={result.address_mode === "base_url" ? "Base URL" : t("fullUrl")} />
+        <ResultValue label={t("resultPanel.endpoint")} value={result.endpoint} wide mono />
       </dl>
       {result.success ? (
         <div className="flex flex-wrap items-center gap-2 border-t p-4">
           {catalogChannelSelected ? (
             <>
-              <span className="text-xs text-success">当前连接来自已保存渠道。</span>
+              <span className="text-xs text-success">{t("resultPanel.savedChannel")}</span>
               <Button size="sm" variant="outline" onClick={onOpenCatalog}>
-                打开模型与渠道<ArrowRightIcon data-icon="inline-end" />
+                {t("resultPanel.openCatalog")}<ArrowRightIcon data-icon="inline-end" />
               </Button>
             </>
           ) : saved ? (
             <>
-              <span className="text-xs text-success">模型、渠道与映射已保存。</span>
+              <span className="text-xs text-success">{t("resultPanel.saved")}</span>
               <Button size="sm" variant="outline" onClick={onOpenCatalog}>
-                打开模型与渠道<ArrowRightIcon data-icon="inline-end" />
+                {t("resultPanel.openCatalog")}<ArrowRightIcon data-icon="inline-end" />
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={onSave}>保存为模型与渠道</Button>
+            <Button size="sm" onClick={onSave}>{t("resultPanel.save")}</Button>
           )}
           <Button size="sm" variant="outline" onClick={onPerformance}>
-            <GaugeIcon data-icon="inline-start" />快速性能测试
+            <GaugeIcon data-icon="inline-start" />{t("resultPanel.performance")}
           </Button>
         </div>
       ) : null}
@@ -642,10 +648,10 @@ interface PerformanceForm {
 type PerformanceNumberFieldName = Exclude<keyof PerformanceForm, "loadMode" | "arrivalPattern" | "workloadMode" | "capacityEnabled">
 type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
-const PERFORMANCE_TARGET_ERRORS = {
-  requestCount: "请输入大于 0 的请求数，或填写持续时间。",
-  durationSeconds: "请输入大于 0 的持续时间，或填写请求数。",
-} as const
+function performanceTargetErrors() { return {
+  requestCount: tx("desktop:quick-test_enter_a_request_count_greater_than_0_or_set_a"),
+  durationSeconds: tx("desktop:quick-test_enter_a_duration_greater_than_0_or_set_a_request"),
+} as const }
 
 const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
   loadMode: "fixed_concurrency",
@@ -686,6 +692,8 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
 }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("quickTest")
   const [form, setForm] = useState<PerformanceForm>(DEFAULT_PERFORMANCE_FORM)
   const [pending, setPending] = useState(false)
   const [report, setReport] = useState<QuickPerformanceReport | null>(null)
@@ -823,7 +831,7 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
         if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
       })
       .catch((reason: unknown) => {
-        setOperationError(publicDesktopErrorMessage(reason, "快速性能测试暂不可用，请检查本地日志"))
+        setOperationError(publicDesktopErrorMessage(reason, tx("desktop:quick-test_quick_performance_testing_is_unavailable_check_the_local_logs")))
       })
       .finally(() => setPending(false))
   }
@@ -832,9 +840,9 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-5xl">
         <SheetHeader>
-          <SheetTitle>快速性能测试</SheetTitle>
+          <SheetTitle>{t("performance.title")}</SheetTitle>
           <SheetDescription>
-            使用刚刚验证成功的临时连接运行流式负载；实际发起请求后会自动封存报告，但不会创建模型、渠道、用例或计划。
+            {t("performance.description")}
           </SheetDescription>
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1 px-4">
@@ -842,16 +850,16 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
             <FieldGroup>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Field className="block min-w-0">
-                  <FieldLabel htmlFor="quick-performance-loadMode">负载模式</FieldLabel>
+                  <FieldLabel htmlFor="quick-performance-loadMode">{tx("desktop:catalog_load_mode")}</FieldLabel>
                   <FieldContent>
                     <Select value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)}>
-                      <SelectTrigger id="quick-performance-loadMode" aria-label="负载模式" className="w-full">
+                      <SelectTrigger id="quick-performance-loadMode" aria-label={tx("desktop:catalog_load_mode")} className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value="fixed_concurrency">固定并发</SelectItem>
-                          <SelectItem value="open_loop">开放到达（RPS）</SelectItem>
+                          <SelectItem value="fixed_concurrency">{tx("desktop:catalog_fixed_concurrency")}</SelectItem>
+                          <SelectItem value="open_loop">{tx("desktop:quick-test_open_arrival_rps")}</SelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>
@@ -859,16 +867,16 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
                 </Field>
                 {form.loadMode === "open_loop" ? (
                   <Field className="block min-w-0">
-                    <FieldLabel htmlFor="quick-performance-arrivalPattern">到达分布</FieldLabel>
+                    <FieldLabel htmlFor="quick-performance-arrivalPattern">{tx("desktop:quick-test_arrival_distribution")}</FieldLabel>
                     <FieldContent>
                       <Select value={form.arrivalPattern} disabled={pending} onValueChange={(value) => updateArrivalPattern(value as QuickPerformanceArrivalPattern)}>
-                        <SelectTrigger id="quick-performance-arrivalPattern" aria-label="到达分布" className="w-full">
+                        <SelectTrigger id="quick-performance-arrivalPattern" aria-label={tx("desktop:quick-test_arrival_distribution")} className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            <SelectItem value="constant">恒定间隔</SelectItem>
-                            <SelectItem value="poisson">Poisson 到达</SelectItem>
+                            <SelectItem value="constant">{tx("desktop:quick-test_constant_interval")}</SelectItem>
+                            <SelectItem value="poisson">{tx("desktop:quick-test_poisson_arrivals")}</SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -876,87 +884,87 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
                   </Field>
                 ) : null}
                 <Field className="block min-w-0">
-                  <FieldLabel htmlFor="quick-performance-workloadMode">工作负载</FieldLabel>
+                  <FieldLabel htmlFor="quick-performance-workloadMode">{tx("desktop:quick-test_workload")}</FieldLabel>
                   <FieldContent>
                     <Select value={form.workloadMode} disabled={pending} onValueChange={(value) => updateWorkloadMode(value as QuickPerformanceWorkloadMode)}>
-                      <SelectTrigger id="quick-performance-workloadMode" aria-label="工作负载" className="w-full">
+                      <SelectTrigger id="quick-performance-workloadMode" aria-label={tx("desktop:quick-test_workload")} className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value="fixed">固定 Token</SelectItem>
-                          <SelectItem value="normal">正态分布</SelectItem>
+                          <SelectItem value="fixed">{tx("desktop:quick-test_fixed_tokens")}</SelectItem>
+                          <SelectItem value="normal">{tx("desktop:quick-test_normal_distribution")}</SelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>
                   </FieldContent>
                 </Field>
-                <PerformanceNumberField field="requestCount" label="请求数" value={form.requestCount} min={0} max={10_000} disabled={pending} error={fieldErrors.requestCount} onChange={(value) => update("requestCount", value)} />
-                <PerformanceNumberField field="durationSeconds" label="持续时间（秒）" value={form.durationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.durationSeconds} onChange={(value) => update("durationSeconds", value)} />
+                <PerformanceNumberField field="requestCount" label={tx("desktop:catalog_request_count")} value={form.requestCount} min={0} max={10_000} disabled={pending} error={localizeStoredMessage(fieldErrors.requestCount ?? "", tx)} onChange={(value) => update("requestCount", value)} />
+                <PerformanceNumberField field="durationSeconds" label={tx("desktop:quick-test_duration_seconds")} value={form.durationSeconds} min={0} max={3_600} disabled={pending} error={localizeStoredMessage(fieldErrors.durationSeconds ?? "", tx)} onChange={(value) => update("durationSeconds", value)} />
                 {form.loadMode === "fixed_concurrency" ? (
-                  <PerformanceNumberField field="concurrency" label={form.capacityEnabled ? "终止并发" : "并发数"} value={form.concurrency} min={1} max={256} disabled={pending} error={fieldErrors.concurrency} onChange={(value) => update("concurrency", value)} />
+                  <PerformanceNumberField field="concurrency" label={form.capacityEnabled ? tx("desktop:quick-test_final_concurrency") : tx("desktop:catalog_concurrency")} value={form.concurrency} min={1} max={256} disabled={pending} error={localizeStoredMessage(fieldErrors.concurrency ?? "", tx)} onChange={(value) => update("concurrency", value)} />
                 ) : (
                   <>
-                    <PerformanceNumberField field="ratePerSecond" label={form.capacityEnabled ? "终止 RPS" : "目标发送 RPS"} value={form.ratePerSecond} min={0.01} max={100_000} step={0.01} disabled={pending} error={fieldErrors.ratePerSecond} onChange={(value) => update("ratePerSecond", value)} />
-                    <PerformanceNumberField field="maxInFlight" label="最大在途" value={form.maxInFlight} min={1} max={2_000} disabled={pending} error={fieldErrors.maxInFlight} onChange={(value) => update("maxInFlight", value)} />
+                    <PerformanceNumberField field="ratePerSecond" label={form.capacityEnabled ? tx("desktop:quick-test_final_rps") : tx("desktop:quick-test_target_send_rps")} value={form.ratePerSecond} min={0.01} max={100_000} step={0.01} disabled={pending} error={localizeStoredMessage(fieldErrors.ratePerSecond ?? "", tx)} onChange={(value) => update("ratePerSecond", value)} />
+                    <PerformanceNumberField field="maxInFlight" label={tx("desktop:quick-test_maximum_in_flight")} value={form.maxInFlight} min={1} max={2_000} disabled={pending} error={localizeStoredMessage(fieldErrors.maxInFlight ?? "", tx)} onChange={(value) => update("maxInFlight", value)} />
                   </>
                 )}
-                <PerformanceNumberField field="timeoutSeconds" label="单请求超时（秒）" value={form.timeoutSeconds} min={1} max={600} disabled={pending} error={fieldErrors.timeoutSeconds} onChange={(value) => update("timeoutSeconds", value)} />
-                <PerformanceNumberField field="inputTokens" label={form.workloadMode === "normal" ? "近似输入 Token 均值" : "近似输入 Token"} value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={fieldErrors.inputTokens} onChange={(value) => update("inputTokens", value)} />
-                <PerformanceNumberField field="outputTokens" label={form.workloadMode === "normal" ? "最大输出 Token 均值" : "最大输出 Token"} value={form.outputTokens} min={1} max={65_536} disabled={pending} error={fieldErrors.outputTokens} onChange={(value) => update("outputTokens", value)} />
+                <PerformanceNumberField field="timeoutSeconds" label={tx("desktop:quick-test_request_timeout_seconds")} value={form.timeoutSeconds} min={1} max={600} disabled={pending} error={localizeStoredMessage(fieldErrors.timeoutSeconds ?? "", tx)} onChange={(value) => update("timeoutSeconds", value)} />
+                <PerformanceNumberField field="inputTokens" label={form.workloadMode === "normal" ? tx("desktop:quick-test_approximate_mean_input_tokens") : tx("desktop:quick-test_approximate_input_tokens")} value={form.inputTokens} min={1} max={1_000_000} disabled={pending} error={localizeStoredMessage(fieldErrors.inputTokens ?? "", tx)} onChange={(value) => update("inputTokens", value)} />
+                <PerformanceNumberField field="outputTokens" label={form.workloadMode === "normal" ? tx("desktop:quick-test_mean_maximum_output_tokens") : tx("desktop:quick-test_maximum_output_tokens")} value={form.outputTokens} min={1} max={65_536} disabled={pending} error={localizeStoredMessage(fieldErrors.outputTokens ?? "", tx)} onChange={(value) => update("outputTokens", value)} />
                 {form.workloadMode === "normal" ? (
                   <>
-                    <PerformanceNumberField field="inputTokensStdDev" label="输入 Token 标准差" value={form.inputTokensStdDev} min={0} max={1_000_000} disabled={pending} error={fieldErrors.inputTokensStdDev} onChange={(value) => update("inputTokensStdDev", value)} />
-                    <PerformanceNumberField field="outputTokensStdDev" label="输出 Token 标准差" value={form.outputTokensStdDev} min={0} max={65_536} disabled={pending} error={fieldErrors.outputTokensStdDev} onChange={(value) => update("outputTokensStdDev", value)} />
-                    <PerformanceNumberField field="sharedPrefixTokens" label="共享前缀 Token" value={form.sharedPrefixTokens} min={0} max={999_999} disabled={pending} error={fieldErrors.sharedPrefixTokens} onChange={(value) => update("sharedPrefixTokens", value)} />
+                    <PerformanceNumberField field="inputTokensStdDev" label={tx("desktop:quick-test_input_token_standard_deviation")} value={form.inputTokensStdDev} min={0} max={1_000_000} disabled={pending} error={localizeStoredMessage(fieldErrors.inputTokensStdDev ?? "", tx)} onChange={(value) => update("inputTokensStdDev", value)} />
+                    <PerformanceNumberField field="outputTokensStdDev" label={tx("desktop:quick-test_output_token_standard_deviation")} value={form.outputTokensStdDev} min={0} max={65_536} disabled={pending} error={localizeStoredMessage(fieldErrors.outputTokensStdDev ?? "", tx)} onChange={(value) => update("outputTokensStdDev", value)} />
+                    <PerformanceNumberField field="sharedPrefixTokens" label={tx("desktop:quick-test_shared_prefix_tokens")} value={form.sharedPrefixTokens} min={0} max={999_999} disabled={pending} error={localizeStoredMessage(fieldErrors.sharedPrefixTokens ?? "", tx)} onChange={(value) => update("sharedPrefixTokens", value)} />
                   </>
                 ) : null}
                 {performanceNeedsSeed(form) ? (
-                  <PerformanceNumberField field="randomSeed" label="随机种子" value={form.randomSeed} min={1} max={4_294_967_295} disabled={pending} error={fieldErrors.randomSeed} onChange={(value) => update("randomSeed", value)} />
+                  <PerformanceNumberField field="randomSeed" label={tx("desktop:quick-test_random_seed")} value={form.randomSeed} min={1} max={4_294_967_295} disabled={pending} error={localizeStoredMessage(fieldErrors.randomSeed ?? "", tx)} onChange={(value) => update("randomSeed", value)} />
                 ) : null}
               </div>
               <div className="rounded-lg border bg-surface-subtle p-3">
                 <div className="mb-3">
-                  <h3 className="text-xs font-semibold">SLO 与容量</h3>
-                  <p className="mt-1 text-[10px] text-muted-foreground">0 表示不启用；达标请求必须同时通过传输校验和所有已启用的延迟阈值。</p>
+                  <h3 className="text-xs font-semibold">{tx("desktop:quick-test_slo_and_capacity")}</h3>
+                  <p className="mt-1 text-[10px] text-muted-foreground">{tx("desktop:quick-test_0_disables_a_threshold_good_requests_must_pass_transport_validation")}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <PerformanceNumberField field="sloTTFTMS" label="SLO TTFT（ms）" value={form.sloTTFTMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.sloTTFTMS} onChange={(value) => update("sloTTFTMS", value)} />
-                  <PerformanceNumberField field="sloTPOTMS" label="SLO TPOT（ms/token）" value={form.sloTPOTMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.sloTPOTMS} onChange={(value) => update("sloTPOTMS", value)} />
+                  <PerformanceNumberField field="sloTTFTMS" label="SLO TTFT（ms）" value={form.sloTTFTMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={localizeStoredMessage(fieldErrors.sloTTFTMS ?? "", tx)} onChange={(value) => update("sloTTFTMS", value)} />
+                  <PerformanceNumberField field="sloTPOTMS" label="SLO TPOT（ms/token）" value={form.sloTPOTMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={localizeStoredMessage(fieldErrors.sloTPOTMS ?? "", tx)} onChange={(value) => update("sloTPOTMS", value)} />
                   <PerformanceNumberField field="sloE2EMS" label="SLO E2E（ms）" value={form.sloE2EMS} min={0} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.sloE2EMS} onChange={(value) => update("sloE2EMS", value)} />
-                  <PerformanceNumberField field="sloTargetPercent" label="SLO 目标达标率（%）" value={form.sloTargetPercent} min={0} max={100} step={0.01} disabled={pending} error={fieldErrors.sloTargetPercent} onChange={(value) => update("sloTargetPercent", value)} />
+                  <PerformanceNumberField field="sloTargetPercent" label={tx("desktop:quick-test_slo_target_compliance")} value={form.sloTargetPercent} min={0} max={100} step={0.01} disabled={pending} error={localizeStoredMessage(fieldErrors.sloTargetPercent ?? "", tx)} onChange={(value) => update("sloTargetPercent", value)} />
                 </div>
                 <Field className="mt-3 gap-2">
                   <FieldLabel htmlFor="quick-performance-capacityEnabled" className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5">
                     <Checkbox
                       id="quick-performance-capacityEnabled"
-                      aria-label="容量阶梯"
+                      aria-label={tx("desktop:quick-test_capacity_ladder")}
                       checked={form.capacityEnabled}
                       disabled={pending}
                       onCheckedChange={(checked) => updateCapacityEnabled(checked === true)}
                     />
-                    <span>容量阶梯</span>
-                    <span className="ml-auto text-[10px] font-normal text-muted-foreground">逐档执行，首个未达标后停止</span>
+                    <span>{tx("desktop:quick-test_capacity_ladder")}</span>
+                    <span className="ml-auto text-[10px] font-normal text-muted-foreground">{tx("desktop:quick-test_run_each_step_and_stop_after_the_first_failure")}</span>
                   </FieldLabel>
                 </Field>
                 {form.capacityEnabled ? (
                   <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2fr]">
                     {form.loadMode === "fixed_concurrency" ? (
                       <>
-                        <PerformanceNumberField field="fixedCapacityStart" label="起始并发" value={form.fixedCapacityStart} min={1} max={256} disabled={pending} error={fieldErrors.fixedCapacityStart} onChange={(value) => update("fixedCapacityStart", value)} />
-                        <PerformanceNumberField field="fixedCapacityStep" label="并发步长" value={form.fixedCapacityStep} min={1} max={Number.MAX_SAFE_INTEGER} disabled={pending} error={fieldErrors.fixedCapacityStep} onChange={(value) => update("fixedCapacityStep", value)} />
+                        <PerformanceNumberField field="fixedCapacityStart" label={tx("desktop:quick-test_starting_concurrency")} value={form.fixedCapacityStart} min={1} max={256} disabled={pending} error={localizeStoredMessage(fieldErrors.fixedCapacityStart ?? "", tx)} onChange={(value) => update("fixedCapacityStart", value)} />
+                        <PerformanceNumberField field="fixedCapacityStep" label={tx("desktop:quick-test_concurrency_step")} value={form.fixedCapacityStep} min={1} max={Number.MAX_SAFE_INTEGER} disabled={pending} error={localizeStoredMessage(fieldErrors.fixedCapacityStep ?? "", tx)} onChange={(value) => update("fixedCapacityStep", value)} />
                       </>
                     ) : (
                       <>
-                        <PerformanceNumberField field="openCapacityStart" label="起始 RPS" value={form.openCapacityStart} min={0.01} max={100_000} step={0.01} disabled={pending} error={fieldErrors.openCapacityStart} onChange={(value) => update("openCapacityStart", value)} />
-                        <PerformanceNumberField field="openCapacityStep" label="RPS 步长" value={form.openCapacityStep} min={0.01} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={fieldErrors.openCapacityStep} onChange={(value) => update("openCapacityStep", value)} />
+                        <PerformanceNumberField field="openCapacityStart" label={tx("desktop:quick-test_starting_rps")} value={form.openCapacityStart} min={0.01} max={100_000} step={0.01} disabled={pending} error={localizeStoredMessage(fieldErrors.openCapacityStart ?? "", tx)} onChange={(value) => update("openCapacityStart", value)} />
+                        <PerformanceNumberField field="openCapacityStep" label={tx("desktop:quick-test_rps_step")} value={form.openCapacityStep} min={0.01} max={Number.MAX_VALUE} step={0.01} disabled={pending} error={localizeStoredMessage(fieldErrors.openCapacityStep ?? "", tx)} onChange={(value) => update("openCapacityStep", value)} />
                       </>
                     )}
                     <div className="col-span-2 flex min-h-8 min-w-0 items-center rounded-md border bg-background px-3 text-[11px] tabular-nums text-muted-foreground sm:col-span-1">
                       <span className="truncate">
                         {capacityTargets?.length
-                          ? `${capacityTargets.map(formatCapacityTarget).join(" → ")} · ${formatNumber(capacityTargets.length)} 档`
-                          : "请填写有效的起始值、步长与终止目标"}
+                          ? tx("desktop:quick-test_value_value_steps", { value1: capacityTargets.map(formatCapacityTarget).join(" → "), value2: formatNumber(capacityTargets.length) })
+                          : tx("desktop:quick-test_enter_a_valid_start_step_and_final_target")}
                       </span>
                     </div>
                   </div>
@@ -964,33 +972,32 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
               </div>
               <div className="rounded-lg border bg-surface-subtle p-3">
                 <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h3 className="text-xs font-semibold">阶段与采样</h3>
+                  <h3 className="text-xs font-semibold">{tx("desktop:quick-test_phases_and_sampling")}</h3>
                   <p className="text-[10px] tabular-nums text-muted-foreground">
                     {form.capacityEnabled
-                      ? <>预算：热身 {formatNumber(budgetPreview.warmupCap)} · 容量 {formatNumber(budgetPreview.measuredCap)} · 合计 {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}</>
-                      : <>预算：热身 {formatNumber(budgetPreview.warmupCap)} · 爬坡 {formatNumber(budgetPreview.rampCap)} · 稳态 {formatNumber(budgetPreview.measuredCap)} · 合计 {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}</>}
+                      ? <>{tx("desktop:quick-test_budget_warmup")} {formatNumber(budgetPreview.warmupCap)}  {tx("desktop:quick-test_capacity")} {formatNumber(budgetPreview.measuredCap)}  {tx("desktop:quick-test_total")} {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}</>
+                      : <>{tx("desktop:quick-test_budget_warmup")} {formatNumber(budgetPreview.warmupCap)}  {tx("desktop:quick-test_ramp")} {formatNumber(budgetPreview.rampCap)}  {tx("desktop:quick-test_steady_state")} {formatNumber(budgetPreview.measuredCap)}  {tx("desktop:quick-test_total")} {formatNumber(budgetPreview.totalCap)} / {formatNumber(MAX_PERFORMANCE_REQUESTS)}</>}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <PerformanceNumberField field="warmupRequests" label="热身请求数" value={form.warmupRequests} min={0} max={10_000} disabled={pending} error={fieldErrors.warmupRequests} onChange={(value) => update("warmupRequests", value)} />
-                  <PerformanceNumberField field="rampDurationSeconds" label="爬坡时间（秒）" value={form.rampDurationSeconds} min={0} max={3_600} disabled={pending || form.capacityEnabled} error={fieldErrors.rampDurationSeconds} onChange={(value) => update("rampDurationSeconds", value)} />
+                  <PerformanceNumberField field="warmupRequests" label={tx("desktop:quick-test_warmup_request_count")} value={form.warmupRequests} min={0} max={10_000} disabled={pending} error={localizeStoredMessage(fieldErrors.warmupRequests ?? "", tx)} onChange={(value) => update("warmupRequests", value)} />
+                  <PerformanceNumberField field="rampDurationSeconds" label={tx("desktop:quick-test_ramp_duration_seconds")} value={form.rampDurationSeconds} min={0} max={3_600} disabled={pending || form.capacityEnabled} error={localizeStoredMessage(fieldErrors.rampDurationSeconds ?? "", tx)} onChange={(value) => update("rampDurationSeconds", value)} />
                   {!form.capacityEnabled && form.loadMode === "fixed_concurrency" && form.rampDurationSeconds > 0 ? (
-                    <PerformanceNumberField field="rampRequestCap" label="爬坡请求上限" value={form.rampRequestCap} min={1} max={10_000} disabled={pending} error={fieldErrors.rampRequestCap} onChange={(value) => update("rampRequestCap", value)} />
+                    <PerformanceNumberField field="rampRequestCap" label={tx("desktop:quick-test_ramp_request_cap")} value={form.rampRequestCap} min={1} max={10_000} disabled={pending} error={localizeStoredMessage(fieldErrors.rampRequestCap ?? "", tx)} onChange={(value) => update("rampRequestCap", value)} />
                   ) : null}
-                  <PerformanceNumberField field="sliceDurationSeconds" label="时间切片（秒）" value={form.sliceDurationSeconds} min={0} max={3_600} disabled={pending} error={fieldErrors.sliceDurationSeconds} onChange={(value) => update("sliceDurationSeconds", value)} />
+                  <PerformanceNumberField field="sliceDurationSeconds" label={tx("desktop:quick-test_time_slice_seconds")} value={form.sliceDurationSeconds} min={0} max={3_600} disabled={pending} error={localizeStoredMessage(fieldErrors.sliceDurationSeconds ?? "", tx)} onChange={(value) => update("sliceDurationSeconds", value)} />
                 </div>
-                <p className="mt-2 text-[10px] text-muted-foreground">0 表示跳过对应阶段或不生成时间切片；{form.capacityEnabled ? "容量模式跳过爬坡，每档指标独立统计。" : "爬坡使用 10 阶线性阶梯，稳态指标不包含热身与爬坡。"}</p>
+                <p className="mt-2 text-[10px] text-muted-foreground">{tx("desktop:quick-test_0_skips_a_phase_or_disables_time_slices")}{form.capacityEnabled ? tx("desktop:quick-test_capacity_mode_skips_ramping_and_measures_each_step_independently") : tx("desktop:quick-test_ramping_uses_10_linear_steps_steady_state_metrics_exclude_warmup")}</p>
               </div>
               <FieldDescription>
                 {form.loadMode === "open_loop"
                   ? form.arrivalPattern === "poisson"
-                    ? "按可复现的 Poisson 到达过程调度请求；达到最大在途后会记录本地拒绝。"
-                    : "按恒定间隔的目标 RPS 独立调度请求；达到最大在途后会记录本地拒绝。"
-                  : "固定并发会在请求完成后补发，维持配置的在途请求数。"}
-                {form.workloadMode === "normal" ? " 正态工作负载会用种子复现每个请求的 Token 目标与唯一后缀。" : ""}
-                同时填写请求数和持续时间时，任一目标先达到即停止发送；输出 Token 是请求上限，不保证模型实际生成到该数值。
-              </FieldDescription>
-              {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{operationError}</FieldError> : null}
+                    ? tx("desktop:quick-test_requests_follow_a_reproducible_poisson_arrival_process_reaching_the_in")
+                    : tx("desktop:quick-test_requests_are_scheduled_independently_at_constant_intervals_for_the_target")
+                  : tx("desktop:quick-test_fixed_concurrency_starts_a_replacement_when_a_request_completes_to")}
+                {form.workloadMode === "normal" ? tx("desktop:quick-test_a_normal_workload_uses_the_seed_to_reproduce_each_request") : ""}
+                 {tx("desktop:quick-test_when_both_request_count_and_duration_are_set_sending_stops")} </FieldDescription>
+              {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{localizeStoredMessage(operationError, tx)}</FieldError> : null}
             </FieldGroup>
           </form>
           {pending && progress ? (
@@ -998,14 +1005,14 @@ function QuickPerformanceSheet({ open, onOpenChange, testedCommand, run, onArchi
           ) : pending ? (
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Spinner className="size-5" />
-              <p className="mt-3 text-sm font-medium">性能测试运行中</p>
-              <p className="mt-1 text-xs text-muted-foreground">请求完成后由 Core 生成聚合报告。</p>
+              <p className="mt-3 text-sm font-medium">{t("performance.running")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("performance.runningHint")}</p>
             </div>
           ) : report ? <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} /> : null}
         </ScrollArea>
         <SheetFooter>
           <Button type="submit" form="quick-performance-form" disabled={pending}>
-            {pending ? <><Spinner data-icon="inline-start" />正在测试…</> : <><GaugeIcon data-icon="inline-start" />开始性能测试</>}
+            {pending ? <><Spinner data-icon="inline-start" />{t("testing")}</> : <><GaugeIcon data-icon="inline-start" />{t("performance.start")}</>}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -1044,23 +1051,25 @@ function PerformanceNumberField({ field, label, value, min, max, step = 1, disab
           onChange={(event) => onChange(Number(event.target.value))}
           required
         />
-        {error ? <FieldError id={errorID}>{error}</FieldError> : null}
+        {error ? <FieldError id={errorID}>{localizeStoredMessage(error, tx)}</FieldError> : null}
       </FieldContent>
     </Field>
   )
 }
 
 function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPerformanceReport; onOpenReport?: (reportID: string) => void | Promise<void> }) {
+  const { t: tx } = useTranslation()
+  const { t, i18n } = useTranslation("quickTest")
   const completion = performanceCompletion(report.profile.request_count, report.metrics.completed, report.progress.planned)
   const hasPreparationData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined
   const completedWithFailures = !report.success && !report.error_code && report.metrics.completed > 0
   const title = report.success
-    ? "性能测试完成"
+    ? t("performance.complete")
     : completedWithFailures
-      ? "性能测试完成，存在失败请求"
-      : QUICK_TEST_ERROR_MESSAGES[report.error_code ?? "request_failed"]
+      ? t("performance.completeWithFailures")
+      : t(`errorCode.${report.error_code ?? "request_failed"}`)
   return (
-    <section aria-label="性能报告" className="rounded-lg border bg-surface-subtle">
+    <section aria-label={t("performance.reportAria")} className="rounded-lg border bg-surface-subtle">
       <div className="flex items-start gap-3 p-4">
         {report.success ? (
           <CheckCircle2Icon className="mt-0.5 size-5 shrink-0 text-success" />
@@ -1071,7 +1080,7 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
           <h3 className="text-sm font-semibold">{title}</h3>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge variant="outline" className={report.success ? "border-success/30 bg-success-soft text-success" : "border-warning/30 bg-warning-soft text-warning"}>
-              传输与协议{report.success ? "通过" : "未通过"}
+               {tx("desktop:quick-test_transport_and_protocol")}{report.success ? tx("desktop:quick-test_passed") : tx("desktop:quick-test_failed_301")}
             </Badge>
             {report.slo_assessment ? (
               <Badge
@@ -1083,86 +1092,86 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
             ) : null}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {report.success ? "稳态请求全部完成且通过协议与语义校验。" : "可按失败原因筛选稳态请求，并查看经过脱敏和限长处理的响应详情。"}
+            {report.success ? tx("desktop:quick-test_all_steady_state_requests_completed_and_passed_protocol_and_semantic") : tx("desktop:quick-test_filter_steady_state_requests_by_failure_reason_and_inspect_redacted")}
           </p>
         </div>
       </div>
       <Separator />
       <div className="space-y-4 p-4">
-        <p className="rounded-md border bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">主指标仅统计稳态阶段；热身与爬坡流量单独汇总。</p>
+        <p className="rounded-md border bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">{tx("desktop:quick-test_primary_metrics_cover_steady_state_only_warmup_and_ramp_traffic")}</p>
         {hasPreparationData ? (
           <div>
-            <h4 className="mb-2 text-xs font-semibold">准备阶段</h4>
+            <h4 className="mb-2 text-xs font-semibold">{tx("desktop:quick-test_preparation_phases")}</h4>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-              {report.request_budget ? <ResultValue label="请求预算" value={formatPerformanceBudget(report.request_budget)} numeric wide /> : null}
-              {report.warmup ? <ResultValue label="热身" value={formatTrafficCompletion(report.warmup)} numeric /> : null}
-              {report.ramp ? <ResultValue label="爬坡" value={formatTrafficCompletion(report.ramp.traffic)} numeric /> : null}
-              {report.time_slices ? <ResultValue label="时间切片" value={`${formatNumber(report.time_slices.length)} 段 · ${formatDuration(report.profile.slice_duration_ms ?? 0)} 粒度`} numeric wide /> : null}
+              {report.request_budget ? <ResultValue label={tx("desktop:quick-test_request_budget")} value={formatPerformanceBudget(report.request_budget)} numeric wide /> : null}
+              {report.warmup ? <ResultValue label={tx("desktop:quick-test_warmup")} value={formatTrafficCompletion(report.warmup)} numeric /> : null}
+              {report.ramp ? <ResultValue label={tx("desktop:quick-test_ramp_308")} value={formatTrafficCompletion(report.ramp.traffic)} numeric /> : null}
+              {report.time_slices ? <ResultValue label={tx("desktop:quick-test_time_slices")} value={tx("desktop:quick-test_value_slices_value_resolution", { value1: formatNumber(report.time_slices.length), value2: formatDuration(report.profile.slice_duration_ms ?? 0) })} numeric wide /> : null}
             </dl>
-            {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">爬坡窗口未完整执行；请结合请求上限或提前停止状态解读准备阶段。</p> : null}
+            {report.ramp && !report.ramp.completed_window ? <p role="status" className="mt-3 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-[11px] text-warning">{tx("desktop:quick-test_the_ramp_window_did_not_complete_consider_the_request_cap")}</p> : null}
           </div>
         ) : null}
         {report.slo_assessment ? (
-          <MetricSection title="SLO 与 Goodput">
-            <InlineResultValue label="好请求" value={`${formatNumber(report.slo_assessment.good_requests)} / ${formatNumber(report.slo_assessment.total_requests)}`} numeric />
-            <ResultValue label="达标率 / 目标" value={`${formatNumber(report.slo_assessment.good_request_percent)}% / ${formatNumber(report.slo_assessment.target_percent)}%`} numeric />
+          <MetricSection title={tx("desktop:quick-test_slo_and_goodput")}>
+            <InlineResultValue label={tx("desktop:quick-test_good_requests")} value={`${formatNumber(report.slo_assessment.good_requests)} / ${formatNumber(report.slo_assessment.total_requests)}`} numeric />
+            <ResultValue label={tx("desktop:quick-test_compliance_target")} value={`${formatNumber(report.slo_assessment.good_request_percent)}% / ${formatNumber(report.slo_assessment.target_percent)}%`} numeric />
             <InlineResultValue label="Goodput" value={`${formatNumber(report.slo_assessment.goodput_qps)} req/s`} numeric />
-            <ResultValue label="违反（传输 / TTFT / TPOT / E2E）" value={`${report.slo_assessment.violations.transport} / ${report.slo_assessment.violations.ttft} / ${report.slo_assessment.violations.tpot} / ${report.slo_assessment.violations.e2e}`} numeric wide />
+            <ResultValue label={tx("desktop:quick-test_violations_transport_ttft_tpot_e2e")} value={`${report.slo_assessment.violations.transport} / ${report.slo_assessment.violations.ttft} / ${report.slo_assessment.violations.tpot} / ${report.slo_assessment.violations.e2e}`} numeric wide />
           </MetricSection>
         ) : null}
         {report.capacity_result ? (
           <div className="rounded-md border bg-background/70 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">容量结论</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{tx("desktop:quick-test_capacity_conclusion")}</p>
             <p className="mt-1 text-xs font-semibold tabular-nums">{performanceCapacitySummary(report.capacity_result, report.profile.load_mode ?? "fixed_concurrency")}</p>
           </div>
         ) : null}
-        <MetricSection title="稳态执行摘要">
+        <MetricSection title={tx("desktop:quick-test_steady_state_execution_summary")}>
           <ResultValue label={completion.label} value={completion.value} numeric />
-          <ResultValue label="成功" value={String(report.metrics.succeeded)} numeric />
-          <ResultValue label="失败" value={String(report.metrics.failed)} numeric />
-          <ResultValue label="成功率" value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
-          <ResultValue label="总耗时" value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
+          <ResultValue label={tx("desktop:quick-test_succeeded")} value={String(report.metrics.succeeded)} numeric />
+          <ResultValue label={tx("desktop:quick-test_failed")} value={String(report.metrics.failed)} numeric />
+          <ResultValue label={tx("desktop:quick-test_success_rate")} value={`${formatNumber(report.metrics.success_rate_percent)}%`} numeric />
+          <ResultValue label={tx("desktop:quick-test_total_duration")} value={`${formatNumber(report.progress.total_duration_ms)} ms`} numeric />
           {report.profile.load_mode === "open_loop" ? (
-            <ResultValue label="峰值在途 / 上限" value={`${report.progress.peak_in_flight} / ${report.profile.max_in_flight === undefined ? "—" : formatNumber(report.profile.max_in_flight)}`} numeric />
+            <ResultValue label={tx("desktop:quick-test_peak_in_flight_limit")} value={`${report.progress.peak_in_flight} / ${report.profile.max_in_flight === undefined ? "—" : formatNumber(report.profile.max_in_flight)}`} numeric />
           ) : (
-            <ResultValue label="峰值在途 / 配置并发" value={`${report.progress.peak_in_flight} / ${formatCapacityTarget(report.progress.capacity_target ?? report.profile.concurrency)}`} numeric />
+            <ResultValue label={tx("desktop:quick-test_peak_in_flight_configured_concurrency")} value={`${report.progress.peak_in_flight} / ${formatCapacityTarget(report.progress.capacity_target ?? report.profile.concurrency)}`} numeric />
           )}
         </MetricSection>
-        <MetricSection title="工作负载">
-          {report.profile.load_mode === "open_loop" ? <ResultValue label="到达分布" value={performanceArrivalPattern(report)} /> : null}
-          <ResultValue label="Token 分布" value={performanceWorkloadMode(report)} />
-          <ResultValue label="随机种子" value={performanceSeed(report)} numeric />
-          <ResultValue label="共享前缀" value={performanceSharedPrefix(report)} numeric />
-          {performanceTargetRanges(report) ? <ResultValue label="采样目标范围（输入 / 输出）" value={performanceTargetRanges(report)!} numeric wide /> : null}
+        <MetricSection title={tx("desktop:quick-test_workload")}>
+          {report.profile.load_mode === "open_loop" ? <ResultValue label={tx("desktop:quick-test_arrival_distribution")} value={performanceArrivalPattern(report)} /> : null}
+          <ResultValue label={tx("desktop:quick-test_token_distribution")} value={performanceWorkloadMode(report)} />
+          <ResultValue label={tx("desktop:quick-test_random_seed")} value={performanceSeed(report)} numeric />
+          <ResultValue label={tx("desktop:quick-test_shared_prefix")} value={performanceSharedPrefix(report)} numeric />
+          {performanceTargetRanges(report) ? <ResultValue label={tx("desktop:quick-test_sampled_target_range_input_output")} value={performanceTargetRanges(report)!} numeric wide /> : null}
         </MetricSection>
-        <MetricSection title="稳态吞吐">
-          <ResultValue label="目标发送" value={performanceTargetRate(report)} numeric />
-          <ResultValue label="调度需求" value={formatOptionalRate(report.metrics.offered_qps)} numeric />
-          <ResultValue label="实际发送" value={formatOptionalRate(report.metrics.launched_qps)} numeric />
-          <ResultValue label="已发送完成吞吐" value={formatOptionalRate(report.metrics.completed_qps)} numeric />
-          <ResultValue label="成功吞吐" value={formatOptionalRate(report.metrics.successful_request_qps)} numeric />
-          {report.schema_version === 1 ? <ResultValue label="旧版请求吞吐" value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric /> : null}
+        <MetricSection title={tx("desktop:quick-test_steady_state_throughput")}>
+          <ResultValue label={tx("desktop:quick-test_target_send_rate")} value={performanceTargetRate(report)} numeric />
+          <ResultValue label={tx("desktop:quick-test_offered_load")} value={formatOptionalRate(report.metrics.offered_qps)} numeric />
+          <ResultValue label={tx("desktop:quick-test_actual_send_rate")} value={formatOptionalRate(report.metrics.launched_qps)} numeric />
+          <ResultValue label={tx("desktop:quick-test_completed_request_throughput")} value={formatOptionalRate(report.metrics.completed_qps)} numeric />
+          <ResultValue label={tx("desktop:quick-test_successful_request_throughput")} value={formatOptionalRate(report.metrics.successful_request_qps)} numeric />
+          {report.schema_version === 1 ? <ResultValue label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatNumber(report.metrics.request_qps)} req/s`} numeric /> : null}
           <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
-          <ResultValue label="输入 TPM" value={`${formatNumber(report.metrics.input_tpm)} TPM`} numeric />
-          <ResultValue label="输出 TPM" value={`${formatNumber(report.metrics.output_tpm)} TPM`} numeric />
-          <ResultValue label="总 TPM" value={`${formatNumber(report.metrics.total_tpm)} TPM`} numeric />
-          <ResultValue label="生成速度" value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
+          <ResultValue label="Input TPM" value={`${formatNumber(report.metrics.input_tpm)} TPM`} numeric />
+          <ResultValue label="Output TPM" value={`${formatNumber(report.metrics.output_tpm)} TPM`} numeric />
+          <ResultValue label="Total TPM" value={`${formatNumber(report.metrics.total_tpm)} TPM`} numeric />
+          <ResultValue label={t("performance.generationRate")} value={`${formatNumber(report.metrics.generation_tps)} token/s`} numeric />
         </MetricSection>
         <PerformanceLatencyTable metrics={report.metrics} />
         <PerformanceStreamingTimingTable schemaVersion={report.schema_version} metrics={report.metrics} />
         <MetricSection title="Token">
           <ResultValue label="Prompt / Completion / Cached" value={`${report.metrics.prompt_tokens} / ${report.metrics.completion_tokens} / ${report.metrics.cached_tokens}`} numeric />
-          <ResultValue label="KV 缓存命中率" value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
-          <ResultValue label="超时请求" value={String(report.metrics.timed_out)} numeric />
+          <ResultValue label={t("performance.cacheRate")} value={`${formatNumber(report.metrics.cache_rate_percent)}%`} numeric />
+          <ResultValue label={t("performance.timedOut")} value={String(report.metrics.timed_out)} numeric />
         </MetricSection>
         {report.samples.length ? <PerformanceCharts layout="stacked" samples={report.samples} percentiles={report.metrics} /> : null}
         {report.failures.length ? (
           <div>
-            <h4 className="text-xs font-semibold">失败分类</h4>
+            <h4 className="text-xs font-semibold">{t("performance.failures")}</h4>
             <ul className="mt-2 space-y-1 text-xs">
               {report.failures.map((failure) => (
                 <li key={failure.error_code} className="flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground">{QUICK_TEST_ERROR_MESSAGES[failure.error_code]}</span>
+                  <span className="text-muted-foreground">{t(`errorCode.${failure.error_code}`)}</span>
                   <span className="tabular-nums">{failure.count}</span>
                 </li>
               ))}
@@ -1172,11 +1181,11 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
         {report.samples.length ? <QuickPerformanceRequestAnalysis report={report} /> : null}
         {report.archived && report.report_id ? (
           <div className="flex items-center justify-between gap-3 border-t pt-3">
-            <p className="text-[10px] text-muted-foreground">已于 {report.generated_at ? new Date(report.generated_at).toLocaleString("zh-CN") : "测试完成时"} 封存到报告。</p>
-            <Button type="button" size="sm" variant="outline" onClick={() => void onOpenReport?.(report.report_id!)}>查看正式报告</Button>
+            <p className="text-[10px] text-muted-foreground">{t("performance.archived", { date: report.generated_at ? new Date(report.generated_at).toLocaleString(i18n.resolvedLanguage ?? i18n.language) : t("performance.completionTime") })}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => void onOpenReport?.(report.report_id!)}>{t("performance.openReport")}</Button>
           </div>
         ) : report.archive_status === "failed" ? (
-          <p role="status" className="border-t pt-3 text-[11px] text-warning">性能结果已生成，但未能写入报告目录。</p>
+          <p role="status" className="border-t pt-3 text-[11px] text-warning">{t("performance.notArchived")}</p>
         ) : null}
       </div>
     </section>
@@ -1184,47 +1193,49 @@ function QuickPerformanceReportPanel({ report, onOpenReport }: { report: QuickPe
 }
 
 function QuickPerformanceProgressPanel({ progress, requestCount, loadMode }: { progress: QuickPerformanceProgress; requestCount: number; loadMode: QuickPerformanceLoadMode }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("quickTest")
   const isPreparation = progress.phase === "warming_up" || progress.phase === "ramping"
   const percentage = (requestCount > 0 || isPreparation) && progress.planned > 0
     ? Math.min(100, progress.completed / progress.planned * 100)
     : undefined
   const phaseLabel = performanceProgressPhaseLabel(progress.phase)
   const completion = progress.phase === "warming_up"
-    ? { label: "热身完成 / 计划", value: `${progress.completed} / ${progress.planned}` }
+    ? { label: tx("desktop:quick-test_warmup_completed_planned"), value: `${progress.completed} / ${progress.planned}` }
     : progress.phase === "ramping"
-      ? { label: "爬坡完成 / 计划", value: `${progress.completed} / ${progress.planned}` }
+      ? { label: tx("desktop:quick-test_ramp_completed_planned"), value: `${progress.completed} / ${progress.planned}` }
       : performanceCompletion(requestCount, progress.completed, progress.planned)
   return (
-    <section role="status" aria-label="性能测试进度" className="rounded-lg border bg-surface-subtle p-4">
+    <section role="status" aria-label={t("performance.progressAria")} className="rounded-lg border bg-surface-subtle p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Spinner className="size-4 shrink-0" />
           <span className="text-sm font-medium">{phaseLabel}</span>
           {progress.capacity_rung_number !== undefined ? (
-            <Badge variant="outline" className="tabular-nums">档位 {progress.capacity_rung_number} / {progress.capacity_rung_count}</Badge>
+            <Badge variant="outline" className="tabular-nums">{tx("desktop:quick-test_step")} {progress.capacity_rung_number} / {progress.capacity_rung_count}</Badge>
           ) : null}
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">
-          {percentage === undefined ? "持续时间模式" : `${formatNumber(percentage)}%`}
+          {percentage === undefined ? t("performance.durationMode") : `${formatNumber(percentage)}%`}
         </span>
       </div>
       <Progress
         className="mt-3 h-1.5"
         value={percentage}
-        aria-label="请求完成进度"
+        aria-label={t("performance.requestProgress")}
         aria-valuenow={percentage}
         aria-valuemin={percentage === undefined ? undefined : 0}
         aria-valuemax={percentage === undefined ? undefined : 100}
       />
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
         <ResultValue label={completion.label} value={completion.value} numeric />
-        {progress.offered === undefined ? null : <ResultValue label="调度需求" value={String(progress.offered)} numeric />}
-        <ResultValue label="成功" value={String(progress.succeeded)} numeric />
-        <ResultValue label="失败" value={String(progress.failed)} numeric />
-        <ResultValue label="在途" value={String(progress.in_flight)} numeric />
-        {progress.capacity_target === undefined ? null : <InlineResultValue label="当前目标" value={`${formatCapacityTarget(progress.capacity_target)} ${loadMode === "fixed_concurrency" ? "并发" : "RPS"}`} numeric />}
+        {progress.offered === undefined ? null : <ResultValue label={tx("desktop:quick-test_offered_load")} value={String(progress.offered)} numeric />}
+        <ResultValue label={tx("desktop:quick-test_succeeded")} value={String(progress.succeeded)} numeric />
+        <ResultValue label={tx("desktop:quick-test_failed")} value={String(progress.failed)} numeric />
+        <ResultValue label={tx("desktop:quick-test_in_flight")} value={String(progress.in_flight)} numeric />
+        {progress.capacity_target === undefined ? null : <InlineResultValue label={tx("desktop:quick-test_current_target")} value={`${formatCapacityTarget(progress.capacity_target)} ${loadMode === "fixed_concurrency" ? tx("desktop:quick-test_concurrency") : "RPS"}`} numeric />}
       </dl>
-      {progress.capped ? <p className="mt-3 border-t pt-2 text-[11px] text-warning">当前阶段已达到请求上限。</p> : null}
+      {progress.capped ? <p className="mt-3 border-t pt-2 text-[11px] text-warning">{tx("desktop:quick-test_the_current_phase_reached_its_request_cap")}</p> : null}
     </section>
   )
 }
@@ -1240,61 +1251,61 @@ function MetricSection({ title, children }: { title: string; children: React.Rea
 
 function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors {
   const errors: PerformanceFieldErrors = {}
-  if (!integerInRange(form.requestCount, 0, 10_000)) errors.requestCount = "请求数需为 0–10,000 的整数。"
-  if (!integerInRange(form.durationSeconds, 0, 3_600)) errors.durationSeconds = "持续时间需为 0–3,600 秒的整数。"
-  if (!integerInRange(form.warmupRequests, 0, 10_000)) errors.warmupRequests = "热身请求数需为 0–10,000 的整数。"
-  if (!form.capacityEnabled && !integerInRange(form.rampDurationSeconds, 0, 3_600)) errors.rampDurationSeconds = "爬坡时间需为 0–3,600 秒的整数。"
-  if (!integerInRange(form.sliceDurationSeconds, 0, 3_600)) errors.sliceDurationSeconds = "时间切片需为 0–3,600 秒的整数。"
-  if (!Number.isFinite(form.sloTTFTMS) || form.sloTTFTMS < 0) errors.sloTTFTMS = "SLO TTFT 阈值需为大于或等于 0 的有限数字。"
-  if (!Number.isFinite(form.sloTPOTMS) || form.sloTPOTMS < 0) errors.sloTPOTMS = "SLO TPOT 阈值需为大于或等于 0 的有限数字。"
-  if (!Number.isFinite(form.sloE2EMS) || form.sloE2EMS < 0) errors.sloE2EMS = "SLO E2E 阈值需为大于或等于 0 的有限数字。"
-  if (!finiteInRange(form.sloTargetPercent, 0, 100)) errors.sloTargetPercent = "SLO 目标达标率需为 0–100。"
+  if (!integerInRange(form.requestCount, 0, 10_000)) errors.requestCount = tx("desktop:quick-test_request_count_must_be_an_integer_from_0_to_10")
+  if (!integerInRange(form.durationSeconds, 0, 3_600)) errors.durationSeconds = tx("desktop:quick-test_duration_must_be_an_integer_from_0_to_3_600")
+  if (!integerInRange(form.warmupRequests, 0, 10_000)) errors.warmupRequests = tx("desktop:quick-test_warmup_request_count_must_be_an_integer_from_0_to")
+  if (!form.capacityEnabled && !integerInRange(form.rampDurationSeconds, 0, 3_600)) errors.rampDurationSeconds = tx("desktop:quick-test_ramp_duration_must_be_an_integer_from_0_to_3")
+  if (!integerInRange(form.sliceDurationSeconds, 0, 3_600)) errors.sliceDurationSeconds = tx("desktop:quick-test_time_slice_must_be_an_integer_from_0_to_3")
+  if (!Number.isFinite(form.sloTTFTMS) || form.sloTTFTMS < 0) errors.sloTTFTMS = tx("desktop:quick-test_the_slo_ttft_threshold_must_be_a_finite_number_greater")
+  if (!Number.isFinite(form.sloTPOTMS) || form.sloTPOTMS < 0) errors.sloTPOTMS = tx("desktop:quick-test_the_slo_tpot_threshold_must_be_a_finite_number_greater")
+  if (!Number.isFinite(form.sloE2EMS) || form.sloE2EMS < 0) errors.sloE2EMS = tx("desktop:quick-test_the_slo_e2e_threshold_must_be_a_finite_number_greater")
+  if (!finiteInRange(form.sloTargetPercent, 0, 100)) errors.sloTargetPercent = tx("desktop:quick-test_slo_target_compliance_must_be_from_0_to_100")
   const hasSLOThreshold = form.sloTTFTMS > 0 || form.sloTPOTMS > 0 || form.sloE2EMS > 0
   if (!errors.sloTargetPercent && form.sloTargetPercent > 0 && !hasSLOThreshold) {
-    errors.sloTargetPercent = "设置目标达标率时，至少启用一个延迟阈值。"
+    errors.sloTargetPercent = tx("desktop:quick-test_enable_at_least_one_latency_threshold_when_setting_target_compliance")
   } else if (!errors.sloTargetPercent && hasSLOThreshold && form.sloTargetPercent <= 0) {
-    errors.sloTargetPercent = "启用延迟阈值时，目标达标率必须大于 0。"
+    errors.sloTargetPercent = tx("desktop:quick-test_target_compliance_must_be_greater_than_0_when_a_latency")
   }
   if (!errors.requestCount && !errors.durationSeconds && form.requestCount === 0 && form.durationSeconds === 0) {
-    errors.requestCount = PERFORMANCE_TARGET_ERRORS.requestCount
-    errors.durationSeconds = PERFORMANCE_TARGET_ERRORS.durationSeconds
+    errors.requestCount = performanceTargetErrors().requestCount
+    errors.durationSeconds = performanceTargetErrors().durationSeconds
   }
   if (form.loadMode === "fixed_concurrency") {
-    if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = "并发数需为 1–256 的整数。"
-    if (!form.capacityEnabled && form.rampDurationSeconds > 0 && !integerInRange(form.rampRequestCap, 1, 10_000)) errors.rampRequestCap = "爬坡请求上限需为 1–10,000 的整数。"
+    if (!integerInRange(form.concurrency, 1, 256)) errors.concurrency = tx("desktop:quick-test_concurrency_must_be_an_integer_from_1_to_256")
+    if (!form.capacityEnabled && form.rampDurationSeconds > 0 && !integerInRange(form.rampRequestCap, 1, 10_000)) errors.rampRequestCap = tx("desktop:quick-test_ramp_request_cap_must_be_an_integer_from_1_to")
   } else {
-    if (!finiteInRange(form.ratePerSecond, 0.01, 100_000)) errors.ratePerSecond = "目标发送 RPS 需为 0.01–100,000。"
-    if (!integerInRange(form.maxInFlight, 1, 2_000)) errors.maxInFlight = "最大在途需为 1–2,000 的整数。"
+    if (!finiteInRange(form.ratePerSecond, 0.01, 100_000)) errors.ratePerSecond = tx("desktop:quick-test_target_send_rps_must_be_from_0_01_to_100")
+    if (!integerInRange(form.maxInFlight, 1, 2_000)) errors.maxInFlight = tx("desktop:quick-test_maximum_in_flight_must_be_an_integer_from_1_to")
   }
-  if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = "单请求超时需为 1–600 秒的整数。"
-  if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = "近似输入 Token 需为 1–1,000,000 的整数。"
-  if (!integerInRange(form.outputTokens, 1, 65_536)) errors.outputTokens = "最大输出 Token 需为 1–65,536 的整数。"
+  if (!integerInRange(form.timeoutSeconds, 1, 600)) errors.timeoutSeconds = tx("desktop:quick-test_request_timeout_must_be_an_integer_from_1_to_600")
+  if (!integerInRange(form.inputTokens, 1, 1_000_000)) errors.inputTokens = tx("desktop:quick-test_approximate_input_tokens_must_be_an_integer_from_1_to")
+  if (!integerInRange(form.outputTokens, 1, 65_536)) errors.outputTokens = tx("desktop:quick-test_maximum_output_tokens_must_be_an_integer_from_1_to")
   if (form.workloadMode === "normal") {
-    if (!integerInRange(form.inputTokensStdDev, 0, 1_000_000)) errors.inputTokensStdDev = "输入 Token 标准差需为 0–1,000,000 的整数。"
-    else if (!errors.inputTokens && form.inputTokensStdDev > form.inputTokens) errors.inputTokensStdDev = "输入 Token 标准差不能大于输入均值。"
-    if (!integerInRange(form.outputTokensStdDev, 0, 65_536)) errors.outputTokensStdDev = "输出 Token 标准差需为 0–65,536 的整数。"
-    else if (!errors.outputTokens && form.outputTokensStdDev > form.outputTokens) errors.outputTokensStdDev = "输出 Token 标准差不能大于输出均值。"
-    if (!integerInRange(form.sharedPrefixTokens, 0, 999_999)) errors.sharedPrefixTokens = "共享前缀 Token 需为 0–999,999 的整数。"
-    else if (!errors.inputTokens && form.sharedPrefixTokens >= form.inputTokens) errors.sharedPrefixTokens = "共享前缀 Token 必须小于输入均值。"
+    if (!integerInRange(form.inputTokensStdDev, 0, 1_000_000)) errors.inputTokensStdDev = tx("desktop:quick-test_input_token_standard_deviation_must_be_an_integer_from_0")
+    else if (!errors.inputTokens && form.inputTokensStdDev > form.inputTokens) errors.inputTokensStdDev = tx("desktop:quick-test_input_token_standard_deviation_cannot_exceed_the_input_mean")
+    if (!integerInRange(form.outputTokensStdDev, 0, 65_536)) errors.outputTokensStdDev = tx("desktop:quick-test_output_token_standard_deviation_must_be_an_integer_from_0")
+    else if (!errors.outputTokens && form.outputTokensStdDev > form.outputTokens) errors.outputTokensStdDev = tx("desktop:quick-test_output_token_standard_deviation_cannot_exceed_the_output_mean")
+    if (!integerInRange(form.sharedPrefixTokens, 0, 999_999)) errors.sharedPrefixTokens = tx("desktop:quick-test_shared_prefix_tokens_must_be_an_integer_from_0_to")
+    else if (!errors.inputTokens && form.sharedPrefixTokens >= form.inputTokens) errors.sharedPrefixTokens = tx("desktop:quick-test_shared_prefix_tokens_must_be_less_than_the_input_mean")
   }
   if (performanceNeedsSeed(form) && !integerInRange(form.randomSeed, 1, 4_294_967_295)) {
-    errors.randomSeed = "随机种子需为 1–4,294,967,295 的整数。"
+    errors.randomSeed = tx("desktop:quick-test_random_seed_must_be_an_integer_from_1_to_4")
   }
   if (form.capacityEnabled) {
     if (!hasSLOThreshold || form.sloTargetPercent <= 0) {
-      if (!errors.sloTargetPercent) errors.sloTargetPercent = "容量阶梯需要先配置有效的 SLO。"
+      if (!errors.sloTargetPercent) errors.sloTargetPercent = tx("desktop:quick-test_configure_a_valid_slo_before_enabling_a_capacity_ladder")
     }
-    if (form.requestCount <= 0 && !errors.requestCount) errors.requestCount = "容量阶梯需要大于 0 的请求数。"
+    if (form.requestCount <= 0 && !errors.requestCount) errors.requestCount = tx("desktop:quick-test_a_capacity_ladder_requires_a_request_count_greater_than_0")
     if (form.loadMode === "fixed_concurrency") {
-      if (!integerInRange(form.fixedCapacityStart, 1, form.concurrency)) errors.fixedCapacityStart = "起始并发需为不超过终止并发的正整数。"
-      if (!Number.isSafeInteger(form.fixedCapacityStep) || form.fixedCapacityStep <= 0) errors.fixedCapacityStep = "并发步长需为正整数。"
+      if (!integerInRange(form.fixedCapacityStart, 1, form.concurrency)) errors.fixedCapacityStart = tx("desktop:quick-test_starting_concurrency_must_be_a_positive_integer_no_greater_than")
+      if (!Number.isSafeInteger(form.fixedCapacityStep) || form.fixedCapacityStep <= 0) errors.fixedCapacityStep = tx("desktop:quick-test_concurrency_step_must_be_a_positive_integer")
     } else {
-      if (!finiteInRange(form.openCapacityStart, 0.01, form.ratePerSecond)) errors.openCapacityStart = "起始 RPS 需为 0.01 到终止 RPS。"
-      if (!Number.isFinite(form.openCapacityStep) || form.openCapacityStep <= 0) errors.openCapacityStep = "RPS 步长需为大于 0 的有限数字。"
+      if (!finiteInRange(form.openCapacityStart, 0.01, form.ratePerSecond)) errors.openCapacityStart = tx("desktop:quick-test_starting_rps_must_be_from_0_01_to_final_rps")
+      if (!Number.isFinite(form.openCapacityStep) || form.openCapacityStep <= 0) errors.openCapacityStep = tx("desktop:quick-test_rps_step_must_be_a_finite_number_greater_than_0")
     }
     const targets = performanceCapacityTargets(form)
     if (targets && targets.length > 20) {
-      errors[form.loadMode === "fixed_concurrency" ? "fixedCapacityStep" : "openCapacityStep"] = "容量阶梯最多支持 20 档；请增大步长或减小终止目标。"
+      errors[form.loadMode === "fixed_concurrency" ? "fixedCapacityStep" : "openCapacityStep"] = tx("desktop:quick-test_capacity_ladders_support_at_most_20_steps_increase_the_step")
     }
   }
   const canCalculateBudget = !errors.requestCount && !errors.durationSeconds && !errors.warmupRequests &&
@@ -1309,16 +1320,16 @@ function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors 
     const budget = performanceRequestBudget(form)
     if (!form.capacityEnabled && form.loadMode === "fixed_concurrency" && form.requestCount === 0 && budget.measuredCap < 1) {
       const field = form.rampDurationSeconds > 0 ? "rampRequestCap" : "warmupRequests"
-      errors[field] = "热身与爬坡已用完 10,000 请求预算；持续时间稳态至少需要保留 1 个请求。"
+      errors[field] = tx("desktop:quick-test_warmup_and_ramp_use_the_entire_10_000_request_budget")
     } else if (budget.totalCap > MAX_PERFORMANCE_REQUESTS) {
       if (form.capacityEnabled) {
-        errors.requestCount = `热身 ${formatNumber(budget.warmupCap)} + 容量 ${formatNumber(budget.measuredCap)} = ${formatNumber(budget.totalCap)}，超过总请求预算 10,000。`
+        errors.requestCount = tx("desktop:quick-test_warmup_value_capacity_value_value_exceeding_the_total_request_budget", { value1: formatNumber(budget.warmupCap), value2: formatNumber(budget.measuredCap), value3: formatNumber(budget.totalCap) })
       } else if (form.loadMode === "open_loop" && form.requestCount === 0 && budget.warmupCap === 0 && budget.rampCap === 0) {
         errors.ratePerSecond = form.arrivalPattern === "poisson"
-          ? `Poisson 到达需预留两倍调度余量；当前预计上限 ${formatNumber(budget.measuredCap)} 个请求，超过 10,000 个上限。`
-          : `当前持续时间与 RPS 预计调度 ${formatNumber(budget.measuredCap)} 个请求，超过 10,000 个上限。`
+          ? tx("desktop:quick-test_poisson_arrivals_require_double_scheduling_headroom_the_estimated_cap_of", { value1: formatNumber(budget.measuredCap) })
+          : tx("desktop:quick-test_the_current_duration_and_rps_schedule_an_estimated_value_requests", { value1: formatNumber(budget.measuredCap) })
       } else {
-        const message = `热身 ${formatNumber(budget.warmupCap)} + 爬坡 ${formatNumber(budget.rampCap)} + 稳态 ${formatNumber(budget.measuredCap)} = ${formatNumber(budget.totalCap)}，超过总请求预算 10,000。`
+        const message = tx("desktop:quick-test_warmup_value_ramp_value_steady_state_value_value_exceeding_the", { value1: formatNumber(budget.warmupCap), value2: formatNumber(budget.rampCap), value3: formatNumber(budget.measuredCap), value4: formatNumber(budget.totalCap) })
         if (form.requestCount > 0) errors.requestCount = message
         else if (form.loadMode === "open_loop") errors.ratePerSecond = message
         else if (form.rampDurationSeconds > 0) errors.rampRequestCap = message
@@ -1441,8 +1452,10 @@ function SaveConnectionSheet({
   onCommitted: () => void
   onOpenCatalog: () => void
 }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("quickTest")
   const [modelName, setModelName] = useState(modelID)
-  const [channelName, setChannelName] = useState(() => defaultChannelName(result.base_url))
+  const [channelName, setChannelName] = useState(() => defaultChannelName(result.base_url, t("save.defaultChannel")))
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<"modelName" | "channelName", string>>>({})
@@ -1453,8 +1466,8 @@ function SaveConnectionSheet({
     event.preventDefault()
     if (pending || saveCommitted) return
     const nextFieldErrors = {
-      ...(!modelName.trim() ? { modelName: "请输入模型名称。" } : {}),
-      ...(!channelName.trim() ? { channelName: "请输入渠道名称。" } : {}),
+      ...(!modelName.trim() ? { modelName: tx("desktop:quick-test_enter_a_model_name") } : {}),
+      ...(!channelName.trim() ? { channelName: tx("desktop:quick-test_enter_a_channel_name") } : {}),
     }
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors)
@@ -1482,7 +1495,7 @@ function SaveConnectionSheet({
           reason.code === "catalog_saved_refresh_failed"
         setPartialSave(partial)
         setSaveCommitted(partial || committed)
-        setError(publicDesktopErrorMessage(reason, "连接保存失败，请检查本地日志"))
+        setError(publicDesktopErrorMessage(reason, tx("desktop:quick-test_connection_could_not_be_saved_check_the_local_logs")))
         if (partial || committed) {
           try {
             const catalog = await refreshCatalog()
@@ -1505,30 +1518,30 @@ function SaveConnectionSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>保存连接</SheetTitle>
+          <SheetTitle>{t("save.title")}</SheetTitle>
           <SheetDescription>
             {existingModel
-              ? `将复用目录模型 ${existingModel.name}，并创建渠道与映射。`
-              : "Core 将创建模型、渠道与映射；若名称或连接已存在，会拒绝保存以避免覆盖。"}
+              ? t("save.reuse", { name: existingModel.name })
+              : t("save.create")}
           </SheetDescription>
         </SheetHeader>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col px-4" noValidate>
           <FieldGroup>
-            <TextField id="quick-save-modelName" label="模型名称" value={modelName} onChange={(value) => { setFieldErrors((current) => omitFieldError(current, "modelName")); setModelName(value) }} error={fieldErrors.modelName} disabled={!!existingModel} />
-            <TextField id="quick-save-channelName" label="渠道名称" value={channelName} onChange={(value) => { setFieldErrors((current) => omitFieldError(current, "channelName")); setChannelName(value) }} error={fieldErrors.channelName} />
+            <TextField id="quick-save-modelName" label={tx("desktop:quick-test_model_name")} value={modelName} onChange={(value) => { setFieldErrors((current) => omitFieldError(current, "modelName")); setModelName(value) }} error={localizeStoredMessage(fieldErrors.modelName ?? "", tx)} disabled={!!existingModel} />
+            <TextField id="quick-save-channelName" label={tx("desktop:catalog_channel_name")} value={channelName} onChange={(value) => { setFieldErrors((current) => omitFieldError(current, "channelName")); setChannelName(value) }} error={localizeStoredMessage(fieldErrors.channelName ?? "", tx)} />
             <div className="rounded-lg border bg-surface-subtle p-3 text-xs">
               <dl className="space-y-2">
                 <ResultValue label="Base URL" value={result.base_url} mono />
-                <ResultValue label="上游模型 ID" value={modelID} mono />
+                <ResultValue label={t("save.upstreamId")} value={modelID} mono />
               </dl>
-              <p className="mt-2 text-[11px] text-muted-foreground">API Key 不会回显到此预览。</p>
+              <p className="mt-2 text-[11px] text-muted-foreground">{t("save.keyHidden")}</p>
             </div>
             {error ? (
               <div className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
-                <FieldError>{error}</FieldError>
+                <FieldError>{localizeStoredMessage(error, tx)}</FieldError>
                 {partialSave || saveCommitted ? (
                   <Button type="button" size="sm" variant="outline" className="mt-3" onClick={onOpenCatalog}>
-                    打开模型与渠道
+                    {t("save.openCatalog")}
                   </Button>
                 ) : null}
               </div>
@@ -1536,7 +1549,7 @@ function SaveConnectionSheet({
           </FieldGroup>
           <SheetFooter className="px-0">
             <Button type="submit" disabled={pending || saveCommitted}>
-              {pending ? <><Spinner data-icon="inline-start" />正在保存…</> : partialSave ? "部分保存" : saveCommitted ? "已保存" : "确认保存"}
+              {pending ? <><Spinner data-icon="inline-start" />{tx("desktop:catalog_saving")}</> : partialSave ? tx("desktop:quick-test_partially_saved") : saveCommitted ? tx("desktop:quick-test_saved") : tx("desktop:quick-test_confirm_save")}
             </Button>
           </SheetFooter>
         </form>
@@ -1545,20 +1558,20 @@ function SaveConnectionSheet({
   )
 }
 
-function defaultChannelName(baseURL: string): string {
+function defaultChannelName(baseURL: string, fallback = "Quick Test channel"): string {
   try {
     return new URL(baseURL).host
   } catch {
-    return "快速测试渠道"
+    return fallback
   }
 }
 
 function formatNumber(value: number): string {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value)
+  return new Intl.NumberFormat(desktopLocale(), { maximumFractionDigits: 1 }).format(value)
 }
 
 function formatCapacityTarget(value: number): string {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 10 }).format(value)
+  return new Intl.NumberFormat(desktopLocale(), { maximumFractionDigits: 10 }).format(value)
 }
 
 function InlineResultValue({ label, value, numeric = false }: { label: string; value: string; numeric?: boolean }) {
@@ -1577,11 +1590,11 @@ function formatDuration(valueMS: number): string {
 }
 
 function formatPerformanceBudget(budget: NonNullable<QuickPerformanceReport["request_budget"]>): string {
-  return `${formatNumber(budget.total_cap)} / ${formatNumber(budget.limit)}（热身 ${formatNumber(budget.warmup_cap)} · 爬坡 ${formatNumber(budget.ramp_cap)} · 稳态 ${formatNumber(budget.measured_cap)}）`
+  return tx("desktop:quick-test_value_value_warmup_value_ramp_value_steady_state_value", { value1: formatNumber(budget.total_cap), value2: formatNumber(budget.limit), value3: formatNumber(budget.warmup_cap), value4: formatNumber(budget.ramp_cap), value5: formatNumber(budget.measured_cap) })
 }
 
 function formatTrafficCompletion(traffic: NonNullable<QuickPerformanceReport["warmup"]>): string {
-  return `${formatNumber(traffic.completed)} / ${formatNumber(traffic.request_cap)} · 成功 ${formatNumber(traffic.succeeded)} · 失败 ${formatNumber(traffic.failed)} · 拒绝 ${formatNumber(traffic.rejected)}`
+  return tx("desktop:quick-test_value_value_succeeded_value_failed_value_rejected_value", { value1: formatNumber(traffic.completed), value2: formatNumber(traffic.request_cap), value3: formatNumber(traffic.succeeded), value4: formatNumber(traffic.failed), value5: formatNumber(traffic.rejected) })
 }
 
 function formatOptionalRate(value: number | undefined): string {
@@ -1593,24 +1606,24 @@ function performanceNeedsSeed(form: PerformanceForm): boolean {
 }
 
 function performanceArrivalPattern(report: QuickPerformanceReport): string {
-  if (report.profile.arrival_pattern === "poisson") return "Poisson 到达"
-  return report.profile.arrival_pattern === "constant" ? "恒定间隔" : "恒定间隔（旧报告）"
+  if (report.profile.arrival_pattern === "poisson") return tx("desktop:quick-test_poisson_arrivals")
+  return report.profile.arrival_pattern === "constant" ? tx("desktop:quick-test_constant_interval") : tx("desktop:quick-test_constant_interval_legacy_report")
 }
 
 function performanceWorkloadMode(report: QuickPerformanceReport): string {
   if (report.profile.workload_mode === "normal") {
-    return `正态分布（输入 σ ${formatNumber(report.profile.input_tokens_stddev ?? 0)} / 输出 σ ${formatNumber(report.profile.output_tokens_stddev ?? 0)}）`
+    return tx("desktop:quick-test_normal_distribution_input_value_output_value", { value1: formatNumber(report.profile.input_tokens_stddev ?? 0), value2: formatNumber(report.profile.output_tokens_stddev ?? 0) })
   }
-  return report.profile.workload_mode === "fixed" ? "固定 Token" : "固定 Token（旧报告）"
+  return report.profile.workload_mode === "fixed" ? tx("desktop:quick-test_fixed_tokens") : tx("desktop:quick-test_fixed_tokens_legacy_report")
 }
 
 function performanceSeed(report: QuickPerformanceReport): string {
-  if (report.profile.random_seed === undefined) return "—（旧报告）"
-  return report.profile.random_seed > 0 ? formatNumber(report.profile.random_seed) : "—（未使用）"
+  if (report.profile.random_seed === undefined) return tx("desktop:quick-test_legacy_report")
+  return report.profile.random_seed > 0 ? formatNumber(report.profile.random_seed) : tx("desktop:quick-test_not_used")
 }
 
 function performanceSharedPrefix(report: QuickPerformanceReport): string {
-  if (report.profile.shared_prefix_tokens === undefined) return "0 Token（旧报告）"
+  if (report.profile.shared_prefix_tokens === undefined) return tx("desktop:quick-test_0_tokens_legacy_report")
   return `${formatNumber(report.profile.shared_prefix_tokens)} Token`
 }
 
@@ -1632,7 +1645,7 @@ function performanceTargetRate(report: QuickPerformanceReport): string {
   const target = report.progress.capacity_target ?? report.profile.rate_per_second
   return report.profile.load_mode === "open_loop" && target !== undefined
     ? `${formatCapacityTarget(target)} req/s`
-    : "—（固定并发）"
+    : tx("desktop:quick-test_fixed_concurrency")
 }
 
 function connectionFieldForCommandKey(key: keyof QuickTestCommand): ConnectionField | undefined {
@@ -1648,38 +1661,38 @@ function connectionFieldForCommandKey(key: keyof QuickTestCommand): ConnectionFi
 function validateConnectionForm(command: QuickTestCommand, usesStoredCredential: boolean): ConnectionFieldErrors {
   const errors: ConnectionFieldErrors = {}
   if (!command.url) {
-    errors.url = "请输入接口地址。"
+    errors.url = tx("desktop:quick-test_enter_an_endpoint")
   } else {
     const urlHint = connectionURLHint(command.url, command.address_mode)
     if (urlHint) errors.url = urlHint
   }
-  if (!usesStoredCredential && !command.api_key) errors.apiKey = "请输入 API Key，或选择已保存凭据的渠道。"
-  if (!command.model_id) errors.modelID = "请输入模型 ID。"
-  if (!command.prompt.trim()) errors.prompt = "请输入测试消息。"
-  if (!integerInRange(command.timeout_ms, 1_000, 120_000)) errors.timeout = "超时需为 1,000–120,000 毫秒的整数。"
+  if (!usesStoredCredential && !command.api_key) errors.apiKey = tx("desktop:quick-test_enter_an_api_key_or_select_a_channel_with_saved")
+  if (!command.model_id) errors.modelID = tx("desktop:quick-test_enter_a_model_id")
+  if (!command.prompt.trim()) errors.prompt = tx("desktop:quick-test_enter_a_test_message")
+  if (!integerInRange(command.timeout_ms, 1_000, 120_000)) errors.timeout = tx("desktop:quick-test_timeout_must_be_an_integer_from_1_000_to_120")
   return errors
 }
 
 function connectionURLHint(value: string, mode: QuickTestCommand["address_mode"]): string | undefined {
-  if (value.trim() !== value) return "接口地址前后不能有空格。"
-  if (value.includes("\\")) return "接口地址不能包含反斜杠。"
+  if (value.trim() !== value) return tx("desktop:quick-test_the_endpoint_must_not_have_leading_or_trailing_spaces")
+  if (value.includes("\\")) return tx("desktop:quick-test_the_endpoint_must_not_contain_backslashes")
   try {
     const parsed = new URL(value)
     if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.hostname) {
-      return "请输入以 http:// 或 https:// 开头的有效地址。"
+      return tx("desktop:quick-test_enter_a_valid_url_starting_with_http_or_https")
     }
     if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-      return "接口地址不能包含账号、密码、查询参数或片段。"
+      return tx("desktop:quick-test_the_endpoint_must_not_contain_credentials_query_parameters_or_fragments")
     }
     if (parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname)) {
-      return "远程接口必须使用 https://；http:// 仅适用于本机回环地址。"
+      return tx("desktop:quick-test_remote_endpoints_must_use_https_http_is_only_allowed_for")
     }
     if (mode === "full_url" && !value.replace(/\/+$/, "").endsWith("/chat/completions")) {
-      return "完整 URL 必须以 /chat/completions 结尾。"
+      return tx("desktop:quick-test_a_full_url_must_end_with_chat_completions")
     }
     return undefined
   } catch {
-    return "请输入以 http:// 或 https:// 开头的有效地址。"
+    return tx("desktop:quick-test_enter_a_valid_url_starting_with_http_or_https")
   }
 }
 

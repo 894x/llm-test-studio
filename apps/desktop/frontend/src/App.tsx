@@ -1,4 +1,6 @@
+import { localizeStoredMessage } from "@/i18n/runtime"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import {
   createDesktopClient,
@@ -9,6 +11,9 @@ import {
 } from "@/app/desktop-client"
 import { ThemeProvider } from "@/app/theme"
 import { Button } from "@/components/ui/button"
+import { createAppI18n } from "@/i18n/i18n"
+import { LanguageProvider } from "@/i18n/language-context"
+import { loadLanguagePreference, resolveLocale } from "@/i18n/locale"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   CasesWorkspace,
@@ -43,6 +48,8 @@ function AppWorkspace({
   client: DesktopClient
   onRecreateClient: () => void
 }) {
+  const { t: tx } = useTranslation()
+  const { t, i18n } = useTranslation(["app", "runs"])
   const [page, setPage] = useState<DesktopPage>(() =>
     desktopPageFromHash(window.location.hash),
   )
@@ -51,7 +58,7 @@ function AppWorkspace({
   const [reports, setReports] = useState<ReportSnapshot | null>(null)
   const [preferredReportID, setPreferredReportID] = useState("")
   const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
-  const [loadError, setLoadError] = useState("")
+  const [loadError, setLoadError] = useState<unknown>(null)
   const [commandError, setCommandError] = useState("")
   const [commandPending, setCommandPending] = useState(false)
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
@@ -74,7 +81,7 @@ function AppWorkspace({
     ])
       .then(([nextWorkspace, nextCatalog, nextReports, nextComparisons]) => {
         if (active) {
-          setLoadError("")
+          setLoadError(null)
           setSnapshot(nextWorkspace)
           setCatalog(nextCatalog)
           setReports(nextReports)
@@ -83,7 +90,7 @@ function AppWorkspace({
       })
       .catch((error: unknown) => {
         if (active) {
-          setLoadError(publicDesktopErrorMessage(error, "无法读取本地工作区"))
+          setLoadError(error)
         }
       })
     return () => {
@@ -156,14 +163,14 @@ function AppWorkspace({
         setSnapshot(await operation())
       } catch (error) {
         setCommandError(
-          publicDesktopErrorMessage(error, "桌面操作失败，请检查本地日志"),
+          publicDesktopErrorMessage(error, t("app:commandError")),
         )
         throw error
       } finally {
         setCommandPending(false)
       }
     },
-    [],
+    [t],
   )
 
   const mutateCatalog = useCallback(
@@ -175,7 +182,7 @@ function AppWorkspace({
         try {
           setSnapshot(await client.getWorkspace())
         } catch {
-          setCatalogMutationError(`${operationLabel}已完成，但运行计划列表刷新失败，请重新打开应用`)
+          setCatalogMutationError(t("app:catalogRefreshError", { operation: operationLabel }))
         }
       } catch (error) {
         if (isCatalogSavedRefreshFailure(error)) {
@@ -189,16 +196,16 @@ function AppWorkspace({
           } catch {
             // Keep the last workspace snapshot and let a later reload recover it.
           }
-          setCatalogMutationError(publicDesktopErrorMessage(error, "已保存，但目录刷新失败，请刷新或重新打开应用"))
+          setCatalogMutationError(publicDesktopErrorMessage(error, tx("desktop:app_saved_but_the_catalog_could_not_refresh_refresh_or_reopen")))
           return
         }
-        setCatalogMutationError(publicDesktopOperationErrorMessage(error, operationLabel, "目录操作失败，请检查对象是否仍被引用"))
+        setCatalogMutationError(publicDesktopOperationErrorMessage(error, operationLabel, tx("desktop:app_catalog_operation_failed_check_whether_the_item_is_still_referenced")))
         throw error
       } finally {
         setCatalogMutationPending(false)
       }
     },
-    [client],
+    [client, t, tx],
   )
 
   const startComparison = useCallback(async (command: StartComparisonCommand): Promise<void> => {
@@ -208,27 +215,29 @@ function AppWorkspace({
 			setComparisons(await client.startComparison(command))
 			setSnapshot(await client.getWorkspace())
 		} catch (error) {
-			setCommandError(publicDesktopErrorMessage(error, "无法启动渠道对比，请检查本地日志"))
+			setCommandError(publicDesktopErrorMessage(error, t("app:comparisonError")))
 			throw error
 		} finally {
 			setCommandPending(false)
 		}
-	}, [client])
+	}, [client, t])
 
   const plans = useMemo(
-    () => (snapshot ? presentWorkspace(snapshot).plans : []),
-    [snapshot],
+    () => (snapshot ? presentWorkspace(snapshot, {
+      locale: i18n.resolvedLanguage ?? i18n.language,
+      t: (key, values) => t(`runs:${key}`, values),
+    }).plans : []),
+    [i18n.language, i18n.resolvedLanguage, snapshot, t],
   )
 
   if (loadError) {
     return (
       <div className="flex h-svh min-h-[640px] items-center justify-center bg-background p-6 text-foreground">
         <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
-          <div className="text-sm font-semibold">无法打开本地工作台</div>
-          <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+          <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
+          <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
           <Button className="mt-3" size="sm" variant="outline" onClick={retryInitialLoad}>
-            重试打开
-          </Button>
+             {tx("desktop:app_retry_opening")} </Button>
         </div>
       </div>
     )
@@ -236,7 +245,7 @@ function AppWorkspace({
   if (!snapshot || !catalog || !reports || !comparisons) {
     return (
       <div className="flex h-svh min-h-[640px] items-center justify-center bg-background text-xs text-muted-foreground">
-        正在读取本地工作区…
+        {t("app:loading")}
       </div>
     )
   }
@@ -281,16 +290,16 @@ function AppWorkspace({
           onOpenReport={openArchivedPerformanceReport}
         />
       ) : page === "catalog" ? (
-        <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
+        <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
       ) : page === "cases" ? (
-        <CasesWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={catalogMutationError} />
+        <CasesWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
       ) : page === "plans" ? (
         <PlansWorkspace
           catalog={catalog}
           actions={client}
           mutate={mutateCatalog}
           mutationPending={catalogMutationPending}
-          mutationError={catalogMutationError}
+          mutationError={localizeStoredMessage(catalogMutationError, tx)}
           commandPending={commandPending}
           onStartPlan={async (planID) => {
             await runCommand(() => client.startRun(planID))
@@ -332,15 +341,22 @@ function App({ client }: { client?: DesktopClient }) {
     [client, clientGeneration],
   )
 
+  const i18n = useMemo(() => {
+    const preference = loadLanguagePreference(window.localStorage)
+    return createAppI18n(resolveLocale(preference, navigator.languages))
+  }, [])
+
   return (
-    <ThemeProvider>
-      <TooltipProvider delayDuration={250}>
+    <LanguageProvider instance={i18n}>
+      <ThemeProvider>
+        <TooltipProvider delayDuration={250}>
         <AppWorkspace
           client={desktopClient}
           onRecreateClient={() => setClientGeneration((generation) => generation + 1)}
         />
-      </TooltipProvider>
-    </ThemeProvider>
+        </TooltipProvider>
+      </ThemeProvider>
+    </LanguageProvider>
   )
 }
 

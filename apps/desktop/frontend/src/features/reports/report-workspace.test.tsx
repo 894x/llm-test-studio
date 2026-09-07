@@ -1,13 +1,16 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { I18nextProvider } from "react-i18next"
 import { describe, expect, it, vi } from "vitest"
 
+import { createAppI18n } from "@/i18n/i18n"
 import { ReportWorkspace } from "./report-workspace"
 import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./data"
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
   it("keeps row selection in the inspector and opens report content only from the action column", async () => {
+    const testI18n = createAppI18n("zh-CN")
     const user = userEvent.setup()
     const quickID = "77777777-7777-4777-8777-777777777771"
     const snapshot = {
@@ -43,7 +46,7 @@ describe("ReportWorkspace", () => {
       return { filename: `llm-test-studio-report-${quickID}.${format}`, mediaType, blob: new Blob([format], { type: mediaType }) }
     })
 
-    render(<ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} />)
+    render(<I18nextProvider i18n={testI18n}><ReportWorkspace snapshot={snapshot} getDetail={getDetail} exportReport={exportReport} saveReportExport={saveReportExport} copyReportPNG={copyReportPNG} exportVisualReport={exportVisualReport} /></I18nextProvider>)
 
     const table = screen.getByRole("table", { name: "测试报告目录" })
     expect(within(table).getByRole("columnheader", { name: "查看报告" })).toBeInTheDocument()
@@ -56,7 +59,7 @@ describe("ReportWorkspace", () => {
     expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
     expect(screen.queryByRole("region", { name: "归档性能报告" })).not.toBeInTheDocument()
 
-    await user.click(within(quickRow as HTMLTableRowElement).getByRole("button", { name: "查看报告：快速性能测试通过" }))
+    await user.click(within(quickRow as HTMLTableRowElement).getByRole("button", { name: "查看报告：全部请求成功" }))
 
     const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
     expect(archivedReport).toHaveTextContent("完成（持续时间模式）")
@@ -109,8 +112,8 @@ describe("ReportWorkspace", () => {
     const watermark = screen.getByRole("textbox", { name: "导出水印" })
     expect(watermark).toHaveValue("rhzs")
     await user.click(screen.getByRole("button", { name: "JSON" }))
-    expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs")
-    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-test-studio-report-${quickID}.json`, "application/json", "e30="))
+    expect(exportReport).toHaveBeenCalledWith(quickID, "json", "rhzs", "zh-CN")
+    await waitFor(() => expect(saveReportExport).toHaveBeenCalledWith(`llm-test-studio-report-${quickID}.json`, "application/json", "e30=", "zh-CN"))
     await user.clear(watermark)
     await user.type(watermark, "team-alpha")
     await user.click(screen.getByRole("button", { name: "HTML" }))
@@ -160,7 +163,7 @@ describe("ReportWorkspace", () => {
       />,
     )
 
-    await user.click(screen.getByRole("button", { name: "查看报告：快速性能测试未通过" }))
+    await user.click(screen.getByRole("button", { name: "查看报告：性能测试未通过" }))
     const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
     expect(within(archivedReport).getByRole("figure", { name: "请求结果分布：成功 2，失败 1" })).toBeInTheDocument()
     expect(within(archivedReport).getByRole("table", { name: "逐请求结果" })).toBeInTheDocument()
@@ -200,7 +203,7 @@ describe("ReportWorkspace", () => {
 			/>,
 		)
 
-		await user.click(screen.getByRole("button", { name: "查看报告：pass" }))
+		await user.click(screen.getByRole("button", { name: "查看报告：通过" }))
 		const distribution = await screen.findByRole("table", { name: "上游响应分布" })
 		expect(within(distribution).getByRole("row", { name: /provider-a.*已匹配.*sha256:known.*2.*66.67%/ })).toBeInTheDocument()
 		expect(within(distribution).getByRole("row", { name: /unknown.*未知格式.*sha256:mystery.*1.*33.33%/ })).toBeInTheDocument()

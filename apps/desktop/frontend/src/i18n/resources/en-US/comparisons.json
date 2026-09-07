@@ -1,0 +1,27 @@
+{
+  "trigger": "Compare channels",
+  "title": "Same-model channel comparison",
+  "description": "Pin one model and independently run the same test plan on at least two channels.",
+  "noPlan": "First create a plan that contains at least two channels for the same model.",
+  "plan": "Test plan",
+  "model": "Logical model",
+  "selectChannels": "Select channels",
+  "noChannels": "This model does not have at least two enabled channels with configured credentials.",
+  "cancel": "Cancel",
+  "starting": "Starting…",
+  "start": "Compare {{count}} channels",
+  "operation": "Start channel comparison (plan: {{plan}}, model: {{model}}, channels: {{count}})",
+  "error": "Unable to start the channel comparison; check local logs",
+  "panel": {
+    "title": "Latest channel comparison · {{model}}",
+    "subtitle": "{{plan}} · {{count}} independent runs",
+    "aria": "Channel comparison results",
+    "channel": "Channel",
+    "verdict": "Verdict",
+    "successRate": "Success rate",
+    "averageE2E": "Average E2E",
+    "averageTTFT": "Average TTFT",
+    "passed": "Passed",
+    "failed": "Failed"
+  }
+}

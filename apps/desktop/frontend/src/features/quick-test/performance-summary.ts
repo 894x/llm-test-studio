@@ -1,43 +1,44 @@
+import { desktopLocale } from "@/i18n/runtime"
+import { translateDesktop as tx } from "@/i18n/runtime"
 import type { QuickPerformanceLoadMode, QuickPerformancePhase, QuickPerformanceSLOStatus } from "./data"
+import enQuickTest from "@/i18n/resources/en-US/quick-test.json"
+import zhQuickTest from "@/i18n/resources/zh-CN/quick-test.json"
+
+type Translate = (key: string) => string
 
 export function performanceCompletion(
   requestCount: number,
   completed: number,
   planned: number,
+  translate: Translate = defaultTranslate,
 ): { label: string; value: string } {
   if (requestCount === 0) {
-    return { label: "完成（持续时间模式）", value: String(completed) }
+    return { label: translate("completion.duration"), value: String(completed) }
   }
-  return { label: "完成 / 计划", value: `${completed} / ${planned}` }
+  return { label: translate("completion.planned"), value: `${completed} / ${planned}` }
 }
 
-export function performanceProgressPhaseLabel(phase: QuickPerformancePhase): string {
-  switch (phase) {
-    case "not_started":
-      return "准备中"
-    case "warming_up":
-      return "正在热身"
-    case "ramping":
-      return "正在爬坡"
-    case "sending":
-      return "发送中"
-    case "draining":
-      return "排空中"
-    case "completed":
-      return "测试已完成，正在封存报告…"
-    case "cancelled":
-      return "已取消"
-  }
+export function performanceProgressPhaseLabel(
+  phase: QuickPerformancePhase,
+  translate: Translate = defaultTranslate,
+): string {
+  return translate(`phase.${phase}`)
+}
+
+function defaultTranslate(key: string): string {
+  const [section, name] = key.split(".")
+  const group = (desktopLocale() === "en-US" ? enQuickTest : zhQuickTest)[section as "completion" | "phase"]
+  return group?.[name as keyof typeof group] ?? key
 }
 
 export function performanceSLOStatusLabel(status: QuickPerformanceSLOStatus): string {
   switch (status) {
     case "passed":
-      return "SLO 通过"
+      return tx("desktop:quick-test_slo_passed")
     case "failed":
-      return "SLO 未通过"
+      return tx("desktop:quick-test_slo_failed")
     case "not_evaluated":
-      return "SLO 未评估"
+      return tx("desktop:quick-test_slo_not_evaluated")
   }
 }
 
@@ -50,17 +51,17 @@ export function performanceCapacitySummary(
   },
   loadMode: QuickPerformanceLoadMode,
 ): string {
-  const unit = loadMode === "fixed_concurrency" ? "并发" : "RPS"
-  const format = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)
+  const unit = loadMode === "fixed_concurrency" ? tx("desktop:quick-test_concurrency") : "RPS"
+  const format = (value: number) => new Intl.NumberFormat(desktopLocale(), { maximumFractionDigits: 2 }).format(value)
   const selected = capacity.selected_rung_index === undefined ? undefined : capacity.rungs[capacity.selected_rung_index]
   const highest = capacity.highest_passing_rung_index === undefined ? undefined : capacity.rungs[capacity.highest_passing_rung_index]
   const firstFailed = capacity.rungs.find((rung) => rung.slo_assessment.status === "failed")
   if (capacity.status === "not_evaluated") {
-    return selected ? `容量评估未完成 · 当前 ${unit} ${format(selected.target)}` : "容量评估未完成"
+    return selected ? tx("desktop:quick-test_capacity_evaluation_incomplete_current_value_value", { value1: unit, value2: format(selected.target) }) : tx("desktop:quick-test_capacity_evaluation_incomplete")
   }
   if (capacity.status === "failed") {
-    const failed = firstFailed ? `首次未通过 ${format(firstFailed.target)}` : "容量未通过"
-    return highest ? `最高通过${unit} ${format(highest.target)} · ${failed}` : failed
+    const failed = firstFailed ? tx("desktop:quick-test_first_failed_target_value", { value1: format(firstFailed.target) }) : tx("desktop:quick-test_capacity_failed")
+    return highest ? tx("desktop:quick-test_highest_passing_value_value_value", { value1: unit, value2: format(highest.target), value3: failed }) : failed
   }
-  return highest ? `最高通过${unit} ${format(highest.target)}` : "容量评估通过"
+  return highest ? tx("desktop:quick-test_highest_passing_value_value", { value1: unit, value2: format(highest.target) }) : tx("desktop:quick-test_capacity_evaluation_passed")
 }

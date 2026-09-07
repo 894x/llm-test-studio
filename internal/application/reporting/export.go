@@ -36,6 +36,7 @@ const (
 
 var ErrUnsupportedExport = errors.New("unsupported report export format")
 var ErrInvalidWatermark = errors.New("invalid report watermark")
+var ErrUnsupportedExportLocale = errors.New("unsupported report export locale")
 
 // ExportedDocument is safe for JSON/Wails transport. Encoding the bytes here
 // keeps JavaScript bindings stable across platforms and Wails versions.
@@ -46,6 +47,17 @@ type ExportedDocument struct {
 }
 
 func (service Service) Export(ctx context.Context, reportID string, format ExportFormat, watermark string) (ExportedDocument, error) {
+	return service.export(ctx, reportID, format, watermark, "zh-CN")
+}
+
+func (service Service) ExportLocalized(ctx context.Context, reportID string, format ExportFormat, watermark, locale string) (ExportedDocument, error) {
+	if locale != "zh-CN" && locale != "en-US" {
+		return ExportedDocument{}, ErrUnsupportedExportLocale
+	}
+	return service.export(ctx, reportID, format, watermark, locale)
+}
+
+func (service Service) export(ctx context.Context, reportID string, format ExportFormat, watermark, locale string) (ExportedDocument, error) {
 	watermark, err := normalizeWatermark(watermark)
 	if err != nil {
 		return ExportedDocument{}, err
@@ -62,7 +74,7 @@ func (service Service) Export(ctx context.Context, reportID string, format Expor
 		contents, err = renderJSON(detail, watermark)
 	case ExportHTML:
 		mediaType, extension = "text/html; charset=utf-8", "html"
-		contents, err = renderHTML(detail, watermark)
+		contents, err = renderHTML(detail, watermark, locale)
 	case ExportPNG:
 		mediaType, extension = "image/png", "png"
 		contents, err = renderPNG(detail, watermark)
@@ -96,11 +108,31 @@ func normalizeWatermark(value string) (string, error) {
 type htmlReport struct {
 	Detail       Detail
 	Watermark    string
+	Language     string
+	Labels       htmlLabels
+	Conclusion   string
 	Metrics      []namedMetric
 	SLA          []namedMetric
 	Issues       []string
 	Results      []resultRow
 	GeneratedUTC string
+}
+
+type quickHTMLReport struct {
+	Detail     Detail
+	Watermark  string
+	Language   string
+	Labels     htmlLabels
+	Conclusion string
+	Phase      string
+}
+
+type htmlLabels struct {
+	Request, Status, Input, Output, Error, Queue, Metric, Average, StreamingTiming string
+	TTFTAny, TTFTVisible, TTST, ObservedICL, SemanticChunks                        string
+	Title, QuickTitle, Conclusion, Plan, Run, Report, Phase                        string
+	CoreMetrics, RequestDetails, RequestSamples, SuccessRate, RequestRate          string
+	Passed, Failed, StatusPassed, StatusFailed, Samples, Footer, QuickFooter       string
 }
 
 type namedMetric struct {
@@ -127,27 +159,33 @@ type resultRow struct {
 	Error         string
 }
 
-func renderHTML(detail Detail, watermark string) ([]byte, error) {
+func renderHTML(detail Detail, watermark, locale string) ([]byte, error) {
 	var output bytes.Buffer
+	labels := exportHTMLLabels(locale)
 	if detail.Source == SourceQuickPerformance && detail.Performance != nil {
-		if err := quickReportHTMLTemplate.Execute(&output, struct {
-			Detail    Detail
-			Watermark string
-		}{Detail: detail, Watermark: watermark}); err != nil {
+		conclusion := labels.Failed
+		if detail.Performance.Success {
+			conclusion = labels.Passed
+		}
+		if err := quickReportHTMLTemplate.Execute(&output, quickHTMLReport{
+			Detail: detail, Watermark: watermark, Language: locale, Labels: labels,
+			Conclusion: conclusion, Phase: localizedPhase(string(detail.Performance.Progress.Phase), locale),
+		}); err != nil {
 			return nil, err
 		}
 		return output.Bytes(), nil
 	}
-	view := reportHTMLView(detail, watermark)
+	view := reportHTMLView(detail, watermark, locale)
 	if err := reportHTMLTemplate.Execute(&output, view); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
 }
 
-func reportHTMLView(detail Detail, watermark string) htmlReport {
+func reportHTMLView(detail Detail, watermark, locale string) htmlReport {
 	return htmlReport{
-		Detail: detail, Watermark: watermark, Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
+		Detail: detail, Watermark: watermark, Language: locale, Labels: exportHTMLLabels(locale), Conclusion: localizedVerdict(detail.Report.Conclusion.Verdict, locale),
+		Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
 		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Results: resultRows(detail.RequestResults),
 		GeneratedUTC: detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
 	}
@@ -214,6 +252,87 @@ func removeSchemaV3QuickPerformanceFields(value any) {
 	}
 }
 
+func exportHTMLLabels(locale string) htmlLabels {
+	if locale == "en-US" {
+		return htmlLabels{
+			Request: "Request", Status: "Status", Input: "Input", Output: "Output", Error: "Error", Queue: "Queue", Metric: "Metric", Average: "Average", StreamingTiming: "Streaming timing distributions", TTFTAny: "TTFT Any (includes reasoning)", TTFTVisible: "TTFT Visible (visible content)", TTST: "TTST (second semantic chunk)", ObservedICL: "Observed ICL (semantic inter-chunk latency, not Token ITL)", SemanticChunks: "Semantic chunks",
+			Title: "LLM Test Studio Test Report", QuickTitle: "LLM Test Studio Quick Performance Test Report", Conclusion: "Conclusion",
+			Plan: "Plan", Run: "Run", Report: "Report", Phase: "Phase", CoreMetrics: "Core metrics", RequestDetails: "Request details",
+			RequestSamples: "Request samples", SuccessRate: "Success rate", RequestRate: "Request rate", Passed: "All requests passed", Failed: "Performance test failed", StatusPassed: "passed", StatusFailed: "failed",
+			Samples: "samples", Footer: "All values are derived from the sealed Go Core report document.", QuickFooter: "Generated from the archived Go Core quick performance report.",
+		}
+	}
+	return htmlLabels{
+		Request: "请求", Status: "状态", Input: "输入", Output: "输出", Error: "错误", Queue: "排队", Metric: "指标", Average: "平均", StreamingTiming: "流式时序分布", TTFTAny: "TTFT（含推理）", TTFTVisible: "TTFT（可见内容）", TTST: "TTST（第二语义块）", ObservedICL: "Observed ICL（语义块间隔，非 Token ITL）", SemanticChunks: "语义块数",
+		Title: "LLM Test Studio 测试报告", QuickTitle: "LLM Test Studio 快速性能测试报告", Conclusion: "结论",
+		Plan: "计划", Run: "运行", Report: "报告", Phase: "阶段", CoreMetrics: "核心指标", RequestDetails: "请求明细",
+		RequestSamples: "请求样本", SuccessRate: "成功率", RequestRate: "请求速率", Passed: "全部请求成功", Failed: "性能测试未通过", StatusPassed: "通过", StatusFailed: "失败",
+		Samples: "个样本", Footer: "所有数值均来自 Go Core 封存的报告文档。", QuickFooter: "由 Go Core 归档的快速性能报告生成。",
+	}
+}
+
+func localizedVerdict(verdict, locale string) string {
+	if locale == "en-US" {
+		switch verdict {
+		case "pass":
+			return "Passed"
+		case "fail":
+			return "Failed"
+		case "cancelled":
+			return "Cancelled"
+		}
+		return verdict
+	}
+	switch verdict {
+	case "pass":
+		return "通过"
+	case "fail":
+		return "未通过"
+	case "cancelled":
+		return "已取消"
+	}
+	return verdict
+}
+
+func localizedPhase(phase, locale string) string {
+	if locale == "en-US" {
+		switch phase {
+		case "not_started":
+			return "Preparing"
+		case "warming_up":
+			return "Warming up"
+		case "ramping":
+			return "Ramping"
+		case "sending":
+			return "Sending"
+		case "draining":
+			return "Draining"
+		case "completed":
+			return "Completed"
+		case "cancelled":
+			return "Cancelled"
+		}
+		return phase
+	}
+	switch phase {
+	case "not_started":
+		return "准备中"
+	case "warming_up":
+		return "正在热身"
+	case "ramping":
+		return "正在爬坡"
+	case "sending":
+		return "发送中"
+	case "draining":
+		return "排空中"
+	case "completed":
+		return "已完成"
+	case "cancelled":
+		return "已取消"
+	}
+	return phase
+}
+
 func sortedMetrics(values map[string]domain.MetricValue) []namedMetric {
 	names := make([]string, 0, len(values))
 	for name := range values {
@@ -277,18 +396,18 @@ func formatNumber(value float64) string {
 }
 
 var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Report {{.Detail.Report.ID}}</title><style>
 :root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
-<h1>LLM Test Studio 测试报告</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
-<h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">结论：{{.Detail.Report.Conclusion.Verdict}}</h2>
-<p>计划 {{.Detail.Report.PlanSnapshot.Plan.ID}} · 运行 {{.Detail.Report.RunID}} · 报告 {{.Detail.Report.ID}}</p>
+<h1>{{.Labels.Title}}</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
+<h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
+<p>{{.Labels.Plan}} {{.Detail.Report.PlanSnapshot.Plan.ID}} · {{.Labels.Run}} {{.Detail.Report.RunID}} · {{.Labels.Report}} {{.Detail.Report.ID}}</p>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
-<h2>核心指标</h2><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} samples</span></div>{{end}}</section>
+<h2>{{.Labels.CoreMetrics}}</h2><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h2>SLA</h2><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} samples</span></div>{{end}}</section>
-<h2>请求明细（{{len .Results}}）</h2><div class="scroll"><table><thead><tr><th>Request</th><th>Status</th><th>E2E ms</th><th>TTFB ms</th><th>TTFT Any (includes reasoning) ms</th><th>TTFT Visible (visible content) ms</th><th>TTST (second semantic chunk) ms</th><th>Observed ICL (semantic inter-chunk latency, not Token ITL) ms</th><th>Semantic chunks</th><th>TPOT ms/token</th><th>Queue ms</th><th>Input</th><th>Output</th><th>Error</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{.Status}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div>
-<p class="muted">Schema v{{.Detail.SchemaVersion}} · All values are derived from the sealed Go Core report document.</p>
+<h2>{{.Labels.RequestDetails}} ({{len .Results}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div>
+<p class="muted">Schema v{{.Detail.SchemaVersion}} · {{.Labels.Footer}}</p>
 </main></body></html>`))
 
 var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(template.FuncMap{
@@ -297,30 +416,30 @@ var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(t
 	"legacyTTFTSamples": quickPerformanceLegacyTTFTSamples,
 	"tpotSamples":       quickPerformanceTPOTSamples,
 }).Parse(`<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
 :root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
-<h1>LLM Test Studio 快速性能测试报告</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
-<h2 class="{{if .Detail.Performance.Success}}pass{{else}}fail{{end}}">结论：{{if .Detail.Performance.Success}}全部请求成功{{else}}性能测试未通过{{end}}</h2>
-<p>报告 {{.Detail.Performance.ReportID}} · 阶段 {{.Detail.Performance.Progress.Phase}}</p>
-<h2>核心指标</h2><section class="grid">
-<div class="card"><strong>{{.Detail.Performance.Metrics.SuccessRatePercent}}%</strong><span>成功率</span></div>
-<div class="card"><strong>{{.Detail.Performance.Metrics.RequestQPS}} req/s</strong><span>请求速率</span></div>
+<h1>{{.Labels.QuickTitle}}</h1><p class="muted">{{.Detail.Performance.ModelID}} · {{.Detail.Performance.BaseURL}} · {{.Detail.Performance.GeneratedAt}}</p>
+<h2 class="{{if .Detail.Performance.Success}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
+<p>{{.Labels.Report}} {{.Detail.Performance.ReportID}} · {{.Labels.Phase}} {{.Phase}}</p>
+<h2>{{.Labels.CoreMetrics}}</h2><section class="grid">
+<div class="card"><strong>{{.Detail.Performance.Metrics.SuccessRatePercent}}%</strong><span>{{.Labels.SuccessRate}}</span></div>
+<div class="card"><strong>{{.Detail.Performance.Metrics.RequestQPS}} req/s</strong><span>{{.Labels.RequestRate}}</span></div>
 {{if ne .Detail.Performance.SchemaVersion 3}}<div class="card"><strong>{{sampledValue (legacyTTFTSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TTFTP50}} / {{sampledValue (legacyTTFTSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TTFTP95}} ms</strong><span>TTFT P50 / P95</span></div>{{end}}
 <div class="card"><strong>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP50}} / {{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP95}} ms/token</strong><span>TPOT P50 / P95</span></div>
 <div class="card"><strong>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP50}} / {{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP95}} ms</strong><span>E2E P50 / P95</span></div>
 </section>
-{{if eq .Detail.Performance.SchemaVersion 3}}<h2>Streaming timing distributions</h2><div class="scroll"><table><thead><tr><th>Metric</th><th>Average</th><th>P50</th><th>P95</th><th>P99</th><th>Samples</th></tr></thead><tbody>
+{{if eq .Detail.Performance.SchemaVersion 3}}<h2>{{.Labels.StreamingTiming}}</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Metric}}</th><th>{{.Labels.Average}}</th><th>P50</th><th>P95</th><th>P99</th><th>{{.Labels.Samples}}</th></tr></thead><tbody>
 <tr><td>TTFB (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFBSamples}}</td></tr>
-<tr><td>TTFT Any (includes reasoning, ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTAnySamples}}</td></tr>
-<tr><td>TTFT Visible (visible content, ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTVisibleSamples}}</td></tr>
-<tr><td>TTST (second semantic chunk, ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTSTSamples}}</td></tr>
-<tr><td>Observed ICL (semantic inter-chunk latency, not Token ITL, ms)</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.ObservedICLSamples}}</td></tr>
-<tr><td>Semantic chunks</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.SemanticChunkCountSamples}}</td></tr>
+<tr><td>{{.Labels.TTFTAny}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTAnySamples}}</td></tr>
+<tr><td>{{.Labels.TTFTVisible}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTVisibleSamples}}</td></tr>
+<tr><td>{{.Labels.TTST}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTSTSamples}}</td></tr>
+<tr><td>{{.Labels.ObservedICL}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.ObservedICLSamples}}</td></tr>
+<tr><td>{{.Labels.SemanticChunks}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.SemanticChunkCountSamples}}</td></tr>
 </tbody></table></div>{{end}}
-<h2>请求样本（{{len .Detail.Performance.Samples}}）</h2>{{if eq .Detail.Performance.SchemaVersion 3}}<div class="scroll"><table><thead><tr><th>#</th><th>Status</th><th>HTTP</th><th>E2E ms</th><th>TTFB ms</th><th>TTFT Any (includes reasoning) ms</th><th>TTFT Visible (visible content) ms</th><th>TTST (second semantic chunk) ms</th><th>Observed ICL (semantic inter-chunk latency, not Token ITL) ms</th><th>Semantic chunks</th><th>TPOT ms/token</th><th>Input</th><th>Output</th><th>Error</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}passed{{else}}failed{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFBMS}}{{.TTFBMS}}{{else}}-{{end}}</td><td>{{if .TTFTAnyMS}}{{.TTFTAnyMS}}{{else}}-{{end}}</td><td>{{if .TTFTVisibleMS}}{{.TTFTVisibleMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.TTSTMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.ObservedICLMS}}{{else}}-{{end}}</td><td>{{.SemanticChunkCount}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>{{else}}<div class="scroll"><table><thead><tr><th>#</th><th>Status</th><th>HTTP</th><th>E2E ms</th><th>TTFT ms</th><th>TPOT ms</th><th>Input</th><th>Output</th><th>Error</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}passed{{else}}failed{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFTMS}}{{.TTFTMS}}{{else}}-{{end}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>{{end}}
-<p class="muted">Schema v{{.Detail.Performance.SchemaVersion}} · Generated from the archived Go Core quick performance report.</p>
+<h2>{{.Labels.RequestSamples}} ({{len .Detail.Performance.Samples}})</h2>{{if eq .Detail.Performance.SchemaVersion 3}}<div class="scroll"><table><thead><tr><th>#</th><th>{{.Labels.Status}}</th><th>HTTP</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFBMS}}{{.TTFBMS}}{{else}}-{{end}}</td><td>{{if .TTFTAnyMS}}{{.TTFTAnyMS}}{{else}}-{{end}}</td><td>{{if .TTFTVisibleMS}}{{.TTFTVisibleMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.TTSTMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.ObservedICLMS}}{{else}}-{{end}}</td><td>{{.SemanticChunkCount}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>{{else}}<div class="scroll"><table><thead><tr><th>#</th><th>{{.Labels.Status}}</th><th>HTTP</th><th>E2E ms</th><th>TTFT ms</th><th>TPOT ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFTMS}}{{.TTFTMS}}{{else}}-{{end}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>{{end}}
+<p class="muted">Schema v{{.Detail.Performance.SchemaVersion}} · {{.Labels.QuickFooter}}</p>
 </main></body></html>`))
 
 func renderPNG(detail Detail, watermark string) ([]byte, error) {

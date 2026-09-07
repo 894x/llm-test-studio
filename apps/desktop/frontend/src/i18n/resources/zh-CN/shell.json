@@ -1,0 +1,51 @@
+{
+  "navigation": {
+    "overview": "总览",
+    "quickTest": "快速测试",
+    "catalog": "模型与渠道",
+    "cases": "用例",
+    "plans": "计划",
+    "runs": "运行",
+    "reports": "报告"
+  },
+  "product": {
+    "subtitle": "本地测试工作台"
+  },
+  "navigationAria": "主导航",
+  "settings": {
+    "trigger": "界面设置，主题：{{theme}}",
+    "tooltip": "界面设置",
+    "language": "语言",
+    "appearance": "外观"
+  },
+  "language": {
+    "system": "跟随系统",
+    "zh-CN": "简体中文",
+    "en-US": "English"
+  },
+  "theme": {
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "diagnostics": {
+    "title": "诊断信息",
+    "description": "查看本地日志能力，并从系统文件管理器打开日志目录。",
+    "loading": "正在读取诊断状态…",
+    "loadError": "无法读取诊断状态",
+    "openError": "无法打开日志目录",
+    "status": "状态",
+    "available": "结构化日志已启用",
+    "unavailable": "诊断日志暂不可用",
+    "format": "格式",
+    "maxFileSize": "单文件上限",
+    "retention": "轮转保留",
+    "retentionValue": "{{count}} 个历史文件",
+    "correlation": "问题关联",
+    "bothCorrelations": "Run 与 Request",
+    "notEnabled": "未启用",
+    "sensitiveData": "敏感信息",
+    "redaction": "写入前自动脱敏",
+    "openFolder": "打开日志目录"
+  }
+}

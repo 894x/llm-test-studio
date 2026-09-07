@@ -1,12 +1,19 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { render as testingRender, screen, waitFor, within } from "@testing-library/react"
+import type { ReactElement } from "react"
+import { I18nextProvider } from "react-i18next"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopClientError } from "@/app/desktop-client"
+import { createAppI18n } from "@/i18n/i18n"
 
 import { QuickTestWorkspace } from "./quick-test-workspace"
 import { updateQuickTestForm, type QuickPerformanceProgress, type QuickPerformanceReport, type QuickPerformanceSLOAssessment, type QuickTestResult } from "./data"
+
+function render(ui: ReactElement) {
+  return testingRender(<I18nextProvider i18n={createAppI18n("zh-CN")}>{ui}</I18nextProvider>)
+}
 
 describe("QuickTestWorkspace", () => {
   it("identifies every missing connection input and focuses the first field", async () => {

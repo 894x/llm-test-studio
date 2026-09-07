@@ -1,3 +1,5 @@
+import { DesktopDataError } from "@/app/data-error"
+import { translateDesktop as tx } from "@/i18n/runtime"
 export type CatalogProtocol = "openai-chat" | "kimi-k3" | "seedance" | "wan-video" | "minimax-video"
 export type CatalogLoadMode = "single" | "fixed_concurrency" | "open_loop"
 export type CatalogCaseSeverity = "normal" | "critical"
@@ -161,7 +163,7 @@ export const EMPTY_CATALOG: CatalogSnapshot = {
 
 export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   if (!isRecord(value) || value.schema_version !== 2) {
-    throw new Error("桌面目录数据协议版本不受支持")
+    throw new DesktopDataError(tx("desktop:catalog_unsupported_desktop_catalog_protocol_version"))
   }
   if (
     !Array.isArray(value.case_types) ||
@@ -172,7 +174,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
     !Array.isArray(value.suites) ||
     !Array.isArray(value.plans)
   ) {
-    throw new Error("桌面目录数据结构无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_structure"))
   }
 
   const caseTypes = value.case_types.map(parseCaseTypeDescriptor)
@@ -184,16 +186,16 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   const plans = value.plans.map(parsePlan)
   const groups = [models, channels, channelModels, testCases, suites, plans]
   if (groups.some((items) => new Set(items.map((item) => item.id)).size !== items.length)) {
-    throw new Error("桌面目录数据包含重复标识")
+    throw new DesktopDataError(tx("desktop:catalog_duplicate_desktop_catalog_identifiers"))
   }
   if (new Set(caseTypes.map((descriptor) => `${descriptor.type}@${descriptor.type_version}`)).size !== caseTypes.length) {
-    throw new Error("桌面目录用例类型重复")
+    throw new DesktopDataError(tx("desktop:catalog_duplicate_desktop_catalog_case_types"))
   }
   const caseTypeByKey = new Map(caseTypes.map((descriptor) => [`${descriptor.type}@${descriptor.type_version}`, descriptor]))
   for (const testCase of testCases) {
     const descriptor = caseTypeByKey.get(`${testCase.type}@${testCase.type_version}`)
     if (!descriptor || !descriptor.supported_protocols.includes(testCase.protocol)) {
-      throw new Error("桌面目录测试用例类型无效")
+      throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_test_case_type"))
     }
   }
 
@@ -206,10 +208,10 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
     const model = modelByID.get(mapping.model_id)
     const channel = channelByID.get(mapping.channel_id)
     if (!model || !channel || model.protocol !== channel.protocol) {
-      throw new Error("桌面目录模型映射引用无效")
+      throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_model_mapping_reference"))
     }
     const binding = `${mapping.channel_id}\u0000${mapping.model_id}`
-    if (mappedBindings.has(binding)) throw new Error("桌面目录模型映射重复")
+    if (mappedBindings.has(binding)) throw new DesktopDataError(tx("desktop:catalog_duplicate_desktop_catalog_model_mapping"))
     mappedBindings.add(binding)
     mappedCounts.set(mapping.channel_id, (mappedCounts.get(mapping.channel_id) ?? 0) + 1)
   }
@@ -218,10 +220,10 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
       (channel) => channel.model_count !== (mappedCounts.get(channel.id) ?? 0),
     )
   ) {
-    throw new Error("桌面目录渠道模型计数无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_channel_model_count"))
   }
   for (const suite of suites) {
-		if (!hasUniqueCaseIDs(suite.cases)) throw new Error("桌面目录测试套件引用无效")
+		if (!hasUniqueCaseIDs(suite.cases)) throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_reference"))
   }
   for (const plan of plans) {
     if (
@@ -230,11 +232,11 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
 			!hasUniqueCaseIDs(plan.cases) ||
       plan.model_ids.some((modelID) => plan.channel_ids.some((channelID) => !mappedBindings.has(`${channelID}\u0000${modelID}`)))
     ) {
-      throw new Error("桌面目录测试计划引用无效")
+      throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_reference"))
     }
     if (plan.suite_id !== undefined) {
       if (!suiteByID.has(plan.suite_id)) {
-        throw new Error("桌面目录测试计划套件引用无效")
+        throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_suite_reference"))
       }
     }
   }
@@ -260,7 +262,7 @@ function parseModel(value: unknown): CatalogModel {
     !isProtocol(value.protocol) ||
     !isUniqueStrings(value.capabilities)
   ) {
-    throw new Error("桌面目录模型数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_model_data"))
   }
   return {
     id: value.id,
@@ -283,7 +285,7 @@ function parseChannel(value: unknown): CatalogChannel {
     typeof value.credential_configured !== "boolean" ||
     !isNonNegativeInteger(value.model_count)
   ) {
-    throw new Error("桌面目录渠道数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_channel_data"))
   }
   return {
     id: value.id,
@@ -306,7 +308,7 @@ function parseChannelModel(value: unknown): CatalogChannelModel {
     !isUUID(value.model_id) ||
     !isNonBlank(value.upstream_model_name)
   ) {
-    throw new Error("桌面目录模型映射数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_model_mapping_data"))
   }
   return {
     id: value.id,
@@ -341,7 +343,7 @@ function parseTestCase(value: unknown): CatalogTestCase {
     !isRecord(value.spec) ||
     Object.keys(value.spec).length === 0
   ) {
-    throw new Error("桌面目录测试用例数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_test_case_data"))
   }
   return {
     id: value.id,
@@ -371,7 +373,7 @@ function parseCaseTypeDescriptor(value: unknown): CatalogCaseTypeDescriptor {
     !value.supported_protocols.every(isProtocol) || new Set(value.supported_protocols).size !== value.supported_protocols.length ||
     typeof value.creatable !== "boolean" || !isRecord(value.default_spec) || Object.keys(value.default_spec).length === 0
   ) {
-    throw new Error("桌面目录用例类型数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_case_type_data"))
   }
   return {
     type: value.type, type_version: value.type_version, label: value.label, category: value.category,
@@ -392,11 +394,11 @@ function parseSuite(value: unknown): CatalogSuite {
     !isPositiveInteger(value.case_count) ||
     !Array.isArray(value.cases)
   ) {
-    throw new Error("桌面目录测试套件数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_data"))
   }
   const cases = value.cases.map(parseCaseRevision)
   if (cases.length !== value.case_count || !hasUniqueCaseIDs(cases)) {
-    throw new Error("桌面目录测试套件成员无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_member"))
   }
   return {
     id: value.id,
@@ -433,7 +435,7 @@ function parsePlan(value: unknown): CatalogPlan {
     || !isFiniteNumberRecord(value.sla_thresholds)
     || !isOptionalSuiteRef(value.suite_id, value.suite_revision)
   ) {
-    throw new Error("桌面目录测试计划数据无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_data"))
   }
   const cases = value.cases.map(parseCaseRevision)
   if (
@@ -442,7 +444,7 @@ function parsePlan(value: unknown): CatalogPlan {
     cases.length !== value.case_count ||
     !hasUniqueCaseIDs(cases)
   ) {
-    throw new Error("桌面目录测试计划成员无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_member"))
   }
   return {
     id: value.id,
@@ -467,7 +469,7 @@ function parsePlan(value: unknown): CatalogPlan {
 
 function parseCaseRevision(value: unknown): CatalogCaseRevision {
   if (!isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision)) {
-    throw new Error("桌面目录用例版本引用无效")
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_case_version_reference"))
   }
   return { case_id: value.case_id, revision: value.revision }
 }

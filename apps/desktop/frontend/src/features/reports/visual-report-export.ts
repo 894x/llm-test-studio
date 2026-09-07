@@ -48,10 +48,12 @@ export async function exportVisualReport(
 
 export function standaloneReportHTML(element: HTMLElement, reportID: string): string {
   const root = document.documentElement
+  const language = root.lang || "zh-CN"
+  const direction = root.dir || "ltr"
   const theme = root.dataset.theme ? ` data-theme="${escapeAttribute(root.dataset.theme)}"` : ""
   const styles = Array.from(document.styleSheets).flatMap(readStyleSheet).join("\n")
   return `<!doctype html>
-<html lang="zh-CN" class="${escapeAttribute(root.className)}"${theme}>
+<html lang="${escapeAttribute(language)}" dir="${escapeAttribute(direction)}" class="${escapeAttribute(root.className)}"${theme}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

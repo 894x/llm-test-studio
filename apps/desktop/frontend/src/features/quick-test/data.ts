@@ -1,3 +1,5 @@
+import { DesktopDataError } from "@/app/data-error"
+import { translateDesktop as tx } from "@/i18n/runtime"
 export type QuickTestAddressMode = "base_url" | "full_url"
 
 export type QuickTestErrorCode =
@@ -417,7 +419,7 @@ export interface QuickPerformanceReport {
 }
 
 export function parseQuickPerformanceProgress(value: unknown): QuickPerformanceProgress {
-  if (!isPerformanceProgress(value)) throw new Error("快速性能进度数据结构无效")
+  if (!isPerformanceProgress(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_progress_structure"))
   return pickPerformanceProgress(value, true)
 }
 
@@ -442,30 +444,11 @@ const ERROR_CODES = new Set<QuickTestErrorCode>([
   "unclassified_error",
 ])
 
-export const QUICK_TEST_ERROR_MESSAGES: Record<QuickTestErrorCode, string> = {
-  invalid_request: "测试参数无效",
-  insecure_endpoint: "仅支持 HTTPS 接口地址",
-  credential_required: "API Key 不能为空",
-  authentication_failed: "鉴权失败",
-  network_error: "无法连接接口",
-  timeout: "请求超时",
-  cancelled: "测试已取消",
-  http_error: "接口返回失败状态",
-  rate_limited: "接口触发限流",
-  protocol_error: "接口响应协议无效",
-  incomplete_stream: "流式响应未正常结束",
-  semantic_empty: "接口未返回有效模型内容",
-  response_too_large: "接口响应超过安全限制",
-  client_closed: "测试客户端已关闭",
-  executor_panic: "测试执行器异常",
-  scheduler_overload: "本地调度容量不足",
-  request_failed: "接口请求失败",
-  unclassified_error: "接口返回未分类错误",
-}
+export const QUICK_TEST_ERROR_MESSAGES = zhQuickTest.errorCode as Record<QuickTestErrorCode, string>
 
 export function parseQuickTestResult(value: unknown): QuickTestResult {
   if (!isRecord(value) || value.schema_version !== 1) {
-    throw new Error("快速测试数据协议版本不受支持")
+    throw new DesktopDataError(tx("desktop:quick-test_unsupported_quick_test_protocol_version"))
   }
   if (
     typeof value.success !== "boolean" ||
@@ -481,10 +464,10 @@ export function parseQuickTestResult(value: unknown): QuickTestResult {
     (value.success && value.error_code !== undefined) ||
     (!value.success && value.error_code === undefined)
   ) {
-    throw new Error("快速测试数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_test_data_structure"))
   }
   if (value.success && (!value.base_url || !value.endpoint)) {
-    throw new Error("快速测试数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_test_data_structure"))
   }
   return {
     schema_version: 1,
@@ -502,7 +485,7 @@ export function parseQuickTestResult(value: unknown): QuickTestResult {
 }
 
 function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceResponseEvidence {
-  if (!isRecord(value)) throw new Error("快速性能报告响应证据无效")
+  if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_response_evidence"))
   const body = value.body === undefined ? "" : value.body
   const contentType = value.content_type
   const requestID = value.request_id
@@ -517,7 +500,7 @@ function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceRespo
     (value.capture_status === "captured" && body.trim() === "") ||
     (value.capture_status === "empty" && (body !== "" || value.truncated)) ||
     (value.capture_status === "omitted" && (body !== "" || !value.truncated))
-  ) throw new Error("快速性能报告响应证据无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_response_evidence"))
   return {
     capture_status: value.capture_status,
     ...(contentType === undefined ? {} : { content_type: contentType }),
@@ -531,7 +514,7 @@ function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceRespo
 
 export function parseQuickPerformanceReport(value: unknown): QuickPerformanceReport {
   if (!isRecord(value) || (value.schema_version !== 1 && value.schema_version !== 2 && value.schema_version !== 3)) {
-    throw new Error("快速性能报告数据协议版本不受支持")
+    throw new DesktopDataError(tx("desktop:quick-test_unsupported_quick_performance_report_protocol_version"))
   }
   const schemaVersion = value.schema_version
   if (
@@ -552,13 +535,13 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     (value.error_code !== undefined && !isErrorCode(value.error_code)) ||
     (value.success && value.error_code !== undefined)
   ) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const failures: QuickPerformanceReport["failures"] = []
   const seen = new Set<QuickTestErrorCode>()
   for (const failure of value.failures) {
     if (!isRecord(failure) || !isErrorCode(failure.error_code) || !isPositiveInteger(failure.count) || seen.has(failure.error_code)) {
-      throw new Error("快速性能报告数据结构无效")
+      throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     }
     seen.add(failure.error_code)
     failures.push({ error_code: failure.error_code, count: failure.count })
@@ -624,10 +607,10 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     (value.success && (progress.phase !== "completed" || metrics.completed === 0 || metrics.failed !== 0)) ||
     (!value.success && value.error_code === undefined && metrics.failed === 0)
   ) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   if (value.error_code === undefined && !isRunnablePerformanceProfile(value.profile, schemaVersion)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return {
     schema_version: schemaVersion,
@@ -656,12 +639,12 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
 }
 
 function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceSample {
-  if (!isRecord(value)) throw new Error("快速性能报告样本数据无效")
+  if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_sample_data"))
   const includeTargets = schemaVersion >= 2
   const offsets = [value.scheduled_offset_ms, value.started_offset_ms, value.finished_offset_ms, value.schedule_lag_ms, value.e2e_ms, value.ttft_ms, value.tpot_ms]
   const fineLatencyValues = [value.ttfb_ms, value.ttft_any_ms, value.ttft_visible_ms, value.ttst_ms, value.observed_icl_ms]
   if (schemaVersion === 3 && (!fineLatencyValues.every(isNonNegativeFinite) || !isNonNegativeInteger(value.semantic_chunk_count))) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   if (
     !isNonNegativeInteger(value.request_index) ||
@@ -679,7 +662,7 @@ function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceS
     (value.success && (value.error_code !== undefined || value.response_evidence !== undefined)) ||
     Number(value.started_offset_ms) < Number(value.scheduled_offset_ms) ||
     Number(value.finished_offset_ms) < Number(value.started_offset_ms)
-  ) throw new Error("快速性能报告样本数据无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_sample_data"))
   const targetInputTokens = includeTargets && value.target_input_tokens !== undefined ? Number(value.target_input_tokens) : undefined
   const targetOutputTokens = includeTargets && value.target_output_tokens !== undefined ? Number(value.target_output_tokens) : undefined
   const sample: QuickPerformanceSample = {
@@ -711,7 +694,7 @@ function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceS
     ...(value.response_evidence === undefined ? {} : { response_evidence: parsePerformanceResponseEvidence(value.response_evidence) }),
   }
   if (schemaVersion === 3 && !performanceV3SampleMilestonesValid(sample)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return sample
 }
@@ -724,7 +707,7 @@ function parsePerformanceSLOAssessment(
   samples?: QuickPerformanceSample[],
 ): QuickPerformanceSLOAssessment {
   if (!isRecord(value) || !isPerformanceSLOStatus(value.status) || !isRecord(value.thresholds) || !isRecord(value.violations)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const thresholdFields = ["ttft_ms", "tpot_ms", "e2e_ms"] as const
   const countFields = ["total_requests", "good_requests", "bad_requests"] as const
@@ -736,7 +719,7 @@ function parsePerformanceSLOAssessment(
     !isPositiveFinite(value.target_percent) || Number(value.target_percent) > 100 ||
     !isNonNegativeFinite(value.good_request_percent) || Number(value.good_request_percent) > 100 ||
     !isNonNegativeFinite(value.goodput_qps)
-  ) throw new Error("快速性能报告数据结构无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
 
   const assessment: QuickPerformanceSLOAssessment = {
     status: value.status,
@@ -790,7 +773,7 @@ function parsePerformanceSLOAssessment(
     (assessment.thresholds.ttft_ms === 0 && assessment.violations.ttft !== 0) ||
     (assessment.thresholds.tpot_ms === 0 && assessment.violations.tpot !== 0) ||
     (assessment.thresholds.e2e_ms === 0 && assessment.violations.e2e !== 0)
-  ) throw new Error("快速性能报告数据结构无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
 
   if (samples !== undefined) {
     const observed = samples.reduce((summary, sample) => {
@@ -812,7 +795,7 @@ function parsePerformanceSLOAssessment(
       assessment.violations.ttft !== observed.ttft ||
       assessment.violations.tpot !== observed.tpot ||
       assessment.violations.e2e !== observed.e2e
-    ) throw new Error("快速性能报告数据结构无效")
+    ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return assessment
 }
@@ -823,37 +806,37 @@ function parsePerformanceCapacityResult(
   schemaVersion: QuickPerformanceSchemaVersion,
 ): QuickPerformanceCapacityResult {
   if (!isRecord(value) || !isPerformanceSLOStatus(value.status) || !Array.isArray(value.rungs)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const targets = performanceCapacityTargets(profile)
   if (!targets || value.rungs.length === 0 || value.rungs.length > targets.length || value.rungs.length > 20) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const selected = value.selected_rung_index
   const highest = value.highest_passing_rung_index
   if (!isNonNegativeInteger(selected) || Number(selected) >= value.rungs.length ||
     (highest !== undefined && (!isNonNegativeInteger(highest) || Number(highest) >= value.rungs.length))) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const rungs = value.rungs.map((rung, index) => parsePerformanceCapacityRung(rung, profile, index, targets[index], targets.length, schemaVersion))
   const passing = rungs.filter((rung) => rung.slo_assessment.status === "passed")
   const highestPassing = passing.length === 0 ? undefined : passing[passing.length - 1].index
   const last = rungs[rungs.length - 1]
   const firstNonPassing = rungs.findIndex((rung) => rung.slo_assessment.status !== "passed")
-  if (firstNonPassing >= 0 && firstNonPassing !== rungs.length - 1) throw new Error("快速性能报告数据结构无效")
+  if (firstNonPassing >= 0 && firstNonPassing !== rungs.length - 1) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
 
   let expectedSelected: number
   if (last.slo_assessment.status === "failed") {
-    if (value.status !== "failed") throw new Error("快速性能报告数据结构无效")
+    if (value.status !== "failed") throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     expectedSelected = highestPassing ?? last.index
   } else if (last.slo_assessment.status === "not_evaluated") {
-    if (value.status !== "not_evaluated") throw new Error("快速性能报告数据结构无效")
+    if (value.status !== "not_evaluated") throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     expectedSelected = last.index
   } else {
-    if (value.status !== "passed" || rungs.length !== targets.length) throw new Error("快速性能报告数据结构无效")
+    if (value.status !== "passed" || rungs.length !== targets.length) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     expectedSelected = last.index
   }
-  if (Number(selected) !== expectedSelected || highest !== highestPassing) throw new Error("快速性能报告数据结构无效")
+  if (Number(selected) !== expectedSelected || highest !== highestPassing) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   return {
     status: value.status,
     selected_rung_index: Number(selected),
@@ -873,7 +856,7 @@ function parsePerformanceCapacityRung(
   if (!isRecord(value) || value.index !== expectedIndex || !isPositiveFinite(value.target) ||
     !approximatelyEqual(Number(value.target), expectedTarget) || typeof value.success !== "boolean" ||
     !isPerformanceProgress(value.progress) || !isPerformanceMetrics(value.metrics, schemaVersion) || !Array.isArray(value.failures)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const progress = pickPerformanceProgress(value.progress, true)
   const metrics = pickPerformanceMetrics(value.metrics, schemaVersion)
@@ -887,7 +870,7 @@ function parsePerformanceCapacityRung(
     progress.capacity_rung_number !== expectedIndex + 1 ||
     progress.capacity_rung_count !== rungCount ||
     !approximatelyEqual(progress.capacity_target ?? -1, expectedTarget)
-  ) throw new Error("快速性能报告数据结构无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   return { index: expectedIndex, target: Number(value.target), success: value.success, progress, metrics, failures, slo_assessment: assessment }
 }
 
@@ -896,7 +879,7 @@ function parsePerformanceFailures(value: unknown[]): Array<{ error_code: QuickTe
   const seen = new Set<QuickTestErrorCode>()
   for (const failure of value) {
     if (!isRecord(failure) || !isErrorCode(failure.error_code) || !isPositiveInteger(failure.count) || seen.has(failure.error_code)) {
-      throw new Error("快速性能报告数据结构无效")
+      throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     }
     seen.add(failure.error_code)
     failures.push({ error_code: failure.error_code, count: failure.count })
@@ -905,10 +888,10 @@ function parsePerformanceFailures(value: unknown[]): Array<{ error_code: QuickTe
 }
 
 function parsePerformanceRequestBudget(value: unknown): QuickPerformanceRequestBudget {
-  if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
+  if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   const fields = ["limit", "warmup_cap", "ramp_cap", "measured_cap", "total_cap"] as const
   if (!fields.every((field) => isNonNegativeInteger(value[field])) || value.limit !== 10_000) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const budget = {
     limit: Number(value.limit),
@@ -918,13 +901,13 @@ function parsePerformanceRequestBudget(value: unknown): QuickPerformanceRequestB
     total_cap: Number(value.total_cap),
   }
   if (budget.total_cap !== budget.warmup_cap + budget.ramp_cap + budget.measured_cap || budget.total_cap > budget.limit) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return budget
 }
 
 function parsePerformanceTrafficSummary(value: unknown): QuickPerformanceTrafficSummary {
-  if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
+  if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   const integerFields = [
     "request_cap", "offered", "launched", "completed", "succeeded", "failed", "timed_out", "rejected",
     "peak_in_flight", "prompt_tokens", "completion_tokens", "cached_tokens",
@@ -936,14 +919,14 @@ function parsePerformanceTrafficSummary(value: unknown): QuickPerformanceTraffic
     !Array.isArray(value.failures) ||
     typeof value.stopped !== "boolean" ||
     typeof value.capped !== "boolean"
-  ) throw new Error("快速性能报告数据结构无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   const failures: QuickPerformanceTrafficSummary["failures"] = []
   const seen = new Set<QuickTestErrorCode>()
   let previousErrorCode: QuickTestErrorCode | undefined
   for (const failure of value.failures) {
     if (!isRecord(failure) || !isErrorCode(failure.error_code) || !isPositiveInteger(failure.count) ||
       seen.has(failure.error_code) || (previousErrorCode !== undefined && failure.error_code <= previousErrorCode)) {
-      throw new Error("快速性能报告数据结构无效")
+      throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     }
     seen.add(failure.error_code)
     previousErrorCode = failure.error_code
@@ -983,24 +966,24 @@ function parsePerformanceTrafficSummary(value: unknown): QuickPerformanceTraffic
     summary.cached_tokens > summary.prompt_tokens ||
     failureCount !== summary.failed ||
     !approximatelyEqual(summary.total_duration_ms, summary.send_duration_ms + summary.drain_duration_ms)
-  ) throw new Error("快速性能报告数据结构无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   return summary
 }
 
 function parsePerformanceRamp(value: unknown): QuickPerformanceRamp {
   if (!isRecord(value) || value.shape !== "linear_staircase" || !isPositiveInteger(value.duration_ms) ||
     !isPositiveInteger(value.steps) || value.steps > 10 || typeof value.completed_window !== "boolean") {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const targetConcurrency = value.target_concurrency
   const targetRate = value.target_rate_per_second
   if ((targetConcurrency !== undefined && !isPositiveInteger(targetConcurrency)) ||
     (targetRate !== undefined && !isPositiveFinite(targetRate)) ||
     ((targetConcurrency === undefined) === (targetRate === undefined))) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const traffic = parsePerformanceTrafficSummary(value.traffic)
-  if (value.completed_window !== (!traffic.stopped && !traffic.capped)) throw new Error("快速性能报告数据结构无效")
+  if (value.completed_window !== (!traffic.stopped && !traffic.capped)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   return {
     shape: "linear_staircase",
     duration_ms: value.duration_ms,
@@ -1020,7 +1003,7 @@ function parsePerformanceTimeSlices(
   samples: QuickPerformanceSample[],
 ): QuickPerformanceTimeSlice[] {
   if (!Array.isArray(value) || value.length === 0 || (profile.slice_duration_ms ?? 0) <= 0 || totalDurationMS <= 0) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const durationMS = profile.slice_duration_ms ?? 0
   const slices = value.map((slice) => parsePerformanceTimeSlice(slice, schemaVersion))
@@ -1038,22 +1021,22 @@ function parsePerformanceTimeSlices(
       (slice.partial && index !== slices.length - 1) ||
       (!hasRecordedEvent && !(slice.partial && index === slices.length - 1)) ||
       (previous !== undefined && (slice.slice_index <= previous.slice_index || slice.start_ms < previous.end_ms))
-    ) throw new Error("快速性能报告数据结构无效")
+    ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   if (totalDurationMS % durationMS !== 0) {
     const finalSlice = slices[slices.length - 1]
     if (finalSlice.slice_index !== Math.ceil(totalDurationMS / durationMS) - 1 || !finalSlice.partial) {
-      throw new Error("快速性能报告数据结构无效")
+      throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     }
   }
   if (schemaVersion === 3 && !performanceV3TimeSlicesMatchSamples(slices, samples, totalDurationMS, durationMS)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return slices
 }
 
 function parsePerformanceTimeSlice(value: unknown, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceTimeSlice {
-  if (!isRecord(value)) throw new Error("快速性能报告数据结构无效")
+  if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   const integerFields = [
     "slice_index", "offered", "launched", "completed", "succeeded", "failed", "rejected",
     "prompt_tokens", "completion_tokens", "cached_tokens",
@@ -1067,7 +1050,7 @@ function parsePerformanceTimeSlice(value: unknown, schemaVersion: QuickPerforman
     Number(value.succeeded) + Number(value.failed) !== Number(value.completed) ||
     Number(value.rejected) > Number(value.failed) ||
     Number(value.cached_tokens) > Number(value.prompt_tokens)
-  ) throw new Error("快速性能报告数据结构无效")
+  ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   const includeFineTelemetry = schemaVersion === 3
   const ttft = parsePerformanceSliceLatency(value.ttft, includeFineTelemetry)
   const tpot = parsePerformanceSliceLatency(value.tpot, includeFineTelemetry)
@@ -1079,14 +1062,14 @@ function parsePerformanceTimeSlice(value: unknown, schemaVersion: QuickPerforman
   const observedICL = includeFineTelemetry ? parsePerformanceSliceLatency(value.observed_icl, true) : undefined
   const semanticChunkCount = includeFineTelemetry ? parsePerformanceSliceCount(value.semantic_chunk_count) : undefined
   if (ttft.count > Number(value.launched) || tpot.count > ttft.count || e2e.count > Number(value.launched)) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   if (includeFineTelemetry && (
     !performanceSliceLatencyEqual(ttft, ttftAny!) ||
     ttfb!.count > Number(value.launched) || ttftAny!.count > Number(value.launched) ||
     ttftVisible!.count > ttftAny!.count || ttst!.count > ttftAny!.count ||
     observedICL!.count !== ttst!.count || semanticChunkCount!.count > Number(value.launched)
-  )) throw new Error("快速性能报告数据结构无效")
+  )) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   return {
     slice_index: Number(value.slice_index),
     start_ms: Number(value.start_ms),
@@ -1119,7 +1102,7 @@ function parsePerformanceSliceLatency(value: unknown, includeAverage = false): Q
     (includeAverage && !isNonNegativeFinite(value.average_ms)) ||
     value.p50_ms > value.p95_ms || value.p95_ms > value.p99_ms ||
     (value.count === 0 && (value.p50_ms !== 0 || value.p95_ms !== 0 || value.p99_ms !== 0 || (includeAverage && value.average_ms !== 0)))) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return {
     count: value.count,
@@ -1135,7 +1118,7 @@ function parsePerformanceSliceCount(value: unknown): QuickPerformanceSliceCount 
     !isNonNegativeFinite(value.p95) || !isNonNegativeFinite(value.p99) || !isNonNegativeFinite(value.average) ||
     value.p50 > value.p95 || value.p95 > value.p99 ||
     (value.count === 0 && (value.p50 !== 0 || value.p95 !== 0 || value.p99 !== 0 || value.average !== 0))) {
-    throw new Error("快速性能报告数据结构无效")
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return { count: value.count, p50: value.p50, p95: value.p95, p99: value.p99, average: value.average }
 }
@@ -1963,3 +1946,4 @@ function isNonNegativeInteger(value: unknown): value is number {
 function isPositiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0
 }
+import zhQuickTest from "@/i18n/resources/zh-CN/quick-test.json"

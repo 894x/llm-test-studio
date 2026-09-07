@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react"
+import { getI18n } from "react-i18next"
+import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 
@@ -70,6 +71,12 @@ describe("ModelChannelWorkspace", () => {
     )
 
     await user.click(screen.getByRole("tab", { name: /矩阵/ }))
+
+    await act(async () => { document.documentElement.lang = "en-US"; await getI18n().changeLanguage("en-US") })
+    const englishMatrix = screen.getByRole("table", { name: "Model and channel configuration matrix" })
+    expect(within(englishMatrix).getByRole("columnheader", { name: "OpenAI 主渠道" })).toBeInTheDocument()
+    expect(within(englishMatrix).getByRole("button", { name: "View GPT-4o mapping on OpenAI 主渠道: gpt-4o-2024-11-20" })).toHaveTextContent("Configured")
+    await act(async () => { document.documentElement.lang = "zh-CN"; await getI18n().changeLanguage("zh-CN") })
 
     const matrix = screen.getByRole("table", { name: "模型渠道配置矩阵" })
     expect(matrix.closest('[data-slot="scroll-area-viewport"]')).not.toBeNull()

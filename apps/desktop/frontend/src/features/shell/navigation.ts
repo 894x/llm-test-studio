@@ -1,11 +1,11 @@
 export const DESKTOP_PAGES = [
-  { id: "overview", label: "总览" },
-  { id: "quick-test", label: "快速测试" },
-  { id: "catalog", label: "模型与渠道" },
-  { id: "cases", label: "用例" },
-  { id: "plans", label: "计划" },
-  { id: "runs", label: "运行" },
-  { id: "reports", label: "报告" },
+  { id: "overview", labelKey: "navigation.overview" },
+  { id: "quick-test", labelKey: "navigation.quickTest" },
+  { id: "catalog", labelKey: "navigation.catalog" },
+  { id: "cases", labelKey: "navigation.cases" },
+  { id: "plans", labelKey: "navigation.plans" },
+  { id: "runs", labelKey: "navigation.runs" },
+  { id: "reports", labelKey: "navigation.reports" },
 ] as const
 
 export type DesktopPage = (typeof DESKTOP_PAGES)[number]["id"]

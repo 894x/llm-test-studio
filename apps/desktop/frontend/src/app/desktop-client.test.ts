@@ -18,6 +18,14 @@ describe("Wails desktop client", () => {
 		vi.useRealTimers()
   })
 
+  it("classifies malformed English payloads by type instead of translated text", async () => {
+    document.documentElement.lang = "en-US"
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.GetWorkspace.mockResolvedValueOnce({})
+    await expect(createDesktopClient().getWorkspace()).rejects.toThrow("Unsupported desktop data protocol version")
+    expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ operation: "load_workspace", error_code: "frontend_data_invalid" }))
+  })
+
   it("uses the typed Wails methods and forwards command identifiers", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
@@ -663,12 +671,12 @@ describe("Wails desktop client", () => {
 		expect(detail.report.id).toBe(reportID)
 		expect(binding.GetReportDetail).toHaveBeenCalledWith(reportID)
 		for (const format of ["json", "html", "png", "pdf"] as const) {
-			const exported = await client.exportReport(reportID, format, "team-alpha")
+			const exported = await client.exportReport(reportID, format, "team-alpha", "en-US")
 			expect(exported.filename).toContain(reportID)
-			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format, "team-alpha")
+			expect(binding.ExportReport).toHaveBeenLastCalledWith(reportID, format, "team-alpha", "en-US")
 		}
-		await expect(client.saveReportExport("report.png", "image/png", "iVBORw0KGgo=")).resolves.toBe(true)
-		expect(binding.SaveReportExport).toHaveBeenCalledWith("report.png", "image/png", "iVBORw0KGgo=")
+		await expect(client.saveReportExport("report.png", "image/png", "iVBORw0KGgo=", "en-US")).resolves.toBe(true)
+		expect(binding.SaveReportExport).toHaveBeenCalledWith("report.png", "image/png", "iVBORw0KGgo=", "en-US")
 		await client.copyReportPNG("iVBORw0KGgo=")
 		expect(binding.CopyReportPNG).toHaveBeenCalledWith("iVBORw0KGgo=")
 	})

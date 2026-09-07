@@ -1,0 +1,40 @@
+{
+  "actions": {
+    "close": "Close",
+    "showOptions": "Show options"
+  },
+  "status": {
+    "running": "Running",
+    "draining": "Draining",
+    "passed": "Passed",
+    "completed": "Completed",
+    "failed": "Failed",
+    "queued": "Queued",
+    "cancelled": "Cancelled"
+  },
+  "page": {
+    "details": "{{title}} details"
+  },
+  "error": {
+    "operationFailed": "{{operation}} failed: {{message}}",
+    "desktop_not_started": "Desktop services are starting. Retry shortly; log operation: startup.",
+    "desktop_startup_failed": "Desktop initialization failed. Check the startup log entry.",
+    "desktop_stopped": "The desktop app has stopped",
+    "workspace_unavailable": "Unable to read the run workspace. Retry, then check the load_workspace log entry if it still fails.",
+    "catalog_unavailable": "Unable to read the model, channel and case catalog. Retry; log operation: load_catalog.",
+    "reports_unavailable": "Unable to read test reports. Retry; log operation: load_reports.",
+    "run_commands_unavailable": "Run commands are unavailable",
+    "comparison_unavailable": "Unable to read channel comparisons. Retry; log operation: load_comparisons.",
+    "diagnostics_unavailable": "Diagnostics logging is unavailable",
+    "quick_test_unavailable": "Quick Test is unavailable",
+    "quick_test_save_partial": "The connection was partially saved. Open Models & Channels to finish configuring it.",
+    "invalid_identifier": "The target object is invalid",
+    "operation_cancelled": "The operation was cancelled",
+    "operation_failed": "The desktop operation failed; check local logs",
+    "catalog_invalid": "The catalog content is invalid; check the form fields",
+    "catalog_revision_conflict": "The object version changed or is still referenced. Refresh, remove references, and try again.",
+    "catalog_not_found": "The object was deleted or does not exist. Refresh the catalog.",
+    "catalog_saved_refresh_failed": "Saved, but the catalog could not refresh. Refresh or reopen the app.",
+    "plan_protocol_mismatch": "The cases, model and channel use different protocols. Select a model and channel compatible with the cases, or adjust the cases or suite."
+  }
+}

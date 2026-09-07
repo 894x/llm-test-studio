@@ -71,6 +71,18 @@ func (query serializedReportingQuery) Export(ctx context.Context, reportID strin
 	return documents.Export(ctx, reportID, format, watermark)
 }
 
+func (query serializedReportingQuery) ExportLocalized(ctx context.Context, reportID string, format reporting.ExportFormat, watermark, locale string) (reporting.ExportedDocument, error) {
+	release := query.gate.enter()
+	defer release()
+	documents, ok := query.query.(interface {
+		ExportLocalized(context.Context, string, reporting.ExportFormat, string, string) (reporting.ExportedDocument, error)
+	})
+	if !ok || isNilInterface(documents) {
+		return reporting.ExportedDocument{}, ErrReportingUnavailable
+	}
+	return documents.ExportLocalized(ctx, reportID, format, watermark, locale)
+}
+
 type serializedQuickPerformanceArchive struct {
 	gate    *productionServiceGate
 	archive quicktest.PerformanceArchive

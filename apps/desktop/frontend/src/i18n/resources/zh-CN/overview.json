@@ -1,0 +1,50 @@
+{
+  "title": "工作台总览",
+  "description": "汇总本地目录、活动运行和最近报告",
+  "summary": {
+    "aria": "本地对象摘要",
+    "models": "{{count}} 个模型",
+    "logicalModels": "逻辑模型",
+    "channels": "{{count}} 个渠道",
+    "enabled": "{{count}} 个启用",
+    "cases": "{{count}} 个用例",
+    "suites": "{{count}} 个套件",
+    "plans": "{{count}} 个计划",
+    "fixedVersions": "固定版本",
+    "runs": "{{count}} 次运行",
+    "activeRun": "1 个活动运行",
+    "noActiveRun": "无活动运行",
+    "reports": "{{count}} 份报告",
+    "archivedConclusions": "已封存结论"
+  },
+  "activeRun": {
+    "title": "当前运行",
+    "plan": "计划",
+    "modelChannel": "模型与渠道",
+    "load": "负载",
+    "completed": "完成",
+    "timed": "定时",
+    "coreStatus": "Core 状态",
+    "emptyTitle": "当前没有活动运行",
+    "emptyDescription": "从测试计划创建运行后，这里会显示权威生命周期状态。"
+  },
+  "readiness": {
+    "title": "目录就绪度",
+    "enabledChannels": "启用渠道",
+    "configuredCredentials": "已配置凭据",
+    "modelMappings": "模型映射",
+    "mappingCount": "{{count}} 条",
+    "reusableSuites": "可复用套件",
+    "suiteCount": "{{count}} 个",
+    "localSecrets": "本地秘密",
+    "localSecretsValue": "仅保存在操作系统密钥环"
+  },
+  "reports": {
+    "title": "最近报告",
+    "source": "结论由 Go Core 提供",
+    "empty": "尚无已封存报告。",
+    "passed": "通过",
+    "failed": "未通过",
+    "failureCount": "{{failed}}/{{total}} 失败"
+  }
+}

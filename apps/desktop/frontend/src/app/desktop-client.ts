@@ -1,3 +1,5 @@
+import { DesktopDataError } from "@/app/data-error"
+import { translateDesktop as tx } from "@/i18n/runtime"
 import type { StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
@@ -48,6 +50,8 @@ import {
   type QuickTestResult,
   type SaveQuickTestConnectionCommand,
 } from "@/features/quick-test/data"
+import enCommon from "@/i18n/resources/en-US/common.json"
+import zhCommon from "@/i18n/resources/zh-CN/common.json"
 
 export type DesktopErrorCode =
   | "desktop_not_started"
@@ -70,33 +74,20 @@ export type DesktopErrorCode =
   | "catalog_not_found"
   | "catalog_saved_refresh_failed"
 
-const PUBLIC_ERROR_MESSAGES: Record<DesktopErrorCode, string> = {
-  desktop_not_started: "桌面服务仍在启动，请稍候重试；日志操作名：startup",
-  desktop_startup_failed: "桌面服务初始化失败，请查看日志中的 startup 记录",
-  desktop_stopped: "桌面应用已停止",
-  workspace_unavailable: "无法读取运行工作区，请重试；若仍失败，请查看日志中的 load_workspace 记录",
-  catalog_unavailable: "无法读取模型、渠道与用例目录，请重试；日志操作名：load_catalog",
-  reports_unavailable: "无法读取测试报告，请重试；日志操作名：load_reports",
-  run_commands_unavailable: "运行命令暂不可用",
-  comparison_unavailable: "无法读取渠道对比，请重试；日志操作名：load_comparisons",
-  diagnostics_unavailable: "诊断日志暂不可用",
-  quick_test_unavailable: "快速测试暂不可用",
-  quick_test_save_partial: "连接已部分保存，请前往模型与渠道检查并完成配置",
-  invalid_identifier: "操作对象无效",
-  operation_cancelled: "操作已取消",
-  operation_failed: "桌面操作失败，请检查本地日志",
-  plan_protocol_mismatch: "计划中的用例、模型和渠道协议不一致，请选择与用例协议一致的模型和渠道，或调整用例/套件",
-  catalog_invalid: "目录内容无效，请检查表单字段",
-  catalog_revision_conflict: "对象版本已变化或仍被引用，请刷新并解除引用后重试",
-  catalog_not_found: "对象已删除或不存在，请刷新目录",
-  catalog_saved_refresh_failed: "已保存，但目录刷新失败，请刷新或重新打开应用",
+type PublicErrorMessages = Record<DesktopErrorCode, string> & {
+  operationFailed: string
 }
+
+const PUBLIC_ERROR_MESSAGES = {
+  "zh-CN": zhCommon.error as PublicErrorMessages,
+  "en-US": enCommon.error as PublicErrorMessages,
+} as const
 
 export class DesktopClientError extends Error {
   readonly code: DesktopErrorCode
 
   constructor(code: DesktopErrorCode) {
-    super(PUBLIC_ERROR_MESSAGES[code])
+    super(currentPublicErrorMessages()[code])
     this.name = "DesktopClientError"
     this.code = code
   }
@@ -106,7 +97,9 @@ export function publicDesktopErrorMessage(
   error: unknown,
   fallback: string,
 ): string {
-  return error instanceof DesktopClientError ? error.message : fallback
+  return error instanceof DesktopClientError
+    ? currentPublicErrorMessages()[error.code]
+    : fallback
 }
 
 export function publicDesktopOperationErrorMessage(
@@ -114,7 +107,15 @@ export function publicDesktopOperationErrorMessage(
   operation: string,
   fallback: string,
 ): string {
-  return `${operation}失败：${publicDesktopErrorMessage(error, fallback)}`
+  return currentPublicErrorMessages().operationFailed
+    .replace("{{operation}}", operation)
+    .replace("{{message}}", publicDesktopErrorMessage(error, fallback))
+}
+
+function currentPublicErrorMessages(): PublicErrorMessages {
+  return typeof document !== "undefined" && document.documentElement.lang === "en-US"
+    ? PUBLIC_ERROR_MESSAGES["en-US"]
+    : PUBLIC_ERROR_MESSAGES["zh-CN"]
 }
 
 export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopClientError {
@@ -128,8 +129,8 @@ export interface DesktopClient extends CatalogActions {
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
   getReportDetail(reportId: string): Promise<ReportDetail>
-  exportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<ExportedReport>
-  saveReportExport(filename: string, mediaType: string, dataBase64: string): Promise<boolean>
+  exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
+  saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(): Promise<ComparisonSnapshot>
   startRun(planId: string): Promise<WorkspaceSnapshot>
@@ -160,8 +161,8 @@ type WailsDesktopBinding = {
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
-  ExportReport(reportId: string, format: ReportExportFormat, watermark: string): Promise<unknown>
-  SaveReportExport(filename: string, mediaType: string, dataBase64: string): Promise<unknown>
+  ExportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<unknown>
+  SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
   StartRun(planId: string): Promise<unknown>
@@ -500,8 +501,8 @@ function createLazyFixtureClient(): DesktopClient {
     getCatalog: async () => (await client).getCatalog(),
     getReports: async () => (await client).getReports(),
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
-		exportReport: async (reportId, format, watermark) => (await client).exportReport(reportId, format, watermark),
-		saveReportExport: async (filename, mediaType, dataBase64) => (await client).saveReportExport(filename, mediaType, dataBase64),
+		exportReport: async (reportId, format, watermark, locale) => (await client).exportReport(reportId, format, watermark, locale),
+		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
 		getComparisons: async () => (await client).getComparisons(),
     startRun: async (planId) => (await client).startRun(planId),
@@ -562,10 +563,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
       ),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
-		exportReport: async (reportId, format, watermark) =>
-			callBinding(() => binding.ExportReport(reportId, format, watermark), parseExportedReport),
-		saveReportExport: async (filename, mediaType, dataBase64) =>
-			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64), parseBoolean),
+		exportReport: async (reportId, format, watermark, locale) =>
+			callBinding(() => binding.ExportReport(reportId, format, watermark, locale), parseExportedReport),
+		saveReportExport: async (filename, mediaType, dataBase64, locale) =>
+			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64, locale), parseBoolean),
 		copyReportPNG: async (dataBase64) =>
 			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
 		getComparisons: async () =>
@@ -1259,7 +1260,7 @@ function parseDiagnosticsSnapshot(value: unknown): DesktopDiagnosticsSnapshot {
     typeof value.run_correlation !== "boolean" ||
     typeof value.request_correlation !== "boolean"
   ) {
-    throw new Error("桌面诊断数据无效")
+    throw new DesktopDataError(tx("desktop:app_invalid_desktop_diagnostics"))
   }
   return {
     schema_version: 1,
@@ -1274,41 +1275,41 @@ function parseDiagnosticsSnapshot(value: unknown): DesktopDiagnosticsSnapshot {
 
 function parseVoid(value: unknown): void {
   if (value !== undefined && value !== null) {
-		throw new Error("桌面命令响应无效")
+		throw new DesktopDataError(tx("desktop:app_invalid_desktop_command_response"))
   }
 }
 
 function parseBoolean(value: unknown): boolean {
 	if (typeof value !== "boolean") {
-		throw new Error("桌面命令响应无效")
+		throw new DesktopDataError(tx("desktop:app_invalid_desktop_command_response"))
 	}
 	return value
 }
 
 function parseSnapshot(value: unknown): WorkspaceSnapshot {
   if (!isRecord(value) || value.schema_version !== 1) {
-    throw new Error("桌面数据协议版本不受支持")
+    throw new DesktopDataError(tx("desktop:app_unsupported_desktop_data_protocol_version"))
   }
   if (!Array.isArray(value.plans) || !Array.isArray(value.runs)) {
-    throw new Error("桌面数据结构无效")
+    throw new DesktopDataError(tx("desktop:app_invalid_desktop_data_structure"))
   }
   const plans = value.plans.map(parsePlan)
   const runs = value.runs.map(parseRun)
   const planIDs = new Set(plans.map((plan) => plan.id))
   const runIDs = new Set(runs.map((run) => run.id))
-  if (planIDs.size !== plans.length) throw new Error("桌面测试计划数据无效")
+  if (planIDs.size !== plans.length) throw new DesktopDataError(tx("desktop:app_invalid_desktop_test_plan_data"))
   if (
     runIDs.size !== runs.length ||
     runs.some((run) => !planIDs.has(run.plan_id))
   ) {
-    throw new Error("桌面运行记录数据无效")
+    throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   }
   if (
     value.active_run_id !== undefined &&
     (!isUUID(value.active_run_id) ||
       !runIDs.has(value.active_run_id))
   ) {
-    throw new Error("桌面活动运行引用无效")
+    throw new DesktopDataError(tx("desktop:app_invalid_active_desktop_run_reference"))
   }
   return {
     schema_version: 1,
@@ -1417,23 +1418,11 @@ function normalizeBindingError(error: unknown): DesktopClientError {
 }
 
 function isProtocolError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.message.startsWith("桌面数据") ||
-      error.message.startsWith("桌面测试计划数据") ||
-      error.message.startsWith("桌面运行记录数据") ||
-      error.message.startsWith("桌面活动运行引用") ||
-      error.message.startsWith("桌面目录") ||
-      error.message.startsWith("桌面报告") ||
-		error.message.startsWith("渠道对比") ||
-		error.message.startsWith("桌面诊断") ||
-		error.message.startsWith("快速测试") ||
-		error.message.startsWith("快速性能"))
-  )
+  return error instanceof DesktopDataError
 }
 
 function isDesktopErrorCode(value: string): value is DesktopErrorCode {
-  return Object.hasOwn(PUBLIC_ERROR_MESSAGES, value)
+  return Object.hasOwn(PUBLIC_ERROR_MESSAGES["zh-CN"], value)
 }
 
 function updateRun(
@@ -1447,7 +1436,7 @@ function updateRun(
     found = true
     return { ...run, status }
   })
-  if (!found) throw new Error("运行不存在")
+  if (!found) throw new DesktopDataError(tx("desktop:app_run_not_found"))
   return { ...snapshot, runs }
 }
 
@@ -1510,7 +1499,7 @@ function isWorkspacePlan(value: unknown): boolean {
 }
 
 function parsePlan(value: unknown) {
-  if (!isWorkspacePlan(value)) throw new Error("桌面测试计划数据无效")
+  if (!isWorkspacePlan(value)) throw new DesktopDataError(tx("desktop:app_invalid_desktop_test_plan_data"))
   const record = value as Record<string, unknown>
   return {
     id: record.id as string,
@@ -1568,7 +1557,7 @@ function isWorkspaceRun(value: unknown): boolean {
 }
 
 function parseRun(value: unknown) {
-  if (!isWorkspaceRun(value)) throw new Error("桌面运行记录数据无效")
+  if (!isWorkspaceRun(value)) throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   const record = value as Record<string, unknown>
   return {
     id: record.id as string,

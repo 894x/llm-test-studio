@@ -1,0 +1,27 @@
+{
+  "trigger": "渠道对比",
+  "title": "同模型渠道对比",
+  "description": "固定一个模型，同时在至少两个渠道上独立运行同一测试计划。",
+  "noPlan": "需要先创建一个包含同一模型至少两个渠道的计划。",
+  "plan": "测试计划",
+  "model": "逻辑模型",
+  "selectChannels": "选择渠道",
+  "noChannels": "当前模型没有至少两个已启用、已配置密钥的可用渠道。",
+  "cancel": "取消",
+  "starting": "正在启动…",
+  "start": "对比 {{count}} 个渠道",
+  "operation": "启动渠道对比（计划：{{plan}}，模型：{{model}}，渠道：{{count}} 个）",
+  "error": "无法启动渠道对比，请检查本地日志",
+  "panel": {
+    "title": "最近渠道对比 · {{model}}",
+    "subtitle": "{{plan}} · {{count}} 个独立运行",
+    "aria": "渠道对比结果",
+    "channel": "渠道",
+    "verdict": "结论",
+    "successRate": "成功率",
+    "averageE2E": "平均 E2E",
+    "averageTTFT": "平均 TTFT",
+    "passed": "通过",
+    "failed": "未通过"
+  }
+}

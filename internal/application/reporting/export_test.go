@@ -126,7 +126,7 @@ func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T)
 			if (test.format == ExportJSON || test.format == ExportHTML) && !strings.Contains(string(contents), DefaultWatermark) {
 				t.Fatalf("export does not contain default watermark %q", DefaultWatermark)
 			}
-			if test.format == ExportHTML && (!strings.Contains(string(contents), "Observed ICL (semantic inter-chunk latency, not Token ITL, ms)") || !strings.Contains(string(contents), "Semantic chunks")) {
+			if test.format == ExportHTML && (!strings.Contains(string(contents), "Observed ICL（语义块间隔，非 Token ITL） (ms)") || !strings.Contains(string(contents), "语义块数")) {
 				t.Fatal("quick HTML export omits fine streaming telemetry labels")
 			}
 			if test.format == ExportHTML && !strings.Contains(string(contents), "Schema v3") {
@@ -180,7 +180,7 @@ func TestQuickPerformanceSchemaV2ExportKeepsLegacyTTFTPresentation(t *testing.T)
 	if !strings.Contains(html, "TTFT P50 / P95") || !strings.Contains(html, "<th>TTFT ms</th>") {
 		t.Fatal("schema v2 HTML export lost legacy TTFT presentation")
 	}
-	for _, v3Label := range []string{"Streaming timing distributions", "Observed ICL (semantic inter-chunk latency, not Token ITL, ms)", "Semantic chunks"} {
+	for _, v3Label := range []string{"Streaming timing distributions", "Observed ICL (semantic inter-chunk latency, not Token ITL) (ms)", "Semantic chunks"} {
 		if strings.Contains(html, v3Label) {
 			t.Fatalf("schema v2 HTML export contains v3 label %q", v3Label)
 		}
@@ -217,7 +217,7 @@ func TestQuickPerformanceSchemaV2MarksMissingRequestMetricsUnavailable(t *testin
 	report.Samples[0].TTFTMS = 0
 	report.Samples[0].TPOTMS = 0
 
-	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark)
+	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestQuickPerformanceHTMLRendersUnavailableFineCohortAsDashes(t *testing.T) 
 	report.Samples[0].TPOTMS = 0
 	report.Samples[0].Success = false
 
-	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark)
+	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,15 +312,15 @@ func TestQuickPerformanceHTMLRendersUnavailableFineCohortAsDashes(t *testing.T) 
 
 func TestQuickPerformanceHTMLUsesPreciseStreamingTerminology(t *testing.T) {
 	report := validArchivedQuickPerformanceReport()
-	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark)
+	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark, "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
 	html := string(contents)
 	for _, term := range []string{
-		"TTFT Any (includes reasoning, ms)",
-		"TTFT Visible (visible content, ms)",
-		"Observed ICL (semantic inter-chunk latency, not Token ITL, ms)",
+		"TTFT Any (includes reasoning) (ms)",
+		"TTFT Visible (visible content) (ms)",
+		"Observed ICL (semantic inter-chunk latency, not Token ITL) (ms)",
 	} {
 		if !strings.Contains(html, term) {
 			t.Fatalf("quick HTML export omits precise term %q", term)
@@ -395,6 +395,42 @@ func TestFormalPNGRequestLinesFitCanvasAndUsePreciseTerms(t *testing.T) {
 	for _, line := range lines {
 		if width := len(line) * 6 * 2; width > 1400-80 {
 			t.Fatalf("formal PNG request line is clipped: width=%d line=%q", width, line)
+		}
+	}
+}
+
+func TestLocalizedHTMLExportsUseTheRequestedLanguage(t *testing.T) {
+	detail := exportFixture(t)
+	runService := New(&fakeDocumentCatalog{report: detail.Report, results: detail.RequestResults})
+	runExport, err := runService.ExportLocalized(context.Background(), detail.Report.ID, ExportHTML, "team-alpha", "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLocalizedHTML(t, runExport, []string{`<html lang="en-US">`, "LLM Test Studio Test Report", "Conclusion:", "Core metrics", "Request details"}, []string{"测试报告", "结论：", "核心指标", "请求明细"})
+
+	quick := validArchivedQuickPerformanceReport()
+	quickExport, err := New(&fakeMixedCatalog{get: quick}).ExportLocalized(context.Background(), quick.ReportID, ExportHTML, "team-alpha", "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLocalizedHTML(t, quickExport, []string{`<html lang="en-US">`, "Quick Performance Test Report", "All requests passed", "Request samples"}, []string{"快速性能测试报告", "全部请求成功", "请求样本"})
+}
+
+func assertLocalizedHTML(t *testing.T, exported ExportedDocument, contains, excludes []string) {
+	t.Helper()
+	contents, err := base64.StdEncoding.DecodeString(exported.DataBase64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(contents)
+	for _, expected := range contains {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("localized HTML does not contain %q", expected)
+		}
+	}
+	for _, excluded := range excludes {
+		if strings.Contains(body, excluded) {
+			t.Fatalf("localized HTML contains %q", excluded)
 		}
 	}
 }

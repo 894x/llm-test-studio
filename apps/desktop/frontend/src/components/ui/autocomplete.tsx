@@ -1,5 +1,6 @@
 import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
+import { useTranslation } from "react-i18next"
 
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -8,13 +9,15 @@ const Autocomplete = AutocompletePrimitive.Root
 
 function AutocompleteInput({
   className,
-  triggerLabel = "显示候选",
+  triggerLabel,
   triggerDisabled = false,
   ...props
 }: AutocompletePrimitive.Input.Props & {
   triggerLabel?: string
   triggerDisabled?: boolean
 }) {
+  const { t } = useTranslation("common")
+
   return (
     <AutocompletePrimitive.InputGroup
       data-slot="autocomplete-input-group"
@@ -33,7 +36,7 @@ function AutocompleteInput({
       <AutocompletePrimitive.Trigger
         data-slot="autocomplete-trigger"
         type="button"
-        aria-label={triggerLabel}
+        aria-label={triggerLabel ?? t("actions.showOptions")}
         disabled={triggerDisabled || props.disabled}
         className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-surface-hover disabled:pointer-events-none disabled:text-text-disabled"
       >

@@ -1,4 +1,6 @@
-import { render, screen, within } from "@testing-library/react"
+import { I18nextProvider } from "react-i18next"
+import { createAppI18n } from "@/i18n/i18n"
+import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 
@@ -6,6 +8,22 @@ import type { QuickPerformanceReport } from "./data"
 import { QuickPerformanceRequestAnalysis } from "./quick-performance-request-analysis"
 
 describe("QuickPerformanceRequestAnalysis streaming telemetry", () => {
+  it("translates request evidence labels and error codes while preserving the selected request", async () => {
+    const user = userEvent.setup()
+    const instance = createAppI18n("zh-CN")
+    const result = report(3)
+    result.samples[0].success = false
+    result.samples[0].error_code = "authentication_failed"
+    render(<I18nextProvider i18n={instance}><QuickPerformanceRequestAnalysis report={result} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "查看请求 1 详情" }))
+    await act(async () => { document.documentElement.lang = "en-US"; await instance.changeLanguage("en-US") })
+    const detail = screen.getByRole("region", { name: "Request 1 details" })
+    expect(detail).toHaveTextContent("Authentication failed")
+    expect(detail).toHaveTextContent("TTFT (visible content)")
+    expect(detail).not.toHaveTextContent("鉴权失败")
+    expect(detail).not.toHaveTextContent("errorCode.authentication_failed")
+  })
+
   it("labels legacy TTFT as including reasoning and shows every v3 scalar in the selected request", async () => {
     const user = userEvent.setup()
     render(<QuickPerformanceRequestAnalysis report={report(3)} />)

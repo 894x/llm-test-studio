@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import GitCompareArrowsIcon from "lucide-react/dist/esm/icons/git-compare-arrows.mjs"
+import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +23,7 @@ export function NewComparisonSheet({
   pending: boolean
   onStart: (command: StartComparisonCommand) => Promise<void>
 }) {
+  const { t } = useTranslation("comparisons")
   const eligiblePlans = useMemo(
     () => catalog.plans.filter((plan) => plan.model_ids.length > 0 && plan.channel_ids.length >= 2),
     [catalog.plans],
@@ -59,8 +61,8 @@ export function NewComparisonSheet({
     } catch (caught) {
       setError(publicDesktopOperationErrorMessage(
         caught,
-        `启动渠道对比（计划：${plan.name}，模型：${models.find((model) => model.id === effectiveModelID)?.name ?? effectiveModelID}，渠道：${effectiveSelected.length} 个）`,
-        "无法启动渠道对比，请检查本地日志",
+        t("operation", { plan: plan.name, model: models.find((model) => model.id === effectiveModelID)?.name ?? effectiveModelID, count: effectiveSelected.length }),
+        t("error"),
       ))
     }
   }
@@ -69,23 +71,23 @@ export function NewComparisonSheet({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button size="sm" variant="outline">
-          <GitCompareArrowsIcon data-icon="inline-start" /> 渠道对比
+          <GitCompareArrowsIcon data-icon="inline-start" /> {t("trigger")}
         </Button>
       </SheetTrigger>
       <SheetContent className="sm:max-w-[440px]">
         <SheetHeader>
-          <SheetTitle>同模型渠道对比</SheetTitle>
-          <SheetDescription>固定一个模型，同时在至少两个渠道上独立运行同一测试计划。</SheetDescription>
+          <SheetTitle>{t("title")}</SheetTitle>
+          <SheetDescription>{t("description")}</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
           {eligiblePlans.length === 0 ? (
-            <p className="text-xs text-muted-foreground">需要先创建一个包含同一模型至少两个渠道的计划。</p>
+            <p className="text-xs text-muted-foreground">{t("noPlan")}</p>
           ) : (
             <>
-              <SelectField label="测试计划" value={plan?.id ?? ""} options={eligiblePlans.map((item) => [item.id, item.name])} onChange={changePlan} />
-              <SelectField label="逻辑模型" value={effectiveModelID} options={models.map((item) => [item.id, item.name])} onChange={changeModel} />
+              <SelectField label={t("plan")} value={plan?.id ?? ""} options={eligiblePlans.map((item) => [item.id, item.name])} onChange={changePlan} />
+              <SelectField label={t("model")} value={effectiveModelID} options={models.map((item) => [item.id, item.name])} onChange={changeModel} />
               <div>
-                <div className="text-xs font-semibold">选择渠道</div>
+                <div className="text-xs font-semibold">{t("selectChannels")}</div>
                 <div className="mt-2 space-y-2">
                   {channels.map((channel) => (
                     <Field key={channel.id} className="rounded-md border px-3 py-2">
@@ -100,7 +102,7 @@ export function NewComparisonSheet({
                       </FieldLabel>
                     </Field>
                   ))}
-                  {channels.length < 2 ? <p className="text-xs text-destructive">当前模型没有至少两个已启用、已配置密钥的可用渠道。</p> : null}
+                  {channels.length < 2 ? <p className="text-xs text-destructive">{t("noChannels")}</p> : null}
                 </div>
               </div>
             </>
@@ -108,9 +110,9 @@ export function NewComparisonSheet({
           {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
         </div>
         <SheetFooter className="flex-row justify-end border-t">
-          <SheetClose asChild><Button variant="outline">取消</Button></SheetClose>
+          <SheetClose asChild><Button variant="outline">{t("cancel")}</Button></SheetClose>
           <Button disabled={pending || effectiveSelected.length < 2} onClick={() => void start()}>
-            {pending ? "正在启动…" : `对比 ${effectiveSelected.length} 个渠道`}
+            {pending ? t("starting") : t("start", { count: effectiveSelected.length })}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -119,29 +121,30 @@ export function NewComparisonSheet({
 }
 
 export function ComparisonPanel({ snapshot }: { snapshot: ComparisonSnapshot }) {
+  const { t } = useTranslation(["comparisons", "common"])
   const comparison = snapshot.comparisons[0]
   if (!comparison) return null
   return (
     <section aria-labelledby="comparison-heading" className="mx-4 mb-3 rounded-md border bg-card">
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="min-w-0">
-          <h2 id="comparison-heading" className="truncate text-xs font-semibold">最近渠道对比 · {comparison.model_name}</h2>
-          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{comparison.plan_name} · {comparison.channels.length} 个独立运行</p>
+          <h2 id="comparison-heading" className="truncate text-xs font-semibold">{t("panel.title", { model: comparison.model_name })}</h2>
+          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{t("panel.subtitle", { plan: comparison.plan_name, count: comparison.channels.length })}</p>
         </div>
-        <Badge variant="outline">{comparison.status === "running" ? "运行中" : comparison.status === "completed" ? "已完成" : comparison.status === "failed" ? "失败" : "已取消"}</Badge>
+        <Badge variant="outline">{t(`common:status.${comparison.status}`)}</Badge>
       </div>
-      <Table aria-label="渠道对比结果">
+      <Table aria-label={t("panel.aria")}>
         <TableHeader><TableRow>
-          <TableHead className="h-8 text-[11px]">渠道</TableHead>
-          <TableHead className="h-8 text-[11px]">结论</TableHead>
-          <TableHead className="h-8 text-[11px]">成功率</TableHead>
-          <TableHead className="h-8 text-[11px]">平均 E2E</TableHead>
-          <TableHead className="h-8 text-[11px]">平均 TTFT</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("panel.channel")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("panel.verdict")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("panel.successRate")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("panel.averageE2E")}</TableHead>
+          <TableHead className="h-8 text-[11px]">{t("panel.averageTTFT")}</TableHead>
         </TableRow></TableHeader>
         <TableBody>{comparison.channels.map((channel) => (
           <TableRow key={channel.run_id} className="h-9">
             <TableCell className="py-1 text-xs font-medium">{channel.channel_name}</TableCell>
-            <TableCell className="py-1 text-xs">{channel.report_ready ? (channel.passed ? "通过" : channel.verdict || "未通过") : channel.run_status}</TableCell>
+            <TableCell className="py-1 text-xs">{channel.report_ready ? (channel.passed ? t("panel.passed") : channel.verdict || t("panel.failed")) : t(`common:status.${channel.run_status === "starting" ? "queued" : channel.run_status}`)}</TableCell>
             <TableCell className="py-1 text-xs tabular-nums">{formatMetric(channel.metrics.success_rate, true)}</TableCell>
             <TableCell className="py-1 text-xs tabular-nums">{formatMetric(channel.metrics.e2e_ms)}</TableCell>
             <TableCell className="py-1 text-xs tabular-nums">{formatMetric(channel.metrics.ttft_ms)}</TableCell>

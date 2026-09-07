@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { I18nextProvider } from "react-i18next"
+import { createAppI18n } from "@/i18n/i18n"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -8,6 +10,22 @@ import { CatalogEditor } from "./catalog-editors"
 import { EMPTY_CATALOG, type CatalogActions, type CatalogSnapshot, type CatalogTestCase } from "./data"
 
 describe("CatalogEditor latency ladder", () => {
+  it("keeps field errors associated and translates them without resubmitting on a language change", async () => {
+    const user = userEvent.setup()
+    const instance = createAppI18n("zh-CN")
+    const mutate = vi.fn()
+    render(<I18nextProvider i18n={instance}><CatalogEditor kind="channel" catalog={EMPTY_CATALOG} actions={{} as CatalogActions} pending={false} mutate={mutate} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "新增渠道" }))
+    await user.click(screen.getByRole("button", { name: "保存渠道" }))
+    expect(screen.getByLabelText("渠道名称")).toHaveAttribute("aria-invalid", "true")
+    await act(async () => { document.documentElement.lang = "en-US"; await instance.changeLanguage("en-US") })
+    expect(screen.getByLabelText("Channel name")).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByLabelText("Channel name")).toHaveAccessibleDescription("Enter a channel name.")
+    expect(mutate).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText("Channel name"), "New channel")
+    expect(screen.getByLabelText("Channel name")).not.toHaveAttribute("aria-invalid")
+  })
+
   it("inherits uniform request counts and submits per-stage overrides", async () => {
     const user = userEvent.setup()
     const item: CatalogTestCase = {

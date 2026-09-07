@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 
 export function PageFrame({
   title,
@@ -17,8 +18,10 @@ export function PageFrame({
   inspectorLabel?: string
   actions?: ReactNode
 }) {
+  const { t } = useTranslation("common")
+
   return (
-    <main className="flex min-h-0 flex-1">
+    <main className="flex min-h-0 min-w-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col" aria-labelledby="page-heading">
         <div className="flex shrink-0 items-end justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
@@ -38,7 +41,7 @@ export function PageFrame({
       </section>
       {inspector !== undefined ? (
         <aside
-          aria-label={inspectorLabel ?? `${title}详情`}
+          aria-label={inspectorLabel ?? t("page.details", { title })}
           className="hidden w-[300px] shrink-0 border-l bg-background min-[960px]:block"
         >
           {inspector}
