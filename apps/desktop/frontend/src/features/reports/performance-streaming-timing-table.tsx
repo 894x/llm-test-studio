@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { QuickPerformanceMetrics, QuickPerformanceSchemaVersion } from "@/features/quick-test/data"
+import { formatPerformanceInteger } from "./performance-format"
 
 interface StreamingTimingRow {
   label: string
@@ -81,7 +82,7 @@ function latencyRow(
 
 function formatStreamingValue(value: number, samples: number, unit: StreamingTimingRow["unit"]): string {
   if (samples === 0) return "—"
-  return `${formatNumber(value)}${unit ? ` ${unit}` : ""}`
+  return unit === "ms" ? `${formatPerformanceInteger(value)} ms` : formatNumber(value)
 }
 
 function formatNumber(value: number): string {

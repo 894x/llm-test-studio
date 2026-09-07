@@ -1,3 +1,4 @@
+import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
@@ -1132,7 +1133,7 @@ function QuickPerformanceReportPanel({
             />
             <InlineResultValue
               label="Goodput"
-              value={`${formatNumber(report.slo_assessment.goodput_qps)} req/s`}
+              value={`${formatPerformanceInteger(report.slo_assessment.goodput_qps)} req/s`}
               numeric
             />
             <ResultValue
@@ -1175,7 +1176,7 @@ function QuickPerformanceReportPanel({
           />
           <ResultValue
             label={tx("desktop:quick-test_total_duration")}
-            value={`${formatNumber(report.progress.total_duration_ms)} ms`}
+            value={`${formatPerformanceInteger(report.progress.total_duration_ms)} ms`}
             numeric
           />
           {report.profile.load_mode === "open_loop" ? (
@@ -1251,29 +1252,29 @@ function QuickPerformanceReportPanel({
           {report.schema_version === 1 ? (
             <ResultValue
               label={tx("desktop:quick-test_legacy_request_throughput")}
-              value={`${formatNumber(report.metrics.request_qps)} req/s`}
+              value={`${formatPerformanceInteger(report.metrics.request_qps)} req/s`}
               numeric
             />
           ) : null}
-          <ResultValue label="RPM" value={`${formatNumber(report.metrics.rpm)} RPM`} numeric />
+          <ResultValue label="RPM" value={`${formatPerformanceInteger(report.metrics.rpm)} RPM`} numeric />
           <ResultValue
             label="Input TPM"
-            value={`${formatNumber(report.metrics.input_tpm)} TPM`}
+            value={`${formatPerformanceInteger(report.metrics.input_tpm)} TPM`}
             numeric
           />
           <ResultValue
             label="Output TPM"
-            value={`${formatNumber(report.metrics.output_tpm)} TPM`}
+            value={`${formatPerformanceInteger(report.metrics.output_tpm)} TPM`}
             numeric
           />
           <ResultValue
             label="Total TPM"
-            value={`${formatNumber(report.metrics.total_tpm)} TPM`}
+            value={`${formatPerformanceInteger(report.metrics.total_tpm)} TPM`}
             numeric
           />
           <ResultValue
             label={t("performance.generationRate")}
-            value={`${formatNumber(report.metrics.generation_tps)} token/s`}
+            value={`${formatPerformanceInteger(report.metrics.generation_tps)} token/s`}
             numeric
           />
         </MetricSection>
@@ -1818,7 +1819,7 @@ function InlineResultValue({
 }
 
 function formatDuration(valueMS: number): string {
-  return valueMS >= 1_000 ? `${formatNumber(valueMS / 1_000)} s` : `${formatNumber(valueMS)} ms`
+  return valueMS >= 1_000 ? `${formatNumber(valueMS / 1_000)} s` : `${formatPerformanceInteger(valueMS)} ms`
 }
 
 function formatPerformanceBudget(
@@ -1844,7 +1845,7 @@ function formatTrafficCompletion(traffic: NonNullable<QuickPerformanceReport["wa
 }
 
 function formatOptionalRate(value: number | undefined): string {
-  return value === undefined ? "—" : `${formatNumber(value)} req/s`
+  return value === undefined ? "—" : `${formatPerformanceInteger(value)} req/s`
 }
 
 function performanceNeedsSeed(form: PerformanceForm): boolean {

@@ -2,6 +2,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { QuickPerformanceMetrics } from "@/features/quick-test/data"
 import { useTranslation } from "react-i18next"
+import { formatPerformanceInteger } from "./performance-format"
 
 export function PerformanceLatencyTable({ metrics }: { metrics: QuickPerformanceMetrics }) {
   const { t: tx } = useTranslation()
@@ -28,7 +29,7 @@ export function PerformanceLatencyTable({ metrics }: { metrics: QuickPerformance
             {rows.map((row) => (
               <TableRow key={row.label}>
                 <TableCell className="py-2 pl-3 font-medium">{row.label} <span className="font-normal text-muted-foreground">({row.unit})</span></TableCell>
-                {row.values.map((value, index) => <TableCell key={index} className="py-2 text-right tabular-nums">{formatMetric(value, locale)}</TableCell>)}
+                {row.values.map((value, index) => <TableCell key={index} className="py-2 text-right tabular-nums">{formatPerformanceInteger(value, locale)}</TableCell>)}
               </TableRow>
             ))}
           </TableBody>
@@ -36,8 +37,4 @@ export function PerformanceLatencyTable({ metrics }: { metrics: QuickPerformance
       </ScrollArea>
     </div>
   )
-}
-
-function formatMetric(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value)
 }

@@ -27,6 +27,27 @@ const connection = {
 }
 
 describe("QuickPerformanceSheet", () => {
+  it("rounds result throughput and latency presentation while keeping percentage precision", async () => {
+    const user = userEvent.setup()
+    const result = successfulPerformanceReport()
+    Object.assign(result.metrics, {
+      input_tpm: 11_813_376.88, output_tpm: 50_029.88, total_tpm: 11_863_406.75,
+      generation_tps: 833.83, successful_request_qps: 6.15, tpot_p95_ms: 21.82,
+      cache_rate_percent: 25.25,
+    })
+    const original = structuredClone(result)
+    render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={async () => result} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    const report = await screen.findByRole("region", { name: "性能报告" })
+    for (const value of ["11,813,377 TPM", "50,030 TPM", "11,863,407 TPM", "834 token/s", "6 req/s", "25.3%"]) {
+      expect(report).toHaveTextContent(value)
+    }
+    const latency = within(report).getByRole("table", { name: "延迟分布统计" })
+    expect(within(latency).getByRole("row", { name: /TPOT/ })).toHaveTextContent("22")
+    expect(latency).not.toHaveTextContent("21.8")
+    expect(result).toEqual(original)
+  })
+
   it("clears a previous target report and ignores late results from an earlier target", async () => {
     const user = userEvent.setup()
     let finishOld!: (report: QuickPerformanceReport) => void
@@ -135,7 +156,7 @@ describe("QuickPerformanceSheet", () => {
     expect(report).toHaveTextContent("完成 / 计划")
     expect(report).toHaveTextContent("失败")
     expect(report).toHaveTextContent("100%")
-    expect(report).toHaveTextContent("12.5 req/s")
+    expect(report).toHaveTextContent("13 req/s")
     expect(report).toHaveTextContent("目标发送")
     expect(report).toHaveTextContent("实际发送")
     expect(report).toHaveTextContent("成功吞吐")
@@ -147,14 +168,14 @@ describe("QuickPerformanceSheet", () => {
       /32\s*30\s*40\s*42\s*44/,
     )
     expect(within(latency).getByRole("row", { name: /TPOT/ })).toHaveTextContent(
-      /4\.5\s*4\s*5\s*6\s*7/,
+      /5\s*4\s*5\s*6\s*7/,
     )
     expect(within(latency).getByRole("row", { name: /E2E/ })).toHaveTextContent(
       /65\s*60\s*75\s*80\s*84/,
     )
     expect(
       within(latency).getByRole("row", { name: /客户端排队（本地调度延迟）/ }),
-    ).toHaveTextContent(/0\.5\s*0\s*1\.8\s*2\s*2\.8/)
+    ).toHaveTextContent(/1\s*0\s*2\s*2\s*3/)
     expect(
       within(report).getByRole("figure", { name: "TTFT（含推理） 分布图" }),
     ).toBeInTheDocument()
@@ -962,7 +983,7 @@ describe("QuickPerformanceSheet", () => {
     expect(report).toHaveTextContent("最高通过并发 2")
     expect(report).toHaveTextContent("首次未通过 3")
     expect(report).toHaveTextContent("好请求 4 / 4")
-    expect(report).toHaveTextContent("Goodput 12.5 req/s")
+    expect(report).toHaveTextContent("Goodput 13 req/s")
     expect(report).toHaveTextContent(/峰值在途 \/ 配置并发\s*2 \/ 2/)
   })
 

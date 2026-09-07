@@ -6,6 +6,8 @@ export interface PerformanceChartSample {
   ttft_ms: number
   tpot_ms: number
   success: boolean
+  prompt_tokens?: number
+  cached_tokens?: number
 }
 
 export interface PerformanceChartPercentiles {
@@ -39,8 +41,9 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
   const { t } = useTranslation("reports")
   const metrics = METRICS.map((metric) => ({ ...metric, label: metric.key === "ttft_ms" ? t("desktop:quick-test_ttft_includes_reasoning") : metric.label }))
   const stacked = layout === "stacked"
+  const timeline = throughputTimeline(samples)
   return (
-    <section aria-label={t("charts.aria")} className="space-y-3">
+    <section aria-label={t("charts.aria")} className="@container space-y-3">
       <div>
         <h4 className="text-xs font-semibold">{t("charts.distribution")}</h4>
         <p className="mt-0.5 text-[10px] text-muted-foreground">{t("charts.distributionHint")}</p>
@@ -59,24 +62,33 @@ export function PerformanceCharts({ samples, percentiles, layout = "grid" }: {
           ))}
         </div>
       </div>
-      <div>
-        <h4 className="text-xs font-semibold">{t("charts.throughput")}</h4>
-        <p className="mt-0.5 text-[10px] text-muted-foreground">{t("charts.throughputHint")}</p>
-        <ThroughputConcurrencyChart samples={samples} />
+      <div data-testid="throughput-cache-chart-list" className="grid grid-cols-1 gap-3 @min-[720px]:grid-cols-2">
+        <div className="flex min-w-0 flex-col">
+          <h4 className="text-xs font-semibold">{t("charts.throughput")}</h4>
+          <p className="mt-0.5 mb-2 flex-1 text-[10px] text-muted-foreground">{t("charts.throughputHint")}</p>
+          <ThroughputConcurrencyChart samples={samples} timeline={timeline} />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <h4 className="text-xs font-semibold">{t("charts.cacheTimeline")}</h4>
+          <p className="mt-0.5 mb-2 flex-1 text-[10px] text-muted-foreground">{t("charts.cacheTimelineHint")}</p>
+          <CacheRateTimelineChart timeline={timeline} />
+        </div>
       </div>
     </section>
   )
 }
 
-function ThroughputConcurrencyChart({ samples }: { samples: readonly PerformanceChartSample[] }) {
+function ThroughputConcurrencyChart({ samples, timeline }: {
+  samples: readonly PerformanceChartSample[]
+  timeline: ReturnType<typeof throughputTimeline>
+}) {
   const { t, i18n } = useTranslation("reports")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const timeline = throughputTimeline(samples)
   if (!timeline) {
-    return <figure aria-label={t("charts.throughput")} className="mt-2 rounded-md border bg-surface-control p-2"><EmptyChart expanded /></figure>
+    return <figure aria-label={t("charts.throughput")} className="rounded-md border bg-surface-control p-2"><EmptyChart expanded /></figure>
   }
   const { buckets, durationMS, maxThroughput, maxConcurrency } = timeline
-  const width = 720
+  const width = 480
   const height = 176
   const left = 42
   const right = 42
@@ -91,7 +103,7 @@ function ThroughputConcurrencyChart({ samples }: { samples: readonly Performance
     return `${x},${y}`
   }).join(" ")
   return (
-    <figure aria-label={t("charts.throughput")} className="mt-2 min-w-0 rounded-md border bg-surface-control p-2">
+    <figure aria-label={t("charts.throughput")} className="min-w-0 rounded-md border bg-surface-control p-2">
       <figcaption className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
         <span className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-sm bg-primary/50" />{t("charts.completedThroughput")}</span>
@@ -122,8 +134,15 @@ function ThroughputConcurrencyChart({ samples }: { samples: readonly Performance
   )
 }
 
+interface TimelineBucket {
+  throughput: number
+  peakInFlight: number
+  promptTokens: number
+  cachedTokens: number
+}
+
 function throughputTimeline(samples: readonly PerformanceChartSample[]): {
-  buckets: Array<{ throughput: number; peakInFlight: number }>
+  buckets: TimelineBucket[]
   durationMS: number
   maxThroughput: number
   maxConcurrency: number
@@ -134,15 +153,23 @@ function throughputTimeline(samples: readonly PerformanceChartSample[]): {
   const bucketCount = Math.min(48, Math.max(8, Math.ceil(durationMS / 1_000)))
   const bucketMS = durationMS / bucketCount
   const completionCounts = Array<number>(bucketCount).fill(0)
+  const cacheCounts = Array.from({ length: bucketCount }, () => ({ promptTokens: 0, cachedTokens: 0 }))
   for (const sample of valid) {
     const index = Math.min(bucketCount - 1, Math.floor(sample.finished_offset_ms / bucketMS))
     completionCounts[index] += 1
+    const prompt = sample.prompt_tokens
+    const cached = sample.cached_tokens
+    if (sample.success && prompt !== undefined && cached !== undefined &&
+      Number.isSafeInteger(prompt) && prompt > 0 && Number.isSafeInteger(cached) && cached >= 0 && cached <= prompt) {
+      cacheCounts[index].promptTokens += prompt
+      cacheCounts[index].cachedTokens += cached
+    }
   }
   const events = valid.filter((sample) => sample.finished_offset_ms > sample.started_offset_ms).flatMap((sample) => [
     { offset: sample.started_offset_ms, delta: 1 },
     { offset: sample.finished_offset_ms, delta: -1 },
   ]).sort((left, right) => left.offset - right.offset || left.delta - right.delta)
-  const buckets: Array<{ throughput: number; peakInFlight: number }> = []
+  const buckets: TimelineBucket[] = []
   let active = 0
   let eventIndex = 0
   for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
@@ -153,7 +180,7 @@ function throughputTimeline(samples: readonly PerformanceChartSample[]): {
       peakInFlight = Math.max(peakInFlight, active)
       eventIndex += 1
     }
-    buckets.push({ throughput: completionCounts[bucketIndex] / (bucketMS / 1_000), peakInFlight })
+    buckets.push({ throughput: completionCounts[bucketIndex] / (bucketMS / 1_000), peakInFlight, ...cacheCounts[bucketIndex] })
   }
   return {
     buckets,
@@ -161,6 +188,54 @@ function throughputTimeline(samples: readonly PerformanceChartSample[]): {
     maxThroughput: Math.max(0, ...buckets.map((bucket) => bucket.throughput)),
     maxConcurrency: Math.max(0, ...buckets.map((bucket) => bucket.peakInFlight)),
   }
+}
+
+function CacheRateTimelineChart({ timeline }: { timeline: ReturnType<typeof throughputTimeline> }) {
+  const { t, i18n } = useTranslation("reports")
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const width = 480
+  const height = 176
+  const left = 42
+  const right = 42
+  const top = 18
+  const bottom = 26
+  const plotWidth = width - left - right
+  const plotHeight = height - top - bottom
+  const points = timeline?.buckets.map((bucket, index) => bucket.promptTokens > 0 ? {
+    ...bucket,
+    index,
+    rate: bucket.cachedTokens / bucket.promptTokens * 100,
+    x: left + (index + 0.5) / timeline.buckets.length * plotWidth,
+    y: top + plotHeight * (1 - bucket.cachedTokens / bucket.promptTokens),
+  } : null) ?? []
+  // Empty windows break the curve; they are neither zero hits nor interpolated data.
+  const path = points.map((point, index) => point ? `${index > 0 && points[index - 1] ? "L" : "M"} ${point.x},${point.y}` : "").join(" ")
+  const available = points.filter((point) => point !== null)
+  return (
+    <figure aria-label={t("charts.cacheTimeline")} className="min-w-0 rounded-md border bg-surface-control p-2">
+      <figcaption className="text-[10px] text-muted-foreground">{t("charts.cacheRatio")}</figcaption>
+      {timeline && available.length ? (
+        <svg role="img" aria-label={t("charts.cacheWindows", { count: available.length })} viewBox={`0 0 ${width} ${height}`} className="mt-1 h-44 w-full overflow-visible">
+          {[0, 50, 100].map((rate) => {
+            const y = top + plotHeight * (1 - rate / 100)
+            return <g key={rate}>
+              <line x1={left} y1={y} x2={left + plotWidth} y2={y} stroke="var(--border-strong)" strokeDasharray={rate === 0 ? undefined : "3 3"} />
+              <text x={left - 3} y={y + 3} textAnchor="end" fill="var(--muted-foreground)" fontSize="8">{rate}%</text>
+            </g>
+          })}
+          <path d={path} fill="none" stroke="var(--primary)" strokeWidth="1.8" strokeLinejoin="round" />
+          {available.map((point) => <circle key={point.index} cx={point.x} cy={point.y} r="2.5" fill="var(--surface-elevated)" stroke="var(--primary)" strokeWidth="1.2">
+            <title>{t("charts.cacheWindow", {
+              start: time(point.index / timeline.buckets.length * timeline.durationMS, locale),
+              end: time((point.index + 1) / timeline.buckets.length * timeline.durationMS, locale),
+              rate: number(point.rate, locale, 2), cached: number(point.cachedTokens, locale), prompt: number(point.promptTokens, locale),
+            })}</title>
+          </circle>)}
+          <ChartXAxis left={left} top={top} width={plotWidth} height={plotHeight} end={time(timeline.durationMS, locale)} label={t("charts.completionOffset")} />
+        </svg>
+      ) : <div className="mt-1 flex h-44 items-center justify-center text-[10px] text-muted-foreground">{t("charts.cacheEmpty")}</div>}
+    </figure>
+  )
 }
 
 function DistributionChart({ metric, samples, percentiles, expanded }: {
@@ -294,11 +369,11 @@ function histogram(values: readonly number[], max: number, binCount: number): nu
   return bins
 }
 
-function number(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value)
+function number(value: number, locale: string, maximumFractionDigits = 0): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits }).format(value)
 }
 
 function time(value: number, locale: string): string {
-  return value >= 1_000 ? `${number(value / 1_000, locale)} s` : `${number(value, locale)} ms`
+  return value >= 1_000 ? `${number(value / 1_000, locale, 2)} s` : `${number(value, locale)} ms`
 }
 import { useTranslation } from "react-i18next"

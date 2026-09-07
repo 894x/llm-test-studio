@@ -9,7 +9,7 @@ describe("PerformanceStreamingTimingTable", () => {
     render(<PerformanceStreamingTimingTable schemaVersion={3} metrics={streamingMetrics()} />)
 
     const table = screen.getByRole("table", { name: "流式时序统计" })
-    expect(within(table).getByRole("row", { name: /TTFB/ })).toHaveTextContent(/15 ms.*15 ms.*19.5 ms.*19.9 ms.*2/)
+    expect(within(table).getByRole("row", { name: /TTFB/ })).toHaveTextContent(/15 ms.*15 ms.*20 ms.*20 ms.*2/)
     expect(within(table).getByRole("row", { name: /TTFT（含推理）/ })).toHaveTextContent("30 ms")
     expect(within(table).getByRole("row", { name: /TTFT（可见内容）/ })).toBeInTheDocument()
     expect(within(table).getByRole("row", { name: /TTST/ })).toHaveTextContent("50 ms")

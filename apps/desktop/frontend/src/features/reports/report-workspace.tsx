@@ -1,3 +1,4 @@
+import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { useEffect, useMemo, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
@@ -197,7 +198,7 @@ function RunReportBody({ detail, visibleResults = detail.request_results.slice(0
 
 function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
   return (
-    <ScrollArea className="min-h-[260px] flex-[3] border-t">
+    <ScrollArea className="min-h-[260px] flex-[3] border-t [&>[data-slot=scroll-area-viewport]>div]:block!">
       <QuickPerformanceBody detail={detail} includeRequestAnalysis />
     </ScrollArea>
   )
@@ -294,7 +295,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
               <InlineSummaryValue label={tx("desktop:reports_target_compliance")} value={`${formatMetric(report.slo_assessment.target_percent)}%`} />
               <InlineSummaryValue label={tx("desktop:quick-test_good_requests")} value={`${formatMetric(report.slo_assessment.good_requests)} / ${formatMetric(report.slo_assessment.total_requests)}`} />
               <InlineSummaryValue label={tx("desktop:reports_actual_compliance")} value={`${formatMetric(report.slo_assessment.good_request_percent)}%`} />
-              <InlineSummaryValue label="Goodput" value={`${formatMetric(report.slo_assessment.goodput_qps)} req/s`} />
+              <InlineSummaryValue label="Goodput" value={`${formatPerformanceInteger(report.slo_assessment.goodput_qps)} req/s`} />
               <InlineSummaryValue label={tx("desktop:reports_violations")} value={formatSLOViolations(report.slo_assessment.violations)} />
             </div>
           ) : null}
@@ -342,14 +343,16 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <SummaryValue label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(report.metrics.launched_qps)} />
         <SummaryValue label={tx("desktop:quick-test_completed_request_throughput")} value={optionalRequestRate(report.metrics.completed_qps)} />
         <SummaryValue label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(report.metrics.successful_request_qps)} />
-        {report.schema_version === 1 ? <SummaryValue label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatMetric(report.metrics.request_qps)} req/s`} /> : null}
+        {report.schema_version === 1 ? <SummaryValue label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatPerformanceInteger(report.metrics.request_qps)} req/s`} /> : null}
         <SummaryValue label={report.profile.load_mode === "open_loop" ? tx("desktop:quick-test_peak_in_flight_limit") : tx("desktop:quick-test_peak_in_flight_configured_concurrency")} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : (report.progress.capacity_target ?? report.profile.concurrency)}`} />
         <SummaryValue label={tx("desktop:quick-test_total_duration")} value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
-        <SummaryValue label="RPM" value={formatMetric(report.metrics.rpm)} />
-        <SummaryValue label={tx("desktop:reports_input_tpm")} value={`${formatMetric(report.metrics.input_tpm)} TPM`} />
-        <SummaryValue label={tx("desktop:reports_output_tpm")} value={`${formatMetric(report.metrics.output_tpm)} TPM`} />
-        <SummaryValue label={tx("desktop:reports_total_tpm")} value={`${formatMetric(report.metrics.total_tpm)} TPM`} />
-        <SummaryValue label={tx("desktop:reports_aggregate_output_throughput")} value={`${formatMetric(report.metrics.generation_tps)} token/s`} />
+        <SummaryValue label="RPM" value={formatPerformanceInteger(report.metrics.rpm)} />
+        <SummaryValue label={tx("desktop:reports_input_tpm")} value={`${formatPerformanceInteger(report.metrics.input_tpm)} TPM`} />
+        <SummaryValue label={tx("desktop:reports_output_tpm")} value={`${formatPerformanceInteger(report.metrics.output_tpm)} TPM`} />
+        <SummaryValue label={tx("desktop:reports_total_tpm")} value={`${formatPerformanceInteger(report.metrics.total_tpm)} TPM`} />
+        <SummaryValue label={tx("desktop:reports_aggregate_output_throughput")} value={`${formatPerformanceInteger(report.metrics.generation_tps)} token/s`} />
+        <SummaryValue label={t("performance.tokenTotals")} value={`${formatPerformanceInteger(report.metrics.prompt_tokens)} / ${formatPerformanceInteger(report.metrics.completion_tokens)} / ${formatPerformanceInteger(report.metrics.cached_tokens)}`} />
+        <SummaryValue label={t("performance.cacheRate")} value={report.metrics.prompt_tokens > 0 ? `${formatMetric(report.metrics.cache_rate_percent)}%` : "—"} />
       </div>
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
@@ -432,10 +435,10 @@ function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
           <TableCell className="py-1 text-xs">{shortSLOStatus(rung.slo_assessment.status)}</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{rung.slo_assessment.good_requests} / {rung.slo_assessment.total_requests}</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.slo_assessment.good_request_percent)}%</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.slo_assessment.goodput_qps)} req/s</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.ttft_p95_ms)} ms</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.tpot_p95_ms)} ms/token</TableCell>
-          <TableCell className="py-1 text-xs tabular-nums">{formatMetric(rung.metrics.e2e_p95_ms)} ms</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.slo_assessment.goodput_qps)} req/s</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.ttft_p95_ms)} ms</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.tpot_p95_ms)} ms/token</TableCell>
+          <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.e2e_p95_ms)} ms</TableCell>
           <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${tx(`quickTest:errorCode.${failure.error_code}`)} ${failure.count}`).join(" · ") : "—"}</TableCell>
         </TableRow>
       ))}</TableBody>
@@ -485,7 +488,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
     </div>
     {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
-    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatMetric(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatMetric(quick.metrics.ttft_p50_ms)} / ${formatMetric(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatMetric(quick.metrics.tpot_p50_ms)} / ${formatMetric(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatMetric(quick.metrics.e2e_p50_ms)} / ${formatMetric(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
+    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatPerformanceInteger(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
   </ScrollArea>
 }
 
@@ -516,7 +519,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 function metric(value?: number, locale: string = desktopLocale()): string { return value === undefined ? "—" : formatMetric(value, locale) }
 function formatMetric(value: number, locale: string = desktopLocale()): string { return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value) }
-function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatMetric(value)} req/s` }
+function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatPerformanceInteger(value)} req/s` }
 function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? tx("desktop:quick-test_open_arrival_rps") : mode === "fixed_concurrency" ? tx("desktop:catalog_fixed_concurrency") : tx("desktop:reports_legacy_fixed_concurrency") }
 type QuickPerformanceReport = Extract<ReportDetail, { source: "quick_performance" }>["performance"]
 function performanceTargetRate(report: QuickPerformanceReport): string {
@@ -638,7 +641,7 @@ function formatSliceWindow(startMS: number, endMS: number, partial: boolean): st
   return `${formatMetric(startMS / 1_000)}–${formatMetric(endMS / 1_000)} s${partial ? tx("desktop:reports_partial") : ""}`
 }
 function formatSliceP95(latency: NonNullable<QuickPerformanceReport["time_slices"]>[number]["ttft"]): string {
-  return latency.count === 0 ? "—" : `${formatMetric(latency.p95_ms)} ms`
+  return latency.count === 0 ? "—" : `${formatPerformanceInteger(latency.p95_ms)} ms`
 }
 function performanceTargetRanges(report: QuickPerformanceReport): string | undefined {
   const inputTargets = report.samples.flatMap((sample) => sample.target_input_tokens === undefined ? [] : [sample.target_input_tokens])
@@ -652,7 +655,7 @@ function formatIntegerRange(values: number[]): string {
   const maximum = Math.max(...values)
   return minimum === maximum ? formatMetric(minimum) : `${formatMetric(minimum)}–${formatMetric(maximum)}`
 }
-function formatDuration(valueMS: number): string { return valueMS >= 1_000 ? `${formatMetric(valueMS / 1_000)} s` : `${formatMetric(valueMS)} ms` }
+function formatDuration(valueMS: number): string { return valueMS >= 1_000 ? `${formatMetric(valueMS / 1_000)} s` : `${formatPerformanceInteger(valueMS)} ms` }
 function performanceMode(requestCount: number, durationMS: number): string {
   return requestCount > 0 ? tx("desktop:reports_fixed_count_value_requests", { value1: formatMetric(requestCount) }) : tx("desktop:reports_duration_value", { value1: formatDuration(durationMS) })
 }

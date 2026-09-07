@@ -9,6 +9,40 @@ import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./dat
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
+  it("shows archived cache totals and rounds rate and latency displays without changing the report", async () => {
+    const user = userEvent.setup()
+    const reportID = "77777777-7777-4777-8777-777777777771"
+    const detail = quickDetail(reportID)
+    Object.assign(detail.performance.metrics, {
+      cached_tokens: 15, cache_rate_percent: 25,
+      input_tpm: 11_813_376.88, output_tpm: 50_029.88, total_tpm: 11_863_406.75,
+      generation_tps: 833.83, successful_request_qps: 6.15,
+      ttft_p50_ms: 1845.4, ttft_p95_ms: 4285.92, tpot_p50_ms: 13.89, tpot_p95_ms: 21.82,
+      e2e_p50_ms: 3818.35, e2e_p95_ms: 6719.8,
+    })
+    detail.performance.samples.forEach((sample) => { sample.cached_tokens = 5 })
+    const original = structuredClone(detail)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={quickSnapshot(reportID, "全部请求成功")}
+      getDetail={async () => detail as unknown as ReportDetail}
+      exportReport={vi.fn()}
+      saveReportExport={vi.fn()}
+      copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "查看报告：全部请求成功" }))
+    const report = await screen.findByRole("region", { name: "归档性能报告" })
+    expect(report).toHaveTextContent("KV 缓存命中率25%")
+    expect(report).toHaveTextContent("Token 总数（输入 / 输出 / 缓存）60 / 96 / 15")
+    for (const value of ["11,813,377 TPM", "50,030 TPM", "11,863,407 TPM", "834 token/s"]) {
+      expect(report).toHaveTextContent(value)
+    }
+    const inspector = screen.getByRole("complementary", { name: "报告详情" })
+    for (const value of ["6 req/s", "1,845 / 4,286 ms", "14 / 22 ms/token", "3,818 / 6,720 ms"]) {
+      expect(inspector).toHaveTextContent(value)
+    }
+    expect(detail).toEqual(original)
+  })
+
   it("keeps row selection in the inspector and opens report content only from the action column", async () => {
     const testI18n = createAppI18n("zh-CN")
     const user = userEvent.setup()
@@ -38,7 +72,7 @@ describe("ReportWorkspace", () => {
     const exportVisualReport = vi.fn(async (element: HTMLElement, format: "html" | "png" | "pdf", reportID: string) => {
       expect(reportID).toBe(quickID)
       expect(element).toHaveTextContent("team-alpha")
-      expect(element.querySelectorAll("figure")).toHaveLength(7)
+      expect(element.querySelectorAll("figure")).toHaveLength(8)
       expect(element.querySelector('[aria-label="TTFT（含推理） 分布图"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="流式时序统计"]')).not.toBeNull()
       expect(element.querySelector('[aria-label="E2E 时间曲线"]')).not.toBeNull()
@@ -95,7 +129,7 @@ describe("ReportWorkspace", () => {
     expect(within(timeSlices).getByRole("columnheader", { name: "TTFT P95" })).toBeInTheDocument()
     expect(within(timeSlices).getByRole("columnheader", { name: "TPOT P95" })).toBeInTheDocument()
     expect(within(timeSlices).getByRole("columnheader", { name: "E2E P95" })).toBeInTheDocument()
-    expect(within(timeSlices).getByRole("row", { name: /#0/ })).toHaveTextContent(/0–1 s.*3.*3.*3.*0.*0.*60 \/ 96 \/ 0.*20 ms.*2\.15 ms.*86\.6 ms/)
+    expect(within(timeSlices).getByRole("row", { name: /#0/ })).toHaveTextContent(/0–1 s.*3.*3.*3.*0.*0.*60 \/ 96 \/ 0.*20 ms.*2 ms.*87 ms/)
     expect(within(timeSlices).getByRole("row", { name: /#2/ })).toHaveTextContent(/2–2\.5 s · 部分.*0.*0.*0.*0.*0.*0 \/ 0 \/ 0.*—.*—.*—/)
     expect(within(timeSlices).queryByRole("row", { name: /#1/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("table", { name: "测试报告目录" })).not.toBeInTheDocument()
@@ -230,7 +264,7 @@ describe("ReportWorkspace", () => {
     expect(report).toHaveTextContent("传输与协议通过")
     expect(report).toHaveTextContent("SLO 通过")
     expect(report).toHaveTextContent("好请求 4 / 4")
-    expect(report).toHaveTextContent("Goodput 12.5 req/s")
+    expect(report).toHaveTextContent("Goodput 13 req/s")
     expect(report).toHaveTextContent("传输 0 · TTFT 0 · TPOT 0 · E2E 0")
     expect(report).toHaveTextContent("最高通过并发 2")
     expect(report).toHaveTextContent("首次未通过 3")

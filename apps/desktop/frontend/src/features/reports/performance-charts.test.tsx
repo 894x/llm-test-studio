@@ -22,6 +22,36 @@ function render(ui: ReactElement) {
 }
 
 describe("PerformanceCharts", () => {
+  it("weights cache hits by input tokens in the same completion windows as throughput", () => {
+    render(<PerformanceCharts samples={[
+      { ...sample(true, 1_100), prompt_tokens: 100, cached_tokens: 100 },
+      { ...sample(true, 1_200), prompt_tokens: 900, cached_tokens: 0 },
+      { ...sample(false, 1_300), prompt_tokens: 10_000, cached_tokens: 10_000 },
+      { ...sample(true, 8_000), prompt_tokens: 200, cached_tokens: 0 },
+    ]} percentiles={PERCENTILES} />)
+
+    const chart = screen.getByRole("img", { name: "缓存命中率时间线，2 个有效时间窗口" })
+    expect(within(chart).getByText("1 s–2 s：10%（缓存 100 / 输入 1,000 Token）")).toBeInTheDocument()
+    expect(within(chart).getByText("7 s–8 s：0%（缓存 0 / 输入 200 Token）")).toBeInTheDocument()
+    expect(chart.querySelectorAll("circle")).toHaveLength(2)
+    expect(chart.querySelector("path")?.getAttribute("d")).not.toContain("L")
+    expect(screen.getByRole("img", { name: "吞吐与并发时间线，4 个完成请求" })).toBeInTheDocument()
+  })
+
+  it("leaves missing, invalid, zero-input and failed token observations unavailable", () => {
+    render(<PerformanceCharts samples={[
+      sample(true, 1_000),
+      { ...sample(true, 2_000), prompt_tokens: 0, cached_tokens: 0 },
+      { ...sample(true, 3_000), prompt_tokens: 10, cached_tokens: 11 },
+      { ...sample(true, 4_000), prompt_tokens: 10, cached_tokens: Number.NaN },
+      { ...sample(false, 5_000), prompt_tokens: 100, cached_tokens: 50 },
+    ]} percentiles={PERCENTILES} />)
+
+    const chart = screen.getByRole("figure", { name: "缓存命中率时间线" })
+    expect(within(chart).getByText("暂无可计算缓存命中率的 Token 数据")).toBeInTheDocument()
+    expect(within(chart).queryByRole("img")).not.toBeInTheDocument()
+  })
+
   it("stacks every metric chart only when the caller requests the quick-test layout", () => {
     const { rerender } = render(<PerformanceCharts samples={[sample(true, 60)]} percentiles={PERCENTILES} />)
 

@@ -223,7 +223,7 @@ function matchesFilter(sample: QuickPerformanceSample, filter: RequestFilter): b
 }
 
 function formatMS(value: number): string {
-  return `${new Intl.NumberFormat(desktopLocale(), { maximumFractionDigits: 2 }).format(value)} ms`
+  return `${new Intl.NumberFormat(desktopLocale(), { maximumFractionDigits: 0 }).format(value)} ms`
 }
 
 function formatMilestone(value: number): string {
