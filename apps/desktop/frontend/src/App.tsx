@@ -1,6 +1,7 @@
 import { localizeStoredMessage } from "@/i18n/runtime"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import FolderOpenIcon from "lucide-react/dist/esm/icons/folder-open.mjs"
 
 import {
   createDesktopClient,
@@ -11,6 +12,7 @@ import {
 } from "@/app/desktop-client"
 import { ThemeProvider } from "@/app/theme"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { createAppI18n } from "@/i18n/i18n"
 import { LanguageProvider } from "@/i18n/language-context"
 import { loadLanguagePreference, resolveLocale } from "@/i18n/locale"
@@ -60,6 +62,8 @@ function AppWorkspace({
   const [preferredReportID, setPreferredReportID] = useState("")
   const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
+  const [openingLogs, setOpeningLogs] = useState(false)
+  const [openLogsError, setOpenLogsError] = useState<unknown>(null)
   const [commandError, setCommandError] = useState("")
   const [commandPending, setCommandPending] = useState(false)
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
@@ -112,9 +116,22 @@ function AppWorkspace({
 
   const retryInitialLoad = useCallback(() => {
     setLoadError("")
+    setOpenLogsError(null)
     onRecreateClient()
     setLoadAttempt((attempt) => attempt + 1)
   }, [onRecreateClient])
+
+  const openLogs = async () => {
+    setOpeningLogs(true)
+    setOpenLogsError(null)
+    try {
+      await client.openDiagnosticsDirectory()
+    } catch (error) {
+      setOpenLogsError(error)
+    } finally {
+      setOpeningLogs(false)
+    }
+  }
 
   const [retryPoll, setRetryPoll] = useState(false)
   const shouldPoll = !!(retryPoll || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisons?.comparisons.some((comparison) => comparison.status === "running") || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
@@ -255,8 +272,20 @@ function AppWorkspace({
         <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
           <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
           <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
-          <Button className="mt-3" size="sm" variant="outline" onClick={retryInitialLoad}>
-             {tx("desktop:app_retry_opening")} </Button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={retryInitialLoad}>
+              {tx("desktop:app_retry_opening")}
+            </Button>
+            <Button size="sm" variant="outline" disabled={openingLogs} aria-busy={openingLogs} onClick={() => void openLogs()}>
+              {openingLogs ? <Spinner /> : <FolderOpenIcon />}
+              {t(openingLogs ? "app:openingLogs" : "app:openLogs")}
+            </Button>
+          </div>
+          {openLogsError !== null && (
+            <p role="status" className="mt-2 text-xs text-destructive">
+              {publicDesktopOperationErrorMessage(openLogsError, t("app:openLogs"), tx("shell:diagnostics.openError"))}
+            </p>
+          )}
         </div>
       </div>
     )

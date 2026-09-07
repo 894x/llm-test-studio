@@ -1053,6 +1053,47 @@ describe("desktop run workspace", () => {
 		expect(client.getWorkspace).toHaveBeenCalledTimes(2)
 	})
 
+  it.each([
+    ["zh-CN", "打开日志文件夹", "正在打开…"],
+    ["en-US", "Open log folder", "Opening…"],
+  ])("opens logs from the startup error in %s without retrying data loads", async (language, label, pendingLabel) => {
+    window.localStorage.setItem("llm-studio:language-preference:v1", JSON.stringify({ version: 1, language }))
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const opened = deferred<void>()
+    vi.mocked(client.getReports).mockRejectedValue(new DesktopClientError("reports_unavailable"))
+    vi.mocked(client.openDiagnosticsDirectory).mockReturnValue(opened.promise)
+    render(<App client={client} />)
+
+    const alert = await screen.findByRole("alert")
+    await user.click(within(alert).getByRole("button", { name: label }))
+    expect(within(alert).getByRole("button", { name: pendingLabel })).toBeDisabled()
+    expect(client.openDiagnosticsDirectory).toHaveBeenCalledTimes(1)
+    expect(client.getReports).toHaveBeenCalledTimes(1)
+    expect(client.getDiagnostics).not.toHaveBeenCalled()
+
+    opened.resolve()
+    await waitFor(() => expect(within(alert).getByRole("button", { name: label })).toBeEnabled())
+    expect(alert).toHaveTextContent("load_reports")
+  })
+
+  it("preserves the startup error and safely reports a log-folder failure", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.getReports).mockRejectedValueOnce(new DesktopClientError("reports_unavailable"))
+    vi.mocked(client.openDiagnosticsDirectory).mockRejectedValueOnce(new Error("C:/private/path sk-private-key"))
+    render(<App client={client} />)
+
+    const alert = await screen.findByRole("alert")
+    await user.click(within(alert).getByRole("button", { name: "打开日志文件夹" }))
+    expect(await within(alert).findByRole("status")).toHaveTextContent("无法打开日志目录")
+    expect(alert).toHaveTextContent("load_reports")
+    expect(alert).not.toHaveTextContent("private")
+    expect(within(alert).getByRole("button", { name: "打开日志文件夹" })).toBeEnabled()
+    await user.click(within(alert).getByRole("button", { name: "重试打开" }))
+    expect(await screen.findByRole("heading", { name: "运行工作区" })).toBeInTheDocument()
+  })
+
   it("retries a failed report query after the last running task reaches its terminal state", async () => {
     const client = desktopClient()
     const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }

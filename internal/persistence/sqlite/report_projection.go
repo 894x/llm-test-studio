@@ -641,14 +641,14 @@ report_rows AS (
 	           ) AND
 	         json_type(report.document_json, '$.case_results') = 'array' AND
 	           json_array_length(report.document_json, '$.case_results') =
-	             (SELECT COUNT(*) FROM case_results AS stored WHERE stored.run_id = report.run_id) AND
+	             (SELECT COUNT(*) FROM case_results AS stored WHERE stored.run_id = report.run_id AND stored.request_id IS NULL) AND
 	           json_array_length(report.document_json, '$.case_results') =
 	             (SELECT COUNT(DISTINCT json_extract(result.value, '$.id')) FROM json_each(report.document_json, '$.case_results') AS result) AND
 	           NOT EXISTS (
 	             SELECT 1
 	             FROM json_each(report.document_json, '$.case_results') AS result
 	             LEFT JOIN case_results AS stored
-	               ON stored.run_id = report.run_id AND stored.id = json_extract(result.value, '$.id')
+	               ON stored.run_id = report.run_id AND stored.id = json_extract(result.value, '$.id') AND stored.request_id IS NULL
 	             WHERE result.type != 'object' OR stored.id IS NULL OR
 	                   stored.schema_version != ? OR stored.revision != 1 OR
 	                   CAST(stored.document_json AS TEXT) != json(stored.document_json) OR

@@ -5,5 +5,7 @@
   "catalogError": "Catalog operation failed; check whether the object is still referenced",
   "comparisonError": "Unable to start the channel comparison; check local logs",
   "openErrorTitle": "Unable to open the local workspace",
+  "openLogs": "Open log folder",
+  "openingLogs": "Opening…",
   "loading": "Reading the local workspace…"
 }

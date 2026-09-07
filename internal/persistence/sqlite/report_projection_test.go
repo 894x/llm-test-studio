@@ -81,6 +81,44 @@ func TestReportProjectionsUseV2RunSnapshotAfterPlanCatalogRowIsDeleted(t *testin
 	}
 }
 
+func TestReportProjectionsExcludeRequestObservationsFromCaseCount(t *testing.T) {
+	for _, withCaseID := range []bool{false, true} {
+		t.Run(fmt.Sprintf("request_with_case_id_%t", withCaseID), func(t *testing.T) {
+			path, repository, fixture := openHardeningRepository(t)
+			defer repository.Close()
+			run := createRunningOutputs(t, repository, fixture)
+			requestResult := fixture.result
+			requestResult.EntityMeta = entityMeta("20000000-0000-4000-8000-000000000001", 1)
+			requestResult.RequestID = "20000000-0000-4000-8000-000000000002"
+			if !withCaseID {
+				requestResult.CaseID = ""
+			}
+			if err := repository.AppendResult(context.Background(), requestResult); err != nil {
+				t.Fatalf("append request observation: %v", err)
+			}
+			transitionRun(t, repository, run, domain.RunCompleted)
+			if err := repository.CreateReport(context.Background(), fixture.report); err != nil {
+				t.Fatalf("create report with separate request observations: %v", err)
+			}
+			snapshot, err := reporting.New(repository).Snapshot(context.Background())
+			if err != nil {
+				t.Fatalf("load reports with request and case results: %v", err)
+			}
+			if len(snapshot.Reports) != 1 || snapshot.Reports[0].CaseCount != 1 {
+				t.Fatalf("report summaries = %+v, want one case result", snapshot.Reports)
+			}
+			if withCaseID {
+				tamper(t, path, `UPDATE reports SET document_json = json_set(document_json,
+					'$.case_results[0]', json((SELECT document_json FROM case_results WHERE id = ?))) WHERE id = ?`,
+					requestResult.ID, fixture.report.ID)
+				if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+					t.Fatalf("request observation substituted for case result: %v, want ErrCorrupt", err)
+				}
+			}
+		})
+	}
+}
+
 func TestReportProjectionsMeasureDocumentBudgetsInUTF8Bytes(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	defer repository.Close()

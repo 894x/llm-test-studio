@@ -1305,7 +1305,7 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
   if (planIDs.size !== plans.length) throw new DesktopDataError(tx("desktop:app_invalid_desktop_test_plan_data"))
   if (
     runIDs.size !== runs.length ||
-    runs.some((run) => !planIDs.has(run.plan_id))
+    runs.some((run) => run.source !== "quick_task" && !planIDs.has(run.plan_id))
   ) {
     throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   }

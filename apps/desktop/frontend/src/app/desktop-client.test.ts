@@ -120,6 +120,19 @@ describe("Wails desktop client", () => {
 
   })
 
+  it("loads quick task history without an authored plan while retaining formal Run reference checks", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    payload.plans = []
+    payload.runs = [{ ...payload.runs[0], source: "quick_task", plan_id: payload.runs[0].id, planned: 0, duration_ms: 0 }]
+    payload.active_run_id = payload.runs[0].id
+    const binding = installBinding(payload)
+    await expect(createDesktopClient().getWorkspace()).resolves.toEqual(payload)
+
+    const formalRun = { ...payload.runs[0], source: undefined, planned: 1 }
+    binding.GetWorkspace.mockResolvedValueOnce({ ...payload, runs: [formalRun] })
+    await expect(createDesktopClient().getWorkspace()).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
   it("keeps fixture quick Runs separate from authored targets and supports cancellation", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     const suite = catalog.suites[0]
