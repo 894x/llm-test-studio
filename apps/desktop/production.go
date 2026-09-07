@@ -258,6 +258,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			commands:        runService,
 			comparisons:     comparisonService,
 			quickTests: quicktest.New(quicktest.Dependencies{
+				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string) (string, error) {
+					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SuiteRevision: task.SuiteRevision, SourceRunID: task.SourceRunID, Model: model})
+				},
 				Archive:            quickPerformanceArchive,
 				Clock:              productionClock{},
 				ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),

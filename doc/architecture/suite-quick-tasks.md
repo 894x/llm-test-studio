@@ -114,8 +114,32 @@ its failure cannot disguise an accepted start. Cancellation uses the ordinary
 Run command. Native input and applicability errors use stable, translated codes;
 underlying errors are not exposed to the frontend.
 
-The quick-entry UI, drafts, replay, and explicit credential remembering remain
-separate delivery work.
+The desktop quick-entry page lists Suites carrying `quick_test` metadata and
+renders their text, number, and boolean inputs. The form accepts a temporary
+upstream model and connection or an existing channel without requiring an
+authored Model, Channel, or Plan. It shows observed progress, shared cancellation,
+local timestamps, report navigation, and the twelve most recent quick task Runs.
+
+Drafts survive page navigation and application reload. Local storage contains
+only the task reference/metadata, parameters, model, and a validated connection
+address. Rejected URLs (including userinfo, query strings, and fragments) are not
+persisted. The API key stays in App memory and is cleared on reload or endpoint
+change; existing channels resolve their credential in Core. Explicit remembering
+for a new temporary credential remains separate delivery work.
+
+`GetQuickTask` returns allow-listed form data from the stored Run snapshot.
+Restoring history includes `source_run_id` when starting again, so Core resolves
+the original Suite and Case definitions even if the current catalog changed.
+Edits apply to a new Run; neither the original snapshot nor authored files change.
+Successful, failed, and cancelled Runs can all be restored.
+
+OpenAI tasks expose the independent performance sheet without a preliminary
+connectivity request. Its optional task reference lets Core derive the chat path
+from the same pinned Suite definitions and append it using Suite URL semantics.
+Performance settings retain their draft, while changing the connection or task
+clears prior output and prevents late results from replacing the current view.
+Workspace polling does not overlap requests and retries failed report reads even
+when the Run has reached a terminal state.
 
 ## Bundled connectivity tasks
 

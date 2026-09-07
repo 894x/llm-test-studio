@@ -47,6 +47,17 @@ describe("Wails desktop client", () => {
     expect(binding.StartQuickTask).toHaveBeenCalledTimes(1)
   })
 
+  it("loads only safe task history and rejects a different Run identity", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const runID = FIXTURE_WORKSPACE.runs[0].id
+    const detail = { schema_version: 1, run_id: runID, suite: FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!, model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
+    binding.GetQuickTask.mockResolvedValueOnce({ ...detail, api_key: "private-key", case_definitions: [{ raw: "hidden" }] })
+    await expect(createDesktopClient().getQuickTask(runID)).resolves.toEqual(detail)
+    expect(binding.GetQuickTask).toHaveBeenCalledExactlyOnceWith(runID)
+    binding.GetQuickTask.mockResolvedValueOnce({ ...detail, run_id: "123e4567-e89b-42d3-a456-426614174099" })
+    await expect(createDesktopClient().getQuickTask(runID)).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
   it("uses the typed Wails methods and forwards command identifiers", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
@@ -1192,6 +1203,7 @@ function installBinding(
     StartRun: vi.fn(async () => structuredClone(payload)),
 		StartRunTarget: vi.fn(async () => structuredClone(payload)),
 		StartQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
+		GetQuickTask: vi.fn(),
     StopSending: vi.fn(async () => structuredClone(payload)),
     CancelRun: vi.fn(async () => structuredClone(payload)),
 		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),

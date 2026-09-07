@@ -1,4 +1,5 @@
 import { DesktopDataError } from "@/app/data-error"
+import { parseQuickTaskDetail, type QuickTaskDetail } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import type { StartQuickTaskCommand, StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
 import {
@@ -138,6 +139,7 @@ export interface DesktopClient extends CatalogActions {
   startRun(planId: string): Promise<WorkspaceSnapshot>
   startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
   startQuickTask(command: StartQuickTaskCommand): Promise<string>
+  getQuickTask(runId: string): Promise<QuickTaskDetail>
   stopSending(runId: string): Promise<WorkspaceSnapshot>
   cancelRun(runId: string): Promise<WorkspaceSnapshot>
   startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
@@ -171,6 +173,7 @@ type WailsDesktopBinding = {
   StartRun(planId: string): Promise<unknown>
   StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
   StartQuickTask(command: StartQuickTaskCommand): Promise<unknown>
+  GetQuickTask(runId: string): Promise<unknown>
   StopSending(runId: string): Promise<unknown>
   CancelRun(runId: string): Promise<unknown>
   StartComparison(command: StartComparisonCommand): Promise<unknown>
@@ -208,7 +211,7 @@ type FrontendDiagnostic = {
 const REQUIRED_WAILS_BINDING_METHODS = [
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget", "StartQuickTask",
+  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget", "StartQuickTask", "GetQuickTask",
   "StopSending", "CancelRun", "StartComparison", "RunQuickTest", "RunQuickPerformanceTest",
   "SaveQuickTestConnection", "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
@@ -247,6 +250,7 @@ export function createFixtureClient(
   let catalogState = structuredClone(catalog)
 	let comparisonState = structuredClone(comparisons)
   const nextID = () => crypto.randomUUID()
+  const quickTasks = new Map<string, QuickTaskDetail>()
   const refreshChannelCounts = () => {
     catalogState.channels = catalogState.channels.map((channel) => ({
       ...channel,
@@ -302,7 +306,7 @@ export function createFixtureClient(
 			return cloneSnapshot(workspace)
 		},
     async startQuickTask(command) {
-      const suite = catalogState.suites.find((item) => item.id === command.suite_id && item.revision === command.suite_revision)
+      const suite = command.source_run_id ? quickTasks.get(command.source_run_id)?.suite : catalogState.suites.find((item) => item.id === command.suite_id && item.revision === command.suite_revision)
       if (!suite?.quick_test || (suite.model_target && suite.model_target !== command.model)) throw new DesktopClientError("run_not_runnable")
       const channel = catalogState.channels.find((item) => item.id === command.channel_id)
       if (command.channel_id && (!channel?.enabled || channel.protocol !== suite.protocol || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")
@@ -318,7 +322,13 @@ export function createFixtureClient(
         artifact_count: 0, started_at: now, updated_at: now,
       })
       workspace.active_run_id = id
+      quickTasks.set(id, { schema_version: 1, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: structuredClone(command.inputs) })
       return id
+    },
+    async getQuickTask(runId) {
+      const detail = quickTasks.get(runId)
+      if (!detail) throw new DesktopClientError("run_not_runnable")
+      return structuredClone(detail)
     },
     async stopSending(runId) {
       workspace = updateRun(workspace, runId, "draining")
@@ -531,6 +541,7 @@ function createLazyFixtureClient(): DesktopClient {
     startRun: async (planId) => (await client).startRun(planId),
 		startRunTarget: async (command) => (await client).startRunTarget(command),
 		startQuickTask: async (command) => (await client).startQuickTask(command),
+		getQuickTask: async (runId) => (await client).getQuickTask(runId),
     stopSending: async (runId) => (await client).stopSending(runId),
     cancelRun: async (runId) => (await client).cancelRun(runId),
 		startComparison: async (command) => (await client).startComparison(command),
@@ -609,6 +620,11 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
         if (!isUUID(value)) throw new DesktopDataError(tx("desktop:quick_task_invalid_run_identity"))
         return value
       }),
+		getQuickTask: async (runId) => callBinding(() => binding.GetQuickTask(runId), (value) => {
+      const detail = parseQuickTaskDetail(value)
+      if (detail.run_id !== runId) throw new DesktopDataError(tx("quickTest:task.invalidHistory"))
+      return detail
+    }),
     stopSending: async (runId) =>
       callBinding(() => binding.StopSending(runId), parseSnapshot),
     cancelRun: async (runId) =>

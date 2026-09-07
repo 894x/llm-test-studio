@@ -100,6 +100,7 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
   ],
   suites: [
     { id: SUITE_ID, revision: 2, key: "openai-regression", name: "OpenAI 回归套件", protocol: "openai-chat", model_target: "gpt-4o", case_count: 4, cases: ALL_CASE_REVISIONS },
+    { id: "88888888-8888-4888-8888-888888888882", revision: 1, key: "openai-connectivity", name: "OpenAI Chat 连通性测试", protocol: "openai-chat", model_target: "", case_count: 1, cases: [ALL_CASE_REVISIONS[0]], quick_test: { description: "发送一条消息并检查响应。", timeout_ms: 30000, inputs: [{ key: "prompt", label: "测试消息", type: "text", default: "hello", bindings: [{ case_key: "T001", pointer: "/request/body/messages/0/content" }] }] } },
   ],
   plans: [
     { id: PLAN_IDS.copy, revision: 1, name: "营销文案基准", model_count: 1, channel_count: 1, case_count: 4, load_mode: "fixed_concurrency", concurrency: 4, request_count: 120, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000, model_ids: [MODEL_IDS.openai], channel_ids: [CHANNEL_IDS.openai], suite_id: SUITE_ID, suite_revision: 2, cases: ALL_CASE_REVISIONS, sla_thresholds: { p95_ms: 2000 } },

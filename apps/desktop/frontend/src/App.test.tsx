@@ -52,6 +52,7 @@ function desktopClient(): DesktopClient & {
     startRun: vi.fn(async () => structuredClone(client.workspace)),
 		startRunTarget: vi.fn(async () => structuredClone(client.workspace)),
 		startQuickTask: vi.fn(async () => client.workspace.runs[0].id),
+		getQuickTask: vi.fn(),
     stopSending: vi.fn(async (runId: string) => {
       client.workspace = {
         ...client.workspace,
@@ -254,7 +255,7 @@ describe("desktop run workspace", () => {
     await screen.findByRole("heading", { name: "运行工作区" })
     for (const [label, heading, evidence] of [
       ["总览", "工作台总览", "6 个模型"],
-      ["快速测试", "快速测试", "无需预先创建模型、渠道或计划，直接验证 OpenAI Chat 兼容接口。"],
+      ["快速测试", "快速测试", "选择一个测试任务，填写连接与参数即可运行；无需预先创建模型、渠道或计划。"],
       ["模型与渠道", "模型与渠道", "gpt-5.2"],
       ["用例", "测试用例", "基础对话"],
       ["计划", "测试计划", "营销文案基准"],
@@ -419,7 +420,6 @@ describe("desktop run workspace", () => {
 		await user.type(screen.getByLabelText("API Key"), "sk-private-value")
 		await user.type(screen.getByLabelText("模型 ID"), "gpt-new")
 		await user.keyboard("{Escape}")
-		await user.click(screen.getByRole("button", { name: "发送测试" }))
 		await user.click(await screen.findByRole("button", { name: "快速性能测试" }))
 		const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
 		await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
@@ -470,7 +470,7 @@ describe("desktop run workspace", () => {
       id: FIXTURE_CATALOG.models[0].id,
       expected_revision: FIXTURE_CATALOG.models[0].revision,
     })
-    expect(client.getWorkspace).toHaveBeenCalledTimes(4)
+    expect(vi.mocked(client.getWorkspace).mock.calls.length).toBeGreaterThanOrEqual(4)
   })
 
   it("identifies the catalog form and field when local validation blocks saving", async () => {
@@ -1023,6 +1023,7 @@ describe("desktop run workspace", () => {
       startRun: vi.fn(),
 			startRunTarget: vi.fn(),
 			startQuickTask: vi.fn(),
+			getQuickTask: vi.fn(),
       stopSending: vi.fn(),
       cancelRun: vi.fn(),
 			startComparison: vi.fn(),
@@ -1061,6 +1062,39 @@ describe("desktop run workspace", () => {
 		).toBeInTheDocument()
 		expect(client.getWorkspace).toHaveBeenCalledTimes(2)
 	})
+
+  it("retries a failed report query after the last running task reaches its terminal state", async () => {
+    const client = desktopClient()
+    const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
+    vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
+    vi.mocked(client.getReports).mockResolvedValueOnce(FIXTURE_REPORTS).mockRejectedValueOnce(new Error("temporary report error")).mockResolvedValue(FIXTURE_REPORTS)
+    render(<App client={client} />)
+    await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(3), { timeout: 3500 })
+  })
+
+  it("preserves quick task drafts across navigation and reload while keeping credentials in memory only", async () => {
+    window.history.replaceState(null, "", "#quick-test")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const rendered = render(<App client={client} />)
+    await user.type(await screen.findByLabelText("接口地址"), "https://example.test")
+    await user.type(screen.getByLabelText("API Key"), "test-private-key")
+    await user.type(screen.getByLabelText("模型 ID"), "draft-model")
+    await user.keyboard("{Escape}")
+    await user.clear(screen.getByLabelText("测试消息"))
+    await user.type(screen.getByLabelText("测试消息"), "draft prompt")
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "快速测试" }))
+    expect(await screen.findByLabelText("测试消息")).toHaveValue("draft prompt")
+    expect(screen.getByLabelText("API Key")).toHaveValue("test-private-key")
+    expect(JSON.stringify(localStorage)).not.toContain("test-private-key")
+    rendered.unmount()
+    render(<App client={client} />)
+    expect(await screen.findByLabelText("测试消息")).toHaveValue("draft prompt")
+    expect(screen.getByLabelText("API Key")).toHaveValue("")
+    expect(client.startQuickTask).not.toHaveBeenCalled()
+  })
 
   it("uses the Core conclusion and never infers pass from request counts", async () => {
     const client = desktopClient()

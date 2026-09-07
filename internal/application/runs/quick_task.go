@@ -27,6 +27,7 @@ type QuickTaskCommand struct {
 	BaseURL       string                     `json:"base_url,omitempty"`
 	APIKey        string                     `json:"api_key,omitempty"`
 	Inputs        map[string]json.RawMessage `json:"inputs"`
+	SourceRunID   string                     `json:"source_run_id,omitempty"`
 }
 
 func (service *Service) StartQuickTask(ctx context.Context, command QuickTaskCommand) (string, error) {
@@ -51,7 +52,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if command.ChannelID != "" && (!domain.IsUUID(command.ChannelID) || command.BaseURL != "" || command.APIKey != "") {
 		return "", ErrInvalid
 	}
-	suite, err := service.quickTasks.GetSuiteRevision(ctx, command.SuiteID, command.SuiteRevision)
+	suite, cases, err := service.quickTaskDefinitions(ctx, command)
 	if err != nil {
 		return "", fmt.Errorf("load quick task: %w", err)
 	}
@@ -61,16 +62,10 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if suite.ModelTarget != "" && suite.ModelTarget != command.Model {
 		return "", ErrNotRunnable
 	}
-	cases := make([]domain.TestCase, 0, len(suite.Cases))
-	for _, ref := range suite.Cases {
-		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
-		if err != nil {
-			return "", fmt.Errorf("load quick task case: %w", err)
-		}
+	for _, testCase := range cases {
 		if !testCase.AppliesToModel(command.Model) {
 			return "", ErrNotRunnable
 		}
-		cases = append(cases, testCase)
 	}
 	effective, inputs, err := suite.ApplyInputs(cases, command.Inputs)
 	if err != nil {
@@ -151,4 +146,27 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		return "", fmt.Errorf("lease quick task credential: %w", err)
 	}
 	return service.prepareRun(ctx, meta, meta.ID, snapshot, effective, lease)
+}
+
+func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickTaskCommand) (domain.Suite, []domain.TestCase, error) {
+	if command.SourceRunID != "" {
+		snapshot, err := service.quickTaskSnapshot(ctx, command.SourceRunID)
+		if err != nil {
+			return domain.Suite{}, nil, err
+		}
+		return snapshot.QuickTask.Suite, snapshot.CaseDefinitions, nil
+	}
+	suite, err := service.quickTasks.GetSuiteRevision(ctx, command.SuiteID, command.SuiteRevision)
+	if err != nil {
+		return domain.Suite{}, nil, err
+	}
+	cases := make([]domain.TestCase, 0, len(suite.Cases))
+	for _, ref := range suite.Cases {
+		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+		if err != nil {
+			return domain.Suite{}, nil, fmt.Errorf("load quick task case: %w", err)
+		}
+		cases = append(cases, testCase)
+	}
+	return suite, cases, nil
 }

@@ -8,6 +8,10 @@ export type CoreRunStatus =
   | "failed"
   | "cancelled"
 
+export function isRunActive(status: CoreRunStatus): boolean {
+  return status === "queued" || status === "starting" || status === "running" || status === "draining"
+}
+
 export interface StartRunTargetCommand {
   plan_id: string
   model_id: string
@@ -15,6 +19,7 @@ export interface StartRunTargetCommand {
 }
 
 export interface StartQuickTaskCommand {
+	 source_run_id?: string
   suite_id: string
   suite_revision: number
   model: string

@@ -27,6 +27,7 @@ const (
 )
 
 type Service struct {
+	taskPath           func(context.Context, TaskReference, string) (string, error)
 	transport          http.RoundTripper
 	allowLoopbackHTTP  bool
 	channelConnections ChannelConnectionResolver
@@ -48,6 +49,7 @@ func New(dependencies Dependencies) *Service {
 		}
 	}
 	return &Service{
+		taskPath:           dependencies.TaskPath,
 		transport:          dependencies.Transport,
 		allowLoopbackHTTP:  dependencies.AllowLoopbackHTTPForTesting,
 		channelConnections: dependencies.ChannelConnections,
@@ -249,6 +251,22 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		return report, nil
 	}
 	report.AddressMode = command.AddressMode
+	if command.Task != nil {
+		if service.taskPath == nil || command.AddressMode != AddressModeBaseURL {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+		path, err := service.taskPath(ctx, *command.Task, command.ModelID)
+		parsed, parseErr := url.Parse(path)
+		if err != nil || parseErr != nil || parsed.IsAbs() || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/chat/completions") {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+		// Match Suite execution: append its pinned request path to the service
+		// base URL, then use the existing full-endpoint validation and adapter.
+		command.URL = strings.TrimRight(command.URL, "/") + path
+		command.AddressMode = AddressModeFullURL
+	}
 	address, code := normalizeAddress(command.AddressMode, command.URL, service.allowLoopbackHTTP)
 	report.BaseURL, report.Endpoint = address.baseURL, address.endpoint
 	if code != "" {

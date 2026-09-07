@@ -226,6 +226,29 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if restored, err := reopened.GetReport(ctx, report.ID); err != nil || restored.PlanSnapshot.QuickTask == nil || restored.Conclusion.Passed == failRequests {
 		t.Fatalf("task history did not survive reopening SQLite: %v", err)
 	}
+	replayService, err := runs.New(runs.Dependencies{Repository: filesystemRuntimeRepository{Repository: reopened, catalog: catalog}, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(), Executor: runs.NewLoadExecutor(server.Client().Transport), Clock: productionClock{}, Environment: func() domain.EnvironmentSnapshot { return stored.Snapshot().Environment }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replayService.Close()
+	replayApp := NewDesktopApp(nil, replayService)
+	replayApp.onStartup(ctx)
+	defer replayApp.shutdown()
+	history, err := replayApp.GetQuickTask(id)
+	if err != nil || history.RunID != id || history.Model != "arbitrary-model" || string(history.Inputs["prompt"]) != `"edited"` {
+		t.Fatalf("native history after reopening: %+v, %v", history, err)
+	}
+	historyJSON, _ := json.Marshal(history)
+	if strings.Contains(string(historyJSON), "test-temporary-key") || strings.Contains(string(historyJSON), "case_definitions") {
+		t.Fatal("native history leaked private data")
+	}
+	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, SuiteRevision: history.Suite.Revision, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, APIKey: "new-test-key", Inputs: history.Inputs})
+	if err != nil || replayID == id {
+		t.Fatalf("replay after restart: %s, %v", replayID, err)
+	}
+	if err := replayService.CancelRun(ctx, replayID); err != nil {
+		t.Fatal(err)
+	}
 	encoded, err := json.Marshal(stored)
 	if err != nil || strings.Contains(string(encoded), "test-temporary-key") || stored.Snapshot().QuickTask == nil {
 		t.Fatalf("invalid history snapshot: %v", err)

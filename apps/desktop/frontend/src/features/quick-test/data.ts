@@ -32,19 +32,6 @@ export interface QuickTestCommand {
   timeout_ms: number
 }
 
-export function updateQuickTestForm<K extends keyof QuickTestCommand>(
-  current: QuickTestCommand,
-  key: K,
-  value: QuickTestCommand[K],
-): QuickTestCommand {
-  const next = { ...current, [key]: value }
-  if (current.channel_id && (key === "url" || key === "address_mode")) {
-    const { channel_id: _channelID, ...manual } = next
-    return manual
-  }
-  return next
-}
-
 export interface QuickTestResult {
   schema_version: 1
   success: boolean
@@ -69,6 +56,7 @@ export interface SaveQuickTestConnectionCommand {
 }
 
 export interface QuickPerformanceCommand {
+  task?: { suite_id: string; suite_revision: number; source_run_id?: string }
   address_mode: QuickTestAddressMode
   url: string
   api_key: string

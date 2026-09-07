@@ -86,6 +86,7 @@ type Result struct {
 // It must remain independent from persisted Model, Channel, Case, and Plan
 // entities so a quick performance run stays zero-persistence.
 type PerformanceCommand struct {
+	Task               *TaskReference          `json:"task,omitempty"`
 	AddressMode        AddressMode             `json:"address_mode"`
 	URL                string                  `json:"url"`
 	APIKey             string                  `json:"api_key"`
@@ -413,10 +414,19 @@ type PerformanceClock interface {
 type PerformanceReportIDFactory func(time.Time) (string, error)
 
 type Dependencies struct {
+	TaskPath                    func(context.Context, TaskReference, string) (string, error)
 	Transport                   http.RoundTripper
 	AllowLoopbackHTTPForTesting bool
 	ChannelConnections          ChannelConnectionResolver
 	Archive                     PerformanceArchive
 	Clock                       PerformanceClock
 	IDFactory                   PerformanceReportIDFactory
+}
+
+// TaskReference pins the same Suite definitions used by a quick task, including
+// historical runs whose authored definitions may no longer be in the catalog.
+type TaskReference struct {
+	SuiteID       string `json:"suite_id"`
+	SuiteRevision uint64 `json:"suite_revision"`
+	SourceRunID   string `json:"source_run_id,omitempty"`
 }

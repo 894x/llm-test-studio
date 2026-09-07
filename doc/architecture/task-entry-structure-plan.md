@@ -15,7 +15,7 @@ without requiring authored models, channels, or Plans.
 - [x] Express quick-test tasks through Suite metadata and provide connectivity
   tasks for text and the existing version-scoped video adapters. Keep task
   selection, protocol applicability, and editable inputs driven by definitions.
-- [ ] Prepare quick Suite runs with temporary or saved targets and use shared
+- [x] Prepare quick Suite runs with temporary or saved targets and use shared
   execution, cancellation, progress, snapshots, and result handling. Preserve
   the existing performance entry without treating performance as a text-only
   prerequisite for every task.
@@ -184,3 +184,39 @@ lint, and build. Wails bindings were regenerated with CLI v2.15.0 without
 changing the Go module files. Direct source review found no remaining workflow
 or validation regressions. README pairs share heading structure, commands, and
 link targets. The existing frontend chunk-size warning remains.
+
+
+## Desktop quick tasks, drafts, and replay
+
+The primary quick-test page now uses the Suite entry and shared Run lifecycle.
+It renders typed inputs, accepts temporary targets or saved channels, keeps
+non-secret drafts through navigation/reload, and restores recent successful,
+failed, or cancelled tasks with their original definitions. Native history is
+read from operational SQLite. Replay creates a fresh Run without authored target
+records, and still works after catalog changes or a database restart.
+
+The former text-only page is removed. Its performance sheet and 27 regression
+tests were extracted into a separate component. Performance uses the selected
+Suite request path, including saved channels and historical definitions, and
+keeps output scoped to the connection that produced it. Pending progress and
+late replies cannot overwrite another connection's output.
+
+Review caught and fixed three edge cases: stale performance results after target
+changes, report refresh being abandoned at the terminal Run transition, and URL
+userinfo/query credentials being persisted before form validation. The focused
+regressions pass. The performance overlay also restores keyboard focus to its
+launcher. Invalid or missing saved channels stop submission at the affected field.
+
+Verification: full Go tests and vet passed; the native mixed-Suite HTTPS test
+covers SQLite reopen, history projection, replay, and secret exclusion. Frontend
+checks passed 270 tests, lint, and build. Wails bindings were generated using
+v2.15.0 without changing module versions. Browser fixture checks covered the
+1440x900, 1024x768, and 960x640 layouts, system light/dark changes, draft restore,
+start/cancel/history controls, and the performance overlay's keyboard close.
+There was no page-level horizontal overflow or application console error. These
+browser fixtures are presentation evidence; no provider requests were performed.
+
+Explicit credential remembering for temporary targets remains unfinished. The
+current page retains a key in memory across navigation and uses existing saved
+channel credentials, but does not persist a new temporary key. The overall goal
+therefore remains open.

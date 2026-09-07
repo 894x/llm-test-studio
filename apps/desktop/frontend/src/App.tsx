@@ -22,12 +22,13 @@ import {
 } from "@/features/catalog/catalog-workspaces"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { OverviewWorkspace } from "@/features/overview/overview-workspace"
-import { QuickTestWorkspace } from "@/features/quick-test/quick-test-workspace"
+import { QuickTaskWorkspace } from "@/features/quick-test/quick-task-workspace"
+import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY, type TaskDraft } from "@/features/quick-test/task-draft"
 import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
-import { presentWorkspace, type WorkspaceSnapshot } from "@/features/runs/data"
+import { isRunActive, presentWorkspace, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
   RunWorkspace,
@@ -64,6 +65,17 @@ function AppWorkspace({
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
   const [catalogMutationError, setCatalogMutationError] = useState("")
   const [loadAttempt, setLoadAttempt] = useState(0)
+  const [quickRunID, setQuickRunID] = useState("")
+  const [quickDraft, setQuickDraft] = useState<TaskDraft>(() => {
+    try { return decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY)) ?? createTaskDraft(null) }
+    catch { return createTaskDraft(null) }
+  })
+
+  useEffect(() => {
+    if (!quickDraft.task && !quickDraft.base_url && !quickDraft.model) return
+    try { localStorage.setItem(TASK_DRAFT_KEY, encodeTaskDraft(quickDraft)) }
+    catch { /* The in-memory draft remains usable when storage is unavailable. */ }
+  }, [quickDraft])
 
   useEffect(() => {
     const syncPage = () => setPage(desktopPageFromHash(window.location.hash))
@@ -104,28 +116,35 @@ function AppWorkspace({
     setLoadAttempt((attempt) => attempt + 1)
   }, [onRecreateClient])
 
+  const [retryPoll, setRetryPoll] = useState(false)
+  const shouldPoll = !!(retryPoll || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisons?.comparisons.some((comparison) => comparison.status === "running") || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
   useEffect(() => {
-		const activeRun = snapshot?.runs.some((run) => ["queued", "starting", "running", "draining"].includes(run.status))
-		const activeComparison = comparisons?.comparisons.some((comparison) => comparison.status === "running")
-		if (!activeRun && !activeComparison) return
+		if (!shouldPoll) return
 		let active = true
+		let timer: number | undefined
 		const refresh = async () => {
 			try {
-				const [nextWorkspace, nextReports, nextComparisons] = await Promise.all([
+				const [nextWorkspace, nextReports, nextComparisons] = await Promise.allSettled([
 					client.getWorkspace(), client.getReports(), client.getComparisons(),
 				])
 				if (active) {
-					setSnapshot(nextWorkspace)
-					setReports(nextReports)
-					setComparisons(nextComparisons)
+					setRetryPoll([nextWorkspace, nextReports, nextComparisons].some((result) => result.status === "rejected"))
+					if (nextWorkspace.status === "fulfilled") setSnapshot(nextWorkspace.value)
+					if (nextReports.status === "fulfilled") setReports(nextReports.value)
+					if (nextComparisons.status === "fulfilled") setComparisons(nextComparisons.value)
 				}
-			} catch {
-				// Keep the last authoritative snapshot; command errors remain explicit.
+			} finally {
+				if (active) timer = window.setTimeout(() => void refresh(), 1_000)
 			}
 		}
-		const timer = window.setInterval(() => void refresh(), 1_000)
-		return () => { active = false; window.clearInterval(timer) }
-	}, [client, snapshot, comparisons])
+		timer = window.setTimeout(() => void refresh(), 1_000)
+		return () => { active = false; window.clearTimeout(timer) }
+	}, [client, shouldPoll])
+
+  const refreshQuickTask = useCallback(async () => {
+    setSnapshot(await client.getWorkspace())
+    setReports(await client.getReports())
+  }, [client])
 
   const navigate = useCallback((next: DesktopPage) => {
     if (desktopPageFromHash(window.location.hash) === next) {
@@ -273,19 +292,17 @@ function AppWorkspace({
       {page === "overview" ? (
         <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} />
       ) : page === "quick-test" ? (
-        <QuickTestWorkspace
-          modelCandidates={catalog.models
-            .filter((model) => model.protocol === "openai-chat")
-            .map((model) => ({ id: model.id, name: model.name }))}
-          channelCandidates={catalog.channels
-            .filter((channel) => channel.protocol === "openai-chat" && channel.enabled && channel.credential_configured)
-            .map((channel) => ({ id: channel.id, name: channel.name, baseUrl: channel.base_url }))}
-          runQuickTest={client.runQuickTest}
-          runQuickPerformanceTest={client.runQuickPerformanceTest}
-          saveQuickTestConnection={client.saveQuickTestConnection}
-          refreshCatalog={client.getCatalog}
-          onCatalogUpdated={setCatalog}
-          onOpenCatalog={() => navigate("catalog")}
+        <QuickTaskWorkspace
+          catalog={catalog}
+          workspace={snapshot}
+          reports={reports}
+          draft={quickDraft}
+          onDraftChange={setQuickDraft}
+          runID={quickRunID}
+          onRunSelected={setQuickRunID}
+          actions={client}
+          refresh={refreshQuickTask}
+          onWorkspaceUpdated={setSnapshot}
           onPerformanceArchived={refreshArchivedPerformanceReport}
           onOpenReport={openArchivedPerformanceReport}
         />

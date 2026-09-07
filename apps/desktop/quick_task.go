@@ -1,11 +1,36 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
+
+type QuickTaskHistoryQuery interface {
+	QuickTask(context.Context, string) (runs.QuickTaskDetail, error)
+}
+
+func (app *DesktopApp) GetQuickTask(runID string) (runs.QuickTaskDetail, error) {
+	if !domain.IsUUID(runID) {
+		return runs.QuickTaskDetail{}, app.safeBindingError(ErrInvalidIdentifier)
+	}
+	lease, err := app.acquire(desktopRequirements{commands: true})
+	if err != nil {
+		return runs.QuickTaskDetail{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	query, ok := lease.commands.(QuickTaskHistoryQuery)
+	if !ok {
+		return runs.QuickTaskDetail{}, app.safeBindingError(ErrQuickTestUnavailable)
+	}
+	detail, err := query.QuickTask(lease.ctx, runID)
+	if err != nil {
+		return runs.QuickTaskDetail{}, app.safeBindingError(fmt.Errorf("query quick task: %w", err))
+	}
+	return detail, nil
+}
 
 // StartQuickTask returns the accepted Run identity. Reading progress and history
 // is a separate query, so a refresh failure cannot hide a successful start.

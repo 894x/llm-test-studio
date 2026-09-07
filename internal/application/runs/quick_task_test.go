@@ -120,6 +120,73 @@ func TestQuickTaskSavedChannelResolvesItsCredentialWithoutAuthoredModel(t *testi
 	waitForStatus(t, repository, domain.RunCancelled)
 }
 
+func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	suite := quickTaskSuite(fixture)
+	service, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(), Executor: &controlledExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	command := runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"last input"`)}}
+	id, err := service.PrepareQuickTask(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.CancelRun(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	history, err := service.QuickTask(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history.RunID != id || history.Suite.Revision != suite.Revision || string(history.Inputs["prompt"]) != `"last input"` || history.Model != command.Model || history.BaseURL != command.BaseURL {
+		t.Fatalf("history did not retain the invocation: %+v", history)
+	}
+	encoded, _ := json.Marshal(history)
+	if strings.Contains(string(encoded), "temporary-secret") || strings.Contains(string(encoded), "case_definitions") {
+		t.Fatal("history leaked secret or raw definitions")
+	}
+	history.Inputs["prompt"][0] = 'x'
+	history.Suite.QuickTest.Inputs[0].Label = "mutated"
+	again, err := service.QuickTask(context.Background(), id)
+	if err != nil || string(again.Inputs["prompt"]) != `"last input"` || again.Suite.QuickTest.Inputs[0].Label != "Message" {
+		t.Fatal("history query did not isolate snapshot data")
+	}
+	for _, source := range []string{"invalid", "123e4567-e89b-42d3-a456-426614174099"} {
+		if _, err := service.QuickTask(context.Background(), source); err == nil {
+			t.Fatal("invalid history identity accepted")
+		}
+	}
+	wrong := command
+	wrong.SourceRunID, wrong.SuiteRevision = id, suite.Revision+1
+	if _, err := service.PrepareQuickTask(context.Background(), wrong); !errors.Is(err, runs.ErrNotRunnable) {
+		t.Fatalf("mismatched replay revision accepted: %v", err)
+	}
+	// Replay must work even when the current catalog no longer contains this Suite.
+	replayer, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{}, Credentials: credentials.NewMemoryStore(), Executor: &controlledExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replayer.Close()
+	command.SourceRunID = id
+	path, err := replayer.QuickTaskPerformancePath(context.Background(), command)
+	if err != nil || path != "/chat/completions" {
+		t.Fatalf("historical performance path=%q err=%v", path, err)
+	}
+	command.Inputs = map[string]json.RawMessage{"prompt": json.RawMessage(`"edited again"`)}
+	replayID, err := replayer.PrepareQuickTask(context.Background(), command)
+	if err != nil || replayID == id {
+		t.Fatalf("replay id=%s err=%v", replayID, err)
+	}
+	if string(repository.run.Snapshot().QuickTask.Inputs["prompt"]) != `"edited again"` {
+		t.Fatal("replay ignored edits")
+	}
+}
+
 func TestQuickTaskRejectsInvalidSelectionBeforeDurableState(t *testing.T) {
 	for _, scenario := range []string{"unknown input", "wrong type", "wrong revision", "not a task", "scoped model", "insecure endpoint", "mixed channel credentials", "disabled channel"} {
 		t.Run(scenario, func(t *testing.T) {
