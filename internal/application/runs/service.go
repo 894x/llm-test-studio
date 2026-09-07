@@ -509,6 +509,9 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			RunID: runID, Operation: "transition_running",
 			ErrorCode: "run_state_transition_failed", Err: err,
 		})
+		service.finishRun(control, domain.RunFailed, domain.RunFailure{
+			Phase: "transition_running", ErrorCode: "run_state_transition_failed",
+		})
 		return
 	}
 	if control.stopRequested {
@@ -518,6 +521,9 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			service.report(Diagnostic{
 				RunID: runID, Operation: "transition_draining",
 				ErrorCode: "run_state_transition_failed", Err: err,
+			})
+			service.finishRun(control, domain.RunFailed, domain.RunFailure{
+				Phase: "transition_draining", ErrorCode: "run_state_transition_failed",
 			})
 			return
 		}
@@ -613,14 +619,23 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			Err:       errors.New("execution completed without results for every case"),
 		})
 	}
-	transitionContext, cancelTransition := context.WithTimeout(context.Background(), 5*time.Second)
-	transitionErr := service.saveTerminal(transitionContext, control, terminal, failure)
-	cancelTransition()
-	runID = control.run.Meta().ID
 	control.mu.Unlock()
 	for _, diagnostic := range pendingDiagnostics {
 		service.report(diagnostic)
 	}
+	service.finishRun(control, terminal, failure)
+}
+
+func (service *Service) finishRun(control *runControl, terminal domain.RunStatus, failure domain.RunFailure) {
+	// Startup transitions can fail before the executor owns the credential.
+	// Release it before storage recovery, just as after normal execution.
+	_ = control.lease.Close()
+	control.mu.Lock()
+	transitionContext, cancelTransition := context.WithTimeout(context.Background(), 5*time.Second)
+	transitionErr := service.saveTerminal(transitionContext, control, terminal, failure)
+	cancelTransition()
+	runID := control.run.Meta().ID
+	control.mu.Unlock()
 	if transitionErr != nil {
 		service.report(Diagnostic{
 			RunID: runID, Operation: "transition_" + string(terminal),
