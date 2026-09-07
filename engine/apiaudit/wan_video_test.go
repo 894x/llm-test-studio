@@ -222,14 +222,13 @@ func TestRunWanVideoCaseRejectsUnsafeOrNonHTTPVideoURL(t *testing.T) {
 	}
 }
 
-func TestExpandRunsRequiresExplicitPaidConfirmationForWanVideo(t *testing.T) {
-	_, err := ExpandRuns(RunConfig{Suite: "wan-video", Model: "wan3.0-video"}, []CaseDefinition{{ID: "wan30-smoke"}})
-	if err == nil || !strings.Contains(err.Error(), "--confirm-paid-suite") {
-		t.Fatalf("error = %v, want explicit paid confirmation", err)
-	}
-
-	runs, err := ExpandRuns(RunConfig{Suite: "wan-video", Model: "wan3.0-video", DryRun: true}, []CaseDefinition{{ID: "wan30-smoke"}})
-	if err != nil || len(runs) != 1 {
-		t.Fatalf("dry-run plan = %#v, error = %v", runs, err)
+func TestExpandRunsPreservesSelectedVideoTasksInLiveAndDryRunModes(t *testing.T) {
+	for _, protocol := range []string{"seedance", "wan-video", "minimax-video"} {
+		for _, dryRun := range []bool{false, true} {
+			runs, err := ExpandRuns(RunConfig{Suite: protocol, Model: "explicit-model", DryRun: dryRun}, []CaseDefinition{{ID: "first"}, {ID: "second"}})
+			if err != nil || len(runs) != 2 || runs[0].Case.ID != "first" || runs[1].Case.ID != "second" {
+				t.Fatalf("%s dry=%t plan=%#v error=%v", protocol, dryRun, runs, err)
+			}
+		}
 	}
 }

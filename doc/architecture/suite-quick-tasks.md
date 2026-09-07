@@ -100,10 +100,11 @@ The workspace therefore labels these records `source: "quick_task"` and reports
 observed request counts with `planned: 0`; the member count is not a request
 budget. Original Plan progress contracts remain unchanged.
 
-Both CLI and desktop preparation use the protocol registry's task-count billing
-policy. Seedance batches require acknowledgement; Wan and MiniMax require it for
-every nonempty selection. The desktop prompt uses generated metadata and keeps
-unresolved historical members in its conservative acknowledgement count.
+Starting a desktop run or invoking the CLI executes the selected tasks directly.
+There is no separate billing acknowledgement or provider-specific payment policy
+in protocol metadata. Target applicability, automatic-member validation, request
+limits, timeouts, video concurrency constraints, and dry-run remain execution
+controls.
 
 Successful and failed observations, sealed reports, and task provenance use the
 same SQLite persistence as other Runs. The new task API is currently an

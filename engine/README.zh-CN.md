@@ -3,8 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 本目录包含仓库级 Go module 中的兼容性执行包和旧版 JSONL CLI adapter。它运行
-`cases/` 下的 `openai-chat`、`kimi-k3` 和 `seedance` 测试套件，并生成已脱敏的
-JSON 与 HTML 报告。
+`cases/` 下的协议测试套件，并生成已脱敏的 JSON 与 HTML 报告。
 
 所有构建命令都从仓库根目录执行。
 
@@ -27,8 +26,9 @@ GOWORK=off go build -o engine/bin/llm-compat-engine ./engine/cmd/llm-compat-engi
   --jsonl
 ```
 
-实时凭据只通过 `--api-key-env` 指定的环境变量传入。可能创建多个实时
-Seedance 付费任务的计划还必须提供 `--confirm-paid-suite`。
+实时凭据只通过 `--api-key-env` 指定的环境变量传入。运行命令会直接启动
+选中的任务。可用 `--dry-run` 预览计划而不请求上游；视频运行仍保持单 worker
+的并发约束。
 
 JSONL schema version 1 输出：
 

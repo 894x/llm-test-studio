@@ -166,7 +166,7 @@ func TestStartRunRejectsManualCasesBeforeCreatingDurableState(t *testing.T) {
 	}
 }
 
-func TestPrepareTargetRequiresExplicitWanPaidConfirmationAndVersionScope(t *testing.T) {
+func TestPrepareTargetStartsWanDirectlyAndPreservesVersionScope(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.model.Protocol = domain.ProtocolWanVideo
 	fixture.channel.Protocol = domain.ProtocolWanVideo
@@ -198,13 +198,9 @@ func TestPrepareTargetRequiresExplicitWanPaidConfirmationAndVersionScope(t *test
 	t.Cleanup(func() { _ = service.Close() })
 
 	command := runs.StartCommand{PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelID: fixture.channel.ID}
-	if _, err := service.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrPaidConfirmationRequired) {
-		t.Fatalf("PrepareTarget() error = %v, want ErrPaidConfirmationRequired", err)
-	}
-	command.ConfirmPaidVideo = true
 	runID, err := service.PrepareTarget(context.Background(), command)
 	if err != nil || !domain.IsUUID(runID) {
-		t.Fatalf("confirmed PrepareTarget() = %q, %v", runID, err)
+		t.Fatalf("PrepareTarget() = %q, %v", runID, err)
 	}
 
 	fixture.testCase.ModelTargets = nil

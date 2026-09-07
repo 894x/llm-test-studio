@@ -10,7 +10,6 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
-	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 type QuickTaskCatalog interface {
@@ -21,14 +20,13 @@ type QuickTaskCatalog interface {
 // QuickTaskCommand selects an immutable task and either a saved channel or a
 // temporary connection. Model is the upstream identifier, not a catalog ID.
 type QuickTaskCommand struct {
-	SuiteID          string                     `json:"suite_id"`
-	SuiteRevision    uint64                     `json:"suite_revision"`
-	Model            string                     `json:"model"`
-	ChannelID        string                     `json:"channel_id,omitempty"`
-	BaseURL          string                     `json:"base_url,omitempty"`
-	APIKey           string                     `json:"api_key,omitempty"`
-	Inputs           map[string]json.RawMessage `json:"inputs"`
-	ConfirmPaidVideo bool                       `json:"confirm_paid_video"`
+	SuiteID       string                     `json:"suite_id"`
+	SuiteRevision uint64                     `json:"suite_revision"`
+	Model         string                     `json:"model"`
+	ChannelID     string                     `json:"channel_id,omitempty"`
+	BaseURL       string                     `json:"base_url,omitempty"`
+	APIKey        string                     `json:"api_key,omitempty"`
+	Inputs        map[string]json.RawMessage `json:"inputs"`
 }
 
 func (service *Service) StartQuickTask(ctx context.Context, command QuickTaskCommand) (string, error) {
@@ -60,12 +58,8 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if suite.ID != command.SuiteID || suite.Revision != command.SuiteRevision || suite.QuickTest == nil || suite.Validate() != nil {
 		return "", ErrNotRunnable
 	}
-	info, _ := protocol.Lookup(string(suite.Protocol))
 	if suite.ModelTarget != "" && suite.ModelTarget != command.Model {
 		return "", ErrNotRunnable
-	}
-	if info.RequiresPaidConfirmation(uint64(len(suite.Cases))) && !command.ConfirmPaidVideo {
-		return "", ErrPaidConfirmationRequired
 	}
 	cases := make([]domain.TestCase, 0, len(suite.Cases))
 	for _, ref := range suite.Cases {

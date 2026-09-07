@@ -31,7 +31,8 @@ without requiring authored models, channels, or Plans.
   history remain SQLite. Running a temporary task must not create authored
   catalog records as an implementation shortcut.
 - Preserve provider/version applicability, asynchronous task completion checks,
-  paid-run confirmation behavior, safe errors, and bounded redacted evidence.
+  execution limits, safe errors, and bounded redacted evidence. Starting a test
+  is the execution action; do not add a separate billing acknowledgement.
 - A new task over an existing executor must not require another frontend list
   or another quick-test executor branch.
 - Both successful and failed executions must be recoverable in history.
@@ -64,13 +65,8 @@ verify with the same command plus `-check` (also enforced by CI).
 Verified: `go test -p 1 ./... -count=1`, `go vet -p 1 ./...`, frontend
 `bun run test --maxWorkers=2` (251 tests), lint, build, and the generated-contract
 check. The build retains the existing large-chunk warning. A read-only reviewer
-found no runtime regression; the unconditional paid-confirmation flag was
-renamed `AlwaysConfirmPaid` to distinguish it from Seedance batch policy.
-
-Shared task preparation now completes the paid-policy follow-through: CLI and
-desktop use the protocol registry's task-count rule, and the desktop
-acknowledgement uses generated metadata. `AlwaysConfirmPaid: false` alone is
-not permission to execute an unconfirmed batch.
+found no runtime regression. Billing metadata initially consolidated in this
+stage has since been removed following the testing-tool workflow decision below.
 
 ## Video output correctness
 
@@ -142,3 +138,23 @@ timeline ordering, Suite progress rendering, and clearing billing acknowledgemen
 when the selected channel changes. The build retains the existing chunk-size
 warning. Source review prompted the time-origin and channel-acknowledgement fixes;
 the code graph was unavailable during this stage, so review used direct source.
+
+## Execution action simplification
+
+The user clarified that a testing tool should not require a separate payment
+checkbox after the user chooses to run a test. The desktop now uses the same
+start action for all protocols. Runtime and compatibility commands, protocol
+metadata, and both CLIs no longer carry payment-confirmation fields, errors, or
+flags. Obsolete UI translations and duplicated confirmation tests are removed.
+
+Version applicability, automatic Case requirements, credential handling, video
+concurrency, and dry-run behavior remain validated. New regressions exercise
+single and multiple video selections directly, while retaining rejection of
+unscoped targets. This changes the product workflow; no provider calls were
+needed to implement or verify it.
+
+Verified: full Go tests and vet, protocol generation check, 262 frontend tests,
+lint, and build. Wails bindings were regenerated with CLI v2.15.0 without
+changing the Go module files. Direct source review found no remaining workflow
+or validation regressions. README pairs share heading structure, commands, and
+link targets. The existing frontend chunk-size warning remains.

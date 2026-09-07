@@ -542,7 +542,6 @@ func TestAuditRunDefaultsToCanonicalEventEnvelopes(t *testing.T) {
 			"--case", "C001",
 			"--dry-run",
 			"--no-wait",
-			"--confirm-paid-suite",
 			"--poll-interval", "1s",
 			"--timeout", "30s",
 			"--concurrency", "1",

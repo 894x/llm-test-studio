@@ -1,5 +1,7 @@
 # Wan 3.0 场景 Suite
 
+[English](README.en.md) | [简体中文](README.md)
+
 Wan 3.0 标准版与 Prime 使用相同的 Case 合同，但每个 Suite 都通过 `model_target` 绑定到单一上游模型。两个模型各有以下五类 Suite：
 
 | 目录后缀 | Suite key 后缀 | Case 数 | 可直接运行 | 场景 |
@@ -12,4 +14,4 @@ Wan 3.0 标准版与 Prime 使用相同的 Case 合同，但每个 Suite 都通�
 
 层级关系为：连通性 ⊂ 基本功能 ⊂ 完整自动测试 ⊂ 完整矩阵；参数拒绝 Suite 是完整自动测试中的负向子集。
 
-所有视频 Suite 都需要显式付费确认。`-automatic` 包含高时长成功 Case，不应把它当成低成本烟测；191 Case 的完整矩阵只有在禁用模板逐项满足前置条件并启用后才能转为可运行 Plan。
+选中 Suite 并开始运行后会直接执行，无需额外付费勾选。`-automatic` 包含高时长成功 Case，不应把它当成低成本烟测；191 Case 的完整矩阵只有在禁用模板逐项满足前置条件并启用后才能转为可运行 Plan。

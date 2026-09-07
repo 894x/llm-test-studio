@@ -12,7 +12,6 @@ export interface StartRunTargetCommand {
   plan_id: string
   model_id: string
   channel_id: string
-  confirm_paid_video: boolean
 }
 
 export type WorkspacePlan = {

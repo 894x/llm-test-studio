@@ -52,7 +52,7 @@ func TestRunMiniMaxVideoPollsH3TaskToVerifiedBusinessSuccess(t *testing.T) {
 	})
 	_, err := service.Run(context.Background(), compatibility.RunRequest{
 		Suite: "minimax-video", CasesRoot: casesRoot, BaseURL: "https://api.minimax.cn", APIKey: "secret", Model: "MiniMax-H3",
-		ConfirmPaidSuite: true, OutputDir: t.TempDir(), PollInterval: time.Nanosecond, Timeout: time.Second, Concurrency: 1,
+		OutputDir: t.TempDir(), PollInterval: time.Nanosecond, Timeout: time.Second, Concurrency: 1,
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -98,7 +98,7 @@ func TestRunMiniMaxVideoPassesOnlyForStructuredBadRequestRejection(t *testing.T)
 			})
 			_, err := service.Run(context.Background(), compatibility.RunRequest{
 				Suite: "minimax-video", CasesRoot: casesRoot, BaseURL: "https://api.minimax.cn", APIKey: "secret", Model: "MiniMax-H3",
-				ConfirmPaidSuite: true, OutputDir: t.TempDir(), PollInterval: time.Second, Timeout: time.Second, Concurrency: 1,
+				OutputDir: t.TempDir(), PollInterval: time.Second, Timeout: time.Second, Concurrency: 1,
 			})
 			if err != nil {
 				t.Fatalf("Run() error = %v", err)

@@ -38,7 +38,6 @@ describe("Wails desktop client", () => {
 			plan_id: FIXTURE_WORKSPACE.plans[0].id,
 			model_id: FIXTURE_CATALOG.models[0].id,
 			channel_id: FIXTURE_CATALOG.channels[0].id,
-			confirm_paid_video: false,
 		}
 		await client.startRunTarget(targetCommand)
     await client.stopSending(FIXTURE_WORKSPACE.runs[0].id)

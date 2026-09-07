@@ -826,7 +826,6 @@ describe("desktop run workspace", () => {
 			plan_id: FIXTURE_WORKSPACE.plans[1].id,
 			model_id: FIXTURE_CATALOG.plans[1].model_ids[0],
 			channel_id: FIXTURE_CATALOG.plans[1].channel_ids[0],
-			confirm_paid_video: false,
 		})
   })
 

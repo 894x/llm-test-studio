@@ -32,17 +32,16 @@ type CaseDefinition struct {
 }
 
 type RunConfig struct {
-	Suite            string
-	BaseURL          string
-	APIKey           string
-	Model            string
-	Models           []string
-	OutputDir        string
-	DryRun           bool
-	NoWait           bool
-	ConfirmPaidSuite bool
-	PollInterval     time.Duration
-	Timeout          time.Duration
+	Suite        string
+	BaseURL      string
+	APIKey       string
+	Model        string
+	Models       []string
+	OutputDir    string
+	DryRun       bool
+	NoWait       bool
+	PollInterval time.Duration
+	Timeout      time.Duration
 }
 
 type PlannedRun struct {

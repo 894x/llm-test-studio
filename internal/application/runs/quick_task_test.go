@@ -161,15 +161,14 @@ func TestQuickTaskRejectsInvalidSelectionBeforeDurableState(t *testing.T) {
 	}
 }
 
-func TestQuickTaskPaidVideoConfirmationPrecedesExecution(t *testing.T) {
+func TestQuickTaskPreparesVideoSelectionsWithoutAnExtraConfirmation(t *testing.T) {
 	for _, test := range []struct {
-		protocol     domain.Protocol
-		kind         string
-		count        int
-		confirmation bool
+		protocol domain.Protocol
+		kind     string
+		count    int
 	}{
-		{domain.ProtocolSeedance, "seedance_task", 1, false}, {domain.ProtocolSeedance, "seedance_task", 2, true},
-		{domain.ProtocolWanVideo, "wan_task_success", 1, true}, {domain.ProtocolMiniMaxVideo, "minimax_video_task_success", 1, true},
+		{domain.ProtocolSeedance, "seedance_task", 1}, {domain.ProtocolSeedance, "seedance_task", 2},
+		{domain.ProtocolWanVideo, "wan_task_success", 1}, {domain.ProtocolMiniMaxVideo, "minimax_video_task_success", 1},
 	} {
 		t.Run(string(test.protocol), func(t *testing.T) {
 			fixture := newRunFixture(t)
@@ -193,15 +192,6 @@ func TestQuickTaskPaidVideoConfirmationPrecedesExecution(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = service.Close() })
 			command := runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "upstream-model", BaseURL: "https://example.test", APIKey: "temporary-key"}
-			if test.confirmation {
-				if _, err := service.PrepareQuickTask(context.Background(), command); !errors.Is(err, runs.ErrPaidConfirmationRequired) {
-					t.Fatalf("missing confirmation accepted: %v", err)
-				}
-				if repository.run.Meta().ID != "" {
-					t.Fatal("unconfirmed run persisted")
-				}
-				command.ConfirmPaidVideo = true
-			}
 			id, err := service.PrepareQuickTask(context.Background(), command)
 			if err != nil {
 				t.Fatal(err)

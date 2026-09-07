@@ -20,9 +20,8 @@ it("shows task observations without a fictitious request total or timed target",
   expect(screen.queryByText(/6\/0|目标时长 0|定时运行/)).not.toBeInTheDocument()
 })
 
-describe("NewRunSheet paid video confirmation", () => {
-  it.each(["wan-video", "seedance"] as const)("requires an explicit %s billing acknowledgement", async (protocol) => {
-    const provider = protocol === "seedance" ? "Seedance" : "Wan"
+describe("NewRunSheet video execution", () => {
+  it.each(["wan-video", "seedance", "minimax-video"] as const)("starts %s through the common run action", async (protocol) => {
     const user = userEvent.setup()
     const caseID = "44444444-4444-4444-8444-444444444449"
     const modelID = "22222222-2222-4222-8222-222222222229"
@@ -49,10 +48,10 @@ describe("NewRunSheet paid video confirmation", () => {
 	catalog.channels.push({ ...catalog.channels[0], id: secondChannelID, name: "第二渠道" })
 	catalog.channel_models.push({ ...catalog.channel_models[0], id: "77777777-7777-4777-8777-777777777778", channel_id: secondChannelID })
 	catalog.plans[0].channel_ids.push(secondChannelID)
+	catalog.models[0].protocol = protocol
+	for (const channel of catalog.channels) channel.protocol = protocol
+	catalog.test_cases[0].protocol = protocol
 	if (protocol === "seedance") {
-		catalog.models[0].protocol = protocol
-		for (const channel of catalog.channels) channel.protocol = protocol
-		catalog.test_cases[0].protocol = protocol
 		const second = { ...catalog.test_cases[0], id: "44444444-4444-4444-8444-444444444448", key: "seedance.second" }
 		catalog.test_cases.push(second)
 		catalog.plans[0].cases.push({ case_id: second.id, revision: second.revision })
@@ -67,21 +66,17 @@ describe("NewRunSheet paid video confirmation", () => {
 
     await user.click(screen.getByRole("button", { name: "新建运行" }))
     const dialog = screen.getByRole("dialog", { name: "新建运行" })
-    expect(within(dialog).getByText(new RegExp(`${provider} 视频生成会产生费用`))).toBeInTheDocument()
-    expect(within(dialog).getByRole("button", { name: "开始付费运行" })).toBeDisabled()
-
-    await user.click(within(dialog).getByRole("checkbox", { name: `我确认本次 ${provider} 视频运行会调用计费接口` }))
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "开始运行" })).toBeEnabled()
 	await user.click(within(dialog).getByRole("combobox", { name: "执行渠道" }))
 	await user.click(screen.getByRole("option", { name: "第二渠道" }))
-	expect(within(dialog).getByRole("button", { name: "开始付费运行" })).toBeDisabled()
-	await user.click(within(dialog).getByRole("checkbox", { name: `我确认本次 ${provider} 视频运行会调用计费接口` }))
-    await user.click(within(dialog).getByRole("button", { name: "开始付费运行" }))
+	expect(within(dialog).getByRole("button", { name: "开始运行" })).toBeEnabled()
+    await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
 
     expect(onStartRun).toHaveBeenCalledWith({
       plan_id: planID,
       model_id: modelID,
       channel_id: secondChannelID,
-      confirm_paid_video: true,
     })
   })
 })

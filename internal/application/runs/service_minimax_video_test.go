@@ -12,7 +12,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-func TestPrepareTargetRequiresMiniMaxPaidConfirmationAndModelScope(t *testing.T) {
+func TestPrepareTargetStartsMiniMaxDirectlyAndPreservesModelScope(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.model.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.channel.Protocol = domain.ProtocolMiniMaxVideo
@@ -43,11 +43,10 @@ func TestPrepareTargetRequiresMiniMaxPaidConfirmationAndModelScope(t *testing.T)
 	t.Cleanup(func() { _ = service.Close() })
 
 	command := runs.StartCommand{PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelID: fixture.channel.ID}
-	if _, err := service.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrPaidConfirmationRequired) {
-		t.Fatalf("PrepareTarget() error = %v, want ErrPaidConfirmationRequired", err)
+	if id, err := service.PrepareTarget(context.Background(), command); err != nil || !domain.IsUUID(id) {
+		t.Fatalf("PrepareTarget() = %q, %v", id, err)
 	}
 	repository.fixture.testCase.ModelTargets = nil
-	command.ConfirmPaidVideo = true
 	if _, err := service.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrNotRunnable) {
 		t.Fatalf("unscoped PrepareTarget() error = %v, want ErrNotRunnable", err)
 	}

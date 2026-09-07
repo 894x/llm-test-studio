@@ -235,15 +235,3 @@ func TestRunMiniMaxVideoCaseRejectsUnsafeOrNonHTTPVideoURL(t *testing.T) {
 		})
 	}
 }
-
-func TestExpandRunsRequiresExplicitPaidConfirmationForMiniMaxVideo(t *testing.T) {
-	_, err := ExpandRuns(RunConfig{Suite: "minimax-video", Model: "MiniMax-H3"}, []CaseDefinition{{ID: "h3-smoke"}})
-	if err == nil {
-		t.Fatal("live MiniMax video plan did not require paid confirmation")
-	}
-
-	runs, err := ExpandRuns(RunConfig{Suite: "minimax-video", Model: "MiniMax-H3", DryRun: true}, []CaseDefinition{{ID: "h3-smoke"}})
-	if err != nil || len(runs) != 1 {
-		t.Fatalf("dry-run plan = %#v, error = %v", runs, err)
-	}
-}

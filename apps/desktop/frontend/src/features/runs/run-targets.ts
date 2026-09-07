@@ -3,23 +3,6 @@ import type {
   CatalogModel,
   CatalogSnapshot,
 } from "@/features/catalog/data"
-import { PROTOCOLS } from "@/features/catalog/protocols.generated"
-
-export function paidRuntimeProtocol(catalog: CatalogSnapshot, planID: string, modelID: string, channelID: string) {
-  const plan = catalog.plans.find((item) => item.id === planID)
-  const model = catalog.models.find((item) => item.id === modelID)
-  const protocol = PROTOCOLS.find((item) => item.id === model?.protocol)
-  if (!plan || !protocol) return undefined
-  const mapping = catalog.channel_models.find((item) => item.model_id === modelID && item.channel_id === channelID)
-  const count = plan.cases.filter((ref) => {
-    const testCase = catalog.test_cases.find((item) => item.id === ref.case_id && item.revision === ref.revision)
-    // Current catalog DTOs may not contain a pinned historical member/target.
-    // Keep unknown members in the acknowledgement count; the backend resolves
-    // and validates the exact revisions before starting the run.
-    return !testCase || !mapping || testCase.model_targets.length === 0 || testCase.model_targets.includes(mapping.upstream_model_name)
-  }).length
-  return count > 0 && (protocol.alwaysConfirmPaid || (protocol.confirmPaidBatch && count > 1)) ? protocol : undefined
-}
 
 function planProtocol(catalog: CatalogSnapshot, planID: string) {
   const plan = catalog.plans.find((item) => item.id === planID)

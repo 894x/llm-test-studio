@@ -21,11 +21,10 @@ import (
 )
 
 var (
-	ErrInvalid                  = errors.New("runs: invalid input")
-	ErrNotActive                = errors.New("runs: run is not active")
-	ErrNotRunnable              = errors.New("runs: plan target is not runnable")
-	ErrPaidConfirmationRequired = errors.New("runs: paid video confirmation is required")
-	ErrClosed                   = errors.New("runs: service is closed")
+	ErrInvalid     = errors.New("runs: invalid input")
+	ErrNotActive   = errors.New("runs: run is not active")
+	ErrNotRunnable = errors.New("runs: plan target is not runnable")
+	ErrClosed      = errors.New("runs: service is closed")
 )
 
 type Repository interface {
@@ -39,10 +38,9 @@ type Repository interface {
 }
 
 type StartCommand struct {
-	PlanID           string `json:"plan_id"`
-	ModelID          string `json:"model_id"`
-	ChannelID        string `json:"channel_id"`
-	ConfirmPaidVideo bool   `json:"confirm_paid_video"`
+	PlanID    string `json:"plan_id"`
+	ModelID   string `json:"model_id"`
+	ChannelID string `json:"channel_id"`
 }
 
 type CredentialStore interface {
@@ -261,9 +259,6 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	}
 	if len(cases) == 0 || channel.CredentialID == "" || !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
 		return "", ErrNotRunnable
-	}
-	if protocolInfo.RequiresPaidConfirmation(uint64(len(cases))) && !command.ConfirmPaidVideo {
-		return "", ErrPaidConfirmationRequired
 	}
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
 	if err != nil {

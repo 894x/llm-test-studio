@@ -1,5 +1,7 @@
 # MiniMax H3 视频生成 API 完整边界用例
 
+[English](README.en.md) | [简体中文](README.md)
+
 本目录覆盖 MiniMax 上游原生 `POST /v2/video_generation` 的 `MiniMax-H3` 请求参数，以及创建任务后通过 `GET /v2/query/video_generation/{task_id}` 查询新建任务到终态的工作流。它不是 OpenAI 兼容接口，也不是 Seedance、Wan Video 或 `MiniMax-H3-Max` 的别名。
 
 ## 范围
@@ -54,7 +56,7 @@ python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suite
 
 ## 执行安全
 
-视频生成会计费。先使用 `--dry-run` 查看 48 个 automatic 请求；真实运行仍必须显式传入 `--confirm-paid-suite` 并保持 `--concurrency 1`。manual 用例不会被 API Audit 自动加载，必须先准备矩阵要求的确定性 fixture、回调端点和预算，再逐项转为 automatic。
+视频生成会计费。可先使用 `--dry-run` 查看 48 个 automatic 请求；真实运行保持 `--concurrency 1`，点击开始或运行命令后直接执行。manual 用例不会被 API Audit 自动加载，必须先准备矩阵要求的确定性 fixture、回调端点和预算，再逐项转为 automatic。
 
 本次补齐只执行 T0 schema、模拟服务器、单元/集成测试和 dry-run 验证，不调用 MiniMax 真实接口。
 

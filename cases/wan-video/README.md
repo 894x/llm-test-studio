@@ -1,5 +1,7 @@
 # Wan 视频 API 边界用例
 
+[English](README.en.md) | [简体中文](README.md)
+
 本目录按 Wan 模型版本保存可执行的文生视频契约用例。它不是 Seedance 用例的别名：Wan 使用 DashScope 异步任务协议，创建任务后从 `output.task_id` 轮询 `/api/v1/tasks/{task_id}`，成功必须得到 `output.video_url`。
 
 ## 版本范围
@@ -17,7 +19,7 @@
 
 ## 执行安全
 
-视频生成会计费。先使用 `--dry-run` 检查选中的版本、请求体和模型注入；真实运行必须显式传入 `--confirm-paid-suite`，并保持 `--concurrency 1`。本次构建只做静态、模拟服务器和 dry-run 验证，没有调用真实百炼接口。
+视频生成会计费。可先使用 `--dry-run` 检查选中的版本、请求体和模型注入；真实运行保持 `--concurrency 1`，点击开始或运行命令后直接执行。本次构建只做静态、模拟服务器和 dry-run 验证，没有调用真实百炼接口。
 
 素材输入、音频输入、最长时长成功生成等依赖外部资产或支出较高的 Case 以 `enabled=false` 的具体模板落盘，使用 `fixture://wan3/...` 描述所需确定性素材，并在 `options.reason` / `precondition` 中记录启用门槛；没有伪造 provider 文件 ID，也不会进入运行计划。
 
@@ -33,7 +35,7 @@
 | 完整测试（自动可执行） | 74 | 35 个自动正向 + 39 个自动负向 | 不依赖外部 fixture 的完整自动合同集合；包含高时长 Case，成本高于基本功能测试 |
 | 完整矩阵（含禁用模板） | 191 | 74 个自动 + 117 个禁用模板 | 仅用于审阅完整合同与后续启用；当前不能直接作为可运行 Plan |
 
-这些 Suite 全部保持 `default=false`。创建 Suite 不代表授权真实调用或消费百炼额度；执行视频 Suite 仍需要显式付费确认。真实执行应选择前四类自动 Suite；191 Case 的完整矩阵含禁用模板，只有逐项满足 fixture/oracle 前置条件并启用后才能转为可运行 Plan。
+这些 Suite 全部保持 `default=false`。创建 Suite 不会触发真实调用；只有用户启动运行后才执行选中的任务。真实执行应选择前四类自动 Suite；191 Case 的完整矩阵含禁用模板，只有逐项满足 fixture/oracle 前置条件并启用后才能转为可运行 Plan。
 
 ## 资料
 

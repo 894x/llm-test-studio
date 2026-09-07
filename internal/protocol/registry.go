@@ -17,25 +17,17 @@ type Descriptor struct {
 	Label                string
 	Async                bool
 	RequiresModelTargets bool
-	// AlwaysConfirmPaid applies even to one task. ConfirmPaidBatch applies to
-	// two or more tasks; callers use RequiresPaidConfirmation after selection.
-	AlwaysConfirmPaid bool
-	ConfirmPaidBatch  bool
 }
 
 var descriptors = [...]Descriptor{
 	{ID: OpenAIChat, Label: "OpenAI Chat"},
 	{ID: KimiK3, Label: "Kimi K3"},
-	{ID: Seedance, Label: "Seedance", Async: true, ConfirmPaidBatch: true},
-	{ID: WanVideo, Label: "Wan Video", Async: true, RequiresModelTargets: true, AlwaysConfirmPaid: true},
-	{ID: MiniMaxVideo, Label: "MiniMax Video", Async: true, RequiresModelTargets: true, AlwaysConfirmPaid: true},
+	{ID: Seedance, Label: "Seedance", Async: true},
+	{ID: WanVideo, Label: "Wan Video", Async: true, RequiresModelTargets: true},
+	{ID: MiniMaxVideo, Label: "MiniMax Video", Async: true, RequiresModelTargets: true},
 }
 
 func All() []Descriptor { return append([]Descriptor(nil), descriptors[:]...) }
-
-func (descriptor Descriptor) RequiresPaidConfirmation(taskCount uint64) bool {
-	return taskCount > 0 && (descriptor.AlwaysConfirmPaid || descriptor.ConfirmPaidBatch && taskCount > 1)
-}
 
 func Lookup(id string) (Descriptor, bool) {
 	for _, descriptor := range descriptors {

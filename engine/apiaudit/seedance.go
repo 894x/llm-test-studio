@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/engine/common"
-	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 const DefaultSeedanceModel = "doubao-seedance-2-0-260128"
@@ -47,10 +46,6 @@ func ExpandRuns(config RunConfig, cases []CaseDefinition) ([]PlannedRun, error) 
 			}
 			runs = append(runs, PlannedRun{Case: definition, Model: model, ResultID: resultID})
 		}
-	}
-	info, _ := protocol.Lookup(config.Suite)
-	if !config.DryRun && info.RequiresPaidConfirmation(uint64(len(runs))) && !config.ConfirmPaidSuite {
-		return nil, fmt.Errorf("live %s plan contains %d paid-capable tasks; pass --confirm-paid-suite", info.Label, len(runs))
 	}
 	return runs, nil
 }

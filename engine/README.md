@@ -3,9 +3,8 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 This directory contains the compatibility execution packages and legacy JSONL
-CLI adapter in the repository-wide Go module. It runs the `openai-chat`,
-`kimi-k3`, and `seedance` suites under `cases/` and produces redacted JSON and
-HTML reports.
+CLI adapter in the repository-wide Go module. It runs the protocol suites under
+`cases/` and produces redacted JSON and HTML reports.
 
 Run build commands from the repository root.
 
@@ -29,8 +28,9 @@ Dry-run a suite without making network requests:
 ```
 
 Live credentials are accepted only through the environment variable named by
-`--api-key-env`. Multi-task live Seedance plans additionally require
-`--confirm-paid-suite`.
+`--api-key-env`. Running the command starts the selected tasks directly. Use
+`--dry-run` to preview the plan without making provider requests; video runs
+retain their single-worker concurrency constraint.
 
 JSONL schema version 1 emits:
 

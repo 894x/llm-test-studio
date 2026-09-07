@@ -249,7 +249,6 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	allCases := flags.Bool("all-cases", false, "run every case in the suite")
 	allModels := flags.Bool("all-models", false, "run all configured Seedance models")
 	dryRun := flags.Bool("dry-run", false, "render requests without network calls")
-	confirmPaid := flags.Bool("confirm-paid-suite", false, "confirm a paid-capable live video run")
 	noWait := flags.Bool("no-wait", false, "do not poll video tasks to terminal status")
 	keyEnv := flags.String("api-key-env", "API_AUDIT_API_KEY", "environment variable containing the bearer key")
 	output := flags.String("output", "", "report output directory")
@@ -327,21 +326,20 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 		return diagnosticExit(stderr, format.value, "core_unavailable", "Go core is unavailable", 1)
 	}
 	final, err := application.Run(runContext, compatibility.RunRequest{
-		Suite:            *suite,
-		CasesRoot:        *casesRoot,
-		BaseURL:          *baseURL,
-		APIKey:           apiKey,
-		Model:            strings.TrimSpace(*model),
-		CaseIDs:          append([]string(nil), caseIDs...),
-		OutputDir:        *output,
-		AllCases:         *allCases,
-		AllModels:        *allModels,
-		DryRun:           *dryRun,
-		NoWait:           *noWait,
-		ConfirmPaidSuite: *confirmPaid,
-		PollInterval:     *pollInterval,
-		Timeout:          *timeout,
-		Concurrency:      *concurrency,
+		Suite:        *suite,
+		CasesRoot:    *casesRoot,
+		BaseURL:      *baseURL,
+		APIKey:       apiKey,
+		Model:        strings.TrimSpace(*model),
+		CaseIDs:      append([]string(nil), caseIDs...),
+		OutputDir:    *output,
+		AllCases:     *allCases,
+		AllModels:    *allModels,
+		DryRun:       *dryRun,
+		NoWait:       *noWait,
+		PollInterval: *pollInterval,
+		Timeout:      *timeout,
+		Concurrency:  *concurrency,
 	})
 	outputMu.Lock()
 	if format.value == "json" && emitErr == nil {

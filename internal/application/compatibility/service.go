@@ -18,21 +18,20 @@ import (
 )
 
 type RunRequest struct {
-	Suite            string
-	CasesRoot        string
-	BaseURL          string
-	APIKey           string
-	Model            string
-	CaseIDs          []string
-	OutputDir        string
-	AllCases         bool
-	AllModels        bool
-	DryRun           bool
-	NoWait           bool
-	ConfirmPaidSuite bool
-	PollInterval     time.Duration
-	Timeout          time.Duration
-	Concurrency      int
+	Suite        string
+	CasesRoot    string
+	BaseURL      string
+	APIKey       string
+	Model        string
+	CaseIDs      []string
+	OutputDir    string
+	AllCases     bool
+	AllModels    bool
+	DryRun       bool
+	NoWait       bool
+	PollInterval time.Duration
+	Timeout      time.Duration
+	Concurrency  int
 }
 
 type ListRequest struct {
@@ -362,7 +361,7 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 
 	config := apiaudit.RunConfig{
 		Suite: request.Suite, BaseURL: request.BaseURL, APIKey: strings.TrimSpace(request.APIKey), Model: strings.TrimSpace(request.Model),
-		DryRun: request.DryRun, NoWait: request.NoWait, ConfirmPaidSuite: request.ConfirmPaidSuite,
+		DryRun: request.DryRun, NoWait: request.NoWait,
 		PollInterval: request.PollInterval, Timeout: request.Timeout,
 	}
 	if request.Suite == "kimi-k3" && config.Model == "" {

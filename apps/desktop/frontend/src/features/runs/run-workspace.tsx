@@ -11,7 +11,6 @@ import {
 } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import {
   Field,
@@ -58,7 +57,7 @@ import {
   type TestPlan,
   type WorkspaceSnapshot,
 } from "./data"
-import { eligibleRuntimeChannels, eligibleRuntimeModels, paidRuntimeProtocol } from "./run-targets"
+import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
 
 type ActiveTaskState = "queued" | "starting" | "running" | "draining"
 
@@ -413,7 +412,6 @@ export function NewRunSheet({
   const [selectedPlan, setSelectedPlan] = useState(plans[0]?.id ?? "")
 	const [selectedModel, setSelectedModel] = useState("")
 	const [selectedChannel, setSelectedChannel] = useState("")
-  const [paidVideoConfirmed, setPaidVideoConfirmed] = useState(false)
   const [startError, setStartError] = useState("")
   const effectiveSelectedPlan = plans.some((plan) => plan.id === selectedPlan)
     ? selectedPlan
@@ -425,9 +423,6 @@ export function NewRunSheet({
 		[catalog, effectiveSelectedPlan, effectiveSelectedModel],
 	)
 	const effectiveSelectedChannel = channels.some((channel) => channel.id === selectedChannel) ? selectedChannel : (channels[0]?.id ?? "")
-  const paidProtocol = paidRuntimeProtocol(catalog, effectiveSelectedPlan, effectiveSelectedModel, effectiveSelectedChannel)
-  const requiresPaidVideoConfirmation = paidProtocol !== undefined
-  const paidVideoProvider = paidProtocol?.label.replace(/ Video$/, "") ?? ""
 
   const start = async () => {
     if (!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel) return
@@ -437,7 +432,6 @@ export function NewRunSheet({
         plan_id: effectiveSelectedPlan,
         model_id: effectiveSelectedModel,
         channel_id: effectiveSelectedChannel,
-        confirm_paid_video: requiresPaidVideoConfirmation && paidVideoConfirmed,
       })
       setOpen(false)
     } catch (error) {
@@ -452,7 +446,7 @@ export function NewRunSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setPaidVideoConfirmed(false) }}>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button size="sm" className="ml-1">
           <PlusIcon data-icon="inline-start" />
@@ -471,7 +465,7 @@ export function NewRunSheet({
           <RadioGroup
             aria-label={t("plans.aria")}
             value={effectiveSelectedPlan}
-            onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel(""); setPaidVideoConfirmed(false) }}
+            onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel("") }}
           >
             {plans.map((plan) => {
               const selected = effectiveSelectedPlan === plan.id
@@ -504,33 +498,17 @@ export function NewRunSheet({
                             label={t("newRun.model")}
 							value={effectiveSelectedModel}
 							options={models.map((model) => [model.id, model.name])}
-							onChange={(value) => { setSelectedModel(value); setSelectedChannel(""); setPaidVideoConfirmed(false) }}
+							onChange={(value) => { setSelectedModel(value); setSelectedChannel("") }}
 						/>
 						<RuntimeTargetSelect
                             label={t("newRun.channel")}
 							value={effectiveSelectedChannel}
 							options={channels.map((channel) => [channel.id, channel.name])}
-							onChange={(value) => { setSelectedChannel(value); setPaidVideoConfirmed(false) }}
+							onChange={setSelectedChannel}
 						/>
                         {models.length === 0 ? <p className="text-xs text-destructive">{t("newRun.noModels")}</p> : null}
                         {models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">{t("newRun.noChannels")}</p> : null}
 					</div>
-          {requiresPaidVideoConfirmation ? (
-            <div role="alert" className="rounded-md border border-warning/30 bg-warning-soft p-3 text-xs text-warning-strong">
-              <p className="font-medium">{paidVideoProvider}  {tx("desktop:runs_video_generation_incurs_charges")}</p>
-              <p className="mt-1 leading-5">{tx("desktop:runs_this_run_submits_real_upstream_video_tasks_cost_depends_on")}</p>
-              <Field className="mt-3">
-                <Checkbox
-                  id="confirm-paid-video"
-                  checked={paidVideoConfirmed}
-                  onCheckedChange={(value) => setPaidVideoConfirmed(value === true)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="confirm-paid-video">{tx("desktop:runs_i_confirm_this")} {paidVideoProvider}  {tx("desktop:runs_video_run_will_call_a_billable_api")}</FieldLabel>
-                </FieldContent>
-              </Field>
-            </div>
-          ) : null}
           <div className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
             {t("newRun.credentialNote")}
           </div>
@@ -545,10 +523,10 @@ export function NewRunSheet({
             <Button variant="outline">{t("newRun.cancel")}</Button>
           </SheetClose>
           <Button
-            disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending || (requiresPaidVideoConfirmation && !paidVideoConfirmed)}
+            disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending}
             onClick={() => void start()}
           >
-            {commandPending ? tx("desktop:runs_creating") : requiresPaidVideoConfirmation ? tx("desktop:runs_start_paid_run") : tx("desktop:runs_start_run")}
+            {commandPending ? tx("desktop:runs_creating") : tx("desktop:runs_start_run")}
           </Button>
         </SheetFooter>
       </SheetContent>
