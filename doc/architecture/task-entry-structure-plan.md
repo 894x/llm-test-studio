@@ -72,6 +72,15 @@ Seedance batch and Wan/MiniMax paid-task branches with an explicit task-count
 policy, and derive the UI acknowledgement from that policy. Do not treat
 `AlwaysConfirmPaid: false` as permission to execute an unconfirmed batch.
 
-An additional source audit found that Seedance currently accepts `succeeded`
-without requiring a usable output video URL. Add a regression test and fix this
-before exposing its connectivity task through the shared entry.
+## Video output correctness
+
+Fixed Seedance accepting `succeeded` without a usable output video URL. Six
+invalid-output fixtures reproduced the false pass before the fix. Seedance,
+Wan, and MiniMax now share the existing HTTP(S), host, and no-userinfo URL
+validation; signed HTTPS output remains accepted and evidence includes only
+the host. Provider-specific task identity and output contract checks remain
+in their adapters.
+
+Verified the API audit engine, compatibility service, run service, both CLI
+entry points, and relevant vet checks. Read-only review found no issues. These
+are controlled HTTP fixture tests, not paid upstream verification.

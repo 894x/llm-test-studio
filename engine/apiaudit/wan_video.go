@@ -146,7 +146,7 @@ func RunWanVideoCase(ctx context.Context, doer HTTPDoer, config RunConfig, run P
 				return result
 			}
 			videoURL, _ := output["video_url"].(string)
-			parsed, valid := validWanVideoURL(videoURL)
+			parsed, valid := validVideoURL(videoURL)
 			if !valid {
 				result.Status, result.Evidence = StatusFail, "succeeded task has no valid video URL"
 				return result
@@ -240,18 +240,6 @@ func isWanParameterRejectionCode(code string) bool {
 	return normalized == "invalidparameter" ||
 		strings.HasPrefix(normalized, "invalidparameter.") ||
 		strings.HasSuffix(normalized, ".invalidparameter")
-}
-
-func validWanVideoURL(raw string) (*url.URL, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.User != nil || parsed.Hostname() == "" {
-		return nil, false
-	}
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return nil, false
-	}
-	return parsed, true
 }
 
 func decodeWanResponse(body []byte) (map[string]any, error) {

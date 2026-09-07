@@ -153,7 +153,7 @@ func RunMiniMaxVideoCase(ctx context.Context, doer HTTPDoer, config RunConfig, r
 			modality, _ := task["modality"].(string)
 			content, _ := task["content"].(map[string]any)
 			videoURL, _ := content["url"].(string)
-			parsed, validURL := validMiniMaxVideoURL(videoURL)
+			parsed, validURL := validVideoURL(videoURL)
 			if returnedID != taskID || returnedModel != run.Model || taskType != "generation" || modality != "video" || !validURL {
 				result.Status, result.Evidence = StatusFail, "succeeded task has inconsistent identity or no valid video URL"
 				return result
@@ -302,16 +302,4 @@ func decodeMiniMaxVideoResponse(body []byte) (map[string]any, error) {
 		return nil, err
 	}
 	return response, nil
-}
-
-func validMiniMaxVideoURL(raw string) (*url.URL, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.User != nil || parsed.Hostname() == "" {
-		return nil, false
-	}
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return nil, false
-	}
-	return parsed, true
 }

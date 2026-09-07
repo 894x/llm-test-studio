@@ -163,15 +163,14 @@ func RunSeedanceCase(ctx context.Context, doer HTTPDoer, config RunConfig, run P
 		}
 		switch status {
 		case "succeeded":
-			videoHost := ""
-			if content, ok := pollResponse["content"].(map[string]any); ok {
-				if videoURL, ok := content["video_url"].(string); ok {
-					if parsed, parseErr := url.Parse(videoURL); parseErr == nil {
-						videoHost = parsed.Hostname()
-					}
-				}
+			content, _ := pollResponse["content"].(map[string]any)
+			videoURL, _ := content["video_url"].(string)
+			parsed, valid := validVideoURL(videoURL)
+			if !valid {
+				result.Status, result.Evidence = StatusFail, "succeeded task has no valid video URL"
+				return result
 			}
-			result.Status, result.Evidence = StatusPass, fmt.Sprintf("task %s succeeded; video_host=%s", taskID, videoHost)
+			result.Status, result.Evidence = StatusPass, fmt.Sprintf("task %s succeeded; video_host=%s", taskID, parsed.Hostname())
 			return result
 		case "failed", "cancelled", "expired":
 			result.Status, result.Evidence = StatusFail, fmt.Sprintf("task %s ended with status %s", taskID, status)
