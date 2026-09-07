@@ -1,4 +1,4 @@
-import { protocolOptions } from "./protocols"
+import { PROTOCOLS, protocolOptions } from "./protocols"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { caseTypeLabel } from "./presentation"
 import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from "react"
@@ -282,21 +282,24 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [modelTarget, setModelTarget] = useState(item?.model_target ?? "")
+  const genericQuickTask = !!item?.quick_test && !modelTarget.trim() && !PROTOCOLS.find(({ id }) => id === protocol)?.requiresModelTargets
   const [selected, setSelected] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
   const availableCases = catalog.test_cases.filter((testCase) =>
-    testCase.protocol === protocol && (!modelTarget.trim() || testCase.model_targets.length === 0 || testCase.model_targets.includes(modelTarget.trim())),
+    testCase.protocol === protocol && (!item?.quick_test || (testCase.enabled && testCase.execution_mode === "automatic")) &&
+    (genericQuickTask ? testCase.model_targets.length === 0 : !modelTarget.trim() || testCase.model_targets.length === 0 || testCase.model_targets.includes(modelTarget.trim())),
   )
   return <FormShell pending={pending} label={tx("desktop:catalog_save_suite")} formTitle={formTitle} onSubmit={async () => {
     const pinned = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
     const validatedKey = safeCatalogKey(key, tx("desktop:catalog_suite_key"))
     const validatedName = required(name, tx("desktop:catalog_suite_name"))
-    const validatedModelTarget = safeModelTarget(modelTarget, tx("desktop:catalog_target_model"))
+    const validatedModelTarget = genericQuickTask ? "" : safeModelTarget(modelTarget, tx("desktop:catalog_target_model"))
     const cases = availableCases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision }))
     if (cases.length === 0) throw new FormValidationError(tx("desktop:catalog_included_cases"), tx("desktop:catalog_select_at_least_one_case"))
     const command = {
       key: validatedKey, name: validatedName, protocol,
       model_target: validatedModelTarget,
       cases,
+      ...(item?.quick_test ? { quick_test: item.quick_test } : {}),
     }
     await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), tx("desktop:catalog_save_value", { value1: formTitle })); onSaved()
   }}>

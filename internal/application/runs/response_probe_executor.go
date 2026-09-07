@@ -19,6 +19,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/execution/openai"
+	"github.com/894x/llm-test-studio/internal/jsonpointer"
 )
 
 const maxProbeShapeDepth = 64
@@ -136,7 +137,7 @@ func classifyProbeResponse(encoded []byte, signatures []casetypes.ResponseProbeS
 
 func probeSignatureMatches(root map[string]any, signature casetypes.ResponseProbeSignature) bool {
 	for _, matcher := range signature.Match {
-		value, exists := probePointer(root, matcher.Pointer)
+		value, exists := jsonpointer.Lookup(root, matcher.Pointer)
 		switch matcher.Operator {
 		case "exists":
 			if !exists {
@@ -180,30 +181,6 @@ func decodeProbeMatcherValue(raw json.RawMessage) (any, bool) {
 		return nil, false
 	}
 	return value, true
-}
-
-func probePointer(root any, pointer string) (any, bool) {
-	current := root
-	for _, encodedToken := range strings.Split(strings.TrimPrefix(pointer, "/"), "/") {
-		token := strings.ReplaceAll(strings.ReplaceAll(encodedToken, "~1", "/"), "~0", "~")
-		switch value := current.(type) {
-		case map[string]any:
-			var exists bool
-			current, exists = value[token]
-			if !exists {
-				return nil, false
-			}
-		case []any:
-			index, err := strconv.Atoi(token)
-			if err != nil || index < 0 || index >= len(value) {
-				return nil, false
-			}
-			current = value[index]
-		default:
-			return nil, false
-		}
-	}
-	return current, true
 }
 
 func probeShape(value any, depth int) (string, error) {

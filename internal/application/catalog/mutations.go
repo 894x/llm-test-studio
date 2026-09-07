@@ -256,10 +256,10 @@ func (service *Service) CreateSuite(ctx context.Context, command CreateSuiteComm
 	}
 	suite := domain.Suite{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
-		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases),
+		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases), QuickTest: command.QuickTest.Clone(),
 	}
-	if err := suite.Validate(); err != nil {
-		return MutationResult{}, ErrInvalid
+	if err := service.validateSuiteCases(ctx, suite); err != nil {
+		return MutationResult{}, err
 	}
 	if err := service.repository.CreateSuite(ctx, suite); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
@@ -291,10 +291,10 @@ func (service *Service) UpdateSuite(ctx context.Context, command UpdateSuiteComm
 	}
 	suite := domain.Suite{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
-		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases),
+		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases), QuickTest: command.QuickTest.Clone(),
 	}
-	if err := suite.Validate(); err != nil {
-		return MutationResult{}, ErrInvalid
+	if err := service.validateSuiteCases(ctx, suite); err != nil {
+		return MutationResult{}, err
 	}
 	if err := service.repository.UpdateSuite(ctx, command.ExpectedRevision, suite); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
@@ -508,6 +508,27 @@ func (service *Service) validateBinding(ctx context.Context, channelID, modelID 
 	return nil
 }
 
+func (service *Service) validateSuiteCases(ctx context.Context, suite domain.Suite) error {
+	if suite.Validate() != nil {
+		return ErrInvalid
+	}
+	definitions := make([]domain.TestCase, 0, len(suite.Cases))
+	for _, ref := range suite.Cases {
+		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+		if err != nil {
+			return service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		definitions = append(definitions, testCase)
+	}
+	if suite.ValidateCases(definitions) != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+
 func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan) error {
 	targetProtocol := domain.Protocol("")
 	for _, ref := range plan.Cases {
@@ -541,18 +562,11 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 		if suite.Protocol != targetProtocol {
 			return ErrPlanProtocolMismatch
 		}
-		for _, ref := range suite.Cases {
-			testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
-			if err != nil {
-				return service.portError(ctx, err)
-			}
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Validate() != nil ||
-				testCase.Protocol != suite.Protocol || !testCase.AppliesToModel(suite.ModelTarget) {
+		if err := service.validateSuiteCases(ctx, suite); err != nil {
+			if errors.Is(err, ErrInvalid) {
 				return ErrCorrupt
 			}
+			return err
 		}
 	}
 	for _, modelID := range plan.ModelIDs {

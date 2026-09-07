@@ -173,6 +173,7 @@ type Suite struct {
 	Protocol    Protocol          `json:"protocol"`
 	ModelTarget string            `json:"model_target"`
 	Cases       []CaseRevisionRef `json:"cases"`
+	QuickTest   *SuiteQuickTest   `json:"quick_test,omitempty"`
 }
 
 func (suite Suite) Validate() error {
@@ -188,8 +189,13 @@ func (suite Suite) Validate() error {
 	if err := suite.Protocol.Validate(); err != nil {
 		return err
 	}
-	if !isSafeModelTarget(suite.ModelTarget) {
+	info, _ := protocol.Lookup(string(suite.Protocol))
+	genericQuickTest := suite.ModelTarget == "" && suite.QuickTest != nil && !info.RequiresModelTargets
+	if !genericQuickTest && !isSafeModelTarget(suite.ModelTarget) {
 		return errors.New("suite model target must be a trimmed, non-empty identifier without control characters")
+	}
+	if err := suite.QuickTest.Validate(); err != nil {
+		return err
 	}
 	return validateCaseRevisionRefs(suite.Cases)
 }

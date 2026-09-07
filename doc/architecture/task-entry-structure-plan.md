@@ -84,3 +84,28 @@ in their adapters.
 Verified the API audit engine, compatibility service, run service, both CLI
 entry points, and relevant vet checks. Read-only review found no issues. These
 are controlled HTTP fixture tests, not paid upstream verification.
+
+## Stage 2 definition foundation
+
+Optional `quick_test` metadata now carries task descriptions, timeouts, typed
+editable inputs, and bindings to existing Case request-body fields. Generic
+tasks can omit a model target only when their protocol and Cases permit it.
+The shared `Suite.ValidateCases` rule checks exact Case revisions, model
+applicability, enabled automatic task members, and input bindings across file
+loading, catalog mutations, snapshots, and historical reads.
+
+Metadata survives file saves, revision history, DTO cloning, and normal Suite
+edits. Fixed tasks preserve an empty input array. The shared JSON Pointer
+resolver also prevents alternate numeric spellings from aliasing an array
+field. See [the definition contract](suite-quick-tasks.md).
+
+This is a foundation commit: bundled task profiles, task execution, form drafts,
+and history remain unfinished. The stage checkbox above stays open until the
+connectivity task definitions are included.
+
+Validation: full Go tests and vet, 254 frontend tests, lint, build, and generated
+protocol-contract check passed. Review found and prompted fixes for metadata-only
+write recovery and Case edits invalidating dependent quick Suites; focused
+repository regressions reproduce those failures and cover compatible edits with
+historical references. The final repository/catalog checks passed after the
+fixes; read-only review has no remaining findings. No provider calls were made.

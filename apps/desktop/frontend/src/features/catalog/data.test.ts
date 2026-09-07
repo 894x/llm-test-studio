@@ -7,6 +7,25 @@ import { parseCatalogSnapshot } from "./data"
 const PLAN_ID = "123e4567-e89b-42d3-a456-426614174001"
 const CASE_ID = "123e4567-e89b-42d3-a456-426614174002"
 
+describe("quick Suite metadata", () => {
+  const profile = { description: "Connectivity", timeout_ms: 30000, inputs: [{ key: "prompt", label: "Message", type: "text", default: "hello", bindings: [{ case_key: "T001", pointer: "/request/body/messages/0/content" }] }] }
+  it("preserves a generic quick task and its editable parameters", () => {
+    const payload = structuredClone(FIXTURE_CATALOG)
+    Object.assign(payload.suites[0], { model_target: "", quick_test: profile })
+    expect(parseCatalogSnapshot(payload).suites[0]).toMatchObject({ model_target: "", quick_test: profile })
+  })
+  it("rejects malformed parameter metadata and unscoped version-specific tasks", () => {
+    for (const quick_test of [false, {}, { ...profile, timeout_ms: 0 }, { ...profile, inputs: [{ ...profile.inputs[0], default: 7 }] }]) {
+      const payload = structuredClone(FIXTURE_CATALOG)
+      Object.assign(payload.suites[0], { quick_test })
+      expect(() => parseCatalogSnapshot(payload)).toThrow()
+    }
+    const payload = structuredClone(FIXTURE_CATALOG)
+    Object.assign(payload.suites[0], { protocol: "wan-video", model_target: "", quick_test: profile })
+    expect(() => parseCatalogSnapshot(payload)).toThrow()
+  })
+})
+
 function targetlessCatalog(modelCount: number, channelCount: number): unknown {
   return {
     schema_version: 2,

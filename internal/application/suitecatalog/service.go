@@ -66,12 +66,13 @@ type Entry struct {
 }
 
 type document struct {
-	SchemaVersion int             `json:"schema_version"`
-	Key           string          `json:"key"`
-	Name          string          `json:"name"`
-	Protocol      domain.Protocol `json:"protocol"`
-	ModelTarget   string          `json:"model_target"`
-	CaseKeys      []string        `json:"case_keys"`
+	SchemaVersion int                    `json:"schema_version"`
+	Key           string                 `json:"key"`
+	Name          string                 `json:"name"`
+	Protocol      domain.Protocol        `json:"protocol"`
+	ModelTarget   string                 `json:"model_target"`
+	CaseKeys      []string               `json:"case_keys"`
+	QuickTest     *domain.SuiteQuickTest `json:"quick_test,omitempty"`
 }
 
 type discovered struct {
@@ -256,7 +257,7 @@ func (service *Service) SaveSuite(ctx context.Context, group, directory string, 
 		found := false
 		for _, entry := range caseEntries {
 			testCase := entry.TestCase
-			if testCase.ID == ref.CaseID && testCase.Revision == ref.Revision && testCase.Protocol == suite.Protocol && testCase.AppliesToModel(suite.ModelTarget) {
+			if testCase.ID == ref.CaseID && testCase.Revision == ref.Revision && suite.AcceptsCase(testCase) {
 				caseKeys[index] = testCase.Key
 				found = true
 				break
@@ -268,7 +269,7 @@ func (service *Service) SaveSuite(ctx context.Context, group, directory string, 
 	}
 	raw, err := json.MarshalIndent(document{
 		SchemaVersion: CurrentSchemaVersion, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol,
-		ModelTarget: suite.ModelTarget, CaseKeys: caseKeys,
+		ModelTarget: suite.ModelTarget, CaseKeys: caseKeys, QuickTest: suite.QuickTest.Clone(),
 	}, "", "  ")
 	if err != nil {
 		return ErrInvalid
@@ -492,7 +493,7 @@ func decodeDocument(raw []byte) (document, error) {
 		}
 		return document{}, err
 	}
-	if doc.SchemaVersion != CurrentSchemaVersion || !validKey(doc.Key) || strings.TrimSpace(doc.Name) == "" || doc.Protocol.Validate() != nil || !validModelTarget(doc.ModelTarget) || len(doc.CaseKeys) == 0 {
+	if doc.SchemaVersion != CurrentSchemaVersion || !validKey(doc.Key) || strings.TrimSpace(doc.Name) == "" || doc.Protocol.Validate() != nil || (doc.ModelTarget != "" && !validModelTarget(doc.ModelTarget)) || (doc.ModelTarget == "" && doc.QuickTest == nil) || len(doc.CaseKeys) == 0 {
 		return document{}, ErrInvalid
 	}
 	seen := make(map[string]struct{}, len(doc.CaseKeys))
@@ -510,12 +511,15 @@ func decodeDocument(raw []byte) (document, error) {
 
 func materialize(doc document, cases map[string]domain.TestCase) (domain.Suite, error) {
 	refs := make([]domain.CaseRevisionRef, len(doc.CaseKeys))
+	definitions := make([]domain.TestCase, len(doc.CaseKeys))
+	selector := domain.Suite{Protocol: doc.Protocol, ModelTarget: doc.ModelTarget, QuickTest: doc.QuickTest}
 	for index, key := range doc.CaseKeys {
 		testCase, found := cases[string(doc.Protocol)+"/"+key]
-		if !found || !testCase.AppliesToModel(doc.ModelTarget) {
+		if !found || !selector.AcceptsCase(testCase) {
 			return domain.Suite{}, ErrInvalid
 		}
 		refs[index] = domain.CaseRevisionRef{CaseID: testCase.ID, Revision: testCase.Revision}
+		definitions[index] = testCase
 	}
 	encoded, err := json.Marshal(struct {
 		Document document                 `json:"document"`
@@ -535,9 +539,9 @@ func materialize(doc document, cases map[string]domain.TestCase) (domain.Suite, 
 			ID: stableSuiteID(string(doc.Protocol) + "/" + doc.Key), SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: revision, CreatedAt: stamp, UpdatedAt: stamp,
 		},
-		Key: doc.Key, Name: doc.Name, Protocol: doc.Protocol, ModelTarget: doc.ModelTarget, Cases: refs,
+		Key: doc.Key, Name: doc.Name, Protocol: doc.Protocol, ModelTarget: doc.ModelTarget, Cases: refs, QuickTest: doc.QuickTest.Clone(),
 	}
-	if err := suite.Validate(); err != nil {
+	if err := suite.ValidateCases(definitions); err != nil {
 		return domain.Suite{}, err
 	}
 	return suite, nil

@@ -183,6 +183,25 @@ describe("CatalogEditor latency ladder", () => {
 })
 
 describe("CatalogEditor filesystem suite", () => {
+  it("preserves quick task parameters and offers only generic cases without a target", async () => {
+    const user = userEvent.setup()
+    const testCase: CatalogTestCase = {
+      id: "123e4567-e89b-42d3-a456-426614174020", revision: 7, key: "T001", name: "Basic chat",
+      dimension: "compatibility", protocol: "openai-chat", model_targets: [], enabled: true,
+      default: false, severity: "normal", execution_mode: "automatic", definition_schema_version: 2,
+      type: "request.single", type_version: 1, spec: { request: {}, expected: {}, assertions: [] },
+    }
+    const catalog: CatalogSnapshot = { ...EMPTY_CATALOG, test_cases: [testCase, { ...testCase, id: "123e4567-e89b-42d3-a456-426614174021", name: "Scoped chat", model_targets: ["gpt-test"] }] }
+    const quickTest = { description: "Connection", timeout_ms: 30000, inputs: [] }
+    const item = { id: "123e4567-e89b-42d3-a456-426614174022", revision: 1, key: "connection", name: "Connection", protocol: "openai-chat" as const, model_target: "", case_count: 1, cases: [{ case_id: testCase.id, revision: testCase.revision }], quick_test: quickTest }
+    const updateSuite = vi.fn().mockResolvedValue(catalog)
+    render(<CatalogEditor kind="suite" item={item} catalog={catalog} actions={{ updateSuite } as unknown as CatalogActions} pending={false} mutate={async (operation) => { await operation() }} />)
+    await user.click(screen.getByRole("button", { name: "编辑套件" }))
+    expect(screen.queryByRole("checkbox", { name: "Scoped chat · r7" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "保存套件" }))
+    expect(updateSuite).toHaveBeenCalledWith(expect.objectContaining({ model_target: "", quick_test: quickTest, cases: item.cases }))
+  })
+
   it("submits a per-model shareable suite identity", async () => {
     const user = userEvent.setup()
     const testCase: CatalogTestCase = {

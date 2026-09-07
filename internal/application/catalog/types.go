@@ -69,14 +69,15 @@ type TestCaseSummary struct {
 }
 
 type SuiteSummary struct {
-	ID          string              `json:"id"`
-	Revision    uint64              `json:"revision"`
-	Key         string              `json:"key"`
-	Name        string              `json:"name"`
-	Protocol    domain.Protocol     `json:"protocol"`
-	ModelTarget string              `json:"model_target"`
-	CaseCount   int                 `json:"case_count"`
-	Cases       []CaseRevisionInput `json:"cases"`
+	ID          string                 `json:"id"`
+	Revision    uint64                 `json:"revision"`
+	Key         string                 `json:"key"`
+	Name        string                 `json:"name"`
+	Protocol    domain.Protocol        `json:"protocol"`
+	ModelTarget string                 `json:"model_target"`
+	CaseCount   int                    `json:"case_count"`
+	Cases       []CaseRevisionInput    `json:"cases"`
+	QuickTest   *domain.SuiteQuickTest `json:"quick_test,omitempty"`
 }
 
 type PlanSummary struct {
@@ -197,21 +198,23 @@ type CaseRevisionInput struct {
 }
 
 type CreateSuiteCommand struct {
-	Key         string              `json:"key"`
-	Name        string              `json:"name"`
-	Protocol    domain.Protocol     `json:"protocol"`
-	ModelTarget string              `json:"model_target"`
-	Cases       []CaseRevisionInput `json:"cases"`
+	Key         string                 `json:"key"`
+	Name        string                 `json:"name"`
+	Protocol    domain.Protocol        `json:"protocol"`
+	ModelTarget string                 `json:"model_target"`
+	Cases       []CaseRevisionInput    `json:"cases"`
+	QuickTest   *domain.SuiteQuickTest `json:"quick_test,omitempty"`
 }
 
 type UpdateSuiteCommand struct {
-	ID               string              `json:"id"`
-	ExpectedRevision uint64              `json:"expected_revision"`
-	Key              string              `json:"key"`
-	Name             string              `json:"name"`
-	Protocol         domain.Protocol     `json:"protocol"`
-	ModelTarget      string              `json:"model_target"`
-	Cases            []CaseRevisionInput `json:"cases"`
+	ID               string                 `json:"id"`
+	ExpectedRevision uint64                 `json:"expected_revision"`
+	Key              string                 `json:"key"`
+	Name             string                 `json:"name"`
+	Protocol         domain.Protocol        `json:"protocol"`
+	ModelTarget      string                 `json:"model_target"`
+	Cases            []CaseRevisionInput    `json:"cases"`
+	QuickTest        *domain.SuiteQuickTest `json:"quick_test,omitempty"`
 }
 
 type CreatePlanCommand struct {

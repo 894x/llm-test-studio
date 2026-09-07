@@ -470,7 +470,7 @@ func (repository filesystemCatalogRepository) updateTestCaseUnlocked(ctx context
 	if entry.TestCase.Key != testCase.Key || entry.TestCase.Protocol != testCase.Protocol {
 		return catalog.ErrInvalid
 	}
-	if err := repository.archiveSuitesReferencingCaseUnlocked(ctx, testCase.ID); err != nil {
+	if err := repository.prepareSuitesForCaseUpdateUnlocked(ctx, testCase); err != nil {
 		return err
 	}
 	return state.write(func() error {
@@ -810,23 +810,32 @@ func (repository filesystemCatalogRepository) validateMappingReferencesUnlocked(
 }
 
 func (repository filesystemCatalogRepository) validateSuiteReferencesUnlocked(ctx context.Context, suite domain.Suite) error {
-	for _, ref := range suite.Cases {
-		entry, err := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
-		if errors.Is(err, fs.ErrNotExist) {
-			return catalog.ErrNotFound
-		}
-		if err != nil {
-			return mapFileCatalogError(err)
-		}
-		testCase := entry.TestCase
-		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Protocol != suite.Protocol || !testCase.AppliesToModel(suite.ModelTarget) {
-			return catalog.ErrInvalid
-		}
+	definitions, err := repository.resolveSuiteCasesUnlocked(ctx, suite)
+	if err != nil {
+		return err
+	}
+	if suite.ValidateCases(definitions) != nil {
+		return catalog.ErrInvalid
 	}
 	return nil
 }
 
-func (repository filesystemCatalogRepository) archiveSuitesReferencingCaseUnlocked(ctx context.Context, caseID string) error {
+func (repository filesystemCatalogRepository) resolveSuiteCasesUnlocked(ctx context.Context, suite domain.Suite) ([]domain.TestCase, error) {
+	definitions := make([]domain.TestCase, 0, len(suite.Cases))
+	for _, ref := range suite.Cases {
+		entry, err := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, catalog.ErrNotFound
+		}
+		if err != nil {
+			return nil, mapFileCatalogError(err)
+		}
+		definitions = append(definitions, entry.TestCase)
+	}
+	return definitions, nil
+}
+
+func (repository filesystemCatalogRepository) prepareSuitesForCaseUpdateUnlocked(ctx context.Context, candidate domain.TestCase) error {
 	// Some focused repository tests intentionally provide only a Case catalog.
 	// Production always supplies the complete authored boundary.
 	if repository.suites == nil {
@@ -836,10 +845,11 @@ func (repository filesystemCatalogRepository) archiveSuitesReferencingCaseUnlock
 	if err != nil {
 		return mapFileCatalogError(err)
 	}
+	affected := make([]domain.Suite, 0)
 	for _, entry := range entries {
 		referenced := false
 		for _, ref := range entry.Suite.Cases {
-			if ref.CaseID == caseID {
+			if ref.CaseID == candidate.ID {
 				referenced = true
 				break
 			}
@@ -847,7 +857,26 @@ func (repository filesystemCatalogRepository) archiveSuitesReferencingCaseUnlock
 		if !referenced {
 			continue
 		}
-		if err := repository.suites.StoreRevision(ctx, entry.Suite); err != nil {
+		definitions, err := repository.resolveSuiteCasesUnlocked(ctx, entry.Suite)
+		if err != nil {
+			return err
+		}
+		prospective := entry.Suite
+		prospective.Cases = append([]domain.CaseRevisionRef(nil), entry.Suite.Cases...)
+		for index, ref := range prospective.Cases {
+			if ref.CaseID == candidate.ID {
+				prospective.Cases[index].Revision = candidate.Revision
+				definitions[index] = candidate
+			}
+		}
+		if prospective.ValidateCases(definitions) != nil {
+			return catalog.ErrInvalid
+		}
+		affected = append(affected, entry.Suite)
+	}
+	// Validate every dependent Suite before writing any revision sidecar.
+	for _, suite := range affected {
+		if err := repository.suites.StoreRevision(ctx, suite); err != nil {
 			return mapFileCatalogError(err)
 		}
 	}
@@ -1139,17 +1168,12 @@ func (repository filesystemCatalogRepository) authoredSuiteMatches(ctx context.C
 		if current.Protocol != desired.Protocol || current.Key != desired.Key {
 			continue
 		}
-		currentDocument := struct {
-			Key, Name, ModelTarget string
-			Protocol               domain.Protocol
-			Cases                  []domain.CaseRevisionRef
-		}{current.Key, current.Name, current.ModelTarget, current.Protocol, current.Cases}
-		desiredDocument := struct {
-			Key, Name, ModelTarget string
-			Protocol               domain.Protocol
-			Cases                  []domain.CaseRevisionRef
-		}{desired.Key, desired.Name, desired.ModelTarget, desired.Protocol, desired.Cases}
-		return canonicalCatalogValuesEqual(currentDocument, desiredDocument), nil
+		// Compare all authored fields so new Suite metadata cannot be omitted
+		// from uncertain-write recovery. Filesystem revisions derive their own
+		// identity metadata from the authored content.
+		current.EntityMeta = domain.EntityMeta{}
+		desired.EntityMeta = domain.EntityMeta{}
+		return canonicalCatalogValuesEqual(current, desired), nil
 	}
 	return false, nil
 }

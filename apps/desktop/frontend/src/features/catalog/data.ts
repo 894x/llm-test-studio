@@ -1,6 +1,6 @@
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
-import { isProtocol, type ProtocolID } from "./protocols"
+import { isProtocol, PROTOCOLS, type ProtocolID } from "./protocols"
 export type CatalogProtocol = ProtocolID
 export type CatalogLoadMode = "single" | "fixed_concurrency" | "open_loop"
 export type CatalogCaseSeverity = "normal" | "critical"
@@ -76,6 +76,21 @@ export interface CatalogSuite {
   model_target: string
   case_count: number
   cases: CatalogCaseRevision[]
+  quick_test?: SuiteQuickTest
+}
+
+export interface SuiteQuickTest {
+  description: string
+  timeout_ms: number
+  inputs: SuiteInput[]
+}
+
+export interface SuiteInput {
+  key: string
+  label: string
+  type: "text" | "number" | "boolean"
+  default: string | number | boolean
+  bindings: { case_key: string; pointer: string }[]
 }
 
 export interface CatalogPlan {
@@ -110,7 +125,7 @@ export type CreateTestCaseCommand = Pick<CatalogTestCase,
   "model_targets" | "execution_mode" | "definition_schema_version" | "type" | "type_version" | "spec"
 >
 export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
-export type CreateSuiteCommand = Pick<CatalogSuite, "key" | "name" | "protocol" | "model_target" | "cases">
+export type CreateSuiteCommand = Pick<CatalogSuite, "key" | "name" | "protocol" | "model_target" | "cases" | "quick_test">
 export type UpdateSuiteCommand = CreateSuiteCommand & { id: string; expected_revision: number }
 export type CreatePlanCommand = Pick<CatalogPlan,
   "name" | "model_ids" | "channel_ids" | "suite_id" | "suite_revision" | "cases" | "load_mode" |
@@ -391,13 +406,17 @@ function parseSuite(value: unknown): CatalogSuite {
     !isSafeCaseKey(value.key) ||
     !isNonBlank(value.name) ||
     !isProtocol(value.protocol) ||
-    !isNonBlank(value.model_target) || value.model_target.trim() !== value.model_target || value.model_target.length > 256 ||
+    typeof value.model_target !== "string" || value.model_target.trim() !== value.model_target || value.model_target.length > 256 ||
     !isPositiveInteger(value.case_count) ||
     !Array.isArray(value.cases)
   ) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_data"))
   }
   const cases = value.cases.map(parseCaseRevision)
+  const quickTest = value.quick_test === undefined ? undefined : parseSuiteQuickTest(value.quick_test)
+  if (!value.model_target && (!quickTest || PROTOCOLS.find(({ id }) => id === value.protocol)?.requiresModelTargets)) {
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_data"))
+  }
   if (cases.length !== value.case_count || !hasUniqueCaseIDs(cases)) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_member"))
   }
@@ -410,7 +429,33 @@ function parseSuite(value: unknown): CatalogSuite {
     model_target: value.model_target,
     case_count: value.case_count,
     cases,
+    ...(quickTest ? { quick_test: quickTest } : {}),
   }
+}
+
+function parseSuiteQuickTest(value: unknown): SuiteQuickTest {
+  const invalid = () => new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_suite_data"))
+  if (!isRecord(value) || !isNonBlank(value.description) || !isPositiveInteger(value.timeout_ms) || value.timeout_ms > 3_600_000 || !Array.isArray(value.inputs)) throw invalid()
+  const keys = new Set<string>()
+  const bindings = new Set<string>()
+  const inputs = value.inputs.map((input): SuiteInput => {
+    if (!isRecord(input) || !isSafeCaseKey(input.key) || keys.has(input.key) || !isNonBlank(input.label) || !Array.isArray(input.bindings) || !input.bindings.length) throw invalid()
+    keys.add(input.key)
+    const type = input.type
+    const defaultValue = input.default
+    if (!(type === "text" && typeof defaultValue === "string") && !(type === "number" && typeof defaultValue === "number" && Number.isFinite(defaultValue)) && !(type === "boolean" && typeof defaultValue === "boolean")) throw invalid()
+    return {
+      key: input.key, label: input.label, type: type as SuiteInput["type"], default: defaultValue as SuiteInput["default"],
+      bindings: input.bindings.map((binding) => {
+        if (!isRecord(binding) || !isSafeCaseKey(binding.case_key) || typeof binding.pointer !== "string" || !binding.pointer.startsWith("/request/body/") || /^\/request\/body\/model(?:\/|$)/.test(binding.pointer) || /~(?:[^01]|$)/.test(binding.pointer)) throw invalid()
+        const identity = `${binding.case_key}\u0000${binding.pointer}`
+        if (bindings.has(identity)) throw invalid()
+        bindings.add(identity)
+        return { case_key: binding.case_key, pointer: binding.pointer }
+      }),
+    }
+  })
+  return { description: value.description, timeout_ms: value.timeout_ms, inputs }
 }
 
 function parsePlan(value: unknown): CatalogPlan {

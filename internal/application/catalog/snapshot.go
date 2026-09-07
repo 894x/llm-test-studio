@@ -232,14 +232,19 @@ func (service *Service) buildSnapshot(
 		if _, duplicate := suiteByID[suite.ID]; duplicate {
 			return Snapshot{}, ErrCorrupt
 		}
+		definitions := make([]domain.TestCase, 0, len(suite.Cases))
 		for _, ref := range suite.Cases {
 			testCase, err := resolveCaseRevision(ref)
 			if err != nil {
 				return Snapshot{}, err
 			}
-			if _, found := testCaseByID[testCase.ID]; !found || testCase.Protocol != suite.Protocol || !testCase.AppliesToModel(suite.ModelTarget) {
+			if _, found := testCaseByID[testCase.ID]; !found {
 				return Snapshot{}, ErrCorrupt
 			}
+			definitions = append(definitions, testCase)
+		}
+		if suite.ValidateCases(definitions) != nil {
+			return Snapshot{}, ErrCorrupt
 		}
 		suiteByID[suite.ID] = suite
 		suiteRevisionCache[suiteRevisionKey{id: suite.ID, revision: suite.Revision}] = suite
@@ -285,14 +290,19 @@ func (service *Service) buildSnapshot(
 			if pinnedSuite.Protocol != targetProtocol {
 				return Snapshot{}, ErrCorrupt
 			}
+			definitions := make([]domain.TestCase, 0, len(pinnedSuite.Cases))
 			for _, ref := range pinnedSuite.Cases {
 				testCase, err := resolveCaseRevision(ref)
 				if err != nil {
 					return Snapshot{}, err
 				}
-				if _, found := testCaseByID[testCase.ID]; !found || testCase.Protocol != pinnedSuite.Protocol || !testCase.AppliesToModel(pinnedSuite.ModelTarget) {
+				if _, found := testCaseByID[testCase.ID]; !found {
 					return Snapshot{}, ErrCorrupt
 				}
+				definitions = append(definitions, testCase)
+			}
+			if pinnedSuite.ValidateCases(definitions) != nil {
+				return Snapshot{}, ErrCorrupt
 			}
 		}
 		for _, modelID := range plan.ModelIDs {
@@ -376,7 +386,7 @@ func (service *Service) buildSnapshot(
 		}
 		snapshot.Suites = append(snapshot.Suites, SuiteSummary{
 			ID: suite.ID, Revision: suite.Revision, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol,
-			ModelTarget: suite.ModelTarget, CaseCount: len(suite.Cases), Cases: cases,
+			ModelTarget: suite.ModelTarget, CaseCount: len(suite.Cases), Cases: cases, QuickTest: suite.QuickTest.Clone(),
 		})
 	}
 	for _, plan := range plans {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/894x/llm-test-studio/engine/apiaudit"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jsonpointer"
 )
 
 const (
@@ -380,19 +381,11 @@ func validateResponseProbeMatcher(matcher ResponseProbeMatcher) error {
 }
 
 func validJSONPointer(pointer string) bool {
-	if pointer == "" || !strings.HasPrefix(pointer, "/") || len(pointer) > 512 {
+	if pointer == "" || len(pointer) > 512 {
 		return false
 	}
-	for index := 0; index < len(pointer); index++ {
-		if pointer[index] != '~' {
-			continue
-		}
-		if index+1 >= len(pointer) || (pointer[index+1] != '0' && pointer[index+1] != '1') {
-			return false
-		}
-		index++
-	}
-	return true
+	_, valid := jsonpointer.Parse(pointer)
+	return valid
 }
 
 func validateLegacyAPIAudit(protocol domain.Protocol, raw json.RawMessage) error {
