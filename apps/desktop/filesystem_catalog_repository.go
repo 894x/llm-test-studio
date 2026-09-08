@@ -514,21 +514,20 @@ func (repository filesystemCatalogRepository) deleteTestCaseUnlocked(ctx context
 		return err
 	}
 	for _, plan := range plans {
-		for _, ref := range plan.Cases {
-			if ref.CaseID == id {
-				return catalog.ErrConflict
+		for _, planSuite := range plan.Suites {
+			for _, ref := range planSuite.Cases {
+				if ref.CaseID == id {
+					return catalog.ErrConflict
+				}
 			}
-		}
-		if plan.SuiteID == "" {
-			continue
-		}
-		pinnedSuite, err := repository.GetSuiteRevision(ctx, plan.SuiteID, plan.SuiteRevision)
-		if err != nil {
-			return err
-		}
-		for _, ref := range pinnedSuite.Cases {
-			if ref.CaseID == id {
-				return catalog.ErrConflict
+			pinnedSuite, err := repository.GetSuiteRevision(ctx, planSuite.SuiteID, planSuite.SuiteRevision)
+			if err != nil {
+				return err
+			}
+			for _, ref := range pinnedSuite.Cases {
+				if ref.CaseID == id {
+					return catalog.ErrConflict
+				}
 			}
 		}
 	}
@@ -666,8 +665,10 @@ func (repository filesystemCatalogRepository) deleteSuiteUnlocked(ctx context.Co
 		return err
 	}
 	for _, plan := range plans {
-		if plan.SuiteID == id {
-			return catalog.ErrConflict
+		for _, planSuite := range plan.Suites {
+			if planSuite.SuiteID == id {
+				return catalog.ErrConflict
+			}
 		}
 	}
 	return state.write(func() error {
@@ -884,8 +885,8 @@ func (repository filesystemCatalogRepository) prepareSuitesForCaseUpdateUnlocked
 }
 
 func (repository filesystemCatalogRepository) materializePlanRevisionsUnlocked(ctx context.Context, plan domain.Plan) error {
-	caseRevisions := make(map[domain.CaseRevisionRef]domain.TestCase, len(plan.Cases))
-	caseRevisionOrder := make([]domain.CaseRevisionRef, 0, len(plan.Cases))
+	caseRevisions := make(map[domain.CaseRevisionRef]domain.TestCase)
+	caseRevisionOrder := make([]domain.CaseRevisionRef, 0)
 	resolveCase := func(ref domain.CaseRevisionRef) error {
 		if _, alreadyResolved := caseRevisions[ref]; alreadyResolved {
 			return nil
@@ -904,33 +905,42 @@ func (repository filesystemCatalogRepository) materializePlanRevisionsUnlocked(c
 		caseRevisionOrder = append(caseRevisionOrder, ref)
 		return nil
 	}
-	for _, ref := range plan.Cases {
-		if err := resolveCase(ref); err != nil {
-			return err
+	pinnedSuites := make(map[domain.EntityRevisionRef]domain.Suite)
+	suiteRevisionOrder := make([]domain.EntityRevisionRef, 0, len(plan.Suites))
+	resolveSuite := func(id string, revision uint64) error {
+		ref := domain.EntityRevisionRef{ID: id, Revision: revision}
+		if _, alreadyResolved := pinnedSuites[ref]; alreadyResolved {
+			return nil
 		}
-	}
-
-	var pinnedSuite *domain.Suite
-	if plan.SuiteID != "" {
-		entry, err := repository.suites.FindRevision(ctx, plan.SuiteID, plan.SuiteRevision)
+		entry, err := repository.suites.FindRevision(ctx, id, revision)
 		if errors.Is(err, fs.ErrNotExist) {
 			return catalog.ErrNotFound
 		}
 		if err != nil {
 			return mapFileCatalogError(err)
 		}
-		if entry.Suite.ID != plan.SuiteID || entry.Suite.Revision != plan.SuiteRevision {
+		if entry.Suite.ID != id || entry.Suite.Revision != revision {
 			return catalog.ErrCorrupt
 		}
-		suite := entry.Suite
-		pinnedSuite = &suite
-		for _, ref := range suite.Cases {
+		pinnedSuites[ref] = entry.Suite
+		suiteRevisionOrder = append(suiteRevisionOrder, ref)
+		for _, caseRef := range entry.Suite.Cases {
+			if err := resolveCase(caseRef); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, planSuite := range plan.Suites {
+		for _, ref := range planSuite.Cases {
 			if err := resolveCase(ref); err != nil {
 				return err
 			}
 		}
+		if err := resolveSuite(planSuite.SuiteID, planSuite.SuiteRevision); err != nil {
+			return err
+		}
 	}
-
 	// Cases are installed first so a persisted Suite sidecar can never refer to
 	// a missing exact Case revision. The Plan document is committed only after
 	// every sidecar succeeds.
@@ -940,8 +950,9 @@ func (repository filesystemCatalogRepository) materializePlanRevisionsUnlocked(c
 			return mapFileCatalogError(err)
 		}
 	}
-	if pinnedSuite != nil {
-		if err := repository.suites.StoreRevision(ctx, *pinnedSuite); err != nil {
+	for _, ref := range suiteRevisionOrder {
+		pinnedSuite := pinnedSuites[ref]
+		if err := repository.suites.StoreRevision(ctx, pinnedSuite); err != nil {
 			return mapFileCatalogError(err)
 		}
 	}
@@ -949,37 +960,49 @@ func (repository filesystemCatalogRepository) materializePlanRevisionsUnlocked(c
 }
 
 func (repository filesystemCatalogRepository) validatePlanReferencesUnlocked(ctx context.Context, plan domain.Plan) error {
-	targetProtocol := domain.Protocol("")
-	for _, ref := range plan.Cases {
-		entry, err := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
-		if errors.Is(err, fs.ErrNotExist) {
-			return catalog.ErrNotFound
-		}
-		if err != nil {
-			return mapFileCatalogError(err)
-		}
-		testCase := entry.TestCase
-		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Validate() != nil {
-			return catalog.ErrCorrupt
-		}
-		if targetProtocol == "" {
-			targetProtocol = testCase.Protocol
-		} else if targetProtocol != testCase.Protocol {
-			return catalog.ErrInvalid
-		}
+	if len(plan.Suites) == 0 {
+		return catalog.ErrInvalid
 	}
-
-	if plan.SuiteID != "" {
-		suite, err := repository.GetSuiteRevision(ctx, plan.SuiteID, plan.SuiteRevision)
+	targetProtocol := domain.Protocol("")
+	requiredModelTarget := ""
+	conflictingModelTargets := false
+	for _, planSuite := range plan.Suites {
+		suite, err := repository.GetSuiteRevision(ctx, planSuite.SuiteID, planSuite.SuiteRevision)
 		if err != nil {
 			return err
 		}
-		if suite.Protocol != targetProtocol {
+		if !caseRevisionRefsEqual(suite.Cases, planSuite.Cases) {
 			return catalog.ErrInvalid
 		}
+		if targetProtocol == "" {
+			targetProtocol = suite.Protocol
+		} else if targetProtocol != suite.Protocol {
+			return catalog.ErrInvalid
+		}
+		if suite.ModelTarget != "" {
+			if requiredModelTarget == "" {
+				requiredModelTarget = suite.ModelTarget
+			} else if suite.ModelTarget != requiredModelTarget {
+				conflictingModelTargets = true
+			}
+		}
+		for _, ref := range planSuite.Cases {
+			entry, findErr := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
+			if errors.Is(findErr, fs.ErrNotExist) {
+				return catalog.ErrNotFound
+			}
+			if findErr != nil {
+				return mapFileCatalogError(findErr)
+			}
+			if entry.TestCase.ID != ref.CaseID || entry.TestCase.Revision != ref.Revision || entry.TestCase.Validate() != nil || entry.TestCase.Protocol != suite.Protocol {
+				return catalog.ErrCorrupt
+			}
+		}
 	}
-
 	models := make(map[string]domain.Model, len(plan.ModelIDs))
+	if conflictingModelTargets {
+		return catalog.ErrInvalid
+	}
 	for _, id := range plan.ModelIDs {
 		model, err := repository.GetModel(ctx, id)
 		if err != nil {
@@ -999,12 +1022,28 @@ func (repository filesystemCatalogRepository) validatePlanReferencesUnlocked(ctx
 			return catalog.ErrInvalid
 		}
 		for modelID := range models {
-			if _, err := repository.findMappingByBindingUnlocked(ctx, id, modelID); err != nil {
+			mapping, err := repository.findMappingByBindingUnlocked(ctx, id, modelID)
+			if err != nil {
 				return err
+			}
+			if requiredModelTarget != "" && mapping.UpstreamModelName != requiredModelTarget {
+				return catalog.ErrInvalid
 			}
 		}
 	}
 	return nil
+}
+
+func caseRevisionRefsEqual(left, right []domain.CaseRevisionRef) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (repository filesystemCatalogRepository) capturePlanDocumentUnlocked(ctx context.Context, plan domain.Plan) (plancatalog.Document, error) {

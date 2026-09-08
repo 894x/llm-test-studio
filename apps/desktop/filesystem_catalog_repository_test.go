@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -103,6 +104,69 @@ func TestFilesystemCatalogRepositoryAllowsMappingDeletionForTargetlessPlan(t *te
 	}
 	if _, err := channels.GetMapping(ctx, mapping.ID); !errors.Is(err, channelcatalog.ErrNotFound) {
 		t.Fatalf("GetMapping(deleted) error = %v, want %v", err, channelcatalog.ErrNotFound)
+	}
+}
+
+func TestFilesystemCatalogRepositoryRejectsPlanWhoseSuiteTargetDiffersFromBinding(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := t.TempDir()
+	models, err := modelcatalog.New(filepath.Join(root, "models.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	channels, err := channelcatalog.New(filepath.Join(root, "channels.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "cases")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := plancatalog.New(filepath.Join(root, "plans"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := filesystemCatalogRepository{
+		lockPath: filepath.Join(root, "catalog.lock"), models: models, channels: channels,
+		cases: cases, suites: suites, plans: plans,
+	}
+	channel, mapping, plan := filesystemCatalogMappingFixtures(false)
+	if err := repository.CreateModel(ctx, filesystemCatalogModelFixture(mapping.ModelID, channel.Protocol)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateChannel(ctx, channel); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateChannelModel(ctx, mapping); err != nil {
+		t.Fatal(err)
+	}
+	testCase := filesystemCatalogTestCase(1)
+	if err := repository.CreateTestCase(ctx, testCase); err != nil {
+		t.Fatal(err)
+	}
+	caseEntries, err := cases.Entries(ctx)
+	if err != nil || len(caseEntries) != 1 {
+		t.Fatalf("case Entries() = %#v, %v", caseEntries, err)
+	}
+	testCase = caseEntries[0].TestCase
+	suite := filesystemCatalogSuiteFixture(testCase)
+	suite.ModelTarget = "different-upstream"
+	if err := repository.CreateSuite(ctx, suite); err != nil {
+		t.Fatal(err)
+	}
+	suiteEntries, err := suites.Entries(ctx)
+	if err != nil || len(suiteEntries) != 1 {
+		t.Fatalf("suite Entries() = %#v, %v", suiteEntries, err)
+	}
+	suite = suiteEntries[0].Suite
+	filesystemCatalogSetPlanSuites(&plan, suite)
+	if err := repository.CreatePlan(ctx, plan); !errors.Is(err, catalog.ErrInvalid) {
+		t.Fatalf("CreatePlan() target mismatch error = %v, want %v", err, catalog.ErrInvalid)
 	}
 }
 
@@ -576,23 +640,38 @@ func TestFilesystemCatalogRepositoryPlanPinsSurviveExternalCaseAndSuiteEdits(t *
 	if err != nil {
 		t.Fatal(err)
 	}
+	directSuite := filesystemCatalogSuiteFixture(directCase.TestCase)
+	directSuite.ID = "64000000-0000-4000-8000-000000000002"
+	directSuite.Key = "direct-plan-suite"
+	directSuite.Name = "direct Plan Suite"
 	suite := filesystemCatalogSuiteFixture(suiteCase.TestCase)
-	if err := suites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
-		t.Fatal(err)
+	for _, candidate := range []domain.Suite{directSuite, suite} {
+		if err := suites.SaveSuite(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+			t.Fatal(err)
+		}
 	}
 	suiteEntries, err := suites.Entries(ctx)
-	if err != nil || len(suiteEntries) != 1 {
+	if err != nil || len(suiteEntries) != 2 {
 		t.Fatalf("Suite Entries() = %#v, %v", suiteEntries, err)
 	}
-	pinnedSuite := suiteEntries[0]
+	var directPinnedSuite, pinnedSuite suitecatalog.Entry
+	for _, entry := range suiteEntries {
+		switch entry.Suite.Key {
+		case directSuite.Key:
+			directPinnedSuite = entry
+		case suite.Key:
+			pinnedSuite = entry
+		}
+	}
+	if directPinnedSuite.Suite.ID == "" || pinnedSuite.Suite.ID == "" {
+		t.Fatal("saved Suite entry is missing")
+	}
 	plans, err := plancatalog.New(filepath.Join(root, "plans"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _, plan := filesystemCatalogMappingFixtures(true)
-	plan.Cases = []domain.CaseRevisionRef{{CaseID: directCase.TestCase.ID, Revision: directCase.TestCase.Revision}}
-	plan.SuiteID = pinnedSuite.Suite.ID
-	plan.SuiteRevision = pinnedSuite.Suite.Revision
+	filesystemCatalogSetPlanSuites(&plan, directPinnedSuite.Suite, pinnedSuite.Suite)
 	repository := filesystemCatalogRepository{
 		lockPath: filepath.Join(root, "catalog.lock"), cases: cases, suites: suites, plans: plans,
 	}
@@ -665,12 +744,27 @@ func TestFilesystemCatalogRepositoryPlanRevisionMaterializationFailureDoesNotCom
 			if err != nil || len(entries) != 1 {
 				t.Fatalf("Entries() = %#v, %v", entries, err)
 			}
+			suites, err := suitecatalog.New(suitecatalog.Options{
+				Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			suite := filesystemCatalogSuiteFixture(entries[0].TestCase)
+			if err := suites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
+				t.Fatal(err)
+			}
+			suiteEntries, err := suites.Entries(ctx)
+			if err != nil || len(suiteEntries) != 1 {
+				t.Fatalf("Suite Entries() = %#v, %v", suiteEntries, err)
+			}
+			suite = suiteEntries[0].Suite
 			plans, err := plancatalog.New(filepath.Join(root, "plans"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			_, _, plan := filesystemCatalogMappingFixtures(true)
-			plan.Cases = []domain.CaseRevisionRef{{CaseID: entries[0].TestCase.ID, Revision: entries[0].TestCase.Revision}}
+			filesystemCatalogSetPlanSuites(&plan, suite)
 			if mutation == "update" {
 				if err := plans.Create(ctx, plan); err != nil {
 					t.Fatal(err)
@@ -683,6 +777,7 @@ func TestFilesystemCatalogRepositoryPlanRevisionMaterializationFailureDoesNotCom
 			repository := filesystemCatalogRepository{
 				lockPath: filepath.Join(root, "catalog.lock"),
 				cases:    &failingStoreRevisionCaseCatalog{Service: cases, err: want},
+				suites:   suites,
 				plans:    plans,
 			}
 			var mutationErr error
@@ -739,9 +834,7 @@ func TestFilesystemCatalogRepositorySuiteRevisionMaterializationFailureDoesNotCo
 		t.Fatal(err)
 	}
 	_, _, plan := filesystemCatalogMappingFixtures(true)
-	plan.Cases = []domain.CaseRevisionRef{{CaseID: caseEntries[0].TestCase.ID, Revision: caseEntries[0].TestCase.Revision}}
-	plan.SuiteID = suiteEntries[0].Suite.ID
-	plan.SuiteRevision = suiteEntries[0].Suite.Revision
+	filesystemCatalogSetPlanSuites(&plan, suiteEntries[0].Suite)
 	want := fs.ErrPermission
 	repository := filesystemCatalogRepository{
 		lockPath: filepath.Join(root, "catalog.lock"), cases: cases,
@@ -923,11 +1016,9 @@ func TestFilesystemCatalogRepositoryRefusesToDeleteCaseReferencedOnlyByHistorica
 			ID: "63000000-0000-4000-8000-000000000013", SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: 1, CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
 		},
-		Name: "historical Suite Plan", SuiteID: initialSuite.Suite.ID, SuiteRevision: initialSuite.Suite.Revision,
-		Cases: []domain.CaseRevisionRef{{CaseID: second.ID, Revision: second.Revision}},
-		Load:  domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000},
-		SLA:   domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 3_000}},
+		Name: "historical Suite Plan",
 	}
+	filesystemCatalogSetPlanSuites(&plan, initialSuite.Suite)
 	if err := plans.Create(ctx, plan); err != nil {
 		t.Fatal(err)
 	}
@@ -1033,7 +1124,11 @@ func TestFilesystemCatalogRepositoryRereadsDesiredStateAfterAmbiguousCommittedWr
 	if err := repository.CreateSuite(ctx, suite); err != nil {
 		t.Fatalf("CreateSuite() reported an already committed write as failed: %v", err)
 	}
-	plan.Cases = []domain.CaseRevisionRef{{CaseID: caseEntries[0].TestCase.ID, Revision: caseEntries[0].TestCase.Revision}}
+	suiteEntries, err := suites.Entries(ctx)
+	if err != nil || len(suiteEntries) != 1 {
+		t.Fatalf("Suite Entries() = %#v, %v", suiteEntries, err)
+	}
+	filesystemCatalogSetPlanSuites(&plan, suiteEntries[0].Suite)
 	if err := repository.CreatePlan(ctx, plan); err != nil {
 		t.Fatalf("CreatePlan() reported an already committed write as failed: %v", err)
 	}
@@ -1270,8 +1365,17 @@ func TestFilesystemCatalogRepositorySerializesCaseDeleteAgainstPlanCreate(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
+	suite := filesystemCatalogSuiteFixture(caseEntry.TestCase)
+	if err := firstSuites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
+		t.Fatal(err)
+	}
+	suiteEntries, err := firstSuites.Entries(ctx)
+	if err != nil || len(suiteEntries) != 1 {
+		t.Fatalf("Suite Entries() = %#v, %v", suiteEntries, err)
+	}
+	suite = suiteEntries[0].Suite
 	_, _, plan := filesystemCatalogMappingFixtures(true)
-	plan.Cases = []domain.CaseRevisionRef{{CaseID: caseEntry.TestCase.ID, Revision: caseEntry.TestCase.Revision}}
+	filesystemCatalogSetPlanSuites(&plan, suite)
 
 	entered, release := make(chan struct{}), make(chan struct{})
 	lockPath := filepath.Join(root, "catalog.lock")
@@ -1517,13 +1621,27 @@ func filesystemCatalogMappingFixtures(targetless bool) (domain.Channel, domain.C
 	plan := domain.Plan{
 		EntityMeta: meta("62000000-0000-4000-8000-000000000004"),
 		Name:       "plan", ModelIDs: modelIDs, ChannelIDs: channelIDs,
-		Cases: []domain.CaseRevisionRef{{CaseID: "62000000-0000-4000-8000-000000000005", Revision: 1}},
-		Load: domain.LoadProfile{
-			Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
-		},
-		SLA: domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 3_000}},
 	}
+	filesystemCatalogSetPlanSuites(&plan, domain.Suite{
+		EntityMeta: meta("62000000-0000-4000-8000-000000000006"),
+		Cases:      []domain.CaseRevisionRef{{CaseID: "62000000-0000-4000-8000-000000000005", Revision: 1}},
+	})
 	return channel, mapping, plan
+}
+
+func filesystemCatalogSetPlanSuites(plan *domain.Plan, suites ...domain.Suite) {
+	plan.Suites = make([]domain.PlanSuiteEntry, len(suites))
+	for index, suite := range suites {
+		plan.Suites[index] = domain.PlanSuiteEntry{
+			EntryID: fmt.Sprintf("65000000-0000-4000-8000-%012d", index+1),
+			SuiteID: suite.ID, SuiteRevision: suite.Revision,
+			Cases: append([]domain.CaseRevisionRef(nil), suite.Cases...), Parameters: map[string]json.RawMessage{},
+			Load: domain.LoadProfile{
+				Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+			},
+			SLA: domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 3_000}},
+		}
+	}
 }
 
 func filesystemCatalogModelFixture(id string, protocol domain.Protocol) domain.Model {

@@ -259,6 +259,9 @@ func (profile SLAProfile) Validate() error {
 }
 
 func (profile SLAProfile) clone() SLAProfile {
+	if profile.Thresholds == nil {
+		return SLAProfile{}
+	}
 	cloned := SLAProfile{Thresholds: make(map[string]float64, len(profile.Thresholds))}
 	for name, value := range profile.Thresholds {
 		cloned.Thresholds[name] = value
@@ -268,14 +271,54 @@ func (profile SLAProfile) clone() SLAProfile {
 
 type Plan struct {
 	EntityMeta
-	Name          string            `json:"name"`
-	ModelIDs      []string          `json:"model_ids"`
-	ChannelIDs    []string          `json:"channel_ids"`
-	SuiteID       string            `json:"suite_id,omitempty"`
-	SuiteRevision uint64            `json:"suite_revision,omitempty"`
-	Cases         []CaseRevisionRef `json:"cases"`
-	Load          LoadProfile       `json:"load"`
-	SLA           SLAProfile        `json:"sla"`
+	Name       string           `json:"name"`
+	ModelIDs   []string         `json:"model_ids"`
+	ChannelIDs []string         `json:"channel_ids"`
+	Suites     []PlanSuiteEntry `json:"suites"`
+}
+
+// PlanSuiteEntry is one ordered Suite invocation inside a Plan. EntryID owns
+// the invocation identity, so the same pinned Suite may appear more than once
+// with different parameters and execution profiles.
+type PlanSuiteEntry struct {
+	EntryID       string                     `json:"entry_id"`
+	SuiteID       string                     `json:"suite_id"`
+	SuiteRevision uint64                     `json:"suite_revision"`
+	Cases         []CaseRevisionRef          `json:"cases"`
+	Parameters    map[string]json.RawMessage `json:"parameters"`
+	Load          LoadProfile                `json:"load"`
+	SLA           SLAProfile                 `json:"sla"`
+}
+
+func (entry PlanSuiteEntry) Validate() error {
+	if !IsUUID(entry.EntryID) {
+		return errors.New("plan suite entry id must be a canonical UUID")
+	}
+	if err := (EntityRevisionRef{ID: entry.SuiteID, Revision: entry.SuiteRevision}).Validate("suite"); err != nil {
+		return err
+	}
+	if err := validateCaseRevisionRefs(entry.Cases); err != nil {
+		return err
+	}
+	if entry.Parameters == nil {
+		return errors.New("plan suite parameters must be present")
+	}
+	for key, raw := range entry.Parameters {
+		if !isSafeCaseKey(key) || !json.Valid(raw) {
+			return fmt.Errorf("invalid plan suite parameter %q", key)
+		}
+	}
+	if err := entry.Load.Validate(); err != nil {
+		return err
+	}
+	return entry.SLA.Validate()
+}
+
+func (entry PlanSuiteEntry) clone() PlanSuiteEntry {
+	entry.Cases = append([]CaseRevisionRef(nil), entry.Cases...)
+	entry.Parameters = cloneRawMessageMap(entry.Parameters)
+	entry.SLA = entry.SLA.clone()
+	return entry
 }
 
 func (plan Plan) Validate() error {
@@ -296,21 +339,31 @@ func (plan Plan) Validate() error {
 			return err
 		}
 	}
-	if plan.SuiteID == "" && plan.SuiteRevision != 0 {
-		return errors.New("plan suite revision requires a suite id")
+	if len(plan.Suites) == 0 {
+		return errors.New("plan requires at least one suite entry")
 	}
-	if plan.SuiteID != "" {
-		if err := (EntityRevisionRef{ID: plan.SuiteID, Revision: plan.SuiteRevision}).Validate("suite"); err != nil {
-			return err
+	seenEntries := make(map[string]struct{}, len(plan.Suites))
+	for index, entry := range plan.Suites {
+		if err := entry.Validate(); err != nil {
+			return fmt.Errorf("invalid plan suite entry %d: %w", index, err)
 		}
+		if _, duplicate := seenEntries[entry.EntryID]; duplicate {
+			return fmt.Errorf("duplicate plan suite entry id %q", entry.EntryID)
+		}
+		seenEntries[entry.EntryID] = struct{}{}
 	}
-	if err := validateCaseRevisionRefs(plan.Cases); err != nil {
-		return err
+	return nil
+}
+
+func cloneRawMessageMap(values map[string]json.RawMessage) map[string]json.RawMessage {
+	if values == nil {
+		return nil
 	}
-	if err := plan.Load.Validate(); err != nil {
-		return err
+	result := make(map[string]json.RawMessage, len(values))
+	for key, value := range values {
+		result[key] = append(json.RawMessage(nil), value...)
 	}
-	return plan.SLA.Validate()
+	return result
 }
 
 type Evidence struct {

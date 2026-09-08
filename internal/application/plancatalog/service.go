@@ -19,7 +19,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentFileSchemaVersion = 1
+const CurrentFileSchemaVersion = 2
 
 var (
 	ErrInvalid  = errors.New("plan catalog: invalid input")
@@ -37,13 +37,62 @@ type TargetBinding struct {
 	Mapping domain.ChannelModel `json:"mapping"`
 }
 
-// Document is the on-disk Plan format. Embedding Plan keeps its established
-// fields flat while the file schema and immutable target bindings remain
-// explicitly versioned by the file catalog.
+// Document is the in-memory view of the on-disk Plan format. The embedded Plan
+// contains only the ordered Suite entries owned by the authored catalog; the
+// file schema and immutable target bindings are versioned alongside it.
 type Document struct {
 	FileSchemaVersion int `json:"file_schema_version"`
 	domain.Plan
 	TargetBindings []TargetBinding `json:"target_bindings"`
+}
+
+// documentV2 enumerates the strict authored file shape so unknown or misplaced
+// execution fields fail decoding at the catalog boundary.
+type documentV2 struct {
+	FileSchemaVersion int `json:"file_schema_version"`
+	domain.EntityMeta
+	Name           string                  `json:"name"`
+	ModelIDs       []string                `json:"model_ids"`
+	ChannelIDs     []string                `json:"channel_ids"`
+	Suites         []domain.PlanSuiteEntry `json:"suites"`
+	TargetBindings []TargetBinding         `json:"target_bindings"`
+}
+
+func (document Document) MarshalJSON() ([]byte, error) {
+	return json.Marshal(documentV2{
+		FileSchemaVersion: document.FileSchemaVersion,
+		EntityMeta:        document.EntityMeta,
+		Name:              document.Name,
+		ModelIDs:          document.ModelIDs,
+		ChannelIDs:        document.ChannelIDs,
+		Suites:            document.Suites,
+		TargetBindings:    document.TargetBindings,
+	})
+}
+
+func (document *Document) UnmarshalJSON(raw []byte) error {
+	if document == nil {
+		return errors.New("nil plan document")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var decoded documentV2
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("plan document must contain one object")
+	}
+	*document = Document{
+		FileSchemaVersion: decoded.FileSchemaVersion,
+		Plan: domain.Plan{
+			EntityMeta: decoded.EntityMeta,
+			Name:       decoded.Name, ModelIDs: decoded.ModelIDs, ChannelIDs: decoded.ChannelIDs,
+			Suites: decoded.Suites,
+		},
+		TargetBindings: decoded.TargetBindings,
+	}
+	return nil
 }
 
 // Validate verifies the complete Cartesian target binding matrix. Bindings are
@@ -55,6 +104,9 @@ func (document Document) Validate() error {
 	}
 	if document.Plan.Validate() != nil {
 		return errors.New("invalid plan")
+	}
+	if len(document.Plan.Suites) == 0 {
+		return errors.New("authored plan must contain at least one suite")
 	}
 	// Requiring a non-nil slice distinguishes a complete wrapper from a wrapper
 	// that omitted target_bindings. Targetless plans encode an empty JSON array.
@@ -405,9 +457,28 @@ func clonePlan(plan domain.Plan) domain.Plan {
 	if plan.ChannelIDs != nil {
 		plan.ChannelIDs = append([]string{}, plan.ChannelIDs...)
 	}
-	plan.Cases = append([]domain.CaseRevisionRef(nil), plan.Cases...)
-	plan.SLA.Thresholds = cloneThresholds(plan.SLA.Thresholds)
+	if plan.Suites != nil {
+		entries := make([]domain.PlanSuiteEntry, len(plan.Suites))
+		for index, entry := range plan.Suites {
+			entries[index] = entry
+			entries[index].Cases = append([]domain.CaseRevisionRef(nil), entry.Cases...)
+			entries[index].Parameters = cloneRawMessages(entry.Parameters)
+			entries[index].SLA.Thresholds = cloneThresholds(entry.SLA.Thresholds)
+		}
+		plan.Suites = entries
+	}
 	return plan
+}
+
+func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMessage {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]json.RawMessage, len(values))
+	for key, value := range values {
+		result[key] = append(json.RawMessage(nil), value...)
+	}
+	return result
 }
 
 func cloneThresholds(values map[string]float64) map[string]float64 {

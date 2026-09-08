@@ -77,12 +77,27 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 	if err != nil {
 		return fmt.Errorf("load report evidence: %w", err)
 	}
-	caseResults := make([]domain.Result, 0, len(results))
-	requestResults := make([]domain.Result, 0, len(results))
-	for _, result := range results {
-		if result.RequestID == "" {
+	snapshot := run.Snapshot()
+	reportResults := make([]domain.Result, 0, len(results))
+	for _, storedResult := range results {
+		result := storedResult
+		if snapshot.QuickTask != nil {
+			if result.SuiteEntryID != "" || result.SuiteStatus != "" || result.CaseID == "" {
+				return errors.New("quick-task result has invalid stored ownership")
+			}
+			result.SuiteEntryID = runID
+		}
+		reportResults = append(reportResults, result)
+	}
+	caseResults := make([]domain.Result, 0, len(reportResults))
+	requestResults := make([]domain.Result, 0, len(reportResults))
+	for _, result := range reportResults {
+		if result.SuiteStatus != "" {
+			continue
+		}
+		if result.RequestID == "" && result.CaseID != "" {
 			caseResults = append(caseResults, result)
-		} else {
+		} else if result.RequestID != "" {
 			requestResults = append(requestResults, result)
 		}
 	}
@@ -94,7 +109,6 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 	if err != nil || !domain.IsUUID(reportID) {
 		return ErrGenerationInvalid
 	}
-	snapshot := run.Snapshot()
 	passed := run.Status() == domain.RunCompleted
 	issues := make([]string, 0)
 	metrics := aggregateMetrics(requestResults)
@@ -104,7 +118,7 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 		issues = append(issues, slaIssues...)
 	}
 	failedByCode := make(map[string]int)
-	for _, result := range results {
+	for _, result := range append(append([]domain.Result{}, requestResults...), caseResults...) {
 		if !result.Success.Overall() {
 			passed = false
 			code := string(result.ErrorCode)
@@ -115,6 +129,19 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 		issues = append(issues, "run was cancelled before normal completion")
 	} else if run.Status() == domain.RunFailed {
 		issues = append(issues, "run failed before normal completion")
+	}
+	suiteReports, err := buildSuiteReports(snapshot, run.Status(), reportResults)
+	if err != nil {
+		return fmt.Errorf("build suite reports: %w", err)
+	}
+	for _, suiteReport := range suiteReports {
+		if suiteReport.Conclusion.Passed {
+			continue
+		}
+		passed = false
+		for _, issue := range suiteReport.Conclusion.Issues {
+			issues = append(issues, fmt.Sprintf("suite %s (%s): %s", suiteReport.SuiteKey, suiteReport.SuiteEntryID, issue))
+		}
 	}
 	codes := make([]string, 0, len(failedByCode))
 	for code := range failedByCode {
@@ -143,7 +170,7 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 		Conclusion:  domain.ReportConclusion{Passed: passed, Verdict: verdict, Issues: issues},
 		SLA:         slaMetrics, Metrics: metrics,
 		Timeline: resultTimeline(requestResults), Distributions: append(resultDistributions(requestResults), probeDistributions(requestResults)...),
-		CaseResults: append([]domain.Result{}, caseResults...), ErrorClusters: errorClusters,
+		CaseResults: append([]domain.Result{}, caseResults...), SuiteReports: suiteReports, ErrorClusters: errorClusters,
 		Evidence: append([]domain.Evidence{}, evidence...), Baseline: json.RawMessage(`{}`),
 		Attachments: []domain.ReportAttachment{},
 	}
@@ -154,6 +181,177 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 		return fmt.Errorf("persist report: %w", err)
 	}
 	return nil
+}
+
+func buildSuiteReports(snapshot domain.RunSnapshot, runStatus domain.RunStatus, results []domain.Result) ([]domain.SuiteReport, error) {
+	if len(snapshot.Suites) == 0 {
+		if snapshot.QuickTask == nil {
+			return nil, errors.New("flat report generation is reserved for quick tasks")
+		}
+		caseResults := make([]domain.Result, 0, len(snapshot.Cases))
+		requestResults := make([]domain.Result, 0)
+		for _, result := range results {
+			if result.SuiteEntryID != snapshot.Plan.ID || result.SuiteStatus != "" {
+				return nil, errors.New("quick-task report result has invalid synthetic ownership")
+			}
+			if result.RequestID != "" {
+				requestResults = append(requestResults, result)
+			} else if result.CaseID != "" {
+				caseResults = append(caseResults, result)
+			}
+		}
+		status := domain.SuiteReportFailed
+		switch runStatus {
+		case domain.RunCompleted:
+			status = domain.SuiteReportCompleted
+		case domain.RunCancelled:
+			status = domain.SuiteReportCancelled
+		case domain.RunFailed:
+		default:
+			return nil, errors.New("quick-task report requires a terminal run")
+		}
+		metrics := aggregateMetrics(requestResults)
+		sla, issues := evaluateSLA(snapshot.SLA, requestResults, metrics)
+		passed := status == domain.SuiteReportCompleted
+		for _, result := range append(append([]domain.Result{}, requestResults...), caseResults...) {
+			if !result.Success.Overall() {
+				passed = false
+			}
+		}
+		if len(issues) != 0 {
+			passed = false
+		}
+		verdict := "pass"
+		if status == domain.SuiteReportFailed {
+			passed = false
+			verdict = "fail"
+			issues = append([]string{"suite execution failed"}, issues...)
+		} else if status == domain.SuiteReportCancelled {
+			passed = false
+			verdict = "cancelled"
+			issues = append([]string{"suite execution was cancelled"}, issues...)
+		} else if !passed {
+			verdict = "fail"
+		}
+		suite := snapshot.QuickTask.Suite
+		return []domain.SuiteReport{{
+			SuiteEntryID: snapshot.Plan.ID, SuiteID: suite.ID, SuiteRevision: suite.Revision,
+			SuiteKey: suite.Key, SuiteName: suite.Name, Status: status,
+			Conclusion: domain.ReportConclusion{Passed: passed, Verdict: verdict, Issues: issues},
+			SLA:        sla, Metrics: metrics, Timeline: resultTimeline(requestResults),
+			Distributions: append(resultDistributions(requestResults), probeDistributions(requestResults)...),
+			CaseResults:   append([]domain.Result{}, caseResults...),
+		}}, nil
+	}
+	markers := make(map[string]domain.SuiteExecutionStatus, len(snapshot.Suites))
+	knownEntries := make(map[string]struct{}, len(snapshot.Suites))
+	for _, suite := range snapshot.Suites {
+		knownEntries[suite.EntryID] = struct{}{}
+	}
+	for _, result := range results {
+		if result.SuiteStatus == "" {
+			continue
+		}
+		if _, known := knownEntries[result.SuiteEntryID]; !known {
+			return nil, fmt.Errorf("suite marker references unknown entry %q", result.SuiteEntryID)
+		}
+		if _, duplicate := markers[result.SuiteEntryID]; duplicate {
+			return nil, fmt.Errorf("duplicate suite marker for entry %q", result.SuiteEntryID)
+		}
+		markers[result.SuiteEntryID] = result.SuiteStatus
+	}
+
+	reports := make([]domain.SuiteReport, 0, len(snapshot.Suites))
+	terminalGap := false
+	for _, suite := range snapshot.Suites {
+		caseResults := make([]domain.Result, 0, len(suite.Cases))
+		requestResults := make([]domain.Result, 0)
+		for _, result := range results {
+			if result.SuiteStatus != "" || result.SuiteEntryID != suite.EntryID {
+				continue
+			}
+			if result.RequestID != "" {
+				requestResults = append(requestResults, result)
+			} else if result.CaseID != "" {
+				caseResults = append(caseResults, result)
+			}
+		}
+
+		status, marked := markers[suite.EntryID]
+		reportStatus := domain.SuiteReportStatus("")
+		if marked {
+			switch status {
+			case domain.SuiteExecutionCompleted:
+				reportStatus = domain.SuiteReportCompleted
+			case domain.SuiteExecutionFailed:
+				reportStatus = domain.SuiteReportFailed
+			default:
+				return nil, fmt.Errorf("unsupported suite marker status %q", status)
+			}
+		} else if terminalGap {
+			reportStatus = domain.SuiteReportNotStarted
+		} else {
+			terminalGap = true
+			switch runStatus {
+			case domain.RunCancelled:
+				reportStatus = domain.SuiteReportCancelled
+			case domain.RunFailed:
+				reportStatus = domain.SuiteReportFailed
+			default:
+				return nil, fmt.Errorf("completed run is missing a suite marker for entry %q", suite.EntryID)
+			}
+		}
+		if reportStatus == domain.SuiteReportNotStarted && (len(caseResults) != 0 || len(requestResults) != 0) {
+			return nil, fmt.Errorf("not-started suite entry %q contains results", suite.EntryID)
+		}
+
+		metrics := aggregateMetrics(requestResults)
+		sla, issues := evaluateSLA(suite.SLA, requestResults, metrics)
+		passed := reportStatus == domain.SuiteReportCompleted
+		for _, result := range append(append([]domain.Result{}, requestResults...), caseResults...) {
+			if !result.Success.Overall() {
+				passed = false
+			}
+		}
+		if len(issues) != 0 {
+			passed = false
+		}
+		switch reportStatus {
+		case domain.SuiteReportFailed:
+			issues = append([]string{"suite execution failed"}, issues...)
+		case domain.SuiteReportCancelled:
+			issues = append([]string{"suite execution was cancelled"}, issues...)
+		case domain.SuiteReportNotStarted:
+			issues = append([]string{"suite execution was not started"}, issues...)
+		}
+		verdict := "pass"
+		if !passed {
+			verdict = "fail"
+		}
+		if reportStatus == domain.SuiteReportCancelled {
+			verdict = "cancelled"
+		} else if reportStatus == domain.SuiteReportNotStarted {
+			verdict = "not_started"
+		}
+		reports = append(reports, domain.SuiteReport{
+			SuiteEntryID:  suite.EntryID,
+			SuiteID:       suite.Suite.ID,
+			SuiteRevision: suite.Suite.Revision,
+			SuiteKey:      suite.Suite.Key,
+			SuiteName:     suite.Suite.Name,
+			Status:        reportStatus,
+			Conclusion:    domain.ReportConclusion{Passed: passed, Verdict: verdict, Issues: issues},
+			SLA:           sla,
+			Metrics:       metrics,
+			Timeline:      resultTimeline(requestResults),
+			Distributions: append(
+				resultDistributions(requestResults),
+				probeDistributions(requestResults)...,
+			),
+			CaseResults: append([]domain.Result{}, caseResults...),
+		})
+	}
+	return reports, nil
 }
 
 func aggregateMetrics(results []domain.Result) map[string]domain.MetricValue {

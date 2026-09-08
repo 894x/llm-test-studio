@@ -197,11 +197,11 @@ func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedRep
 	if run.Meta().ID != row.runID {
 		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report run owner", ErrCorrupt)
 	}
-	pinnedPlan, err := reportProjectionPinnedPlan(ctx, tx, run)
+	planName, err := reportProjectionPlanName(run)
 	if err != nil {
 		return reporting.ReportProjection{}, reportRunExpectation{}, err
 	}
-	row.planName = pinnedPlan.Name
+	row.planName = planName
 	projection, err := row.decode()
 	if err != nil {
 		return reporting.ReportProjection{}, reportRunExpectation{}, err
@@ -235,12 +235,18 @@ func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedRep
 	}, nil
 }
 
-func reportProjectionPinnedPlan(_ context.Context, _ *sql.Tx, run domain.Run) (domain.Plan, error) {
+func reportProjectionPlanName(run domain.Run) (string, error) {
 	snapshot := run.Snapshot()
-	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
-		return domain.Plan{}, fmt.Errorf("%w: report pinned plan document", ErrCorrupt)
+	if snapshot.QuickTask != nil {
+		if snapshot.SchemaVersion != domain.FlatRunSnapshotSchemaVersion || snapshot.PlanDocument != nil {
+			return "", fmt.Errorf("%w: report quick-task plan boundary", ErrCorrupt)
+		}
+		return snapshot.QuickTask.Suite.Name, nil
 	}
-	return *snapshot.PlanDocument, nil
+	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
+		return "", fmt.Errorf("%w: report pinned plan document", ErrCorrupt)
+	}
+	return snapshot.PlanDocument.Name, nil
 }
 
 func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map[string]reportRunExpectation) error {
@@ -393,6 +399,33 @@ func checkReportProjectionItemBudgets(report domain.Report) error {
 	for index, attachment := range report.Attachments {
 		if err := checkReportProjectionEncodedItem("artifact", index, attachment); err != nil {
 			return err
+		}
+	}
+	for suiteIndex, suite := range report.SuiteReports {
+		for resultIndex, result := range suite.CaseResults {
+			if err := checkReportProjectionEncodedItem(
+				fmt.Sprintf("suite %d result", suiteIndex),
+				resultIndex,
+				result,
+			); err != nil {
+				return err
+			}
+		}
+		for _, section := range []struct {
+			kind  string
+			items []json.RawMessage
+		}{
+			{kind: fmt.Sprintf("suite %d timeline", suiteIndex), items: suite.Timeline},
+			{kind: fmt.Sprintf("suite %d distribution", suiteIndex), items: suite.Distributions},
+		} {
+			for itemIndex, item := range section.items {
+				if len(item) > MaxReportProjectionItemBytes {
+					return fmt.Errorf("report %s item %d exceeds byte budget", section.kind, itemIndex)
+				}
+				if err := checkReportProjectionEncodedItem(section.kind, itemIndex, item); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	for _, section := range []struct {
@@ -589,15 +622,16 @@ report_rows AS (
 	         report.schema_version = ? AND
 	         length(CAST(report.document_json AS BLOB)) BETWEEN 1 AND ? AND
 	         json_type(report.document_json, '$') = 'object' AND CAST(report.document_json AS TEXT) = json(report.document_json) AND
-	         (SELECT COUNT(*) FROM json_each(report.document_json)) = 19 AND
+	         (SELECT COUNT(*) FROM json_each(report.document_json)) = 20 AND
 	         NOT EXISTS (
 	           SELECT 1 FROM json_each(report.document_json) AS member
 	           WHERE member.key NOT IN (
 	             'schema_version', 'id', 'run_id', 'run_status', 'generated_at', 'plan_snapshot',
 	             'model', 'channel', 'environment', 'conclusion', 'sla', 'metrics', 'timeline',
-	             'distributions', 'case_results', 'error_clusters', 'evidence', 'baseline', 'attachments'
+	             'distributions', 'case_results', 'suite_reports', 'error_clusters', 'evidence', 'baseline', 'attachments'
 	           )
 	         ) AND
+	         json_type(report.document_json, '$.suite_reports') = 'array' AND
 	         json_type(report.document_json, '$.schema_version') = 'integer' AND
 	           json_extract(report.document_json, '$.schema_version') = report.schema_version AND
 	         json_type(report.document_json, '$.id') = 'text' AND
@@ -641,14 +675,16 @@ report_rows AS (
 	           ) AND
 	         json_type(report.document_json, '$.case_results') = 'array' AND
 	           json_array_length(report.document_json, '$.case_results') =
-	             (SELECT COUNT(*) FROM case_results AS stored WHERE stored.run_id = report.run_id AND stored.request_id IS NULL) AND
+	             (SELECT COUNT(*) FROM case_results AS stored
+	              WHERE stored.run_id = report.run_id AND stored.request_id IS NULL AND stored.case_id IS NOT NULL) AND
 	           json_array_length(report.document_json, '$.case_results') =
 	             (SELECT COUNT(DISTINCT json_extract(result.value, '$.id')) FROM json_each(report.document_json, '$.case_results') AS result) AND
 	           NOT EXISTS (
 	             SELECT 1
 	             FROM json_each(report.document_json, '$.case_results') AS result
 	             LEFT JOIN case_results AS stored
-	               ON stored.run_id = report.run_id AND stored.id = json_extract(result.value, '$.id') AND stored.request_id IS NULL
+	               ON stored.run_id = report.run_id AND stored.id = json_extract(result.value, '$.id') AND
+	                  stored.request_id IS NULL AND stored.case_id IS NOT NULL
 	             WHERE result.type != 'object' OR stored.id IS NULL OR
 	                   stored.schema_version != ? OR stored.revision != 1 OR
 	                   CAST(stored.document_json AS TEXT) != json(stored.document_json) OR
@@ -667,6 +703,8 @@ report_rows AS (
 	                   stored.run_id != json_extract(stored.document_json, '$.run_id') OR
 	                   COALESCE((stored.case_id IS NULL AND json_type(stored.document_json, '$.case_id') IS NULL) OR
 	                        (stored.case_id IS NOT NULL AND json_type(stored.document_json, '$.case_id') = 'text' AND stored.case_id = json_extract(stored.document_json, '$.case_id')), 0) = 0 OR
+	                   COALESCE((stored.suite_entry_id IS NULL AND json_type(stored.document_json, '$.suite_entry_id') IS NULL) OR
+	                        (stored.suite_entry_id IS NOT NULL AND json_type(stored.document_json, '$.suite_entry_id') = 'text' AND stored.suite_entry_id = json_extract(stored.document_json, '$.suite_entry_id')), 0) = 0 OR
 	                   COALESCE((stored.request_id IS NULL AND json_type(stored.document_json, '$.request_id') IS NULL) OR
 	                        (stored.request_id IS NOT NULL AND json_type(stored.document_json, '$.request_id') = 'text' AND stored.request_id = json_extract(stored.document_json, '$.request_id')), 0) = 0 OR
 	                   COALESCE(json_type(stored.document_json, '$.success') = 'object', 0) = 0 OR

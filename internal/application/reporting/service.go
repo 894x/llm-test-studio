@@ -4,6 +4,7 @@ package reporting
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -15,7 +16,8 @@ import (
 )
 
 const (
-	CurrentSchemaVersion = 1
+	CurrentSchemaVersion       = 1
+	CurrentDetailSchemaVersion = 2
 	// MaxSnapshotReports is the published latest-first report-list boundary.
 	// Storage ports must never return more entries in one snapshot.
 	MaxSnapshotReports = 100
@@ -102,11 +104,39 @@ type Summary struct {
 // sealed conclusion and case-level results; RequestResults contains the load
 // and protocol observations used to derive the aggregate metrics.
 type Detail struct {
-	SchemaVersion  int                          `json:"schema_version"`
-	Source         ReportSource                 `json:"source"`
-	Report         domain.Report                `json:"report"`
-	RequestResults []domain.Result              `json:"request_results"`
-	Performance    *quicktest.PerformanceReport `json:"performance,omitempty"`
+	SchemaVersion            int                          `json:"schema_version"`
+	Source                   ReportSource                 `json:"source"`
+	Report                   domain.Report                `json:"report"`
+	RequestResults           []domain.Result              `json:"request_results"`
+	Suites                   []SuiteDetail                `json:"suites"`
+	UnassignedRequestResults []domain.Result              `json:"unassigned_request_results"`
+	Performance              *quicktest.PerformanceReport `json:"performance,omitempty"`
+}
+
+type SuiteDetail struct {
+	SuiteEntryID  string                        `json:"suite_entry_id"`
+	SuiteID       string                        `json:"suite_id"`
+	SuiteRevision uint64                        `json:"suite_revision"`
+	SuiteKey      string                        `json:"suite_key"`
+	SuiteName     string                        `json:"suite_name"`
+	Status        domain.SuiteReportStatus      `json:"status"`
+	Conclusion    domain.ReportConclusion       `json:"conclusion"`
+	SLA           map[string]domain.MetricValue `json:"sla"`
+	Metrics       map[string]domain.MetricValue `json:"metrics"`
+	Timeline      []json.RawMessage             `json:"timeline"`
+	Distributions []json.RawMessage             `json:"distributions"`
+	Cases         []CaseDetail                  `json:"cases"`
+}
+
+type CaseDetail struct {
+	CaseID          string          `json:"case_id"`
+	Revision        uint64          `json:"revision"`
+	Key             string          `json:"key"`
+	Name            string          `json:"name"`
+	CaseType        domain.CaseType `json:"case_type"`
+	CaseTypeVersion uint32          `json:"case_type_version"`
+	SummaryResult   *domain.Result  `json:"summary_result,omitempty"`
+	RequestResults  []domain.Result `json:"request_results"`
 }
 
 func (service Service) Detail(ctx context.Context, reportID string) (Detail, error) {
@@ -125,7 +155,11 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 			if _, validationErr := quicktest.ValidateArchivedPerformanceReport(performance); validationErr != nil || performance.ReportID != reportID {
 				return Detail{}, classified(ErrInconsistent, errors.New("quick performance report is inconsistent"))
 			}
-			return Detail{SchemaVersion: CurrentSchemaVersion, Source: SourceQuickPerformance, Performance: &performance, RequestResults: []domain.Result{}}, nil
+			return Detail{
+				SchemaVersion: CurrentSchemaVersion, Source: SourceQuickPerformance,
+				Performance: &performance, RequestResults: []domain.Result{},
+				Suites: []SuiteDetail{}, UnassignedRequestResults: []domain.Result{},
+			}, nil
 		}
 		if !errors.Is(err, quicktest.ErrPerformanceArchiveNotFound) {
 			return Detail{}, classifyPortError(ctx, err)
@@ -141,6 +175,9 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 	}
 	if report.ID != reportID {
 		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned another report"))
+	}
+	if err := report.Validate(); err != nil {
+		return Detail{}, classified(ErrInconsistent, errors.New("report catalog returned an invalid report"))
 	}
 	results, err := documents.ListResults(ctx, report.RunID)
 	if err != nil {
@@ -160,7 +197,176 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 			requestResults = append(requestResults, result)
 		}
 	}
-	return Detail{SchemaVersion: CurrentSchemaVersion, Source: SourceRun, Report: report, RequestResults: requestResults}, nil
+	var suites []SuiteDetail
+	var unassigned []domain.Result
+	if len(report.PlanSnapshot.Suites) > 0 {
+		suites, unassigned, err = hierarchicalDetail(report, requestResults)
+	} else if report.PlanSnapshot.QuickTask != nil {
+		canonical := make([]domain.Result, len(requestResults))
+		for index, result := range requestResults {
+			if result.SuiteEntryID != "" || result.CaseID == "" {
+				return Detail{}, classified(ErrInconsistent, errors.New("quick-task request result has invalid stored ownership"))
+			}
+			result.SuiteEntryID = report.RunID
+			canonical[index] = result
+		}
+		requestResults = canonical
+		suites, unassigned, err = quickTaskDetail(report, requestResults)
+	} else {
+		err = errors.New("run report has neither authored suites nor quick-task provenance")
+	}
+	if err != nil {
+		return Detail{}, classified(ErrInconsistent, err)
+	}
+	return Detail{
+		SchemaVersion:            CurrentDetailSchemaVersion,
+		Source:                   SourceRun,
+		Report:                   report,
+		RequestResults:           requestResults,
+		Suites:                   suites,
+		UnassignedRequestResults: unassigned,
+	}, nil
+}
+
+func quickTaskDetail(report domain.Report, requestResults []domain.Result) ([]SuiteDetail, []domain.Result, error) {
+	snapshot := report.PlanSnapshot
+	if snapshot.QuickTask == nil || len(snapshot.Cases) != len(snapshot.CaseDefinitions) {
+		return nil, nil, errors.New("quick-task report snapshot is incomplete")
+	}
+	knownCases := make(map[string]int, len(snapshot.Cases))
+	for index, ref := range snapshot.Cases {
+		knownCases[ref.CaseID] = index
+	}
+	groupedRequests := make(map[string][]domain.Result, len(snapshot.Cases))
+	unassigned := make([]domain.Result, 0)
+	for _, result := range requestResults {
+		if result.SuiteEntryID != report.RunID || result.CaseID == "" {
+			unassigned = append(unassigned, result)
+			continue
+		}
+		if _, exists := knownCases[result.CaseID]; !exists {
+			return nil, nil, errors.New("quick-task request result references a case outside the report snapshot")
+		}
+		groupedRequests[result.CaseID] = append(groupedRequests[result.CaseID], result)
+	}
+	summaries := make(map[string]domain.Result, len(report.CaseResults))
+	for _, result := range report.CaseResults {
+		if result.SuiteEntryID != report.RunID {
+			return nil, nil, errors.New("quick-task case result has invalid synthetic ownership")
+		}
+		if _, exists := knownCases[result.CaseID]; !exists {
+			return nil, nil, errors.New("quick-task case result references a case outside the report snapshot")
+		}
+		if _, duplicate := summaries[result.CaseID]; duplicate {
+			return nil, nil, errors.New("duplicate quick-task case result ownership")
+		}
+		summaries[result.CaseID] = result
+	}
+	cases := make([]CaseDetail, 0, len(snapshot.CaseDefinitions))
+	for index, definition := range snapshot.CaseDefinitions {
+		ref := snapshot.Cases[index]
+		var summary *domain.Result
+		if result, exists := summaries[ref.CaseID]; exists {
+			copy := result
+			summary = &copy
+		}
+		cases = append(cases, CaseDetail{
+			CaseID: ref.CaseID, Revision: ref.Revision, Key: definition.Key, Name: definition.Name,
+			CaseType: definition.Definition.Type, CaseTypeVersion: definition.Definition.TypeVersion,
+			SummaryResult: summary, RequestResults: append([]domain.Result{}, groupedRequests[ref.CaseID]...),
+		})
+	}
+	suiteReport := report.SuiteReports[0]
+	return []SuiteDetail{{
+		SuiteEntryID: suiteReport.SuiteEntryID, SuiteID: suiteReport.SuiteID, SuiteRevision: suiteReport.SuiteRevision,
+		SuiteKey: suiteReport.SuiteKey, SuiteName: suiteReport.SuiteName, Status: suiteReport.Status,
+		Conclusion: suiteReport.Conclusion, SLA: suiteReport.SLA, Metrics: suiteReport.Metrics,
+		Timeline:      append([]json.RawMessage{}, suiteReport.Timeline...),
+		Distributions: append([]json.RawMessage{}, suiteReport.Distributions...), Cases: cases,
+	}}, unassigned, nil
+}
+
+func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([]SuiteDetail, []domain.Result, error) {
+	type owner struct {
+		suiteIndex int
+		caseIndex  int
+	}
+	owners := make(map[string]owner)
+	for suiteIndex, suite := range report.PlanSnapshot.Suites {
+		for caseIndex, ref := range suite.Cases {
+			owners[detailResultKey(suite.EntryID, ref.CaseID)] = owner{suiteIndex: suiteIndex, caseIndex: caseIndex}
+		}
+	}
+	groupedRequests := make(map[string][]domain.Result)
+	unassigned := make([]domain.Result, 0)
+	for _, result := range requestResults {
+		if result.SuiteEntryID == "" || result.CaseID == "" {
+			unassigned = append(unassigned, result)
+			continue
+		}
+		key := detailResultKey(result.SuiteEntryID, result.CaseID)
+		if _, exists := owners[key]; !exists {
+			return nil, nil, errors.New("request result references a suite or case outside the report snapshot")
+		}
+		groupedRequests[key] = append(groupedRequests[key], result)
+	}
+
+	summaries := make(map[string]domain.Result, len(report.CaseResults))
+	for _, result := range report.CaseResults {
+		key := detailResultKey(result.SuiteEntryID, result.CaseID)
+		if _, exists := owners[key]; !exists {
+			return nil, nil, errors.New("case result references a suite or case outside the report snapshot")
+		}
+		if _, duplicate := summaries[key]; duplicate {
+			return nil, nil, errors.New("duplicate case result ownership")
+		}
+		summaries[key] = result
+	}
+
+	suites := make([]SuiteDetail, 0, len(report.PlanSnapshot.Suites))
+	for suiteIndex, snapshot := range report.PlanSnapshot.Suites {
+		suiteReport := report.SuiteReports[suiteIndex]
+		cases := make([]CaseDetail, 0, len(snapshot.CaseDefinitions))
+		for caseIndex, definition := range snapshot.CaseDefinitions {
+			ref := snapshot.Cases[caseIndex]
+			key := detailResultKey(snapshot.EntryID, ref.CaseID)
+			var summary *domain.Result
+			if result, exists := summaries[key]; exists {
+				copy := result
+				summary = &copy
+			}
+			requests := append([]domain.Result{}, groupedRequests[key]...)
+			cases = append(cases, CaseDetail{
+				CaseID:          ref.CaseID,
+				Revision:        ref.Revision,
+				Key:             definition.Key,
+				Name:            definition.Name,
+				CaseType:        definition.Definition.Type,
+				CaseTypeVersion: definition.Definition.TypeVersion,
+				SummaryResult:   summary,
+				RequestResults:  requests,
+			})
+		}
+		suites = append(suites, SuiteDetail{
+			SuiteEntryID:  suiteReport.SuiteEntryID,
+			SuiteID:       suiteReport.SuiteID,
+			SuiteRevision: suiteReport.SuiteRevision,
+			SuiteKey:      suiteReport.SuiteKey,
+			SuiteName:     suiteReport.SuiteName,
+			Status:        suiteReport.Status,
+			Conclusion:    suiteReport.Conclusion,
+			SLA:           suiteReport.SLA,
+			Metrics:       suiteReport.Metrics,
+			Timeline:      append([]json.RawMessage{}, suiteReport.Timeline...),
+			Distributions: append([]json.RawMessage{}, suiteReport.Distributions...),
+			Cases:         cases,
+		})
+	}
+	return suites, unassigned, nil
+}
+
+func detailResultKey(suiteEntryID, caseID string) string {
+	return suiteEntryID + "\x00" + caseID
 }
 
 func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {

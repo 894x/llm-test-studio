@@ -95,4 +95,24 @@ func TestReportProjectionQueryDoesNotLoadThePlanCatalog(t *testing.T) {
 	}
 }
 
+func TestProjectionQueriesRejectLegacyFlatReports(t *testing.T) {
+	for name, query := range map[string]string{
+		"report":    reportProjectionQuery,
+		"workspace": workspaceProjectionQuery,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if strings.Contains(query, "schema_version IN (1, ?)") {
+				t.Fatal("projection query still accepts legacy report schema 1")
+			}
+			if !strings.Contains(query, "schema_version = ?") {
+				t.Fatal("projection query does not require the current report schema")
+			}
+			if !strings.Contains(query, "json_type(") ||
+				!strings.Contains(query, "'$.suite_reports') = 'array'") {
+				t.Fatal("projection query does not require the current Suite report tree")
+			}
+		})
+	}
+}
+
 const sha256SizeForTest = 32

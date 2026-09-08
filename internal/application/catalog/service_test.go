@@ -21,6 +21,7 @@ const (
 	mappingBID   = "55555555-5555-4555-8555-555555555555"
 	caseID       = "66666666-6666-4666-8666-666666666666"
 	suiteID      = "77777777-7777-4777-8777-777777777777"
+	planEntryID  = "78787878-7878-4878-8878-787878787878"
 	planID       = "88888888-8888-4888-8888-888888888888"
 	credentialID = "99999999-9999-4999-8999-999999999999"
 )
@@ -113,22 +114,25 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 		t.Fatalf("Snapshot().Suites[0] editor payload = %#v", snapshot.Suites[0])
 	}
 	plan := snapshot.Plans[0]
-	if len(plan.ModelIDs) != 2 || len(plan.ChannelIDs) != 1 || plan.SuiteID != suiteID || plan.SuiteRevision != 1 ||
-		len(plan.Cases) != 1 || plan.Cases[0].CaseID != caseID || plan.SLAThresholds["p95_ms"] != 1500 {
+	if len(plan.ModelIDs) != 2 || len(plan.ChannelIDs) != 1 || len(plan.Suites) != 1 ||
+		plan.Suites[0].SuiteID != suiteID || plan.Suites[0].SuiteRevision != 1 ||
+		len(plan.Suites[0].Cases) != 1 || plan.Suites[0].Cases[0].CaseID != caseID ||
+		plan.Suites[0].SLAThresholds["p95_ms"] != 1500 {
 		t.Fatalf("Snapshot().Plans[0] editor payload = %#v", plan)
 	}
 
 	testCase.Spec[0] = '['
 	snapshot.Suites[0].Cases[0].Revision = 99
 	plan.ModelIDs[0] = modelBID
-	plan.SLAThresholds["p95_ms"] = 1
+	plan.Suites[0].SLAThresholds["p95_ms"] = 1
 
 	fresh, err := service.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("second Snapshot() error = %v", err)
 	}
 	if string(fresh.TestCases[0].Spec) != string(validRequestSingleSpec()) ||
-		fresh.Suites[0].Cases[0].Revision != 1 || fresh.Plans[0].ModelIDs[0] != modelAID || fresh.Plans[0].SLAThresholds["p95_ms"] != 1500 {
+		fresh.Suites[0].Cases[0].Revision != 1 || fresh.Plans[0].ModelIDs[0] != modelAID ||
+		fresh.Plans[0].Suites[0].SLAThresholds["p95_ms"] != 1500 {
 		t.Fatalf("Snapshot() editor payload aliases repository state: %#v", fresh)
 	}
 }
@@ -139,7 +143,7 @@ func TestSnapshotAcceptsPlanPinnedToHistoricalContentHashSuiteRevision(t *testin
 	// repository has already resolved the Plan's exact historical sidecar; the
 	// snapshot only carries the current Suite summary for editing.
 	repository.suites[0].Revision = 7
-	repository.plans[0].SuiteRevision = 42
+	repository.plans[0].Suites[0].SuiteRevision = 42
 	historical := repository.suites[0]
 	historical.Revision = 42
 	repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{
@@ -151,8 +155,8 @@ func TestSnapshotAcceptsPlanPinnedToHistoricalContentHashSuiteRevision(t *testin
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
-	if got := snapshot.Plans[0].SuiteRevision; got != 42 {
-		t.Fatalf("Snapshot().Plans[0].SuiteRevision = %d, want historical revision 42", got)
+	if got := snapshot.Plans[0].Suites[0].SuiteRevision; got != 42 {
+		t.Fatalf("Snapshot().Plans[0].Suites[0].SuiteRevision = %d, want historical revision 42", got)
 	}
 }
 
@@ -163,7 +167,8 @@ func TestSnapshotAcceptsExactHistoricalCaseHashAndRejectsMissingLowerHash(t *tes
 		repository.suites[0].Cases[0].Revision = 7
 		historical := repository.testCases[0]
 		historical.Revision = 42
-		repository.plans[0].Cases[0].Revision = historical.Revision
+		repository.suites[0].Cases[0].Revision = historical.Revision
+		repository.plans[0].Suites[0].Cases[0].Revision = historical.Revision
 		repository.testCaseRevisions = map[exactCaseRevisionKey]domain.TestCase{
 			{caseID: historical.ID, revision: historical.Revision}: historical,
 		}
@@ -176,8 +181,8 @@ func TestSnapshotAcceptsExactHistoricalCaseHashAndRejectsMissingLowerHash(t *tes
 	t.Run("numerically lower hash is rejected when exact sidecar is missing", func(t *testing.T) {
 		repository := validRepository()
 		repository.testCases[0].Revision = 42
-		repository.suites[0].Cases[0].Revision = 42
-		repository.plans[0].Cases[0].Revision = 7
+		repository.suites[0].Cases[0].Revision = 7
+		repository.plans[0].Suites[0].Cases[0].Revision = 7
 		service := newTestService(t, repository, fixtureTime())
 		if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrCorrupt) {
 			t.Fatalf("Snapshot() error = %v, want ErrCorrupt", err)
@@ -502,19 +507,20 @@ func TestCreatePlanResolvesExactHistoricalCaseAndSuiteRevisions(t *testing.T) {
 		repository.suites[0].Revision = 9
 		historicalSuite := repository.suites[0]
 		historicalSuite.Revision = 88
+		historicalSuite.Cases[0].Revision = historicalCase.Revision
 		repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{
 			{suiteID: historicalSuite.ID, revision: historicalSuite.Revision}: historicalSuite,
 		}
 		service := newTestService(t, repository, fixtureTime())
 		command := validCreatePlanCommand("historical refs")
-		command.Cases[0].Revision = historicalCase.Revision
-		command.SuiteRevision = historicalSuite.Revision
+		command.Suites[0].SuiteRevision = historicalSuite.Revision
 
 		if _, err := service.CreatePlan(context.Background(), command); err != nil {
 			t.Fatalf("CreatePlan() error = %v", err)
 		}
-		if repository.createPlanCalls != 1 || repository.createdPlan.Cases[0].Revision != historicalCase.Revision ||
-			repository.createdPlan.SuiteRevision != historicalSuite.Revision {
+		if repository.createPlanCalls != 1 || len(repository.createdPlan.Suites) != 1 ||
+			repository.createdPlan.Suites[0].Cases[0].Revision != historicalCase.Revision ||
+			repository.createdPlan.Suites[0].SuiteRevision != historicalSuite.Revision {
 			t.Fatalf("created Plan = %#v", repository.createdPlan)
 		}
 	})
@@ -522,10 +528,9 @@ func TestCreatePlanResolvesExactHistoricalCaseAndSuiteRevisions(t *testing.T) {
 	t.Run("numerically lower missing hash is rejected", func(t *testing.T) {
 		repository := validRepository()
 		repository.testCases[0].Revision = 42
+		repository.suites[0].Cases[0].Revision = 7
 		service := newTestService(t, repository, fixtureTime())
 		command := validCreatePlanCommand("missing exact ref")
-		command.Cases[0].Revision = 7
-
 		if _, err := service.CreatePlan(context.Background(), command); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("CreatePlan() error = %v, want ErrNotFound", err)
 		}
@@ -621,12 +626,13 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 	}
 	caseCommand.Spec[2] = 'X'
 	planCommand.ModelIDs[0] = modelBID
-	planCommand.Cases[0].CaseID = modelAID
-	planCommand.SLAThresholds["p95_ms"] = 9999
+	planCommand.Suites[0].SuiteID = modelAID
+	planCommand.Suites[0].SLAThresholds["p95_ms"] = 9999
 	if string(repository.createdTestCase.Definition.Spec) != string(validRequestSingleSpec()) {
 		t.Fatalf("CreateTestCase() retained caller aliases: %#v", repository.createdTestCase)
 	}
-	if repository.createdPlan.ModelIDs[0] != modelAID || repository.createdPlan.Cases[0].CaseID != caseID || repository.createdPlan.SLA.Thresholds["p95_ms"] != 1500 {
+	if repository.createdPlan.ModelIDs[0] != modelAID || len(repository.createdPlan.Suites) != 1 ||
+		repository.createdPlan.Suites[0].Cases[0].CaseID != caseID || repository.createdPlan.Suites[0].SLA.Thresholds["p95_ms"] != 1500 {
 		t.Fatalf("CreatePlan() retained caller aliases: %#v", repository.createdPlan)
 	}
 
@@ -942,7 +948,7 @@ func validRepository() *fakeRepository {
 		channels: []domain.Channel{{EntityMeta: meta(channelID), Name: "Primary", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}},
 		mappings: []domain.ChannelModel{
 			{EntityMeta: meta(mappingBID), ChannelID: channelID, ModelID: modelBID, UpstreamModelName: "alpha-upstream"},
-			{EntityMeta: meta(mappingAID), ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "zulu-upstream"},
+			{EntityMeta: meta(mappingAID), ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "alpha-upstream"},
 		},
 		testCases: []domain.TestCase{{
 			EntityMeta: meta(caseID), Key: "T001", Name: "Chat", Dimension: "boundary",
@@ -956,9 +962,12 @@ func validRepository() *fakeRepository {
 		}},
 		plans: []domain.Plan{{
 			EntityMeta: meta(planID), Name: "Baseline", ModelIDs: []string{modelAID, modelBID}, ChannelIDs: []string{channelID},
-			SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
-			Load: domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 10, RequestTimeoutMS: 30_000},
-			SLA:  domain.SLAProfile{Thresholds: map[string]float64{"p95_ms": 1500}},
+			Suites: []domain.PlanSuiteEntry{{
+				EntryID: planEntryID, SuiteID: suiteID, SuiteRevision: 1,
+				Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}}, Parameters: map[string]json.RawMessage{},
+				Load: domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 10, RequestTimeoutMS: 30_000},
+				SLA:  domain.SLAProfile{Thresholds: map[string]float64{"p95_ms": 1500}},
+			}},
 		}},
 		listCalls: make(map[string]int),
 	}
@@ -991,9 +1000,12 @@ func validUpdateTestCaseCommand(id, name string) UpdateTestCaseCommand {
 
 func validCreatePlanCommand(name string) CreatePlanCommand {
 	return CreatePlanCommand{
-		Name: name, ModelIDs: []string{modelAID}, ChannelIDs: []string{channelID}, SuiteID: suiteID, SuiteRevision: 1,
-		Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}}, LoadMode: domain.LoadFixedConcurrency, Concurrency: 2,
-		RequestCount: 10, RequestTimeoutMS: 30_000, SLAThresholds: map[string]float64{"p95_ms": 1500},
+		Name: name, ModelIDs: []string{modelAID}, ChannelIDs: []string{channelID},
+		Suites: []PlanSuiteInput{{
+			SuiteID: suiteID, SuiteRevision: 1, LoadMode: domain.LoadFixedConcurrency, Concurrency: 2,
+			RequestCount: 10, RequestTimeoutMS: 30_000, SLAThresholds: map[string]float64{"p95_ms": 1500},
+			Parameters: map[string]json.RawMessage{},
+		}},
 	}
 }
 
@@ -1001,9 +1013,7 @@ func validUpdatePlanCommand(id, name string) UpdatePlanCommand {
 	create := validCreatePlanCommand(name)
 	return UpdatePlanCommand{
 		ID: id, ExpectedRevision: 1, Name: create.Name, ModelIDs: create.ModelIDs, ChannelIDs: create.ChannelIDs,
-		SuiteID: create.SuiteID, SuiteRevision: create.SuiteRevision, Cases: create.Cases, LoadMode: create.LoadMode,
-		Concurrency: create.Concurrency, RequestCount: create.RequestCount, RatePerSecond: create.RatePerSecond,
-		DurationMS: create.DurationMS, RequestTimeoutMS: create.RequestTimeoutMS, SLAThresholds: create.SLAThresholds,
+		Suites: append([]PlanSuiteInput(nil), create.Suites...),
 	}
 }
 

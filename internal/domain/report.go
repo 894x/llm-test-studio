@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"time"
 )
 
-const CurrentReportSchemaVersion = 1
+const CurrentReportSchemaVersion = 2
 
 type ReportSubject struct {
 	ID   string `json:"id"`
@@ -76,6 +77,39 @@ type ReportAttachment struct {
 	Redacted     bool   `json:"redacted"`
 }
 
+type SuiteReportStatus string
+
+const (
+	SuiteReportCompleted  SuiteReportStatus = "completed"
+	SuiteReportFailed     SuiteReportStatus = "failed"
+	SuiteReportCancelled  SuiteReportStatus = "cancelled"
+	SuiteReportNotStarted SuiteReportStatus = "not_started"
+)
+
+func (status SuiteReportStatus) Validate() error {
+	switch status {
+	case SuiteReportCompleted, SuiteReportFailed, SuiteReportCancelled, SuiteReportNotStarted:
+		return nil
+	default:
+		return fmt.Errorf("unsupported suite report status %q", status)
+	}
+}
+
+type SuiteReport struct {
+	SuiteEntryID  string                 `json:"suite_entry_id"`
+	SuiteID       string                 `json:"suite_id"`
+	SuiteRevision uint64                 `json:"suite_revision"`
+	SuiteKey      string                 `json:"suite_key"`
+	SuiteName     string                 `json:"suite_name"`
+	Status        SuiteReportStatus      `json:"status"`
+	Conclusion    ReportConclusion       `json:"conclusion"`
+	SLA           map[string]MetricValue `json:"sla"`
+	Metrics       map[string]MetricValue `json:"metrics"`
+	Timeline      []json.RawMessage      `json:"timeline"`
+	Distributions []json.RawMessage      `json:"distributions"`
+	CaseResults   []Result               `json:"case_results"`
+}
+
 func (attachment ReportAttachment) Validate(expectedRunID ...string) error {
 	if !IsUUID(attachment.ArtifactID) {
 		return errors.New("attachment artifact id must be a canonical UUID")
@@ -112,6 +146,7 @@ type Report struct {
 	Timeline      []json.RawMessage      `json:"timeline"`
 	Distributions []json.RawMessage      `json:"distributions"`
 	CaseResults   []Result               `json:"case_results"`
+	SuiteReports  []SuiteReport          `json:"suite_reports"`
 	ErrorClusters []json.RawMessage      `json:"error_clusters"`
 	Evidence      []Evidence             `json:"evidence"`
 	Baseline      json.RawMessage        `json:"baseline"`
@@ -198,12 +233,9 @@ func (report Report) Validate() error {
 		}
 		evidenceIDs[evidence.ID] = struct{}{}
 	}
-	plannedCaseIDs := make(map[string]struct{}, len(report.PlanSnapshot.Cases))
-	for _, plannedCase := range report.PlanSnapshot.Cases {
-		plannedCaseIDs[plannedCase.CaseID] = struct{}{}
-	}
+	plannedResults := reportPlannedResults(report.PlanSnapshot, report.RunID)
 	resultIDs := make(map[string]struct{}, len(report.CaseResults))
-	completedCaseIDs := make(map[string]struct{}, len(report.PlanSnapshot.Cases))
+	completedResults := make(map[string]struct{}, len(plannedResults))
 	for index, result := range report.CaseResults {
 		if err := result.Validate(); err != nil {
 			return fmt.Errorf("invalid report case result %d: %w", index, err)
@@ -211,14 +243,19 @@ func (report Report) Validate() error {
 		if result.RunID != report.RunID {
 			return fmt.Errorf("report case result %d belongs to another run", index)
 		}
+		if result.SuiteStatus != "" || result.CaseID == "" ||
+			(len(report.PlanSnapshot.Suites) != 0 && result.RequestID != "") {
+			return fmt.Errorf("report case result %d is not a case summary", index)
+		}
 		if _, duplicate := resultIDs[result.ID]; duplicate {
 			return fmt.Errorf("duplicate report result id %q", result.ID)
 		}
 		resultIDs[result.ID] = struct{}{}
-		if _, planned := plannedCaseIDs[result.CaseID]; !planned {
-			return fmt.Errorf("report case result %d references case %q outside the plan snapshot", index, result.CaseID)
+		resultKey := reportResultKey(result.SuiteEntryID, result.CaseID)
+		if _, planned := plannedResults[resultKey]; !planned {
+			return fmt.Errorf("report case result %d references a suite or case outside the plan snapshot", index)
 		}
-		completedCaseIDs[result.CaseID] = struct{}{}
+		completedResults[resultKey] = struct{}{}
 		for _, evidenceID := range result.EvidenceIDs {
 			if _, exists := evidenceIDs[evidenceID]; !exists {
 				return fmt.Errorf("report case result %d references missing evidence %q", index, evidenceID)
@@ -229,11 +266,14 @@ func (report Report) Validate() error {
 		}
 	}
 	if report.RunStatus == RunCompleted {
-		for plannedCaseID := range plannedCaseIDs {
-			if _, completed := completedCaseIDs[plannedCaseID]; !completed {
-				return fmt.Errorf("completed report has no result for planned case %q", plannedCaseID)
+		for plannedResult := range plannedResults {
+			if _, completed := completedResults[plannedResult]; !completed {
+				return fmt.Errorf("completed report has no result for planned suite case %q", plannedResult)
 			}
 		}
+	}
+	if err := report.validateSuiteReports(resultIDs); err != nil {
+		return err
 	}
 	attachmentIDs := make(map[string]struct{}, len(report.Attachments))
 	for index, attachment := range report.Attachments {
@@ -246,6 +286,167 @@ func (report Report) Validate() error {
 		attachmentIDs[attachment.ArtifactID] = struct{}{}
 	}
 	return nil
+}
+
+func (report Report) validateSuiteReports(topLevelResultIDs map[string]struct{}) error {
+	snapshots := report.PlanSnapshot.Suites
+	if len(report.PlanSnapshot.Suites) == 0 {
+		if report.PlanSnapshot.QuickTask == nil || len(report.SuiteReports) != 1 {
+			return errors.New("quick-task report requires one synthetic suite report")
+		}
+		snapshots = []RunSuiteSnapshot{{
+			EntryID: report.RunID,
+			Suite:   report.PlanSnapshot.QuickTask.Suite,
+			Cases:   report.PlanSnapshot.Cases,
+		}}
+	}
+	if len(report.SuiteReports) != len(snapshots) {
+		return errors.New("multi-suite report requires one ordered suite report per snapshot entry")
+	}
+	nested := make(map[string]Result, len(report.CaseResults))
+	executionStopped := false
+	for index, suiteReport := range report.SuiteReports {
+		snapshot := snapshots[index]
+		if suiteReport.SuiteEntryID != snapshot.EntryID || suiteReport.SuiteID != snapshot.Suite.ID ||
+			suiteReport.SuiteRevision != snapshot.Suite.Revision || suiteReport.SuiteKey != snapshot.Suite.Key ||
+			suiteReport.SuiteName != snapshot.Suite.Name {
+			return fmt.Errorf("suite report %d does not match the ordered snapshot entry", index)
+		}
+		if err := validateSuiteReport(suiteReport, snapshot, report.RunID, report.RunStatus); err != nil {
+			return fmt.Errorf("invalid suite report %d: %w", index, err)
+		}
+		if executionStopped && suiteReport.Status != SuiteReportNotStarted {
+			return fmt.Errorf("suite report %d executes after cancellation stopped the run", index)
+		}
+		if suiteReport.Status == SuiteReportCancelled || suiteReport.Status == SuiteReportNotStarted {
+			executionStopped = true
+		}
+		if report.Conclusion.Passed && !suiteReport.Conclusion.Passed {
+			return errors.New("passing report contains a non-passing suite report")
+		}
+		for _, result := range suiteReport.CaseResults {
+			if _, duplicate := nested[result.ID]; duplicate {
+				return fmt.Errorf("duplicate nested suite result id %q", result.ID)
+			}
+			nested[result.ID] = result
+		}
+	}
+	if len(nested) != len(report.CaseResults) {
+		return errors.New("suite report case results do not match the top-level case results")
+	}
+	for _, result := range report.CaseResults {
+		if _, exists := topLevelResultIDs[result.ID]; !exists || !reflect.DeepEqual(nested[result.ID], result) {
+			return errors.New("suite report case result does not match its top-level result")
+		}
+	}
+	return nil
+}
+
+func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID string, runStatus RunStatus) error {
+	if !IsUUID(report.SuiteEntryID) || !IsUUID(report.SuiteID) || report.SuiteRevision < 1 ||
+		strings.TrimSpace(report.SuiteKey) == "" || strings.TrimSpace(report.SuiteName) == "" {
+		return errors.New("suite report requires its pinned suite identity")
+	}
+	if err := report.Status.Validate(); err != nil {
+		return err
+	}
+	if err := report.Conclusion.Validate(); err != nil {
+		return err
+	}
+	wantVerdict := ""
+	switch report.Status {
+	case SuiteReportCompleted:
+		wantVerdict = "fail"
+		if report.Conclusion.Passed {
+			wantVerdict = "pass"
+		}
+	case SuiteReportFailed:
+		wantVerdict = "fail"
+	case SuiteReportCancelled:
+		wantVerdict = "cancelled"
+	case SuiteReportNotStarted:
+		wantVerdict = "not_started"
+	}
+	if report.Conclusion.Verdict != wantVerdict || (report.Status != SuiteReportCompleted && report.Conclusion.Passed) {
+		return errors.New("suite report conclusion does not match its execution status")
+	}
+	if runStatus == RunCompleted && report.Status != SuiteReportCompleted {
+		return errors.New("completed run contains an incomplete suite report")
+	}
+	if err := validateMetricMap("suite report SLA", report.SLA); err != nil {
+		return err
+	}
+	if err := validateMetricMap("suite report metrics", report.Metrics); err != nil {
+		return err
+	}
+	if report.Timeline == nil || report.Distributions == nil || report.CaseResults == nil {
+		return errors.New("suite report collection sections must not be nil")
+	}
+	if report.Status == SuiteReportNotStarted && len(report.CaseResults) != 0 {
+		return errors.New("not-started suite report cannot contain case results")
+	}
+	for index, item := range report.Timeline {
+		if err := validateJSONObject(item); err != nil {
+			return fmt.Errorf("invalid suite report timeline item %d: %w", index, err)
+		}
+	}
+	for index, item := range report.Distributions {
+		if err := validateJSONObject(item); err != nil {
+			return fmt.Errorf("invalid suite report distribution %d: %w", index, err)
+		}
+	}
+	planned := make(map[string]struct{}, len(snapshot.Cases))
+	for _, ref := range snapshot.Cases {
+		planned[ref.CaseID] = struct{}{}
+	}
+	seenCases := make(map[string]struct{}, len(report.CaseResults))
+	for index, result := range report.CaseResults {
+		if err := result.Validate(); err != nil {
+			return fmt.Errorf("invalid case result %d: %w", index, err)
+		}
+		if result.RunID != runID || result.SuiteEntryID != report.SuiteEntryID || result.RequestID != "" || result.SuiteStatus != "" {
+			return fmt.Errorf("case result %d has invalid suite ownership", index)
+		}
+		if _, exists := planned[result.CaseID]; !exists {
+			return fmt.Errorf("case result %d is outside its suite snapshot", index)
+		}
+		if _, duplicate := seenCases[result.CaseID]; duplicate {
+			return fmt.Errorf("duplicate suite case result %q", result.CaseID)
+		}
+		seenCases[result.CaseID] = struct{}{}
+		if report.Conclusion.Passed && !result.Success.Overall() {
+			return errors.New("passing suite report contains a failed case result")
+		}
+	}
+	if report.Status == SuiteReportCompleted {
+		for _, ref := range snapshot.Cases {
+			if _, exists := seenCases[ref.CaseID]; !exists {
+				return fmt.Errorf("completed suite report has no result for case %q", ref.CaseID)
+			}
+		}
+	}
+	return nil
+}
+
+func reportPlannedResults(snapshot RunSnapshot, quickTaskEntryID string) map[string]struct{} {
+	if len(snapshot.Suites) == 0 {
+		planned := make(map[string]struct{}, len(snapshot.Cases))
+		for _, ref := range snapshot.Cases {
+			planned[reportResultKey(quickTaskEntryID, ref.CaseID)] = struct{}{}
+		}
+		return planned
+	}
+	planned := make(map[string]struct{})
+	for _, suite := range snapshot.Suites {
+		for _, ref := range suite.Cases {
+			planned[reportResultKey(suite.EntryID, ref.CaseID)] = struct{}{}
+		}
+	}
+	return planned
+}
+
+func reportResultKey(suiteEntryID, caseID string) string {
+	return suiteEntryID + "\x00" + caseID
 }
 
 func validateReportSubject(kind string, subject ReportSubject) error {

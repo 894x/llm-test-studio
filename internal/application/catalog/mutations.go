@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -311,7 +312,11 @@ func (service *Service) CreatePlan(ctx context.Context, command CreatePlanComman
 	if err != nil {
 		return MutationResult{}, err
 	}
-	plan := planFromCreate(meta, command)
+	entries, err := service.resolvePlanSuiteEntries(ctx, meta.ID, meta.Revision, nil, command.Suites)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	plan := planFromCreate(meta, command, entries)
 	if err := plan.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
@@ -339,14 +344,22 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 	if err := ctx.Err(); err != nil {
 		return MutationResult{}, err
 	}
-	if err := current.Validate(); err != nil || current.ID != command.ID {
+	if err := current.Validate(); err != nil || current.ID != command.ID || len(current.Suites) == 0 {
 		return MutationResult{}, ErrCorrupt
 	}
 	meta, err := service.nextMeta(ctx, current.EntityMeta, command.ExpectedRevision)
 	if err != nil {
 		return MutationResult{}, err
 	}
-	plan := planFromUpdate(meta, command)
+	existingEntries := make(map[string]struct{}, len(current.Suites))
+	for _, entry := range current.Suites {
+		existingEntries[entry.EntryID] = struct{}{}
+	}
+	entries, err := service.resolvePlanSuiteEntries(ctx, meta.ID, meta.Revision, existingEntries, command.Suites)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	plan := planFromUpdate(meta, command, entries)
 	if err := plan.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
@@ -529,38 +542,121 @@ func (service *Service) validateSuiteCases(ctx context.Context, suite domain.Sui
 	return nil
 }
 
+func (service *Service) resolvePlanSuiteEntries(
+	ctx context.Context,
+	planID string,
+	planRevision uint64,
+	existingEntries map[string]struct{},
+	inputs []PlanSuiteInput,
+) ([]domain.PlanSuiteEntry, error) {
+	if len(inputs) == 0 {
+		return nil, ErrInvalid
+	}
+	entries := make([]domain.PlanSuiteEntry, 0, len(inputs))
+	seen := make(map[string]struct{}, len(inputs))
+	for index, input := range inputs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		entryID := input.EntryID
+		if entryID == "" {
+			entryID = generatedPlanSuiteEntryID(planID, planRevision, index, input.SuiteID, input.SuiteRevision)
+		} else if !domain.IsUUID(entryID) {
+			return nil, ErrInvalid
+		} else if _, exists := existingEntries[entryID]; !exists {
+			return nil, ErrInvalid
+		}
+		if _, duplicate := seen[entryID]; duplicate {
+			return nil, ErrInvalid
+		}
+		seen[entryID] = struct{}{}
+
+		suite, err := service.repository.GetSuiteRevision(ctx, input.SuiteID, input.SuiteRevision)
+		if err != nil {
+			return nil, service.portError(ctx, err)
+		}
+		if suite.ID != input.SuiteID || suite.Revision != input.SuiteRevision || suite.Validate() != nil {
+			return nil, ErrCorrupt
+		}
+		definitions := make([]domain.TestCase, 0, len(suite.Cases))
+		for _, ref := range suite.Cases {
+			testCase, loadErr := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+			if loadErr != nil {
+				return nil, service.portError(ctx, loadErr)
+			}
+			if testCase.Protocol != suite.Protocol {
+				return nil, ErrPlanProtocolMismatch
+			}
+			definitions = append(definitions, testCase)
+		}
+		if suite.ValidateCases(definitions) != nil {
+			return nil, ErrCorrupt
+		}
+		parameters := cloneRawMessages(input.Parameters)
+		if parameters == nil {
+			parameters = map[string]json.RawMessage{}
+		}
+		if suite.QuickTest == nil {
+			if len(parameters) != 0 {
+				return nil, ErrInvalid
+			}
+		} else {
+			_, resolved, applyErr := suite.ApplyInputs(definitions, parameters)
+			if applyErr != nil {
+				return nil, ErrInvalid
+			}
+			parameters = resolved
+		}
+		entry := domain.PlanSuiteEntry{
+			EntryID: entryID, SuiteID: suite.ID, SuiteRevision: suite.Revision,
+			Cases: append([]domain.CaseRevisionRef(nil), suite.Cases...), Parameters: parameters,
+			Load: domain.LoadProfile{
+				Mode: input.LoadMode, Concurrency: input.Concurrency, RequestCount: input.RequestCount,
+				RatePerSecond: input.RatePerSecond, DurationMS: input.DurationMS, RequestTimeoutMS: input.RequestTimeoutMS,
+			},
+			SLA: domain.SLAProfile{Thresholds: cloneThresholds(input.SLAThresholds)},
+		}
+		if entry.Validate() != nil {
+			return nil, ErrInvalid
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func generatedPlanSuiteEntryID(planID string, planRevision uint64, index int, suiteID string, suiteRevision uint64) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("plan-suite-entry:%s:%d:%d:%s:%d", planID, planRevision, index, suiteID, suiteRevision)))
+	digest[6] = digest[6]&0x0f | 0x50
+	digest[8] = digest[8]&0x3f | 0x80
+	return fmt.Sprintf(
+		"%08x-%04x-%04x-%04x-%012x",
+		digest[0:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16],
+	)
+}
+
 func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan) error {
 	targetProtocol := domain.Protocol("")
-	for _, ref := range plan.Cases {
-		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+	requiredModelTarget := ""
+	conflictingModelTargets := false
+	for _, entry := range plan.Suites {
+		suite, err := service.repository.GetSuiteRevision(ctx, entry.SuiteID, entry.SuiteRevision)
 		if err != nil {
 			return service.portError(ctx, err)
 		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := testCase.Validate(); err != nil || testCase.ID != ref.CaseID || testCase.Revision != ref.Revision {
+		if suite.ID != entry.SuiteID || suite.Revision != entry.SuiteRevision || suite.Validate() != nil || !sameCaseRefs(suite.Cases, entry.Cases) {
 			return ErrCorrupt
 		}
 		if targetProtocol == "" {
-			targetProtocol = testCase.Protocol
-		} else if testCase.Protocol != targetProtocol {
+			targetProtocol = suite.Protocol
+		} else if suite.Protocol != targetProtocol {
 			return ErrPlanProtocolMismatch
 		}
-	}
-	if plan.SuiteID != "" {
-		suite, err := service.repository.GetSuiteRevision(ctx, plan.SuiteID, plan.SuiteRevision)
-		if err != nil {
-			return service.portError(ctx, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if suite.ID != plan.SuiteID || suite.Revision != plan.SuiteRevision || suite.Validate() != nil {
-			return ErrCorrupt
-		}
-		if suite.Protocol != targetProtocol {
-			return ErrPlanProtocolMismatch
+		if suite.ModelTarget != "" {
+			if requiredModelTarget == "" {
+				requiredModelTarget = suite.ModelTarget
+			} else if suite.ModelTarget != requiredModelTarget {
+				conflictingModelTargets = true
+			}
 		}
 		if err := service.validateSuiteCases(ctx, suite); err != nil {
 			if errors.Is(err, ErrInvalid) {
@@ -599,7 +695,51 @@ func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan
 			return ErrPlanProtocolMismatch
 		}
 	}
+	if conflictingModelTargets {
+		return ErrInvalid
+	}
+	if len(plan.ModelIDs) == 0 {
+		return nil
+	}
+	mappings, err := service.repository.ListChannelModels(ctx)
+	if err != nil {
+		return service.portError(ctx, err)
+	}
+	mappingByBinding := make(map[string]domain.ChannelModel, len(mappings))
+	for _, mapping := range mappings {
+		key := mapping.ChannelID + "\x00" + mapping.ModelID
+		if !sliceContains(plan.ChannelIDs, mapping.ChannelID) {
+			continue
+		}
+		if !sliceContains(plan.ModelIDs, mapping.ModelID) {
+			continue
+		}
+		if mapping.Validate() != nil {
+			return ErrCorrupt
+		}
+		if _, duplicate := mappingByBinding[key]; duplicate {
+			return ErrCorrupt
+		}
+		mappingByBinding[key] = mapping
+	}
+	for _, channelID := range plan.ChannelIDs {
+		for _, modelID := range plan.ModelIDs {
+			mapping, found := mappingByBinding[channelID+"\x00"+modelID]
+			if !found || requiredModelTarget != "" && mapping.UpstreamModelName != requiredModelTarget {
+				return ErrInvalid
+			}
+		}
+	}
 	return nil
+}
+
+func sliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) portError(ctx context.Context, err error) error {
@@ -696,20 +836,50 @@ func cloneThresholds(values map[string]float64) map[string]float64 {
 	return result
 }
 
-func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand) domain.Plan {
+func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMessage {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]json.RawMessage, len(values))
+	for key, value := range values {
+		result[key] = append(json.RawMessage(nil), value...)
+	}
+	return result
+}
+
+func sameCaseRefs(left, right []domain.CaseRevisionRef) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanSuiteEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, ModelIDs: append([]string(nil), command.ModelIDs...), ChannelIDs: append([]string(nil), command.ChannelIDs...),
-		SuiteID: command.SuiteID, SuiteRevision: command.SuiteRevision, Cases: cloneCaseRefs(command.Cases),
-		Load: domain.LoadProfile{Mode: command.LoadMode, Concurrency: command.Concurrency, RequestCount: command.RequestCount, RatePerSecond: command.RatePerSecond, DurationMS: command.DurationMS, RequestTimeoutMS: command.RequestTimeoutMS},
-		SLA:  domain.SLAProfile{Thresholds: cloneThresholds(command.SLAThresholds)},
+		Suites: clonePlanSuiteEntries(entries),
 	}
 }
 
-func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand) domain.Plan {
+func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand, entries []domain.PlanSuiteEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, ModelIDs: append([]string(nil), command.ModelIDs...), ChannelIDs: append([]string(nil), command.ChannelIDs...),
-		SuiteID: command.SuiteID, SuiteRevision: command.SuiteRevision, Cases: cloneCaseRefs(command.Cases),
-		Load: domain.LoadProfile{Mode: command.LoadMode, Concurrency: command.Concurrency, RequestCount: command.RequestCount, RatePerSecond: command.RatePerSecond, DurationMS: command.DurationMS, RequestTimeoutMS: command.RequestTimeoutMS},
-		SLA:  domain.SLAProfile{Thresholds: cloneThresholds(command.SLAThresholds)},
+		Suites: clonePlanSuiteEntries(entries),
 	}
+}
+
+func clonePlanSuiteEntries(entries []domain.PlanSuiteEntry) []domain.PlanSuiteEntry {
+	result := make([]domain.PlanSuiteEntry, len(entries))
+	for index, entry := range entries {
+		result[index] = entry
+		result[index].Cases = append([]domain.CaseRevisionRef(nil), entry.Cases...)
+		result[index].Parameters = cloneRawMessages(entry.Parameters)
+		result[index].SLA = domain.SLAProfile{Thresholds: cloneThresholds(entry.SLA.Thresholds)}
+	}
+	return result
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -36,7 +37,7 @@ func TestLegacyAPIAuditExecutorRunsImportedDriverWithoutPython(t *testing.T) {
 	}
 	snapshot := fixture.snapshot()
 	snapshot.Channel.BaseURL = server.URL
-	snapshot.CaseDefinitions[0] = fixture.testCase
+	snapshot.Suites[0].CaseDefinitions[0] = fixture.testCase
 	run, err := domain.NewRun(domain.EntityMeta{ID: "30000000-0000-4000-8000-000000000098", SchemaVersion: 1, Revision: 1, CreatedAt: fixture.now, UpdatedAt: fixture.now}, fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +50,7 @@ func TestLegacyAPIAuditExecutorRunsImportedDriverWithoutPython(t *testing.T) {
 
 	executor := runs.NewLegacyAPIAuditExecutor(server.Client())
 	var drafts []runs.ResultDraft
-	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
+	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Suite: snapshot.Suites[0], Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
 		drafts = append(drafts, draft)
 		return nil
 	})
@@ -58,6 +59,69 @@ func TestLegacyAPIAuditExecutorRunsImportedDriverWithoutPython(t *testing.T) {
 	}
 	if len(drafts) != 1 || !drafts[0].Success.Overall() || drafts[0].CaseID != fixture.testCase.ID {
 		t.Fatalf("legacy drafts = %#v", drafts)
+	}
+}
+
+func TestLegacyAPIAuditExecutorUsesSuiteEntryRequestTimeout(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		select {
+		case <-request.Context().Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	fixture := newRunFixture(t)
+	fixture.plan.Suites[0].Load.RequestTimeoutMS = 1
+	fixture.channel.BaseURL = server.URL
+	fixture.testCase.Definition = domain.TestCaseDefinition{
+		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+		Type:          casetypes.TypeLegacyAPIAudit,
+		TypeVersion:   1,
+		Spec:          json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{}},"options":{}}`),
+	}
+	snapshot := fixture.snapshot()
+	run, err := domain.NewRun(
+		domain.EntityMeta{ID: "30000000-0000-4000-8000-000000000096", SchemaVersion: 1, Revision: 1, CreatedAt: fixture.now, UpdatedAt: fixture.now},
+		fixture.plan.ID,
+		snapshot,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	store := credentials.NewMemoryStore()
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	lease, _ := store.Get(context.Background(), storeRef)
+	defer lease.Close()
+
+	entryLoad := fixture.plan.Suites[0].Load
+	entryLoad.RequestTimeoutMS = 500
+	request := runs.ExecutionRequest{
+		Run: run,
+		Suite: domain.RunSuiteSnapshot{
+			EntryID: "30000000-0000-4000-8000-000000000095",
+			Load:    entryLoad,
+		},
+		Cases:      []domain.TestCase{fixture.testCase},
+		Credential: lease,
+	}
+	var drafts []runs.ResultDraft
+	if err := runs.NewLegacyAPIAuditExecutor(server.Client()).Execute(
+		context.Background(),
+		request,
+		func(draft runs.ResultDraft) error {
+			drafts = append(drafts, draft)
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(drafts) != 1 || !drafts[0].Success.Overall() {
+		t.Fatalf("suite-timeout drafts = %#v", drafts)
 	}
 }
 
@@ -77,6 +141,8 @@ func TestLegacyAPIAuditExecutorDispatchesWanVideoAdmissionCase(t *testing.T) {
 	fixture.channel.Protocol = domain.ProtocolWanVideo
 	fixture.channel.BaseURL = server.URL
 	fixture.mapping.UpstreamModelName = "wan3.0-video"
+	fixture.suite.Protocol = domain.ProtocolWanVideo
+	fixture.suite.ModelTarget = fixture.mapping.UpstreamModelName
 	fixture.testCase.Protocol = domain.ProtocolWanVideo
 	fixture.testCase.Definition = domain.TestCaseDefinition{
 		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
@@ -96,7 +162,7 @@ func TestLegacyAPIAuditExecutorDispatchesWanVideoAdmissionCase(t *testing.T) {
 
 	executor := runs.NewLegacyAPIAuditExecutor(server.Client())
 	var drafts []runs.ResultDraft
-	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
+	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Suite: snapshot.Suites[0], Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
 		drafts = append(drafts, draft)
 		return nil
 	})

@@ -172,7 +172,7 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	}
 	mappings := []domain.ChannelModel{
 		{EntityMeta: meta("60000000-0000-4000-8000-000000000004"), ChannelID: channels[0].ID, ModelID: model.ID, UpstreamModelName: "model-a"},
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000005"), ChannelID: channels[1].ID, ModelID: model.ID, UpstreamModelName: "model-b"},
+		{EntityMeta: meta("60000000-0000-4000-8000-000000000005"), ChannelID: channels[1].ID, ModelID: model.ID, UpstreamModelName: "model-a"},
 	}
 	caseID := "60000000-0000-4000-8000-000000000006"
 	testCase := domain.TestCase{
@@ -185,7 +185,22 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
 		},
 	}
-	plan := domain.Plan{EntityMeta: meta("60000000-0000-4000-8000-000000000007"), Name: "compare", ModelIDs: []string{model.ID}, ChannelIDs: []string{channels[0].ID, channels[1].ID}, Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}}, Load: domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000}, SLA: domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}}}
+	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
+	suite := domain.Suite{
+		EntityMeta: meta("60000000-0000-4000-8000-000000000012"), Key: "comparison", Name: "Comparison",
+		Protocol: model.Protocol, ModelTarget: "model-a", Cases: []domain.CaseRevisionRef{caseRef},
+	}
+	entry := domain.PlanSuiteEntry{
+		EntryID: "60000000-0000-4000-8000-000000000013", SuiteID: suite.ID, SuiteRevision: suite.Revision,
+		Cases: []domain.CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{},
+		Load: domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
+		SLA:  domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
+	}
+	plan := domain.Plan{
+		EntityMeta: meta("60000000-0000-4000-8000-000000000007"), Name: "compare",
+		ModelIDs: []string{model.ID}, ChannelIDs: []string{channels[0].ID, channels[1].ID},
+		Suites: []domain.PlanSuiteEntry{entry},
+	}
 	runIDs := []string{"60000000-0000-4000-8000-000000000010", "60000000-0000-4000-8000-000000000011"}
 	completed := make([]domain.Run, 2)
 	for index := range channels {
@@ -196,9 +211,13 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 			Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: 1},
 			Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: 1}, Name: model.Name, Protocol: model.Protocol},
 			Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channels[index].ID, Revision: 1}, Name: channels[index].Name, BaseURL: channels[index].BaseURL, Protocol: model.Protocol, UpstreamModelName: mappings[index].UpstreamModelName},
-			Cases:         plan.Cases, Load: plan.Load, SLA: plan.SLA,
-			Environment:  domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
-			PlanDocument: &planDocument, Mapping: &mappingDocument, CaseDefinitions: []domain.TestCase{testCase},
+			Environment:   domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
+			PlanDocument:  &planDocument, Mapping: &mappingDocument,
+			Suites: []domain.RunSuiteSnapshot{{
+				EntryID: entry.EntryID, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef},
+				CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{},
+				Load: entry.Load, SLA: entry.SLA,
+			}},
 		}
 		run, err := domain.NewRun(meta(runIDs[index]), plan.ID, snapshot)
 		if err != nil {

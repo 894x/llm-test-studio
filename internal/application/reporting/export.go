@@ -217,10 +217,14 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 		Source         ReportSource    `json:"source"`
 		Report         domain.Report   `json:"report"`
 		RequestResults []domain.Result `json:"request_results"`
+		Suites         []SuiteDetail   `json:"suites"`
+		Unassigned     []domain.Result `json:"unassigned_request_results"`
 		Performance    any             `json:"performance,omitempty"`
 	}{
 		Watermark: watermark, SchemaVersion: detail.SchemaVersion, Source: detail.Source,
-		Report: detail.Report, RequestResults: detail.RequestResults, Performance: performance,
+		Report: detail.Report, RequestResults: detail.RequestResults,
+		Suites: detail.Suites, Unassigned: detail.UnassignedRequestResults,
+		Performance: performance,
 	}, "", "  ")
 }
 

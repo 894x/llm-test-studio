@@ -10,7 +10,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-const CurrentSnapshotSchemaVersion = 2
+const CurrentSnapshotSchemaVersion = 3
 
 type Snapshot struct {
 	SchemaVersion int                    `json:"schema_version"`
@@ -81,24 +81,41 @@ type SuiteSummary struct {
 }
 
 type PlanSummary struct {
-	ID               string              `json:"id"`
-	Revision         uint64              `json:"revision"`
-	Name             string              `json:"name"`
-	ModelCount       int                 `json:"model_count"`
-	ChannelCount     int                 `json:"channel_count"`
-	CaseCount        int                 `json:"case_count"`
-	LoadMode         domain.LoadMode     `json:"load_mode"`
-	Concurrency      uint32              `json:"concurrency"`
-	RequestCount     uint64              `json:"request_count"`
-	RatePerSecond    float64             `json:"rate_per_second"`
-	DurationMS       uint64              `json:"duration_ms"`
-	RequestTimeoutMS uint64              `json:"request_timeout_ms"`
-	ModelIDs         []string            `json:"model_ids"`
-	ChannelIDs       []string            `json:"channel_ids"`
-	SuiteID          string              `json:"suite_id,omitempty"`
-	SuiteRevision    uint64              `json:"suite_revision,omitempty"`
-	Cases            []CaseRevisionInput `json:"cases"`
-	SLAThresholds    map[string]float64  `json:"sla_thresholds"`
+	ID           string             `json:"id"`
+	Revision     uint64             `json:"revision"`
+	Name         string             `json:"name"`
+	ModelCount   int                `json:"model_count"`
+	ChannelCount int                `json:"channel_count"`
+	SuiteCount   int                `json:"suite_count"`
+	CaseCount    int                `json:"case_count"`
+	ModelIDs     []string           `json:"model_ids"`
+	ChannelIDs   []string           `json:"channel_ids"`
+	Suites       []PlanSuiteSummary `json:"suites"`
+}
+
+type PlanSuiteInput struct {
+	EntryID          string                     `json:"entry_id,omitempty"`
+	SuiteID          string                     `json:"suite_id"`
+	SuiteRevision    uint64                     `json:"suite_revision"`
+	LoadMode         domain.LoadMode            `json:"load_mode"`
+	Concurrency      uint32                     `json:"concurrency"`
+	RequestCount     uint64                     `json:"request_count"`
+	RatePerSecond    float64                    `json:"rate_per_second"`
+	DurationMS       uint64                     `json:"duration_ms"`
+	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
+	SLAThresholds    map[string]float64         `json:"sla_thresholds"`
+	Parameters       map[string]json.RawMessage `json:"parameters"`
+}
+
+type PlanSuiteSummary struct {
+	PlanSuiteInput
+	SuiteKey    string                 `json:"suite_key"`
+	SuiteName   string                 `json:"suite_name"`
+	Protocol    domain.Protocol        `json:"protocol"`
+	ModelTarget string                 `json:"model_target"`
+	CaseCount   int                    `json:"case_count"`
+	Cases       []CaseRevisionInput    `json:"cases"`
+	QuickTest   *domain.SuiteQuickTest `json:"quick_test,omitempty"`
 }
 
 type MutationResult struct {
@@ -218,35 +235,17 @@ type UpdateSuiteCommand struct {
 }
 
 type CreatePlanCommand struct {
-	Name             string              `json:"name"`
-	ModelIDs         []string            `json:"model_ids"`
-	ChannelIDs       []string            `json:"channel_ids"`
-	SuiteID          string              `json:"suite_id,omitempty"`
-	SuiteRevision    uint64              `json:"suite_revision,omitempty"`
-	Cases            []CaseRevisionInput `json:"cases"`
-	LoadMode         domain.LoadMode     `json:"load_mode"`
-	Concurrency      uint32              `json:"concurrency"`
-	RequestCount     uint64              `json:"request_count"`
-	RatePerSecond    float64             `json:"rate_per_second"`
-	DurationMS       uint64              `json:"duration_ms"`
-	RequestTimeoutMS uint64              `json:"request_timeout_ms"`
-	SLAThresholds    map[string]float64  `json:"sla_thresholds"`
+	Name       string           `json:"name"`
+	ModelIDs   []string         `json:"model_ids"`
+	ChannelIDs []string         `json:"channel_ids"`
+	Suites     []PlanSuiteInput `json:"suites"`
 }
 
 type UpdatePlanCommand struct {
-	ID               string              `json:"id"`
-	ExpectedRevision uint64              `json:"expected_revision"`
-	Name             string              `json:"name"`
-	ModelIDs         []string            `json:"model_ids"`
-	ChannelIDs       []string            `json:"channel_ids"`
-	SuiteID          string              `json:"suite_id,omitempty"`
-	SuiteRevision    uint64              `json:"suite_revision,omitempty"`
-	Cases            []CaseRevisionInput `json:"cases"`
-	LoadMode         domain.LoadMode     `json:"load_mode"`
-	Concurrency      uint32              `json:"concurrency"`
-	RequestCount     uint64              `json:"request_count"`
-	RatePerSecond    float64             `json:"rate_per_second"`
-	DurationMS       uint64              `json:"duration_ms"`
-	RequestTimeoutMS uint64              `json:"request_timeout_ms"`
-	SLAThresholds    map[string]float64  `json:"sla_thresholds"`
+	ID               string           `json:"id"`
+	ExpectedRevision uint64           `json:"expected_revision"`
+	Name             string           `json:"name"`
+	ModelIDs         []string         `json:"model_ids"`
+	ChannelIDs       []string         `json:"channel_ids"`
+	Suites           []PlanSuiteInput `json:"suites"`
 }

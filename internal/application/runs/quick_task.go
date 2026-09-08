@@ -117,12 +117,9 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	}
 	load := domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: uint64(len(cases)), RequestTimeoutMS: suite.QuickTest.TimeoutMS}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": float64(suite.QuickTest.TimeoutMS)}}
-	// The invocation's Plan lives only inside this Run snapshot. Its identity
-	// is the Run identity, so it cannot be mistaken for an authored Plan.
-	plan := domain.Plan{EntityMeta: meta, Name: suite.Name, SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: append([]domain.CaseRevisionRef(nil), suite.Cases...), Load: load, SLA: sla}
 	mapping := domain.ChannelModel{EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID, UpstreamModelName: command.Model}
-	snapshot := domain.RunSnapshot{SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
-		Plan: domain.EntityRevisionRef{ID: meta.ID, Revision: meta.Revision}, PlanDocument: &plan, Mapping: &mapping,
+	snapshot := domain.RunSnapshot{SchemaVersion: domain.FlatRunSnapshotSchemaVersion,
+		Plan: domain.EntityRevisionRef{ID: meta.ID, Revision: meta.Revision}, Mapping: &mapping,
 		Model:   domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelMeta.ID, Revision: modelMeta.Revision}, Name: command.Model, Protocol: suite.Protocol},
 		Channel: domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: suite.Protocol, UpstreamModelName: command.Model},
 		Cases:   append([]domain.CaseRevisionRef(nil), suite.Cases...), CaseDefinitions: cases, Load: load, SLA: sla, Environment: service.environment(),

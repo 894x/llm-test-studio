@@ -125,16 +125,34 @@ func (kind FailureKind) validateDimensions(dimensions SuccessDimensions) error {
 
 type Result struct {
 	EntityMeta
-	RunID       string             `json:"run_id"`
-	CaseID      string             `json:"case_id,omitempty"`
-	RequestID   string             `json:"request_id,omitempty"`
-	Success     SuccessDimensions  `json:"success"`
-	Failure     FailureKind        `json:"failure_kind,omitempty"`
-	ErrorCode   ErrorCode          `json:"error_code,omitempty"`
-	Detail      *ProviderDetail    `json:"detail,omitempty"`
-	Dimensions  map[string]string  `json:"dimensions,omitempty"`
-	Metrics     map[string]float64 `json:"metrics,omitempty"`
-	EvidenceIDs []string           `json:"evidence_ids,omitempty"`
+	RunID        string               `json:"run_id"`
+	SuiteEntryID string               `json:"suite_entry_id,omitempty"`
+	SuiteStatus  SuiteExecutionStatus `json:"suite_status,omitempty"`
+	CaseID       string               `json:"case_id,omitempty"`
+	RequestID    string               `json:"request_id,omitempty"`
+	Success      SuccessDimensions    `json:"success"`
+	Failure      FailureKind          `json:"failure_kind,omitempty"`
+	ErrorCode    ErrorCode            `json:"error_code,omitempty"`
+	Detail       *ProviderDetail      `json:"detail,omitempty"`
+	Dimensions   map[string]string    `json:"dimensions,omitempty"`
+	Metrics      map[string]float64   `json:"metrics,omitempty"`
+	EvidenceIDs  []string             `json:"evidence_ids,omitempty"`
+}
+
+type SuiteExecutionStatus string
+
+const (
+	SuiteExecutionCompleted SuiteExecutionStatus = "completed"
+	SuiteExecutionFailed    SuiteExecutionStatus = "failed"
+)
+
+func (status SuiteExecutionStatus) Validate() error {
+	switch status {
+	case SuiteExecutionCompleted, SuiteExecutionFailed:
+		return nil
+	default:
+		return fmt.Errorf("unsupported suite execution status %q", status)
+	}
 }
 
 func (result Result) Validate() error {
@@ -143,6 +161,24 @@ func (result Result) Validate() error {
 	}
 	if !IsUUID(result.RunID) {
 		return errors.New("result run id must be a canonical UUID")
+	}
+	if result.SuiteEntryID != "" && !IsUUID(result.SuiteEntryID) {
+		return errors.New("result suite entry id must be a canonical UUID")
+	}
+	if result.SuiteStatus != "" {
+		if result.SuiteEntryID == "" {
+			return errors.New("suite marker requires a suite entry id")
+		}
+		if err := result.SuiteStatus.Validate(); err != nil {
+			return err
+		}
+		if result.CaseID != "" || strings.TrimSpace(result.RequestID) != "" {
+			return errors.New("suite marker must not identify a case or request")
+		}
+		if result.Failure != "" || result.ErrorCode != "" || result.Detail != nil || len(result.Dimensions) != 0 || len(result.Metrics) != 0 || len(result.EvidenceIDs) != 0 {
+			return errors.New("suite marker must not contain request outcome data")
+		}
+		return nil
 	}
 	if result.CaseID == "" && strings.TrimSpace(result.RequestID) == "" {
 		return errors.New("result requires a case id or request id")

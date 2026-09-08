@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -254,47 +255,41 @@ func (service *Service) buildSnapshot(
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		if err := plan.Validate(); err != nil {
+		if err := plan.Validate(); err != nil || len(plan.Suites) == 0 {
 			return Snapshot{}, ErrCorrupt
 		}
 		if _, duplicate := planIDs[plan.ID]; duplicate {
 			return Snapshot{}, ErrCorrupt
 		}
 		planIDs[plan.ID] = struct{}{}
-		if plan.SuiteID != "" {
-			if _, found := suiteByID[plan.SuiteID]; !found {
-				return Snapshot{}, ErrCorrupt
-			}
-		}
 		targetProtocol := domain.Protocol("")
-		for _, ref := range plan.Cases {
-			testCase, err := resolveCaseRevision(ref)
+		requiredModelTarget := ""
+		conflictingModelTargets := false
+		for _, entry := range plan.Suites {
+			pinnedSuite, err := resolveSuiteRevision(entry.SuiteID, entry.SuiteRevision)
 			if err != nil {
 				return Snapshot{}, err
 			}
-			if _, found := testCaseByID[testCase.ID]; !found {
+			if !sameCaseRefs(pinnedSuite.Cases, entry.Cases) {
 				return Snapshot{}, ErrCorrupt
 			}
-			caseProtocol := testCase.Protocol
 			if targetProtocol == "" {
-				targetProtocol = caseProtocol
-			} else if caseProtocol != targetProtocol {
+				targetProtocol = pinnedSuite.Protocol
+			} else if pinnedSuite.Protocol != targetProtocol {
 				return Snapshot{}, ErrCorrupt
 			}
-		}
-		if plan.SuiteID != "" {
-			pinnedSuite, err := resolveSuiteRevision(plan.SuiteID, plan.SuiteRevision)
-			if err != nil {
-				return Snapshot{}, err
-			}
-			if pinnedSuite.Protocol != targetProtocol {
-				return Snapshot{}, ErrCorrupt
+			if pinnedSuite.ModelTarget != "" {
+				if requiredModelTarget == "" {
+					requiredModelTarget = pinnedSuite.ModelTarget
+				} else if pinnedSuite.ModelTarget != requiredModelTarget {
+					conflictingModelTargets = true
+				}
 			}
 			definitions := make([]domain.TestCase, 0, len(pinnedSuite.Cases))
 			for _, ref := range pinnedSuite.Cases {
-				testCase, err := resolveCaseRevision(ref)
-				if err != nil {
-					return Snapshot{}, err
+				testCase, resolveErr := resolveCaseRevision(ref)
+				if resolveErr != nil {
+					return Snapshot{}, resolveErr
 				}
 				if _, found := testCaseByID[testCase.ID]; !found {
 					return Snapshot{}, ErrCorrupt
@@ -304,6 +299,19 @@ func (service *Service) buildSnapshot(
 			if pinnedSuite.ValidateCases(definitions) != nil {
 				return Snapshot{}, ErrCorrupt
 			}
+			if pinnedSuite.QuickTest == nil {
+				if len(entry.Parameters) != 0 {
+					return Snapshot{}, ErrCorrupt
+				}
+			} else {
+				_, resolved, applyErr := pinnedSuite.ApplyInputs(definitions, entry.Parameters)
+				if applyErr != nil || !reflect.DeepEqual(resolved, entry.Parameters) {
+					return Snapshot{}, ErrCorrupt
+				}
+			}
+		}
+		if conflictingModelTargets {
+			return Snapshot{}, ErrCorrupt
 		}
 		for _, modelID := range plan.ModelIDs {
 			model, found := modelByID[modelID]
@@ -317,7 +325,8 @@ func (service *Service) buildSnapshot(
 				return Snapshot{}, ErrCorrupt
 			}
 			for _, modelID := range plan.ModelIDs {
-				if _, found := mappingByBinding[channelID+"\x00"+modelID]; !found {
+				mapping, found := mappingByBinding[channelID+"\x00"+modelID]
+				if !found || requiredModelTarget != "" && mapping.UpstreamModelName != requiredModelTarget {
 					return Snapshot{}, ErrCorrupt
 				}
 			}
@@ -393,21 +402,25 @@ func (service *Service) buildSnapshot(
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		cases := make([]CaseRevisionInput, len(plan.Cases))
-		for index, ref := range plan.Cases {
-			cases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
-		}
-		thresholds := make(map[string]float64, len(plan.SLA.Thresholds))
-		for name, value := range plan.SLA.Thresholds {
-			thresholds[name] = value
+		suiteSummaries := make([]PlanSuiteSummary, 0, len(plan.Suites))
+		caseCount := 0
+		for _, entry := range plan.Suites {
+			suite, err := resolveSuiteRevision(entry.SuiteID, entry.SuiteRevision)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			entryCases := make([]CaseRevisionInput, len(entry.Cases))
+			for index, ref := range entry.Cases {
+				entryCases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
+			}
+			caseCount += len(entry.Cases)
+			suiteSummaries = append(suiteSummaries, planSuiteSummary(entry, suite, entryCases))
 		}
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{
 			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
-			ModelCount: len(plan.ModelIDs), ChannelCount: len(plan.ChannelIDs), CaseCount: len(plan.Cases),
-			LoadMode: plan.Load.Mode, Concurrency: plan.Load.Concurrency, RequestCount: plan.Load.RequestCount,
-			RatePerSecond: plan.Load.RatePerSecond, DurationMS: plan.Load.DurationMS, RequestTimeoutMS: plan.Load.RequestTimeoutMS,
+			ModelCount: len(plan.ModelIDs), ChannelCount: len(plan.ChannelIDs), CaseCount: caseCount,
 			ModelIDs: append([]string(nil), plan.ModelIDs...), ChannelIDs: append([]string(nil), plan.ChannelIDs...),
-			SuiteID: plan.SuiteID, SuiteRevision: plan.SuiteRevision, Cases: cases, SLAThresholds: thresholds,
+			SuiteCount: len(suiteSummaries), Suites: suiteSummaries,
 		})
 	}
 
@@ -440,6 +453,19 @@ func (service *Service) buildSnapshot(
 		return Snapshot{}, err
 	}
 	return snapshot, nil
+}
+
+func planSuiteSummary(entry domain.PlanSuiteEntry, suite domain.Suite, cases []CaseRevisionInput) PlanSuiteSummary {
+	return PlanSuiteSummary{
+		PlanSuiteInput: PlanSuiteInput{
+			EntryID: entry.EntryID, SuiteID: entry.SuiteID, SuiteRevision: entry.SuiteRevision,
+			LoadMode: entry.Load.Mode, Concurrency: entry.Load.Concurrency, RequestCount: entry.Load.RequestCount,
+			RatePerSecond: entry.Load.RatePerSecond, DurationMS: entry.Load.DurationMS, RequestTimeoutMS: entry.Load.RequestTimeoutMS,
+			SLAThresholds: cloneThresholds(entry.SLA.Thresholds), Parameters: cloneRawMessages(entry.Parameters),
+		},
+		SuiteKey: suite.Key, SuiteName: suite.Name, Protocol: suite.Protocol, ModelTarget: suite.ModelTarget,
+		CaseCount: len(cases), Cases: cases, QuickTest: suite.QuickTest.Clone(),
+	}
 }
 
 func lessNameID(leftName, leftID, rightName, rightID string) bool {

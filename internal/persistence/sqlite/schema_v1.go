@@ -81,6 +81,7 @@ var schemaV1Objects = []schemaObject{
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
 		run_id TEXT NOT NULL,
+		suite_entry_id TEXT,
 		case_id TEXT,
 		request_id TEXT,
 		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
@@ -117,7 +118,9 @@ var schemaV1Objects = []schemaObject{
 		FOREIGN KEY(artifact_id) REFERENCES artifacts(id)
 	)`},
 	{kind: "index", name: "idx_case_results_run", table: "case_results", ddl: `CREATE INDEX idx_case_results_run ON case_results(run_id, created_at, id)`},
-	{kind: "index", name: "idx_case_results_case_summary", table: "case_results", ddl: `CREATE UNIQUE INDEX idx_case_results_case_summary ON case_results(run_id, case_id) WHERE request_id IS NULL AND case_id IS NOT NULL`},
+	{kind: "index", name: "idx_case_results_case_summary", table: "case_results", ddl: `CREATE UNIQUE INDEX idx_case_results_case_summary ON case_results(run_id, suite_entry_id, case_id) WHERE request_id IS NULL AND case_id IS NOT NULL AND suite_entry_id IS NOT NULL`},
+	{kind: "index", name: "idx_case_results_quick_task_case_summary", table: "case_results", ddl: `CREATE UNIQUE INDEX idx_case_results_quick_task_case_summary ON case_results(run_id, case_id) WHERE request_id IS NULL AND case_id IS NOT NULL AND suite_entry_id IS NULL`},
+	{kind: "index", name: "idx_case_results_suite_marker", table: "case_results", ddl: `CREATE UNIQUE INDEX idx_case_results_suite_marker ON case_results(run_id, suite_entry_id) WHERE suite_entry_id IS NOT NULL AND case_id IS NULL AND request_id IS NULL`},
 	{kind: "index", name: "idx_evidence_run", table: "evidence", ddl: `CREATE INDEX idx_evidence_run ON evidence(run_id, created_at, id)`},
 	{kind: "index", name: "idx_reports_run", table: "reports", ddl: `CREATE INDEX idx_reports_run ON reports(run_id)`},
 	{kind: "table", name: "comparisons", table: "comparisons", ddl: `CREATE TABLE comparisons (

@@ -17,6 +17,9 @@ func quickTaskRepository() *fakeRepository {
 		Key: "prompt", Label: "Message", Type: "text", Default: json.RawMessage(`"hello"`),
 		Bindings: []domain.SuiteInputBinding{{CaseKey: "T001", Pointer: "/request/body/messages/0/content"}},
 	}}}
+	repository.plans[0].Suites[0].Parameters = map[string]json.RawMessage{
+		"prompt": json.RawMessage(`"hello"`),
+	}
 	return repository
 }
 
@@ -42,7 +45,7 @@ func TestSnapshotRejectsBrokenQuickTaskBindingsInCurrentAndPinnedSuites(t *testi
 		broken.QuickTest.Inputs[0].Bindings[0].Pointer = "/request/body/missing"
 		if historical {
 			broken.Revision = 42
-			repository.plans[0].SuiteRevision = 42
+			repository.plans[0].Suites[0].SuiteRevision = 42
 			repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{{suiteID: broken.ID, revision: 42}: broken}
 		} else {
 			repository.suites[0] = broken

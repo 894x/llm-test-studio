@@ -456,7 +456,7 @@ func exportFixture(t *testing.T) Detail {
 	run := generatorRun(t, now)
 	request := domain.Result{
 		EntityMeta: generatorMeta("50000000-0000-4000-8000-000000000001", now),
-		RunID:      run.Meta().ID, RequestID: "request-1",
+		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
 		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
 		Metrics: map[string]float64{
 			"e2e_ms": 120, "ttfb_ms": 10, "ttft_ms": 40, "ttft_any_ms": 40, "ttft_visible_ms": 50,

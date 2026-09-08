@@ -30,11 +30,9 @@ func TestLoadExecutorRunsThePinnedProfileAndMapsEveryObservation(t *testing.T) {
 
 	fixture := newRunFixture(t)
 	fixture.channel.BaseURL = server.URL
-	fixture.plan.Load = domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 3, RequestTimeoutMS: 1000}
+	fixture.plan.Suites[0].Load = domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 3, RequestTimeoutMS: 1000}
 	snapshot := fixture.snapshot()
 	snapshot.Channel.BaseURL = server.URL
-	snapshot.PlanDocument.Load = fixture.plan.Load
-	snapshot.Load = fixture.plan.Load
 	run, err := domain.NewRun(domain.EntityMeta{ID: "30000000-0000-4000-8000-000000000099", SchemaVersion: 1, Revision: 1, CreatedAt: fixture.now, UpdatedAt: fixture.now}, fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +46,7 @@ func TestLoadExecutorRunsThePinnedProfileAndMapsEveryObservation(t *testing.T) {
 	executor := runs.NewLoadExecutor(server.Client().Transport)
 	var drafts []runs.ResultDraft
 	err = executor.Execute(context.Background(), runs.ExecutionRequest{
-		Run: run, Cases: []domain.TestCase{fixture.testCase}, Credential: lease, StopSending: make(chan struct{}),
+		Run: run, Suite: snapshot.Suites[0], Cases: []domain.TestCase{fixture.testCase}, Credential: lease, StopSending: make(chan struct{}),
 	}, func(draft runs.ResultDraft) error {
 		drafts = append(drafts, draft)
 		return nil

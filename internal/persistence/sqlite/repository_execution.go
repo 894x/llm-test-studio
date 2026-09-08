@@ -402,12 +402,13 @@ func validateRunReferences(ctx context.Context, _ relationQueryer, run domain.Ru
 }
 
 func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
-	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion {
+	writeable := snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion ||
+		(snapshot.SchemaVersion == domain.FlatRunSnapshotSchemaVersion && snapshot.QuickTask != nil)
+	if !writeable {
 		return fmt.Errorf(
-			"%w: writable run snapshot schema version %d, want %d",
+			"%w: writable run snapshot schema version %d",
 			ErrCorrupt,
 			snapshot.SchemaVersion,
-			domain.CurrentRunSnapshotSchemaVersion,
 		)
 	}
 	if err := snapshot.Validate(); err != nil {
@@ -604,8 +605,8 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 	if err != nil {
 		return err
 	}
-	if result.CaseID != "" && !containsCase(run.Snapshot().Cases, result.CaseID) {
-		return errors.New("result case is outside the run snapshot")
+	if !resultBelongsToSnapshot(run.Snapshot(), result) {
+		return errors.New("result suite or case is outside the run snapshot")
 	}
 	for _, evidenceID := range result.EvidenceIDs {
 		var evidenceRow storedEvidenceRow
@@ -635,12 +636,16 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 	if result.RequestID != "" {
 		requestID = result.RequestID
 	}
+	var suiteEntryID any
+	if result.SuiteEntryID != "" {
+		suiteEntryID = result.SuiteEntryID
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO case_results(
 			id, schema_version, revision, created_at, updated_at,
-			run_id, case_id, request_id, document_json
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, result.ID, result.SchemaVersion, result.Revision, formatTime(result.CreatedAt), formatTime(result.UpdatedAt), result.RunID, caseID, requestID, document); err != nil {
+			run_id, suite_entry_id, case_id, request_id, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, result.ID, result.SchemaVersion, result.Revision, formatTime(result.CreatedAt), formatTime(result.UpdatedAt), result.RunID, suiteEntryID, caseID, requestID, document); err != nil {
 		return classifyWriteError("append result", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -655,7 +660,7 @@ func (repository *Repository) GetResult(ctx context.Context, id string) (domain.
 	}
 	var row storedResultRow
 	err := row.scan(repository.db.QueryRowContext(ctx, `
-		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json
 		FROM case_results WHERE id = ?
 	`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -679,7 +684,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 		return nil, err
 	}
 	rows, err := repository.db.QueryContext(ctx, `
-		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json
 		FROM case_results WHERE run_id = ? ORDER BY created_at, id
 	`, runID)
 	if err != nil {
@@ -730,7 +735,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 
 type storedResultRow struct {
 	id, createdAt, updatedAt, runID string
-	caseID, requestID               sql.NullString
+	suiteEntryID, caseID, requestID sql.NullString
 	schemaVersion, revision         int64
 	document                        []byte
 }
@@ -738,7 +743,7 @@ type storedResultRow struct {
 func (row *storedResultRow) scan(scanner rowScanner) error {
 	return scanner.Scan(
 		&row.id, &row.schemaVersion, &row.revision, &row.createdAt, &row.updatedAt,
-		&row.runID, &row.caseID, &row.requestID, &row.document,
+		&row.runID, &row.suiteEntryID, &row.caseID, &row.requestID, &row.document,
 	)
 }
 
@@ -751,6 +756,7 @@ func (row storedResultRow) decode(expectedRunID string) (domain.Result, error) {
 		return domain.Result{}, err
 	}
 	if result.RunID != row.runID || (expectedRunID != "" && result.RunID != expectedRunID) ||
+		row.suiteEntryID.Valid != (result.SuiteEntryID != "") || (row.suiteEntryID.Valid && row.suiteEntryID.String != result.SuiteEntryID) ||
 		row.caseID.Valid != (result.CaseID != "") || (row.caseID.Valid && row.caseID.String != result.CaseID) ||
 		row.requestID.Valid != (result.RequestID != "") || (row.requestID.Valid && row.requestID.String != result.RequestID) {
 		return domain.Result{}, fmt.Errorf("%w: result owner columns do not match document", ErrCorrupt)
@@ -773,8 +779,8 @@ func validateStoredResultReferences(ctx context.Context, queryer relationQueryer
 }
 
 func validateStoredResultAgainstRun(ctx context.Context, queryer relationQueryer, result domain.Result, run domain.Run, evidenceCache map[string]domain.Evidence) error {
-	if result.CaseID != "" && !containsCase(run.Snapshot().Cases, result.CaseID) {
-		return fmt.Errorf("%w: result case is outside run snapshot", ErrCorrupt)
+	if !resultBelongsToSnapshot(run.Snapshot(), result) {
+		return fmt.Errorf("%w: result suite or case is outside run snapshot", ErrCorrupt)
 	}
 	for _, evidenceID := range result.EvidenceIDs {
 		if evidence, exists := evidenceCache[evidenceID]; exists {
@@ -801,6 +807,28 @@ func validateStoredResultAgainstRun(ctx context.Context, queryer relationQueryer
 		evidenceCache[evidenceID] = evidence
 	}
 	return nil
+}
+
+func resultBelongsToSnapshot(snapshot domain.RunSnapshot, result domain.Result) bool {
+	if len(snapshot.Suites) == 0 {
+		if snapshot.QuickTask == nil || result.SuiteEntryID != "" || result.SuiteStatus != "" {
+			return false
+		}
+		return result.CaseID != "" && containsCase(snapshot.Cases, result.CaseID)
+	}
+	if result.SuiteEntryID == "" {
+		return false
+	}
+	for _, suite := range snapshot.Suites {
+		if suite.EntryID != result.SuiteEntryID {
+			continue
+		}
+		if result.SuiteStatus != "" {
+			return result.CaseID == "" && result.RequestID == ""
+		}
+		return result.CaseID != "" && containsCase(suite.Cases, result.CaseID)
+	}
+	return false
 }
 
 func decodeResultDocument(document []byte) (domain.Result, error) {

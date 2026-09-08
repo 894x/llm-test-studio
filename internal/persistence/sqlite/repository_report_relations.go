@@ -100,9 +100,9 @@ func validateReportAttachments(ctx context.Context, queryer relationQueryer, rep
 
 func validateReportResults(ctx context.Context, queryer relationQueryer, report domain.Report) error {
 	rows, err := queryer.QueryContext(ctx, `
-		SELECT id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json
 		FROM case_results
-		WHERE run_id = ? AND request_id IS NULL
+		WHERE run_id = ? AND request_id IS NULL AND case_id IS NOT NULL
 		ORDER BY created_at, id
 	`, report.RunID)
 	if err != nil {
@@ -132,6 +132,12 @@ func validateReportResults(ctx context.Context, queryer relationQueryer, report 
 		result, err := row.decode(report.RunID)
 		if err != nil {
 			return storageCorrupt("report result collection")
+		}
+		if report.PlanSnapshot.QuickTask != nil {
+			if result.SuiteEntryID != "" {
+				return storageCorrupt("report result collection")
+			}
+			result.SuiteEntryID = report.RunID
 		}
 		stored[result.ID] = result
 	}

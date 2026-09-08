@@ -42,7 +42,7 @@ func TestResponseProbeExecutorClassifiesKnownAndStableUnknownShapes(t *testing.T
 
 	fixture := newRunFixture(t)
 	fixture.channel.BaseURL = server.URL
-	fixture.plan.Load = domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: 4, RequestTimeoutMS: 1000}
+	fixture.plan.Suites[0].Load = domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: 4, RequestTimeoutMS: 1000}
 	fixture.testCase.Dimension = "routing"
 	fixture.testCase.Definition = domain.TestCaseDefinition{
 		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
@@ -70,7 +70,7 @@ func TestResponseProbeExecutorClassifiesKnownAndStableUnknownShapes(t *testing.T
 	executor := runs.NewResponseProbeExecutor(server.Client().Transport)
 	var drafts []runs.ResultDraft
 	err = executor.Execute(context.Background(), runs.ExecutionRequest{
-		Run: run, Cases: []domain.TestCase{fixture.testCase}, Credential: lease, StopSending: make(chan struct{}),
+		Run: run, Suite: snapshot.Suites[0], Cases: []domain.TestCase{fixture.testCase}, Credential: lease, StopSending: make(chan struct{}),
 	}, func(draft runs.ResultDraft) error {
 		drafts = append(drafts, draft)
 		return nil

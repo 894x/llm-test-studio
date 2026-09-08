@@ -52,7 +52,7 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 
 	// Public reads must not expose any of the mutable data held by the catalog.
 	got.ModelIDs[0] = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-	got.SLA.Thresholds["e2e_p95_ms"] = 1
+	got.Suites[0].SLA.Thresholds["e2e_p95_ms"] = 1
 	got.TargetBindings[0].Model.Capabilities[0] = "mutated"
 	got.TargetBindings[0].Mapping.UpstreamModelName = "mutated"
 	again, err := service.GetDocument(context.Background(), document.ID)
@@ -159,6 +159,60 @@ func TestPlanCatalogTargetlessDocumentRequiresEmptyBindings(t *testing.T) {
 	targeted := validTargetedDocument("60000000-0000-4000-8000-000000000004", now).Plan
 	if err := service.Create(context.Background(), targeted); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("Create() targeted plan error = %v, want %v", err, ErrInvalid)
+	}
+}
+
+func TestPlanCatalogRequiresSchemaTwoMultiSuiteDocuments(t *testing.T) {
+	if CurrentFileSchemaVersion != 2 {
+		t.Fatalf("CurrentFileSchemaVersion = %d, want 2", CurrentFileSchemaVersion)
+	}
+
+	service, err := New(filepath.Join(t.TempDir(), "plans"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, time.September, 4, 10, 30, 0, 0, time.UTC)
+	legacy := validTargetlessPlan("60000000-0000-4000-8000-000000000011", now)
+	legacy.Suites = nil
+
+	document := Document{
+		FileSchemaVersion: CurrentFileSchemaVersion,
+		Plan:              legacy,
+		TargetBindings:    []TargetBinding{},
+	}
+	if err := service.CreateDocument(context.Background(), document); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("CreateDocument(flat plan) error = %v, want %v", err, ErrInvalid)
+	}
+}
+
+func TestPlanCatalogSchemaTwoJSONOmitsLegacyFlatExecutionFields(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "plans")
+	service, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := validTargetlessPlan(
+		"60000000-0000-4000-8000-000000000012",
+		time.Date(2026, time.September, 4, 10, 45, 0, 0, time.UTC),
+	)
+	if err := service.Create(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, plan.ID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, legacy := range []string{"suite_id", "suite_revision", "cases", "load", "sla"} {
+		if _, found := fields[legacy]; found {
+			t.Fatalf("schema v2 plan contains legacy top-level field %q: %s", legacy, raw)
+		}
+	}
+	if _, found := fields["suites"]; !found {
+		t.Fatalf("schema v2 plan omits suites: %s", raw)
 	}
 }
 
@@ -539,17 +593,23 @@ func validTargetlessPlan(id string, now time.Time) domain.Plan {
 		Name:       "Runtime target plan",
 		ModelIDs:   []string{},
 		ChannelIDs: []string{},
-		Cases: []domain.CaseRevisionRef{{
-			CaseID:   "70000000-0000-4000-8000-000000000001",
-			Revision: 1,
+		Suites: []domain.PlanSuiteEntry{{
+			EntryID:       "68000000-0000-4000-8000-000000000001",
+			SuiteID:       "69000000-0000-4000-8000-000000000001",
+			SuiteRevision: 1,
+			Cases: []domain.CaseRevisionRef{{
+				CaseID:   "70000000-0000-4000-8000-000000000001",
+				Revision: 1,
+			}},
+			Parameters: map[string]json.RawMessage{},
+			Load: domain.LoadProfile{
+				Mode:             domain.LoadSingle,
+				Concurrency:      1,
+				RequestCount:     1,
+				RequestTimeoutMS: 30_000,
+			},
+			SLA: domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 3_000}},
 		}},
-		Load: domain.LoadProfile{
-			Mode:             domain.LoadSingle,
-			Concurrency:      1,
-			RequestCount:     1,
-			RequestTimeoutMS: 30_000,
-		},
-		SLA: domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 3_000}},
 	}
 }
 

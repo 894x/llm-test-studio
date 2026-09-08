@@ -60,6 +60,14 @@ func (repository filesystemRuntimeRepository) GetTestCaseRevision(ctx context.Co
 	return testCase, nil
 }
 
+func (repository filesystemRuntimeRepository) GetSuiteRevision(ctx context.Context, id string, revision uint64) (domain.Suite, error) {
+	suite, err := repository.catalog.GetSuiteRevision(ctx, id, revision)
+	if err != nil {
+		return domain.Suite{}, err
+	}
+	return suite, nil
+}
+
 func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 	ctx context.Context,
 	plan domain.Plan,
