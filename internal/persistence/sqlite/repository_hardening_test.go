@@ -267,7 +267,6 @@ func TestRepositoryReportSealsRequestRowsBesideFinalCaseSummaries(t *testing.T) 
 	requestResult := fixture.result
 	requestResult.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000035", 1)
 	requestResult.RequestID = "request-1"
-	requestResult.CaseID = ""
 	requestResult.EvidenceIDs = nil
 	if err := repository.AppendResult(ctx, requestResult); err != nil {
 		t.Fatal(err)
@@ -309,6 +308,7 @@ func TestRepositoryReportMatchesCanonicalEmptyResultCollections(t *testing.T) {
 	report := fixture.report
 	report.RunStatus = run.Status()
 	report.CaseResults = []domain.Result{result}
+	report.SuiteReports[0].CaseResults = []domain.Result{result}
 	if err := repository.CreateReport(ctx, report); err != nil {
 		t.Fatalf("CreateReport() with canonically empty result collections error = %v", err)
 	}

@@ -174,8 +174,8 @@ func TestTerminalRecoveryReconcilesCommittedWriteError(t *testing.T) {
 	if repository.run.Status() != domain.RunCompleted || repository.run.Meta().Revision != 4 {
 		t.Fatalf("reconciled run = %s revision %d", repository.run.Status(), repository.run.Meta().Revision)
 	}
-	if len(repository.results) != 2 {
-		t.Fatalf("results = %d, want 2", len(repository.results))
+	if len(repository.results) != 3 {
+		t.Fatalf("results = %d, want 3", len(repository.results))
 	}
 	select {
 	case <-reports:
@@ -248,7 +248,7 @@ func TestTerminalPersistenceRecoversWithoutRepeatingExecution(t *testing.T) {
 			}
 			repository.mu.Lock()
 			defer repository.mu.Unlock()
-			wantResults := 2
+			wantResults := 3
 			if failed {
 				wantResults = 1
 			}

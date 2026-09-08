@@ -14,13 +14,14 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentCaseChanges(t *testing.T) {
+func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunStart(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -37,6 +38,12 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 		t.Fatal(err)
 	}
 	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "cases")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	suites, err := suitecatalog.New(suitecatalog.Options{
+		Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,20 +93,25 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 		t.Fatalf("case entries = %#v, %v", caseEntries, err)
 	}
 	caseEntry := caseEntries[0]
+	suite := filesystemCatalogSuiteFixture(caseEntry.TestCase)
+	if err := suites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
+		t.Fatal(err)
+	}
+	suiteEntries, err := suites.Entries(ctx)
+	if err != nil || len(suiteEntries) != 1 {
+		t.Fatalf("suite entries = %#v, %v", suiteEntries, err)
+	}
+	suite = suiteEntries[0].Suite
 	plan := domain.Plan{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000006"),
 		Name:       "file plan", ModelIDs: []string{model.ID}, ChannelIDs: []string{channel.ID},
-		Cases: []domain.CaseRevisionRef{{CaseID: caseEntry.TestCase.ID, Revision: caseEntry.TestCase.Revision}},
-		Load:  domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000},
-		SLA:   domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 3_000}},
 	}
-	if err := plans.CreateDocument(ctx, plancatalog.Document{
-		FileSchemaVersion: plancatalog.CurrentFileSchemaVersion,
-		Plan:              plan,
-		TargetBindings: []plancatalog.TargetBinding{{
-			Model: model, Channel: channel, Mapping: mapping,
-		}},
-	}); err != nil {
+	filesystemCatalogSetPlanSuites(&plan, suite)
+	catalogRepository := filesystemCatalogRepository{
+		lockPath: filepath.Join(root, "catalog.lock"), models: models, channels: channels,
+		cases: cases, suites: suites, plans: plans,
+	}
+	if err := catalogRepository.CreatePlan(ctx, plan); err != nil {
 		t.Fatal(err)
 	}
 	newModel := model
@@ -121,13 +133,13 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 	newMapping := mapping
 	newMapping.Revision++
 	newMapping.UpdatedAt = newMapping.UpdatedAt.Add(time.Minute)
-	newMapping.UpstreamModelName = "new-upstream-model"
+	newMapping.UpstreamModelName = "upstream-model"
 	if err := channels.UpdateMapping(ctx, mapping.Revision, newMapping); err != nil {
 		t.Fatalf("UpdateMapping() error = %v", err)
 	}
 	updatedCase := caseEntry.TestCase
 	updatedCase.Name = "updated file case"
-	if err := cases.SaveCase(ctx, caseEntry.Group, caseEntry.Directory, updatedCase); err != nil {
+	if err := catalogRepository.UpdateTestCase(ctx, caseEntry.TestCase.Revision, updatedCase); err != nil {
 		t.Fatalf("SaveCase(updated) error = %v", err)
 	}
 	currentCase, err := cases.Find(ctx, caseEntry.TestCase.ID)
@@ -147,11 +159,9 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 		t.Fatalf("OpenRepository() error = %v", err)
 	}
 	t.Cleanup(func() { _ = operational.Close() })
-	repository := filesystemRuntimeRepository{Repository: operational, catalog: filesystemCatalogRepository{
-		models: models, channels: channels, cases: cases, plans: plans,
-	}}
+	repository := filesystemRuntimeRepository{Repository: operational, catalog: catalogRepository}
 	store := credentials.NewMemoryStore()
-	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
+	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, newChannel.CredentialID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,15 +196,16 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 		t.Fatalf("GetRun(queued) error = %v", err)
 	}
 	queuedSnapshot := queued.Snapshot()
-	if len(queuedSnapshot.CaseDefinitions) != 1 || queuedSnapshot.CaseDefinitions[0].Revision != caseEntry.TestCase.Revision ||
-		queuedSnapshot.CaseDefinitions[0].Name != caseEntry.TestCase.Name {
-		t.Fatalf("queued run case definitions = %#v, want pinned revision %#v", queuedSnapshot.CaseDefinitions, caseEntry.TestCase)
+	if len(queuedSnapshot.Suites) != 1 || len(queuedSnapshot.Suites[0].CaseDefinitions) != 1 ||
+		queuedSnapshot.Suites[0].CaseDefinitions[0].Revision != caseEntry.TestCase.Revision ||
+		queuedSnapshot.Suites[0].CaseDefinitions[0].Name != caseEntry.TestCase.Name {
+		t.Fatalf("queued run suite definitions = %#v, want pinned revision %#v", queuedSnapshot.Suites, caseEntry.TestCase)
 	}
-	if queuedSnapshot.Model.Revision != model.Revision || queuedSnapshot.Model.Name != model.Name ||
-		queuedSnapshot.Channel.Revision != channel.Revision || queuedSnapshot.Channel.BaseURL != channel.BaseURL ||
-		queuedSnapshot.Mapping == nil || queuedSnapshot.Mapping.Revision != mapping.Revision ||
+	if queuedSnapshot.Model.Revision != newModel.Revision || queuedSnapshot.Model.Name != newModel.Name ||
+		queuedSnapshot.Channel.Revision != newChannel.Revision || queuedSnapshot.Channel.BaseURL != newChannel.BaseURL ||
+		queuedSnapshot.Mapping == nil || queuedSnapshot.Mapping.Revision != newMapping.Revision ||
 		queuedSnapshot.Mapping.UpstreamModelName != mapping.UpstreamModelName {
-		t.Fatalf("queued run target drifted from Plan bindings: %#v", queuedSnapshot)
+		t.Fatalf("queued run did not resolve current targets: %#v", queuedSnapshot)
 	}
 	// Activating reloads the canonical SQLite document and validates the next
 	// state against the file-derived in-memory Run.
@@ -208,7 +219,8 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 		}
 		snapshot := request.Run.Snapshot()
 		if snapshot.Model.ID != model.ID || snapshot.Channel.ID != channel.ID || snapshot.Mapping == nil || snapshot.Mapping.ID != mapping.ID ||
-			len(snapshot.CaseDefinitions) != 1 || snapshot.CaseDefinitions[0].Revision != caseEntry.TestCase.Revision {
+			len(snapshot.Suites) != 1 || len(snapshot.Suites[0].CaseDefinitions) != 1 ||
+			snapshot.Suites[0].CaseDefinitions[0].Revision != caseEntry.TestCase.Revision {
 			t.Fatalf("immutable run snapshot = %#v", snapshot)
 		}
 	case <-time.After(2 * time.Second):

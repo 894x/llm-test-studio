@@ -41,6 +41,7 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		suiteID      = "10000000-0000-4000-8000-000000000006"
 		planID       = "10000000-0000-4000-8000-000000000007"
 		runID        = "10000000-0000-4000-8000-000000000008"
+		entryID      = "10000000-0000-4000-8000-00000000000d"
 		evidenceID   = "10000000-0000-4000-8000-000000000009"
 		resultID     = "10000000-0000-4000-8000-00000000000a"
 		reportID     = "10000000-0000-4000-8000-00000000000b"
@@ -68,33 +69,44 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	}
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 5000}}
-	plan := domain.Plan{EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID}, SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{caseRef}, Load: load, SLA: sla}
+	plan := domain.Plan{
+		EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID},
+		Suites: []domain.PlanSuiteEntry{{
+			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
+			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+		}},
+	}
 	environment := domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "go-test"}
 	snapshot := domain.RunSnapshot{
-		SchemaVersion:   domain.CurrentRunSnapshotSchemaVersion,
-		Plan:            domain.EntityRevisionRef{ID: planID, Revision: 1},
-		Model:           domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
-		Channel:         domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
-		Cases:           []domain.CaseRevisionRef{caseRef},
-		Load:            load,
-		SLA:             sla,
-		Environment:     environment,
-		PlanDocument:    &plan,
-		Mapping:         &mapping,
-		CaseDefinitions: []domain.TestCase{testCase},
+		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
+		Plan:          domain.EntityRevisionRef{ID: planID, Revision: 1},
+		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
+		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
+		Environment:   environment,
+		PlanDocument:  &plan,
+		Mapping:       &mapping,
+		Suites: []domain.RunSuiteSnapshot{{
+			EntryID: entryID, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef},
+			CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+		}},
 	}
 	run, err := domain.NewRun(entityMeta(runID, 1), planID, snapshot)
 	if err != nil {
 		t.Fatalf("NewRun() error = %v", err)
 	}
 	evidence := domain.Evidence{EntityMeta: entityMeta(evidenceID, 1), RunID: runID, RelativePath: "evidence/response.json", SHA256: strings.Repeat("a", 64), MediaType: "application/json", Redacted: true}
-	result := domain.Result{EntityMeta: entityMeta(resultID, 1), RunID: runID, CaseID: caseID, Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}, Metrics: map[string]float64{"e2e_ms": 123}, EvidenceIDs: []string{evidenceID}}
+	result := domain.Result{EntityMeta: entityMeta(resultID, 1), RunID: runID, SuiteEntryID: entryID, CaseID: caseID, Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}, Metrics: map[string]float64{"e2e_ms": 123}, EvidenceIDs: []string{evidenceID}}
 	report := domain.Report{
 		SchemaVersion: domain.CurrentReportSchemaVersion, ID: reportID, RunID: runID, RunStatus: domain.RunCompleted,
 		GeneratedAt: repositoryEpoch.Add(10 * time.Minute), PlanSnapshot: snapshot,
 		Model: domain.ReportSubject{ID: modelID, Name: model.Name}, Channel: domain.ReportSubject{ID: channelID, Name: channel.Name}, Environment: environment,
 		Conclusion: domain.ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}}, SLA: map[string]domain.MetricValue{}, Metrics: map[string]domain.MetricValue{},
 		Timeline: []json.RawMessage{}, Distributions: []json.RawMessage{}, CaseResults: []domain.Result{result}, ErrorClusters: []json.RawMessage{}, Evidence: []domain.Evidence{evidence}, Baseline: json.RawMessage(`{}`),
+		SuiteReports: []domain.SuiteReport{{
+			SuiteEntryID: entryID, SuiteID: suiteID, SuiteRevision: 1, SuiteKey: suite.Key, SuiteName: suite.Name,
+			Status: domain.SuiteReportCompleted, Conclusion: domain.ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}},
+			SLA: map[string]domain.MetricValue{}, Metrics: map[string]domain.MetricValue{}, Timeline: []json.RawMessage{}, Distributions: []json.RawMessage{}, CaseResults: []domain.Result{result},
+		}},
 		Attachments: []domain.ReportAttachment{{ArtifactID: artifactID, RunID: runID, Name: "HTML report", RelativePath: "reports/report.html", SHA256: strings.Repeat("b", 64), MediaType: "text/html", Redacted: true}},
 	}
 	for name, value := range map[string]interface{ Validate() error }{

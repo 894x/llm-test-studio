@@ -22,6 +22,10 @@ func (repository filesystemRuntimeRepository) ListPlans(ctx context.Context) ([]
 	return repository.catalog.ListPlans(ctx)
 }
 
+func (repository filesystemRuntimeRepository) ListSuites(ctx context.Context) ([]domain.Suite, error) {
+	return repository.catalog.ListSuites(ctx)
+}
+
 func (repository filesystemRuntimeRepository) GetPlan(ctx context.Context, id string) (domain.Plan, error) {
 	return repository.catalog.GetPlan(ctx, id)
 }
@@ -60,6 +64,14 @@ func (repository filesystemRuntimeRepository) GetTestCaseRevision(ctx context.Co
 	return testCase, nil
 }
 
+func (repository filesystemRuntimeRepository) GetSuiteRevision(ctx context.Context, id string, revision uint64) (domain.Suite, error) {
+	suite, err := repository.catalog.GetSuiteRevision(ctx, id, revision)
+	if err != nil {
+		return domain.Suite{}, err
+	}
+	return suite, nil
+}
+
 func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 	ctx context.Context,
 	plan domain.Plan,
@@ -77,19 +89,6 @@ func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
 	if len(plan.ModelIDs) > 0 && (!containsRuntimeID(plan.ModelIDs, modelID) || !containsRuntimeID(plan.ChannelIDs, channelID)) {
-		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
-	}
-	if len(plan.ModelIDs) > 0 {
-		for _, binding := range document.TargetBindings {
-			if binding.Model.ID != modelID || binding.Channel.ID != channelID {
-				continue
-			}
-			if !binding.Channel.Enabled || binding.Model.Protocol != binding.Channel.Protocol ||
-				binding.Mapping.ModelID != binding.Model.ID || binding.Mapping.ChannelID != binding.Channel.ID {
-				return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrCorrupt
-			}
-			return binding.Model, binding.Channel, binding.Mapping, nil
-		}
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
 	model, err := repository.catalog.GetModel(ctx, modelID)

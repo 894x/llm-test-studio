@@ -3,7 +3,7 @@ import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 
-import { CasesWorkspace, ModelChannelWorkspace } from "./catalog-workspaces"
+import { CasesWorkspace, ModelChannelWorkspace, PlansWorkspace } from "./catalog-workspaces"
 import { EMPTY_CATALOG, type CatalogActions, type CatalogSnapshot } from "./data"
 
 describe("ModelChannelWorkspace", () => {
@@ -188,5 +188,56 @@ describe("CasesWorkspace", () => {
     )
 
     expect(screen.getAllByText("Wan Video").length).toBeGreaterThan(0)
+  })
+})
+
+describe("PlansWorkspace", () => {
+  it("searches every ordered suite and shows the sequence in the inspector", async () => {
+    const user = userEvent.setup()
+    const suiteA = { id: "123e4567-e89b-42d3-a456-426614174061", revision: 1, key: "alpha", name: "Alpha suite", protocol: "openai-chat" as const, model_target: "gpt-test", case_count: 1, cases: [{ case_id: "123e4567-e89b-42d3-a456-426614174071", revision: 1 }] }
+    const suiteB = { id: "123e4567-e89b-42d3-a456-426614174062", revision: 2, key: "beta", name: "Beta searchable suite", protocol: "openai-chat" as const, model_target: "gpt-test", case_count: 1, cases: [{ case_id: "123e4567-e89b-42d3-a456-426614174072", revision: 1 }] }
+    const entry = (entryID: string, suite: typeof suiteA, concurrency: number) => ({
+      entry_id: entryID,
+      suite_id: suite.id,
+      suite_revision: suite.revision,
+      suite_key: suite.key,
+      suite_name: suite.name,
+      protocol: suite.protocol,
+      model_target: suite.model_target,
+      case_count: suite.case_count,
+      cases: suite.cases,
+      parameters: {},
+      load_mode: "fixed_concurrency" as const,
+      concurrency,
+      request_count: 10,
+      rate_per_second: 0,
+      duration_ms: 0,
+      request_timeout_ms: 30_000,
+      sla_thresholds: { e2e_p95_ms: 3_000 },
+    })
+    const catalog: CatalogSnapshot = {
+      ...EMPTY_CATALOG,
+      suites: [suiteA, suiteB],
+      plans: [{
+        id: "123e4567-e89b-42d3-a456-426614174060",
+        revision: 1,
+        name: "Ordered plan",
+        model_count: 0,
+        channel_count: 0,
+        suite_count: 2,
+        case_count: 2,
+        model_ids: [],
+        channel_ids: [],
+        suites: [entry("123e4567-e89b-42d3-a456-426614174081", suiteA, 2), entry("123e4567-e89b-42d3-a456-426614174082", suiteB, 4)],
+      }],
+    }
+
+    render(<PlansWorkspace catalog={catalog} actions={{} as CatalogActions} mutate={async (operation) => { await operation() }} mutationPending={false} mutationError="" commandPending={false} onStartPlan={async () => {}} />)
+
+    await user.type(screen.getByRole("searchbox", { name: "搜索计划" }), "Beta searchable")
+    expect(screen.getByRole("row", { name: /Ordered plan/ })).toBeInTheDocument()
+    expect(screen.getByText("1. Alpha suite")).toBeInTheDocument()
+    expect(screen.getByText("2. Beta searchable suite")).toBeInTheDocument()
+    expect(screen.getByText("2 个套件 · 2 个用例")).toBeInTheDocument()
   })
 })

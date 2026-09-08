@@ -96,6 +96,26 @@
     "failed": "未通过",
     "cancelled": "已取消"
   },
+  "hierarchy": {
+    "planReport": "计划报告",
+    "suiteAria": "测试套件：{{name}}",
+    "caseAria": "用例：{{name}}",
+    "unassignedRequests": "未分配请求",
+    "noRecordedCases": "没有已记录用例",
+    "genericRenderer": "通用视图",
+    "rendererUnavailable": "此用例无法渲染，报告中的其他内容仍可查看"
+  },
+  "suiteStatus": {
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "notStarted": "未开始"
+  },
+  "suiteIssue": {
+    "failed": "套件执行失败",
+    "cancelled": "套件执行已取消",
+    "notStarted": "套件尚未开始执行"
+  },
   "latency": {
     "title": "延迟分布",
     "aria": "延迟分布统计",

@@ -258,7 +258,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		}
 		gate := &productionServiceGate{}
 		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
-		catalogCommands := catalogCommandsWithPlanDocuments{CatalogCommands: catalogQuery, documents: catalogRepository}
+		catalogCommands := catalogQuery
 		serializedCatalog := serializedCatalogService{
 			gate: gate, query: catalogQuery, commands: catalogCommands, channels: channelService,
 		}

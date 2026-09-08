@@ -28,6 +28,8 @@ func TestLegacyAPIAuditExecutorDispatchesMiniMaxVideoAdmissionCase(t *testing.T)
 	fixture.channel.Protocol = miniMaxProtocol
 	fixture.channel.BaseURL = server.URL
 	fixture.mapping.UpstreamModelName = "MiniMax-H3"
+	fixture.suite.Protocol = miniMaxProtocol
+	fixture.suite.ModelTarget = fixture.mapping.UpstreamModelName
 	fixture.testCase.Protocol = miniMaxProtocol
 	fixture.testCase.Definition = domain.TestCaseDefinition{
 		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
@@ -47,7 +49,7 @@ func TestLegacyAPIAuditExecutorDispatchesMiniMaxVideoAdmissionCase(t *testing.T)
 
 	executor := runs.NewLegacyAPIAuditExecutor(server.Client())
 	var drafts []runs.ResultDraft
-	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
+	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Suite: snapshot.Suites[0], Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
 		drafts = append(drafts, draft)
 		return nil
 	})

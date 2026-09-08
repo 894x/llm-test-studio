@@ -14,7 +14,7 @@ func TestGeneratorBuildsAndPersistsACompletePerformanceReport(t *testing.T) {
 	run := generatorRun(t, now)
 	requestResult := domain.Result{
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000007", now),
-		RunID:      run.Meta().ID, RequestID: "request-1",
+		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
 		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
 		Metrics: map[string]float64{"e2e_ms": 25, "ttft_ms": 10, "prompt_tokens": 3},
 	}
@@ -53,7 +53,7 @@ func TestGeneratorFailsConclusionWhenObservedSLAIsBreached(t *testing.T) {
 	run := generatorRun(t, now)
 	requestResult := domain.Result{
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000017", now),
-		RunID:      run.Meta().ID, RequestID: "request-1",
+		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
 		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
 		Metrics: map[string]float64{"e2e_ms": 1500},
 	}
@@ -77,6 +77,59 @@ func TestGeneratorFailsConclusionWhenObservedSLAIsBreached(t *testing.T) {
 	}
 	if metric := repository.report.SLA["e2e_p95_ms"]; metric.Value != 1500 || metric.Samples != 1 {
 		t.Fatalf("observed SLA metric = %#v", metric)
+	}
+}
+
+func TestQuickTaskDetailUsesTheSuiteAwareSchema(t *testing.T) {
+	now := time.Date(2026, 8, 31, 9, 30, 0, 0, time.UTC)
+	run := generatorRun(t, now)
+	snapshot := run.Snapshot()
+	requestResult := domain.Result{
+		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000027", now),
+		RunID:      run.Meta().ID, CaseID: snapshot.Cases[0].CaseID, RequestID: "request-1",
+		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		Metrics: map[string]float64{"e2e_ms": 25},
+	}
+	summaryResult := requestResult
+	summaryResult.EntityMeta = generatorMeta("40000000-0000-4000-8000-000000000028", now)
+	summaryResult.RequestID = ""
+	repository := &fakeReportRepository{
+		run: run, results: []domain.Result{requestResult, summaryResult}, evidence: []domain.Evidence{},
+	}
+	generator, err := NewGenerator(GeneratorDependencies{
+		Repository: repository, Clock: fixedReportClock{now: now.Add(time.Minute)},
+		IDFactory: func(time.Time) (string, error) { return "40000000-0000-4000-8000-000000000029", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := generator.Generate(context.Background(), run.Meta().ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.report.SuiteReports) != 1 ||
+		repository.report.SuiteReports[0].SuiteEntryID != run.Meta().ID ||
+		len(repository.report.CaseResults) != 1 || repository.report.CaseResults[0].SuiteEntryID != run.Meta().ID ||
+		len(repository.report.SuiteReports[0].CaseResults) != 1 ||
+		repository.report.SuiteReports[0].CaseResults[0].SuiteEntryID != run.Meta().ID {
+		t.Fatalf("canonical quick-task report tree = %#v", repository.report)
+	}
+	detail, err := New(&fakeDocumentCatalog{report: repository.report, results: repository.results}).Detail(
+		context.Background(),
+		repository.report.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.SchemaVersion != CurrentDetailSchemaVersion || len(detail.Suites) != 1 ||
+		detail.Suites[0].SuiteEntryID != run.Meta().ID ||
+		detail.Suites[0].SuiteID != snapshot.QuickTask.Suite.ID ||
+		len(detail.Suites[0].Cases) != 1 ||
+		detail.Suites[0].Cases[0].SummaryResult == nil ||
+		detail.Suites[0].Cases[0].SummaryResult.SuiteEntryID != run.Meta().ID ||
+		len(detail.Suites[0].Cases[0].RequestResults) != 1 ||
+		detail.Suites[0].Cases[0].RequestResults[0].SuiteEntryID != run.Meta().ID ||
+		len(detail.UnassignedRequestResults) != 0 {
+		t.Fatalf("quick task detail = %#v", detail)
 	}
 }
 
@@ -212,22 +265,48 @@ func generatorMeta(id string, now time.Time) domain.EntityMeta {
 
 func generatorRun(t *testing.T, now time.Time) domain.Run {
 	t.Helper()
-	planID := "40000000-0000-4000-8000-000000000001"
 	modelID := "40000000-0000-4000-8000-000000000002"
 	channelID := "40000000-0000-4000-8000-000000000003"
 	caseID := "40000000-0000-4000-8000-000000000004"
 	runID := "40000000-0000-4000-8000-000000000005"
+	suiteID := "40000000-0000-4000-8000-000000000006"
+	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
+	testCase := domain.TestCase{
+		EntityMeta: generatorMeta(caseID, now), Key: "basic", Name: "Basic", Dimension: "boundary",
+		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
+		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
+		Definition: domain.TestCaseDefinition{
+			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+			Type:          "request.single",
+			TypeVersion:   1,
+			Spec: json.RawMessage(
+				`{"assertions":[{"config":{"contains":"ok"},"kind":"text"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{"messages":[{"content":"hello","role":"user"}]},"headers":{"Content-Type":"application/json"},"method":"POST","path":"/chat/completions"}}`,
+			),
+		},
+	}
+	load := domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
+	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}}
+	suite := domain.Suite{
+		EntityMeta: generatorMeta(suiteID, now), Key: "quick-report", Name: "Quick report",
+		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream", Cases: []domain.CaseRevisionRef{caseRef},
+		QuickTest: &domain.SuiteQuickTest{Description: "Quick report", TimeoutMS: 1_000, Inputs: []domain.SuiteInput{}},
+	}
+	mapping := domain.ChannelModel{
+		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000010", now),
+		ModelID:    modelID, ChannelID: channelID, UpstreamModelName: "upstream",
+	}
 	snapshot := domain.RunSnapshot{
-		SchemaVersion: 1,
-		Plan:          domain.EntityRevisionRef{ID: planID, Revision: 1},
+		SchemaVersion: domain.FlatRunSnapshotSchemaVersion,
+		Plan:          domain.EntityRevisionRef{ID: runID, Revision: 1},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: "model", Protocol: domain.ProtocolOpenAIChat},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: "channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, UpstreamModelName: "upstream"},
-		Cases:         []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
-		Load:          domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
-		SLA:           domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
-		Environment:   domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
+		Cases:         []domain.CaseRevisionRef{caseRef}, Load: load, SLA: sla,
+		Environment:     domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
+		Mapping:         &mapping,
+		CaseDefinitions: []domain.TestCase{testCase},
+		QuickTask:       &domain.QuickTaskSnapshot{Suite: suite, Inputs: map[string]json.RawMessage{}},
 	}
-	run, err := domain.NewRun(generatorMeta(runID, now), planID, snapshot)
+	run, err := domain.NewRun(generatorMeta(runID, now), runID, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

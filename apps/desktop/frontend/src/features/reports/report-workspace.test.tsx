@@ -243,16 +243,22 @@ describe("ReportWorkspace", () => {
 		expect(within(distribution).getByRole("row", { name: /unknown.*未知格式.*sha256:mystery.*1.*33.33%/ })).toBeInTheDocument()
 	})
 
-  it("renders SLO goodput, violation counters, and the capacity rung table in the shared report DOM", async () => {
+  it("renders SLO goodput, violation counters, and the capacity rung table in visible and exported reports", async () => {
     const user = userEvent.setup()
     const quickID = "77777777-7777-4777-8777-777777777774"
+    const exportVisualReport = vi.fn(async (element: HTMLElement, format: "html" | "png" | "pdf") => {
+      expect(format).toBe("html")
+      expect(within(element).getByRole("table", { name: "容量阶梯结果", hidden: true })).toBeInTheDocument()
+      return { filename: `${quickID}.html`, mediaType: "text/html", blob: new Blob(["report"]) }
+    })
     render(
       <ReportWorkspace
         snapshot={quickSnapshot(quickID, "容量评估未通过")}
         getDetail={vi.fn(async () => phaseFourQuickDetail(quickID, "failed") as unknown as ReportDetail)}
         exportReport={vi.fn()}
-        saveReportExport={vi.fn()}
+        saveReportExport={vi.fn(async () => true)}
         copyReportPNG={vi.fn()}
+        exportVisualReport={exportVisualReport}
       />,
     )
     await user.click(screen.getByRole("button", { name: "查看报告：容量评估未通过" }))
@@ -277,9 +283,10 @@ describe("ReportWorkspace", () => {
     expect(within(rungs).getByRole("columnheader", { name: "Goodput" })).toBeInTheDocument()
     expect(within(rungs).getByRole("row", { name: /#3.*3 并发.*未通过/ })).toBeInTheDocument()
 
-    const exportSurface = document.querySelector<HTMLElement>("[data-report-export-document]")
-    expect(exportSurface).not.toBeNull()
-    expect(within(exportSurface!).getByRole("table", { name: "容量阶梯结果", hidden: true })).toBeInTheDocument()
+    expect(document.querySelector("[data-report-export-document]")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(document.querySelector("[data-report-export-document]")).toBeNull())
   })
 
   it("uses the selected open-loop capacity rung as the archived steady-state send target", async () => {
@@ -691,8 +698,20 @@ function failedQuickDetail(reportID: string) {
 function formalProbeDetail(reportID: string) {
 	const runID = "55555555-5555-4555-8555-555555555552"
 	const caseID = "44444444-4444-4444-8444-444444444442"
+	const suiteEntryID = "99999999-9999-4999-8999-999999999991"
+	const caseResult = {
+		id: "11111111-1111-4111-8111-111111111111",
+		suite_entry_id: suiteEntryID,
+		case_id: caseID,
+		success: { transport: true, protocol: true, semantic: true, sla: true },
+		metrics: {},
+	}
+	const distributions = [
+		{ kind: "response_probe", case_id: caseID, bucket: "provider-a", classification: "matched", format: "json", shape: "sha256:known", count: 2, share_percent: 200 / 3 },
+		{ kind: "response_probe", case_id: caseID, bucket: "unknown", classification: "unknown", format: "json", shape: "sha256:mystery", count: 1, share_percent: 100 / 3 },
+	]
 	return {
-		schema_version: 1,
+		schema_version: 2,
 		source: "run",
 		report: {
 			id: reportID,
@@ -705,12 +724,33 @@ function formalProbeDetail(reportID: string) {
 			conclusion: { passed: true, verdict: "pass", issues: [] },
 			sla: {},
 			metrics: {},
-			distributions: [
-				{ kind: "response_probe", case_id: caseID, bucket: "provider-a", classification: "matched", format: "json", shape: "sha256:known", count: 2, share_percent: 200 / 3 },
-				{ kind: "response_probe", case_id: caseID, bucket: "unknown", classification: "unknown", format: "json", shape: "sha256:mystery", count: 1, share_percent: 100 / 3 },
-			],
-			case_results: [{ id: "11111111-1111-4111-8111-111111111111", case_id: caseID, success: { transport: true, protocol: true, semantic: true, sla: true }, metrics: {} }],
+			distributions: [],
+			case_results: [caseResult],
 		},
 		request_results: [],
+		unassigned_request_results: [],
+		suites: [{
+			suite_entry_id: suiteEntryID,
+			suite_id: "99999999-9999-4999-8999-999999999992",
+			suite_revision: 1,
+			suite_key: "response-probe",
+			suite_name: "上游响应探测",
+			status: "completed",
+			conclusion: { passed: true, verdict: "pass", issues: [] },
+			sla: {},
+			metrics: {},
+			timeline: [],
+			distributions,
+			cases: [{
+				case_id: caseID,
+				revision: 1,
+				key: "response-probe",
+				name: "上游响应探测",
+				case_type: "response.probe",
+				case_type_version: 1,
+				summary_result: caseResult,
+				request_results: [],
+			}],
+		}],
 	}
 }

@@ -24,6 +24,8 @@ var (
 // list data in their storage layer; detail records are deliberately excluded.
 type Catalog interface {
 	ListPlans(context.Context) ([]domain.Plan, error)
+	ListSuites(context.Context) ([]domain.Suite, error)
+	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
 	ListRunProjections(context.Context) ([]RunProjection, error)
 }
 
@@ -47,9 +49,9 @@ func (conclusion Conclusion) Validate() error {
 	}
 }
 
-// RunProjection is a storage-neutral aggregate. PinnedPlan is intentionally a
-// domain value so the service can verify the run's historical ownership and
-// snapshot contract without issuing per-run lookups.
+// RunProjection is a storage-neutral aggregate. Authored runs retain their
+// pinned Plan so the service can verify historical ownership without issuing
+// per-run lookups. Quick tasks have no authored Plan and leave PinnedPlan zero.
 type RunProjection struct {
 	Run           domain.Run
 	PinnedPlan    domain.Plan
@@ -176,13 +178,36 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 
 	planSummaries := make([]PlanSummary, 0, len(plans))
+	suitesByID := map[string]domain.Suite{}
+	if len(plans) > 0 {
+		suites, err := service.catalog.ListSuites(ctx)
+		if err != nil {
+			return Snapshot{}, safePortError(ctx, err)
+		}
+		for _, suite := range suites {
+			suitesByID[suite.ID] = suite
+		}
+	}
 	for _, plan := range plans {
+		load := summarizeSuiteLoads(plan.Suites)
+		caseCount := 0
+		for _, entry := range plan.Suites {
+			suite, exists := suitesByID[entry.SuiteID]
+			if !exists || suite.Revision != entry.SuiteRevision {
+				var err error
+				suite, err = service.catalog.GetSuiteRevision(ctx, entry.SuiteID, entry.SuiteRevision)
+				if err != nil {
+					return Snapshot{}, safePortError(ctx, err)
+				}
+			}
+			caseCount += len(suite.Cases)
+		}
 		planSummaries = append(planSummaries, PlanSummary{
 			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
-			CaseCount: len(plan.Cases), RunCount: runCounts[plan.ID],
-			LoadMode: plan.Load.Mode, Concurrency: plan.Load.Concurrency,
-			RequestCount: plan.Load.RequestCount, RatePerSecond: plan.Load.RatePerSecond,
-			DurationMS: plan.Load.DurationMS, RequestTimeout: plan.Load.RequestTimeoutMS,
+			CaseCount: caseCount, RunCount: runCounts[plan.ID],
+			LoadMode: load.Mode, Concurrency: load.Concurrency,
+			RequestCount: load.RequestCount, RatePerSecond: load.RatePerSecond,
+			DurationMS: load.DurationMS, RequestTimeout: load.RequestTimeoutMS,
 		})
 	}
 	sort.Slice(planSummaries, func(left, right int) bool {
@@ -223,31 +248,31 @@ func validateProjection(projection RunProjection) error {
 	if err := projection.Run.Validate(); err != nil {
 		return err
 	}
-	if err := projection.PinnedPlan.Validate(); err != nil {
-		return err
-	}
 	if err := projection.Conclusion.Validate(); err != nil {
 		return err
 	}
 	run := projection.Run
 	snapshot := run.Snapshot()
 	plan := projection.PinnedPlan
-	if plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision {
-		return errors.New("run does not match pinned plan")
-	}
-	if snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion {
-		if snapshot.PlanDocument == nil || !reflect.DeepEqual(plan, *snapshot.PlanDocument) {
+	if snapshot.QuickTask != nil {
+		if snapshot.PlanDocument != nil || !reflect.DeepEqual(plan, domain.Plan{}) {
+			return errors.New("quick task must not have an authored pinned plan")
+		}
+	} else {
+		if err := plan.Validate(); err != nil {
+			return err
+		}
+		if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
+			plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision ||
+			!reflect.DeepEqual(plan, *snapshot.PlanDocument) {
 			return errors.New("run snapshot differs from pinned plan")
 		}
-	} else if !contains(plan.ModelIDs, snapshot.Model.ID) || !contains(plan.ChannelIDs, snapshot.Channel.ID) ||
-		!reflect.DeepEqual(plan.Cases, snapshot.Cases) || !reflect.DeepEqual(plan.Load, snapshot.Load) ||
-		!reflect.DeepEqual(plan.SLA, snapshot.SLA) {
-		return errors.New("run snapshot differs from pinned plan")
 	}
 	if projection.Completed != projection.Passed+projection.Failed {
 		return errors.New("run result counts are inconsistent")
 	}
-	if snapshot.QuickTask == nil && snapshot.Load.RequestCount > 0 && projection.Completed > snapshot.Load.RequestCount {
+	_, load := summarizeSnapshotLoads(snapshot)
+	if snapshot.QuickTask == nil && load.RequestCount > 0 && projection.Completed > load.RequestCount {
 		return errors.New("run completed more requests than planned")
 	}
 	switch projection.Conclusion {
@@ -265,28 +290,24 @@ func validateProjection(projection RunProjection) error {
 	return nil
 }
 
-func contains(values []string, wanted string) bool {
-	for _, value := range values {
-		if value == wanted {
-			return true
-		}
-	}
-	return false
-}
-
 func summarizeRun(projection RunProjection) RunSummary {
 	run := projection.Run
 	meta := run.Meta()
 	snapshot := run.Snapshot()
+	_, load := summarizeSnapshotLoads(snapshot)
+	planName := projection.PinnedPlan.Name
+	if snapshot.QuickTask != nil {
+		planName = snapshot.QuickTask.Suite.Name
+	}
 	summary := RunSummary{
 		ID: meta.ID, Revision: meta.Revision,
-		PlanID: run.PlanID(), PlanRevision: snapshot.Plan.Revision, PlanName: projection.PinnedPlan.Name,
+		PlanID: run.PlanID(), PlanRevision: snapshot.Plan.Revision, PlanName: planName,
 		Status: run.Status(), Conclusion: projection.Conclusion,
 		ModelID: snapshot.Model.ID, ModelRevision: snapshot.Model.Revision, ModelName: snapshot.Model.Name,
 		ChannelID: snapshot.Channel.ID, ChannelRevision: snapshot.Channel.Revision, ChannelName: snapshot.Channel.Name,
-		LoadMode: snapshot.Load.Mode, Concurrency: snapshot.Load.Concurrency,
-		RatePerSecond: snapshot.Load.RatePerSecond, Planned: snapshot.Load.RequestCount,
-		DurationMS: snapshot.Load.DurationMS,
+		LoadMode: load.Mode, Concurrency: load.Concurrency,
+		RatePerSecond: load.RatePerSecond, Planned: load.RequestCount,
+		DurationMS: load.DurationMS,
 		Completed:  projection.Completed, Passed: projection.Passed, Failed: projection.Failed,
 		ArtifactCount: projection.ArtifactCount,
 		StartedAt:     meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
@@ -301,6 +322,48 @@ func summarizeRun(projection RunProjection) RunSummary {
 		summary.Source, summary.Planned = "quick_task", 0
 	}
 	return summary
+}
+
+func summarizeSuiteLoads(suites []domain.PlanSuiteEntry) domain.LoadProfile {
+	loads := make([]domain.LoadProfile, len(suites))
+	for index, suite := range suites {
+		loads[index] = suite.Load
+	}
+	return aggregateSequentialLoads(loads)
+}
+
+func summarizeSnapshotLoads(snapshot domain.RunSnapshot) (int, domain.LoadProfile) {
+	if snapshot.QuickTask != nil {
+		return len(snapshot.Cases), snapshot.Load
+	}
+	loads := make([]domain.LoadProfile, len(snapshot.Suites))
+	caseCount := 0
+	for index, suite := range snapshot.Suites {
+		caseCount += len(suite.Cases)
+		loads[index] = suite.Load
+	}
+	return caseCount, aggregateSequentialLoads(loads)
+}
+
+func aggregateSequentialLoads(loads []domain.LoadProfile) domain.LoadProfile {
+	if len(loads) == 0 {
+		return domain.LoadProfile{}
+	}
+	aggregate := loads[0]
+	for _, load := range loads[1:] {
+		aggregate.RequestCount += load.RequestCount
+		aggregate.DurationMS += load.DurationMS
+		if load.Concurrency > aggregate.Concurrency {
+			aggregate.Concurrency = load.Concurrency
+		}
+		if load.RatePerSecond > aggregate.RatePerSecond {
+			aggregate.RatePerSecond = load.RatePerSecond
+		}
+		if load.RequestTimeoutMS > aggregate.RequestTimeoutMS {
+			aggregate.RequestTimeoutMS = load.RequestTimeoutMS
+		}
+	}
+	return aggregate
 }
 
 func newestActiveRun(runs []RunSummary) string {

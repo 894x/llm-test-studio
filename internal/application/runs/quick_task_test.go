@@ -26,8 +26,8 @@ func (catalog quickTaskCatalog) GetChannel(context.Context, string) (domain.Chan
 }
 
 func quickTaskSuite(fixture runFixture) domain.Suite {
-	return domain.Suite{EntityMeta: fixture.plan.EntityMeta, Key: "connection", Name: "Connection", Protocol: fixture.testCase.Protocol,
-		Cases: fixture.plan.Cases, QuickTest: &domain.SuiteQuickTest{Description: "Connect", TimeoutMS: 1000, Inputs: []domain.SuiteInput{{
+	return domain.Suite{EntityMeta: fixture.suite.EntityMeta, Key: "connection", Name: "Connection", Protocol: fixture.testCase.Protocol,
+		Cases: fixture.suite.Cases, QuickTest: &domain.SuiteQuickTest{Description: "Connect", TimeoutMS: 1000, Inputs: []domain.SuiteInput{{
 			Key: "prompt", Label: "Message", Type: "text", Default: json.RawMessage(`"default"`),
 			Bindings: []domain.SuiteInputBinding{{CaseKey: fixture.testCase.Key, Pointer: "/request/body/messages/0/content"}},
 		}}},
@@ -249,7 +249,7 @@ func TestQuickTaskPreparesVideoSelectionsWithoutAnExtraConfirmation(t *testing.T
 			suite.QuickTest.Inputs = []domain.SuiteInput{}
 			if test.count == 2 {
 				second := fixture.testCase
-				second.ID, second.Key = "30000000-0000-4000-8000-000000000007", "second"
+				second.ID, second.Key = "30000000-0000-4000-8000-000000000009", "second"
 				repository.testCases[second.ID] = second
 				suite.Cases = append(suite.Cases, domain.CaseRevisionRef{CaseID: second.ID, Revision: second.Revision})
 			}

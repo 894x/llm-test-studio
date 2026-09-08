@@ -149,6 +149,91 @@ describe("Wails desktop client", () => {
     expect((await client.cancelRun(secondID)).runs.find((run) => run.id === secondID)?.status).toBe("cancelled")
   })
 
+  it("materializes ordered plan suites in the browser fixture with generated entry ids", async () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.plans = []
+    const suite = catalog.suites[0]
+    const entry = {
+      suite_id: suite.id,
+      suite_revision: suite.revision,
+      parameters: { prompt: "first" },
+      load_mode: "fixed_concurrency" as const,
+      concurrency: 2,
+      request_count: 10,
+      rate_per_second: 0,
+      duration_ms: 0,
+      request_timeout_ms: 30_000,
+      sla_thresholds: { e2e_p95_ms: 2_000 },
+    }
+    const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
+
+    const result = await client.createPlan({
+      name: "Repeated suite fixture",
+      model_ids: [],
+      channel_ids: [],
+      suites: [{ ...entry }, { ...entry, parameters: { prompt: "second" }, concurrency: 7 }],
+    })
+
+    const plan = result.plans[0]
+    expect(plan).toMatchObject({ suite_count: 2, case_count: suite.case_count * 2 })
+    expect(plan.suites[0]).toMatchObject({ parameters: { prompt: "first" }, concurrency: 2 })
+    expect(plan.suites[1]).toMatchObject({ parameters: { prompt: "second" }, concurrency: 7 })
+    expect(plan.suites[0].entry_id).not.toBe(plan.suites[1].entry_id)
+  })
+
+  it("preserves pinned Suite metadata when a browser fixture Plan is edited", async () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    const plan = catalog.plans[0]
+    const entry = plan.suites[0]
+    const currentSuite = catalog.suites.find((suite) => suite.id === entry.suite_id)!
+    entry.suite_revision = currentSuite.revision - 1
+    entry.suite_key = "historical-suite"
+    entry.suite_name = "Historical Suite"
+    delete entry.quick_test
+    entry.parameters = {}
+    currentSuite.quick_test = {
+      description: "New metadata",
+      timeout_ms: 30_000,
+      inputs: [{
+        key: "prompt",
+        label: "Prompt",
+        type: "text",
+        default: "new default",
+        bindings: [{ case_key: "fixture", pointer: "/request/body/prompt" }],
+      }],
+    }
+    const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
+
+    const updated = await client.updatePlan({
+      id: plan.id,
+      expected_revision: plan.revision,
+      name: plan.name,
+      model_ids: plan.model_ids,
+      channel_ids: plan.channel_ids,
+      suites: [{
+        entry_id: entry.entry_id,
+        suite_id: entry.suite_id,
+        suite_revision: entry.suite_revision,
+        parameters: {},
+        load_mode: entry.load_mode,
+        concurrency: entry.concurrency,
+        request_count: entry.request_count,
+        rate_per_second: entry.rate_per_second,
+        duration_ms: entry.duration_ms,
+        request_timeout_ms: entry.request_timeout_ms,
+        sla_thresholds: entry.sla_thresholds,
+      }],
+    })
+
+    expect(updated.plans.find((candidate) => candidate.id === plan.id)?.suites[0]).toMatchObject({
+      suite_revision: entry.suite_revision,
+      suite_key: "historical-suite",
+      suite_name: "Historical Suite",
+      parameters: {},
+    })
+    expect(updated.plans.find((candidate) => candidate.id === plan.id)?.suites[0].quick_test).toBeUndefined()
+  })
+
   it("forwards explicit credential actions without restarting or refreshing the task", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
@@ -700,6 +785,24 @@ describe("Wails desktop client", () => {
 	const testCase = FIXTURE_CATALOG.test_cases[0]
 	const suite = FIXTURE_CATALOG.suites[0]
 	const plan = FIXTURE_CATALOG.plans[0]
+	const planInput = {
+		name: plan.name,
+		model_ids: plan.model_ids,
+		channel_ids: plan.channel_ids,
+		suites: plan.suites.map((entry) => ({
+			entry_id: entry.entry_id,
+			suite_id: entry.suite_id,
+			suite_revision: entry.suite_revision,
+			parameters: entry.parameters,
+			load_mode: entry.load_mode,
+			concurrency: entry.concurrency,
+			request_count: entry.request_count,
+			rate_per_second: entry.rate_per_second,
+			duration_ms: entry.duration_ms,
+			request_timeout_ms: entry.request_timeout_ms,
+			sla_thresholds: entry.sla_thresholds,
+		})),
+	}
 	const deletion = (id: string, expected_revision: number) => ({ id, expected_revision })
 
 	const commands = [
@@ -718,8 +821,8 @@ describe("Wails desktop client", () => {
 		["CreateSuite", "createSuite", { key: "new-suite", name: "new suite", protocol: suite.protocol, model_target: suite.model_target, cases: suite.cases }],
 		["UpdateSuite", "updateSuite", { id: suite.id, expected_revision: suite.revision, key: suite.key, name: suite.name, protocol: suite.protocol, model_target: suite.model_target, cases: suite.cases }],
 		["DeleteSuite", "deleteSuite", deletion(suite.id, suite.revision)],
-		["CreatePlan", "createPlan", withoutIdentity(plan)],
-		["UpdatePlan", "updatePlan", { ...withoutIdentity(plan), id: plan.id, expected_revision: plan.revision }],
+		["CreatePlan", "createPlan", planInput],
+		["UpdatePlan", "updatePlan", { ...planInput, id: plan.id, expected_revision: plan.revision }],
 		["DeletePlan", "deletePlan", deletion(plan.id, plan.revision)],
 	] as const
 
@@ -733,7 +836,7 @@ describe("Wails desktop client", () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
 		binding.CreateChannel.mockResolvedValueOnce({
 			...structuredClone(FIXTURE_CATALOG),
-			schema_version: 3,
+			schema_version: 4,
 		} as never)
 		const client = createDesktopClient()
 
@@ -1226,7 +1329,7 @@ function zeroPerformanceMetrics() {
 function reportDetailFixture(reportID: string) {
 	const summary = FIXTURE_REPORTS.reports.find((report) => report.id === reportID) ?? FIXTURE_REPORTS.reports[0]
 	return {
-		schema_version: 1,
+		schema_version: 2,
 		source: "run",
 		report: {
 			id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
@@ -1237,6 +1340,17 @@ function reportDetailFixture(reportID: string) {
 			sla: {}, metrics: {}, case_results: [],
 		},
 		request_results: [],
+		suites: [{
+			suite_entry_id: "88888888-8888-4888-8888-888888888881",
+			suite_id: "88888888-8888-4888-8888-888888888882",
+			suite_revision: 1,
+			suite_key: "fixture-suite",
+			suite_name: "Fixture suite",
+			status: summary.run_status,
+			conclusion: { passed: summary.passed, verdict: summary.passed ? "pass" : "fail", issues: [] },
+			sla: {}, metrics: {}, timeline: [], distributions: [], cases: [],
+		}],
+		unassigned_request_results: [],
 	}
 }
 

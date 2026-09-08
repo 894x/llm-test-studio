@@ -90,6 +90,79 @@ func TestDetailAndExportsUseTheSameSealedReportAndRequestResults(t *testing.T) {
 	}
 }
 
+func TestFormalHTMLAndPNGPresentationKeepRepeatedSuitesOrderedAndIsolated(t *testing.T) {
+	detail := repeatedSuiteExportFixture(t)
+	first := detail.Suites[0]
+	second := detail.Suites[1]
+
+	contents, err := renderHTML(detail, "suite-export", "en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(contents)
+	firstSuite := strings.Index(html, `data-suite-entry-id="`+first.SuiteEntryID+`"`)
+	firstRequest := strings.Index(html, first.Cases[0].RequestResults[0].RequestID)
+	secondSuite := strings.Index(html, `data-suite-entry-id="`+second.SuiteEntryID+`"`)
+	secondRequest := strings.Index(html, second.Cases[0].RequestResults[0].RequestID)
+	if firstSuite < 0 || firstRequest <= firstSuite || secondSuite <= firstRequest || secondRequest <= secondSuite {
+		t.Fatalf("HTML suite/request order is not isolated: first suite=%d first request=%d second suite=%d second request=%d", firstSuite, firstRequest, secondSuite, secondRequest)
+	}
+	for _, want := range []string{
+		`data-suite-status="completed"`, `data-suite-conclusion="pass"`,
+		`data-suite-conclusion="fail"`,
+		"e2e_p95_ms", "Cases (1)", "request.single v1",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("HTML suite section omits %q", want)
+		}
+	}
+
+	imageText := strings.Join(formalReportImageLines(detail), "\n")
+	firstSuite = strings.Index(imageText, "ENTRY "+first.SuiteEntryID)
+	firstRequest = strings.Index(imageText, first.Cases[0].RequestResults[0].RequestID)
+	secondSuite = strings.Index(imageText, "ENTRY "+second.SuiteEntryID)
+	secondRequest = strings.Index(imageText, second.Cases[0].RequestResults[0].RequestID)
+	if firstSuite < 0 || firstRequest <= firstSuite || secondSuite <= firstRequest || secondRequest <= secondSuite {
+		t.Fatalf("PNG presentation suite/request order is not isolated:\n%s", imageText)
+	}
+	for _, want := range []string{
+		"STATUS completed  CONCLUSION pass", "STATUS completed  CONCLUSION fail",
+		"SLA e2e_p95_ms", "CASES 1", "TYPE request.single V1", "REQUEST RESULTS 1",
+	} {
+		if !strings.Contains(imageText, want) {
+			t.Fatalf("PNG presentation omits %q:\n%s", want, imageText)
+		}
+	}
+}
+
+func repeatedSuiteExportFixture(t *testing.T) Detail {
+	t.Helper()
+	now := time.Date(2026, 9, 8, 9, 0, 0, 0, time.UTC)
+	run, results := multiSuiteReportFixture(t, now)
+	repository := &fakeReportRepository{run: run, results: results, evidence: []domain.Evidence{}}
+	generator, err := NewGenerator(GeneratorDependencies{
+		Repository: repository,
+		Clock:      fixedReportClock{now: run.Meta().UpdatedAt.Add(time.Minute)},
+		IDFactory: func(time.Time) (string, error) {
+			return "42000000-0000-4000-8000-000000000017", nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := generator.Generate(context.Background(), run.Meta().ID); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := New(&fakeDocumentCatalog{report: repository.report, results: results}).Detail(
+		context.Background(),
+		repository.report.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return detail
+}
+
 func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T) {
 	report := validArchivedQuickPerformanceReport()
 	service := New(&fakeMixedCatalog{get: report})
@@ -456,7 +529,7 @@ func exportFixture(t *testing.T) Detail {
 	run := generatorRun(t, now)
 	request := domain.Result{
 		EntityMeta: generatorMeta("50000000-0000-4000-8000-000000000001", now),
-		RunID:      run.Meta().ID, RequestID: "request-1",
+		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
 		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
 		Metrics: map[string]float64{
 			"e2e_ms": 120, "ttfb_ms": 10, "ttft_ms": 40, "ttft_any_ms": 40, "ttft_visible_ms": 50,

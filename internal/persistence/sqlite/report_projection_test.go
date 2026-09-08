@@ -52,7 +52,7 @@ func TestReportProjectionsReturnOnlyBoundedSummaryScalars(t *testing.T) {
 	}
 }
 
-func TestReportProjectionsUseV2RunSnapshotAfterPlanCatalogRowIsDeleted(t *testing.T) {
+func TestReportProjectionsUseV3RunSnapshotAfterPlanCatalogRowIsDeleted(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	snapshot := fixture.run.Snapshot()
 	snapshot.SchemaVersion = domain.CurrentRunSnapshotSchemaVersion
@@ -60,10 +60,9 @@ func TestReportProjectionsUseV2RunSnapshotAfterPlanCatalogRowIsDeleted(t *testin
 	mappingDocument := fixture.mapping
 	snapshot.PlanDocument = &planDocument
 	snapshot.Mapping = &mappingDocument
-	snapshot.CaseDefinitions = []domain.TestCase{fixture.testCase}
 	run, err := domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
 	if err != nil {
-		t.Fatalf("NewRun(v2 snapshot) error = %v", err)
+		t.Fatalf("NewRun(v3 snapshot) error = %v", err)
 	}
 	fixture.run = run
 	fixture.report.PlanSnapshot = snapshot
@@ -82,41 +81,34 @@ func TestReportProjectionsUseV2RunSnapshotAfterPlanCatalogRowIsDeleted(t *testin
 }
 
 func TestReportProjectionsExcludeRequestObservationsFromCaseCount(t *testing.T) {
-	for _, withCaseID := range []bool{false, true} {
-		t.Run(fmt.Sprintf("request_with_case_id_%t", withCaseID), func(t *testing.T) {
-			path, repository, fixture := openHardeningRepository(t)
-			defer repository.Close()
-			run := createRunningOutputs(t, repository, fixture)
-			requestResult := fixture.result
-			requestResult.EntityMeta = entityMeta("20000000-0000-4000-8000-000000000001", 1)
-			requestResult.RequestID = "20000000-0000-4000-8000-000000000002"
-			if !withCaseID {
-				requestResult.CaseID = ""
-			}
-			if err := repository.AppendResult(context.Background(), requestResult); err != nil {
-				t.Fatalf("append request observation: %v", err)
-			}
-			transitionRun(t, repository, run, domain.RunCompleted)
-			if err := repository.CreateReport(context.Background(), fixture.report); err != nil {
-				t.Fatalf("create report with separate request observations: %v", err)
-			}
-			snapshot, err := reporting.New(repository).Snapshot(context.Background())
-			if err != nil {
-				t.Fatalf("load reports with request and case results: %v", err)
-			}
-			if len(snapshot.Reports) != 1 || snapshot.Reports[0].CaseCount != 1 {
-				t.Fatalf("report summaries = %+v, want one case result", snapshot.Reports)
-			}
-			if withCaseID {
-				tamper(t, path, `UPDATE reports SET document_json = json_set(document_json,
+	t.Run("owned request result", func(t *testing.T) {
+		path, repository, fixture := openHardeningRepository(t)
+		defer repository.Close()
+		run := createRunningOutputs(t, repository, fixture)
+		requestResult := fixture.result
+		requestResult.EntityMeta = entityMeta("20000000-0000-4000-8000-000000000001", 1)
+		requestResult.RequestID = "20000000-0000-4000-8000-000000000002"
+		if err := repository.AppendResult(context.Background(), requestResult); err != nil {
+			t.Fatalf("append request observation: %v", err)
+		}
+		transitionRun(t, repository, run, domain.RunCompleted)
+		if err := repository.CreateReport(context.Background(), fixture.report); err != nil {
+			t.Fatalf("create report with separate request observations: %v", err)
+		}
+		snapshot, err := reporting.New(repository).Snapshot(context.Background())
+		if err != nil {
+			t.Fatalf("load reports with request and case results: %v", err)
+		}
+		if len(snapshot.Reports) != 1 || snapshot.Reports[0].CaseCount != 1 {
+			t.Fatalf("report summaries = %+v, want one case result", snapshot.Reports)
+		}
+		tamper(t, path, `UPDATE reports SET document_json = json_set(document_json,
 					'$.case_results[0]', json((SELECT document_json FROM case_results WHERE id = ?))) WHERE id = ?`,
-					requestResult.ID, fixture.report.ID)
-				if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-					t.Fatalf("request observation substituted for case result: %v, want ErrCorrupt", err)
-				}
-			}
-		})
-	}
+			requestResult.ID, fixture.report.ID)
+		if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+			t.Fatalf("request observation substituted for case result: %v, want ErrCorrupt", err)
+		}
+	})
 }
 
 func TestReportProjectionsMeasureDocumentBudgetsInUTF8Bytes(t *testing.T) {
@@ -862,8 +854,8 @@ func cloneFixtureReports(t *testing.T, path string, fixture repositoryFixture, t
 			  SELECT ?, schema_version, revision, created_at, updated_at, ?,
 			         json_set(document_json, '$.id', ?, '$.run_id', ?)
 			  FROM evidence WHERE id = ?`, []any{evidenceID, runID, evidenceID, runID, fixture.evidence.ID}},
-			{`INSERT INTO case_results(id, schema_version, revision, created_at, updated_at, run_id, case_id, request_id, document_json)
-			  SELECT ?, schema_version, revision, created_at, updated_at, ?, case_id, request_id,
+			{`INSERT INTO case_results(id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json)
+			  SELECT ?, schema_version, revision, created_at, updated_at, ?, suite_entry_id, case_id, request_id,
 			         json_set(document_json, '$.id', ?, '$.run_id', ?, '$.evidence_ids', json_array(?))
 			  FROM case_results WHERE id = ?`, []any{resultID, runID, resultID, runID, evidenceID, fixture.result.ID}},
 			{`INSERT INTO reports(id, schema_version, run_id, generated_at, document_json)
@@ -872,11 +864,16 @@ func cloneFixtureReports(t *testing.T, path string, fixture repositoryFixture, t
 			         '$.id', ?, '$.run_id', ?, '$.generated_at', ?,
 			         '$.case_results[0].id', ?, '$.case_results[0].run_id', ?,
 			         '$.case_results[0].evidence_ids', json_array(?),
+			         '$.suite_reports[0].case_results[0].id', ?,
+			         '$.suite_reports[0].case_results[0].run_id', ?,
+			         '$.suite_reports[0].case_results[0].evidence_ids', json_array(?),
 			         '$.evidence[0].id', ?, '$.evidence[0].run_id', ?,
 			         '$.attachments[0].artifact_id', ?, '$.attachments[0].run_id', ?
 			  ) FROM reports WHERE id = ?`, []any{
 				reportID, runID, generatedAt, reportID, runID, generatedAt,
-				resultID, runID, evidenceID, evidenceID, runID, artifactID, runID, fixture.report.ID,
+				resultID, runID, evidenceID,
+				resultID, runID, evidenceID,
+				evidenceID, runID, artifactID, runID, fixture.report.ID,
 			}},
 			{`INSERT INTO artifacts(id, run_id, name, relative_path, sha256, media_type, redacted, document_json)
 			  SELECT ?, ?, name, relative_path, sha256, media_type, redacted,

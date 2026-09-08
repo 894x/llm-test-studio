@@ -114,8 +114,27 @@ type htmlReport struct {
 	Metrics      []namedMetric
 	SLA          []namedMetric
 	Issues       []string
-	Results      []resultRow
+	Suites       []htmlSuiteReport
+	Unassigned   []resultRow
 	GeneratedUTC string
+}
+
+type htmlSuiteReport struct {
+	Index      int
+	Detail     SuiteDetail
+	Status     string
+	Conclusion string
+	Metrics    []namedMetric
+	SLA        []namedMetric
+	Issues     []string
+	Cases      []htmlCaseReport
+}
+
+type htmlCaseReport struct {
+	Index   int
+	Detail  CaseDetail
+	Status  string
+	Results []resultRow
 }
 
 type quickHTMLReport struct {
@@ -133,6 +152,7 @@ type htmlLabels struct {
 	Title, QuickTitle, Conclusion, Plan, Run, Report, Phase                        string
 	CoreMetrics, RequestDetails, RequestSamples, SuccessRate, RequestRate          string
 	Passed, Failed, StatusPassed, StatusFailed, Samples, Footer, QuickFooter       string
+	Suite, Entry, Cases, Case, Type, Revision, Unassigned                          string
 }
 
 type namedMetric struct {
@@ -186,9 +206,35 @@ func reportHTMLView(detail Detail, watermark, locale string) htmlReport {
 	return htmlReport{
 		Detail: detail, Watermark: watermark, Language: locale, Labels: exportHTMLLabels(locale), Conclusion: localizedVerdict(detail.Report.Conclusion.Verdict, locale),
 		Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
-		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Results: resultRows(detail.RequestResults),
+		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Suites: htmlSuiteReports(detail.Suites, locale),
+		Unassigned:   resultRows(detail.UnassignedRequestResults),
 		GeneratedUTC: detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
 	}
+}
+
+func htmlSuiteReports(suites []SuiteDetail, locale string) []htmlSuiteReport {
+	reports := make([]htmlSuiteReport, 0, len(suites))
+	for suiteIndex, suite := range suites {
+		cases := make([]htmlCaseReport, 0, len(suite.Cases))
+		for caseIndex, testCase := range suite.Cases {
+			status := "-"
+			if testCase.SummaryResult != nil {
+				status = localizedResultStatus(testCase.SummaryResult.Success.Overall(), locale)
+			}
+			cases = append(cases, htmlCaseReport{
+				Index: caseIndex + 1, Detail: testCase, Status: status,
+				Results: resultRows(testCase.RequestResults),
+			})
+		}
+		reports = append(reports, htmlSuiteReport{
+			Index: suiteIndex + 1, Detail: suite,
+			Status:     localizedSuiteStatus(suite.Status, locale),
+			Conclusion: localizedVerdict(suite.Conclusion.Verdict, locale),
+			Metrics:    sortedMetrics(suite.Metrics), SLA: sortedMetrics(suite.SLA),
+			Issues: append([]string{}, suite.Conclusion.Issues...), Cases: cases,
+		})
+	}
+	return reports
 }
 
 func renderJSON(detail Detail, watermark string) ([]byte, error) {
@@ -217,10 +263,14 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 		Source         ReportSource    `json:"source"`
 		Report         domain.Report   `json:"report"`
 		RequestResults []domain.Result `json:"request_results"`
+		Suites         []SuiteDetail   `json:"suites"`
+		Unassigned     []domain.Result `json:"unassigned_request_results"`
 		Performance    any             `json:"performance,omitempty"`
 	}{
 		Watermark: watermark, SchemaVersion: detail.SchemaVersion, Source: detail.Source,
-		Report: detail.Report, RequestResults: detail.RequestResults, Performance: performance,
+		Report: detail.Report, RequestResults: detail.RequestResults,
+		Suites: detail.Suites, Unassigned: detail.UnassignedRequestResults,
+		Performance: performance,
 	}, "", "  ")
 }
 
@@ -260,6 +310,7 @@ func exportHTMLLabels(locale string) htmlLabels {
 			Plan: "Plan", Run: "Run", Report: "Report", Phase: "Phase", CoreMetrics: "Core metrics", RequestDetails: "Request details",
 			RequestSamples: "Request samples", SuccessRate: "Success rate", RequestRate: "Request rate", Passed: "All requests passed", Failed: "Performance test failed", StatusPassed: "passed", StatusFailed: "failed",
 			Samples: "samples", Footer: "All values are derived from the sealed Go Core report document.", QuickFooter: "Generated from the archived Go Core quick performance report.",
+			Suite: "Suite", Entry: "Entry", Cases: "Cases", Case: "Case", Type: "Type", Revision: "Revision", Unassigned: "Unassigned request results",
 		}
 	}
 	return htmlLabels{
@@ -268,6 +319,7 @@ func exportHTMLLabels(locale string) htmlLabels {
 		Plan: "计划", Run: "运行", Report: "报告", Phase: "阶段", CoreMetrics: "核心指标", RequestDetails: "请求明细",
 		RequestSamples: "请求样本", SuccessRate: "成功率", RequestRate: "请求速率", Passed: "全部请求成功", Failed: "性能测试未通过", StatusPassed: "通过", StatusFailed: "失败",
 		Samples: "个样本", Footer: "所有数值均来自 Go Core 封存的报告文档。", QuickFooter: "由 Go Core 归档的快速性能报告生成。",
+		Suite: "Suite", Entry: "执行项", Cases: "用例", Case: "用例", Type: "类型", Revision: "版本", Unassigned: "未归属的请求结果",
 	}
 }
 
@@ -292,6 +344,41 @@ func localizedVerdict(verdict, locale string) string {
 		return "已取消"
 	}
 	return verdict
+}
+
+func localizedSuiteStatus(status domain.SuiteReportStatus, locale string) string {
+	if locale == "en-US" {
+		switch status {
+		case domain.SuiteReportCompleted:
+			return "Completed"
+		case domain.SuiteReportFailed:
+			return "Failed"
+		case domain.SuiteReportCancelled:
+			return "Cancelled"
+		case domain.SuiteReportNotStarted:
+			return "Not started"
+		}
+		return string(status)
+	}
+	switch status {
+	case domain.SuiteReportCompleted:
+		return "已完成"
+	case domain.SuiteReportFailed:
+		return "失败"
+	case domain.SuiteReportCancelled:
+		return "已取消"
+	case domain.SuiteReportNotStarted:
+		return "未开始"
+	}
+	return string(status)
+}
+
+func localizedResultStatus(passed bool, locale string) string {
+	labels := exportHTMLLabels(locale)
+	if passed {
+		return labels.StatusPassed
+	}
+	return labels.StatusFailed
 }
 
 func localizedPhase(phase, locale string) string {
@@ -398,7 +485,7 @@ func formatNumber(value float64) string {
 var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Report {{.Detail.Report.ID}}</title><style>
-:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}tr{break-inside:avoid}}
+:root{font-family:Inter,"Segoe UI",sans-serif;color:#172033;background:#eef2f7}*{box-sizing:border-box}body{margin:0;padding:32px}.watermark{position:fixed;inset:42% auto auto 12%;z-index:10;transform:rotate(-24deg);font-size:72px;font-weight:700;letter-spacing:.12em;color:#6070891c;pointer-events:none;white-space:nowrap}main{max-width:1280px;margin:auto;background:#fff;border-radius:18px;padding:36px;box-shadow:0 14px 45px #16233a1c}h1{margin:0;font-size:30px}h2{margin-top:30px}h3{margin:22px 0 10px}h4{margin:16px 0 8px}.muted{color:#657189}.pass{color:#16794a}.fail{color:#b42318}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.card{border:1px solid #dde4ee;border-radius:12px;padding:13px;background:#f8fafc}.card strong,.card span{display:block}.card span{font-size:12px;color:#657189;margin-top:4px}.suite{margin-top:30px;border:1px solid #d9e2ef;border-radius:14px;padding:22px}.case{margin-top:18px;border-top:1px solid #e6eaf0;padding-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e6eaf0;text-align:right}th:first-child,td:first-child{text-align:left}.scroll{overflow:auto}.issues{color:#b42318}@media print{body{padding:0;background:#fff}main{box-shadow:none;border-radius:0;max-width:none}.suite,tr{break-inside:avoid}}
 </style></head><body><div class="watermark">{{.Watermark}}</div><main>
 <h1>{{.Labels.Title}}</h1><p class="muted">{{.Detail.Report.Model.Name}} · {{.Detail.Report.Channel.Name}} · {{.GeneratedUTC}}</p>
 <h2 class="{{if .Detail.Report.Conclusion.Passed}}pass{{else}}fail{{end}}">{{.Labels.Conclusion}}: {{.Conclusion}}</h2>
@@ -406,7 +493,19 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 <h2>{{.Labels.CoreMetrics}}</h2><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h2>SLA</h2><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} samples</span></div>{{end}}</section>
-<h2>{{.Labels.RequestDetails}} ({{len .Results}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div>
+{{range .Suites}}<section class="suite" data-suite-entry-id="{{.Detail.SuiteEntryID}}" data-suite-status="{{.Detail.Status}}" data-suite-conclusion="{{.Detail.Conclusion.Verdict}}">
+<h2>{{$.Labels.Suite}} {{.Index}}: {{.Detail.SuiteName}}</h2>
+<p class="muted"><strong>{{.Detail.SuiteKey}}</strong> · {{$.Labels.Entry}} {{.Detail.SuiteEntryID}} · Suite ID {{.Detail.SuiteID}} · {{$.Labels.Revision}} {{.Detail.SuiteRevision}}</p>
+<h3 class="{{if .Detail.Conclusion.Passed}}pass{{else}}fail{{end}}">{{$.Labels.Status}}: {{.Status}} · {{$.Labels.Conclusion}}: {{.Conclusion}}</h3>
+{{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
+<h3>{{$.Labels.CoreMetrics}}</h3><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
+<h3>SLA</h3><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
+<h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>
+{{range .Cases}}<section class="case" data-case-id="{{.Detail.CaseID}}"><h4>{{$.Labels.Case}} {{.Index}}: {{.Detail.Name}} [{{.Detail.Key}}]</h4>
+<p class="muted">{{$.Labels.Type}} {{.Detail.CaseType}} v{{.Detail.CaseTypeVersion}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Status}} {{.Status}}</p>
+<h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
+</section>{{end}}
+{{if .Unassigned}}<section class="suite"><h2>{{.Labels.Unassigned}} ({{len .Unassigned}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Unassigned}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
 <p class="muted">Schema v{{.Detail.SchemaVersion}} · {{.Labels.Footer}}</p>
 </main></body></html>`))
 
@@ -452,7 +551,15 @@ func renderPNG(detail Detail, watermark string) ([]byte, error) {
 }
 
 func drawReportImage(detail Detail, watermark string) image.Image {
-	const width, height = 1400, 1800
+	const width = 1400
+	height := 1800
+	formalLines := []string{}
+	if detail.Source != SourceQuickPerformance || detail.Performance == nil {
+		formalLines = formalReportImageLines(detail)
+		if required := 310 + len(formalLines)*26; required > height {
+			height = required
+		}
+	}
 	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: color.RGBA{R: 242, G: 245, B: 249, A: 255}}, image.Point{}, draw.Src)
 	fillRect(canvas, 45, 45, width-45, height-45, color.RGBA{255, 255, 255, 255})
@@ -465,35 +572,67 @@ func drawReportImage(detail Detail, watermark string) image.Image {
 	drawBitmapText(canvas, 80, 132, 2, strings.ToUpper(detail.Report.Conclusion.Verdict), conclusionColor(detail.Report.Conclusion.Passed))
 	drawBitmapText(canvas, 80, 170, 2, "REPORT "+detail.Report.ID, color.RGBA{91, 105, 128, 255})
 	drawBitmapText(canvas, 80, 200, 2, "RUN "+detail.Report.RunID, color.RGBA{91, 105, 128, 255})
-
-	metrics := sortedMetrics(detail.Report.Metrics)
-	if len(metrics) > 12 {
-		metrics = metrics[:12]
-	}
-	for index, metric := range metrics {
-		column, row := index%3, index/3
-		x, y := 80+column*420, 280+row*170
-		fillRect(canvas, x, y, x+390, y+140, color.RGBA{248, 250, 252, 255})
-		drawBitmapText(canvas, x+20, y+22, 2, strings.ToUpper(metric.Name), color.RGBA{91, 105, 128, 255})
-		drawBitmapText(canvas, x+20, y+72, 3, metric.Value+" "+strings.ToUpper(metric.Unit), color.RGBA{23, 32, 51, 255})
-	}
-
-	chartY := 1010
-	drawBitmapText(canvas, 80, chartY-55, 3, "E2E LATENCY MS", color.RGBA{23, 32, 51, 255})
-	values := metricValues(detail.RequestResults, "e2e_ms")
-	drawBars(canvas, image.Rect(80, chartY, 1320, chartY+390), values)
-	drawBitmapText(canvas, 80, 1440, 3, "REQUEST RESULTS", color.RGBA{23, 32, 51, 255})
-	rows := resultRows(detail.RequestResults)
-	for index, row := range rows {
-		if index >= 3 {
-			break
+	for index, line := range formalLines {
+		scale := 2
+		ink := color.RGBA{56, 67, 84, 255}
+		if strings.HasPrefix(line, "SUITE ") {
+			scale = 3
+			ink = color.RGBA{23, 32, 51, 255}
 		}
-		for lineIndex, line := range resultImageLines(row) {
-			drawBitmapText(canvas, 80, 1490+index*88+lineIndex*20, 2, line, color.RGBA{56, 67, 84, 255})
-		}
+		drawBitmapText(canvas, 80, 270+index*26, scale, line, ink)
 	}
 	drawWatermark(canvas, watermark)
 	return canvas
+}
+
+const formalPNGResultLimitPerCase = 3
+
+func formalReportImageLines(detail Detail) []string {
+	lines := make([]string, 0)
+	for suiteIndex, suite := range detail.Suites {
+		lines = append(lines,
+			fmt.Sprintf("SUITE %d %s [%s]", suiteIndex+1, suite.SuiteName, suite.SuiteKey),
+			fmt.Sprintf("ENTRY %s  SUITE ID %s  REVISION %d", suite.SuiteEntryID, suite.SuiteID, suite.SuiteRevision),
+			fmt.Sprintf("STATUS %s  CONCLUSION %s", suite.Status, suite.Conclusion.Verdict),
+		)
+		for _, metric := range sortedMetrics(suite.Metrics) {
+			lines = append(lines, imageMetricLine("METRIC", metric))
+		}
+		for _, metric := range sortedMetrics(suite.SLA) {
+			lines = append(lines, imageMetricLine("SLA", metric))
+		}
+		lines = append(lines, fmt.Sprintf("CASES %d", len(suite.Cases)))
+		for caseIndex, testCase := range suite.Cases {
+			caseStatus := "NOT AVAILABLE"
+			if testCase.SummaryResult != nil {
+				caseStatus = strings.ToUpper(resultStatus(testCase.SummaryResult.Success.Overall()))
+			}
+			lines = append(lines,
+				fmt.Sprintf("CASE %d %s [%s]", caseIndex+1, testCase.Name, testCase.Key),
+				fmt.Sprintf("CASE ID %s  TYPE %s V%d  REVISION %d  STATUS %s", testCase.CaseID, testCase.CaseType, testCase.CaseTypeVersion, testCase.Revision, caseStatus),
+				fmt.Sprintf("REQUEST RESULTS %d", len(testCase.RequestResults)),
+			)
+			rows := resultRows(testCase.RequestResults)
+			if len(rows) > formalPNGResultLimitPerCase {
+				rows = rows[:formalPNGResultLimitPerCase]
+			}
+			for _, row := range rows {
+				lines = append(lines, resultImageLines(row)...)
+			}
+		}
+	}
+	return lines
+}
+
+func imageMetricLine(prefix string, metric namedMetric) string {
+	return fmt.Sprintf("%s %s %s %s  SAMPLES %d", prefix, metric.Name, metric.Value, metric.Unit, metric.Samples)
+}
+
+func resultStatus(passed bool) string {
+	if passed {
+		return "passed"
+	}
+	return "failed"
 }
 
 func drawQuickPerformanceImage(canvas *image.RGBA, report quicktest.PerformanceReport) {

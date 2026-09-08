@@ -17,6 +17,8 @@ func TestPrepareTargetStartsMiniMaxDirectlyAndPreservesModelScope(t *testing.T) 
 	fixture.model.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.channel.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.mapping.UpstreamModelName = "MiniMax-H3"
+	fixture.suite.Protocol = domain.ProtocolMiniMaxVideo
+	fixture.suite.ModelTarget = fixture.mapping.UpstreamModelName
 	fixture.testCase.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.testCase.ModelTargets = []string{"MiniMax-H3"}
 	fixture.testCase.Definition = domain.TestCaseDefinition{

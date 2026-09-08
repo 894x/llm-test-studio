@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -64,7 +65,8 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	}
 	failing := domain.Result{
 		EntityMeta: entityMeta("10000000-0000-4000-8000-000000000044", 1),
-		RunID:      secondRun.Meta().ID, CaseID: fixture.testCase.ID, RequestID: "request-fail",
+		RunID:      secondRun.Meta().ID, SuiteEntryID: fixture.result.SuiteEntryID,
+		CaseID: fixture.testCase.ID, RequestID: "request-fail",
 		Success: domain.SuccessDimensions{Transport: true, Protocol: true},
 		Failure: domain.FailureSemantic, ErrorCode: domain.ErrorCode("semantic_mismatch"),
 	}
@@ -144,6 +146,52 @@ func TestWorkspaceRunProjectionsUseV2SnapshotAfterCatalogPlanRowIsDeleted(t *tes
 	}
 	if !reflect.DeepEqual(projections[0].PinnedPlan, fixture.plan) {
 		t.Fatalf("PinnedPlan = %#v, want snapshot plan %#v", projections[0].PinnedPlan, fixture.plan)
+	}
+}
+
+func TestWorkspaceRunProjectionsAcceptFlatV2QuickTask(t *testing.T) {
+	t.Parallel()
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	const quickRunID = "10000000-0000-4000-8000-000000000047"
+	runMeta := entityMeta(quickRunID, 1)
+	snapshot := fixture.run.Snapshot()
+	authoredSuite := snapshot.Suites[0]
+	load := domain.LoadProfile{
+		Mode: domain.LoadFixedConcurrency, Concurrency: 1,
+		RequestCount: 1, RequestTimeoutMS: authoredSuite.Load.RequestTimeoutMS,
+	}
+	suite := fixture.suite
+	suite.QuickTest = &domain.SuiteQuickTest{
+		Description: "Quick", TimeoutMS: load.RequestTimeoutMS,
+		Inputs: []domain.SuiteInput{},
+	}
+	snapshot.SchemaVersion = domain.FlatRunSnapshotSchemaVersion
+	snapshot.Plan = domain.EntityRevisionRef{ID: quickRunID, Revision: 1}
+	snapshot.PlanDocument = nil
+	snapshot.Cases = append([]domain.CaseRevisionRef(nil), authoredSuite.Cases...)
+	snapshot.CaseDefinitions = append([]domain.TestCase(nil), authoredSuite.CaseDefinitions...)
+	snapshot.Load = load
+	snapshot.SLA = authoredSuite.SLA
+	snapshot.Suites = nil
+	snapshot.QuickTask = &domain.QuickTaskSnapshot{
+		Suite:  suite,
+		Inputs: map[string]json.RawMessage{},
+	}
+	run, err := domain.NewRun(runMeta, quickRunID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateRun(context.Background(), run); err != nil {
+		t.Fatalf("CreateRun(v2 quick task) error = %v", err)
+	}
+	projections, err := repository.ListRunProjections(context.Background())
+	if err != nil {
+		t.Fatalf("ListRunProjections(v2 quick task) error = %v", err)
+	}
+	if len(projections) != 1 || !reflect.DeepEqual(projections[0].PinnedPlan, domain.Plan{}) {
+		t.Fatalf("quick task projections = %#v", projections)
 	}
 }
 
@@ -253,7 +301,6 @@ func withCompleteRunSnapshot(t *testing.T, fixture repositoryFixture) repository
 	mapping := fixture.mapping
 	snapshot.PlanDocument = &plan
 	snapshot.Mapping = &mapping
-	snapshot.CaseDefinitions = []domain.TestCase{fixture.testCase}
 	run, err := domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatalf("NewRun(v2 workspace fixture) error = %v", err)

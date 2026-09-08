@@ -35,6 +35,7 @@ export interface ReportMetric {
 export interface ReportResult {
   id: string
   request_id?: string
+  suite_entry_id?: string
   case_id?: string
   success: {
     transport: boolean
@@ -48,18 +49,37 @@ export interface ReportResult {
   metrics: Record<string, number>
 }
 
-export interface ResponseProbeDistribution {
+export type ReportDistribution = Readonly<Record<string, unknown>>
+export type ReportSuiteStatus = "completed" | "failed" | "cancelled" | "not_started"
+
+export interface ReportCaseDetail {
   case_id: string
-  bucket: string
-  classification: "matched" | "unknown" | "ambiguous" | "failed"
-  format: string
-  shape: string
-  count: number
-  share_percent: number
+  revision: number
+  key: string
+  name: string
+  case_type: string
+  case_type_version: number
+  summary_result?: ReportResult
+  request_results: ReportResult[]
+}
+
+export interface ReportSuiteDetail {
+  suite_entry_id: string
+  suite_id: string
+  suite_revision: number
+  suite_key: string
+  suite_name: string
+  status: ReportSuiteStatus
+  conclusion: { passed: boolean; verdict: string; issues: string[] }
+  sla: Record<string, ReportMetric>
+  metrics: Record<string, ReportMetric>
+  timeline: ReportDistribution[]
+  distributions: ReportDistribution[]
+  cases: ReportCaseDetail[]
 }
 
 export interface FormalReportDetail {
-  schema_version: 1
+  schema_version: 2
   source: "run"
   report: {
     id: string
@@ -79,10 +99,12 @@ export interface FormalReportDetail {
     conclusion: { passed: boolean; verdict: string; issues: string[] }
     sla: Record<string, ReportMetric>
     metrics: Record<string, ReportMetric>
-    probe_distributions?: ResponseProbeDistribution[]
+    distributions?: ReportDistribution[]
     case_results: ReportResult[]
   }
   request_results: ReportResult[]
+  suites: ReportSuiteDetail[]
+  unassigned_request_results: ReportResult[]
 }
 
 export interface QuickPerformanceReportDetail {
@@ -136,68 +158,260 @@ export function parseReportSnapshot(value: unknown): ReportSnapshot {
 }
 
 export function parseReportDetail(value: unknown): ReportDetail {
-  if (!isRecord(value) || value.schema_version !== 1 || !isReportSource(value.source)) {
+  if (!isRecord(value) || !isReportSource(value.source)) {
     throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
   }
   if (value.source === "quick_performance") {
+    if (value.schema_version !== 1) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
     const performance = parseQuickPerformanceReport(value.performance)
     if (!performance.archived || !performance.report_id) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
     return { schema_version: 1, source: "quick_performance", performance }
   }
-  if (!isRecord(value.report) || !Array.isArray(value.request_results)) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  if (
+    value.schema_version !== 2 || !isRecord(value.report) ||
+    !Array.isArray(value.request_results) || !Array.isArray(value.suites) ||
+    !Array.isArray(value.unassigned_request_results)
+  ) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
   const report = value.report
   if (
     !isUUID(report.id) || !isUUID(report.run_id) || !isRunStatus(report.run_status) ||
     !isUTCTimestamp(report.generated_at) || !isSubject(report.model) || !isSubject(report.channel) ||
     !isEnvironment(report.environment) || !isConclusion(report.conclusion) ||
     !isRecord(report.sla) || !isRecord(report.metrics) ||
-    (report.distributions !== undefined && !Array.isArray(report.distributions)) || !Array.isArray(report.case_results)
+    (report.distributions !== undefined && !Array.isArray(report.distributions)) ||
+    !Array.isArray(report.case_results)
+  ) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+  const requestResults = value.request_results.map(parseResult)
+  const parsedReport = {
+    id: report.id, run_id: report.run_id, run_status: report.run_status,
+    generated_at: report.generated_at, model: report.model, channel: report.channel,
+    environment: report.environment, conclusion: report.conclusion,
+    sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
+    distributions: parseRecordArray(report.distributions ?? []),
+    case_results: report.case_results.map(parseResult),
+  }
+
+  const suites = value.suites.map(parseSuiteDetail)
+  const unassignedRequestResults = value.unassigned_request_results.map(parseResult)
+  validateCanonicalRunTree(
+    suites,
+    unassignedRequestResults,
+    requestResults,
+    parsedReport.case_results,
+  )
+  validateRunConclusion(parsedReport.run_status, parsedReport.conclusion, suites)
+  return {
+    schema_version: 2,
+    source: "run",
+    report: parsedReport,
+    request_results: requestResults,
+    suites,
+    unassigned_request_results: unassignedRequestResults,
+  }
+}
+
+function parseSuiteDetail(value: unknown): ReportSuiteDetail {
+  if (
+    !isRecord(value) || !isUUID(value.suite_entry_id) || !isUUID(value.suite_id) ||
+    !isPositiveInteger(value.suite_revision) || !isNonBlank(value.suite_key) ||
+    !isNonBlank(value.suite_name) || !isSuiteStatus(value.status) || !isConclusion(value.conclusion) ||
+    !isRecord(value.sla) || !isRecord(value.metrics) || !Array.isArray(value.timeline) ||
+    !Array.isArray(value.distributions) || !Array.isArray(value.cases)
+  ) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+  if (!suiteConclusionMatchesStatus(value.status, value.conclusion)) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+  return {
+    suite_entry_id: value.suite_entry_id,
+    suite_id: value.suite_id,
+    suite_revision: value.suite_revision,
+    suite_key: value.suite_key,
+    suite_name: value.suite_name,
+    status: value.status,
+    conclusion: value.conclusion,
+    sla: parseMetricMap(value.sla),
+    metrics: parseMetricMap(value.metrics),
+    timeline: parseRecordArray(value.timeline),
+    distributions: parseRecordArray(value.distributions),
+    cases: value.cases.map(parseCaseDetail),
+  }
+}
+
+function parseCaseDetail(value: unknown): ReportCaseDetail {
+  if (
+    !isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision) ||
+    !isNonBlank(value.key) || !isNonBlank(value.name) || !isNonBlank(value.case_type) ||
+    !isPositiveInteger(value.case_type_version) || !Array.isArray(value.request_results)
   ) {
     throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
   }
   return {
-    schema_version: 1,
-    source: "run",
-    report: {
-      id: report.id, run_id: report.run_id, run_status: report.run_status,
-      generated_at: report.generated_at, model: report.model, channel: report.channel,
-      environment: report.environment, conclusion: report.conclusion,
-      sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
-      probe_distributions: parseProbeDistributions(Array.isArray(report.distributions) ? report.distributions : []),
-      case_results: report.case_results.map(parseResult),
-    },
+    case_id: value.case_id,
+    revision: value.revision,
+    key: value.key,
+    name: value.name,
+    case_type: value.case_type,
+    case_type_version: value.case_type_version,
+    ...(value.summary_result !== undefined ? { summary_result: parseResult(value.summary_result) } : {}),
     request_results: value.request_results.map(parseResult),
   }
 }
 
-function parseProbeDistributions(values: unknown[]): ResponseProbeDistribution[] {
-  const distributions: ResponseProbeDistribution[] = []
-  for (const value of values) {
-    if (!isRecord(value) || value.kind !== "response_probe") continue
-    if (
-      !isUUID(value.case_id) || !isNonBlank(value.bucket) || !isProbeClassification(value.classification) ||
-      typeof value.format !== "string" || typeof value.shape !== "string" ||
-      !Number.isSafeInteger(value.count) || (value.count as number) <= 0 ||
-      typeof value.share_percent !== "number" || !Number.isFinite(value.share_percent) || value.share_percent < 0 || value.share_percent > 100 ||
-      (value.classification !== "failed" && (!isNonBlank(value.format) || !isNonBlank(value.shape)))
-    ) {
-      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_upstream_probe_distribution"))
+function validateCanonicalRunTree(
+  suites: ReportSuiteDetail[],
+  unassignedRequestResults: ReportResult[],
+  requestResults: ReportResult[],
+  caseResults: ReportResult[],
+): void {
+  const suiteEntryIDs = new Set<string>()
+  const resultIDs = new Set<string>()
+  const projectedRequests = new Map<string, ReportResult>()
+  const projectedCaseResults = new Map<string, ReportResult>()
+  for (const suite of suites) {
+    const suiteEntryID = suite.suite_entry_id
+    if (suiteEntryIDs.has(suiteEntryID)) {
+      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
     }
-    distributions.push({
-      case_id: value.case_id,
-      bucket: value.bucket,
-      classification: value.classification,
-      format: value.format,
-      shape: value.shape,
-      count: value.count as number,
-      share_percent: value.share_percent,
-    })
+    suiteEntryIDs.add(suiteEntryID)
+
+    const caseIDs = new Set<string>()
+    for (const caseReport of suite.cases) {
+      if (caseIDs.has(caseReport.case_id)) {
+        throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+      }
+      caseIDs.add(caseReport.case_id)
+      if (caseReport.summary_result) {
+        validateOwnedResult(caseReport.summary_result, suiteEntryID, caseReport.case_id, false, resultIDs)
+        projectedCaseResults.set(caseReport.summary_result.id, caseReport.summary_result)
+      }
+      for (const result of caseReport.request_results) {
+        validateOwnedResult(result, suiteEntryID, caseReport.case_id, true, resultIDs)
+        projectedRequests.set(result.id, result)
+      }
+    }
   }
-  return distributions
+  for (const result of unassignedRequestResults) {
+    if (
+      !result.request_id || result.suite_entry_id !== undefined || result.case_id !== undefined ||
+      resultIDs.has(result.id)
+    ) {
+      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+    }
+    resultIDs.add(result.id)
+    projectedRequests.set(result.id, result)
+  }
+  validateResultProjection(requestResults, projectedRequests)
+  validateResultProjection(caseResults, projectedCaseResults)
 }
 
-function isProbeClassification(value: unknown): value is ResponseProbeDistribution["classification"] {
-  return value === "matched" || value === "unknown" || value === "ambiguous" || value === "failed"
+function validateOwnedResult(
+  result: ReportResult,
+  suiteEntryID: string,
+  caseID: string,
+  request: boolean,
+  resultIDs: Set<string>,
+): void {
+  if (
+    result.suite_entry_id !== suiteEntryID || result.case_id !== caseID ||
+    (request ? !result.request_id : result.request_id !== undefined) ||
+    resultIDs.has(result.id)
+  ) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+  resultIDs.add(result.id)
+}
+
+function validateResultProjection(
+  canonical: ReportResult[],
+  projection: Map<string, ReportResult>,
+): void {
+  if (canonical.length !== projection.size) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+  const canonicalIDs = new Set<string>()
+  for (const result of canonical) {
+    const projected = projection.get(result.id)
+    if (canonicalIDs.has(result.id) || !projected || !sameReportResult(result, projected)) {
+      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+    }
+    canonicalIDs.add(result.id)
+  }
+}
+
+function sameReportResult(left: ReportResult, right: ReportResult): boolean {
+  return (
+    left.id === right.id && left.request_id === right.request_id &&
+    left.suite_entry_id === right.suite_entry_id && left.case_id === right.case_id &&
+    left.failure_kind === right.failure_kind && left.error_code === right.error_code &&
+    left.success.transport === right.success.transport &&
+    left.success.protocol === right.success.protocol &&
+    left.success.semantic === right.success.semantic && left.success.sla === right.success.sla &&
+    sameRecord(left.dimensions, right.dimensions) && sameRecord(left.metrics, right.metrics)
+  )
+}
+
+function sameRecord<T extends string | number>(
+  left: Record<string, T> | undefined,
+  right: Record<string, T> | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right
+  const leftKeys = Object.keys(left).sort()
+  const rightKeys = Object.keys(right).sort()
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key])
+}
+
+function suiteConclusionMatchesStatus(
+  status: ReportSuiteStatus,
+  conclusion: FormalReportDetail["report"]["conclusion"],
+): boolean {
+  switch (status) {
+    case "completed":
+      return conclusion.verdict === (conclusion.passed ? "pass" : "fail")
+    case "failed":
+      return !conclusion.passed && conclusion.verdict === "fail"
+    case "cancelled":
+      return !conclusion.passed && conclusion.verdict === "cancelled"
+    case "not_started":
+      return !conclusion.passed && conclusion.verdict === "not_started"
+  }
+}
+
+function validateRunConclusion(
+  status: FormalReportDetail["report"]["run_status"],
+  conclusion: FormalReportDetail["report"]["conclusion"],
+  suites: ReportSuiteDetail[],
+): void {
+  let executionStopped = false
+  for (const suite of suites) {
+    if (
+      (executionStopped && suite.status !== "not_started") ||
+      (status !== "cancelled" && suite.status === "cancelled")
+    ) {
+      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+    }
+    if (suite.status === "cancelled" || suite.status === "not_started") executionStopped = true
+  }
+  if (
+    (status !== "completed" && conclusion.passed) ||
+    (status === "completed" && suites.some((suite) => suite.status !== "completed")) ||
+    (conclusion.passed && suites.some((suite) => !suite.conclusion.passed))
+  ) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+}
+
+function parseRecordArray(value: unknown): ReportDistribution[] {
+  if (!Array.isArray(value) || !value.every(isRecord)) {
+    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+  }
+  return value.map((item) => ({ ...item }))
 }
 
 export function parseExportedReport(value: unknown): ExportedReport {
@@ -222,7 +436,16 @@ function parseMetricMap(value: Record<string, unknown>): Record<string, ReportMe
 }
 
 function parseResult(value: unknown): ReportResult {
-  if (!isRecord(value) || !isUUID(value.id) || !isRecord(value.success) || (value.metrics !== undefined && !isRecord(value.metrics)) || (value.dimensions !== undefined && !isStringRecord(value.dimensions))) {
+  if (
+    !isRecord(value) || !isUUID(value.id) || !isRecord(value.success) ||
+    (value.request_id !== undefined && !isNonBlank(value.request_id)) ||
+    (value.suite_entry_id !== undefined && !isUUID(value.suite_entry_id)) ||
+    (value.case_id !== undefined && !isUUID(value.case_id)) ||
+    (value.failure_kind !== undefined && !isNonBlank(value.failure_kind)) ||
+    (value.error_code !== undefined && !isNonBlank(value.error_code)) ||
+    (value.metrics !== undefined && !isRecord(value.metrics)) ||
+    (value.dimensions !== undefined && !isStringRecord(value.dimensions))
+  ) {
     throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_result_data"))
   }
   const success = value.success
@@ -237,6 +460,7 @@ function parseResult(value: unknown): ReportResult {
   return {
     id: value.id,
     ...(typeof value.request_id === "string" && value.request_id ? { request_id: value.request_id } : {}),
+    ...(typeof value.suite_entry_id === "string" && value.suite_entry_id ? { suite_entry_id: value.suite_entry_id } : {}),
     ...(typeof value.case_id === "string" && value.case_id ? { case_id: value.case_id } : {}),
     success: { transport: success.transport as boolean, protocol: success.protocol as boolean, semantic: success.semantic as boolean, sla: success.sla as boolean },
     ...(typeof value.failure_kind === "string" && value.failure_kind ? { failure_kind: value.failure_kind } : {}),
@@ -321,6 +545,10 @@ function isRunStatus(value: unknown): value is ReportSummary["run_status"] {
   return value === "completed" || value === "failed" || value === "cancelled"
 }
 
+function isSuiteStatus(value: unknown): value is ReportSuiteStatus {
+  return value === "completed" || value === "failed" || value === "cancelled" || value === "not_started"
+}
+
 function isReportSource(value: unknown): value is ReportSource {
   return value === "run" || value === "quick_performance"
 }
@@ -335,4 +563,8 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0
 }

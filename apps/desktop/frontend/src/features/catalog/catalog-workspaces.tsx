@@ -693,13 +693,14 @@ export function PlansWorkspace({
   const [selectedID, setSelectedID] = useState("")
   const modelNames = new Map(catalog.models.map((model) => [model.id, model.name]))
   const channelNames = new Map(catalog.channels.map((channel) => [channel.id, channel.name]))
-  const suiteNames = new Map(catalog.suites.map((suite) => [suite.id, `${suite.key} ${suite.name}`]))
   const search = useCatalogSearch(catalog.plans, (plan) => [
-    plan.id, plan.name, plan.load_mode,
-    t(`plans.load${plan.load_mode === "single" ? "Single" : plan.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`),
+    plan.id, plan.name,
     ...plan.model_ids.map((id) => modelNames.get(id) ?? ""),
     ...plan.channel_ids.map((id) => channelNames.get(id) ?? ""),
-    suiteNames.get(plan.suite_id ?? "") ?? "",
+    ...plan.suites.flatMap((suite) => [
+      suite.entry_id, suite.suite_id, suite.suite_key, suite.suite_name, suite.load_mode,
+      t(`plans.load${suite.load_mode === "single" ? "Single" : suite.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`),
+    ]),
   ])
   const selected = search.rows.find((item) => item.id === selectedID) ?? search.rows[0]
   return (
@@ -730,8 +731,8 @@ export function PlansWorkspace({
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-4 text-[11px]">{t("common.plan")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{t("plans.objects")}</TableHead>
-                <TableHead className="h-8 text-[11px]">{t("common.load")}</TableHead>
-                <TableHead className="h-8 text-[11px]">{t("common.target")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("plans.suiteOrder")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("plans.executionPolicy")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -750,10 +751,10 @@ export function PlansWorkspace({
                     <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision}</div>
                   </TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
-                    {t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, cases: plan.case_count })}
+                    {t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, suites: plan.suite_count, cases: plan.case_count })}
                   </TableCell>
-                  <TableCell className="py-1 text-xs">{t(`plans.load${plan.load_mode === "single" ? "Single" : plan.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)}</TableCell>
-                  <TableCell className="py-1 text-xs tabular-nums">{t(plan.request_count > 0 ? "common.requests" : "common.seconds", { count: plan.request_count > 0 ? plan.request_count : Math.round(plan.duration_ms / 1000) })}</TableCell>
+                  <TableCell className="max-w-[22rem] truncate py-1 text-xs">{plan.suites.map((suite, index) => `${index + 1}. ${suite.suite_name}`).join(" → ")}</TableCell>
+                  <TableCell className="py-1 text-[11px] text-muted-foreground">{t("plans.sequentialContinue")}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -774,18 +775,28 @@ function PlanInspector({
   onStartPlan: (planID: string) => Promise<void>
 }) {
   const { t } = useTranslation("catalog")
-  const loadLabel = t(`plans.load${plan.load_mode === "single" ? "Single" : plan.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)
   return (
     <>
       <InspectorHeader title={plan.name} subtitle={plan.id} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
-        <InspectorRow label={t("plans.objects")} value={t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, cases: plan.case_count })} />
-        <InspectorRow label={t("plans.loadMode")} value={`${loadLabel} · ${t("plans.concurrency", { count: plan.concurrency })}`} />
-        <InspectorRow label={t("plans.sendTarget")} value={t(plan.request_count > 0 ? "common.requestCount" : "common.seconds", { count: plan.request_count > 0 ? plan.request_count : Math.round(plan.duration_ms / 1000) })} />
-        <InspectorRow label={t("plans.requestTimeout")} value={t("common.seconds", { count: Math.round(plan.request_timeout_ms / 1000) })} />
+        <InspectorRow label={t("plans.objects")} value={t("plans.suiteObjectCount", { suites: plan.suite_count, cases: plan.case_count })} />
+        <InspectorRow label={t("plans.executionPolicy")} value={t("plans.sequentialContinue")} />
       </dl>
+      <div className="border-t px-4 py-2">
+        <div className="text-[11px] font-medium text-muted-foreground">{t("plans.suiteOrder")}</div>
+        <ol className="mt-1 space-y-2">
+          {plan.suites.map((suite, index) => {
+            const loadLabel = t(`plans.load${suite.load_mode === "single" ? "Single" : suite.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)
+            const sendTarget = t(suite.request_count > 0 ? "common.requestCount" : "common.seconds", { count: suite.request_count > 0 ? suite.request_count : Math.round(suite.duration_ms / 1000) })
+            return <li key={suite.entry_id} className="min-w-0">
+              <div className="truncate text-xs font-medium">{index + 1}. {suite.suite_name}</div>
+              <div className="truncate text-[10px] text-muted-foreground">{suite.suite_key} · r{suite.suite_revision} · {loadLabel} · {t("plans.concurrency", { count: suite.concurrency })} · {sendTarget}</div>
+            </li>
+          })}
+        </ol>
+      </div>
       <div className="border-t px-4 py-3">
         <Button size="sm" disabled={commandPending} onClick={() => void onStartPlan(plan.id)}>
           <PlayIcon data-icon="inline-start" /> {t(commandPending ? "plans.creating" : "plans.run")}

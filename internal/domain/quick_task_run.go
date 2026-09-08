@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/894x/llm-test-studio/internal/jsonpointer"
 )
 
-// QuickTaskSnapshot identifies an operational task invocation. PlanDocument and
-// Mapping in the enclosing Run are transient execution configuration, not
-// authored catalog records. CaseDefinitions retain the original Suite members.
+// QuickTaskSnapshot identifies an operational task invocation. The enclosing
+// Run has no authored PlanDocument; Mapping is transient execution
+// configuration. CaseDefinitions retain the original Suite members.
 type QuickTaskSnapshot struct {
 	Suite           Suite                      `json:"suite"`
 	Inputs          map[string]json.RawMessage `json:"inputs"`
@@ -32,8 +33,7 @@ func (task *QuickTaskSnapshot) validate(snapshot RunSnapshot) error {
 	if task.Suite.Protocol != snapshot.Model.Protocol || (task.Suite.ModelTarget != "" && task.Suite.ModelTarget != snapshot.Channel.UpstreamModelName) {
 		return errors.New("quick run target does not match its Suite")
 	}
-	if snapshot.PlanDocument.SuiteID != task.Suite.ID || snapshot.PlanDocument.SuiteRevision != task.Suite.Revision ||
-		len(snapshot.Cases) != len(task.Suite.Cases) || snapshot.Load.Mode != LoadFixedConcurrency || snapshot.Load.Concurrency != 1 ||
+	if !reflect.DeepEqual(snapshot.Cases, task.Suite.Cases) || snapshot.Load.Mode != LoadFixedConcurrency || snapshot.Load.Concurrency != 1 ||
 		snapshot.Load.RequestCount != uint64(len(task.Suite.Cases)) || snapshot.Load.DurationMS != 0 || snapshot.Load.RatePerSecond != 0 ||
 		snapshot.Load.RequestTimeoutMS != task.Suite.QuickTest.TimeoutMS {
 		return errors.New("quick run must execute its complete Suite once, sequentially")

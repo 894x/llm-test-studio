@@ -11,63 +11,36 @@ import (
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func TestRepositoryRejectsLegacyRunSnapshotOnCreate(t *testing.T) {
+func TestDomainRejectsLegacyRunSnapshotBeforeCreate(t *testing.T) {
 	t.Parallel()
 
-	repository := openOperationalRepository(t)
-	defer repository.Close()
 	base := runWithCompleteSnapshot(t)
-	legacy, err := domain.NewRun(base.Meta(), base.PlanID(), legacySnapshot(base.Snapshot()))
-	if err != nil {
-		t.Fatalf("NewRun() legacy snapshot error = %v", err)
-	}
-
-	if err := repository.CreateRun(context.Background(), legacy); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("CreateRun() legacy snapshot error = %v, want ErrCorrupt", err)
+	if _, err := domain.NewRun(base.Meta(), base.PlanID(), legacySnapshot(base.Snapshot())); err == nil {
+		t.Fatal("NewRun() accepted a legacy snapshot")
 	}
 }
 
-func TestRepositoryRejectsLegacyRunSnapshotOnUpdate(t *testing.T) {
+func TestDomainRejectsLegacyRunSnapshotBeforeUpdate(t *testing.T) {
 	t.Parallel()
 
-	repository := openOperationalRepository(t)
-	defer repository.Close()
 	base := runWithCompleteSnapshot(t)
-	if err := repository.CreateRun(context.Background(), base); err != nil {
-		t.Fatalf("CreateRun() v2 snapshot error = %v", err)
-	}
-	legacy, err := domain.NewRun(base.Meta(), base.PlanID(), legacySnapshot(base.Snapshot()))
-	if err != nil {
-		t.Fatalf("NewRun() legacy snapshot error = %v", err)
-	}
-	updated, err := legacy.Transition(domain.RunStarting, repositoryEpoch.Add(time.Minute))
-	if err != nil {
-		t.Fatalf("Transition() legacy snapshot error = %v", err)
-	}
-
-	if err := repository.UpdateRun(context.Background(), legacy.Meta().Revision, updated); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("UpdateRun() legacy snapshot error = %v, want ErrCorrupt", err)
+	if _, err := domain.NewRun(base.Meta(), base.PlanID(), legacySnapshot(base.Snapshot())); err == nil {
+		t.Fatal("NewRun() accepted a legacy snapshot")
 	}
 }
 
-func TestRepositoryRejectsLegacyRunSnapshotOnReportCreate(t *testing.T) {
+func TestDomainRejectsLegacyRunSnapshotBeforeReportCreate(t *testing.T) {
 	t.Parallel()
 
-	repository := openOperationalRepository(t)
-	defer repository.Close()
 	fixture := newRepositoryFixture(t)
 	report := fixture.report
 	report.PlanSnapshot = legacySnapshot(fixture.run.Snapshot())
-	if err := report.Validate(); err != nil {
-		t.Fatalf("legacy report fixture Validate() error = %v", err)
-	}
-
-	if err := repository.CreateReport(context.Background(), report); !errors.Is(err, persistence.ErrCorrupt) {
-		t.Fatalf("CreateReport() legacy snapshot error = %v, want ErrCorrupt", err)
+	if err := report.Validate(); err == nil {
+		t.Fatal("Report.Validate() accepted a legacy snapshot")
 	}
 }
 
-func TestRepositoryRunSnapshotV2RoundTripWithoutCatalogRows(t *testing.T) {
+func TestRepositoryRunSnapshotV3RoundTripWithoutCatalogRows(t *testing.T) {
 	t.Parallel()
 
 	repository := openOperationalRepository(t)
@@ -82,10 +55,10 @@ func TestRepositoryRunSnapshotV2RoundTripWithoutCatalogRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRun() without catalog rows error = %v", err)
 	}
-	assertRoundTrip(t, "run backed only by its v2 snapshot", run, got)
+	assertRoundTrip(t, "run backed only by its v3 snapshot", run, got)
 }
 
-func TestRepositoryComparisonV2RoundTripWithoutCatalogRows(t *testing.T) {
+func TestRepositoryComparisonV3RoundTripWithoutCatalogRows(t *testing.T) {
 	t.Parallel()
 
 	repository := openOperationalRepository(t)
@@ -147,7 +120,7 @@ func TestRepositoryComparisonV2RoundTripWithoutCatalogRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComparison() without catalog rows error = %v", err)
 	}
-	assertRoundTrip(t, "comparison backed by v2 run snapshots", comparison, got)
+	assertRoundTrip(t, "comparison backed by v3 run snapshots", comparison, got)
 	listed, err := repository.ListComparisons(ctx)
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("ListComparisons() = %#v, %v; want one comparison", listed, err)
@@ -181,6 +154,8 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 		caseID    = "30000000-0000-4000-8000-000000000004"
 		planID    = "30000000-0000-4000-8000-000000000005"
 		runID     = "30000000-0000-4000-8000-000000000006"
+		suiteID   = "30000000-0000-4000-8000-00000000000b"
+		entryID   = "30000000-0000-4000-8000-00000000000c"
 	)
 	load := domain.LoadProfile{
 		Mode:             domain.LoadSingle,
@@ -209,14 +184,20 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 			),
 		},
 	}
+	suite := domain.Suite{
+		EntityMeta: entityMeta(suiteID, 1), Key: "snapshot-only", Name: "Snapshot-only suite",
+		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream-snapshot-only",
+		Cases: []domain.CaseRevisionRef{caseRef},
+	}
 	plan := domain.Plan{
 		EntityMeta: entityMeta(planID, 1),
 		Name:       "Snapshot-only plan",
 		ModelIDs:   []string{modelID},
 		ChannelIDs: []string{channelID},
-		Cases:      []domain.CaseRevisionRef{caseRef},
-		Load:       load,
-		SLA:        sla,
+		Suites: []domain.PlanSuiteEntry{{
+			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
+			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+		}},
 	}
 	mapping := domain.ChannelModel{
 		EntityMeta:        entityMeta(mappingID, 1),
@@ -240,13 +221,13 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 			Protocol:          domain.ProtocolOpenAIChat,
 			UpstreamModelName: mapping.UpstreamModelName,
 		},
-		Cases:           []domain.CaseRevisionRef{caseRef},
-		Load:            load,
-		SLA:             sla,
-		Environment:     domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "go-test"},
-		PlanDocument:    &plan,
-		Mapping:         &mapping,
-		CaseDefinitions: []domain.TestCase{testCase},
+		Environment:  domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "go-test"},
+		PlanDocument: &plan,
+		Mapping:      &mapping,
+		Suites: []domain.RunSuiteSnapshot{{
+			EntryID: entryID, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef},
+			CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+		}},
 	}
 	run, err := domain.NewRun(entityMeta(runID, 1), planID, snapshot)
 	if err != nil {

@@ -63,7 +63,7 @@ func TestInputLatencyLadderExecutorWarmsEachStageAndEmitsOnlyMeasuredSamples(t *
 	}
 	snapshot := fixture.snapshot()
 	snapshot.Channel.BaseURL = server.URL
-	snapshot.CaseDefinitions[0] = fixture.testCase
+	snapshot.Suites[0].CaseDefinitions[0] = fixture.testCase
 	run, err := domain.NewRun(domain.EntityMeta{ID: "30000000-0000-4000-8000-000000000097", SchemaVersion: 1, Revision: 1, CreatedAt: fixture.now, UpdatedAt: fixture.now}, fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestInputLatencyLadderExecutorWarmsEachStageAndEmitsOnlyMeasuredSamples(t *
 
 	executor := runs.NewInputLatencyLadderExecutor(server.Client().Transport)
 	var drafts []runs.ResultDraft
-	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
+	err = executor.Execute(context.Background(), runs.ExecutionRequest{Run: run, Suite: snapshot.Suites[0], Cases: []domain.TestCase{fixture.testCase}, Credential: lease}, func(draft runs.ResultDraft) error {
 		drafts = append(drafts, draft)
 		return nil
 	})

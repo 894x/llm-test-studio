@@ -169,6 +169,12 @@ func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQuer
 
 func workspacePinnedPlan(_ context.Context, _ rowQueryer, run domain.Run) (domain.Plan, error) {
 	snapshot := run.Snapshot()
+	if snapshot.QuickTask != nil {
+		if snapshot.SchemaVersion != domain.FlatRunSnapshotSchemaVersion || snapshot.PlanDocument != nil {
+			return domain.Plan{}, fmt.Errorf("%w: workspace quick-task plan boundary", ErrCorrupt)
+		}
+		return domain.Plan{}, nil
+	}
 	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
 		return domain.Plan{}, fmt.Errorf("%w: workspace plan document", ErrCorrupt)
 	}
@@ -179,10 +185,17 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 	if err := run.Validate(); err != nil {
 		return err
 	}
+	snapshot := run.Snapshot()
+	if snapshot.QuickTask != nil {
+		if snapshot.SchemaVersion != domain.FlatRunSnapshotSchemaVersion || snapshot.PlanDocument != nil ||
+			!reflect.DeepEqual(plan, domain.Plan{}) {
+			return errors.New("quick task has an authored pinned plan")
+		}
+		return nil
+	}
 	if err := plan.Validate(); err != nil {
 		return err
 	}
-	snapshot := run.Snapshot()
 	if plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision {
 		return errors.New("run plan reference differs from pinned plan")
 	}
@@ -196,7 +209,8 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 const workspaceProjectionQuery = `
 WITH result_observations AS (
 	SELECT item.*,
-	       CASE WHEN item.request_id IS NOT NULL OR
+	       CASE WHEN json_type(item.document_json, '$.suite_status') = 'text' THEN 0
+	         WHEN item.request_id IS NOT NULL OR
 	         MAX(item.request_id IS NOT NULL) OVER (PARTITION BY item.run_id) = 0
 	         THEN 1 ELSE 0 END AS observation
 	FROM case_results AS item
@@ -226,6 +240,8 @@ result_stats AS (
 	           json_type(item.document_json, '$.created_at') = 'text' AND json_extract(item.document_json, '$.created_at') = item.created_at AND
 	           json_type(item.document_json, '$.updated_at') = 'text' AND json_extract(item.document_json, '$.updated_at') = item.updated_at AND
 	           json_type(item.document_json, '$.run_id') = 'text' AND json_extract(item.document_json, '$.run_id') = item.run_id AND
+	           ((item.suite_entry_id IS NULL AND json_type(item.document_json, '$.suite_entry_id') IS NULL) OR
+	            (item.suite_entry_id IS NOT NULL AND json_type(item.document_json, '$.suite_entry_id') = 'text' AND json_extract(item.document_json, '$.suite_entry_id') = item.suite_entry_id)) AND
 	           ((item.case_id IS NULL AND json_type(item.document_json, '$.case_id') IS NULL) OR
 	            (item.case_id IS NOT NULL AND json_type(item.document_json, '$.case_id') = 'text' AND json_extract(item.document_json, '$.case_id') = item.case_id)) AND
 	           ((item.request_id IS NULL AND json_type(item.document_json, '$.request_id') IS NULL) OR
@@ -247,17 +263,36 @@ result_stats AS (
 	               ON owner.id = reference.value AND owner.run_id = item.run_id
 	             WHERE reference.type != 'text' OR owner.id IS NULL
 	           ) AND
-	           (item.case_id IS NULL OR EXISTS (
+	           EXISTS (
 	             SELECT 1
 	             FROM execution_runs AS result_root
 	             JOIN execution_run_revisions AS result_revision
 	               ON result_revision.run_id = result_root.id AND result_revision.revision = result_root.current_revision
-	             JOIN json_each(result_revision.snapshot_json, '$.cases') AS planned_case
-	             WHERE result_root.id = item.run_id AND
-	                   planned_case.type = 'object' AND
-	                   json_type(planned_case.value, '$.case_id') = 'text' AND
-	                   json_extract(planned_case.value, '$.case_id') = item.case_id
-	           ))
+	             WHERE result_root.id = item.run_id AND (
+	               (json_type(result_revision.snapshot_json, '$.suites') IS NULL AND
+	                 item.suite_entry_id IS NULL AND json_type(item.document_json, '$.suite_status') IS NULL AND
+	                 (item.case_id IS NULL OR EXISTS (
+	                   SELECT 1 FROM json_each(result_revision.snapshot_json, '$.cases') AS planned_case
+	                   WHERE planned_case.type = 'object' AND
+	                         json_type(planned_case.value, '$.case_id') = 'text' AND
+	                         json_extract(planned_case.value, '$.case_id') = item.case_id
+	                 ))) OR
+	               (json_type(result_revision.snapshot_json, '$.suites') = 'array' AND item.suite_entry_id IS NOT NULL AND EXISTS (
+	                 SELECT 1 FROM json_each(result_revision.snapshot_json, '$.suites') AS planned_suite
+	                 WHERE planned_suite.type = 'object' AND
+	                       json_extract(planned_suite.value, '$.entry_id') = item.suite_entry_id AND (
+	                         (json_type(item.document_json, '$.suite_status') = 'text' AND
+	                           json_extract(item.document_json, '$.suite_status') IN ('completed', 'failed') AND
+	                           item.case_id IS NULL AND item.request_id IS NULL) OR
+	                         (json_type(item.document_json, '$.suite_status') IS NULL AND item.case_id IS NOT NULL AND EXISTS (
+	                           SELECT 1 FROM json_each(planned_suite.value, '$.cases') AS planned_case
+	                           WHERE planned_case.type = 'object' AND
+	                                 json_extract(planned_case.value, '$.case_id') = item.case_id
+	                         ))
+	                       )
+	               ))
+	             )
+	           )
 	         THEN 0 ELSE 1 END) AS corrupt
 	FROM result_observations AS item
 	GROUP BY item.run_id
@@ -305,6 +340,7 @@ report_stats AS (
 	       MAX(CASE WHEN json_extract(item.document_json, '$.conclusion.passed') = 1 THEN 1 ELSE 0 END) AS conclusion_passed,
 	       SUM(CASE WHEN
 	           item.schema_version = ? AND
+	           json_type(item.document_json, '$.suite_reports') = 'array' AND
 	           json_type(item.document_json, '$.id') = 'text' AND json_extract(item.document_json, '$.id') = item.id AND
 	           json_type(item.document_json, '$.schema_version') = 'integer' AND json_extract(item.document_json, '$.schema_version') = item.schema_version AND
 	           json_type(item.document_json, '$.run_id') = 'text' AND json_extract(item.document_json, '$.run_id') = item.run_id AND

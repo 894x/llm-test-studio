@@ -516,11 +516,20 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
+	createdSuite, err := dependencies.catalogCommands.CreateSuite(context.Background(), catalog.CreateSuiteCommand{
+		Key: "file-backed-suite", Name: "file-backed suite", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "file-backed-model",
+		Cases: []catalog.CaseRevisionInput{{CaseID: createdCase.ID, Revision: createdCase.Revision}},
+	})
+	if err != nil {
+		t.Fatalf("CreateSuite() error = %v", err)
+	}
 	createdPlan, err := dependencies.catalogCommands.CreatePlan(context.Background(), catalog.CreatePlanCommand{
-		Name:     "file-backed plan",
-		Cases:    []catalog.CaseRevisionInput{{CaseID: createdCase.ID, Revision: createdCase.Revision}},
-		LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
-		SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000},
+		Name: "file-backed plan",
+		Suites: []catalog.PlanSuiteInput{{
+			SuiteID: createdSuite.ID, SuiteRevision: createdSuite.Revision,
+			LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+			SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000}, Parameters: map[string]json.RawMessage{},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("CreatePlan() error = %v", err)
@@ -533,7 +542,7 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 	}
 	planPath := filepath.Join(executableDirectory, "data", "plans", createdPlan.ID+".json")
 	planRaw, err := os.ReadFile(planPath)
-	if err != nil || !json.Valid(planRaw) || !strings.Contains(string(planRaw), createdPlan.ID) || !strings.Contains(string(planRaw), createdCase.ID) {
+	if err != nil || !json.Valid(planRaw) || !strings.Contains(string(planRaw), createdPlan.ID) || strings.Contains(string(planRaw), createdCase.ID) {
 		t.Fatalf("plan file = %q, %v", planRaw, err)
 	}
 	entries, err := os.ReadDir(executableDirectory)
@@ -770,15 +779,19 @@ func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *tes
 	}
 	suite := snapshot.Suites[0]
 	_, err = dependencies.catalogCommands.CreatePlan(context.Background(), catalog.CreatePlanCommand{
-		Name: "filesystem suite plan", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases,
-		LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
-		SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000},
+		Name: "filesystem suite plan",
+		Suites: []catalog.PlanSuiteInput{{
+			SuiteID: suite.ID, SuiteRevision: suite.Revision,
+			LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+			SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000}, Parameters: map[string]json.RawMessage{},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("CreatePlan() with filesystem suite error = %v", err)
 	}
 	updated, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(updated.Plans) != 1 || updated.Plans[0].SuiteID != suite.ID || updated.Plans[0].SuiteRevision != suite.Revision {
+	if err != nil || len(updated.Plans) != 1 || len(updated.Plans[0].Suites) != 1 ||
+		updated.Plans[0].Suites[0].SuiteID != suite.ID || updated.Plans[0].Suites[0].SuiteRevision != suite.Revision {
 		t.Fatalf("plan referencing filesystem suite = %#v, %v", updated.Plans, err)
 	}
 }

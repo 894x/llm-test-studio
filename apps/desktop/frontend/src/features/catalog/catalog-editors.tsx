@@ -2,7 +2,10 @@ import { PROTOCOLS, protocolOptions } from "./protocols"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { caseTypeLabel } from "./presentation"
 import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from "react"
+import ArrowDownIcon from "lucide-react/dist/esm/icons/arrow-down.mjs"
+import ArrowUpIcon from "lucide-react/dist/esm/icons/arrow-up.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
+import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
 import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
@@ -24,8 +27,8 @@ import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
-  CatalogPlan, CatalogProtocol, CatalogSnapshot, CatalogSuite,
-  CatalogTestCase, DeleteCommand,
+  CatalogPlan, CatalogPlanParameterValue, CatalogPlanSuite, CatalogProtocol, CatalogSnapshot, CatalogSuite,
+  CatalogTestCase, DeleteCommand, PlanSuiteCommand, SuiteQuickTest,
 } from "./data"
 
 export type CatalogEntityKind = "model" | "channel" | "mapping" | "case" | "suite" | "plan"
@@ -56,7 +59,7 @@ export function CatalogEditor({
           {!item ? <PlusIcon data-icon="inline-start" /> : null}{title}
         </Button>
       </SheetTrigger>
-      <SheetContent className="sm:max-w-lg" onEscapeKeyDown={(event) => {
+      <SheetContent className={kind === "plan" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" : "sm:max-w-lg"} onEscapeKeyDown={(event) => {
         if (event.target instanceof HTMLElement && event.target.matches('[role="combobox"][aria-expanded="true"]')) event.preventDefault()
       }}>
         <SheetHeader>
@@ -324,47 +327,180 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
   </FormShell>
 }
 
+type PlanSuiteNumberDrafts = {
+  concurrency: string
+  request_count: string
+  rate_per_second: string
+  duration_ms: string
+  request_timeout_ms: string
+}
+
+type PlanSuiteDraft = {
+  draftKey: string
+  entryID?: string
+  suiteID: string
+  suiteRevision: number
+  suiteKey: string
+  suiteName: string
+  quickTest?: SuiteQuickTest
+  parameters: Record<string, string | boolean>
+  parametersJSON: string
+  loadMode: CatalogLoadMode
+  numbers: PlanSuiteNumberDrafts
+  sla: string
+}
+
 function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
+  const nextDraftKey = useRef(0)
   const [name, setName] = useState(item?.name ?? "")
   const [models, setModels] = useState(() => new Set(item?.model_ids ?? []))
   const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? []))
-  const [cases, setCases] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
-  const [suiteID, setSuiteID] = useState(item?.suite_id ?? "none")
-  const [loadMode, setLoadMode] = useState<CatalogLoadMode>(item?.load_mode ?? "single")
-  const [numbers, setNumbers] = useState({ concurrency: item?.concurrency ?? 1, request_count: item?.request_count ?? 1, rate_per_second: item?.rate_per_second ?? 0, duration_ms: item?.duration_ms ?? 0, request_timeout_ms: item?.request_timeout_ms ?? 60000 })
-  const [sla, setSla] = useState(json(item?.sla_thresholds ?? { e2e_p95_ms: 3000 }))
+  const [suiteID, setSuiteID] = useState(catalog.suites[0]?.id ?? "")
+  const [suiteDrafts, setSuiteDrafts] = useState<PlanSuiteDraft[]>(() =>
+    (item?.suites ?? []).map((entry) => planSuiteDraft(entry, catalog.suites.find((suite) => suite.id === entry.suite_id), entry.entry_id)),
+  )
+  const updateSuite = (draftKey: string, update: Partial<PlanSuiteDraft>) => {
+    setSuiteDrafts((current) => current.map((entry) => entry.draftKey === draftKey ? { ...entry, ...update } : entry))
+  }
+  const addSuite = () => {
+    const suite = catalog.suites.find((candidate) => candidate.id === suiteID)
+    if (!suite) return
+    nextDraftKey.current += 1
+    setSuiteDrafts((current) => [...current, planSuiteDraft(undefined, suite, `new-${nextDraftKey.current}`)])
+  }
+  const moveSuite = (index: number, offset: -1 | 1) => {
+    setSuiteDrafts((current) => {
+      const target = index + offset
+      if (target < 0 || target >= current.length) return current
+      const next = [...current]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
   return <FormShell pending={pending} label={tx("desktop:catalog_save_plan")} formTitle={formTitle} onSubmit={async () => {
-		const validatedName = required(name, tx("desktop:catalog_plan_name"))
-		if ((models.size === 0) !== (channels.size === 0)) {
-      throw new FormValidationError(models.size === 0 ? tx("desktop:catalog_model") : tx("desktop:catalog_channel"), tx("desktop:catalog_configure_both_model_and_channel_restrictions_or_leave_both_empty"))
+    const validatedName = required(name, tx("desktop:catalog_plan_name"), "plan.name")
+    if ((models.size === 0) !== (channels.size === 0)) {
+      const missingModels = models.size === 0
+      throw new FormValidationError(missingModels ? "plan.models" : "plan.channels", tx("desktop:catalog_configure_both_model_and_channel_restrictions_or_leave_both_empty"), missingModels ? tx("desktop:catalog_model") : tx("desktop:catalog_channel"))
     }
-    const suite = catalog.suites.find((value) => value.id === suiteID)
-    const pinnedCases = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
-    const caseRefs = catalog.test_cases.filter((testCase) => cases.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinnedCases.get(testCase.id) ?? testCase.revision }))
-    if (caseRefs.length === 0) throw new FormValidationError(tx("desktop:catalog_direct_cases"), tx("desktop:catalog_select_at_least_one_direct_case"))
-    validatePlanLoad(loadMode, numbers)
+    if (suiteDrafts.length === 0) {
+      throw new FormValidationError("plan.suites", tx("desktop:catalog_select_at_least_one_suite"), tx("desktop:catalog_plan_suites"))
+    }
     const command = {
-      name: validatedName, model_ids: [...models], channel_ids: [...channels],
-      suite_id: suite?.id, suite_revision: suite?.id === item?.suite_id ? item?.suite_revision : suite?.revision,
-      cases: caseRefs,
-      load_mode: loadMode, ...numbers, sla_thresholds: nonNegativeNumberRecord(sla, tx("desktop:catalog_sla_thresholds_json")),
+      name: validatedName,
+      model_ids: [...models],
+      channel_ids: [...channels],
+      suites: suiteDrafts.map(planSuiteCommand),
     }
     await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
-    <TextField label={tx("desktop:catalog_plan_name")} value={name} onChange={setName} />
-    <ChoiceList label={tx("desktop:catalog_model")} values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} clearFields={[tx("desktop:catalog_channel")]} onChange={setModels} />
-    <ChoiceList label={tx("desktop:catalog_channel")} values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} clearFields={[tx("desktop:catalog_model")]} onChange={setChannels} />
-		<FieldDescription>{tx("desktop:catalog_when_model_and_channel_are_empty_choose_a_mapped_target")}</FieldDescription>
-    <ChoiceList label={tx("desktop:catalog_direct_cases")} values={catalog.test_cases.map(v => ({ id: v.id, label: `${v.name} · r${v.revision}` }))} selected={cases} onChange={setCases} />
-    <SelectField label={tx("desktop:catalog_suite")} value={suiteID} options={[["none",tx("desktop:catalog_no_suite")], ...catalog.suites.map(v => [v.id, `${v.name} · r${v.revision}`] as [string,string])]} onChange={setSuiteID} />
-    <SelectField label={tx("desktop:catalog_load_mode")} value={loadMode} options={[["single",tx("desktop:catalog_single_request")],["fixed_concurrency",tx("desktop:catalog_fixed_concurrency")],["open_loop",tx("desktop:catalog_open_loop")]]} onChange={(v) => setLoadMode(v as CatalogLoadMode)} />
+    <TextField fieldKey="plan.name" label={tx("desktop:catalog_plan_name")} value={name} onChange={setName} />
     <div className="grid grid-cols-2 gap-3">
-      {Object.entries({ concurrency: tx("desktop:catalog_concurrency"), request_count: tx("desktop:catalog_request_count"), rate_per_second: tx("desktop:catalog_requests_per_second"), duration_ms: tx("desktop:catalog_duration_ms"), request_timeout_ms: tx("desktop:catalog_request_timeout_ms") }).map(([key, label]) => <NumberField key={key} label={label} value={numbers[key as keyof typeof numbers]} clearFields={label === tx("desktop:catalog_request_count") ? [tx("desktop:catalog_duration_ms")] : label === tx("desktop:catalog_duration_ms") ? [tx("desktop:catalog_request_count")] : undefined} onChange={(v) => setNumbers(current => ({ ...current, [key]: v }))} />)}
+      <ChoiceList fieldKey="plan.models" label={tx("desktop:catalog_model")} values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} clearFields={["plan.channels"]} onChange={setModels} />
+      <ChoiceList fieldKey="plan.channels" label={tx("desktop:catalog_channel")} values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} clearFields={["plan.models"]} onChange={setChannels} />
     </div>
-    <TextAreaField label={t("editor.fields.slaJson")} value={sla} onChange={setSla} />
+    <FieldDescription>{tx("desktop:catalog_when_model_and_channel_are_empty_choose_a_mapped_target")}</FieldDescription>
+    <PlanSuiteList
+      entries={suiteDrafts}
+      suites={catalog.suites}
+      suiteID={suiteID}
+      pending={pending}
+      onSuiteIDChange={setSuiteID}
+      onAdd={addSuite}
+      onUpdate={updateSuite}
+      onMove={moveSuite}
+      onRemove={(draftKey) => setSuiteDrafts((current) => current.filter((entry) => entry.draftKey !== draftKey))}
+    />
   </FormShell>
+}
+
+function PlanSuiteList({ entries, suites, suiteID, pending, onSuiteIDChange, onAdd, onUpdate, onMove, onRemove }: {
+  entries: PlanSuiteDraft[]
+  suites: CatalogSuite[]
+  suiteID: string
+  pending: boolean
+  onSuiteIDChange: (value: string) => void
+  onAdd: () => void
+  onUpdate: (draftKey: string, update: Partial<PlanSuiteDraft>) => void
+  onMove: (index: number, offset: -1 | 1) => void
+  onRemove: (draftKey: string) => void
+}) {
+  const { t: tx } = useTranslation()
+  const validation = useCatalogValidation("plan.suites")
+  const errorID = "catalog-plan-suites-error"
+  return <fieldset className="space-y-3 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key="plan.suites">
+    <legend className="px-1 text-xs font-medium">{tx("desktop:catalog_plan_suites")}</legend>
+    <FieldDescription>{tx("desktop:catalog_plan_suites_run_in_order_and_continue_after_failure")}</FieldDescription>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+      <SelectField fieldKey="plan.suite-picker" label={tx("desktop:catalog_suite")} value={suiteID} disabled={!suites.length || pending} options={suites.map((suite) => [suite.id, `${suite.name} · r${suite.revision}`])} onChange={(value) => { validation.clear(); onSuiteIDChange(value) }} />
+      <Button type="button" size="sm" variant="outline" disabled={!suiteID || pending} onClick={() => { validation.clear(); onAdd() }}>
+        <PlusIcon data-icon="inline-start" />{tx("desktop:catalog_add_suite")}
+      </Button>
+    </div>
+    {!suites.length ? <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription> : null}
+    <div className="space-y-3">
+      {entries.map((entry, index) => <PlanSuiteEntryEditor key={entry.draftKey} entry={entry} index={index} count={entries.length} pending={pending} onUpdate={(update) => onUpdate(entry.draftKey, update)} onMove={onMove} onRemove={() => onRemove(entry.draftKey)} />)}
+    </div>
+    {validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}
+  </fieldset>
+}
+
+function PlanSuiteEntryEditor({ entry, index, count, pending, onUpdate, onMove, onRemove }: {
+  entry: PlanSuiteDraft
+  index: number
+  count: number
+  pending: boolean
+  onUpdate: (update: Partial<PlanSuiteDraft>) => void
+  onMove: (index: number, offset: -1 | 1) => void
+  onRemove: () => void
+}) {
+  const { t: tx } = useTranslation()
+  const prefix = `plan.suites.${entry.draftKey}`
+  const updateNumber = (name: keyof PlanSuiteNumberDrafts, value: string) => onUpdate({ numbers: { ...entry.numbers, [name]: value } })
+  return <fieldset className="min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" disabled={pending}>
+    <legend className="sr-only">{tx("desktop:catalog_suite_position_name", { value1: index + 1, value2: entry.suiteName })}</legend>
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium">{index + 1}. {entry.suiteName}</div>
+        <div className="truncate text-[11px] text-muted-foreground">{entry.suiteKey} · r{entry.suiteRevision}</div>
+      </div>
+      <Button type="button" size="icon-sm" variant="ghost" disabled={index === 0 || pending} aria-label={tx("desktop:catalog_move_suite_up", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_move_suite_up", { value1: index + 1, value2: entry.suiteName })} onClick={() => onMove(index, -1)}><ArrowUpIcon /></Button>
+      <Button type="button" size="icon-sm" variant="ghost" disabled={index === count - 1 || pending} aria-label={tx("desktop:catalog_move_suite_down", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_move_suite_down", { value1: index + 1, value2: entry.suiteName })} onClick={() => onMove(index, 1)}><ArrowDownIcon /></Button>
+      <Button type="button" size="icon-sm" variant="ghost" disabled={pending} aria-label={tx("desktop:catalog_remove_suite", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_remove_suite", { value1: index + 1, value2: entry.suiteName })} onClick={onRemove}><Trash2Icon /></Button>
+    </div>
+    <SelectField fieldKey={`${prefix}.load_mode`} label={tx("desktop:catalog_load_mode")} value={entry.loadMode} options={[["single",tx("desktop:catalog_single_request")],["fixed_concurrency",tx("desktop:catalog_fixed_concurrency")],["open_loop",tx("desktop:catalog_open_loop")]]} onChange={(value) => onUpdate({ loadMode: value as CatalogLoadMode })} />
+    <div className="grid grid-cols-2 gap-3">
+      <DraftNumberField fieldKey={`${prefix}.concurrency`} label={tx("desktop:catalog_concurrency")} value={entry.numbers.concurrency} minimum={1} onChange={(value) => updateNumber("concurrency", value)} />
+      <DraftNumberField fieldKey={`${prefix}.request_count`} label={tx("desktop:catalog_request_count")} value={entry.numbers.request_count} minimum={0} clearFields={[`${prefix}.duration_ms`]} onChange={(value) => updateNumber("request_count", value)} />
+      <DraftNumberField fieldKey={`${prefix}.rate_per_second`} label={tx("desktop:catalog_requests_per_second")} value={entry.numbers.rate_per_second} minimum={0} step="any" onChange={(value) => updateNumber("rate_per_second", value)} />
+      <DraftNumberField fieldKey={`${prefix}.duration_ms`} label={tx("desktop:catalog_duration_ms")} value={entry.numbers.duration_ms} minimum={0} clearFields={[`${prefix}.request_count`]} onChange={(value) => updateNumber("duration_ms", value)} />
+      <DraftNumberField fieldKey={`${prefix}.request_timeout_ms`} label={tx("desktop:catalog_request_timeout_ms")} value={entry.numbers.request_timeout_ms} minimum={1} onChange={(value) => updateNumber("request_timeout_ms", value)} />
+    </div>
+    <TextAreaField fieldKey={`${prefix}.sla_thresholds`} label={tx("desktop:catalog_sla_thresholds_json")} value={entry.sla} onChange={(value) => onUpdate({ sla: value })} />
+    <PlanSuiteParameterFields entry={entry} fieldPrefix={prefix} onUpdate={onUpdate} />
+  </fieldset>
+}
+
+function PlanSuiteParameterFields({ entry, fieldPrefix, onUpdate }: { entry: PlanSuiteDraft; fieldPrefix: string; onUpdate: (update: Partial<PlanSuiteDraft>) => void }) {
+  const { t: tx } = useTranslation()
+  const inputs = entry.quickTest?.inputs ?? []
+  if (!inputs.length) {
+    if (entry.parametersJSON !== "{}") return <TextAreaField fieldKey={`${fieldPrefix}.parameters`} label={tx("desktop:catalog_extension_parameters_json")} value={entry.parametersJSON} onChange={(parametersJSON) => onUpdate({ parametersJSON })} />
+    return <FieldDescription>{tx("desktop:catalog_suite_has_no_extension_parameters")}</FieldDescription>
+  }
+  return <fieldset className="space-y-3">
+    <legend className="text-xs font-medium">{tx("desktop:catalog_suite_parameters")}</legend>
+    {inputs.map((input) => {
+      const fieldKey = `${fieldPrefix}.parameters.${input.key}`
+      const value = entry.parameters[input.key]
+      if (input.type === "boolean") return <CheckField key={input.key} fieldKey={fieldKey} label={input.label} checked={value === true} onChange={(checked) => onUpdate({ parameters: { ...entry.parameters, [input.key]: checked } })} />
+      if (input.type === "number") return <DraftNumberField key={input.key} fieldKey={fieldKey} label={input.label} value={typeof value === "string" ? value : ""} step="any" onChange={(next) => onUpdate({ parameters: { ...entry.parameters, [input.key]: next } })} />
+      return <TextField key={input.key} fieldKey={fieldKey} label={input.label} value={typeof value === "string" ? value : ""} onChange={(next) => onUpdate({ parameters: { ...entry.parameters, [input.key]: next } })} />
+    })}
+  </fieldset>
 }
 
 type CatalogValidationContextValue = {
@@ -392,14 +528,16 @@ function FormShell({ children, label, pending, formTitle, onSubmit }: { children
       setOperationError(publicDesktopOperationErrorMessage(reason, tx("desktop:catalog_save_value", { value1: formTitle }), tx("desktop:catalog_save_did_not_complete_check_the_local_logs")))
     })
   }
-  const clear = (...fields: string[]) => setValidationError((current) => current && fields.includes(localizeStoredMessage(current.field, tx)) ? null : current)
+  const clear = (...fields: string[]) => setValidationError((current) => current && (
+    fields.includes(current.field) || fields.includes(localizeStoredMessage(current.field, tx))
+  ) ? null : current)
   return <CatalogValidationContext.Provider value={{ error: validationError, clear }}>
     <form ref={formRef} className="pb-4" onSubmit={submit} noValidate>
       <FieldGroup>
         {children}
         {validationError ? (
           <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
-            {tx("desktop:catalog_validation_summary", { title: formTitle, field: localizeStoredMessage(validationError.field, tx), message: localizeStoredMessage(validationError.message, tx) })}
+            {tx("desktop:catalog_validation_summary", { title: formTitle, field: localizeStoredMessage(validationError.label ?? validationError.field, tx), message: localizeStoredMessage(validationError.message, tx) })}
           </FieldError>
         ) : null}
         {operationError ? <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">{localizeStoredMessage(operationError, tx)}</FieldError> : null}
@@ -409,41 +547,53 @@ function FormShell({ children, label, pending, formTitle, onSubmit }: { children
   </CatalogValidationContext.Provider>
 }
 
-function TextField({ label, value, onChange, description, disabled = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; description?: string; disabled?: boolean; type?: "text" | "password" }) {
-  const validation = useCatalogValidation(label)
-  const id = catalogFieldID(label)
+function TextField({ fieldKey, label, value, onChange, description, disabled = false, type = "text" }: { fieldKey?: string; label: string; value: string; onChange: (value: string) => void; description?: string; disabled?: boolean; type?: "text" | "password" }) {
+  const key = fieldKey ?? label
+  const validation = useCatalogValidation(key, [], label)
+  const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type={type} autoComplete={type === "password" ? "new-password" : undefined} value={value} disabled={disabled} onChange={(e) => { validation.clear(); onChange(e.target.value) }} />{description ? <FieldDescription>{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type={type} autoComplete={type === "password" ? "new-password" : undefined} value={value} disabled={disabled} onChange={(e) => { validation.clear(); onChange(e.target.value) }} />{description ? <FieldDescription>{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function NumberField({ label, value, onChange, minimum = 0, maximum, clearFields = [] }: { label: string; value: number; onChange: (value: number) => void; minimum?: number; maximum?: number; clearFields?: string[] }) {
-  const validation = useCatalogValidation(label, clearFields)
-  const id = catalogFieldID(label)
+function NumberField({ fieldKey, label, value, onChange, minimum = 0, maximum, clearFields = [] }: { fieldKey?: string; label: string; value: number; onChange: (value: number) => void; minimum?: number; maximum?: number; clearFields?: string[] }) {
+  const key = fieldKey ?? label
+  const validation = useCatalogValidation(key, clearFields, label)
+  const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} value={value} onChange={(e) => { validation.clear(); onChange(Number(e.target.value)) }} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} value={value} onChange={(e) => { validation.clear(); onChange(Number(e.target.value)) }} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function TextAreaField({ label, value, onChange, description }: { label: string; value: string; onChange: (value: string) => void; description?: string }) {
-  const validation = useCatalogValidation(label)
-  const id = catalogFieldID(label)
+function DraftNumberField({ fieldKey, label, value, onChange, minimum, maximum, step, clearFields = [] }: { fieldKey: string; label: string; value: string; onChange: (value: string) => void; minimum?: number; maximum?: number; step?: string; clearFields?: string[] }) {
+  const validation = useCatalogValidation(fieldKey, clearFields, label)
+  const id = catalogFieldID(fieldKey)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Textarea id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="min-h-24 font-mono text-xs" value={value} onChange={(e) => { validation.clear(); onChange(e.target.value) }} />{description ? <FieldDescription>{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={fieldKey} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} step={step} value={value} onChange={(event) => { validation.clear(); onChange(event.target.value) }} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function SelectField({ label, value, options, onChange, disabled = false }: { label: string; value: string; options: readonly (readonly [string,string])[]; onChange: (value: string) => void; disabled?: boolean }) {
-  const validation = useCatalogValidation(label)
-  const id = catalogFieldID(label)
+function TextAreaField({ fieldKey, label, value, onChange, description }: { fieldKey?: string; label: string; value: string; onChange: (value: string) => void; description?: string }) {
+  const key = fieldKey ?? label
+  const validation = useCatalogValidation(key, [], label)
+  const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Select value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled}><SelectTrigger id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{options.map(([optionID, text]) => <SelectItem key={optionID} value={optionID}>{text}</SelectItem>)}</SelectGroup></SelectContent></Select>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Textarea id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="min-h-24 font-mono text-xs" value={value} onChange={(e) => { validation.clear(); onChange(e.target.value) }} />{description ? <FieldDescription>{description}</FieldDescription> : null}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function CheckField({ label, checked, onChange, clearFields = [], controlID }: { label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string }) {
-  const validation = useCatalogValidation(label, clearFields)
-  const id = controlID ?? `${catalogFieldID(label)}-check`
+function SelectField({ fieldKey, label, value, options, onChange, disabled = false }: { fieldKey?: string; label: string; value: string; options: readonly (readonly [string,string])[]; onChange: (value: string) => void; disabled?: boolean }) {
+  const key = fieldKey ?? label
+  const validation = useCatalogValidation(key, [], label)
+  const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field data-invalid={validation.invalid || undefined} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Select value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled}><SelectTrigger id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{options.map(([optionID, text]) => <SelectItem key={optionID} value={optionID}>{text}</SelectItem>)}</SelectGroup></SelectContent></Select>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function ChoiceList({ label, values, selected, onChange, clearFields = [] }: { label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
+function CheckField({ fieldKey, label, checked, onChange, clearFields = [], controlID }: { fieldKey?: string; label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string }) {
+  const key = fieldKey ?? label
+  const validation = useCatalogValidation(key, clearFields, label)
+  const id = controlID ?? `${catalogFieldID(key)}-check`
+  const errorID = `${id}-error`
+  return <Field data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+}
+function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields = [] }: { fieldKey?: string; label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
   const { t: tx } = useTranslation()
-  const validation = useCatalogValidation(label, clearFields)
-  const errorID = `${catalogFieldID(label)}-error`
-  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} controlID={`${catalogFieldID(label)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
+  const key = fieldKey ?? label
+  const validation = useCatalogValidation(key, clearFields, label)
+  const errorID = `${catalogFieldID(key)}-error`
+  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
 }
 
 function StageNumberField({ label, value, minimum, maximum, placeholder, onChange }: { label: string; value: string | number; minimum: number; maximum: number; placeholder?: string; onChange: (value: string) => void }) {
@@ -456,13 +606,15 @@ function StageNumberField({ label, value, minimum, maximum, placeholder, onChang
 
 class FormValidationError extends Error {
   readonly field: string
+  readonly label?: string
 
-  constructor(field: string, message: string) {
+  constructor(field: string, message: string, label?: string) {
     super(message)
     this.field = field
+    this.label = label
   }
 }
-function required(value: string, label: string) { const result = value.trim(); if (!result) throw new FormValidationError(label, tx("desktop:catalog_enter_value", { value1: label })); return result }
+function required(value: string, label: string, field = label) { const result = value.trim(); if (!result) throw new FormValidationError(field, tx("desktop:catalog_enter_value", { value1: label }), field === label ? undefined : label); return result }
 function serviceURL(value: string) {
   const result = required(value, tx("desktop:catalog_service_url"))
   let parsed: URL
@@ -496,35 +648,131 @@ function parseJSON(value: string, label: string): unknown { try { return JSON.pa
 function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(label, tx("desktop:catalog_enter_a_json_object")); return parsed as Record<string,T> }
 function finiteNumber(value: unknown, fallback: number): number { return typeof value === "number" && Number.isFinite(value) ? value : fallback }
 
-function integerField(value: number, label: string, minimum: number, maximum: number) {
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    throw new FormValidationError(label, tx("desktop:catalog_enter_an_integer_between_value_and_value", { value1: minimum.toLocaleString(desktopLocale()), value2: maximum.toLocaleString(desktopLocale()) }))
+function planSuiteDraft(entry: CatalogPlanSuite | undefined, suite: CatalogSuite | undefined, draftKey: string): PlanSuiteDraft {
+  if (!entry && !suite) throw new Error("a plan suite draft requires a catalog suite")
+  const quickTest = entry ? entry.quick_test : suite?.quick_test
+  const parameterValues = {
+    ...Object.fromEntries((quickTest?.inputs ?? []).map((input) => [input.key, input.default])),
+    ...(entry?.parameters ?? {}),
+  }
+  const parameters = Object.fromEntries(Object.entries(parameterValues).map(([key, value]) => [
+    key,
+    typeof value === "boolean" ? value : String(value),
+  ])) as Record<string, string | boolean>
+  return {
+    draftKey,
+    ...(entry?.entry_id ? { entryID: entry.entry_id } : {}),
+    suiteID: entry?.suite_id ?? suite!.id,
+    suiteRevision: entry?.suite_revision ?? suite!.revision,
+    suiteKey: entry?.suite_key ?? suite!.key,
+    suiteName: entry?.suite_name ?? suite!.name,
+    ...(quickTest ? { quickTest } : {}),
+    parameters,
+    parametersJSON: json(entry?.parameters ?? {}),
+    loadMode: entry?.load_mode ?? "single",
+    numbers: {
+      concurrency: String(entry?.concurrency ?? 1),
+      request_count: String(entry?.request_count ?? 1),
+      rate_per_second: String(entry?.rate_per_second ?? 0),
+      duration_ms: String(entry?.duration_ms ?? 0),
+      request_timeout_ms: String(entry?.request_timeout_ms ?? quickTest?.timeout_ms ?? 60_000),
+    },
+    sla: json(entry?.sla_thresholds ?? { e2e_p95_ms: 3_000 }),
   }
 }
 
-function validatePlanLoad(loadMode: CatalogLoadMode, numbers: { concurrency: number; request_count: number; rate_per_second: number; duration_ms: number; request_timeout_ms: number }) {
-  integerField(numbers.concurrency, tx("desktop:catalog_concurrency"), 1, Number.MAX_SAFE_INTEGER)
-  integerField(numbers.request_count, tx("desktop:catalog_request_count"), 0, Number.MAX_SAFE_INTEGER)
-  integerField(numbers.duration_ms, tx("desktop:catalog_duration_ms"), 0, Number.MAX_SAFE_INTEGER)
+function planSuiteCommand(draft: PlanSuiteDraft): PlanSuiteCommand {
+  const prefix = `plan.suites.${draft.draftKey}`
+  const numbers = Object.fromEntries(Object.entries(draft.numbers).map(([key, value]) => [key, value.trim() ? Number(value) : Number.NaN])) as {
+    concurrency: number
+    request_count: number
+    rate_per_second: number
+    duration_ms: number
+    request_timeout_ms: number
+  }
+  validatePlanLoad(draft.loadMode, numbers, prefix)
+  const inputs = draft.quickTest?.inputs ?? []
+  let parameters: Record<string, CatalogPlanParameterValue>
+  if (inputs.length) {
+    parameters = Object.fromEntries(inputs.map((input) => {
+      const fieldKey = `${prefix}.parameters.${input.key}`
+      const value = draft.parameters[input.key]
+      if (input.type === "boolean") return [input.key, value === true]
+      if (input.type === "number") {
+        const parsed = typeof value === "string" && value.trim() ? Number(value) : Number.NaN
+        if (!Number.isFinite(parsed)) throw new FormValidationError(fieldKey, tx("desktop:catalog_enter_a_finite_number"), input.label)
+        return [input.key, parsed]
+      }
+      return [input.key, typeof value === "string" ? value : String(value ?? "")]
+    }))
+  } else {
+    parameters = primitiveParameterRecord(draft.parametersJSON, `${prefix}.parameters`, tx("desktop:catalog_extension_parameters_json"))
+  }
+  return {
+    ...(draft.entryID ? { entry_id: draft.entryID } : {}),
+    suite_id: draft.suiteID,
+    suite_revision: draft.suiteRevision,
+    parameters,
+    load_mode: draft.loadMode,
+    ...numbers,
+    sla_thresholds: nonNegativeNumberRecord(draft.sla, tx("desktop:catalog_sla_thresholds_json"), `${prefix}.sla_thresholds`),
+  }
+}
+
+function primitiveParameterRecord(value: string, field: string, label: string): Record<string, CatalogPlanParameterValue> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    throw new FormValidationError(field, tx("desktop:catalog_enter_valid_json"), label)
+  }
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new FormValidationError(field, tx("desktop:catalog_enter_a_json_object"), label)
+  }
+  if (Object.values(parsed).some((parameter) => !(
+    typeof parameter === "string" || typeof parameter === "boolean" ||
+    (typeof parameter === "number" && Number.isFinite(parameter))
+  ))) {
+    throw new FormValidationError(field, tx("desktop:catalog_extension_parameters_must_be_primitive_values"), label)
+  }
+  return parsed as Record<string, CatalogPlanParameterValue>
+}
+
+function integerField(value: number, label: string, minimum: number, maximum: number, field = label) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new FormValidationError(field, tx("desktop:catalog_enter_an_integer_between_value_and_value", { value1: minimum.toLocaleString(desktopLocale()), value2: maximum.toLocaleString(desktopLocale()) }), field === label ? undefined : label)
+  }
+}
+
+function validatePlanLoad(loadMode: CatalogLoadMode, numbers: { concurrency: number; request_count: number; rate_per_second: number; duration_ms: number; request_timeout_ms: number }, prefix: string) {
+  integerField(numbers.concurrency, tx("desktop:catalog_concurrency"), 1, Number.MAX_SAFE_INTEGER, `${prefix}.concurrency`)
+  integerField(numbers.request_count, tx("desktop:catalog_request_count"), 0, Number.MAX_SAFE_INTEGER, `${prefix}.request_count`)
+  integerField(numbers.duration_ms, tx("desktop:catalog_duration_ms"), 0, Number.MAX_SAFE_INTEGER, `${prefix}.duration_ms`)
   if (numbers.request_count === 0 && numbers.duration_ms === 0) {
-    throw new FormValidationError(tx("desktop:catalog_request_count"), tx("desktop:catalog_request_count_and_duration_cannot_both_be_0"))
+    throw new FormValidationError(`${prefix}.request_count`, tx("desktop:catalog_request_count_and_duration_cannot_both_be_0"), tx("desktop:catalog_request_count"))
   }
   if (!Number.isFinite(numbers.rate_per_second) || numbers.rate_per_second < 0) {
-    throw new FormValidationError(tx("desktop:catalog_requests_per_second"), tx("desktop:catalog_enter_a_finite_number_greater_than_or_equal_to_0"))
+    throw new FormValidationError(`${prefix}.rate_per_second`, tx("desktop:catalog_enter_a_finite_number_greater_than_or_equal_to_0"), tx("desktop:catalog_requests_per_second"))
   }
   if (loadMode === "open_loop" && numbers.rate_per_second <= 0) {
-    throw new FormValidationError(tx("desktop:catalog_requests_per_second"), tx("desktop:catalog_requests_per_second_must_be_greater_than_0_for_open"))
+    throw new FormValidationError(`${prefix}.rate_per_second`, tx("desktop:catalog_requests_per_second_must_be_greater_than_0_for_open"), tx("desktop:catalog_requests_per_second"))
   }
-  integerField(numbers.request_timeout_ms, tx("desktop:catalog_request_timeout_ms"), 1, Number.MAX_SAFE_INTEGER)
+  integerField(numbers.request_timeout_ms, tx("desktop:catalog_request_timeout_ms"), 1, Number.MAX_SAFE_INTEGER, `${prefix}.request_timeout_ms`)
 }
 
-function nonNegativeNumberRecord(value: string, label: string): Record<string, number> {
-  const record = recordJSON<unknown>(value, label)
+function nonNegativeNumberRecord(value: string, label: string, field = label): Record<string, number> {
+  let record: Record<string, unknown>
+  try {
+    record = recordJSON<unknown>(value, label)
+  } catch (reason) {
+    if (reason instanceof FormValidationError) throw new FormValidationError(field, reason.message, label)
+    throw reason
+  }
   const entries = Object.entries(record)
-  if (entries.length === 0) throw new FormValidationError(label, tx("desktop:catalog_enter_at_least_one_sla_threshold"))
+  if (entries.length === 0) throw new FormValidationError(field, tx("desktop:catalog_enter_at_least_one_sla_threshold"), label)
   for (const [name, threshold] of entries) {
     if (!name.trim() || typeof threshold !== "number" || !Number.isFinite(threshold) || threshold < 0) {
-      throw new FormValidationError(label, tx("desktop:catalog_threshold_value_must_be_a_finite_number_greater_than_or", { value1: name || tx("desktop:catalog_unnamed") }))
+      throw new FormValidationError(field, tx("desktop:catalog_threshold_value_must_be_a_finite_number_greater_than_or", { value1: name || tx("desktop:catalog_unnamed") }), label)
     }
   }
   return record as Record<string, number>
@@ -568,10 +816,14 @@ function optionalInteger(value: string, label: string, minimum: number, maximum:
   return parsed
 }
 
-function useCatalogValidation(field: string, clearFields: string[] = []) {
+function useCatalogValidation(field: string, clearFields: string[] = [], label = field) {
   const { t } = useTranslation()
   const context = useContext(CatalogValidationContext)
-  const message = context?.error && localizeStoredMessage(context.error.field, t) === field ? localizeStoredMessage(context.error.message, t) : ""
+  const matches = context?.error && (
+    context.error.field === field ||
+    localizeStoredMessage(context.error.field, t) === label
+  )
+  const message = matches && context?.error ? localizeStoredMessage(context.error.message, t) : ""
   return {
     invalid: Boolean(message),
     message,
@@ -584,9 +836,12 @@ function catalogFieldID(label: string) {
 }
 
 function focusCatalogField(form: HTMLFormElement | null, field: string) {
-  const container = Array.from(form?.querySelectorAll<HTMLElement>("[data-field-name]") ?? [])
+  const keyedContainer = Array.from(form?.querySelectorAll<HTMLElement>("[data-field-key]") ?? [])
+    .find((candidate) => candidate.dataset.fieldKey === field)
+  const namedContainer = Array.from(form?.querySelectorAll<HTMLElement>("[data-field-name]") ?? [])
     .find((candidate) => candidate.dataset.fieldName === field)
-  const control = container?.querySelector<HTMLElement>("input, textarea, button, [tabindex]")
+  const container = keyedContainer ?? namedContainer
+  const control = container?.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled), button:not(:disabled), [tabindex]:not([tabindex='-1'])")
     ?? (container?.matches("[tabindex]") ? container : undefined)
     ?? Array.from(form?.querySelectorAll<HTMLElement>("[aria-label]") ?? []).find((candidate) => candidate.getAttribute("aria-label") === field)
   control?.focus()

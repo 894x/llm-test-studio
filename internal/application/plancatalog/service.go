@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -19,7 +18,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentFileSchemaVersion = 1
+const CurrentFileSchemaVersion = 3
 
 var (
 	ErrInvalid  = errors.New("plan catalog: invalid input")
@@ -28,86 +27,64 @@ var (
 	ErrCorrupt  = errors.New("plan catalog: corrupt file")
 )
 
-// TargetBinding freezes the exact non-secret authored target configuration used
-// by a targeted Plan. Channel.CredentialID is only a keyring reference; secret
-// material is never part of this document.
-type TargetBinding struct {
-	Model   domain.Model        `json:"model"`
-	Channel domain.Channel      `json:"channel"`
-	Mapping domain.ChannelModel `json:"mapping"`
-}
-
-// Document is the on-disk Plan format. Embedding Plan keeps its established
-// fields flat while the file schema and immutable target bindings remain
-// explicitly versioned by the file catalog.
+// Document stores authored references and configuration; Run snapshots own resolved execution data.
 type Document struct {
 	FileSchemaVersion int `json:"file_schema_version"`
 	domain.Plan
-	TargetBindings []TargetBinding `json:"target_bindings"`
 }
 
-// Validate verifies the complete Cartesian target binding matrix. Bindings are
-// ordered by Plan.ChannelIDs first and Plan.ModelIDs second so the file is both
-// deterministic and unambiguous.
+// documentV3 enumerates the strict authored file shape so unknown or misplaced
+// execution fields fail decoding at the catalog boundary.
+type documentV3 struct {
+	FileSchemaVersion int `json:"file_schema_version"`
+	domain.EntityMeta
+	Name       string                  `json:"name"`
+	ModelIDs   []string                `json:"model_ids"`
+	ChannelIDs []string                `json:"channel_ids"`
+	Suites     []domain.PlanSuiteEntry `json:"suites"`
+}
+
+func (document Document) MarshalJSON() ([]byte, error) {
+	return json.Marshal(documentV3{
+		FileSchemaVersion: document.FileSchemaVersion,
+		EntityMeta:        document.EntityMeta,
+		Name:              document.Name,
+		ModelIDs:          document.ModelIDs,
+		ChannelIDs:        document.ChannelIDs,
+		Suites:            document.Suites,
+	})
+}
+
+func (document *Document) UnmarshalJSON(raw []byte) error {
+	if document == nil {
+		return errors.New("nil plan document")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var decoded documentV3
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("plan document must contain one object")
+	}
+	*document = Document{
+		FileSchemaVersion: decoded.FileSchemaVersion,
+		Plan: domain.Plan{
+			EntityMeta: decoded.EntityMeta,
+			Name:       decoded.Name, ModelIDs: decoded.ModelIDs, ChannelIDs: decoded.ChannelIDs,
+			Suites: decoded.Suites,
+		},
+	}
+	return nil
+}
+
+// Validate checks the authored shape without resolving referenced execution data.
 func (document Document) Validate() error {
 	if document.FileSchemaVersion != CurrentFileSchemaVersion {
 		return fmt.Errorf("unsupported plan file schema version %d", document.FileSchemaVersion)
 	}
-	if document.Plan.Validate() != nil {
-		return errors.New("invalid plan")
-	}
-	// Requiring a non-nil slice distinguishes a complete wrapper from a wrapper
-	// that omitted target_bindings. Targetless plans encode an empty JSON array.
-	if document.TargetBindings == nil {
-		return errors.New("target bindings must be present")
-	}
-	if len(document.ModelIDs) == 0 {
-		if len(document.TargetBindings) != 0 {
-			return errors.New("targetless plan must not contain target bindings")
-		}
-		return nil
-	}
-
-	expectedCount := len(document.ChannelIDs) * len(document.ModelIDs)
-	if expectedCount/len(document.ModelIDs) != len(document.ChannelIDs) || len(document.TargetBindings) != expectedCount {
-		return errors.New("target bindings must cover the plan Cartesian product")
-	}
-
-	models := make(map[string]domain.Model, len(document.ModelIDs))
-	channels := make(map[string]domain.Channel, len(document.ChannelIDs))
-	mappingIDs := make(map[string]struct{}, expectedCount)
-	bindingIndex := 0
-	for _, channelID := range document.ChannelIDs {
-		for _, modelID := range document.ModelIDs {
-			binding := document.TargetBindings[bindingIndex]
-			bindingIndex++
-			if binding.Model.Validate() != nil || binding.Channel.Validate() != nil || binding.Mapping.Validate() != nil {
-				return errors.New("target binding contains an invalid document")
-			}
-			if binding.Model.ID != modelID || binding.Channel.ID != channelID {
-				return errors.New("target binding order or identity does not match the plan")
-			}
-			if binding.Model.Protocol != binding.Channel.Protocol {
-				return errors.New("target model and channel protocols do not match")
-			}
-			if binding.Mapping.ModelID != modelID || binding.Mapping.ChannelID != channelID {
-				return errors.New("target mapping does not match its model and channel")
-			}
-			if previous, exists := models[modelID]; exists && !reflect.DeepEqual(previous, binding.Model) {
-				return errors.New("repeated target model documents are inconsistent")
-			}
-			if previous, exists := channels[channelID]; exists && !reflect.DeepEqual(previous, binding.Channel) {
-				return errors.New("repeated target channel documents are inconsistent")
-			}
-			if _, duplicate := mappingIDs[binding.Mapping.ID]; duplicate {
-				return errors.New("target mapping identity is duplicated")
-			}
-			models[modelID] = binding.Model
-			channels[channelID] = binding.Channel
-			mappingIDs[binding.Mapping.ID] = struct{}{}
-		}
-	}
-	return nil
+	return document.Plan.Validate()
 }
 
 type Service struct {
@@ -183,16 +160,11 @@ func (service *Service) GetRevision(ctx context.Context, id string, revision uin
 	return plan, nil
 }
 
-// Create is retained for targetless Plans. Targeted Plans must use
-// CreateDocument so their exact target revisions cannot be omitted.
+// Create stores a Plan without resolving its execution references.
 func (service *Service) Create(ctx context.Context, plan domain.Plan) error {
-	if len(plan.ModelIDs) != 0 || len(plan.ChannelIDs) != 0 {
-		return ErrInvalid
-	}
 	return service.CreateDocument(ctx, Document{
 		FileSchemaVersion: CurrentFileSchemaVersion,
 		Plan:              plan,
-		TargetBindings:    []TargetBinding{},
 	})
 }
 
@@ -213,16 +185,11 @@ func (service *Service) CreateDocument(ctx context.Context, document Document) e
 	})
 }
 
-// Update is retained for targetless Plans. Targeted Plans must use
-// UpdateDocument so their exact target revisions cannot be omitted.
+// Update stores a new authored Plan revision.
 func (service *Service) Update(ctx context.Context, expectedRevision uint64, plan domain.Plan) error {
-	if len(plan.ModelIDs) != 0 || len(plan.ChannelIDs) != 0 {
-		return ErrInvalid
-	}
 	return service.UpdateDocument(ctx, expectedRevision, Document{
 		FileSchemaVersion: CurrentFileSchemaVersion,
 		Plan:              plan,
-		TargetBindings:    []TargetBinding{},
 	})
 }
 
@@ -376,18 +343,7 @@ func cloneDocuments(documents []Document) []Document {
 
 func cloneDocument(document Document) Document {
 	document.Plan = clonePlan(document.Plan)
-	if document.TargetBindings != nil {
-		document.TargetBindings = append([]TargetBinding{}, document.TargetBindings...)
-		for index := range document.TargetBindings {
-			document.TargetBindings[index] = cloneTargetBinding(document.TargetBindings[index])
-		}
-	}
 	return document
-}
-
-func cloneTargetBinding(binding TargetBinding) TargetBinding {
-	binding.Model.Capabilities = append([]string(nil), binding.Model.Capabilities...)
-	return binding
 }
 
 func clonePlans(plans []domain.Plan) []domain.Plan {
@@ -405,9 +361,27 @@ func clonePlan(plan domain.Plan) domain.Plan {
 	if plan.ChannelIDs != nil {
 		plan.ChannelIDs = append([]string{}, plan.ChannelIDs...)
 	}
-	plan.Cases = append([]domain.CaseRevisionRef(nil), plan.Cases...)
-	plan.SLA.Thresholds = cloneThresholds(plan.SLA.Thresholds)
+	if plan.Suites != nil {
+		entries := make([]domain.PlanSuiteEntry, len(plan.Suites))
+		for index, entry := range plan.Suites {
+			entries[index] = entry
+			entries[index].Parameters = cloneRawMessages(entry.Parameters)
+			entries[index].SLA.Thresholds = cloneThresholds(entry.SLA.Thresholds)
+		}
+		plan.Suites = entries
+	}
 	return plan
+}
+
+func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMessage {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]json.RawMessage, len(values))
+	for key, value := range values {
+		result[key] = append(json.RawMessage(nil), value...)
+	}
+	return result
 }
 
 func cloneThresholds(values map[string]float64) map[string]float64 {

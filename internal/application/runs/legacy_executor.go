@@ -45,11 +45,12 @@ func (executor *LegacyAPIAuditExecutor) Execute(ctx context.Context, request Exe
 	}
 	defer clear(secret)
 	snapshot := request.Run.Snapshot()
+	profile := request.LoadProfile()
 	config := apiaudit.RunConfig{
 		Suite: string(snapshot.Channel.Protocol), BaseURL: snapshot.Channel.BaseURL,
 		APIKey: string(secret), Model: snapshot.Channel.UpstreamModelName,
 		PollInterval: 10 * time.Second,
-		Timeout:      time.Duration(snapshot.Load.RequestTimeoutMS) * time.Millisecond,
+		Timeout:      time.Duration(profile.RequestTimeoutMS) * time.Millisecond,
 	}
 	started := time.Now()
 	for index, testCase := range request.Cases {

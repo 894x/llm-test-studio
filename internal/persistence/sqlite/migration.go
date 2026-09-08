@@ -41,7 +41,9 @@ type schemaObject struct {
 }
 
 // Migrate creates or validates the single operational schema. Earlier schemas
-// are deliberately unsupported: resetting the database is the cutover path.
+// are deliberately unsupported by the production runtime. The schema reset
+// handles operational data; the temporary external migration tool is the
+// explicit cutover path for authored files and selected archived records.
 func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("sqlite migration path is required")

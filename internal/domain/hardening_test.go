@@ -17,6 +17,8 @@ const (
 	testCaseID       = "123e4567-e89b-42d3-a456-426614174014"
 	testEvidenceID   = "123e4567-e89b-42d3-a456-426614174015"
 	testAttachmentID = "123e4567-e89b-42d3-a456-426614174016"
+	testSuiteID      = "123e4567-e89b-42d3-a456-426614174020"
+	testPlanEntryID  = "123e4567-e89b-42d3-a456-426614174021"
 )
 
 func validEntityMeta(id string) EntityMeta {
@@ -28,19 +30,28 @@ func validEntityMeta(id string) EntityMeta {
 }
 
 func validRunSnapshot() RunSnapshot {
+	load := LoadProfile{
+		Mode: LoadFixedConcurrency, Concurrency: 2, RequestCount: 10,
+		RequestTimeoutMS: 30_000,
+	}
+	sla := SLAProfile{Thresholds: map[string]float64{
+		"max_error_rate": 0.01,
+		"max_ttft_ms":    2_000,
+	}}
+	caseRef := CaseRevisionRef{CaseID: testCaseID, Revision: 7}
+	suite := Suite{
+		EntityMeta: validEntityMeta(testSuiteID),
+		Key:        "default-suite", Name: "Default Suite", Protocol: ProtocolOpenAIChat,
+		ModelTarget: "model-upstream", Cases: []CaseRevisionRef{caseRef},
+	}
 	plan := Plan{
 		EntityMeta: validEntityMeta(testPlanID),
 		Name:       "Plan",
 		ModelIDs:   []string{testModelID},
 		ChannelIDs: []string{testChannelID},
-		Cases:      []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
-		Load: LoadProfile{
-			Mode: LoadFixedConcurrency, Concurrency: 2, RequestCount: 10,
-			RequestTimeoutMS: 30_000,
-		},
-		SLA: SLAProfile{Thresholds: map[string]float64{
-			"max_error_rate": 0.01,
-			"max_ttft_ms":    2_000,
+		Suites: []PlanSuiteEntry{{
+			EntryID: testPlanEntryID, SuiteID: suite.ID, SuiteRevision: suite.Revision,
+			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
 	plan.Revision = 3
@@ -70,14 +81,12 @@ func validRunSnapshot() RunSnapshot {
 			Name:              "primary", BaseURL: "https://api.example.test/v1",
 			Protocol: ProtocolOpenAIChat, UpstreamModelName: "model-upstream",
 		},
-		Cases:        append([]CaseRevisionRef(nil), plan.Cases...),
-		Load:         plan.Load,
-		SLA:          plan.SLA,
 		PlanDocument: &plan,
 		Mapping:      &mapping,
-		CaseDefinitions: []TestCase{
-			testCase,
-		},
+		Suites: []RunSuiteSnapshot{{
+			EntryID: testPlanEntryID, Suite: suite, Cases: []CaseRevisionRef{caseRef},
+			CaseDefinitions: []TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+		}},
 		Environment: EnvironmentSnapshot{
 			OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct",
 			AppVersion: "dev", EngineVersion: "v1",
@@ -85,19 +94,11 @@ func validRunSnapshot() RunSnapshot {
 	}
 }
 
-func TestLegacyRunSnapshotClonePreservesAbsentV2Documents(t *testing.T) {
+func TestRunSnapshotRejectsLegacySchema(t *testing.T) {
 	snapshot := validRunSnapshot()
-	snapshot.SchemaVersion = legacyRunSnapshotSchemaVersion
-	snapshot.PlanDocument = nil
-	snapshot.Mapping = nil
-	snapshot.CaseDefinitions = nil
-
-	run, err := NewRun(validEntityMeta(testRunID), snapshot.Plan.ID, snapshot)
-	if err != nil {
-		t.Fatalf("NewRun() error = %v", err)
-	}
-	if cloned := run.Snapshot(); cloned.CaseDefinitions != nil {
-		t.Fatalf("legacy CaseDefinitions = %#v, want nil", cloned.CaseDefinitions)
+	snapshot.SchemaVersion = 1
+	if err := snapshot.Validate(); err == nil {
+		t.Fatal("legacy Run snapshot validated")
 	}
 }
 
@@ -139,11 +140,11 @@ func validEvidence() Evidence {
 func validResult() Result {
 	return Result{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174017"),
-		RunID:      testRunID,
-		CaseID:     testCaseID,
-		RequestID:  "request-1",
-		Success:    SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
-		Metrics:    map[string]float64{"ttft_ms": 120},
+		RunID:      testRunID, SuiteEntryID: testPlanEntryID,
+		CaseID:    testCaseID,
+		RequestID: "request-1",
+		Success:   SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		Metrics:   map[string]float64{"ttft_ms": 120},
 		EvidenceIDs: []string{
 			testEvidenceID,
 		},
@@ -152,6 +153,15 @@ func validResult() Result {
 
 func validReport() Report {
 	snapshot := validRunSnapshot()
+	caseResult := validResult()
+	caseResult.RequestID = ""
+	suiteReport := SuiteReport{
+		SuiteEntryID: testPlanEntryID, SuiteID: testSuiteID, SuiteRevision: 1,
+		SuiteKey: "default-suite", SuiteName: "Default Suite", Status: SuiteReportCompleted,
+		Conclusion: ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}},
+		SLA:        map[string]MetricValue{}, Metrics: map[string]MetricValue{},
+		Timeline: []json.RawMessage{}, Distributions: []json.RawMessage{}, CaseResults: []Result{caseResult},
+	}
 	return Report{
 		SchemaVersion: CurrentReportSchemaVersion,
 		ID:            "123e4567-e89b-42d3-a456-426614174018",
@@ -167,7 +177,8 @@ func validReport() Report {
 		Metrics:       map[string]MetricValue{"ttft_p50": {Value: 120, Unit: "ms", Samples: 10}},
 		Timeline:      []json.RawMessage{},
 		Distributions: []json.RawMessage{},
-		CaseResults:   []Result{validResult()},
+		CaseResults:   []Result{caseResult},
+		SuiteReports:  []SuiteReport{suiteReport},
 		ErrorClusters: []json.RawMessage{},
 		Evidence:      []Evidence{validEvidence()},
 		Baseline:      json.RawMessage(`{}`),
@@ -292,23 +303,31 @@ func TestSuiteAndPlanPinEveryCaseRevision(t *testing.T) {
 	plan := Plan{
 		EntityMeta: validEntityMeta(testPlanID), Name: "explicit smoke",
 		ModelIDs: []string{testModelID}, ChannelIDs: []string{testChannelID},
-		Cases: suite.Cases, Load: validRunSnapshot().Load, SLA: validRunSnapshot().SLA,
+		Suites: []PlanSuiteEntry{{
+			EntryID: "123e4567-e89b-42d3-a456-426614174025", SuiteID: suite.ID, SuiteRevision: suite.Revision,
+			Parameters: map[string]json.RawMessage{},
+			Load:       validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
+		}},
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("explicit-case Plan.Validate() error = %v", err)
 	}
 
-	plan.Cases[0].Revision = 0
+	plan.Suites[0].SuiteRevision = 0
 	if err := plan.Validate(); err == nil {
-		t.Fatal("plan containing an unpinned case revision validated")
+		t.Fatal("plan containing an unpinned suite revision validated")
 	}
 }
 
 func TestPlanAllowsTargetsToBeSelectedAtRunTime(t *testing.T) {
 	plan := Plan{
 		EntityMeta: validEntityMeta(testPlanID), Name: "runtime target smoke",
-		Cases: []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
-		Load:  validRunSnapshot().Load, SLA: validRunSnapshot().SLA,
+		Suites: []PlanSuiteEntry{{
+			EntryID: "123e4567-e89b-42d3-a456-426614174026",
+			SuiteID: testPlanID, SuiteRevision: 1,
+			Parameters: map[string]json.RawMessage{},
+			Load:       validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
+		}},
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("targetless Plan.Validate() error = %v", err)
@@ -477,17 +496,17 @@ func TestRunSnapshotIsCompleteAndDefensivelyCopied(t *testing.T) {
 		t.Fatalf("run accessors returned inconsistent identity: meta=%#v plan=%q status=%q", run.Meta(), run.PlanID(), run.Status())
 	}
 
-	snapshot.Cases[0].Revision = 99
-	snapshot.SLA.Thresholds["max_ttft_ms"] = 99
+	snapshot.Suites[0].Cases[0].Revision = 99
+	snapshot.Suites[0].SLA.Thresholds["max_ttft_ms"] = 99
 	stored := run.Snapshot()
-	if stored.Cases[0].Revision != 7 || stored.SLA.Thresholds["max_ttft_ms"] != 2_000 {
+	if stored.Suites[0].Cases[0].Revision != 7 || stored.Suites[0].SLA.Thresholds["max_ttft_ms"] != 2_000 {
 		t.Fatalf("run retained caller aliases: %#v", stored)
 	}
 
-	stored.Cases[0].Revision = 88
-	stored.SLA.Thresholds["max_ttft_ms"] = 88
+	stored.Suites[0].Cases[0].Revision = 88
+	stored.Suites[0].SLA.Thresholds["max_ttft_ms"] = 88
 	again := run.Snapshot()
-	if again.Cases[0].Revision != 7 || again.SLA.Thresholds["max_ttft_ms"] != 2_000 {
+	if again.Suites[0].Cases[0].Revision != 7 || again.Suites[0].SLA.Thresholds["max_ttft_ms"] != 2_000 {
 		t.Fatalf("Snapshot() exposed mutable internal data: %#v", again)
 	}
 
@@ -521,7 +540,7 @@ func TestRunJSONRoundTripRestoresValidatedPrivateSnapshot(t *testing.T) {
 	if err := decoded.Validate(); err != nil {
 		t.Fatalf("decoded Run.Validate() error = %v; JSON = %s", err, encoded)
 	}
-	if decoded.Snapshot().Cases[0].Revision != 7 {
+	if decoded.Snapshot().Suites[0].Cases[0].Revision != 7 {
 		t.Fatalf("decoded snapshot = %#v", decoded.Snapshot())
 	}
 }
@@ -698,7 +717,7 @@ func TestProviderDetailIsRedactedBoundedAndAbsentOnSuccess(t *testing.T) {
 	}
 }
 
-func TestReportV1SerializesEveryRequiredSectionAndValidatesNestedData(t *testing.T) {
+func TestReportV2SerializesEveryRequiredSectionAndValidatesNestedData(t *testing.T) {
 	report := validReport()
 	if err := report.Validate(); err != nil {
 		t.Fatalf("Report.Validate() error = %v", err)
@@ -725,6 +744,14 @@ func TestReportV1SerializesEveryRequiredSectionAndValidatesNestedData(t *testing
 	report.Metrics["ttft_p50"] = MetricValue{Value: math.Inf(1), Unit: "ms", Samples: 10}
 	if err := report.Validate(); err == nil {
 		t.Fatal("report containing an infinite metric validated")
+	}
+}
+
+func TestReportRejectsSchemaOne(t *testing.T) {
+	report := validReport()
+	report.SchemaVersion = 1
+	if err := report.Validate(); err == nil {
+		t.Fatal("schema 1 report validated")
 	}
 }
 
@@ -772,8 +799,8 @@ func TestReportValidationClosesSnapshotCaseAndSubjectIdentity(t *testing.T) {
 	second.EntityMeta = validEntityMeta("123e4567-e89b-42d3-a456-426614174098")
 	second.RequestID = "request-2"
 	report.CaseResults = append(report.CaseResults, second)
-	if err := report.Validate(); err != nil {
-		t.Fatalf("performance report rejected repeated observations for one planned case: %v", err)
+	if err := report.Validate(); err == nil {
+		t.Fatal("final report accepted a request observation as a case summary")
 	}
 
 	report = validReport()
@@ -790,6 +817,15 @@ func TestReportTerminalStatusControlsResultCoverage(t *testing.T) {
 		report.Conclusion.Passed = false
 		report.Conclusion.Verdict = "incomplete"
 		report.CaseResults = []Result{}
+		report.SuiteReports[0].CaseResults = []Result{}
+		report.SuiteReports[0].Conclusion.Passed = false
+		if status == RunCancelled {
+			report.SuiteReports[0].Status = SuiteReportCancelled
+			report.SuiteReports[0].Conclusion.Verdict = "cancelled"
+		} else {
+			report.SuiteReports[0].Status = SuiteReportFailed
+			report.SuiteReports[0].Conclusion.Verdict = "fail"
+		}
 		if err := report.Validate(); err != nil {
 			t.Errorf("%s report with no fabricated results was rejected: %v", status, err)
 		}
@@ -805,6 +841,93 @@ func TestReportTerminalStatusControlsResultCoverage(t *testing.T) {
 	report.RunStatus = RunFailed
 	if err := report.Validate(); err == nil {
 		t.Fatal("failed run produced a passing conclusion")
+	}
+
+	report = validReport()
+	report.RunStatus = RunFailed
+	report.Conclusion = ReportConclusion{Passed: false, Verdict: "failed", Issues: []string{"failed"}}
+	report.CaseResults = []Result{}
+	report.SuiteReports[0].Status = SuiteReportCancelled
+	report.SuiteReports[0].Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
+	report.SuiteReports[0].CaseResults = []Result{}
+	if err := report.Validate(); err == nil {
+		t.Fatal("failed run accepted a cancelled Suite report")
+	}
+}
+
+func TestReportRejectsSuiteExecutionAfterCancellationBoundary(t *testing.T) {
+	report := validReport()
+	const secondEntryID = "123e4567-e89b-42d3-a456-426614174099"
+
+	secondPlanEntry := report.PlanSnapshot.PlanDocument.Suites[0]
+	secondPlanEntry.EntryID = secondEntryID
+	report.PlanSnapshot.PlanDocument.Suites = append(report.PlanSnapshot.PlanDocument.Suites, secondPlanEntry)
+	secondSnapshot := report.PlanSnapshot.Suites[0]
+	secondSnapshot.EntryID = secondEntryID
+	report.PlanSnapshot.Suites = append(report.PlanSnapshot.Suites, secondSnapshot)
+
+	report.RunStatus = RunCancelled
+	report.Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
+	report.CaseResults = []Result{}
+	first := report.SuiteReports[0]
+	first.Status = SuiteReportCancelled
+	first.Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
+	first.CaseResults = []Result{}
+	second := first
+	second.SuiteEntryID = secondEntryID
+	second.Status = SuiteReportFailed
+	second.Conclusion = ReportConclusion{Passed: false, Verdict: "failed", Issues: []string{"failed"}}
+	report.SuiteReports = []SuiteReport{first, second}
+
+	if err := report.Validate(); err == nil {
+		t.Fatal("report accepted suite execution after a cancelled suite")
+	}
+
+	second.Status = SuiteReportNotStarted
+	second.Conclusion = ReportConclusion{Passed: false, Verdict: "not_started", Issues: []string{"not_started"}}
+	report.SuiteReports[1] = second
+	if err := report.Validate(); err != nil {
+		t.Fatalf("cancelled suite followed by not_started was rejected: %v", err)
+	}
+}
+
+func TestSuiteReportConclusionMatchesExecutionStatus(t *testing.T) {
+	base := validReport()
+	snapshot := base.PlanSnapshot.Suites[0]
+	for name, mutate := range map[string]func(*SuiteReport){
+		"passing completed with fail verdict": func(report *SuiteReport) {
+			report.Conclusion.Verdict = "fail"
+		},
+		"failing completed with pass verdict": func(report *SuiteReport) {
+			report.Conclusion.Passed = false
+		},
+		"failed with cancelled verdict": func(report *SuiteReport) {
+			report.Status = SuiteReportFailed
+			report.Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{}}
+			report.CaseResults = []Result{}
+		},
+		"cancelled with fail verdict": func(report *SuiteReport) {
+			report.Status = SuiteReportCancelled
+			report.Conclusion = ReportConclusion{Passed: false, Verdict: "fail", Issues: []string{}}
+			report.CaseResults = []Result{}
+		},
+		"not started with fail verdict": func(report *SuiteReport) {
+			report.Status = SuiteReportNotStarted
+			report.Conclusion = ReportConclusion{Passed: false, Verdict: "fail", Issues: []string{}}
+			report.CaseResults = []Result{}
+		},
+		"not started with a case result": func(report *SuiteReport) {
+			report.Status = SuiteReportNotStarted
+			report.Conclusion = ReportConclusion{Passed: false, Verdict: "not_started", Issues: []string{}}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			report := base.SuiteReports[0]
+			mutate(&report)
+			if err := validateSuiteReport(report, snapshot, base.RunID, RunFailed); err == nil {
+				t.Fatal("suite report accepted a status/conclusion mismatch")
+			}
+		})
 	}
 }
 

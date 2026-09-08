@@ -52,7 +52,8 @@ func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 	}
 	if snapshot.PlanDocument == nil || snapshot.PlanDocument.ID != fixture.plan.ID ||
 		snapshot.Mapping == nil || snapshot.Mapping.ID != fixture.mapping.ID ||
-		len(snapshot.CaseDefinitions) != 1 || snapshot.CaseDefinitions[0].ID != fixture.testCase.ID {
+		len(snapshot.Suites) != 1 || len(snapshot.Suites[0].CaseDefinitions) != 1 ||
+		snapshot.Suites[0].CaseDefinitions[0].ID != fixture.testCase.ID {
 		t.Fatalf("immutable run configuration snapshot = %#v", snapshot)
 	}
 	if len(request.Cases) != 1 || request.Cases[0].Revision != fixture.testCase.Revision {
@@ -68,8 +69,12 @@ func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 	waitForStatus(t, repository, domain.RunCompleted)
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
-	if len(repository.results) != 2 || repository.results[0].RequestID == "" || repository.results[0].CaseID != "" ||
-		repository.results[1].CaseID != fixture.testCase.ID || repository.results[1].RequestID != "" || !repository.results[1].Success.Overall() {
+	if len(repository.results) != 3 || repository.results[0].RequestID == "" || repository.results[0].CaseID != fixture.testCase.ID ||
+		repository.results[0].SuiteEntryID != fixture.plan.Suites[0].EntryID ||
+		repository.results[1].CaseID != fixture.testCase.ID || repository.results[1].RequestID != "" ||
+		repository.results[1].SuiteEntryID != fixture.plan.Suites[0].EntryID || !repository.results[1].Success.Overall() ||
+		repository.results[2].SuiteEntryID != fixture.plan.Suites[0].EntryID ||
+		repository.results[2].SuiteStatus != domain.SuiteExecutionCompleted {
 		t.Fatalf("persisted results = %#v", repository.results)
 	}
 	if _, err := request.Credential.Bytes(); err == nil {
@@ -92,15 +97,21 @@ func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 }
 
 type recordingReporter struct {
-	mu    sync.Mutex
-	runID string
-	err   error
+	mu        sync.Mutex
+	runID     string
+	calls     int
+	generated chan string
+	err       error
 }
 
 func (reporter *recordingReporter) Generate(_ context.Context, runID string) error {
 	reporter.mu.Lock()
 	defer reporter.mu.Unlock()
 	reporter.runID = runID
+	reporter.calls++
+	if reporter.generated != nil {
+		reporter.generated <- runID
+	}
 	return reporter.err
 }
 
@@ -171,6 +182,8 @@ func TestPrepareTargetStartsWanDirectlyAndPreservesVersionScope(t *testing.T) {
 	fixture.model.Protocol = domain.ProtocolWanVideo
 	fixture.channel.Protocol = domain.ProtocolWanVideo
 	fixture.mapping.UpstreamModelName = "wan3.0-video"
+	fixture.suite.Protocol = domain.ProtocolWanVideo
+	fixture.suite.ModelTarget = fixture.mapping.UpstreamModelName
 	fixture.testCase.Protocol = domain.ProtocolWanVideo
 	fixture.testCase.ModelTargets = []string{"wan3.0-video"}
 	fixture.testCase.Definition = domain.TestCaseDefinition{
@@ -275,17 +288,18 @@ func TestStartTargetUsesAnExplicitModelAndChannelForComparisonRuns(t *testing.T)
 	}
 }
 
-func TestPrepareTargetFiltersSuiteCasesByUpstreamModel(t *testing.T) {
+func TestPrepareTargetPinsEverySuiteCaseForSelectedModel(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.mapping.UpstreamModelName = "kimi-k2.6"
+	fixture.suite.ModelTarget = fixture.mapping.UpstreamModelName
 	k3Case := fixture.testCase
-	k3Case.ModelTargets = []string{"kimi-k3"}
+	k3Case.ModelTargets = []string{"kimi-k2.6"}
 	k26Case := fixture.testCase
 	k26Case.ID = "30000000-0000-4000-8000-000000000015"
 	k26Case.Key = "K026"
 	k26Case.Name = "K2.6 thinking"
 	k26Case.ModelTargets = []string{"kimi-k2.6"}
-	fixture.plan.Cases = []domain.CaseRevisionRef{
+	fixture.suite.Cases = []domain.CaseRevisionRef{
 		{CaseID: k3Case.ID, Revision: k3Case.Revision},
 		{CaseID: k26Case.ID, Revision: k26Case.Revision},
 	}
@@ -314,8 +328,9 @@ func TestPrepareTargetFiltersSuiteCasesByUpstreamModel(t *testing.T) {
 		t.Fatalf("PrepareTarget() run id = %q", runID)
 	}
 	snapshot := repository.run.Snapshot()
-	if len(snapshot.Cases) != 1 || snapshot.Cases[0].CaseID != k26Case.ID {
-		t.Fatalf("snapshot cases = %#v, want only K2.6 case", snapshot.Cases)
+	if len(snapshot.Suites) != 1 || len(snapshot.Suites[0].Cases) != 2 ||
+		snapshot.Suites[0].Cases[0].CaseID != k3Case.ID || snapshot.Suites[0].Cases[1].CaseID != k26Case.ID {
+		t.Fatalf("snapshot suites = %#v, want ordered pinned Suite cases", snapshot.Suites)
 	}
 }
 
@@ -418,9 +433,11 @@ func TestCloseCancelsAndPersistsActiveRun(t *testing.T) {
 	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
 	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
 	executor := &signalExecutor{entered: make(chan runs.ExecutionRequest, 1)}
+	reporter := &recordingReporter{generated: make(chan string, 2)}
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: executor,
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		Reporter: reporter,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -433,8 +450,57 @@ func TestCloseCancelsAndPersistsActiveRun(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 	waitForStatus(t, repository, domain.RunCancelled)
+	select {
+	case <-reporter.generated:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not generate the cancelled run report")
+	}
+	reporter.mu.Lock()
+	reportCalls := reporter.calls
+	reporter.mu.Unlock()
+	if reportCalls != 1 {
+		t.Fatalf("Close report calls = %d, want 1", reportCalls)
+	}
 	if err := service.Close(); err != nil {
 		t.Fatalf("second Close() error = %v", err)
+	}
+}
+
+func TestCloseReportsAQueuedRunWithoutStartingItsExecutor(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, _ := credentials.StoreRefFromCredential(fixture.credential)
+	_ = store.Set(context.Background(), storeRef, []byte("test-secret"))
+	executor := &controlledExecutor{entered: make(chan runs.ExecutionRequest, 1), release: make(chan struct{})}
+	reporter := &recordingReporter{generated: make(chan string, 2)}
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: executor,
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		Reporter: reporter,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := service.PrepareTarget(context.Background(), runs.StartCommand{PlanID: fixture.plan.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case reportedRunID := <-reporter.generated:
+		if reportedRunID != runID {
+			t.Fatalf("reported run id = %q, want %q", reportedRunID, runID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not report queued cancellation")
+	}
+	select {
+	case <-executor.entered:
+		t.Fatal("Close started the queued executor")
+	default:
 	}
 }
 
@@ -462,7 +528,7 @@ func TestExecutionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	repository.mu.Lock()
 	persistedFailure := repository.run.Failure()
 	repository.mu.Unlock()
-	if persistedFailure == nil || persistedFailure.Phase != "execute" || persistedFailure.ErrorCode != "run_execution_failed" {
+	if persistedFailure == nil || persistedFailure.Phase != "execute_suites" || persistedFailure.ErrorCode != "one_or_more_suites_failed" {
 		t.Fatalf("persisted run failure = %#v", persistedFailure)
 	}
 
@@ -471,7 +537,7 @@ func TestExecutionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 		repository.mu.Lock()
 		runID := repository.run.Meta().ID
 		repository.mu.Unlock()
-		if diagnostic.RunID != runID || diagnostic.Operation != "execute" || diagnostic.ErrorCode != "run_execution_failed" {
+		if diagnostic.RunID != runID || diagnostic.Operation != "execute_suite" || diagnostic.ErrorCode != "suite_execution_failed" {
 			t.Fatalf("diagnostic = %#v, want correlated execution failure", diagnostic)
 		}
 		if !errors.Is(diagnostic.Err, executionFailure) {
@@ -508,7 +574,8 @@ func TestFailedRequestReportsRunAndRequestCorrelation(t *testing.T) {
 		repository.mu.Lock()
 		runID := repository.run.Meta().ID
 		repository.mu.Unlock()
-		if diagnostic.RunID != runID || diagnostic.RequestID != "request-17" || diagnostic.Operation != "execute_request" || diagnostic.ErrorCode != "rate_limited" {
+		wantRequestID := fixture.plan.Suites[0].EntryID + ":request-17"
+		if diagnostic.RunID != runID || diagnostic.RequestID != wantRequestID || diagnostic.Operation != "execute_request" || diagnostic.ErrorCode != "rate_limited" {
 			t.Fatalf("diagnostic = %#v, want correlated request failure", diagnostic)
 		}
 	case <-time.After(time.Second):
@@ -655,7 +722,7 @@ func TestIncompleteExecutionReportsCorrelatedRunDiagnostic(t *testing.T) {
 
 	select {
 	case diagnostic := <-reported:
-		if diagnostic.Operation != "execute" || diagnostic.ErrorCode != "run_execution_incomplete" {
+		if diagnostic.Operation != "execute_suite" || diagnostic.ErrorCode != "suite_execution_failed" {
 			t.Fatalf("diagnostic = %#v, want correlated incomplete execution", diagnostic)
 		}
 	case <-time.After(time.Second):
@@ -896,6 +963,13 @@ func (repository *fakeRepository) GetTestCaseRevision(_ context.Context, id stri
 	return repository.fixture.testCase, nil
 }
 
+func (repository *fakeRepository) GetSuiteRevision(_ context.Context, id string, revision uint64) (domain.Suite, error) {
+	if repository.fixture.suite.ID == id && repository.fixture.suite.Revision == revision {
+		return repository.fixture.suite, nil
+	}
+	return domain.Suite{}, errors.New("suite not found")
+}
+
 func (repository *fakeRepository) GetCredentialRef(context.Context, string) (domain.CredentialRef, error) {
 	return repository.fixture.credential, nil
 }
@@ -931,7 +1005,7 @@ func (repository *fakeRepository) UpdateRun(_ context.Context, expected uint64, 
 func (repository *fakeRepository) AppendResult(_ context.Context, result domain.Result) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
-	if result.CaseID != "" && repository.failSummaryAppend != nil {
+	if result.CaseID != "" && result.RequestID == "" && result.SuiteStatus == "" && repository.failSummaryAppend != nil {
 		return repository.failSummaryAppend
 	}
 	repository.results = append(repository.results, result)
@@ -958,6 +1032,7 @@ type runFixture struct {
 	channel     domain.Channel
 	mapping     domain.ChannelModel
 	testCase    domain.TestCase
+	suite       domain.Suite
 	plan        domain.Plan
 	environment domain.EnvironmentSnapshot
 }
@@ -965,20 +1040,20 @@ type runFixture struct {
 func (fixture runFixture) snapshot() domain.RunSnapshot {
 	plan := fixture.plan
 	mapping := fixture.mapping
+	entry := plan.Suites[0]
 	return domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.model.ID, Revision: fixture.model.Revision}, Name: fixture.model.Name, Protocol: fixture.model.Protocol, Capabilities: append([]string(nil), fixture.model.Capabilities...)},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.channel.ID, Revision: fixture.channel.Revision}, Name: fixture.channel.Name, BaseURL: fixture.channel.BaseURL, Protocol: fixture.channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
-		Cases:         append([]domain.CaseRevisionRef(nil), plan.Cases...),
-		Load:          plan.Load,
-		SLA:           plan.SLA,
 		Environment:   fixture.environment,
 		PlanDocument:  &plan,
 		Mapping:       &mapping,
-		CaseDefinitions: []domain.TestCase{
-			fixture.testCase,
-		},
+		Suites: []domain.RunSuiteSnapshot{{
+			EntryID: entry.EntryID, Suite: fixture.suite, Cases: append([]domain.CaseRevisionRef(nil), fixture.suite.Cases...),
+			CaseDefinitions: []domain.TestCase{fixture.testCase}, Parameters: entry.Parameters,
+			Load: entry.Load, SLA: entry.SLA,
+		}},
 	}
 }
 
@@ -994,6 +1069,8 @@ func newRunFixture(t *testing.T) runFixture {
 	mappingID := "30000000-0000-4000-8000-000000000004"
 	caseID := "30000000-0000-4000-8000-000000000005"
 	planID := "30000000-0000-4000-8000-000000000006"
+	suiteID := "30000000-0000-4000-8000-000000000007"
+	entryID := "30000000-0000-4000-8000-000000000008"
 	model := domain.Model{EntityMeta: meta(modelID), Name: "test-model", Protocol: domain.ProtocolOpenAIChat}
 	digest := sha256.Sum256([]byte("test fingerprint"))
 	credential := domain.CredentialRef{EntityMeta: meta(credentialID), StoreRef: "llm-test-studio/v1/channel_api_key/" + credentialID, Purpose: domain.CredentialChannelAPIKey, MaskedSuffix: "key1", Fingerprint: "sha256:" + hex.EncodeToString(digest[:])}
@@ -1009,13 +1086,22 @@ func newRunFixture(t *testing.T) runFixture {
 			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
 		},
 	}
+	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
+	suite := domain.Suite{
+		EntityMeta: meta(suiteID), Key: "default", Name: "Default", Protocol: domain.ProtocolOpenAIChat,
+		ModelTarget: mapping.UpstreamModelName, Cases: []domain.CaseRevisionRef{caseRef},
+	}
 	plan := domain.Plan{
-		EntityMeta: meta(planID), Name: "single target", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID}, Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
-		Load: domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
-		SLA:  domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
+		EntityMeta: meta(planID), Name: "single target", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID},
+		Suites: []domain.PlanSuiteEntry{{
+			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
+			Parameters: map[string]json.RawMessage{},
+			Load:       domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
+			SLA:        domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
+		}},
 	}
 	environment := domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"}
-	return runFixture{now: now, model: model, credential: credential, channel: channel, mapping: mapping, testCase: testCase, plan: plan, environment: environment}
+	return runFixture{now: now, model: model, credential: credential, channel: channel, mapping: mapping, testCase: testCase, suite: suite, plan: plan, environment: environment}
 }
 
 func waitForStatus(t *testing.T, repository *fakeRepository, status domain.RunStatus) {

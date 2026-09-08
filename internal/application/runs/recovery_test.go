@@ -11,13 +11,7 @@ import (
 
 func TestRecoverInterruptedCancelsDurableNonTerminalRuns(t *testing.T) {
 	fixture := newRunFixture(t)
-	active, err := domain.NewRun(fixture.plan.EntityMeta, fixture.plan.ID, domain.RunSnapshot{
-		SchemaVersion: 1,
-		Plan:          domain.EntityRevisionRef{ID: fixture.plan.ID, Revision: fixture.plan.Revision},
-		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.model.ID, Revision: fixture.model.Revision}, Name: fixture.model.Name, Protocol: fixture.model.Protocol},
-		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.channel.ID, Revision: fixture.channel.Revision}, Name: fixture.channel.Name, BaseURL: fixture.channel.BaseURL, Protocol: fixture.channel.Protocol, UpstreamModelName: fixture.mapping.UpstreamModelName},
-		Cases:         fixture.plan.Cases, Load: fixture.plan.Load, SLA: fixture.plan.SLA, Environment: fixture.environment,
-	})
+	active, err := domain.NewRun(fixture.plan.EntityMeta, fixture.plan.ID, fixture.snapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
