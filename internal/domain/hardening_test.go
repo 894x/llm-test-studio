@@ -842,6 +842,17 @@ func TestReportTerminalStatusControlsResultCoverage(t *testing.T) {
 	if err := report.Validate(); err == nil {
 		t.Fatal("failed run produced a passing conclusion")
 	}
+
+	report = validReport()
+	report.RunStatus = RunFailed
+	report.Conclusion = ReportConclusion{Passed: false, Verdict: "failed", Issues: []string{"failed"}}
+	report.CaseResults = []Result{}
+	report.SuiteReports[0].Status = SuiteReportCancelled
+	report.SuiteReports[0].Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
+	report.SuiteReports[0].CaseResults = []Result{}
+	if err := report.Validate(); err == nil {
+		t.Fatal("failed run accepted a cancelled Suite report")
+	}
 }
 
 func TestReportRejectsSuiteExecutionAfterCancellationBoundary(t *testing.T) {

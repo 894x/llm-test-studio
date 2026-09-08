@@ -373,6 +373,9 @@ func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID st
 	if runStatus == RunCompleted && report.Status != SuiteReportCompleted {
 		return errors.New("completed run contains an incomplete suite report")
 	}
+	if report.Status == SuiteReportCancelled && runStatus != RunCancelled {
+		return errors.New("cancelled suite report requires a cancelled run")
+	}
 	if err := validateMetricMap("suite report SLA", report.SLA); err != nil {
 		return err
 	}
