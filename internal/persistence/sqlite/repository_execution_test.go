@@ -196,7 +196,7 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 		ChannelIDs: []string{channelID},
 		Suites: []domain.PlanSuiteEntry{{
 			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
-			Cases: []domain.CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
 	mapping := domain.ChannelModel{

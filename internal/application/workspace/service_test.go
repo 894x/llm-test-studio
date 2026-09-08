@@ -42,6 +42,29 @@ func (catalog *fakeCatalog) ListPlans(ctx context.Context) ([]domain.Plan, error
 	return append([]domain.Plan(nil), catalog.plans...), catalog.plansErr
 }
 
+func (catalog *fakeCatalog) ListSuites(context.Context) ([]domain.Suite, error) {
+	suites := []domain.Suite{}
+	for _, plan := range catalog.plans {
+		for _, entry := range plan.Suites {
+			suites = append(suites, domain.Suite{
+				EntityMeta: domain.EntityMeta{ID: entry.SuiteID, Revision: entry.SuiteRevision},
+				Cases:      []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
+			})
+		}
+	}
+	return suites, nil
+}
+
+func (catalog *fakeCatalog) GetSuiteRevision(ctx context.Context, id string, revision uint64) (domain.Suite, error) {
+	suites, err := catalog.ListSuites(ctx)
+	for _, suite := range suites {
+		if suite.ID == id && suite.Revision == revision {
+			return suite, nil
+		}
+	}
+	return domain.Suite{}, err
+}
+
 func (catalog *fakeCatalog) ListRunProjections(ctx context.Context) ([]RunProjection, error) {
 	catalog.runsCalls++
 	if catalog.listRuns != nil {
@@ -225,10 +248,8 @@ func TestSnapshotAcceptsModelFilteredCaseSubsetPinnedByV3Run(t *testing.T) {
 	plan, original := validPlanAndRun(t, now, domain.LoadProfile{
 		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
 	})
-	plan.Suites[0].Cases = append(plan.Suites[0].Cases, domain.CaseRevisionRef{
-		CaseID: "77777777-7777-4777-8777-777777777777", Revision: 1,
-	})
 	snapshot := original.Snapshot()
+	snapshot.Suites[0].Suite.Cases = append(snapshot.Suites[0].Suite.Cases, domain.CaseRevisionRef{CaseID: "99000000-0000-4000-8000-000000000001", Revision: 1})
 	snapshot.PlanDocument = &plan
 	run, err := domain.NewRun(original.Meta(), plan.ID, snapshot)
 	if err != nil {
@@ -405,8 +426,8 @@ func validPlanAndRun(t *testing.T, now time.Time, load domain.LoadProfile) (doma
 		ModelIDs: []string{modelID}, ChannelIDs: []string{channelID},
 		Suites: []domain.PlanSuiteEntry{{
 			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
-			Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 3}}, Parameters: map[string]json.RawMessage{},
-			Load: load, SLA: sla,
+			Parameters: map[string]json.RawMessage{},
+			Load:       load, SLA: sla,
 		}},
 	}
 	if err := plan.Validate(); err != nil {
@@ -419,7 +440,7 @@ func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.R
 	t.Helper()
 	caseMeta := meta(caseID, now)
 	entry := plan.Suites[0]
-	caseMeta.Revision = entry.Cases[0].Revision
+	caseMeta.Revision = 1
 	testCase := domain.TestCase{
 		EntityMeta: caseMeta, Key: "T001", Name: "workspace case", Dimension: "boundary",
 		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
@@ -438,7 +459,7 @@ func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.R
 	suite := domain.Suite{
 		EntityMeta: meta(entry.SuiteID, now), Key: "workspace", Name: "Workspace",
 		Protocol: domain.ProtocolOpenAIChat, ModelTarget: mapping.UpstreamModelName,
-		Cases: append([]domain.CaseRevisionRef(nil), entry.Cases...),
+		Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
 	}
 	run, err := domain.NewRun(meta(id, now), plan.ID, domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
@@ -459,7 +480,7 @@ func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.R
 		PlanDocument: &plan,
 		Mapping:      &mapping,
 		Suites: []domain.RunSuiteSnapshot{{
-			EntryID: entry.EntryID, Suite: suite, Cases: append([]domain.CaseRevisionRef(nil), entry.Cases...),
+			EntryID: entry.EntryID, Suite: suite, Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
 			CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{},
 			Load: entry.Load, SLA: entry.SLA,
 		}},

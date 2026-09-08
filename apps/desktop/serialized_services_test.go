@@ -2,19 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
-	"github.com/894x/llm-test-studio/internal/application/channelconfig"
-	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
-	"github.com/894x/llm-test-studio/internal/credentials"
-	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 type sharedConnectionProbe struct {
@@ -104,197 +99,13 @@ func (query staticCatalogQuery) Snapshot(context.Context) (catalog.Snapshot, err
 	return query.snapshot, nil
 }
 
-func TestSerializedCatalogServiceCleansCredentialAfterPlanUpdateRemovesItsLastReference(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	oldCredentialID := "73000000-0000-4000-8000-000000000001"
-	state := newPlanCredentialState(oldCredentialID)
-	store := credentials.NewMemoryStore()
-	oldRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, oldCredentialID)
-	if err != nil {
+func TestSerializedCatalogServiceUpdatesAndDeletesReferencePlans(t *testing.T) {
+	commands := &recordingCatalogCommands{}
+	service := serializedCatalogService{gate: &productionServiceGate{}, commands: commands}
+	if _, err := service.UpdatePlan(context.Background(), catalog.UpdatePlanCommand{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Set(ctx, oldRef, []byte("sk-old-plan-secret")); err != nil {
+	if err := service.DeletePlan(context.Background(), catalog.DeleteCommand{}); err != nil {
 		t.Fatal(err)
 	}
-	channelService, err := channelconfig.New(channelconfig.Dependencies{
-		Repository: state, Credentials: store, Clock: fixedSerializedClock{},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	commands := &planCleanupCommands{
-		recordingCatalogCommands: &recordingCatalogCommands{},
-		state:                    state,
-	}
-	service := serializedCatalogService{
-		gate: &productionServiceGate{}, commands: commands, channels: channelService,
-	}
-
-	result, err := service.UpdatePlan(ctx, catalog.UpdatePlanCommand{
-		ID: state.document.ID, ExpectedRevision: state.document.Revision,
-	})
-	if err != nil || result.ID == "" {
-		t.Fatalf("UpdatePlan() = %#v, %v", result, err)
-	}
-	if err := store.Test(ctx, oldRef); !errors.Is(err, credentials.ErrNotFound) {
-		t.Fatalf("old Plan credential remains after its last reference was removed: %v", err)
-	}
-}
-
-func TestSerializedCatalogServiceReportsPlanCredentialCleanupFailureWithoutRollingBackDelete(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	oldCredentialID := "73000000-0000-4000-8000-000000000011"
-	state := newPlanCredentialState(oldCredentialID)
-	memory := credentials.NewMemoryStore()
-	oldRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, oldCredentialID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := memory.Set(ctx, oldRef, []byte("sk-retained-after-delete-failure")); err != nil {
-		t.Fatal(err)
-	}
-	deleteFailure := errors.New("operating-system keyring is unavailable")
-	store := &failingDeleteCredentialStore{Store: memory, failID: oldCredentialID, err: deleteFailure}
-	queue := credentials.NewMemoryCleanupQueue()
-	var reported error
-	channelService, err := channelconfig.New(channelconfig.Dependencies{
-		Repository: state, Credentials: store, Clock: fixedSerializedClock{},
-		CleanupQueue:         queue,
-		ReportCleanupFailure: func(err error) { reported = err },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	commands := &planCleanupCommands{
-		recordingCatalogCommands: &recordingCatalogCommands{},
-		state:                    state,
-	}
-	service := serializedCatalogService{
-		gate: &productionServiceGate{}, commands: commands, channels: channelService,
-	}
-
-	err = service.DeletePlan(ctx, catalog.DeleteCommand{ID: state.document.ID, ExpectedRevision: state.document.Revision})
-	if err != nil {
-		t.Fatalf("DeletePlan() error = %v; committed Plan deletion must not be rolled back", err)
-	}
-	if state.planExists {
-		t.Fatal("DeletePlan() did not commit before credential cleanup")
-	}
-	if !errors.Is(reported, deleteFailure) {
-		t.Fatalf("reported cleanup error = %v, want wrapped %v", reported, deleteFailure)
-	}
-	if pending, err := queue.List(ctx); err != nil || len(pending) != 1 || pending[0] != oldCredentialID {
-		t.Fatalf("pending Plan credential cleanup = %#v, %v; want durable retry id", pending, err)
-	}
-	store.err = nil
-	if err := channelService.RetryPendingCredentialCleanup(ctx); err != nil {
-		t.Fatalf("RetryPendingCredentialCleanup() error = %v", err)
-	}
-	if pending, err := queue.List(ctx); err != nil || len(pending) != 0 {
-		t.Fatalf("pending cleanup after retry = %#v, %v; want empty", pending, err)
-	}
-	if err := memory.Test(ctx, oldRef); !errors.Is(err, credentials.ErrNotFound) {
-		t.Fatalf("old Plan credential after retry = %v, want not found", err)
-	}
-}
-
-type fixedSerializedClock struct{}
-
-func (fixedSerializedClock) Now() time.Time {
-	return time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
-}
-
-type planCredentialState struct {
-	channel    domain.Channel
-	document   plancatalog.Document
-	planExists bool
-}
-
-func newPlanCredentialState(oldCredentialID string) *planCredentialState {
-	now := time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC)
-	channel := domain.Channel{
-		EntityMeta: domain.EntityMeta{ID: "73000000-0000-4000-8000-000000000002", SchemaVersion: 1, Revision: 2, CreatedAt: now, UpdatedAt: now},
-		Name:       "current", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
-		CredentialID: "73000000-0000-4000-8000-000000000003",
-	}
-	plan := domain.Plan{
-		EntityMeta: domain.EntityMeta{ID: "73000000-0000-4000-8000-000000000004", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-		Name:       "plan",
-	}
-	oldChannel := channel
-	oldChannel.Revision = 1
-	oldChannel.CredentialID = oldCredentialID
-	return &planCredentialState{
-		channel: channel,
-		document: plancatalog.Document{
-			FileSchemaVersion: plancatalog.CurrentFileSchemaVersion,
-			Plan:              plan,
-			TargetBindings:    []plancatalog.TargetBinding{{Channel: oldChannel}},
-		},
-		planExists: true,
-	}
-}
-
-func (state *planCredentialState) CreateChannel(context.Context, domain.Channel) error { return nil }
-
-func (state *planCredentialState) GetChannel(context.Context, string) (domain.Channel, error) {
-	return state.channel, nil
-}
-
-func (state *planCredentialState) UpdateChannel(context.Context, uint64, domain.Channel) error {
-	return nil
-}
-
-func (state *planCredentialState) DeleteChannel(context.Context, string, uint64) error { return nil }
-
-func (state *planCredentialState) WithCredentialUnreferenced(_ context.Context, credentialID string, action func() error) (bool, error) {
-	if state.channel.CredentialID == credentialID {
-		return false, nil
-	}
-	if state.planExists {
-		for _, binding := range state.document.TargetBindings {
-			if binding.Channel.CredentialID == credentialID {
-				return false, nil
-			}
-		}
-	}
-	return true, action()
-}
-
-type planCleanupCommands struct {
-	*recordingCatalogCommands
-	state *planCredentialState
-}
-
-func (commands *planCleanupCommands) GetPlanDocument(_ context.Context, id string) (plancatalog.Document, error) {
-	if !commands.state.planExists || commands.state.document.ID != id {
-		return plancatalog.Document{}, catalog.ErrNotFound
-	}
-	return commands.state.document, nil
-}
-
-func (commands *planCleanupCommands) UpdatePlan(context.Context, catalog.UpdatePlanCommand) (catalog.MutationResult, error) {
-	commands.state.document.TargetBindings = nil
-	return commands.record("update_plan")
-}
-
-func (commands *planCleanupCommands) DeletePlan(context.Context, catalog.DeleteCommand) error {
-	commands.state.planExists = false
-	_, err := commands.record("delete_plan")
-	return err
-}
-
-type failingDeleteCredentialStore struct {
-	credentials.Store
-	failID string
-	err    error
-}
-
-func (store *failingDeleteCredentialStore) Delete(ctx context.Context, ref credentials.StoreRef) error {
-	if ref.ID() == store.failID && store.err != nil {
-		return store.err
-	}
-	return store.Store.Delete(ctx, ref)
 }

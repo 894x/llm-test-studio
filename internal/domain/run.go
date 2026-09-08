@@ -254,8 +254,8 @@ func (snapshot RunSnapshot) Validate() error {
 		}
 		planSuite := snapshot.PlanDocument.Suites[index]
 		if planSuite.EntryID != runSuite.EntryID || planSuite.SuiteID != runSuite.Suite.ID ||
-			planSuite.SuiteRevision != runSuite.Suite.Revision || !caseRefsAreOrderedSubset(planSuite.Cases, runSuite.Cases) ||
-			!reflect.DeepEqual(planSuite.Parameters, runSuite.Parameters) || !reflect.DeepEqual(planSuite.Load, runSuite.Load) ||
+			planSuite.SuiteRevision != runSuite.Suite.Revision ||
+			!planParametersMatch(planSuite.Parameters, runSuite.Suite, runSuite.Parameters) || !reflect.DeepEqual(planSuite.Load, runSuite.Load) ||
 			!reflect.DeepEqual(planSuite.SLA, runSuite.SLA) {
 			return errors.New("run suite snapshot does not match its pinned plan entry")
 		}
@@ -549,4 +549,29 @@ func (run *Run) UnmarshalJSON(data []byte) error {
 	}
 	*run = candidate
 	return nil
+}
+
+// Plans retain supplied values; the Run also records defaults resolved at start.
+func planParametersMatch(supplied map[string]json.RawMessage, suite Suite, resolved map[string]json.RawMessage) bool {
+	expected := cloneRawMessageMap(supplied)
+	if expected == nil {
+		expected = make(map[string]json.RawMessage)
+	}
+	if suite.QuickTest != nil {
+		for _, input := range suite.QuickTest.Inputs {
+			if _, exists := expected[input.Key]; !exists {
+				expected[input.Key] = input.Default
+			}
+		}
+	}
+	if len(expected) != len(resolved) {
+		return false
+	}
+	for key, raw := range expected {
+		var left, right any
+		if json.Unmarshal(raw, &left) != nil || json.Unmarshal(resolved[key], &right) != nil || !reflect.DeepEqual(left, right) {
+			return false
+		}
+	}
+	return true
 }

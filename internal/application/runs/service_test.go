@@ -303,7 +303,6 @@ func TestPrepareTargetPinsEverySuiteCaseForSelectedModel(t *testing.T) {
 		{CaseID: k3Case.ID, Revision: k3Case.Revision},
 		{CaseID: k26Case.ID, Revision: k26Case.Revision},
 	}
-	fixture.plan.Suites[0].Cases = append([]domain.CaseRevisionRef(nil), fixture.suite.Cases...)
 	repository := &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{
 		k3Case.ID:  k3Case,
 		k26Case.ID: k26Case,
@@ -1051,7 +1050,7 @@ func (fixture runFixture) snapshot() domain.RunSnapshot {
 		PlanDocument:  &plan,
 		Mapping:       &mapping,
 		Suites: []domain.RunSuiteSnapshot{{
-			EntryID: entry.EntryID, Suite: fixture.suite, Cases: append([]domain.CaseRevisionRef(nil), entry.Cases...),
+			EntryID: entry.EntryID, Suite: fixture.suite, Cases: append([]domain.CaseRevisionRef(nil), fixture.suite.Cases...),
 			CaseDefinitions: []domain.TestCase{fixture.testCase}, Parameters: entry.Parameters,
 			Load: entry.Load, SLA: entry.SLA,
 		}},
@@ -1095,7 +1094,7 @@ func newRunFixture(t *testing.T) runFixture {
 	plan := domain.Plan{
 		EntityMeta: meta(planID), Name: "single target", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID},
 		Suites: []domain.PlanSuiteEntry{{
-			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{caseRef},
+			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
 			Parameters: map[string]json.RawMessage{},
 			Load:       domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
 			SLA:        domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},

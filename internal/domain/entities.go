@@ -284,7 +284,6 @@ type PlanSuiteEntry struct {
 	EntryID       string                     `json:"entry_id"`
 	SuiteID       string                     `json:"suite_id"`
 	SuiteRevision uint64                     `json:"suite_revision"`
-	Cases         []CaseRevisionRef          `json:"cases"`
 	Parameters    map[string]json.RawMessage `json:"parameters"`
 	Load          LoadProfile                `json:"load"`
 	SLA           SLAProfile                 `json:"sla"`
@@ -295,9 +294,6 @@ func (entry PlanSuiteEntry) Validate() error {
 		return errors.New("plan suite entry id must be a canonical UUID")
 	}
 	if err := (EntityRevisionRef{ID: entry.SuiteID, Revision: entry.SuiteRevision}).Validate("suite"); err != nil {
-		return err
-	}
-	if err := validateCaseRevisionRefs(entry.Cases); err != nil {
 		return err
 	}
 	if entry.Parameters == nil {
@@ -315,7 +311,6 @@ func (entry PlanSuiteEntry) Validate() error {
 }
 
 func (entry PlanSuiteEntry) clone() PlanSuiteEntry {
-	entry.Cases = append([]CaseRevisionRef(nil), entry.Cases...)
 	entry.Parameters = cloneRawMessageMap(entry.Parameters)
 	entry.SLA = entry.SLA.clone()
 	return entry

@@ -260,8 +260,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   for (const plan of plans) {
     if (
       plan.model_ids.some((id) => !modelByID.has(id)) ||
-      plan.channel_ids.some((id) => !channelByID.has(id)) ||
-      plan.model_ids.some((modelID) => plan.channel_ids.some((channelID) => !mappedBindings.has(`${channelID}\u0000${modelID}`)))
+      plan.channel_ids.some((id) => !channelByID.has(id))
     ) {
       throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_reference"))
     }

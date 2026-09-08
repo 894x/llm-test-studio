@@ -15,7 +15,6 @@ func TestPlanValidatesOrderedSuiteEntriesAndAllowsRepeatedSuite(t *testing.T) {
 	load := LoadProfile{Mode: LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
 	sla := SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}}
 	suiteID := "81000000-0000-4000-8000-000000000002"
-	caseID := "81000000-0000-4000-8000-000000000003"
 	plan := Plan{
 		EntityMeta: meta,
 		Name:       "ordered suites",
@@ -23,14 +22,14 @@ func TestPlanValidatesOrderedSuiteEntriesAndAllowsRepeatedSuite(t *testing.T) {
 			{
 				EntryID: "81000000-0000-4000-8000-000000000004",
 				SuiteID: suiteID, SuiteRevision: 1,
-				Cases:      []CaseRevisionRef{{CaseID: caseID, Revision: 1}},
+
 				Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"first"`)},
 				Load:       load, SLA: sla,
 			},
 			{
 				EntryID: "81000000-0000-4000-8000-000000000005",
 				SuiteID: suiteID, SuiteRevision: 1,
-				Cases:      []CaseRevisionRef{{CaseID: caseID, Revision: 1}},
+
 				Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"second"`)},
 				Load:       load, SLA: sla,
 			},
@@ -129,11 +128,11 @@ func TestRunSnapshotCloneOwnsMultiSuiteMutableValues(t *testing.T) {
 	copy.Suites[0].Parameters["added"] = json.RawMessage(`true`)
 	copy.Suites[0].SLA.Thresholds["e2e_p95_ms"] = 1
 	copy.Suites[0].CaseDefinitions[0].Name = "changed"
-	copy.PlanDocument.Suites[0].Cases[0].Revision++
+	copy.PlanDocument.Suites[0].SuiteRevision++
 	actual := run.Snapshot()
 	if len(actual.Suites[0].Parameters) != 0 || actual.Suites[0].SLA.Thresholds["e2e_p95_ms"] == 1 ||
 		actual.Suites[0].CaseDefinitions[0].Name == "changed" ||
-		actual.PlanDocument.Suites[0].Cases[0].Revision != fixture.PlanDocument.Suites[0].Cases[0].Revision {
+		actual.PlanDocument.Suites[0].SuiteRevision != fixture.PlanDocument.Suites[0].SuiteRevision {
 		t.Fatalf("Run snapshot leaked mutable state: %#v", actual)
 	}
 }

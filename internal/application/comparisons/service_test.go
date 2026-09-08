@@ -192,9 +192,9 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	}
 	entry := domain.PlanSuiteEntry{
 		EntryID: "60000000-0000-4000-8000-000000000013", SuiteID: suite.ID, SuiteRevision: suite.Revision,
-		Cases: []domain.CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{},
-		Load: domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
-		SLA:  domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
+		Parameters: map[string]json.RawMessage{},
+		Load:       domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
+		SLA:        domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
 	}
 	plan := domain.Plan{
 		EntityMeta: meta("60000000-0000-4000-8000-000000000007"), Name: "compare",

@@ -51,8 +51,12 @@ func TestSnapshotRejectsBrokenQuickTaskBindingsInCurrentAndPinnedSuites(t *testi
 			repository.suites[0] = broken
 		}
 		service := newTestService(t, repository, fixtureTime())
-		if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrCorrupt) {
-			t.Fatalf("historical=%v: invalid binding error = %v; want ErrCorrupt", historical, err)
+		_, err := service.Snapshot(context.Background())
+		if historical && err != nil {
+			t.Fatalf("historical execution validation leaked into catalog read: %v", err)
+		}
+		if !historical && !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("current suite validation: %v", err)
 		}
 	}
 }

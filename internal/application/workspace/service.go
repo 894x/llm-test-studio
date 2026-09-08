@@ -24,6 +24,8 @@ var (
 // list data in their storage layer; detail records are deliberately excluded.
 type Catalog interface {
 	ListPlans(context.Context) ([]domain.Plan, error)
+	ListSuites(context.Context) ([]domain.Suite, error)
+	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
 	ListRunProjections(context.Context) ([]RunProjection, error)
 }
 
@@ -176,8 +178,30 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 
 	planSummaries := make([]PlanSummary, 0, len(plans))
+	suitesByID := map[string]domain.Suite{}
+	if len(plans) > 0 {
+		suites, err := service.catalog.ListSuites(ctx)
+		if err != nil {
+			return Snapshot{}, safePortError(ctx, err)
+		}
+		for _, suite := range suites {
+			suitesByID[suite.ID] = suite
+		}
+	}
 	for _, plan := range plans {
-		caseCount, load := summarizeSuiteLoads(plan.Suites)
+		load := summarizeSuiteLoads(plan.Suites)
+		caseCount := 0
+		for _, entry := range plan.Suites {
+			suite, exists := suitesByID[entry.SuiteID]
+			if !exists || suite.Revision != entry.SuiteRevision {
+				var err error
+				suite, err = service.catalog.GetSuiteRevision(ctx, entry.SuiteID, entry.SuiteRevision)
+				if err != nil {
+					return Snapshot{}, safePortError(ctx, err)
+				}
+			}
+			caseCount += len(suite.Cases)
+		}
 		planSummaries = append(planSummaries, PlanSummary{
 			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
 			CaseCount: caseCount, RunCount: runCounts[plan.ID],
@@ -300,14 +324,12 @@ func summarizeRun(projection RunProjection) RunSummary {
 	return summary
 }
 
-func summarizeSuiteLoads(suites []domain.PlanSuiteEntry) (int, domain.LoadProfile) {
+func summarizeSuiteLoads(suites []domain.PlanSuiteEntry) domain.LoadProfile {
 	loads := make([]domain.LoadProfile, len(suites))
-	caseCount := 0
 	for index, suite := range suites {
-		caseCount += len(suite.Cases)
 		loads[index] = suite.Load
 	}
-	return caseCount, aggregateSequentialLoads(loads)
+	return aggregateSequentialLoads(loads)
 }
 
 func summarizeSnapshotLoads(snapshot domain.RunSnapshot) (int, domain.LoadProfile) {

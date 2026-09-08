@@ -320,9 +320,6 @@ func (service *Service) CreatePlan(ctx context.Context, command CreatePlanComman
 	if err := plan.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
-	if err := service.validatePlanTarget(ctx, plan); err != nil {
-		return MutationResult{}, err
-	}
 	if err := service.repository.CreatePlan(ctx, plan); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
 	}
@@ -362,9 +359,6 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 	plan := planFromUpdate(meta, command, entries)
 	if err := plan.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
-	}
-	if err := service.validatePlanTarget(ctx, plan); err != nil {
-		return MutationResult{}, err
 	}
 	if err := service.repository.UpdatePlan(ctx, command.ExpectedRevision, plan); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
@@ -571,45 +565,13 @@ func (service *Service) resolvePlanSuiteEntries(
 		}
 		seen[entryID] = struct{}{}
 
-		suite, err := service.repository.GetSuiteRevision(ctx, input.SuiteID, input.SuiteRevision)
-		if err != nil {
-			return nil, service.portError(ctx, err)
-		}
-		if suite.ID != input.SuiteID || suite.Revision != input.SuiteRevision || suite.Validate() != nil {
-			return nil, ErrCorrupt
-		}
-		definitions := make([]domain.TestCase, 0, len(suite.Cases))
-		for _, ref := range suite.Cases {
-			testCase, loadErr := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
-			if loadErr != nil {
-				return nil, service.portError(ctx, loadErr)
-			}
-			if testCase.Protocol != suite.Protocol {
-				return nil, ErrPlanProtocolMismatch
-			}
-			definitions = append(definitions, testCase)
-		}
-		if suite.ValidateCases(definitions) != nil {
-			return nil, ErrCorrupt
-		}
 		parameters := cloneRawMessages(input.Parameters)
 		if parameters == nil {
 			parameters = map[string]json.RawMessage{}
 		}
-		if suite.QuickTest == nil {
-			if len(parameters) != 0 {
-				return nil, ErrInvalid
-			}
-		} else {
-			_, resolved, applyErr := suite.ApplyInputs(definitions, parameters)
-			if applyErr != nil {
-				return nil, ErrInvalid
-			}
-			parameters = resolved
-		}
 		entry := domain.PlanSuiteEntry{
-			EntryID: entryID, SuiteID: suite.ID, SuiteRevision: suite.Revision,
-			Cases: append([]domain.CaseRevisionRef(nil), suite.Cases...), Parameters: parameters,
+			EntryID: entryID, SuiteID: input.SuiteID, SuiteRevision: input.SuiteRevision,
+			Parameters: parameters,
 			Load: domain.LoadProfile{
 				Mode: input.LoadMode, Concurrency: input.Concurrency, RequestCount: input.RequestCount,
 				RatePerSecond: input.RatePerSecond, DurationMS: input.DurationMS, RequestTimeoutMS: input.RequestTimeoutMS,
@@ -632,105 +594,6 @@ func generatedPlanSuiteEntryID(planID string, planRevision uint64, index int, su
 		"%08x-%04x-%04x-%04x-%012x",
 		digest[0:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16],
 	)
-}
-
-func (service *Service) validatePlanTarget(ctx context.Context, plan domain.Plan) error {
-	targetProtocol := domain.Protocol("")
-	requiredModelTarget := ""
-	conflictingModelTargets := false
-	for _, entry := range plan.Suites {
-		suite, err := service.repository.GetSuiteRevision(ctx, entry.SuiteID, entry.SuiteRevision)
-		if err != nil {
-			return service.portError(ctx, err)
-		}
-		if suite.ID != entry.SuiteID || suite.Revision != entry.SuiteRevision || suite.Validate() != nil || !sameCaseRefs(suite.Cases, entry.Cases) {
-			return ErrCorrupt
-		}
-		if targetProtocol == "" {
-			targetProtocol = suite.Protocol
-		} else if suite.Protocol != targetProtocol {
-			return ErrPlanProtocolMismatch
-		}
-		if suite.ModelTarget != "" {
-			if requiredModelTarget == "" {
-				requiredModelTarget = suite.ModelTarget
-			} else if suite.ModelTarget != requiredModelTarget {
-				conflictingModelTargets = true
-			}
-		}
-		if err := service.validateSuiteCases(ctx, suite); err != nil {
-			if errors.Is(err, ErrInvalid) {
-				return ErrCorrupt
-			}
-			return err
-		}
-	}
-	for _, modelID := range plan.ModelIDs {
-		model, err := service.repository.GetModel(ctx, modelID)
-		if err != nil {
-			return service.portError(ctx, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := model.Validate(); err != nil || model.ID != modelID {
-			return ErrCorrupt
-		}
-		if model.Protocol != targetProtocol {
-			return ErrPlanProtocolMismatch
-		}
-	}
-	for _, channelID := range plan.ChannelIDs {
-		channel, err := service.repository.GetChannel(ctx, channelID)
-		if err != nil {
-			return service.portError(ctx, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := channel.Validate(); err != nil || channel.ID != channelID {
-			return ErrCorrupt
-		}
-		if channel.Protocol != targetProtocol {
-			return ErrPlanProtocolMismatch
-		}
-	}
-	if conflictingModelTargets {
-		return ErrInvalid
-	}
-	if len(plan.ModelIDs) == 0 {
-		return nil
-	}
-	mappings, err := service.repository.ListChannelModels(ctx)
-	if err != nil {
-		return service.portError(ctx, err)
-	}
-	mappingByBinding := make(map[string]domain.ChannelModel, len(mappings))
-	for _, mapping := range mappings {
-		key := mapping.ChannelID + "\x00" + mapping.ModelID
-		if !sliceContains(plan.ChannelIDs, mapping.ChannelID) {
-			continue
-		}
-		if !sliceContains(plan.ModelIDs, mapping.ModelID) {
-			continue
-		}
-		if mapping.Validate() != nil {
-			return ErrCorrupt
-		}
-		if _, duplicate := mappingByBinding[key]; duplicate {
-			return ErrCorrupt
-		}
-		mappingByBinding[key] = mapping
-	}
-	for _, channelID := range plan.ChannelIDs {
-		for _, modelID := range plan.ModelIDs {
-			mapping, found := mappingByBinding[channelID+"\x00"+modelID]
-			if !found || requiredModelTarget != "" && mapping.UpstreamModelName != requiredModelTarget {
-				return ErrInvalid
-			}
-		}
-	}
-	return nil
 }
 
 func sliceContains(values []string, target string) bool {
@@ -877,7 +740,6 @@ func clonePlanSuiteEntries(entries []domain.PlanSuiteEntry) []domain.PlanSuiteEn
 	result := make([]domain.PlanSuiteEntry, len(entries))
 	for index, entry := range entries {
 		result[index] = entry
-		result[index].Cases = append([]domain.CaseRevisionRef(nil), entry.Cases...)
 		result[index].Parameters = cloneRawMessages(entry.Parameters)
 		result[index].SLA = domain.SLAProfile{Thresholds: cloneThresholds(entry.SLA.Thresholds)}
 	}

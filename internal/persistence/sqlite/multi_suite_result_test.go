@@ -26,8 +26,8 @@ func TestRepositoryStoresSameCaseSummaryForDifferentSuiteEntries(t *testing.T) {
 		ModelTarget: snapshot.Channel.UpstreamModelName, Cases: []domain.CaseRevisionRef{caseRef},
 	}
 	entries := []domain.PlanSuiteEntry{
-		{EntryID: "86000000-0000-4000-8000-000000000002", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
-		{EntryID: "86000000-0000-4000-8000-000000000003", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
+		{EntryID: "86000000-0000-4000-8000-000000000002", SuiteID: suite.ID, SuiteRevision: suite.Revision, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
+		{EntryID: "86000000-0000-4000-8000-000000000003", SuiteID: suite.ID, SuiteRevision: suite.Revision, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
 	}
 	plan := *snapshot.PlanDocument
 	plan.Suites = entries

@@ -230,3 +230,10 @@ describe("parseCatalogSnapshot ordered plan suites", () => {
     expect(() => parseCatalogSnapshot(payload)).toThrow("桌面目录测试计划成员无效")
   })
 })
+
+it("accepts saved Plan references before channel mappings are configured", () => {
+  const payload = structuredClone(FIXTURE_CATALOG)
+  payload.channel_models = []
+  payload.channels.forEach((channel) => { channel.model_count = 0 })
+  expect(parseCatalogSnapshot(payload).plans).toEqual(payload.plans)
+})

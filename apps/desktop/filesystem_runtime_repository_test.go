@@ -21,7 +21,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentCaseChanges(t *testing.T) {
+func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunStart(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -133,13 +133,13 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 	newMapping := mapping
 	newMapping.Revision++
 	newMapping.UpdatedAt = newMapping.UpdatedAt.Add(time.Minute)
-	newMapping.UpstreamModelName = "new-upstream-model"
+	newMapping.UpstreamModelName = "upstream-model"
 	if err := channels.UpdateMapping(ctx, mapping.Revision, newMapping); err != nil {
 		t.Fatalf("UpdateMapping() error = %v", err)
 	}
 	updatedCase := caseEntry.TestCase
 	updatedCase.Name = "updated file case"
-	if err := cases.SaveCase(ctx, caseEntry.Group, caseEntry.Directory, updatedCase); err != nil {
+	if err := catalogRepository.UpdateTestCase(ctx, caseEntry.TestCase.Revision, updatedCase); err != nil {
 		t.Fatalf("SaveCase(updated) error = %v", err)
 	}
 	currentCase, err := cases.Find(ctx, caseEntry.TestCase.ID)
@@ -161,7 +161,7 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 	t.Cleanup(func() { _ = operational.Close() })
 	repository := filesystemRuntimeRepository{Repository: operational, catalog: catalogRepository}
 	store := credentials.NewMemoryStore()
-	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
+	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, newChannel.CredentialID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,11 +201,11 @@ func TestFilesystemRuntimeRepositoryStartsRunWithPinnedCaseRevisionAfterCurrentC
 		queuedSnapshot.Suites[0].CaseDefinitions[0].Name != caseEntry.TestCase.Name {
 		t.Fatalf("queued run suite definitions = %#v, want pinned revision %#v", queuedSnapshot.Suites, caseEntry.TestCase)
 	}
-	if queuedSnapshot.Model.Revision != model.Revision || queuedSnapshot.Model.Name != model.Name ||
-		queuedSnapshot.Channel.Revision != channel.Revision || queuedSnapshot.Channel.BaseURL != channel.BaseURL ||
-		queuedSnapshot.Mapping == nil || queuedSnapshot.Mapping.Revision != mapping.Revision ||
+	if queuedSnapshot.Model.Revision != newModel.Revision || queuedSnapshot.Model.Name != newModel.Name ||
+		queuedSnapshot.Channel.Revision != newChannel.Revision || queuedSnapshot.Channel.BaseURL != newChannel.BaseURL ||
+		queuedSnapshot.Mapping == nil || queuedSnapshot.Mapping.Revision != newMapping.Revision ||
 		queuedSnapshot.Mapping.UpstreamModelName != mapping.UpstreamModelName {
-		t.Fatalf("queued run target drifted from Plan bindings: %#v", queuedSnapshot)
+		t.Fatalf("queued run did not resolve current targets: %#v", queuedSnapshot)
 	}
 	// Activating reloads the canonical SQLite document and validates the next
 	// state against the file-derived in-memory Run.

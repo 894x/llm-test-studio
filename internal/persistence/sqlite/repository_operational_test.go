@@ -73,7 +73,7 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID},
 		Suites: []domain.PlanSuiteEntry{{
 			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
-			Cases: []domain.CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
 	environment := domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "go-test"}

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -51,9 +52,6 @@ func TestFilesystemCatalogRepositoryRefusesToDeleteTheOnlyMappingForABoundPlan(t
 	if err := plans.CreateDocument(ctx, plancatalog.Document{
 		FileSchemaVersion: plancatalog.CurrentFileSchemaVersion,
 		Plan:              plan,
-		TargetBindings: []plancatalog.TargetBinding{{
-			Model: filesystemCatalogModelFixture(mapping.ModelID, channel.Protocol), Channel: channel, Mapping: mapping,
-		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +105,7 @@ func TestFilesystemCatalogRepositoryAllowsMappingDeletionForTargetlessPlan(t *te
 	}
 }
 
-func TestFilesystemCatalogRepositoryRejectsPlanWhoseSuiteTargetDiffersFromBinding(t *testing.T) {
+func TestFilesystemCatalogRepositoryDefersPlanTargetValidation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -165,8 +163,8 @@ func TestFilesystemCatalogRepositoryRejectsPlanWhoseSuiteTargetDiffersFromBindin
 	}
 	suite = suiteEntries[0].Suite
 	filesystemCatalogSetPlanSuites(&plan, suite)
-	if err := repository.CreatePlan(ctx, plan); !errors.Is(err, catalog.ErrInvalid) {
-		t.Fatalf("CreatePlan() target mismatch error = %v, want %v", err, catalog.ErrInvalid)
+	if err := repository.CreatePlan(ctx, plan); err != nil {
+		t.Fatalf("CreatePlan() must save references: %v", err)
 	}
 }
 
@@ -438,7 +436,7 @@ func (store *blockingAfterSetCredentialStore) Set(ctx context.Context, ref crede
 	}
 }
 
-func TestFilesystemCatalogRepositoryFindsHistoricalPlanCredentialReference(t *testing.T) {
+func TestFilesystemCatalogRepositoryPlansDoNotRetainHistoricalCredentials(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -462,11 +460,6 @@ func TestFilesystemCatalogRepositoryFindsHistoricalPlanCredentialReference(t *te
 	if err := plans.CreateDocument(ctx, plancatalog.Document{
 		FileSchemaVersion: plancatalog.CurrentFileSchemaVersion,
 		Plan:              plan,
-		TargetBindings: []plancatalog.TargetBinding{{
-			Model:   filesystemCatalogModelFixture(mapping.ModelID, channel.Protocol),
-			Channel: channel,
-			Mapping: mapping,
-		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -483,8 +476,8 @@ func TestFilesystemCatalogRepositoryFindsHistoricalPlanCredentialReference(t *te
 	if err != nil {
 		t.Fatalf("IsCredentialReferenced() error = %v", err)
 	}
-	if !referenced {
-		t.Fatal("IsCredentialReferenced() = false, want true for immutable plan binding")
+	if referenced {
+		t.Fatal("Plan reference must not retain a historical credential")
 	}
 }
 
@@ -603,7 +596,7 @@ func TestFilesystemCatalogRepositoryStoresAndReadsAnExactSuiteRevision(t *testin
 	}
 }
 
-func TestFilesystemCatalogRepositoryPlanPinsSurviveExternalCaseAndSuiteEdits(t *testing.T) {
+func TestFilesystemCatalogRepositoryPlanReferencesRemainUnchangedAfterExternalEdits(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -680,7 +673,7 @@ func TestFilesystemCatalogRepositoryPlanPinsSurviveExternalCaseAndSuiteEdits(t *
 	}
 
 	// Bypass the repository to model direct edits to the shareable files. The
-	// Plan save must already have materialized every exact revision it pinned.
+	// Plan stores references without copying the referenced contents.
 	for _, pinned := range []casecatalog.Entry{directCase, suiteCase} {
 		edited := pinned.TestCase
 		edited.Name += " externally edited"
@@ -706,25 +699,13 @@ func TestFilesystemCatalogRepositoryPlanPinsSurviveExternalCaseAndSuiteEdits(t *
 		t.Fatal(err)
 	}
 
-	for _, pinned := range []casecatalog.Entry{directCase, suiteCase} {
-		exact, err := repository.GetTestCaseRevision(ctx, pinned.TestCase.ID, pinned.TestCase.Revision)
-		if err != nil {
-			t.Fatalf("GetTestCaseRevision(%s) after external edit error = %v", pinned.TestCase.Key, err)
-		}
-		if exact.Name != pinned.TestCase.Name {
-			t.Fatalf("exact Case = %#v, want pinned %#v", exact, pinned.TestCase)
-		}
-	}
-	exactSuite, err := repository.GetSuiteRevision(ctx, pinnedSuite.Suite.ID, pinnedSuite.Suite.Revision)
-	if err != nil {
-		t.Fatalf("GetSuiteRevision() after external edits error = %v", err)
-	}
-	if exactSuite.Name != pinnedSuite.Suite.Name || len(exactSuite.Cases) != 1 || exactSuite.Cases[0] != pinnedSuite.Suite.Cases[0] {
-		t.Fatalf("exact Suite = %#v, want pinned %#v", exactSuite, pinnedSuite.Suite)
+	stored, err := plans.Get(ctx, plan.ID)
+	if err != nil || !reflect.DeepEqual(stored, plan) {
+		t.Fatalf("external edits changed saved Plan references: %v", err)
 	}
 }
 
-func TestFilesystemCatalogRepositoryPlanRevisionMaterializationFailureDoesNotCommit(t *testing.T) {
+func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeCaseRevisions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -786,22 +767,18 @@ func TestFilesystemCatalogRepositoryPlanRevisionMaterializationFailureDoesNotCom
 			} else {
 				mutationErr = repository.UpdatePlan(ctx, plan.Revision-1, plan)
 			}
-			if !errors.Is(mutationErr, want) {
-				t.Fatalf("%s Plan error = %v, want wrapped %v", mutation, mutationErr, want)
+			if mutationErr != nil {
+				t.Fatalf("Plan save tried to archive Cases: %v", mutationErr)
 			}
 			stored, err := plans.Get(ctx, plan.ID)
-			if mutation == "create" {
-				if !errors.Is(err, plancatalog.ErrNotFound) {
-					t.Fatalf("Get(created Plan) error = %v, want %v", err, plancatalog.ErrNotFound)
-				}
-			} else if err != nil || stored.Name == plan.Name || stored.Revision == plan.Revision {
-				t.Fatalf("failed update changed Plan = %#v, %v", stored, err)
+			if err != nil || !reflect.DeepEqual(stored, plan) {
+				t.Fatalf("reference plan not saved: %v", err)
 			}
 		})
 	}
 }
 
-func TestFilesystemCatalogRepositorySuiteRevisionMaterializationFailureDoesNotCommitPlan(t *testing.T) {
+func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeSuiteRevisions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -840,11 +817,11 @@ func TestFilesystemCatalogRepositorySuiteRevisionMaterializationFailureDoesNotCo
 		lockPath: filepath.Join(root, "catalog.lock"), cases: cases,
 		suites: &failingStoreRevisionSuiteCatalog{Service: suites, err: want}, plans: plans,
 	}
-	if err := repository.CreatePlan(ctx, plan); !errors.Is(err, want) {
-		t.Fatalf("CreatePlan() error = %v, want wrapped %v", err, want)
+	if err := repository.CreatePlan(ctx, plan); err != nil {
+		t.Fatalf("Plan save tried to archive Suite: %v", err)
 	}
-	if _, err := plans.Get(ctx, plan.ID); !errors.Is(err, plancatalog.ErrNotFound) {
-		t.Fatalf("Get(created Plan) error = %v, want %v", err, plancatalog.ErrNotFound)
+	if _, err := plans.Get(ctx, plan.ID); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1635,7 +1612,7 @@ func filesystemCatalogSetPlanSuites(plan *domain.Plan, suites ...domain.Suite) {
 		plan.Suites[index] = domain.PlanSuiteEntry{
 			EntryID: fmt.Sprintf("65000000-0000-4000-8000-%012d", index+1),
 			SuiteID: suite.ID, SuiteRevision: suite.Revision,
-			Cases: append([]domain.CaseRevisionRef(nil), suite.Cases...), Parameters: map[string]json.RawMessage{},
+			Parameters: map[string]json.RawMessage{},
 			Load: domain.LoadProfile{
 				Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
 			},

@@ -22,6 +22,10 @@ func (repository filesystemRuntimeRepository) ListPlans(ctx context.Context) ([]
 	return repository.catalog.ListPlans(ctx)
 }
 
+func (repository filesystemRuntimeRepository) ListSuites(ctx context.Context) ([]domain.Suite, error) {
+	return repository.catalog.ListSuites(ctx)
+}
+
 func (repository filesystemRuntimeRepository) GetPlan(ctx context.Context, id string) (domain.Plan, error) {
 	return repository.catalog.GetPlan(ctx, id)
 }
@@ -85,19 +89,6 @@ func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
 	if len(plan.ModelIDs) > 0 && (!containsRuntimeID(plan.ModelIDs, modelID) || !containsRuntimeID(plan.ChannelIDs, channelID)) {
-		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
-	}
-	if len(plan.ModelIDs) > 0 {
-		for _, binding := range document.TargetBindings {
-			if binding.Model.ID != modelID || binding.Channel.ID != channelID {
-				continue
-			}
-			if !binding.Channel.Enabled || binding.Model.Protocol != binding.Channel.Protocol ||
-				binding.Mapping.ModelID != binding.Model.ID || binding.Mapping.ChannelID != binding.Channel.ID {
-				return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrCorrupt
-			}
-			return binding.Model, binding.Channel, binding.Mapping, nil
-		}
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
 	model, err := repository.catalog.GetModel(ctx, modelID)

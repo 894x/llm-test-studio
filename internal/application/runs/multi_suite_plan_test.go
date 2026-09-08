@@ -35,8 +35,8 @@ func TestMultiSuitePlanRunsInOrderContinuesAfterFailureAndKeepsOwnership(t *test
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}}
 	fixture.plan.Suites = []domain.PlanSuiteEntry{
-		{EntryID: "85000000-0000-4000-8000-000000000002", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases, Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"first"`)}, Load: load, SLA: sla},
-		{EntryID: "85000000-0000-4000-8000-000000000003", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases, Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"second"`)}, Load: load, SLA: sla},
+		{EntryID: "85000000-0000-4000-8000-000000000002", SuiteID: suite.ID, SuiteRevision: suite.Revision, Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"first"`)}, Load: load, SLA: sla},
+		{EntryID: "85000000-0000-4000-8000-000000000003", SuiteID: suite.ID, SuiteRevision: suite.Revision, Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"second"`)}, Load: load, SLA: sla},
 	}
 	repository := &multiSuiteRepository{
 		fakeRepository: &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{fixture.testCase.ID: fixture.testCase}},
@@ -110,8 +110,8 @@ func TestMultiSuitePlanCancellationStopsBeforeTheNextSuite(t *testing.T) {
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}}
 	fixture.plan.Suites = []domain.PlanSuiteEntry{
-		{EntryID: "85000000-0000-4000-8000-000000000012", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
-		{EntryID: "85000000-0000-4000-8000-000000000013", SuiteID: suite.ID, SuiteRevision: suite.Revision, Cases: suite.Cases, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
+		{EntryID: "85000000-0000-4000-8000-000000000012", SuiteID: suite.ID, SuiteRevision: suite.Revision, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
+		{EntryID: "85000000-0000-4000-8000-000000000013", SuiteID: suite.ID, SuiteRevision: suite.Revision, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla},
 	}
 	repository := &multiSuiteRepository{
 		fakeRepository: &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{fixture.testCase.ID: fixture.testCase}},
@@ -193,9 +193,9 @@ func TestQueuedMultiSuitePlanCancellationGeneratesOneReportWithoutExecution(t *t
 	}
 	fixture.plan.Suites = []domain.PlanSuiteEntry{{
 		EntryID: "85000000-0000-4000-8000-000000000022", SuiteID: suite.ID, SuiteRevision: suite.Revision,
-		Cases: suite.Cases, Parameters: map[string]json.RawMessage{},
-		Load: domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000},
-		SLA:  domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}},
+		Parameters: map[string]json.RawMessage{},
+		Load:       domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000},
+		SLA:        domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}},
 	}}
 	repository := &multiSuiteRepository{
 		fakeRepository: &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{fixture.testCase.ID: fixture.testCase}},

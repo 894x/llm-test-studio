@@ -510,7 +510,7 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 	}
 	planPath := filepath.Join(executableDirectory, "data", "plans", createdPlan.ID+".json")
 	planRaw, err := os.ReadFile(planPath)
-	if err != nil || !json.Valid(planRaw) || !strings.Contains(string(planRaw), createdPlan.ID) || !strings.Contains(string(planRaw), createdCase.ID) {
+	if err != nil || !json.Valid(planRaw) || !strings.Contains(string(planRaw), createdPlan.ID) || strings.Contains(string(planRaw), createdCase.ID) {
 		t.Fatalf("plan file = %q, %v", planRaw, err)
 	}
 	entries, err := os.ReadDir(executableDirectory)

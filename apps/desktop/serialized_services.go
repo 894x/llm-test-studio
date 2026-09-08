@@ -7,7 +7,6 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
-	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
@@ -103,27 +102,6 @@ type serializedCatalogService struct {
 		Update(context.Context, channelconfig.UpdateCommand) (channelconfig.MutationResult, error)
 		Delete(context.Context, string, uint64) error
 	}
-}
-
-type planDocumentReader interface {
-	GetPlanDocument(context.Context, string) (plancatalog.Document, error)
-}
-
-type releasedCredentialCleaner interface {
-	ScheduleCredentialCleanup(context.Context, ...string) error
-	CleanupCredentialIfUnreferenced(string)
-}
-
-// catalogCommandsWithPlanDocuments keeps the public command surface narrow
-// while giving the desktop coordinator read access to the pre-mutation Plan
-// bindings required for safe keyring cleanup.
-type catalogCommandsWithPlanDocuments struct {
-	CatalogCommands
-	documents planDocumentReader
-}
-
-func (commands catalogCommandsWithPlanDocuments) GetPlanDocument(ctx context.Context, id string) (plancatalog.Document, error) {
-	return commands.documents.GetPlanDocument(ctx, id)
 }
 
 func (service serializedCatalogService) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
@@ -301,80 +279,13 @@ func (service serializedCatalogService) CreatePlan(ctx context.Context, command 
 func (service serializedCatalogService) UpdatePlan(ctx context.Context, command catalog.UpdatePlanCommand) (catalog.MutationResult, error) {
 	release := service.gate.enter()
 	defer release()
-	credentials, err := service.planCredentialCleanupCandidates(ctx, command.ID)
-	if err != nil {
-		return catalog.MutationResult{}, err
-	}
-	if err := service.scheduleReleasedPlanCredentials(ctx, credentials); err != nil {
-		return catalog.MutationResult{}, err
-	}
-	result, err := service.commands.UpdatePlan(ctx, command)
-	service.cleanupReleasedPlanCredentials(credentials)
-	return result, err
+	return service.commands.UpdatePlan(ctx, command)
 }
 
 func (service serializedCatalogService) DeletePlan(ctx context.Context, command catalog.DeleteCommand) error {
 	release := service.gate.enter()
 	defer release()
-	credentials, err := service.planCredentialCleanupCandidates(ctx, command.ID)
-	if err != nil {
-		return err
-	}
-	if err := service.scheduleReleasedPlanCredentials(ctx, credentials); err != nil {
-		return err
-	}
-	if err := service.commands.DeletePlan(ctx, command); err != nil {
-		service.cleanupReleasedPlanCredentials(credentials)
-		return err
-	}
-	service.cleanupReleasedPlanCredentials(credentials)
-	return nil
-}
-
-func (service serializedCatalogService) planCredentialCleanupCandidates(ctx context.Context, planID string) ([]string, error) {
-	if _, ok := service.channels.(releasedCredentialCleaner); !ok {
-		return nil, nil
-	}
-	documents, ok := service.commands.(planDocumentReader)
-	if !ok || isNilInterface(documents) {
-		return nil, nil
-	}
-	document, err := documents.GetPlanDocument(ctx, planID)
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[string]struct{}, len(document.TargetBindings))
-	credentials := make([]string, 0, len(document.TargetBindings))
-	for _, binding := range document.TargetBindings {
-		credentialID := binding.Channel.CredentialID
-		if !domain.IsUUID(credentialID) {
-			continue
-		}
-		if _, exists := seen[credentialID]; exists {
-			continue
-		}
-		seen[credentialID] = struct{}{}
-		credentials = append(credentials, credentialID)
-	}
-	return credentials, nil
-}
-
-func (service serializedCatalogService) scheduleReleasedPlanCredentials(ctx context.Context, credentials []string) error {
-	cleaner, ok := service.channels.(releasedCredentialCleaner)
-	if !ok || isNilInterface(cleaner) || len(credentials) == 0 {
-		return nil
-	}
-	return cleaner.ScheduleCredentialCleanup(ctx, credentials...)
-}
-
-func (service serializedCatalogService) cleanupReleasedPlanCredentials(credentials []string) {
-	cleaner, ok := service.channels.(releasedCredentialCleaner)
-	if !ok || isNilInterface(cleaner) {
-		return
-	}
-	for _, credentialID := range credentials {
-		cleaner.CleanupCredentialIfUnreferenced(credentialID)
-	}
+	return service.commands.DeletePlan(ctx, command)
 }
 
 func filesystemCaseDirectory(key string) string {

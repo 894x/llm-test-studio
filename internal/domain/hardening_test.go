@@ -51,7 +51,7 @@ func validRunSnapshot() RunSnapshot {
 		ChannelIDs: []string{testChannelID},
 		Suites: []PlanSuiteEntry{{
 			EntryID: testPlanEntryID, SuiteID: suite.ID, SuiteRevision: suite.Revision,
-			Cases: []CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
+			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
 	plan.Revision = 3
@@ -305,17 +305,17 @@ func TestSuiteAndPlanPinEveryCaseRevision(t *testing.T) {
 		ModelIDs: []string{testModelID}, ChannelIDs: []string{testChannelID},
 		Suites: []PlanSuiteEntry{{
 			EntryID: "123e4567-e89b-42d3-a456-426614174025", SuiteID: suite.ID, SuiteRevision: suite.Revision,
-			Cases: suite.Cases, Parameters: map[string]json.RawMessage{},
-			Load: validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
+			Parameters: map[string]json.RawMessage{},
+			Load:       validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
 		}},
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("explicit-case Plan.Validate() error = %v", err)
 	}
 
-	plan.Suites[0].Cases[0].Revision = 0
+	plan.Suites[0].SuiteRevision = 0
 	if err := plan.Validate(); err == nil {
-		t.Fatal("plan containing an unpinned case revision validated")
+		t.Fatal("plan containing an unpinned suite revision validated")
 	}
 }
 
@@ -325,8 +325,8 @@ func TestPlanAllowsTargetsToBeSelectedAtRunTime(t *testing.T) {
 		Suites: []PlanSuiteEntry{{
 			EntryID: "123e4567-e89b-42d3-a456-426614174026",
 			SuiteID: testPlanID, SuiteRevision: 1,
-			Cases: []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}}, Parameters: map[string]json.RawMessage{},
-			Load: validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
+			Parameters: map[string]json.RawMessage{},
+			Load:       validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
 		}},
 	}
 	if err := plan.Validate(); err != nil {

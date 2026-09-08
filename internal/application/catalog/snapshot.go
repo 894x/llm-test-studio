@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -262,73 +261,14 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, ErrCorrupt
 		}
 		planIDs[plan.ID] = struct{}{}
-		targetProtocol := domain.Protocol("")
-		requiredModelTarget := ""
-		conflictingModelTargets := false
-		for _, entry := range plan.Suites {
-			pinnedSuite, err := resolveSuiteRevision(entry.SuiteID, entry.SuiteRevision)
-			if err != nil {
-				return Snapshot{}, err
-			}
-			if !sameCaseRefs(pinnedSuite.Cases, entry.Cases) {
-				return Snapshot{}, ErrCorrupt
-			}
-			if targetProtocol == "" {
-				targetProtocol = pinnedSuite.Protocol
-			} else if pinnedSuite.Protocol != targetProtocol {
-				return Snapshot{}, ErrCorrupt
-			}
-			if pinnedSuite.ModelTarget != "" {
-				if requiredModelTarget == "" {
-					requiredModelTarget = pinnedSuite.ModelTarget
-				} else if pinnedSuite.ModelTarget != requiredModelTarget {
-					conflictingModelTargets = true
-				}
-			}
-			definitions := make([]domain.TestCase, 0, len(pinnedSuite.Cases))
-			for _, ref := range pinnedSuite.Cases {
-				testCase, resolveErr := resolveCaseRevision(ref)
-				if resolveErr != nil {
-					return Snapshot{}, resolveErr
-				}
-				if _, found := testCaseByID[testCase.ID]; !found {
-					return Snapshot{}, ErrCorrupt
-				}
-				definitions = append(definitions, testCase)
-			}
-			if pinnedSuite.ValidateCases(definitions) != nil {
-				return Snapshot{}, ErrCorrupt
-			}
-			if pinnedSuite.QuickTest == nil {
-				if len(entry.Parameters) != 0 {
-					return Snapshot{}, ErrCorrupt
-				}
-			} else {
-				_, resolved, applyErr := pinnedSuite.ApplyInputs(definitions, entry.Parameters)
-				if applyErr != nil || !reflect.DeepEqual(resolved, entry.Parameters) {
-					return Snapshot{}, ErrCorrupt
-				}
-			}
-		}
-		if conflictingModelTargets {
-			return Snapshot{}, ErrCorrupt
-		}
-		for _, modelID := range plan.ModelIDs {
-			model, found := modelByID[modelID]
-			if !found || model.Protocol != targetProtocol {
+		for _, id := range plan.ModelIDs {
+			if _, exists := modelByID[id]; !exists {
 				return Snapshot{}, ErrCorrupt
 			}
 		}
-		for _, channelID := range plan.ChannelIDs {
-			channel, found := channelByID[channelID]
-			if !found || channel.Protocol != targetProtocol {
+		for _, id := range plan.ChannelIDs {
+			if _, exists := channelByID[id]; !exists {
 				return Snapshot{}, ErrCorrupt
-			}
-			for _, modelID := range plan.ModelIDs {
-				mapping, found := mappingByBinding[channelID+"\x00"+modelID]
-				if !found || requiredModelTarget != "" && mapping.UpstreamModelName != requiredModelTarget {
-					return Snapshot{}, ErrCorrupt
-				}
 			}
 		}
 	}
@@ -409,11 +349,11 @@ func (service *Service) buildSnapshot(
 			if err != nil {
 				return Snapshot{}, err
 			}
-			entryCases := make([]CaseRevisionInput, len(entry.Cases))
-			for index, ref := range entry.Cases {
+			entryCases := make([]CaseRevisionInput, len(suite.Cases))
+			for index, ref := range suite.Cases {
 				entryCases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
 			}
-			caseCount += len(entry.Cases)
+			caseCount += len(suite.Cases)
 			suiteSummaries = append(suiteSummaries, planSuiteSummary(entry, suite, entryCases))
 		}
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{

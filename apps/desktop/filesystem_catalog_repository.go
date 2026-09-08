@@ -515,11 +515,6 @@ func (repository filesystemCatalogRepository) deleteTestCaseUnlocked(ctx context
 	}
 	for _, plan := range plans {
 		for _, planSuite := range plan.Suites {
-			for _, ref := range planSuite.Cases {
-				if ref.CaseID == id {
-					return catalog.ErrConflict
-				}
-			}
 			pinnedSuite, err := repository.GetSuiteRevision(ctx, planSuite.SuiteID, planSuite.SuiteRevision)
 			if err != nil {
 				return err
@@ -699,19 +694,8 @@ func (repository filesystemCatalogRepository) GetPlanDocument(ctx context.Contex
 }
 
 func (repository filesystemCatalogRepository) CreatePlan(ctx context.Context, plan domain.Plan) error {
-	var desired plancatalog.Document
+	desired := plancatalog.Document{FileSchemaVersion: plancatalog.CurrentFileSchemaVersion, Plan: plan}
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
-		if err := repository.validatePlanReferencesUnlocked(ctx, plan); err != nil {
-			return err
-		}
-		if err := repository.materializePlanRevisionsUnlocked(ctx, plan); err != nil {
-			return err
-		}
-		var err error
-		desired, err = repository.capturePlanDocumentUnlocked(ctx, plan)
-		if err != nil {
-			return err
-		}
 		return state.write(func() error { return mapFileCatalogError(repository.plans.CreateDocument(ctx, desired)) })
 	}, func(verifyCtx context.Context) (bool, error) {
 		got, err := repository.GetPlanDocument(verifyCtx, plan.ID)
@@ -720,19 +704,8 @@ func (repository filesystemCatalogRepository) CreatePlan(ctx context.Context, pl
 }
 
 func (repository filesystemCatalogRepository) UpdatePlan(ctx context.Context, expectedRevision uint64, plan domain.Plan) error {
-	var desired plancatalog.Document
+	desired := plancatalog.Document{FileSchemaVersion: plancatalog.CurrentFileSchemaVersion, Plan: plan}
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
-		if err := repository.validatePlanReferencesUnlocked(ctx, plan); err != nil {
-			return err
-		}
-		if err := repository.materializePlanRevisionsUnlocked(ctx, plan); err != nil {
-			return err
-		}
-		var err error
-		desired, err = repository.capturePlanDocumentUnlocked(ctx, plan)
-		if err != nil {
-			return err
-		}
 		return state.write(func() error {
 			return mapFileCatalogError(repository.plans.UpdateDocument(ctx, expectedRevision, desired))
 		})
@@ -747,15 +720,6 @@ func (repository filesystemCatalogRepository) CreatePlanDocument(ctx context.Con
 		if document.Validate() != nil {
 			return catalog.ErrInvalid
 		}
-		if err := repository.validatePlanReferencesUnlocked(ctx, document.Plan); err != nil {
-			return err
-		}
-		if err := repository.materializePlanRevisionsUnlocked(ctx, document.Plan); err != nil {
-			return err
-		}
-		if err := repository.validatePlanDocumentBindingsUnlocked(ctx, document); err != nil {
-			return err
-		}
 		return state.write(func() error { return mapFileCatalogError(repository.plans.CreateDocument(ctx, document)) })
 	}, func(verifyCtx context.Context) (bool, error) {
 		got, err := repository.GetPlanDocument(verifyCtx, document.ID)
@@ -767,15 +731,6 @@ func (repository filesystemCatalogRepository) UpdatePlanDocument(ctx context.Con
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
 		if document.Validate() != nil {
 			return catalog.ErrInvalid
-		}
-		if err := repository.validatePlanReferencesUnlocked(ctx, document.Plan); err != nil {
-			return err
-		}
-		if err := repository.materializePlanRevisionsUnlocked(ctx, document.Plan); err != nil {
-			return err
-		}
-		if err := repository.validatePlanDocumentBindingsUnlocked(ctx, document); err != nil {
-			return err
 		}
 		return state.write(func() error {
 			return mapFileCatalogError(repository.plans.UpdateDocument(ctx, expectedRevision, document))
@@ -884,239 +839,6 @@ func (repository filesystemCatalogRepository) prepareSuitesForCaseUpdateUnlocked
 	return nil
 }
 
-func (repository filesystemCatalogRepository) materializePlanRevisionsUnlocked(ctx context.Context, plan domain.Plan) error {
-	caseRevisions := make(map[domain.CaseRevisionRef]domain.TestCase)
-	caseRevisionOrder := make([]domain.CaseRevisionRef, 0)
-	resolveCase := func(ref domain.CaseRevisionRef) error {
-		if _, alreadyResolved := caseRevisions[ref]; alreadyResolved {
-			return nil
-		}
-		entry, err := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
-		if errors.Is(err, fs.ErrNotExist) {
-			return catalog.ErrNotFound
-		}
-		if err != nil {
-			return mapFileCatalogError(err)
-		}
-		if entry.TestCase.ID != ref.CaseID || entry.TestCase.Revision != ref.Revision {
-			return catalog.ErrCorrupt
-		}
-		caseRevisions[ref] = entry.TestCase
-		caseRevisionOrder = append(caseRevisionOrder, ref)
-		return nil
-	}
-	pinnedSuites := make(map[domain.EntityRevisionRef]domain.Suite)
-	suiteRevisionOrder := make([]domain.EntityRevisionRef, 0, len(plan.Suites))
-	resolveSuite := func(id string, revision uint64) error {
-		ref := domain.EntityRevisionRef{ID: id, Revision: revision}
-		if _, alreadyResolved := pinnedSuites[ref]; alreadyResolved {
-			return nil
-		}
-		entry, err := repository.suites.FindRevision(ctx, id, revision)
-		if errors.Is(err, fs.ErrNotExist) {
-			return catalog.ErrNotFound
-		}
-		if err != nil {
-			return mapFileCatalogError(err)
-		}
-		if entry.Suite.ID != id || entry.Suite.Revision != revision {
-			return catalog.ErrCorrupt
-		}
-		pinnedSuites[ref] = entry.Suite
-		suiteRevisionOrder = append(suiteRevisionOrder, ref)
-		for _, caseRef := range entry.Suite.Cases {
-			if err := resolveCase(caseRef); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	for _, planSuite := range plan.Suites {
-		for _, ref := range planSuite.Cases {
-			if err := resolveCase(ref); err != nil {
-				return err
-			}
-		}
-		if err := resolveSuite(planSuite.SuiteID, planSuite.SuiteRevision); err != nil {
-			return err
-		}
-	}
-	// Cases are installed first so a persisted Suite sidecar can never refer to
-	// a missing exact Case revision. The Plan document is committed only after
-	// every sidecar succeeds.
-	for _, ref := range caseRevisionOrder {
-		testCase := caseRevisions[ref]
-		if err := repository.cases.StoreRevision(ctx, testCase); err != nil {
-			return mapFileCatalogError(err)
-		}
-	}
-	for _, ref := range suiteRevisionOrder {
-		pinnedSuite := pinnedSuites[ref]
-		if err := repository.suites.StoreRevision(ctx, pinnedSuite); err != nil {
-			return mapFileCatalogError(err)
-		}
-	}
-	return nil
-}
-
-func (repository filesystemCatalogRepository) validatePlanReferencesUnlocked(ctx context.Context, plan domain.Plan) error {
-	if len(plan.Suites) == 0 {
-		return catalog.ErrInvalid
-	}
-	targetProtocol := domain.Protocol("")
-	requiredModelTarget := ""
-	conflictingModelTargets := false
-	for _, planSuite := range plan.Suites {
-		suite, err := repository.GetSuiteRevision(ctx, planSuite.SuiteID, planSuite.SuiteRevision)
-		if err != nil {
-			return err
-		}
-		if !caseRevisionRefsEqual(suite.Cases, planSuite.Cases) {
-			return catalog.ErrInvalid
-		}
-		if targetProtocol == "" {
-			targetProtocol = suite.Protocol
-		} else if targetProtocol != suite.Protocol {
-			return catalog.ErrInvalid
-		}
-		if suite.ModelTarget != "" {
-			if requiredModelTarget == "" {
-				requiredModelTarget = suite.ModelTarget
-			} else if suite.ModelTarget != requiredModelTarget {
-				conflictingModelTargets = true
-			}
-		}
-		for _, ref := range planSuite.Cases {
-			entry, findErr := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
-			if errors.Is(findErr, fs.ErrNotExist) {
-				return catalog.ErrNotFound
-			}
-			if findErr != nil {
-				return mapFileCatalogError(findErr)
-			}
-			if entry.TestCase.ID != ref.CaseID || entry.TestCase.Revision != ref.Revision || entry.TestCase.Validate() != nil || entry.TestCase.Protocol != suite.Protocol {
-				return catalog.ErrCorrupt
-			}
-		}
-	}
-	models := make(map[string]domain.Model, len(plan.ModelIDs))
-	if conflictingModelTargets {
-		return catalog.ErrInvalid
-	}
-	for _, id := range plan.ModelIDs {
-		model, err := repository.GetModel(ctx, id)
-		if err != nil {
-			return err
-		}
-		if model.Protocol != targetProtocol {
-			return catalog.ErrInvalid
-		}
-		models[id] = model
-	}
-	for _, id := range plan.ChannelIDs {
-		channel, err := repository.GetChannel(ctx, id)
-		if err != nil {
-			return err
-		}
-		if channel.Protocol != targetProtocol {
-			return catalog.ErrInvalid
-		}
-		for modelID := range models {
-			mapping, err := repository.findMappingByBindingUnlocked(ctx, id, modelID)
-			if err != nil {
-				return err
-			}
-			if requiredModelTarget != "" && mapping.UpstreamModelName != requiredModelTarget {
-				return catalog.ErrInvalid
-			}
-		}
-	}
-	return nil
-}
-
-func caseRevisionRefsEqual(left, right []domain.CaseRevisionRef) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
-}
-
-func (repository filesystemCatalogRepository) capturePlanDocumentUnlocked(ctx context.Context, plan domain.Plan) (plancatalog.Document, error) {
-	document := plancatalog.Document{
-		FileSchemaVersion: plancatalog.CurrentFileSchemaVersion,
-		Plan:              plan,
-		TargetBindings:    []plancatalog.TargetBinding{},
-	}
-	if len(plan.ModelIDs) == 0 {
-		return document, nil
-	}
-	models := make(map[string]domain.Model, len(plan.ModelIDs))
-	for _, modelID := range plan.ModelIDs {
-		model, err := repository.GetModel(ctx, modelID)
-		if err != nil {
-			return plancatalog.Document{}, err
-		}
-		models[modelID] = model
-	}
-	for _, channelID := range plan.ChannelIDs {
-		channel, err := repository.GetChannel(ctx, channelID)
-		if err != nil {
-			return plancatalog.Document{}, err
-		}
-		for _, modelID := range plan.ModelIDs {
-			mapping, err := repository.findMappingByBindingUnlocked(ctx, channelID, modelID)
-			if err != nil {
-				return plancatalog.Document{}, err
-			}
-			document.TargetBindings = append(document.TargetBindings, plancatalog.TargetBinding{
-				Model: models[modelID], Channel: channel, Mapping: mapping,
-			})
-		}
-	}
-	if document.Validate() != nil {
-		return plancatalog.Document{}, catalog.ErrInvalid
-	}
-	return document, nil
-}
-
-func (repository filesystemCatalogRepository) validatePlanDocumentBindingsUnlocked(ctx context.Context, document plancatalog.Document) error {
-	for _, binding := range document.TargetBindings {
-		current, err := repository.GetChannelModel(ctx, binding.Mapping.ID)
-		if err != nil {
-			return err
-		}
-		if current.ChannelID != binding.Channel.ID || current.ModelID != binding.Model.ID {
-			return catalog.ErrConflict
-		}
-	}
-	return nil
-}
-
-func (repository filesystemCatalogRepository) findMappingByBindingUnlocked(ctx context.Context, channelID, modelID string) (domain.ChannelModel, error) {
-	mappings, err := repository.ListChannelModels(ctx)
-	if err != nil {
-		return domain.ChannelModel{}, err
-	}
-	var selected domain.ChannelModel
-	for _, mapping := range mappings {
-		if mapping.ChannelID == channelID && mapping.ModelID == modelID {
-			if selected.ID != "" {
-				return domain.ChannelModel{}, catalog.ErrCorrupt
-			}
-			selected = mapping
-		}
-	}
-	if selected.ID == "" {
-		return domain.ChannelModel{}, catalog.ErrNotFound
-	}
-	return selected, nil
-}
-
 func (repository filesystemCatalogRepository) IsCredentialReferenced(ctx context.Context, credentialID string) (bool, error) {
 	if ctx == nil || !domain.IsUUID(credentialID) {
 		return false, catalog.ErrInvalid
@@ -1158,17 +880,6 @@ func (repository filesystemCatalogRepository) isCredentialReferencedUnlocked(ctx
 	for _, channel := range channels {
 		if channel.CredentialID == credentialID {
 			return true, nil
-		}
-	}
-	documents, err := repository.ListPlanDocuments(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, document := range documents {
-		for _, binding := range document.TargetBindings {
-			if binding.Channel.CredentialID == credentialID {
-				return true, nil
-			}
 		}
 	}
 	return false, nil

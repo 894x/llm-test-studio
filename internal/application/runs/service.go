@@ -271,7 +271,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 			return "", fmt.Errorf("load pinned suite %s: %w", planSuite.SuiteID, suiteErr)
 		}
 		if suite.ID != planSuite.SuiteID || suite.Revision != planSuite.SuiteRevision || suite.Protocol != model.Protocol ||
-			!sameCaseRevisionRefs(suite.Cases, planSuite.Cases) || (suite.ModelTarget != "" && suite.ModelTarget != mapping.UpstreamModelName) {
+			(suite.ModelTarget != "" && suite.ModelTarget != mapping.UpstreamModelName) {
 			return "", ErrNotRunnable
 		}
 		definitions := make([]domain.TestCase, 0, len(suite.Cases))
@@ -294,7 +294,7 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		} else {
 			var applyErr error
 			effective, resolved, applyErr = suite.ApplyInputs(definitions, planSuite.Parameters)
-			if applyErr != nil || !reflect.DeepEqual(resolved, planSuite.Parameters) {
+			if applyErr != nil {
 				return "", ErrNotRunnable
 			}
 		}

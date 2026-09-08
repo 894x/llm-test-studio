@@ -53,8 +53,6 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 	// Public reads must not expose any of the mutable data held by the catalog.
 	got.ModelIDs[0] = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 	got.Suites[0].SLA.Thresholds["e2e_p95_ms"] = 1
-	got.TargetBindings[0].Model.Capabilities[0] = "mutated"
-	got.TargetBindings[0].Mapping.UpstreamModelName = "mutated"
 	again, err := service.GetDocument(context.Background(), document.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -76,95 +74,37 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 	}
 }
 
-func TestPlanCatalogRejectsInvalidTargetBindings(t *testing.T) {
-	now := time.Date(2026, time.September, 4, 9, 0, 0, 0, time.UTC)
-	for _, test := range []struct {
-		name   string
-		mutate func(*Document)
-	}{
-		{
-			name: "missing cartesian binding",
-			mutate: func(document *Document) {
-				document.TargetBindings = document.TargetBindings[:len(document.TargetBindings)-1]
-			},
-		},
-		{
-			name: "duplicate binding",
-			mutate: func(document *Document) {
-				document.TargetBindings[1] = cloneTargetBinding(document.TargetBindings[0])
-			},
-		},
-		{
-			name: "inconsistent repeated model revision",
-			mutate: func(document *Document) {
-				document.TargetBindings[2].Model.Revision = 2
-				document.TargetBindings[2].Model.UpdatedAt = now.Add(time.Second)
-			},
-		},
-		{
-			name: "mapping relation mismatch",
-			mutate: func(document *Document) {
-				document.TargetBindings[0].Mapping.ModelID = document.ModelIDs[1]
-			},
-		},
-		{
-			name: "model and channel protocol mismatch",
-			mutate: func(document *Document) {
-				document.TargetBindings[0].Model.Protocol = domain.ProtocolSeedance
-			},
-		},
-		{
-			name: "duplicate mapping identity",
-			mutate: func(document *Document) {
-				document.TargetBindings[1].Mapping.ID = document.TargetBindings[0].Mapping.ID
-			},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			service, err := New(filepath.Join(t.TempDir(), "plans"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			document := validTargetedDocument("60000000-0000-4000-8000-000000000001", now)
-			test.mutate(&document)
-			if err := service.CreateDocument(context.Background(), document); !errors.Is(err, ErrInvalid) {
-				t.Fatalf("CreateDocument() error = %v, want %v", err, ErrInvalid)
-			}
-		})
+func TestPlanCatalogOmitsExecutionSnapshots(t *testing.T) {
+	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
+	raw, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"target_bindings"`, `"cases"`, `"credential_id"`, `"mapping"`} {
+		if bytes.Contains(raw, []byte(key)) {
+			t.Fatalf("authored plan contains execution field %s", key)
+		}
 	}
 }
 
-func TestPlanCatalogTargetlessDocumentRequiresEmptyBindings(t *testing.T) {
+func TestPlanCatalogStoresSelectedIDsWithoutTargetBindings(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "plans"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, time.September, 4, 10, 0, 0, 0, time.UTC)
-	plan := validTargetlessPlan("60000000-0000-4000-8000-000000000001", now)
-	document := Document{FileSchemaVersion: CurrentFileSchemaVersion, Plan: plan, TargetBindings: []TargetBinding{}}
-	if err := service.CreateDocument(context.Background(), document); err != nil {
-		t.Fatalf("CreateDocument() targetless: %v", err)
+	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
+	if err := service.Create(context.Background(), document.Plan); err != nil {
+		t.Fatal(err)
 	}
-	got, err := service.GetDocument(context.Background(), plan.ID)
-	if err != nil || !reflect.DeepEqual(got, document) {
-		t.Fatalf("GetDocument() = %#v, %v; want targetless wrapper", got, err)
-	}
-
-	invalid := Document{FileSchemaVersion: CurrentFileSchemaVersion, Plan: validTargetlessPlan("60000000-0000-4000-8000-000000000002", now)}
-	invalid.TargetBindings = []TargetBinding{validTargetedDocument("60000000-0000-4000-8000-000000000003", now).TargetBindings[0]}
-	if err := service.CreateDocument(context.Background(), invalid); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("CreateDocument() targetless with binding error = %v, want %v", err, ErrInvalid)
-	}
-
-	targeted := validTargetedDocument("60000000-0000-4000-8000-000000000004", now).Plan
-	if err := service.Create(context.Background(), targeted); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("Create() targeted plan error = %v, want %v", err, ErrInvalid)
+	got, err := service.Get(context.Background(), document.ID)
+	if err != nil || !reflect.DeepEqual(got, document.Plan) {
+		t.Fatalf("reference Plan round trip: %v", err)
 	}
 }
 
-func TestPlanCatalogRequiresSchemaTwoMultiSuiteDocuments(t *testing.T) {
-	if CurrentFileSchemaVersion != 2 {
-		t.Fatalf("CurrentFileSchemaVersion = %d, want 2", CurrentFileSchemaVersion)
+func TestPlanCatalogRequiresSchemaThreeMultiSuiteDocuments(t *testing.T) {
+	if CurrentFileSchemaVersion != 3 {
+		t.Fatalf("CurrentFileSchemaVersion = %d, want 3", CurrentFileSchemaVersion)
 	}
 
 	service, err := New(filepath.Join(t.TempDir(), "plans"))
@@ -178,14 +118,13 @@ func TestPlanCatalogRequiresSchemaTwoMultiSuiteDocuments(t *testing.T) {
 	document := Document{
 		FileSchemaVersion: CurrentFileSchemaVersion,
 		Plan:              legacy,
-		TargetBindings:    []TargetBinding{},
 	}
 	if err := service.CreateDocument(context.Background(), document); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("CreateDocument(flat plan) error = %v, want %v", err, ErrInvalid)
 	}
 }
 
-func TestPlanCatalogSchemaTwoJSONOmitsLegacyFlatExecutionFields(t *testing.T) {
+func TestPlanCatalogSchemaThreeJSONOmitsLegacyFlatExecutionFields(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "plans")
 	service, err := New(root)
 	if err != nil {
@@ -235,7 +174,7 @@ func TestPlanCatalogRejectsLegacyRawPlanAndInvalidWrapper(t *testing.T) {
 		{
 			name: "unsupported file schema",
 			raw: func(plan domain.Plan) []byte {
-				document := Document{FileSchemaVersion: CurrentFileSchemaVersion + 1, Plan: plan, TargetBindings: []TargetBinding{}}
+				document := Document{FileSchemaVersion: CurrentFileSchemaVersion + 1, Plan: plan}
 				raw, err := jsonMarshalForTest(document)
 				if err != nil {
 					t.Fatal(err)
@@ -597,10 +536,7 @@ func validTargetlessPlan(id string, now time.Time) domain.Plan {
 			EntryID:       "68000000-0000-4000-8000-000000000001",
 			SuiteID:       "69000000-0000-4000-8000-000000000001",
 			SuiteRevision: 1,
-			Cases: []domain.CaseRevisionRef{{
-				CaseID:   "70000000-0000-4000-8000-000000000001",
-				Revision: 1,
-			}},
+
 			Parameters: map[string]json.RawMessage{},
 			Load: domain.LoadProfile{
 				Mode:             domain.LoadSingle,
@@ -622,64 +558,10 @@ func validTargetedDocument(id string, now time.Time) Document {
 		"62000000-0000-4000-8000-000000000001",
 		"62000000-0000-4000-8000-000000000002",
 	}
-	models := []domain.Model{
-		{
-			EntityMeta:   testEntityMeta(modelIDs[0], 3, now),
-			Name:         "model one",
-			Protocol:     domain.ProtocolOpenAIChat,
-			Capabilities: []string{"chat", "stream"},
-		},
-		{
-			EntityMeta:   testEntityMeta(modelIDs[1], 5, now),
-			Name:         "model two",
-			Protocol:     domain.ProtocolOpenAIChat,
-			Capabilities: []string{"chat"},
-		},
-	}
-	channels := []domain.Channel{
-		{
-			EntityMeta:   testEntityMeta(channelIDs[0], 7, now),
-			Name:         "channel one",
-			BaseURL:      "https://one.example.test/v1",
-			Protocol:     domain.ProtocolOpenAIChat,
-			Enabled:      true,
-			CredentialID: "63000000-0000-4000-8000-000000000001",
-		},
-		{
-			EntityMeta:   testEntityMeta(channelIDs[1], 11, now),
-			Name:         "channel two",
-			BaseURL:      "https://two.example.test/v1",
-			Protocol:     domain.ProtocolOpenAIChat,
-			Enabled:      true,
-			CredentialID: "63000000-0000-4000-8000-000000000002",
-		},
-	}
 	plan := validTargetlessPlan(id, now)
 	plan.Name = "targeted plan"
-	plan.ModelIDs = append([]string{}, modelIDs...)
-	plan.ChannelIDs = append([]string{}, channelIDs...)
-	bindings := make([]TargetBinding, 0, len(modelIDs)*len(channelIDs))
-	mappingIndex := 0
-	for channelIndex, channel := range channels {
-		for modelIndex, model := range models {
-			mappingIndex++
-			bindings = append(bindings, TargetBinding{
-				Model:   model,
-				Channel: channel,
-				Mapping: domain.ChannelModel{
-					EntityMeta:        testEntityMeta("64000000-0000-4000-8000-"+formatUUIDTail(mappingIndex), uint64(13+mappingIndex), now),
-					ChannelID:         channelIDs[channelIndex],
-					ModelID:           modelIDs[modelIndex],
-					UpstreamModelName: "upstream-model",
-				},
-			})
-		}
-	}
-	return Document{
-		FileSchemaVersion: CurrentFileSchemaVersion,
-		Plan:              plan,
-		TargetBindings:    bindings,
-	}
+	plan.ModelIDs, plan.ChannelIDs = modelIDs, channelIDs
+	return Document{FileSchemaVersion: CurrentFileSchemaVersion, Plan: plan}
 }
 
 func testEntityMeta(id string, revision uint64, now time.Time) domain.EntityMeta {

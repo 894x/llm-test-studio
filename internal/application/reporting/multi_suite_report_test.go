@@ -120,8 +120,8 @@ func multiSuiteReportFixture(t *testing.T, now time.Time) (domain.Run, []domain.
 	firstSLA := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 100}}
 	secondSLA := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 10}}
 	entries := []domain.PlanSuiteEntry{
-		{EntryID: entryOne, SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: firstSLA},
-		{EntryID: entryTwo, SuiteID: suiteID, SuiteRevision: 1, Cases: []domain.CaseRevisionRef{caseRef}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: secondSLA},
+		{EntryID: entryOne, SuiteID: suiteID, SuiteRevision: 1, Parameters: map[string]json.RawMessage{}, Load: load, SLA: firstSLA},
+		{EntryID: entryTwo, SuiteID: suiteID, SuiteRevision: 1, Parameters: map[string]json.RawMessage{}, Load: load, SLA: secondSLA},
 	}
 	plan := domain.Plan{
 		EntityMeta: generatorMeta(planID, now), Name: "Repeated suites",

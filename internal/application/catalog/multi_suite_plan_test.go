@@ -8,7 +8,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-func TestCreatePlanBuildsOrderedEntriesAndResolvesQuickTestDefaults(t *testing.T) {
+func TestCreatePlanBuildsOrderedEntriesAndPreservesSuppliedInputs(t *testing.T) {
 	repository := validRepository()
 	repository.testCases[0].Definition.Spec = json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"default"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
 	repository.suites[0].QuickTest = &domain.SuiteQuickTest{
@@ -45,11 +45,8 @@ func TestCreatePlanBuildsOrderedEntriesAndResolvesQuickTestDefaults(t *testing.T
 		repository.createdPlan.Suites[1].Load.RequestCount != 2 {
 		t.Fatalf("created ordered suites = %#v", repository.createdPlan.Suites)
 	}
-	if got := string(repository.createdPlan.Suites[0].Parameters["prompt"]); got != `"default"` {
-		t.Fatalf("resolved default parameter = %s", got)
-	}
-	if len(repository.createdPlan.Suites[0].Cases) != 1 || repository.createdPlan.Suites[0].Cases[0].CaseID != caseID {
-		t.Fatalf("derived cases = %#v", repository.createdPlan.Suites[0].Cases)
+	if got := string(repository.createdPlan.Suites[0].Parameters["prompt"]); got != "" {
+		t.Fatalf("save unexpectedly resolved a default parameter = %s", got)
 	}
 	repository.plans = []domain.Plan{repository.createdPlan}
 	snapshot, err := service.Snapshot(context.Background())
@@ -103,15 +100,15 @@ func TestPlanSuiteEntryIDsAreServerOwnedAndStableAcrossUpdates(t *testing.T) {
 	})
 }
 
-func TestTargetedPlanRequiresEverySuiteModelTargetToMatchEveryBinding(t *testing.T) {
+func TestPlanDefersSuiteTargetCompatibilityUntilExecution(t *testing.T) {
 	repository := validRepository()
 	repository.mappings[1].UpstreamModelName = "zulu-upstream"
 	service := newTestService(t, repository, fixtureTime())
 	command := validCreatePlanCommand("target mismatch")
 	command.ModelIDs = []string{modelAID}
 
-	if _, err := service.CreatePlan(context.Background(), command); err != ErrInvalid {
-		t.Fatalf("CreatePlan() target mismatch error = %v, want %v", err, ErrInvalid)
+	if _, err := service.CreatePlan(context.Background(), command); err != nil {
+		t.Fatalf("CreatePlan() target mismatch error = %v, want saved reference", err)
 	}
 
 	command.ModelIDs, command.ChannelIDs = []string{}, []string{}
@@ -127,7 +124,7 @@ func TestTargetedPlanRequiresEverySuiteModelTargetToMatchEveryBinding(t *testing
 	conflicting := command.Suites[0]
 	conflicting.SuiteID = conflictingSuite.ID
 	command.Suites = append(command.Suites, conflicting)
-	if _, err := service.CreatePlan(context.Background(), command); err != ErrInvalid {
-		t.Fatalf("CreatePlan() conflicting targetless suites error = %v, want %v", err, ErrInvalid)
+	if _, err := service.CreatePlan(context.Background(), command); err != nil {
+		t.Fatalf("CreatePlan() conflicting targetless suites error = %v, want saved reference", err)
 	}
 }

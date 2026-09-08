@@ -168,7 +168,6 @@ func TestSnapshotAcceptsExactHistoricalCaseHashAndRejectsMissingLowerHash(t *tes
 		historical := repository.testCases[0]
 		historical.Revision = 42
 		repository.suites[0].Cases[0].Revision = historical.Revision
-		repository.plans[0].Suites[0].Cases[0].Revision = historical.Revision
 		repository.testCaseRevisions = map[exactCaseRevisionKey]domain.TestCase{
 			{caseID: historical.ID, revision: historical.Revision}: historical,
 		}
@@ -182,7 +181,6 @@ func TestSnapshotAcceptsExactHistoricalCaseHashAndRejectsMissingLowerHash(t *tes
 		repository := validRepository()
 		repository.testCases[0].Revision = 42
 		repository.suites[0].Cases[0].Revision = 7
-		repository.plans[0].Suites[0].Cases[0].Revision = 7
 		service := newTestService(t, repository, fixtureTime())
 		if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrCorrupt) {
 			t.Fatalf("Snapshot() error = %v, want ErrCorrupt", err)
@@ -455,21 +453,6 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 	if _, err := service.CreateTestCase(context.Background(), missingHeaders); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("CreateTestCase(nil headers) error = %v, want ErrInvalid", err)
 	}
-	protocolMismatch := validRepository()
-	protocolMismatch.testCases[0].Protocol = domain.ProtocolKimiK3
-	protocolService := newTestService(t, protocolMismatch, fixtureTime())
-	if _, err := protocolService.CreatePlan(context.Background(), validCreatePlanCommand("bad protocol plan")); !errors.Is(err, ErrInvalid) || err == ErrInvalid || err.Error() != "catalog: invalid input: plan target protocol mismatch" {
-		t.Fatalf("CreatePlan(case protocol mismatch) error = %v, want safe protocol-specific ErrInvalid", err)
-	}
-	if protocolMismatch.createPlanCalls != 0 {
-		t.Fatalf("CreatePlan(case protocol mismatch) writes = %d, want 0", protocolMismatch.createPlanCalls)
-	}
-	if _, err := protocolService.UpdatePlan(context.Background(), validUpdatePlanCommand(planID, "bad protocol update")); !errors.Is(err, ErrInvalid) || err == ErrInvalid || err.Error() != "catalog: invalid input: plan target protocol mismatch" {
-		t.Fatalf("UpdatePlan(case protocol mismatch) error = %v, want safe protocol-specific ErrInvalid", err)
-	}
-	if protocolMismatch.updatePlanCalls != 0 {
-		t.Fatalf("UpdatePlan(case protocol mismatch) writes = %d, want 0", protocolMismatch.updatePlanCalls)
-	}
 
 	for _, test := range []struct {
 		portError error
@@ -519,23 +502,22 @@ func TestCreatePlanResolvesExactHistoricalCaseAndSuiteRevisions(t *testing.T) {
 			t.Fatalf("CreatePlan() error = %v", err)
 		}
 		if repository.createPlanCalls != 1 || len(repository.createdPlan.Suites) != 1 ||
-			repository.createdPlan.Suites[0].Cases[0].Revision != historicalCase.Revision ||
 			repository.createdPlan.Suites[0].SuiteRevision != historicalSuite.Revision {
 			t.Fatalf("created Plan = %#v", repository.createdPlan)
 		}
 	})
 
-	t.Run("numerically lower missing hash is rejected", func(t *testing.T) {
+	t.Run("case resolution is deferred until execution", func(t *testing.T) {
 		repository := validRepository()
 		repository.testCases[0].Revision = 42
 		repository.suites[0].Cases[0].Revision = 7
 		service := newTestService(t, repository, fixtureTime())
 		command := validCreatePlanCommand("missing exact ref")
-		if _, err := service.CreatePlan(context.Background(), command); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("CreatePlan() error = %v, want ErrNotFound", err)
+		if _, err := service.CreatePlan(context.Background(), command); err != nil {
+			t.Fatalf("CreatePlan() error = %v, want saved reference", err)
 		}
-		if repository.createPlanCalls != 0 {
-			t.Fatalf("CreatePlan() writes = %d, want 0", repository.createPlanCalls)
+		if repository.createPlanCalls != 1 {
+			t.Fatalf("CreatePlan() writes = %d, want 1", repository.createPlanCalls)
 		}
 	})
 }
@@ -632,7 +614,7 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 		t.Fatalf("CreateTestCase() retained caller aliases: %#v", repository.createdTestCase)
 	}
 	if repository.createdPlan.ModelIDs[0] != modelAID || len(repository.createdPlan.Suites) != 1 ||
-		repository.createdPlan.Suites[0].Cases[0].CaseID != caseID || repository.createdPlan.Suites[0].SLA.Thresholds["p95_ms"] != 1500 {
+		repository.createdPlan.Suites[0].SuiteID != suiteID || repository.createdPlan.Suites[0].SLA.Thresholds["p95_ms"] != 1500 {
 		t.Fatalf("CreatePlan() retained caller aliases: %#v", repository.createdPlan)
 	}
 
@@ -964,9 +946,9 @@ func validRepository() *fakeRepository {
 			EntityMeta: meta(planID), Name: "Baseline", ModelIDs: []string{modelAID, modelBID}, ChannelIDs: []string{channelID},
 			Suites: []domain.PlanSuiteEntry{{
 				EntryID: planEntryID, SuiteID: suiteID, SuiteRevision: 1,
-				Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}}, Parameters: map[string]json.RawMessage{},
-				Load: domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 10, RequestTimeoutMS: 30_000},
-				SLA:  domain.SLAProfile{Thresholds: map[string]float64{"p95_ms": 1500}},
+				Parameters: map[string]json.RawMessage{},
+				Load:       domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 10, RequestTimeoutMS: 30_000},
+				SLA:        domain.SLAProfile{Thresholds: map[string]float64{"p95_ms": 1500}},
 			}},
 		}},
 		listCalls: make(map[string]int),
