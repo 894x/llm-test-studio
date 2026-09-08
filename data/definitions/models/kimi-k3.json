@@ -6,7 +6,7 @@
   "protocol": "kimi-k3",
   "endpoint": "",
   "suites": [
-    "kimi-k3"
+    "openai-chat"
   ],
   "capabilities": [],
   "enabled": true

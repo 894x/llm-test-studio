@@ -2,7 +2,7 @@
   "schema_version": 1,
   "key": "kimi-k3.official-foundation",
   "name": "Kimi K3 官方基础套件",
-  "protocol": "kimi-k3",
+  "protocol": "openai-chat",
   "model_target": "kimi-k3",
   "case_keys": [
     "dynamic_tool",
