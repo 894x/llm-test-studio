@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "key": "tool_name_128_chars",
+  "name": "工具定义 · 函数名 128 字符上边界",
+  "dimension": "tools",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "tool_call",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "必须调用提供的唯一工具。"}], "tools": [{"type": "function", "function": {"name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "description": "返回固定值", "parameters": {"type": "object", "properties": {}}}}], "tool_choice": "required", "max_completion_tokens": 64}},
+    "options": {"expected_tool_name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+  }}
+}

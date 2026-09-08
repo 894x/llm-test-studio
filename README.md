@@ -98,11 +98,11 @@ On Windows PowerShell, run the binary as `.\llm-test-studio.exe`.
 <details>
 <summary><strong>CLI examples</strong></summary>
 
-List the built-in Kimi K3 cases:
+List the built-in OpenAI-compatible cases (including Kimi models):
 
 ```bash
 go run ./cmd/llm-test-studio audit list \
-  --suite kimi-k3 \
+  --suite openai-chat \
   --cases-root data/cases \
   --format human
 ```
@@ -111,11 +111,11 @@ Run one compatibility case in Bash or another POSIX shell:
 
 ```bash
 API_AUDIT_API_KEY='replace-me' go run ./cmd/llm-test-studio audit run \
-  --suite kimi-k3 \
+  --suite openai-chat \
   --cases-root data/cases \
   --base-url https://gateway.example/v1 \
   --model kimi-k3 \
-  --case F004 \
+  --case must.usage_non_stream \
   --format human
 ```
 

@@ -1,0 +1,58 @@
+{
+  "schema_version": 2,
+  "key": "must.tool_choice_none",
+  "name": "工具调用 · tool_choice=none",
+  "dimension": "tools",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "chat_sync",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "请直接用文本回复：你好。"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "查询天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "none",
+          "max_tokens": 200
+        }
+      },
+      "options": {
+        "forbid_tool_calls": true
+      }
+    }
+  }
+}

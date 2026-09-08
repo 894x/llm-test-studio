@@ -42,6 +42,19 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if err != nil {
 			return nil, fmt.Errorf("open case %s: %w", entry.Name(), err)
 		}
+		var metadata struct {
+			SchemaVersion int `json:"schema_version"`
+			Definition    struct {
+				Type string `json:"type"`
+			} `json:"definition"`
+		}
+		if err := json.Unmarshal(raw, &metadata); err != nil {
+			return nil, fmt.Errorf("decode case metadata %s: %w", entry.Name(), err)
+		}
+		// Other typed cases are executed by the desktop CaseType registry.
+		if metadata.SchemaVersion == 2 && metadata.Definition.Type != "legacy.apiaudit" {
+			continue
+		}
 		definition, decodeErr := decodeFilesystemCase(raw)
 		if decodeErr != nil {
 			return nil, fmt.Errorf("decode case %s: %w", entry.Name(), decodeErr)
@@ -202,7 +215,7 @@ func containsModelTarget(targets []string, model string) bool {
 }
 
 func validateCaseOptions(definition CaseDefinition) error {
-	stringOptions := []string{"reason", "expected_exact", "expected_digit_sequence", "stop_text", "short_prompt", "long_prompt", "needle", "model_mode", "expected_resolution", "expected_ratio"}
+	stringOptions := []string{"reason", "expected_tool_name", "expected_exact", "expected_digit_sequence", "stop_text", "short_prompt", "long_prompt", "needle", "model_mode", "expected_resolution", "expected_ratio"}
 	for _, key := range stringOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(string); !ok {
@@ -210,7 +223,7 @@ func validateCaseOptions(definition CaseDefinition) error {
 			}
 		}
 	}
-	boolOptions := []string{"require_usage", "require_content", "require_image_input", "forbid_tool_calls", "omit_authorization", "invalid_authorization", "require_video_usage"}
+	boolOptions := []string{"expected_reasoning_visible", "require_usage", "require_content", "require_image_input", "forbid_tool_calls", "omit_authorization", "invalid_authorization", "require_video_usage"}
 	for _, key := range boolOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(bool); !ok {
@@ -218,7 +231,7 @@ func validateCaseOptions(definition CaseDefinition) error {
 			}
 		}
 	}
-	numberOptions := []string{"max_completion_tokens", "max_elapsed_ms", "min_prompt_tokens", "repetitions", "max_channels", "max_first_frame_ms", "prompt_length", "expected_duration"}
+	numberOptions := []string{"expected_http_status", "max_completion_tokens", "max_elapsed_ms", "min_prompt_tokens", "repetitions", "max_channels", "max_first_frame_ms", "prompt_length", "expected_duration"}
 	for _, key := range numberOptions {
 		if value, exists := definition.Options[key]; exists {
 			if _, ok := value.(float64); !ok {
@@ -248,7 +261,8 @@ func validateCaseOptions(definition CaseDefinition) error {
 	if value, ok := definition.Options["max_first_frame_ms"].(float64); ok && value <= 0 {
 		return fmt.Errorf("case %s option max_first_frame_ms must be positive", definition.ID)
 	}
-	if value, ok := definition.Options["model_mode"].(string); ok && value != "target" && value != "body" && value != "omit" {
+	preserveModel := strings.HasPrefix(definition.Kind, "glm53_") && definition.Options["model_mode"] == "preserve"
+	if value, ok := definition.Options["model_mode"].(string); ok && value != "target" && value != "body" && value != "omit" && !preserveModel {
 		return fmt.Errorf("case %s option model_mode must be one of target, body, or omit", definition.ID)
 	}
 	if value, ok := definition.Options["prompt_length"].(float64); ok && (value < 1 || value > 20001 || value != float64(int(value))) {

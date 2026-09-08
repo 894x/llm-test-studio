@@ -21,7 +21,8 @@ func TestRunCaseRejectsInvalidDispatchBeforeHTTP(t *testing.T) {
 		{"unknown", "unknown", "chat_sync"},
 		{"openai-chat", "wan-video", "wan_task_success"},
 		{"openai-chat", "openai-chat", "wan_task_success"},
-		{"kimi-k3", "kimi-k3", "invented_kind"},
+		{"kimi-k3", "kimi-k3", "chat_sync"},
+		{"openai-chat", "openai-chat", "kimi_success"},
 	} {
 		t.Run(input.protocol+"/"+input.caseProtocol+"/"+input.kind, func(t *testing.T) {
 			doer := registryDoer(func(*http.Request) (*http.Response, error) {
@@ -39,8 +40,9 @@ func TestRunCaseRejectsInvalidDispatchBeforeHTTP(t *testing.T) {
 }
 
 func TestRunCasePreservesPlannedModelAndResultID(t *testing.T) {
-	for _, protocol := range []string{"openai-chat", "kimi-k3"} {
-		t.Run(protocol, func(t *testing.T) {
+	for _, kind := range []string{"chat_sync", "tool_call", "reasoning_visibility"} {
+		protocol := "openai-chat"
+		t.Run(kind, func(t *testing.T) {
 			requests := 0
 			doer := registryDoer(func(request *http.Request) (*http.Response, error) {
 				requests++
@@ -48,22 +50,22 @@ func TestRunCasePreservesPlannedModelAndResultID(t *testing.T) {
 				if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 					t.Fatal(err)
 				}
-				if body["model"] != "planned-model" {
+				if body["model"] != "kimi-k3" {
 					t.Fatalf("request model = %v", body["model"])
 				}
 				if request.URL.Path != "/v1/chat/completions" {
 					t.Fatalf("path = %s", request.URL.Path)
 				}
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"chat-1","choices":[{"message":{"content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))}, nil
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"chat-1","choices":[{"message":{"content":"hello","tool_calls":[{"id":"call-1","type":"function","function":{"name":"test","arguments":"{}"}}]},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))}, nil
 			})
 			result, err := RunCase(context.Background(), doer, RunConfig{Suite: protocol, BaseURL: "https://test.example", Model: "wrong-model"}, PlannedRun{
-				Case:  CaseDefinition{ID: "case-1", Protocol: protocol, Kind: "chat_sync", Request: RequestDefinition{Method: "POST", Path: "/v1/chat/completions", Body: map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}}}},
-				Model: "planned-model", ResultID: "case-1@planned-model",
+				Case:  CaseDefinition{ID: "case-1", Protocol: protocol, Kind: kind, Options: map[string]any{"expected_reasoning_visible": false}, Request: RequestDefinition{Method: "POST", Path: "/v1/chat/completions", Body: map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}}}},
+				Model: "kimi-k3", ResultID: "case-1@kimi-k3",
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if requests != 1 || result.Status != StatusPass || result.ID != "case-1@planned-model" || result.Model != "planned-model" {
+			if requests != 1 || result.Status != StatusPass || result.ID != "case-1@kimi-k3" || result.Model != "kimi-k3" {
 				t.Fatalf("requests = %d, result = %+v", requests, result)
 			}
 		})

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k2.6.official-foundation",
+  "name": "Kimi K2.6 官方基础套件",
+  "protocol": "openai-chat",
+  "model_target": "kimi-k2.6",
+  "case_keys": [
+    "must.json_object",
+    "must.json_schema",
+    "must.stream_integrity",
+    "must.thinking_thinking_type_disabled",
+    "must.thinking_thinking_type_enabled",
+    "must.tool_choice_auto",
+    "must.tool_choice_default",
+    "must.tool_choice_none",
+    "must.usage_non_stream",
+    "must.usage_stream",
+    "param_omit_sampling"
+  ]
+}

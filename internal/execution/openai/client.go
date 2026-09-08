@@ -110,7 +110,7 @@ func NewClient(channel domain.ChannelSnapshot, lease *credentials.Lease, transpo
 	if err := channel.Validate(); err != nil {
 		return nil, ErrInvalidChannel
 	}
-	if channel.Protocol != domain.ProtocolOpenAIChat && channel.Protocol != domain.ProtocolKimiK3 {
+	if channel.Protocol != domain.ProtocolOpenAIChat {
 		return nil, ErrUnsupportedProtocol
 	}
 	if lease == nil {

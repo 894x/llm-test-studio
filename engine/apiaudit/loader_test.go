@@ -155,3 +155,22 @@ func TestValidateCaseOptionsRejectsInvalidWanBoundaryControls(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadOpenAIRepositoryCasesIncludesKimiModelChecks(t *testing.T) {
+	cases, err := LoadSuite(filepath.Join("..", "..", "data", "cases"), "openai-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, candidate := range FilterCasesForModel(cases, "kimi-k3") {
+		if strings.HasPrefix(candidate.Kind, "kimi_") {
+			t.Fatalf("model-specific evaluator remains: %s", candidate.Kind)
+		}
+		if candidate.ID == "must.usage_non_stream" {
+			found = candidate.Kind == "chat_sync"
+		}
+	}
+	if !found {
+		t.Fatal("Kimi usage case not found under OpenAI protocol")
+	}
+}

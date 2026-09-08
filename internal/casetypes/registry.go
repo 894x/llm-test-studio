@@ -225,7 +225,7 @@ func supportsProtocol(values []domain.Protocol, protocol domain.Protocol) bool {
 func descriptorRequestSingle() Descriptor {
 	return Descriptor{
 		Type: TypeRequestSingle, TypeVersion: 1, Label: "单请求验证", Category: "compatibility",
-		SchedulingOwner: SchedulingOwnerPlan, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3},
+		SchedulingOwner: SchedulingOwnerPlan, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		Creatable: true,
 		DefaultSpec: mustJSON(RequestSingleSpec{
 			Request:    domain.TestRequest{Method: domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{}, Body: json.RawMessage(`{"messages":[{"role":"user","content":"仅输出 OK"}],"max_tokens":16}`)},
@@ -238,7 +238,7 @@ func descriptorRequestSingle() Descriptor {
 func descriptorResponseProbe() Descriptor {
 	return Descriptor{
 		Type: TypeResponseProbe, TypeVersion: 1, Label: "响应指纹探测", Category: "routing",
-		SchedulingOwner: SchedulingOwnerPlan, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3},
+		SchedulingOwner: SchedulingOwnerPlan, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		Creatable: true,
 		DefaultSpec: mustJSON(ResponseProbeSpec{
 			Request: domain.TestRequest{
@@ -266,7 +266,7 @@ func descriptorLegacyAPIAudit() Descriptor {
 func descriptorInputLatencyLadder() Descriptor {
 	return Descriptor{
 		Type: TypeInputLatencyLadder, TypeVersion: 2, Label: "输入阶梯延迟", Category: "performance",
-		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolKimiK3},
+		SchedulingOwner: SchedulingOwnerCase, SupportedProtocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		Creatable: true,
 		DefaultSpec: mustJSON(InputLatencyLadderSpec{
 			Request: domain.TestRequest{Method: domain.RequestPOST, Path: "/v1/chat/completions", Headers: map[string]string{}, Body: json.RawMessage(`{"messages":[{"role":"user","content":"placeholder"}],"stream":true}`)},

@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "key": "must.thinking_enable_thinking_off",
+  "name": "思考 · enable_thinking=false（K3 不能关）",
+  "dimension": "reasoning",
+  "protocol": "openai-chat",
+  "enabled": false,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "reasoning_visibility",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "1+1 等于几？为什么？"
+            }
+          ],
+          "enable_thinking": false,
+          "max_tokens": 200
+        }
+      },
+      "options": {
+        "expected_reasoning_visible": true}
+    }
+  }
+}

@@ -1,6 +1,8 @@
 # Kimi official multi-model foundation cases
 
-The desktop application packages the runnable cases in this directory into four model-specific built-in suites. Each runnable case declares exact `model_targets`; shared cases are referenced by each applicable suite instead of being copied.
+All cases use the `openai-chat` wire protocol; Kimi names identify models, not protocols.
+
+The desktop application packages the runnable Kimi cases under `data/cases/openai-chat` into four model-specific built-in suites. Each runnable case declares exact `model_targets`; shared cases are referenced by each applicable suite instead of being copied.
 
 - The current model targets are `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, and `kimi-k2.6`.
 - The catalog exposes 70 enabled K3 cases across 11 dimensions. `Kimi K3 官方基础套件` references the 60 routine T1/T2 cases; 10 media-heavy T3 cases remain explicitly selectable but stay outside that foundation suite.
@@ -25,13 +27,13 @@ The K3 suite now covers the current first-party request contract with equivalenc
 The current model matrix follows the official [model overview](https://platform.kimi.com/docs/api/models-overview), [thinking model guide](https://platform.kimi.com/docs/guide/use-thinking-models), and [tool choice guide](https://platform.kimi.com/docs/guide/use-tool-choice).
 
 ```powershell
-go build -o .\bin\api-audit.exe .\cmd\api-audit
-.\bin\api-audit.exe list --suite kimi-k3
+go build -o .\bin\api-audit.exe .\cmd\llm-test-studio
+.\bin\api-audit.exe audit list --suite openai-chat --cases-root data/cases
 
-# Default non-stream usage smoke case; model defaults to kimi-k3.
+# Run the non-stream usage smoke case for Kimi K3.
 $env:API_AUDIT_API_KEY = "<secret>"
-.\bin\api-audit.exe run --suite kimi-k3 --base-url "https://gateway.example"
+.\bin\api-audit.exe audit run --suite openai-chat --cases-root data/cases --base-url "https://gateway.example" --model kimi-k3 --case must.usage_non_stream
 
-# Inspect the complete suite without submitting requests.
-.\bin\api-audit.exe run --suite kimi-k3 --base-url "https://gateway.example" --all-cases --dry-run
+# Inspect applicable OpenAI cases without submitting requests.
+.\bin\api-audit.exe audit run --suite openai-chat --cases-root data/cases --base-url "https://gateway.example" --model kimi-k3 --all-cases --dry-run
 ```

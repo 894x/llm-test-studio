@@ -4,7 +4,6 @@ package protocol
 
 const (
 	OpenAIChat   = "openai-chat"
-	KimiK3       = "kimi-k3"
 	Seedance     = "seedance"
 	WanVideo     = "wan-video"
 	MiniMaxVideo = "minimax-video"
@@ -21,7 +20,6 @@ type Descriptor struct {
 
 var descriptors = [...]Descriptor{
 	{ID: OpenAIChat, Label: "OpenAI Chat"},
-	{ID: KimiK3, Label: "Kimi K3"},
 	{ID: Seedance, Label: "Seedance", Async: true},
 	{ID: WanVideo, Label: "Wan Video", Async: true, RequiresModelTargets: true},
 	{ID: MiniMaxVideo, Label: "MiniMax Video", Async: true, RequiresModelTargets: true},

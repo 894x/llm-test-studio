@@ -234,10 +234,10 @@ func TestSnapshotFailsClosedOnDuplicateBadReferenceAndProtocolMismatch(t *testin
 			repository.mappings[0].ModelID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 		}},
 		{name: "mapping protocol mismatch", mutate: func(repository *fakeRepository) {
-			repository.models[0].Protocol = domain.ProtocolKimiK3
+			repository.models[0].Protocol = domain.ProtocolSeedance
 		}},
 		{name: "plan case protocol mismatch", mutate: func(repository *fakeRepository) {
-			repository.testCases[0].Protocol = domain.ProtocolKimiK3
+			repository.testCases[0].Protocol = domain.ProtocolSeedance
 		}},
 		{name: "suite references future case revision", mutate: func(repository *fakeRepository) {
 			repository.suites[0].Cases[0].Revision = 2
@@ -408,14 +408,14 @@ func TestUpdatesRejectStaleRevisionWithoutWriting(t *testing.T) {
 	t.Run("protocol identity is immutable", func(t *testing.T) {
 		repository := validRepository()
 		service := newTestService(t, repository, fixtureTime().Add(time.Hour))
-		if _, err := service.UpdateModel(context.Background(), UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "model", Protocol: domain.ProtocolKimiK3}); !errors.Is(err, ErrInvalid) {
+		if _, err := service.UpdateModel(context.Background(), UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "model", Protocol: domain.ProtocolSeedance}); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("UpdateModel(protocol change) error = %v, want ErrInvalid", err)
 		}
-		if _, err := service.UpdateChannel(context.Background(), UpdateChannelCommand{ID: channelID, ExpectedRevision: 1, Name: "channel", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolKimiK3}); !errors.Is(err, ErrInvalid) {
+		if _, err := service.UpdateChannel(context.Background(), UpdateChannelCommand{ID: channelID, ExpectedRevision: 1, Name: "channel", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolSeedance}); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("UpdateChannel(protocol change) error = %v, want ErrInvalid", err)
 		}
 		command := validUpdateTestCaseCommand(caseID, "case")
-		command.Protocol = domain.ProtocolKimiK3
+		command.Protocol = domain.ProtocolSeedance
 		if _, err := service.UpdateTestCase(context.Background(), command); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("UpdateTestCase(protocol change) error = %v, want ErrInvalid", err)
 		}
@@ -451,7 +451,7 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 		t.Fatalf("CreateTestCase(nil headers) error = %v, want ErrInvalid", err)
 	}
 	protocolMismatch := validRepository()
-	protocolMismatch.testCases[0].Protocol = domain.ProtocolKimiK3
+	protocolMismatch.testCases[0].Protocol = domain.ProtocolSeedance
 	protocolService := newTestService(t, protocolMismatch, fixtureTime())
 	if _, err := protocolService.CreatePlan(context.Background(), validCreatePlanCommand("bad protocol plan")); !errors.Is(err, ErrInvalid) || err == ErrInvalid || err.Error() != "catalog: invalid input: plan target protocol mismatch" {
 		t.Fatalf("CreatePlan(case protocol mismatch) error = %v, want safe protocol-specific ErrInvalid", err)

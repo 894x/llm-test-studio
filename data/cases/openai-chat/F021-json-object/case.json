@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "key": "must.json_object",
+  "name": "结构化输出 · JSON Object",
+  "dimension": "structured-output",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "structured_json",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回包含 name 和 age 的 JSON 对象，name 为小林，age 为 28。"
+            }
+          ],
+          "response_format": {
+            "type": "json_object"
+          },
+          "max_tokens": 200
+        }
+      },
+      "options": {
+        "required_keys": [
+          "name",
+          "age"
+        ]
+      }
+    }
+  }
+}

@@ -3,7 +3,7 @@
   "id": "kimi-k3",
   "display_name": "Kimi K3",
   "model": "kimi-k3",
-  "protocol": "kimi-k3",
+  "protocol": "openai-chat",
   "endpoint": "",
   "suites": [
     "openai-chat"

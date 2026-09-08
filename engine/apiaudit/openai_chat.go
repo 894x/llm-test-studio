@@ -140,6 +140,10 @@ func RunOpenAIChatCase(ctx context.Context, doer HTTPDoer, config RunConfig, def
 		}
 		errorObject, _ := response["error"].(map[string]any)
 		message, _ := errorObject["message"].(string)
+		if expected, ok := definition.Options["expected_http_status"].(float64); ok && exchange.StatusCode != int(expected) {
+			result.Status, result.Evidence = StatusFail, fmt.Sprintf("expected HTTP %.0f, got HTTP %d", expected, exchange.StatusCode)
+			return result
+		}
 		if exchange.StatusCode >= 400 && strings.TrimSpace(message) != "" {
 			result.Status, result.Evidence = StatusPass, fmt.Sprintf("HTTP %d returned OpenAI-style error.message", exchange.StatusCode)
 		} else {
@@ -280,17 +284,48 @@ func RunOpenAIChatCase(ctx context.Context, doer HTTPDoer, config RunConfig, def
 			result.Status, result.Evidence = StatusFail, "assistant returned no tool_calls"
 			return result
 		}
-		first, _ := toolCalls[0].(map[string]any)
-		function, _ := first["function"].(map[string]any)
-		name, _ := function["name"].(string)
-		if name == "" {
-			result.Status, result.Evidence = StatusFail, "tool call function name is empty"
-			return result
+		expectedName, _ := definition.Options["expected_tool_name"].(string)
+		for _, item := range toolCalls {
+			call, _ := item.(map[string]any)
+			function, _ := call["function"].(map[string]any)
+			name, _ := function["name"].(string)
+			if strings.TrimSpace(name) == "" || (expectedName != "" && name != expectedName) {
+				result.Status, result.Evidence = StatusFail, fmt.Sprintf("unexpected tool name %q; expected %q", name, expectedName)
+				return result
+			}
 		}
-		result.Status, result.Evidence = StatusPass, fmt.Sprintf("tool call %s returned with finish_reason=%s", name, finishReason)
+		result.Status, result.Evidence = StatusPass, fmt.Sprintf("%d valid tool calls returned with finish_reason=%s", len(toolCalls), finishReason)
 		return result
 	}
 	constraintCount := 0
+	if required, _ := definition.Options["require_image_input"].(bool); required {
+		constraintCount++
+		if !findPositiveNumber(result.Usage, "image_tokens") {
+			result.Status, result.Evidence = StatusFail, "response did not account for image input tokens"
+			return result
+		}
+	}
+	if minimum, ok := definition.Options["min_prompt_tokens"].(float64); ok {
+		constraintCount++
+		tokens, exists := usageNumber(result.Usage, "prompt_tokens")
+		if !exists || tokens < minimum {
+			result.Status, result.Evidence = StatusFail, fmt.Sprintf("prompt_tokens must be at least %.0f", minimum)
+			return result
+		}
+	}
+	if expected, _ := definition.Options["expected_digit_sequence"].(string); expected != "" {
+		constraintCount++
+		var actual strings.Builder
+		for _, char := range content {
+			if char >= '0' && char <= '9' {
+				actual.WriteRune(char)
+			}
+		}
+		if actual.String() != expected {
+			result.Status, result.Evidence = StatusFail, fmt.Sprintf("expected digit sequence %s, got %s", expected, actual.String())
+			return result
+		}
+	}
 	if expected, ok := definition.Options["expected_exact"].(string); ok && expected != "" {
 		constraintCount++
 		if strings.TrimSpace(content) != expected {
@@ -352,7 +387,7 @@ func RunOpenAIChatCase(ctx context.Context, doer HTTPDoer, config RunConfig, def
 			return result
 		}
 	}
-	if strings.TrimSpace(content) == "" {
+	if required, exists := definition.Options["require_content"].(bool); strings.TrimSpace(content) == "" && (!exists || required) {
 		result.Status, result.Evidence = StatusFail, "assistant content is empty"
 		return result
 	}

@@ -30,7 +30,7 @@ func (executor *InputLatencyLadderExecutor) Execute(ctx context.Context, request
 		return ErrInvalid
 	}
 	snapshot := request.Run.Snapshot()
-	if snapshot.Channel.Protocol != domain.ProtocolOpenAIChat && snapshot.Channel.Protocol != domain.ProtocolKimiK3 {
+	if snapshot.Channel.Protocol != domain.ProtocolOpenAIChat {
 		return ErrUnsupportedExecutionProtocol
 	}
 	client, err := openai.NewClient(snapshot.Channel, request.Credential, executor.transport)

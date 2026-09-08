@@ -21,7 +21,6 @@ type Protocol string
 
 const (
 	ProtocolOpenAIChat   Protocol = protocol.OpenAIChat
-	ProtocolKimiK3       Protocol = protocol.KimiK3
 	ProtocolSeedance     Protocol = protocol.Seedance
 	ProtocolWanVideo     Protocol = protocol.WanVideo
 	ProtocolMiniMaxVideo Protocol = protocol.MiniMaxVideo

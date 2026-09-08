@@ -57,7 +57,7 @@ describe("CatalogEditor latency ladder", () => {
       ...EMPTY_CATALOG,
       case_types: [{
         type: "latency.input_ladder", type_version: 2, label: "输入阶梯延迟", category: "performance",
-        scheduling_owner: "case", supported_protocols: ["openai-chat", "kimi-k3"], creatable: true,
+        scheduling_owner: "case", supported_protocols: ["openai-chat"], creatable: true,
         default_spec: item.spec,
       }],
       test_cases: [item],
@@ -325,7 +325,7 @@ describe("CatalogEditor plan errors", () => {
         key: "must.usage_stream",
         name: "协议 · Usage 流式",
         dimension: "compatibility",
-        protocol: "kimi-k3",
+        protocol: "openai-chat",
         model_targets: ["kimi-k3"],
         enabled: true,
         default: true,

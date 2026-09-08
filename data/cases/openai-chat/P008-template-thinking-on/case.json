@@ -1,0 +1,38 @@
+{
+  "schema_version": 2,
+  "key": "chat_template_kwargs_thinking_on",
+  "name": "思考 · chat_template_kwargs.thinking=true（非官方参数）",
+  "dimension": "reasoning-parameters",
+  "protocol": "openai-chat",
+  "enabled": false,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "reasoning_visibility",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "1+1 等于几？为什么？"
+            }
+          ],
+          "chat_template_kwargs": {
+            "thinking": true
+          },
+          "max_tokens": 200
+        }
+      },
+      "options": {
+        "expected_reasoning_visible": true}
+    }
+  }
+}

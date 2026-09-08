@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "key": "n_below_fixed",
+  "name": "固定采样 · n=0 应拒绝",
+  "dimension": "parameters",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "error_schema",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "你好"}], "n": 0, "max_completion_tokens": 32}},
+    "options": {
+        "expected_http_status": 400}
+  }}
+}

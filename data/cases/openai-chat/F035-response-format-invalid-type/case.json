@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "key": "response_format_invalid_type",
+  "name": "结构化输出 · response_format 非法枚举应拒绝",
+  "dimension": "structured-output",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "error_schema",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "返回 JSON"}], "response_format": {"type": "yaml"}, "max_completion_tokens": 64}},
+    "options": {
+        "expected_http_status": 400}
+  }}
+}

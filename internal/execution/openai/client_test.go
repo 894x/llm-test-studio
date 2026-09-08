@@ -113,15 +113,20 @@ func TestStreamingExecutorRequiresDoneAndMeasuresFirstSemanticToken(t *testing.T
 	}
 }
 
-func TestClientAcceptsKimiK3AsAnOpenAICompatibleProtocol(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+func TestClientAcceptsKimiModelOverOpenAIChat(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body["model"] != "kimi-k3" {
+			t.Errorf("request model = %v, error = %v", body["model"], err)
+		}
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
 	}))
 	defer server.Close()
 
 	channel := testChannel(server.URL)
-	channel.Protocol = domain.ProtocolKimiK3
+	channel.Protocol = domain.ProtocolOpenAIChat
+	channel.UpstreamModelName = "kimi-k3"
 	lease := testLease(t, "super-secret")
 	client, err := NewClient(channel, lease, server.Client().Transport)
 	if err != nil {

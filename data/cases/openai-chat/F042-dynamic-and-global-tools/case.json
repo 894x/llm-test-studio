@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "key": "dynamic_and_global_tools",
+  "name": "动态工具 · 与顶层全局工具并存",
+  "dimension": "tools",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "chat_sync",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {
+      "messages": [
+        {"role": "user", "content": "必须使用 dynamic_calculate 工具计算 23*47。"},
+        {"role": "system", "tools": [{"type": "function", "function": {"name": "dynamic_calculate", "description": "计算算术表达式", "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}}}]}
+      ],
+      "tools": [{"type": "function", "function": {"name": "global_lookup", "description": "查询固定信息", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}],
+      "max_completion_tokens": 128
+    }},
+    "options": {
+        "require_content": false}
+  }}
+}

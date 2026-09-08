@@ -98,11 +98,11 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 <details>
 <summary><strong>CLI 示例</strong></summary>
 
-列出内置 Kimi K3 Case：
+列出内置 OpenAI 兼容 Case（包含 Kimi 模型）：
 
 ```bash
 go run ./cmd/llm-test-studio audit list \
-  --suite kimi-k3 \
+  --suite openai-chat \
   --cases-root data/cases \
   --format human
 ```
@@ -111,11 +111,11 @@ go run ./cmd/llm-test-studio audit list \
 
 ```bash
 API_AUDIT_API_KEY='replace-me' go run ./cmd/llm-test-studio audit run \
-  --suite kimi-k3 \
+  --suite openai-chat \
   --cases-root data/cases \
   --base-url https://gateway.example/v1 \
   --model kimi-k3 \
-  --case F004 \
+  --case must.usage_non_stream \
   --format human
 ```
 

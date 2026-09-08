@@ -40,7 +40,7 @@
 - FR-101：系统必须提供 Overview、Models、Test Cases、Test Plans、Runs 五个一级页面。
 - FR-102：Overview 必须展示模型数量、用例数量、性能与审计运行总数、SQLite 文件大小。
 - FR-103：Overview 必须展示最近的性能运行；当至少存在两次性能运行时，展示 TTFT P50 与 E2E P50 趋势。
-- FR-104：Overview 必须按 `openai-chat`、`kimi-k3`、`seedance` 展示用例总数、默认用例数和覆盖维度数。
+- FR-104：Overview 必须按 `openai-chat`、`seedance`、`wan-video`、`minimax-video` 展示用例总数、默认用例数和覆盖维度数。
 - FR-105：无历史数据或趋势样本不足时，界面必须给出可理解的空状态提示。
 
 ### FR-200 模型档案管理
@@ -48,7 +48,7 @@
 - FR-201：系统必须能够列出、按协议筛选并查看模型档案。
 - FR-202：用户必须能够创建和编辑模型档案；已存在档案的 ID 不可在编辑时修改。
 - FR-203：档案必须包含 `schema_version`、`id`、`display_name`、`model`、`protocol`、`endpoint`、`suites`、`capabilities`、`enabled`。
-- FR-204：`protocol` 只允许 `openai-chat`、`kimi-k3`、`seedance`。
+- FR-204：`protocol` 只允许 `openai-chat`、`seedance`、`wan-video`、`minimax-video`。
 - FR-205：档案 ID 必须可安全映射到文件名，只允许字母、数字、`.`、`_`、`-`，且必须与 JSON 文件名一致。
 - FR-206：系统必须原子写入档案，避免部分写入损坏文件。
 - FR-207：系统必须递归拒绝任何 API key、Authorization 或等价凭据字段进入模型档案。
@@ -101,7 +101,7 @@
 
 ### FR-600 兼容性审计计划
 
-- FR-601：系统必须支持 `openai-chat` 和 `kimi-k3` suite，并只展示声明支持该 suite 的已启用模型档案。
+- FR-601：系统必须支持 `openai-chat` suite（包括 Kimi 模型），并只展示声明支持该 suite 的已启用模型档案。
 - FR-602：用户必须能够选择默认用例、显式用例或全部用例。
 - FR-603：兼容性计划必须默认启用 dry-run；dry-run 不得发出目标网络请求，但必须生成具体 plan、progress 和 report。
 - FR-604：live run 必须要求 API key；API key 只能通过子进程环境变量传递，不得进入命令行参数。

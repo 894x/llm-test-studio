@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "key": "json_schema_missing_schema",
+  "name": "结构化输出 · json_schema 缺少 schema 应拒绝",
+  "dimension": "structured-output",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "error_schema",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "返回 JSON"}], "response_format": {"type": "json_schema", "json_schema": {"name": "missing_schema"}}, "max_completion_tokens": 64}},
+    "options": {
+        "expected_http_status": 400}
+  }}
+}

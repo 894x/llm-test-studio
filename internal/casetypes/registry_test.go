@@ -141,7 +141,7 @@ func TestResponseProbeDescriptorValidatesSafeSignatureRules(t *testing.T) {
 	}
 	if !descriptor.Creatable || descriptor.SchedulingOwner != SchedulingOwnerPlan ||
 		!supportsProtocol(descriptor.SupportedProtocols, domain.ProtocolOpenAIChat) ||
-		!supportsProtocol(descriptor.SupportedProtocols, domain.ProtocolKimiK3) {
+		len(descriptor.SupportedProtocols) != 1 {
 		t.Fatalf("response probe descriptor = %#v", descriptor)
 	}
 

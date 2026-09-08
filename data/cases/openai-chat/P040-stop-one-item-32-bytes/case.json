@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "key": "stop_one_item_32_bytes",
+  "name": "Stop · 单字符串 32 字节边界",
+  "dimension": "parameters",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
+    "kind": "chat_sync",
+    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "只回答：你好"}], "stop": "12345678901234567890123456789012", "max_completion_tokens": 32}},
+    "options": {
+        "require_content": false}
+  }}
+}

@@ -37,17 +37,17 @@ func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		"kimi-k3/R001-reasoning-effort-low/case.json",
-		"kimi-k3/R004-reasoning-effort-invalid/case.json",
-		"kimi-k3/P011-fixed-sampling-values/case.json",
-		"kimi-k3/P034-top-logprobs-requires-logprobs/case.json",
-		"kimi-k3/P043-stop-item-33-bytes/case.json",
-		"kimi-k3/P052-max-completion-over-model-limit/case.json",
-		"kimi-k3/F032-json-schema-missing-name/case.json",
-		"kimi-k3/F040-dynamic-tool/case.json",
-		"kimi-k3/F046-tool-name-129-chars/case.json",
-		"kimi-k3/F050-partial-mode/case.json",
-		"kimi-k3/F057-message-empty-content/case.json",
+		"openai-chat/R001-reasoning-effort-low/case.json",
+		"openai-chat/R004-reasoning-effort-invalid/case.json",
+		"openai-chat/P011-fixed-sampling-values/case.json",
+		"openai-chat/P034-top-logprobs-requires-logprobs/case.json",
+		"openai-chat/P043-stop-item-33-bytes/case.json",
+		"openai-chat/P052-max-completion-over-model-limit/case.json",
+		"openai-chat/F032-json-schema-missing-name/case.json",
+		"openai-chat/F040-dynamic-tool/case.json",
+		"openai-chat/F046-tool-name-129-chars/case.json",
+		"openai-chat/F050-partial-mode/case.json",
+		"openai-chat/F057-message-empty-content/case.json",
 	} {
 		if _, err := fs.ReadFile(casebundle.Bundle, path); err != nil {
 			t.Fatalf("read embedded K3 boundary case %s: %v", path, err)

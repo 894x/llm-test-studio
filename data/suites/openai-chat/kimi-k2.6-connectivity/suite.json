@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "key": "kimi-k3.kimi-k2.6.connectivity",
+  "name": "kimi-k2.6 连通性测试",
+  "protocol": "openai-chat",
+  "model_target": "kimi-k2.6",
+  "case_keys": [
+    "must.usage_non_stream"
+  ],
+  "quick_test": {
+    "description": "发送一条消息并检查非流式响应和用量。",
+    "timeout_ms": 60000,
+    "inputs": [
+      {
+        "key": "prompt",
+        "label": "提示词",
+        "type": "text",
+        "default": "说你好",
+        "bindings": [
+          {
+            "case_key": "must.usage_non_stream",
+            "pointer": "/request/body/messages/0/content"
+          }
+        ]
+      }
+    ]
+  }
+}

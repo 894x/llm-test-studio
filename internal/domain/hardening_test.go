@@ -357,7 +357,7 @@ func TestTestCaseValidatesCatalogPolicyFields(t *testing.T) {
 	valid := TestCase{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174024"),
 		Key:        "must.tool_call", Name: "tool call", Dimension: "tools",
-		Protocol: ProtocolKimiK3, Enabled: true,
+		Protocol: ProtocolOpenAIChat, Enabled: true,
 		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic,
 		Definition: validTestCaseDefinition(),
 	}

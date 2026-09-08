@@ -215,7 +215,7 @@ func (service *Service) runDry(ctx context.Context, config apiaudit.RunConfig, r
 			return nil, err
 		}
 		var result apiaudit.CaseResult
-		if config.Suite == "openai-chat" || config.Suite == "kimi-k3" {
+		if config.Suite == "openai-chat" {
 			result = dryRunResult(config, planned)
 		} else {
 			result = service.runPlannedCase(ctx, config, planned)
@@ -363,9 +363,6 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 		Suite: request.Suite, BaseURL: request.BaseURL, APIKey: strings.TrimSpace(request.APIKey), Model: strings.TrimSpace(request.Model),
 		DryRun: request.DryRun, NoWait: request.NoWait,
 		PollInterval: request.PollInterval, Timeout: request.Timeout,
-	}
-	if request.Suite == "kimi-k3" && config.Model == "" {
-		config.Model = apiaudit.DefaultKimiK3Model
 	}
 	if request.Suite == "seedance" {
 		if config.Model == "" {

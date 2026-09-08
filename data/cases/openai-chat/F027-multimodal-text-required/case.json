@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "key": "must.multimodal_text_required",
+  "name": "多模态字段 · type=text 时 text 必填",
+  "dimension": "multimodal",
+  "protocol": "openai-chat",
+  "model_targets": ["kimi-k3"],
+  "enabled": true,
+  "default": false,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "legacy.apiaudit",
+    "type_version": 1,
+    "spec": {
+      "kind": "error_schema",
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "headers": {},
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text"
+                }
+              ]
+            }
+          ],
+          "max_tokens": 16
+        }
+      },
+      "options": {
+        "expected_http_status": 400}
+    }
+  }
+}

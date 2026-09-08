@@ -23,7 +23,7 @@ func BuildReport(config RunConfig, results []CaseResult) Report {
 		Title: "API 准入审计报告", GeneratedAt: time.Now(), Suite: config.Suite,
 		BaseURL: redactURL(config.BaseURL), Model: config.Model, Results: append([]CaseResult(nil), results...), APIKey: config.APIKey,
 	}
-	if config.Suite == "kimi-k3" {
+	if config.Suite == "openai-chat" && config.Model == "kimi-k3" {
 		report.Notices = []ReportNotice{{
 			Title: "固定参数处理策略",
 			Body:  "Kimi-K3 官方参数仅支持固定值且不允许调整。审计与接入时忽略调用方传入的这些参数，统一使用官方默认值；因此不将参数不可修改判定为兼容性缺陷。",

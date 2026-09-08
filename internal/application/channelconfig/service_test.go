@@ -361,7 +361,7 @@ func TestUpdateChannelMapsProtocolChangeToCatalogInvalid(t *testing.T) {
 	_, err = service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: 1, Name: "primary",
 		BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.ProtocolKimiK3, Enabled: true,
+		Protocol: domain.ProtocolSeedance, Enabled: true,
 	})
 	if !errors.Is(err, catalog.ErrInvalid) {
 		t.Fatalf("Update() error = %v, want %v", err, catalog.ErrInvalid)

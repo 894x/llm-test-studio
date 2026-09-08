@@ -211,6 +211,14 @@ func runOpenAIBlackBoxEvaluator(ctx context.Context, doer HTTPDoer, config RunCo
 		}
 		visible := hasNonEmptyField(observation.Message, "reasoning_content") || hasNonEmptyField(observation.Message, "reasoning") || findPositiveNumber(observation.Usage, "reasoning_tokens")
 		result.Metrics["reasoning_visible"] = visible
+		if expected, specified := definition.Options["expected_reasoning_visible"].(bool); specified {
+			if visible != expected {
+				result.Status, result.Evidence = StatusFail, fmt.Sprintf("reasoning visibility = %t, expected %t", visible, expected)
+				return result
+			}
+			result.Status, result.Evidence = StatusPass, fmt.Sprintf("reasoning visibility matches expected %t", expected)
+			return result
+		}
 		if visible {
 			result.Status, result.Evidence = StatusPass, "reasoning metadata is observable in the black-box response"
 		} else {

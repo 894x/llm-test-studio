@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -63,7 +64,7 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 		}
 		counts[candidate.Protocol]++
 		typeCounts[candidate.Definition.Type]++
-		if candidate.Protocol == domain.ProtocolKimiK3 && candidate.Enabled && candidate.ExecutionMode == domain.CaseExecutionAutomatic {
+		if len(candidate.ModelTargets) > 0 && strings.HasPrefix(candidate.ModelTargets[0], "kimi-") && candidate.Enabled && candidate.ExecutionMode == domain.CaseExecutionAutomatic {
 			if len(candidate.ModelTargets) == 0 {
 				t.Errorf("%s runnable Kimi case has no explicit model targets", path)
 			}
@@ -115,7 +116,7 @@ func TestEveryBuiltinCaseIsAV2TypedDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WalkDir() error = %v", err)
 	}
-	if counts[domain.ProtocolOpenAIChat] != 256 || counts[domain.ProtocolKimiK3] != 87 || counts[domain.ProtocolSeedance] != 6 || counts[domain.ProtocolWanVideo] != 213 || counts[domain.ProtocolMiniMaxVideo] != 149 {
+	if counts[domain.ProtocolOpenAIChat] != 343 || counts[domain.ProtocolSeedance] != 6 || counts[domain.ProtocolWanVideo] != 213 || counts[domain.ProtocolMiniMaxVideo] != 149 {
 		t.Fatalf("protocol counts = %#v", counts)
 	}
 	if runnable != 426 || disabled != 178 || manual != 107 {
@@ -186,25 +187,24 @@ func TestFilesystemCaseV2RoundTrip(t *testing.T) {
 }
 
 func TestFilesystemCaseV2RoundTripsModelTargets(t *testing.T) {
-	raw := []byte(`{"schema_version":2,"key":"K001","name":"Kimi scoped","dimension":"compatibility","protocol":"kimi-k3","model_targets":["kimi-k3","kimi-k2.6"],"enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}}}`)
-	testCase, err := DecodeFilesystemCase("cases/kimi-k3/K001/case.json", raw)
+	raw := []byte(`{"schema_version":2,"key":"K001","name":"Kimi scoped","dimension":"compatibility","protocol":"openai-chat","model_targets":["kimi-k3","kimi-k2.6"],"enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}}}`)
+	testCase, err := DecodeFilesystemCase("cases/openai-chat/K001/case.json", raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Captured before removing the database importer: existing plans and snapshots
-	// must continue resolving the same file identity, revision and materialized hash.
-	if testCase.ID != "38f7fa73-3daa-5485-aa72-9bd86c801bf1" || testCase.Revision != 8890788633403125 {
+	// Protocol is part of file identity; pin the migrated OpenAI identity and revision.
+	if testCase.ID != "108f1df0-2cf5-5827-8307-4b98cfbe9edb" || testCase.Revision != 233259920761913 {
 		t.Fatalf("stable file identity changed: %s revision %d", testCase.ID, testCase.Revision)
 	}
 	digest, err := MaterializedSHA256(testCase)
-	if err != nil || digest != "adff96200a445ef5e8b677b197c02b09bbad735a07bf17def06de42f3eb837d7" {
+	if err != nil || digest != "5f20d4260eb7a4392a3b222f405f0fdba9278ed27ca42fd6b5886fc8891f0a4f" {
 		t.Fatalf("materialized hash changed: %q, %v", digest, err)
 	}
 	encoded, err := EncodeFilesystemCase(testCase)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeFilesystemCase("cases/kimi-k3/K001/case.json", encoded)
+	decoded, err := DecodeFilesystemCase("cases/openai-chat/K001/case.json", encoded)
 	if err != nil {
 		t.Fatal(err)
 	}
