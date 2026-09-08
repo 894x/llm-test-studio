@@ -372,25 +372,57 @@ export function QuickTaskWorkspace({
                       </SelectContent>
                     </Select>
                   </TaskField>
-                  <TaskField id="base_url" label={t("address")} error={errors.base_url}>
-                    <Input
-                      id="quick-task-base_url"
-                      value={channel?.base_url ?? form.base_url}
-                      disabled={!!pending || !!form.channel_id}
-                      aria-invalid={!!errors.base_url || undefined}
-                      aria-describedby={errors.base_url ? "quick-task-base_url-error" : undefined}
-                      onChange={(event) =>
-                        update({
-                          ...form,
-                          base_url: event.target.value,
-                          api_key: "",
-                          credential_run_id: undefined,
-                        })
-                      }
-                      placeholder="https://api.example.com"
-                    />
-                    <p className="text-[11px] text-muted-foreground">{t("task.endpointHint")}</p>
-                  </TaskField>
+                  <div className="grid min-w-0 grid-cols-2 items-start gap-4">
+                    <TaskField id="base_url" label={t("address")} error={errors.base_url}>
+                      <Input
+                        id="quick-task-base_url"
+                        value={channel?.base_url ?? form.base_url}
+                        disabled={!!pending || !!form.channel_id}
+                        aria-invalid={!!errors.base_url || undefined}
+                        aria-describedby={errors.base_url ? "quick-task-base_url-error" : undefined}
+                        onChange={(event) =>
+                          update({
+                            ...form,
+                            base_url: event.target.value,
+                            api_key: "",
+                            credential_run_id: undefined,
+                          })
+                        }
+                        placeholder="https://api.example.com"
+                      />
+                      <p className="text-[11px] text-muted-foreground">{t("task.endpointHint")}</p>
+                    </TaskField>
+                    <TaskField id="model" label={t("model.label")} error={errors.model}>
+                      <Autocomplete
+                        modal={false}
+                        openOnInputClick
+                        items={models}
+                        value={form.model}
+                        onValueChange={(value) => update({ ...form, model: value ?? "" })}
+                      >
+                        <AutocompleteInput
+                          id="quick-task-model"
+                          aria-label={t("model.label")}
+                          value={form.model}
+                          onChange={(event) => update({ ...form, model: event.target.value })}
+                          disabled={!!pending || !!task.model_target}
+                          aria-invalid={!!errors.model || undefined}
+                          aria-describedby={errors.model ? "quick-task-model-error" : undefined}
+                          placeholder={t("model.placeholder")}
+                        />
+                        <AutocompleteContent>
+                          <AutocompleteEmpty>{t("model.empty")}</AutocompleteEmpty>
+                          <AutocompleteList>
+                            {(value) => (
+                              <AutocompleteItem key={value} value={value}>
+                                {value}
+                              </AutocompleteItem>
+                            )}
+                          </AutocompleteList>
+                        </AutocompleteContent>
+                      </Autocomplete>
+                    </TaskField>
+                  </div>
                   <TaskField id="api_key" label="API Key" error={errors.api_key}>
                     <Input
                       id="quick-task-api_key"
@@ -452,36 +484,6 @@ export function QuickTaskWorkspace({
                           {pending === "remember" ? t("task.remembering") : t("task.rememberKey")}
                         </Button>
                       ) : null)}
-                  </TaskField>
-                  <TaskField id="model" label={t("model.label")} error={errors.model}>
-                    <Autocomplete
-                      modal={false}
-                      openOnInputClick
-                      items={models}
-                      value={form.model}
-                      onValueChange={(value) => update({ ...form, model: value ?? "" })}
-                    >
-                      <AutocompleteInput
-                        id="quick-task-model"
-                        aria-label={t("model.label")}
-                        value={form.model}
-                        onChange={(event) => update({ ...form, model: event.target.value })}
-                        disabled={!!pending || !!task.model_target}
-                        aria-invalid={!!errors.model || undefined}
-                        aria-describedby={errors.model ? "quick-task-model-error" : undefined}
-                        placeholder={t("model.placeholder")}
-                      />
-                      <AutocompleteContent>
-                        <AutocompleteEmpty>{t("model.empty")}</AutocompleteEmpty>
-                        <AutocompleteList>
-                          {(value) => (
-                            <AutocompleteItem key={value} value={value}>
-                              {value}
-                            </AutocompleteItem>
-                          )}
-                        </AutocompleteList>
-                      </AutocompleteContent>
-                    </Autocomplete>
                   </TaskField>
                   <fieldset disabled={!!pending} className="space-y-3">
                     <legend className="mb-3 text-sm font-semibold">{t("task.parameters")}</legend>
@@ -720,7 +722,7 @@ function TaskField({
   children: ReactNode
 }) {
   return (
-    <Field className="block space-y-2" data-invalid={!!error || undefined}>
+    <Field className="block min-w-0 space-y-2" data-invalid={!!error || undefined}>
       <FieldLabel htmlFor={`quick-task-${id}`}>{label}</FieldLabel>
       {children}
       {error ? <FieldError id={`quick-task-${id}-error`}>{error}</FieldError> : null}
