@@ -340,7 +340,7 @@ func (service *Service) buildSnapshot(
 		}
 		snapshot.Models = append(snapshot.Models, ModelSummary{
 			ID: model.ID, Revision: model.Revision, Name: model.Name, Protocol: model.Protocol,
-			Capabilities: append([]string(nil), model.Capabilities...),
+			Capabilities: append([]string{}, model.Capabilities...),
 		})
 	}
 	for _, channel := range channels {

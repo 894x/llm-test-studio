@@ -1,4 +1,9 @@
 {
+  "capabilities": {
+    "chat": "Chat", "tools": "Tool calling", "vision": "Vision",
+    "placeholder": "Search or enter a custom tag", "empty": "No available capabilities",
+    "add": "Add custom tag “{{value}}”", "remove": "Remove capability {{value}}"
+  },
   "search": {
     "models": "Search models",
     "modelsPlaceholder": "Name, protocol, or capability",
@@ -140,7 +145,7 @@
     "jsonArray": "{{label}} must be a JSON array",
     "noChoices": "No options available",
     "fields": {
-      "modelName": "Model name", "modelCapabilities": "Model capabilities", "capabilityHint": "Comma-separated, for example: chat, tools, vision.",
+      "modelName": "Model name", "modelCapabilities": "Model capabilities (optional)", "capabilityHint": "Select multiple capabilities, or type a custom tag and add it from the list. You can save without any capabilities.",
       "channelName": "Channel name", "serviceUrl": "Service URL", "apiKey": "API Key", "enabledChannel": "Enable channel",
       "apiKeyEditHint": "Saved as an independent credential for the new channel version; historical plans keep using the previous version.", "apiKeyNewHint": "Written only to the system keychain; never saved in the database or frontend snapshot.",
       "channelSaveHint": "The service URL and API Key are saved together as one channel configuration.",

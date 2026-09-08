@@ -430,7 +430,10 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "新增模型" }))
     expect(screen.getByRole("heading", { name: "新增模型" })).toBeInTheDocument()
     await user.type(screen.getByLabelText("模型名称"), "gpt-next")
-    await user.type(screen.getByLabelText("模型能力"), "chat, tools")
+    await user.type(screen.getByRole("combobox", { name: "模型能力（选填）" }), "chat")
+    await user.click(screen.getByRole("option", { name: "对话 (chat)" }))
+    await user.type(screen.getByRole("combobox", { name: "模型能力（选填）" }), "tools")
+    await user.click(screen.getByRole("option", { name: "工具调用 (tools)" }))
     await user.click(screen.getByRole("button", { name: "保存模型" }))
 
     expect(client.createModel).toHaveBeenCalledWith({

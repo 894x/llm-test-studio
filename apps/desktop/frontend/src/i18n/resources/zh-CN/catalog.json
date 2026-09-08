@@ -1,4 +1,9 @@
 {
+  "capabilities": {
+    "chat": "对话", "tools": "工具调用", "vision": "视觉",
+    "placeholder": "搜索或输入自定义标签", "empty": "暂无可选能力",
+    "add": "添加自定义标签“{{value}}”", "remove": "移除能力 {{value}}"
+  },
   "search": {
     "models": "搜索模型",
     "modelsPlaceholder": "名称、协议或能力",
@@ -140,7 +145,7 @@
     "jsonArray": "{{label}}必须是 JSON 数组",
     "noChoices": "暂无可选项",
     "fields": {
-      "modelName": "模型名称", "modelCapabilities": "模型能力", "capabilityHint": "使用逗号分隔，例如 chat, tools, vision。",
+      "modelName": "模型名称", "modelCapabilities": "模型能力（选填）", "capabilityHint": "可选择多个能力；输入自定义标签后从下拉列表添加。留空也可保存。",
       "channelName": "渠道名称", "serviceUrl": "服务地址", "apiKey": "API Key", "enabledChannel": "启用渠道",
       "apiKeyEditHint": "保存为渠道新版本的独立凭据；历史计划继续使用旧版本。", "apiKeyNewHint": "仅写入系统密钥环，不会保存到数据库或前端快照。",
       "channelSaveHint": "服务地址和 API Key 会作为同一个渠道配置一起保存。",

@@ -51,11 +51,13 @@ function AutocompleteContent({
   side = "bottom",
   sideOffset = 4,
   align = "start",
+  container,
   ...props
 }: AutocompletePrimitive.Popup.Props &
-  Pick<AutocompletePrimitive.Positioner.Props, "side" | "align" | "sideOffset">) {
+  Pick<AutocompletePrimitive.Positioner.Props, "side" | "align" | "sideOffset"> &
+  Pick<AutocompletePrimitive.Portal.Props, "container">) {
   return (
-    <AutocompletePrimitive.Portal>
+    <AutocompletePrimitive.Portal container={container}>
       <AutocompletePrimitive.Positioner
         side={side}
         sideOffset={sideOffset}

@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
+import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
@@ -55,7 +56,9 @@ export function CatalogEditor({
           {!item ? <PlusIcon data-icon="inline-start" /> : null}{title}
         </Button>
       </SheetTrigger>
-      <SheetContent className="sm:max-w-lg">
+      <SheetContent className="sm:max-w-lg" onEscapeKeyDown={(event) => {
+        if (event.target instanceof HTMLElement && event.target.matches('[role="combobox"][aria-expanded="true"]')) event.preventDefault()
+      }}>
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription>{t("editor.description")}</SheetDescription>
@@ -114,18 +117,28 @@ type FormProps<T> = {
   pending: boolean; formTitle: string; onSaved: () => void
 }
 
-function ModelForm({ item, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogModel>) {
+function ModelForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogModel>) {
   const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
-  const [capabilities, setCapabilities] = useState(item?.capabilities.join(", ") ?? "")
+  const [capabilities, setCapabilities] = useState<string[]>(item?.capabilities ?? [])
+  const suggestedCapabilities = ["chat", "tools", "vision"] as const
+  const capabilityOptions = [
+    ...suggestedCapabilities.map((value) => ({ value, label: `${t(`capabilities.${value}`)} (${value})` })),
+    ...[...new Set([...catalog.models.flatMap((model) => model.capabilities), ...capabilities])]
+      .filter((value) => !suggestedCapabilities.some((suggestion) => suggestion === value))
+      .map((value) => ({ value, label: value })),
+  ]
   return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.model") })} formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, t("editor.fields.modelName")), protocol, capabilities: list(capabilities) }
+    const command = { name: required(name, t("editor.fields.modelName")), protocol, capabilities }
     await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
     <TextField label={t("editor.fields.modelName")} value={name} onChange={setName} />
     <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <TextField label={t("editor.fields.modelCapabilities")} value={capabilities} onChange={setCapabilities} description={t("editor.fields.capabilityHint")} />
+    <TagAutocomplete label={t("editor.fields.modelCapabilities")} value={capabilities} onChange={setCapabilities}
+      options={capabilityOptions} description={t("editor.fields.capabilityHint")} disabled={pending}
+      placeholder={t("capabilities.placeholder")} emptyText={t("capabilities.empty")}
+      addLabel={(value) => t("capabilities.add", { value })} removeLabel={(value) => t("capabilities.remove", { value })} />
   </FormShell>
 }
 

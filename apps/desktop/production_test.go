@@ -452,6 +452,38 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	}
 }
 
+func TestProductionModelWithoutCapabilitiesReturnsJSONArray(t *testing.T) {
+	root := t.TempDir()
+	configurationRoot := t.TempDir()
+	app := newDesktopApp(newProductionInitializer(productionOptions{
+		userConfigDir:  func() (string, error) { return configurationRoot, nil },
+		executablePath: func() (string, error) { return filepath.Join(root, "app.exe"), nil },
+		appVersion:     "test",
+	}))
+	app.onStartup(context.Background())
+	defer app.shutdown()
+	snapshot, err := app.CreateModel(catalog.CreateModelCommand{
+		Name: "Optional capabilities", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEmptyModelCapabilities := func(snapshot catalog.Snapshot) {
+		t.Helper()
+		raw, err := json.Marshal(snapshot.Models)
+		if err != nil || !strings.Contains(string(raw), `"capabilities":[]`) {
+			t.Fatalf("model snapshot must encode an empty array: %s, %v", raw, err)
+		}
+	}
+	assertEmptyModelCapabilities(snapshot)
+	// Reload the persisted model, whose optional capabilities field is omitted.
+	reloaded, err := app.GetCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEmptyModelCapabilities(reloaded)
+}
+
 func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *testing.T) {
 	executableDirectory := t.TempDir()
 	executable := filepath.Join(executableDirectory, "llm-test-studio.exe")
