@@ -153,7 +153,9 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 		t.Fatal(err)
 	}
 	defer service.Close()
-	app := NewDesktopApp(nil, service)
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{commands: service, reports: reporting.New(operational)}, nil
+	})
 	app.onStartup(ctx)
 	defer app.shutdown()
 	id, err := app.StartQuickTask(runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
@@ -198,6 +200,13 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 		t.Fatalf("quick report was not sealed: %v", err)
 	}
 	report := reports[0]
+	reportList, err := app.GetReports()
+	if err != nil || len(reportList.Reports) != 1 || reportList.Reports[0].ID != report.ID {
+		t.Fatalf("desktop cannot load sealed quick report: %+v, %v", reportList, err)
+	}
+	if detail, err := app.GetReportDetail(report.ID); err != nil || len(detail.Suites) != 1 {
+		t.Fatalf("desktop cannot open sealed quick report: %+v, %v", detail, err)
+	}
 	if report.Conclusion.Passed == failRequests || report.PlanSnapshot.QuickTask == nil || len(report.CaseResults) != 4 {
 		t.Fatalf("quick report was not sealed correctly: %v", err)
 	}

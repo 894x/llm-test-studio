@@ -688,7 +688,12 @@ report_rows AS (
 	             WHERE result.type != 'object' OR stored.id IS NULL OR
 	                   stored.schema_version != ? OR stored.revision != 1 OR
 	                   CAST(stored.document_json AS TEXT) != json(stored.document_json) OR
-	                   json(stored.document_json) != json(result.value) OR
+	                   CASE WHEN json_type(report.document_json, '$.plan_snapshot.quick_task') = 'object' THEN
+	                     stored.suite_entry_id IS NOT NULL OR
+	                     COALESCE(json_type(result.value, '$.suite_entry_id') = 'text' AND
+	                       json_extract(result.value, '$.suite_entry_id') = report.run_id, 0) = 0 OR
+	                     json(stored.document_json) != json_remove(result.value, '$.suite_entry_id')
+	                   ELSE json(stored.document_json) != json(result.value) END OR
 	                   COALESCE(json_type(stored.document_json, '$.id') = 'text', 0) = 0 OR
 	                   stored.id != json_extract(stored.document_json, '$.id') OR
 	                   COALESCE(json_type(stored.document_json, '$.schema_version') = 'integer', 0) = 0 OR
