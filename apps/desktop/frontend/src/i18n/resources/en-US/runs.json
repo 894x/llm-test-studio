@@ -83,7 +83,7 @@
     "details": "Details"
   },
   "presentation": {
-	"quickSuite": "Run Suite members",
+    "quickSuite": "Run Suite members",
     "failedRequests": "{{count}} requests did not meet the complete success criteria.",
     "failedConclusion": "The run did not pass; review the SLA and summary in the report.",
     "continuous": "{{rate}}continuous for {{duration}}",
@@ -92,5 +92,19 @@
     "fixedConcurrency": "{{concurrency}} concurrent · {{count}} requests",
     "openLoop": "Open model · {{rate}} RPS",
     "fixedTotal": "Fixed total · {{concurrency}} concurrent"
+  },
+  "caseProgress": {
+    "count": "Cases with results {{completed}} / {{total}}",
+    "suites": "Suite Case progress",
+    "suiteAria": "{{name}}: {{completed}} of {{total}} Cases have results",
+    "totalAria": "Case progress: {{completed}} of {{total}}",
+    "status": {
+      "not_started": "Not started",
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
   }
 }

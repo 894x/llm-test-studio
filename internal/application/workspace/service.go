@@ -60,6 +60,22 @@ type RunProjection struct {
 	Failed        uint64
 	ArtifactCount uint64
 	Conclusion    Conclusion
+	SuiteResults  []SuiteResultProjection
+}
+
+// SuiteResultProjection counts distinct Cases with persisted results, not requests.
+type SuiteResultProjection struct {
+	EntryID       string
+	ObservedCases uint64
+	Status        domain.SuiteExecutionStatus
+}
+
+type SuiteProgress struct {
+	EntryID           string `json:"entry_id"`
+	Name              string `json:"name"`
+	CaseCount         uint64 `json:"case_count"`
+	ObservedCaseCount uint64 `json:"observed_case_count"`
+	Status            string `json:"status"`
 }
 
 type Service struct {
@@ -92,33 +108,36 @@ type PlanSummary struct {
 }
 
 type RunSummary struct {
-	Source          string           `json:"source,omitempty"`
-	ID              string           `json:"id"`
-	Revision        uint64           `json:"revision"`
-	PlanID          string           `json:"plan_id"`
-	PlanRevision    uint64           `json:"plan_revision"`
-	PlanName        string           `json:"plan_name"`
-	Status          domain.RunStatus `json:"status"`
-	Conclusion      Conclusion       `json:"conclusion"`
-	FailurePhase    domain.ErrorCode `json:"failure_phase,omitempty"`
-	ErrorCode       domain.ErrorCode `json:"error_code,omitempty"`
-	ModelID         string           `json:"model_id"`
-	ModelRevision   uint64           `json:"model_revision"`
-	ModelName       string           `json:"model_name"`
-	ChannelID       string           `json:"channel_id"`
-	ChannelRevision uint64           `json:"channel_revision"`
-	ChannelName     string           `json:"channel_name"`
-	LoadMode        domain.LoadMode  `json:"load_mode"`
-	Concurrency     uint32           `json:"concurrency"`
-	RatePerSecond   float64          `json:"rate_per_second"`
-	Planned         uint64           `json:"planned"`
-	DurationMS      uint64           `json:"duration_ms"`
-	Completed       uint64           `json:"completed"`
-	Passed          uint64           `json:"passed"`
-	Failed          uint64           `json:"failed"`
-	ArtifactCount   uint64           `json:"artifact_count"`
-	StartedAt       time.Time        `json:"started_at"`
-	UpdatedAt       time.Time        `json:"updated_at"`
+	CaseCount         uint64           `json:"case_count"`
+	ObservedCaseCount uint64           `json:"observed_case_count"`
+	SuiteProgress     []SuiteProgress  `json:"suite_progress"`
+	Source            string           `json:"source,omitempty"`
+	ID                string           `json:"id"`
+	Revision          uint64           `json:"revision"`
+	PlanID            string           `json:"plan_id"`
+	PlanRevision      uint64           `json:"plan_revision"`
+	PlanName          string           `json:"plan_name"`
+	Status            domain.RunStatus `json:"status"`
+	Conclusion        Conclusion       `json:"conclusion"`
+	FailurePhase      domain.ErrorCode `json:"failure_phase,omitempty"`
+	ErrorCode         domain.ErrorCode `json:"error_code,omitempty"`
+	ModelID           string           `json:"model_id"`
+	ModelRevision     uint64           `json:"model_revision"`
+	ModelName         string           `json:"model_name"`
+	ChannelID         string           `json:"channel_id"`
+	ChannelRevision   uint64           `json:"channel_revision"`
+	ChannelName       string           `json:"channel_name"`
+	LoadMode          domain.LoadMode  `json:"load_mode"`
+	Concurrency       uint32           `json:"concurrency"`
+	RatePerSecond     float64          `json:"rate_per_second"`
+	Planned           uint64           `json:"planned"`
+	DurationMS        uint64           `json:"duration_ms"`
+	Completed         uint64           `json:"completed"`
+	Passed            uint64           `json:"passed"`
+	Failed            uint64           `json:"failed"`
+	ArtifactCount     uint64           `json:"artifact_count"`
+	StartedAt         time.Time        `json:"started_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
 }
 
 func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -271,9 +290,12 @@ func validateProjection(projection RunProjection) error {
 	if projection.Completed != projection.Passed+projection.Failed {
 		return errors.New("run result counts are inconsistent")
 	}
-	_, load := summarizeSnapshotLoads(snapshot)
-	if snapshot.QuickTask == nil && load.RequestCount > 0 && projection.Completed > load.RequestCount {
+	budget := snapshotRequestBudget(snapshot)
+	if budget > 0 && projection.Completed > budget {
 		return errors.New("run completed more requests than planned")
+	}
+	if err := validateSuiteResults(projection); err != nil {
+		return err
 	}
 	switch projection.Conclusion {
 	case ConclusionPassed:
@@ -306,11 +328,16 @@ func summarizeRun(projection RunProjection) RunSummary {
 		ModelID: snapshot.Model.ID, ModelRevision: snapshot.Model.Revision, ModelName: snapshot.Model.Name,
 		ChannelID: snapshot.Channel.ID, ChannelRevision: snapshot.Channel.Revision, ChannelName: snapshot.Channel.Name,
 		LoadMode: load.Mode, Concurrency: load.Concurrency,
-		RatePerSecond: load.RatePerSecond, Planned: load.RequestCount,
+		RatePerSecond: load.RatePerSecond, Planned: snapshotRequestBudget(snapshot),
 		DurationMS: load.DurationMS,
 		Completed:  projection.Completed, Passed: projection.Passed, Failed: projection.Failed,
 		ArtifactCount: projection.ArtifactCount,
 		StartedAt:     meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
+	}
+	summary.SuiteProgress = summarizeSuiteProgress(projection)
+	for _, suite := range summary.SuiteProgress {
+		summary.CaseCount += suite.CaseCount
+		summary.ObservedCaseCount += suite.ObservedCaseCount
 	}
 	if failure := run.Failure(); failure != nil {
 		summary.FailurePhase = failure.Phase

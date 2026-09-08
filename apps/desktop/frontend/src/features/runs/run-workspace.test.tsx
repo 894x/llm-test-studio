@@ -8,6 +8,22 @@ import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 import { NewRunSheet, RunWorkspace } from "./run-workspace"
 import { FIXTURE_WORKSPACE } from "./fixtures"
 
+it("shows separate Suite bars and aggregate Case progress", () => {
+  const snapshot = structuredClone(FIXTURE_WORKSPACE)
+  const run = snapshot.runs[0]
+  run.case_count = 8
+  run.observed_case_count = 3
+  run.suite_progress = [
+    { entry_id: run.id, name: "第一套件", case_count: 4, observed_case_count: 3, status: "running" },
+    { entry_id: snapshot.runs[1].id, name: "第二套件", case_count: 4, observed_case_count: 0, status: "not_started" },
+  ]
+  snapshot.runs = [run]
+  render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
+  expect(screen.getByRole("progressbar", { name: "第一套件：3 / 4 个 Case 已有结果" })).toHaveAttribute("aria-valuenow", "75")
+  expect(screen.getByRole("progressbar", { name: "第二套件：0 / 4 个 Case 已有结果" })).toHaveAttribute("aria-valuenow", "0")
+  expect(screen.getByRole("progressbar", { name: "Case 进度：3 / 8" })).toHaveAttribute("aria-valuenow", "38")
+})
+
 it("shows task observations without a fictitious request total or timed target", () => {
   const snapshot = structuredClone(FIXTURE_WORKSPACE)
   snapshot.plans = []
@@ -15,8 +31,9 @@ it("shows task observations without a fictitious request total or timed target",
   Object.assign(snapshot.runs[0], { source: "quick_task", status: "running", planned: 0, duration_ms: 0, completed: 6, passed: 6, failed: 0 })
   snapshot.active_run_id = snapshot.runs[0].id
   render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
-  expect(screen.getAllByText("按 Suite 执行").length).toBeGreaterThan(0)
-  expect(screen.getAllByText("6 个请求已完成").length).toBeGreaterThan(0)
+  expect(screen.getAllByText("Case 已有结果 2 / 4").length).toBeGreaterThan(0)
+  expect(screen.getByRole("progressbar", { name: "Case 进度：2 / 4" })).toHaveAttribute("aria-valuenow", "50")
+  expect(screen.getAllByText(/6 个请求已完成/).length).toBeGreaterThan(0)
   expect(screen.queryByText(/6\/0|目标时长 0|定时运行/)).not.toBeInTheDocument()
 })
 

@@ -323,6 +323,11 @@ function run(input: {
         ? "failed"
         : "none"
   return {
+    case_count: 4,
+    observed_case_count: input.status === "completed" ? 4 : input.completed > 0 ? 2 : 0,
+    suite_progress: [{ entry_id: input.id, name: input.planName, case_count: 4,
+      observed_case_count: input.status === "completed" ? 4 : input.completed > 0 ? 2 : 0,
+      status: input.status === "starting" || input.status === "queued" ? "queued" : input.status === "draining" ? "running" : input.status }],
     id: input.id,
     revision: 1,
     plan_id: input.planId,

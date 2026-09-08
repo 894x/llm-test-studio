@@ -316,6 +316,8 @@ export function createFixtureClient(
       const now = new Date().toISOString()
       workspace.runs.unshift({
         id, revision: 1, source: "quick_task", plan_id: id, plan_revision: 1, plan_name: suite.name,
+        case_count: suite.cases.length, observed_case_count: 0,
+        suite_progress: [{ entry_id: id, name: suite.name, case_count: suite.cases.length, observed_case_count: 0, status: "queued" }],
         model_id: nextID(), model_revision: 1, model_name: command.model,
         channel_id: channel?.id ?? nextID(), channel_revision: channel?.revision ?? 1, channel_name: channel?.name ?? new URL(command.base_url!).host,
         status: "queued", conclusion: "none", load_mode: "fixed_concurrency", concurrency: 1,
@@ -1566,6 +1568,7 @@ function isWorkspaceRun(value: unknown): boolean {
     (value.failure_phase !== undefined || value.error_code !== undefined)
   return (
     isRecord(value) &&
+    isCaseProgress(value) &&
     isUUID(value.id) &&
     isPositiveSafeInteger(value.revision) &&
     isUUID(value.plan_id) &&
@@ -1586,7 +1589,7 @@ function isWorkspaceRun(value: unknown): boolean {
     (value.source === undefined || value.source === "quick_task") &&
     (value.source === "quick_task"
       ? value.planned === 0 && value.duration_ms === 0
-      : (value.planned as number) > 0 || (value.duration_ms as number) > 0) &&
+      : (value.planned as number) > 0 || (value.duration_ms as number) > 0 || (value.case_count as number) > 0) &&
     isConclusion(value.conclusion) &&
     (!hasFailure ||
       (value.status === "failed" &&
@@ -1607,6 +1610,15 @@ function parseRun(value: unknown) {
   if (!isWorkspaceRun(value)) throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   const record = value as Record<string, unknown>
   return {
+    case_count: record.case_count as number,
+    observed_case_count: record.observed_case_count as number,
+    suite_progress: (record.suite_progress as Record<string, unknown>[]).map((suite) => ({
+      entry_id: suite.entry_id as string,
+      name: suite.name as string,
+      case_count: suite.case_count as number,
+      observed_case_count: suite.observed_case_count as number,
+      status: suite.status as "not_started" | "queued" | "running" | "completed" | "failed" | "cancelled",
+    })),
     ...(record.source === "quick_task" ? { source: "quick_task" as const } : {}),
     id: record.id as string,
     revision: record.revision as number,
@@ -1646,6 +1658,24 @@ function parseRun(value: unknown) {
     started_at: record.started_at as string,
     updated_at: record.updated_at as string,
   }
+}
+
+function isCaseProgress(value: Record<string, unknown>): boolean {
+  if (!isNonNegativeSafeInteger(value.case_count) || !isNonNegativeSafeInteger(value.observed_case_count) ||
+      !Array.isArray(value.suite_progress) || value.suite_progress.length === 0) return false
+  const ids = new Set<string>()
+  let total = 0
+  let observed = 0
+  for (const suite of value.suite_progress) {
+    if (!isRecord(suite) || !isUUID(suite.entry_id) || ids.has(suite.entry_id) || !isNonBlankString(suite.name) ||
+        !isPositiveSafeInteger(suite.case_count) || !isNonNegativeSafeInteger(suite.observed_case_count) ||
+        (suite.observed_case_count as number) > (suite.case_count as number) ||
+        !["not_started", "queued", "running", "completed", "failed", "cancelled"].includes(suite.status as string)) return false
+    ids.add(suite.entry_id)
+    total += suite.case_count as number
+    observed += suite.observed_case_count as number
+  }
+  return total === value.case_count && observed === value.observed_case_count
 }
 
 function isConclusion(value: unknown): boolean {

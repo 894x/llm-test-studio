@@ -997,7 +997,10 @@ describe("Wails desktop client", () => {
     { source: "quick_task", planned: 1, duration_ms: 0 },
     { source: "quick_task", planned: 0, duration_ms: 1000 },
     { source: "unknown", planned: 0, duration_ms: 0 },
-    { planned: 0, duration_ms: 0 },
+    { planned: 0, duration_ms: 0, case_count: 0 },
+    { case_count: 3 },
+    { observed_case_count: 5 },
+    { suite_progress: [] },
   ])("rejects inconsistent task progress metadata %j", async (progress) => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     Object.assign(payload.runs[0], progress)

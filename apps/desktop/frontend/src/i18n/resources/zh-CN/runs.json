@@ -83,7 +83,7 @@
     "details": "详情"
   },
   "presentation": {
-	"quickSuite": "按 Suite 执行",
+    "quickSuite": "按 Suite 执行",
     "failedRequests": "{{count}} 个请求未通过完整成功判定。",
     "failedConclusion": "运行结论未通过，请检查报告中的 SLA 与汇总。",
     "continuous": "{{rate}}持续 {{duration}}",
@@ -92,5 +92,19 @@
     "fixedConcurrency": "{{concurrency}} 并发 · {{count}} 请求",
     "openLoop": "开放模型 · {{rate}} RPS",
     "fixedTotal": "固定总量 · {{concurrency}} 并发"
+  },
+  "caseProgress": {
+    "count": "Case 已有结果 {{completed}} / {{total}}",
+    "suites": "套件 Case 进度",
+    "suiteAria": "{{name}}：{{completed}} / {{total}} 个 Case 已有结果",
+    "totalAria": "Case 进度：{{completed}} / {{total}}",
+    "status": {
+      "not_started": "未开始",
+      "queued": "排队中",
+      "running": "执行中",
+      "completed": "已完成",
+      "failed": "执行失败",
+      "cancelled": "已取消"
+    }
   }
 }

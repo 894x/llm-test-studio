@@ -101,6 +101,9 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 		t.Fatalf("first projection = %#v", first)
 	}
 	second := byID[secondRun.Meta().ID]
+	if len(second.SuiteResults) != 1 || second.SuiteResults[0].ObservedCases != 1 || second.SuiteResults[0].EntryID != fixture.result.SuiteEntryID {
+		t.Fatalf("request observations and summary must count as one Case: %#v", second.SuiteResults)
+	}
 	if second.Completed != 2 || second.Passed != 1 || second.Failed != 1 || second.ArtifactCount != 1 || second.Conclusion != workspace.ConclusionNone {
 		t.Fatalf("second projection = %#v", second)
 	}

@@ -61,6 +61,10 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 	}
 
 	projections := make([]workspace.RunProjection, 0, len(stored))
+	suiteResults, err := readWorkspaceSuiteResults(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range stored {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -72,12 +76,38 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 			}
 			return nil, err
 		}
+		projection.SuiteResults = suiteResults[projection.Run.Meta().ID]
 		projections = append(projections, projection)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit workspace projection read: %w", err)
 	}
 	return projections, nil
+}
+
+func readWorkspaceSuiteResults(ctx context.Context, tx *sql.Tx) (map[string][]workspace.SuiteResultProjection, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT run_id, COALESCE(suite_entry_id, ''), COUNT(DISTINCT case_id),
+		       COALESCE(MAX(json_extract(document_json, '$.suite_status')), '')
+		FROM case_results GROUP BY run_id, suite_entry_id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query Suite Case progress: %w", err)
+	}
+	defer rows.Close()
+	results := map[string][]workspace.SuiteResultProjection{}
+	for rows.Next() {
+		var runID string
+		var result workspace.SuiteResultProjection
+		if err := rows.Scan(&runID, &result.EntryID, &result.ObservedCases, &result.Status); err != nil {
+			return nil, fmt.Errorf("scan Suite Case progress: %w", err)
+		}
+		results[runID] = append(results[runID], result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate Suite Case progress: %w", err)
+	}
+	return results, nil
 }
 
 type storedWorkspaceProjection struct {

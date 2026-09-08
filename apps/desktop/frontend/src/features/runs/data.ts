@@ -44,7 +44,18 @@ export type WorkspacePlan = {
   request_timeout_ms: number
 }
 
+export type SuiteCaseProgress = {
+  entry_id: string
+  name: string
+  case_count: number
+  observed_case_count: number
+  status: "not_started" | "queued" | "running" | "completed" | "failed" | "cancelled"
+}
+
 export type WorkspaceRun = {
+  case_count: number
+  observed_case_count: number
+  suite_progress: SuiteCaseProgress[]
   source?: "quick_task"
   id: string
   revision: number
@@ -99,6 +110,9 @@ export type TestPlan = {
 }
 
 export type RunRecord = {
+  caseCount: number
+  observedCaseCount: number
+  suiteProgress: SuiteCaseProgress[]
   quickTask?: boolean
   id: string
   title: string
@@ -148,6 +162,9 @@ export function presentWorkspace(
       runCount: item.run_count,
     })),
     runs: snapshot.runs.map((item) => ({
+      caseCount: item.case_count,
+      observedCaseCount: item.observed_case_count,
+      suiteProgress: item.suite_progress,
       quickTask: item.source === "quick_task",
       id: item.id,
       title: item.plan_name,

@@ -211,9 +211,9 @@ function RunTable({
           {runs.map((run) => {
             const selected = run.id === selectedId
             const percent =
-              run.total === 0
+              run.caseCount === 0
                 ? 0
-                : Math.round((run.completed / run.total) * 100)
+                : Math.round((run.observedCaseCount / run.caseCount) * 100)
             return (
               <TableRow
                 key={run.id}
@@ -246,7 +246,7 @@ function RunTable({
                   </div>
                 </TableCell>
                 <TableCell className="py-1">
-                  {run.total > 0 ? (
+                  {run.caseCount > 0 ? (
                     <>
                       <div className="flex items-center gap-2">
                         <Progress
@@ -255,11 +255,13 @@ function RunTable({
                           aria-label={t("table.progressAria", { title: run.title, percent })}
                         />
                         <span className="text-[11px] tabular-nums text-muted-foreground">
-                          {run.completed}/{run.total}
+                          {t("caseProgress.count", { completed: run.observedCaseCount, total: run.caseCount })}
                         </span>
                       </div>
                       <div className="mt-1 text-[10px] text-muted-foreground">
+                        <span>{t("table.completedCount", { count: run.completed })}</span> · {" "}
                         {t("table.passed", { count: run.passed })}
+                        {run.targetDurationMS > 0 ? <> · {t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}</> : null}
                       </div>
                     </>
                   ) : (
@@ -349,6 +351,21 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
           value="summary"
           className="min-h-0 overflow-y-auto px-4 py-2"
         >
+          <div className="space-y-3 py-2" aria-label={t("caseProgress.suites")}>
+            {run.suiteProgress.map((suite, index) => (
+              <div key={suite.entry_id} className="min-w-0">
+                <div className="flex items-start justify-between gap-2 text-xs">
+                  <span className="min-w-0 truncate" title={suite.name}>{index + 1}. {suite.name}</span>
+                  <span className="shrink-0 text-muted-foreground">{t(`caseProgress.status.${suite.status}`)}</span>
+                </div>
+                <div className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                  {t("caseProgress.count", { completed: suite.observed_case_count, total: suite.case_count })}
+                </div>
+                <Progress value={Math.round(suite.observed_case_count / suite.case_count * 100)} className="mt-1.5"
+                  aria-label={t("caseProgress.suiteAria", { name: suite.name, completed: suite.observed_case_count, total: suite.case_count })} />
+              </div>
+            ))}
+          </div>
           <dl data-slot="inspector-description-list" className="space-y-1">
             <DefinitionRow
               label={t("inspector.planRevision")}
@@ -629,7 +646,7 @@ function ActiveTaskBar({
 }) {
   const { t } = useTranslation("runs")
   const progress =
-    run.total === 0 ? 0 : Math.round((run.completed / run.total) * 100)
+    run.caseCount === 0 ? 0 : Math.round((run.observedCaseCount / run.caseCount) * 100)
 
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-3 border-t bg-background px-4 py-2">
@@ -648,16 +665,14 @@ function ActiveTaskBar({
           </span>
           <span className="truncate text-muted-foreground">{run.title}</span>
           <span className="hidden tabular-nums text-muted-foreground sm:inline">
-            {run.total > 0
-              ? `${run.completed}/${run.total}`
-              : run.quickTask ? t("inspector.completedRequests", { count: run.completed }) : t("task.completedTarget", { count: run.completed, duration: formatTargetDuration(run.targetDurationMS) })}
+            {t("caseProgress.count", { completed: run.observedCaseCount, total: run.caseCount })}
           </span>
         </div>
-        {run.total > 0 ? (
+        {run.caseCount > 0 ? (
           <Progress
             value={progress}
             className="mt-2 max-w-sm"
-            aria-label={t("task.progressAria", { percent: progress })}
+            aria-label={t("caseProgress.totalAria", { completed: run.observedCaseCount, total: run.caseCount })}
           />
         ) : (
           <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
