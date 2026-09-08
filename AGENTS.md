@@ -1,5 +1,23 @@
 # Project Constraints
 
+## Development-stage policy: no backward-compatibility code
+
+- This project is in active development. Maintain only the current contract and one implementation path. Do not introduce backward-compatibility code or retain a superseded implementation in the affected scope. Breaking changes are expected; do not propose compatibility layers as a solution.
+- Compatibility code means logic whose sole purpose is to keep superseded project APIs, fields, formats, configuration, storage layouts, or callers working. This includes legacy aliases, deprecated wrappers, old/new dual reads or writes, fallback to removed fields or paths, version-detection branches, and feature flags that retain an old implementation.
+- When changing a contract, update all affected in-repository producers, consumers, bindings, fixtures, authored definitions, tests, and documentation in the same change. Replace the old path and remove obsolete code within the affected scope; do not add an adapter merely to avoid updating callers or tests. Do not expand a focused task into unrelated legacy cleanup.
+- Update affected callers to the current contract, including known external integration points where they are within scope. Report any callers that cannot be updated in this change as outstanding upgrade requirements; do not accommodate them with a legacy runtime path. Old installations, historical data, and existing legacy code are not reasons to add compatibility.
+- Unsupported old input or persisted formats must fail explicitly with an actionable error. Do not silently reinterpret them, default away a version mismatch, or retry through a legacy path. This rule does not authorize deleting, overwriting, or resetting user data.
+- When historical data or code needs upgrading, write a temporary, separately invoked script to convert or refactor the previous version directly to the current version. Define the source and target versions, validate inputs before writing, and verify the converted result against the current contract. Preserve recoverability for persisted user data and do not overwrite unrelated work.
+- Keep upgrade scripts outside application startup, builds, and normal runtime reads and writes. Do not ship them as permanent migration infrastructure, add automatic migration/import-on-read, or make the current application depend on them. Remove temporary scripts and artifacts after the required upgrade and verification are complete; if execution is still pending, report their location and remaining work explicitly.
+- Current, intentionally supported provider protocols, platform integrations, and their explicit boundary adapters are product functionality. Documented optional values and normal resilience behavior are also allowed. They must not be used to disguise support for superseded internal contracts.
+
+### Required verification for contract changes
+
+1. Identify the current contract and affected callers/data before editing; resolve references to the replaced symbols, fields, formats, and paths within the affected scope.
+2. Verify that callers and tests use the new contract and that no obsolete alias, wrapper, fallback, dual path, or unused compatibility flag remains in that scope. Update obsolete tests instead of retaining old behavior to make them pass.
+3. Run checks appropriate to the affected behavior. When an input or storage format changes, verify that unsupported old formats are rejected clearly without mutating rejected data.
+4. In the completion report, state breaking contract changes, historical-data impact, upgrade-script execution and verification results when applicable, and any outstanding upgrades. Do not claim an upgrade has been completed if only the script has been written.
+
 ## Wails version
 
 - The desktop application is pinned to `github.com/wailsapp/wails/v2 v2.15.0`.
