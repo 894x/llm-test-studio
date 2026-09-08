@@ -291,27 +291,20 @@ describe("CatalogEditor filesystem suite", () => {
 })
 
 describe("CatalogEditor plan errors", () => {
-  it("requires a direct pinned case", async () => {
+  it("requires at least one suite", async () => {
     const user = userEvent.setup()
-    const testCase: CatalogTestCase = {
-      id: "123e4567-e89b-42d3-a456-426614174021", revision: 1, key: "must.chat", name: "Basic chat",
-      dimension: "compatibility", protocol: "openai-chat", model_targets: [], enabled: true, default: true,
-      severity: "normal", execution_mode: "automatic", definition_schema_version: 2,
-      type: "request.single", type_version: 1, spec: { request: {}, expected: {}, assertions: [] },
-    }
-    const catalog: CatalogSnapshot = { ...EMPTY_CATALOG, test_cases: [testCase] }
+    const catalog: CatalogSnapshot = EMPTY_CATALOG
     const createPlan = vi.fn().mockResolvedValue(catalog)
     const actions = { createPlan } as unknown as CatalogActions
 
     render(<CatalogEditor kind="plan" catalog={catalog} actions={actions} pending={false} mutate={async (operation) => { await operation() }} />)
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     await user.type(screen.getByLabelText("计划名称"), "无用例计划")
-    const caseChoice = screen.getByRole("checkbox", { name: "Basic chat · r1" })
-    await user.click(caseChoice)
     await user.click(screen.getByRole("button", { name: "保存计划" }))
 
-    expect(screen.getByText("请至少选择一个直接用例。")).toHaveAttribute("data-slot", "field-error")
-    expect(caseChoice).toHaveFocus()
+    const suiteGroup = screen.getByRole("group", { name: "套件" })
+    expect(screen.getByText("请至少添加一个套件。")).toHaveAttribute("data-slot", "field-error")
+    expect(suiteGroup).toHaveFocus()
     expect(createPlan).not.toHaveBeenCalled()
   })
 
@@ -336,6 +329,16 @@ describe("CatalogEditor plan errors", () => {
         type_version: 1,
         spec: { kind: "chat_stream" },
       }],
+      suites: [{
+        id: "123e4567-e89b-42d3-a456-426614174022",
+        revision: 1,
+        key: "kimi-stream",
+        name: "Kimi K3 流式套件",
+        protocol: "kimi-k3",
+        model_target: "kimi-k3",
+        case_count: 1,
+        cases: [{ case_id: "123e4567-e89b-42d3-a456-426614174021", revision: 1 }],
+      }],
     }
     const createPlan = vi.fn().mockRejectedValue(new DesktopClientError("plan_protocol_mismatch"))
     const actions = { createPlan } as unknown as CatalogActions
@@ -343,6 +346,7 @@ describe("CatalogEditor plan errors", () => {
     render(<CatalogEditor kind="plan" catalog={catalog} actions={actions} pending={false} mutate={async (operation) => { await operation() }} />)
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     await user.type(screen.getByLabelText("计划名称"), "Kimi K3 兼容性计划")
+    await user.click(screen.getByRole("button", { name: "添加套件" }))
     await user.click(screen.getByRole("button", { name: "保存计划" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -350,5 +354,212 @@ describe("CatalogEditor plan errors", () => {
     )
     expect(screen.getByLabelText("计划名称")).toHaveValue("Kimi K3 兼容性计划")
     expect(screen.getByRole("dialog", { name: "新增计划" })).toBeInTheDocument()
+  })
+})
+
+describe("CatalogEditor ordered plan suites", () => {
+  const suiteID = "123e4567-e89b-42d3-a456-426614174040"
+  const caseID = "123e4567-e89b-42d3-a456-426614174041"
+  const suite = {
+    id: suiteID,
+    revision: 3,
+    key: "chat-smoke",
+    name: "Chat smoke",
+    protocol: "openai-chat" as const,
+    model_target: "gpt-test",
+    case_count: 1,
+    cases: [{ case_id: caseID, revision: 2 }],
+    quick_test: {
+      description: "Smoke",
+      timeout_ms: 30_000,
+      inputs: [
+        {
+          key: "prompt",
+          label: "提示词",
+          type: "text" as const,
+          default: "hello",
+          bindings: [{ case_key: "chat.basic", pointer: "/request/body/messages/0/content" }],
+        },
+        {
+          key: "temperature",
+          label: "温度",
+          type: "number" as const,
+          default: 0.2,
+          bindings: [{ case_key: "chat.basic", pointer: "/request/body/temperature" }],
+        },
+        {
+          key: "stream",
+          label: "流式",
+          type: "boolean" as const,
+          default: true,
+          bindings: [{ case_key: "chat.basic", pointer: "/request/body/stream" }],
+        },
+      ],
+    },
+  }
+  const catalog: CatalogSnapshot = { ...EMPTY_CATALOG, suites: [suite] }
+
+  it("keeps repeated suite parameters independent and submits their reordered sequence", async () => {
+    const user = userEvent.setup()
+    const createPlan = vi.fn().mockResolvedValue(catalog)
+    render(<CatalogEditor kind="plan" catalog={catalog} actions={{ createPlan } as unknown as CatalogActions} pending={false} mutate={async (operation) => { await operation() }} />)
+
+    await user.click(screen.getByRole("button", { name: "新增计划" }))
+    await user.type(screen.getByLabelText("计划名称"), "重复套件计划")
+    await user.click(screen.getByRole("button", { name: "添加套件" }))
+    await user.click(screen.getByRole("button", { name: "添加套件" }))
+
+    const prompts = screen.getAllByLabelText("提示词")
+    await user.clear(prompts[0])
+    await user.type(prompts[0], "first")
+    await user.clear(prompts[1])
+    await user.type(prompts[1], "second")
+    const temperatures = screen.getAllByLabelText("温度")
+    await user.clear(temperatures[0])
+    await user.type(temperatures[0], "0.3")
+    await user.clear(temperatures[1])
+    await user.type(temperatures[1], "0.9")
+    const streamInputs = screen.getAllByLabelText("流式")
+    await user.click(streamInputs[1])
+    const concurrency = screen.getAllByLabelText("并发数")
+    expect(concurrency[0]).not.toHaveAttribute("id", concurrency[1].getAttribute("id"))
+    await user.clear(concurrency[0])
+    await user.type(concurrency[0], "2")
+    await user.clear(concurrency[1])
+    await user.type(concurrency[1], "7")
+    const slas = screen.getAllByLabelText("SLA 阈值 JSON")
+    fireEvent.change(slas[0], { target: { value: '{"e2e_p95_ms":2000}' } })
+    fireEvent.change(slas[1], { target: { value: '{"e2e_p95_ms":7000}' } })
+
+    await user.click(screen.getByRole("button", { name: "将第 2 个套件 Chat smoke 上移" }))
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+
+    expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({
+      name: "重复套件计划",
+      suites: [
+        expect.objectContaining({ suite_id: suiteID, suite_revision: 3, concurrency: 7, parameters: { prompt: "second", temperature: 0.9, stream: false }, sla_thresholds: { e2e_p95_ms: 7000 } }),
+        expect.objectContaining({ suite_id: suiteID, suite_revision: 3, concurrency: 2, parameters: { prompt: "first", temperature: 0.3, stream: true }, sla_thresholds: { e2e_p95_ms: 2000 } }),
+      ],
+    }))
+    expect(createPlan.mock.calls[0][0].suites.every((entry: { entry_id?: string }) => entry.entry_id === undefined)).toBe(true)
+  })
+
+  it("preserves existing entry ids, omits ids for new entries, and removes an entry", async () => {
+    const user = userEvent.setup()
+    const firstID = "123e4567-e89b-42d3-a456-426614174051"
+    const secondID = "123e4567-e89b-42d3-a456-426614174052"
+    const plan = {
+      id: "123e4567-e89b-42d3-a456-426614174050",
+      revision: 4,
+      name: "Editable plan",
+      model_count: 0,
+      channel_count: 0,
+      suite_count: 2,
+      case_count: 2,
+      model_ids: [],
+      channel_ids: [],
+      suites: [firstID, secondID].map((entryID, index) => ({
+        entry_id: entryID,
+        suite_id: suiteID,
+        suite_revision: 3,
+        suite_key: suite.key,
+        suite_name: suite.name,
+        protocol: suite.protocol,
+        model_target: suite.model_target,
+        case_count: 1,
+        cases: suite.cases,
+        quick_test: suite.quick_test,
+        parameters: { prompt: index ? "remove" : "keep", temperature: 0.2, stream: true },
+        load_mode: "single" as const,
+        concurrency: 1,
+        request_count: 1,
+        rate_per_second: 0,
+        duration_ms: 0,
+        request_timeout_ms: 30_000,
+        sla_thresholds: { e2e_p95_ms: 3_000 },
+      })),
+    }
+    const updatePlan = vi.fn().mockResolvedValue(catalog)
+    render(<CatalogEditor kind="plan" item={plan} catalog={catalog} actions={{ updatePlan } as unknown as CatalogActions} pending={false} mutate={async (operation) => { await operation() }} />)
+
+    await user.click(screen.getByRole("button", { name: "编辑计划" }))
+    await user.click(screen.getByRole("button", { name: "删除第 2 个套件 Chat smoke" }))
+    await user.click(screen.getByRole("button", { name: "添加套件" }))
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+
+    const entries = updatePlan.mock.calls[0][0].suites
+    expect(entries).toHaveLength(2)
+    expect(entries[0]).toMatchObject({ entry_id: firstID, parameters: { prompt: "keep" } })
+    expect(entries[1].entry_id).toBeUndefined()
+  })
+
+  it("does not borrow quick-test inputs from a newer Suite revision", async () => {
+    const user = userEvent.setup()
+    const entryID = "123e4567-e89b-42d3-a456-426614174053"
+    const plan = {
+      id: "123e4567-e89b-42d3-a456-426614174054",
+      revision: 2,
+      name: "Pinned historical Suite",
+      model_count: 0,
+      channel_count: 0,
+      suite_count: 1,
+      case_count: 1,
+      model_ids: [],
+      channel_ids: [],
+      suites: [{
+        entry_id: entryID,
+        suite_id: suiteID,
+        suite_revision: 2,
+        suite_key: "chat-smoke-v2",
+        suite_name: "Chat smoke v2",
+        protocol: suite.protocol,
+        model_target: suite.model_target,
+        case_count: 1,
+        cases: suite.cases,
+        parameters: {},
+        load_mode: "single" as const,
+        concurrency: 1,
+        request_count: 1,
+        rate_per_second: 0,
+        duration_ms: 0,
+        request_timeout_ms: 30_000,
+        sla_thresholds: { e2e_p95_ms: 3_000 },
+      }],
+    }
+    const updatePlan = vi.fn().mockResolvedValue(catalog)
+    render(<CatalogEditor kind="plan" item={plan} catalog={catalog} actions={{ updatePlan } as unknown as CatalogActions} pending={false} mutate={async (operation) => { await operation() }} />)
+
+    await user.click(screen.getByRole("button", { name: "编辑计划" }))
+    expect(screen.queryByLabelText("提示词")).not.toBeInTheDocument()
+    expect(screen.getByText("此套件没有扩展参数。")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+
+    expect(updatePlan).toHaveBeenCalledWith(expect.objectContaining({
+      suites: [expect.objectContaining({
+        entry_id: entryID,
+        suite_revision: 2,
+        parameters: {},
+      })],
+    }))
+  })
+
+  it("focuses the exact repeated load field that fails validation", async () => {
+    const user = userEvent.setup()
+    const createPlan = vi.fn()
+    render(<CatalogEditor kind="plan" catalog={catalog} actions={{ createPlan } as unknown as CatalogActions} pending={false} mutate={async (operation) => { await operation() }} />)
+
+    await user.click(screen.getByRole("button", { name: "新增计划" }))
+    await user.type(screen.getByLabelText("计划名称"), "无效负载")
+    await user.click(screen.getByRole("button", { name: "添加套件" }))
+    await user.click(screen.getByRole("button", { name: "添加套件" }))
+    const requestCounts = screen.getAllByLabelText("请求数")
+    await user.clear(requestCounts[1])
+    await user.type(requestCounts[1], "0")
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+
+    expect(requestCounts[1]).toHaveAttribute("aria-invalid", "true")
+    expect(requestCounts[1]).toHaveFocus()
+    expect(requestCounts[0]).not.toHaveAttribute("aria-invalid")
+    expect(createPlan).not.toHaveBeenCalled()
   })
 })

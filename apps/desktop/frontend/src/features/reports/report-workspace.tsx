@@ -1,6 +1,6 @@
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
 import { useTranslation } from "react-i18next"
 
@@ -23,9 +23,11 @@ import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-per
 import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
+import { CaseRequestResults } from "./case-renderers/generic-case.renderer"
+import { CaseRendererSlot } from "./case-renderers/renderer-slot"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
-import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportSnapshot, type ReportSummary, type ResponseProbeDistribution } from "./data"
+import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportSuiteDetail, type ReportSuiteStatus } from "./data"
 
 export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
@@ -43,7 +45,13 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
   const [exportError, setExportError] = useState("")
   const [watermark, setWatermark] = useState("rhzs")
+  const [exportDocument, setExportDocument] = useState<{
+    report: ReportSummary
+    detail: ReportDetail
+    watermark: string
+  } | null>(null)
   const exportDocumentRef = useRef<HTMLElement>(null)
+  const exportDocumentReadyRef = useRef<((element: HTMLElement) => void) | null>(null)
   const selected = snapshot.reports.find((report) => report.id === selectedID) ?? snapshot.reports[0]
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
@@ -61,6 +69,26 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     return () => { active = false }
   }, [getDetail, selectedReportID])
 
+  const attachExportDocument = useCallback((element: HTMLElement | null) => {
+    exportDocumentRef.current = element
+    if (!element || !exportDocumentReadyRef.current) return
+    exportDocumentReadyRef.current(element)
+    exportDocumentReadyRef.current = null
+  }, [])
+
+  const mountExportDocument = (
+    report: ReportSummary,
+    reportDetail: ReportDetail,
+  ): Promise<HTMLElement> => new Promise((resolve) => {
+    exportDocumentReadyRef.current = resolve
+    setExportDocument({ report, detail: reportDetail, watermark })
+  })
+
+  const unmountExportDocument = () => {
+    exportDocumentReadyRef.current = null
+    setExportDocument(null)
+  }
+
   const handleExport = async (format: ReportExportFormat) => {
     if (!selected) return
     setExporting(format)
@@ -70,8 +98,9 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         const exported = await exportReport(selected.id, format, watermark, i18n.resolvedLanguage ?? i18n.language)
         await saveReportExport(exported.filename, exported.media_type, exported.data_base64, i18n.resolvedLanguage ?? i18n.language)
       } else {
-        if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
-        const exported = await exportVisualReport(exportDocumentRef.current, format, selected.id)
+        if (!detail) throw new Error("report rendering unavailable")
+        const element = await mountExportDocument(selected, detail)
+        const exported = await exportVisualReport(element, format, selected.id)
         await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob), i18n.resolvedLanguage ?? i18n.language)
       }
     } catch (error) {
@@ -81,6 +110,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         t("export.error"),
       ))
     } finally {
+      if (format !== "json") unmountExportDocument()
       setExporting("")
     }
   }
@@ -90,8 +120,9 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExporting("copy")
     setExportError("")
     try {
-      if (!exportDocumentRef.current) throw new Error("report rendering unavailable")
-      const exported = await exportVisualReport(exportDocumentRef.current, "png", selected.id)
+      if (!detail) throw new Error("report rendering unavailable")
+      const element = await mountExportDocument(selected, detail)
+      const exported = await exportVisualReport(element, "png", selected.id)
       try {
         await copyReportPNG(await blobToBase64(exported.blob))
       } catch (nativeError) {
@@ -106,6 +137,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         t("export.copyError"),
       ))
     } finally {
+      unmountExportDocument()
       setExporting("")
     }
   }
@@ -138,7 +170,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
               </TableRow></TableHeader>
               <TableBody>{snapshot.reports.map((report) => (
                 <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="dense-table-row h-11">
-                  <TableCell className="py-1 pl-4"><ConclusionBadge passed={report.passed} /></TableCell>
+                  <TableCell className="py-1 pl-4"><ConclusionBadge passed={report.passed} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
                   <TableCell className="py-1"><div className="truncate text-xs">{report.model_name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.channel_name}</div></TableCell>
                   <TableCell className="py-1 text-xs tabular-nums">{report.case_count - report.failed_case_count}/{report.case_count}</TableCell>
@@ -151,7 +183,14 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         </div>
       )}
     </PageFrame>
-    {selected && detail ? <ReportExportSurface ref={exportDocumentRef} report={selected} detail={detail} watermark={watermark} /> : null}
+    {exportDocument ? (
+      <ReportExportSurface
+        ref={attachExportDocument}
+        report={exportDocument.report}
+        detail={exportDocument.detail}
+        watermark={exportDocument.watermark}
+      />
+    ) : null}
   </>
 }
 
@@ -164,36 +203,147 @@ function ReportContent({ detail, error }: { detail: ReportDetail | null; error: 
 }
 
 function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
-  const visibleResults = detail.request_results.slice(0, 1000)
   return (
-    <ScrollArea className="min-h-[180px] flex-[3] border-t">
-      <RunReportBody detail={detail} visibleResults={visibleResults} />
+    <ScrollArea className="min-h-[180px] flex-[3] border-t [&>[data-slot=scroll-area-viewport]>div]:block!">
+      <RunReportBody detail={detail} />
     </ScrollArea>
   )
 }
 
-function RunReportBody({ detail, visibleResults = detail.request_results.slice(0, 1000) }: {
-  detail: Extract<ReportDetail, { source: "run" }>
-  visibleResults?: Extract<ReportDetail, { source: "run" }>["request_results"]
-}) {
+function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
   const { t: tx } = useTranslation()
-  const probeDistributions = detail.report.probe_distributions ?? []
-  return <>
-      {probeDistributions.length ? <ResponseProbeDistributionTable distributions={probeDistributions} /> : null}
-      {detail.request_results.length > visibleResults.length ? <div role="status" className="border-b px-4 py-2 text-[11px] text-muted-foreground">{tx("desktop:reports_showing_the_first_1_000_requests_all")} {detail.request_results.length.toLocaleString(desktopLocale())}  {tx("desktop:reports_requests_can_be_exported_as_json")}</div> : null}
-      <Table aria-label={tx("desktop:reports_request_level_results")} className="min-w-[900px]">
-        <TableHeader className="sticky top-0 z-10 bg-background/95"><TableRow>
-          <TableHead className="h-8 pl-4 text-[11px]">{tx("desktop:quick-test_request")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_phase")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_status")}</TableHead><TableHead className="h-8 text-[11px]">E2E</TableHead><TableHead className="h-8 text-[11px]">TTFT</TableHead><TableHead className="h-8 text-[11px]">TPOT</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_queue")}</TableHead><TableHead className="h-8 text-[11px]">Token</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_error")}</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>{visibleResults.length ? visibleResults.map((result) => (
-          <TableRow key={result.id} className="h-9">
-            <TableCell className="py-1 pl-4 font-mono text-[10px]">{result.request_id ?? result.id}</TableCell><TableCell className="py-1 text-[10px] tabular-nums">{requestDimensionLabel(result.dimensions)}</TableCell><TableCell className="py-1"><ConclusionBadge passed={Object.values(result.success).every(Boolean)} /></TableCell>
-            <MetricCell value={result.metrics.e2e_ms} unit="ms" /><MetricCell value={result.metrics.ttft_ms} unit="ms" /><MetricCell value={result.metrics.tpot_ms} unit="ms" /><MetricCell value={result.metrics.schedule_lag_ms} unit="ms" />
-            <TableCell className="py-1 text-xs tabular-nums">{metric(result.metrics.prompt_tokens)} / {metric(result.metrics.completion_tokens)}</TableCell><TableCell className="py-1 text-xs text-destructive">{result.error_code ?? "—"}</TableCell>
-          </TableRow>
-        )) : <TableRow><TableCell colSpan={9} className="h-24 text-center text-xs text-muted-foreground">{tx("desktop:reports_this_report_has_no_request_level_results")}</TableCell></TableRow>}</TableBody>
-      </Table>
-    </>
+  const suites = detail.suites
+  const unassignedResults = detail.unassigned_request_results
+  const planLabel = tx("desktop:reports_plan_report")
+  const unassignedLabel = tx("desktop:reports_unassigned_requests")
+  return (
+    <section aria-label={planLabel} className="space-y-4 p-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">{planLabel}</h2>
+          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+            {detail.report.model.name} · {detail.report.channel.name}
+          </p>
+        </div>
+        <ConclusionBadge passed={detail.report.conclusion.passed} status={detail.report.run_status} />
+      </header>
+      {suites.map((suite) => (
+        <SuiteReportSection
+          key={suite.suite_entry_id}
+          suite={suite}
+        />
+      ))}
+      {unassignedResults.length ? (
+        <section aria-label={unassignedLabel} className="overflow-hidden rounded-md border">
+          <header className="border-b bg-muted/25 px-3 py-2">
+            <h3 className="text-xs font-semibold">{unassignedLabel}</h3>
+          </header>
+          <CaseRequestResults results={unassignedResults} requestLimit={1_000} />
+        </section>
+      ) : null}
+    </section>
+  )
+}
+
+function SuiteReportSection({ suite }: { suite: ReportSuiteDetail }) {
+  const { t: tx } = useTranslation()
+  const { t } = useTranslation("reports")
+  const displayName = suite.suite_name
+  return (
+    <section aria-label={tx("desktop:reports_suite_aria", { value1: displayName })} className="overflow-hidden rounded-lg border bg-muted/10">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold">{displayName}</h3>
+          <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+            {suite.suite_key} · {suite.suite_entry_id}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <SuiteStatusBadge status={suite.status} label={suiteStatusLabel(suite.status, t)} />
+          {suite.status === "completed" ? <ConclusionBadge passed={suite.conclusion.passed} /> : null}
+        </div>
+      </header>
+      {suite.conclusion.issues.length ? (
+        <ul className="border-b px-3 py-2 text-[11px] text-destructive">
+          {suite.conclusion.issues.map((issue) => <li key={issue}>{suiteIssueLabel(issue, t)}</li>)}
+        </ul>
+      ) : null}
+      {Object.keys(suite.metrics).length || Object.keys(suite.sla).length ? (
+        <div className="grid gap-3 border-b p-3 md:grid-cols-2">
+          <SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} />
+          <SuiteMetricSummary title="SLA" metrics={suite.sla} />
+        </div>
+      ) : null}
+      <div className="space-y-3 p-3">
+        {suite.cases.length ? suite.cases.map((caseReport) => (
+          <CaseRendererSlot
+            key={`${suite.suite_entry_id ?? suite.suite_key}:${caseReport.case_id}`}
+            suite={suite}
+            caseReport={caseReport}
+          />
+        )) : (
+          <p className="py-4 text-center text-xs text-muted-foreground">
+            {t("hierarchy.noRecordedCases")}
+          </p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function SuiteMetricSummary({
+  title,
+  metrics,
+}: {
+  title: string
+  metrics: Record<string, ReportMetric>
+}) {
+  const { t } = useTranslation("reports")
+  const entries = Object.entries(metrics)
+  if (!entries.length) return null
+  return (
+    <section className="rounded-md border bg-background/70 p-2.5">
+      <h4 className="mb-2 text-[11px] font-semibold">{title}</h4>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {entries.map(([name, metric]) => (
+          <div key={name} className="min-w-0 rounded border bg-muted/20 px-2 py-1.5">
+            <dt className="truncate font-mono text-[10px] text-muted-foreground">{name}</dt>
+            <dd className="mt-0.5 text-xs font-semibold tabular-nums">
+              {formatMetric(metric.value)} {metric.unit}
+            </dd>
+            <dd className="text-[10px] text-muted-foreground">
+              {t("inspector.samples")}: {formatMetric(metric.samples)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
+function suiteStatusLabel(status: ReportSuiteStatus, t: ReturnType<typeof useTranslation<"reports">>["t"]): string {
+  if (status === "completed") return t("suiteStatus.completed")
+  if (status === "failed") return t("suiteStatus.failed")
+  if (status === "cancelled") return t("suiteStatus.cancelled")
+  return t("suiteStatus.notStarted")
+}
+
+function SuiteStatusBadge({ status, label }: { status: ReportSuiteStatus; label: string }) {
+  const className = status === "failed"
+    ? "border-destructive/25 bg-destructive/10 text-destructive"
+    : status === "cancelled"
+      ? "border-warning/25 bg-warning-soft text-warning-strong"
+      : status === "not_started"
+        ? "border-border bg-muted text-muted-foreground"
+        : undefined
+  return <Badge variant="outline" className={className}>{label}</Badge>
+}
+
+function suiteIssueLabel(issue: string, t: ReturnType<typeof useTranslation<"reports">>["t"]): string {
+  if (issue === "suite execution failed") return t("suiteIssue.failed")
+  if (issue === "suite execution was cancelled") return t("suiteIssue.cancelled")
+  if (issue === "suite execution was not started") return t("suiteIssue.notStarted")
+  return issue
 }
 
 function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { source: "quick_performance" }> }) {
@@ -202,44 +352,6 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
       <QuickPerformanceBody detail={detail} includeRequestAnalysis />
     </ScrollArea>
   )
-}
-
-function ResponseProbeDistributionTable({ distributions }: { distributions: ResponseProbeDistribution[] }) {
-  const { t: tx } = useTranslation()
-  return <section aria-label={tx("desktop:reports_upstream_response_probe_statistics")} className="border-b px-4 py-3">
-    <div className="mb-2">
-      <h4 className="text-xs font-semibold">{tx("desktop:reports_upstream_response_distribution")}</h4>
-      <p className="mt-0.5 text-[10px] text-muted-foreground">{tx("desktop:reports_grouped_by_response_body_signatures_and_structure_fingerprints_unknown_means")}</p>
-    </div>
-    <Table aria-label={tx("desktop:reports_upstream_response_distribution")} className="min-w-[720px] rounded-md border">
-      <TableHeader><TableRow>
-        <TableHead className="h-8 text-[11px]">{tx("desktop:reports_category_label")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_classification")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_format")}</TableHead><TableHead className="h-8 text-[11px]">{tx("desktop:reports_structure_fingerprint")}</TableHead><TableHead className="h-8 text-right text-[11px]">{tx("desktop:catalog_request_count")}</TableHead><TableHead className="h-8 pr-4 text-right text-[11px]">{tx("desktop:reports_share")}</TableHead>
-      </TableRow></TableHeader>
-      <TableBody>{distributions.map((distribution) => <TableRow key={`${distribution.case_id}:${distribution.bucket}:${distribution.shape}`} className="h-9">
-        <TableCell className="py-1 text-xs font-medium">{distribution.bucket}</TableCell>
-        <TableCell className="py-1"><ProbeClassificationBadge classification={distribution.classification} /></TableCell>
-        <TableCell className="py-1 font-mono text-[10px]">{distribution.format || "—"}</TableCell>
-        <TableCell className="py-1 font-mono text-[10px]">{distribution.shape || "—"}</TableCell>
-        <TableCell className="py-1 text-right text-xs tabular-nums">{distribution.count.toLocaleString(desktopLocale())}</TableCell>
-        <TableCell className="py-1 pr-4 text-right text-xs tabular-nums">{formatMetric(distribution.share_percent)}%</TableCell>
-      </TableRow>)}</TableBody>
-    </Table>
-  </section>
-}
-
-function ProbeClassificationBadge({ classification }: { classification: ResponseProbeDistribution["classification"] }) {
-  const { t: tx } = useTranslation()
-  const label = classification === "matched" ? tx("desktop:reports_matched") : classification === "unknown" ? tx("desktop:reports_unknown_format") : classification === "ambiguous" ? tx("desktop:reports_ambiguous_rules") : tx("desktop:reports_request_failed")
-  const tone = classification === "matched" ? "border-success/25 bg-success-soft text-success-strong"
-    : classification === "failed" ? "border-destructive/25 bg-destructive/5 text-destructive"
-    : "border-warning/30 bg-warning-soft text-warning-strong"
-  return <Badge variant="outline" className={tone}>{label}</Badge>
-}
-
-function requestDimensionLabel(dimensions?: Record<string, string>): string {
-  if (dimensions?.probe_bucket) return `${dimensions.probe_bucket} · ${dimensions.probe_classification ?? "—"}`
-  if (dimensions?.input_tokens_target) return `${dimensions.input_tokens_target} token · #${dimensions.sample ?? "—"}/${dimensions.stage_samples ?? "—"}`
-  return "—"
 }
 
 function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
@@ -450,11 +562,6 @@ function ContextValue({ label, value, mono = false }: { label: string; value: st
   return <div className="min-w-0"><dt className="text-[10px] text-muted-foreground">{label}</dt><dd className={`mt-0.5 truncate font-medium ${mono ? "font-mono text-[11px]" : "tabular-nums"}`} title={value}>{value}</dd></div>
 }
 
-function MetricCell({ value, unit }: { value?: number; unit: string }) {
-  const { i18n } = useTranslation()
-  return <TableCell className="py-1 text-xs tabular-nums">{metric(value, i18n.resolvedLanguage ?? i18n.language)} {value === undefined ? "" : unit}</TableCell>
-}
-
 function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG }: {
   report: ReportSummary
   detail: ReportDetail | null
@@ -472,7 +579,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   const metrics = useMemo(() => detail?.source === "run" ? Object.entries(detail.report.metrics).slice(0, 8) : [], [detail])
   const quick = detail?.source === "quick_performance" ? detail.performance : null
   return <ScrollArea className="h-full">
-    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} />} />
+    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} status={report.run_status} />} />
     <Separator />
     <dl className="space-y-1 px-4 py-2">
       <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.case_count - report.failed_case_count, total: report.case_count, failed: report.failed_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
@@ -492,8 +599,11 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   </ScrollArea>
 }
 
-function ConclusionBadge({ passed }: { passed: boolean }) {
+function ConclusionBadge({ passed, status }: { passed: boolean; status?: ReportSummary["run_status"] }) {
   const { t } = useTranslation("reports")
+  if (status === "cancelled") {
+    return <Badge variant="outline" className="border-warning/25 bg-warning-soft text-warning-strong">{t("system.cancelled")}</Badge>
+  }
   return <Badge variant="outline" className={passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>{t(passed ? "conclusion.passed" : "conclusion.failed")}</Badge>
 }
 
@@ -517,7 +627,6 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
-function metric(value?: number, locale: string = desktopLocale()): string { return value === undefined ? "—" : formatMetric(value, locale) }
 function formatMetric(value: number, locale: string = desktopLocale()): string { return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value) }
 function optionalRequestRate(value?: number): string { return value === undefined ? "—" : `${formatPerformanceInteger(value)} req/s` }
 function performanceLoadMode(mode?: "fixed_concurrency" | "open_loop"): string { return mode === "open_loop" ? tx("desktop:quick-test_open_arrival_rps") : mode === "fixed_concurrency" ? tx("desktop:catalog_fixed_concurrency") : tx("desktop:reports_legacy_fixed_concurrency") }

@@ -347,8 +347,17 @@ describe("desktop run workspace", () => {
 		window.history.replaceState(null, "", "#reports")
 		const client = desktopClient()
 		const summary = FIXTURE_REPORTS.reports[0]
+		const suiteEntryID = "88888888-8888-4888-8888-888888888881"
+		const suiteID = "88888888-8888-4888-8888-888888888882"
+		const caseID = "88888888-8888-4888-8888-888888888883"
+		const requestResult = {
+			id: "99999999-9999-4999-8999-999999999991", request_id: "request-1",
+			suite_entry_id: suiteEntryID, case_id: caseID,
+			success: { transport: true, protocol: true, semantic: true, sla: true },
+			metrics: { e2e_ms: 123, ttft_ms: 40, tpot_ms: 10, schedule_lag_ms: 1, prompt_tokens: 10, completion_tokens: 3 },
+		}
 		vi.mocked(client.getReportDetail).mockResolvedValue({
-			schema_version: 1,
+			schema_version: 2,
 			source: "run",
 			report: {
 				id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
@@ -358,11 +367,19 @@ describe("desktop run workspace", () => {
 				conclusion: { passed: true, verdict: summary.verdict, issues: [] },
 				sla: {}, metrics: { e2e_p95_ms: { value: 123, unit: "ms", samples: 1 } }, case_results: [],
 			},
-			request_results: [{
-				id: "99999999-9999-4999-8999-999999999991", request_id: "request-1",
-				success: { transport: true, protocol: true, semantic: true, sla: true },
-				metrics: { e2e_ms: 123, ttft_ms: 40, tpot_ms: 10, schedule_lag_ms: 1, prompt_tokens: 10, completion_tokens: 3 },
+			request_results: [requestResult],
+			suites: [{
+				suite_entry_id: suiteEntryID, suite_id: suiteID, suite_revision: 1,
+				suite_key: "request-detail", suite_name: "request detail", status: "completed",
+				conclusion: { passed: true, verdict: "pass", issues: [] },
+				sla: {}, metrics: {}, timeline: [], distributions: [],
+				cases: [{
+					case_id: caseID, revision: 1, key: "request", name: "request",
+					case_type: "generic.request", case_type_version: 1,
+					request_results: [requestResult],
+				}],
 			}],
+			unassigned_request_results: [],
 		})
 
 		render(<App client={client} />)
@@ -536,6 +553,7 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     const dialog = screen.getByRole("dialog", { name: "新增计划" })
     await user.type(within(dialog).getByLabelText("计划名称"), "缺少停止条件")
+    await user.click(within(dialog).getByRole("button", { name: "添加套件" }))
     const requestCount = within(dialog).getByLabelText("请求数")
     await user.clear(requestCount)
     await user.type(requestCount, "0")

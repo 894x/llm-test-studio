@@ -4,7 +4,7 @@ import type {
   WorkspaceRun,
   WorkspaceSnapshot,
 } from "./data"
-import type { CatalogSnapshot, CatalogTestCase } from "@/features/catalog/data"
+import type { CatalogPlanSuite, CatalogSnapshot, CatalogTestCase } from "@/features/catalog/data"
 import type { ReportSnapshot } from "@/features/reports/data"
 
 const PLAN_IDS = {
@@ -62,8 +62,37 @@ const ALL_CASE_REVISIONS = [
   { case_id: CASE_IDS.stream, revision: 2 },
 ]
 
+function fixturePlanSuite(
+  entryID: string,
+  loadMode: CatalogPlanSuite["load_mode"],
+  concurrency: number,
+  requestCount: number,
+  ratePerSecond: number,
+  slaP95: number,
+): CatalogPlanSuite {
+  return {
+    entry_id: entryID,
+    suite_id: SUITE_ID,
+    suite_revision: 2,
+    suite_key: "openai-regression",
+    suite_name: "OpenAI 回归套件",
+    protocol: "openai-chat",
+    model_target: "gpt-4o",
+    case_count: ALL_CASE_REVISIONS.length,
+    cases: ALL_CASE_REVISIONS,
+    parameters: {},
+    load_mode: loadMode,
+    concurrency,
+    request_count: requestCount,
+    rate_per_second: ratePerSecond,
+    duration_ms: 0,
+    request_timeout_ms: 30_000,
+    sla_thresholds: { p95_ms: slaP95 },
+  }
+}
+
 export const FIXTURE_CATALOG: CatalogSnapshot = {
-  schema_version: 2,
+  schema_version: 3,
   case_types: [
     { type: "latency.input_ladder", type_version: 2, label: "输入阶梯延迟", category: "performance", scheduling_owner: "case", supported_protocols: ["openai-chat", "kimi-k3"], creatable: true, default_spec: { request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: { messages: [{ role: "user", content: "placeholder" }], stream: true } }, stages: [{ input_tokens: 128 }, { input_tokens: 512 }, { input_tokens: 2048 }, { input_tokens: 8192 }], warmups_per_step: 1, samples_per_step: 3, output_tokens: 16, timeout_ms: 600000, cache_mode: "cold" } },
     { type: "legacy.apiaudit", type_version: 1, label: "内置兼容性审计", category: "compatibility", scheduling_owner: "case", supported_protocols: ["openai-chat", "kimi-k3", "seedance", "wan-video", "minimax-video"], creatable: false, default_spec: { kind: "chat_sync", request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: {} }, options: {} } },
@@ -103,10 +132,10 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
     { id: "88888888-8888-4888-8888-888888888882", revision: 1, key: "openai-connectivity", name: "OpenAI Chat 连通性测试", protocol: "openai-chat", model_target: "", case_count: 1, cases: [ALL_CASE_REVISIONS[0]], quick_test: { description: "发送一条消息并检查响应。", timeout_ms: 30000, inputs: [{ key: "prompt", label: "测试消息", type: "text", default: "hello", bindings: [{ case_key: "T001", pointer: "/request/body/messages/0/content" }] }] } },
   ],
   plans: [
-    { id: PLAN_IDS.copy, revision: 1, name: "营销文案基准", model_count: 1, channel_count: 1, case_count: 4, load_mode: "fixed_concurrency", concurrency: 4, request_count: 120, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000, model_ids: [MODEL_IDS.openai], channel_ids: [CHANNEL_IDS.openai], suite_id: SUITE_ID, suite_revision: 2, cases: ALL_CASE_REVISIONS, sla_thresholds: { p95_ms: 2000 } },
-    { id: PLAN_IDS.json, revision: 1, name: "JSON 模式回归", model_count: 1, channel_count: 1, case_count: 4, load_mode: "fixed_concurrency", concurrency: 2, request_count: 24, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000, model_ids: [MODEL_IDS.qwen], channel_ids: [CHANNEL_IDS.aliyun], suite_id: SUITE_ID, suite_revision: 2, cases: ALL_CASE_REVISIONS, sla_thresholds: { p95_ms: 2500 } },
-    { id: PLAN_IDS.tools, revision: 1, name: "工具调用兼容性", model_count: 1, channel_count: 1, case_count: 4, load_mode: "fixed_concurrency", concurrency: 8, request_count: 72, rate_per_second: 0, duration_ms: 0, request_timeout_ms: 30_000, model_ids: [MODEL_IDS.claude], channel_ids: [CHANNEL_IDS.anthropic], suite_id: SUITE_ID, suite_revision: 2, cases: ALL_CASE_REVISIONS, sla_thresholds: { p95_ms: 3000 } },
-    { id: PLAN_IDS.stream, revision: 1, name: "流式性能门禁", model_count: 1, channel_count: 1, case_count: 4, load_mode: "open_loop", concurrency: 1, request_count: 180, rate_per_second: 12, duration_ms: 0, request_timeout_ms: 30_000, model_ids: [MODEL_IDS.deepseek], channel_ids: [CHANNEL_IDS.compatible], suite_id: SUITE_ID, suite_revision: 2, cases: ALL_CASE_REVISIONS, sla_thresholds: { p95_ms: 1800 } },
+    { id: PLAN_IDS.copy, revision: 1, name: "营销文案基准", model_count: 1, channel_count: 1, suite_count: 1, case_count: 4, model_ids: [MODEL_IDS.openai], channel_ids: [CHANNEL_IDS.openai], suites: [fixturePlanSuite(PLAN_IDS.copy, "fixed_concurrency", 4, 120, 0, 2000)] },
+    { id: PLAN_IDS.json, revision: 1, name: "JSON 模式回归", model_count: 1, channel_count: 1, suite_count: 1, case_count: 4, model_ids: [MODEL_IDS.qwen], channel_ids: [CHANNEL_IDS.aliyun], suites: [fixturePlanSuite(PLAN_IDS.json, "fixed_concurrency", 2, 24, 0, 2500)] },
+    { id: PLAN_IDS.tools, revision: 1, name: "工具调用兼容性", model_count: 1, channel_count: 1, suite_count: 1, case_count: 4, model_ids: [MODEL_IDS.claude], channel_ids: [CHANNEL_IDS.anthropic], suites: [fixturePlanSuite(PLAN_IDS.tools, "fixed_concurrency", 8, 72, 0, 3000)] },
+    { id: PLAN_IDS.stream, revision: 1, name: "流式性能门禁", model_count: 1, channel_count: 1, suite_count: 1, case_count: 4, model_ids: [MODEL_IDS.deepseek], channel_ids: [CHANNEL_IDS.compatible], suites: [fixturePlanSuite(PLAN_IDS.stream, "open_loop", 1, 180, 12, 1800)] },
   ],
 }
 

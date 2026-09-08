@@ -93,25 +93,40 @@ export interface SuiteInput {
   bindings: { case_key: string; pointer: string }[]
 }
 
-export interface CatalogPlan {
-  id: string
-  revision: number
-  name: string
-  model_count: number
-  channel_count: number
+export type CatalogPlanParameterValue = string | number | boolean
+
+export interface CatalogPlanSuite {
+  entry_id: string
+  suite_id: string
+  suite_revision: number
+  suite_key: string
+  suite_name: string
+  protocol: CatalogProtocol
+  model_target: string
   case_count: number
+  cases: CatalogCaseRevision[]
+  quick_test?: SuiteQuickTest
+  parameters: Record<string, CatalogPlanParameterValue>
   load_mode: CatalogLoadMode
   concurrency: number
   request_count: number
   rate_per_second: number
   duration_ms: number
   request_timeout_ms: number
+  sla_thresholds: Record<string, number>
+}
+
+export interface CatalogPlan {
+  id: string
+  revision: number
+  name: string
+  model_count: number
+  channel_count: number
+  suite_count: number
+  case_count: number
   model_ids: string[]
   channel_ids: string[]
-  suite_id?: string
-  suite_revision?: number
-  cases: CatalogCaseRevision[]
-  sla_thresholds: Record<string, number>
+  suites: CatalogPlanSuite[]
 }
 
 export type CreateModelCommand = Pick<CatalogModel, "name" | "protocol" | "capabilities">
@@ -127,10 +142,11 @@ export type CreateTestCaseCommand = Pick<CatalogTestCase,
 export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
 export type CreateSuiteCommand = Pick<CatalogSuite, "key" | "name" | "protocol" | "model_target" | "cases" | "quick_test">
 export type UpdateSuiteCommand = CreateSuiteCommand & { id: string; expected_revision: number }
-export type CreatePlanCommand = Pick<CatalogPlan,
-  "name" | "model_ids" | "channel_ids" | "suite_id" | "suite_revision" | "cases" | "load_mode" |
-  "concurrency" | "request_count" | "rate_per_second" | "duration_ms" | "request_timeout_ms" | "sla_thresholds"
->
+export type PlanSuiteCommand = Pick<CatalogPlanSuite,
+  "suite_id" | "suite_revision" | "parameters" | "load_mode" | "concurrency" | "request_count" |
+  "rate_per_second" | "duration_ms" | "request_timeout_ms" | "sla_thresholds"
+> & { entry_id?: string }
+export type CreatePlanCommand = Pick<CatalogPlan, "name" | "model_ids" | "channel_ids"> & { suites: PlanSuiteCommand[] }
 export type UpdatePlanCommand = CreatePlanCommand & { id: string; expected_revision: number }
 export interface DeleteCommand { id: string; expected_revision: number }
 
@@ -156,7 +172,7 @@ export interface CatalogActions {
 }
 
 export interface CatalogSnapshot {
-  schema_version: 2
+  schema_version: 3
   case_types: CatalogCaseTypeDescriptor[]
   models: CatalogModel[]
   channels: CatalogChannel[]
@@ -167,7 +183,7 @@ export interface CatalogSnapshot {
 }
 
 export const EMPTY_CATALOG: CatalogSnapshot = {
-  schema_version: 2,
+  schema_version: 3,
   case_types: [],
   models: [],
   channels: [],
@@ -178,7 +194,7 @@ export const EMPTY_CATALOG: CatalogSnapshot = {
 }
 
 export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
-  if (!isRecord(value) || value.schema_version !== 2) {
+  if (!isRecord(value) || value.schema_version !== 3) {
     throw new DesktopDataError(tx("desktop:catalog_unsupported_desktop_catalog_protocol_version"))
   }
   if (
@@ -245,20 +261,20 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
     if (
       plan.model_ids.some((id) => !modelByID.has(id)) ||
       plan.channel_ids.some((id) => !channelByID.has(id)) ||
-			!hasUniqueCaseIDs(plan.cases) ||
       plan.model_ids.some((modelID) => plan.channel_ids.some((channelID) => !mappedBindings.has(`${channelID}\u0000${modelID}`)))
     ) {
       throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_reference"))
     }
-    if (plan.suite_id !== undefined) {
-      if (!suiteByID.has(plan.suite_id)) {
+    for (const entry of plan.suites) {
+      const suite = suiteByID.get(entry.suite_id)
+      if (!suite) {
         throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_suite_reference"))
       }
     }
   }
 
   return {
-    schema_version: 2,
+    schema_version: 3,
     case_types: caseTypes,
     models,
     channels,
@@ -466,29 +482,23 @@ function parsePlan(value: unknown): CatalogPlan {
     !isNonBlank(value.name) ||
     !isNonNegativeInteger(value.model_count) ||
     !isNonNegativeInteger(value.channel_count) ||
+    !isPositiveInteger(value.suite_count) ||
     !isPositiveInteger(value.case_count) ||
-    !isLoadMode(value.load_mode) ||
-    !isPositiveInteger(value.concurrency) ||
-    !isNonNegativeInteger(value.request_count) ||
-    !isNonNegativeFinite(value.rate_per_second) ||
-    !isNonNegativeInteger(value.duration_ms) ||
-    (value.request_count === 0 && value.duration_ms === 0) ||
-    !isPositiveInteger(value.request_timeout_ms)
-    || !isUUIDList(value.model_ids)
-    || !isUUIDList(value.channel_ids)
-    || (value.model_ids.length === 0) !== (value.channel_ids.length === 0)
-    || !Array.isArray(value.cases)
-    || !isFiniteNumberRecord(value.sla_thresholds)
-    || !isOptionalSuiteRef(value.suite_id, value.suite_revision)
+    !isUUIDList(value.model_ids) ||
+    !isUUIDList(value.channel_ids) ||
+    (value.model_ids.length === 0) !== (value.channel_ids.length === 0) ||
+    !Array.isArray(value.suites) ||
+    hasLegacyPlanFields(value)
   ) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_data"))
   }
-  const cases = value.cases.map(parseCaseRevision)
+  const suites = value.suites.map(parsePlanSuite)
   if (
     value.model_ids.length !== value.model_count ||
     value.channel_ids.length !== value.channel_count ||
-    cases.length !== value.case_count ||
-    !hasUniqueCaseIDs(cases)
+    suites.length !== value.suite_count ||
+    new Set(suites.map((entry) => entry.entry_id)).size !== suites.length ||
+    suites.reduce((total, entry) => total + entry.case_count, 0) !== value.case_count
   ) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_member"))
   }
@@ -498,17 +508,68 @@ function parsePlan(value: unknown): CatalogPlan {
     name: value.name,
     model_count: value.model_count,
     channel_count: value.channel_count,
+    suite_count: value.suite_count,
     case_count: value.case_count,
+    model_ids: [...value.model_ids],
+    channel_ids: [...value.channel_ids],
+    suites,
+  }
+}
+
+function hasLegacyPlanFields(value: Record<string, unknown>): boolean {
+  return [
+    "suite_id", "suite_revision", "cases", "load_mode", "concurrency", "request_count",
+    "rate_per_second", "duration_ms", "request_timeout_ms", "sla_thresholds",
+  ].some((key) => Object.hasOwn(value, key))
+}
+
+function parsePlanSuite(value: unknown): CatalogPlanSuite {
+  if (
+    !isRecord(value) ||
+    !isUUID(value.entry_id) ||
+    !isUUID(value.suite_id) ||
+    !isPositiveInteger(value.suite_revision) ||
+    !isNonBlank(value.suite_key) ||
+    !isNonBlank(value.suite_name) ||
+    !isProtocol(value.protocol) ||
+    typeof value.model_target !== "string" ||
+    !isPositiveInteger(value.case_count) ||
+    !Array.isArray(value.cases) ||
+    !isPlanParameters(value.parameters) ||
+    !isLoadMode(value.load_mode) ||
+    !isPositiveInteger(value.concurrency) ||
+    !isNonNegativeInteger(value.request_count) ||
+    !isNonNegativeFinite(value.rate_per_second) ||
+    !isNonNegativeInteger(value.duration_ms) ||
+    (value.request_count === 0 && value.duration_ms === 0) ||
+    !isPositiveInteger(value.request_timeout_ms) ||
+    !isFiniteNumberRecord(value.sla_thresholds)
+  ) {
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_data"))
+  }
+  const cases = value.cases.map(parseCaseRevision)
+  if (cases.length !== value.case_count || !hasUniqueCaseIDs(cases)) {
+    throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_plan_member"))
+  }
+  const quickTest = value.quick_test === undefined ? undefined : parseSuiteQuickTest(value.quick_test)
+  return {
+    entry_id: value.entry_id,
+    suite_id: value.suite_id,
+    suite_revision: value.suite_revision,
+    suite_key: value.suite_key,
+    suite_name: value.suite_name,
+    protocol: value.protocol,
+    model_target: value.model_target,
+    case_count: value.case_count,
+    cases,
+    ...(quickTest ? { quick_test: quickTest } : {}),
+    parameters: { ...value.parameters },
     load_mode: value.load_mode,
     concurrency: value.concurrency,
     request_count: value.request_count,
     rate_per_second: value.rate_per_second,
     duration_ms: value.duration_ms,
     request_timeout_ms: value.request_timeout_ms,
-    model_ids: [...value.model_ids],
-    channel_ids: [...value.channel_ids],
-    ...(typeof value.suite_id === "string" ? { suite_id: value.suite_id, suite_revision: value.suite_revision as number } : {}),
-    cases,
     sla_thresholds: { ...value.sla_thresholds },
   }
 }
@@ -567,8 +628,10 @@ function isFiniteNumberRecord(value: unknown): value is Record<string, number> {
   return isRecord(value) && Object.keys(value).length > 0 && Object.entries(value).every(([name, entry]) => isNonBlank(name) && isNonNegativeFinite(entry))
 }
 
-function isOptionalSuiteRef(id: unknown, revision: unknown): boolean {
-  return (id === undefined && revision === undefined) || (isUUID(id) && isPositiveInteger(revision))
+function isPlanParameters(value: unknown): value is Record<string, CatalogPlanParameterValue> {
+  return !Array.isArray(value) && isRecord(value) && Object.values(value).every((item) =>
+    typeof item === "string" || typeof item === "boolean" || (typeof item === "number" && Number.isFinite(item)),
+  )
 }
 
 function isLoadMode(value: unknown): value is CatalogLoadMode {

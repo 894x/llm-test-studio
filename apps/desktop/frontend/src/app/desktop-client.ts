@@ -469,11 +469,11 @@ export function createFixtureClient(
       return structuredClone(catalogState)
     },
     async createPlan(command) {
-      catalogState.plans.push(planFromCommand(nextID(), 1, command))
+      catalogState.plans.push(planFromCommand(nextID(), 1, command, catalogState))
       return structuredClone(catalogState)
     },
     async updatePlan(command) {
-      catalogState.plans = replaceByID(catalogState.plans, command.id, planFromCommand(command.id, command.expected_revision + 1, command))
+      catalogState.plans = replaceByID(catalogState.plans, command.id, planFromCommand(command.id, command.expected_revision + 1, command, catalogState))
       return structuredClone(catalogState)
     },
     async deletePlan(command) {
@@ -1232,7 +1232,7 @@ function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase
 
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
 	return {
-		schema_version: 1,
+		schema_version: 2,
 		source: "run",
 		report: {
 			id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
@@ -1243,6 +1243,17 @@ function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): Report
 			sla: {}, metrics: {}, case_results: [],
 		},
 		request_results: [],
+		suites: [{
+			suite_entry_id: "10000000-0000-4000-8000-000000000003",
+			suite_id: "10000000-0000-4000-8000-000000000004",
+			suite_revision: 1,
+			suite_key: "fixture-suite",
+			suite_name: "Fixture suite",
+			status: summary.run_status,
+			conclusion: { passed: summary.passed, verdict: summary.passed ? "pass" : "fail", issues: [] },
+			sla: {}, metrics: {}, timeline: [], distributions: [], cases: [],
+		}],
+		unassigned_request_results: [],
 	}
 }
 
@@ -1459,25 +1470,53 @@ function removeByID<T extends { id: string }>(items: T[], id: string): T[] {
   return items.filter((item) => item.id !== id)
 }
 
-function planFromCommand(id: string, revision: number, command: CreatePlanCommand): CatalogSnapshot["plans"][number] {
+function planFromCommand(id: string, revision: number, command: CreatePlanCommand, catalog: CatalogSnapshot): CatalogSnapshot["plans"][number] {
+  const existingPlan = catalog.plans.find((plan) => plan.id === id)
+  const suites = command.suites.map((entry) => {
+    const existingEntry = entry.entry_id
+      ? existingPlan?.suites.find((candidate) =>
+          candidate.entry_id === entry.entry_id && candidate.suite_id === entry.suite_id &&
+          candidate.suite_revision === entry.suite_revision,
+        )
+      : undefined
+    if (entry.entry_id && !existingEntry) throw new DesktopClientError("invalid_identifier")
+    const currentSuite = catalog.suites.find((candidate) =>
+      candidate.id === entry.suite_id && candidate.revision === entry.suite_revision,
+    )
+    const pinnedSuite = existingEntry ?? currentSuite
+    if (!pinnedSuite) throw new DesktopClientError("invalid_identifier")
+    return {
+      entry_id: entry.entry_id ?? crypto.randomUUID(),
+      suite_id: entry.suite_id,
+      suite_revision: entry.suite_revision,
+      suite_key: "suite_key" in pinnedSuite ? pinnedSuite.suite_key : pinnedSuite.key,
+      suite_name: "suite_name" in pinnedSuite ? pinnedSuite.suite_name : pinnedSuite.name,
+      protocol: pinnedSuite.protocol,
+      model_target: pinnedSuite.model_target,
+      case_count: pinnedSuite.case_count,
+      cases: structuredClone(pinnedSuite.cases),
+      ...(pinnedSuite.quick_test ? { quick_test: structuredClone(pinnedSuite.quick_test) } : {}),
+      parameters: structuredClone(entry.parameters),
+      load_mode: entry.load_mode,
+      concurrency: entry.concurrency,
+      request_count: entry.request_count,
+      rate_per_second: entry.rate_per_second,
+      duration_ms: entry.duration_ms,
+      request_timeout_ms: entry.request_timeout_ms,
+      sla_thresholds: { ...entry.sla_thresholds },
+    }
+  })
   return {
     id,
     revision,
     name: command.name,
     model_count: command.model_ids.length,
     channel_count: command.channel_ids.length,
-    case_count: command.cases.length,
-    load_mode: command.load_mode,
-    concurrency: command.concurrency,
-    request_count: command.request_count,
-    rate_per_second: command.rate_per_second,
-    duration_ms: command.duration_ms,
-    request_timeout_ms: command.request_timeout_ms,
+    suite_count: suites.length,
+    case_count: suites.reduce((total, suite) => total + suite.case_count, 0),
     model_ids: [...command.model_ids],
     channel_ids: [...command.channel_ids],
-    ...(command.suite_id === undefined ? {} : { suite_id: command.suite_id, suite_revision: command.suite_revision }),
-    cases: structuredClone(command.cases),
-    sla_thresholds: { ...command.sla_thresholds },
+    suites,
   }
 }
 
