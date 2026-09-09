@@ -85,13 +85,13 @@ function PlanNavigation({
 
   return (
     <nav aria-label={t("plans.aria")} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="px-3 pb-2 pt-4">
+      <div className="px-4 pb-2 pt-4">
         <div className="text-xs font-semibold">{t("plans.title")}</div>
         <div className="mt-1 text-[11px] text-muted-foreground">
           {t("plans.description")}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4 pb-3">
         <button
           type="button"
           data-active={activePlanId === "all"}
@@ -167,7 +167,7 @@ function RunTable({
   if (runs.length === 0) {
     return (
       <ScrollArea className="min-h-0 min-w-0 flex-1 px-4">
-        <Empty>
+        <Empty className="px-0">
           <EmptyTitle>
             {t(filtered ? "table.emptyFiltered" : "table.empty")}
           </EmptyTitle>
@@ -616,7 +616,7 @@ function MobileInspectorSheet({ run }: { run: RunRecord }) {
           <PanelRightIcon data-icon="inline-start" /> {t("mobile.details")}
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-[340px] p-0">
+      <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0">
         <SheetHeader className="sr-only">
           <SheetTitle>{t("inspector.details")}</SheetTitle>
           <SheetDescription>

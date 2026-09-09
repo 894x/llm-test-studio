@@ -61,7 +61,7 @@ export function PageFrame({
       {inspector !== undefined ? (
         <aside
           aria-label={inspectorLabel ?? t("page.details", { title })}
-          className="hidden min-h-0 min-w-0 w-[300px] shrink-0 border-l border-divider bg-background min-[1180px]:flex"
+          className="hidden min-h-0 min-w-0 w-[320px] shrink-0 border-l border-divider bg-background min-[1180px]:flex"
         >
           <ScrollArea contentWidth="viewport" className="flex-1">{detailsOpen ? null : inspector}</ScrollArea>
         </aside>

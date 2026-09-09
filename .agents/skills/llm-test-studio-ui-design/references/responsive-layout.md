@@ -40,7 +40,7 @@ Prioritize Header content in this order:
 - Constrain every flexible ancestor with `min-width: 0`; use `minmax(0, 1fr)` for flexible grid tracks. Long content must not determine column widths.
 - Wrap ordinary text by default, including unbroken Latin strings with `overflow-wrap: anywhere`. Do not mask overflow with clipping or ellipsis.
 - Use `ScrollArea contentWidth="viewport"` for wrapping text panels; retain intrinsic measurement only for intentionally horizontally scrollable tables/code. Avoid nested vertical scroll owners.
-- Keep the inspector at a stable width on desktop; at compact size move it to a sheet/dialog or hide it behind an explicit detail action.
+- Use a 320 px fixed inspector on every desktop page. Below 1180 px, expose the details through a 340 px right-side sheet with 16 px horizontal content insets. Override Sheet width with the matching `data-[side=right]` variant so its default width cannot win.
 - Keep toolbars and page headers shrink-free while the data region owns remaining height.
 - Preserve selection when an inspector changes composition.
 - Keep empty and error states inside the same region as their successful data surface.

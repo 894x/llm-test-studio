@@ -51,7 +51,7 @@ export function CaseReportSection({
       aria-label={tx("desktop:reports_case_aria", { value1: caseReport.name })}
       className="min-w-0 overflow-hidden"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+      <header className="flex flex-wrap items-center justify-between gap-2 py-2">
         <div className="min-w-0">
           <h4 className="truncate text-xs font-semibold">{caseReport.name}</h4>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">

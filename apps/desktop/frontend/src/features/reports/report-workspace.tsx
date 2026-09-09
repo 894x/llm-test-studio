@@ -163,19 +163,19 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea className="min-h-0 flex-1 px-4">
             <Table aria-label={t("catalogAria")} className="min-w-[840px]">
               <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="hover:bg-transparent">
-                <TableHead className="h-8 w-[88px] pl-4 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-4 text-right text-[11px]">{t("columns.view")}</TableHead>
+                <TableHead className="h-8 w-[88px] pl-2 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-2 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
               <TableBody>{snapshot.reports.map((report) => (
                 <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="h-11">
-                  <TableCell className="py-1 pl-4"><ConclusionBadge passed={report.passed} status={report.run_status} /></TableCell>
+                  <TableCell className="py-1 pl-2"><ConclusionBadge passed={report.passed} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
                   <TableCell className="py-1"><div className="truncate text-xs">{report.model_name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.channel_name}</div></TableCell>
                   <TableCell className="py-1 text-xs tabular-nums">{report.case_count - report.failed_case_count}/{report.case_count}</TableCell>
                   <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(report.generated_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
-                  <TableCell className="py-1 pr-4 text-right"><Button variant="outline" size="xs" aria-label={t("viewAria", { name: displayReportVerdict(report, t) })} onClick={(event) => { event.stopPropagation(); setSelectedID(report.id); setViewingReportID(report.id) }}>{t("view")}</Button></TableCell>
+                  <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("viewAria", { name: displayReportVerdict(report, t) })} onClick={(event) => { event.stopPropagation(); setSelectedID(report.id); setViewingReportID(report.id) }}>{t("view")}</Button></TableCell>
                 </TableRow>
               ))}</TableBody>
             </Table>
@@ -235,7 +235,7 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
       ))}
       {unassignedResults.length ? (
         <section aria-label={unassignedLabel} className="min-w-0 overflow-hidden">
-          <header className="border-b bg-muted/25 px-3 py-2">
+          <header className="border-b bg-muted/25 py-2">
             <h3 className="text-xs font-semibold">{unassignedLabel}</h3>
           </header>
           <CaseRequestResults results={unassignedResults} requestLimit={1_000} />
@@ -251,7 +251,7 @@ function SuiteReportSection({ suite }: { suite: ReportSuiteDetail }) {
   const displayName = suite.suite_name
   return (
     <section aria-label={tx("desktop:reports_suite_aria", { value1: displayName })} className="min-w-0 overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 py-2.5">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{displayName}</h3>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
@@ -264,17 +264,17 @@ function SuiteReportSection({ suite }: { suite: ReportSuiteDetail }) {
         </div>
       </header>
       {suite.conclusion.issues.length ? (
-        <ul className="border-b px-3 py-2 text-[11px] text-destructive">
+        <ul className="border-b py-2 text-[11px] text-destructive">
           {suite.conclusion.issues.map((issue) => <li key={issue}>{suiteIssueLabel(issue, t)}</li>)}
         </ul>
       ) : null}
       {Object.keys(suite.metrics).length || Object.keys(suite.sla).length ? (
-        <div className="grid gap-3 border-b p-3 md:grid-cols-2">
+        <div className="grid gap-3 border-b py-3 md:grid-cols-2">
           <SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} />
           <SuiteMetricSummary title="SLA" metrics={suite.sla} />
         </div>
       ) : null}
-      <div className="space-y-3 p-3">
+      <div className="space-y-3 py-3">
         {suite.cases.length ? suite.cases.map((caseReport) => (
           <CaseRendererSlot
             key={`${suite.suite_entry_id ?? suite.suite_key}:${caseReport.case_id}`}
@@ -302,11 +302,11 @@ function SuiteMetricSummary({
   const entries = Object.entries(metrics)
   if (!entries.length) return null
   return (
-    <section className="min-w-0 p-2.5">
+    <section className="min-w-0 py-2.5">
       <h4 className="mb-2 text-[11px] font-semibold">{title}</h4>
       <dl className="grid gap-2 sm:grid-cols-2">
         {entries.map(([name, metric]) => (
-          <div key={name} className="min-w-0 px-2 py-1.5">
+          <div key={name} className="min-w-0 py-1.5">
             <dt className="truncate font-mono text-[10px] text-muted-foreground">{name}</dt>
             <dd className="mt-0.5 text-xs font-semibold tabular-nums">
               {formatMetric(metric.value)} {metric.unit}

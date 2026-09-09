@@ -54,6 +54,8 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 - Keep each bounded region responsible for its own `ScrollArea`. Do not nest independent vertical scroll owners without a deliberate interaction reason.
 - Avoid permanent cards for page chrome. Use open layout, alignment, spacing, and typography first; use a quiet divider only where a boundary is needed.
 
+- Page content, standalone table scroll regions, navigation, and inspector content use 16 px horizontal insets. Assign the inset to one container; nested sections reuse it rather than adding repeated horizontal padding. Table cells keep 8 px internal padding.
+
 ## Tables, lists, and inspectors
 
 - Use tables for comparable records with stable columns and lists for heterogeneous records or prominent row actions.

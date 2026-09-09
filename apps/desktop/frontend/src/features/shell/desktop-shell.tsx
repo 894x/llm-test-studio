@@ -103,7 +103,7 @@ export function DesktopShell({
   const { t } = useTranslation("shell")
   return (
     <div className="flex h-svh min-h-[640px] flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-12 shrink-0 items-center bg-background px-3">
+      <header className="flex h-12 shrink-0 items-center bg-background px-4">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <ActivityIcon className="size-4" />
@@ -120,7 +120,7 @@ export function DesktopShell({
 
         <nav
           aria-label={t("navigationAria")}
-          className="flex min-w-0 flex-1 items-center overflow-x-auto"
+          className="flex h-10 min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {DESKTOP_PAGES.map((page) => {
             const active = page.id === activePage
@@ -132,7 +132,7 @@ export function DesktopShell({
                 aria-current={active ? "page" : undefined}
                 onClick={() => onNavigate(page.id)}
                 className={cn(
-                  "shrink-0 px-2 text-xs font-normal",
+                  "desktop-nav-button shrink-0 px-2 text-xs font-normal active:not-aria-[haspopup]:translate-y-0",
                   active && "bg-accent font-medium text-accent-foreground",
                 )}
               >
@@ -142,7 +142,7 @@ export function DesktopShell({
           })}
         </nav>
 
-        <div className="ml-2 flex shrink-0 items-center gap-1">
+        <div className="desktop-header-actions ml-2 flex shrink-0 items-center gap-1">
           <InterfaceSettingsMenu />
           {actions}
         </div>

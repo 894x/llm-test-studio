@@ -181,7 +181,7 @@ function AppWorkspace({
     }
   }, [client])
 
-  const openArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
+  const openReport = useCallback(async (reportID: string): Promise<void> => {
     setPreferredReportID(reportID)
     navigate("reports")
     try {
@@ -319,7 +319,7 @@ function AppWorkspace({
       }
     >
       {page === "overview" ? (
-        <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} />
+        <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
         <QuickTaskWorkspace
           catalog={catalog}
@@ -333,7 +333,7 @@ function AppWorkspace({
           refresh={refreshQuickTask}
           onWorkspaceUpdated={setSnapshot}
           onPerformanceArchived={refreshArchivedPerformanceReport}
-          onOpenReport={openArchivedPerformanceReport}
+          onOpenReport={openReport}
         />
       ) : page === "catalog" ? (
         <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />

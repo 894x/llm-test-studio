@@ -204,7 +204,7 @@
 }
 
 .plan-nav-item {
-  @apply min-h-12 px-2.5 py-2 hover:bg-sidebar-accent;
+  @apply min-h-12 px-0 py-2 hover:bg-sidebar-accent;
 }
 
 .plan-nav-item[data-active="true"] {
@@ -255,4 +255,28 @@
 .table-sticky-cell::after {
   border-radius: inherit;
   background: inherit;
+}
+
+.desktop-nav-button:hover {
+  background: var(--surface-hover);
+}
+
+.desktop-nav-button[aria-current="page"] {
+  background: var(--surface-active);
+}
+
+.desktop-nav-button[aria-current="page"]:hover {
+  background: color-mix(in srgb, var(--primary) 22%, var(--background));
+}
+
+.desktop-header-actions button[data-variant="ghost"]:not(:disabled):hover {
+  background: var(--surface-hover);
+}
+
+.desktop-header-actions button[data-variant="ghost"][aria-expanded="true"] {
+  background: var(--surface-active);
+}
+
+.desktop-header-actions button[data-variant="default"]:not(:disabled):hover {
+  background: var(--accent-hover);
 }

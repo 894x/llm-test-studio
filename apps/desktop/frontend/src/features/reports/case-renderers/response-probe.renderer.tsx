@@ -87,7 +87,7 @@ function isProbeClassification(value: unknown): value is ResponseProbeDistributi
 function ResponseProbeDistributionTable({ distributions }: { distributions: ResponseProbeDistribution[] }) {
   const { t: tx } = useTranslation()
   return (
-    <section aria-label={tx("desktop:reports_upstream_response_probe_statistics")} className="border-b px-3 py-3">
+    <section aria-label={tx("desktop:reports_upstream_response_probe_statistics")} className="border-b py-3">
       <div className="mb-2">
         <h5 className="text-xs font-semibold">{tx("desktop:reports_upstream_response_distribution")}</h5>
         <p className="mt-0.5 text-[10px] text-muted-foreground">

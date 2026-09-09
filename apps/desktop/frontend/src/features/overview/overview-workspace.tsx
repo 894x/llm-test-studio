@@ -1,9 +1,11 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { reportVerdictTranslationKey, type ReportSnapshot } from "@/features/reports/data"
 import {
@@ -16,10 +18,12 @@ export function OverviewWorkspace({
   workspace,
   catalog,
   reports,
+  onOpenReport,
 }: {
   workspace: WorkspaceSnapshot
   catalog: CatalogSnapshot
   reports: ReportSnapshot
+  onOpenReport: (reportID: string) => void
 }) {
   const { t } = useTranslation(["overview", "common", "reports"])
   const presentation = useMemo(() => presentWorkspace(workspace), [workspace])
@@ -41,9 +45,9 @@ export function OverviewWorkspace({
       title={t("title")}
       description={t("description")}
     >
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="min-w-[760px]">
-          <section aria-label={t("summary.aria")} className="grid grid-cols-6">
+      <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
+        <div className="min-w-0">
+          <section aria-label={t("summary.aria")} className="grid grid-cols-6 gap-2 px-4">
             <SummaryCell value={t("summary.models", { count: catalog.models.length })} label={t("summary.logicalModels")} />
             <SummaryCell value={t("summary.channels", { count: catalog.channels.length })} label={t("summary.enabled", { count: enabledChannels })} />
             <SummaryCell value={t("summary.cases", { count: catalog.test_cases.length })} label={t("summary.suites", { count: catalog.suites.length })} />
@@ -94,21 +98,37 @@ export function OverviewWorkspace({
             {recentReports.length === 0 ? (
               <p className="mt-3 text-xs text-muted-foreground">{t("reports.empty")}</p>
             ) : (
-              <div className="mt-2 divide-y divide-divider">
-                {recentReports.map((report) => (
-                  <div key={report.id} className="grid grid-cols-[84px_minmax(0,1fr)_180px_110px] items-center gap-3 py-2 text-xs">
-                    <Badge
-                      variant="outline"
-                      className={report.passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}
-                    >
-                      {t(report.passed ? "reports.passed" : "reports.failed")}
-                    </Badge>
-                    <span className="font-medium [overflow-wrap:anywhere]">{reportVerdictTranslationKey(report) ? t(`reports:${reportVerdictTranslationKey(report)}`) : report.verdict}</span>
-                    <span className="text-muted-foreground [overflow-wrap:anywhere]">{report.model_name} · {report.channel_name}</span>
-                    <span className="text-right tabular-nums text-muted-foreground">{t("reports.failureCount", { failed: report.failed_case_count, total: report.case_count })}</span>
-                  </div>
-                ))}
-              </div>
+              <Table aria-labelledby="recent-reports-heading" className="mt-2 table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-8 w-24 text-[11px]">{t("reports:columns.verdict")}</TableHead>
+                    <TableHead className="h-8 text-[11px]">{t("reports:columns.reportPlan")}</TableHead>
+                    <TableHead className="h-8 w-[32%] text-[11px]">{t("reports:columns.target")}</TableHead>
+                    <TableHead className="h-8 w-32 text-right text-[11px]">{t("reports:columns.cases")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentReports.map((report) => (
+                    <TableRow key={report.id} className="cursor-pointer" onClick={() => onOpenReport(report.id)}>
+                      <TableCell className="text-xs">
+                        <span className={report.passed ? "inline-flex items-center gap-1.5 text-success-strong" : "inline-flex items-center gap-1.5 text-destructive"}>
+                          <span className="status-dot" aria-hidden="true" />
+                          {t(report.passed ? "reports.passed" : "reports.failed")}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium">
+                        <Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs text-foreground [overflow-wrap:anywhere]"
+                          aria-label={t("reports:viewAria", { name: reportVerdictTranslationKey(report) ? t(`reports:${reportVerdictTranslationKey(report)}`) : report.verdict })}
+                          onClick={(event) => { event.stopPropagation(); onOpenReport(report.id) }}>
+                          {reportVerdictTranslationKey(report) ? t(`reports:${reportVerdictTranslationKey(report)}`) : report.verdict}
+                        </Button>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{report.model_name} · {report.channel_name}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums text-muted-foreground">{t("reports.failureCount", { failed: report.failed_case_count, total: report.case_count })}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </section>
         </div>
@@ -119,7 +139,7 @@ export function OverviewWorkspace({
 
 function SummaryCell({ value, label }: { value: string; label: string }) {
   return (
-    <div className="min-w-0 px-4 py-3 [overflow-wrap:anywhere]">
+    <div className="min-w-0 rounded-lg px-4 py-3 transition-colors duration-200 hover:bg-surface-hover [overflow-wrap:anywhere]">
       <div className="text-sm font-semibold tabular-nums">{value}</div>
       <div className="mt-1 text-[10px] text-muted-foreground">{label}</div>
     </div>
