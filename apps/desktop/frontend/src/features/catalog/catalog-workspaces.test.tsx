@@ -1,7 +1,7 @@
 import { getI18n } from "react-i18next"
 import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { CasesWorkspace, ModelChannelWorkspace, PlansWorkspace } from "./catalog-workspaces"
 import { EMPTY_CATALOG, type CatalogActions, type CatalogSnapshot } from "./data"
@@ -60,10 +60,12 @@ describe("ModelChannelWorkspace", () => {
       ],
     }
 
+    const createChannelModel = vi.fn().mockResolvedValue(catalog)
+    const updateChannelModel = vi.fn().mockResolvedValue(catalog)
     render(
       <ModelChannelWorkspace
         catalog={catalog}
-        actions={{} as CatalogActions}
+        actions={{ createChannelModel, updateChannelModel } as unknown as CatalogActions}
         mutate={async (operation) => { await operation() }}
         mutationPending={false}
         mutationError=""
@@ -106,6 +108,31 @@ describe("ModelChannelWorkspace", () => {
     await user.hover(configured)
     expect(configured.closest("td")).toHaveAttribute("data-intersection", "true")
     expect(within(matrix).getByRole("columnheader", { name: "OpenAI 主渠道" })).toHaveAttribute("data-crosshair", "true")
+
+    await user.click(configured)
+    const editDialog = screen.getByRole("dialog", { name: "编辑映射" })
+    const upstream = within(editDialog).getByRole("textbox", { name: /上游模型/ })
+    expect(upstream).toHaveValue("gpt-4o-2024-11-20")
+    await user.clear(upstream)
+    await user.type(upstream, "gpt-4o-updated")
+    await user.click(within(editDialog).getByRole("button", { name: "保存映射" }))
+    expect(updateChannelModel).toHaveBeenCalledWith({
+      id: catalog.channel_models[0].id, expected_revision: 1, upstream_model_name: "gpt-4o-updated",
+    })
+    expect(configured).toHaveFocus()
+
+    const createButton = within(unconfigured).getByRole("button")
+    createButton.focus()
+    await user.keyboard("{Enter}")
+    const createDialog = screen.getByRole("dialog", { name: "新增映射" })
+    expect(within(createDialog).getByRole("combobox", { name: "渠道" })).toHaveValue("Kimi 备用渠道")
+    expect(within(createDialog).getByRole("combobox", { name: "逻辑模型" })).toHaveValue("Kimi K3")
+    await user.type(within(createDialog).getByRole("textbox", { name: /上游模型/ }), "kimi-k3")
+    await user.click(within(createDialog).getByRole("button", { name: "保存映射" }))
+    expect(createChannelModel).toHaveBeenCalledWith({
+      channel_id: catalog.channels[1].id, model_id: catalog.models[1].id, upstream_model_name: "kimi-k3",
+    })
+    expect(createButton).toHaveFocus()
   })
 })
 

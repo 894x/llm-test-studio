@@ -39,8 +39,10 @@ export type CatalogMutation = (
 ) => Promise<void>
 
 export function CatalogEditor({
-  kind, item, catalog, actions, mutate, pending,
+  kind, item, catalog, actions, mutate, pending, trigger, initialMapping,
 }: {
+  trigger?: ReactNode
+  initialMapping?: Pick<CatalogChannelModel, "model_id" | "channel_id">
   kind: CatalogEntityKind
   item?: CatalogEntity
   catalog: CatalogSnapshot
@@ -55,9 +57,9 @@ export function CatalogEditor({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button size="sm" variant={item ? "outline" : "default"} disabled={pending || (kind === "mapping" && (!catalog.models.length || !catalog.channels.length))}>
+        {trigger ?? <Button size="sm" variant={item ? "outline" : "default"} disabled={pending || (kind === "mapping" && (!catalog.models.length || !catalog.channels.length))}>
           {!item ? <PlusIcon data-icon="inline-start" /> : null}{title}
-        </Button>
+        </Button>}
       </SheetTrigger>
       <SheetContent className={kind === "case" || kind === "suite" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-3xl" : kind === "plan" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" : "sm:max-w-lg"} onEscapeKeyDown={(event) => {
         if (event.target instanceof HTMLElement && event.target.matches('[role="combobox"][aria-expanded="true"]')) event.preventDefault()
@@ -67,7 +69,7 @@ export function CatalogEditor({
           <SheetDescription>{t("editor.description")}</SheetDescription>
         </SheetHeader>
         <ScrollArea className="min-h-0 flex-1 px-4">
-          <EditorForm kind={kind} item={item} catalog={catalog} actions={actions} mutate={mutate} pending={pending} formTitle={title} onSaved={() => setOpen(false)} />
+          <EditorForm initialMapping={initialMapping} kind={kind} item={item} catalog={catalog} actions={actions} mutate={mutate} pending={pending} formTitle={title} onSaved={() => setOpen(false)} />
         </ScrollArea>
       </SheetContent>
     </Sheet>
@@ -104,6 +106,7 @@ export function DeleteCatalogButton({
 }
 
 function EditorForm(props: {
+  initialMapping?: Pick<CatalogChannelModel, "model_id" | "channel_id">
   kind: CatalogEntityKind; item?: CatalogEntity; catalog: CatalogSnapshot; actions: CatalogActions;
   mutate: CatalogMutation; pending: boolean; formTitle: string; onSaved: () => void
 }) {
@@ -166,12 +169,12 @@ function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: For
   </FormShell>
 }
 
-function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogChannelModel>) {
+function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSaved, initialMapping }: FormProps<CatalogChannelModel> & { initialMapping?: Pick<CatalogChannelModel, "model_id" | "channel_id"> }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
-  const [channelID, setChannelID] = useState(item?.channel_id ?? catalog.channels[0]?.id ?? "")
+  const [channelID, setChannelID] = useState(item?.channel_id ?? initialMapping?.channel_id ?? catalog.channels[0]?.id ?? "")
   const compatibleModels = catalog.models.filter((model) => model.protocol === catalog.channels.find((channel) => channel.id === channelID)?.protocol)
-  const [modelID, setModelID] = useState(item?.model_id ?? compatibleModels[0]?.id ?? "")
+  const [modelID, setModelID] = useState(item?.model_id ?? initialMapping?.model_id ?? compatibleModels[0]?.id ?? "")
   const [upstreamName, setUpstreamName] = useState(item?.upstream_model_name ?? "")
   return <FormShell pending={pending} label={tx("desktop:catalog_save_mapping")} formTitle={formTitle} onSubmit={async () => {
     if (!channelID) throw new FormValidationError(tx("desktop:catalog_channel"), tx("desktop:catalog_select_a_channel"))

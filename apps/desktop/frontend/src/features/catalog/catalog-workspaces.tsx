@@ -165,6 +165,9 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
         ) : (
           <ModelChannelMatrix
             catalog={catalog}
+            actions={actions}
+            mutate={mutate}
+            pending={mutationPending}
             models={matrixSearch.rows}
             selectedID={selectedMapping?.id ?? ""}
             onSelect={setSelectedMappingID}
@@ -177,11 +180,17 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
 
 function ModelChannelMatrix({
   catalog,
+  actions,
+  mutate,
+  pending,
   models,
   selectedID,
   onSelect,
 }: {
   catalog: CatalogSnapshot
+  actions: CatalogActions
+  mutate: CatalogMutation
+  pending: boolean
   models: CatalogModel[]
   selectedID: string
   onSelect: (id: string) => void
@@ -261,9 +270,17 @@ function ModelChannelMatrix({
                       key={channel.id}
                       {...cellHighlight(model.id, channel.id)}
                       aria-label={tx("desktop:catalog_value_is_not_configured_on_value", { value1: model.name, value2: channel.name })}
-                      className="h-16 w-[184px] min-w-[184px] px-3 py-2 text-center text-[11px] text-muted-foreground"
+                      className="h-16 w-[184px] min-w-[184px] p-0"
                     >
-                       {tx("desktop:catalog_not_configured")} </TableCell>
+                      <CatalogEditor kind="mapping" catalog={catalog} actions={actions} mutate={mutate} pending={pending}
+                        initialMapping={{ model_id: model.id, channel_id: channel.id }}
+                        trigger={<Button type="button" variant="ghost" disabled={pending || model.protocol !== channel.protocol}
+                          aria-label={tx("desktop:catalog_value_is_not_configured_on_value", { value1: model.name, value2: channel.name })}
+                          onFocus={() => setFocused({ modelID: model.id, channelID: channel.id })}
+                          className="h-full min-h-16 w-full rounded-md px-3 py-2 text-[11px] font-normal text-muted-foreground hover:bg-transparent">
+                          {tx("desktop:catalog_not_configured")}
+                        </Button>} />
+                    </TableCell>
                   )
                 }
                 return (
@@ -273,8 +290,9 @@ function ModelChannelMatrix({
                     data-state={mapping.id === selectedID ? "selected" : undefined}
                     className="h-16 w-[184px] min-w-[184px] p-0"
                   >
-                    <Button
+                    <CatalogEditor kind="mapping" item={mapping} catalog={catalog} actions={actions} mutate={mutate} pending={pending} trigger={<Button
                       type="button"
+                      disabled={pending}
                       variant="ghost"
                       aria-pressed={mapping.id === selectedID}
                       aria-label={tx("desktop:catalog_view_value_mapping_on_value_value", { value1: model.name, value2: channel.name, value3: mapping.upstream_model_name })}
@@ -294,7 +312,7 @@ function ModelChannelMatrix({
                           {mapping.upstream_model_name}
                         </span>
                       </span>
-                    </Button>
+                    </Button>} />
                   </TableCell>
                 )
               })}
@@ -309,7 +327,7 @@ function ModelChannelMatrix({
 function MappingTable({ mappings, selectedID, onSelect, channelNames, modelNames }: { mappings: CatalogChannelModel[]; selectedID: string; onSelect: (id: string) => void; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
   const { t } = useTranslation("catalog")
   if (!mappings.length) return <CatalogEmpty title={t("models.mappingEmpty")} description={t("models.mappingEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.channel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.logicalModel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.upstreamName")}</TableHead><TableHead className="h-8 text-[11px]">{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-2 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.channel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.logicalModel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.upstreamName")}</TableHead><TableHead className="h-8 text-[11px]">{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow className="h-11" aria-selected={mapping.id === selectedID} key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="py-1 pl-2 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="py-1 text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="py-1 font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="py-1 text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function MappingInspector({ mapping, channelNames, modelNames }: { mapping: CatalogChannelModel; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
