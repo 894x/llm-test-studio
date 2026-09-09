@@ -1,6 +1,7 @@
-import { PROTOCOLS, protocolOptions } from "./protocols"
+import { protocolOptions } from "./protocols"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
-import { caseTypeLabel } from "./presentation"
+import { protocolPresentation } from "@/features/protocols/registry"
+import { parseSuiteInput } from "./data"
 import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from "react"
 import ArrowDownIcon from "lucide-react/dist/esm/icons/arrow-down.mjs"
 import ArrowUpIcon from "lucide-react/dist/esm/icons/arrow-up.mjs"
@@ -27,8 +28,8 @@ import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
-  CatalogPlan, CatalogPlanParameterValue, CatalogPlanSuite, CatalogProtocol, CatalogSnapshot, CatalogSuite,
-  CatalogTestCase, DeleteCommand, PlanSuiteCommand, SuiteQuickTest,
+  CatalogPlan, CatalogPlanParameterValue, CatalogProtocol, CatalogSnapshot, CatalogSuite,
+  CatalogTestCase, DeleteCommand, PlanEntryCommand,
 } from "./data"
 
 export type CatalogEntityKind = "model" | "channel" | "mapping" | "case" | "suite" | "plan"
@@ -189,318 +190,132 @@ function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSav
 
 function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
   const { t: tx } = useTranslation()
-  const availableTypes = catalog.case_types.filter((descriptor) => descriptor.creatable || descriptor.type === item?.type)
-  const initialDescriptor = catalog.case_types.find((descriptor) => descriptor.type === item?.type && descriptor.type_version === item.type_version)
-    ?? availableTypes.find((descriptor) => descriptor.supported_protocols.includes(item?.protocol ?? "openai-chat"))
-  const initialSpec = item?.spec ?? initialDescriptor?.default_spec ?? {}
   const { t } = useTranslation("catalog")
-  const [value, setValue] = useState(() => ({
-    key: item?.key ?? "", name: item?.name ?? "", dimension: item?.dimension ?? "compatibility",
-    protocol: item?.protocol ?? "openai-chat" as CatalogProtocol, enabled: item?.enabled ?? true,
-    model_targets: item?.model_targets.join(", ") ?? "",
-    default: item?.default ?? false, severity: item?.severity ?? "normal", execution_mode: item?.execution_mode ?? "automatic",
-    type: item?.type ?? initialDescriptor?.type ?? "", type_version: item?.type_version ?? initialDescriptor?.type_version ?? 1,
-    spec: json(initialSpec),
-    stages: latencyStages(initialSpec.stages),
-    warmups_per_step: finiteNumber(initialSpec.warmups_per_step, 1),
-    samples_per_step: finiteNumber(initialSpec.samples_per_step, 3),
-    output_tokens: finiteNumber(initialSpec.output_tokens, 16),
-    timeout_ms: finiteNumber(initialSpec.timeout_ms, 600000),
-    cache_mode: initialSpec.cache_mode === "warm" ? "warm" : "cold",
-  }))
-  const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue((current) => ({ ...current, [key]: next }))
-  const descriptor = catalog.case_types.find((candidate) => candidate.type === value.type && candidate.type_version === value.type_version)
-  const typeOptions = availableTypes.filter((candidate) => candidate.supported_protocols.includes(value.protocol)).map((candidate) => [`${candidate.type}@${candidate.type_version}`, `${caseTypeLabel(candidate.type, candidate.label)} · v${candidate.type_version}`] as [string, string])
-  const selectType = (key: string) => {
-    const next = catalog.case_types.find((candidate) => `${candidate.type}@${candidate.type_version}` === key)
-    if (!next) return
-    const spec = next.default_spec
-    setValue((current) => ({
-      ...current, type: next.type, type_version: next.type_version, dimension: next.category, spec: json(spec),
-      stages: latencyStages(spec.stages), warmups_per_step: finiteNumber(spec.warmups_per_step, 1),
-      samples_per_step: finiteNumber(spec.samples_per_step, 3), output_tokens: finiteNumber(spec.output_tokens, 16),
-      timeout_ms: finiteNumber(spec.timeout_ms, 600000), cache_mode: spec.cache_mode === "warm" ? "warm" : "cold",
-    }))
-  }
-  const updateStage = (index: number, patch: Partial<LatencyStageDraft>) => setValue((current) => ({
-    ...current,
-    stages: current.stages.map((stage, stageIndex) => stageIndex === index ? { ...stage, ...patch } : stage),
-  }))
-  const addStage = () => setValue((current) => {
-    const previous = current.stages.at(-1)?.input_tokens ?? 64
-    return { ...current, stages: [...current.stages, { input_tokens: Math.min(previous * 2, 1_000_000), warmups: "", samples: "" }] }
-  })
-  const removeStage = (index: number) => setValue((current) => ({ ...current, stages: current.stages.filter((_, stageIndex) => stageIndex !== index) }))
+  const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
+  const descriptor = catalog.case_types.find(type => type.type === protocol)
+  const initial = item?.spec ?? descriptor?.default_spec ?? {}
+  const [key, setKey] = useState(item?.key ?? "")
+  const [name, setName] = useState(item?.name ?? "")
+  const [dimension, setDimension] = useState(item?.dimension ?? "compatibility")
+  const [enabled, setEnabled] = useState(item?.enabled ?? true)
+  const [inputs, setInputs] = useState(json(initial.inputs ?? {}))
+  const [body, setBody] = useState(json((initial.request as { body?: unknown })?.body ?? protocolPresentation(protocol).requestExample))
+  const [assertions, setAssertions] = useState(json(initial.assertions ?? []))
+  const [operation, setOperation] = useState(typeof initial.operation === "string" ? initial.operation : "default")
+  const [workflow, setWorkflow] = useState(json(initial.workflow ?? null))
   return <FormShell pending={pending} label={tx("desktop:catalog_save_case")} formTitle={formTitle} onSubmit={async () => {
-    if (!descriptor) throw new FormValidationError(tx("desktop:catalog_case_type"), tx("desktop:catalog_select_an_available_case_type"))
-    if (value.type === "latency.input_ladder") {
-      integerField(value.warmups_per_step, tx("desktop:catalog_default_warmups_per_step"), 0, 10)
-      integerField(value.samples_per_step, tx("desktop:catalog_default_samples_per_step"), 1, 100)
-      integerField(value.output_tokens, tx("desktop:catalog_output_token_limit"), 1, 65_536)
-      integerField(value.timeout_ms, tx("desktop:catalog_request_timeout_ms"), 1, 600_000)
-    }
-    const spec = value.type === "latency.input_ladder"
-      ? {
-          ...recordJSON<unknown>(value.spec, tx("desktop:catalog_case_configuration")),
-          stages: latencyStageSpecs(value.stages), warmups_per_step: value.warmups_per_step,
-          samples_per_step: value.samples_per_step, output_tokens: value.output_tokens,
-          timeout_ms: value.timeout_ms, cache_mode: value.cache_mode,
-        }
-      : recordJSON<unknown>(value.spec, tx("desktop:catalog_case_configuration"))
-    const modelTargets = list(value.model_targets)
-    if (modelTargets.length > 32) throw new FormValidationError(tx("desktop:catalog_applicable_models"), tx("desktop:catalog_enter_at_most_32_model_ids"))
-    modelTargets.forEach((target) => safeModelTarget(target, tx("desktop:catalog_applicable_models")))
-    if (value.default && !value.enabled) throw new FormValidationError(tx("desktop:catalog_enabled_by_default"), tx("desktop:catalog_default_cases_must_also_be_enabled"))
+    const parsedAssertions = parseJSON(assertions, t("protocolDesign.assertions"))
+    if (!Array.isArray(parsedAssertions)) throw new FormValidationError(t("protocolDesign.assertions"), t("protocolDesign.arrayRequired"))
+    const parsedWorkflow = parseJSON(workflow, t("protocolDesign.workflow"))
     const command = {
-      key: safeCatalogKey(value.key, tx("desktop:catalog_case_key")), name: required(value.name, tx("desktop:catalog_case_name")), dimension: required(value.dimension, tx("desktop:catalog_dimension")),
-      protocol: value.protocol, enabled: value.enabled, default: value.default, severity: value.severity as "normal" | "critical",
-      model_targets: modelTargets,
-      execution_mode: value.execution_mode as "automatic" | "manual", definition_schema_version: 2,
-      type: value.type, type_version: value.type_version, spec,
+      key: safeCatalogKey(key, tx("desktop:catalog_case_key")), name: required(name, tx("desktop:catalog_case_name")),
+      dimension: required(dimension, tx("desktop:catalog_dimension")), protocol, enabled,
+      default: item?.default ?? false, severity: item?.severity ?? "normal" as const,
+      execution_mode: "automatic" as const, definition_schema_version: 2, type: protocol, type_version: 1,
+      spec: { inputs: recordJSON<unknown>(inputs, t("protocolDesign.inputs")), request: { body: parseJSON(body, t("protocolDesign.body")) },
+        assertions: parsedAssertions, ...(operation === "default" ? {} : { operation }), ...(parsedWorkflow === null ? {} : { workflow: parsedWorkflow }) },
     }
-    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), t("editor.savedOperation", { title: formTitle })); onSaved()
+    await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), formTitle)
+    onSaved()
   }}>
-    <div className="grid grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_case_key")} value={value.key} disabled={!!item} onChange={(v) => set("key", v)} /><TextField label={tx("desktop:catalog_case_name")} value={value.name} onChange={(v) => set("name", v)} /></div>
-    <div className="grid grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_dimension")} value={value.dimension} onChange={(v) => set("dimension", v)} /><SelectField label={tx("desktop:catalog_protocol")} value={value.protocol} disabled={!!item} options={protocolOptions} onChange={(v) => set("protocol", v as CatalogProtocol)} /></div>
-    <TextField label={tx("desktop:catalog_applicable_models")} value={value.model_targets} onChange={(v) => set("model_targets", v)} description={tx("desktop:catalog_enter_exact_upstream_model_ids_separated_by_commas_leave_empty")} />
-    <SelectField label={tx("desktop:catalog_case_type")} value={`${value.type}@${value.type_version}`} options={typeOptions} onChange={selectType} />
-    {descriptor ? <FieldDescription>{descriptor.category}  {tx("desktop:catalog_scheduled_by")}{descriptor.scheduling_owner === "case" ? tx("desktop:catalog_case") : tx("desktop:catalog_plan")}{tx("desktop:catalog_separator")} {descriptor.type}@{descriptor.type_version}</FieldDescription> : null}
-    <div className="grid grid-cols-2 gap-3"><SelectField label={tx("desktop:catalog_severity")} value={value.severity} options={[["normal",tx("desktop:catalog_normal")],["critical",tx("desktop:catalog_critical")]]} onChange={(v) => set("severity", v as "normal" | "critical")} /><SelectField label={tx("desktop:catalog_execution_mode")} value={value.execution_mode} options={[["automatic",tx("desktop:catalog_automatic")],["manual",tx("desktop:catalog_manual")]]} onChange={(v) => set("execution_mode", v as "automatic" | "manual")} /></div>
-    <div className="grid grid-cols-2 gap-3"><CheckField label={tx("desktop:catalog_enabled")} checked={value.enabled} clearFields={[tx("desktop:catalog_enabled_by_default")]} onChange={(v) => set("enabled", v)} /><CheckField label={tx("desktop:catalog_enabled_by_default")} checked={value.default} clearFields={[tx("desktop:catalog_enabled")]} onChange={(v) => set("default", v)} /></div>
-    {value.type === "latency.input_ladder" ? <>
-      <div className="grid grid-cols-2 gap-3"><NumberField label={tx("desktop:catalog_default_warmups_per_step")} value={value.warmups_per_step} maximum={10} onChange={(v) => set("warmups_per_step", v)} /><NumberField label={tx("desktop:catalog_default_samples_per_step")} value={value.samples_per_step} minimum={1} maximum={100} onChange={(v) => set("samples_per_step", v)} /></div>
-      <fieldset className="space-y-2 rounded-lg border p-3">
-        <legend className="px-1 text-xs font-medium">{tx("desktop:catalog_input_token_ladder")}</legend>
-        <FieldDescription>{tx("desktop:catalog_leave_warmups_or_samples_empty_to_inherit_the_defaults_above")}</FieldDescription>
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 px-1 text-[10px] text-muted-foreground" aria-hidden="true">
-          <span>{tx("desktop:catalog_input_tokens")}</span><span>{tx("desktop:catalog_warmup_override")}</span><span>{tx("desktop:catalog_sample_override")}</span><span className="w-12" />
-        </div>
-        {value.stages.map((stage, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-start gap-2">
-          <StageNumberField label={tx("desktop:catalog_step_value_input_tokens", { value1: index + 1 })} minimum={1} maximum={1_000_000} value={stage.input_tokens} onChange={(next) => updateStage(index, { input_tokens: Number(next) })} />
-          <StageNumberField label={tx("desktop:catalog_step_value_warmups", { value1: index + 1 })} minimum={0} maximum={10} value={stage.warmups} placeholder={tx("desktop:catalog_inherit_value", { value1: value.warmups_per_step })} onChange={(next) => updateStage(index, { warmups: next })} />
-          <StageNumberField label={tx("desktop:catalog_step_value_samples", { value1: index + 1 })} minimum={1} maximum={100} value={stage.samples} placeholder={tx("desktop:catalog_inherit_value", { value1: value.samples_per_step })} onChange={(next) => updateStage(index, { samples: next })} />
-          <Button type="button" size="sm" variant="ghost" className="w-12" disabled={value.stages.length === 1} onClick={() => removeStage(index)} aria-label={tx("desktop:catalog_delete_step_value", { value1: index + 1 })}>{tx("desktop:catalog_delete")}</Button>
-        </div>)}
-        <Button type="button" size="sm" variant="outline" disabled={value.stages.length >= 32 || (value.stages.at(-1)?.input_tokens ?? 0) >= 1_000_000} onClick={addStage}><PlusIcon data-icon="inline-start" />{tx("desktop:catalog_add_step")}</Button>
-      </fieldset>
-      <div className="grid grid-cols-2 gap-3"><NumberField label={tx("desktop:catalog_output_token_limit")} value={value.output_tokens} minimum={1} maximum={65_536} onChange={(v) => set("output_tokens", v)} /><NumberField label={tx("desktop:catalog_request_timeout_ms")} value={value.timeout_ms} minimum={1} maximum={600_000} onChange={(v) => set("timeout_ms", v)} /></div>
-      <SelectField label={tx("desktop:catalog_cache_mode")} value={value.cache_mode} options={[["cold",tx("desktop:catalog_cold_cache_vary_the_probe")],["warm",tx("desktop:catalog_warm_cache_reuse_the_probe")]]} onChange={(v) => set("cache_mode", v as "cold" | "warm")} />
-      <TextAreaField label={tx("desktop:catalog_advanced_configuration_json")} value={value.spec} onChange={(v) => set("spec", v)} description={tx("desktop:catalog_the_request_template_is_stored_here_saving_replaces_matching_fields")} />
-    </> : <TextAreaField label={tx("desktop:catalog_case_configuration_json")} value={value.spec} onChange={(v) => set("spec", v)} description={value.type === "response.probe"
-      ? tx("desktop:catalog_signatures_match_responses_using_json_pointer_probe_count_and_concurrency")
-      : tx("desktop:catalog_the_selected_type_version_defines_the_configuration_structure_which_the")} />}
+    <div className="grid min-w-0 grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_case_key")} value={key} onChange={setKey} disabled={!!item} /><TextField label={tx("desktop:catalog_case_name")} value={name} onChange={setName} /></div>
+    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={value => { const next = value as CatalogProtocol; setProtocol(next); setBody(json(protocolPresentation(next).requestExample)); setOperation("default") }} />
+    {protocolPresentation(protocol).operations.length ? <SelectField label={t("protocolDesign.operation")} value={operation} options={[["default", t("protocolDesign.defaultOperation")], ...protocolPresentation(protocol).operations.map(value => [value, value] as [string,string])]} onChange={setOperation} /> : null}
+    <TextField label={tx("desktop:catalog_dimension")} value={dimension} onChange={setDimension} />
+    <TextAreaField label={t("protocolDesign.inputs")} value={inputs} onChange={setInputs} description={t("protocolDesign.inputsHint")} />
+    <TextAreaField label={t("protocolDesign.body")} value={body} onChange={setBody} description={t("protocolDesign.bodyHint")} />
+    <TextAreaField label={t("protocolDesign.assertions")} value={assertions} onChange={setAssertions} description={t("protocolDesign.assertionsHint")} />
+    <TextAreaField label={t("protocolDesign.workflow")} value={workflow} onChange={setWorkflow} description={t("protocolDesign.workflowHint")} />
+    <CheckField label={tx("desktop:catalog_enabled")} checked={enabled} onChange={setEnabled} />
   </FormShell>
 }
 
 function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogSuite>) {
   const { t: tx } = useTranslation()
+  const { t } = useTranslation("catalog")
   const [key, setKey] = useState(item?.key ?? "")
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
-  const [modelTarget, setModelTarget] = useState(item?.model_target ?? "")
-  const genericQuickTask = !!item?.quick_test && !modelTarget.trim() && !PROTOCOLS.find(({ id }) => id === protocol)?.requiresModelTargets
-  const [selected, setSelected] = useState(() => new Set(item?.cases.map((ref) => ref.case_id) ?? catalog.test_cases.slice(0, 1).map(testCase => testCase.id)))
-  const availableCases = catalog.test_cases.filter((testCase) =>
-    testCase.protocol === protocol && (!item?.quick_test || (testCase.enabled && testCase.execution_mode === "automatic")) &&
-    (genericQuickTask ? testCase.model_targets.length === 0 : !modelTarget.trim() || testCase.model_targets.length === 0 || testCase.model_targets.includes(modelTarget.trim())),
-  )
+  const [description, setDescription] = useState(item?.description ?? "")
+  const [inputs, setInputs] = useState(json(item?.inputs ?? []))
+  const [selected, setSelected] = useState(() => new Set(item?.cases.map(ref => ref.case_id) ?? []))
+  const availableCases = catalog.test_cases.filter(testCase => testCase.protocol === protocol)
   return <FormShell pending={pending} label={tx("desktop:catalog_save_suite")} formTitle={formTitle} onSubmit={async () => {
-    const pinned = new Map(item?.cases.map(ref => [ref.case_id, ref.revision]) ?? [])
-    const validatedKey = safeCatalogKey(key, tx("desktop:catalog_suite_key"))
-    const validatedName = required(name, tx("desktop:catalog_suite_name"))
-    const validatedModelTarget = genericQuickTask ? "" : safeModelTarget(modelTarget, tx("desktop:catalog_target_model"))
-    const cases = availableCases.filter((testCase) => selected.has(testCase.id)).map((testCase) => ({ case_id: testCase.id, revision: pinned.get(testCase.id) ?? testCase.revision }))
-    if (cases.length === 0) throw new FormValidationError(tx("desktop:catalog_included_cases"), tx("desktop:catalog_select_at_least_one_case"))
-    const command = {
-      key: validatedKey, name: validatedName, protocol,
-      model_target: validatedModelTarget,
-      cases,
-      ...(item?.quick_test ? { quick_test: item.quick_test } : {}),
-    }
-    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), tx("desktop:catalog_save_value", { value1: formTitle })); onSaved()
+    const parsedInputs = parseJSON(inputs, t("protocolDesign.mapping"))
+    if (!Array.isArray(parsedInputs)) throw new FormValidationError(t("protocolDesign.mapping"), t("protocolDesign.arrayRequired"))
+    const command = { key: safeCatalogKey(key, tx("desktop:catalog_suite_key")), name: required(name, tx("desktop:catalog_suite_name")),
+      protocol, description, cases: [...selected].map(case_id => ({ case_id })), inputs: parsedInputs.map(parseSuiteInput) }
+    await mutate(() => item ? actions.updateSuite({ ...command, id: item.id, expected_revision: item.revision }) : actions.createSuite(command), formTitle)
+    onSaved()
   }}>
-    <TextField label={tx("desktop:catalog_suite_key")} value={key} onChange={setKey} disabled={!!item} description={tx("desktop:catalog_a_stable_identifier_for_suite_json_such_as_gpt_5")} />
+    <TextField label={tx("desktop:catalog_suite_key")} value={key} onChange={setKey} disabled={!!item} />
     <TextField label={tx("desktop:catalog_suite_name")} value={name} onChange={setName} />
-    <SelectField label={tx("desktop:catalog_protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
-    <TextField label={tx("desktop:catalog_target_model")} value={modelTarget} onChange={setModelTarget} description={tx("desktop:catalog_enter_the_model_identifier_used_by_the_channel_each_suite")} />
-    <ChoiceList label={tx("desktop:catalog_included_cases")} values={availableCases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
+    <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} disabled={!!item} onChange={value => { setProtocol(value as CatalogProtocol); setSelected(new Set()) }} />
+    <TextField label={t("protocolDesign.description")} value={description} onChange={setDescription} />
+    <ChoiceList label={tx("desktop:catalog_included_cases")} values={availableCases.map(value => ({ id: value.id, label: value.name }))} selected={selected} onChange={setSelected} />
+    <TextAreaField label={t("protocolDesign.mapping")} value={inputs} onChange={setInputs} description={t("protocolDesign.mappingHint")} />
   </FormShell>
 }
 
-type PlanSuiteNumberDrafts = {
-  concurrency: string
-  request_count: string
-  rate_per_second: string
-  duration_ms: string
-  request_timeout_ms: string
-}
-
-type PlanSuiteDraft = {
-  draftKey: string
-  entryID?: string
-  suiteID: string
-  suiteRevision: number
-  suiteKey: string
-  suiteName: string
-  quickTest?: SuiteQuickTest
-  parameters: Record<string, string | boolean>
-  parametersJSON: string
-  loadMode: CatalogLoadMode
-  numbers: PlanSuiteNumberDrafts
-  sla: string
-}
-
+type EntryDraft = PlanEntryCommand & { draftKey: string; parametersJSON: string; slaJSON: string }
 function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogPlan>) {
-  const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
-  const nextDraftKey = useRef(0)
   const [name, setName] = useState(item?.name ?? "")
-  const [models, setModels] = useState(() => new Set(item?.model_ids ?? []))
-  const [channels, setChannels] = useState(() => new Set(item?.channel_ids ?? []))
-  const [suiteID, setSuiteID] = useState(catalog.suites[0]?.id ?? "")
-  const [suiteDrafts, setSuiteDrafts] = useState<PlanSuiteDraft[]>(() =>
-    (item?.suites ?? []).map((entry) => planSuiteDraft(entry, catalog.suites.find((suite) => suite.id === entry.suite_id), entry.entry_id)),
-  )
-  const updateSuite = (draftKey: string, update: Partial<PlanSuiteDraft>) => {
-    setSuiteDrafts((current) => current.map((entry) => entry.draftKey === draftKey ? { ...entry, ...update } : entry))
-  }
-  const addSuite = () => {
-    const suite = catalog.suites.find((candidate) => candidate.id === suiteID)
-    if (!suite) return
-    nextDraftKey.current += 1
-    setSuiteDrafts((current) => [...current, planSuiteDraft(undefined, suite, `new-${nextDraftKey.current}`)])
-  }
-  const moveSuite = (index: number, offset: -1 | 1) => {
-    setSuiteDrafts((current) => {
-      const target = index + offset
-      if (target < 0 || target >= current.length) return current
-      const next = [...current]
-      const [moved] = next.splice(index, 1)
-      next.splice(target, 0, moved)
-      return next
-    })
-  }
-  return <FormShell pending={pending} label={tx("desktop:catalog_save_plan")} formTitle={formTitle} onSubmit={async () => {
-    const validatedName = required(name, tx("desktop:catalog_plan_name"), "plan.name")
-    if ((models.size === 0) !== (channels.size === 0)) {
-      const missingModels = models.size === 0
-      throw new FormValidationError(missingModels ? "plan.models" : "plan.channels", tx("desktop:catalog_configure_both_model_and_channel_restrictions_or_leave_both_empty"), missingModels ? tx("desktop:catalog_model") : tx("desktop:catalog_channel"))
-    }
-    if (suiteDrafts.length === 0) {
-      throw new FormValidationError("plan.suites", tx("desktop:catalog_select_at_least_one_suite"), tx("desktop:catalog_plan_suites"))
-    }
-    const command = {
-      name: validatedName,
-      model_ids: [...models],
-      channel_ids: [...channels],
-      suites: suiteDrafts.map(planSuiteCommand),
-    }
-    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), t("editor.savedOperation", { title: formTitle })); onSaved()
+  const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
+  const [seed, setSeed] = useState(item?.seed ?? 1)
+  const [target, setTarget] = useState("")
+  const [entries, setEntries] = useState<EntryDraft[]>(() => item?.entries.map(entry => ({ ...entry,
+    draftKey: entry.entry_id, parametersJSON: json(entry.parameters), slaJSON: json(entry.sla_thresholds) })) ?? [])
+  const targets = [
+    ...catalog.test_cases.filter(value => value.protocol === protocol).map(value => [`case:${value.id}`, `${t("editor.noun.case")} · ${value.name}`] as [string, string]),
+    ...catalog.suites.filter(value => value.protocol === protocol).map(value => [`suite:${value.id}`, `${t("editor.noun.suite")} · ${value.name}`] as [string, string]),
+  ]
+  const update = (index: number, patch: Partial<EntryDraft>) => setEntries(current => current.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
+  const move = (index: number, offset: number) => setEntries(current => { const next = [...current]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next })
+  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
+    integerField(seed, t("protocolDesign.seed"), 0, Number.MAX_SAFE_INTEGER)
+    const command = { name: required(name, t("common.plan")), protocol, seed,
+      entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
+        parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
+        sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) })) }
+    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), formTitle)
+    onSaved()
   }}>
-    <TextField fieldKey="plan.name" label={tx("desktop:catalog_plan_name")} value={name} onChange={setName} />
-    <div className="grid grid-cols-2 gap-3">
-      <ChoiceList fieldKey="plan.models" label={tx("desktop:catalog_model")} values={catalog.models.map(v => ({ id: v.id, label: v.name }))} selected={models} clearFields={["plan.channels"]} onChange={setModels} />
-      <ChoiceList fieldKey="plan.channels" label={tx("desktop:catalog_channel")} values={catalog.channels.map(v => ({ id: v.id, label: v.name }))} selected={channels} clearFields={["plan.models"]} onChange={setChannels} />
+    <TextField label={t("common.plan")} value={name} onChange={setName} />
+    <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
+    <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
+    <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
+    <div className="flex min-w-0 items-end gap-2"><div className="min-w-0 flex-1"><SelectField label={t("protocolDesign.target")} value={target} options={targets} onChange={setTarget} /></div>
+      <Button type="button" size="sm" variant="outline" disabled={!target} onClick={() => {
+        const [kind, id] = target.split(":")
+        setEntries(current => [...current, { draftKey: crypto.randomUUID(), target_kind: kind as "case" | "suite", target_id: id,
+          warmup_count: 0, settings: {}, parameters: {}, parametersJSON: "{}", sla_thresholds: {}, slaJSON: "{}", load_mode: "single", concurrency: 1,
+          request_count: 1, rate_per_second: 1, duration_ms: 0, request_timeout_ms: 60000 }])
+      }}><PlusIcon />{t("protocolDesign.add")}</Button>
     </div>
-    <FieldDescription>{tx("desktop:catalog_when_model_and_channel_are_empty_choose_a_mapped_target")}</FieldDescription>
-    <PlanSuiteList
-      entries={suiteDrafts}
-      suites={catalog.suites}
-      suiteID={suiteID}
-      pending={pending}
-      onSuiteIDChange={setSuiteID}
-      onAdd={addSuite}
-      onUpdate={updateSuite}
-      onMove={moveSuite}
-      onRemove={(draftKey) => setSuiteDrafts((current) => current.filter((entry) => entry.draftKey !== draftKey))}
-    />
+    <div className="divide-y">
+      {entries.map((entry, index) => <section key={entry.draftKey} className="space-y-3 py-3">
+        <header className="flex min-w-0 items-center gap-2"><h3 className="min-w-0 flex-1 truncate text-xs font-semibold">{index + 1}. {targets.find(([id]) => id === `${entry.target_kind}:${entry.target_id}`)?.[1] ?? entry.target_id}</h3>
+          <Button type="button" variant="ghost" size="icon-xs" disabled={index === 0} aria-label={t("protocolDesign.moveUp")} onClick={() => move(index, -1)}><ArrowUpIcon /></Button>
+          <Button type="button" variant="ghost" size="icon-xs" disabled={index === entries.length - 1} aria-label={t("protocolDesign.moveDown")} onClick={() => move(index, 1)}><ArrowDownIcon /></Button>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label={t("protocolDesign.remove")} onClick={() => setEntries(current => current.filter((_, i) => i !== index))}><Trash2Icon /></Button>
+        </header>
+        <SelectField label={`${index + 1}. ${t("protocolDesign.strategy")}`} value={entry.load_mode} options={[["single",t("plans.loadSingle")],["fixed_concurrency",t("plans.loadFixed")],["open_loop",t("plans.loadOpen")]]} onChange={value => update(index, { load_mode: value as CatalogLoadMode })} />
+        <div className="grid min-w-0 grid-cols-2 gap-3">
+          <NumberField label={`${index + 1}. ${t("protocolDesign.count")}`} value={entry.request_count} onChange={value => update(index, { request_count: value })} />
+          <NumberField label={`${index + 1}. ${t("protocolDesign.timeout")}`} value={entry.request_timeout_ms} minimum={1} onChange={value => update(index, { request_timeout_ms: value })} />
+          {entry.load_mode !== "single" ? <><NumberField label={`${index + 1}. ${t("protocolDesign.concurrency")}`} value={entry.concurrency} minimum={1} onChange={value => update(index, { concurrency: value })} /><NumberField label={`${index + 1}. ${t("protocolDesign.duration")}`} value={entry.duration_ms} onChange={value => update(index, { duration_ms: value })} /></> : null}
+          {entry.load_mode === "open_loop" ? <NumberField label={`${index + 1}. ${t("protocolDesign.rate")}`} value={entry.rate_per_second} minimum={0} onChange={value => update(index, { rate_per_second: value })} /> : null}
+        </div>
+        <div className="grid min-w-0 grid-cols-2 gap-3">
+          <NumberField label={`${index + 1}. ${t("protocolDesign.warmup")}`} value={entry.warmup_count} onChange={value => update(index, { warmup_count: value })} />
+          {protocolPresentation(protocol).runSettings.map(key => <OptionalNumberField key={key} label={`${index + 1}. ${t(`protocolDesign.${key}`)}`} value={entry.settings[key]} onChange={value => { const settings = { ...entry.settings }; if (value === undefined) delete settings[key]; else settings[key] = value; update(index, { settings }) }} />)}
+        </div>
+        <TextAreaField label={`${index + 1}. ${t("protocolDesign.parameters")}`} value={entry.parametersJSON} onChange={value => update(index, { parametersJSON: value })} description={t("protocolDesign.parametersHint")} />
+        <TextAreaField label={`${index + 1}. ${t("protocolDesign.thresholds")}`} value={entry.slaJSON} onChange={value => update(index, { slaJSON: value })} />
+      </section>)}
+    </div>
   </FormShell>
-}
-
-function PlanSuiteList({ entries, suites, suiteID, pending, onSuiteIDChange, onAdd, onUpdate, onMove, onRemove }: {
-  entries: PlanSuiteDraft[]
-  suites: CatalogSuite[]
-  suiteID: string
-  pending: boolean
-  onSuiteIDChange: (value: string) => void
-  onAdd: () => void
-  onUpdate: (draftKey: string, update: Partial<PlanSuiteDraft>) => void
-  onMove: (index: number, offset: -1 | 1) => void
-  onRemove: (draftKey: string) => void
-}) {
-  const { t: tx } = useTranslation()
-  const validation = useCatalogValidation("plan.suites")
-  const errorID = "catalog-plan-suites-error"
-  return <fieldset className="space-y-3 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key="plan.suites">
-    <legend className="px-1 text-xs font-medium">{tx("desktop:catalog_plan_suites")}</legend>
-    <FieldDescription>{tx("desktop:catalog_plan_suites_run_in_order_and_continue_after_failure")}</FieldDescription>
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
-      <SelectField fieldKey="plan.suite-picker" label={tx("desktop:catalog_suite")} value={suiteID} disabled={!suites.length || pending} options={suites.map((suite) => [suite.id, `${suite.name} · r${suite.revision}`])} onChange={(value) => { validation.clear(); onSuiteIDChange(value) }} />
-      <Button type="button" size="sm" variant="outline" disabled={!suiteID || pending} onClick={() => { validation.clear(); onAdd() }}>
-        <PlusIcon data-icon="inline-start" />{tx("desktop:catalog_add_suite")}
-      </Button>
-    </div>
-    {!suites.length ? <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription> : null}
-    <div className="space-y-3">
-      {entries.map((entry, index) => <PlanSuiteEntryEditor key={entry.draftKey} entry={entry} index={index} count={entries.length} pending={pending} onUpdate={(update) => onUpdate(entry.draftKey, update)} onMove={onMove} onRemove={() => onRemove(entry.draftKey)} />)}
-    </div>
-    {validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}
-  </fieldset>
-}
-
-function PlanSuiteEntryEditor({ entry, index, count, pending, onUpdate, onMove, onRemove }: {
-  entry: PlanSuiteDraft
-  index: number
-  count: number
-  pending: boolean
-  onUpdate: (update: Partial<PlanSuiteDraft>) => void
-  onMove: (index: number, offset: -1 | 1) => void
-  onRemove: () => void
-}) {
-  const { t: tx } = useTranslation()
-  const prefix = `plan.suites.${entry.draftKey}`
-  const updateNumber = (name: keyof PlanSuiteNumberDrafts, value: string) => onUpdate({ numbers: { ...entry.numbers, [name]: value } })
-  return <fieldset className="min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" disabled={pending}>
-    <legend className="sr-only">{tx("desktop:catalog_suite_position_name", { value1: index + 1, value2: entry.suiteName })}</legend>
-    <div className="flex min-w-0 items-center gap-2">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium">{index + 1}. {entry.suiteName}</div>
-        <div className="truncate text-[11px] text-muted-foreground">{entry.suiteKey} · r{entry.suiteRevision}</div>
-      </div>
-      <Button type="button" size="icon-sm" variant="ghost" disabled={index === 0 || pending} aria-label={tx("desktop:catalog_move_suite_up", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_move_suite_up", { value1: index + 1, value2: entry.suiteName })} onClick={() => onMove(index, -1)}><ArrowUpIcon /></Button>
-      <Button type="button" size="icon-sm" variant="ghost" disabled={index === count - 1 || pending} aria-label={tx("desktop:catalog_move_suite_down", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_move_suite_down", { value1: index + 1, value2: entry.suiteName })} onClick={() => onMove(index, 1)}><ArrowDownIcon /></Button>
-      <Button type="button" size="icon-sm" variant="ghost" disabled={pending} aria-label={tx("desktop:catalog_remove_suite", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_remove_suite", { value1: index + 1, value2: entry.suiteName })} onClick={onRemove}><Trash2Icon /></Button>
-    </div>
-    <SelectField fieldKey={`${prefix}.load_mode`} label={tx("desktop:catalog_load_mode")} value={entry.loadMode} options={[["single",tx("desktop:catalog_single_request")],["fixed_concurrency",tx("desktop:catalog_fixed_concurrency")],["open_loop",tx("desktop:catalog_open_loop")]]} onChange={(value) => onUpdate({ loadMode: value as CatalogLoadMode })} />
-    <div className="grid grid-cols-2 gap-3">
-      <DraftNumberField fieldKey={`${prefix}.concurrency`} label={tx("desktop:catalog_concurrency")} value={entry.numbers.concurrency} minimum={1} onChange={(value) => updateNumber("concurrency", value)} />
-      <DraftNumberField fieldKey={`${prefix}.request_count`} label={tx("desktop:catalog_request_count")} value={entry.numbers.request_count} minimum={0} clearFields={[`${prefix}.duration_ms`]} onChange={(value) => updateNumber("request_count", value)} />
-      <DraftNumberField fieldKey={`${prefix}.rate_per_second`} label={tx("desktop:catalog_requests_per_second")} value={entry.numbers.rate_per_second} minimum={0} step="any" onChange={(value) => updateNumber("rate_per_second", value)} />
-      <DraftNumberField fieldKey={`${prefix}.duration_ms`} label={tx("desktop:catalog_duration_ms")} value={entry.numbers.duration_ms} minimum={0} clearFields={[`${prefix}.request_count`]} onChange={(value) => updateNumber("duration_ms", value)} />
-      <DraftNumberField fieldKey={`${prefix}.request_timeout_ms`} label={tx("desktop:catalog_request_timeout_ms")} value={entry.numbers.request_timeout_ms} minimum={1} onChange={(value) => updateNumber("request_timeout_ms", value)} />
-    </div>
-    <TextAreaField fieldKey={`${prefix}.sla_thresholds`} label={tx("desktop:catalog_sla_thresholds_json")} value={entry.sla} onChange={(value) => onUpdate({ sla: value })} />
-    <PlanSuiteParameterFields entry={entry} fieldPrefix={prefix} onUpdate={onUpdate} />
-  </fieldset>
-}
-
-function PlanSuiteParameterFields({ entry, fieldPrefix, onUpdate }: { entry: PlanSuiteDraft; fieldPrefix: string; onUpdate: (update: Partial<PlanSuiteDraft>) => void }) {
-  const { t: tx } = useTranslation()
-  const inputs = entry.quickTest?.inputs ?? []
-  if (!inputs.length) {
-    if (entry.parametersJSON !== "{}") return <TextAreaField fieldKey={`${fieldPrefix}.parameters`} label={tx("desktop:catalog_extension_parameters_json")} value={entry.parametersJSON} onChange={(parametersJSON) => onUpdate({ parametersJSON })} />
-    return <FieldDescription>{tx("desktop:catalog_suite_has_no_extension_parameters")}</FieldDescription>
-  }
-  return <fieldset className="space-y-3">
-    <legend className="text-xs font-medium">{tx("desktop:catalog_suite_parameters")}</legend>
-    {inputs.map((input) => {
-      const fieldKey = `${fieldPrefix}.parameters.${input.key}`
-      const value = entry.parameters[input.key]
-      if (input.type === "boolean") return <CheckField key={input.key} fieldKey={fieldKey} label={input.label} checked={value === true} onChange={(checked) => onUpdate({ parameters: { ...entry.parameters, [input.key]: checked } })} />
-      if (input.type === "number") return <DraftNumberField key={input.key} fieldKey={fieldKey} label={input.label} value={typeof value === "string" ? value : ""} step="any" onChange={(next) => onUpdate({ parameters: { ...entry.parameters, [input.key]: next } })} />
-      return <TextField key={input.key} fieldKey={fieldKey} label={input.label} value={typeof value === "string" ? value : ""} onChange={(next) => onUpdate({ parameters: { ...entry.parameters, [input.key]: next } })} />
-    })}
-  </fieldset>
 }
 
 type CatalogValidationContextValue = {
@@ -561,12 +376,11 @@ function NumberField({ fieldKey, label, value, onChange, minimum = 0, maximum, c
   const errorID = `${id}-error`
   return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} value={value} onChange={(e) => { validation.clear(); onChange(Number(e.target.value)) }} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function DraftNumberField({ fieldKey, label, value, onChange, minimum, maximum, step, clearFields = [] }: { fieldKey: string; label: string; value: string; onChange: (value: string) => void; minimum?: number; maximum?: number; step?: string; clearFields?: string[] }) {
-  const validation = useCatalogValidation(fieldKey, clearFields, label)
-  const id = catalogFieldID(fieldKey)
-  const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={fieldKey} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} step={step} value={value} onChange={(event) => { validation.clear(); onChange(event.target.value) }} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+function OptionalNumberField({ label, value, onChange }: { label: string; value?: number; onChange: (value?: number) => void }) {
+  const id = catalogFieldID(label)
+  return <Field className="block"><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Input id={id} aria-label={label} type="number" min={1} value={value ?? ""} onChange={event => onChange(event.target.value === "" ? undefined : Number(event.target.value))} /></FieldContent></Field>
 }
+
 function TextAreaField({ fieldKey, label, value, onChange, description }: { fieldKey?: string; label: string; value: string; onChange: (value: string) => void; description?: string }) {
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, [], label)
@@ -595,14 +409,6 @@ function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields =
   const errorID = `${catalogFieldID(key)}-error`
   return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
 }
-
-function StageNumberField({ label, value, minimum, maximum, placeholder, onChange }: { label: string; value: string | number; minimum: number; maximum: number; placeholder?: string; onChange: (value: string) => void }) {
-  const validation = useCatalogValidation(label)
-  const id = catalogFieldID(label)
-  const errorID = `${id}-error`
-  return <div data-invalid={validation.invalid || undefined} data-field-name={label}><Input id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} type="number" min={minimum} max={maximum} value={value} placeholder={placeholder} onChange={(event) => { validation.clear(); onChange(event.target.value) }} />{validation.message ? <FieldError id={errorID} className="mt-1">{validation.message}</FieldError> : null}</div>
-}
-
 
 class FormValidationError extends Error {
   readonly field: string
@@ -637,127 +443,13 @@ function safeCatalogKey(value: string, label: string) {
   }
   return result
 }
-function safeModelTarget(value: string, label: string) {
-  const result = required(value, label)
-  if (new TextEncoder().encode(result).length > 256 || /\p{Cc}/u.test(result)) throw new FormValidationError(label, tx("desktop:catalog_model_ids_must_be_at_most_256_utf_8_bytes"))
-  return result
-}
-function list(value: string) { return [...new Set(value.split(",").map(v => v.trim()).filter(Boolean))] }
 function json(value: unknown) { return JSON.stringify(value, null, 2) }
 function parseJSON(value: string, label: string): unknown { try { return JSON.parse(value) } catch { throw new FormValidationError(label, tx("desktop:catalog_enter_valid_json")) } }
 function recordJSON<T>(value: string, label: string): Record<string,T> { const parsed = parseJSON(value, label); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new FormValidationError(label, tx("desktop:catalog_enter_a_json_object")); return parsed as Record<string,T> }
-function finiteNumber(value: unknown, fallback: number): number { return typeof value === "number" && Number.isFinite(value) ? value : fallback }
-
-function planSuiteDraft(entry: CatalogPlanSuite | undefined, suite: CatalogSuite | undefined, draftKey: string): PlanSuiteDraft {
-  if (!entry && !suite) throw new Error("a plan suite draft requires a catalog suite")
-  const quickTest = entry ? entry.quick_test : suite?.quick_test
-  const parameterValues = {
-    ...Object.fromEntries((quickTest?.inputs ?? []).map((input) => [input.key, input.default])),
-    ...(entry?.parameters ?? {}),
-  }
-  const parameters = Object.fromEntries(Object.entries(parameterValues).map(([key, value]) => [
-    key,
-    typeof value === "boolean" ? value : String(value),
-  ])) as Record<string, string | boolean>
-  return {
-    draftKey,
-    ...(entry?.entry_id ? { entryID: entry.entry_id } : {}),
-    suiteID: entry?.suite_id ?? suite!.id,
-    suiteRevision: entry?.suite_revision ?? suite!.revision,
-    suiteKey: entry?.suite_key ?? suite!.key,
-    suiteName: entry?.suite_name ?? suite!.name,
-    ...(quickTest ? { quickTest } : {}),
-    parameters,
-    parametersJSON: json(entry?.parameters ?? {}),
-    loadMode: entry?.load_mode ?? "single",
-    numbers: {
-      concurrency: String(entry?.concurrency ?? 1),
-      request_count: String(entry?.request_count ?? 1),
-      rate_per_second: String(entry?.rate_per_second ?? 0),
-      duration_ms: String(entry?.duration_ms ?? 0),
-      request_timeout_ms: String(entry?.request_timeout_ms ?? quickTest?.timeout_ms ?? 60_000),
-    },
-    sla: json(entry?.sla_thresholds ?? { e2e_p95_ms: 3_000 }),
-  }
-}
-
-function planSuiteCommand(draft: PlanSuiteDraft): PlanSuiteCommand {
-  const prefix = `plan.suites.${draft.draftKey}`
-  const numbers = Object.fromEntries(Object.entries(draft.numbers).map(([key, value]) => [key, value.trim() ? Number(value) : Number.NaN])) as {
-    concurrency: number
-    request_count: number
-    rate_per_second: number
-    duration_ms: number
-    request_timeout_ms: number
-  }
-  validatePlanLoad(draft.loadMode, numbers, prefix)
-  const inputs = draft.quickTest?.inputs ?? []
-  let parameters: Record<string, CatalogPlanParameterValue>
-  if (inputs.length) {
-    parameters = Object.fromEntries(inputs.map((input) => {
-      const fieldKey = `${prefix}.parameters.${input.key}`
-      const value = draft.parameters[input.key]
-      if (input.type === "boolean") return [input.key, value === true]
-      if (input.type === "number") {
-        const parsed = typeof value === "string" && value.trim() ? Number(value) : Number.NaN
-        if (!Number.isFinite(parsed)) throw new FormValidationError(fieldKey, tx("desktop:catalog_enter_a_finite_number"), input.label)
-        return [input.key, parsed]
-      }
-      return [input.key, typeof value === "string" ? value : String(value ?? "")]
-    }))
-  } else {
-    parameters = primitiveParameterRecord(draft.parametersJSON, `${prefix}.parameters`, tx("desktop:catalog_extension_parameters_json"))
-  }
-  return {
-    ...(draft.entryID ? { entry_id: draft.entryID } : {}),
-    suite_id: draft.suiteID,
-    suite_revision: draft.suiteRevision,
-    parameters,
-    load_mode: draft.loadMode,
-    ...numbers,
-    sla_thresholds: nonNegativeNumberRecord(draft.sla, tx("desktop:catalog_sla_thresholds_json"), `${prefix}.sla_thresholds`),
-  }
-}
-
-function primitiveParameterRecord(value: string, field: string, label: string): Record<string, CatalogPlanParameterValue> {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    throw new FormValidationError(field, tx("desktop:catalog_enter_valid_json"), label)
-  }
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new FormValidationError(field, tx("desktop:catalog_enter_a_json_object"), label)
-  }
-  if (Object.values(parsed).some((parameter) => !(
-    typeof parameter === "string" || typeof parameter === "boolean" ||
-    (typeof parameter === "number" && Number.isFinite(parameter))
-  ))) {
-    throw new FormValidationError(field, tx("desktop:catalog_extension_parameters_must_be_primitive_values"), label)
-  }
-  return parsed as Record<string, CatalogPlanParameterValue>
-}
-
 function integerField(value: number, label: string, minimum: number, maximum: number, field = label) {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     throw new FormValidationError(field, tx("desktop:catalog_enter_an_integer_between_value_and_value", { value1: minimum.toLocaleString(desktopLocale()), value2: maximum.toLocaleString(desktopLocale()) }), field === label ? undefined : label)
   }
-}
-
-function validatePlanLoad(loadMode: CatalogLoadMode, numbers: { concurrency: number; request_count: number; rate_per_second: number; duration_ms: number; request_timeout_ms: number }, prefix: string) {
-  integerField(numbers.concurrency, tx("desktop:catalog_concurrency"), 1, Number.MAX_SAFE_INTEGER, `${prefix}.concurrency`)
-  integerField(numbers.request_count, tx("desktop:catalog_request_count"), 0, Number.MAX_SAFE_INTEGER, `${prefix}.request_count`)
-  integerField(numbers.duration_ms, tx("desktop:catalog_duration_ms"), 0, Number.MAX_SAFE_INTEGER, `${prefix}.duration_ms`)
-  if (numbers.request_count === 0 && numbers.duration_ms === 0) {
-    throw new FormValidationError(`${prefix}.request_count`, tx("desktop:catalog_request_count_and_duration_cannot_both_be_0"), tx("desktop:catalog_request_count"))
-  }
-  if (!Number.isFinite(numbers.rate_per_second) || numbers.rate_per_second < 0) {
-    throw new FormValidationError(`${prefix}.rate_per_second`, tx("desktop:catalog_enter_a_finite_number_greater_than_or_equal_to_0"), tx("desktop:catalog_requests_per_second"))
-  }
-  if (loadMode === "open_loop" && numbers.rate_per_second <= 0) {
-    throw new FormValidationError(`${prefix}.rate_per_second`, tx("desktop:catalog_requests_per_second_must_be_greater_than_0_for_open"), tx("desktop:catalog_requests_per_second"))
-  }
-  integerField(numbers.request_timeout_ms, tx("desktop:catalog_request_timeout_ms"), 1, Number.MAX_SAFE_INTEGER, `${prefix}.request_timeout_ms`)
 }
 
 function nonNegativeNumberRecord(value: string, label: string, field = label): Record<string, number> {
@@ -769,51 +461,12 @@ function nonNegativeNumberRecord(value: string, label: string, field = label): R
     throw reason
   }
   const entries = Object.entries(record)
-  if (entries.length === 0) throw new FormValidationError(field, tx("desktop:catalog_enter_at_least_one_sla_threshold"), label)
   for (const [name, threshold] of entries) {
     if (!name.trim() || typeof threshold !== "number" || !Number.isFinite(threshold) || threshold < 0) {
       throw new FormValidationError(field, tx("desktop:catalog_threshold_value_must_be_a_finite_number_greater_than_or", { value1: name || tx("desktop:catalog_unnamed") }), label)
     }
   }
   return record as Record<string, number>
-}
-
-type LatencyStageDraft = { input_tokens: number; warmups: string; samples: string }
-
-function latencyStages(value: unknown): LatencyStageDraft[] {
-  if (!Array.isArray(value)) return [{ input_tokens: 128, warmups: "", samples: "" }]
-  const stages = value.flatMap((entry) => {
-    if (!entry || Array.isArray(entry) || typeof entry !== "object") return []
-    const stage = entry as Record<string, unknown>
-    if (typeof stage.input_tokens !== "number" || !Number.isFinite(stage.input_tokens)) return []
-    return [{
-      input_tokens: stage.input_tokens,
-      warmups: typeof stage.warmups === "number" && Number.isFinite(stage.warmups) ? String(stage.warmups) : "",
-      samples: typeof stage.samples === "number" && Number.isFinite(stage.samples) ? String(stage.samples) : "",
-    }]
-  })
-  return stages.length ? stages : [{ input_tokens: 128, warmups: "", samples: "" }]
-}
-
-function latencyStageSpecs(stages: LatencyStageDraft[]) {
-  if (!stages.length) throw new FormValidationError(tx("desktop:catalog_input_token_ladder"), tx("desktop:catalog_add_at_least_one_input_token_step"))
-  let previous = 0
-  return stages.map((stage, index) => {
-    if (!Number.isInteger(stage.input_tokens) || stage.input_tokens <= previous || stage.input_tokens > 1_000_000) {
-      throw new FormValidationError(tx("desktop:catalog_step_value_input_tokens", { value1: index + 1 }), tx("desktop:catalog_enter_increasing_integers_no_greater_than_1_000_000"))
-    }
-    previous = stage.input_tokens
-    const warmups = optionalInteger(stage.warmups, tx("desktop:catalog_step_value_warmups", { value1: index + 1 }), 0, 10)
-    const samples = optionalInteger(stage.samples, tx("desktop:catalog_step_value_samples", { value1: index + 1 }), 1, 100)
-    return { input_tokens: stage.input_tokens, ...(warmups === undefined ? {} : { warmups }), ...(samples === undefined ? {} : { samples }) }
-  })
-}
-
-function optionalInteger(value: string, label: string, minimum: number, maximum: number): number | undefined {
-  if (!value.trim()) return undefined
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) throw new FormValidationError(label, tx("desktop:catalog_enter_an_integer_between_value_and_value", { value1: minimum, value2: maximum }))
-  return parsed
 }
 
 function useCatalogValidation(field: string, clearFields: string[] = [], label = field) {

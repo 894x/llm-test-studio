@@ -133,6 +133,8 @@
     "forgetting": "Forgetting…",
     "useOtherKey": "Use another key",
     "rememberFailed": "Could not remember the key. Run this connection once, then retry. The accepted test is unaffected.",
-    "forgetFailed": "Could not remove the remembered key. Check the system credential store and retry."
+    "forgetFailed": "Could not remove the remembered key. Check the system credential store and retry.",
+    "seed": "Root random seed",
+    "requestTimeout": "Case timeout (ms)"
   }
 }

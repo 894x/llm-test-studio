@@ -113,7 +113,6 @@ type LocalizedReportExporter interface {
 // adapter. A command mutates Core state; the adapter then obtains the
 // authoritative state through WorkspaceQuery.
 type RunCommands interface {
-	StartRun(context.Context, string) error
 	StartTarget(context.Context, runs.StartCommand) (string, error)
 	StartQuickTask(context.Context, runs.QuickTaskCommand) (string, error)
 	StopSending(context.Context, string) error
@@ -729,16 +728,6 @@ func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (compar
 	snapshot, err := lease.comparisons.Snapshot(lease.ctx)
 	if err != nil {
 		return comparisons.Snapshot{}, app.safeBindingError(fmt.Errorf("query comparisons after start: %w", err))
-	}
-	return snapshot, nil
-}
-
-func (app *DesktopApp) StartRun(planID string) (workspace.Snapshot, error) {
-	snapshot, err := app.executeRunCommand("start run", planID, func(ctx context.Context, commands RunCommands) error {
-		return commands.StartRun(ctx, planID)
-	})
-	if err != nil {
-		return workspace.Snapshot{}, app.safeBindingError(err)
 	}
 	return snapshot, nil
 }

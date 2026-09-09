@@ -11,38 +11,34 @@ import {
 
 const task = {
   ...FIXTURE_CATALOG.suites[0],
-  model_target: "",
-  quick_test: {
     description: "Connect",
-    timeout_ms: 30000,
     inputs: [
       {
         key: "prompt",
         label: "Prompt",
-        type: "text" as const,
+        type: "string" as const,
         default: "hello",
-        bindings: [{ case_key: "T001", pointer: "/request/body/messages/0/content" }],
+        bindings: [{ case_id: FIXTURE_CATALOG.test_cases[0].id, input: "prompt" }],
       },
       {
         key: "duration",
         label: "Duration",
         type: "number" as const,
         default: 4,
-        bindings: [{ case_key: "T001", pointer: "/request/body/duration" }],
+        bindings: [{ case_id: FIXTURE_CATALOG.test_cases[0].id, input: "duration" }],
       },
       {
         key: "audio",
         label: "Audio",
         type: "boolean" as const,
         default: false,
-        bindings: [{ case_key: "T001", pointer: "/request/body/audio" }],
+        bindings: [{ case_id: FIXTURE_CATALOG.test_cases[0].id, input: "audio" }],
       },
     ],
-  },
 }
 
 describe("quick task drafts", () => {
-  it("preserves editable fields and pins while never persisting a key", () => {
+  it("preserves editable fields and root random context while never persisting a key", () => {
     const draft = {
       ...createTaskDraft(task),
       base_url: "https://example.test",
@@ -54,7 +50,7 @@ describe("quick task drafts", () => {
     const encoded = encodeTaskDraft(draft)
     expect(encoded).not.toContain("private-test-key")
     expect(decodeTaskDraft(encoded)).toEqual({ ...draft, api_key: "" })
-    expect(quickTaskCommand(draft).errors).toHaveProperty("input.duration")
+    expect(quickTaskCommand(draft).command?.inputs).not.toHaveProperty("duration")
     expect(
       quickTaskCommand({ ...draft, inputs: { ...draft.inputs, duration: "5" } }).command,
     ).toMatchObject({
@@ -65,7 +61,7 @@ describe("quick task drafts", () => {
 
   it("restores safe history metadata and rejects inconsistent fields", () => {
     const payload = {
-      schema_version: 1,
+      schema_version: 2, seed: 1, request_timeout_ms: 60000,
       run_id: "11111111-1111-4111-8111-111111111111",
       suite: task,
       model: "model",
@@ -75,7 +71,6 @@ describe("quick task drafts", () => {
     }
     expect(JSON.stringify(parseQuickTaskDetail(payload))).not.toContain("hidden")
     for (const invalid of [
-      { ...payload, inputs: {} },
       { ...payload, inputs: { ...payload.inputs, duration: "5" } },
       { ...payload, base_url: "https://user:key@example.test" },
       { ...payload, run_id: "invalid" },

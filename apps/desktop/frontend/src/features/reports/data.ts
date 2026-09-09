@@ -1,3 +1,7 @@
+import { isProtocolRunSettings, type ProtocolRunSettings } from "@/features/protocols/types"
+import { isJSONValue, isUUID, type CatalogProtocol, type CatalogPlanParameterValue } from "@/features/catalog/data"
+import { isProtocol } from "@/features/catalog/protocols"
+import type { AssertionResult, ProtocolObservation, Verification, VerificationSummary } from "@/features/protocols/types"
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { parseQuickPerformanceReport, type QuickPerformanceReport } from "@/features/quick-test/data"
@@ -18,6 +22,9 @@ export interface ReportSummary {
   issue_count: number
   case_count: number
   failed_case_count: number
+  passed_case_count: number
+  verified_case_count: number
+  observed_case_count: number
   attachment_count: number
 }
 
@@ -33,78 +40,41 @@ export interface ReportMetric {
 }
 
 export interface ReportResult {
-  id: string
-  request_id?: string
-  suite_entry_id?: string
-  case_id?: string
-  success: {
-    transport: boolean
-    protocol: boolean
-    semantic: boolean
-    sla: boolean
-  }
-  failure_kind?: string
-  error_code?: string
-  dimensions?: Record<string, string>
-  metrics: Record<string, number>
+  id: string; request_id?: string; entry_id?: string; case_id?: string
+  execution_status: "completed" | "failed" | "cancelled"
+  verification: Verification
+  observation?: ProtocolObservation
+  failure_kind?: string; error_code?: string
+  dimensions?: Record<string, string>; metrics: Record<string, number>
 }
-
 export type ReportDistribution = Readonly<Record<string, unknown>>
-export type ReportSuiteStatus = "completed" | "failed" | "cancelled" | "not_started"
-
+export type ReportEntryStatus = "completed" | "failed" | "cancelled" | "not_started"
 export interface ReportCaseDetail {
-  case_id: string
-  revision: number
-  key: string
-  name: string
-  case_type: string
-  case_type_version: number
-  summary_result?: ReportResult
-  request_results: ReportResult[]
+  case_id: string; revision: number; key: string; name: string; protocol: CatalogProtocol
+  verification: VerificationSummary; metrics: Record<string, ReportMetric>
+  summary_result?: ReportResult; request_results: ReportResult[]
 }
-
-export interface ReportSuiteDetail {
-  suite_entry_id: string
-  suite_id: string
-  suite_revision: number
-  suite_key: string
-  suite_name: string
-  status: ReportSuiteStatus
-  conclusion: { passed: boolean; verdict: string; issues: string[] }
-  sla: Record<string, ReportMetric>
-  metrics: Record<string, ReportMetric>
-  timeline: ReportDistribution[]
-  distributions: ReportDistribution[]
-  cases: ReportCaseDetail[]
+export interface ReportEntryDetail {
+  entry_id: string; target_kind: "case" | "suite"; target_id: string
+  name: string; key: string; protocol: CatalogProtocol; seed: number
+  warmup_count: number; settings: ProtocolRunSettings
+  parameters: Record<string, CatalogPlanParameterValue>
+  load: { mode: "single" | "fixed_concurrency" | "open_loop"; concurrency: number; request_count: number; rate_per_second: number; duration_ms: number; request_timeout_ms: number }
+  status: ReportEntryStatus; conclusion: { passed: boolean; verdict: string; issues: string[] }
+  verification: VerificationSummary; sla: Record<string, ReportMetric>; metrics: Record<string, ReportMetric>
+  timeline: ReportDistribution[]; distributions: ReportDistribution[]; cases: ReportCaseDetail[]
 }
-
 export interface FormalReportDetail {
-  schema_version: 2
-  source: "run"
+  schema_version: 3; source: "run"
   report: {
-    id: string
-    run_id: string
-    run_status: ReportSummary["run_status"]
-    generated_at: string
-    model: { id: string; name: string }
-    channel: { id: string; name: string }
-    environment: {
-      os: string
-      arch: string
-      region: string
-      network_egress: string
-      app_version: string
-      engine_version: string
-    }
+    id: string; run_id: string; protocol: CatalogProtocol; run_status: ReportSummary["run_status"]; generated_at: string
+    model: { id: string; name: string }; channel: { id: string; name: string }
+    environment: { os: string; arch: string; region: string; network_egress: string; app_version: string; engine_version: string }
     conclusion: { passed: boolean; verdict: string; issues: string[] }
-    sla: Record<string, ReportMetric>
-    metrics: Record<string, ReportMetric>
-    distributions?: ReportDistribution[]
-    case_results: ReportResult[]
+    sla: Record<string, ReportMetric>; metrics: Record<string, ReportMetric>
+    distributions?: ReportDistribution[]; case_results: ReportResult[]
   }
-  request_results: ReportResult[]
-  suites: ReportSuiteDetail[]
-  unassigned_request_results: ReportResult[]
+  request_results: ReportResult[]; entries: ReportEntryDetail[]; unassigned_request_results: ReportResult[]
 }
 
 export interface QuickPerformanceReportDetail {
@@ -158,260 +128,135 @@ export function parseReportSnapshot(value: unknown): ReportSnapshot {
 }
 
 export function parseReportDetail(value: unknown): ReportDetail {
-  if (!isRecord(value) || !isReportSource(value.source)) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
+  if (!isRecord(value) || !isReportSource(value.source)) throw invalidReport()
   if (value.source === "quick_performance") {
-    if (value.schema_version !== 1) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+    if (value.schema_version !== 1) throw invalidReport()
     const performance = parseQuickPerformanceReport(value.performance)
-    if (!performance.archived || !performance.report_id) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
+    if (!performance.archived || !performance.report_id) throw invalidReport()
     return { schema_version: 1, source: "quick_performance", performance }
   }
-  if (
-    value.schema_version !== 2 || !isRecord(value.report) ||
-    !Array.isArray(value.request_results) || !Array.isArray(value.suites) ||
-    !Array.isArray(value.unassigned_request_results)
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
+  if (value.schema_version !== 3 || !isRecord(value.report) || !Array.isArray(value.entries) ||
+    !Array.isArray(value.request_results) || !Array.isArray(value.unassigned_request_results) || "suites" in value) throw invalidReport()
   const report = value.report
-  if (
-    !isUUID(report.id) || !isUUID(report.run_id) || !isRunStatus(report.run_status) ||
+  if (!isUUID(report.id) || !isUUID(report.run_id) || !isProtocol(report.protocol) || !isRunStatus(report.run_status) ||
     !isUTCTimestamp(report.generated_at) || !isSubject(report.model) || !isSubject(report.channel) ||
-    !isEnvironment(report.environment) || !isConclusion(report.conclusion) ||
-    !isRecord(report.sla) || !isRecord(report.metrics) ||
-    (report.distributions !== undefined && !Array.isArray(report.distributions)) ||
-    !Array.isArray(report.case_results)
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
+    !isEnvironment(report.environment) || !isConclusion(report.conclusion) || !isRecord(report.sla) ||
+    !isRecord(report.metrics) || !Array.isArray(report.case_results)) throw invalidReport()
+  const entries = value.entries.map(parseEntry)
+  if (new Set(entries.map(entry => entry.entry_id)).size !== entries.length || entries.some(entry => entry.protocol !== report.protocol)) throw invalidReport()
   const requestResults = value.request_results.map(parseResult)
-  const parsedReport = {
-    id: report.id, run_id: report.run_id, run_status: report.run_status,
-    generated_at: report.generated_at, model: report.model, channel: report.channel,
-    environment: report.environment, conclusion: report.conclusion,
-    sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
-    distributions: parseRecordArray(report.distributions ?? []),
-    case_results: report.case_results.map(parseResult),
-  }
-
-  const suites = value.suites.map(parseSuiteDetail)
-  const unassignedRequestResults = value.unassigned_request_results.map(parseResult)
-  validateCanonicalRunTree(
-    suites,
-    unassignedRequestResults,
-    requestResults,
-    parsedReport.case_results,
-  )
-  validateRunConclusion(parsedReport.run_status, parsedReport.conclusion, suites)
-  return {
-    schema_version: 2,
-    source: "run",
-    report: parsedReport,
-    request_results: requestResults,
-    suites,
-    unassigned_request_results: unassignedRequestResults,
-  }
+  const caseResults = report.case_results.map(parseResult)
+  const unassigned = value.unassigned_request_results.map(parseResult)
+  const owned = entries.flatMap(entry => entry.cases.flatMap(caseItem => {
+    if (caseItem.protocol !== entry.protocol || caseItem.request_results.some(result => result.entry_id !== entry.entry_id || result.case_id !== caseItem.case_id)) throw invalidReport()
+    return caseItem.request_results
+  }))
+  const ids = [...owned, ...unassigned].map(result => result.id)
+  if (new Set(ids).size !== ids.length || ids.length !== requestResults.length || requestResults.some(result => !ids.includes(result.id))) throw invalidReport()
+  return { schema_version: 3, source: "run", report: {
+    id: report.id, run_id: report.run_id, protocol: report.protocol, run_status: report.run_status,
+    generated_at: report.generated_at, model: { id: report.model.id, name: report.model.name },
+    channel: { id: report.channel.id, name: report.channel.name }, environment: { ...report.environment },
+    conclusion: copyConclusion(report.conclusion), sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
+    distributions: parseRecordArray(report.distributions ?? []), case_results: caseResults,
+  }, entries, request_results: requestResults, unassigned_request_results: unassigned }
 }
-
-function parseSuiteDetail(value: unknown): ReportSuiteDetail {
-  if (
-    !isRecord(value) || !isUUID(value.suite_entry_id) || !isUUID(value.suite_id) ||
-    !isPositiveInteger(value.suite_revision) || !isNonBlank(value.suite_key) ||
-    !isNonBlank(value.suite_name) || !isSuiteStatus(value.status) || !isConclusion(value.conclusion) ||
-    !isRecord(value.sla) || !isRecord(value.metrics) || !Array.isArray(value.timeline) ||
-    !Array.isArray(value.distributions) || !Array.isArray(value.cases)
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-  if (!suiteConclusionMatchesStatus(value.status, value.conclusion)) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-  return {
-    suite_entry_id: value.suite_entry_id,
-    suite_id: value.suite_id,
-    suite_revision: value.suite_revision,
-    suite_key: value.suite_key,
-    suite_name: value.suite_name,
-    status: value.status,
-    conclusion: value.conclusion,
-    sla: parseMetricMap(value.sla),
-    metrics: parseMetricMap(value.metrics),
-    timeline: parseRecordArray(value.timeline),
-    distributions: parseRecordArray(value.distributions),
-    cases: value.cases.map(parseCaseDetail),
-  }
+function parseEntry(value: unknown): ReportEntryDetail {
+  if (!isRecord(value) || !isUUID(value.entry_id) || !isUUID(value.target_id) ||
+    (value.target_kind !== "case" && value.target_kind !== "suite") || !isNonBlank(value.name) ||
+    !isNonBlank(value.key) || !isProtocol(value.protocol) || !isNonNegativeInteger(value.seed) ||
+    !isNonNegativeInteger(value.warmup_count) || !isProtocolRunSettings(value.settings) ||
+    !isRecord(value.parameters) || !Object.values(value.parameters).every(isJSONValue) || !isRecord(value.load) ||
+    !["single", "fixed_concurrency", "open_loop"].includes(value.load.mode as string) ||
+    !isPositiveInteger(value.load.concurrency) || !isNonNegativeInteger(value.load.request_count) ||
+    !isNonNegativeInteger(value.load.duration_ms) || !isPositiveInteger(value.load.request_timeout_ms) ||
+    typeof value.load.rate_per_second !== "number" || !Number.isFinite(value.load.rate_per_second) ||
+    !isSuiteStatus(value.status) || !isConclusion(value.conclusion) || !isRecord(value.sla) ||
+    !isRecord(value.metrics) || !Array.isArray(value.cases)) throw invalidReport()
+  const cases = value.cases.map(parseCase)
+  if (new Set(cases.map(item => item.case_id)).size !== cases.length) throw invalidReport()
+  return { entry_id: value.entry_id, target_kind: value.target_kind, target_id: value.target_id,
+    name: value.name, key: value.key, protocol: value.protocol, seed: value.seed,
+    warmup_count: value.warmup_count, settings: { ...value.settings },
+    parameters: structuredClone(value.parameters) as ReportEntryDetail["parameters"],
+    load: { mode: value.load.mode as ReportEntryDetail["load"]["mode"], concurrency: value.load.concurrency,
+      request_count: value.load.request_count, rate_per_second: value.load.rate_per_second,
+      duration_ms: value.load.duration_ms, request_timeout_ms: value.load.request_timeout_ms },
+    status: value.status, conclusion: copyConclusion(value.conclusion), verification: parseSummary(value.verification),
+    sla: parseMetricMap(value.sla), metrics: parseMetricMap(value.metrics),
+    timeline: parseRecordArray(value.timeline), distributions: parseRecordArray(value.distributions), cases }
 }
-
-function parseCaseDetail(value: unknown): ReportCaseDetail {
-  if (
-    !isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision) ||
-    !isNonBlank(value.key) || !isNonBlank(value.name) || !isNonBlank(value.case_type) ||
-    !isPositiveInteger(value.case_type_version) || !Array.isArray(value.request_results)
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-  return {
-    case_id: value.case_id,
-    revision: value.revision,
-    key: value.key,
-    name: value.name,
-    case_type: value.case_type,
-    case_type_version: value.case_type_version,
-    ...(value.summary_result !== undefined ? { summary_result: parseResult(value.summary_result) } : {}),
-    request_results: value.request_results.map(parseResult),
-  }
+function parseCase(value: unknown): ReportCaseDetail {
+  if (!isRecord(value) || !isUUID(value.case_id) || !isPositiveInteger(value.revision) ||
+    !isNonBlank(value.key) || !isNonBlank(value.name) || !isProtocol(value.protocol) ||
+    !isRecord(value.metrics) || !Array.isArray(value.request_results) || "case_type" in value) throw invalidReport()
+  return { case_id: value.case_id, revision: value.revision, key: value.key, name: value.name,
+    protocol: value.protocol, verification: parseSummary(value.verification), metrics: parseMetricMap(value.metrics),
+    ...(value.summary_result === undefined ? {} : { summary_result: parseResult(value.summary_result) }),
+    request_results: value.request_results.map(parseResult) }
 }
-
-function validateCanonicalRunTree(
-  suites: ReportSuiteDetail[],
-  unassignedRequestResults: ReportResult[],
-  requestResults: ReportResult[],
-  caseResults: ReportResult[],
-): void {
-  const suiteEntryIDs = new Set<string>()
-  const resultIDs = new Set<string>()
-  const projectedRequests = new Map<string, ReportResult>()
-  const projectedCaseResults = new Map<string, ReportResult>()
-  for (const suite of suites) {
-    const suiteEntryID = suite.suite_entry_id
-    if (suiteEntryIDs.has(suiteEntryID)) {
-      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-    }
-    suiteEntryIDs.add(suiteEntryID)
-
-    const caseIDs = new Set<string>()
-    for (const caseReport of suite.cases) {
-      if (caseIDs.has(caseReport.case_id)) {
-        throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-      }
-      caseIDs.add(caseReport.case_id)
-      if (caseReport.summary_result) {
-        validateOwnedResult(caseReport.summary_result, suiteEntryID, caseReport.case_id, false, resultIDs)
-        projectedCaseResults.set(caseReport.summary_result.id, caseReport.summary_result)
-      }
-      for (const result of caseReport.request_results) {
-        validateOwnedResult(result, suiteEntryID, caseReport.case_id, true, resultIDs)
-        projectedRequests.set(result.id, result)
-      }
-    }
-  }
-  for (const result of unassignedRequestResults) {
-    if (
-      !result.request_id || result.suite_entry_id !== undefined || result.case_id !== undefined ||
-      resultIDs.has(result.id)
-    ) {
-      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-    }
-    resultIDs.add(result.id)
-    projectedRequests.set(result.id, result)
-  }
-  validateResultProjection(requestResults, projectedRequests)
-  validateResultProjection(caseResults, projectedCaseResults)
+function parseSummary(value: unknown): VerificationSummary {
+  if (!isRecord(value) || !isVerificationStatus(value.status) ||
+    ![value.passed, value.failed, value.observed, value.indeterminate].every(isNonNegativeInteger)) throw invalidReport()
+  return { status: value.status, passed: value.passed as number, failed: value.failed as number,
+    observed: value.observed as number, indeterminate: value.indeterminate as number }
 }
-
-function validateOwnedResult(
-  result: ReportResult,
-  suiteEntryID: string,
-  caseID: string,
-  request: boolean,
-  resultIDs: Set<string>,
-): void {
-  if (
-    result.suite_entry_id !== suiteEntryID || result.case_id !== caseID ||
-    (request ? !result.request_id : result.request_id !== undefined) ||
-    resultIDs.has(result.id)
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-  resultIDs.add(result.id)
+function parseAssertion(value: unknown, depth = 0): AssertionResult {
+  if (depth > 32 || !isRecord(value) || !isNonBlank(value.id) || !isVerificationStatus(value.status) ||
+    [value.source, value.pointer, value.operator, value.reason].some(item => item !== undefined && typeof item !== "string") ||
+    (value.expected !== undefined && !isJSONValue(value.expected)) || (value.actual !== undefined && !isJSONValue(value.actual)) ||
+    (value.children !== undefined && !Array.isArray(value.children))) throw invalidReport()
+  return { id: value.id, status: value.status,
+    ...(typeof value.source === "string" ? { source: value.source } : {}),
+    ...(typeof value.pointer === "string" ? { pointer: value.pointer } : {}),
+    ...(typeof value.operator === "string" ? { operator: value.operator } : {}),
+    ...(typeof value.reason === "string" ? { reason: value.reason } : {}),
+    ...(value.expected !== undefined ? { expected: structuredClone(value.expected) } : {}),
+    ...(value.actual !== undefined ? { actual: structuredClone(value.actual) } : {}),
+    ...(Array.isArray(value.children) ? { children: value.children.map(item => parseAssertion(item, depth + 1)) } : {}) }
 }
-
-function validateResultProjection(
-  canonical: ReportResult[],
-  projection: Map<string, ReportResult>,
-): void {
-  if (canonical.length !== projection.size) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-  const canonicalIDs = new Set<string>()
-  for (const result of canonical) {
-    const projected = projection.get(result.id)
-    if (canonicalIDs.has(result.id) || !projected || !sameReportResult(result, projected)) {
-      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-    }
-    canonicalIDs.add(result.id)
-  }
+function parseObservation(value: unknown): ProtocolObservation {
+  if (!isRecord(value) || !isProtocol(value.protocol) || !isRecord(value.metrics) ||
+    !Object.values(value.metrics).every(item => typeof item === "number" && Number.isFinite(item)) ||
+    (value.http_status !== undefined && !isPositiveInteger(value.http_status)) ||
+    (value.text !== undefined && typeof value.text !== "string") || (value.stream_completed !== undefined && typeof value.stream_completed !== "boolean") ||
+    (value.response !== undefined && !isJSONValue(value.response)) || (value.usage !== undefined && !isJSONValue(value.usage)) ||
+    !Array.isArray(value.artifacts) || !Array.isArray(value.exchanges) || !Array.isArray(value.issues)) throw invalidReport()
+  if (value.task !== undefined && (!isRecord(value.task) || typeof value.task.id !== "string" || typeof value.task.status !== "string" || typeof value.task.terminal !== "boolean")) throw invalidReport()
+  return { protocol: value.protocol, metrics: { ...value.metrics } as Record<string, number>,
+    ...(value.http_status !== undefined ? { http_status: value.http_status as number } : {}),
+    ...(value.response !== undefined ? { response: structuredClone(value.response) } : {}),
+    ...(value.usage !== undefined ? { usage: structuredClone(value.usage) } : {}),
+    ...(value.text !== undefined ? { text: value.text as string } : {}),
+    ...(value.stream_completed !== undefined ? { stream_completed: value.stream_completed as boolean } : {}),
+    ...(value.task !== undefined ? { task: { id: (value.task as NonNullable<ProtocolObservation["task"]>).id, status: (value.task as NonNullable<ProtocolObservation["task"]>).status, terminal: (value.task as NonNullable<ProtocolObservation["task"]>).terminal } } : {}),
+    artifacts: value.artifacts.map(item => {
+      if (!isRecord(item) || typeof item.kind !== "string" || typeof item.url !== "string") throw invalidReport()
+      return { kind: item.kind, url: item.url }
+    }),
+    exchanges: value.exchanges.map(item => {
+      if (!isRecord(item) || typeof item.step !== "string" || typeof item.method !== "string" || typeof item.path !== "string" ||
+        typeof item.elapsed_ms !== "number" || !Number.isFinite(item.elapsed_ms) ||
+        (item.http_status !== undefined && !isPositiveInteger(item.http_status)) ||
+        (item.request_body !== undefined && !isJSONValue(item.request_body)) || (item.response !== undefined && !isJSONValue(item.response))) throw invalidReport()
+      return { step: item.step, method: item.method, path: item.path, elapsed_ms: item.elapsed_ms,
+        ...(item.http_status !== undefined ? { http_status: item.http_status as number } : {}),
+        ...(item.request_body !== undefined ? { request_body: structuredClone(item.request_body) } : {}),
+        ...(item.response !== undefined ? { response: structuredClone(item.response) } : {}) }
+    }),
+    issues: value.issues.map(item => {
+      if (!isRecord(item) || typeof item.stage !== "string" || typeof item.code !== "string") throw invalidReport()
+      return { stage: item.stage, code: item.code }
+    }) }
 }
-
-function sameReportResult(left: ReportResult, right: ReportResult): boolean {
-  return (
-    left.id === right.id && left.request_id === right.request_id &&
-    left.suite_entry_id === right.suite_entry_id && left.case_id === right.case_id &&
-    left.failure_kind === right.failure_kind && left.error_code === right.error_code &&
-    left.success.transport === right.success.transport &&
-    left.success.protocol === right.success.protocol &&
-    left.success.semantic === right.success.semantic && left.success.sla === right.success.sla &&
-    sameRecord(left.dimensions, right.dimensions) && sameRecord(left.metrics, right.metrics)
-  )
+function isVerificationStatus(value: unknown): value is Verification["status"] {
+  return value === "passed" || value === "failed" || value === "not_applicable" || value === "indeterminate"
 }
-
-function sameRecord<T extends string | number>(
-  left: Record<string, T> | undefined,
-  right: Record<string, T> | undefined,
-): boolean {
-  if (left === undefined || right === undefined) return left === right
-  const leftKeys = Object.keys(left).sort()
-  const rightKeys = Object.keys(right).sort()
-  return leftKeys.length === rightKeys.length &&
-    leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key])
-}
-
-function suiteConclusionMatchesStatus(
-  status: ReportSuiteStatus,
-  conclusion: FormalReportDetail["report"]["conclusion"],
-): boolean {
-  switch (status) {
-    case "completed":
-      return conclusion.verdict === (conclusion.passed ? "pass" : "fail")
-    case "failed":
-      return !conclusion.passed && conclusion.verdict === "fail"
-    case "cancelled":
-      return !conclusion.passed && conclusion.verdict === "cancelled"
-    case "not_started":
-      return !conclusion.passed && conclusion.verdict === "not_started"
-  }
-}
-
-function validateRunConclusion(
-  status: FormalReportDetail["report"]["run_status"],
-  conclusion: FormalReportDetail["report"]["conclusion"],
-  suites: ReportSuiteDetail[],
-): void {
-  let executionStopped = false
-  for (const suite of suites) {
-    if (
-      (executionStopped && suite.status !== "not_started") ||
-      (status !== "cancelled" && suite.status === "cancelled")
-    ) {
-      throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-    }
-    if (suite.status === "cancelled" || suite.status === "not_started") executionStopped = true
-  }
-  if (
-    (status !== "completed" && conclusion.passed) ||
-    (status === "completed" && suites.some((suite) => suite.status !== "completed")) ||
-    (conclusion.passed && suites.some((suite) => !suite.conclusion.passed))
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-}
-
+function copyConclusion(value: FormalReportDetail["report"]["conclusion"]) { return { passed: value.passed, verdict: value.verdict, issues: [...value.issues] } }
+function invalidReport() { return new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details")) }
 function parseRecordArray(value: unknown): ReportDistribution[] {
-  if (!Array.isArray(value) || !value.every(isRecord)) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_details"))
-  }
-  return value.map((item) => ({ ...item }))
+  if (!Array.isArray(value) || !value.every(isRecord)) throw invalidReport()
+  return value.map(item => structuredClone(item))
 }
 
 export function parseExportedReport(value: unknown): ExportedReport {
@@ -436,38 +281,24 @@ function parseMetricMap(value: Record<string, unknown>): Record<string, ReportMe
 }
 
 function parseResult(value: unknown): ReportResult {
-  if (
-    !isRecord(value) || !isUUID(value.id) || !isRecord(value.success) ||
+  if (!isRecord(value) || !isUUID(value.id) || !["completed", "failed", "cancelled"].includes(value.execution_status as string) ||
+    !isRecord(value.verification) || !isVerificationStatus(value.verification.status) || !Array.isArray(value.verification.assertions) ||
     (value.request_id !== undefined && !isNonBlank(value.request_id)) ||
-    (value.suite_entry_id !== undefined && !isUUID(value.suite_entry_id)) ||
-    (value.case_id !== undefined && !isUUID(value.case_id)) ||
-    (value.failure_kind !== undefined && !isNonBlank(value.failure_kind)) ||
-    (value.error_code !== undefined && !isNonBlank(value.error_code)) ||
-    (value.metrics !== undefined && !isRecord(value.metrics)) ||
-    (value.dimensions !== undefined && !isStringRecord(value.dimensions))
-  ) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_result_data"))
-  }
-  const success = value.success
-  if ([success.transport, success.protocol, success.semantic, success.sla].some((item) => typeof item !== "boolean")) {
-    throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_result_status"))
-  }
-  const metrics: Record<string, number> = {}
-  for (const [name, metric] of Object.entries((value.metrics ?? {}) as Record<string, unknown>)) {
-    if (!isNonBlank(name) || typeof metric !== "number" || !Number.isFinite(metric)) throw new DesktopDataError(tx("desktop:reports_invalid_desktop_report_request_metrics"))
-    metrics[name] = metric
-  }
-  return {
-    id: value.id,
-    ...(typeof value.request_id === "string" && value.request_id ? { request_id: value.request_id } : {}),
-    ...(typeof value.suite_entry_id === "string" && value.suite_entry_id ? { suite_entry_id: value.suite_entry_id } : {}),
-    ...(typeof value.case_id === "string" && value.case_id ? { case_id: value.case_id } : {}),
-    success: { transport: success.transport as boolean, protocol: success.protocol as boolean, semantic: success.semantic as boolean, sla: success.sla as boolean },
-    ...(typeof value.failure_kind === "string" && value.failure_kind ? { failure_kind: value.failure_kind } : {}),
-    ...(typeof value.error_code === "string" && value.error_code ? { error_code: value.error_code } : {}),
-    ...(value.dimensions !== undefined ? { dimensions: { ...value.dimensions } as Record<string, string> } : {}),
-    metrics,
-  }
+    (value.entry_id !== undefined && !isUUID(value.entry_id)) || (value.case_id !== undefined && !isUUID(value.case_id)) ||
+    (value.error_code !== undefined && !isNonBlank(value.error_code)) || (value.failure_kind !== undefined && !isNonBlank(value.failure_kind)) ||
+    (value.dimensions !== undefined && !isStringRecord(value.dimensions)) ||
+    (value.metrics !== undefined && (!isRecord(value.metrics) || !Object.values(value.metrics).every(item => typeof item === "number" && Number.isFinite(item)))) ||
+    "success" in value || "suite_entry_id" in value) throw invalidReport()
+  return { id: value.id, execution_status: value.execution_status as ReportResult["execution_status"],
+    verification: { status: value.verification.status, assertions: value.verification.assertions.map(item => parseAssertion(item)) },
+    metrics: { ...(value.metrics as Record<string, number> ?? {}) },
+    ...(value.observation !== undefined ? { observation: parseObservation(value.observation) } : {}),
+    ...(typeof value.request_id === "string" ? { request_id: value.request_id } : {}),
+    ...(typeof value.entry_id === "string" ? { entry_id: value.entry_id } : {}),
+    ...(typeof value.case_id === "string" ? { case_id: value.case_id } : {}),
+    ...(typeof value.error_code === "string" ? { error_code: value.error_code } : {}),
+    ...(typeof value.failure_kind === "string" ? { failure_kind: value.failure_kind } : {}),
+    ...(value.dimensions ? { dimensions: { ...value.dimensions as Record<string, string> } } : {}) }
 }
 
 function isSubject(value: unknown): value is { id: string; name: string } {
@@ -499,6 +330,7 @@ function parseReport(value: unknown): ReportSummary {
     !isNonNegativeInteger(value.case_count) ||
     !isNonNegativeInteger(value.failed_case_count) ||
     value.failed_case_count > value.case_count ||
+    ![value.passed_case_count, value.verified_case_count, value.observed_case_count].every(isNonNegativeInteger) ||
     !isNonNegativeInteger(value.attachment_count) ||
     (value.passed && (value.run_status !== "completed" || value.failed_case_count !== 0))
   ) {
@@ -518,19 +350,13 @@ function parseReport(value: unknown): ReportSummary {
     issue_count: value.issue_count,
     case_count: value.case_count,
     failed_case_count: value.failed_case_count,
+    passed_case_count: value.passed_case_count as number, verified_case_count: value.verified_case_count as number, observed_case_count: value.observed_case_count as number,
     attachment_count: value.attachment_count,
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
-}
-
-function isUUID(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)
-  )
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function isUTCTimestamp(value: unknown): value is string {
@@ -545,7 +371,7 @@ function isRunStatus(value: unknown): value is ReportSummary["run_status"] {
   return value === "completed" || value === "failed" || value === "cancelled"
 }
 
-function isSuiteStatus(value: unknown): value is ReportSuiteStatus {
+function isSuiteStatus(value: unknown): value is ReportEntryStatus {
   return value === "completed" || value === "failed" || value === "cancelled" || value === "not_started"
 }
 

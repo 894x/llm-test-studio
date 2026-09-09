@@ -25,7 +25,9 @@
     "emptyFiltered": "这个计划还没有运行记录",
     "empty": "还没有运行记录",
     "emptyFilteredDescription": "选择其他计划，或从当前计划新建一次运行。",
-    "emptyDescription": "从右上角新建运行，结果会出现在这里。"
+    "emptyDescription": "从右上角新建运行，结果会出现在这里。",
+    "observed": "仅观测 {{count}}",
+    "indeterminate": "无法判定 {{count}}"
   },
   "inspector": {
     "details": "运行详情",

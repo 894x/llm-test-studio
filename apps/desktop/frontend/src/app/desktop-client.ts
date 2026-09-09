@@ -132,7 +132,6 @@ export interface DesktopClient extends CatalogActions {
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(): Promise<ComparisonSnapshot>
-  startRun(planId: string): Promise<WorkspaceSnapshot>
   startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
   startQuickTask(command: StartQuickTaskCommand): Promise<string>
   getQuickTask(runId: string): Promise<QuickTaskDetail>
@@ -166,7 +165,6 @@ type WailsDesktopBinding = {
   SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
-  StartRun(planId: string): Promise<unknown>
   StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
   StartQuickTask(command: StartQuickTaskCommand): Promise<unknown>
   GetQuickTask(runId: string): Promise<unknown>
@@ -207,7 +205,7 @@ type FrontendDiagnostic = {
 const REQUIRED_WAILS_BINDING_METHODS = [
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRun", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
+  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "StopSending", "CancelRun", "StartComparison", "RunQuickPerformanceTest",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
@@ -288,12 +286,7 @@ export function createFixtureClient(
 		async getComparisons() {
 			return structuredClone(comparisonState)
 		},
-    async startRun(planId) {
-      if (!workspace.plans.some((plan) => plan.id === planId)) {
-        throw new DesktopClientError("invalid_identifier")
-      }
-      return cloneSnapshot(workspace)
-    },
+
 		async startRunTarget(command) {
 			const plan = catalogState.plans.find((item) => item.id === command.plan_id)
 			const model = catalogState.models.find((item) => item.id === command.model_id)
@@ -303,8 +296,8 @@ export function createFixtureClient(
 			return cloneSnapshot(workspace)
 		},
     async startQuickTask(command) {
-      const suite = command.source_run_id ? quickTasks.get(command.source_run_id)?.suite : catalogState.suites.find((item) => item.id === command.suite_id && item.revision === command.suite_revision)
-      if (!suite?.quick_test || (suite.model_target && suite.model_target !== command.model)) throw new DesktopClientError("run_not_runnable")
+      const suite = command.source_run_id ? quickTasks.get(command.source_run_id)?.suite : catalogState.suites.find((item) => item.id === command.suite_id)
+      if (!suite) throw new DesktopClientError("run_not_runnable")
       const channel = catalogState.channels.find((item) => item.id === command.channel_id)
       if (command.channel_id && (!channel?.enabled || channel.protocol !== suite.protocol || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")
       if (!command.model || (!channel && (!command.base_url || (!command.api_key && !command.credential_run_id))) || (channel && (command.base_url || command.api_key))) throw new DesktopClientError("run_invalid")
@@ -317,15 +310,15 @@ export function createFixtureClient(
       workspace.runs.unshift({
         id, revision: 1, source: "quick_task", plan_id: id, plan_revision: 1, plan_name: suite.name,
         case_count: suite.cases.length, observed_case_count: 0,
-        suite_progress: [{ entry_id: id, name: suite.name, case_count: suite.cases.length, observed_case_count: 0, status: "queued" }],
+        entry_progress: [{ entry_id: id, name: suite.name, case_count: suite.cases.length, observed_case_count: 0, status: "queued" }],
         model_id: nextID(), model_revision: 1, model_name: command.model,
         channel_id: channel?.id ?? nextID(), channel_revision: channel?.revision ?? 1, channel_name: channel?.name ?? new URL(command.base_url!).host,
         status: "queued", conclusion: "none", load_mode: "fixed_concurrency", concurrency: 1,
-        rate_per_second: 0, planned: 0, duration_ms: 0, completed: 0, passed: 0, failed: 0,
+        rate_per_second: 0, planned: 0, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed:0,indeterminate:0,
         artifact_count: 0, started_at: now, updated_at: now,
       })
       workspace.active_run_id = id
-      quickTasks.set(id, { schema_version: 1, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.quick_test.inputs.map((input) => [input.key, input.default])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
+      quickTasks.set(id, { schema_version: 2, seed:command.seed,request_timeout_ms:command.request_timeout_ms, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
       return id
     },
     async getQuickTask(runId) {
@@ -502,7 +495,6 @@ function createLazyFixtureClient(): DesktopClient {
 		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
 		getComparisons: async () => (await client).getComparisons(),
-    startRun: async (planId) => (await client).startRun(planId),
 		startRunTarget: async (command) => (await client).startRunTarget(command),
 		startQuickTask: async (command) => (await client).startQuickTask(command),
 		getQuickTask: async (runId) => (await client).getQuickTask(runId),
@@ -575,8 +567,6 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 				reportFrontendFailure(binding, "load_comparisons"),
 				"comparison_unavailable",
 			),
-    startRun: async (planId) =>
-      callBinding(() => binding.StartRun(planId), parseSnapshot),
 		startRunTarget: async (command) =>
 			callBinding(() => binding.StartRunTarget(command), parseSnapshot),
 		startQuickTask: async (command) =>
@@ -1233,30 +1223,16 @@ function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase
 }
 
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
-	return {
-		schema_version: 2,
-		source: "run",
-		report: {
-			id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
-			model: { id: "10000000-0000-4000-8000-000000000001", name: summary.model_name },
-			channel: { id: "10000000-0000-4000-8000-000000000002", name: summary.channel_name },
-			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "fixture", engine_version: "go-core-v1" },
-			conclusion: { passed: summary.passed, verdict: summary.verdict, issues: summary.issue_count ? ["fixture issue"] : [] },
-			sla: {}, metrics: {}, case_results: [],
-		},
-		request_results: [],
-		suites: [{
-			suite_entry_id: "10000000-0000-4000-8000-000000000003",
-			suite_id: "10000000-0000-4000-8000-000000000004",
-			suite_revision: 1,
-			suite_key: "fixture-suite",
-			suite_name: "Fixture suite",
-			status: summary.run_status,
-			conclusion: { passed: summary.passed, verdict: summary.passed ? "pass" : "fail", issues: [] },
-			sla: {}, metrics: {}, timeline: [], distributions: [], cases: [],
-		}],
-		unassigned_request_results: [],
-	}
+ const verification = {status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed_case_count,failed:summary.failed_case_count,observed:summary.observed_case_count,indeterminate:0}
+ return {
+  schema_version:3,source:"run",
+  report:{id:summary.id,run_id:summary.run_id!,run_status:summary.run_status,generated_at:summary.generated_at,protocol:"openai-chat",
+   model:{id:"10000000-0000-4000-8000-000000000001",name:summary.model_name},channel:{id:"10000000-0000-4000-8000-000000000002",name:summary.channel_name},
+   environment:{os:"windows",arch:"amd64",region:"local",network_egress:"direct",app_version:"fixture",engine_version:"go-core"},
+   conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},sla:{},metrics:{},case_results:[]},
+  request_results:[],entries:[{entry_id:"10000000-0000-4000-8000-000000000003",target_kind:"suite",target_id:"10000000-0000-4000-8000-000000000004",key:"fixture-suite",name:"Fixture suite",protocol:"openai-chat",parameters:{},seed:1,warmup_count:0,settings:{},
+   load:{mode:"single",concurrency:1,request_count:1,rate_per_second:0,duration_ms:0,request_timeout_ms:60000},status:summary.run_status,
+   conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},verification,sla:{},metrics:{},timeline:[],distributions:[],cases:[]}],unassigned_request_results:[]}
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -1305,7 +1281,7 @@ function parseBoolean(value: unknown): boolean {
 }
 
 function parseSnapshot(value: unknown): WorkspaceSnapshot {
-  if (!isRecord(value) || value.schema_version !== 1) {
+  if (!isRecord(value) || value.schema_version !== 2) {
     throw new DesktopDataError(tx("desktop:app_unsupported_desktop_data_protocol_version"))
   }
   if (!Array.isArray(value.plans) || !Array.isArray(value.runs)) {
@@ -1330,7 +1306,7 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
     throw new DesktopDataError(tx("desktop:app_invalid_active_desktop_run_reference"))
   }
   return {
-    schema_version: 1,
+    schema_version: 2,
     plans,
     runs,
     ...(value.active_run_id === undefined
@@ -1473,53 +1449,12 @@ function removeByID<T extends { id: string }>(items: T[], id: string): T[] {
 }
 
 function planFromCommand(id: string, revision: number, command: CreatePlanCommand, catalog: CatalogSnapshot): CatalogSnapshot["plans"][number] {
-  const existingPlan = catalog.plans.find((plan) => plan.id === id)
-  const suites = command.suites.map((entry) => {
-    const existingEntry = entry.entry_id
-      ? existingPlan?.suites.find((candidate) =>
-          candidate.entry_id === entry.entry_id && candidate.suite_id === entry.suite_id &&
-          candidate.suite_revision === entry.suite_revision,
-        )
-      : undefined
-    if (entry.entry_id && !existingEntry) throw new DesktopClientError("invalid_identifier")
-    const currentSuite = catalog.suites.find((candidate) =>
-      candidate.id === entry.suite_id && candidate.revision === entry.suite_revision,
-    )
-    const pinnedSuite = existingEntry ?? currentSuite
-    if (!pinnedSuite) throw new DesktopClientError("invalid_identifier")
-    return {
-      entry_id: entry.entry_id ?? crypto.randomUUID(),
-      suite_id: entry.suite_id,
-      suite_revision: entry.suite_revision,
-      suite_key: "suite_key" in pinnedSuite ? pinnedSuite.suite_key : pinnedSuite.key,
-      suite_name: "suite_name" in pinnedSuite ? pinnedSuite.suite_name : pinnedSuite.name,
-      protocol: pinnedSuite.protocol,
-      model_target: pinnedSuite.model_target,
-      case_count: pinnedSuite.case_count,
-      cases: structuredClone(pinnedSuite.cases),
-      ...(pinnedSuite.quick_test ? { quick_test: structuredClone(pinnedSuite.quick_test) } : {}),
-      parameters: structuredClone(entry.parameters),
-      load_mode: entry.load_mode,
-      concurrency: entry.concurrency,
-      request_count: entry.request_count,
-      rate_per_second: entry.rate_per_second,
-      duration_ms: entry.duration_ms,
-      request_timeout_ms: entry.request_timeout_ms,
-      sla_thresholds: { ...entry.sla_thresholds },
-    }
-  })
-  return {
-    id,
-    revision,
-    name: command.name,
-    model_count: command.model_ids.length,
-    channel_count: command.channel_ids.length,
-    suite_count: suites.length,
-    case_count: suites.reduce((total, suite) => total + suite.case_count, 0),
-    model_ids: [...command.model_ids],
-    channel_ids: [...command.channel_ids],
-    suites,
-  }
+ const entries=command.entries.map(entry=>{
+  const target=entry.target_kind==="suite"?catalog.suites.find(item=>item.id===entry.target_id):catalog.test_cases.find(item=>item.id===entry.target_id)
+  return {...structuredClone(entry),entry_id:entry.entry_id??crypto.randomUUID(),target_name:target?.name??entry.target_id,target_key:target?.key??entry.target_id,
+   case_count:target?("case_count" in target?target.case_count:1):0}
+ })
+ return {id,revision,name:command.name,protocol:command.protocol,seed:command.seed,entry_count:entries.length,case_count:entries.reduce((sum,entry)=>sum+entry.case_count,0),entries}
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1551,6 +1486,7 @@ function parsePlan(value: unknown) {
     id: record.id as string,
     revision: record.revision as number,
     name: record.name as string,
+    protocol:record.protocol as CatalogSnapshot["plans"][number]["protocol"],
     case_count: record.case_count as number,
     run_count: record.run_count as number,
     load_mode: record.load_mode as "single" | "fixed_concurrency" | "open_loop",
@@ -1597,7 +1533,7 @@ function isWorkspaceRun(value: unknown): boolean {
         isStableErrorCode(value.error_code))) &&
     isNonNegativeSafeInteger(value.completed) &&
     isNonNegativeSafeInteger(value.passed) &&
-    isNonNegativeSafeInteger(value.failed) &&
+    isNonNegativeSafeInteger(value.failed) && isNonNegativeSafeInteger(value.observed) && isNonNegativeSafeInteger(value.indeterminate) &&
     value.completed === value.passed + value.failed &&
     (value.planned === 0 || value.completed <= value.planned) &&
     isNonNegativeSafeInteger(value.artifact_count) &&
@@ -1612,7 +1548,7 @@ function parseRun(value: unknown) {
   return {
     case_count: record.case_count as number,
     observed_case_count: record.observed_case_count as number,
-    suite_progress: (record.suite_progress as Record<string, unknown>[]).map((suite) => ({
+    entry_progress: (record.entry_progress as Record<string, unknown>[]).map((suite) => ({
       entry_id: suite.entry_id as string,
       name: suite.name as string,
       case_count: suite.case_count as number,
@@ -1653,7 +1589,7 @@ function parseRun(value: unknown) {
     duration_ms: record.duration_ms as number,
     completed: record.completed as number,
     passed: record.passed as number,
-    failed: record.failed as number,
+    failed: record.failed as number,observed:record.observed as number,indeterminate:record.indeterminate as number,
     artifact_count: record.artifact_count as number,
     started_at: record.started_at as string,
     updated_at: record.updated_at as string,
@@ -1662,11 +1598,11 @@ function parseRun(value: unknown) {
 
 function isCaseProgress(value: Record<string, unknown>): boolean {
   if (!isNonNegativeSafeInteger(value.case_count) || !isNonNegativeSafeInteger(value.observed_case_count) ||
-      !Array.isArray(value.suite_progress) || value.suite_progress.length === 0) return false
+      !Array.isArray(value.entry_progress) || value.entry_progress.length === 0) return false
   const ids = new Set<string>()
   let total = 0
   let observed = 0
-  for (const suite of value.suite_progress) {
+  for (const suite of value.entry_progress) {
     if (!isRecord(suite) || !isUUID(suite.entry_id) || ids.has(suite.entry_id) || !isNonBlankString(suite.name) ||
         !isPositiveSafeInteger(suite.case_count) || !isNonNegativeSafeInteger(suite.observed_case_count) ||
         (suite.observed_case_count as number) > (suite.case_count as number) ||

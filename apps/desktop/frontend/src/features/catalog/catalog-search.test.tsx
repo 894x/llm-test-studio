@@ -16,7 +16,7 @@ const props = {
 }
 
 describe("Catalog table search", () => {
-  it("finds case keys, translated types, protocols, and all model targets without searching request payloads", async () => {
+  it("finds case keys, translated types, protocols, and suite references without searching request payloads", async () => {
     const user = userEvent.setup()
     render(<CasesWorkspace {...props} />)
     const input = screen.getByRole("searchbox", { name: "搜索用例" })
@@ -27,9 +27,9 @@ describe("Catalog table search", () => {
     expect(screen.getByRole("complementary", { name: "用例详情" })).toHaveTextContent("流式结束")
     expect(screen.getByRole("status")).toHaveTextContent("1 / 4 项")
 
-    fireEvent.change(input, { target: { value: "kimi-k2.6" } })
+    fireEvent.change(input, { target: { value: "T037" } })
     expect(within(screen.getByRole("table")).getByText("工具调用")).toBeInTheDocument()
-    fireEvent.change(input, { target: { value: "单请求验证" } })
+    fireEvent.change(input, { target: { value: "OpenAI Chat" } })
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(5)
     fireEvent.change(input, { target: { value: "OPENAI-CHAT 工具" } })
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(2)
@@ -52,7 +52,7 @@ describe("Catalog table search", () => {
     await user.click(screen.getByRole("tab", { name: /套件/ }))
     const suites = screen.getByRole("searchbox", { name: "搜索套件" })
     expect(suites).toHaveValue("")
-    await user.type(suites, "GPT-4O")
+    await user.type(suites, "openai-regression")
     expect(within(screen.getByRole("table")).getByText("OpenAI 回归套件")).toBeInTheDocument()
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(2)
     fireEvent.change(suites, { target: { value: "openai-connectivity" } })
@@ -75,7 +75,7 @@ describe("Catalog table search", () => {
     const user = userEvent.setup()
     const view = render(<CasesWorkspace {...props} />)
     await user.click(screen.getByRole("button", { name: "查看用例 流式结束" }))
-    await user.type(screen.getByRole("searchbox"), "单请求")
+    await user.type(screen.getByRole("searchbox"), "OpenAI")
     expect(screen.getByRole("row", { selected: true })).toHaveTextContent("流式结束")
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "t008" } })
     view.rerender(<CasesWorkspace {...props} catalog={{ ...FIXTURE_CATALOG, test_cases: FIXTURE_CATALOG.test_cases.filter((item) => item.key !== "T008") }} />)
@@ -111,11 +111,11 @@ describe("Catalog table search", () => {
     expect(screen.getByRole("searchbox")).toHaveValue("MULTIMODAL")
   })
 
-  it("runs only the visible plan selected by related model, channel, and suite fields", async () => {
+  it("runs only the visible plan selected by protocol and referenced suite fields", async () => {
     const user = userEvent.setup()
     const onStartPlan = vi.fn(async () => {})
     render(<PlansWorkspace {...props} commandPending={false} onStartPlan={onStartPlan} />)
-    await user.type(screen.getByRole("searchbox", { name: "搜索计划" }), "QWEN 阿里云 openai-regression")
+    await user.type(screen.getByRole("searchbox", { name: "搜索计划" }), "JSON openai-regression")
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(2)
     expect(screen.getByRole("complementary", { name: "计划详情" })).toHaveTextContent("JSON 模式回归")
     await user.click(screen.getByRole("button", { name: "运行这个计划" }))
@@ -139,7 +139,7 @@ describe("Catalog table search", () => {
     await act(async () => { await getI18n().changeLanguage("en-US") })
     try {
       render(<CasesWorkspace {...props} />)
-      await user.type(screen.getByRole("searchbox", { name: "Search cases" }), "Single request")
+      await user.type(screen.getByRole("searchbox", { name: "Search cases" }), "OpenAI Chat")
       expect(screen.getByRole("status")).toHaveTextContent("4 / 4 items")
       fireEvent.change(screen.getByRole("searchbox"), { target: { value: "unmatched" } })
       expect(screen.getByText("No matches found")).toBeInTheDocument()

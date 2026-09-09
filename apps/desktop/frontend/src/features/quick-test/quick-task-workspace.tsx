@@ -93,8 +93,8 @@ export function QuickTaskWorkspace({
     null,
   )
   const [performanceOpen, setPerformanceOpen] = useState(false)
-  const currentTasks = catalog.suites.filter((suite) => suite.quick_test)
-  const task = draft.task ?? currentTasks.find((suite) => !suite.model_target) ?? currentTasks[0]
+  const currentTasks = catalog.suites
+  const task = draft.task ?? currentTasks[0]
   const form =
     draft.task || !task
       ? draft
@@ -102,7 +102,7 @@ export function QuickTaskWorkspace({
           ...createTaskDraft(task),
           base_url: draft.base_url,
           api_key: draft.api_key,
-          model: task.model_target || draft.model,
+          model: draft.model,
         }
   const tasks =
     task && !currentTasks.some((item) => taskKey(item) === taskKey(task))
@@ -143,7 +143,7 @@ export function QuickTaskWorkspace({
         api_key: form.api_key,
         channel_id: form.channel_id,
         credential_run_id: form.credential_run_id,
-        model: selected.model_target || form.model,
+        model: form.model,
       })
     update(next)
   }
@@ -323,11 +323,11 @@ export function QuickTaskWorkspace({
                       </SelectContent>
                     </Select>
                     <p className="text-[11px] text-muted-foreground">
-                      {task.quick_test?.description}
+                      {task.description}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {t("task.version", { revision: task.revision, count: task.case_count })} ·{" "}
-                      {t("task.timeout", { seconds: (task.quick_test?.timeout_ms ?? 0) / 1000 })}
+                      {t("task.timeout", { seconds: form.request_timeout_ms / 1000 })}
                     </p>
                   </TaskField>
                   {form.source_run_id ? (
@@ -405,7 +405,7 @@ export function QuickTaskWorkspace({
                           aria-label={t("model.label")}
                           value={form.model}
                           onChange={(event) => update({ ...form, model: event.target.value })}
-                          disabled={!!pending || !!task.model_target}
+                          disabled={!!pending}
                           aria-invalid={!!errors.model || undefined}
                           aria-describedby={errors.model ? "quick-task-model-error" : undefined}
                           placeholder={t("model.placeholder")}
@@ -487,7 +487,9 @@ export function QuickTaskWorkspace({
                   </TaskField>
                   <fieldset disabled={!!pending} className="space-y-3">
                     <legend className="mb-3 text-sm font-semibold">{t("task.parameters")}</legend>
-                    {task.quick_test?.inputs.map((input) => (
+                    <TaskField id="seed" label={t("task.seed")} error={errors.seed}><Input id="quick-task-seed" type="number" min={0} max={Number.MAX_SAFE_INTEGER} value={form.seed} onChange={event => update({ ...form, seed: Number(event.target.value) })} /></TaskField>
+                    <TaskField id="request_timeout_ms" label={t("task.requestTimeout")} error={errors.request_timeout_ms}><Input id="quick-task-request_timeout_ms" type="number" min={1} value={form.request_timeout_ms} onChange={event => update({ ...form, request_timeout_ms: Number(event.target.value) })} /></TaskField>
+                    {task.inputs.map((input) => (
                       <TaskField
                         key={input.key}
                         id={`input.${input.key}`}
@@ -505,7 +507,7 @@ export function QuickTaskWorkspace({
                               })
                             }
                           />
-                        ) : input.type === "number" ? (
+                        ) : (input.type === "number" || input.type === "integer") ? (
                           <Input
                             id={`quick-task-input.${input.key}`}
                             type="number"

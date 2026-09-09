@@ -1,3 +1,4 @@
+import { protocolReportFixture } from "@/test/protocol-report-fixture"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -49,7 +50,6 @@ function desktopClient(): DesktopClient & {
 		saveReportExport: vi.fn(async () => true),
 		copyReportPNG: vi.fn(async () => undefined),
 		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-    startRun: vi.fn(async () => structuredClone(client.workspace)),
 		startRunTarget: vi.fn(async () => structuredClone(client.workspace)),
 		startQuickTask: vi.fn(async () => client.workspace.runs[0].id),
 		getQuickTask: vi.fn(),
@@ -185,8 +185,7 @@ describe("desktop run workspace", () => {
 		const plan = catalog.plans[0]
 		const model = catalog.models[0]
 		const secondChannel = catalog.channels[1]
-		plan.channel_ids.push(secondChannel.id)
-		plan.channel_count = 2
+
 		secondChannel.model_count += 1
 		catalog.channel_models.push({
 			id: "77777777-7777-4777-8777-777777777799", revision: 1,
@@ -209,11 +208,9 @@ describe("desktop run workspace", () => {
 		const user = userEvent.setup()
 		const client = desktopClient()
 		const catalog = structuredClone(FIXTURE_CATALOG)
-		const plan = catalog.plans[0]
 		const model = catalog.models[0]
 		const secondChannel = catalog.channels[1]
-		plan.channel_ids.push(secondChannel.id)
-		plan.channel_count = 2
+
 		secondChannel.model_count += 1
 		catalog.channel_models.push({
 			id: "77777777-7777-4777-8777-777777777798", revision: 1,
@@ -347,44 +344,16 @@ describe("desktop run workspace", () => {
 		window.history.replaceState(null, "", "#reports")
 		const client = desktopClient()
 		const summary = FIXTURE_REPORTS.reports[0]
-		const suiteEntryID = "88888888-8888-4888-8888-888888888881"
-		const suiteID = "88888888-8888-4888-8888-888888888882"
-		const caseID = "88888888-8888-4888-8888-888888888883"
-		const requestResult = {
-			id: "99999999-9999-4999-8999-999999999991", request_id: "request-1",
-			suite_entry_id: suiteEntryID, case_id: caseID,
-			success: { transport: true, protocol: true, semantic: true, sla: true },
-			metrics: { e2e_ms: 123, ttft_ms: 40, tpot_ms: 10, schedule_lag_ms: 1, prompt_tokens: 10, completion_tokens: 3 },
-		}
-		vi.mocked(client.getReportDetail).mockResolvedValue({
-			schema_version: 2,
-			source: "run",
-			report: {
-				id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
-				model: { id: "22222222-2222-4222-8222-222222222221", name: summary.model_name },
-				channel: { id: "33333333-3333-4333-8333-333333333331", name: summary.channel_name },
-				environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "go-core-v1" },
-				conclusion: { passed: true, verdict: summary.verdict, issues: [] },
-				sla: {}, metrics: { e2e_p95_ms: { value: 123, unit: "ms", samples: 1 } }, case_results: [],
-			},
-			request_results: [requestResult],
-			suites: [{
-				suite_entry_id: suiteEntryID, suite_id: suiteID, suite_revision: 1,
-				suite_key: "request-detail", suite_name: "request detail", status: "completed",
-				conclusion: { passed: true, verdict: "pass", issues: [] },
-				sla: {}, metrics: {}, timeline: [], distributions: [],
-				cases: [{
-					case_id: caseID, revision: 1, key: "request", name: "request",
-					case_type: "generic.request", case_type_version: 1,
-					request_results: [requestResult],
-				}],
-			}],
-			unassigned_request_results: [],
-		})
+    const detail = protocolReportFixture()
+    detail.report.id = summary.id
+    detail.report.run_id = summary.run_id!
+    detail.report.conclusion.verdict = summary.verdict
+    detail.report.metrics = { e2e_p95_ms: { value: 32, unit: "ms", samples: 1 } }
+    vi.mocked(client.getReportDetail).mockResolvedValue(detail)
 
 		render(<App client={client} />)
 		await userEvent.click(await screen.findByRole("button", { name: `查看报告：${summary.verdict}` }))
-		expect(await screen.findByRole("table", { name: "请求级结果" })).toHaveTextContent("request-1")
+		expect(await screen.findByRole("table", { name: "执行项用例结果" })).toHaveTextContent("Reject invalid parameter")
 		for (const label of ["JSON", "HTML", "PNG", "PDF", "复制 PNG"]) {
 			expect(screen.getByRole("button", { name: label })).toBeInTheDocument()
 		}
@@ -411,8 +380,7 @@ describe("desktop run workspace", () => {
 			passed: true,
 			verdict: "快速性能测试通过",
 			issue_count: 0,
-			case_count: 1,
-			failed_case_count: 0,
+			case_count: 1, failed_case_count: 0, passed_case_count: 1, verified_case_count: 1, observed_case_count: 0,
 			attachment_count: 0,
 		})
 		vi.mocked(client.getReports)
@@ -546,29 +514,22 @@ describe("desktop run workspace", () => {
     expect(client.createChannel).not.toHaveBeenCalled()
   })
 
-  it("identifies both missing plan stop conditions", async () => {
+  it("authors a protocol plan and leaves runtime bindings out of the command", async () => {
     window.history.replaceState(null, "", "#plans")
-    const user = userEvent.setup()
-    const client = desktopClient()
-    render(<App client={client} />)
-
+    const user = userEvent.setup(); const client = desktopClient(); render(<App client={client} />)
     await screen.findByRole("heading", { name: "测试计划" })
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     const dialog = screen.getByRole("dialog", { name: "新增计划" })
-    await user.type(within(dialog).getByLabelText("计划名称"), "缺少停止条件")
-    await user.click(within(dialog).getByRole("button", { name: "添加套件" }))
-    const requestCount = within(dialog).getByLabelText("请求数")
-    await user.clear(requestCount)
-    await user.type(requestCount, "0")
+    await user.type(within(dialog).getByLabelText("计划"), "Protocol plan")
+    await user.click(within(dialog).getByRole("combobox", { name: "Case 或 Suite" }))
+    await user.click(screen.getByRole("option", { name: "用例 · 基础对话" }))
+    await user.click(within(dialog).getByRole("button", { name: "添加执行项" }))
     await user.click(within(dialog).getByRole("button", { name: "保存计划" }))
-
-    expect(await within(dialog).findByText("请求数和持续时间不能同时为 0。")).toHaveAttribute("data-slot", "field-error")
-    expect(requestCount).toHaveAttribute("aria-invalid", "true")
-    expect(requestCount).toHaveFocus()
-    expect(client.createPlan).not.toHaveBeenCalled()
-
-    await user.type(within(dialog).getByLabelText("持续时间毫秒"), "100")
-    expect(within(dialog).queryByText("请求数和持续时间不能同时为 0。")).not.toBeInTheDocument()
+    await waitFor(() => expect(client.createPlan).toHaveBeenCalled())
+    const command = vi.mocked(client.createPlan).mock.calls[0][0]
+    expect(command).toMatchObject({ name: "Protocol plan", protocol: "openai-chat", seed: 1 })
+    expect(command.entries[0]).toMatchObject({ target_kind: "case", target_id: FIXTURE_CATALOG.test_cases[0].id })
+    expect(command).not.toHaveProperty("channel_ids")
   })
 
   it("treats a committed catalog refresh failure as saved and closes the editor", async () => {
@@ -641,12 +602,12 @@ describe("desktop run workspace", () => {
     )
   })
 
-  it("preserves pinned case revisions during a suite name edit", async () => {
+  it("keeps only member references during a suite name edit", async () => {
     window.history.replaceState(null, "", "#cases")
     const user = userEvent.setup()
     const client = desktopClient()
     const catalog = structuredClone(FIXTURE_CATALOG)
-    catalog.test_cases[0].revision = catalog.suites[0].cases[0].revision + 5
+    catalog.test_cases[0].revision = 10
     vi.mocked(client.getCatalog).mockResolvedValue(catalog)
     render(<App client={client} />)
 
@@ -759,7 +720,7 @@ describe("desktop run workspace", () => {
     expect(within(table).getByText("默认启用")).toBeInTheDocument()
     expect(within(table).getByText("已停用")).toBeInTheDocument()
     expect(within(table).getByText("人工判定")).toBeInTheDocument()
-    expect(within(table).getByText("kimi-k3 · kimi-k2.6")).toBeInTheDocument()
+    expect(within(table).queryByRole("columnheader", { name: "适用模型" })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "查看用例 工具调用" }))
     const inspector = screen.getByRole("complementary", { name: "用例详情" })
@@ -835,8 +796,8 @@ describe("desktop run workspace", () => {
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
 		expect(client.startRunTarget).toHaveBeenCalledWith({
 			plan_id: FIXTURE_WORKSPACE.plans[1].id,
-			model_id: FIXTURE_CATALOG.plans[1].model_ids[0],
-			channel_id: FIXTURE_CATALOG.plans[1].channel_ids[0],
+			model_id: FIXTURE_CATALOG.models[0].id,
+			channel_id: FIXTURE_CATALOG.channels[0].id,
 		})
   })
 
@@ -1030,7 +991,6 @@ describe("desktop run workspace", () => {
 			saveReportExport: vi.fn(),
 			copyReportPNG: vi.fn(),
 			getComparisons: vi.fn(),
-      startRun: vi.fn(),
 			startRunTarget: vi.fn(),
 			startQuickTask: vi.fn(),
 			getQuickTask: vi.fn(),
@@ -1129,6 +1089,8 @@ describe("desktop run workspace", () => {
     const user = userEvent.setup()
     const client = desktopClient()
     const rendered = render(<App client={client} />)
+    await user.click(await screen.findByRole("combobox", { name: "测试任务" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI Chat 连通性测试" }))
     await user.type(await screen.findByLabelText("接口地址"), "https://example.test")
     await user.type(screen.getByLabelText("API Key"), "test-private-key")
     await user.type(screen.getByLabelText("模型 ID"), "draft-model")
