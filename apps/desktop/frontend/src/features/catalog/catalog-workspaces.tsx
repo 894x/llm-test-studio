@@ -148,7 +148,6 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
           </TabsList>
           <CatalogSearch search={search} label={t(`search.${tab}`)} placeholder={t(`search.${tab}Placeholder`)} />
         </div>
-        <Separator />
         {search.empty ? <CatalogSearchEmpty onClear={search.clear} /> : tab === "models" ? (
           <ModelTable
             models={modelSearch.rows}
@@ -210,9 +209,9 @@ function ModelChannelMatrix({
   return (
     <ScrollArea className="min-h-0 flex-1">
       <Table aria-label={tx("desktop:catalog_model_and_channel_configuration_matrix")} className="w-max min-w-full table-fixed">
-        <TableHeader className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm">
+        <TableHeader className="sticky top-0 z-20 bg-background">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="sticky left-0 z-30 h-12 w-[176px] min-w-[176px] border-r bg-background/95 pl-4 text-[11px]">
+            <TableHead className="table-sticky-cell sticky left-0 z-30 h-12 w-[176px] min-w-[176px] bg-background pl-4 text-[11px]">
                {tx("desktop:catalog_logical_model_channel")} </TableHead>
             {catalog.channels.map((channel) => (
               <TableHead
@@ -235,7 +234,7 @@ function ModelChannelMatrix({
             <TableRow key={model.id} className="hover:bg-transparent">
               <TableHead
                 scope="row"
-                className="sticky left-0 z-10 h-16 w-[176px] min-w-[176px] border-r bg-background pl-4"
+                className="table-sticky-cell sticky left-0 z-10 h-16 w-[176px] min-w-[176px] bg-background pl-4"
               >
                 <div className="max-w-[152px] truncate text-xs font-medium" title={model.name}>
                   {model.name}
@@ -251,7 +250,7 @@ function ModelChannelMatrix({
                     <TableCell
                       key={channel.id}
                       aria-label={tx("desktop:catalog_value_is_not_configured_on_value", { value1: model.name, value2: channel.name })}
-                      className="h-16 w-[184px] min-w-[184px] border-l bg-muted/20 px-3 py-2 text-center text-[11px] text-muted-foreground"
+                      className="h-16 w-[184px] min-w-[184px] px-3 py-2 text-center text-[11px] text-muted-foreground"
                     >
                        {tx("desktop:catalog_not_configured")} </TableCell>
                   )
@@ -260,7 +259,7 @@ function ModelChannelMatrix({
                   <TableCell
                     key={channel.id}
                     data-state={mapping.id === selectedID ? "selected" : undefined}
-                    className="h-16 w-[184px] min-w-[184px] border-l p-0 data-[state=selected]:bg-muted"
+                    className="h-16 w-[184px] min-w-[184px] p-0"
                   >
                     <Button
                       type="button"
@@ -268,13 +267,13 @@ function ModelChannelMatrix({
                       aria-pressed={mapping.id === selectedID}
                       aria-label={tx("desktop:catalog_view_value_mapping_on_value_value", { value1: model.name, value2: channel.name, value3: mapping.upstream_model_name })}
                       onClick={() => onSelect(mapping.id)}
-                      className="h-full w-full min-w-0 flex-col items-start gap-0.5 rounded-none px-3 py-2 text-left"
+                      className="h-full w-full min-w-0 flex-col items-start gap-0.5 rounded-md aria-pressed:bg-surface-active px-3 py-2 text-left"
                     >
                       <Badge variant="outline" className="h-4 border-success/25 bg-success-soft px-1.5 text-[10px] text-success-strong">
                          {tx("desktop:catalog_configured")} </Badge>
                       <span className="flex w-full min-w-0 items-center gap-1">
                         <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{tx("desktop:catalog_model")}</span>
-                        <span className="truncate text-xs font-medium">{model.name}</span>
+                        <span className="text-xs font-medium [overflow-wrap:anywhere]">{model.name}</span>
                       </span>
                       <span className="flex w-full min-w-0 items-center gap-1">
                         <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{tx("desktop:catalog_upstream")}</span>
@@ -297,7 +296,7 @@ function ModelChannelMatrix({
 function MappingTable({ mappings, selectedID, onSelect, channelNames, modelNames }: { mappings: CatalogChannelModel[]; selectedID: string; onSelect: (id: string) => void; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
   const { t } = useTranslation("catalog")
   if (!mappings.length) return <CatalogEmpty title={t("models.mappingEmpty")} description={t("models.mappingEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1"><Table aria-label={t("models.mappingAria")}><TableHeader><TableRow><TableHead className="pl-4">{t("common.channel")}</TableHead><TableHead>{t("models.logicalModel")}</TableHead><TableHead>{t("models.upstreamName")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-4 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="pl-4">{t("common.channel")}</TableHead><TableHead>{t("models.logicalModel")}</TableHead><TableHead>{t("models.upstreamName")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-4 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function MappingInspector({ mapping, channelNames, modelNames }: { mapping: CatalogChannelModel; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
@@ -320,8 +319,8 @@ function ModelTable({
   }
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <Table aria-label={t("models.modelAria")} className="min-w-[620px]">
-        <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+      <Table aria-label={t("models.modelAria")} className="min-w-[620px] table-fixed">
+        <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-8 pl-4 text-[11px]">{t("common.model")}</TableHead>
             <TableHead className="h-8 text-[11px]">{t("common.protocol")}</TableHead>
@@ -336,13 +335,13 @@ function ModelTable({
               data-state={model.id === selectedID ? "selected" : undefined}
               aria-selected={model.id === selectedID}
               onClick={() => onSelect(model.id)}
-              className="dense-table-row h-11"
+              className="h-11"
             >
               <TableCell className="py-1 pl-4">
                 <Button
                   variant="link"
                   size="sm"
-                  className="h-auto justify-start p-0 text-xs no-underline hover:no-underline"
+                  className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline"
                   aria-label={t("models.viewModel", { name: model.name })}
                 >
                   {model.name}
@@ -379,8 +378,8 @@ function ChannelTable({
   }
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <Table aria-label={t("models.channelAria")} className="min-w-[700px]">
-        <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+      <Table aria-label={t("models.channelAria")} className="min-w-[700px] table-fixed">
+        <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-8 pl-4 text-[11px]">{t("common.channel")}</TableHead>
             <TableHead className="h-8 text-[11px]">{t("common.status")}</TableHead>
@@ -396,13 +395,13 @@ function ChannelTable({
               data-state={channel.id === selectedID ? "selected" : undefined}
               aria-selected={channel.id === selectedID}
               onClick={() => onSelect(channel.id)}
-              className="dense-table-row h-11"
+              className="h-11"
             >
               <TableCell className="py-1 pl-4">
                 <Button
                   variant="link"
                   size="sm"
-                  className="h-auto justify-start p-0 text-xs no-underline hover:no-underline"
+                  className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline"
                   aria-label={t("models.viewChannel", { name: channel.name })}
                 >
                   {channel.name}
@@ -414,7 +413,7 @@ function ChannelTable({
               <TableCell className="py-1">
                 <StateBadge enabled={channel.enabled} />
               </TableCell>
-              <TableCell className="max-w-[260px] truncate py-1 font-mono text-[10px] text-muted-foreground">
+              <TableCell className="py-1 font-mono text-[10px] text-muted-foreground">
                 {channel.base_url}
               </TableCell>
               <TableCell className="py-1 text-xs tabular-nums">{channel.model_count}</TableCell>
@@ -527,13 +526,12 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
           <TabsList variant="line" className="h-8"><TabsTrigger value="cases" className="text-xs">{t("cases.tabs.cases", { count: catalog.test_cases.length })}</TabsTrigger><TabsTrigger value="suites" className="text-xs">{t("cases.tabs.suites", { count: catalog.suites.length })}</TabsTrigger></TabsList>
           <CatalogSearch search={search} label={t(`search.${tab}`)} placeholder={t(`search.${tab}Placeholder`)} />
         </div>
-        <Separator />
       {search.empty ? <CatalogSearchEmpty onClear={search.clear} /> : tab === "cases" && catalog.test_cases.length === 0 ? (
         <CatalogEmpty title={t("cases.empty")} description={t("cases.emptyDescription")} />
       ) : tab === "cases" ? (
-        <ScrollArea className="min-h-0 flex-1 border-t">
-          <Table aria-label={tx("desktop:catalog_test_case_catalog")} className="min-w-[820px]">
-            <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+        <ScrollArea className="min-h-0 flex-1">
+          <Table aria-label={tx("desktop:catalog_test_case_catalog")} className="min-w-[820px] table-fixed">
+            <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-4 text-[11px]">{tx("desktop:catalog_case")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_case_type")}</TableHead>
@@ -548,10 +546,10 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                   data-state={testCase.id === selected?.id ? "selected" : undefined}
                   aria-selected={testCase.id === selected?.id}
                   onClick={() => setSelectedID(testCase.id)}
-                  className="dense-table-row h-11"
+                  className="h-11"
                 >
                   <TableCell className="py-1 pl-4">
-                    <Button variant="link" size="sm" className="h-auto p-0 text-xs no-underline hover:no-underline" aria-label={t("cases.view", { name: testCase.name })}>
+                    <Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline" aria-label={t("cases.view", { name: testCase.name })}>
                       {testCase.name}
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
@@ -575,44 +573,43 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
 function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; selectedID: string; onSelect: (id:string) => void }) {
   const { t } = useTranslation("catalog")
   if (!suites.length) return <CatalogEmpty title={t("cases.suiteEmpty")} description={t("cases.suiteEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1"><Table aria-label={t("cases.suiteAria")}><TableHeader><TableRow><TableHead className="pl-4">{t("common.suite")}</TableHead><TableHead>{t("cases.caseCount")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-4 text-xs">{suite.name}</TableCell><TableCell className="text-xs">{suite.case_count}</TableCell><TableCell className="text-xs">r{suite.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1"><Table aria-label={t("cases.suiteAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="pl-4">{t("common.suite")}</TableHead><TableHead>{t("cases.caseCount")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-4 text-xs">{suite.name}</TableCell><TableCell className="text-xs">{suite.case_count}</TableCell><TableCell className="text-xs">r{suite.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
   const cases = new Map(catalog.test_cases.map(testCase => [testCase.id, testCase]))
-  return <div className="flex h-full min-h-0 flex-col">
+  return <>
     <InspectorHeader title={suite.name} subtitle={suite.id} />
     <Separator />
-    <ScrollArea className="min-h-0 flex-1">
-      <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label={t("common.version")} value={`r${suite.revision}`} />
-        <div data-slot="inspector-definition-row" className="py-2">
-          <dt className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span>{t("cases.pinnedCases")}</span>
-            <span className="tabular-nums">{t("common.countItems", { count: suite.cases.length })}</span>
-          </dt>
-          <dd className="mt-1 min-w-0">
-            {suite.cases.length ? (
-              <ul aria-label={t("cases.pinnedCasesAria")}>
-                {suite.cases.map(ref => (
-                  <li key={ref.case_id} className="flex min-w-0 items-start gap-2 py-1.5">
-                    <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
-                    <span className="min-w-0 break-words text-xs font-medium leading-4">
-                      {cases.get(ref.case_id)?.name ?? tx("desktop:catalog_unknown_case")}
-                      {cases.get(ref.case_id) ? <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{modelTargetLabel(cases.get(ref.case_id)!)}</span> : null}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : <span className="text-xs text-muted-foreground">{t("cases.noPinnedCases")}</span>}
-          </dd>
-        </div>
-      </dl>
-    </ScrollArea>
-  </div>
+    <dl className="space-y-1 px-4 py-2">
+      <InspectorRow label={t("common.version")} value={`r${suite.revision}`} />
+      <div data-slot="inspector-definition-row" className="py-2">
+        <dt className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>{t("cases.pinnedCases")}</span>
+          <span className="tabular-nums">{t("common.countItems", { count: suite.cases.length })}</span>
+        </dt>
+        <dd className="mt-1 min-w-0">
+          {suite.cases.length ? (
+            <ul aria-label={t("cases.pinnedCasesAria")}>
+              {suite.cases.map(ref => (
+                <li key={ref.case_id} className="flex min-w-0 items-start gap-2 py-1.5">
+                  <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
+                  <span className="min-w-0 break-words text-xs font-medium leading-4">
+                    {cases.get(ref.case_id)?.name ?? tx("desktop:catalog_unknown_case")}
+                    {cases.get(ref.case_id) ? <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{modelTargetLabel(cases.get(ref.case_id)!)}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : <span className="text-xs text-muted-foreground">{t("cases.noPinnedCases")}</span>}
+        </dd>
+      </div>
+    </dl>
+  </>
 }
+
 
 function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catalog: CatalogSnapshot }) {
   const { t: tx } = useTranslation()
@@ -645,10 +642,10 @@ function CasePolicyBadge({ testCase }: { testCase: CatalogTestCase }) {
       variant="outline"
       className={
         !testCase.enabled
-          ? "border-border bg-muted text-muted-foreground"
+          ? "border-0 bg-transparent text-muted-foreground"
           : testCase.execution_mode === "manual"
             ? "border-warning/25 bg-warning-soft text-warning-strong"
-            : "border-success/25 bg-success-soft text-success-strong"
+            : "border-0 bg-transparent text-success-strong"
       }
     >
       {label}
@@ -725,9 +722,9 @@ export function PlansWorkspace({
       {search.empty ? <CatalogSearchEmpty onClear={search.clear} /> : catalog.plans.length === 0 ? (
         <CatalogEmpty title={t("plans.empty")} description={t("plans.emptyDescription")} />
       ) : (
-        <ScrollArea className="min-h-0 flex-1 border-t">
-          <Table aria-label={t("plans.aria")} className="min-w-[720px]">
-            <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+        <ScrollArea className="min-h-0 flex-1">
+          <Table aria-label={t("plans.aria")} className="min-w-[720px] table-fixed">
+            <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-4 text-[11px]">{t("common.plan")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{t("plans.objects")}</TableHead>
@@ -742,10 +739,10 @@ export function PlansWorkspace({
                   data-state={plan.id === selected?.id ? "selected" : undefined}
                   aria-selected={plan.id === selected?.id}
                   onClick={() => setSelectedID(plan.id)}
-                  className="dense-table-row h-11"
+                  className="h-11"
                 >
                   <TableCell className="py-1 pl-4">
-                    <Button variant="link" size="sm" className="h-auto p-0 text-xs no-underline hover:no-underline" aria-label={t("plans.view", { name: plan.name })}>
+                    <Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline" aria-label={t("plans.view", { name: plan.name })}>
                       {plan.name}
                     </Button>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision}</div>
@@ -753,7 +750,7 @@ export function PlansWorkspace({
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
                     {t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, suites: plan.suite_count, cases: plan.case_count })}
                   </TableCell>
-                  <TableCell className="max-w-[22rem] truncate py-1 text-xs">{plan.suites.map((suite, index) => `${index + 1}. ${suite.suite_name}`).join(" → ")}</TableCell>
+                  <TableCell className="py-1 text-xs">{plan.suites.map((suite, index) => `${index + 1}. ${suite.suite_name}`).join(" → ")}</TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">{t("plans.sequentialContinue")}</TableCell>
                 </TableRow>
               ))}
@@ -791,8 +788,8 @@ function PlanInspector({
             const loadLabel = t(`plans.load${suite.load_mode === "single" ? "Single" : suite.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)
             const sendTarget = t(suite.request_count > 0 ? "common.requestCount" : "common.seconds", { count: suite.request_count > 0 ? suite.request_count : Math.round(suite.duration_ms / 1000) })
             return <li key={suite.entry_id} className="min-w-0">
-              <div className="truncate text-xs font-medium">{index + 1}. {suite.suite_name}</div>
-              <div className="truncate text-[10px] text-muted-foreground">{suite.suite_key} · r{suite.suite_revision} · {loadLabel} · {t("plans.concurrency", { count: suite.concurrency })} · {sendTarget}</div>
+              <div className="text-xs font-medium [overflow-wrap:anywhere]">{index + 1}. {suite.suite_name}</div>
+              <div className="text-[10px] text-muted-foreground [overflow-wrap:anywhere]">{suite.suite_key} · r{suite.suite_revision} · {loadLabel} · {t("plans.concurrency", { count: suite.concurrency })} · {sendTarget}</div>
             </li>
           })}
         </ol>
@@ -811,7 +808,7 @@ function StateBadge({ enabled }: { enabled: boolean }) {
   return (
     <Badge
       variant="outline"
-      className={enabled ? "border-success/25 bg-success-soft text-success-strong" : "border-border bg-muted text-muted-foreground"}
+      className={enabled ? "border-0 bg-transparent text-success-strong" : "border-0 bg-transparent text-muted-foreground"}
     >
       {t(enabled ? "common.enabled" : "common.disabled")}
     </Badge>
@@ -820,7 +817,7 @@ function StateBadge({ enabled }: { enabled: boolean }) {
 
 function CatalogEmpty({ title, description }: { title: string; description: string }) {
   return (
-    <ScrollArea className="min-h-0 flex-1 border-t">
+    <ScrollArea className="min-h-0 flex-1">
       <Empty>
         <EmptyTitle>{title}</EmptyTitle>
         <EmptyDescription>{description}</EmptyDescription>

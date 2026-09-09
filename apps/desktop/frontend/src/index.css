@@ -42,6 +42,8 @@
   --color-surface-control: var(--surface-control);
   --color-surface-hover: var(--surface-hover);
   --color-surface-active: var(--surface-active);
+  --color-table-header: var(--table-header);
+  --color-divider: var(--divider);
   --color-border-strong: var(--border-strong);
   --color-text-secondary: var(--text-secondary);
   --color-text-disabled: var(--text-disabled);
@@ -64,6 +66,7 @@
 
 :root {
   --background: #f5f6f8;
+  --table-header: color-mix(in srgb, var(--background) 94%, var(--primary) 6%);
   --surface-elevated: rgba(255,255,255,.94);
   --surface-glass: rgba(255,255,255,.88);
   --surface-subtle: rgba(15,23,42,.035);
@@ -91,6 +94,7 @@
   --destructive: #a23445;
   --destructive-soft: color-mix(in srgb, #a23445 13%, transparent);
   --border: rgba(15,23,42,.12);
+  --divider: rgba(15,23,42,.06);
   --input: rgba(15,23,42,.20);
   --ring: #586b80;
   --radius: 0.375rem;
@@ -142,6 +146,7 @@
   --destructive: #ff9aa8;
   --destructive-soft: color-mix(in srgb, #ff9aa8 14%, transparent);
   --border: rgba(255,255,255,.10);
+  --divider: rgba(255,255,255,.05);
   --input: rgba(255,255,255,.16);
   --ring: #7c8ea3;
   --sidebar: rgba(26,26,26,.88);
@@ -195,7 +200,7 @@
 
 .plan-nav-item,
 .run-plan-option {
-  @apply flex w-full items-center justify-between gap-3 rounded-md border border-transparent text-left transition-colors duration-200;
+  @apply flex w-full items-center justify-between gap-3 rounded-md text-left transition-colors duration-200;
 }
 
 .plan-nav-item {
@@ -203,20 +208,15 @@
 }
 
 .plan-nav-item[data-active="true"] {
-  @apply border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground;
+  @apply bg-sidebar-accent text-sidebar-accent-foreground;
 }
 
 .run-plan-option {
-  @apply min-h-14 border-border px-3 py-2.5 hover:bg-muted;
+  @apply min-h-14 border border-border px-3 py-2.5 hover:bg-muted;
 }
 
 .status-dot {
   @apply size-1.5 rounded-full bg-current;
-}
-
-.dense-table-row {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 44px;
 }
 
 ::selection {
@@ -232,4 +232,27 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Sticky cells cover scrolled content even at their rounded corners. */
+.table-sticky-cell {
+  isolation: isolate;
+}
+
+.table-sticky-cell::before,
+.table-sticky-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.table-sticky-cell::before {
+  background: var(--background);
+}
+
+.table-sticky-cell::after {
+  border-radius: inherit;
+  background: inherit;
 }

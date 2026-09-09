@@ -44,7 +44,7 @@ export function PerformanceStreamingTimingTable({ schemaVersion, metrics }: {
         <h4 className="text-xs font-semibold">{tx("desktop:reports_streaming_timing")}</h4>
         <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_observed_icl_measures_semantic_chunk_intervals_not_token_itl")}</span>
       </div>
-      <ScrollArea className="w-full rounded-md border">
+      <ScrollArea className="w-full">
         <Table aria-label={tx("desktop:reports_streaming_timing_statistics")} className="min-w-[680px] text-xs">
           <TableHeader>
             <TableRow className="hover:bg-transparent">

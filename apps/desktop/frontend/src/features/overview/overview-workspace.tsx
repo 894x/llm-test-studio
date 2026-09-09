@@ -41,25 +41,25 @@ export function OverviewWorkspace({
       title={t("title")}
       description={t("description")}
     >
-      <ScrollArea className="min-h-0 flex-1 border-t">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="min-w-[760px]">
-          <section aria-label={t("summary.aria")} className="grid grid-cols-6 border-b bg-surface-subtle">
+          <section aria-label={t("summary.aria")} className="grid grid-cols-6">
             <SummaryCell value={t("summary.models", { count: catalog.models.length })} label={t("summary.logicalModels")} />
             <SummaryCell value={t("summary.channels", { count: catalog.channels.length })} label={t("summary.enabled", { count: enabledChannels })} />
             <SummaryCell value={t("summary.cases", { count: catalog.test_cases.length })} label={t("summary.suites", { count: catalog.suites.length })} />
             <SummaryCell value={t("summary.plans", { count: catalog.plans.length })} label={t("summary.fixedVersions")} />
             <SummaryCell value={t("summary.runs", { count: presentation.runs.length })} label={t(activeRun ? "summary.activeRun" : "summary.noActiveRun")} />
-            <SummaryCell value={t("summary.reports", { count: reports.reports.length })} label={t("summary.archivedConclusions")} last />
+            <SummaryCell value={t("summary.reports", { count: reports.reports.length })} label={t("summary.archivedConclusions")} />
           </section>
 
           <div className="grid grid-cols-2">
-            <section aria-labelledby="active-run-heading" className="min-h-52 border-b border-r px-4 py-3">
+            <section aria-labelledby="active-run-heading" className="min-h-52 min-w-0 px-4 py-3">
               <div className="flex items-center justify-between">
                 <h2 id="active-run-heading" className="text-sm font-semibold">{t("activeRun.title")}</h2>
                 {activeRun ? <Badge variant="outline">{t(`common:status.${activeRun.status}`)}</Badge> : null}
               </div>
               {activeRun ? (
-                <dl className="mt-3 grid grid-cols-[112px_1fr] gap-x-3 gap-y-2 text-xs">
+                <dl className="mt-3 grid grid-cols-[112px_minmax(0,1fr)] [overflow-wrap:anywhere] gap-x-3 gap-y-2 text-xs">
                   <dt className="text-muted-foreground">{t("activeRun.plan")}</dt><dd className="font-medium">{activeRun.title}</dd>
                   <dt className="text-muted-foreground">{t("activeRun.modelChannel")}</dt><dd>{activeRun.model} · {activeRun.channel}</dd>
                   <dt className="text-muted-foreground">{t("activeRun.load")}</dt><dd>{activeRun.loadProfile}</dd>
@@ -74,9 +74,9 @@ export function OverviewWorkspace({
               )}
             </section>
 
-            <section aria-labelledby="readiness-heading" className="min-h-52 border-b px-4 py-3">
+            <section aria-labelledby="readiness-heading" className="min-h-52 min-w-0 px-4 py-3">
               <h2 id="readiness-heading" className="text-sm font-semibold">{t("readiness.title")}</h2>
-              <dl className="mt-3 grid grid-cols-[128px_1fr] gap-x-3 gap-y-2 text-xs">
+              <dl className="mt-3 grid grid-cols-[128px_minmax(0,1fr)] [overflow-wrap:anywhere] gap-x-3 gap-y-2 text-xs">
                 <dt className="text-muted-foreground">{t("readiness.enabledChannels")}</dt><dd>{enabledChannels}/{catalog.channels.length}</dd>
                 <dt className="text-muted-foreground">{t("readiness.configuredCredentials")}</dt><dd>{configuredChannels}/{catalog.channels.length}</dd>
                 <dt className="text-muted-foreground">{t("readiness.modelMappings")}</dt><dd>{t("readiness.mappingCount", { count: catalog.channel_models.length })}</dd>
@@ -94,17 +94,17 @@ export function OverviewWorkspace({
             {recentReports.length === 0 ? (
               <p className="mt-3 text-xs text-muted-foreground">{t("reports.empty")}</p>
             ) : (
-              <div className="mt-2 divide-y border-y">
+              <div className="mt-2 divide-y divide-divider">
                 {recentReports.map((report) => (
-                  <div key={report.id} className="grid grid-cols-[84px_1fr_180px_110px] items-center gap-3 py-2 text-xs">
+                  <div key={report.id} className="grid grid-cols-[84px_minmax(0,1fr)_180px_110px] items-center gap-3 py-2 text-xs">
                     <Badge
                       variant="outline"
                       className={report.passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}
                     >
                       {t(report.passed ? "reports.passed" : "reports.failed")}
                     </Badge>
-                    <span className="truncate font-medium">{reportVerdictTranslationKey(report) ? t(`reports:${reportVerdictTranslationKey(report)}`) : report.verdict}</span>
-                    <span className="truncate text-muted-foreground">{report.model_name} · {report.channel_name}</span>
+                    <span className="font-medium [overflow-wrap:anywhere]">{reportVerdictTranslationKey(report) ? t(`reports:${reportVerdictTranslationKey(report)}`) : report.verdict}</span>
+                    <span className="text-muted-foreground [overflow-wrap:anywhere]">{report.model_name} · {report.channel_name}</span>
                     <span className="text-right tabular-nums text-muted-foreground">{t("reports.failureCount", { failed: report.failed_case_count, total: report.case_count })}</span>
                   </div>
                 ))}
@@ -117,9 +117,9 @@ export function OverviewWorkspace({
   )
 }
 
-function SummaryCell({ value, label, last = false }: { value: string; label: string; last?: boolean }) {
+function SummaryCell({ value, label }: { value: string; label: string }) {
   return (
-    <div className={last ? "px-4 py-3" : "border-r px-4 py-3"}>
+    <div className="min-w-0 px-4 py-3 [overflow-wrap:anywhere]">
       <div className="text-sm font-semibold tabular-nums">{value}</div>
       <div className="mt-1 text-[10px] text-muted-foreground">{label}</div>
     </div>

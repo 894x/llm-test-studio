@@ -22,7 +22,6 @@ import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetClose,
@@ -62,13 +61,13 @@ import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
 type ActiveTaskState = "queued" | "starting" | "running" | "draining"
 
 const STATUS_CLASS: Record<RunStatus, string> = {
-  running: "border-info/25 bg-info-soft text-info-strong",
-  draining: "border-warning/25 bg-warning-soft text-warning-strong",
-  passed: "border-success/25 bg-success-soft text-success-strong",
-  completed: "border-border bg-muted text-foreground",
-  failed: "border-destructive/25 bg-destructive-soft text-destructive",
-  queued: "border-warning/25 bg-warning-soft text-warning-strong",
-  cancelled: "border-border bg-muted text-muted-foreground",
+  running: "text-info-strong",
+  draining: "text-warning-strong",
+  passed: "text-success-strong",
+  completed: "text-foreground",
+  failed: "text-destructive",
+  queued: "text-warning-strong",
+  cancelled: "text-muted-foreground",
 }
 
 function PlanNavigation({
@@ -85,7 +84,7 @@ function PlanNavigation({
   const { t } = useTranslation("runs")
 
   return (
-    <nav aria-label={t("plans.aria")} className="flex min-h-0 flex-1 flex-col">
+    <nav aria-label={t("plans.aria")} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="px-3 pb-2 pt-4">
         <div className="text-xs font-semibold">{t("plans.title")}</div>
         <div className="mt-1 text-[11px] text-muted-foreground">
@@ -118,10 +117,10 @@ function PlanNavigation({
             className="plan-nav-item"
           >
             <span className="min-w-0">
-              <span className="block truncate text-xs font-medium">
+              <span className="block text-xs font-medium [overflow-wrap:anywhere]">
                 {plan.name}
               </span>
-              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+              <span className="mt-0.5 block text-[11px] [overflow-wrap:anywhere] text-muted-foreground">
                 {plan.description}
               </span>
             </span>
@@ -142,7 +141,7 @@ function StatusBadge({ status }: { status: RunStatus }) {
     <Badge
       variant="outline"
       className={cn(
-        "h-5 rounded-md px-1.5 text-[11px] font-medium",
+        "h-5 rounded-none border-0 px-0 text-[11px] font-medium",
         STATUS_CLASS[status],
       )}
     >
@@ -167,7 +166,7 @@ function RunTable({
 
   if (runs.length === 0) {
     return (
-      <ScrollArea className="min-h-0 flex-1 border-t">
+      <ScrollArea className="min-h-0 min-w-0 flex-1 px-4">
         <Empty>
           <EmptyTitle>
             {t(filtered ? "table.emptyFiltered" : "table.empty")}
@@ -183,26 +182,26 @@ function RunTable({
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1 border-t">
-      <Table aria-label={t("table.aria")} className="min-w-[780px]">
-        <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+    <ScrollArea className="min-h-0 min-w-0 flex-1 px-4">
+      <Table aria-label={t("table.aria")} className="min-w-[640px] table-fixed [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere]">
+        <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="h-8 w-[96px] pl-4 text-[11px] text-muted-foreground">
+            <TableHead className="h-8 w-[72px] text-[11px] text-muted-foreground">
               {t("table.status")}
             </TableHead>
-            <TableHead className="h-8 min-w-[190px] text-[11px] text-muted-foreground">
+            <TableHead className="h-8 w-[26%] text-[11px] text-muted-foreground">
               {t("table.runPlan")}
             </TableHead>
-            <TableHead className="h-8 min-w-[180px] text-[11px] text-muted-foreground">
+            <TableHead className="h-8 w-[20%] text-[11px] text-muted-foreground">
               {t("table.target")}
             </TableHead>
-            <TableHead className="h-8 min-w-[150px] text-[11px] text-muted-foreground">
+            <TableHead className="h-8 w-[26%] text-[11px] text-muted-foreground">
               {t("table.progress")}
             </TableHead>
-            <TableHead className="h-8 text-[11px] text-muted-foreground">
+            <TableHead className="h-8 w-[56px] text-[11px] text-muted-foreground">
               P95
             </TableHead>
-            <TableHead className="h-8 text-[11px] text-muted-foreground">
+            <TableHead className="h-8 w-[88px] text-[11px] text-muted-foreground">
               {t("table.started")}
             </TableHead>
           </TableRow>
@@ -220,35 +219,35 @@ function RunTable({
                 data-state={selected ? "selected" : undefined}
                 aria-selected={selected}
                 onClick={() => onSelect(run)}
-                className="dense-table-row h-11"
+                className="h-11"
               >
-                <TableCell className="py-1 pl-4">
+                <TableCell className="py-2">
                   <StatusBadge status={run.status} />
                 </TableCell>
-                <TableCell className="py-1">
+                <TableCell className="py-2">
                   <Button
                     variant="link"
                     size="sm"
                     aria-label={t("table.view", { title: run.title })}
                     onClick={() => onSelect(run)}
-                    className="h-auto max-w-[220px] justify-start p-0 text-xs font-medium no-underline hover:no-underline"
+                    className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs font-medium text-foreground no-underline hover:no-underline"
                   >
-                    <span className="truncate">{run.title}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{run.title}</span>
                   </Button>
-                  <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                  <div className="mt-0.5 [overflow-wrap:anywhere] font-mono text-[10px] text-muted-foreground">
                     {run.id}
                   </div>
                 </TableCell>
-                <TableCell className="py-1">
-                  <div className="truncate text-xs">{run.model}</div>
-                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                <TableCell className="py-2">
+                  <div className="text-xs [overflow-wrap:anywhere]">{run.model}</div>
+                  <div className="mt-0.5 [overflow-wrap:anywhere] text-[10px] text-muted-foreground">
                     {run.channel}
                   </div>
                 </TableCell>
-                <TableCell className="py-1">
+                <TableCell className="py-2">
                   {run.caseCount > 0 ? (
                     <>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Progress
                           value={percent}
                           className="w-20"
@@ -279,7 +278,7 @@ function RunTable({
                 <TableCell className="py-1 text-xs tabular-nums">
                   {run.p95}
                 </TableCell>
-                <TableCell className="py-1">
+                <TableCell className="py-2">
                   <div className="text-xs">{run.started}</div>
                   <div className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
                     {run.duration}
@@ -302,9 +301,9 @@ function DefinitionRow({
   value: string
 }) {
   return (
-    <div data-slot="inspector-definition-row" className="py-2">
+    <div data-slot="inspector-definition-row" className="min-w-0 py-2 [overflow-wrap:anywhere]">
       <dt className="text-[11px] text-muted-foreground">{label}</dt>
-      <dd className="mt-1 min-w-0 truncate text-xs font-medium" title={value}>
+      <dd className="mt-1 min-w-0 whitespace-normal text-xs font-medium" title={value}>
         {value}
       </dd>
     </div>
@@ -322,19 +321,19 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
     : t("inspector.completedFraction", { completed: run.completed, total: run.total })
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="px-4 pb-3 pt-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{run.title}</div>
-            <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+            <div className="text-sm font-semibold [overflow-wrap:anywhere]">{run.title}</div>
+            <div className="mt-1 [overflow-wrap:anywhere] font-mono text-[10px] text-muted-foreground">
               {run.id}
             </div>
           </div>
           <StatusBadge status={run.status} />
         </div>
       </div>
-      <Tabs defaultValue="summary" className="min-h-0 flex-1 gap-0">
+      <Tabs defaultValue="summary" className="min-h-0 min-w-0 flex-1 gap-0">
         <TabsList variant="line" className="mx-4 h-8">
           <TabsTrigger value="summary" className="text-xs">
             {t("inspector.summary")}
@@ -346,16 +345,15 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
             {t("inspector.artifacts")}
           </TabsTrigger>
         </TabsList>
-        <Separator />
         <TabsContent
           value="summary"
-          className="min-h-0 overflow-y-auto px-4 py-2"
+          className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-2"
         >
           <div className="space-y-3 py-2" aria-label={t("caseProgress.suites")}>
             {run.suiteProgress.map((suite, index) => (
               <div key={suite.entry_id} className="min-w-0">
                 <div className="flex items-start justify-between gap-2 text-xs">
-                  <span className="min-w-0 truncate" title={suite.name}>{index + 1}. {suite.name}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]" title={suite.name}>{index + 1}. {suite.name}</span>
                   <span className="shrink-0 text-muted-foreground">{t(`caseProgress.status.${suite.status}`)}</span>
                 </div>
                 <div className="mt-1 text-[11px] tabular-nums text-muted-foreground">
@@ -395,13 +393,13 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
         </TabsContent>
         <TabsContent
           value="failures"
-          className="min-h-0 overflow-y-auto px-4 py-3 text-xs"
+          className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-3 text-xs"
         >
           {run.failureSummary ?? t("inspector.noFailures")}
         </TabsContent>
         <TabsContent
           value="artifacts"
-          className="min-h-0 overflow-y-auto px-4 py-3 text-xs"
+          className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-3 text-xs"
         >
           {run.artifactCount > 0
             ? t("inspector.artifactsPending", { count: run.artifactCount })
@@ -704,7 +702,7 @@ function IdleTaskBar() {
   const { t } = useTranslation("runs")
 
   return (
-    <div className="flex min-h-14 shrink-0 items-center border-t bg-background px-4 py-2">
+    <div className="flex min-h-14 shrink-0 items-center bg-background px-4 py-2">
       <span className="size-2 rounded-full bg-muted-foreground" aria-hidden="true" />
       <span className="ml-3 text-xs font-semibold">{t("task.idle")}</span>
       <span className="ml-2 text-[11px] text-muted-foreground">
@@ -764,8 +762,8 @@ export function RunWorkspace({
   }
 
   return (
-    <main className="flex min-h-0 flex-1">
-        <aside className="hidden w-56 shrink-0 border-r bg-sidebar min-[1180px]:flex">
+    <main className="flex min-h-0 min-w-0 flex-1">
+        <aside className="hidden min-w-0 w-56 shrink-0 bg-sidebar min-[1180px]:flex">
           <PlanNavigation
             activePlanId={activePlanId}
             plans={plans}
@@ -837,7 +835,7 @@ export function RunWorkspace({
 
         <aside
           aria-label={t("inspector.details")}
-          className="hidden w-[320px] shrink-0 border-l bg-background min-[1180px]:flex"
+          className="hidden min-h-0 min-w-0 w-[320px] shrink-0 border-l border-divider bg-background min-[1180px]:flex"
         >
           {selectedRun ? (
             <RunInspectorContent run={selectedRun} />

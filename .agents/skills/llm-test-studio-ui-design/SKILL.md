@@ -25,10 +25,11 @@ Apply the stable tool-oriented visual language adopted from `town-ui-design` wit
 - Keep the current task visually dominant. Prefer stable navigation, tables, lists, toolbars, inspectors, sheets, and explicit scroll regions.
 - Use the neutral blue-gray accent only for primary actions, focus, selection, and meaningful emphasis. Use semantic colors only for genuine status meaning.
 - Keep light and dark themes equally supported. Theme preference is `system`, `light`, or `dark`; resolved theme is only `light` or `dark`.
-- Create hierarchy with luminance, borders, spacing, typography, and limited elevation. Do not add gradients, saturated decorative panels, or nested framed cards.
+- Create hierarchy in this order: alignment and spacing, typography, subtle surface differences, local dividers, then necessary borders. Ordinary content containers are borderless by default. Do not add gradients, saturated decorative panels, or nested framed cards.
 - Preserve compact density: 28 px icon controls, 32 px ordinary controls, 6 px control radius, 8 px panel radius, and 16 to 18 px icons unless an existing primitive requires otherwise.
 - Render inspector properties as an open, borderless, single-column description list with the quiet label first and value second.
-- Give a dense table one outer frame at most. Do not wrap it in an additional decorative card.
+- All tables are borderless: no outer frame, header/footer rule, row separator, or column grid. Headers have a default quiet 6 px rounded surface above an opaque backing. Body rows use a continuous 6 px rounded background only on hover or selection; selected state takes precedence. Keep keyboard focus visible.
+- Let layout determine column widths; content must adapt. Text wraps by default, including unbroken IDs and URLs (`overflow-wrap: anywhere`). Never let content widen an inspector or create page-level horizontal overflow. Truncation and local horizontal scrolling require a specific content need; they are not the default overflow response.
 - Use the shared overlay `ScrollArea`: 5 px rail and thumb, 4 px edge inset, no layout-consuming gutter, and explicit ownership for each bounded region.
 - Keep icon-only controls square or circular as established, with an accessible name, Tooltip when meaning is not universal, and visible focus.
 - Preserve stable geometry through loading, error, and selection changes.

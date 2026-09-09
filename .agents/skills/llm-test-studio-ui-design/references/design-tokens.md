@@ -8,7 +8,7 @@ Use the established roles rather than literal theme colors:
 
 - application background;
 - elevated, glass, subtle, control, hover, and active surfaces;
-- default and strong borders;
+- quiet content dividers, default and strong control borders;
 - primary, secondary, muted, and disabled text;
 - accent, accent hover, and accent pressed;
 - success, warning, error, and their soft/strong variants.

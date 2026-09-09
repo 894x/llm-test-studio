@@ -283,16 +283,16 @@ export function QuickTaskWorkspace({
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="quick-test-heading">
-      <header className="shrink-0 border-b px-4 py-3">
+      <header className="shrink-0 px-4 py-3">
         <h1 id="quick-test-heading" className="text-lg font-semibold tracking-tight">
           {t("title")}
         </h1>
         <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p>
       </header>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
         <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <section
-            className="min-w-0 border-b p-4 lg:border-r lg:border-b-0"
+            className="min-w-0 p-4"
             aria-label={t("connection")}
           >
             {!task ? (
@@ -640,7 +640,7 @@ export function QuickTaskWorkspace({
                 </>
               )}
             </div>
-            <div className="border-t pt-4">
+            <div className="pt-4">
               <h2 className="mb-3 text-sm font-semibold">{t("task.history")}</h2>
               {!recent.length ? (
                 <p className="text-xs text-muted-foreground">{t("task.noHistory")}</p>

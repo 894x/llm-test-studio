@@ -37,6 +37,9 @@ Prioritize Header content in this order:
 ## Workspace and inspector
 
 - Give the main table/list the remaining flexible width and `min-width: 0`.
+- Constrain every flexible ancestor with `min-width: 0`; use `minmax(0, 1fr)` for flexible grid tracks. Long content must not determine column widths.
+- Wrap ordinary text by default, including unbroken Latin strings with `overflow-wrap: anywhere`. Do not mask overflow with clipping or ellipsis.
+- Use `ScrollArea contentWidth="viewport"` for wrapping text panels; retain intrinsic measurement only for intentionally horizontally scrollable tables/code. Avoid nested vertical scroll owners.
 - Keep the inspector at a stable width on desktop; at compact size move it to a sheet/dialog or hide it behind an explicit detail action.
 - Keep toolbars and page headers shrink-free while the data region owns remaining height.
 - Preserve selection when an inspector changes composition.
@@ -65,7 +68,7 @@ At `1440 x 900`, `1024 x 768`, and `960 x 640`, verify:
 - no horizontal page scroll;
 - no clipped or overlapping navigation/actions;
 - table headers and inspectors remain readable;
-- long Chinese/Latin labels and UUIDs truncate intentionally;
+- long Chinese/Latin labels, URLs, UUIDs, and errors wrap without widening their panel;
 - loading, empty, filtered-empty, error, and large-data states preserve layout;
 - primary commands remain reachable;
 - light and dark themes keep equivalent hierarchy and contrast.

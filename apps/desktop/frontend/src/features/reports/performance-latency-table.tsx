@@ -17,7 +17,7 @@ export function PerformanceLatencyTable({ metrics }: { metrics: QuickPerformance
   return (
     <div>
       <h4 className="mb-2 text-xs font-semibold">{t("latency.title")}</h4>
-      <ScrollArea className="w-full rounded-md border">
+      <ScrollArea className="w-full">
         <Table aria-label={t("latency.aria")} className="min-w-[560px] text-xs">
           <TableHeader>
             <TableRow>

@@ -13,9 +13,10 @@
 
 - Consume semantic tokens rather than adding literal colors or JSX theme branches.
 - Keep primary, secondary, semantic, selected, disabled, and loading emphasis distinct.
-- Check label/value alignment, truncation, numeric alignment, and long IDs.
+- Check label/value alignment, default text wrapping, numeric alignment, and long IDs. Inject long unbroken IDs, URLs, names, and errors; ensure inspector width is unchanged and all text remains readable.
 - Check inspector rows remain borderless and two-line: label first, value second.
-- Check dense tables have one complete outer frame and one scroll owner.
+- Check all tables and their wrappers are borderless, including sticky columns and report/request tables. Verify hover and selected row backgrounds have 6 px end corners, joined interior cells, no rectangular row background behind the corners, and no geometry shift. Selection must remain visible on hover.
+- Scroll long tables vertically and horizontally, with a selected row passing behind the header. Headers must keep their default rounded surface above a full opaque backing, without text/background bleed through corners or gaps; column widths and row heights must stay stable.
 - Check icon-only actions have accessible names, Tooltips where needed, and visible focus.
 - Check the 28 px circular theme trigger, three radio choices, focus restoration, persistence, and system-theme updates.
 - Check every overlay uses the resolved theme and has an accessible title and close path.

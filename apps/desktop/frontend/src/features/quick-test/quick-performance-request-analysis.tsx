@@ -72,7 +72,7 @@ export function QuickPerformanceRequestAnalysis({ report }: { report: QuickPerfo
         <p className="text-[11px] tabular-nums text-muted-foreground">{tx("desktop:quick-test_showing")} {filtered.length}  {tx("desktop:quick-test_requests")}</p>
       </div>
 
-      <ScrollArea className="h-96 rounded-md border bg-background">
+      <ScrollArea className="h-96">
         <Table aria-label={tx("desktop:quick-test_individual_request_results")} className="min-w-[840px] text-xs">
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>

@@ -162,14 +162,14 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
           <ReportContent detail={detail} error={detailError} />
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col border-t">
+        <div className="flex min-h-0 flex-1 flex-col">
           <ScrollArea className="min-h-0 flex-1">
             <Table aria-label={t("catalogAria")} className="min-w-[840px]">
-              <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm"><TableRow className="hover:bg-transparent">
+              <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 w-[88px] pl-4 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-4 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
               <TableBody>{snapshot.reports.map((report) => (
-                <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="dense-table-row h-11">
+                <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="h-11">
                   <TableCell className="py-1 pl-4"><ConclusionBadge passed={report.passed} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
                   <TableCell className="py-1"><div className="truncate text-xs">{report.model_name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.channel_name}</div></TableCell>
@@ -234,7 +234,7 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
         />
       ))}
       {unassignedResults.length ? (
-        <section aria-label={unassignedLabel} className="overflow-hidden rounded-md border">
+        <section aria-label={unassignedLabel} className="min-w-0 overflow-hidden">
           <header className="border-b bg-muted/25 px-3 py-2">
             <h3 className="text-xs font-semibold">{unassignedLabel}</h3>
           </header>
@@ -250,7 +250,7 @@ function SuiteReportSection({ suite }: { suite: ReportSuiteDetail }) {
   const { t } = useTranslation("reports")
   const displayName = suite.suite_name
   return (
-    <section aria-label={tx("desktop:reports_suite_aria", { value1: displayName })} className="overflow-hidden rounded-lg border bg-muted/10">
+    <section aria-label={tx("desktop:reports_suite_aria", { value1: displayName })} className="min-w-0 overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2.5">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{displayName}</h3>
@@ -302,11 +302,11 @@ function SuiteMetricSummary({
   const entries = Object.entries(metrics)
   if (!entries.length) return null
   return (
-    <section className="rounded-md border bg-background/70 p-2.5">
+    <section className="min-w-0 p-2.5">
       <h4 className="mb-2 text-[11px] font-semibold">{title}</h4>
       <dl className="grid gap-2 sm:grid-cols-2">
         {entries.map(([name, metric]) => (
-          <div key={name} className="min-w-0 rounded border bg-muted/20 px-2 py-1.5">
+          <div key={name} className="min-w-0 px-2 py-1.5">
             <dt className="truncate font-mono text-[10px] text-muted-foreground">{name}</dt>
             <dd className="mt-0.5 text-xs font-semibold tabular-nums">
               {formatMetric(metric.value)} {metric.unit}
@@ -509,7 +509,7 @@ function SummaryValue({ label, value }: { label: string; value: string }) {
 }
 
 function InlineSummaryValue({ label, value }: { label: string; value: string }) {
-  return <div className="min-w-0 rounded-md border bg-background/70 px-3 py-2 font-medium tabular-nums" title={`${label} ${value}`}>{label} {value}</div>
+  return <div className="min-w-0 px-3 py-2 font-medium tabular-nums" title={`${label} ${value}`}>{label} {value}</div>
 }
 
 function SLOStatusBadge({ status }: { status: NonNullable<QuickPerformanceReport["slo_assessment"]>["status"] }) {
@@ -524,7 +524,7 @@ function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
   const capacity = report.capacity_result
   if (!capacity) return null
   const unit = report.profile.load_mode === "open_loop" ? "RPS" : tx("desktop:quick-test_concurrency")
-  return <div className="mt-3 overflow-x-auto rounded-lg border">
+  return <div className="mt-3 min-w-0 overflow-x-auto">
     <Table aria-label={tx("desktop:reports_capacity_ladder_results")} className="min-w-[1120px]">
       <TableHeader><TableRow className="hover:bg-transparent">
         <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:quick-test_step")}</TableHead>
@@ -578,7 +578,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   const locale = i18n.resolvedLanguage ?? i18n.language
   const metrics = useMemo(() => detail?.source === "run" ? Object.entries(detail.report.metrics).slice(0, 8) : [], [detail])
   const quick = detail?.source === "quick_performance" ? detail.performance : null
-  return <ScrollArea className="h-full">
+  return <>
     <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} status={report.run_status} />} />
     <Separator />
     <dl className="space-y-1 px-4 py-2">
@@ -596,7 +596,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
     {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
     {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatPerformanceInteger(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
-  </ScrollArea>
+  </>
 }
 
 function ConclusionBadge({ passed, status }: { passed: boolean; status?: ReportSummary["run_status"] }) {
@@ -661,7 +661,7 @@ function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerfor
       <h4 className="text-xs font-semibold">{tx("desktop:quick-test_time_slices")}</h4>
       <span className="text-[10px] text-muted-foreground">{tx("desktop:reports_only_steady_state_windows_recorded_by_the_backend_are_listed")}</span>
     </div>
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="min-w-0 overflow-x-auto">
       <Table aria-label={tx("desktop:quick-test_time_slices")} className="min-w-[1040px]">
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead className="h-8 pl-3 text-[11px]">{tx("desktop:reports_slices")}</TableHead>

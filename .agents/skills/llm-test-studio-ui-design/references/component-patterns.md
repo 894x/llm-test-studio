@@ -52,16 +52,18 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 - Give the primary table/list the largest region. Use an optional inspector only when selection details aid the current decision.
 - Keep the inspector narrow and stable; hide or recompose it at the compact breakpoint rather than crushing the main table.
 - Keep each bounded region responsible for its own `ScrollArea`. Do not nest independent vertical scroll owners without a deliberate interaction reason.
-- Avoid permanent cards for page chrome. Use open layout, borders, dividers, and restrained surface changes.
+- Avoid permanent cards for page chrome. Use open layout, alignment, spacing, and typography first; use a quiet divider only where a boundary is needed.
 
 ## Tables, lists, and inspectors
 
 - Use tables for comparable records with stable columns and lists for heterogeneous records or prominent row actions.
-- Give a standalone dense table one rounded border/frame and clip its header and rows to that frame.
-- Keep the header sticky only inside the table's single bounded scroll owner.
+- Render all tables without borders, including wrappers, headers, footers, rows, and columns. Header cells have a persistent quiet rounded surface; body rows use 2 px vertical row spacing and a continuous 6 px rounded background on hover or selection. Paint the background on cells and round only the first/last cell so internal columns remain joined; use separate borders with zero horizontal spacing. Selected backgrounds take precedence over hover. Preserve visible keyboard focus; do not wrap tables in cards.
+- Use dot plus text for dense run statuses; avoid repeated outlined pills. Keep error, selection, and keyboard focus visible.
+- Text wraps by default, including long IDs, names, URLs, and error messages. Use `min-width: 0` on flexible children and `overflow-wrap: anywhere` for unbroken values. Keep an explicit width constraint before opting into truncation.
+- Keep the header sticky only inside the table's single bounded scroll owner. Use an opaque rectangular background beneath the header cells to cover gaps and corner cutouts. Header cells have a distinct opaque `table-header` surface and 6 px first/last corners. Do not use translucent fills or backdrop blur for the visible header surface. Sticky columns also need an opaque backing beneath hover/selection fills.
 - Align numeric columns, use tabular numerals, and keep IDs scan-friendly.
 - Support loading, initial empty, filtered empty, partial, error, selected, and large-data states.
-- Use `content-visibility` or a proven bounded strategy for long lists; do not render unbounded evidence payloads into the DOM.
+- Use a proven bounded strategy for long lists; do not render unbounded evidence payloads into the DOM. Do not use `content-visibility: auto` or estimated intrinsic sizes on native table rows: skipping cells can change column measurement and row heights during scrolling.
 - Render inspector properties as `dl` rows: quiet `dt` label, then one `dd` value, without grid lines or boxed cells.
 
 ## Feedback, overlays, and async tasks

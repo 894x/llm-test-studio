@@ -6,18 +6,26 @@ import { cn } from "@/lib/utils"
 function ScrollArea({
   className,
   children,
+  contentWidth = "intrinsic",
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  contentWidth?: "intrinsic" | "viewport"
+}) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative overflow-hidden", className)}
+      className={cn("relative min-h-0 min-w-0 overflow-hidden", className)}
       type="always"
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className={cn(
+          "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          // Radix uses a display:table wrapper to measure horizontal overflow.
+          // Text panels must instead wrap within the viewport's assigned width.
+          contentWidth === "viewport" && "[&>div]:!block [&>div]:!min-w-0 [&>div]:w-full [overflow-wrap:anywhere]",
+        )}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

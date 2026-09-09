@@ -103,7 +103,7 @@ export function DesktopShell({
   const { t } = useTranslation("shell")
   return (
     <div className="flex h-svh min-h-[640px] flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex h-12 shrink-0 items-center border-b bg-background px-3">
+      <header className="flex h-12 shrink-0 items-center bg-background px-3">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <ActivityIcon className="size-4" />

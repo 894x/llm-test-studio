@@ -3,7 +3,6 @@ import GitCompareArrowsIcon from "lucide-react/dist/esm/icons/git-compare-arrows
 import { useTranslation } from "react-i18next"
 
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldLabel } from "@/components/ui/field"
@@ -70,7 +69,7 @@ export function NewComparisonSheet({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button size="sm" variant="ghost">
           <GitCompareArrowsIcon data-icon="inline-start" /> {t("trigger")}
         </Button>
       </SheetTrigger>
@@ -125,15 +124,15 @@ export function ComparisonPanel({ snapshot }: { snapshot: ComparisonSnapshot }) 
   const comparison = snapshot.comparisons[0]
   if (!comparison) return null
   return (
-    <section aria-labelledby="comparison-heading" className="mx-4 mb-3 rounded-md border bg-card">
-      <div className="flex items-center justify-between border-b px-3 py-2">
+    <section aria-labelledby="comparison-heading" className="mx-4 mb-4 min-w-0">
+      <div className="flex items-center justify-between gap-3 py-2">
         <div className="min-w-0">
-          <h2 id="comparison-heading" className="truncate text-xs font-semibold">{t("panel.title", { model: comparison.model_name })}</h2>
-          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{t("panel.subtitle", { plan: comparison.plan_name, count: comparison.channels.length })}</p>
+          <h2 id="comparison-heading" className="text-xs font-semibold [overflow-wrap:anywhere]">{t("panel.title", { model: comparison.model_name })}</h2>
+          <p className="mt-0.5 text-[10px] text-muted-foreground [overflow-wrap:anywhere]">{t("panel.subtitle", { plan: comparison.plan_name, count: comparison.channels.length })}</p>
         </div>
-        <Badge variant="outline">{t(`common:status.${comparison.status}`)}</Badge>
+        <span className="shrink-0 text-[11px] text-muted-foreground">{t(`common:status.${comparison.status}`)}</span>
       </div>
-      <Table aria-label={t("panel.aria")}>
+      <Table aria-label={t("panel.aria")} className="table-fixed [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere] [&_th]:whitespace-normal">
         <TableHeader><TableRow>
           <TableHead className="h-8 text-[11px]">{t("panel.channel")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("panel.verdict")}</TableHead>

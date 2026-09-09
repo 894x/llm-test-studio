@@ -94,7 +94,7 @@ function ResponseProbeDistributionTable({ distributions }: { distributions: Resp
           {tx("desktop:reports_grouped_by_response_body_signatures_and_structure_fingerprints_unknown_means")}
         </p>
       </div>
-      <div className="overflow-x-auto rounded-md border">
+      <div className="min-w-0 overflow-x-auto">
         <Table aria-label={tx("desktop:reports_upstream_response_distribution")} className="min-w-[720px]">
           <TableHeader><TableRow>
             <TableHead className="h-8 text-[11px]">{tx("desktop:reports_category_label")}</TableHead>

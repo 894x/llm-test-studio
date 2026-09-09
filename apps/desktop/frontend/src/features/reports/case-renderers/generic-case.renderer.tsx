@@ -49,9 +49,9 @@ export function CaseReportSection({
   return (
     <section
       aria-label={tx("desktop:reports_case_aria", { value1: caseReport.name })}
-      className="overflow-hidden rounded-md border bg-background/75"
+      className="min-w-0 overflow-hidden"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/25 px-3 py-2">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
         <div className="min-w-0">
           <h4 className="truncate text-xs font-semibold">{caseReport.name}</h4>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
@@ -92,7 +92,7 @@ export function CaseRequestResults({
   return (
     <div>
       {totalRequestCount > visibleResults.length ? (
-        <div role="status" className="border-b px-3 py-2 text-[11px] text-muted-foreground">
+        <div role="status" className="px-3 py-2 text-[11px] text-muted-foreground">
           {tx("desktop:reports_showing_the_first_1_000_requests_all")} {formatNumber(totalRequestCount)} {tx("desktop:reports_requests_can_be_exported_as_json")}
         </div>
       ) : null}
