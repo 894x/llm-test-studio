@@ -1,4 +1,5 @@
 {
+  "select": {"search": "输入以搜索选项", "empty": "没有匹配的选项"},
   "actions": {
     "close": "关闭",
     "showOptions": "显示候选"

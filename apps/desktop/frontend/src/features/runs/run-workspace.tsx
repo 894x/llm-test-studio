@@ -21,7 +21,7 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   Sheet,
   SheetClose,
@@ -85,13 +85,13 @@ function PlanNavigation({
 
   return (
     <nav aria-label={t("plans.aria")} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="px-4 pb-2 pt-4">
+      <div className="px-2 pb-2 pt-4">
         <div className="text-xs font-semibold">{t("plans.title")}</div>
         <div className="mt-1 text-[11px] text-muted-foreground">
           {t("plans.description")}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-4 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pb-3">
         <button
           type="button"
           data-active={activePlanId === "all"}
@@ -166,7 +166,7 @@ function RunTable({
 
   if (runs.length === 0) {
     return (
-      <ScrollArea className="min-h-0 min-w-0 flex-1 px-4">
+      <ScrollArea className="min-h-0 min-w-0 flex-1">
         <Empty className="px-0">
           <EmptyTitle>
             {t(filtered ? "table.emptyFiltered" : "table.empty")}
@@ -182,7 +182,7 @@ function RunTable({
   }
 
   return (
-    <ScrollArea className="min-h-0 min-w-0 flex-1 px-4">
+    <ScrollArea className="min-h-0 min-w-0 flex-1">
       <Table aria-label={t("table.aria")} className="min-w-[640px] table-fixed [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere]">
         <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow className="hover:bg-transparent">
@@ -554,10 +554,7 @@ function RuntimeTargetSelect({ label, value, options, onChange }: { label: strin
 	return (
 		<Field className="block">
 			<FieldLabel>{label}</FieldLabel>
-			<Select value={value} onValueChange={onChange} disabled={options.length === 0}>
-				<SelectTrigger aria-label={label} className="w-full"><SelectValue placeholder={t("newRun.noOptions", { label })} /></SelectTrigger>
-				<SelectContent><SelectGroup>{options.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectGroup></SelectContent>
-			</Select>
+			<SearchableSelect value={value} onValueChange={onChange} disabled={options.length === 0} aria-label={label} className="w-full" placeholder={t("newRun.noOptions", { label })} options={[...options.map(([id, name]) => ({value: id, label: name}))]} />
 		</Field>
 	)
 }
@@ -586,7 +583,7 @@ function MobilePlanSheet({
           <PanelLeftIcon data-icon="inline-start" /> {t("mobile.plans")}
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[300px] p-0">
+      <SheetContent side="left" className="data-[side=left]:w-[300px] px-4 py-0">
         <SheetHeader className="sr-only">
           <SheetTitle>{t("plans.title")}</SheetTitle>
           <SheetDescription>{t("plans.filter")}</SheetDescription>
@@ -647,7 +644,7 @@ function ActiveTaskBar({
     run.caseCount === 0 ? 0 : Math.round((run.observedCaseCount / run.caseCount) * 100)
 
   return (
-    <div className="flex min-h-14 shrink-0 items-center gap-3 border-t bg-background px-4 py-2">
+    <div className="flex min-h-14 shrink-0 items-center gap-3 border-t bg-background py-2">
       <div
         className={cn(
           "size-2 shrink-0 rounded-full",
@@ -702,7 +699,7 @@ function IdleTaskBar() {
   const { t } = useTranslation("runs")
 
   return (
-    <div className="flex min-h-14 shrink-0 items-center bg-background px-4 py-2">
+    <div className="flex min-h-14 shrink-0 items-center bg-background py-2">
       <span className="size-2 rounded-full bg-muted-foreground" aria-hidden="true" />
       <span className="ml-3 text-xs font-semibold">{t("task.idle")}</span>
       <span className="ml-2 text-[11px] text-muted-foreground">
@@ -762,8 +759,8 @@ export function RunWorkspace({
   }
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1">
-        <aside className="hidden min-w-0 w-56 shrink-0 bg-sidebar min-[1180px]:flex">
+    <main className="flex min-h-0 min-w-0 flex-1 gap-4 pl-4">
+        <aside className="hidden min-w-0 w-48 shrink-0 bg-sidebar min-[1180px]:flex">
           <PlanNavigation
             activePlanId={activePlanId}
             plans={plans}
@@ -774,9 +771,9 @@ export function RunWorkspace({
 
         <section
           aria-labelledby="workspace-heading"
-          className="flex min-w-0 flex-1 flex-col"
+          className="flex min-w-0 flex-1 flex-col max-[1179px]:pr-4"
         >
-          <div className="flex shrink-0 items-end justify-between gap-3 px-4 py-3">
+          <div className="flex shrink-0 items-end justify-between gap-3 py-3">
             <div className="min-w-0">
               <h1
                 id="workspace-heading"
@@ -812,7 +809,7 @@ export function RunWorkspace({
           />
 
           {commandError ? (
-            <div role="alert" className="border-t border-destructive/30 px-4 py-2 text-xs text-destructive">
+            <div role="alert" className="border-t border-destructive/30 py-2 text-xs text-destructive">
               {commandError}
             </div>
           ) : null}

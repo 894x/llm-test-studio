@@ -225,7 +225,7 @@ describe("QuickPerformanceSheet", () => {
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
 
     const mode = within(dialog).getByRole("combobox", { name: "负载模式" })
-    expect(mode).toHaveTextContent("固定并发")
+    expect(mode).toHaveValue("固定并发")
     await replaceNumber(user, within(dialog).getByLabelText("并发数"), "3")
     await user.click(mode)
     await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
@@ -844,7 +844,7 @@ describe("QuickPerformanceSheet", () => {
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
     await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
     expect(within(dialog).getByLabelText("目标发送 RPS")).toHaveValue(5000)
-    expect(within(dialog).getByRole("combobox", { name: "到达分布" })).toHaveTextContent(
+    expect(within(dialog).getByRole("combobox", { name: "到达分布" })).toHaveValue(
       "Poisson 到达",
     )
 

@@ -11,7 +11,7 @@ Prefer existing project components and shadcn/ui composition:
 | Comparable records | `Table` inside one bounded `ScrollArea` |
 | Status | Semantic `Badge`; put detail in Tooltip or inspector |
 | Search | Existing input-group primitives, with visible label or accessible name |
-| Bounded choices | `Select` with grouped, keyboard-reachable items |
+| Bounded choices | `SearchableSelect` with searchable, keyboard-reachable items |
 | Filterable bounded choices | `Combobox`; the committed value must resolve to an available item |
 | Suggestions plus free text | Shared `Autocomplete`; suggestions may complete the input but must not reject an arbitrary value |
 | Create/edit workflow | `Sheet` or dialog with an accessible title and description |

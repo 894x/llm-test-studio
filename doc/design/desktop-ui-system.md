@@ -87,7 +87,7 @@ shadcn/ui，不引入 Naive UI 运行时，也不复制 Animetown 的组件代�
 | 运行数据 | `Table`，无外框、行列分隔线和表头/表尾边框；悬浮或选中时显示整行 6px 圆角背景，不包 Card |
 | 状态 | `Badge` 的语义变体；详细原因进入 Tooltip 或检查器 |
 | 搜索 | `InputGroup` + `InputGroupInput`，不绝对定位自制按钮 |
-| 筛选 | `Select`，所有 `SelectItem` 位于 `SelectGroup` 内 |
+| 筛选 | `SearchableSelect`，统一支持输入筛选，提交值只能来自现有选项 |
 | 可筛选的封闭选项 | `Combobox`；提交值必须来自候选项 |
 | 候选建议并允许自由输入 | 共享 `Autocomplete`；候选仅辅助补全，不得使用无法随主题统一的原生 `datalist` |
 | 新建运行 | 桌面使用 `Sheet`，窄窗口使用 `Drawer`；必须包含可访问 Title |

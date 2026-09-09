@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
@@ -579,7 +579,7 @@ function SelectField({ fieldKey, label, value, options, onChange, disabled = fal
   const validation = useCatalogValidation(key, [], label)
   const id = catalogFieldID(key)
   const errorID = `${id}-error`
-  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><Select value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled}><SelectTrigger id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{options.map(([optionID, text]) => <SelectItem key={optionID} value={optionID}>{text}</SelectItem>)}</SelectGroup></SelectContent></Select>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><SearchableSelect value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled} id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="w-full" options={[...options.map(([optionID, text]) => ({value: optionID, label: text}))]} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
 function CheckField({ fieldKey, label, checked, onChange, clearFields = [], controlID }: { fieldKey?: string; label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string }) {
   const key = fieldKey ?? label

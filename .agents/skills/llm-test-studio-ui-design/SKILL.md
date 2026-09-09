@@ -38,7 +38,7 @@ Apply the stable tool-oriented visual language adopted from `town-ui-design` wit
 
 - Prefer existing components in `apps/desktop/frontend/src/components/ui` before adding variants or raw controls.
 - Use shadcn/ui and its established Radix- or Base UI-backed components for controls, menus, dialogs, sheets, tables, feedback, and form composition.
-- Use `Select` for closed choices, `Combobox` for filterable choices that must resolve to an item, and a shared `Autocomplete` for suggestions that still allow arbitrary text. Never use HTML `datalist` on product surfaces because its browser-owned popup cannot follow the application's theme, geometry, or interaction states.
+- Use the shared `SearchableSelect` (Combobox) for all closed dropdown choices, including short option lists, and a shared `Autocomplete` for suggestions that still allow arbitrary text. Never use HTML `datalist` on product surfaces because its browser-owned popup cannot follow the application's theme, geometry, or interaction states.
 - Use Lucide icons through the project's direct icon imports. Do not introduce another icon family for ordinary interface actions.
 - Use Tailwind utilities for layout, dimensions, and composition. Consume semantic variables and component variants for color and state styling.
 - Do not put raw theme colors, status colors, or handwritten `dark:` color overrides in JSX.

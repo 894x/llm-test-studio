@@ -1,4 +1,5 @@
 {
+  "select": {"search": "Type to search options", "empty": "No matching options"},
   "actions": {
     "close": "Close",
     "showOptions": "Show options"

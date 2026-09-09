@@ -45,6 +45,8 @@ Prioritize Header content in this order:
 - Preserve selection when an inspector changes composition.
 - Keep empty and error states inside the same region as their successful data surface.
 
+- Quick Test keeps two columns across supported desktop sizes (960 px and above): inputs on the left and progress/history on the right, each with its own bounded ScrollArea below the fixed page header.
+
 ## Scroll ownership
 
 - Keep the root at full viewport height with page-level overflow hidden.
@@ -72,3 +74,5 @@ At `1440 x 900`, `1024 x 768`, and `960 x 640`, verify:
 - loading, empty, filtered-empty, error, and large-data states preserve layout;
 - primary commands remain reachable;
 - light and dark themes keep equivalent hierarchy and contrast.
+
+- In adjacent open workspace columns, the parent Flex/Grid owns the 16 px gap. Do not add another horizontal inset on both sides of that gap; keep navigation items' 8 px internal padding separate from panel spacing.

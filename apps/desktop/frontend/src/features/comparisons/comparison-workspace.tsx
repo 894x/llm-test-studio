@@ -6,7 +6,7 @@ import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldLabel } from "@/components/ui/field"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { CatalogSnapshot } from "@/features/catalog/data"
@@ -124,7 +124,7 @@ export function ComparisonPanel({ snapshot }: { snapshot: ComparisonSnapshot }) 
   const comparison = snapshot.comparisons[0]
   if (!comparison) return null
   return (
-    <section aria-labelledby="comparison-heading" className="mx-4 mb-4 min-w-0">
+    <section aria-labelledby="comparison-heading" className="mb-4 min-w-0">
       <div className="flex items-center justify-between gap-3 py-2">
         <div className="min-w-0">
           <h2 id="comparison-heading" className="text-xs font-semibold [overflow-wrap:anywhere]">{t("panel.title", { model: comparison.model_name })}</h2>
@@ -155,7 +155,7 @@ export function ComparisonPanel({ snapshot }: { snapshot: ComparisonSnapshot }) 
 }
 
 function SelectField({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
-  return <Field className="block"><FieldLabel>{label}</FieldLabel><Select value={value} onValueChange={onChange}><SelectTrigger aria-label={label} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{options.map(([id, text]) => <SelectItem key={id} value={id}>{text}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+  return <Field className="block"><FieldLabel>{label}</FieldLabel><SearchableSelect value={value} onValueChange={onChange} aria-label={label} className="w-full" options={[...options.map(([id, text]) => ({value: id, label: text}))]} /></Field>
 }
 
 function formatMetric(metric: { value: number; unit: string } | undefined, ratio = false): string {

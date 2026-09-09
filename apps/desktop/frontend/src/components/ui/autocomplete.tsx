@@ -22,7 +22,7 @@ function AutocompleteInput({
     <AutocompletePrimitive.InputGroup
       data-slot="autocomplete-input-group"
       className={cn(
-        "group/autocomplete relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input bg-surface-control transition-colors outline-none has-[[data-slot=autocomplete-input]:focus-visible]:border-ring has-[[data-slot=autocomplete-input]:focus-visible]:ring-3 has-[[data-slot=autocomplete-input]:focus-visible]:ring-ring/50 has-[[data-slot=autocomplete-input][aria-invalid=true]]:border-destructive has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-3 has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-destructive/20 has-[[data-slot=autocomplete-input]:disabled]:bg-input/50 has-[[data-slot=autocomplete-input]:disabled]:opacity-50",
+        "group/autocomplete relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input bg-surface-control transition-colors outline-none has-[[data-slot=autocomplete-input]:focus-visible]:border-ring has-[[data-slot=autocomplete-input]:focus-visible]:ring-0 has-[[data-slot=autocomplete-input]:focus-visible]:ring-ring/50 has-[[data-slot=autocomplete-input][aria-invalid=true]]:border-destructive has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-0 has-[[data-slot=autocomplete-input][aria-invalid=true]]:ring-destructive/20 has-[[data-slot=autocomplete-input]:disabled]:bg-input/50 has-[[data-slot=autocomplete-input]:disabled]:opacity-50",
         className,
       )}
     >
@@ -38,7 +38,7 @@ function AutocompleteInput({
         type="button"
         aria-label={triggerLabel ?? t("actions.showOptions")}
         disabled={triggerDisabled || props.disabled}
-        className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-surface-hover hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-surface-hover disabled:pointer-events-none disabled:text-text-disabled"
+        className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-surface-hover hover:text-foreground focus-visible:outline-1 focus-visible:outline-ring data-popup-open:bg-surface-hover disabled:pointer-events-none disabled:text-text-disabled"
       >
         <ChevronDownIcon className="pointer-events-none size-4" />
       </AutocompletePrimitive.Trigger>
@@ -114,7 +114,7 @@ function AutocompleteEmpty({
     <AutocompletePrimitive.Empty
       data-slot="autocomplete-empty"
       className={cn(
-        "px-2 py-2 text-sm text-muted-foreground",
+        "px-2 py-2 text-sm text-muted-foreground empty:hidden",
         className,
       )}
       {...props}

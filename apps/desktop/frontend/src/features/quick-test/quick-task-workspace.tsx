@@ -26,14 +26,7 @@ import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot, CatalogSuite } from "@/features/catalog/data"
@@ -289,8 +282,8 @@ export function QuickTaskWorkspace({
         </h1>
         <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p>
       </header>
-      <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
-        <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)] overflow-hidden">
+        <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0">
           <section
             className="min-w-0 p-4"
             aria-label={t("connection")}
@@ -304,24 +297,9 @@ export function QuickTaskWorkspace({
               <form onSubmit={(event) => void submit(event)} noValidate>
                 <FieldGroup>
                   <TaskField id="task" label={t("task.label")} error={errors.task}>
-                    <Select value={taskKey(task)} onValueChange={changeTask} disabled={!!pending}>
-                      <SelectTrigger
-                        id="quick-task-task"
-                        aria-label={t("task.label")}
-                        className="w-full"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {tasks.map((item) => (
-                            <SelectItem key={taskKey(item)} value={taskKey(item)}>
-                              {item.name}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect value={taskKey(task)} onValueChange={changeTask} disabled={!!pending} id="quick-task-task" aria-label={t("task.label")} className="w-full" options={[...tasks.map((item) => (
+                            ({value: taskKey(item), label: item.name})
+                          ))]} />
                     <p className="text-[11px] text-muted-foreground">
                       {task.quick_test?.description}
                     </p>
@@ -334,10 +312,7 @@ export function QuickTaskWorkspace({
                     <p className="text-xs text-muted-foreground">{t("task.historyVersion")}</p>
                   ) : null}
                   <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id}>
-                    <Select
-                      value={missingChannel ? "missing" : form.channel_id || "manual"}
-                      disabled={!!pending}
-                      onValueChange={(value) => {
+                    <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={!!pending} onValueChange={(value) => {
                         const selected = channels.find((item) => item.id === value)
                         update({
                           ...form,
@@ -346,31 +321,9 @@ export function QuickTaskWorkspace({
                           api_key: "",
                           credential_run_id: undefined,
                         })
-                      }}
-                    >
-                      <SelectTrigger
-                        id="quick-task-channel_id"
-                        aria-label={t("fillChannel")}
-                        className="w-full"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="manual">{t("manual")}</SelectItem>
-                          {missingChannel ? (
-                            <SelectItem value="missing" disabled>
-                              {t("task.missingChannel")}
-                            </SelectItem>
-                          ) : null}
-                          {channels.map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {item.name}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                      }} id="quick-task-channel_id" aria-label={t("fillChannel")} className="w-full" options={[({value: "manual", label: t("manual")}), ...(missingChannel ? [({value: "missing", label: t("task.missingChannel"), disabled: true})] : []), ...channels.map((item) => (
+                            ({value: item.id, label: item.name})
+                          ))]} />
                   </TaskField>
                   <div className="grid min-w-0 grid-cols-2 items-start gap-4">
                     <TaskField id="base_url" label={t("address")} error={errors.base_url}>
@@ -562,6 +515,8 @@ export function QuickTaskWorkspace({
               </form>
             )}
           </section>
+        </ScrollArea>
+        <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0">
           <section className="min-w-0 space-y-5 p-4" aria-label={t("task.progress")}>
             {error ? (
               <Alert variant="destructive">
@@ -645,11 +600,11 @@ export function QuickTaskWorkspace({
               {!recent.length ? (
                 <p className="text-xs text-muted-foreground">{t("task.noHistory")}</p>
               ) : (
-                <ol className="divide-y">
+                <ol className="space-y-0.5">
                   {recent.map((run) => (
-                    <li key={run.id} className="min-w-0 space-y-1 py-3 first:pt-0">
+                    <li key={run.id} data-selected={run.id === runID} className="min-w-0 space-y-1 rounded-md p-3 transition-colors hover:bg-surface-hover focus-within:bg-surface-hover data-[selected=true]:bg-surface-active">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 truncate text-xs font-medium" title={run.plan_name}>
+                        <p className="min-w-0 text-xs font-medium [overflow-wrap:anywhere]" title={run.plan_name}>
                           {run.plan_name}
                         </p>
                         <Badge variant="outline">
@@ -659,7 +614,7 @@ export function QuickTaskWorkspace({
                         </Badge>
                       </div>
                       <p
-                        className="truncate text-[11px] text-muted-foreground"
+                        className="text-[11px] text-muted-foreground [overflow-wrap:anywhere]"
                         title={`${run.model_name} · ${run.channel_name}`}
                       >
                         {run.model_name} · {run.channel_name}
@@ -687,8 +642,8 @@ export function QuickTaskWorkspace({
               )}
             </div>
           </section>
-        </div>
-      </ScrollArea>
+        </ScrollArea>
+      </div>
       {performanceCommand ? (
         <QuickPerformanceSheet
           open={performanceOpen}

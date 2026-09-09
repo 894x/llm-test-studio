@@ -61,3 +61,5 @@ Keep Header controls compact. Do not enlarge every desktop control to mobile tou
 - Animate opacity, transform, color, or one positional property rather than multiple geometry properties.
 - Do not use ripple or scale effects on dense controls.
 - Respect `prefers-reduced-motion` globally and in local animations.
+
+Input, textarea, input-group, and searchable dropdown focus uses the existing 1 px border in the semantic focus color, without an outer ring. Invalid fields retain a 1 px destructive border and inline validation text.

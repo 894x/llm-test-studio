@@ -21,14 +21,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -411,29 +404,7 @@ export function QuickPerformanceSheet({
                     {tx("desktop:catalog_load_mode")}
                   </FieldLabel>
                   <FieldContent>
-                    <Select
-                      value={form.loadMode}
-                      disabled={pending}
-                      onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)}
-                    >
-                      <SelectTrigger
-                        id="quick-performance-loadMode"
-                        aria-label={tx("desktop:catalog_load_mode")}
-                        className="w-full"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="fixed_concurrency">
-                            {tx("desktop:catalog_fixed_concurrency")}
-                          </SelectItem>
-                          <SelectItem value="open_loop">
-                            {tx("desktop:quick-test_open_arrival_rps")}
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)} id="quick-performance-loadMode" aria-label={tx("desktop:catalog_load_mode")} className="w-full" options={[({value: "fixed_concurrency", label: tx("desktop:catalog_fixed_concurrency")}), ({value: "open_loop", label: tx("desktop:quick-test_open_arrival_rps")})]} />
                   </FieldContent>
                 </Field>
                 {form.loadMode === "open_loop" ? (
@@ -442,31 +413,9 @@ export function QuickPerformanceSheet({
                       {tx("desktop:quick-test_arrival_distribution")}
                     </FieldLabel>
                     <FieldContent>
-                      <Select
-                        value={form.arrivalPattern}
-                        disabled={pending}
-                        onValueChange={(value) =>
+                      <SearchableSelect value={form.arrivalPattern} disabled={pending} onValueChange={(value) =>
                           updateArrivalPattern(value as QuickPerformanceArrivalPattern)
-                        }
-                      >
-                        <SelectTrigger
-                          id="quick-performance-arrivalPattern"
-                          aria-label={tx("desktop:quick-test_arrival_distribution")}
-                          className="w-full"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectItem value="constant">
-                              {tx("desktop:quick-test_constant_interval")}
-                            </SelectItem>
-                            <SelectItem value="poisson">
-                              {tx("desktop:quick-test_poisson_arrivals")}
-                            </SelectItem>
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                        } id="quick-performance-arrivalPattern" aria-label={tx("desktop:quick-test_arrival_distribution")} className="w-full" options={[({value: "constant", label: tx("desktop:quick-test_constant_interval")}), ({value: "poisson", label: tx("desktop:quick-test_poisson_arrivals")})]} />
                     </FieldContent>
                   </Field>
                 ) : null}
@@ -475,31 +424,9 @@ export function QuickPerformanceSheet({
                     {tx("desktop:quick-test_workload")}
                   </FieldLabel>
                   <FieldContent>
-                    <Select
-                      value={form.workloadMode}
-                      disabled={pending}
-                      onValueChange={(value) =>
+                    <SearchableSelect value={form.workloadMode} disabled={pending} onValueChange={(value) =>
                         updateWorkloadMode(value as QuickPerformanceWorkloadMode)
-                      }
-                    >
-                      <SelectTrigger
-                        id="quick-performance-workloadMode"
-                        aria-label={tx("desktop:quick-test_workload")}
-                        className="w-full"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="fixed">
-                            {tx("desktop:quick-test_fixed_tokens")}
-                          </SelectItem>
-                          <SelectItem value="normal">
-                            {tx("desktop:quick-test_normal_distribution")}
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                      } id="quick-performance-workloadMode" aria-label={tx("desktop:quick-test_workload")} className="w-full" options={[({value: "fixed", label: tx("desktop:quick-test_fixed_tokens")}), ({value: "normal", label: tx("desktop:quick-test_normal_distribution")})]} />
                   </FieldContent>
                 </Field>
                 <PerformanceNumberField

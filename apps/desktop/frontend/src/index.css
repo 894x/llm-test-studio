@@ -204,7 +204,7 @@
 }
 
 .plan-nav-item {
-  @apply min-h-12 px-0 py-2 hover:bg-sidebar-accent;
+  @apply min-h-12 px-2 py-2 hover:bg-sidebar-accent;
 }
 
 .plan-nav-item[data-active="true"] {
