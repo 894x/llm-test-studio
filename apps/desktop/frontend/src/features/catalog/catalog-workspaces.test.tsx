@@ -96,6 +96,16 @@ describe("ModelChannelWorkspace", () => {
       name: "Kimi K3 在 Kimi 备用渠道未配置",
     })
     expect(unconfigured).toHaveTextContent("未配置")
+    await user.hover(unconfigured)
+    expect(unconfigured).toHaveAttribute("data-intersection", "true")
+    expect(within(matrix).getByRole("columnheader", { name: "Kimi 备用渠道" })).toHaveAttribute("data-crosshair", "true")
+    expect(within(matrix).getByRole("rowheader", { name: /Kimi K3/ })).toHaveAttribute("data-crosshair", "true")
+    expect(configured.closest("td")).not.toHaveAttribute("data-crosshair")
+    await user.unhover(unconfigured)
+    expect(unconfigured).not.toHaveAttribute("data-intersection")
+    await user.hover(configured)
+    expect(configured.closest("td")).toHaveAttribute("data-intersection", "true")
+    expect(within(matrix).getByRole("columnheader", { name: "OpenAI 主渠道" })).toHaveAttribute("data-crosshair", "true")
   })
 })
 

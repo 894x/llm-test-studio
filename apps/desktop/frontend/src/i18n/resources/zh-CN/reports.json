@@ -1,7 +1,8 @@
 {
+  "search": { "label": "搜索报告", "placeholder": "结论、计划、模型、渠道或编号" },
   "title": "测试报告",
   "detailTitle": "报告详情",
-  "description": "查看 Go Core 封存的结论、指标、请求明细与同源导出",
+  "description": "查看测试结论、指标与请求明细",
   "detailDescription": "查看 {{name}} 的指标与请求明细",
   "generic": "报告",
   "count": "{{count}} 份报告",

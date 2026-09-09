@@ -9,6 +9,33 @@ import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./dat
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
+  it("filters reports by multiple fields and preserves the query when returning from details", async () => {
+    const user = userEvent.setup()
+    const reportID = "77777777-7777-4777-8777-777777777771"
+    const snapshot = quickSnapshot(reportID, "全部请求成功")
+    snapshot.reports[0].model_name = "Alpha-model"
+    snapshot.reports[0].channel_name = "渠道乙"
+    snapshot.reports.push({ ...snapshot.reports[0], id: "77777777-7777-4777-8777-777777777772", model_name: "Beta-model" })
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={snapshot} getDetail={async () => quickDetail(reportID) as unknown as ReportDetail}
+      exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const input = screen.getByRole("searchbox", { name: "搜索报告" })
+    await user.type(input, "ALPHA 渠道乙")
+    expect(screen.getByRole("table")).toHaveTextContent("Alpha-model")
+    expect(screen.getByRole("table")).not.toHaveTextContent("Beta-model")
+    await user.click(within(screen.getByRole("table")).getByRole("button"))
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    expect(screen.getByRole("searchbox")).toHaveValue("ALPHA 渠道乙")
+    await user.type(screen.getByRole("searchbox"), " unmatched")
+    expect(screen.getByText("未找到匹配项")).toBeInTheDocument()
+    expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("searchbox")).toHaveValue("")
+    expect(screen.getByRole("table")).toHaveTextContent("Beta-model")
+  })
+
   it("shows archived cache totals and rounds rate and latency displays without changing the report", async () => {
     const user = userEvent.setup()
     const reportID = "77777777-7777-4777-8777-777777777771"

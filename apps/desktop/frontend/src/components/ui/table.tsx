@@ -6,7 +6,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <table
       data-slot="table"
-      className={cn("w-full border-separate border-spacing-x-0 border-spacing-y-0.5 caption-bottom text-sm", className)}
+      className={cn("w-full border-separate border-spacing-0 caption-bottom text-sm", className)}
       {...props}
     />
   )
@@ -16,7 +16,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("bg-background [&>tr>*]:bg-table-header [&>tr>:first-child]:rounded-l-md [&>tr>:last-child]:rounded-r-md", className)}
+      className={cn("table-header-surface sticky top-0 z-20 bg-background [&>tr>*]:bg-table-header [&>tr>:first-child]:rounded-l-md [&>tr>:last-child]:rounded-r-md", className)}
       {...props}
     />
   )

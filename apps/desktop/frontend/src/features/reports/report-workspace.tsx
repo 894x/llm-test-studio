@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { CatalogSearch, CatalogSearchEmpty } from "@/features/catalog/catalog-search"
+import { useCatalogSearch } from "@/features/catalog/use-catalog-search"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -52,7 +54,12 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   } | null>(null)
   const exportDocumentRef = useRef<HTMLElement>(null)
   const exportDocumentReadyRef = useRef<((element: HTMLElement) => void) | null>(null)
-  const selected = snapshot.reports.find((report) => report.id === selectedID) ?? snapshot.reports[0]
+  const search = useCatalogSearch(snapshot.reports, (report) => [
+    report.id, report.run_id ?? "", displayReportVerdict(report, t), displayReportPlan(report, t),
+    report.model_name, report.channel_name,
+  ])
+  const selectableReports = viewingReportID ? snapshot.reports : search.rows
+  const selected = selectableReports.find((report) => report.id === selectedID) ?? selectableReports[0]
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
   const detailError = detailState.reportID === selectedReportID && detailState.error ? t("detailError") : ""
@@ -146,14 +153,15 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     <PageFrame
       title={t(isViewingReport ? "detailTitle" : "title")}
       description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
-      count={isViewingReport ? undefined : t("count", { count: snapshot.reports.length })}
-      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : undefined}
+      actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : (
+        <CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: snapshot.reports.length })} />
+      )}
       inspector={selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
     >
-      {snapshot.reports.length === 0 ? (
+      {search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={search.clear} /> : snapshot.reports.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>
         </ScrollArea>
@@ -168,7 +176,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
               <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 w-[88px] pl-2 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-2 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
-              <TableBody>{snapshot.reports.map((report) => (
+              <TableBody>{search.rows.map((report) => (
                 <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="h-11">
                   <TableCell className="py-1 pl-2"><ConclusionBadge passed={report.passed} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>

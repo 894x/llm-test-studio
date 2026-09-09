@@ -234,6 +234,37 @@
   }
 }
 
+/* Paint an opaque rectangle below the rounded header cells, including in
+   browsers that do not composite a sticky table section's background. */
+.table-header-surface {
+  isolation: isolate;
+}
+
+.table-header-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -2px;
+  z-index: -1;
+  background: var(--background);
+  pointer-events: none;
+}
+
+/* Matrix axes use an opaque fill so fixed labels also cover scrolled cells. */
+.catalog-matrix tbody > tr:hover > * {
+  background: var(--background);
+}
+
+.catalog-matrix [data-crosshair="true"],
+.catalog-matrix tbody > tr:hover > [data-crosshair="true"] {
+  background: color-mix(in srgb, var(--foreground) 8%, var(--background));
+}
+
+.catalog-matrix [data-intersection="true"],
+.catalog-matrix tbody > tr:hover > [data-intersection="true"] {
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 24%, var(--background));
+}
+
 /* Sticky cells cover scrolled content even at their rounded corners. */
 .table-sticky-cell {
   isolation: isolate;

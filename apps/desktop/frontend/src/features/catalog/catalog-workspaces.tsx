@@ -187,6 +187,14 @@ function ModelChannelMatrix({
   onSelect: (id: string) => void
 }) {
   const { t: tx } = useTranslation()
+  const [hovered, setHovered] = useState<{ modelID: string; channelID: string } | null>(null)
+  const [focused, setFocused] = useState<{ modelID: string; channelID: string } | null>(null)
+  const highlighted = hovered ?? focused
+  const cellHighlight = (modelID: string, channelID: string) => ({
+    "data-crosshair": (modelID !== "" && highlighted?.modelID === modelID) || (channelID !== "" && highlighted?.channelID === channelID) || undefined,
+    "data-intersection": (modelID !== "" && channelID !== "" && highlighted?.modelID === modelID && highlighted?.channelID === channelID) || undefined,
+    onMouseEnter: () => setHovered({ modelID, channelID }),
+  })
   const mappingsByBinding = useMemo(
     () => new Map(
       catalog.channel_models.map((mapping) => [
@@ -208,14 +216,15 @@ function ModelChannelMatrix({
 
   return (
     <ScrollArea className="min-h-0 flex-1 px-4">
-      <Table aria-label={tx("desktop:catalog_model_and_channel_configuration_matrix")} className="w-max min-w-full table-fixed">
+      <Table aria-label={tx("desktop:catalog_model_and_channel_configuration_matrix")} className="catalog-matrix w-max min-w-full table-fixed" onMouseLeave={() => setHovered(null)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null) }}>
         <TableHeader className="sticky top-0 z-20 bg-background">
           <TableRow className="hover:bg-transparent">
-            <TableHead className="table-sticky-cell sticky left-0 z-30 h-12 w-[176px] min-w-[176px] bg-background pl-2 text-[11px]">
+            <TableHead onMouseEnter={() => setHovered(null)} className="table-sticky-cell sticky left-0 z-30 h-12 w-[176px] min-w-[176px] bg-background pl-2 text-[11px]">
                {tx("desktop:catalog_logical_model_channel")} </TableHead>
             {catalog.channels.map((channel) => (
               <TableHead
                 key={channel.id}
+                {...cellHighlight("", channel.id)}
                 aria-label={channel.name}
                 className="h-12 w-[184px] min-w-[184px] px-3 py-1.5"
               >
@@ -234,6 +243,7 @@ function ModelChannelMatrix({
             <TableRow key={model.id} className="hover:bg-transparent">
               <TableHead
                 scope="row"
+                {...cellHighlight(model.id, "")}
                 className="table-sticky-cell sticky left-0 z-10 h-16 w-[176px] min-w-[176px] bg-background pl-2"
               >
                 <div className="max-w-[152px] truncate text-xs font-medium" title={model.name}>
@@ -249,6 +259,7 @@ function ModelChannelMatrix({
                   return (
                     <TableCell
                       key={channel.id}
+                      {...cellHighlight(model.id, channel.id)}
                       aria-label={tx("desktop:catalog_value_is_not_configured_on_value", { value1: model.name, value2: channel.name })}
                       className="h-16 w-[184px] min-w-[184px] px-3 py-2 text-center text-[11px] text-muted-foreground"
                     >
@@ -258,6 +269,7 @@ function ModelChannelMatrix({
                 return (
                   <TableCell
                     key={channel.id}
+                    {...cellHighlight(model.id, channel.id)}
                     data-state={mapping.id === selectedID ? "selected" : undefined}
                     className="h-16 w-[184px] min-w-[184px] p-0"
                   >
@@ -267,7 +279,8 @@ function ModelChannelMatrix({
                       aria-pressed={mapping.id === selectedID}
                       aria-label={tx("desktop:catalog_view_value_mapping_on_value_value", { value1: model.name, value2: channel.name, value3: mapping.upstream_model_name })}
                       onClick={() => onSelect(mapping.id)}
-                      className="h-full w-full min-w-0 flex-col items-start gap-0.5 rounded-md aria-pressed:bg-surface-active px-3 py-2 text-left"
+                      onFocus={() => setFocused({ modelID: model.id, channelID: channel.id })}
+                      className="h-full w-full min-w-0 flex-col items-start gap-0.5 rounded-md hover:bg-transparent aria-pressed:bg-surface-active px-3 py-2 text-left"
                     >
                       <Badge variant="outline" className="h-4 border-success/25 bg-success-soft px-1.5 text-[10px] text-success-strong">
                          {tx("desktop:catalog_configured")} </Badge>
@@ -296,7 +309,7 @@ function ModelChannelMatrix({
 function MappingTable({ mappings, selectedID, onSelect, channelNames, modelNames }: { mappings: CatalogChannelModel[]; selectedID: string; onSelect: (id: string) => void; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
   const { t } = useTranslation("catalog")
   if (!mappings.length) return <CatalogEmpty title={t("models.mappingEmpty")} description={t("models.mappingEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="pl-2">{t("common.channel")}</TableHead><TableHead>{t("models.logicalModel")}</TableHead><TableHead>{t("models.upstreamName")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-2 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.channel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.logicalModel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.upstreamName")}</TableHead><TableHead className="h-8 text-[11px]">{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="pl-2 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function MappingInspector({ mapping, channelNames, modelNames }: { mapping: CatalogChannelModel; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
@@ -346,9 +359,6 @@ function ModelTable({
                 >
                   {model.name}
                 </Button>
-                <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                  {model.id}
-                </div>
               </TableCell>
               <TableCell className="py-1 text-xs">{PROTOCOL_LABELS[model.protocol]}</TableCell>
               <TableCell className="py-1 text-[11px] text-muted-foreground">
@@ -378,7 +388,14 @@ function ChannelTable({
   }
   return (
     <ScrollArea className="min-h-0 flex-1 px-4">
-      <Table aria-label={t("models.channelAria")} className="min-w-[700px] table-fixed">
+      <Table aria-label={t("models.channelAria")} className="table-fixed">
+        <colgroup>
+          <col className="w-[28%]" />
+          <col className="w-20" />
+          <col />
+          <col className="w-16" />
+          <col className="w-24" />
+        </colgroup>
         <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-8 pl-2 text-[11px]">{t("common.channel")}</TableHead>
@@ -573,7 +590,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
 function SuiteTable({ suites, selectedID, onSelect }: { suites: CatalogSuite[]; selectedID: string; onSelect: (id:string) => void }) {
   const { t } = useTranslation("catalog")
   if (!suites.length) return <CatalogEmpty title={t("cases.suiteEmpty")} description={t("cases.suiteEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("cases.suiteAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="pl-2">{t("common.suite")}</TableHead><TableHead>{t("cases.caseCount")}</TableHead><TableHead>{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-2 text-xs">{suite.name}</TableCell><TableCell className="text-xs">{suite.case_count}</TableCell><TableCell className="text-xs">r{suite.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("cases.suiteAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.suite")}</TableHead><TableHead className="h-8 w-24 text-right text-[11px]">{t("cases.caseCount")}</TableHead></TableRow></TableHeader><TableBody>{suites.map(suite => <TableRow key={suite.id} data-state={suite.id === selectedID ? "selected" : undefined} onClick={() => onSelect(suite.id)}><TableCell className="pl-2 text-xs">{suite.name}</TableCell><TableCell className="text-right text-xs tabular-nums">{suite.case_count}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: CatalogSnapshot }) {

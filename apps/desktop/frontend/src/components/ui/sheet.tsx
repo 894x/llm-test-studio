@@ -61,7 +61,7 @@ function SheetContent({
   return (
     <SheetPortal>
       <SheetOverlay />
-      <SheetPrimitive.Content
+      <SheetSurface
         data-slot="sheet-content"
         data-side={side}
         className={cn(
@@ -84,9 +84,22 @@ function SheetContent({
             </Button>
           </SheetPrimitive.Close>
         )}
-      </SheetPrimitive.Content>
+      </SheetSurface>
     </SheetPortal>
   )
+}
+
+function SheetSurface({ className, onAnimationEnd, ...props }: React.ComponentProps<typeof SheetPrimitive.Content>) {
+  const [entered, setEntered] = React.useState(false)
+  return <SheetPrimitive.Content
+    {...props}
+    className={cn(className, entered && "data-open:animate-none")}
+    onAnimationEnd={(event) => {
+      // Descendant popups must not change the sheet's animation lifecycle.
+      if (event.target === event.currentTarget && event.currentTarget.dataset.state === "open") setEntered(true)
+      onAnimationEnd?.(event)
+    }}
+  />
 }
 
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {

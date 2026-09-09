@@ -59,7 +59,7 @@ export function CatalogEditor({
           {!item ? <PlusIcon data-icon="inline-start" /> : null}{title}
         </Button>
       </SheetTrigger>
-      <SheetContent className={kind === "plan" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" : "sm:max-w-lg"} onEscapeKeyDown={(event) => {
+      <SheetContent className={kind === "case" || kind === "suite" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-3xl" : kind === "plan" ? "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" : "sm:max-w-lg"} onEscapeKeyDown={(event) => {
         if (event.target instanceof HTMLElement && event.target.matches('[role="combobox"][aria-expanded="true"]')) event.preventDefault()
       }}>
         <SheetHeader>
@@ -323,7 +323,7 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
     <TextField label={tx("desktop:catalog_suite_name")} value={name} onChange={setName} />
     <SelectField label={tx("desktop:catalog_protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
     <TextField label={tx("desktop:catalog_target_model")} value={modelTarget} onChange={setModelTarget} description={tx("desktop:catalog_enter_the_model_identifier_used_by_the_channel_each_suite")} />
-    <ChoiceList label={tx("desktop:catalog_included_cases")} values={availableCases.map((value) => ({ id: value.id, label: `${value.name} · r${value.revision}` }))} selected={selected} onChange={setSelected} />
+    <ChoiceList multiColumn label={tx("desktop:catalog_included_cases")} values={availableCases.map((value) => ({ id: value.id, label: value.name }))} selected={selected} onChange={setSelected} />
   </FormShell>
 }
 
@@ -588,12 +588,12 @@ function CheckField({ fieldKey, label, checked, onChange, clearFields = [], cont
   const errorID = `${id}-error`
   return <Field data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields = [] }: { fieldKey?: string; label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
+function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields = [], multiColumn = false }: { multiColumn?: boolean; fieldKey?: string; label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
   const { t: tx } = useTranslation()
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, clearFields, label)
   const errorID = `${catalogFieldID(key)}-error`
-  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />) : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
+  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? <div className={multiColumn ? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-4 gap-y-2 [&>[data-slot=field]]:min-w-0 [&_[data-slot=field-label]]:[overflow-wrap:anywhere]" : "space-y-2"}>{values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />)}</div> : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
 }
 
 function StageNumberField({ label, value, minimum, maximum, placeholder, onChange }: { label: string; value: string | number; minimum: number; maximum: number; placeholder?: string; onChange: (value: string) => void }) {

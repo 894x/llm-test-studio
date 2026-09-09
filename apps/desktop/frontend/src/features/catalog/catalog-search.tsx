@@ -8,16 +8,17 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { useCatalogSearch } from "./use-catalog-search"
 
-export function CatalogSearch({ search: { query, setQuery, clear, inputRef, total, matches }, label, placeholder }: {
+export function CatalogSearch({ search: { query, setQuery, clear, inputRef, total, matches }, label, placeholder, totalLabel }: {
   search: Pick<ReturnType<typeof useCatalogSearch>, "query" | "setQuery" | "clear" | "inputRef" | "total" | "matches">
   label: string
   placeholder: string
+  totalLabel?: string
 }) {
   const { t } = useTranslation("catalog")
   return (
     <div className="ml-auto flex min-w-0 max-w-full items-center gap-2">
       <span role="status" className="w-24 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-        {query.trim() ? t("search.matches", { matches, total }) : ""}
+        {query.trim() ? t("search.matches", { matches, total }) : totalLabel ?? ""}
       </span>
       <InputGroup className="w-64 max-w-full">
         <InputGroupAddon className="pl-1"><SearchIcon className="size-4" aria-hidden="true" /></InputGroupAddon>

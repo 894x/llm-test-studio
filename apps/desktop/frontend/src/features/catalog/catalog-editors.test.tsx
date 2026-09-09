@@ -259,7 +259,7 @@ describe("CatalogEditor filesystem suite", () => {
     await user.type(screen.getByLabelText("套件标识"), "gpt-5.2-smoke")
     await user.type(screen.getByLabelText("套件名称"), "GPT-5.2 smoke")
     await user.type(screen.getByLabelText("目标模型"), "gpt-5.2")
-    const matchingChoices = screen.getAllByRole("checkbox", { name: "Basic chat · r7" })
+    const matchingChoices = screen.getAllByRole("checkbox", { name: "Basic chat" })
     expect(matchingChoices[0].id).not.toBe(matchingChoices[1].id)
     const caseChoice = matchingChoices[0]
     await user.click(caseChoice)
