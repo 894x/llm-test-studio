@@ -114,14 +114,14 @@ type htmlReport struct {
 	Metrics      []namedMetric
 	SLA          []namedMetric
 	Issues       []string
-	Suites       []htmlSuiteReport
+	Suites       []htmlEntryReport
 	Unassigned   []resultRow
 	GeneratedUTC string
 }
 
-type htmlSuiteReport struct {
+type htmlEntryReport struct {
 	Index      int
-	Detail     SuiteDetail
+	Detail     EntryDetail
 	Status     string
 	Conclusion string
 	Metrics    []namedMetric
@@ -206,27 +206,27 @@ func reportHTMLView(detail Detail, watermark, locale string) htmlReport {
 	return htmlReport{
 		Detail: detail, Watermark: watermark, Language: locale, Labels: exportHTMLLabels(locale), Conclusion: localizedVerdict(detail.Report.Conclusion.Verdict, locale),
 		Metrics: sortedMetrics(detail.Report.Metrics), SLA: sortedMetrics(detail.Report.SLA),
-		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Suites: htmlSuiteReports(detail.Suites, locale),
+		Issues: append([]string(nil), detail.Report.Conclusion.Issues...), Suites: htmlEntryReports(detail.Entries, locale),
 		Unassigned:   resultRows(detail.UnassignedRequestResults),
 		GeneratedUTC: detail.Report.GeneratedAt.Format("2006-01-02 15:04:05 UTC"),
 	}
 }
 
-func htmlSuiteReports(suites []SuiteDetail, locale string) []htmlSuiteReport {
-	reports := make([]htmlSuiteReport, 0, len(suites))
+func htmlEntryReports(suites []EntryDetail, locale string) []htmlEntryReport {
+	reports := make([]htmlEntryReport, 0, len(suites))
 	for suiteIndex, suite := range suites {
 		cases := make([]htmlCaseReport, 0, len(suite.Cases))
 		for caseIndex, testCase := range suite.Cases {
 			status := "-"
 			if testCase.SummaryResult != nil {
-				status = localizedResultStatus(testCase.SummaryResult.Success.Overall(), locale)
+				status = localizedVerdict(string(testCase.SummaryResult.Verification.Status), locale)
 			}
 			cases = append(cases, htmlCaseReport{
 				Index: caseIndex + 1, Detail: testCase, Status: status,
 				Results: resultRows(testCase.RequestResults),
 			})
 		}
-		reports = append(reports, htmlSuiteReport{
+		reports = append(reports, htmlEntryReport{
 			Index: suiteIndex + 1, Detail: suite,
 			Status:     localizedSuiteStatus(suite.Status, locale),
 			Conclusion: localizedVerdict(suite.Conclusion.Verdict, locale),
@@ -263,13 +263,13 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 		Source         ReportSource    `json:"source"`
 		Report         domain.Report   `json:"report"`
 		RequestResults []domain.Result `json:"request_results"`
-		Suites         []SuiteDetail   `json:"suites"`
+		Suites         []EntryDetail   `json:"entries"`
 		Unassigned     []domain.Result `json:"unassigned_request_results"`
 		Performance    any             `json:"performance,omitempty"`
 	}{
 		Watermark: watermark, SchemaVersion: detail.SchemaVersion, Source: detail.Source,
 		Report: detail.Report, RequestResults: detail.RequestResults,
-		Suites: detail.Suites, Unassigned: detail.UnassignedRequestResults,
+		Suites: detail.Entries, Unassigned: detail.UnassignedRequestResults,
 		Performance: performance,
 	}, "", "  ")
 }
@@ -346,28 +346,28 @@ func localizedVerdict(verdict, locale string) string {
 	return verdict
 }
 
-func localizedSuiteStatus(status domain.SuiteReportStatus, locale string) string {
+func localizedSuiteStatus(status domain.EntryReportStatus, locale string) string {
 	if locale == "en-US" {
 		switch status {
-		case domain.SuiteReportCompleted:
+		case domain.EntryReportCompleted:
 			return "Completed"
-		case domain.SuiteReportFailed:
+		case domain.EntryReportFailed:
 			return "Failed"
-		case domain.SuiteReportCancelled:
+		case domain.EntryReportCancelled:
 			return "Cancelled"
-		case domain.SuiteReportNotStarted:
+		case domain.EntryReportNotStarted:
 			return "Not started"
 		}
 		return string(status)
 	}
 	switch status {
-	case domain.SuiteReportCompleted:
+	case domain.EntryReportCompleted:
 		return "已完成"
-	case domain.SuiteReportFailed:
+	case domain.EntryReportFailed:
 		return "失败"
-	case domain.SuiteReportCancelled:
+	case domain.EntryReportCancelled:
 		return "已取消"
-	case domain.SuiteReportNotStarted:
+	case domain.EntryReportNotStarted:
 		return "未开始"
 	}
 	return string(status)
@@ -443,7 +443,7 @@ func resultRows(results []domain.Result) []resultRow {
 	for _, result := range results {
 		status := "passed"
 		errorCode := ""
-		if !result.Success.Overall() {
+		if !result.Passed() {
 			status = "failed"
 			errorCode = string(result.ErrorCode)
 		}
@@ -493,16 +493,16 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 <h2>{{.Labels.CoreMetrics}}</h2><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h2>SLA</h2><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} samples</span></div>{{end}}</section>
-{{range .Suites}}<section class="suite" data-suite-entry-id="{{.Detail.SuiteEntryID}}" data-suite-status="{{.Detail.Status}}" data-suite-conclusion="{{.Detail.Conclusion.Verdict}}">
-<h2>{{$.Labels.Suite}} {{.Index}}: {{.Detail.SuiteName}}</h2>
-<p class="muted"><strong>{{.Detail.SuiteKey}}</strong> · {{$.Labels.Entry}} {{.Detail.SuiteEntryID}} · Suite ID {{.Detail.SuiteID}} · {{$.Labels.Revision}} {{.Detail.SuiteRevision}}</p>
+{{range .Suites}}<section class="suite" data-suite-entry-id="{{.Detail.EntryID}}" data-suite-status="{{.Detail.Status}}" data-suite-conclusion="{{.Detail.Conclusion.Verdict}}">
+<h2>{{$.Labels.Suite}} {{.Index}}: {{.Detail.Name}}</h2>
+<p class="muted"><strong>{{.Detail.Key}}</strong> · {{$.Labels.Entry}} {{.Detail.EntryID}} · {{.Detail.Protocol}} · seed {{.Detail.Seed}} · {{.Detail.Parameters}} · warmup {{.Detail.WarmupCount}} · {{.Detail.Settings}}</p>
 <h3 class="{{if .Detail.Conclusion.Passed}}pass{{else}}fail{{end}}">{{$.Labels.Status}}: {{.Status}} · {{$.Labels.Conclusion}}: {{.Conclusion}}</h3>
 {{if .Issues}}<ul class="issues">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>{{end}}
 <h3>{{$.Labels.CoreMetrics}}</h3><section class="grid">{{range .Metrics}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h3>SLA</h3><section class="grid">{{range .SLA}}<div class="card"><strong>{{.Value}} {{.Unit}}</strong><span>{{.Name}} · {{.Samples}} {{$.Labels.Samples}}</span></div>{{end}}</section>
 <h3>{{$.Labels.Cases}} ({{len .Cases}})</h3>
 {{range .Cases}}<section class="case" data-case-id="{{.Detail.CaseID}}"><h4>{{$.Labels.Case}} {{.Index}}: {{.Detail.Name}} [{{.Detail.Key}}]</h4>
-<p class="muted">{{$.Labels.Type}} {{.Detail.CaseType}} v{{.Detail.CaseTypeVersion}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Status}} {{.Status}}</p>
+<p class="muted">{{$.Labels.Type}} {{.Detail.Protocol}} v{{.Detail.Revision}} · {{$.Labels.Revision}} {{.Detail.Revision}} · {{$.Labels.Status}} {{.Status}}</p>
 <h4>{{$.Labels.RequestDetails}} ({{len .Results}})</h4><div class="scroll"><table><thead><tr><th>{{$.Labels.Request}}</th><th>{{$.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{$.Labels.TTFTAny}} ms</th><th>{{$.Labels.TTFTVisible}} ms</th><th>{{$.Labels.TTST}} ms</th><th>{{$.Labels.ObservedICL}} ms</th><th>{{$.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{$.Labels.Queue}} ms</th><th>{{$.Labels.Input}}</th><th>{{$.Labels.Output}}</th><th>{{$.Labels.Error}}</th></tr></thead><tbody>{{range .Results}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
 </section>{{end}}
 {{if .Unassigned}}<section class="suite"><h2>{{.Labels.Unassigned}} ({{len .Unassigned}})</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Request}}</th><th>{{.Labels.Status}}</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Queue}} ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Unassigned}}<tr><td>{{.RequestID}}</td><td>{{if eq .Status "passed"}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.E2E}}</td><td>{{.TTFB}}</td><td>{{.TTFT}}</td><td>{{.TTFTVisible}}</td><td>{{.TTST}}</td><td>{{.ObservedICL}}</td><td>{{.SemanticChunk}}</td><td>{{.TPOT}}</td><td>{{.Queue}}</td><td>{{.Input}}</td><td>{{.Output}}</td><td>{{.Error}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
@@ -589,10 +589,10 @@ const formalPNGResultLimitPerCase = 3
 
 func formalReportImageLines(detail Detail) []string {
 	lines := make([]string, 0)
-	for suiteIndex, suite := range detail.Suites {
+	for suiteIndex, suite := range detail.Entries {
 		lines = append(lines,
-			fmt.Sprintf("SUITE %d %s [%s]", suiteIndex+1, suite.SuiteName, suite.SuiteKey),
-			fmt.Sprintf("ENTRY %s  SUITE ID %s  REVISION %d", suite.SuiteEntryID, suite.SuiteID, suite.SuiteRevision),
+			fmt.Sprintf("SUITE %d %s [%s]", suiteIndex+1, suite.Name, suite.Key),
+			fmt.Sprintf("ENTRY %s  TARGET %s  PROTOCOL %s", suite.EntryID, suite.TargetID, suite.Protocol),
 			fmt.Sprintf("STATUS %s  CONCLUSION %s", suite.Status, suite.Conclusion.Verdict),
 		)
 		for _, metric := range sortedMetrics(suite.Metrics) {
@@ -605,11 +605,11 @@ func formalReportImageLines(detail Detail) []string {
 		for caseIndex, testCase := range suite.Cases {
 			caseStatus := "NOT AVAILABLE"
 			if testCase.SummaryResult != nil {
-				caseStatus = strings.ToUpper(resultStatus(testCase.SummaryResult.Success.Overall()))
+				caseStatus = strings.ToUpper(resultStatus(testCase.SummaryResult.Passed()))
 			}
 			lines = append(lines,
 				fmt.Sprintf("CASE %d %s [%s]", caseIndex+1, testCase.Name, testCase.Key),
-				fmt.Sprintf("CASE ID %s  TYPE %s V%d  REVISION %d  STATUS %s", testCase.CaseID, testCase.CaseType, testCase.CaseTypeVersion, testCase.Revision, caseStatus),
+				fmt.Sprintf("CASE ID %s  TYPE %s V%d  REVISION %d  STATUS %s", testCase.CaseID, testCase.Protocol, testCase.Revision, testCase.Revision, caseStatus),
 				fmt.Sprintf("REQUEST RESULTS %d", len(testCase.RequestResults)),
 			)
 			rows := resultRows(testCase.RequestResults)

@@ -123,22 +123,16 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (string
 	if err != nil {
 		return "", err
 	}
-	if !contains(plan.ModelIDs, command.ModelID) {
-		return "", ErrNotReady
-	}
 	channelRefs := make([]domain.EntityRevisionRef, len(command.ChannelIDs))
 	var modelRevision uint64
 	var protocol domain.Protocol
 	for index, channelID := range command.ChannelIDs {
-		if !contains(plan.ChannelIDs, channelID) {
-			return "", ErrNotReady
-		}
 		model, channel, mapping, resolveErr := service.repository.ResolvePlanTargetSelection(ctx, plan, command.ModelID, channelID)
 		if resolveErr != nil {
 			return "", resolveErr
 		}
 		if model.ID != command.ModelID || !channel.Enabled || channel.CredentialID == "" ||
-			mapping.ChannelID != channel.ID || mapping.ModelID != model.ID || channel.Protocol != model.Protocol {
+			mapping.ChannelID != channel.ID || mapping.ModelID != model.ID || channel.Protocol != model.Protocol || model.Protocol != plan.Protocol {
 			return "", ErrNotReady
 		}
 		if index == 0 {

@@ -23,7 +23,7 @@ func TestQuickTaskExplicitCredentialRememberReplayAndForget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer service.Close()
-	command := runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "model", BaseURL: "https://example.test", APIKey: "temporary-secret"}
+	command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "model", BaseURL: "https://example.test", APIKey: "temporary-secret"}
 	id, err := service.PrepareQuickTask(ctx, command)
 	if err != nil {
 		t.Fatal(err)

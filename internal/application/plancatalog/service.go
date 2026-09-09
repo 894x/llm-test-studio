@@ -18,7 +18,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentFileSchemaVersion = 3
+const CurrentFileSchemaVersion = 4
 
 var (
 	ErrInvalid  = errors.New("plan catalog: invalid input")
@@ -33,25 +33,23 @@ type Document struct {
 	domain.Plan
 }
 
-// documentV3 enumerates the strict authored file shape so unknown or misplaced
+// authoredDocument enumerates the single current file shape so unknown or misplaced
 // execution fields fail decoding at the catalog boundary.
-type documentV3 struct {
+type authoredDocument struct {
 	FileSchemaVersion int `json:"file_schema_version"`
 	domain.EntityMeta
-	Name       string                  `json:"name"`
-	ModelIDs   []string                `json:"model_ids"`
-	ChannelIDs []string                `json:"channel_ids"`
-	Suites     []domain.PlanSuiteEntry `json:"suites"`
+	Name     string             `json:"name"`
+	Protocol domain.Protocol    `json:"protocol"`
+	Seed     uint64             `json:"seed"`
+	Entries  []domain.PlanEntry `json:"entries"`
 }
 
 func (document Document) MarshalJSON() ([]byte, error) {
-	return json.Marshal(documentV3{
+	return json.Marshal(authoredDocument{
 		FileSchemaVersion: document.FileSchemaVersion,
 		EntityMeta:        document.EntityMeta,
 		Name:              document.Name,
-		ModelIDs:          document.ModelIDs,
-		ChannelIDs:        document.ChannelIDs,
-		Suites:            document.Suites,
+		Protocol:          document.Protocol, Seed: document.Seed, Entries: document.Entries,
 	})
 }
 
@@ -61,7 +59,7 @@ func (document *Document) UnmarshalJSON(raw []byte) error {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	var decoded documentV3
+	var decoded authoredDocument
 	if err := decoder.Decode(&decoded); err != nil {
 		return err
 	}
@@ -72,8 +70,7 @@ func (document *Document) UnmarshalJSON(raw []byte) error {
 		FileSchemaVersion: decoded.FileSchemaVersion,
 		Plan: domain.Plan{
 			EntityMeta: decoded.EntityMeta,
-			Name:       decoded.Name, ModelIDs: decoded.ModelIDs, ChannelIDs: decoded.ChannelIDs,
-			Suites: decoded.Suites,
+			Name:       decoded.Name, Protocol: decoded.Protocol, Seed: decoded.Seed, Entries: decoded.Entries,
 		},
 	}
 	return nil
@@ -355,20 +352,14 @@ func clonePlans(plans []domain.Plan) []domain.Plan {
 }
 
 func clonePlan(plan domain.Plan) domain.Plan {
-	if plan.ModelIDs != nil {
-		plan.ModelIDs = append([]string{}, plan.ModelIDs...)
-	}
-	if plan.ChannelIDs != nil {
-		plan.ChannelIDs = append([]string{}, plan.ChannelIDs...)
-	}
-	if plan.Suites != nil {
-		entries := make([]domain.PlanSuiteEntry, len(plan.Suites))
-		for index, entry := range plan.Suites {
+	if plan.Entries != nil {
+		entries := make([]domain.PlanEntry, len(plan.Entries))
+		for index, entry := range plan.Entries {
 			entries[index] = entry
 			entries[index].Parameters = cloneRawMessages(entry.Parameters)
 			entries[index].SLA.Thresholds = cloneThresholds(entry.SLA.Thresholds)
 		}
-		plan.Suites = entries
+		plan.Entries = entries
 	}
 	return plan
 }

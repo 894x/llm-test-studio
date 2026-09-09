@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 const (
@@ -58,30 +60,6 @@ func (detail ProviderDetail) Validate() error {
 	return nil
 }
 
-type SuccessDimensions struct {
-	Transport bool `json:"transport"`
-	Protocol  bool `json:"protocol"`
-	Semantic  bool `json:"semantic"`
-	SLA       bool `json:"sla"`
-}
-
-func (dimensions SuccessDimensions) Overall() bool {
-	return dimensions.Transport && dimensions.Protocol && dimensions.Semantic && dimensions.SLA
-}
-
-func (dimensions SuccessDimensions) Validate() error {
-	if dimensions.Protocol && !dimensions.Transport {
-		return errors.New("protocol success requires transport success")
-	}
-	if dimensions.Semantic && !dimensions.Protocol {
-		return errors.New("semantic success requires protocol success")
-	}
-	if dimensions.SLA && !dimensions.Semantic {
-		return errors.New("SLA success requires semantic success")
-	}
-	return nil
-}
-
 type FailureKind string
 
 const (
@@ -105,50 +83,34 @@ func (kind FailureKind) Validate() error {
 	}
 }
 
-func (kind FailureKind) validateDimensions(dimensions SuccessDimensions) error {
-	consistent := false
-	switch kind {
-	case FailureNetwork, FailureTimeout, FailureCancelled:
-		consistent = !dimensions.Transport
-	case FailureHTTP, FailureProtocol, FailureRateLimit:
-		consistent = dimensions.Transport && !dimensions.Protocol
-	case FailureSemantic:
-		consistent = dimensions.Transport && dimensions.Protocol && !dimensions.Semantic
-	case FailureSLA:
-		consistent = dimensions.Transport && dimensions.Protocol && dimensions.Semantic && !dimensions.SLA
-	}
-	if !consistent {
-		return fmt.Errorf("failure kind %q does not match the failed success dimension", kind)
-	}
-	return nil
-}
-
 type Result struct {
 	EntityMeta
-	RunID        string               `json:"run_id"`
-	SuiteEntryID string               `json:"suite_entry_id,omitempty"`
-	SuiteStatus  SuiteExecutionStatus `json:"suite_status,omitempty"`
-	CaseID       string               `json:"case_id,omitempty"`
-	RequestID    string               `json:"request_id,omitempty"`
-	Success      SuccessDimensions    `json:"success"`
-	Failure      FailureKind          `json:"failure_kind,omitempty"`
-	ErrorCode    ErrorCode            `json:"error_code,omitempty"`
-	Detail       *ProviderDetail      `json:"detail,omitempty"`
-	Dimensions   map[string]string    `json:"dimensions,omitempty"`
-	Metrics      map[string]float64   `json:"metrics,omitempty"`
-	EvidenceIDs  []string             `json:"evidence_ids,omitempty"`
+	RunID           string                `json:"run_id"`
+	EntryID         string                `json:"entry_id,omitempty"`
+	EntryStatus     EntryExecutionStatus  `json:"entry_status,omitempty"`
+	CaseID          string                `json:"case_id,omitempty"`
+	RequestID       string                `json:"request_id,omitempty"`
+	ExecutionStatus ExecutionStatus       `json:"execution_status"`
+	Verification    testspec.Verdict      `json:"verification"`
+	Observation     *testspec.Observation `json:"observation,omitempty"`
+	Failure         FailureKind           `json:"failure_kind,omitempty"`
+	ErrorCode       ErrorCode             `json:"error_code,omitempty"`
+	Detail          *ProviderDetail       `json:"detail,omitempty"`
+	Dimensions      map[string]string     `json:"dimensions,omitempty"`
+	Metrics         map[string]float64    `json:"metrics,omitempty"`
+	EvidenceIDs     []string              `json:"evidence_ids,omitempty"`
 }
 
-type SuiteExecutionStatus string
+type EntryExecutionStatus string
 
 const (
-	SuiteExecutionCompleted SuiteExecutionStatus = "completed"
-	SuiteExecutionFailed    SuiteExecutionStatus = "failed"
+	EntryExecutionCompleted EntryExecutionStatus = "completed"
+	EntryExecutionFailed    EntryExecutionStatus = "failed"
 )
 
-func (status SuiteExecutionStatus) Validate() error {
+func (status EntryExecutionStatus) Validate() error {
 	switch status {
-	case SuiteExecutionCompleted, SuiteExecutionFailed:
+	case EntryExecutionCompleted, EntryExecutionFailed:
 		return nil
 	default:
 		return fmt.Errorf("unsupported suite execution status %q", status)
@@ -162,14 +124,14 @@ func (result Result) Validate() error {
 	if !IsUUID(result.RunID) {
 		return errors.New("result run id must be a canonical UUID")
 	}
-	if result.SuiteEntryID != "" && !IsUUID(result.SuiteEntryID) {
+	if result.EntryID != "" && !IsUUID(result.EntryID) {
 		return errors.New("result suite entry id must be a canonical UUID")
 	}
-	if result.SuiteStatus != "" {
-		if result.SuiteEntryID == "" {
+	if result.EntryStatus != "" {
+		if result.EntryID == "" {
 			return errors.New("suite marker requires a suite entry id")
 		}
-		if err := result.SuiteStatus.Validate(); err != nil {
+		if err := result.EntryStatus.Validate(); err != nil {
 			return err
 		}
 		if result.CaseID != "" || strings.TrimSpace(result.RequestID) != "" {
@@ -186,27 +148,33 @@ func (result Result) Validate() error {
 	if result.CaseID != "" && !IsUUID(result.CaseID) {
 		return errors.New("result case id must be a canonical UUID")
 	}
-	if err := result.Success.Validate(); err != nil {
+	if err := result.ExecutionStatus.Validate(); err != nil {
 		return err
 	}
-	if result.Success.Overall() {
-		if result.Failure != "" || result.ErrorCode != "" || result.Detail != nil {
-			return errors.New("successful result must not contain failure details")
-		}
-	} else {
+	switch result.Verification.Status {
+	case testspec.VerdictPassed, testspec.VerdictFailed, testspec.VerdictNotApplicable, testspec.VerdictIndeterminate:
+	default:
+		return errors.New("result requires an explicit verification status")
+	}
+	if result.Verification.Assertions == nil {
+		return errors.New("result assertions must be present")
+	}
+	if result.Verification.Status == testspec.VerdictNotApplicable && len(result.Verification.Assertions) != 0 {
+		return errors.New("observation-only result must not claim evaluated assertions")
+	}
+	if result.Failure != "" {
 		if err := result.Failure.Validate(); err != nil {
 			return err
 		}
-		if err := result.Failure.validateDimensions(result.Success); err != nil {
+	}
+	if result.ErrorCode != "" {
+		if err := result.ErrorCode.Validate(); err != nil {
 			return err
 		}
-		if err := result.ErrorCode.Validate(); err != nil {
-			return fmt.Errorf("failed result requires a stable error code: %w", err)
-		}
-		if result.Detail != nil {
-			if err := result.Detail.Validate(); err != nil {
-				return err
-			}
+	}
+	if result.Detail != nil {
+		if err := result.Detail.Validate(); err != nil {
+			return err
 		}
 	}
 	for name, value := range result.Dimensions {
@@ -230,4 +198,59 @@ func (result Result) Validate() error {
 		seenEvidence[evidenceID] = struct{}{}
 	}
 	return nil
+}
+
+// ExecutionStatus records transport/workflow completion independently of verification.
+type ExecutionStatus string
+
+const (
+	ExecutionCompleted ExecutionStatus = "completed"
+	ExecutionFailed    ExecutionStatus = "failed"
+	ExecutionCancelled ExecutionStatus = "cancelled"
+)
+
+func (status ExecutionStatus) Validate() error {
+	switch status {
+	case ExecutionCompleted, ExecutionFailed, ExecutionCancelled:
+		return nil
+	}
+	return fmt.Errorf("unsupported execution status %q", status)
+}
+
+func (result Result) Passed() bool { return result.Verification.Status == testspec.VerdictPassed }
+
+type VerificationSummary struct {
+	Status        testspec.VerdictStatus `json:"status"`
+	Passed        uint64                 `json:"passed"`
+	Failed        uint64                 `json:"failed"`
+	Observed      uint64                 `json:"observed"`
+	Indeterminate uint64                 `json:"indeterminate"`
+}
+
+func SummarizeVerification(results []Result) VerificationSummary {
+	summary := VerificationSummary{Status: testspec.VerdictNotApplicable}
+	for _, result := range results {
+		if result.EntryStatus != "" || result.Dimensions["phase"] == "warmup" {
+			continue
+		}
+		switch result.Verification.Status {
+		case testspec.VerdictPassed:
+			summary.Passed++
+		case testspec.VerdictFailed:
+			summary.Failed++
+		case testspec.VerdictNotApplicable:
+			summary.Observed++
+		case testspec.VerdictIndeterminate:
+			summary.Indeterminate++
+		}
+	}
+	switch {
+	case summary.Failed > 0:
+		summary.Status = testspec.VerdictFailed
+	case summary.Indeterminate > 0:
+		summary.Status = testspec.VerdictIndeterminate
+	case summary.Passed > 0:
+		summary.Status = testspec.VerdictPassed
+	}
+	return summary
 }

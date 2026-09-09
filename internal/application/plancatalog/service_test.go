@@ -51,8 +51,8 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 	}
 
 	// Public reads must not expose any of the mutable data held by the catalog.
-	got.ModelIDs[0] = "ffffffff-ffff-4fff-8fff-ffffffffffff"
-	got.Suites[0].SLA.Thresholds["e2e_p95_ms"] = 1
+	got.Entries[0].TargetID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	got.Entries[0].SLA.Thresholds["e2e_p95_ms"] = 1
 	again, err := service.GetDocument(context.Background(), document.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -102,9 +102,9 @@ func TestPlanCatalogStoresSelectedIDsWithoutTargetBindings(t *testing.T) {
 	}
 }
 
-func TestPlanCatalogRequiresSchemaThreeMultiSuiteDocuments(t *testing.T) {
-	if CurrentFileSchemaVersion != 3 {
-		t.Fatalf("CurrentFileSchemaVersion = %d, want 3", CurrentFileSchemaVersion)
+func TestPlanCatalogRequiresCurrentSchemaMultiSuiteDocuments(t *testing.T) {
+	if CurrentFileSchemaVersion != 4 {
+		t.Fatalf("CurrentFileSchemaVersion = %d, want 4", CurrentFileSchemaVersion)
 	}
 
 	service, err := New(filepath.Join(t.TempDir(), "plans"))
@@ -113,7 +113,7 @@ func TestPlanCatalogRequiresSchemaThreeMultiSuiteDocuments(t *testing.T) {
 	}
 	now := time.Date(2026, time.September, 4, 10, 30, 0, 0, time.UTC)
 	legacy := validTargetlessPlan("60000000-0000-4000-8000-000000000011", now)
-	legacy.Suites = nil
+	legacy.Entries = nil
 
 	document := Document{
 		FileSchemaVersion: CurrentFileSchemaVersion,
@@ -124,7 +124,7 @@ func TestPlanCatalogRequiresSchemaThreeMultiSuiteDocuments(t *testing.T) {
 	}
 }
 
-func TestPlanCatalogSchemaThreeJSONOmitsLegacyFlatExecutionFields(t *testing.T) {
+func TestPlanCatalogCurrentSchemaJSONOmitsLegacyFlatExecutionFields(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "plans")
 	service, err := New(root)
 	if err != nil {
@@ -150,8 +150,8 @@ func TestPlanCatalogSchemaThreeJSONOmitsLegacyFlatExecutionFields(t *testing.T) 
 			t.Fatalf("schema v2 plan contains legacy top-level field %q: %s", legacy, raw)
 		}
 	}
-	if _, found := fields["suites"]; !found {
-		t.Fatalf("schema v2 plan omits suites: %s", raw)
+	if _, found := fields["entries"]; !found {
+		t.Fatalf("schema v2 plan omits entries: %s", raw)
 	}
 }
 
@@ -530,12 +530,11 @@ func validTargetlessPlan(id string, now time.Time) domain.Plan {
 	return domain.Plan{
 		EntityMeta: domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
 		Name:       "Runtime target plan",
-		ModelIDs:   []string{},
-		ChannelIDs: []string{},
-		Suites: []domain.PlanSuiteEntry{{
-			EntryID:       "68000000-0000-4000-8000-000000000001",
-			SuiteID:       "69000000-0000-4000-8000-000000000001",
-			SuiteRevision: 1,
+		Protocol:   domain.ProtocolOpenAIChat,
+		Entries: []domain.PlanEntry{{
+			EntryID:    "68000000-0000-4000-8000-000000000001",
+			TargetID:   "69000000-0000-4000-8000-000000000001",
+			TargetKind: domain.PlanTargetSuite,
 
 			Parameters: map[string]json.RawMessage{},
 			Load: domain.LoadProfile{
@@ -550,17 +549,8 @@ func validTargetlessPlan(id string, now time.Time) domain.Plan {
 }
 
 func validTargetedDocument(id string, now time.Time) Document {
-	modelIDs := []string{
-		"61000000-0000-4000-8000-000000000001",
-		"61000000-0000-4000-8000-000000000002",
-	}
-	channelIDs := []string{
-		"62000000-0000-4000-8000-000000000001",
-		"62000000-0000-4000-8000-000000000002",
-	}
 	plan := validTargetlessPlan(id, now)
-	plan.Name = "targeted plan"
-	plan.ModelIDs, plan.ChannelIDs = modelIDs, channelIDs
+	plan.Name = "reference plan"
 	return Document{FileSchemaVersion: CurrentFileSchemaVersion, Plan: plan}
 }
 

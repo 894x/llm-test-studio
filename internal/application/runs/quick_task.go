@@ -10,25 +10,27 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 type QuickTaskCatalog interface {
-	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
+	GetSuite(context.Context, string) (domain.Suite, error)
 	GetChannel(context.Context, string) (domain.Channel, error)
 }
 
 // QuickTaskCommand selects an immutable task and either a saved channel or a
 // temporary connection. Model is the upstream identifier, not a catalog ID.
 type QuickTaskCommand struct {
-	SuiteID         string                     `json:"suite_id"`
-	SuiteRevision   uint64                     `json:"suite_revision"`
-	Model           string                     `json:"model"`
-	ChannelID       string                     `json:"channel_id,omitempty"`
-	BaseURL         string                     `json:"base_url,omitempty"`
-	APIKey          string                     `json:"api_key,omitempty"`
-	Inputs          map[string]json.RawMessage `json:"inputs"`
-	SourceRunID     string                     `json:"source_run_id,omitempty"`
-	CredentialRunID string                     `json:"credential_run_id,omitempty"`
+	SuiteID          string                     `json:"suite_id"`
+	Seed             uint64                     `json:"seed"`
+	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
+	Model            string                     `json:"model"`
+	ChannelID        string                     `json:"channel_id,omitempty"`
+	BaseURL          string                     `json:"base_url,omitempty"`
+	APIKey           string                     `json:"api_key,omitempty"`
+	Inputs           map[string]json.RawMessage `json:"inputs"`
+	SourceRunID      string                     `json:"source_run_id,omitempty"`
+	CredentialRunID  string                     `json:"credential_run_id,omitempty"`
 }
 
 func (service *Service) StartQuickTask(ctx context.Context, command QuickTaskCommand) (string, error) {
@@ -37,7 +39,7 @@ func (service *Service) StartQuickTask(ctx context.Context, command QuickTaskCom
 }
 
 func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskCommand) (string, error) {
-	if service == nil || ctx == nil || isNil(service.quickTasks) || !domain.IsUUID(command.SuiteID) || command.SuiteRevision == 0 ||
+	if service == nil || ctx == nil || isNil(service.quickTasks) || !domain.IsUUID(command.SuiteID) ||
 		command.Model == "" || command.Model != strings.TrimSpace(command.Model) || len(command.Model) > 256 || strings.ContainsFunc(command.Model, unicode.IsControl) {
 		return "", ErrInvalid
 	}
@@ -60,26 +62,28 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if err != nil {
 		return "", fmt.Errorf("load quick task: %w", err)
 	}
-	if suite.ID != command.SuiteID || suite.Revision != command.SuiteRevision || suite.QuickTest == nil || suite.Validate() != nil {
+	if suite.ID != command.SuiteID || suite.Validate() != nil || suite.ValidateCases(cases) != nil {
 		return "", ErrNotRunnable
 	}
-	if suite.ModelTarget != "" && suite.ModelTarget != command.Model {
-		return "", ErrNotRunnable
-	}
-	for _, testCase := range cases {
-		if !testCase.AppliesToModel(command.Model) {
-			return "", ErrNotRunnable
-		}
-	}
-	effective, inputs, err := suite.ApplyInputs(cases, command.Inputs)
+	inputs, caseInputs, err := suite.ResolveInputs(command.Inputs)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	for _, testCase := range effective {
-		if testCase.Validate() != nil || service.caseTypes.Validate(testCase.Protocol, testCase.Definition) != nil {
+	for _, testCase := range cases {
+		if testCase.Validate() != nil || !testCase.Enabled || service.caseTypes.Validate(testCase.Protocol, testCase.Definition) != nil {
 			return "", ErrNotRunnable
 		}
+		spec, err := testspec.Decode(testCase.Definition.Spec)
+		if err != nil {
+			return "", err
+		}
+		values, err := testspec.ValidateInputs(spec.Inputs, caseInputs[testCase.ID])
+		if err != nil {
+			return "", err
+		}
+		caseInputs[testCase.ID] = values
 	}
+
 	now := service.clock.Now()
 	meta, err := service.metaFactory(now)
 	if err != nil {
@@ -115,16 +119,24 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
 		return "", ErrNotRunnable
 	}
-	load := domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: uint64(len(cases)), RequestTimeoutMS: suite.QuickTest.TimeoutMS}
-	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": float64(suite.QuickTest.TimeoutMS)}}
-	mapping := domain.ChannelModel{EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID, UpstreamModelName: command.Model}
-	snapshot := domain.RunSnapshot{SchemaVersion: domain.FlatRunSnapshotSchemaVersion,
-		Plan: domain.EntityRevisionRef{ID: meta.ID, Revision: meta.Revision}, Mapping: &mapping,
-		Model:   domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelMeta.ID, Revision: modelMeta.Revision}, Name: command.Model, Protocol: suite.Protocol},
-		Channel: domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: suite.Protocol, UpstreamModelName: command.Model},
-		Cases:   append([]domain.CaseRevisionRef(nil), suite.Cases...), CaseDefinitions: cases, Load: load, SLA: sla, Environment: service.environment(),
-		QuickTask: &domain.QuickTaskSnapshot{Suite: suite, Inputs: inputs, SavedChannelID: command.ChannelID, CredentialRunID: command.CredentialRunID},
+	timeout := command.RequestTimeoutMS
+	if timeout == 0 {
+		timeout = 60000
 	}
+	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: timeout}
+	sla := domain.SLAProfile{Thresholds: map[string]float64{}}
+	mapping := domain.ChannelModel{EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID, UpstreamModelName: command.Model}
+	entry := domain.RunEntrySnapshot{EntryID: meta.ID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite,
+		Cases: []domain.CaseRevisionRef{}, CaseDefinitions: cases, Parameters: inputs, CaseInputs: caseInputs, Load: load, SLA: sla}
+	for _, testCase := range cases {
+		entry.Cases = append(entry.Cases, domain.CaseRevisionRef{CaseID: testCase.ID, Revision: testCase.Revision})
+	}
+	plan := domain.Plan{EntityMeta: meta, Name: suite.Name, Protocol: suite.Protocol, Seed: command.Seed, Entries: []domain.PlanEntry{{EntryID: meta.ID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Parameters: inputs, Load: load, SLA: sla}}}
+	snapshot := domain.RunSnapshot{SchemaVersion: domain.CurrentRunSnapshotSchemaVersion, Plan: domain.EntityRevisionRef{ID: meta.ID, Revision: meta.Revision}, PlanDocument: &plan, Mapping: &mapping,
+		Model:       domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelMeta.ID, Revision: modelMeta.Revision}, Name: command.Model, Protocol: suite.Protocol},
+		Channel:     domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: suite.Protocol, UpstreamModelName: command.Model},
+		Environment: service.environment(), Entries: []domain.RunEntrySnapshot{entry}, QuickTask: &domain.QuickTaskSnapshot{SavedChannelID: command.ChannelID, CredentialRunID: command.CredentialRunID}}
+
 	if snapshot.Validate() != nil {
 		return "", ErrNotRunnable
 	}
@@ -148,7 +160,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if err != nil {
 		return "", fmt.Errorf("lease quick task credential: %w", err)
 	}
-	return service.prepareRun(ctx, meta, meta.ID, snapshot, effective, lease)
+	return service.prepareRun(ctx, meta, meta.ID, snapshot, lease)
 }
 
 func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickTaskCommand) (domain.Suite, []domain.TestCase, error) {
@@ -157,15 +169,15 @@ func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickT
 		if err != nil {
 			return domain.Suite{}, nil, err
 		}
-		return snapshot.QuickTask.Suite, snapshot.CaseDefinitions, nil
+		return *snapshot.Entries[0].Suite, snapshot.Entries[0].CaseDefinitions, nil
 	}
-	suite, err := service.quickTasks.GetSuiteRevision(ctx, command.SuiteID, command.SuiteRevision)
+	suite, err := service.quickTasks.GetSuite(ctx, command.SuiteID)
 	if err != nil {
 		return domain.Suite{}, nil, err
 	}
 	cases := make([]domain.TestCase, 0, len(suite.Cases))
 	for _, ref := range suite.Cases {
-		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
+		testCase, err := service.repository.GetTestCase(ctx, ref.CaseID)
 		if err != nil {
 			return domain.Suite{}, nil, fmt.Errorf("load quick task case: %w", err)
 		}

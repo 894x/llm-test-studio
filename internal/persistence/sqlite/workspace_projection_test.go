@@ -2,8 +2,8 @@ package sqlite_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"github.com/894x/llm-test-studio/internal/testspec"
 	"reflect"
 	"testing"
 
@@ -65,9 +65,9 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	}
 	failing := domain.Result{
 		EntityMeta: entityMeta("10000000-0000-4000-8000-000000000044", 1),
-		RunID:      secondRun.Meta().ID, SuiteEntryID: fixture.result.SuiteEntryID,
+		RunID:      secondRun.Meta().ID, EntryID: fixture.result.EntryID,
 		CaseID: fixture.testCase.ID, RequestID: "request-fail",
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true},
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictFailed, Assertions: []testspec.AssertionResult{}},
 		Failure: domain.FailureSemantic, ErrorCode: domain.ErrorCode("semantic_mismatch"),
 	}
 	if err := repository.AppendResult(ctx, failing); err != nil {
@@ -101,8 +101,8 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 		t.Fatalf("first projection = %#v", first)
 	}
 	second := byID[secondRun.Meta().ID]
-	if len(second.SuiteResults) != 1 || second.SuiteResults[0].ObservedCases != 1 || second.SuiteResults[0].EntryID != fixture.result.SuiteEntryID {
-		t.Fatalf("request observations and summary must count as one Case: %#v", second.SuiteResults)
+	if len(second.EntryResults) != 1 || second.EntryResults[0].ObservedCases != 1 || second.EntryResults[0].EntryID != fixture.result.EntryID {
+		t.Fatalf("request observations and summary must count as one Case: %#v", second.EntryResults)
 	}
 	if second.Completed != 2 || second.Passed != 1 || second.Failed != 1 || second.ArtifactCount != 1 || second.Conclusion != workspace.ConclusionNone {
 		t.Fatalf("second projection = %#v", second)
@@ -122,7 +122,7 @@ func TestWorkspaceRunProjectionsStillValidateUncountedSummaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeForTamper(t, repository)
-	tamper(t, path, `UPDATE case_results SET document_json = json_set(document_json, '$.success.semantic', 'yes') WHERE id = ?`, fixture.result.ID)
+	tamper(t, path, `UPDATE case_results SET document_json = json_set(document_json, '$.verification.status', 'unknown') WHERE id = ?`, fixture.result.ID)
 	repository = reopenHardeningRepository(t, path)
 	defer repository.Close()
 	if _, err := repository.ListRunProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
@@ -152,49 +152,28 @@ func TestWorkspaceRunProjectionsUseV2SnapshotAfterCatalogPlanRowIsDeleted(t *tes
 	}
 }
 
-func TestWorkspaceRunProjectionsAcceptFlatV2QuickTask(t *testing.T) {
-	t.Parallel()
+func TestWorkspaceRunProjectionsUseCurrentSnapshotForQuickTask(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
 	fixture := newRepositoryFixture(t)
-	const quickRunID = "10000000-0000-4000-8000-000000000047"
-	runMeta := entityMeta(quickRunID, 1)
 	snapshot := fixture.run.Snapshot()
-	authoredSuite := snapshot.Suites[0]
-	load := domain.LoadProfile{
-		Mode: domain.LoadFixedConcurrency, Concurrency: 1,
-		RequestCount: 1, RequestTimeoutMS: authoredSuite.Load.RequestTimeoutMS,
-	}
-	suite := fixture.suite
-	suite.QuickTest = &domain.SuiteQuickTest{
-		Description: "Quick", TimeoutMS: load.RequestTimeoutMS,
-		Inputs: []domain.SuiteInput{},
-	}
-	snapshot.SchemaVersion = domain.FlatRunSnapshotSchemaVersion
-	snapshot.Plan = domain.EntityRevisionRef{ID: quickRunID, Revision: 1}
-	snapshot.PlanDocument = nil
-	snapshot.Cases = append([]domain.CaseRevisionRef(nil), authoredSuite.Cases...)
-	snapshot.CaseDefinitions = append([]domain.TestCase(nil), authoredSuite.CaseDefinitions...)
-	snapshot.Load = load
-	snapshot.SLA = authoredSuite.SLA
-	snapshot.Suites = nil
-	snapshot.QuickTask = &domain.QuickTaskSnapshot{
-		Suite:  suite,
-		Inputs: map[string]json.RawMessage{},
-	}
-	run, err := domain.NewRun(runMeta, quickRunID, snapshot)
+	fixture.plan.ID = fixture.run.Meta().ID
+	snapshot.Plan.ID = fixture.plan.ID
+	snapshot.PlanDocument = &fixture.plan
+	snapshot.QuickTask = &domain.QuickTaskSnapshot{}
+	run, err := domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.CreateRun(context.Background(), run); err != nil {
-		t.Fatalf("CreateRun(v2 quick task) error = %v", err)
+		t.Fatal(err)
 	}
 	projections, err := repository.ListRunProjections(context.Background())
 	if err != nil {
-		t.Fatalf("ListRunProjections(v2 quick task) error = %v", err)
+		t.Fatal(err)
 	}
-	if len(projections) != 1 || !reflect.DeepEqual(projections[0].PinnedPlan, domain.Plan{}) {
-		t.Fatalf("quick task projections = %#v", projections)
+	if len(projections) != 1 || !reflect.DeepEqual(projections[0].PinnedPlan, fixture.plan) {
+		t.Fatalf("quick projection %#v", projections)
 	}
 }
 
@@ -215,7 +194,7 @@ func TestWorkspaceRunProjectionsRejectSummaryCriticalCorruption(t *testing.T) {
 		{
 			name: "result success dimension type",
 			mutate: func(t *testing.T, path string, fixture repositoryFixture) {
-				tamper(t, path, `UPDATE case_results SET document_json = json_set(document_json, '$.success.semantic', 'yes') WHERE id = ?`, fixture.result.ID)
+				tamper(t, path, `UPDATE case_results SET document_json = json_set(document_json, '$.verification.status', 'unknown') WHERE id = ?`, fixture.result.ID)
 			},
 		},
 		{

@@ -7,24 +7,24 @@ import (
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
-	"github.com/894x/llm-test-studio/internal/casetypes"
+
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-func TestPrepareTargetStartsMiniMaxDirectlyAndPreservesModelScope(t *testing.T) {
+func TestPrepareTargetStartsMiniMaxDirectlyAndRejectsMixedProtocol(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.model.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.channel.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.mapping.UpstreamModelName = "MiniMax-H3"
 	fixture.suite.Protocol = domain.ProtocolMiniMaxVideo
-	fixture.suite.ModelTarget = fixture.mapping.UpstreamModelName
+	fixture.plan.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.testCase.Protocol = domain.ProtocolMiniMaxVideo
-	fixture.testCase.ModelTargets = []string{"MiniMax-H3"}
+
 	fixture.testCase.Definition = domain.TestCaseDefinition{
 		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:          casetypes.TypeLegacyAPIAudit, TypeVersion: 1,
-		Spec: json.RawMessage(`{"kind":"minimax_video_task_rejected","request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":3,"ratio":"16:9"}},"options":{}}`),
+		Type:          domain.CaseType("minimax-video"), TypeVersion: 1,
+		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":3,"ratio":"16:9"}},"assertions":[]}`),
 	}
 	repository := &fakeRepository{fixture: fixture}
 	store := credentials.NewMemoryStore()
@@ -48,7 +48,7 @@ func TestPrepareTargetStartsMiniMaxDirectlyAndPreservesModelScope(t *testing.T) 
 	if id, err := service.PrepareTarget(context.Background(), command); err != nil || !domain.IsUUID(id) {
 		t.Fatalf("PrepareTarget() = %q, %v", id, err)
 	}
-	repository.fixture.testCase.ModelTargets = nil
+	repository.fixture.testCase.Protocol = domain.ProtocolWanVideo
 	if _, err := service.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrNotRunnable) {
 		t.Fatalf("unscoped PrepareTarget() error = %v, want ErrNotRunnable", err)
 	}

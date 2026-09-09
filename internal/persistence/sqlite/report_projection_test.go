@@ -114,7 +114,7 @@ func TestReportProjectionsExcludeRequestObservationsFromCaseCount(t *testing.T) 
 func TestReportProjectionsMeasureDocumentBudgetsInUTF8Bytes(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	defer repository.Close()
-	fixture.report.Conclusion.Verdict = "通过"
+	fixture.report.Attachments[0].Name = "\u62a5\u544a"
 	storeFixtureReport(t, repository, fixture)
 	tamper(t, path, `UPDATE reports SET document_json = CAST(document_json AS TEXT) WHERE id = ?`, fixture.report.ID)
 
@@ -273,8 +273,8 @@ func TestReportProjectionsRejectJointReportAndResultShapeCorruption(t *testing.T
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
 	closeForTamper(t, repository)
-	tamper(t, path, `UPDATE case_results SET document_json = json_remove(document_json, '$.success') WHERE id = ?`, fixture.result.ID)
-	tamper(t, path, `UPDATE reports SET document_json = json_remove(document_json, '$.case_results[0].success') WHERE id = ?`, fixture.report.ID)
+	tamper(t, path, `UPDATE case_results SET document_json = json_remove(document_json, '$.verification') WHERE id = ?`, fixture.result.ID)
+	tamper(t, path, `UPDATE reports SET document_json = json_remove(document_json, '$.case_results[0].verification') WHERE id = ?`, fixture.report.ID)
 	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
 		_, err := repository.ListReportProjections(context.Background())
 		return err
@@ -854,8 +854,8 @@ func cloneFixtureReports(t *testing.T, path string, fixture repositoryFixture, t
 			  SELECT ?, schema_version, revision, created_at, updated_at, ?,
 			         json_set(document_json, '$.id', ?, '$.run_id', ?)
 			  FROM evidence WHERE id = ?`, []any{evidenceID, runID, evidenceID, runID, fixture.evidence.ID}},
-			{`INSERT INTO case_results(id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json)
-			  SELECT ?, schema_version, revision, created_at, updated_at, ?, suite_entry_id, case_id, request_id,
+			{`INSERT INTO case_results(id, schema_version, revision, created_at, updated_at, run_id, entry_id, case_id, request_id, document_json)
+			  SELECT ?, schema_version, revision, created_at, updated_at, ?, entry_id, case_id, request_id,
 			         json_set(document_json, '$.id', ?, '$.run_id', ?, '$.evidence_ids', json_array(?))
 			  FROM case_results WHERE id = ?`, []any{resultID, runID, resultID, runID, evidenceID, fixture.result.ID}},
 			{`INSERT INTO reports(id, schema_version, run_id, generated_at, document_json)
@@ -864,9 +864,9 @@ func cloneFixtureReports(t *testing.T, path string, fixture repositoryFixture, t
 			         '$.id', ?, '$.run_id', ?, '$.generated_at', ?,
 			         '$.case_results[0].id', ?, '$.case_results[0].run_id', ?,
 			         '$.case_results[0].evidence_ids', json_array(?),
-			         '$.suite_reports[0].case_results[0].id', ?,
-			         '$.suite_reports[0].case_results[0].run_id', ?,
-			         '$.suite_reports[0].case_results[0].evidence_ids', json_array(?),
+			         '$.entry_reports[0].case_results[0].id', ?,
+			         '$.entry_reports[0].case_results[0].run_id', ?,
+			         '$.entry_reports[0].case_results[0].evidence_ids', json_array(?),
 			         '$.evidence[0].id', ?, '$.evidence[0].run_id', ?,
 			         '$.attachments[0].artifact_id', ?, '$.attachments[0].run_id', ?
 			  ) FROM reports WHERE id = ?`, []any{

@@ -1,15 +1,28 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wan3.0-video-prime.basic",
   "name": "Wan 3.0 Prime · 基本功能测试",
   "protocol": "wan-video",
-  "model_target": "wan3.0-video-prime",
-  "case_keys": [
-    "wan30.t2v.min_duration",
-    "wan30.input.prompt_or_media_required",
-    "wan30.ratio.16_9",
-    "wan30.audio.true",
-    "wan30.prompt_extend.true",
-    "wan30.watermark.true"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "f13e891a-6069-56dd-b5aa-f1e92e25319c"
+    },
+    {
+      "case_id": "84e9981e-8f2c-5874-8027-41183e40233a"
+    },
+    {
+      "case_id": "1cc41104-625a-58ea-b5de-c015345a33c7"
+    },
+    {
+      "case_id": "b415b4ff-7377-5c4a-a90a-c666c9916ce0"
+    },
+    {
+      "case_id": "29dd1605-f3f0-5252-b798-1efb81161008"
+    },
+    {
+      "case_id": "c560c067-866b-5bd1-9d82-0849e0ee7864"
+    }
+  ],
+  "inputs": []
 }

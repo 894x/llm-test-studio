@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 func TestGeneratorAndDetailKeepRepeatedSuiteEntriesIndependentAndOrdered(t *testing.T) {
@@ -28,12 +29,12 @@ func TestGeneratorAndDetailKeepRepeatedSuiteEntriesIndependentAndOrdered(t *test
 	}
 
 	report := repository.report
-	if report.SchemaVersion != 2 || len(report.SuiteReports) != 2 {
-		t.Fatalf("report suites = %#v", report.SuiteReports)
+	if report.SchemaVersion != domain.CurrentReportSchemaVersion || len(report.EntryReports) != 2 {
+		t.Fatalf("report suites = %#v", report.EntryReports)
 	}
-	first, second := report.SuiteReports[0], report.SuiteReports[1]
-	if first.SuiteEntryID != run.Snapshot().Suites[0].EntryID || second.SuiteEntryID != run.Snapshot().Suites[1].EntryID {
-		t.Fatalf("report suite order = %q, %q", first.SuiteEntryID, second.SuiteEntryID)
+	first, second := report.EntryReports[0], report.EntryReports[1]
+	if first.EntryID != run.Snapshot().Entries[0].EntryID || second.EntryID != run.Snapshot().Entries[1].EntryID {
+		t.Fatalf("report suite order = %q, %q", first.EntryID, second.EntryID)
 	}
 	if !first.Conclusion.Passed || second.Conclusion.Passed {
 		t.Fatalf("independent suite conclusions = %#v, %#v", first.Conclusion, second.Conclusion)
@@ -41,7 +42,7 @@ func TestGeneratorAndDetailKeepRepeatedSuiteEntriesIndependentAndOrdered(t *test
 	if first.SLA["e2e_p95_ms"].Value != 50 || second.SLA["e2e_p95_ms"].Value != 50 {
 		t.Fatalf("independent suite SLA = %#v, %#v", first.SLA, second.SLA)
 	}
-	if len(report.CaseResults) != 2 || report.CaseResults[0].SuiteEntryID == report.CaseResults[1].SuiteEntryID {
+	if len(report.CaseResults) != 2 || report.CaseResults[0].EntryID == report.CaseResults[1].EntryID {
 		t.Fatalf("case results lost suite ownership: %#v", report.CaseResults)
 	}
 
@@ -49,12 +50,12 @@ func TestGeneratorAndDetailKeepRepeatedSuiteEntriesIndependentAndOrdered(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.SchemaVersion != 2 || len(detail.Suites) != 2 || len(detail.UnassignedRequestResults) != 0 {
+	if detail.SchemaVersion != CurrentDetailSchemaVersion || len(detail.Entries) != 2 || len(detail.UnassignedRequestResults) != 0 {
 		t.Fatalf("detail hierarchy = %#v", detail)
 	}
-	for index, suite := range detail.Suites {
-		if suite.SuiteEntryID != run.Snapshot().Suites[index].EntryID || len(suite.Cases) != 1 ||
-			suite.Cases[0].CaseType != "request.single" || len(suite.Cases[0].RequestResults) != 1 ||
+	for index, suite := range detail.Entries {
+		if suite.EntryID != run.Snapshot().Entries[index].EntryID || len(suite.Cases) != 1 ||
+			suite.Cases[0].Protocol != "openai-chat" || len(suite.Cases[0].RequestResults) != 1 ||
 			suite.Cases[0].SummaryResult == nil {
 			t.Fatalf("detail suite %d = %#v", index, suite)
 		}
@@ -65,23 +66,23 @@ func TestGeneratorAndDetailKeepRepeatedSuiteEntriesIndependentAndOrdered(t *test
 	}
 	var document struct {
 		SchemaVersion int           `json:"schema_version"`
-		Suites        []SuiteDetail `json:"suites"`
+		Entries       []EntryDetail `json:"entries"`
 	}
 	if err := json.Unmarshal(exported, &document); err != nil {
 		t.Fatal(err)
 	}
-	if document.SchemaVersion != 2 || len(document.Suites) != 2 || document.Suites[1].SuiteEntryID != run.Snapshot().Suites[1].EntryID {
+	if document.SchemaVersion != CurrentDetailSchemaVersion || len(document.Entries) != 2 || document.Entries[1].EntryID != run.Snapshot().Entries[1].EntryID {
 		t.Fatalf("exported detail hierarchy = %s", exported)
 	}
 }
 
-func TestBuildSuiteReportsRejectsResultsForNotStartedEntry(t *testing.T) {
+func TestBuildEntryReportsRejectsResultsForNotStartedEntry(t *testing.T) {
 	now := time.Date(2026, 9, 8, 9, 0, 0, 0, time.UTC)
 	run, results := multiSuiteReportFixture(t, now)
 	secondRequest := results[3]
 
-	if _, err := buildSuiteReports(run.Snapshot(), domain.RunCancelled, []domain.Result{secondRequest}); err == nil {
-		t.Fatal("buildSuiteReports accepted work for an entry reported as not_started")
+	if _, err := buildEntryReports(run.Snapshot(), domain.RunCancelled, []domain.Result{secondRequest}); err == nil {
+		t.Fatal("buildEntryReports accepted work for an entry reported as not_started")
 	}
 }
 
@@ -105,27 +106,25 @@ func multiSuiteReportFixture(t *testing.T, now time.Time) (domain.Run, []domain.
 		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          "request.single",
+			Type:          "openai-chat",
 			TypeVersion:   1,
-			Spec: json.RawMessage(
-				`{"assertions":[{"config":{"contains":"ok"},"kind":"text"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{"messages":[{"content":"hello","role":"user"}]},"headers":{"Content-Type":"application/json"},"method":"POST","path":"/chat/completions"}}`,
-			),
+			Spec:          json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`),
 		},
 	}
 	suite := domain.Suite{
 		EntityMeta: generatorMeta(suiteID, now), Key: "repeated", Name: "Repeated",
-		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream", Cases: []domain.CaseRevisionRef{caseRef},
+		Protocol: domain.ProtocolOpenAIChat, Cases: []domain.CaseRef{{CaseID: caseID}}, Inputs: []domain.SuiteInput{},
 	}
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
 	firstSLA := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 100}}
 	secondSLA := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 10}}
-	entries := []domain.PlanSuiteEntry{
-		{EntryID: entryOne, SuiteID: suiteID, SuiteRevision: 1, Parameters: map[string]json.RawMessage{}, Load: load, SLA: firstSLA},
-		{EntryID: entryTwo, SuiteID: suiteID, SuiteRevision: 1, Parameters: map[string]json.RawMessage{}, Load: load, SLA: secondSLA},
+	entries := []domain.PlanEntry{
+		{EntryID: entryOne, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Parameters: map[string]json.RawMessage{}, Load: load, SLA: firstSLA},
+		{EntryID: entryTwo, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Parameters: map[string]json.RawMessage{}, Load: load, SLA: secondSLA},
 	}
 	plan := domain.Plan{
 		EntityMeta: generatorMeta(planID, now), Name: "Repeated suites",
-		ModelIDs: []string{modelID}, ChannelIDs: []string{channelID}, Suites: entries,
+		Protocol: domain.ProtocolOpenAIChat, Entries: entries,
 	}
 	mapping := domain.ChannelModel{
 		EntityMeta: generatorMeta(mappingID, now), ChannelID: channelID,
@@ -149,9 +148,9 @@ func multiSuiteReportFixture(t *testing.T, now time.Time) (domain.Run, []domain.
 			OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct",
 			AppVersion: "test", EngineVersion: "test",
 		},
-		Suites: []domain.RunSuiteSnapshot{
-			{EntryID: entryOne, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef}, CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: firstSLA},
-			{EntryID: entryTwo, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef}, CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: secondSLA},
+		Entries: []domain.RunEntrySnapshot{
+			{EntryID: entryOne, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Name: suite.Name, Key: suite.Key, Suite: &suite, CaseInputs: map[string]map[string]json.RawMessage{caseID: {}}, Cases: []domain.CaseRevisionRef{caseRef}, CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: firstSLA},
+			{EntryID: entryTwo, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Name: suite.Name, Key: suite.Key, Suite: &suite, CaseInputs: map[string]map[string]json.RawMessage{caseID: {}}, Cases: []domain.CaseRevisionRef{caseRef}, CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: secondSLA},
 		},
 	}
 	run, err := domain.NewRun(generatorMeta(runID, now), planID, snapshot)
@@ -169,13 +168,13 @@ func multiSuiteReportFixture(t *testing.T, now time.Time) (domain.Run, []domain.
 		"42000000-0000-4000-8000-000000000011", "42000000-0000-4000-8000-000000000012", "42000000-0000-4000-8000-000000000013",
 		"42000000-0000-4000-8000-000000000014", "42000000-0000-4000-8000-000000000015", "42000000-0000-4000-8000-000000000016",
 	}
-	success := domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}
+	success := testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}}
 	for index, entryID := range []string{entryOne, entryTwo} {
 		base := index * 3
 		results = append(results,
-			domain.Result{EntityMeta: generatorMeta(ids[base], now), RunID: runID, SuiteEntryID: entryID, CaseID: caseID, RequestID: entryID + ":request-1", Success: success, Metrics: map[string]float64{"e2e_ms": 50}},
-			domain.Result{EntityMeta: generatorMeta(ids[base+1], now), RunID: runID, SuiteEntryID: entryID, CaseID: caseID, Success: success},
-			domain.Result{EntityMeta: generatorMeta(ids[base+2], now), RunID: runID, SuiteEntryID: entryID, SuiteStatus: domain.SuiteExecutionCompleted},
+			domain.Result{EntityMeta: generatorMeta(ids[base], now), RunID: runID, EntryID: entryID, CaseID: caseID, RequestID: entryID + ":request-1", ExecutionStatus: domain.ExecutionCompleted, Verification: success, Metrics: map[string]float64{"e2e_ms": 50}},
+			domain.Result{EntityMeta: generatorMeta(ids[base+1], now), RunID: runID, EntryID: entryID, CaseID: caseID, ExecutionStatus: domain.ExecutionCompleted, Verification: success},
+			domain.Result{EntityMeta: generatorMeta(ids[base+2], now), RunID: runID, EntryID: entryID, EntryStatus: domain.EntryExecutionCompleted},
 		)
 	}
 	return run, results

@@ -21,7 +21,7 @@ func validateReportStorage(ctx context.Context, queryer relationQueryer, report 
 	if err != nil {
 		return relationStorageError(ctx, "report run relation", err)
 	}
-	if run.Status() != report.RunStatus || !reflect.DeepEqual(run.Snapshot(), report.PlanSnapshot) {
+	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {
 		return storageCorrupt("report run relation")
 	}
 	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
@@ -100,7 +100,7 @@ func validateReportAttachments(ctx context.Context, queryer relationQueryer, rep
 
 func validateReportResults(ctx context.Context, queryer relationQueryer, report domain.Report) error {
 	rows, err := queryer.QueryContext(ctx, `
-		SELECT id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, entry_id, case_id, request_id, document_json
 		FROM case_results
 		WHERE run_id = ? AND request_id IS NULL AND case_id IS NOT NULL
 		ORDER BY created_at, id
@@ -132,12 +132,6 @@ func validateReportResults(ctx context.Context, queryer relationQueryer, report 
 		result, err := row.decode(report.RunID)
 		if err != nil {
 			return storageCorrupt("report result collection")
-		}
-		if report.PlanSnapshot.QuickTask != nil {
-			if result.SuiteEntryID != "" {
-				return storageCorrupt("report result collection")
-			}
-			result.SuiteEntryID = report.RunID
 		}
 		stored[result.ID] = result
 	}

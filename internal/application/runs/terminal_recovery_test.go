@@ -120,7 +120,7 @@ func startBlockedTerminalRecovery(t *testing.T) (*runs.Service, *terminalRecover
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+	if err := startFixtureRun(service, context.Background(), fixture); err != nil {
 		t.Fatal(err)
 	}
 	request := <-executor.entered
@@ -153,7 +153,7 @@ func TestTerminalRecoveryReconcilesCommittedWriteError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+	if err := startFixtureRun(service, context.Background(), fixture); err != nil {
 		t.Fatal(err)
 	}
 	request := <-executor.entered
@@ -217,7 +217,7 @@ func TestTerminalPersistenceRecoversWithoutRepeatingExecution(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = service.Close() })
-			if err := service.StartRun(context.Background(), fixture.plan.ID); err != nil {
+			if err := startFixtureRun(service, context.Background(), fixture); err != nil {
 				t.Fatal(err)
 			}
 			request := <-executor.entered

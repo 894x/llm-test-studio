@@ -1,11 +1,11 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -106,7 +106,7 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	if err != nil {
 		return fmt.Errorf("validate persisted run transition: %w", err)
 	}
-	if !reflect.DeepEqual(want, run) {
+	if !equalCanonicalDocuments(want, run) {
 		return errors.New("updated run must be exactly one valid state transition")
 	}
 	document, err := marshalCanonical(run)
@@ -291,7 +291,7 @@ func (row storedRunRow) decode(requireCurrent bool) (domain.Run, error) {
 		formatTime(meta.CreatedAt) != row.revisionCreated || formatTime(meta.UpdatedAt) != row.revisionUpdated ||
 		row.rootCreated != row.revisionCreated || run.PlanID() != row.planID ||
 		int64(run.Snapshot().Plan.Revision) != row.planRevision || string(run.Status()) != row.status ||
-		!reflect.DeepEqual(run.Snapshot(), snapshot) {
+		!equalCanonicalDocuments(run.Snapshot(), snapshot) {
 		return domain.Run{}, fmt.Errorf("%w: run columns do not match its document", ErrCorrupt)
 	}
 	if requireCurrent && row.sealed == 1 {
@@ -402,8 +402,7 @@ func validateRunReferences(ctx context.Context, _ relationQueryer, run domain.Ru
 }
 
 func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
-	writeable := snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion ||
-		(snapshot.SchemaVersion == domain.FlatRunSnapshotSchemaVersion && snapshot.QuickTask != nil)
+	writeable := snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion
 	if !writeable {
 		return fmt.Errorf(
 			"%w: writable run snapshot schema version %d",
@@ -636,16 +635,16 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 	if result.RequestID != "" {
 		requestID = result.RequestID
 	}
-	var suiteEntryID any
-	if result.SuiteEntryID != "" {
-		suiteEntryID = result.SuiteEntryID
+	var entryID any
+	if result.EntryID != "" {
+		entryID = result.EntryID
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO case_results(
 			id, schema_version, revision, created_at, updated_at,
-			run_id, suite_entry_id, case_id, request_id, document_json
+			run_id, entry_id, case_id, request_id, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, result.ID, result.SchemaVersion, result.Revision, formatTime(result.CreatedAt), formatTime(result.UpdatedAt), result.RunID, suiteEntryID, caseID, requestID, document); err != nil {
+	`, result.ID, result.SchemaVersion, result.Revision, formatTime(result.CreatedAt), formatTime(result.UpdatedAt), result.RunID, entryID, caseID, requestID, document); err != nil {
 		return classifyWriteError("append result", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -660,7 +659,7 @@ func (repository *Repository) GetResult(ctx context.Context, id string) (domain.
 	}
 	var row storedResultRow
 	err := row.scan(repository.db.QueryRowContext(ctx, `
-		SELECT id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, entry_id, case_id, request_id, document_json
 		FROM case_results WHERE id = ?
 	`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -684,7 +683,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 		return nil, err
 	}
 	rows, err := repository.db.QueryContext(ctx, `
-		SELECT id, schema_version, revision, created_at, updated_at, run_id, suite_entry_id, case_id, request_id, document_json
+		SELECT id, schema_version, revision, created_at, updated_at, run_id, entry_id, case_id, request_id, document_json
 		FROM case_results WHERE run_id = ? ORDER BY created_at, id
 	`, runID)
 	if err != nil {
@@ -735,7 +734,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 
 type storedResultRow struct {
 	id, createdAt, updatedAt, runID string
-	suiteEntryID, caseID, requestID sql.NullString
+	entryID, caseID, requestID      sql.NullString
 	schemaVersion, revision         int64
 	document                        []byte
 }
@@ -743,7 +742,7 @@ type storedResultRow struct {
 func (row *storedResultRow) scan(scanner rowScanner) error {
 	return scanner.Scan(
 		&row.id, &row.schemaVersion, &row.revision, &row.createdAt, &row.updatedAt,
-		&row.runID, &row.suiteEntryID, &row.caseID, &row.requestID, &row.document,
+		&row.runID, &row.entryID, &row.caseID, &row.requestID, &row.document,
 	)
 }
 
@@ -756,7 +755,7 @@ func (row storedResultRow) decode(expectedRunID string) (domain.Result, error) {
 		return domain.Result{}, err
 	}
 	if result.RunID != row.runID || (expectedRunID != "" && result.RunID != expectedRunID) ||
-		row.suiteEntryID.Valid != (result.SuiteEntryID != "") || (row.suiteEntryID.Valid && row.suiteEntryID.String != result.SuiteEntryID) ||
+		row.entryID.Valid != (result.EntryID != "") || (row.entryID.Valid && row.entryID.String != result.EntryID) ||
 		row.caseID.Valid != (result.CaseID != "") || (row.caseID.Valid && row.caseID.String != result.CaseID) ||
 		row.requestID.Valid != (result.RequestID != "") || (row.requestID.Valid && row.requestID.String != result.RequestID) {
 		return domain.Result{}, fmt.Errorf("%w: result owner columns do not match document", ErrCorrupt)
@@ -810,23 +809,17 @@ func validateStoredResultAgainstRun(ctx context.Context, queryer relationQueryer
 }
 
 func resultBelongsToSnapshot(snapshot domain.RunSnapshot, result domain.Result) bool {
-	if len(snapshot.Suites) == 0 {
-		if snapshot.QuickTask == nil || result.SuiteEntryID != "" || result.SuiteStatus != "" {
-			return false
-		}
-		return result.CaseID != "" && containsCase(snapshot.Cases, result.CaseID)
-	}
-	if result.SuiteEntryID == "" {
+	if result.EntryID == "" {
 		return false
 	}
-	for _, suite := range snapshot.Suites {
-		if suite.EntryID != result.SuiteEntryID {
+	for _, entry := range snapshot.Entries {
+		if entry.EntryID != result.EntryID {
 			continue
 		}
-		if result.SuiteStatus != "" {
+		if result.EntryStatus != "" {
 			return result.CaseID == "" && result.RequestID == ""
 		}
-		return result.CaseID != "" && containsCase(suite.Cases, result.CaseID)
+		return result.CaseID != "" && containsCase(entry.Cases, result.CaseID)
 	}
 	return false
 }
@@ -868,7 +861,7 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if err := validateStoredRunReferences(ctx, tx, run); err != nil {
 		return err
 	}
-	if run.Status() != report.RunStatus || !reflect.DeepEqual(run.Snapshot(), report.PlanSnapshot) {
+	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {
 		return errors.New("report does not match the persisted terminal run")
 	}
 	if report.GeneratedAt.Before(run.Meta().UpdatedAt) {
@@ -1120,4 +1113,12 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+// equalCanonicalDocuments compares complete validated documents while ignoring
+// JSON object key order inside RawMessage values.
+func equalCanonicalDocuments(left, right any) bool {
+	leftJSON, leftErr := marshalCanonical(left)
+	rightJSON, rightErr := marshalCanonical(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }

@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/runs"
-	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 type quickTaskCatalog struct {
@@ -18,7 +18,7 @@ type quickTaskCatalog struct {
 	channel domain.Channel
 }
 
-func (catalog quickTaskCatalog) GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error) {
+func (catalog quickTaskCatalog) GetSuite(context.Context, string) (domain.Suite, error) {
 	return catalog.suite, nil
 }
 func (catalog quickTaskCatalog) GetChannel(context.Context, string) (domain.Channel, error) {
@@ -26,12 +26,8 @@ func (catalog quickTaskCatalog) GetChannel(context.Context, string) (domain.Chan
 }
 
 func quickTaskSuite(fixture runFixture) domain.Suite {
-	return domain.Suite{EntityMeta: fixture.suite.EntityMeta, Key: "connection", Name: "Connection", Protocol: fixture.testCase.Protocol,
-		Cases: fixture.suite.Cases, QuickTest: &domain.SuiteQuickTest{Description: "Connect", TimeoutMS: 1000, Inputs: []domain.SuiteInput{{
-			Key: "prompt", Label: "Message", Type: "text", Default: json.RawMessage(`"default"`),
-			Bindings: []domain.SuiteInputBinding{{CaseKey: fixture.testCase.Key, Pointer: "/request/body/messages/0/content"}},
-		}}},
-	}
+	return domain.Suite{EntityMeta: fixture.suite.EntityMeta, Key: "connection", Name: "Connection", Protocol: fixture.testCase.Protocol, Cases: fixture.suite.Cases,
+		Inputs: []domain.SuiteInput{{Key: "prompt", Label: "Message", Input: testspec.Input{Type: "string", Default: json.RawMessage(`"default"`)}, Bindings: []domain.SuiteInputBinding{{CaseID: fixture.testCase.ID, Input: "prompt"}}}}}
 }
 
 func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T) {
@@ -45,7 +41,7 @@ func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision,
+	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000,
 		Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret",
 		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
 	if err != nil {
@@ -64,10 +60,10 @@ func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T
 	}
 	request := <-executor.entered
 	snapshot := request.Run.Snapshot()
-	if snapshot.QuickTask == nil || snapshot.QuickTask.Suite.ID != suite.ID || string(snapshot.QuickTask.Inputs["prompt"]) != `"edited"` || request.Run.PlanID() != id {
+	if snapshot.QuickTask == nil || snapshot.Entries[0].Suite.ID != suite.ID || string(snapshot.Entries[0].Parameters["prompt"]) != `"edited"` || request.Run.PlanID() != id {
 		t.Fatalf("task provenance missing: %+v", snapshot)
 	}
-	if !strings.Contains(string(snapshot.CaseDefinitions[0].Definition.Spec), `"hi"`) || !strings.Contains(string(request.Cases[0].Definition.Spec), `"edited"`) {
+	if !strings.Contains(string(snapshot.Entries[0].CaseDefinitions[0].Definition.Spec), `"hi"`) || string(request.Entry.CaseInputs[fixture.testCase.ID]["prompt"]) != `"edited"` {
 		t.Fatal("effective and authored request values mixed")
 	}
 	encoded, err := json.Marshal(request.Run)
@@ -78,7 +74,7 @@ func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T
 	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
 		t.Fatal(err)
 	}
-	if roundTrip.Snapshot().QuickTask.Suite.ID != suite.ID {
+	if roundTrip.Snapshot().Entries[0].Suite.ID != suite.ID {
 		t.Fatal("task source lost on round trip")
 	}
 	close(executor.release)
@@ -106,7 +102,7 @@ func TestQuickTaskSavedChannelResolvesItsCredentialWithoutAuthoredModel(t *testi
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "temporary-model", ChannelID: fixture.channel.ID})
+	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "temporary-model", ChannelID: fixture.channel.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +126,7 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 		t.Fatal(err)
 	}
 	defer service.Close()
-	command := runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"last input"`)}}
+	command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"last input"`)}}
 	id, err := service.PrepareQuickTask(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -150,9 +146,9 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 		t.Fatal("history leaked secret or raw definitions")
 	}
 	history.Inputs["prompt"][0] = 'x'
-	history.Suite.QuickTest.Inputs[0].Label = "mutated"
+	history.Suite.Inputs[0].Label = "mutated"
 	again, err := service.QuickTask(context.Background(), id)
-	if err != nil || string(again.Inputs["prompt"]) != `"last input"` || again.Suite.QuickTest.Inputs[0].Label != "Message" {
+	if err != nil || string(again.Inputs["prompt"]) != `"last input"` || again.Suite.Inputs[0].Label != "Message" {
 		t.Fatal("history query did not isolate snapshot data")
 	}
 	for _, source := range []string{"invalid", "123e4567-e89b-42d3-a456-426614174099"} {
@@ -161,7 +157,7 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 		}
 	}
 	wrong := command
-	wrong.SourceRunID, wrong.SuiteRevision = id, suite.Revision+1
+	wrong.SourceRunID, wrong.SuiteID = id, fixture.plan.ID
 	if _, err := service.PrepareQuickTask(context.Background(), wrong); !errors.Is(err, runs.ErrNotRunnable) {
 		t.Fatalf("mismatched replay revision accepted: %v", err)
 	}
@@ -174,7 +170,7 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 	defer replayer.Close()
 	command.SourceRunID = id
 	path, err := replayer.QuickTaskPerformancePath(context.Background(), command)
-	if err != nil || path != "/chat/completions" {
+	if err != nil || path != "/v1/chat/completions" {
 		t.Fatalf("historical performance path=%q err=%v", path, err)
 	}
 	command.Inputs = map[string]json.RawMessage{"prompt": json.RawMessage(`"edited again"`)}
@@ -182,29 +178,24 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 	if err != nil || replayID == id {
 		t.Fatalf("replay id=%s err=%v", replayID, err)
 	}
-	if string(repository.run.Snapshot().QuickTask.Inputs["prompt"]) != `"edited again"` {
+	if string(repository.run.Snapshot().Entries[0].Parameters["prompt"]) != `"edited again"` {
 		t.Fatal("replay ignored edits")
 	}
 }
 
 func TestQuickTaskRejectsInvalidSelectionBeforeDurableState(t *testing.T) {
-	for _, scenario := range []string{"unknown input", "wrong type", "wrong revision", "not a task", "scoped model", "insecure endpoint", "mixed channel credentials", "disabled channel"} {
+	for _, scenario := range []string{"unknown input", "wrong type", "insecure endpoint", "mixed channel credentials", "disabled channel"} {
 		t.Run(scenario, func(t *testing.T) {
 			fixture := newRunFixture(t)
 			repository := &fakeRepository{fixture: fixture}
 			suite := quickTaskSuite(fixture)
-			command := runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "secret-never-in-errors"}
+			command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "secret-never-in-errors"}
 			switch scenario {
 			case "unknown input":
 				command.Inputs = map[string]json.RawMessage{"missing": json.RawMessage(`"value"`)}
 			case "wrong type":
 				command.Inputs = map[string]json.RawMessage{"prompt": json.RawMessage(`42`)}
-			case "wrong revision":
-				command.SuiteRevision++
-			case "not a task":
-				suite.QuickTest = nil
-			case "scoped model":
-				suite.ModelTarget = "different-model"
+
 			case "insecure endpoint":
 				command.BaseURL = "http://example.test"
 			case "mixed channel credentials":
@@ -240,25 +231,23 @@ func TestQuickTaskPreparesVideoSelectionsWithoutAnExtraConfirmation(t *testing.T
 		t.Run(string(test.protocol), func(t *testing.T) {
 			fixture := newRunFixture(t)
 			fixture.testCase.Protocol = test.protocol
-			fixture.testCase.ModelTargets = []string{"upstream-model"}
-			fixture.testCase.Definition.Type = casetypes.TypeLegacyAPIAudit
-			fixture.testCase.Definition.Spec = json.RawMessage(`{"kind":"` + test.kind + `","request":{"method":"POST","path":"/tasks","headers":{},"body":{"prompt":"hello"}},"options":{}}`)
+			fixture.testCase.Definition.Type = domain.CaseType(test.protocol)
+			fixture.testCase.Definition.Spec = json.RawMessage(`{"inputs":{},"request":{"body":{"prompt":"hello"}},"assertions":[]}`)
 			repository := &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{fixture.testCase.ID: fixture.testCase}}
 			suite := quickTaskSuite(fixture)
-			suite.ModelTarget = "upstream-model"
-			suite.QuickTest.Inputs = []domain.SuiteInput{}
+			suite.Inputs = []domain.SuiteInput{}
 			if test.count == 2 {
 				second := fixture.testCase
 				second.ID, second.Key = "30000000-0000-4000-8000-000000000009", "second"
 				repository.testCases[second.ID] = second
-				suite.Cases = append(suite.Cases, domain.CaseRevisionRef{CaseID: second.ID, Revision: second.Revision})
+				suite.Cases = append(suite.Cases, domain.CaseRef{CaseID: second.ID})
 			}
 			service, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(), Executor: &recordingExecutor{}, Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = service.Close() })
-			command := runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "upstream-model", BaseURL: "https://example.test", APIKey: "temporary-key"}
+			command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "upstream-model", BaseURL: "https://example.test", APIKey: "temporary-key"}
 			id, err := service.PrepareQuickTask(context.Background(), command)
 			if err != nil {
 				t.Fatal(err)

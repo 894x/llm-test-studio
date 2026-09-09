@@ -61,7 +61,7 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 	}
 
 	projections := make([]workspace.RunProjection, 0, len(stored))
-	suiteResults, err := readWorkspaceSuiteResults(ctx, tx)
+	suiteResults, err := readWorkspaceEntryResults(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 			}
 			return nil, err
 		}
-		projection.SuiteResults = suiteResults[projection.Run.Meta().ID]
+		projection.EntryResults = suiteResults[projection.Run.Meta().ID]
 		projections = append(projections, projection)
 	}
 	if err := tx.Commit(); err != nil {
@@ -85,20 +85,20 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 	return projections, nil
 }
 
-func readWorkspaceSuiteResults(ctx context.Context, tx *sql.Tx) (map[string][]workspace.SuiteResultProjection, error) {
+func readWorkspaceEntryResults(ctx context.Context, tx *sql.Tx) (map[string][]workspace.EntryResultProjection, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT run_id, COALESCE(suite_entry_id, ''), COUNT(DISTINCT case_id),
-		       COALESCE(MAX(json_extract(document_json, '$.suite_status')), '')
-		FROM case_results GROUP BY run_id, suite_entry_id
+		SELECT run_id, COALESCE(entry_id, ''), COUNT(DISTINCT case_id),
+		       COALESCE(MAX(json_extract(document_json, '$.entry_status')), '')
+		FROM case_results GROUP BY run_id, entry_id
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query Suite Case progress: %w", err)
 	}
 	defer rows.Close()
-	results := map[string][]workspace.SuiteResultProjection{}
+	results := map[string][]workspace.EntryResultProjection{}
 	for rows.Next() {
 		var runID string
-		var result workspace.SuiteResultProjection
+		var result workspace.EntryResultProjection
 		if err := rows.Scan(&runID, &result.EntryID, &result.ObservedCases, &result.Status); err != nil {
 			return nil, fmt.Errorf("scan Suite Case progress: %w", err)
 		}
@@ -113,10 +113,10 @@ func readWorkspaceSuiteResults(ctx context.Context, tx *sql.Tx) (map[string][]wo
 type storedWorkspaceProjection struct {
 	run storedRunRow
 
-	completed, passed, failed, artifactCount int64
-	resultCorrupt, evidenceCorrupt           int64
-	artifactCorrupt, reportCorrupt           int64
-	conclusionPassed                         int64
+	completed, passed, failed, observed, indeterminate, artifactCount int64
+	resultCorrupt, evidenceCorrupt                                    int64
+	artifactCorrupt, reportCorrupt                                    int64
+	conclusionPassed                                                  int64
 }
 
 func (row *storedWorkspaceProjection) scan(scanner rowScanner) error {
@@ -125,7 +125,7 @@ func (row *storedWorkspaceProjection) scan(scanner rowScanner) error {
 		&row.run.historyCount, &row.run.historyMin, &row.run.historyMax,
 		&row.run.schemaVersion, &row.run.revision, &row.run.revisionCreated, &row.run.revisionUpdated,
 		&row.run.planID, &row.run.planRevision, &row.run.status, &row.run.snapshotDocument, &row.run.document,
-		&row.completed, &row.passed, &row.failed, &row.artifactCount,
+		&row.completed, &row.passed, &row.failed, &row.observed, &row.indeterminate, &row.artifactCount,
 		&row.resultCorrupt, &row.evidenceCorrupt, &row.artifactCorrupt, &row.reportCorrupt,
 		&row.conclusionPassed,
 	)
@@ -133,7 +133,7 @@ func (row *storedWorkspaceProjection) scan(scanner rowScanner) error {
 
 func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQueryer) (workspace.RunProjection, error) {
 	for _, value := range []int64{
-		row.completed, row.passed, row.failed, row.artifactCount,
+		row.completed, row.passed, row.failed, row.observed, row.indeterminate, row.artifactCount,
 		row.resultCorrupt, row.evidenceCorrupt, row.artifactCorrupt, row.reportCorrupt,
 	} {
 		if value < 0 {
@@ -143,7 +143,7 @@ func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQuer
 	if row.resultCorrupt != 0 || row.evidenceCorrupt != 0 || row.artifactCorrupt != 0 || row.reportCorrupt != 0 {
 		return workspace.RunProjection{}, fmt.Errorf("%w: workspace aggregate source", ErrCorrupt)
 	}
-	if row.completed != row.passed+row.failed {
+	if row.completed != row.passed+row.failed+row.observed+row.indeterminate {
 		return workspace.RunProjection{}, fmt.Errorf("%w: workspace result aggregate", ErrCorrupt)
 	}
 
@@ -192,19 +192,13 @@ func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQuer
 
 	return workspace.RunProjection{
 		Run: run, PinnedPlan: pinnedPlan,
-		Completed: uint64(row.completed), Passed: uint64(row.passed), Failed: uint64(row.failed),
+		Completed: uint64(row.completed), Passed: uint64(row.passed), Failed: uint64(row.failed), Observed: uint64(row.observed), Indeterminate: uint64(row.indeterminate),
 		ArtifactCount: uint64(row.artifactCount), Conclusion: conclusion,
 	}, nil
 }
 
 func workspacePinnedPlan(_ context.Context, _ rowQueryer, run domain.Run) (domain.Plan, error) {
 	snapshot := run.Snapshot()
-	if snapshot.QuickTask != nil {
-		if snapshot.SchemaVersion != domain.FlatRunSnapshotSchemaVersion || snapshot.PlanDocument != nil {
-			return domain.Plan{}, fmt.Errorf("%w: workspace quick-task plan boundary", ErrCorrupt)
-		}
-		return domain.Plan{}, nil
-	}
 	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
 		return domain.Plan{}, fmt.Errorf("%w: workspace plan document", ErrCorrupt)
 	}
@@ -216,13 +210,6 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 		return err
 	}
 	snapshot := run.Snapshot()
-	if snapshot.QuickTask != nil {
-		if snapshot.SchemaVersion != domain.FlatRunSnapshotSchemaVersion || snapshot.PlanDocument != nil ||
-			!reflect.DeepEqual(plan, domain.Plan{}) {
-			return errors.New("quick task has an authored pinned plan")
-		}
-		return nil
-	}
 	if err := plan.Validate(); err != nil {
 		return err
 	}
@@ -239,7 +226,7 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 const workspaceProjectionQuery = `
 WITH result_observations AS (
 	SELECT item.*,
-	       CASE WHEN json_type(item.document_json, '$.suite_status') = 'text' THEN 0
+	       CASE WHEN json_type(item.document_json, '$.entry_status') = 'text' OR json_extract(item.document_json, '$.dimensions.phase') = 'warmup' THEN 0
 	         WHEN item.request_id IS NOT NULL OR
 	         MAX(item.request_id IS NOT NULL) OVER (PARTITION BY item.run_id) = 0
 	         THEN 1 ELSE 0 END AS observation
@@ -250,18 +237,11 @@ result_stats AS (
 	       SUM(item.observation) AS completed,
 	       SUM(CASE WHEN
 	           item.observation = 1 AND
-	           json_extract(item.document_json, '$.success.transport') = 1 AND
-	           json_extract(item.document_json, '$.success.protocol') = 1 AND
-	           json_extract(item.document_json, '$.success.semantic') = 1 AND
-	           json_extract(item.document_json, '$.success.sla') = 1
+	           json_extract(item.document_json, '$.verification.status') = 'passed'
 	         THEN 1 ELSE 0 END) AS passed,
-	       SUM(CASE WHEN
-	           item.observation = 0 OR (
-	           json_extract(item.document_json, '$.success.transport') = 1 AND
-	           json_extract(item.document_json, '$.success.protocol') = 1 AND
-	           json_extract(item.document_json, '$.success.semantic') = 1 AND
-	           json_extract(item.document_json, '$.success.sla') = 1)
-	         THEN 0 ELSE 1 END) AS failed,
+           SUM(CASE WHEN item.observation = 1 AND json_extract(item.document_json, '$.verification.status') = 'failed' THEN 1 ELSE 0 END) AS failed,
+           SUM(CASE WHEN item.observation = 1 AND json_extract(item.document_json, '$.verification.status') = 'not_applicable' THEN 1 ELSE 0 END) AS observed,
+           SUM(CASE WHEN item.observation = 1 AND json_extract(item.document_json, '$.verification.status') = 'indeterminate' THEN 1 ELSE 0 END) AS indeterminate,
 	       SUM(CASE WHEN
 	           item.schema_version = ? AND item.revision = 1 AND
 	           json_type(item.document_json, '$.id') = 'text' AND json_extract(item.document_json, '$.id') = item.id AND
@@ -270,20 +250,18 @@ result_stats AS (
 	           json_type(item.document_json, '$.created_at') = 'text' AND json_extract(item.document_json, '$.created_at') = item.created_at AND
 	           json_type(item.document_json, '$.updated_at') = 'text' AND json_extract(item.document_json, '$.updated_at') = item.updated_at AND
 	           json_type(item.document_json, '$.run_id') = 'text' AND json_extract(item.document_json, '$.run_id') = item.run_id AND
-	           ((item.suite_entry_id IS NULL AND json_type(item.document_json, '$.suite_entry_id') IS NULL) OR
-	            (item.suite_entry_id IS NOT NULL AND json_type(item.document_json, '$.suite_entry_id') = 'text' AND json_extract(item.document_json, '$.suite_entry_id') = item.suite_entry_id)) AND
+	           ((item.entry_id IS NULL AND json_type(item.document_json, '$.entry_id') IS NULL) OR
+	            (item.entry_id IS NOT NULL AND json_type(item.document_json, '$.entry_id') = 'text' AND json_extract(item.document_json, '$.entry_id') = item.entry_id)) AND
 	           ((item.case_id IS NULL AND json_type(item.document_json, '$.case_id') IS NULL) OR
 	            (item.case_id IS NOT NULL AND json_type(item.document_json, '$.case_id') = 'text' AND json_extract(item.document_json, '$.case_id') = item.case_id)) AND
 	           ((item.request_id IS NULL AND json_type(item.document_json, '$.request_id') IS NULL) OR
 	            (item.request_id IS NOT NULL AND json_type(item.document_json, '$.request_id') = 'text' AND json_extract(item.document_json, '$.request_id') = item.request_id)) AND
-	           json_type(item.document_json, '$.success') = 'object' AND
-	           json_type(item.document_json, '$.success.transport') IN ('true', 'false') AND
-	           json_type(item.document_json, '$.success.protocol') IN ('true', 'false') AND
-	           json_type(item.document_json, '$.success.semantic') IN ('true', 'false') AND
-	           json_type(item.document_json, '$.success.sla') IN ('true', 'false') AND
-	           (json_extract(item.document_json, '$.success.protocol') = 0 OR json_extract(item.document_json, '$.success.transport') = 1) AND
-	           (json_extract(item.document_json, '$.success.semantic') = 0 OR json_extract(item.document_json, '$.success.protocol') = 1) AND
-	           (json_extract(item.document_json, '$.success.sla') = 0 OR json_extract(item.document_json, '$.success.semantic') = 1) AND
+               (json_type(item.document_json, '$.entry_status') = 'text' OR (
+                 json_extract(item.document_json, '$.execution_status') IN ('completed','failed','cancelled') AND
+                 json_type(item.document_json, '$.verification') = 'object' AND
+                 json_extract(item.document_json, '$.verification.status') IN ('passed','failed','not_applicable','indeterminate') AND
+                 json_type(item.document_json, '$.verification.assertions') = 'array'
+               )) AND
 	           (json_type(item.document_json, '$.evidence_ids') IS NULL OR json_type(item.document_json, '$.evidence_ids') = 'array') AND
 	           (SELECT COUNT(*) FROM json_each(item.document_json, '$.evidence_ids')) =
 	             (SELECT COUNT(DISTINCT reference.value) FROM json_each(item.document_json, '$.evidence_ids') AS reference) AND
@@ -299,22 +277,14 @@ result_stats AS (
 	             JOIN execution_run_revisions AS result_revision
 	               ON result_revision.run_id = result_root.id AND result_revision.revision = result_root.current_revision
 	             WHERE result_root.id = item.run_id AND (
-	               (json_type(result_revision.snapshot_json, '$.suites') IS NULL AND
-	                 item.suite_entry_id IS NULL AND json_type(item.document_json, '$.suite_status') IS NULL AND
-	                 (item.case_id IS NULL OR EXISTS (
-	                   SELECT 1 FROM json_each(result_revision.snapshot_json, '$.cases') AS planned_case
-	                   WHERE planned_case.type = 'object' AND
-	                         json_type(planned_case.value, '$.case_id') = 'text' AND
-	                         json_extract(planned_case.value, '$.case_id') = item.case_id
-	                 ))) OR
-	               (json_type(result_revision.snapshot_json, '$.suites') = 'array' AND item.suite_entry_id IS NOT NULL AND EXISTS (
-	                 SELECT 1 FROM json_each(result_revision.snapshot_json, '$.suites') AS planned_suite
+	               (json_type(result_revision.snapshot_json, '$.entries') = 'array' AND item.entry_id IS NOT NULL AND EXISTS (
+	                 SELECT 1 FROM json_each(result_revision.snapshot_json, '$.entries') AS planned_suite
 	                 WHERE planned_suite.type = 'object' AND
-	                       json_extract(planned_suite.value, '$.entry_id') = item.suite_entry_id AND (
-	                         (json_type(item.document_json, '$.suite_status') = 'text' AND
-	                           json_extract(item.document_json, '$.suite_status') IN ('completed', 'failed') AND
+	                       json_extract(planned_suite.value, '$.entry_id') = item.entry_id AND (
+	                         (json_type(item.document_json, '$.entry_status') = 'text' AND
+	                           json_extract(item.document_json, '$.entry_status') IN ('completed', 'failed') AND
 	                           item.case_id IS NULL AND item.request_id IS NULL) OR
-	                         (json_type(item.document_json, '$.suite_status') IS NULL AND item.case_id IS NOT NULL AND EXISTS (
+	                         (json_type(item.document_json, '$.entry_status') IS NULL AND item.case_id IS NOT NULL AND EXISTS (
 	                           SELECT 1 FROM json_each(planned_suite.value, '$.cases') AS planned_case
 	                           WHERE planned_case.type = 'object' AND
 	                                 json_extract(planned_case.value, '$.case_id') = item.case_id
@@ -370,7 +340,7 @@ report_stats AS (
 	       MAX(CASE WHEN json_extract(item.document_json, '$.conclusion.passed') = 1 THEN 1 ELSE 0 END) AS conclusion_passed,
 	       SUM(CASE WHEN
 	           item.schema_version = ? AND
-	           json_type(item.document_json, '$.suite_reports') = 'array' AND
+	           json_type(item.document_json, '$.entry_reports') = 'array' AND
 	           json_type(item.document_json, '$.id') = 'text' AND json_extract(item.document_json, '$.id') = item.id AND
 	           json_type(item.document_json, '$.schema_version') = 'integer' AND json_extract(item.document_json, '$.schema_version') = item.schema_version AND
 	           json_type(item.document_json, '$.run_id') = 'text' AND json_extract(item.document_json, '$.run_id') = item.run_id AND
@@ -406,7 +376,7 @@ SELECT root.id, root.current_revision, root.created_at, root.sealed,
 	   revision.schema_version, revision.revision, revision.created_at, revision.updated_at,
 	   revision.plan_id, revision.plan_revision, revision.status,
 	   revision.snapshot_json, revision.document_json,
-	   COALESCE(result_stats.completed, 0), COALESCE(result_stats.passed, 0), COALESCE(result_stats.failed, 0),
+	   COALESCE(result_stats.completed, 0), COALESCE(result_stats.passed, 0), COALESCE(result_stats.failed, 0), COALESCE(result_stats.observed, 0), COALESCE(result_stats.indeterminate, 0),
 	   COALESCE(evidence_stats.evidence_count, 0) + COALESCE(artifact_stats.artifact_count, 0),
 	   COALESCE(result_stats.corrupt, 0), COALESCE(evidence_stats.corrupt, 0),
 	   COALESCE(artifact_stats.corrupt, 0), COALESCE(report_stats.corrupt, 0),

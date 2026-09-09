@@ -3,17 +3,13 @@
 package casecatalog
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -63,7 +59,6 @@ type Case struct {
 	Name          string                    `json:"name"`
 	Dimension     string                    `json:"dimension"`
 	Protocol      domain.Protocol           `json:"protocol"`
-	ModelTargets  []string                  `json:"model_targets"`
 	Enabled       bool                      `json:"enabled"`
 	Default       bool                      `json:"default"`
 	Severity      domain.CaseSeverity       `json:"severity"`
@@ -121,8 +116,7 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		groups[len(groups)-1].Cases = append(groups[len(groups)-1].Cases, Case{
 			ID: testCase.ID, Revision: testCase.Revision, Group: entry.Group, Directory: entry.Directory,
 			Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension, Protocol: testCase.Protocol,
-			ModelTargets: append([]string{}, testCase.ModelTargets...),
-			Enabled:      testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
+			Enabled: testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
 			ExecutionMode: testCase.ExecutionMode, Source: entry.Source, Definition: testCase.Definition,
 		})
 	}
@@ -189,67 +183,6 @@ func (service *Service) Find(ctx context.Context, id string) (Entry, error) {
 
 }
 
-// FindRevision resolves the immutable Case revision pinned by a Plan. The
-// active case.json remains the authored document; prior semantic revisions are
-// retained as sidecars so updating a Case cannot invalidate an existing Plan.
-func (service *Service) FindRevision(ctx context.Context, id string, revision uint64) (Entry, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(id) || revision == 0 {
-		return Entry{}, ErrInvalid
-	}
-	entry, err := service.Find(ctx, id)
-	if err != nil {
-		return Entry{}, err
-	}
-	if entry.TestCase.Revision == revision {
-		return entry, nil
-	}
-	target := service.revisionPath(entry.Group, entry.Directory, revision)
-	if !withinRoot(service.userRoot, target) {
-		return Entry{}, ErrInvalid
-	}
-	raw, err := os.ReadFile(target)
-	if err != nil {
-		return Entry{}, err
-	}
-	testCase, err := decodeStoredCaseRevision(raw)
-	if err != nil || testCase.ID != id || testCase.Revision != revision ||
-		testCase.Protocol != entry.TestCase.Protocol || testCase.Key != entry.TestCase.Key {
-		return Entry{}, ErrInvalid
-	}
-	return Entry{Group: entry.Group, Directory: entry.Directory, Source: SourceUser, TestCase: testCase}, nil
-}
-
-// StoreRevision materializes an exact Case revision without changing the
-// active case.json. Persisting the current revision before a Plan commit keeps
-// that pin resolvable even when a user later edits case.json directly.
-func (service *Service) StoreRevision(ctx context.Context, testCase domain.TestCase) error {
-	if service == nil || ctx == nil || testCase.Validate() != nil {
-		return ErrInvalid
-	}
-	entry, err := service.Find(ctx, testCase.ID)
-	if err != nil {
-		return err
-	}
-	if entry.TestCase.Protocol != testCase.Protocol || entry.TestCase.Key != testCase.Key {
-		return ErrInvalid
-	}
-	if entry.TestCase.Revision == testCase.Revision {
-		if !equalStoredCaseRevision(entry.TestCase, testCase) {
-			return ErrCollision
-		}
-		raw, encodeErr := encodeStoredCaseRevision(testCase)
-		if encodeErr != nil {
-			return ErrInvalid
-		}
-		return service.storeRevision(ctx, entry.Group, entry.Directory, testCase, raw)
-	}
-	raw, err := encodeStoredCaseRevision(testCase)
-	if err != nil {
-		return ErrInvalid
-	}
-	return service.storeRevision(ctx, entry.Group, entry.Directory, testCase, raw)
-}
-
 func (service *Service) SaveCase(ctx context.Context, group, directory string, testCase domain.TestCase) error {
 	raw, err := casecodec.EncodeFilesystemCase(testCase)
 	if err != nil {
@@ -302,15 +235,7 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 		if current.Group != group || current.Directory != directory {
 			return ErrCollision
 		}
-		if current.TestCase.Revision != testCase.Revision {
-			previous, encodeErr := encodeStoredCaseRevision(current.TestCase)
-			if encodeErr != nil {
-				return ErrInvalid
-			}
-			if err := service.storeRevision(ctx, group, directory, current.TestCase, previous); err != nil {
-				return err
-			}
-		}
+
 	} else if !errors.Is(findErr, fs.ErrNotExist) {
 		return findErr
 	}
@@ -323,69 +248,6 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 		return fmt.Errorf("install case file: %w", err)
 	}
 	return nil
-}
-
-func (service *Service) storeRevision(ctx context.Context, group, directory string, testCase domain.TestCase, raw []byte) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	target := service.revisionPath(group, directory, testCase.Revision)
-	if !withinRoot(service.userRoot, target) {
-		return ErrInvalid
-	}
-	if existing, err := os.ReadFile(target); err == nil {
-		stored, decodeErr := decodeStoredCaseRevision(existing)
-		if decodeErr != nil || !equalStoredCaseRevision(stored, testCase) {
-			return ErrCollision
-		}
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect case revision: %w", err)
-	}
-	if err := fileconfig.WriteAtomically(ctx, target, raw); err != nil {
-		return fmt.Errorf("write case revision: %w", err)
-	}
-	return nil
-}
-
-func (service *Service) revisionPath(group, directory string, revision uint64) string {
-	return filepath.Join(service.userRoot, group, directory, "revisions", strconv.FormatUint(revision, 10)+".json")
-}
-
-func encodeStoredCaseRevision(testCase domain.TestCase) ([]byte, error) {
-	if err := testCase.Validate(); err != nil {
-		return nil, err
-	}
-	payload, err := json.MarshalIndent(testCase, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(payload, '\n'), nil
-}
-
-func decodeStoredCaseRevision(raw []byte) (domain.TestCase, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	var testCase domain.TestCase
-	if err := decoder.Decode(&testCase); err != nil {
-		return domain.TestCase{}, err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return domain.TestCase{}, errors.New("case revision must contain one object")
-		}
-		return domain.TestCase{}, err
-	}
-	if err := testCase.Validate(); err != nil {
-		return domain.TestCase{}, err
-	}
-	return testCase, nil
-}
-
-func equalStoredCaseRevision(left, right domain.TestCase) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {

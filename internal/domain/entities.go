@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/894x/llm-test-studio/internal/protocol"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 type Protocol string
@@ -166,14 +167,26 @@ func (ref CredentialRef) Validate() error {
 	return nil
 }
 
+// CaseRef is an authored reference. Content revisions are captured only in Run snapshots.
+type CaseRef struct {
+	CaseID string `json:"case_id"`
+}
+
+func (ref CaseRef) Validate() error {
+	if !IsUUID(ref.CaseID) {
+		return errors.New("case id must be a canonical UUID")
+	}
+	return nil
+}
+
 type Suite struct {
 	EntityMeta
-	Key         string            `json:"key"`
-	Name        string            `json:"name"`
-	Protocol    Protocol          `json:"protocol"`
-	ModelTarget string            `json:"model_target"`
-	Cases       []CaseRevisionRef `json:"cases"`
-	QuickTest   *SuiteQuickTest   `json:"quick_test,omitempty"`
+	Key         string       `json:"key"`
+	Name        string       `json:"name"`
+	Protocol    Protocol     `json:"protocol"`
+	Description string       `json:"description"`
+	Cases       []CaseRef    `json:"cases"`
+	Inputs      []SuiteInput `json:"inputs"`
 }
 
 func (suite Suite) Validate() error {
@@ -189,15 +202,20 @@ func (suite Suite) Validate() error {
 	if err := suite.Protocol.Validate(); err != nil {
 		return err
 	}
-	info, _ := protocol.Lookup(string(suite.Protocol))
-	genericQuickTest := suite.ModelTarget == "" && suite.QuickTest != nil && !info.RequiresModelTargets
-	if !genericQuickTest && !isSafeModelTarget(suite.ModelTarget) {
-		return errors.New("suite model target must be a trimmed, non-empty identifier without control characters")
+	if suite.Cases == nil {
+		return errors.New("suite cases must be present")
 	}
-	if err := suite.QuickTest.Validate(); err != nil {
-		return err
+	seen := make(map[string]struct{}, len(suite.Cases))
+	for _, ref := range suite.Cases {
+		if err := ref.Validate(); err != nil {
+			return err
+		}
+		if _, exists := seen[ref.CaseID]; exists {
+			return fmt.Errorf("duplicate case id %q", ref.CaseID)
+		}
+		seen[ref.CaseID] = struct{}{}
 	}
-	return validateCaseRevisionRefs(suite.Cases)
+	return ValidateSuiteInputs(suite.Inputs)
 }
 
 type LoadMode string
@@ -246,9 +264,7 @@ type SLAProfile struct {
 }
 
 func (profile SLAProfile) Validate() error {
-	if len(profile.Thresholds) == 0 {
-		return errors.New("SLA profile requires at least one threshold")
-	}
+
 	for name, threshold := range profile.Thresholds {
 		if strings.TrimSpace(name) == "" || math.IsNaN(threshold) || math.IsInf(threshold, 0) || threshold < 0 {
 			return fmt.Errorf("invalid SLA threshold %q", name)
@@ -268,39 +284,58 @@ func (profile SLAProfile) clone() SLAProfile {
 	return cloned
 }
 
+type PlanTargetKind string
+
+const (
+	PlanTargetCase  PlanTargetKind = "case"
+	PlanTargetSuite PlanTargetKind = "suite"
+)
+
 type Plan struct {
 	EntityMeta
-	Name       string           `json:"name"`
-	ModelIDs   []string         `json:"model_ids"`
-	ChannelIDs []string         `json:"channel_ids"`
-	Suites     []PlanSuiteEntry `json:"suites"`
+	Name     string      `json:"name"`
+	Protocol Protocol    `json:"protocol"`
+	Seed     uint64      `json:"seed"`
+	Entries  []PlanEntry `json:"entries"`
 }
 
-// PlanSuiteEntry is one ordered Suite invocation inside a Plan. EntryID owns
-// the invocation identity, so the same pinned Suite may appear more than once
-// with different parameters and execution profiles.
-type PlanSuiteEntry struct {
-	EntryID       string                     `json:"entry_id"`
-	SuiteID       string                     `json:"suite_id"`
-	SuiteRevision uint64                     `json:"suite_revision"`
-	Parameters    map[string]json.RawMessage `json:"parameters"`
-	Load          LoadProfile                `json:"load"`
-	SLA           SLAProfile                 `json:"sla"`
+// PlanEntry references one current Case or Suite; repetitions keep their own identity.
+type PlanEntry struct {
+	EntryID     string                     `json:"entry_id"`
+	TargetKind  PlanTargetKind             `json:"target_kind"`
+	TargetID    string                     `json:"target_id"`
+	Parameters  map[string]json.RawMessage `json:"parameters"`
+	WarmupCount uint32                     `json:"warmup_count"`
+	Settings    testspec.RunSettings       `json:"settings"`
+	Load        LoadProfile                `json:"load"`
+	SLA         SLAProfile                 `json:"sla"`
 }
 
-func (entry PlanSuiteEntry) Validate() error {
-	if !IsUUID(entry.EntryID) {
-		return errors.New("plan suite entry id must be a canonical UUID")
+func (entry PlanEntry) Validate() error {
+	if entry.WarmupCount > 1_000_000 {
+		return errors.New("plan warmup count exceeds 1000000")
 	}
-	if err := (EntityRevisionRef{ID: entry.SuiteID, Revision: entry.SuiteRevision}).Validate("suite"); err != nil {
+	if entry.Settings.TimeoutMS != 0 {
+		return errors.New("configure request timeout through load, not protocol settings")
+	}
+	if err := entry.Settings.Validate(); err != nil {
 		return err
 	}
+	if !IsUUID(entry.EntryID) {
+		return errors.New("plan entry id must be a canonical UUID")
+	}
+	if entry.TargetKind != PlanTargetCase && entry.TargetKind != PlanTargetSuite {
+		return errors.New("plan entry target kind must be case or suite")
+	}
+	if !IsUUID(entry.TargetID) {
+		return errors.New("plan entry target id must be a canonical UUID")
+	}
 	if entry.Parameters == nil {
-		return errors.New("plan suite parameters must be present")
+		return errors.New("plan entry parameters must be present")
 	}
 	for key, raw := range entry.Parameters {
 		if !isSafeCaseKey(key) || !json.Valid(raw) {
-			return fmt.Errorf("invalid plan suite parameter %q", key)
+			return fmt.Errorf("invalid plan entry parameter %q", key)
 		}
 	}
 	if err := entry.Load.Validate(); err != nil {
@@ -309,7 +344,7 @@ func (entry PlanSuiteEntry) Validate() error {
 	return entry.SLA.Validate()
 }
 
-func (entry PlanSuiteEntry) clone() PlanSuiteEntry {
+func (entry PlanEntry) clone() PlanEntry {
 	entry.Parameters = cloneRawMessageMap(entry.Parameters)
 	entry.SLA = entry.SLA.clone()
 	return entry
@@ -322,29 +357,24 @@ func (plan Plan) Validate() error {
 	if strings.TrimSpace(plan.Name) == "" {
 		return errors.New("plan name must not be empty")
 	}
-	if (len(plan.ModelIDs) == 0) != (len(plan.ChannelIDs) == 0) {
-		return errors.New("plan model and channel allowlists must both be empty or both be configured")
+	if err := plan.Protocol.Validate(); err != nil {
+		return err
 	}
-	if len(plan.ModelIDs) > 0 {
-		if err := validateUUIDList("model", plan.ModelIDs); err != nil {
-			return err
-		}
-		if err := validateUUIDList("channel", plan.ChannelIDs); err != nil {
-			return err
-		}
+	if plan.Seed > (1<<53)-1 {
+		return errors.New("plan seed exceeds the JSON safe integer range")
 	}
-	if len(plan.Suites) == 0 {
-		return errors.New("plan requires at least one suite entry")
+	if len(plan.Entries) == 0 {
+		return errors.New("plan requires at least one entry")
 	}
-	seenEntries := make(map[string]struct{}, len(plan.Suites))
-	for index, entry := range plan.Suites {
+	seen := make(map[string]struct{}, len(plan.Entries))
+	for index, entry := range plan.Entries {
 		if err := entry.Validate(); err != nil {
-			return fmt.Errorf("invalid plan suite entry %d: %w", index, err)
+			return fmt.Errorf("invalid plan entry %d: %w", index, err)
 		}
-		if _, duplicate := seenEntries[entry.EntryID]; duplicate {
-			return fmt.Errorf("duplicate plan suite entry id %q", entry.EntryID)
+		if _, exists := seen[entry.EntryID]; exists {
+			return fmt.Errorf("duplicate plan entry id %q", entry.EntryID)
 		}
-		seenEntries[entry.EntryID] = struct{}{}
+		seen[entry.EntryID] = struct{}{}
 	}
 	return nil
 }

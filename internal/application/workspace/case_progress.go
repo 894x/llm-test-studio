@@ -3,57 +3,33 @@ package workspace
 import (
 	"errors"
 
-	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-// A profile is a driver input, not necessarily a budget for the whole Suite.
-// Unknown/variable observation counts have no request denominator.
+// A result represents one complete Case execution, including its protocol workflow.
 func snapshotRequestBudget(snapshot domain.RunSnapshot) uint64 {
-	if snapshot.QuickTask != nil {
-		return 0
-	}
 	var total uint64
-	for _, suite := range snapshot.Suites {
-		groups := map[domain.CaseType]bool{}
-		for _, testCase := range suite.CaseDefinitions {
-			caseType := testCase.Definition.Type
-			switch caseType {
-			case casetypes.TypeLegacyAPIAudit:
-				total++
-			case casetypes.TypeRequestSingle, casetypes.TypeResponseProbe:
-				if suite.Load.RequestCount == 0 {
-					return 0
-				}
-				if !groups[caseType] {
-					total += suite.Load.RequestCount
-					groups[caseType] = true
-				}
-			default:
-				return 0
-			}
+	for _, entry := range snapshot.Entries {
+		total += uint64(entry.WarmupCount)
+		if entry.Load.Mode == domain.LoadSingle {
+			total += uint64(len(entry.Cases))
+			continue
 		}
+		if entry.Load.RequestCount == 0 {
+			return 0
+		}
+		total += entry.Load.RequestCount
 	}
 	return total
 }
 
-func progressSuites(run domain.Run) []domain.RunSuiteSnapshot {
-	snapshot := run.Snapshot()
-	if snapshot.QuickTask != nil {
-		return []domain.RunSuiteSnapshot{{
-			Suite: snapshot.QuickTask.Suite, Cases: snapshot.Cases,
-		}}
-	}
-	return snapshot.Suites
-}
-
-func validateSuiteResults(projection RunProjection) error {
+func validateEntryResults(projection RunProjection) error {
 	planned := map[string]uint64{}
-	for _, suite := range progressSuites(projection.Run) {
+	for _, suite := range projection.Run.Snapshot().Entries {
 		planned[suite.EntryID] = uint64(len(suite.Cases))
 	}
 	seen := map[string]bool{}
-	for _, result := range projection.SuiteResults {
+	for _, result := range projection.EntryResults {
 		count, found := planned[result.EntryID]
 		if !found || seen[result.EntryID] || result.ObservedCases > count {
 			return errors.New("invalid Suite Case progress ownership or count")
@@ -66,13 +42,13 @@ func validateSuiteResults(projection RunProjection) error {
 	return nil
 }
 
-func summarizeSuiteProgress(projection RunProjection) []SuiteProgress {
-	results := map[string]SuiteResultProjection{}
-	for _, result := range projection.SuiteResults {
+func summarizeEntryProgress(projection RunProjection) []EntryProgress {
+	results := map[string]EntryResultProjection{}
+	for _, result := range projection.EntryResults {
 		results[result.EntryID] = result
 	}
-	suites := progressSuites(projection.Run)
-	progress := make([]SuiteProgress, 0, len(suites))
+	suites := projection.Run.Snapshot().Entries
+	progress := make([]EntryProgress, 0, len(suites))
 	currentAssigned := false
 	for _, suite := range suites {
 		result := results[suite.EntryID]
@@ -95,12 +71,8 @@ func summarizeSuiteProgress(projection RunProjection) []SuiteProgress {
 			}
 			currentAssigned = true
 		}
-		entryID := suite.EntryID
-		if entryID == "" {
-			entryID = projection.Run.Meta().ID
-		}
-		progress = append(progress, SuiteProgress{
-			EntryID: entryID, Name: suite.Suite.Name,
+		progress = append(progress, EntryProgress{
+			EntryID: suite.EntryID, Name: suite.Name,
 			CaseCount: uint64(len(suite.Cases)), ObservedCaseCount: result.ObservedCases, Status: status,
 		})
 	}

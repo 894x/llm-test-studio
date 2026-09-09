@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/894x/llm-test-studio/internal/testspec"
 	"math"
 	"reflect"
 	"strings"
 	"time"
 )
 
-const CurrentReportSchemaVersion = 2
+const CurrentReportSchemaVersion = 3
 
 type ReportSubject struct {
 	ID   string `json:"id"`
@@ -42,6 +43,9 @@ type ReportConclusion struct {
 }
 
 func (conclusion ReportConclusion) Validate() error {
+	if conclusion.Passed != (conclusion.Verdict == "pass") {
+		return errors.New("report pass flag must match verdict")
+	}
 	if strings.TrimSpace(conclusion.Verdict) == "" {
 		return errors.New("report conclusion requires a verdict")
 	}
@@ -77,37 +81,44 @@ type ReportAttachment struct {
 	Redacted     bool   `json:"redacted"`
 }
 
-type SuiteReportStatus string
+type EntryReportStatus string
 
 const (
-	SuiteReportCompleted  SuiteReportStatus = "completed"
-	SuiteReportFailed     SuiteReportStatus = "failed"
-	SuiteReportCancelled  SuiteReportStatus = "cancelled"
-	SuiteReportNotStarted SuiteReportStatus = "not_started"
+	EntryReportCompleted  EntryReportStatus = "completed"
+	EntryReportFailed     EntryReportStatus = "failed"
+	EntryReportCancelled  EntryReportStatus = "cancelled"
+	EntryReportNotStarted EntryReportStatus = "not_started"
 )
 
-func (status SuiteReportStatus) Validate() error {
+func (status EntryReportStatus) Validate() error {
 	switch status {
-	case SuiteReportCompleted, SuiteReportFailed, SuiteReportCancelled, SuiteReportNotStarted:
+	case EntryReportCompleted, EntryReportFailed, EntryReportCancelled, EntryReportNotStarted:
 		return nil
 	default:
 		return fmt.Errorf("unsupported suite report status %q", status)
 	}
 }
 
-type SuiteReport struct {
-	SuiteEntryID  string                 `json:"suite_entry_id"`
-	SuiteID       string                 `json:"suite_id"`
-	SuiteRevision uint64                 `json:"suite_revision"`
-	SuiteKey      string                 `json:"suite_key"`
-	SuiteName     string                 `json:"suite_name"`
-	Status        SuiteReportStatus      `json:"status"`
-	Conclusion    ReportConclusion       `json:"conclusion"`
-	SLA           map[string]MetricValue `json:"sla"`
-	Metrics       map[string]MetricValue `json:"metrics"`
-	Timeline      []json.RawMessage      `json:"timeline"`
-	Distributions []json.RawMessage      `json:"distributions"`
-	CaseResults   []Result               `json:"case_results"`
+type EntryReport struct {
+	WarmupCount   uint32                     `json:"warmup_count"`
+	Settings      testspec.RunSettings       `json:"settings"`
+	EntryID       string                     `json:"entry_id"`
+	TargetKind    PlanTargetKind             `json:"target_kind"`
+	TargetID      string                     `json:"target_id"`
+	Name          string                     `json:"name"`
+	Key           string                     `json:"key"`
+	Protocol      Protocol                   `json:"protocol"`
+	Parameters    map[string]json.RawMessage `json:"parameters"`
+	Load          LoadProfile                `json:"load"`
+	Seed          uint64                     `json:"seed"`
+	Status        EntryReportStatus          `json:"status"`
+	Conclusion    ReportConclusion           `json:"conclusion"`
+	Verification  VerificationSummary        `json:"verification"`
+	SLA           map[string]MetricValue     `json:"sla"`
+	Metrics       map[string]MetricValue     `json:"metrics"`
+	Timeline      []json.RawMessage          `json:"timeline"`
+	Distributions []json.RawMessage          `json:"distributions"`
+	CaseResults   []Result                   `json:"case_results"`
 }
 
 func (attachment ReportAttachment) Validate(expectedRunID ...string) error {
@@ -132,6 +143,8 @@ func (attachment ReportAttachment) Validate(expectedRunID ...string) error {
 
 type Report struct {
 	SchemaVersion int                    `json:"schema_version"`
+	Protocol      Protocol               `json:"protocol"`
+	Verification  VerificationSummary    `json:"verification"`
 	ID            string                 `json:"id"`
 	RunID         string                 `json:"run_id"`
 	RunStatus     RunStatus              `json:"run_status"`
@@ -146,7 +159,7 @@ type Report struct {
 	Timeline      []json.RawMessage      `json:"timeline"`
 	Distributions []json.RawMessage      `json:"distributions"`
 	CaseResults   []Result               `json:"case_results"`
-	SuiteReports  []SuiteReport          `json:"suite_reports"`
+	EntryReports  []EntryReport          `json:"entry_reports"`
 	ErrorClusters []json.RawMessage      `json:"error_clusters"`
 	Evidence      []Evidence             `json:"evidence"`
 	Baseline      json.RawMessage        `json:"baseline"`
@@ -171,6 +184,9 @@ func (report Report) Validate() error {
 	}
 	if report.GeneratedAt.IsZero() || !timestampIsUTC(report.GeneratedAt) {
 		return errors.New("report generation timestamp must be non-zero UTC")
+	}
+	if report.Protocol != report.PlanSnapshot.Model.Protocol {
+		return errors.New("report protocol differs from snapshot")
 	}
 	if err := report.PlanSnapshot.Validate(); err != nil {
 		return fmt.Errorf("invalid report plan snapshot: %w", err)
@@ -233,7 +249,7 @@ func (report Report) Validate() error {
 		}
 		evidenceIDs[evidence.ID] = struct{}{}
 	}
-	plannedResults := reportPlannedResults(report.PlanSnapshot, report.RunID)
+	plannedResults := reportPlannedResults(report.PlanSnapshot)
 	resultIDs := make(map[string]struct{}, len(report.CaseResults))
 	completedResults := make(map[string]struct{}, len(plannedResults))
 	for index, result := range report.CaseResults {
@@ -243,15 +259,15 @@ func (report Report) Validate() error {
 		if result.RunID != report.RunID {
 			return fmt.Errorf("report case result %d belongs to another run", index)
 		}
-		if result.SuiteStatus != "" || result.CaseID == "" ||
-			(len(report.PlanSnapshot.Suites) != 0 && result.RequestID != "") {
+		if result.EntryStatus != "" || result.CaseID == "" ||
+			(len(report.PlanSnapshot.Entries) != 0 && result.RequestID != "") {
 			return fmt.Errorf("report case result %d is not a case summary", index)
 		}
 		if _, duplicate := resultIDs[result.ID]; duplicate {
 			return fmt.Errorf("duplicate report result id %q", result.ID)
 		}
 		resultIDs[result.ID] = struct{}{}
-		resultKey := reportResultKey(result.SuiteEntryID, result.CaseID)
+		resultKey := reportResultKey(result.EntryID, result.CaseID)
 		if _, planned := plannedResults[resultKey]; !planned {
 			return fmt.Errorf("report case result %d references a suite or case outside the plan snapshot", index)
 		}
@@ -261,18 +277,12 @@ func (report Report) Validate() error {
 				return fmt.Errorf("report case result %d references missing evidence %q", index, evidenceID)
 			}
 		}
-		if report.Conclusion.Passed && !result.Success.Overall() {
+		if report.Conclusion.Passed && (result.Verification.Status == "failed" || result.Verification.Status == "indeterminate") {
 			return errors.New("passing report contains a failed case result")
 		}
 	}
-	if report.RunStatus == RunCompleted {
-		for plannedResult := range plannedResults {
-			if _, completed := completedResults[plannedResult]; !completed {
-				return fmt.Errorf("completed report has no result for planned suite case %q", plannedResult)
-			}
-		}
-	}
-	if err := report.validateSuiteReports(resultIDs); err != nil {
+
+	if err := report.validateEntryReports(resultIDs); err != nil {
 		return err
 	}
 	attachmentIDs := make(map[string]struct{}, len(report.Attachments))
@@ -288,37 +298,29 @@ func (report Report) Validate() error {
 	return nil
 }
 
-func (report Report) validateSuiteReports(topLevelResultIDs map[string]struct{}) error {
-	snapshots := report.PlanSnapshot.Suites
-	if len(report.PlanSnapshot.Suites) == 0 {
-		if report.PlanSnapshot.QuickTask == nil || len(report.SuiteReports) != 1 {
-			return errors.New("quick-task report requires one synthetic suite report")
-		}
-		snapshots = []RunSuiteSnapshot{{
-			EntryID: report.RunID,
-			Suite:   report.PlanSnapshot.QuickTask.Suite,
-			Cases:   report.PlanSnapshot.Cases,
-		}}
-	}
-	if len(report.SuiteReports) != len(snapshots) {
+func (report Report) validateEntryReports(topLevelResultIDs map[string]struct{}) error {
+	snapshots := report.PlanSnapshot.Entries
+
+	if len(report.EntryReports) != len(snapshots) {
 		return errors.New("multi-suite report requires one ordered suite report per snapshot entry")
 	}
 	nested := make(map[string]Result, len(report.CaseResults))
 	executionStopped := false
-	for index, suiteReport := range report.SuiteReports {
+	for index, suiteReport := range report.EntryReports {
 		snapshot := snapshots[index]
-		if suiteReport.SuiteEntryID != snapshot.EntryID || suiteReport.SuiteID != snapshot.Suite.ID ||
-			suiteReport.SuiteRevision != snapshot.Suite.Revision || suiteReport.SuiteKey != snapshot.Suite.Key ||
-			suiteReport.SuiteName != snapshot.Suite.Name {
+		if suiteReport.EntryID != snapshot.EntryID || suiteReport.TargetID != snapshot.TargetID ||
+			suiteReport.TargetKind != snapshot.TargetKind || suiteReport.Key != snapshot.Key || suiteReport.Name != snapshot.Name ||
+			suiteReport.Protocol != report.Protocol || !reflect.DeepEqual(suiteReport.Parameters, snapshot.Parameters) ||
+			!reflect.DeepEqual(suiteReport.Load, snapshot.Load) || suiteReport.Seed != report.PlanSnapshot.PlanDocument.Seed || suiteReport.WarmupCount != snapshot.WarmupCount || suiteReport.Settings != snapshot.Settings {
 			return fmt.Errorf("suite report %d does not match the ordered snapshot entry", index)
 		}
-		if err := validateSuiteReport(suiteReport, snapshot, report.RunID, report.RunStatus); err != nil {
+		if err := validateEntryReport(suiteReport, snapshot, report.RunID, report.RunStatus); err != nil {
 			return fmt.Errorf("invalid suite report %d: %w", index, err)
 		}
-		if executionStopped && suiteReport.Status != SuiteReportNotStarted {
+		if executionStopped && suiteReport.Status != EntryReportNotStarted {
 			return fmt.Errorf("suite report %d executes after cancellation stopped the run", index)
 		}
-		if suiteReport.Status == SuiteReportCancelled || suiteReport.Status == SuiteReportNotStarted {
+		if suiteReport.Status == EntryReportCancelled || suiteReport.Status == EntryReportNotStarted {
 			executionStopped = true
 		}
 		if report.Conclusion.Passed && !suiteReport.Conclusion.Passed {
@@ -342,9 +344,9 @@ func (report Report) validateSuiteReports(topLevelResultIDs map[string]struct{})
 	return nil
 }
 
-func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID string, runStatus RunStatus) error {
-	if !IsUUID(report.SuiteEntryID) || !IsUUID(report.SuiteID) || report.SuiteRevision < 1 ||
-		strings.TrimSpace(report.SuiteKey) == "" || strings.TrimSpace(report.SuiteName) == "" {
+func validateEntryReport(report EntryReport, snapshot RunEntrySnapshot, runID string, runStatus RunStatus) error {
+	if !IsUUID(report.EntryID) || !IsUUID(report.TargetID) ||
+		strings.TrimSpace(report.Key) == "" || strings.TrimSpace(report.Name) == "" {
 		return errors.New("suite report requires its pinned suite identity")
 	}
 	if err := report.Status.Validate(); err != nil {
@@ -355,25 +357,28 @@ func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID st
 	}
 	wantVerdict := ""
 	switch report.Status {
-	case SuiteReportCompleted:
-		wantVerdict = "fail"
-		if report.Conclusion.Passed {
+	case EntryReportCompleted:
+		wantVerdict = string(report.Verification.Status)
+		if wantVerdict == "passed" {
 			wantVerdict = "pass"
 		}
-	case SuiteReportFailed:
+		if wantVerdict == "failed" {
+			wantVerdict = "fail"
+		}
+	case EntryReportFailed:
 		wantVerdict = "fail"
-	case SuiteReportCancelled:
+	case EntryReportCancelled:
 		wantVerdict = "cancelled"
-	case SuiteReportNotStarted:
+	case EntryReportNotStarted:
 		wantVerdict = "not_started"
 	}
-	if report.Conclusion.Verdict != wantVerdict || (report.Status != SuiteReportCompleted && report.Conclusion.Passed) {
+	if (report.Conclusion.Verdict != wantVerdict && !(report.Conclusion.Verdict == "fail" && len(report.Conclusion.Issues) > 0)) || (report.Status != EntryReportCompleted && report.Conclusion.Passed) {
 		return errors.New("suite report conclusion does not match its execution status")
 	}
-	if runStatus == RunCompleted && report.Status != SuiteReportCompleted {
+	if runStatus == RunCompleted && report.Status != EntryReportCompleted {
 		return errors.New("completed run contains an incomplete suite report")
 	}
-	if report.Status == SuiteReportCancelled && runStatus != RunCancelled {
+	if report.Status == EntryReportCancelled && runStatus != RunCancelled {
 		return errors.New("cancelled suite report requires a cancelled run")
 	}
 	if err := validateMetricMap("suite report SLA", report.SLA); err != nil {
@@ -385,7 +390,7 @@ func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID st
 	if report.Timeline == nil || report.Distributions == nil || report.CaseResults == nil {
 		return errors.New("suite report collection sections must not be nil")
 	}
-	if report.Status == SuiteReportNotStarted && len(report.CaseResults) != 0 {
+	if report.Status == EntryReportNotStarted && len(report.CaseResults) != 0 {
 		return errors.New("not-started suite report cannot contain case results")
 	}
 	for index, item := range report.Timeline {
@@ -407,7 +412,7 @@ func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID st
 		if err := result.Validate(); err != nil {
 			return fmt.Errorf("invalid case result %d: %w", index, err)
 		}
-		if result.RunID != runID || result.SuiteEntryID != report.SuiteEntryID || result.RequestID != "" || result.SuiteStatus != "" {
+		if result.RunID != runID || result.EntryID != report.EntryID || result.RequestID != "" || result.EntryStatus != "" {
 			return fmt.Errorf("case result %d has invalid suite ownership", index)
 		}
 		if _, exists := planned[result.CaseID]; !exists {
@@ -417,32 +422,19 @@ func validateSuiteReport(report SuiteReport, snapshot RunSuiteSnapshot, runID st
 			return fmt.Errorf("duplicate suite case result %q", result.CaseID)
 		}
 		seenCases[result.CaseID] = struct{}{}
-		if report.Conclusion.Passed && !result.Success.Overall() {
+		if report.Conclusion.Passed && (result.Verification.Status == "failed" || result.Verification.Status == "indeterminate") {
 			return errors.New("passing suite report contains a failed case result")
 		}
 	}
-	if report.Status == SuiteReportCompleted {
-		for _, ref := range snapshot.Cases {
-			if _, exists := seenCases[ref.CaseID]; !exists {
-				return fmt.Errorf("completed suite report has no result for case %q", ref.CaseID)
-			}
-		}
-	}
+
 	return nil
 }
 
-func reportPlannedResults(snapshot RunSnapshot, quickTaskEntryID string) map[string]struct{} {
-	if len(snapshot.Suites) == 0 {
-		planned := make(map[string]struct{}, len(snapshot.Cases))
-		for _, ref := range snapshot.Cases {
-			planned[reportResultKey(quickTaskEntryID, ref.CaseID)] = struct{}{}
-		}
-		return planned
-	}
+func reportPlannedResults(snapshot RunSnapshot) map[string]struct{} {
 	planned := make(map[string]struct{})
-	for _, suite := range snapshot.Suites {
-		for _, ref := range suite.Cases {
-			planned[reportResultKey(suite.EntryID, ref.CaseID)] = struct{}{}
+	for _, entry := range snapshot.Entries {
+		for _, ref := range entry.Cases {
+			planned[reportResultKey(entry.EntryID, ref.CaseID)] = struct{}{}
 		}
 	}
 	return planned

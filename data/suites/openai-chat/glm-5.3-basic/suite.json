@@ -1,21 +1,46 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "openai-chat.glm-5.3.basic",
   "name": "GLM 5.3 基本功能套件",
   "protocol": "openai-chat",
-  "model_target": "glm-5.3",
-  "case_keys": [
-    "glm53.connectivity",
-    "glm53.auth.missing",
-    "glm53.auth.invalid",
-    "glm53.thinking.enabled",
-    "glm53.reasoning_effort.valid_0",
-    "glm53.stream.true",
-    "glm53.format.json",
-    "glm53.tools.roundtrip",
-    "glm53.tools.stream_true",
-    "glm53.thinking.replay_false",
-    "glm53.cache.counter",
-    "glm53.thinking.disabled"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "c920e5f5-3c07-5639-aac2-1f1a9bebf965"
+    },
+    {
+      "case_id": "37836d0b-71ca-5651-9629-a44fc863d1eb"
+    },
+    {
+      "case_id": "cfd07576-3f44-5bb0-af6c-7840888fcfbc"
+    },
+    {
+      "case_id": "85cc5d85-646b-5828-be00-b64412b65e56"
+    },
+    {
+      "case_id": "3410753d-2f2c-5982-972e-5fc102c0bf47"
+    },
+    {
+      "case_id": "55d0ac3f-8ec4-5ed4-927f-14cde18150c2"
+    },
+    {
+      "case_id": "e21aa5da-58e4-5173-97eb-39db71e81e39"
+    },
+    {
+      "case_id": "2457775a-b2b1-502a-90bc-753ac46cba5e"
+    },
+    {
+      "case_id": "e52025ae-9bb3-5b85-9b13-7bd56f2523b3"
+    },
+    {
+      "case_id": "7668ea02-9f7f-5ac5-b846-dfeb850b278f"
+    },
+    {
+      "case_id": "db952c4d-b3c2-5367-a521-d3e353b73d72"
+    },
+    {
+      "case_id": "9e20b635-889b-59f5-ae10-3e2a69682734"
+    }
+  ],
+  "inputs": []
 }

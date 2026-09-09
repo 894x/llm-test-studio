@@ -2,63 +2,44 @@ package catalog
 
 import (
 	"context"
-	"encoding/json"
-	"testing"
-
 	"github.com/894x/llm-test-studio/internal/domain"
+	"testing"
 )
 
-func TestCreatePlanBuildsOrderedEntriesAndPreservesSuppliedInputs(t *testing.T) {
+func TestCreatePlanKeepsRepeatedSuiteAndDirectCaseReferences(t *testing.T) {
 	repository := validRepository()
-	repository.testCases[0].Definition.Spec = json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"default"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
-	repository.suites[0].QuickTest = &domain.SuiteQuickTest{
-		Description: "Prompt", TimeoutMS: 30_000,
-		Inputs: []domain.SuiteInput{{
-			Key: "prompt", Label: "Prompt", Type: "text", Default: json.RawMessage(`"default"`),
-			Bindings: []domain.SuiteInputBinding{{CaseKey: "T001", Pointer: "/request/body/messages/0/content"}},
-		}},
+	service := newTestService(t, repository, fixtureTime())
+	command := validCreatePlanCommand("mixed entries")
+	repeated := command.Entries[0]
+	direct := command.Entries[0]
+	direct.TargetKind = domain.PlanTargetCase
+	direct.TargetID = caseID
+	command.Entries = append(command.Entries, repeated, direct)
+	if _, err := service.CreatePlan(context.Background(), command); err != nil {
+		t.Fatal(err)
 	}
-	const (
-		createdPlanID = "84000000-0000-4000-8000-000000000001"
-	)
-	service := newTestServiceWithFactory(
-		t, repository, fixtureTime(), sequentialMetaFactory([]string{createdPlanID}),
-	)
-	profile := PlanSuiteInput{
-		SuiteID: suiteID, SuiteRevision: 1,
-		LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
-		SLAThresholds: map[string]float64{"p95_ms": 1_500}, Parameters: map[string]json.RawMessage{},
+	if len(repository.createdPlan.Entries) != 3 {
+		t.Fatal("entries were deduplicated")
 	}
-	second := profile
-	second.Parameters = map[string]json.RawMessage{"prompt": json.RawMessage(`"second"`)}
-	second.RequestCount = 2
+	seen := map[string]bool{}
+	for _, entry := range repository.createdPlan.Entries {
+		if !domain.IsUUID(entry.EntryID) || seen[entry.EntryID] {
+			t.Fatal("invalid entry identity")
+		}
+		seen[entry.EntryID] = true
+	}
+}
 
-	_, err := service.CreatePlan(context.Background(), CreatePlanCommand{
-		Name: "ordered", ModelIDs: []string{modelBID}, ChannelIDs: []string{channelID},
-		Suites: []PlanSuiteInput{profile, second},
-	})
-	if err != nil {
-		t.Fatalf("CreatePlan() error = %v", err)
+func TestPlanDefersReferencedProtocolAndInputChecksUntilRun(t *testing.T) {
+	repository := validRepository()
+	repository.suites = nil
+	repository.testCases = nil
+	service := newTestService(t, repository, fixtureTime())
+	if _, err := service.CreatePlan(context.Background(), validCreatePlanCommand("unresolved")); err != nil {
+		t.Fatal(err)
 	}
-	if len(repository.createdPlan.Suites) != 2 || !domain.IsUUID(repository.createdPlan.Suites[0].EntryID) ||
-		!domain.IsUUID(repository.createdPlan.Suites[1].EntryID) || repository.createdPlan.Suites[0].EntryID == repository.createdPlan.Suites[1].EntryID ||
-		repository.createdPlan.Suites[1].Load.RequestCount != 2 {
-		t.Fatalf("created ordered suites = %#v", repository.createdPlan.Suites)
-	}
-	if got := string(repository.createdPlan.Suites[0].Parameters["prompt"]); got != "" {
-		t.Fatalf("save unexpectedly resolved a default parameter = %s", got)
-	}
-	repository.plans = []domain.Plan{repository.createdPlan}
-	snapshot, err := service.Snapshot(context.Background())
-	if err != nil {
-		t.Fatalf("Snapshot() error = %v", err)
-	}
-	if len(snapshot.Plans) != 1 || snapshot.Plans[0].SuiteCount != 2 || snapshot.Plans[0].CaseCount != 2 ||
-		len(snapshot.Plans[0].Suites) != 2 || snapshot.Plans[0].Suites[0].SuiteKey != repository.suites[0].Key ||
-		snapshot.Plans[0].Suites[0].Protocol != repository.suites[0].Protocol ||
-		snapshot.Plans[0].Suites[0].ModelTarget != repository.suites[0].ModelTarget ||
-		snapshot.Plans[0].Suites[0].CaseCount != 1 || snapshot.Plans[0].Suites[0].QuickTest == nil {
-		t.Fatalf("Plan summary = %#v", snapshot.Plans)
+	if _, err := service.Snapshot(context.Background()); err != nil {
+		t.Fatalf("catalog cannot display unresolved references: %v", err)
 	}
 }
 
@@ -67,12 +48,12 @@ func TestPlanSuiteEntryIDsAreServerOwnedAndStableAcrossUpdates(t *testing.T) {
 		repository := validRepository()
 		service := newTestService(t, repository, fixtureTime())
 		command := validUpdatePlanCommand(planID, "updated")
-		command.Suites[0].EntryID = planEntryID
+		command.Entries[0].EntryID = planEntryID
 
 		if _, err := service.UpdatePlan(context.Background(), command); err != nil {
 			t.Fatalf("UpdatePlan() error = %v", err)
 		}
-		if got := repository.updatedPlan.Suites[0].EntryID; got != planEntryID {
+		if got := repository.updatedPlan.Entries[0].EntryID; got != planEntryID {
 			t.Fatalf("updated entry id = %q, want %q", got, planEntryID)
 		}
 	})
@@ -81,7 +62,7 @@ func TestPlanSuiteEntryIDsAreServerOwnedAndStableAcrossUpdates(t *testing.T) {
 		repository := validRepository()
 		service := newTestService(t, repository, fixtureTime())
 		command := validCreatePlanCommand("created")
-		command.Suites[0].EntryID = planEntryID
+		command.Entries[0].EntryID = planEntryID
 
 		if _, err := service.CreatePlan(context.Background(), command); err != ErrInvalid {
 			t.Fatalf("CreatePlan() error = %v, want %v", err, ErrInvalid)
@@ -92,39 +73,10 @@ func TestPlanSuiteEntryIDsAreServerOwnedAndStableAcrossUpdates(t *testing.T) {
 		repository := validRepository()
 		service := newTestService(t, repository, fixtureTime())
 		command := validUpdatePlanCommand(planID, "updated")
-		command.Suites[0].EntryID = "79797979-7979-4979-8979-797979797979"
+		command.Entries[0].EntryID = "79797979-7979-4979-8979-797979797979"
 
 		if _, err := service.UpdatePlan(context.Background(), command); err != ErrInvalid {
 			t.Fatalf("UpdatePlan() error = %v, want %v", err, ErrInvalid)
 		}
 	})
-}
-
-func TestPlanDefersSuiteTargetCompatibilityUntilExecution(t *testing.T) {
-	repository := validRepository()
-	repository.mappings[1].UpstreamModelName = "zulu-upstream"
-	service := newTestService(t, repository, fixtureTime())
-	command := validCreatePlanCommand("target mismatch")
-	command.ModelIDs = []string{modelAID}
-
-	if _, err := service.CreatePlan(context.Background(), command); err != nil {
-		t.Fatalf("CreatePlan() target mismatch error = %v, want saved reference", err)
-	}
-
-	command.ModelIDs, command.ChannelIDs = []string{}, []string{}
-	if _, err := service.CreatePlan(context.Background(), command); err != nil {
-		t.Fatalf("CreatePlan() targetless error = %v", err)
-	}
-
-	conflictingSuite := repository.suites[0]
-	conflictingSuite.EntityMeta.ID = "84000000-0000-4000-8000-000000000002"
-	conflictingSuite.Key = "different-target"
-	conflictingSuite.ModelTarget = "another-upstream"
-	repository.suites = append(repository.suites, conflictingSuite)
-	conflicting := command.Suites[0]
-	conflicting.SuiteID = conflictingSuite.ID
-	command.Suites = append(command.Suites, conflicting)
-	if _, err := service.CreatePlan(context.Background(), command); err != nil {
-		t.Fatalf("CreatePlan() conflicting targetless suites error = %v, want saved reference", err)
-	}
 }

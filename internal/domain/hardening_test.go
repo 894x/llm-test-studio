@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/894x/llm-test-studio/internal/testspec"
 	"math"
 	"strings"
 	"testing"
@@ -42,15 +43,14 @@ func validRunSnapshot() RunSnapshot {
 	suite := Suite{
 		EntityMeta: validEntityMeta(testSuiteID),
 		Key:        "default-suite", Name: "Default Suite", Protocol: ProtocolOpenAIChat,
-		ModelTarget: "model-upstream", Cases: []CaseRevisionRef{caseRef},
+		Cases: []CaseRef{{CaseID: caseRef.CaseID}}, Inputs: []SuiteInput{},
 	}
 	plan := Plan{
 		EntityMeta: validEntityMeta(testPlanID),
 		Name:       "Plan",
-		ModelIDs:   []string{testModelID},
-		ChannelIDs: []string{testChannelID},
-		Suites: []PlanSuiteEntry{{
-			EntryID: testPlanEntryID, SuiteID: suite.ID, SuiteRevision: suite.Revision,
+		Protocol:   ProtocolOpenAIChat, Seed: 1,
+		Entries: []PlanEntry{{
+			EntryID: testPlanEntryID, TargetKind: PlanTargetSuite, TargetID: suite.ID,
 			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
@@ -83,8 +83,8 @@ func validRunSnapshot() RunSnapshot {
 		},
 		PlanDocument: &plan,
 		Mapping:      &mapping,
-		Suites: []RunSuiteSnapshot{{
-			EntryID: testPlanEntryID, Suite: suite, Cases: []CaseRevisionRef{caseRef},
+		Entries: []RunEntrySnapshot{{
+			EntryID: testPlanEntryID, TargetKind: PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite, CaseInputs: map[string]map[string]json.RawMessage{testCaseID: {}}, Cases: []CaseRevisionRef{caseRef},
 			CaseDefinitions: []TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 		Environment: EnvironmentSnapshot{
@@ -102,27 +102,12 @@ func TestRunSnapshotRejectsLegacySchema(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotClonePreservesTargetlessPlanEmptyArrays(t *testing.T) {
-	snapshot := validRunSnapshot()
-	snapshot.PlanDocument.ModelIDs = []string{}
-	snapshot.PlanDocument.ChannelIDs = []string{}
-
-	run, err := NewRun(validEntityMeta(testRunID), snapshot.Plan.ID, snapshot)
-	if err != nil {
-		t.Fatalf("NewRun() error = %v", err)
-	}
-	cloned := run.Snapshot()
-	if cloned.PlanDocument.ModelIDs == nil || cloned.PlanDocument.ChannelIDs == nil {
-		t.Fatalf("targetless plan arrays = models:%#v channels:%#v, want non-nil empty arrays", cloned.PlanDocument.ModelIDs, cloned.PlanDocument.ChannelIDs)
-	}
-}
-
 func validTestCaseDefinition() TestCaseDefinition {
 	return TestCaseDefinition{
 		SchemaVersion: CurrentTestCaseDefinitionSchemaVersion,
-		Type:          CaseType("request.single"),
+		Type:          CaseType("openai-chat"),
 		TypeVersion:   1,
-		Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"model":"model-upstream","max_tokens":64}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"stream_end","config":{"marker":"[DONE]"}}]}`),
+		Spec:          json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`),
 	}
 }
 
@@ -140,11 +125,11 @@ func validEvidence() Evidence {
 func validResult() Result {
 	return Result{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174017"),
-		RunID:      testRunID, SuiteEntryID: testPlanEntryID,
-		CaseID:    testCaseID,
-		RequestID: "request-1",
-		Success:   SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
-		Metrics:   map[string]float64{"ttft_ms": 120},
+		RunID:      testRunID, EntryID: testPlanEntryID,
+		CaseID:          testCaseID,
+		RequestID:       "request-1",
+		ExecutionStatus: ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
+		Metrics: map[string]float64{"ttft_ms": 120},
 		EvidenceIDs: []string{
 			testEvidenceID,
 		},
@@ -155,15 +140,14 @@ func validReport() Report {
 	snapshot := validRunSnapshot()
 	caseResult := validResult()
 	caseResult.RequestID = ""
-	suiteReport := SuiteReport{
-		SuiteEntryID: testPlanEntryID, SuiteID: testSuiteID, SuiteRevision: 1,
-		SuiteKey: "default-suite", SuiteName: "Default Suite", Status: SuiteReportCompleted,
+	suiteReport := EntryReport{
+		EntryID: testPlanEntryID, TargetKind: PlanTargetSuite, TargetID: testSuiteID, Key: "default-suite", Name: "Default Suite", Protocol: ProtocolOpenAIChat, Parameters: snapshot.Entries[0].Parameters, Load: snapshot.Entries[0].Load, Seed: 1, Verification: VerificationSummary{Status: testspec.VerdictPassed, Passed: 1}, Status: EntryReportCompleted,
 		Conclusion: ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}},
 		SLA:        map[string]MetricValue{}, Metrics: map[string]MetricValue{},
 		Timeline: []json.RawMessage{}, Distributions: []json.RawMessage{}, CaseResults: []Result{caseResult},
 	}
 	return Report{
-		SchemaVersion: CurrentReportSchemaVersion,
+		SchemaVersion: CurrentReportSchemaVersion, Protocol: ProtocolOpenAIChat, Verification: VerificationSummary{Status: testspec.VerdictPassed, Passed: 1},
 		ID:            "123e4567-e89b-42d3-a456-426614174018",
 		RunID:         testRunID,
 		RunStatus:     RunCompleted,
@@ -172,13 +156,13 @@ func validReport() Report {
 		Model:         ReportSubject{ID: testModelID, Name: "Model"},
 		Channel:       ReportSubject{ID: testChannelID, Name: "primary"},
 		Environment:   snapshot.Environment,
-		Conclusion:    ReportConclusion{Passed: true, Verdict: "qualified", Issues: []string{}},
+		Conclusion:    ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}},
 		SLA:           map[string]MetricValue{"max_ttft": {Value: 2_000, Unit: "ms", Samples: 1}},
 		Metrics:       map[string]MetricValue{"ttft_p50": {Value: 120, Unit: "ms", Samples: 10}},
 		Timeline:      []json.RawMessage{},
 		Distributions: []json.RawMessage{},
 		CaseResults:   []Result{caseResult},
-		SuiteReports:  []SuiteReport{suiteReport},
+		EntryReports:  []EntryReport{suiteReport},
 		ErrorClusters: []json.RawMessage{},
 		Evidence:      []Evidence{validEvidence()},
 		Baseline:      json.RawMessage(`{}`),
@@ -287,61 +271,6 @@ func TestCredentialReferenceOnlyKeepsFourSafeSuffixCharacters(t *testing.T) {
 		if err := candidate.Validate(); err == nil {
 			t.Fatalf("unsafe masked suffix %q validated", unsafe)
 		}
-	}
-}
-
-func TestSuiteAndPlanPinEveryCaseRevision(t *testing.T) {
-	suite := Suite{
-		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174021"),
-		Key:        "admission", Name: "admission", Protocol: ProtocolOpenAIChat, ModelTarget: "gpt-test",
-		Cases: []CaseRevisionRef{{CaseID: testCaseID, Revision: 7}},
-	}
-	if err := suite.Validate(); err != nil {
-		t.Fatalf("Suite.Validate() error = %v", err)
-	}
-
-	plan := Plan{
-		EntityMeta: validEntityMeta(testPlanID), Name: "explicit smoke",
-		ModelIDs: []string{testModelID}, ChannelIDs: []string{testChannelID},
-		Suites: []PlanSuiteEntry{{
-			EntryID: "123e4567-e89b-42d3-a456-426614174025", SuiteID: suite.ID, SuiteRevision: suite.Revision,
-			Parameters: map[string]json.RawMessage{},
-			Load:       validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
-		}},
-	}
-	if err := plan.Validate(); err != nil {
-		t.Fatalf("explicit-case Plan.Validate() error = %v", err)
-	}
-
-	plan.Suites[0].SuiteRevision = 0
-	if err := plan.Validate(); err == nil {
-		t.Fatal("plan containing an unpinned suite revision validated")
-	}
-}
-
-func TestPlanAllowsTargetsToBeSelectedAtRunTime(t *testing.T) {
-	plan := Plan{
-		EntityMeta: validEntityMeta(testPlanID), Name: "runtime target smoke",
-		Suites: []PlanSuiteEntry{{
-			EntryID: "123e4567-e89b-42d3-a456-426614174026",
-			SuiteID: testPlanID, SuiteRevision: 1,
-			Parameters: map[string]json.RawMessage{},
-			Load:       validRunSnapshot().Suites[0].Load, SLA: validRunSnapshot().Suites[0].SLA,
-		}},
-	}
-	if err := plan.Validate(); err != nil {
-		t.Fatalf("targetless Plan.Validate() error = %v", err)
-	}
-
-	plan.ModelIDs = []string{testModelID}
-	if err := plan.Validate(); err == nil {
-		t.Fatal("plan with only a model allowlist validated")
-	}
-
-	plan.ModelIDs = nil
-	plan.ChannelIDs = []string{testChannelID}
-	if err := plan.Validate(); err == nil {
-		t.Fatal("plan with only a channel allowlist validated")
 	}
 }
 
@@ -496,17 +425,17 @@ func TestRunSnapshotIsCompleteAndDefensivelyCopied(t *testing.T) {
 		t.Fatalf("run accessors returned inconsistent identity: meta=%#v plan=%q status=%q", run.Meta(), run.PlanID(), run.Status())
 	}
 
-	snapshot.Suites[0].Cases[0].Revision = 99
-	snapshot.Suites[0].SLA.Thresholds["max_ttft_ms"] = 99
+	snapshot.Entries[0].Cases[0].Revision = 99
+	snapshot.Entries[0].SLA.Thresholds["max_ttft_ms"] = 99
 	stored := run.Snapshot()
-	if stored.Suites[0].Cases[0].Revision != 7 || stored.Suites[0].SLA.Thresholds["max_ttft_ms"] != 2_000 {
+	if stored.Entries[0].Cases[0].Revision != 7 || stored.Entries[0].SLA.Thresholds["max_ttft_ms"] != 2_000 {
 		t.Fatalf("run retained caller aliases: %#v", stored)
 	}
 
-	stored.Suites[0].Cases[0].Revision = 88
-	stored.Suites[0].SLA.Thresholds["max_ttft_ms"] = 88
+	stored.Entries[0].Cases[0].Revision = 88
+	stored.Entries[0].SLA.Thresholds["max_ttft_ms"] = 88
 	again := run.Snapshot()
-	if again.Suites[0].Cases[0].Revision != 7 || again.Suites[0].SLA.Thresholds["max_ttft_ms"] != 2_000 {
+	if again.Entries[0].Cases[0].Revision != 7 || again.Entries[0].SLA.Thresholds["max_ttft_ms"] != 2_000 {
 		t.Fatalf("Snapshot() exposed mutable internal data: %#v", again)
 	}
 
@@ -540,7 +469,7 @@ func TestRunJSONRoundTripRestoresValidatedPrivateSnapshot(t *testing.T) {
 	if err := decoded.Validate(); err != nil {
 		t.Fatalf("decoded Run.Validate() error = %v; JSON = %s", err, encoded)
 	}
-	if decoded.Snapshot().Suites[0].Cases[0].Revision != 7 {
+	if decoded.Snapshot().Entries[0].Cases[0].Revision != 7 {
 		t.Fatalf("decoded snapshot = %#v", decoded.Snapshot())
 	}
 }
@@ -591,87 +520,6 @@ func TestReportAttachmentValidationEnforcesRunAndArtifactSafety(t *testing.T) {
 	}
 }
 
-func TestResultValidationEnforcesOutcomeEnumsAndEvidenceReferences(t *testing.T) {
-	valid := validResult()
-	if err := valid.Validate(); err != nil {
-		t.Fatalf("Result.Validate() error = %v", err)
-	}
-
-	tests := []struct {
-		name   string
-		mutate func(*Result)
-	}{
-		{"unknown failure", func(value *Result) {
-			value.Success.Semantic = false
-			value.Failure = "mystery"
-			value.ErrorCode = "semantic_failed"
-		}},
-		{"missing failure", func(value *Result) { value.Success.Semantic = false }},
-		{"failure on success", func(value *Result) { value.Failure = FailureHTTP; value.ErrorCode = "http_error" }},
-		{"protocol without transport", func(value *Result) {
-			value.Success.Transport = false
-			value.Failure = FailureNetwork
-			value.ErrorCode = "network_error"
-		}},
-		{"network failure with transport success", func(value *Result) {
-			value.Success.SLA = false
-			value.Failure = FailureNetwork
-			value.ErrorCode = "network_error"
-		}},
-		{"http failure without transport success", func(value *Result) {
-			value.Success = SuccessDimensions{}
-			value.Failure = FailureHTTP
-			value.ErrorCode = "http_error"
-		}},
-		{"semantic failure before protocol success", func(value *Result) {
-			value.Success = SuccessDimensions{Transport: true}
-			value.Failure = FailureSemantic
-			value.ErrorCode = "semantic_error"
-		}},
-		{"SLA failure before semantic success", func(value *Result) {
-			value.Success = SuccessDimensions{Transport: true, Protocol: true}
-			value.Failure = FailureSLA
-			value.ErrorCode = "sla_error"
-		}},
-		{"invalid evidence id", func(value *Result) { value.EvidenceIDs = []string{"not-a-uuid"} }},
-		{"non-finite metric", func(value *Result) { value.Metrics = map[string]float64{"ttft_ms": math.NaN()} }},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			candidate := valid
-			test.mutate(&candidate)
-			if err := candidate.Validate(); err == nil {
-				t.Fatalf("invalid result validated: %#v", candidate)
-			}
-		})
-	}
-}
-
-func TestFailureKindsMatchTheFirstFailedLayer(t *testing.T) {
-	tests := []struct {
-		kind       FailureKind
-		dimensions SuccessDimensions
-	}{
-		{FailureNetwork, SuccessDimensions{}},
-		{FailureTimeout, SuccessDimensions{}},
-		{FailureCancelled, SuccessDimensions{}},
-		{FailureHTTP, SuccessDimensions{Transport: true}},
-		{FailureProtocol, SuccessDimensions{Transport: true}},
-		{FailureRateLimit, SuccessDimensions{Transport: true}},
-		{FailureSemantic, SuccessDimensions{Transport: true, Protocol: true}},
-		{FailureSLA, SuccessDimensions{Transport: true, Protocol: true, Semantic: true}},
-	}
-	for _, test := range tests {
-		result := validResult()
-		result.Success = test.dimensions
-		result.Failure = test.kind
-		result.ErrorCode = "classified_failure"
-		if err := result.Validate(); err != nil {
-			t.Errorf("%q rejected at its first failed layer: %v", test.kind, err)
-		}
-	}
-}
-
 func TestErrorCodeUsesBoundedStableSnakeCase(t *testing.T) {
 	for _, valid := range []ErrorCode{"http_error", "rate_limit_429", "provider2_timeout"} {
 		if err := valid.Validate(); err != nil {
@@ -688,9 +536,9 @@ func TestErrorCodeUsesBoundedStableSnakeCase(t *testing.T) {
 	}
 }
 
-func TestProviderDetailIsRedactedBoundedAndAbsentOnSuccess(t *testing.T) {
+func TestProviderDetailIsRedactedAndBounded(t *testing.T) {
 	failed := validResult()
-	failed.Success = SuccessDimensions{Transport: true}
+	failed.Verification.Status = testspec.VerdictFailed
 	failed.Failure = FailureHTTP
 	failed.ErrorCode = "http_error"
 	failed.Detail = &ProviderDetail{Value: "provider rejected request", Redacted: true}
@@ -712,8 +560,8 @@ func TestProviderDetailIsRedactedBoundedAndAbsentOnSuccess(t *testing.T) {
 
 	success := validResult()
 	success.Detail = &ProviderDetail{Value: "should not exist", Redacted: true}
-	if err := success.Validate(); err == nil {
-		t.Fatal("successful result retained provider failure detail")
+	if err := success.Validate(); err != nil {
+		t.Fatal("redacted observation should be independent of verdict")
 	}
 }
 
@@ -817,14 +665,14 @@ func TestReportTerminalStatusControlsResultCoverage(t *testing.T) {
 		report.Conclusion.Passed = false
 		report.Conclusion.Verdict = "incomplete"
 		report.CaseResults = []Result{}
-		report.SuiteReports[0].CaseResults = []Result{}
-		report.SuiteReports[0].Conclusion.Passed = false
+		report.EntryReports[0].CaseResults = []Result{}
+		report.EntryReports[0].Conclusion.Passed = false
 		if status == RunCancelled {
-			report.SuiteReports[0].Status = SuiteReportCancelled
-			report.SuiteReports[0].Conclusion.Verdict = "cancelled"
+			report.EntryReports[0].Status = EntryReportCancelled
+			report.EntryReports[0].Conclusion.Verdict = "cancelled"
 		} else {
-			report.SuiteReports[0].Status = SuiteReportFailed
-			report.SuiteReports[0].Conclusion.Verdict = "fail"
+			report.EntryReports[0].Status = EntryReportFailed
+			report.EntryReports[0].Conclusion.Verdict = "fail"
 		}
 		if err := report.Validate(); err != nil {
 			t.Errorf("%s report with no fabricated results was rejected: %v", status, err)
@@ -847,84 +695,84 @@ func TestReportTerminalStatusControlsResultCoverage(t *testing.T) {
 	report.RunStatus = RunFailed
 	report.Conclusion = ReportConclusion{Passed: false, Verdict: "failed", Issues: []string{"failed"}}
 	report.CaseResults = []Result{}
-	report.SuiteReports[0].Status = SuiteReportCancelled
-	report.SuiteReports[0].Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
-	report.SuiteReports[0].CaseResults = []Result{}
+	report.EntryReports[0].Status = EntryReportCancelled
+	report.EntryReports[0].Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
+	report.EntryReports[0].CaseResults = []Result{}
 	if err := report.Validate(); err == nil {
 		t.Fatal("failed run accepted a cancelled Suite report")
 	}
 }
 
-func TestReportRejectsSuiteExecutionAfterCancellationBoundary(t *testing.T) {
+func TestReportRejectsEntryExecutionAfterCancellationBoundary(t *testing.T) {
 	report := validReport()
 	const secondEntryID = "123e4567-e89b-42d3-a456-426614174099"
 
-	secondPlanEntry := report.PlanSnapshot.PlanDocument.Suites[0]
+	secondPlanEntry := report.PlanSnapshot.PlanDocument.Entries[0]
 	secondPlanEntry.EntryID = secondEntryID
-	report.PlanSnapshot.PlanDocument.Suites = append(report.PlanSnapshot.PlanDocument.Suites, secondPlanEntry)
-	secondSnapshot := report.PlanSnapshot.Suites[0]
+	report.PlanSnapshot.PlanDocument.Entries = append(report.PlanSnapshot.PlanDocument.Entries, secondPlanEntry)
+	secondSnapshot := report.PlanSnapshot.Entries[0]
 	secondSnapshot.EntryID = secondEntryID
-	report.PlanSnapshot.Suites = append(report.PlanSnapshot.Suites, secondSnapshot)
+	report.PlanSnapshot.Entries = append(report.PlanSnapshot.Entries, secondSnapshot)
 
 	report.RunStatus = RunCancelled
 	report.Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
 	report.CaseResults = []Result{}
-	first := report.SuiteReports[0]
-	first.Status = SuiteReportCancelled
+	first := report.EntryReports[0]
+	first.Status = EntryReportCancelled
 	first.Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{"cancelled"}}
 	first.CaseResults = []Result{}
 	second := first
-	second.SuiteEntryID = secondEntryID
-	second.Status = SuiteReportFailed
+	second.EntryID = secondEntryID
+	second.Status = EntryReportFailed
 	second.Conclusion = ReportConclusion{Passed: false, Verdict: "failed", Issues: []string{"failed"}}
-	report.SuiteReports = []SuiteReport{first, second}
+	report.EntryReports = []EntryReport{first, second}
 
 	if err := report.Validate(); err == nil {
 		t.Fatal("report accepted suite execution after a cancelled suite")
 	}
 
-	second.Status = SuiteReportNotStarted
+	second.Status = EntryReportNotStarted
 	second.Conclusion = ReportConclusion{Passed: false, Verdict: "not_started", Issues: []string{"not_started"}}
-	report.SuiteReports[1] = second
+	report.EntryReports[1] = second
 	if err := report.Validate(); err != nil {
 		t.Fatalf("cancelled suite followed by not_started was rejected: %v", err)
 	}
 }
 
-func TestSuiteReportConclusionMatchesExecutionStatus(t *testing.T) {
+func TestEntryReportConclusionMatchesExecutionStatus(t *testing.T) {
 	base := validReport()
-	snapshot := base.PlanSnapshot.Suites[0]
-	for name, mutate := range map[string]func(*SuiteReport){
-		"passing completed with fail verdict": func(report *SuiteReport) {
+	snapshot := base.PlanSnapshot.Entries[0]
+	for name, mutate := range map[string]func(*EntryReport){
+		"passing completed with fail verdict": func(report *EntryReport) {
 			report.Conclusion.Verdict = "fail"
 		},
-		"failing completed with pass verdict": func(report *SuiteReport) {
+		"failing completed with pass verdict": func(report *EntryReport) {
 			report.Conclusion.Passed = false
 		},
-		"failed with cancelled verdict": func(report *SuiteReport) {
-			report.Status = SuiteReportFailed
+		"failed with cancelled verdict": func(report *EntryReport) {
+			report.Status = EntryReportFailed
 			report.Conclusion = ReportConclusion{Passed: false, Verdict: "cancelled", Issues: []string{}}
 			report.CaseResults = []Result{}
 		},
-		"cancelled with fail verdict": func(report *SuiteReport) {
-			report.Status = SuiteReportCancelled
+		"cancelled with fail verdict": func(report *EntryReport) {
+			report.Status = EntryReportCancelled
 			report.Conclusion = ReportConclusion{Passed: false, Verdict: "fail", Issues: []string{}}
 			report.CaseResults = []Result{}
 		},
-		"not started with fail verdict": func(report *SuiteReport) {
-			report.Status = SuiteReportNotStarted
+		"not started with fail verdict": func(report *EntryReport) {
+			report.Status = EntryReportNotStarted
 			report.Conclusion = ReportConclusion{Passed: false, Verdict: "fail", Issues: []string{}}
 			report.CaseResults = []Result{}
 		},
-		"not started with a case result": func(report *SuiteReport) {
-			report.Status = SuiteReportNotStarted
+		"not started with a case result": func(report *EntryReport) {
+			report.Status = EntryReportNotStarted
 			report.Conclusion = ReportConclusion{Passed: false, Verdict: "not_started", Issues: []string{}}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			report := base.SuiteReports[0]
+			report := base.EntryReports[0]
 			mutate(&report)
-			if err := validateSuiteReport(report, snapshot, base.RunID, RunFailed); err == nil {
+			if err := validateEntryReport(report, snapshot, base.RunID, RunFailed); err == nil {
 				t.Fatal("suite report accepted a status/conclusion mismatch")
 			}
 		})

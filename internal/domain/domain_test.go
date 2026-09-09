@@ -131,19 +131,6 @@ func TestRunFailPersistsStableFailurePhaseAndCode(t *testing.T) {
 	}
 }
 
-func TestSuccessDimensionsRequireEveryLayer(t *testing.T) {
-	qualified := SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}
-	if !qualified.Overall() {
-		t.Fatal("fully successful result was not qualified")
-	}
-
-	semanticFailure := qualified
-	semanticFailure.Semantic = false
-	if semanticFailure.Overall() {
-		t.Fatal("semantic failure was reported as overall success")
-	}
-}
-
 func TestFailureKindSeparatesExpectedOperationalClasses(t *testing.T) {
 	want := []FailureKind{
 		FailureNetwork, FailureHTTP, FailureProtocol, FailureSemantic,

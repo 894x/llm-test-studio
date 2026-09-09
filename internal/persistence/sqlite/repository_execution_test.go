@@ -73,7 +73,7 @@ func TestRepositoryComparisonV3RoundTripWithoutCatalogRows(t *testing.T) {
 		comparisonID    = "30000000-0000-4000-8000-000000000010"
 	)
 	firstPlan := *firstSnapshot.PlanDocument
-	firstPlan.ChannelIDs = append(firstPlan.ChannelIDs, secondChannelID)
+
 	firstSnapshot.PlanDocument = &firstPlan
 	firstRun, err := domain.NewRun(base.Meta(), base.PlanID(), firstSnapshot)
 	if err != nil {
@@ -177,25 +177,24 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 		ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("request.single"),
+			Type:          domain.CaseType("openai-chat"),
 			TypeVersion:   1,
 			Spec: json.RawMessage(
-				`{"assertions":[{"config":{"contains":"ok"},"kind":"text"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{"messages":[{"content":"hello","role":"user"}]},"headers":{"Content-Type":"application/json"},"method":"POST","path":"/chat/completions"}}`,
+				`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`,
 			),
 		},
 	}
 	suite := domain.Suite{
 		EntityMeta: entityMeta(suiteID, 1), Key: "snapshot-only", Name: "Snapshot-only suite",
-		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream-snapshot-only",
-		Cases: []domain.CaseRevisionRef{caseRef},
+		Protocol: domain.ProtocolOpenAIChat,
+		Cases:    []domain.CaseRef{{CaseID: caseRef.CaseID}}, Inputs: []domain.SuiteInput{},
 	}
 	plan := domain.Plan{
 		EntityMeta: entityMeta(planID, 1),
 		Name:       "Snapshot-only plan",
-		ModelIDs:   []string{modelID},
-		ChannelIDs: []string{channelID},
-		Suites: []domain.PlanSuiteEntry{{
-			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
+		Protocol:   domain.ProtocolOpenAIChat,
+		Entries: []domain.PlanEntry{{
+			EntryID: entryID, TargetKind: domain.PlanTargetSuite, TargetID: suiteID,
 			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
@@ -224,8 +223,8 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 		Environment:  domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "go-test"},
 		PlanDocument: &plan,
 		Mapping:      &mapping,
-		Suites: []domain.RunSuiteSnapshot{{
-			EntryID: entryID, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef},
+		Entries: []domain.RunEntrySnapshot{{
+			EntryID: entryID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite, CaseInputs: map[string]map[string]json.RawMessage{caseRef.CaseID: {}}, Cases: []domain.CaseRevisionRef{caseRef},
 			CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
@@ -240,6 +239,6 @@ func legacySnapshot(snapshot domain.RunSnapshot) domain.RunSnapshot {
 	snapshot.SchemaVersion = 1
 	snapshot.PlanDocument = nil
 	snapshot.Mapping = nil
-	snapshot.CaseDefinitions = nil
+	snapshot.Entries = nil
 	return snapshot
 }

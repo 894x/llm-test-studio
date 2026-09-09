@@ -1,16 +1,31 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wan2.7-t2v-2026-06-12",
   "name": "Wan 2.7 2026-06-12 快照边界套件",
   "protocol": "wan-video",
-  "model_target": "wan2.7-t2v-2026-06-12",
-  "case_keys": [
-    "wan27.t2v.min_duration",
-    "wan27.t2v.duration_below_min",
-    "wan27.t2v.duration_above_max",
-    "wan27.t2v.resolution_invalid",
-    "wan27.t2v.ratio_invalid",
-    "wan27.t2v.seed_below_min",
-    "wan27.t2v.seed_above_max"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "c40b0d98-2395-5311-b4d7-2864c88a9ea6"
+    },
+    {
+      "case_id": "f3296ff7-5d92-5e7b-8b3b-10349f990e06"
+    },
+    {
+      "case_id": "b19d0d4c-7820-53ae-a832-435387d34093"
+    },
+    {
+      "case_id": "9f0f23c7-0242-5c5d-9364-6de4c3b38156"
+    },
+    {
+      "case_id": "a498cc05-c87a-54e5-b779-43b9a5869c16"
+    },
+    {
+      "case_id": "0db8f85d-6377-59b4-953c-77befb205bf0"
+    },
+    {
+      "case_id": "5b5357fc-582f-5e5b-a398-a7a06636661f"
+    }
+  ],
+  "inputs": []
 }

@@ -1,12 +1,19 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wan2.2-t2v-plus",
   "name": "Wan 2.2 文生视频边界套件",
   "protocol": "wan-video",
-  "model_target": "wan2.2-t2v-plus",
-  "case_keys": [
-    "wan22.t2v.duration_5",
-    "wan22.t2v.duration_invalid",
-    "wan22.t2v.size_invalid"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "83e7aa1e-6047-581a-bfae-75f9b5ffb147"
+    },
+    {
+      "case_id": "58de55db-d6dd-59c4-95f4-539957883bb9"
+    },
+    {
+      "case_id": "72757bbc-b092-5a33-9021-1b31bc499a72"
+    }
+  ],
+  "inputs": []
 }

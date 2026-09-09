@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 func TestGeneratorBuildsAndPersistsACompletePerformanceReport(t *testing.T) {
@@ -14,15 +15,15 @@ func TestGeneratorBuildsAndPersistsACompletePerformanceReport(t *testing.T) {
 	run := generatorRun(t, now)
 	requestResult := domain.Result{
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000007", now),
-		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		RunID:      run.Meta().ID, EntryID: run.Snapshot().Entries[0].EntryID, CaseID: run.Snapshot().Entries[0].Cases[0].CaseID, RequestID: "request-1",
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 		Metrics: map[string]float64{"e2e_ms": 25, "ttft_ms": 10, "prompt_tokens": 3},
 	}
 	summaryResult := requestResult
 	summaryResult.EntityMeta = generatorMeta("40000000-0000-4000-8000-000000000009", now)
-	summaryResult.CaseID = run.Snapshot().Cases[0].CaseID
+	summaryResult.CaseID = run.Snapshot().Entries[0].Cases[0].CaseID
 	summaryResult.RequestID = ""
-	repository := &fakeReportRepository{run: run, results: []domain.Result{requestResult, summaryResult}, evidence: []domain.Evidence{}}
+	repository := &fakeReportRepository{run: run, results: []domain.Result{requestResult, summaryResult, completedEntryMarker(run)}, evidence: []domain.Evidence{}}
 	generator, err := NewGenerator(GeneratorDependencies{
 		Repository: repository,
 		Clock:      fixedReportClock{now: now.Add(time.Minute)},
@@ -53,15 +54,15 @@ func TestGeneratorFailsConclusionWhenObservedSLAIsBreached(t *testing.T) {
 	run := generatorRun(t, now)
 	requestResult := domain.Result{
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000017", now),
-		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		RunID:      run.Meta().ID, EntryID: run.Snapshot().Entries[0].EntryID, CaseID: run.Snapshot().Entries[0].Cases[0].CaseID, RequestID: "request-1",
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 		Metrics: map[string]float64{"e2e_ms": 1500},
 	}
 	summaryResult := requestResult
 	summaryResult.EntityMeta = generatorMeta("40000000-0000-4000-8000-000000000019", now)
-	summaryResult.CaseID = run.Snapshot().Cases[0].CaseID
+	summaryResult.CaseID = run.Snapshot().Entries[0].Cases[0].CaseID
 	summaryResult.RequestID = ""
-	repository := &fakeReportRepository{run: run, results: []domain.Result{requestResult, summaryResult}, evidence: []domain.Evidence{}}
+	repository := &fakeReportRepository{run: run, results: []domain.Result{requestResult, summaryResult, completedEntryMarker(run)}, evidence: []domain.Evidence{}}
 	generator, err := NewGenerator(GeneratorDependencies{
 		Repository: repository, Clock: fixedReportClock{now: now.Add(time.Minute)},
 		IDFactory: func(time.Time) (string, error) { return "40000000-0000-4000-8000-000000000018", nil },
@@ -75,7 +76,7 @@ func TestGeneratorFailsConclusionWhenObservedSLAIsBreached(t *testing.T) {
 	if repository.report.Conclusion.Passed || repository.report.Conclusion.Verdict != "fail" || len(repository.report.Conclusion.Issues) == 0 {
 		t.Fatalf("SLA conclusion = %#v", repository.report.Conclusion)
 	}
-	if metric := repository.report.SLA["e2e_p95_ms"]; metric.Value != 1500 || metric.Samples != 1 {
+	if metric := repository.report.EntryReports[0].SLA["e2e_p95_ms"]; metric.Value != 1500 || metric.Samples != 1 {
 		t.Fatalf("observed SLA metric = %#v", metric)
 	}
 }
@@ -86,15 +87,15 @@ func TestQuickTaskDetailUsesTheSuiteAwareSchema(t *testing.T) {
 	snapshot := run.Snapshot()
 	requestResult := domain.Result{
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000027", now),
-		RunID:      run.Meta().ID, CaseID: snapshot.Cases[0].CaseID, RequestID: "request-1",
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		RunID:      run.Meta().ID, EntryID: run.Snapshot().Entries[0].EntryID, CaseID: snapshot.Entries[0].Cases[0].CaseID, RequestID: "request-1",
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 		Metrics: map[string]float64{"e2e_ms": 25},
 	}
 	summaryResult := requestResult
 	summaryResult.EntityMeta = generatorMeta("40000000-0000-4000-8000-000000000028", now)
 	summaryResult.RequestID = ""
 	repository := &fakeReportRepository{
-		run: run, results: []domain.Result{requestResult, summaryResult}, evidence: []domain.Evidence{},
+		run: run, results: []domain.Result{requestResult, summaryResult, completedEntryMarker(run)}, evidence: []domain.Evidence{},
 	}
 	generator, err := NewGenerator(GeneratorDependencies{
 		Repository: repository, Clock: fixedReportClock{now: now.Add(time.Minute)},
@@ -106,11 +107,11 @@ func TestQuickTaskDetailUsesTheSuiteAwareSchema(t *testing.T) {
 	if err := generator.Generate(context.Background(), run.Meta().ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(repository.report.SuiteReports) != 1 ||
-		repository.report.SuiteReports[0].SuiteEntryID != run.Meta().ID ||
-		len(repository.report.CaseResults) != 1 || repository.report.CaseResults[0].SuiteEntryID != run.Meta().ID ||
-		len(repository.report.SuiteReports[0].CaseResults) != 1 ||
-		repository.report.SuiteReports[0].CaseResults[0].SuiteEntryID != run.Meta().ID {
+	if len(repository.report.EntryReports) != 1 ||
+		repository.report.EntryReports[0].EntryID != run.Meta().ID ||
+		len(repository.report.CaseResults) != 1 || repository.report.CaseResults[0].EntryID != run.Meta().ID ||
+		len(repository.report.EntryReports[0].CaseResults) != 1 ||
+		repository.report.EntryReports[0].CaseResults[0].EntryID != run.Meta().ID {
 		t.Fatalf("canonical quick-task report tree = %#v", repository.report)
 	}
 	detail, err := New(&fakeDocumentCatalog{report: repository.report, results: repository.results}).Detail(
@@ -120,43 +121,22 @@ func TestQuickTaskDetailUsesTheSuiteAwareSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.SchemaVersion != CurrentDetailSchemaVersion || len(detail.Suites) != 1 ||
-		detail.Suites[0].SuiteEntryID != run.Meta().ID ||
-		detail.Suites[0].SuiteID != snapshot.QuickTask.Suite.ID ||
-		len(detail.Suites[0].Cases) != 1 ||
-		detail.Suites[0].Cases[0].SummaryResult == nil ||
-		detail.Suites[0].Cases[0].SummaryResult.SuiteEntryID != run.Meta().ID ||
-		len(detail.Suites[0].Cases[0].RequestResults) != 1 ||
-		detail.Suites[0].Cases[0].RequestResults[0].SuiteEntryID != run.Meta().ID ||
+	if detail.SchemaVersion != CurrentDetailSchemaVersion || len(detail.Entries) != 1 ||
+		detail.Entries[0].EntryID != run.Meta().ID ||
+		detail.Entries[0].TargetID != snapshot.Entries[0].TargetID ||
+		len(detail.Entries[0].Cases) != 1 ||
+		detail.Entries[0].Cases[0].SummaryResult == nil ||
+		detail.Entries[0].Cases[0].SummaryResult.EntryID != run.Meta().ID ||
+		len(detail.Entries[0].Cases[0].RequestResults) != 1 ||
+		detail.Entries[0].Cases[0].RequestResults[0].EntryID != run.Meta().ID ||
 		len(detail.UnassignedRequestResults) != 0 {
 		t.Fatalf("quick task detail = %#v", detail)
 	}
 }
 
-func TestProbeDistributionsGroupByCaseBucketAndShape(t *testing.T) {
-	caseID := "40000000-0000-4000-8000-000000000004"
-	results := []domain.Result{
-		{RequestID: "request-1", Dimensions: map[string]string{"probe_case_id": caseID, "probe_bucket": "provider-a", "probe_classification": "matched", "probe_format": "json", "probe_shape": "sha256:known"}},
-		{RequestID: "request-2", Dimensions: map[string]string{"probe_case_id": caseID, "probe_bucket": "provider-a", "probe_classification": "matched", "probe_format": "json", "probe_shape": "sha256:known"}},
-		{RequestID: "request-3", Dimensions: map[string]string{"probe_case_id": caseID, "probe_bucket": "unknown", "probe_classification": "unknown", "probe_format": "json", "probe_shape": "sha256:mystery"}},
-	}
-	distributions := probeDistributions(results)
-	if len(distributions) != 2 {
-		t.Fatalf("probe distribution count = %d", len(distributions))
-	}
-	var first map[string]any
-	if err := json.Unmarshal(distributions[0], &first); err != nil {
-		t.Fatal(err)
-	}
-	if first["kind"] != "response_probe" || first["case_id"] != caseID || first["bucket"] != "provider-a" ||
-		first["count"] != float64(2) || first["share_percent"] != 200.0/3.0 {
-		t.Fatalf("first probe distribution = %#v", first)
-	}
-}
-
-func TestSLAObservationSupportsLegacyDesktopAliases(t *testing.T) {
+func TestSLAObservationSupportsPercentileAndPercentUnits(t *testing.T) {
 	results := []domain.Result{{
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 		Metrics: map[string]float64{"e2e_ms": 250},
 	}}
 	aggregates := aggregateMetrics(results)
@@ -170,14 +150,14 @@ func TestSLAObservationSupportsLegacyDesktopAliases(t *testing.T) {
 	}
 }
 
-func TestFineStreamingReportMetricsUseOnlySuccessfulCohorts(t *testing.T) {
-	success := domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}
+func TestFineStreamingMetricsRetainObservedFactsRegardlessOfAssertions(t *testing.T) {
+	success := testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}}
 	results := []domain.Result{
-		{Success: success, Metrics: map[string]float64{
+		{ExecutionStatus: domain.ExecutionCompleted, Verification: success, Metrics: map[string]float64{
 			"e2e_ms": 10, "ttfb_ms": 1, "ttft_ms": 2, "ttft_any_ms": 2, "ttft_visible_ms": 3,
 			"ttst_ms": 4, "observed_icl_ms": 2, "semantic_chunk_count": 2, "custom_latency_ms": 7,
 		}},
-		{Success: success, Metrics: map[string]float64{
+		{ExecutionStatus: domain.ExecutionCompleted, Verification: success, Metrics: map[string]float64{
 			"e2e_ms": 20, "ttfb_ms": 3, "semantic_chunk_count": 0, "custom_latency_ms": 8,
 		}},
 		{Metrics: map[string]float64{
@@ -190,9 +170,9 @@ func TestFineStreamingReportMetricsUseOnlySuccessfulCohorts(t *testing.T) {
 		value   float64
 		samples int
 	}{
-		"e2e_ms": {15, 2}, "ttfb_ms": {2, 2}, "ttfb_average_ms": {2, 2},
-		"ttft_any_ms": {2, 1}, "ttft_any_p99_ms": {2, 1},
-		"observed_icl_ms": {2, 1}, "semantic_chunk_count": {1, 2}, "semantic_chunk_count_average": {1, 2},
+		"e2e_ms": {1030.0 / 3, 3}, "ttfb_ms": {104.0 / 3, 3}, "ttfb_average_ms": {104.0 / 3, 3},
+		"ttft_any_ms": {101, 2}, "ttft_any_p99_ms": {198.02, 2},
+		"observed_icl_ms": {51, 2}, "semantic_chunk_count": {4.0 / 3, 3}, "semantic_chunk_count_average": {4.0 / 3, 3},
 	} {
 		got := metrics[name]
 		if got.Value != want.value || got.Samples != want.samples {
@@ -218,7 +198,7 @@ func TestFineStreamingReportMetricsUseOnlySuccessfulCohorts(t *testing.T) {
 			t.Fatal(err)
 		}
 		if distribution.Metric == "observed_icl_ms" {
-			foundICL = distribution.Samples == 1 && distribution.Average == 2
+			foundICL = distribution.Samples == 2 && distribution.Average == 51
 		}
 	}
 	if !foundICL {
@@ -277,34 +257,31 @@ func generatorRun(t *testing.T, now time.Time) domain.Run {
 		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          "request.single",
+			Type:          "openai-chat",
 			TypeVersion:   1,
-			Spec: json.RawMessage(
-				`{"assertions":[{"config":{"contains":"ok"},"kind":"text"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{"messages":[{"content":"hello","role":"user"}]},"headers":{"Content-Type":"application/json"},"method":"POST","path":"/chat/completions"}}`,
-			),
+			Spec:          json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`),
 		},
 	}
 	load := domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}}
 	suite := domain.Suite{
 		EntityMeta: generatorMeta(suiteID, now), Key: "quick-report", Name: "Quick report",
-		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream", Cases: []domain.CaseRevisionRef{caseRef},
-		QuickTest: &domain.SuiteQuickTest{Description: "Quick report", TimeoutMS: 1_000, Inputs: []domain.SuiteInput{}},
+		Protocol: domain.ProtocolOpenAIChat, Cases: []domain.CaseRef{{CaseID: caseID}}, Inputs: []domain.SuiteInput{},
 	}
 	mapping := domain.ChannelModel{
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000010", now),
 		ModelID:    modelID, ChannelID: channelID, UpstreamModelName: "upstream",
 	}
 	snapshot := domain.RunSnapshot{
-		SchemaVersion: domain.FlatRunSnapshotSchemaVersion,
+		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: runID, Revision: 1},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: "model", Protocol: domain.ProtocolOpenAIChat},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: "channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, UpstreamModelName: "upstream"},
-		Cases:         []domain.CaseRevisionRef{caseRef}, Load: load, SLA: sla,
-		Environment:     domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
-		Mapping:         &mapping,
-		CaseDefinitions: []domain.TestCase{testCase},
-		QuickTask:       &domain.QuickTaskSnapshot{Suite: suite, Inputs: map[string]json.RawMessage{}},
+		Environment:   domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
+		Mapping:       &mapping,
+		QuickTask:     &domain.QuickTaskSnapshot{},
+		PlanDocument:  &domain.Plan{EntityMeta: generatorMeta(runID, now), Name: suite.Name, Protocol: suite.Protocol, Entries: []domain.PlanEntry{{EntryID: runID, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla}}},
+		Entries:       []domain.RunEntrySnapshot{{EntryID: runID, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Name: suite.Name, Key: suite.Key, Suite: &suite, Cases: []domain.CaseRevisionRef{caseRef}, CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, CaseInputs: map[string]map[string]json.RawMessage{caseID: {}}, Load: load, SLA: sla}},
 	}
 	run, err := domain.NewRun(generatorMeta(runID, now), runID, snapshot)
 	if err != nil {
@@ -320,4 +297,27 @@ func generatorRun(t *testing.T, now time.Time) domain.Run {
 		t.Fatal(err)
 	}
 	return run
+}
+
+func completedEntryMarker(run domain.Run) domain.Result {
+	return domain.Result{EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000090", run.Meta().CreatedAt), RunID: run.Meta().ID, EntryID: run.Snapshot().Entries[0].EntryID, EntryStatus: domain.EntryExecutionCompleted}
+}
+
+func TestAssertionRateExcludesObservationOnlyAndIndeterminateResults(t *testing.T) {
+	results := []domain.Result{}
+	for _, status := range []testspec.VerdictStatus{testspec.VerdictPassed, testspec.VerdictFailed, testspec.VerdictNotApplicable, testspec.VerdictIndeterminate} {
+		results = append(results, domain.Result{ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: status, Assertions: []testspec.AssertionResult{}}, Metrics: map[string]float64{"e2e_ms": 10}})
+	}
+	metrics := aggregateMetrics(results)
+	if got := metrics["success_rate"]; got.Value != .5 || got.Samples != 2 {
+		t.Fatalf("assertion rate=%#v", got)
+	}
+	if got := metrics["e2e_ms"]; got.Value != 10 || got.Samples != 4 {
+		t.Fatalf("observation population=%#v", got)
+	}
+	if got := aggregateMetrics(results[2:]); got["observed_count"].Value != 1 {
+		t.Fatalf("observations=%#v", got)
+	} else if _, exists := got["success_rate"]; exists {
+		t.Fatal("unasserted observations fabricated a success rate")
+	}
 }
