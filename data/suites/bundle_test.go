@@ -1,126 +1,136 @@
 package suitebundle_test
 
 import (
+	"context"
 	"encoding/json"
-	"io/fs"
-	"testing"
-
+	casebundle "github.com/894x/llm-test-studio/data/cases"
 	suitebundle "github.com/894x/llm-test-studio/data/suites"
+	"github.com/894x/llm-test-studio/internal/application/casecatalog"
+	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
+	"path/filepath"
+	"strings"
+	"testing"
 )
 
-func TestBundleContainsVersionScopedWanSuites(t *testing.T) {
-	t.Parallel()
-
-	matches, err := fs.Glob(suitebundle.Bundle, "wan-video/*/suite.json")
+func TestBundledSuiteReferencesAndInputMappings(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	cases, err := casecatalog.New(casecatalog.Options{Builtin: casebundle.Bundle, UserRoot: filepath.Join(root, "cases")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 24 {
-		t.Fatalf("Wan suite count = %d, want 24", len(matches))
+	caseEntries, err := cases.Entries(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	wantTargets := map[string]bool{
-		"wan3.0-video": false, "wan3.0-video-prime": false, "wan2.7-t2v": false, "wan2.7-t2v-2026-06-12": false,
-		"wan2.6-t2v": false, "wan2.5-t2v-preview": false, "wan2.2-t2v-plus": false, "wanx2.1-t2v-turbo": false, "wanx2.1-t2v-plus": false,
+	byID := map[string]domain.TestCase{}
+	for _, entry := range caseEntries {
+		byID[entry.TestCase.ID] = entry.TestCase
 	}
-	wantWan3Scenarios := map[string]struct {
-		target string
-		count  int
-	}{
-		"wan-video.wan3.0-video.connectivity":       {target: "wan3.0-video", count: 1},
-		"wan-video.wan3.0-video.basic":              {target: "wan3.0-video", count: 6},
-		"wan-video.wan3.0-video.negative":           {target: "wan3.0-video", count: 39},
-		"wan-video.wan3.0-video.automatic":          {target: "wan3.0-video", count: 74},
-		"wan-video.wan3.0-video":                    {target: "wan3.0-video", count: 191},
-		"wan-video.wan3.0-video-prime.connectivity": {target: "wan3.0-video-prime", count: 1},
-		"wan-video.wan3.0-video-prime.basic":        {target: "wan3.0-video-prime", count: 6},
-		"wan-video.wan3.0-video-prime.negative":     {target: "wan3.0-video-prime", count: 39},
-		"wan-video.wan3.0-video-prime.automatic":    {target: "wan3.0-video-prime", count: 74},
-		"wan-video.wan3.0-video-prime":              {target: "wan3.0-video-prime", count: 191},
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: suitebundle.Bundle, UserRoot: filepath.Join(root, "suites")})
+	if err != nil {
+		t.Fatal(err)
 	}
-	seenWan3Scenarios := make(map[string]bool, len(wantWan3Scenarios))
-	wan3ScenarioCases := make(map[string][]string, len(wantWan3Scenarios))
-	for _, path := range matches {
-		raw, readErr := fs.ReadFile(suitebundle.Bundle, path)
-		if readErr != nil {
-			t.Fatal(readErr)
+	entries, err := suites.Entries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 44 || len(byID) != 711 {
+		t.Fatalf("catalog size = %d Suites / %d Cases", len(entries), len(byID))
+	}
+	protocols := map[domain.Protocol]bool{}
+	for _, entry := range entries {
+		suite := entry.Suite
+		protocols[suite.Protocol] = true
+		before, _ := json.Marshal(suite)
+		if len(suite.Cases) == 0 {
+			t.Fatalf("empty bundled Suite %s", suite.Key)
 		}
-		var document struct {
-			Key         string   `json:"key"`
-			Protocol    string   `json:"protocol"`
-			ModelTarget string   `json:"model_target"`
-			CaseKeys    []string `json:"case_keys"`
+		_, inputs, err := suite.ResolveInputs(map[string]json.RawMessage{})
+		if err != nil {
+			t.Fatalf("%s defaults: %v", suite.Key, err)
 		}
-		if err := json.Unmarshal(raw, &document); err != nil {
-			t.Fatalf("decode %s: %v", path, err)
-		}
-		if document.Protocol != "wan-video" || len(document.CaseKeys) == 0 {
-			t.Fatalf("invalid Wan suite %s: %#v", path, document)
-		}
-		if _, known := wantTargets[document.ModelTarget]; !known {
-			t.Fatalf("unexpected Wan suite target %q", document.ModelTarget)
-		}
-		wantTargets[document.ModelTarget] = true
-		if want, exists := wantWan3Scenarios[document.Key]; exists {
-			if document.ModelTarget != want.target || len(document.CaseKeys) != want.count {
-				t.Fatalf("Wan3 scenario suite %s = target %q, %d cases; want %q, %d", document.Key, document.ModelTarget, len(document.CaseKeys), want.target, want.count)
+		for _, member := range suite.Cases {
+			candidate, exists := byID[member.CaseID]
+			if !exists || candidate.Protocol != suite.Protocol {
+				t.Fatalf("%s has missing or cross-protocol member %s", suite.Key, member.CaseID)
 			}
-			seenWan3Scenarios[document.Key] = true
-			wan3ScenarioCases[document.Key] = append([]string(nil), document.CaseKeys...)
+			spec, err := testspec.Decode(candidate.Definition.Spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := testspec.ValidateInputs(spec.Inputs, inputs[candidate.ID]); err != nil {
+				t.Fatalf("%s / %s input binding: %v", suite.Key, candidate.Key, err)
+			}
+			for _, input := range suite.Inputs {
+				for _, binding := range input.Bindings {
+					if binding.CaseID == candidate.ID {
+						if _, declared := spec.Inputs[binding.Input]; !declared {
+							t.Fatalf("%s maps undeclared input %s", suite.Key, binding.Input)
+						}
+					}
+				}
+			}
+		}
+		for _, input := range suite.Inputs {
+			if input.Key != "prompt" {
+				continue
+			}
+			_, mapped, err := suite.ResolveInputs(map[string]json.RawMessage{"prompt": json.RawMessage(`"A cat walking in a garden"`)})
+			if err != nil {
+				t.Fatalf("%s prompt override: %v", suite.Key, err)
+			}
+			for _, binding := range input.Bindings {
+				if string(mapped[binding.CaseID][binding.Input]) != `"A cat walking in a garden"` {
+					t.Fatalf("%s lost explicit prompt mapping", suite.Key)
+				}
+			}
+		}
+		after, _ := json.Marshal(suite)
+		if string(before) != string(after) {
+			t.Fatalf("%s mutated by input resolution", suite.Key)
 		}
 	}
-	for target, found := range wantTargets {
-		if !found {
-			t.Errorf("missing version-scoped suite for %s", target)
+	if len(protocols) != 4 {
+		t.Fatalf("bundled protocols = %v", protocols)
+	}
+	// Scenario membership stays authored; model/channel binding happens once at Run start.
+	for _, profile := range []struct{ prefix, automatic, complete string }{
+		{"openai-chat.glm-5.3", ".automatic-regression", ".complete"},
+		{"minimax-video.MiniMax-H3", ".automatic-regression", ""},
+		{"wan-video.wan3.0-video", ".automatic", ""},
+		{"wan-video.wan3.0-video-prime", ".automatic", ""},
+	} {
+		groups := map[string]map[string]bool{}
+		for _, entry := range entries {
+			suite := entry.Suite
+			if suite.Key != profile.prefix && !strings.HasPrefix(suite.Key, profile.prefix+".") {
+				continue
+			}
+			members := map[string]bool{}
+			for _, ref := range suite.Cases {
+				candidate := byID[ref.CaseID]
+				members[candidate.Key] = true
+				isRunnable := strings.HasSuffix(suite.Key, ".connectivity") || strings.HasSuffix(suite.Key, profile.automatic)
+				if isRunnable && (!candidate.Enabled || candidate.ExecutionMode != domain.CaseExecutionAutomatic) {
+					t.Fatalf("%s includes non-runnable %s", suite.Key, candidate.Key)
+				}
+			}
+			groups[strings.TrimPrefix(suite.Key, profile.prefix)] = members
 		}
-	}
-	for key := range wantWan3Scenarios {
-		if !seenWan3Scenarios[key] {
-			t.Errorf("missing Wan3 scenario suite %s", key)
+		for _, suffix := range []string{".connectivity", ".basic", profile.automatic, profile.complete} {
+			if len(groups[suffix]) == 0 {
+				t.Fatalf("missing %s%s", profile.prefix, suffix)
+			}
 		}
-	}
-	for _, target := range []string{"wan3.0-video", "wan3.0-video-prime"} {
-		prefix := "wan-video." + target
-		assertExactCaseKeys(t, wan3ScenarioCases[prefix+".connectivity"], []string{"wan30.t2v.min_duration"})
-		assertExactCaseKeys(t, wan3ScenarioCases[prefix+".basic"], []string{
-			"wan30.t2v.min_duration",
-			"wan30.input.prompt_or_media_required",
-			"wan30.ratio.16_9",
-			"wan30.audio.true",
-			"wan30.prompt_extend.true",
-			"wan30.watermark.true",
-		})
-		assertCaseSubset(t, prefix+" connectivity", wan3ScenarioCases[prefix+".connectivity"], wan3ScenarioCases[prefix+".basic"])
-		assertCaseSubset(t, prefix+" basic", wan3ScenarioCases[prefix+".basic"], wan3ScenarioCases[prefix+".automatic"])
-		assertCaseSubset(t, prefix+" negative", wan3ScenarioCases[prefix+".negative"], wan3ScenarioCases[prefix+".automatic"])
-		assertCaseSubset(t, prefix+" automatic", wan3ScenarioCases[prefix+".automatic"], wan3ScenarioCases[prefix])
-	}
-}
-
-func assertExactCaseKeys(t *testing.T, got, want []string) {
-	t.Helper()
-	if len(got) != len(want) {
-		t.Fatalf("case keys = %#v, want %#v", got, want)
-	}
-	gotSet := make(map[string]bool, len(got))
-	for _, key := range got {
-		gotSet[key] = true
-	}
-	for _, key := range want {
-		if !gotSet[key] {
-			t.Fatalf("case keys = %#v, missing %s", got, key)
-		}
-	}
-}
-
-func assertCaseSubset(t *testing.T, name string, subset, superset []string) {
-	t.Helper()
-	supersetKeys := make(map[string]bool, len(superset))
-	for _, key := range superset {
-		supersetKeys[key] = true
-	}
-	for _, key := range subset {
-		if !supersetKeys[key] {
-			t.Fatalf("%s case %s is not present in its parent suite", name, key)
+		for _, pair := range [][2]string{{".connectivity", ".basic"}, {profile.automatic, profile.complete}, {".basic", profile.complete}} {
+			for key := range groups[pair[0]] {
+				if !groups[pair[1]][key] {
+					t.Fatalf("%s%s is missing %s from %s", profile.prefix, pair[1], key, pair[0])
+				}
+			}
 		}
 	}
 }

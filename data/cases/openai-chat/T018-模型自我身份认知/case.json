@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T018",
   "name": "模型自我身份认知",
   "dimension": "identity",
@@ -10,19 +10,14 @@
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
-        "body": null
+        "body": {}
       },
-      "options": {
-        "reason": "需要通过部署配置提供预期厂商/模型身份基线后才能自动判定"
-      }
+      "assertions": []
     }
   }
 }

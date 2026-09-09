@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"github.com/894x/llm-test-studio/internal/testspec"
 	"testing"
 	"time"
 )
@@ -17,18 +18,18 @@ func TestPlanValidatesOrderedSuiteEntriesAndAllowsRepeatedSuite(t *testing.T) {
 	suiteID := "81000000-0000-4000-8000-000000000002"
 	plan := Plan{
 		EntityMeta: meta,
-		Name:       "ordered suites",
-		Suites: []PlanSuiteEntry{
+		Name:       "ordered suites", Protocol: ProtocolOpenAIChat, Seed: 1,
+		Entries: []PlanEntry{
 			{
-				EntryID: "81000000-0000-4000-8000-000000000004",
-				SuiteID: suiteID, SuiteRevision: 1,
+				EntryID:    "81000000-0000-4000-8000-000000000004",
+				TargetKind: PlanTargetSuite, TargetID: suiteID,
 
 				Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"first"`)},
 				Load:       load, SLA: sla,
 			},
 			{
-				EntryID: "81000000-0000-4000-8000-000000000005",
-				SuiteID: suiteID, SuiteRevision: 1,
+				EntryID:    "81000000-0000-4000-8000-000000000005",
+				TargetKind: PlanTargetSuite, TargetID: suiteID,
 
 				Parameters: map[string]json.RawMessage{"prompt": json.RawMessage(`"second"`)},
 				Load:       load, SLA: sla,
@@ -40,8 +41,8 @@ func TestPlanValidatesOrderedSuiteEntriesAndAllowsRepeatedSuite(t *testing.T) {
 	}
 
 	duplicate := plan
-	duplicate.Suites = append([]PlanSuiteEntry(nil), plan.Suites...)
-	duplicate.Suites[1].EntryID = duplicate.Suites[0].EntryID
+	duplicate.Entries = append([]PlanEntry(nil), plan.Entries...)
+	duplicate.Entries[1].EntryID = duplicate.Entries[0].EntryID
 	if err := duplicate.Validate(); err == nil {
 		t.Fatal("Validate() accepted duplicate suite entry ids")
 	}
@@ -96,8 +97,8 @@ func TestResultSuiteMarkerAndRequestOwnership(t *testing.T) {
 
 	request := Result{
 		EntityMeta: meta("82000000-0000-4000-8000-000000000004"),
-		RunID:      runID, SuiteEntryID: entryID, CaseID: caseID, RequestID: "request-1",
-		Success: SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		RunID:      runID, EntryID: entryID, CaseID: caseID, RequestID: "request-1",
+		ExecutionStatus: ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 	}
 	if err := request.Validate(); err != nil {
 		t.Fatalf("request Validate() error = %v", err)
@@ -105,7 +106,7 @@ func TestResultSuiteMarkerAndRequestOwnership(t *testing.T) {
 
 	marker := Result{
 		EntityMeta: meta("82000000-0000-4000-8000-000000000005"),
-		RunID:      runID, SuiteEntryID: entryID, SuiteStatus: SuiteExecutionCompleted,
+		RunID:      runID, EntryID: entryID, EntryStatus: EntryExecutionCompleted,
 	}
 	if err := marker.Validate(); err != nil {
 		t.Fatalf("marker Validate() error = %v", err)
@@ -125,14 +126,14 @@ func TestRunSnapshotCloneOwnsMultiSuiteMutableValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	copy := run.Snapshot()
-	copy.Suites[0].Parameters["added"] = json.RawMessage(`true`)
-	copy.Suites[0].SLA.Thresholds["e2e_p95_ms"] = 1
-	copy.Suites[0].CaseDefinitions[0].Name = "changed"
-	copy.PlanDocument.Suites[0].SuiteRevision++
+	copy.Entries[0].Parameters["added"] = json.RawMessage(`true`)
+	copy.Entries[0].SLA.Thresholds["e2e_p95_ms"] = 1
+	copy.Entries[0].CaseDefinitions[0].Name = "changed"
+	copy.PlanDocument.Entries[0].TargetID = testCaseID
 	actual := run.Snapshot()
-	if len(actual.Suites[0].Parameters) != 0 || actual.Suites[0].SLA.Thresholds["e2e_p95_ms"] == 1 ||
-		actual.Suites[0].CaseDefinitions[0].Name == "changed" ||
-		actual.PlanDocument.Suites[0].SuiteRevision != fixture.PlanDocument.Suites[0].SuiteRevision {
+	if len(actual.Entries[0].Parameters) != 0 || actual.Entries[0].SLA.Thresholds["e2e_p95_ms"] == 1 ||
+		actual.Entries[0].CaseDefinitions[0].Name == "changed" ||
+		actual.PlanDocument.Entries[0].TargetID != fixture.PlanDocument.Entries[0].TargetID {
 		t.Fatalf("Run snapshot leaked mutable state: %#v", actual)
 	}
 }

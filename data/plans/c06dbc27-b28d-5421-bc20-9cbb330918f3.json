@@ -1,0 +1,144 @@
+{
+  "file_schema_version": 4,
+  "id": "c06dbc27-b28d-5421-bc20-9cbb330918f3",
+  "revision": 1,
+  "created_at": "2026-09-09T00:00:00Z",
+  "updated_at": "2026-09-09T00:00:00Z",
+  "name": "输入长度阶梯性能计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "bb24e258-a0ff-543f-9029-786fafafe986",
+      "target_kind": "case",
+      "target_id": "afe46c02-bcf7-5db0-8285-cf056361616c",
+      "parameters": {
+        "input_repetitions": 128,
+        "output_tokens": 16
+      },
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 3,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 1,
+      "settings": {}
+    },
+    {
+      "entry_id": "6671100c-c487-5734-b652-7fbfdc24bc09",
+      "target_kind": "case",
+      "target_id": "afe46c02-bcf7-5db0-8285-cf056361616c",
+      "parameters": {
+        "input_repetitions": 512,
+        "output_tokens": 16
+      },
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 3,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 1,
+      "settings": {}
+    },
+    {
+      "entry_id": "bc4d24ad-6892-5d7e-a3e3-dcd5e8cac07c",
+      "target_kind": "case",
+      "target_id": "afe46c02-bcf7-5db0-8285-cf056361616c",
+      "parameters": {
+        "input_repetitions": 2048,
+        "output_tokens": 16
+      },
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 3,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 1,
+      "settings": {}
+    },
+    {
+      "entry_id": "7738aa8f-8431-5327-a02e-3cceded06cbc",
+      "target_kind": "case",
+      "target_id": "afe46c02-bcf7-5db0-8285-cf056361616c",
+      "parameters": {
+        "input_repetitions": 8192,
+        "output_tokens": 16
+      },
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 3,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 1,
+      "settings": {}
+    },
+    {
+      "entry_id": "ac9d9f0c-3145-5748-a06b-1d268804e1c1",
+      "target_kind": "case",
+      "target_id": "afe46c02-bcf7-5db0-8285-cf056361616c",
+      "parameters": {
+        "input_repetitions": 32768,
+        "output_tokens": 16
+      },
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 2,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 1,
+      "settings": {}
+    },
+    {
+      "entry_id": "5821a7b5-948c-587d-8af2-1d16922419b1",
+      "target_kind": "case",
+      "target_id": "afe46c02-bcf7-5db0-8285-cf056361616c",
+      "parameters": {
+        "input_repetitions": 131072,
+        "output_tokens": 16
+      },
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 1,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}

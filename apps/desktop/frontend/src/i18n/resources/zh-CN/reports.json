@@ -1,5 +1,8 @@
 {
-  "search": { "label": "搜索报告", "placeholder": "结论、计划、模型、渠道或编号" },
+  "search": {
+    "label": "搜索报告",
+    "placeholder": "结论、计划、模型、渠道或编号"
+  },
   "title": "测试报告",
   "detailTitle": "报告详情",
   "description": "查看测试结论、指标与请求明细",
@@ -66,7 +69,7 @@
     "modelChannel": "模型与渠道",
     "requestConclusion": "请求结论",
     "caseConclusion": "用例结论",
-    "conclusionValue": "{{passed}}/{{total}} 通过 · {{failed}} 失败",
+    "conclusionValue": "{{passed}}/{{total}} 通过 · {{failed}} 失败 · {{observed}} 仅观测 · {{indeterminate}} 无法判定",
     "issues": "问题",
     "items": "{{count}} 项",
     "generated": "生成时间",
@@ -150,5 +153,50 @@
     "curveSamples": "{{metric}} 随完成时间变化曲线，{{count}} 个成功请求样本",
     "completionTime": "完成时间 · {{unit}}",
     "empty": "暂无成功请求样本"
+  },
+  "protocolDesign": {
+    "caseTable": "执行项用例结果",
+    "caseName": "用例名称",
+    "verification": "验证结果",
+    "summary": "执行汇总",
+    "verdict": {
+      "passed": "通过",
+      "failed": "未通过",
+      "not_applicable": "仅观测",
+      "indeterminate": "无法判定"
+    },
+    "counts": "通过 {{passed}} · 未通过 {{failed}} · 仅观测 {{observed}} · 无法判定 {{indeterminate}}",
+    "executionNumber": "第 {{count}} 次执行",
+    "execution": {
+      "completed": "执行完成",
+      "failed": "执行异常",
+      "cancelled": "已取消"
+    },
+    "observedHint": "未配置断言，仅记录实际观测数据，不产生通过或未通过结论。",
+    "task": "任务 ID",
+    "taskStatus": "任务状态",
+    "artifacts": "产物",
+    "request": "请求体",
+    "response": "响应",
+    "observation": "协议观测数据",
+    "noExecutions": "暂无执行记录。",
+    "assertions": "逐条断言结果",
+    "rule": "规则",
+    "expected": "预期值",
+    "actual": "实际值",
+    "previous": "上一页",
+    "next": "下一页",
+    "loadSummary": "{{mode}} · 并发 {{concurrency}} · {{count}} 次执行 · 超时 {{timeout}} ms",
+    "warmup": "预热 {{count}} 次",
+    "poll_interval_ms": "轮询间隔",
+    "task_timeout_ms": "任务超时",
+    "streamCompleted": "流式响应已结束",
+    "streamIncomplete": "流式响应未结束",
+    "warmupExecution": "预热 · 不计入验证汇总",
+    "queue": "排队延迟",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "cachedTokens": "缓存 Token",
+    "executionMetrics": "请求指标"
   }
 }

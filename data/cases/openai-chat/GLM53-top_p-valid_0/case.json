@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.top_p.valid_0",
   "name": "GLM 5.3 · top_p=0.01",
   "dimension": "glm53.top_p",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "glm53_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -33,15 +27,209 @@
           "top_p": 0.01
         }
       },
-      "options": {
-        "contract_row": "top_p",
-        "source_urls": [
-          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T1",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases."
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/id",
+          "transform": "trim"
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/request_id",
+          "transform": "trim"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/model",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "type",
+          "pointer": "/created",
+          "value": "integer"
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "operator": "gt",
+          "pointer": "/created",
+          "value": 0
+        },
+        {
+          "id": "r7",
+          "source": "response",
+          "operator": "length_equals",
+          "pointer": "/choices",
+          "value": 1
+        },
+        {
+          "id": "r8",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/index",
+          "value": 0
+        },
+        {
+          "id": "r9",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/message/role",
+          "value": "assistant"
+        },
+        {
+          "id": "r10",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/message/reasoning_content",
+          "transform": "trim"
+        },
+        {
+          "id": "r11",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "stop"
+        },
+        {
+          "id": "r12",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r15",
+          "any": [
+            {
+              "id": "r13",
+              "source": "response",
+              "operator": "not_exists",
+              "pointer": "/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r14",
+              "source": "response",
+              "operator": "length_equals",
+              "pointer": "/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "r16",
+          "source": "usage",
+          "operator": "type",
+          "pointer": "/prompt_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r17",
+          "source": "usage",
+          "operator": "gte",
+          "pointer": "/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r18",
+          "source": "usage",
+          "operator": "type",
+          "pointer": "/completion_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r19",
+          "source": "usage",
+          "operator": "gte",
+          "pointer": "/completion_tokens",
+          "value": 0
+        },
+        {
+          "id": "r20",
+          "source": "usage",
+          "operator": "type",
+          "pointer": "/total_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r21",
+          "source": "usage",
+          "operator": "gte",
+          "pointer": "/total_tokens",
+          "value": 0
+        },
+        {
+          "id": "r22",
+          "source": "usage",
+          "operator": "gt",
+          "pointer": "/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r23",
+          "source": "usage",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/prompt_tokens",
+              "/completion_tokens"
+            ]
+          }
+        },
+        {
+          "id": "r29",
+          "any": [
+            {
+              "id": "r28",
+              "source": "usage",
+              "operator": "not_exists",
+              "pointer": "/prompt_tokens_details"
+            },
+            {
+              "id": "r27",
+              "all": [
+                {
+                  "id": "r24",
+                  "source": "usage",
+                  "operator": "type",
+                  "pointer": "/prompt_tokens_details/cached_tokens",
+                  "value": "integer"
+                },
+                {
+                  "id": "r25",
+                  "source": "usage",
+                  "operator": "gte",
+                  "pointer": "/prompt_tokens_details/cached_tokens",
+                  "value": 0
+                },
+                {
+                  "id": "r26",
+                  "source": "usage",
+                  "operator": "lte",
+                  "pointer": "/prompt_tokens_details/cached_tokens",
+                  "expected_from": {
+                    "source": "usage",
+                    "pointer": "/prompt_tokens"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   }
 }

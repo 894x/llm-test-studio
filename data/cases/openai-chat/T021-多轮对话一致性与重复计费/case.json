@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T021",
   "name": "多轮对话一致性与 usage 增长",
   "dimension": "billing",
@@ -10,22 +10,134 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "multi_turn_usage",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
-          "messages": [],
+          "messages": [
+            {
+              "role": "user",
+              "content": "记住验证码 AUDIT_MEMORY_7F3A，仅输出该验证码"
+            }
+          ],
           "temperature": 0,
           "max_tokens": 256
         }
       },
-      "options": {
-        "needle": "AUDIT_MEMORY_7F3A"
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "equals",
+          "value": "AUDIT_MEMORY_7F3A",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices"
+        },
+        {
+          "id": "r9",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r10",
+          "source": "requests",
+          "operator": "equals",
+          "value": "AUDIT_MEMORY_7F3A",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r11",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/prompt_tokens"
+          }
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "记住验证码 AUDIT_MEMORY_7F3A，仅输出该验证码"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": {
+                      "$response": "initial",
+                      "pointer": "/choices/0/message/content"
+                    }
+                  },
+                  {
+                    "role": "user",
+                    "content": "刚才的验证码是什么？仅输出验证码"
+                  }
+                ],
+                "temperature": 0,
+                "max_tokens": 256
+              }
+            }
+          }
+        ]
       }
     }
   }

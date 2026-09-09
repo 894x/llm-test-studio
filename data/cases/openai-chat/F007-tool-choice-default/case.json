@@ -1,24 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "must.tool_choice_default",
   "name": "工具调用 · tool_choice=default",
   "dimension": "tools",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -49,8 +45,26 @@
           "max_tokens": 200
         }
       },
-      "options": {
-        "require_content": false}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
     }
   }
 }

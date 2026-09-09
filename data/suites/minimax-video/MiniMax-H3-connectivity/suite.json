@@ -1,30 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "minimax-video.MiniMax-H3.connectivity",
   "name": "MiniMax H3 连通性测试套件",
   "protocol": "minimax-video",
-  "model_target": "MiniMax-H3",
-  "case_keys": [
-    "h3.t2v.min_duration",
-    "h3.authorization.required",
-    "h3.authorization.invalid"
+  "description": "验证 MiniMax H3 文生视频创建、轮询与成功终态。",
+  "cases": [
+    {
+      "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c"
+    }
   ],
-  "quick_test": {
-    "description": "依次检查文生视频结果、缺失凭据和无效凭据的拒绝响应。",
-    "timeout_ms": 600000,
-    "inputs": [
-      {
-        "key": "prompt",
-        "label": "提示词",
-        "type": "text",
-        "default": "一只小猫在月光下奔跑，电影感镜头",
-        "bindings": [
-          {
-            "case_key": "h3.t2v.min_duration",
-            "pointer": "/request/body/content/0/text"
-          }
-        ]
-      }
-    ]
-  }
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "一只小猫在月光下奔跑，电影感镜头",
+      "bindings": [
+        {
+          "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
 }

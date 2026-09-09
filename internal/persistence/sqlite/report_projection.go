@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -206,6 +205,11 @@ func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedRep
 	if err != nil {
 		return reporting.ReportProjection{}, reportRunExpectation{}, err
 	}
+	verification := domain.SummarizeVerification(report.CaseResults)
+	projection.PassedCaseCount = int64(verification.Passed)
+	projection.VerifiedCaseCount = int64(verification.Passed + verification.Failed)
+	projection.ObservedCaseCount = int64(verification.Observed)
+	projection.IndeterminateCaseCount = int64(verification.Indeterminate)
 	if report.ID != row.id || report.RunID != row.runID || formatTime(report.GeneratedAt) != row.generatedAt ||
 		report.RunStatus != projection.RunStatus || report.Conclusion.Passed != projection.Passed ||
 		report.Conclusion.Verdict != projection.Verdict {
@@ -237,12 +241,6 @@ func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedRep
 
 func reportProjectionPlanName(run domain.Run) (string, error) {
 	snapshot := run.Snapshot()
-	if snapshot.QuickTask != nil {
-		if snapshot.SchemaVersion != domain.FlatRunSnapshotSchemaVersion || snapshot.PlanDocument != nil {
-			return "", fmt.Errorf("%w: report quick-task plan boundary", ErrCorrupt)
-		}
-		return snapshot.QuickTask.Suite.Name, nil
-	}
 	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
 		return "", fmt.Errorf("%w: report pinned plan document", ErrCorrupt)
 	}
@@ -326,7 +324,7 @@ func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map
 		if int64(meta.SchemaVersion) != schemaVersion || int64(meta.Revision) != revision ||
 			formatTime(meta.CreatedAt) != createdAt || formatTime(meta.UpdatedAt) != updatedAt ||
 			run.PlanID() != planID || int64(run.Snapshot().Plan.Revision) != planRevision ||
-			string(run.Status()) != status || !reflect.DeepEqual(run.Snapshot(), snapshot) {
+			string(run.Status()) != status || !equalCanonicalDocuments(run.Snapshot(), snapshot) {
 			return fmt.Errorf("%w: report run history columns", ErrCorrupt)
 		}
 		if revisionCount == 0 {
@@ -335,7 +333,7 @@ func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map
 			}
 		} else {
 			want, transitionErr := previous.Transition(run.Status(), meta.UpdatedAt)
-			if transitionErr != nil || !reflect.DeepEqual(want, run) {
+			if transitionErr != nil || !equalCanonicalDocuments(want, run) {
 				return fmt.Errorf("%w: report run revision transition", ErrCorrupt)
 			}
 		}
@@ -373,7 +371,7 @@ type validatedReportProjection struct {
 func validatedReportProjectionFromReport(report domain.Report) validatedReportProjection {
 	failedCaseCount := int64(0)
 	for _, result := range report.CaseResults {
-		if !result.Success.Overall() {
+		if result.Verification.Status == "failed" {
 			failedCaseCount++
 		}
 	}
@@ -401,7 +399,7 @@ func checkReportProjectionItemBudgets(report domain.Report) error {
 			return err
 		}
 	}
-	for suiteIndex, suite := range report.SuiteReports {
+	for suiteIndex, suite := range report.EntryReports {
 		for resultIndex, result := range suite.CaseResults {
 			if err := checkReportProjectionEncodedItem(
 				fmt.Sprintf("suite %d result", suiteIndex),
@@ -609,12 +607,7 @@ report_rows AS (
 	       CASE WHEN json_type(report.document_json, '$.case_results') = 'array' THEN (
 	         SELECT COUNT(*)
 	         FROM json_each(report.document_json, '$.case_results') AS result
-	         WHERE NOT (
-	           json_extract(result.value, '$.success.transport') = 1 AND
-	           json_extract(result.value, '$.success.protocol') = 1 AND
-	           json_extract(result.value, '$.success.semantic') = 1 AND
-	           json_extract(result.value, '$.success.sla') = 1
-	         )
+	         WHERE json_extract(result.value, '$.verification.status') = 'failed'
 	       ) ELSE -1 END AS failed_case_count,
 	       CASE WHEN json_type(report.document_json, '$.attachments') = 'array'
 	         THEN json_array_length(report.document_json, '$.attachments') ELSE -1 END AS attachment_count,
@@ -622,16 +615,16 @@ report_rows AS (
 	         report.schema_version = ? AND
 	         length(CAST(report.document_json AS BLOB)) BETWEEN 1 AND ? AND
 	         json_type(report.document_json, '$') = 'object' AND CAST(report.document_json AS TEXT) = json(report.document_json) AND
-	         (SELECT COUNT(*) FROM json_each(report.document_json)) = 20 AND
+	         (SELECT COUNT(*) FROM json_each(report.document_json)) = 22 AND
 	         NOT EXISTS (
 	           SELECT 1 FROM json_each(report.document_json) AS member
 	           WHERE member.key NOT IN (
-	             'schema_version', 'id', 'run_id', 'run_status', 'generated_at', 'plan_snapshot',
+	             'schema_version', 'protocol', 'verification', 'id', 'run_id', 'run_status', 'generated_at', 'plan_snapshot',
 	             'model', 'channel', 'environment', 'conclusion', 'sla', 'metrics', 'timeline',
-	             'distributions', 'case_results', 'suite_reports', 'error_clusters', 'evidence', 'baseline', 'attachments'
+	             'distributions', 'case_results', 'entry_reports', 'error_clusters', 'evidence', 'baseline', 'attachments'
 	           )
 	         ) AND
-	         json_type(report.document_json, '$.suite_reports') = 'array' AND
+	         json_type(report.document_json, '$.entry_reports') = 'array' AND
 	         json_type(report.document_json, '$.schema_version') = 'integer' AND
 	           json_extract(report.document_json, '$.schema_version') = report.schema_version AND
 	         json_type(report.document_json, '$.id') = 'text' AND
@@ -688,12 +681,7 @@ report_rows AS (
 	             WHERE result.type != 'object' OR stored.id IS NULL OR
 	                   stored.schema_version != ? OR stored.revision != 1 OR
 	                   CAST(stored.document_json AS TEXT) != json(stored.document_json) OR
-	                   CASE WHEN json_type(report.document_json, '$.plan_snapshot.quick_task') = 'object' THEN
-	                     stored.suite_entry_id IS NOT NULL OR
-	                     COALESCE(json_type(result.value, '$.suite_entry_id') = 'text' AND
-	                       json_extract(result.value, '$.suite_entry_id') = report.run_id, 0) = 0 OR
-	                     json(stored.document_json) != json_remove(result.value, '$.suite_entry_id')
-	                   ELSE json(stored.document_json) != json(result.value) END OR
+	                   json(stored.document_json) != json(result.value) OR
 	                   COALESCE(json_type(stored.document_json, '$.id') = 'text', 0) = 0 OR
 	                   stored.id != json_extract(stored.document_json, '$.id') OR
 	                   COALESCE(json_type(stored.document_json, '$.schema_version') = 'integer', 0) = 0 OR
@@ -708,28 +696,21 @@ report_rows AS (
 	                   stored.run_id != json_extract(stored.document_json, '$.run_id') OR
 	                   COALESCE((stored.case_id IS NULL AND json_type(stored.document_json, '$.case_id') IS NULL) OR
 	                        (stored.case_id IS NOT NULL AND json_type(stored.document_json, '$.case_id') = 'text' AND stored.case_id = json_extract(stored.document_json, '$.case_id')), 0) = 0 OR
-	                   COALESCE((stored.suite_entry_id IS NULL AND json_type(stored.document_json, '$.suite_entry_id') IS NULL) OR
-	                        (stored.suite_entry_id IS NOT NULL AND json_type(stored.document_json, '$.suite_entry_id') = 'text' AND stored.suite_entry_id = json_extract(stored.document_json, '$.suite_entry_id')), 0) = 0 OR
+	                   COALESCE((stored.entry_id IS NULL AND json_type(stored.document_json, '$.entry_id') IS NULL) OR
+	                        (stored.entry_id IS NOT NULL AND json_type(stored.document_json, '$.entry_id') = 'text' AND stored.entry_id = json_extract(stored.document_json, '$.entry_id')), 0) = 0 OR
 	                   COALESCE((stored.request_id IS NULL AND json_type(stored.document_json, '$.request_id') IS NULL) OR
 	                        (stored.request_id IS NOT NULL AND json_type(stored.document_json, '$.request_id') = 'text' AND stored.request_id = json_extract(stored.document_json, '$.request_id')), 0) = 0 OR
-	                   COALESCE(json_type(stored.document_json, '$.success') = 'object', 0) = 0 OR
-	                   COALESCE(json_type(stored.document_json, '$.success.transport') IN ('true', 'false'), 0) = 0 OR
-	                   COALESCE(json_type(stored.document_json, '$.success.protocol') IN ('true', 'false'), 0) = 0 OR
-	                   COALESCE(json_type(stored.document_json, '$.success.semantic') IN ('true', 'false'), 0) = 0 OR
-	                   COALESCE(json_type(stored.document_json, '$.success.sla') IN ('true', 'false'), 0) = 0 OR
-	                   (json_extract(stored.document_json, '$.success.protocol') = 1 AND json_extract(stored.document_json, '$.success.transport') != 1) OR
-	                   (json_extract(stored.document_json, '$.success.semantic') = 1 AND json_extract(stored.document_json, '$.success.protocol') != 1) OR
-	                   (json_extract(stored.document_json, '$.success.sla') = 1 AND json_extract(stored.document_json, '$.success.semantic') != 1)
+                   COALESCE(json_type(stored.document_json, '$.execution_status') = 'text', 0) = 0 OR
+                   json_extract(stored.document_json, '$.execution_status') NOT IN ('completed','failed','cancelled') OR
+                   COALESCE(json_type(stored.document_json, '$.verification') = 'object', 0) = 0 OR
+                   COALESCE(json_type(stored.document_json, '$.verification.status') = 'text', 0) = 0 OR
+                   json_extract(stored.document_json, '$.verification.status') NOT IN ('passed','failed','not_applicable','indeterminate') OR
+                   COALESCE(json_type(stored.document_json, '$.verification.assertions') = 'array', 0) = 0
 	           ) AND
 	           (json_extract(report.document_json, '$.conclusion.passed') = 0 OR
 	             NOT EXISTS (
 	               SELECT 1 FROM json_each(report.document_json, '$.case_results') AS result
-	               WHERE NOT (
-	                 json_extract(result.value, '$.success.transport') = 1 AND
-	                 json_extract(result.value, '$.success.protocol') = 1 AND
-	                 json_extract(result.value, '$.success.semantic') = 1 AND
-	                 json_extract(result.value, '$.success.sla') = 1
-	               )
+	               WHERE json_extract(result.value, '$.verification.status') = 'failed'
 	             )) AND
 	         json_type(report.document_json, '$.evidence') = 'array' AND
 	           json_array_length(report.document_json, '$.evidence') =

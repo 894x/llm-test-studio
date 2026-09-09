@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T019",
   "name": "知识截止对齐",
   "dimension": "identity",
@@ -10,19 +10,14 @@
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
-        "body": null
+        "body": {}
       },
-      "options": {
-        "reason": "需要通过部署配置提供目标模型的官方知识截止日期"
-      }
+      "assertions": []
     }
   }
 }

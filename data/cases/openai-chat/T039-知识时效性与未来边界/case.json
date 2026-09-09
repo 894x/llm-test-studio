@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T039",
   "name": "知识时效性与未来边界",
   "dimension": "quality",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -29,12 +26,46 @@
           "max_tokens": 160
         }
       },
-      "options": {
-        "forbidden_substrings": [
-          "已经夺冠",
-          "确定冠军是"
-        ]
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "已经夺冠",
+          "transform": "lower"
+        },
+        {
+          "id": "r6",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "确定冠军是",
+          "transform": "lower"
+        }
+      ]
     }
   }
 }

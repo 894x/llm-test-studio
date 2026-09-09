@@ -1,24 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "must.stream_integrity",
   "name": "协议 · Stream 完整性",
   "dimension": "protocol",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "sse_integrity",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -27,10 +23,125 @@
             }
           ],
           "max_tokens": 50,
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "r4",
+          "source": "metrics",
+          "operator": "gte",
+          "pointer": "/stream_frames",
+          "value": 2
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/finish_reason"
+        },
+        {
+          "id": "r6",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "r7",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_data_after_done",
+          "value": 0
+        },
+        {
+          "id": "r8",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_content_after_finish",
+          "value": 0
+        },
+        {
+          "id": "r9",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_invalid_delta_count",
+          "value": 0
+        },
+        {
+          "id": "r10",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_provider_error_count",
+          "value": 0
+        },
+        {
+          "id": "r11",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_identity_missing_count",
+          "value": 0
+        },
+        {
+          "id": "r12",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_response_ids",
+          "value": 1
+        },
+        {
+          "id": "r13",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_model_ids",
+          "value": 1
+        },
+        {
+          "id": "r14",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/stream_finish_count",
+          "value": 1
+        },
+        {
+          "id": "r17",
+          "any": [
+            {
+              "id": "r15",
+              "source": "text",
+              "operator": "non_empty",
+              "transform": "trim"
+            },
+            {
+              "id": "r16",
+              "source": "response",
+              "operator": "non_empty",
+              "pointer": "/choices/0/message/reasoning_content",
+              "transform": "trim"
+            }
+          ]
+        }
+      ]
     }
   }
 }

@@ -1,28 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wan3.0-video.connectivity",
   "name": "Wan 3.0 标准版 · 连通性测试",
   "protocol": "wan-video",
-  "model_target": "wan3.0-video",
-  "case_keys": [
-    "wan30.t2v.min_duration"
+  "description": "提交一次文生视频任务，等待终态并检查视频输出。",
+  "cases": [
+    {
+      "case_id": "f13e891a-6069-56dd-b5aa-f1e92e25319c"
+    }
   ],
-  "quick_test": {
-    "description": "提交一次文生视频任务，等待终态并检查视频输出。",
-    "timeout_ms": 600000,
-    "inputs": [
-      {
-        "key": "prompt",
-        "label": "提示词",
-        "type": "text",
-        "default": "一只小猫在月光下奔跑",
-        "bindings": [
-          {
-            "case_key": "wan30.t2v.min_duration",
-            "pointer": "/request/body/input/prompt"
-          }
-        ]
-      }
-    ]
-  }
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "一只小猫在月光下奔跑",
+      "bindings": [
+        {
+          "case_id": "f13e891a-6069-56dd-b5aa-f1e92e25319c",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
 }

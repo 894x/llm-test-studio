@@ -24,15 +24,28 @@ func TestRunDryRunJSONLCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	caseJSON := `{
-		"id": "C001",
-		"name": "manual review",
-		"dimension": "protocol",
-		"protocol": "openai-chat",
-		"kind": "manual_unknown",
-		"default": true,
-		"options": {"reason": "needs external evidence"},
-		"request": {"method": "", "path": "", "body": {}}
-	}`
+  "schema_version": 3,
+  "key": "C001",
+  "name": "manual review",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": []
+    }
+  }
+}`
 	if err := os.WriteFile(filepath.Join(caseDir, "case.json"), []byte(caseJSON), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T029",
   "name": "stop 参数测试",
   "dimension": "boundary",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "stop_parameter",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -32,9 +29,33 @@
           "max_tokens": 64
         }
       },
-      "options": {
-        "stop_text": "STOP_AUDIT"
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "STOP_AUDIT"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "stop"
+        }
+      ]
     }
   }
 }

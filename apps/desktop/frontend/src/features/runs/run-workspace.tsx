@@ -259,7 +259,7 @@ function RunTable({
                       </div>
                       <div className="mt-1 text-[10px] text-muted-foreground">
                         <span>{t("table.completedCount", { count: run.completed })}</span> · {" "}
-                        {t("table.passed", { count: run.passed })}
+                        {t("table.passed", { count: run.passed })} · {t("table.observed", { count: run.observed })} · {t("table.indeterminate", { count: run.indeterminate })}
                         {run.targetDurationMS > 0 ? <> · {t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}</> : null}
                       </div>
                     </>
@@ -350,7 +350,7 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
           className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-2"
         >
           <div className="space-y-3 py-2" aria-label={t("caseProgress.suites")}>
-            {run.suiteProgress.map((suite, index) => (
+            {run.entryProgress.map((suite, index) => (
               <div key={suite.entry_id} className="min-w-0">
                 <div className="flex items-start justify-between gap-2 text-xs">
                   <span className="min-w-0 [overflow-wrap:anywhere]" title={suite.name}>{index + 1}. {suite.name}</span>
@@ -415,11 +415,13 @@ export function NewRunSheet({
 	catalog,
   commandPending,
   onStartRun,
+  triggerLabel,
 }: {
   plans: TestPlan[]
 	catalog: CatalogSnapshot
   commandPending: boolean
   onStartRun: (command: StartRunTargetCommand) => Promise<void>
+  triggerLabel?: string
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("runs")
@@ -463,9 +465,9 @@ export function NewRunSheet({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button size="sm" className="ml-1">
+        <Button size="sm" className="ml-1" disabled={commandPending}>
           <PlusIcon data-icon="inline-start" />
-          {t("newRun.title")}
+          {triggerLabel ?? t("newRun.title")}
         </Button>
       </SheetTrigger>
       <SheetContent className="sm:max-w-[420px]">

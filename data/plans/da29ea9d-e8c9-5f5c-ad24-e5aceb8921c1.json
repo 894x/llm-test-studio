@@ -1,0 +1,31 @@
+{
+  "file_schema_version": 4,
+  "id": "da29ea9d-e8c9-5f5c-ad24-e5aceb8921c1",
+  "revision": 1,
+  "created_at": "2026-09-09T00:00:00Z",
+  "updated_at": "2026-09-09T00:00:00Z",
+  "name": "速率限制、并发与 429计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "5208d899-5a8b-5595-8b5d-b9b3fefa7809",
+      "target_kind": "case",
+      "target_id": "53f6f33c-7396-5d8c-bc3a-bdb07d3ab61c",
+      "parameters": {},
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 5,
+        "request_count": 5,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {}
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}

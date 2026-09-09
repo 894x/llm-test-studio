@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T042",
   "name": "分时段波动测试",
   "dimension": "stability",
@@ -10,19 +10,14 @@
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
-        "body": null
+        "body": {}
       },
-      "options": {
-        "reason": "缺少同一渠道的历史时段基线，当前运行无法独立判定"
-      }
+      "assertions": []
     }
   }
 }

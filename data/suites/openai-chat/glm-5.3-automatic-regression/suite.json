@@ -1,174 +1,484 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "openai-chat.glm-5.3.automatic-regression",
   "name": "GLM 5.3 自动回归套件",
   "protocol": "openai-chat",
-  "model_target": "glm-5.3",
-  "case_keys": [
-    "glm53.auth.invalid",
-    "glm53.auth.missing",
-    "glm53.cache.counter",
-    "glm53.connectivity",
-    "glm53.do_sample.invalid_0",
-    "glm53.do_sample.invalid_1",
-    "glm53.do_sample.omitted",
-    "glm53.do_sample.valid_0",
-    "glm53.do_sample.valid_1",
-    "glm53.format.json",
-    "glm53.format.missing_type",
-    "glm53.format.null",
-    "glm53.format.null_type",
-    "glm53.format.object_type",
-    "glm53.format.omitted",
-    "glm53.format.schema",
-    "glm53.format.text",
-    "glm53.format.type",
-    "glm53.format.unknown",
-    "glm53.function.description_missing",
-    "glm53.function.description_null",
-    "glm53.function.description_type",
-    "glm53.function.name_1",
-    "glm53.function.name_16",
-    "glm53.function.name_64",
-    "glm53.function.name_empty",
-    "glm53.function.name_missing",
-    "glm53.function.name_null",
-    "glm53.function.name_over",
-    "glm53.function.name_punctuation",
-    "glm53.function.name_type",
-    "glm53.function.name_unicode",
-    "glm53.function.no_arguments",
-    "glm53.function.parameters_null",
-    "glm53.function.parameters_type",
-    "glm53.function.schema",
-    "glm53.max_tokens.fraction",
-    "glm53.max_tokens.interior",
-    "glm53.max_tokens.null",
-    "glm53.max_tokens.one",
-    "glm53.max_tokens.over",
-    "glm53.max_tokens.wrong_type",
-    "glm53.max_tokens.zero",
-    "glm53.message.system.bad_role",
-    "glm53.message.system.content_type",
-    "glm53.message.system.missing_content",
-    "glm53.message.system.missing_role",
-    "glm53.message.system.null_content",
-    "glm53.message.system.null_role",
-    "glm53.message.system.role_type",
-    "glm53.message.user.bad_role",
-    "glm53.message.user.content_type",
-    "glm53.message.user.missing_content",
-    "glm53.message.user.missing_role",
-    "glm53.message.user.null_content",
-    "glm53.message.user.null_role",
-    "glm53.message.user.role_type",
-    "glm53.messages.assistant_only",
-    "glm53.messages.empty",
-    "glm53.messages.history",
-    "glm53.messages.missing",
-    "glm53.messages.null",
-    "glm53.messages.object",
-    "glm53.messages.one",
-    "glm53.messages.system",
-    "glm53.messages.system_only",
-    "glm53.model.empty",
-    "glm53.model.missing",
-    "glm53.model.null",
-    "glm53.model.unknown",
-    "glm53.model.valid",
-    "glm53.model.wrong_type",
-    "glm53.reasoning_effort.invalid_0",
-    "glm53.reasoning_effort.invalid_1",
-    "glm53.reasoning_effort.invalid_2",
-    "glm53.reasoning_effort.invalid_3",
-    "glm53.reasoning_effort.invalid_4",
-    "glm53.reasoning_effort.invalid_5",
-    "glm53.reasoning_effort.invalid_6",
-    "glm53.reasoning_effort.omitted",
-    "glm53.reasoning_effort.valid_0",
-    "glm53.reasoning_effort.valid_1",
-    "glm53.reasoning_effort.valid_2",
-    "glm53.request_id.length_0",
-    "glm53.request_id.length_16",
-    "glm53.request_id.length_5",
-    "glm53.request_id.length_6",
-    "glm53.request_id.length_64",
-    "glm53.request_id.length_65",
-    "glm53.request_id.null",
-    "glm53.request_id.omitted",
-    "glm53.request_id.type",
-    "glm53.request_id.unicode",
-    "glm53.response.contract",
-    "glm53.sampling.disabled_high",
-    "glm53.sampling.disabled_low",
-    "glm53.stop.item_type",
-    "glm53.stop.one",
-    "glm53.stop.type",
-    "glm53.stream.false",
-    "glm53.stream.null",
-    "glm53.stream.true",
-    "glm53.stream.type",
-    "glm53.temperature.invalid_0",
-    "glm53.temperature.invalid_1",
-    "glm53.temperature.invalid_2",
-    "glm53.temperature.invalid_3",
-    "glm53.temperature.omitted",
-    "glm53.temperature.valid_0",
-    "glm53.temperature.valid_1",
-    "glm53.temperature.valid_2",
-    "glm53.thinking.clear_null",
-    "glm53.thinking.clear_type",
-    "glm53.thinking.disabled",
-    "glm53.thinking.empty",
-    "glm53.thinking.enabled",
-    "glm53.thinking.null",
-    "glm53.thinking.null_type",
-    "glm53.thinking.object_type",
-    "glm53.thinking.omitted",
-    "glm53.thinking.replay_false",
-    "glm53.thinking.replay_omitted",
-    "glm53.thinking.replay_true",
-    "glm53.thinking.type",
-    "glm53.thinking.unknown",
-    "glm53.tool_choice.auto",
-    "glm53.tool_choice.named",
-    "glm53.tool_choice.none",
-    "glm53.tool_choice.null",
-    "glm53.tool_choice.omitted",
-    "glm53.tool_choice.required",
-    "glm53.tool_choice.type",
-    "glm53.tool_choice.unknown",
-    "glm53.tool_stream.null",
-    "glm53.tool_stream.type",
-    "glm53.tools.missing_function",
-    "glm53.tools.missing_type",
-    "glm53.tools.null",
-    "glm53.tools.omitted",
-    "glm53.tools.one",
-    "glm53.tools.roundtrip",
-    "glm53.tools.stream_false",
-    "glm53.tools.stream_omitted",
-    "glm53.tools.stream_true",
-    "glm53.tools.type",
-    "glm53.tools.unknown_type",
-    "glm53.top_p.invalid_0",
-    "glm53.top_p.invalid_1",
-    "glm53.top_p.invalid_2",
-    "glm53.top_p.invalid_3",
-    "glm53.top_p.omitted",
-    "glm53.top_p.valid_0",
-    "glm53.top_p.valid_1",
-    "glm53.top_p.valid_2",
-    "glm53.top_p.valid_3",
-    "glm53.user_id.length_0",
-    "glm53.user_id.length_128",
-    "glm53.user_id.length_129",
-    "glm53.user_id.length_16",
-    "glm53.user_id.length_5",
-    "glm53.user_id.length_6",
-    "glm53.user_id.null",
-    "glm53.user_id.omitted",
-    "glm53.user_id.type",
-    "glm53.user_id.unicode"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "db952c4d-b3c2-5367-a521-d3e353b73d72"
+    },
+    {
+      "case_id": "c920e5f5-3c07-5639-aac2-1f1a9bebf965"
+    },
+    {
+      "case_id": "27c01b14-3773-5249-895c-980fc96ccfcf"
+    },
+    {
+      "case_id": "68228eb1-33bd-5c12-a7ed-d8c444d4dbf8"
+    },
+    {
+      "case_id": "783abfc4-f3df-5342-b199-22549049258f"
+    },
+    {
+      "case_id": "dfbc1264-ae4f-5933-9cd5-2e73c1a9879a"
+    },
+    {
+      "case_id": "9981b683-5cf2-5904-b4e8-6a3102c933f0"
+    },
+    {
+      "case_id": "e21aa5da-58e4-5173-97eb-39db71e81e39"
+    },
+    {
+      "case_id": "35d4bd34-2d08-5fe9-834e-78410e26223d"
+    },
+    {
+      "case_id": "a6d57a1d-7067-5eb4-b189-15a032645dd9"
+    },
+    {
+      "case_id": "33f17d6e-b064-5a93-b9dc-05708319f750"
+    },
+    {
+      "case_id": "60dc56bb-4ad0-57ee-afac-88c50e5bcc9a"
+    },
+    {
+      "case_id": "4d2e2aa0-11eb-59b1-8021-03412594c93f"
+    },
+    {
+      "case_id": "c662f995-af91-569e-bd5b-c0c691d8816b"
+    },
+    {
+      "case_id": "1c9a691d-4ae4-5d42-99ba-495692809374"
+    },
+    {
+      "case_id": "7ab16f41-2c40-5bf7-83a0-9996cbc5f8c9"
+    },
+    {
+      "case_id": "97bdee4a-6bc8-59c8-92ce-58c11cb866ae"
+    },
+    {
+      "case_id": "71b74106-d676-5733-ab89-72fa2403c2e4"
+    },
+    {
+      "case_id": "02f3aaa9-c6e0-57c7-b3de-93d7cd79a919"
+    },
+    {
+      "case_id": "83d26f0f-8c42-5b94-91a1-945f21ddd3c6"
+    },
+    {
+      "case_id": "6facc6ef-9e56-5dae-8a2e-4412ed88d4f0"
+    },
+    {
+      "case_id": "283d6d41-1207-5bf0-b751-5a6d6aa66f0d"
+    },
+    {
+      "case_id": "a6a5a6bd-b0b0-5b82-a2c0-ca06cbbdba02"
+    },
+    {
+      "case_id": "49ad3e2f-2e45-523f-8ae9-09d239f04c02"
+    },
+    {
+      "case_id": "9342d22f-2395-5dcb-b143-945db5f61262"
+    },
+    {
+      "case_id": "d877cc64-9400-58b2-9b93-ef890dd5de33"
+    },
+    {
+      "case_id": "489795e7-16ba-54e3-a09a-f98d61b22da8"
+    },
+    {
+      "case_id": "334dc2cd-4689-5e27-a3d5-83b7bdfcd94f"
+    },
+    {
+      "case_id": "4959b36a-3329-56d0-9918-bbae910ccc2c"
+    },
+    {
+      "case_id": "72c61dce-bdb0-500c-adcc-d34a7f8716f2"
+    },
+    {
+      "case_id": "585106e5-e6a1-59cc-b352-de6060da9ef6"
+    },
+    {
+      "case_id": "f7edcce6-bee1-5bb6-bde4-6b31f5351e3b"
+    },
+    {
+      "case_id": "4d8f1494-0e42-5bb9-b60d-6d15eb39d717"
+    },
+    {
+      "case_id": "19f45218-f575-5c52-8846-208e8bf88d05"
+    },
+    {
+      "case_id": "65b4486a-d6d7-511f-9d60-72bf909e66c7"
+    },
+    {
+      "case_id": "0bb2d2ea-2135-5890-a668-59cf29bec2a4"
+    },
+    {
+      "case_id": "12149906-5f9f-585a-8671-1319877e4628"
+    },
+    {
+      "case_id": "88bcd6f5-6dc2-523d-bc92-167222061164"
+    },
+    {
+      "case_id": "1719fd49-1dbd-5e99-98d6-cccca9714fb0"
+    },
+    {
+      "case_id": "a2837e91-4a11-5fc8-aecf-e1322e4809fe"
+    },
+    {
+      "case_id": "a4e3bfcc-f7c9-58c8-8591-f43774fe27d7"
+    },
+    {
+      "case_id": "d5fde33c-a6a0-54f3-9ddb-411a3bd59c19"
+    },
+    {
+      "case_id": "147885bf-0d3f-5ade-9143-b16be577e1c2"
+    },
+    {
+      "case_id": "39bcbce1-3123-5577-a6e7-6b65498e4794"
+    },
+    {
+      "case_id": "e9be2379-02fc-532b-8e5f-6bd84fb84052"
+    },
+    {
+      "case_id": "35bfbe51-3555-5323-b653-bcf5b423dc14"
+    },
+    {
+      "case_id": "4c007c88-a34a-5d99-9c14-d02f63e2f85d"
+    },
+    {
+      "case_id": "d7e0b6ea-4669-5e51-8f3e-b6e79f540f6a"
+    },
+    {
+      "case_id": "0c79f905-e7e1-5071-8f7a-977250f84add"
+    },
+    {
+      "case_id": "b5fd6ef5-1ae2-5019-9d8f-100335c2dbe5"
+    },
+    {
+      "case_id": "e50b57f3-d0c4-562a-a8ba-4da52e6d1ca5"
+    },
+    {
+      "case_id": "ed759578-f0d7-5475-80d6-f603c18a3363"
+    },
+    {
+      "case_id": "dde5f05c-63da-51f3-8a0f-f1df206d411d"
+    },
+    {
+      "case_id": "f6f6ea4c-8d8e-5275-ad4b-cc1cf6d65fb2"
+    },
+    {
+      "case_id": "8b87e0f7-8b96-5b90-8e4f-b096a3916a07"
+    },
+    {
+      "case_id": "10414447-9f36-5852-8273-0b08b88889f0"
+    },
+    {
+      "case_id": "0fbaf71b-89de-5615-bdfe-655dd12260d2"
+    },
+    {
+      "case_id": "9672d4cf-2fd0-5575-b933-fdc48df8d917"
+    },
+    {
+      "case_id": "a38009d4-adc5-52ca-9875-c613b9f14ea3"
+    },
+    {
+      "case_id": "c3e4a5b1-340c-5f38-8153-7ad124cfb986"
+    },
+    {
+      "case_id": "f1ab38da-0087-5de1-8746-712adbd39065"
+    },
+    {
+      "case_id": "de59a329-161d-5d43-b5ce-3d0e544485b5"
+    },
+    {
+      "case_id": "173033cc-561b-5981-9cbd-68385f8c20c5"
+    },
+    {
+      "case_id": "aa1558a1-dd6c-55d8-83c0-b6cdb1badaaf"
+    },
+    {
+      "case_id": "c1237d4e-9567-53d6-b26f-d227b6099f9c"
+    },
+    {
+      "case_id": "c4b232fc-6c10-5aec-b241-33a9554d97e4"
+    },
+    {
+      "case_id": "bdc5c97d-6fa1-5951-810b-cb9a36372ed2"
+    },
+    {
+      "case_id": "87e7fe44-5eb6-5b71-bd6b-d9578ad805db"
+    },
+    {
+      "case_id": "cd68c492-c5c4-5412-a244-66adbd70667b"
+    },
+    {
+      "case_id": "134c92c6-7ea0-500a-bc03-dfd5e259ad55"
+    },
+    {
+      "case_id": "b59d8742-15dd-59f6-b882-e4c5e0d02615"
+    },
+    {
+      "case_id": "63e622a8-afd0-55ac-94c2-bfd0b15db376"
+    },
+    {
+      "case_id": "6894e87b-70da-5a1e-94d2-83c0d478fbbb"
+    },
+    {
+      "case_id": "3410753d-2f2c-5982-972e-5fc102c0bf47"
+    },
+    {
+      "case_id": "8261587c-609b-5041-8bb5-a0e0f2ddf507"
+    },
+    {
+      "case_id": "f7e31f06-1080-5981-a105-c1889cf4f79f"
+    },
+    {
+      "case_id": "cd006f01-c199-5b2a-a579-50e236a5b9e7"
+    },
+    {
+      "case_id": "e77c396c-6626-5d34-bc15-a7a87203cd0b"
+    },
+    {
+      "case_id": "f06f0e98-f2d4-5d24-a77c-a6de9e8ddea0"
+    },
+    {
+      "case_id": "4bda5761-3e3f-53d8-ad17-ddd13fdf6d5d"
+    },
+    {
+      "case_id": "7fb57bcf-1661-5163-b30d-b35291543357"
+    },
+    {
+      "case_id": "1b7c589f-bf92-526b-999e-72b89814b73f"
+    },
+    {
+      "case_id": "9644df5b-bc98-5bcd-a228-cb6f6a729843"
+    },
+    {
+      "case_id": "1c4636fc-a163-5285-8a53-afc0bfca11dd"
+    },
+    {
+      "case_id": "ff9f693c-a057-5169-b73a-3e3ed41503aa"
+    },
+    {
+      "case_id": "df994f63-fdfa-56c9-8017-b7a4c765a870"
+    },
+    {
+      "case_id": "f7f3a8ab-74c0-5a2f-81d9-d3eddf6ce7c3"
+    },
+    {
+      "case_id": "8c47cac5-8436-56d1-acec-6d358181168e"
+    },
+    {
+      "case_id": "39a33307-8b27-52ee-9ca0-aece44c5d4ea"
+    },
+    {
+      "case_id": "9478e7b0-7ff0-5fe4-9ba9-6ccc5ed3cd92"
+    },
+    {
+      "case_id": "4b030587-5f9d-5ee0-ba08-b8aca5578bc6"
+    },
+    {
+      "case_id": "c252e3e3-7dd7-570c-b991-caa56c02fc21"
+    },
+    {
+      "case_id": "c1191f55-fec6-5719-837e-0fbed83581d7"
+    },
+    {
+      "case_id": "cb61a027-2585-5eeb-8099-d320ce1b4cbe"
+    },
+    {
+      "case_id": "55d0ac3f-8ec4-5ed4-927f-14cde18150c2"
+    },
+    {
+      "case_id": "d7240943-dab2-5870-a78b-6db4074544a5"
+    },
+    {
+      "case_id": "84398f83-06dc-5915-8bd0-44a4e45d28cc"
+    },
+    {
+      "case_id": "58d9b768-906a-5575-97da-c415331eeddf"
+    },
+    {
+      "case_id": "04d1551f-95de-5ae1-8033-bd2f248c328d"
+    },
+    {
+      "case_id": "c21fbe5d-6cef-51c4-a1b1-810966c151ef"
+    },
+    {
+      "case_id": "8788b601-97d6-5d2c-beba-7fe74d2d07f6"
+    },
+    {
+      "case_id": "f7efe4fe-8ee1-5818-8d71-df5e84c1978c"
+    },
+    {
+      "case_id": "cfc4c687-52e3-5a90-8a39-43b4b2fe28c9"
+    },
+    {
+      "case_id": "1d2ff076-ac4e-5b93-9993-ad87d5e36826"
+    },
+    {
+      "case_id": "1b2b608b-da52-59c6-8ee8-11cb5d70f887"
+    },
+    {
+      "case_id": "1feeae59-9694-56c4-b3ee-472bbd685d87"
+    },
+    {
+      "case_id": "9e20b635-889b-59f5-ae10-3e2a69682734"
+    },
+    {
+      "case_id": "5cfa51a8-77d1-50c2-bb5b-a66d8b20b01d"
+    },
+    {
+      "case_id": "85cc5d85-646b-5828-be00-b64412b65e56"
+    },
+    {
+      "case_id": "551f3a7c-7168-54a6-b4ed-55ac97630761"
+    },
+    {
+      "case_id": "0f66e3c4-7b66-5e06-8ea5-3105b630cbf5"
+    },
+    {
+      "case_id": "142c38c3-9d23-52fe-8a64-0c6f416c391e"
+    },
+    {
+      "case_id": "851e58db-0c72-5fc2-83b9-5213c2cf8018"
+    },
+    {
+      "case_id": "7668ea02-9f7f-5ac5-b846-dfeb850b278f"
+    },
+    {
+      "case_id": "6aa20288-6952-5790-95fc-254677827cc0"
+    },
+    {
+      "case_id": "1268d3d8-0c8e-5ad0-bb8a-5111c3388c9c"
+    },
+    {
+      "case_id": "1af9eef7-ef1a-50ec-9afd-8be09e708c73"
+    },
+    {
+      "case_id": "706267f5-7a7c-540c-835e-455b89d8fdac"
+    },
+    {
+      "case_id": "ec1e86d9-dadf-5426-8938-85f8d1c956f8"
+    },
+    {
+      "case_id": "7c1e866c-de20-54af-94ab-dd5fad8aff6a"
+    },
+    {
+      "case_id": "d405a42b-6e54-54e6-922c-7917ef5de721"
+    },
+    {
+      "case_id": "6b6207ae-bf12-5c1d-a6a5-406074db75b6"
+    },
+    {
+      "case_id": "7bbfa1c7-69ab-5db9-889b-53cb01acf0e8"
+    },
+    {
+      "case_id": "eae96e74-63a7-5e51-8186-3aac119e95fa"
+    },
+    {
+      "case_id": "24ff1257-bbe2-587f-8604-49087cda00a7"
+    },
+    {
+      "case_id": "1e0004a8-91c6-5659-99dc-0c3949c242ef"
+    },
+    {
+      "case_id": "228cf4fb-3d3a-58fa-9cbe-1b048380545f"
+    },
+    {
+      "case_id": "8c0beb80-b06c-5d6c-be63-9b85e9c1379c"
+    },
+    {
+      "case_id": "64aed895-f704-5a7b-8cb5-7baae909e577"
+    },
+    {
+      "case_id": "261c89d5-5b40-5bce-9d0c-b7e000672e2b"
+    },
+    {
+      "case_id": "02529ed5-f425-5965-82e6-a493d78ef4b2"
+    },
+    {
+      "case_id": "b641c278-215e-576f-a93b-577f71d87c74"
+    },
+    {
+      "case_id": "465db96a-9b90-5cc7-8512-7437fe40772a"
+    },
+    {
+      "case_id": "2457775a-b2b1-502a-90bc-753ac46cba5e"
+    },
+    {
+      "case_id": "21b5cb88-48dc-53b7-9360-387bbf95aabe"
+    },
+    {
+      "case_id": "64cc4772-82b9-50be-9537-369f736e773b"
+    },
+    {
+      "case_id": "e52025ae-9bb3-5b85-9b13-7bd56f2523b3"
+    },
+    {
+      "case_id": "148fd4c1-6ddd-597d-9811-5a8760a3cf0d"
+    },
+    {
+      "case_id": "03074922-d5c7-5f09-b0d9-d8eda3876345"
+    },
+    {
+      "case_id": "bd2fd3d4-5391-502e-94aa-ca1e523b048e"
+    },
+    {
+      "case_id": "1708a16a-3e98-59f5-81a1-d78d0b5e5959"
+    },
+    {
+      "case_id": "9cd8f45c-f27d-5d53-a1b1-97e397483212"
+    },
+    {
+      "case_id": "e63bc2c4-fc2d-583e-ab8b-54128ff12f0d"
+    },
+    {
+      "case_id": "d9762899-aa9c-5da4-8cc9-19f27befe787"
+    },
+    {
+      "case_id": "d2802069-6ebe-5379-84ec-2ab5437355b8"
+    },
+    {
+      "case_id": "ce4e8623-85be-52d5-9b6e-c83f04bb3bfb"
+    },
+    {
+      "case_id": "907bbe8a-ff34-5737-9d6c-21406d06fb0b"
+    },
+    {
+      "case_id": "6ff7dad1-2e93-522a-b777-f763fdd91416"
+    },
+    {
+      "case_id": "6cede227-5eed-5c47-8a6e-727bf0b3f357"
+    },
+    {
+      "case_id": "f01b9bb2-4299-5759-91f7-c12d8fb93086"
+    },
+    {
+      "case_id": "c2be0dac-16aa-5823-a447-ee16ba376145"
+    },
+    {
+      "case_id": "1ac281ed-7955-5218-a825-31c87aee4d23"
+    },
+    {
+      "case_id": "f77d4671-1e6c-5fdd-9d91-896551d4ea02"
+    },
+    {
+      "case_id": "d99f7475-17e7-5291-a81c-071855cf6aec"
+    },
+    {
+      "case_id": "3ed18809-5abe-554d-b54f-5d8d22d85a7a"
+    },
+    {
+      "case_id": "5d706c38-7622-5a4e-a5f0-ad98ecc90468"
+    },
+    {
+      "case_id": "c96636db-4b84-58a8-a711-2e31cb3383bd"
+    },
+    {
+      "case_id": "1dc42bd4-250c-518f-a72a-9bd769ec05dd"
+    }
+  ],
+  "inputs": []
 }

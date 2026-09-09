@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T030",
   "name": "禁用工具测试",
   "dimension": "boundary",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -47,9 +44,50 @@
           "tool_choice": "none"
         }
       },
-      "options": {
-        "forbid_tool_calls": true
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r7",
+          "any": [
+            {
+              "id": "r5",
+              "source": "response",
+              "operator": "not_exists",
+              "pointer": "/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r6",
+              "source": "response",
+              "operator": "length_equals",
+              "pointer": "/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        }
+      ]
     }
   }
 }

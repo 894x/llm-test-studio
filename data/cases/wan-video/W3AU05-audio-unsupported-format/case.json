@@ -1,29 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "wan30.audio_media.unsupported_format",
   "name": "Wan 3.0 · 音频格式不受支持",
   "dimension": "media-boundary",
   "protocol": "wan-video",
-  "model_targets": [
-    "wan3.0-video",
-    "wan3.0-video-prime"
-  ],
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "wan-video",
     "type_version": 1,
     "spec": {
-      "kind": "wan_task_rejected",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
-        "headers": {
-          "X-DashScope-Async": "enable"
-        },
         "body": {
           "input": {
             "media": [
@@ -44,9 +35,66 @@
           }
         }
       },
-      "options": {
-        "reason": "隔离音频格式、大小或 URL 边界",
-        "precondition": "将 fixture:// 别名解析为同地域可访问、属性已校验的确定性素材"
+      "assertions": [
+        {
+          "id": "r9",
+          "any": [
+            {
+              "id": "r4",
+              "all": [
+                {
+                  "id": "r1",
+                  "source": "http.status",
+                  "operator": "equals",
+                  "value": 400
+                },
+                {
+                  "id": "r2",
+                  "source": "response",
+                  "operator": "non_empty",
+                  "pointer": "/message",
+                  "transform": "trim"
+                },
+                {
+                  "id": "r3",
+                  "source": "response",
+                  "operator": "regex",
+                  "pointer": "/code",
+                  "value": "(?i)^(invalidparameter($|\\.)|.*\\.invalidparameter$)"
+                }
+              ]
+            },
+            {
+              "id": "r8",
+              "all": [
+                {
+                  "id": "r5",
+                  "source": "task",
+                  "operator": "equals",
+                  "pointer": "/status",
+                  "value": "FAILED"
+                },
+                {
+                  "id": "r6",
+                  "source": "response",
+                  "operator": "non_empty",
+                  "pointer": "/output/message",
+                  "transform": "trim"
+                },
+                {
+                  "id": "r7",
+                  "source": "response",
+                  "operator": "regex",
+                  "pointer": "/output/code",
+                  "value": "(?i)^(invalidparameter($|\\.)|.*\\.invalidparameter$)"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
       }
     }
   }

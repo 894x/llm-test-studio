@@ -1,31 +1,32 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "h3.t2v.min_duration",
   "name": "MiniMax H3 · 最小时长 4 秒",
   "dimension": "compatibility",
   "protocol": "minimax-video",
-  "model_targets": [
-    "MiniMax-H3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "minimax-video",
     "type_version": 1,
     "spec": {
-      "kind": "minimax_video_task_success",
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "一只小猫在月光下奔跑，电影感镜头"
+        }
+      },
       "request": {
-        "method": "POST",
-        "path": "/v2/video_generation",
-        "headers": {},
         "body": {
           "content": [
             {
               "type": "text",
-              "text": "一只小猫在月光下奔跑，电影感镜头"
+              "text": {
+                "$input": "prompt"
+              }
             }
           ],
           "resolution": "768P",
@@ -33,7 +34,69 @@
           "ratio": "16:9"
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "task",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "succeeded"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "http_url",
+          "pointer": "/task/content/url"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/id",
+          "expected_from": {
+            "source": "task",
+            "pointer": "/id"
+          }
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/model",
+          "expected_from": {
+            "source": "model"
+          }
+        },
+        {
+          "id": "r7",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/task_type",
+          "value": "generation"
+        },
+        {
+          "id": "r8",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/modality",
+          "value": "video"
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
+      }
     }
   }
 }

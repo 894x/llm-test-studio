@@ -1,28 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "openai-chat.connectivity",
   "name": "OpenAI Chat 连通性测试",
   "protocol": "openai-chat",
-  "model_target": "",
-  "case_keys": [
-    "T001"
+  "description": "发送一条消息并检查同步响应。",
+  "cases": [
+    {
+      "case_id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264"
+    }
   ],
-  "quick_test": {
-    "description": "发送一条消息并检查同步响应。",
-    "timeout_ms": 30000,
-    "inputs": [
-      {
-        "key": "prompt",
-        "label": "提示词",
-        "type": "text",
-        "default": "仅输出数字 5",
-        "bindings": [
-          {
-            "case_key": "T001",
-            "pointer": "/request/body/messages/0/content"
-          }
-        ]
-      }
-    ]
-  }
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "仅输出数字 5",
+      "bindings": [
+        {
+          "case_id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
 }

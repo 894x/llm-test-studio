@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.tools.roundtrip",
   "name": "GLM 5.3 · 函数调用与结果回传",
   "dimension": "glm53.tool_lifecycle",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "glm53_tool_roundtrip",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -56,22 +50,516 @@
           ]
         }
       },
-      "options": {
-        "contract_row": "tool_lifecycle",
-        "source_urls": [
-          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
-          "https://docs.z.ai/guides/capabilities/function-calling",
-          "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T1",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
-        "expected_tool_name": "read_fixture",
-        "expected_arguments": {
-          "label": "sample"
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "equals",
+          "value": 200,
+          "pointer": "/0/http_status"
         },
-        "tool_result": "GLM_FIXTURE_42",
-        "expected_final": "GLM_FIXTURE_42"
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/id",
+          "transform": "trim"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/request_id",
+          "transform": "trim"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/model",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/created",
+          "value": "integer"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/0/response/created",
+          "value": 0
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "length_equals",
+          "pointer": "/0/response/choices",
+          "value": 1
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/index",
+          "value": 0
+        },
+        {
+          "id": "r9",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/message/role",
+          "value": "assistant"
+        },
+        {
+          "id": "r10",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices/0/message/reasoning_content",
+          "transform": "trim"
+        },
+        {
+          "id": "r20",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices/0/message/tool_calls"
+        },
+        {
+          "id": "r21",
+          "source": "requests",
+          "pointer": "/0/response/choices/0/message/tool_calls",
+          "each": [
+            {
+              "id": "r13",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/function/name",
+              "transform": "trim"
+            },
+            {
+              "id": "r14",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/id",
+              "transform": "trim"
+            },
+            {
+              "id": "r15",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/type",
+              "value": "function"
+            },
+            {
+              "id": "r16",
+              "source": "item",
+              "operator": "type",
+              "pointer": "/function/arguments",
+              "value": "object",
+              "transform": "json"
+            },
+            {
+              "id": "r17",
+              "source": "item",
+              "operator": "in",
+              "pointer": "/function/name",
+              "value": [
+                "read_fixture"
+              ]
+            },
+            {
+              "id": "r18",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/name",
+              "value": "read_fixture"
+            },
+            {
+              "id": "r19",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/function/arguments",
+              "value": {
+                "label": "sample"
+              },
+              "transform": "json"
+            }
+          ]
+        },
+        {
+          "id": "r22",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/finish_reason",
+          "value": "tool_calls"
+        },
+        {
+          "id": "r23",
+          "source": "requests",
+          "operator": "unique",
+          "pointer": "/0/response/choices/0/message/tool_calls",
+          "value": "/id"
+        },
+        {
+          "id": "r24",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r25",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r26",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/usage/completion_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r27",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/completion_tokens",
+          "value": 0
+        },
+        {
+          "id": "r28",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/usage/total_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r29",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/total_tokens",
+          "value": 0
+        },
+        {
+          "id": "r30",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r31",
+          "source": "requests",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/prompt_tokens",
+              "/completion_tokens"
+            ]
+          },
+          "pointer": "/0/response/usage"
+        },
+        {
+          "id": "r37",
+          "any": [
+            {
+              "id": "r36",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/0/response/usage/prompt_tokens_details"
+            },
+            {
+              "id": "r35",
+              "all": [
+                {
+                  "id": "r32",
+                  "source": "requests",
+                  "operator": "type",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": "integer"
+                },
+                {
+                  "id": "r33",
+                  "source": "requests",
+                  "operator": "gte",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": 0
+                },
+                {
+                  "id": "r34",
+                  "source": "requests",
+                  "operator": "lte",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/0/response/usage/prompt_tokens"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "r38",
+          "source": "requests",
+          "operator": "length_equals",
+          "pointer": "/0/response/choices/0/message/tool_calls",
+          "value": 1
+        },
+        {
+          "id": "r39",
+          "source": "requests",
+          "operator": "equals",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r40",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/id",
+          "transform": "trim"
+        },
+        {
+          "id": "r41",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/request_id",
+          "transform": "trim"
+        },
+        {
+          "id": "r42",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/model",
+          "transform": "trim"
+        },
+        {
+          "id": "r43",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/created",
+          "value": "integer"
+        },
+        {
+          "id": "r44",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/created",
+          "value": 0
+        },
+        {
+          "id": "r45",
+          "source": "requests",
+          "operator": "length_equals",
+          "pointer": "/1/response/choices",
+          "value": 1
+        },
+        {
+          "id": "r46",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/index",
+          "value": 0
+        },
+        {
+          "id": "r47",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/message/role",
+          "value": "assistant"
+        },
+        {
+          "id": "r48",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices/0/message/reasoning_content",
+          "transform": "trim"
+        },
+        {
+          "id": "r49",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/finish_reason",
+          "value": "stop"
+        },
+        {
+          "id": "r50",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r51",
+          "source": "requests",
+          "operator": "equals",
+          "value": "GLM_FIXTURE_42",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r54",
+          "any": [
+            {
+              "id": "r52",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/1/response/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r53",
+              "source": "requests",
+              "operator": "length_equals",
+              "pointer": "/1/response/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "r55",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r56",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r57",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/usage/completion_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r58",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/completion_tokens",
+          "value": 0
+        },
+        {
+          "id": "r59",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/usage/total_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r60",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/total_tokens",
+          "value": 0
+        },
+        {
+          "id": "r61",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r62",
+          "source": "requests",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/prompt_tokens",
+              "/completion_tokens"
+            ]
+          },
+          "pointer": "/1/response/usage"
+        },
+        {
+          "id": "r68",
+          "any": [
+            {
+              "id": "r67",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/1/response/usage/prompt_tokens_details"
+            },
+            {
+              "id": "r66",
+              "all": [
+                {
+                  "id": "r63",
+                  "source": "requests",
+                  "operator": "type",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": "integer"
+                },
+                {
+                  "id": "r64",
+                  "source": "requests",
+                  "operator": "gte",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": 0
+                },
+                {
+                  "id": "r65",
+                  "source": "requests",
+                  "operator": "lte",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/1/response/usage/prompt_tokens"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Call read_fixture with label sample to read the test fixture. Do not invent the result."
+                  },
+                  {
+                    "$response": "initial",
+                    "pointer": "/choices/0/message"
+                  },
+                  {
+                    "role": "tool",
+                    "tool_call_id": {
+                      "$response": "initial",
+                      "pointer": "/choices/0/message/tool_calls/0/id"
+                    },
+                    "content": "GLM_FIXTURE_42"
+                  },
+                  {
+                    "role": "user",
+                    "content": "Reply only with the fixture value returned by the tool, without explanation."
+                  }
+                ],
+                "max_tokens": 1024,
+                "reasoning_effort": "low"
+              }
+            }
+          }
+        ]
       }
     }
   }

@@ -1,17 +1,62 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "partial_mode",
   "name": "Partial Mode · assistant 前缀续写",
   "dimension": "workflow",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
-    "kind": "chat_sync",
-    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "用一句话说明接口兼容的重要性。"}, {"role": "assistant", "content": "结论：", "partial": true}], "reasoning_effort": "low", "max_completion_tokens": 512}},
-    "options": {"require_content": true}
-  }}
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "用一句话说明接口兼容的重要性。"
+            },
+            {
+              "role": "assistant",
+              "content": "结论：",
+              "partial": true
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 512
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
 }

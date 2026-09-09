@@ -124,7 +124,7 @@ func startTransitionFailure(
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = harness.service.Close() })
-	command := runs.StartCommand{PlanID: fixture.plan.ID}
+	command := runs.StartCommand{PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelID: fixture.channel.ID}
 	harness.runID, err = harness.service.PrepareTarget(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)

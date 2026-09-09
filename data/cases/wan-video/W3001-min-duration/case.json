@@ -1,32 +1,30 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "wan30.t2v.min_duration",
   "name": "Wan 3.0 · 最小时长 2 秒",
   "dimension": "compatibility",
   "protocol": "wan-video",
-  "model_targets": [
-    "wan3.0-video",
-    "wan3.0-video-prime"
-  ],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "wan-video",
     "type_version": 1,
     "spec": {
-      "kind": "wan_task_success",
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "一只小猫在月光下奔跑"
+        }
+      },
       "request": {
-        "method": "POST",
-        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
-        "headers": {
-          "X-DashScope-Async": "enable"
-        },
         "body": {
           "input": {
-            "prompt": "一只小猫在月光下奔跑"
+            "prompt": {
+              "$input": "prompt"
+            }
           },
           "parameters": {
             "resolution": "480P",
@@ -39,10 +37,42 @@
           }
         }
       },
-      "options": {
-        "expected_usage": {
-          "duration": 2
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "task",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "SUCCEEDED"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "http_url",
+          "pointer": "/output/video_url"
+        },
+        {
+          "id": "r5",
+          "source": "usage",
+          "operator": "equals",
+          "pointer": "/duration",
+          "value": 2
         }
+      ],
+      "workflow": {
+        "mode": "wait"
       }
     }
   }

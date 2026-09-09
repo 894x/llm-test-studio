@@ -18,7 +18,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
-	"github.com/894x/llm-test-studio/internal/protocol"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 var (
@@ -31,8 +31,8 @@ var (
 type Repository interface {
 	GetPlan(context.Context, string) (domain.Plan, error)
 	ResolvePlanTargetSelection(context.Context, domain.Plan, string, string) (domain.Model, domain.Channel, domain.ChannelModel, error)
-	GetTestCaseRevision(context.Context, string, uint64) (domain.TestCase, error)
-	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
+	GetTestCase(context.Context, string) (domain.TestCase, error)
+	GetSuite(context.Context, string) (domain.Suite, error)
 	CreateRun(context.Context, domain.Run) error
 	GetRun(context.Context, string) (domain.Run, error)
 	UpdateRun(context.Context, uint64, domain.Run) error
@@ -57,37 +57,35 @@ type MetaFactory func(time.Time) (domain.EntityMeta, error)
 
 type ExecutionRequest struct {
 	Run         domain.Run
-	Suite       domain.RunSuiteSnapshot
+	Entry       domain.RunEntrySnapshot
 	Cases       []domain.TestCase
 	Credential  *credentials.Lease
 	StopSending <-chan struct{}
 }
 
-// LoadProfile assigns each load-scheduled quick-task member one request.
-// The Run snapshot retains the whole Suite's count when a router dispatches
-// only a subset of its Cases to a particular driver.
+// LoadProfile schedules complete Case executions using the entry's policy.
 func (request ExecutionRequest) LoadProfile() domain.LoadProfile {
-	if request.Suite.EntryID != "" {
-		return request.Suite.Load
-	}
-	snapshot := request.Run.Snapshot()
-	profile := snapshot.Load
-	if snapshot.QuickTask != nil {
+	profile := request.Entry.Load
+	if profile.Mode == domain.LoadSingle {
+		profile.Mode = domain.LoadFixedConcurrency
+		profile.Concurrency = 1
 		profile.RequestCount = uint64(len(request.Cases))
 	}
 	return profile
 }
 
 type ResultDraft struct {
-	CaseID      string
-	RequestID   string
-	Success     domain.SuccessDimensions
-	Failure     domain.FailureKind
-	ErrorCode   domain.ErrorCode
-	Detail      *domain.ProviderDetail
-	Dimensions  map[string]string
-	Metrics     map[string]float64
-	EvidenceIDs []string
+	CaseID          string
+	RequestID       string
+	ExecutionStatus domain.ExecutionStatus
+	Verification    testspec.Verdict
+	Observation     *testspec.Observation
+	Failure         domain.FailureKind
+	ErrorCode       domain.ErrorCode
+	Detail          *domain.ProviderDetail
+	Dimensions      map[string]string
+	Metrics         map[string]float64
+	EvidenceIDs     []string
 }
 
 type Executor interface {
@@ -161,11 +159,11 @@ type runControl struct {
 	stopRequested bool
 	cancel        context.CancelFunc
 	drafts        map[string][]ResultDraft
-	suites        []preparedRunSuite
+	entries       []preparedRunEntry
 }
 
-type preparedRunSuite struct {
-	snapshot domain.RunSuiteSnapshot
+type preparedRunEntry struct {
+	snapshot domain.RunEntrySnapshot
 	cases    []domain.TestCase
 }
 
@@ -202,11 +200,6 @@ func New(dependencies Dependencies) (*Service, error) {
 		recoveryContext:       recoveryContext, stopRecovery: stopRecovery,
 		active: make(map[string]*runControl),
 	}, nil
-}
-
-func (service *Service) StartRun(ctx context.Context, planID string) error {
-	_, err := service.StartTarget(ctx, StartCommand{PlanID: planID})
-	return err
 }
 
 func (service *Service) StartTarget(ctx context.Context, command StartCommand) (string, error) {
@@ -246,82 +239,23 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err != nil {
 		return "", fmt.Errorf("load plan: %w", err)
 	}
-	modelID, channelID := command.ModelID, command.ChannelID
-	if modelID == "" && channelID == "" && len(plan.ModelIDs) == 1 && len(plan.ChannelIDs) == 1 {
-		modelID, channelID = plan.ModelIDs[0], plan.ChannelIDs[0]
+	if err := plan.Validate(); err != nil {
+		return "", fmt.Errorf("invalid plan: %w", err)
 	}
-	if !domain.IsUUID(modelID) || !domain.IsUUID(channelID) {
+	if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
 		return "", ErrNotRunnable
 	}
-	model, channel, mapping, err := service.repository.ResolvePlanTargetSelection(ctx, plan, modelID, channelID)
+	model, channel, mapping, err := service.repository.ResolvePlanTargetSelection(ctx, plan, command.ModelID, command.ChannelID)
 	if err != nil {
-		return "", fmt.Errorf("resolve plan target: %w", err)
+		return "", fmt.Errorf("resolve run binding: %w", err)
 	}
-	if !channel.Enabled || model.Protocol != channel.Protocol || mapping.ModelID != model.ID || mapping.ChannelID != channel.ID {
+	bindingMatches := model.Protocol == plan.Protocol && channel.Protocol == plan.Protocol && mapping.ModelID == model.ID && mapping.ChannelID == channel.ID
+	if !channel.Enabled || !bindingMatches {
 		return "", ErrNotRunnable
 	}
-	if len(plan.Suites) == 0 {
-		return "", ErrNotRunnable
-	}
-	protocolInfo, _ := protocol.Lookup(string(model.Protocol))
-	runSuites := make([]domain.RunSuiteSnapshot, 0, len(plan.Suites))
-	for _, planSuite := range plan.Suites {
-		suite, suiteErr := service.repository.GetSuiteRevision(ctx, planSuite.SuiteID, planSuite.SuiteRevision)
-		if suiteErr != nil {
-			return "", fmt.Errorf("load pinned suite %s: %w", planSuite.SuiteID, suiteErr)
-		}
-		if suite.ID != planSuite.SuiteID || suite.Revision != planSuite.SuiteRevision || suite.Protocol != model.Protocol ||
-			(suite.ModelTarget != "" && suite.ModelTarget != mapping.UpstreamModelName) {
-			return "", ErrNotRunnable
-		}
-		definitions := make([]domain.TestCase, 0, len(suite.Cases))
-		for _, ref := range suite.Cases {
-			testCase, caseErr := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
-			if caseErr != nil {
-				return "", fmt.Errorf("load pinned case %s: %w", ref.CaseID, caseErr)
-			}
-			definitions = append(definitions, testCase)
-		}
-		if suite.ValidateCases(definitions) != nil {
-			return "", ErrNotRunnable
-		}
-		effective := definitions
-		resolved := map[string]json.RawMessage{}
-		if suite.QuickTest == nil {
-			if len(planSuite.Parameters) != 0 {
-				return "", ErrNotRunnable
-			}
-		} else {
-			var applyErr error
-			effective, resolved, applyErr = suite.ApplyInputs(definitions, planSuite.Parameters)
-			if applyErr != nil {
-				return "", ErrNotRunnable
-			}
-		}
-		applicableCases := make([]domain.TestCase, 0, len(effective))
-		applicableRefs := make([]domain.CaseRevisionRef, 0, len(effective))
-		for index, testCase := range effective {
-			ref := suite.Cases[index]
-			if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || !testCase.Enabled ||
-				testCase.ExecutionMode != domain.CaseExecutionAutomatic || testCase.Protocol != model.Protocol {
-				return "", ErrNotRunnable
-			}
-			if protocolInfo.RequiresModelTargets && len(testCase.ModelTargets) == 0 {
-				return "", ErrNotRunnable
-			}
-			if !testCase.AppliesToModel(mapping.UpstreamModelName) {
-				continue
-			}
-			applicableCases = append(applicableCases, testCase)
-			applicableRefs = append(applicableRefs, ref)
-		}
-		if len(applicableCases) == 0 {
-			return "", ErrNotRunnable
-		}
-		runSuites = append(runSuites, domain.RunSuiteSnapshot{
-			EntryID: planSuite.EntryID, Suite: suite, Cases: applicableRefs,
-			CaseDefinitions: applicableCases, Parameters: resolved, Load: planSuite.Load, SLA: planSuite.SLA,
-		})
+	entries, err := service.resolveEntries(ctx, plan)
+	if err != nil {
+		return "", err
 	}
 	if channel.CredentialID == "" || !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
 		return "", ErrNotRunnable
@@ -346,14 +280,14 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
-		Environment:   service.environment(), PlanDocument: &planDocument, Mapping: &mappingDocument, Suites: runSuites,
+		Environment:   service.environment(), PlanDocument: &planDocument, Mapping: &mappingDocument, Entries: entries,
 	}
-	return service.prepareRun(ctx, meta, plan.ID, snapshot, nil, lease)
+	return service.prepareRun(ctx, meta, plan.ID, snapshot, lease)
 }
 
 // prepareRun takes ownership of the lease on every path. Both authored Plans
 // and quick Suite invocations enter the same durable queue and lifecycle.
-func (service *Service) prepareRun(ctx context.Context, meta domain.EntityMeta, planID string, snapshot domain.RunSnapshot, cases []domain.TestCase, lease *credentials.Lease) (string, error) {
+func (service *Service) prepareRun(ctx context.Context, meta domain.EntityMeta, planID string, snapshot domain.RunSnapshot, lease *credentials.Lease) (string, error) {
 	owned := true
 	defer func() {
 		if owned {
@@ -374,13 +308,13 @@ func (service *Service) prepareRun(ctx context.Context, meta domain.EntityMeta, 
 		return "", fmt.Errorf("persist queued run: %w", err)
 	}
 	control := &runControl{
-		run: run, cases: append([]domain.TestCase(nil), cases...), lease: lease,
+		run: run, lease: lease,
 		stop: make(chan struct{}), cancel: func() {}, drafts: make(map[string][]ResultDraft),
 	}
-	if len(snapshot.Suites) > 0 {
-		control.suites = make([]preparedRunSuite, len(snapshot.Suites))
-		for index, suite := range snapshot.Suites {
-			control.suites[index] = preparedRunSuite{snapshot: suite, cases: append([]domain.TestCase(nil), suite.CaseDefinitions...)}
+	if len(snapshot.Entries) > 0 {
+		control.entries = make([]preparedRunEntry, len(snapshot.Entries))
+		for index, suite := range snapshot.Entries {
+			control.entries[index] = preparedRunEntry{snapshot: suite, cases: append([]domain.TestCase(nil), suite.CaseDefinitions...)}
 		}
 	}
 	service.mu.Lock()
@@ -593,121 +527,22 @@ func (service *Service) execute(ctx context.Context, control *runControl) {
 			return
 		}
 	}
-	if len(control.suites) > 0 {
-		control.mu.Unlock()
-		service.executeSuites(ctx, control)
-		return
-	}
-	request := ExecutionRequest{Run: control.run, Cases: append([]domain.TestCase(nil), control.cases...), Credential: control.lease, StopSending: control.stop}
 	control.mu.Unlock()
-	runID := request.Run.Meta().ID
-
-	emit := func(draft ResultDraft) error {
-		control.mu.Lock()
-		if control.run.Status() != domain.RunRunning && control.run.Status() != domain.RunDraining {
-			control.mu.Unlock()
-			return context.Canceled
-		}
-		if draft.RequestID == "" || !controlContainsCase(control, draft.CaseID) {
-			control.mu.Unlock()
-			return fmt.Errorf("invalid request observation identity")
-		}
-		meta, err := service.metaFactory(service.clock.Now())
-		if err != nil {
-			control.mu.Unlock()
-			return err
-		}
-		result := domain.Result{
-			EntityMeta: meta, RunID: control.run.Meta().ID, CaseID: draft.CaseID, RequestID: draft.RequestID,
-			Success: draft.Success, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,
-			Dimensions: cloneDimensions(draft.Dimensions), Metrics: cloneMetrics(draft.Metrics), EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
-		}
-		if err := result.Validate(); err != nil {
-			control.mu.Unlock()
-			return fmt.Errorf("invalid execution result: %w", err)
-		}
-		if err := service.repository.AppendResult(ctx, result); err != nil {
-			control.mu.Unlock()
-			return err
-		}
-		control.drafts[draft.CaseID] = append(control.drafts[draft.CaseID], cloneDraft(draft))
-		control.mu.Unlock()
-		if !result.Success.Overall() {
-			service.report(Diagnostic{
-				RunID: result.RunID, RequestID: result.RequestID,
-				Operation: "execute_request", ErrorCode: string(result.ErrorCode),
-			})
-		}
-		return nil
-	}
-	executionErr := service.executor.Execute(ctx, request, emit)
-	// No provider work is repeated during terminal-state recovery, and recovery
-	// must not keep the credential lease alive while storage is unavailable.
-	_ = control.lease.Close()
-	pendingDiagnostics := make([]Diagnostic, 0, 2)
-	failure := domain.RunFailure{}
-	if executionErr != nil {
-		failure = domain.RunFailure{Phase: "execute", ErrorCode: "run_execution_failed"}
-		pendingDiagnostics = append(pendingDiagnostics, Diagnostic{
-			RunID: runID, Operation: "execute",
-			ErrorCode: "run_execution_failed", Err: executionErr,
-		})
-	}
-
-	control.mu.Lock()
-	status := control.run.Status()
-	if status == domain.RunCancelled {
-		control.mu.Unlock()
-		return
-	}
-	if summaryErr := service.persistCaseSummaries(context.Background(), control); summaryErr != nil {
-		if executionErr == nil {
-			executionErr = summaryErr
-			failure = domain.RunFailure{Phase: "persist_case_summaries", ErrorCode: "result_persistence_failed"}
-		}
-		pendingDiagnostics = append(pendingDiagnostics, Diagnostic{
-			RunID: control.run.Meta().ID, Operation: "persist_case_summaries",
-			ErrorCode: "result_persistence_failed", Err: summaryErr,
-		})
-	}
-	coverageComplete := true
-	for _, testCase := range control.cases {
-		if len(control.drafts[testCase.ID]) == 0 {
-			coverageComplete = false
-			break
-		}
-	}
-	terminal := domain.RunCompleted
-	if executionErr != nil || !coverageComplete {
-		terminal = domain.RunFailed
-	}
-	if terminal == domain.RunFailed && failure.ErrorCode == "" {
-		failure = domain.RunFailure{Phase: "execute", ErrorCode: "run_execution_incomplete"}
-		pendingDiagnostics = append(pendingDiagnostics, Diagnostic{
-			RunID: control.run.Meta().ID, Operation: "execute",
-			ErrorCode: "run_execution_incomplete",
-			Err:       errors.New("execution completed without results for every case"),
-		})
-	}
-	control.mu.Unlock()
-	for _, diagnostic := range pendingDiagnostics {
-		service.report(diagnostic)
-	}
-	service.finishRun(control, terminal, failure)
+	service.executeEntries(ctx, control)
 }
 
-func (service *Service) executeSuites(ctx context.Context, control *runControl) {
+func (service *Service) executeEntries(ctx context.Context, control *runControl) {
 	runID := control.run.Meta().ID
 	started := time.Now()
 	anyFailed := false
-	for _, prepared := range control.suites {
+	for _, prepared := range control.entries {
 		control.mu.Lock()
 		if control.run.Status() == domain.RunCancelled {
 			control.mu.Unlock()
 			return
 		}
 		request := ExecutionRequest{
-			Run: control.run, Suite: prepared.snapshot, Cases: append([]domain.TestCase(nil), prepared.cases...),
+			Run: control.run, Entry: prepared.snapshot, Cases: append([]domain.TestCase(nil), prepared.cases...),
 			Credential: control.lease, StopSending: control.stop,
 		}
 		control.mu.Unlock()
@@ -735,9 +570,9 @@ func (service *Service) executeSuites(ctx context.Context, control *runControl) 
 			}
 			requestID := prepared.snapshot.EntryID + ":" + draft.RequestID
 			result := domain.Result{
-				EntityMeta: meta, RunID: control.run.Meta().ID, SuiteEntryID: prepared.snapshot.EntryID,
+				EntityMeta: meta, RunID: control.run.Meta().ID, EntryID: prepared.snapshot.EntryID,
 				CaseID: draft.CaseID, RequestID: requestID,
-				Success: draft.Success, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,
+				ExecutionStatus: draft.ExecutionStatus, Verification: draft.Verification, Observation: draft.Observation, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,
 				Dimensions: cloneDimensions(draft.Dimensions), Metrics: metrics, EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
 			}
 			if err := result.Validate(); err != nil {
@@ -748,8 +583,12 @@ func (service *Service) executeSuites(ctx context.Context, control *runControl) 
 				return err
 			}
 			key := suiteCaseKey(prepared.snapshot.EntryID, draft.CaseID)
-			control.drafts[key] = append(control.drafts[key], cloneDraft(draft))
-			if !result.Success.Overall() {
+			// Full evidence is persisted above; summaries retain only verdict and metric inputs.
+			summaryDraft := draft
+			summaryDraft.Observation = nil
+			summaryDraft.Verification.Assertions = nil
+			control.drafts[key] = append(control.drafts[key], cloneDraft(summaryDraft))
+			if result.Verification.Status == testspec.VerdictFailed || result.Verification.Status == testspec.VerdictIndeterminate {
 				service.report(Diagnostic{
 					RunID: result.RunID, RequestID: result.RequestID,
 					Operation: "execute_request", ErrorCode: string(result.ErrorCode),
@@ -773,14 +612,15 @@ func (service *Service) executeSuites(ctx context.Context, control *runControl) 
 			service.finishRun(control, domain.RunFailed, domain.RunFailure{Phase: "persist_suite_result", ErrorCode: "result_persistence_failed"})
 			return
 		}
-		summaryErr := service.persistSuiteCaseSummaries(context.Background(), control, prepared)
-		coverageComplete := true
-		for _, testCase := range prepared.cases {
-			if len(control.drafts[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]) == 0 {
-				coverageComplete = false
-				break
+		if executionErr == nil && prepared.snapshot.Load.Mode == domain.LoadSingle {
+			for _, testCase := range prepared.cases {
+				if len(control.drafts[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]) == 0 {
+					executionErr = errors.New("entry did not execute every scheduled case")
+					break
+				}
 			}
 		}
+		summaryErr := service.persistSuiteCaseSummaries(context.Background(), control, prepared)
 		control.mu.Unlock()
 		if summaryErr != nil {
 			service.report(Diagnostic{RunID: runID, Operation: "persist_case_summaries", ErrorCode: "result_persistence_failed", Err: summaryErr})
@@ -788,13 +628,10 @@ func (service *Service) executeSuites(ctx context.Context, control *runControl) 
 			return
 		}
 
-		status := domain.SuiteExecutionCompleted
-		if executionErr != nil || !coverageComplete {
-			status = domain.SuiteExecutionFailed
+		status := domain.EntryExecutionCompleted
+		if executionErr != nil {
+			status = domain.EntryExecutionFailed
 			anyFailed = true
-			if executionErr == nil {
-				executionErr = errors.New("suite execution completed without results for every case")
-			}
 			service.report(Diagnostic{RunID: runID, Operation: "execute_suite", ErrorCode: "suite_execution_failed", Err: executionErr})
 		}
 		cancelled, err := service.appendSuiteMarker(context.Background(), control, prepared.snapshot.EntryID, status)
@@ -814,7 +651,7 @@ func (service *Service) executeSuites(ctx context.Context, control *runControl) 
 	service.finishRun(control, domain.RunCompleted, domain.RunFailure{})
 }
 
-func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *runControl, prepared preparedRunSuite) error {
+func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *runControl, prepared preparedRunEntry) error {
 	for _, testCase := range prepared.cases {
 		drafts := control.drafts[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]
 		if len(drafts) == 0 {
@@ -831,11 +668,12 @@ func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *
 		if err := service.repository.AppendResult(ctx, summary); err != nil {
 			return err
 		}
+		delete(control.drafts, suiteCaseKey(prepared.snapshot.EntryID, testCase.ID))
 	}
 	return nil
 }
 
-func (service *Service) appendSuiteMarker(ctx context.Context, control *runControl, entryID string, status domain.SuiteExecutionStatus) (bool, error) {
+func (service *Service) appendSuiteMarker(ctx context.Context, control *runControl, entryID string, status domain.EntryExecutionStatus) (bool, error) {
 	control.mu.Lock()
 	defer control.mu.Unlock()
 	if control.run.Status() == domain.RunCancelled {
@@ -845,7 +683,7 @@ func (service *Service) appendSuiteMarker(ctx context.Context, control *runContr
 	if err != nil {
 		return false, err
 	}
-	marker := domain.Result{EntityMeta: meta, RunID: control.run.Meta().ID, SuiteEntryID: entryID, SuiteStatus: status}
+	marker := domain.Result{EntityMeta: meta, RunID: control.run.Meta().ID, EntryID: entryID, EntryStatus: status}
 	if err := marker.Validate(); err != nil {
 		return false, err
 	}
@@ -905,69 +743,52 @@ func (service *Service) report(diagnostic Diagnostic) {
 	service.diagnostics.submit(diagnostic)
 }
 
-func (service *Service) persistCaseSummaries(ctx context.Context, control *runControl) error {
-	for _, testCase := range control.cases {
-		drafts := control.drafts[testCase.ID]
-		if len(drafts) == 0 {
-			continue
-		}
-		meta, err := service.metaFactory(service.clock.Now())
-		if err != nil {
-			return err
-		}
-		summary := aggregateCaseResult(meta, control.run.Meta().ID, "", testCase.ID, drafts)
-		if err := summary.Validate(); err != nil {
-			return err
-		}
-		if err := service.repository.AppendResult(ctx, summary); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func aggregateCaseResult(meta domain.EntityMeta, runID, suiteEntryID, caseID string, drafts []ResultDraft) domain.Result {
-	result := domain.Result{
-		EntityMeta: meta, RunID: runID, SuiteEntryID: suiteEntryID, CaseID: caseID,
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
-		Metrics: make(map[string]float64), EvidenceIDs: []string{},
-	}
-	metricCounts := make(map[string]int)
-	evidence := make(map[string]struct{})
+func aggregateCaseResult(meta domain.EntityMeta, runID, entryID, caseID string, drafts []ResultDraft) domain.Result {
+	measured := make([]ResultDraft, 0, len(drafts))
 	for _, draft := range drafts {
+		if draft.Dimensions["phase"] != "warmup" {
+			measured = append(measured, draft)
+		}
+	}
+	drafts = measured
+	result := domain.Result{EntityMeta: meta, RunID: runID, EntryID: entryID, CaseID: caseID,
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictNotApplicable, Assertions: []testspec.AssertionResult{}},
+		Metrics: map[string]float64{}, EvidenceIDs: []string{}}
+	metricCounts := map[string]int{}
+	observations := []domain.Result{}
+	evidence := map[string]bool{}
+	for _, draft := range drafts {
+		observations = append(observations, domain.Result{Verification: draft.Verification})
+		if draft.ExecutionStatus != domain.ExecutionCompleted {
+			result.ExecutionStatus = draft.ExecutionStatus
+			result.Failure = draft.Failure
+			result.ErrorCode = draft.ErrorCode
+		}
 		for name, value := range draft.Metrics {
 			result.Metrics[name] += value
 			metricCounts[name]++
 		}
 		for _, id := range draft.EvidenceIDs {
-			if _, exists := evidence[id]; !exists {
-				evidence[id] = struct{}{}
+			if !evidence[id] {
+				evidence[id] = true
 				result.EvidenceIDs = append(result.EvidenceIDs, id)
 			}
-		}
-		if !draft.Success.Overall() && result.Success.Overall() {
-			result.Success = draft.Success
-			result.Failure = draft.Failure
-			result.ErrorCode = draft.ErrorCode
-			result.Detail = draft.Detail
 		}
 	}
 	for name, count := range metricCounts {
 		result.Metrics[name] /= float64(count)
 	}
+	summary := domain.SummarizeVerification(observations)
+	result.Verification.Status = summary.Status
+	result.Metrics["execution_count"] = float64(len(drafts))
+	result.Metrics["verification_passed"] = float64(summary.Passed)
+	result.Metrics["verification_failed"] = float64(summary.Failed)
+	result.Metrics["verification_observed"] = float64(summary.Observed)
+	result.Metrics["verification_indeterminate"] = float64(summary.Indeterminate)
 	return result
 }
 
-func controlContainsCase(control *runControl, caseID string) bool {
-	for _, testCase := range control.cases {
-		if testCase.ID == caseID {
-			return true
-		}
-	}
-	return false
-}
-
-func preparedContainsCase(prepared preparedRunSuite, caseID string) bool {
+func preparedContainsCase(prepared preparedRunEntry, caseID string) bool {
 	for _, testCase := range prepared.cases {
 		if testCase.ID == caseID {
 			return true
@@ -992,6 +813,17 @@ func cloneDraft(draft ResultDraft) ResultDraft {
 	draft.Dimensions = cloneDimensions(draft.Dimensions)
 	draft.Metrics = cloneMetrics(draft.Metrics)
 	draft.EvidenceIDs = append([]string(nil), draft.EvidenceIDs...)
+	encoded, _ := json.Marshal(struct {
+		Verification testspec.Verdict
+		Observation  *testspec.Observation
+	}{draft.Verification, draft.Observation})
+	var copy struct {
+		Verification testspec.Verdict
+		Observation  *testspec.Observation
+	}
+	_ = json.Unmarshal(encoded, &copy)
+	draft.Verification = copy.Verification
+	draft.Observation = copy.Observation
 	return draft
 }
 

@@ -1,20 +1,43 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "kimi-k2.6.official-foundation",
   "name": "Kimi K2.6 官方基础套件",
   "protocol": "openai-chat",
-  "model_target": "kimi-k2.6",
-  "case_keys": [
-    "must.json_object",
-    "must.json_schema",
-    "must.stream_integrity",
-    "must.thinking_thinking_type_disabled",
-    "must.thinking_thinking_type_enabled",
-    "must.tool_choice_auto",
-    "must.tool_choice_default",
-    "must.tool_choice_none",
-    "must.usage_non_stream",
-    "must.usage_stream",
-    "param_omit_sampling"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "18ed9e4f-9572-53ca-952c-24ef738261e3"
+    },
+    {
+      "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+    },
+    {
+      "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+    },
+    {
+      "case_id": "2bee6383-0064-52fd-8b36-6672d7e604e9"
+    },
+    {
+      "case_id": "6dbb39c2-80d0-5875-9972-a61a96a17e70"
+    },
+    {
+      "case_id": "1d52525c-bf36-57ab-a73e-995f3f8c7809"
+    },
+    {
+      "case_id": "75e1aa9b-4e08-5eff-8095-147ad690daac"
+    },
+    {
+      "case_id": "634b8cc2-8dc6-538d-9d29-c18eb8620ad8"
+    },
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    },
+    {
+      "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+    },
+    {
+      "case_id": "2d2995c3-9766-52e4-be29-72a137d9b55d"
+    }
+  ],
+  "inputs": []
 }

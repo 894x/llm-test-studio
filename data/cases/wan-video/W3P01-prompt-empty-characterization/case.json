@@ -1,29 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "wan30.prompt.empty_characterization",
   "name": "Wan 3.0 · 空 Prompt 行为刻画",
   "dimension": "characterization",
   "protocol": "wan-video",
-  "model_targets": [
-    "wan3.0-video",
-    "wan3.0-video-prime"
-  ],
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "wan-video",
     "type_version": 1,
     "spec": {
-      "kind": "wan_task_success",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/api/v1/services/aigc/video-generation/video-synthesis",
-        "headers": {
-          "X-DashScope-Async": "enable"
-        },
         "body": {
           "input": {
             "prompt": ""
@@ -39,9 +30,35 @@
           }
         }
       },
-      "options": {
-        "reason": "官方未定义空字符串是无内容还是有效 Prompt，不预设通过/拒绝",
-        "precondition": "无外部素材；启用前把断言改为观测型"
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "task",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "SUCCEEDED"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "http_url",
+          "pointer": "/output/video_url"
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
       }
     }
   }

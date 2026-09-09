@@ -8,9 +8,10 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
-const CurrentSnapshotSchemaVersion = 3
+const CurrentSnapshotSchemaVersion = 4
 
 type Snapshot struct {
 	SchemaVersion int                    `json:"schema_version"`
@@ -57,7 +58,6 @@ type TestCaseSummary struct {
 	Name                    string                   `json:"name"`
 	Dimension               string                   `json:"dimension"`
 	Protocol                domain.Protocol          `json:"protocol"`
-	ModelTargets            []string                 `json:"model_targets"`
 	Enabled                 bool                     `json:"enabled"`
 	Default                 bool                     `json:"default"`
 	Severity                domain.CaseSeverity      `json:"severity"`
@@ -69,34 +69,34 @@ type TestCaseSummary struct {
 }
 
 type SuiteSummary struct {
-	ID          string                 `json:"id"`
-	Revision    uint64                 `json:"revision"`
-	Key         string                 `json:"key"`
-	Name        string                 `json:"name"`
-	Protocol    domain.Protocol        `json:"protocol"`
-	ModelTarget string                 `json:"model_target"`
-	CaseCount   int                    `json:"case_count"`
-	Cases       []CaseRevisionInput    `json:"cases"`
-	QuickTest   *domain.SuiteQuickTest `json:"quick_test,omitempty"`
+	ID          string              `json:"id"`
+	Revision    uint64              `json:"revision"`
+	Key         string              `json:"key"`
+	Name        string              `json:"name"`
+	Protocol    domain.Protocol     `json:"protocol"`
+	Description string              `json:"description"`
+	CaseCount   int                 `json:"case_count"`
+	Cases       []CaseInput         `json:"cases"`
+	Inputs      []domain.SuiteInput `json:"inputs"`
 }
 
 type PlanSummary struct {
-	ID           string             `json:"id"`
-	Revision     uint64             `json:"revision"`
-	Name         string             `json:"name"`
-	ModelCount   int                `json:"model_count"`
-	ChannelCount int                `json:"channel_count"`
-	SuiteCount   int                `json:"suite_count"`
-	CaseCount    int                `json:"case_count"`
-	ModelIDs     []string           `json:"model_ids"`
-	ChannelIDs   []string           `json:"channel_ids"`
-	Suites       []PlanSuiteSummary `json:"suites"`
+	ID         string             `json:"id"`
+	Revision   uint64             `json:"revision"`
+	Name       string             `json:"name"`
+	Protocol   domain.Protocol    `json:"protocol"`
+	Seed       uint64             `json:"seed"`
+	EntryCount int                `json:"entry_count"`
+	CaseCount  int                `json:"case_count"`
+	Entries    []PlanEntrySummary `json:"entries"`
 }
 
-type PlanSuiteInput struct {
+type PlanEntryInput struct {
+	WarmupCount      uint32                     `json:"warmup_count"`
+	Settings         testspec.RunSettings       `json:"settings"`
 	EntryID          string                     `json:"entry_id,omitempty"`
-	SuiteID          string                     `json:"suite_id"`
-	SuiteRevision    uint64                     `json:"suite_revision"`
+	TargetKind       domain.PlanTargetKind      `json:"target_kind"`
+	TargetID         string                     `json:"target_id"`
 	LoadMode         domain.LoadMode            `json:"load_mode"`
 	Concurrency      uint32                     `json:"concurrency"`
 	RequestCount     uint64                     `json:"request_count"`
@@ -107,15 +107,11 @@ type PlanSuiteInput struct {
 	Parameters       map[string]json.RawMessage `json:"parameters"`
 }
 
-type PlanSuiteSummary struct {
-	PlanSuiteInput
-	SuiteKey    string                 `json:"suite_key"`
-	SuiteName   string                 `json:"suite_name"`
-	Protocol    domain.Protocol        `json:"protocol"`
-	ModelTarget string                 `json:"model_target"`
-	CaseCount   int                    `json:"case_count"`
-	Cases       []CaseRevisionInput    `json:"cases"`
-	QuickTest   *domain.SuiteQuickTest `json:"quick_test,omitempty"`
+type PlanEntrySummary struct {
+	PlanEntryInput
+	TargetKey  string `json:"target_key"`
+	TargetName string `json:"target_name"`
+	CaseCount  int    `json:"case_count"`
 }
 
 type MutationResult struct {
@@ -180,7 +176,6 @@ type CreateTestCaseCommand struct {
 	Name                    string                   `json:"name"`
 	Dimension               string                   `json:"dimension"`
 	Protocol                domain.Protocol          `json:"protocol"`
-	ModelTargets            []string                 `json:"model_targets"`
 	Enabled                 bool                     `json:"enabled"`
 	Default                 bool                     `json:"default"`
 	Severity                domain.CaseSeverity      `json:"severity"`
@@ -198,7 +193,6 @@ type UpdateTestCaseCommand struct {
 	Name                    string                   `json:"name"`
 	Dimension               string                   `json:"dimension"`
 	Protocol                domain.Protocol          `json:"protocol"`
-	ModelTargets            []string                 `json:"model_targets"`
 	Enabled                 bool                     `json:"enabled"`
 	Default                 bool                     `json:"default"`
 	Severity                domain.CaseSeverity      `json:"severity"`
@@ -209,43 +203,42 @@ type UpdateTestCaseCommand struct {
 	Spec                    json.RawMessage          `json:"spec"`
 }
 
-type CaseRevisionInput struct {
-	CaseID   string `json:"case_id"`
-	Revision uint64 `json:"revision"`
+type CaseInput struct {
+	CaseID string `json:"case_id"`
 }
 
 type CreateSuiteCommand struct {
-	Key         string                 `json:"key"`
-	Name        string                 `json:"name"`
-	Protocol    domain.Protocol        `json:"protocol"`
-	ModelTarget string                 `json:"model_target"`
-	Cases       []CaseRevisionInput    `json:"cases"`
-	QuickTest   *domain.SuiteQuickTest `json:"quick_test,omitempty"`
+	Key         string              `json:"key"`
+	Name        string              `json:"name"`
+	Protocol    domain.Protocol     `json:"protocol"`
+	Description string              `json:"description"`
+	Cases       []CaseInput         `json:"cases"`
+	Inputs      []domain.SuiteInput `json:"inputs"`
 }
 
 type UpdateSuiteCommand struct {
-	ID               string                 `json:"id"`
-	ExpectedRevision uint64                 `json:"expected_revision"`
-	Key              string                 `json:"key"`
-	Name             string                 `json:"name"`
-	Protocol         domain.Protocol        `json:"protocol"`
-	ModelTarget      string                 `json:"model_target"`
-	Cases            []CaseRevisionInput    `json:"cases"`
-	QuickTest        *domain.SuiteQuickTest `json:"quick_test,omitempty"`
+	ID               string              `json:"id"`
+	ExpectedRevision uint64              `json:"expected_revision"`
+	Key              string              `json:"key"`
+	Name             string              `json:"name"`
+	Protocol         domain.Protocol     `json:"protocol"`
+	Description      string              `json:"description"`
+	Cases            []CaseInput         `json:"cases"`
+	Inputs           []domain.SuiteInput `json:"inputs"`
 }
 
 type CreatePlanCommand struct {
-	Name       string           `json:"name"`
-	ModelIDs   []string         `json:"model_ids"`
-	ChannelIDs []string         `json:"channel_ids"`
-	Suites     []PlanSuiteInput `json:"suites"`
+	Name     string           `json:"name"`
+	Protocol domain.Protocol  `json:"protocol"`
+	Seed     uint64           `json:"seed"`
+	Entries  []PlanEntryInput `json:"entries"`
 }
 
 type UpdatePlanCommand struct {
 	ID               string           `json:"id"`
 	ExpectedRevision uint64           `json:"expected_revision"`
 	Name             string           `json:"name"`
-	ModelIDs         []string         `json:"model_ids"`
-	ChannelIDs       []string         `json:"channel_ids"`
-	Suites           []PlanSuiteInput `json:"suites"`
+	Protocol         domain.Protocol  `json:"protocol"`
+	Seed             uint64           `json:"seed"`
+	Entries          []PlanEntryInput `json:"entries"`
 }

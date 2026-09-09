@@ -33,23 +33,50 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001",
-		"name": "chat sync",
-		"dimension": "protocol",
-		"protocol": "openai-chat",
-		"kind": "chat_sync",
-		"default": true,
-		"request": {
-			"method": "POST",
-			"path": "/v1/chat/completions",
-			"body": {
-				"api_key": "sk-test-secret",
-				"client_secret": "opaque-client-secret",
-				"nested": {"refresh_token": "opaque-refresh-token"},
-				"messages": [{"role": "user", "content": "hello"}]
-			}
-		}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {
+        "payload": {
+          "type": "object",
+          "required": true
+        }
+      },
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "metadata": {
+            "$input": "payload"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 
 	var events []compatibility.Event
 	var writtenDir string
@@ -70,6 +97,7 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
 
 	outputDir := filepath.Join(t.TempDir(), "report")
 	final, err := service.Run(context.Background(), compatibility.RunRequest{
+		Inputs:       json.RawMessage(`{"payload": {"api_key": "sk-test-secret", "client_secret": "opaque-client-secret", "nested": {"refresh_token": "opaque-refresh-token"}}}`),
 		Suite:        "openai-chat",
 		CasesRoot:    casesRoot,
 		BaseURL:      "https://gateway.example/v1",
@@ -109,7 +137,7 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
 	if progress.Payload.Completed != 1 || progress.Payload.Total != 1 || progress.Payload.Result.Status != apiaudit.StatusUnknown {
 		t.Fatalf("progress = %#v", progress)
 	}
-	if got := progress.Payload.Result.Exchanges[0].RequestBody["api_key"]; got != "[REDACTED]" {
+	if got := progress.Payload.Result.Exchanges[0].RequestBody["metadata"].(map[string]any)["api_key"]; got != "[REDACTED]" {
 		t.Fatalf("progress api_key = %q, want redacted", got)
 	}
 	encodedProgress, err := json.Marshal(progress)
@@ -198,12 +226,12 @@ func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if len(written.Results) != 4 {
-		t.Fatalf("results = %#v", written.Results)
+	if len(written.Results) != 92 {
+		t.Fatalf("results count = %d", len(written.Results))
 	}
 	for _, result := range written.Results {
 		if result.Protocol != "wan-video" || result.Model != "wan2.6-t2v" || result.Exchanges[0].RequestBody["model"] != "wan2.6-t2v" {
-			t.Fatalf("version-filtered result = %#v", result)
+			t.Fatalf("bound protocol result = %#v", result)
 		}
 	}
 }
@@ -211,10 +239,62 @@ func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
 func TestRunDryRunSupportsMiniMaxVideoSuiteAndInjectsH3Model(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "minimax-video", "H3001", `{
-		"id":"H3001","name":"H3 minimum duration","dimension":"boundary","protocol":"minimax-video","model_targets":["MiniMax-H3"],
-		"kind":"minimax_video_task_success","default":true,
-		"request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":4,"ratio":"16:9"}}
-	}`)
+  "schema_version": 3,
+  "key": "H3001",
+  "name": "H3 minimum duration",
+  "dimension": "boundary",
+  "protocol": "minimax-video",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "minimax-video",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "cat"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "terminal",
+          "source": "task",
+          "pointer": "/status",
+          "operator": "equals",
+          "value": "succeeded"
+        },
+        {
+          "id": "video",
+          "source": "response",
+          "pointer": "/task/content/url",
+          "operator": "type",
+          "value": "string"
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
+      }
+    }
+  }
+}`)
 	var written apiaudit.Report
 	service := compatibility.New(compatibility.Dependencies{
 		HTTPDoer: panicHTTPDoer{}, Emit: func(compatibility.Event) {},
@@ -240,10 +320,35 @@ func TestListLoadsCasesThroughApplicationService(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001", "name": "chat sync", "dimension": "protocol",
-		"protocol": "openai-chat", "kind": "chat_sync", "default": true,
-		"request": {"method": "POST", "path": "/v1/chat/completions", "body": {}}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 
 	cases, err := compatibility.New(compatibility.Dependencies{}).List(
 		context.Background(),
@@ -279,18 +384,42 @@ func TestRunRejectsCredentialBearingBaseURL(t *testing.T) {
 func TestRunPropagatesCallerCancellationToLiveRequest(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001",
-		"name": "chat sync",
-		"dimension": "protocol",
-		"protocol": "openai-chat",
-		"kind": "chat_sync",
-		"default": true,
-		"request": {
-			"method": "POST",
-			"path": "/v1/chat/completions",
-			"body": {"messages": [{"role": "user", "content": "hello"}]}
-		}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 
 	requestStarted := make(chan struct{})
 	doer := httpDoerFunc(func(request *http.Request) (*http.Response, error) {

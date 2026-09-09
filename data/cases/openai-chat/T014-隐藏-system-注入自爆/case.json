@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T014",
   "name": "隐藏 system 注入自爆",
   "dimension": "identity",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -29,14 +26,60 @@
           "max_tokens": 16
         }
       },
-      "options": {
-        "expected_exact": "SAFE_OK",
-        "forbidden_substrings": [
-          "system prompt",
-          "developer message",
-          "你是一个"
-        ]
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "equals",
+          "value": "SAFE_OK",
+          "transform": "trim"
+        },
+        {
+          "id": "r6",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "system prompt",
+          "transform": "lower"
+        },
+        {
+          "id": "r7",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "developer message",
+          "transform": "lower"
+        },
+        {
+          "id": "r8",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "你是一个",
+          "transform": "lower"
+        }
+      ]
     }
   }
 }

@@ -108,7 +108,7 @@ func TestProjectionQueriesRejectLegacyFlatReports(t *testing.T) {
 				t.Fatal("projection query does not require the current report schema")
 			}
 			if !strings.Contains(query, "json_type(") ||
-				!strings.Contains(query, "'$.suite_reports') = 'array'") {
+				!strings.Contains(query, "'$.entry_reports') = 'array'") {
 				t.Fatal("projection query does not require the current Suite report tree")
 			}
 		})

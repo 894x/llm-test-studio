@@ -59,7 +59,7 @@ Case 目录是产品的中心，而不是藏在一次运行背后的配置页面
                                           Result + Evidence ──> Report
 ```
 
-可复用边界是准确的 Case 修订。Suite 组合这些修订；Plan 将它们绑定到候选渠道、负载行为、超时和 SLA 阈值；Run 在执行前固定完整输入。这样，测试意图就不会与某个恰好承载该模型的服务商 Endpoint 耦合。
+可复用边界是准确的 Case 修订。Suite 组合 Case 引用；Plan 定义执行顺序、输入、负载、超时和 SLA 阈值；Run 解析当前修订、绑定所选渠道和模型，并在执行前固定完整输入。这样，测试意图就不会与某个恰好承载该模型的服务商 Endpoint 耦合。
 
 ## 快速开始
 
@@ -94,6 +94,15 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 ```
 
 在 Windows PowerShell 中，请使用 `.\llm-test-studio.exe` 运行二进制文件。
+
+
+### 当前协议运行时
+
+桌面端与 CLI 审计执行共用 `openai-chat`、`seedance`、`wan-video`、`minimax-video` 协议运行时。Case 使用外层 schema 3 和显式断言；Suite 使用 schema 2，保存有序 Case 引用和输入绑定。Plan 保留各条目的负载、预热、协议设置与随机种子。Run 统一绑定一个模型、渠道和凭据。
+
+CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` 只接受所选 Case 声明的输入；省略 `--inputs` 时使用已声明默认值。`--all-cases` 选择已启用的自动 Case，手动或停用项会明确报错。`--dry-run` 仅准备请求，不联网，也不声称断言已通过。等待行为由 `workflow.mode` 定义，替代 `--no-wait`。
+
+仓库包含 711 个当前格式 Case、44 个 Suite 和 5 个性能 Plan。此前修改模型或认证的 16 个 Case 已停用，因为这些字段属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[运行时合并与验收记录](doc/design/protocol-case-runtime-implementation.md)。
 
 <details>
 <summary><strong>CLI 示例</strong></summary>

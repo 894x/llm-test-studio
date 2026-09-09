@@ -25,11 +25,10 @@ import { QuickPerformanceRequestAnalysis } from "@/features/quick-test/quick-per
 import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
-import { CaseRequestResults } from "./case-renderers/generic-case.renderer"
-import { CaseRendererSlot } from "./case-renderers/renderer-slot"
+import { EntryCaseTable, ExecutionDetails, VerificationCounts, VerificationBadge } from "./entry-case-table"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
-import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportSuiteDetail, type ReportSuiteStatus } from "./data"
+import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
 export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
@@ -178,10 +177,10 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
               </TableRow></TableHeader>
               <TableBody>{search.rows.map((report) => (
                 <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="h-11">
-                  <TableCell className="py-1 pl-2"><ConclusionBadge passed={report.passed} status={report.run_status} /></TableCell>
+                  <TableCell className="py-1 pl-2"><ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
                   <TableCell className="py-1"><div className="truncate text-xs">{report.model_name}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{report.channel_name}</div></TableCell>
-                  <TableCell className="py-1 text-xs tabular-nums">{report.case_count - report.failed_case_count}/{report.case_count}</TableCell>
+                  <TableCell className="py-1 text-xs tabular-nums">{report.passed_case_count}/{report.verified_case_count}</TableCell>
                   <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(report.generated_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
                   <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("viewAria", { name: displayReportVerdict(report, t) })} onClick={(event) => { event.stopPropagation(); setSelectedID(report.id); setViewingReportID(report.id) }}>{t("view")}</Button></TableCell>
                 </TableRow>
@@ -220,7 +219,7 @@ function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "
 
 function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
   const { t: tx } = useTranslation()
-  const suites = detail.suites
+  const entries = detail.entries
   const unassignedResults = detail.unassigned_request_results
   const planLabel = tx("desktop:reports_plan_report")
   const unassignedLabel = tx("desktop:reports_unassigned_requests")
@@ -233,11 +232,11 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
             {detail.report.model.name} · {detail.report.channel.name}
           </p>
         </div>
-        <ConclusionBadge passed={detail.report.conclusion.passed} status={detail.report.run_status} />
+        <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
-      {suites.map((suite) => (
+      {entries.map((suite) => (
         <SuiteReportSection
-          key={suite.suite_entry_id}
+          key={suite.entry_id}
           suite={suite}
         />
       ))}
@@ -246,29 +245,29 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
           <header className="border-b bg-muted/25 py-2">
             <h3 className="text-xs font-semibold">{unassignedLabel}</h3>
           </header>
-          <CaseRequestResults results={unassignedResults} requestLimit={1_000} />
+          <div className="p-3"><ExecutionDetails results={unassignedResults} /></div>
         </section>
       ) : null}
     </section>
   )
 }
 
-function SuiteReportSection({ suite }: { suite: ReportSuiteDetail }) {
+function SuiteReportSection({ suite }: { suite: ReportEntryDetail }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
-  const displayName = suite.suite_name
+  const displayName = suite.name
   return (
     <section aria-label={tx("desktop:reports_suite_aria", { value1: displayName })} className="min-w-0 overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 py-2.5">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{displayName}</h3>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-            {suite.suite_key} · {suite.suite_entry_id}
+            {suite.protocol}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <SuiteStatusBadge status={suite.status} label={suiteStatusLabel(suite.status, t)} />
-          {suite.status === "completed" ? <ConclusionBadge passed={suite.conclusion.passed} /> : null}
+          {suite.status === "completed" ? <VerificationBadge status={suite.verification.status} /> : null}
         </div>
       </header>
       {suite.conclusion.issues.length ? (
@@ -276,25 +275,19 @@ function SuiteReportSection({ suite }: { suite: ReportSuiteDetail }) {
           {suite.conclusion.issues.map((issue) => <li key={issue}>{suiteIssueLabel(issue, t)}</li>)}
         </ul>
       ) : null}
-      {Object.keys(suite.metrics).length || Object.keys(suite.sla).length ? (
-        <div className="grid gap-3 border-b py-3 md:grid-cols-2">
-          <SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} />
-          <SuiteMetricSummary title="SLA" metrics={suite.sla} />
-        </div>
-      ) : null}
-      <div className="space-y-3 py-3">
-        {suite.cases.length ? suite.cases.map((caseReport) => (
-          <CaseRendererSlot
-            key={`${suite.suite_entry_id ?? suite.suite_key}:${caseReport.case_id}`}
-            suite={suite}
-            caseReport={caseReport}
-          />
-        )) : (
-          <p className="py-4 text-center text-xs text-muted-foreground">
-            {t("hierarchy.noRecordedCases")}
-          </p>
-        )}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b px-3 py-2 text-[11px] text-muted-foreground">
+        <VerificationCounts summary={suite.verification} />
+        <span>{t("protocolDesign.loadSummary", { mode: suite.load.mode, concurrency: suite.load.concurrency, count: suite.load.request_count, timeout: suite.load.request_timeout_ms })}</span>
+        <span>Seed {suite.seed}</span>
+        <span>{t("protocolDesign.warmup", { count: suite.warmup_count })}</span>
+        {Object.entries(suite.settings).map(([key, value]) => <span key={key}>{t(`protocolDesign.${key}`)}: {value} ms</span>)}
+        {Object.entries(suite.parameters).map(([key, value]) => <span key={key} className="max-w-72 truncate" title={JSON.stringify(value)}>{key}: {typeof value === "string" ? value : JSON.stringify(value)}</span>)}
       </div>
+      {Object.keys(suite.metrics).length || Object.keys(suite.sla).length ? <details className="border-b px-3 py-2">
+        <summary className="cursor-pointer rounded-sm text-[11px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("inspector.coreMetrics")}</summary>
+        <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
+      </details> : null}
+      <EntryCaseTable entry={suite} />
     </section>
   )
 }
@@ -329,14 +322,14 @@ function SuiteMetricSummary({
   )
 }
 
-function suiteStatusLabel(status: ReportSuiteStatus, t: ReturnType<typeof useTranslation<"reports">>["t"]): string {
+function suiteStatusLabel(status: ReportEntryStatus, t: ReturnType<typeof useTranslation<"reports">>["t"]): string {
   if (status === "completed") return t("suiteStatus.completed")
   if (status === "failed") return t("suiteStatus.failed")
   if (status === "cancelled") return t("suiteStatus.cancelled")
   return t("suiteStatus.notStarted")
 }
 
-function SuiteStatusBadge({ status, label }: { status: ReportSuiteStatus; label: string }) {
+function SuiteStatusBadge({ status, label }: { status: ReportEntryStatus; label: string }) {
   const className = status === "failed"
     ? "border-destructive/25 bg-destructive/10 text-destructive"
     : status === "cancelled"
@@ -587,10 +580,10 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   const metrics = useMemo(() => detail?.source === "run" ? Object.entries(detail.report.metrics).slice(0, 8) : [], [detail])
   const quick = detail?.source === "quick_performance" ? detail.performance : null
   return <>
-    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} status={report.run_status} />} />
+    <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} />} />
     <Separator />
     <dl className="space-y-1 px-4 py-2">
-      <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.case_count - report.failed_case_count, total: report.case_count, failed: report.failed_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
+      <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.passed_case_count, total: report.verified_case_count, failed: report.failed_case_count, observed: report.observed_case_count, indeterminate: report.indeterminate_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
     </dl>
     <Separator />
     <div className="grid grid-cols-2 gap-2 px-4 py-3" aria-label={t("inspector.exportAria")}>
@@ -607,8 +600,9 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   </>
 }
 
-function ConclusionBadge({ passed, status }: { passed: boolean; status?: ReportSummary["run_status"] }) {
+function ConclusionBadge({ passed, status, verdict }: { passed: boolean; status?: ReportSummary["run_status"]; verdict?: string }) {
   const { t } = useTranslation("reports")
+  if (verdict === "observed" || verdict === "not_applicable") return <VerificationBadge status="not_applicable" />
   if (status === "cancelled") {
     return <Badge variant="outline" className="border-warning/25 bg-warning-soft text-warning-strong">{t("system.cancelled")}</Badge>
   }

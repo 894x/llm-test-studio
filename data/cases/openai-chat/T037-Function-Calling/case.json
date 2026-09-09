@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T037",
   "name": "Function Calling",
   "dimension": "billing",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "tool_call",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -50,7 +47,40 @@
           "max_tokens": 128
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/message/tool_calls"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "pointer": "/choices/0/message/tool_calls",
+          "each": [
+            {
+              "id": "r3",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/function/name",
+              "transform": "trim"
+            }
+          ]
+        }
+      ]
     }
   }
 }

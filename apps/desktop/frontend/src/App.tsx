@@ -347,8 +347,8 @@ function AppWorkspace({
           mutationPending={catalogMutationPending}
           mutationError={localizeStoredMessage(catalogMutationError, tx)}
           commandPending={commandPending}
-          onStartPlan={async (planID) => {
-            await runCommand(() => client.startRun(planID))
+          onStartPlan={async (command) => {
+            await runCommand(() => client.startRunTarget(command))
             navigate("runs")
           }}
         />

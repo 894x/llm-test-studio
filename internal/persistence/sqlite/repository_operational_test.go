@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/894x/llm-test-studio/internal/testspec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -50,14 +51,14 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	model := domain.Model{EntityMeta: entityMeta(modelID, 1), Name: "Fixture model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat", "streaming"}}
 	channel := domain.Channel{EntityMeta: entityMeta(channelID, 1), Name: "Fixture channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{EntityMeta: entityMeta(mappingID, 1), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-fixture"}
-	testCaseSpec := json.RawMessage(`{"assertions":[{"config":{"contains":"ok"},"kind":"text"}],"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"request":{"body":{"messages":[{"content":"hello","role":"user"}]},"headers":{"Content-Type":"application/json"},"method":"POST","path":"/chat/completions"}}`)
+	testCaseSpec := json.RawMessage(`{"assertions":[{"id":"status","operator":"equals","source":"http.status","value":200}],"inputs":{},"request":{"body":{"messages":[{"content":"hello","role":"user"}]}}}`)
 	testCase := domain.TestCase{
 		EntityMeta: entityMeta(caseID, 1), Key: "T001", Name: "Basic chat", Dimension: "boundary",
 		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
 		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("request.single"),
+			Type:          domain.CaseType("openai-chat"),
 			TypeVersion:   1,
 			Spec:          testCaseSpec,
 		},
@@ -65,14 +66,14 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	suite := domain.Suite{
 		EntityMeta: entityMeta(suiteID, 1), Key: "fixture-suite", Name: "Fixture suite",
-		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "upstream-fixture", Cases: []domain.CaseRevisionRef{caseRef},
+		Protocol: domain.ProtocolOpenAIChat, Cases: []domain.CaseRef{{CaseID: caseRef.CaseID}}, Inputs: []domain.SuiteInput{},
 	}
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 5000}}
 	plan := domain.Plan{
-		EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", ModelIDs: []string{modelID}, ChannelIDs: []string{channelID},
-		Suites: []domain.PlanSuiteEntry{{
-			EntryID: entryID, SuiteID: suiteID, SuiteRevision: 1,
+		EntityMeta: entityMeta(planID, 1), Name: "Fixture plan", Protocol: domain.ProtocolOpenAIChat,
+		Entries: []domain.PlanEntry{{
+			EntryID: entryID, TargetKind: domain.PlanTargetSuite, TargetID: suiteID,
 			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
@@ -85,8 +86,8 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		Environment:   environment,
 		PlanDocument:  &plan,
 		Mapping:       &mapping,
-		Suites: []domain.RunSuiteSnapshot{{
-			EntryID: entryID, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef},
+		Entries: []domain.RunEntrySnapshot{{
+			EntryID: entryID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite, CaseInputs: map[string]map[string]json.RawMessage{caseRef.CaseID: {}}, Cases: []domain.CaseRevisionRef{caseRef},
 			CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
@@ -95,16 +96,16 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		t.Fatalf("NewRun() error = %v", err)
 	}
 	evidence := domain.Evidence{EntityMeta: entityMeta(evidenceID, 1), RunID: runID, RelativePath: "evidence/response.json", SHA256: strings.Repeat("a", 64), MediaType: "application/json", Redacted: true}
-	result := domain.Result{EntityMeta: entityMeta(resultID, 1), RunID: runID, SuiteEntryID: entryID, CaseID: caseID, Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true}, Metrics: map[string]float64{"e2e_ms": 123}, EvidenceIDs: []string{evidenceID}}
+	result := domain.Result{EntityMeta: entityMeta(resultID, 1), RunID: runID, EntryID: entryID, CaseID: caseID, ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}}, Metrics: map[string]float64{"e2e_ms": 123}, EvidenceIDs: []string{evidenceID}}
 	report := domain.Report{
-		SchemaVersion: domain.CurrentReportSchemaVersion, ID: reportID, RunID: runID, RunStatus: domain.RunCompleted,
+		SchemaVersion: domain.CurrentReportSchemaVersion, Protocol: domain.ProtocolOpenAIChat, Verification: domain.SummarizeVerification([]domain.Result{result}), ID: reportID, RunID: runID, RunStatus: domain.RunCompleted,
 		GeneratedAt: repositoryEpoch.Add(10 * time.Minute), PlanSnapshot: snapshot,
 		Model: domain.ReportSubject{ID: modelID, Name: model.Name}, Channel: domain.ReportSubject{ID: channelID, Name: channel.Name}, Environment: environment,
 		Conclusion: domain.ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}}, SLA: map[string]domain.MetricValue{}, Metrics: map[string]domain.MetricValue{},
 		Timeline: []json.RawMessage{}, Distributions: []json.RawMessage{}, CaseResults: []domain.Result{result}, ErrorClusters: []json.RawMessage{}, Evidence: []domain.Evidence{evidence}, Baseline: json.RawMessage(`{}`),
-		SuiteReports: []domain.SuiteReport{{
-			SuiteEntryID: entryID, SuiteID: suiteID, SuiteRevision: 1, SuiteKey: suite.Key, SuiteName: suite.Name,
-			Status: domain.SuiteReportCompleted, Conclusion: domain.ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}},
+		EntryReports: []domain.EntryReport{{
+			EntryID: entryID, TargetKind: domain.PlanTargetSuite, TargetID: suiteID, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol, Parameters: map[string]json.RawMessage{}, Load: load,
+			Verification: domain.SummarizeVerification([]domain.Result{result}), Status: domain.EntryReportCompleted, Conclusion: domain.ReportConclusion{Passed: true, Verdict: "pass", Issues: []string{}},
 			SLA: map[string]domain.MetricValue{}, Metrics: map[string]domain.MetricValue{}, Timeline: []json.RawMessage{}, Distributions: []json.RawMessage{}, CaseResults: []domain.Result{result},
 		}},
 		Attachments: []domain.ReportAttachment{{ArtifactID: artifactID, RunID: runID, Name: "HTML report", RelativePath: "reports/report.html", SHA256: strings.Repeat("b", 64), MediaType: "text/html", Redacted: true}},
@@ -123,7 +124,10 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 
 func assertRoundTrip(t *testing.T, name string, want, got any) {
 	t.Helper()
-	if !reflect.DeepEqual(got, want) {
+	wantJSON, wantErr := json.Marshal(want)
+	gotJSON, gotErr := json.Marshal(got)
+	var wantValue, gotValue any
+	if wantErr != nil || gotErr != nil || json.Unmarshal(wantJSON, &wantValue) != nil || json.Unmarshal(gotJSON, &gotValue) != nil || !reflect.DeepEqual(gotValue, wantValue) {
 		t.Fatalf("%s roundtrip = %#v, want %#v", name, got, want)
 	}
 }

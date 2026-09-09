@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/894x/llm-test-studio/internal/domain"
 )
@@ -12,20 +11,22 @@ import (
 // QuickTaskDetail exposes only fields needed to restore a task form. Credentials,
 // request definitions, response bodies, and environment details stay in Core.
 type QuickTaskDetail struct {
-	SchemaVersion   int                        `json:"schema_version"`
-	RunID           string                     `json:"run_id"`
-	Suite           QuickTaskSuite             `json:"suite"`
-	Model           string                     `json:"model"`
-	BaseURL         string                     `json:"base_url"`
-	ChannelID       string                     `json:"channel_id,omitempty"`
-	CredentialRunID string                     `json:"credential_run_id,omitempty"`
-	Inputs          map[string]json.RawMessage `json:"inputs"`
+	Seed             uint64                     `json:"seed"`
+	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
+	SchemaVersion    int                        `json:"schema_version"`
+	RunID            string                     `json:"run_id"`
+	Suite            QuickTaskSuite             `json:"suite"`
+	Model            string                     `json:"model"`
+	BaseURL          string                     `json:"base_url"`
+	ChannelID        string                     `json:"channel_id,omitempty"`
+	CredentialRunID  string                     `json:"credential_run_id,omitempty"`
+	Inputs           map[string]json.RawMessage `json:"inputs"`
 }
 
 // QuickTaskPerformancePath resolves the unique chat endpoint from the selected
 // definitions; performance inputs remain owned by the performance service.
 func (service *Service) QuickTaskPerformancePath(ctx context.Context, command QuickTaskCommand) (string, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(command.SuiteID) || command.SuiteRevision == 0 || isNil(service.quickTasks) {
+	if service == nil || ctx == nil || !domain.IsUUID(command.SuiteID) || isNil(service.quickTasks) {
 		return "", ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
@@ -35,29 +36,10 @@ func (service *Service) QuickTaskPerformancePath(ctx context.Context, command Qu
 	if err != nil {
 		return "", err
 	}
-	if suite.ID != command.SuiteID || suite.Revision != command.SuiteRevision || suite.Validate() != nil || suite.ValidateCases(cases) != nil || suite.QuickTest == nil || suite.Protocol != domain.ProtocolOpenAIChat || (suite.ModelTarget != "" && suite.ModelTarget != command.Model) {
+	if suite.ID != command.SuiteID || suite.Protocol != domain.ProtocolOpenAIChat || suite.ValidateCases(cases) != nil {
 		return "", ErrNotRunnable
 	}
-	path := ""
-	for _, testCase := range cases {
-		var spec struct {
-			Request struct {
-				Method string `json:"method"`
-				Path   string `json:"path"`
-			} `json:"request"`
-		}
-		if !testCase.AppliesToModel(command.Model) || json.Unmarshal(testCase.Definition.Spec, &spec) != nil || spec.Request.Method != "POST" || !strings.HasSuffix(spec.Request.Path, "/chat/completions") {
-			continue
-		}
-		if path != "" && path != spec.Request.Path {
-			return "", ErrNotRunnable
-		}
-		path = spec.Request.Path
-	}
-	if path == "" {
-		return "", ErrNotRunnable
-	}
-	return path, nil
+	return "/v1/chat/completions", nil
 }
 
 type QuickTaskSuite struct {
@@ -71,8 +53,8 @@ func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskD
 		return QuickTaskDetail{}, err
 	}
 	task := snapshot.QuickTask
-	return QuickTaskDetail{SchemaVersion: 1, RunID: runID, Suite: QuickTaskSuite{Suite: task.Suite, CaseCount: len(task.Suite.Cases)}, Model: snapshot.Channel.UpstreamModelName,
-		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID, CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot), Inputs: task.Inputs}, nil
+	return QuickTaskDetail{SchemaVersion: 2, RunID: runID, Suite: QuickTaskSuite{Suite: *snapshot.Entries[0].Suite, CaseCount: len(snapshot.Entries[0].Cases)}, Model: snapshot.Channel.UpstreamModelName,
+		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID, CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot), Inputs: snapshot.Entries[0].Parameters, Seed: snapshot.PlanDocument.Seed, RequestTimeoutMS: snapshot.Entries[0].Load.RequestTimeoutMS}, nil
 }
 
 func (service *Service) quickTaskSnapshot(ctx context.Context, runID string) (domain.RunSnapshot, error) {

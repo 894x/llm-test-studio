@@ -1,28 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wanx2.1-t2v-turbo.connectivity",
   "name": "wanx2.1-t2v-turbo 连通性测试",
   "protocol": "wan-video",
-  "model_target": "wanx2.1-t2v-turbo",
-  "case_keys": [
-    "wan21.turbo.duration_5"
+  "description": "提交一次文生视频任务，等待终态并检查视频输出。",
+  "cases": [
+    {
+      "case_id": "cf334139-f680-5e7f-97f3-9bc3c41a40b5"
+    }
   ],
-  "quick_test": {
-    "description": "提交一次文生视频任务，等待终态并检查视频输出。",
-    "timeout_ms": 600000,
-    "inputs": [
-      {
-        "key": "prompt",
-        "label": "提示词",
-        "type": "text",
-        "default": "一只小猫在月光下奔跑",
-        "bindings": [
-          {
-            "case_key": "wan21.turbo.duration_5",
-            "pointer": "/request/body/input/prompt"
-          }
-        ]
-      }
-    ]
-  }
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "一只小猫在月光下奔跑",
+      "bindings": [
+        {
+          "case_id": "cf334139-f680-5e7f-97f3-9bc3c41a40b5",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
 }

@@ -10,7 +10,7 @@ Build the smallest suite that demonstrates the documented contract at its valid,
 ## Workflow
 
 1. Establish whether the request is an audit, a design, an implementation, or an authorized live execution. Do not turn an audit into code changes or a design into paid requests.
-2. Inspect the repository's case schema, loader, assertion kinds, model routing, and neighboring cases before proposing artifacts. In this repository, follow `AGENTS.md` and use the codebase graph before source fallback for structural discovery.
+2. Inspect the repository's case schema, loader, assertion operators, model routing, and neighboring cases before proposing artifacts. In this repository, follow `AGENTS.md` and use the codebase graph before source fallback for structural discovery.
 3. Verify the current provider contract from primary official documentation. Record the retrieval date and direct source URL for every material header, field, nested field, limit, default, enum, dependency, workflow transition, and error expectation. Treat undocumented behavior as observed behavior, not contract.
 4. Build a contract inventory and parameter constraint matrix before writing cases. Read [coverage-matrix.md](references/coverage-matrix.md) for the completeness gate, required columns, coverage-state rules, and selection rules.
 5. For an LLM or OpenAI-compatible API, also read [llm-api-checklist.md](references/llm-api-checklist.md). For `E:\GITHUB\llm-test`, read [llm-test-studio-cases.md](references/llm-test-studio-cases.md) before editing case files.
@@ -22,8 +22,8 @@ Build the smallest suite that demonstrates the documented contract at its valid,
    - undocumented robustness questions: explicitly labeled exploratory or characterization cases.
 7. Give every case one primary contract claim, explicit preconditions, exact request delta, expected transport and business outcome, stable assertions, model applicability, execution tier, and source reference.
 8. Audit the proposed suite against the matrix. A parameter merely present in a happy-path request is not covered; an enum sweep is not numeric boundary testing; an HTTP 2xx or accepted asynchronous task is not business success.
-9. Implement only the approved scope. Reuse existing assertion kinds when they can prove the claim; extend the runner with tests when they cannot. Never weaken an assertion merely to make a provider response pass.
-10. When creating or materially extending a model case catalog in LLM Test Studio, define its execution profiles and generate scenario Suite files with [suite-generation.md](references/suite-generation.md). Do not make an agent hand-copy mechanically selectable memberships.
+9. Implement only the approved scope. Reuse existing assertion operators when they can prove the claim; extend the runner with tests when they cannot. Never weaken an assertion merely to make a provider response pass.
+10. When creating or materially extending a model case catalog in LLM Test Studio, define its execution profiles and generate scenario Suite files with [suite-generation.md](references/suite-generation.md). Keep reviewed memberships in the current manifest and generate the Suite files from it.
 11. Validate schema/loading, targeted tests, generated catalog consistency, and diff hygiene. Report separately what was designed, statically validated, live-executed, deferred for cost, or blocked by missing authoritative limits.
 
 ## Scope and completeness gates
@@ -67,19 +67,16 @@ Cost controls execution, not design completeness. Define expensive or asset-depe
 Use `scripts/audit_case_coverage.py` to inventory repository-owned `case.json` files before making exhaustive claims:
 
 ```powershell
-python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py data/cases/kimi-k3 --model kimi-k3
+python .agents/skills/api-boundary-test-case-design/scripts/audit_case_coverage.py data/cases/openai-chat --key-prefix must.
 ```
 
-The script reports observed dimensions, request parameters, assertion kinds, and heuristic negative-case counts. It does not know the official contract and cannot detect a documented parameter that is absent from both the matrix and case files. Compare its output with the independently built contract inventory and current primary documentation; never use the inventory output alone to claim completeness.
+The script reports observed dimensions, request parameters, assertion operators, and explicit 4xx HTTP rejection assertion counts. It does not know the official contract and cannot detect a documented parameter that is absent from both the matrix and case files. Compare its output with the independently built contract inventory and current primary documentation; never use the inventory output alone to claim completeness.
 
 ## Scenario Suite generator
 
 For LLM Test Studio model catalogs, use `scripts/build_scenario_suites.py` after the case files and their execution modes are stable. Read [suite-generation.md](references/suite-generation.md) before creating or changing the profile manifest.
 
-The generator intentionally separates two kinds of membership:
-
-- explicit case keys for semantic profiles such as connectivity and basic functionality;
-- metadata selectors for mechanical profiles such as automatic parameter rejection, all automatic cases, and complete model coverage.
+The manifest stores current Suite documents with reviewed ordered Case ID references and explicit input bindings. The generator validates all references before writing and rejects removed kind selectors and model routing fields. Use the contract matrix to justify membership; names and HTTP acceptance do not establish boundary coverage.
 
 Preview first, write only after inspecting the counts, then use `--check` in validation. The generator never authorizes live execution and never deletes unrelated Suite files.
 

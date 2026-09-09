@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T013",
   "name": "协议污染检测",
   "dimension": "identity",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -29,15 +26,67 @@
           "max_tokens": 16
         }
       },
-      "options": {
-        "expected_exact": "PROTOCOL_OK",
-        "forbidden_substrings": [
-          "anthropic",
-          "claude",
-          "gemini",
-          "candidates"
-        ]
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "equals",
+          "value": "PROTOCOL_OK",
+          "transform": "trim"
+        },
+        {
+          "id": "r6",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "anthropic",
+          "transform": "lower"
+        },
+        {
+          "id": "r7",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "claude",
+          "transform": "lower"
+        },
+        {
+          "id": "r8",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "gemini",
+          "transform": "lower"
+        },
+        {
+          "id": "r9",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "candidates",
+          "transform": "lower"
+        }
+      ]
     }
   }
 }

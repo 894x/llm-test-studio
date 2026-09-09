@@ -1,18 +1,52 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "reasoning_effort_low",
   "name": "推理强度 · reasoning_effort=low",
   "dimension": "reasoning-parameters",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
-    "kind": "reasoning_visibility",
-    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "说明 1+1=2。"}], "reasoning_effort": "low", "max_completion_tokens": 128}},
-    "options": {
-        "expected_reasoning_visible": true}
-  }}
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "说明 1+1=2。"
+            }
+          ],
+          "reasoning_effort": "low",
+          "max_completion_tokens": 128
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/reasoning_visible",
+          "value": 1
+        }
+      ]
+    }
+  }
 }

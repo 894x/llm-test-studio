@@ -1,28 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "seedance.connectivity",
   "name": "Seedance 连通性测试",
   "protocol": "seedance",
-  "model_target": "",
-  "case_keys": [
-    "V001"
+  "description": "提交一次文生视频任务，等待终态并检查视频输出。",
+  "cases": [
+    {
+      "case_id": "b8884c60-a426-5ee0-81b0-d0631aa0adf9"
+    }
   ],
-  "quick_test": {
-    "description": "提交一次文生视频任务，等待终态并检查视频输出。",
-    "timeout_ms": 600000,
-    "inputs": [
-      {
-        "key": "prompt",
-        "label": "提示词",
-        "type": "text",
-        "default": "A cute cat running through a sunny meadow, cinematic shot",
-        "bindings": [
-          {
-            "case_key": "V001",
-            "pointer": "/request/body/content/0/text"
-          }
-        ]
-      }
-    ]
-  }
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "A cute cat running through a sunny meadow, cinematic shot",
+      "bindings": [
+        {
+          "case_id": "b8884c60-a426-5ee0-81b0-d0631aa0adf9",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
 }

@@ -10,10 +10,10 @@ import (
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func TestMigrateFreshDatabaseCreatesOperationalSchemaV1(t *testing.T) {
+func TestMigrateFreshDatabaseCreatesOperationalSchemaCurrent(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "operational-v1.db")
+	path := filepath.Join(t.TempDir(), "operational-current.db")
 	if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{
 		AppVersion: "schema-reset-test",
 	}); err != nil {
@@ -23,8 +23,8 @@ func TestMigrateFreshDatabaseCreatesOperationalSchemaV1(t *testing.T) {
 	db := openDatabase(t, path)
 	defer db.Close()
 
-	if got := queryInt(t, db, "PRAGMA user_version"); got != 1 {
-		t.Fatalf("PRAGMA user_version = %d, want 1", got)
+	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
+		t.Fatalf("PRAGMA user_version = %d, want current", got)
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 1 {
 		t.Fatalf("schema migration count = %d, want 1", got)
@@ -71,16 +71,16 @@ func TestMigrateFreshDatabaseCreatesOperationalSchemaV1(t *testing.T) {
 	}
 }
 
-func TestMigrateOperationalSchemaV1IsIdempotent(t *testing.T) {
+func TestMigrateOperationalSchemaCurrentIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "operational-v1.db")
+	path := filepath.Join(t.TempDir(), "operational-current.db")
 	for _, appVersion := range []string{"schema-reset-test", "schema-reset-test-second-open"} {
 		if err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: appVersion}); err != nil {
 			t.Fatalf("Migrate(%q) error = %v", appVersion, err)
 		}
 	}
-	if version, err := persistence.SchemaVersion(context.Background(), path); err != nil || version != 1 {
+	if version, err := persistence.SchemaVersion(context.Background(), path); err != nil || version != persistence.CurrentSchemaVersion {
 		t.Fatalf("SchemaVersion() = %d, %v; want 1", version, err)
 	}
 	repository, err := persistence.OpenRepository(context.Background(), path, persistence.RepositoryOptions{})
@@ -111,7 +111,7 @@ func TestMigrateRejectsPreResetMigrationHistory(t *testing.T) {
 	}
 
 	err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "schema-reset-test"})
-	if !errors.Is(err, persistence.ErrSchemaResetRequired) || !strings.Contains(err.Error(), "reset the operational database") {
+	if !errors.Is(err, persistence.ErrSchemaResetRequired) || !strings.Contains(err.Error(), "preserve the database") {
 		t.Fatalf("Migrate(old schema) error = %v, want reset-required error", err)
 	}
 }
@@ -154,7 +154,7 @@ func TestMigrateClassifiesEveryIncompatibleSchemaAsResetRequired(t *testing.T) {
 	}{
 		{
 			name:   "checksum mismatch",
-			tamper: `UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 1`,
+			tamper: `UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 2`,
 			check: func(t *testing.T, path string) {
 				db := openDatabase(t, path)
 				defer db.Close()
@@ -220,7 +220,7 @@ func TestMigrateClassifiesEveryIncompatibleSchemaAsResetRequired(t *testing.T) {
 func requireSchemaResetRequired(t *testing.T, path string) {
 	t.Helper()
 	err := persistence.Migrate(context.Background(), path, persistence.MigrateOptions{AppVersion: "schema-reset-test"})
-	if !errors.Is(err, persistence.ErrSchemaResetRequired) || !strings.Contains(err.Error(), "reset the operational database") {
+	if !errors.Is(err, persistence.ErrSchemaResetRequired) || !strings.Contains(err.Error(), "preserve the database") {
 		t.Fatalf("Migrate(incompatible schema) error = %v, want reset-required classification and remediation", err)
 	}
 }

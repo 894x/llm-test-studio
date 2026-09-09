@@ -15,13 +15,13 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
-	"github.com/894x/llm-test-studio/internal/casetypes"
+
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunStart(t *testing.T) {
+func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -42,7 +42,7 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunSta
 		t.Fatal(err)
 	}
 	suites, err := suitecatalog.New(suitecatalog.Options{
-		Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases,
+		Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,9 +80,9 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunSta
 		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          casetypes.TypeRequestSingle,
+			Type:          domain.CaseType("openai-chat"),
 			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
+			Spec:          json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`),
 		},
 	}
 	if err := cases.SaveCase(ctx, string(domain.ProtocolOpenAIChat), testCase.Key, testCase); err != nil {
@@ -104,7 +104,7 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunSta
 	suite = suiteEntries[0].Suite
 	plan := domain.Plan{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000006"),
-		Name:       "file plan", ModelIDs: []string{model.ID}, ChannelIDs: []string{channel.ID},
+		Name:       "file plan", Protocol: domain.ProtocolOpenAIChat, Seed: 1,
 	}
 	filesystemCatalogSetPlanSuites(&plan, suite)
 	catalogRepository := filesystemCatalogRepository{
@@ -187,7 +187,7 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunSta
 		}
 	})
 
-	runID, err := service.PrepareTarget(ctx, runs.StartCommand{PlanID: plan.ID})
+	runID, err := service.PrepareTarget(ctx, runs.StartCommand{PlanID: plan.ID, ModelID: model.ID, ChannelID: channel.ID})
 	if err != nil {
 		t.Fatalf("PrepareTarget() error = %v", err)
 	}
@@ -196,10 +196,10 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunSta
 		t.Fatalf("GetRun(queued) error = %v", err)
 	}
 	queuedSnapshot := queued.Snapshot()
-	if len(queuedSnapshot.Suites) != 1 || len(queuedSnapshot.Suites[0].CaseDefinitions) != 1 ||
-		queuedSnapshot.Suites[0].CaseDefinitions[0].Revision != caseEntry.TestCase.Revision ||
-		queuedSnapshot.Suites[0].CaseDefinitions[0].Name != caseEntry.TestCase.Name {
-		t.Fatalf("queued run suite definitions = %#v, want pinned revision %#v", queuedSnapshot.Suites, caseEntry.TestCase)
+	if len(queuedSnapshot.Entries) != 1 || len(queuedSnapshot.Entries[0].CaseDefinitions) != 1 ||
+		queuedSnapshot.Entries[0].CaseDefinitions[0].Revision != currentCase.TestCase.Revision ||
+		queuedSnapshot.Entries[0].CaseDefinitions[0].Name != currentCase.TestCase.Name {
+		t.Fatalf("queued run suite definitions = %#v, want pinned revision %#v", queuedSnapshot.Entries, caseEntry.TestCase)
 	}
 	if queuedSnapshot.Model.Revision != newModel.Revision || queuedSnapshot.Model.Name != newModel.Name ||
 		queuedSnapshot.Channel.Revision != newChannel.Revision || queuedSnapshot.Channel.BaseURL != newChannel.BaseURL ||
@@ -214,13 +214,13 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndPinnedSuiteAtRunSta
 	}
 	select {
 	case request := <-executor.requests:
-		if len(request.Cases) != 1 || request.Cases[0].Revision != caseEntry.TestCase.Revision || request.Cases[0].Name != caseEntry.TestCase.Name {
+		if len(request.Cases) != 1 || request.Cases[0].Revision != currentCase.TestCase.Revision || request.Cases[0].Name != currentCase.TestCase.Name {
 			t.Fatalf("execution cases = %#v, want pinned revision %#v", request.Cases, caseEntry.TestCase)
 		}
 		snapshot := request.Run.Snapshot()
 		if snapshot.Model.ID != model.ID || snapshot.Channel.ID != channel.ID || snapshot.Mapping == nil || snapshot.Mapping.ID != mapping.ID ||
-			len(snapshot.Suites) != 1 || len(snapshot.Suites[0].CaseDefinitions) != 1 ||
-			snapshot.Suites[0].CaseDefinitions[0].Revision != caseEntry.TestCase.Revision {
+			len(snapshot.Entries) != 1 || len(snapshot.Entries[0].CaseDefinitions) != 1 ||
+			snapshot.Entries[0].CaseDefinitions[0].Revision != currentCase.TestCase.Revision {
 			t.Fatalf("immutable run snapshot = %#v", snapshot)
 		}
 	case <-time.After(2 * time.Second):

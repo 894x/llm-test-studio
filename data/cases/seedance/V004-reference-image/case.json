@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "V004",
   "name": "参考图片生成视频",
   "dimension": "compatibility",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "seedance",
     "type_version": 1,
     "spec": {
-      "kind": "seedance_task",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/api/v3/contents/generations/tasks",
-        "headers": {},
         "body": {
           "content": [
             {
@@ -37,7 +34,36 @@
           "ratio": "16:9"
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "task",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "succeeded"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "http_url",
+          "pointer": "/content/video_url"
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
+      }
     }
   }
 }

@@ -1,116 +1,35 @@
-# Scenario Suite generation for LLM Test Studio
+# Current scenario Suite generation
 
-Use this reference when creating or materially extending a model case catalog under `data/cases/<protocol>`. It turns one model-scoped case corpus into deterministic scenario Suite files without duplicating case definitions.
+Case files use schema 3 and protocol definitions with explicit inputs, request bodies and assertions. Suite files use schema 2: ordered Case ID references and explicit mappings from Suite inputs to declared Case inputs. The Run binds one model, channel and credential. A Suite never selects a model or overrides a Case body implicitly.
 
-## Profile design
-
-Prefer these profiles when they match the model and runner. Omit or rename a profile only with an explicit rationale.
-
-| Profile | Membership rule | Purpose |
-|---|---|---|
-| Connectivity | Explicit keys | Smallest valid business success plus stable authentication or routing failures needed to prove the endpoint is reachable |
-| Basic functionality | Explicit keys | One representative for each common business mode and critical optional feature; include only deliberate acceptance and essential rejection cases |
-| Parameter rejection | Selector | Enabled automatic cases using the provider's parameter-rejection assertion kind; exclude authentication, safety, and terminal task failures unless they are intentionally part of the profile |
-| Automatic regression | Selector | Every enabled case with `execution_mode=automatic` |
-| Complete | Selector | Every case applicable to the model, including manual, expensive, and disabled templates; name the Suite accordingly when disabled templates are present |
-
-Connectivity and basic membership require product judgment, so list their case keys explicitly. Selector-derived profiles must stay mechanical. Do not use name substrings such as `invalid` or `error` to classify rejection cases; select the exact assertion kind or kinds traced through the runner.
-
-Starting a test executes the selected Suite without a separate payment checkbox. Manual cases still require their fixtures. Designing or generating Suites does not authorize an agent to call a live provider.
-
-## Manifest
-
-Check in one manifest per model near its Suite files, for example `data/suites/minimax-video/MiniMax-H3.suite-profiles.json`:
+The manifest has exactly `schema_version: 1`, `protocol`, and `profiles`. Each profile contains `directory` plus the complete current Suite document (`schema_version`, `key`, `name`, `protocol`, `description`, `cases`, `inputs`). The manifest format is a single authoring format, not a historical decoder.
 
 ```json
 {
   "schema_version": 1,
-  "protocol": "example-api",
-  "model_target": "example-v1",
-  "profiles": [
-    {
-      "directory": "example-v1-connectivity",
-      "key": "example-api.example-v1.connectivity",
-      "name": "Example V1 connectivity",
-      "case_keys": ["example.smoke", "example.authorization.invalid"]
-    },
-    {
-      "directory": "example-v1-parameter-rejection",
-      "key": "example-api.example-v1.parameter-rejection",
-      "name": "Example V1 parameter rejection",
-      "selector": {
-        "enabled": true,
-        "execution_modes": ["automatic"],
-        "kinds": ["example_task_rejected"]
-      }
-    },
-    {
-      "directory": "example-v1-automatic",
-      "key": "example-api.example-v1.automatic",
-      "name": "Example V1 automatic regression",
-      "selector": {
-        "enabled": true,
-        "execution_modes": ["automatic"]
-      }
-    },
-    {
-      "directory": "example-v1-complete",
-      "key": "example-api.example-v1.complete",
-      "name": "Example V1 complete",
-      "selector": {}
-    }
-  ]
+  "protocol": "openai-chat",
+  "profiles": [{
+    "directory": "example-connectivity",
+    "schema_version": 2,
+    "key": "example.connectivity",
+    "name": "Connectivity",
+    "protocol": "openai-chat",
+    "description": "Reviewed smoke membership",
+    "cases": [{"case_id": "<current stable Case ID>"}],
+    "inputs": []
+  }]
 }
 ```
 
-Each profile must define exactly one of `case_keys` or `selector`. Selectors support `enabled`, `execution_modes`, `kinds`, `dimensions`, and `severities`. All selector fields are conjunctive; values within an array are alternatives.
+Use the catalog's stable Case IDs. Connectivity/basic profiles require semantic review; rejection profiles must be justified by explicit transport or terminal-task assertions. Automatic regression includes enabled automatic Cases; complete catalogs may include manual Cases requiring fixtures. Disabled binding tests cannot become executable merely by including them in a Suite.
 
-A profile may include the Suite's optional `quick_test` object. The generator
-preserves this metadata and includes it in drift checks. Use the domain Suite
-validation through the catalog to verify typed inputs, defaults, bindings, and
-automatic members; do not duplicate those rules in the generator.
-
-The generator always filters by `protocol` and model applicability. Empty `model_targets` apply globally; otherwise the manifest's `model_target` must be present. Explicit unknown or inapplicable keys are errors. Source order is the sorted case-file path, while explicit profile order is preserved.
-
-## Commands
-
-Preview without writing:
+Store reviewed memberships in the manifest. The generator validates the full manifest before writing any file, preserves reference order, checks input mappings, and writes atomically. It rejects removed `model_target`, `model_targets`, `case_keys`, `selector`, `kind`, and `quick_test` contracts. It does not convert historical input or infer coverage from Case names.
 
 ```powershell
-python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root data/cases/<protocol> `
-  --suites-root data/suites/<protocol> `
-  --manifest data/suites/<protocol>/<model>.suite-profiles.json
+python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py --cases-root data/cases/minimax-video --suites-root data/suites/minimax-video --manifest data/suites/minimax-video/MiniMax-H3.suite-profiles.json
+# After inspecting membership and counts, use the same arguments with --write.
+# Verify checked-in output with --check.
+python -m unittest discover -s .agents/skills/api-boundary-test-case-design/tests
 ```
 
-After reviewing profile counts, write the generated files:
-
-```powershell
-python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root data/cases/<protocol> `
-  --suites-root data/suites/<protocol> `
-  --manifest data/suites/<protocol>/<model>.suite-profiles.json `
-  --write
-```
-
-Check for missing or stale generated files in validation and CI:
-
-```powershell
-python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py `
-  --cases-root data/cases/<protocol> `
-  --suites-root data/suites/<protocol> `
-  --manifest data/suites/<protocol>/<model>.suite-profiles.json `
-  --check
-```
-
-`--write` atomically creates or replaces only the manifest's target `suite.json` files. It does not delete other Suite directories. `--check` compares parsed JSON documents, so harmless whitespace does not cause drift.
-
-## Repository integration
-
-After generation:
-
-1. Inspect every profile count and its automatic/manual, success/rejection, fixture, and paid-execution composition.
-2. Add or update embedded-Suite tests that verify expected profiles, unique keys, semantic subset relationships, and exact selector-derived membership.
-3. Update catalog cardinality fixtures intentionally; do not make the generator rewrite Go tests.
-4. Run the generator with `--check`, targeted Suite/catalog tests, and the repository validation required by [llm-test-studio-cases.md](llm-test-studio-cases.md).
-5. Report generated design separately from any live provider execution.
+Generation never authorizes provider requests. Keep assertions, provider-contract matrix and cost tiers separately reviewed; generated membership alone is not coverage evidence.

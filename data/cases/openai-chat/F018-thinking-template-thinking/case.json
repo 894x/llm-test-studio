@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "must.thinking_chat_template_kwargs_thinking",
   "name": "思考 · chat_template_kwargs.thinking=true",
   "dimension": "reasoning",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "reasoning_visibility",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -31,8 +28,27 @@
           "max_tokens": 200
         }
       },
-      "options": {
-        "expected_reasoning_visible": true}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "metrics",
+          "operator": "equals",
+          "pointer": "/reasoning_visible",
+          "value": 1
+        }
+      ]
     }
   }
 }

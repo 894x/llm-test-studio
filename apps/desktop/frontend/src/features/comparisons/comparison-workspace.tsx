@@ -24,17 +24,17 @@ export function NewComparisonSheet({
 }) {
   const { t } = useTranslation("comparisons")
   const eligiblePlans = useMemo(
-    () => catalog.plans.filter((plan) => plan.model_ids.length > 0 && plan.channel_ids.length >= 2),
-    [catalog.plans],
+    () => catalog.plans.filter((plan) => catalog.channels.filter(channel => channel.protocol === plan.protocol && channel.enabled && channel.credential_configured).length >= 2),
+    [catalog.plans, catalog.channels],
   )
   const [open, setOpen] = useState(false)
   const [planID, setPlanID] = useState(eligiblePlans[0]?.id ?? "")
   const plan = eligiblePlans.find((item) => item.id === planID) ?? eligiblePlans[0]
-  const models = catalog.models.filter((model) => plan?.model_ids.includes(model.id))
+  const models = catalog.models.filter((model) => model.protocol === plan?.protocol)
   const [modelID, setModelID] = useState(models[0]?.id ?? "")
   const effectiveModelID = models.some((model) => model.id === modelID) ? modelID : (models[0]?.id ?? "")
   const channels = catalog.channels.filter((channel) =>
-    plan?.channel_ids.includes(channel.id) && channel.enabled && channel.credential_configured &&
+    channel.protocol === plan?.protocol && channel.enabled && channel.credential_configured &&
     catalog.channel_models.some((mapping) => mapping.channel_id === channel.id && mapping.model_id === effectiveModelID),
   )
   const [selected, setSelected] = useState<string[]>([])
@@ -44,7 +44,7 @@ export function NewComparisonSheet({
   const changePlan = (next: string) => {
     setPlanID(next)
     const nextPlan = eligiblePlans.find((item) => item.id === next)
-    setModelID(nextPlan?.model_ids[0] ?? "")
+    setModelID(catalog.models.find(model => model.protocol === nextPlan?.protocol)?.id ?? "")
     setSelected([])
   }
   const changeModel = (next: string) => {

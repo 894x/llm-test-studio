@@ -35,7 +35,7 @@ type PlannedRun struct {
 	CaseID    string `json:"case_id"`
 	Name      string `json:"name"`
 	Dimension string `json:"dimension"`
-	Kind      string `json:"kind"`
+	Protocol  string `json:"protocol"`
 	Model     string `json:"model"`
 }
 

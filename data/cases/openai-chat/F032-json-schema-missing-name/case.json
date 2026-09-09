@@ -1,18 +1,53 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "json_schema_missing_name",
   "name": "结构化输出 · json_schema 缺少 name 应拒绝",
   "dimension": "structured-output",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
-    "kind": "error_schema",
-    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "返回 JSON"}], "response_format": {"type": "json_schema", "json_schema": {"schema": {"type": "object"}}}, "max_completion_tokens": 64}},
-    "options": {
-        "expected_http_status": 400}
-  }}
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回 JSON"
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "max_completion_tokens": 64
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
 }

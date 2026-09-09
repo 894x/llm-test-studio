@@ -312,18 +312,37 @@ func TestAuditListUsesVersionedResponseEnvelope(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001",
-		"name": "chat sync",
-		"dimension": "protocol",
-		"protocol": "openai-chat",
-		"kind": "chat_sync",
-		"default": true,
-		"request": {
-			"method": "POST",
-			"path": "/v1/chat/completions",
-			"body": {"client_secret": "list-secret"}
-		}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "metadata": "list-private-payload"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run(
@@ -368,7 +387,7 @@ func TestAuditListUsesVersionedResponseEnvelope(t *testing.T) {
 	if response.Payload.Count != 1 || len(response.Payload.Cases) != 1 || response.Payload.Cases[0].ID != "C001" || response.Payload.Cases[0].Name != "chat sync" {
 		t.Fatalf("list payload = %#v", response.Payload)
 	}
-	if strings.Contains(rawOutput, "list-secret") || strings.Contains(rawOutput, "client_secret") {
+	if strings.Contains(rawOutput, "list-private-payload") || strings.Contains(rawOutput, "client_secret") {
 		t.Fatalf("list response leaked request configuration: %q", rawOutput)
 	}
 }
@@ -378,10 +397,35 @@ func TestAuditListCanRenderHumanOutput(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001", "name": "chat sync", "dimension": "protocol",
-		"protocol": "openai-chat", "kind": "chat_sync", "default": true,
-		"request": {"method": "POST", "path": "/v1/chat/completions", "body": {}}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run(
@@ -519,15 +563,28 @@ func TestAuditRunDefaultsToCanonicalEventEnvelopes(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001",
-		"name": "manual review",
-		"dimension": "protocol",
-		"protocol": "openai-chat",
-		"kind": "manual_unknown",
-		"default": true,
-		"options": {"reason": "requires external evidence"},
-		"request": {"method": "", "path": "", "body": {}}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "manual review",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": []
+    }
+  }
+}`)
 	outputDir := filepath.Join(t.TempDir(), "report")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -541,7 +598,6 @@ func TestAuditRunDefaultsToCanonicalEventEnvelopes(t *testing.T) {
 			"--model", "test-model",
 			"--case", "C001",
 			"--dry-run",
-			"--no-wait",
 			"--poll-interval", "1s",
 			"--timeout", "30s",
 			"--concurrency", "1",
@@ -731,11 +787,28 @@ func writeManualAuditCase(t *testing.T) string {
 	t.Helper()
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001", "name": "manual review", "dimension": "protocol",
-		"protocol": "openai-chat", "kind": "manual_unknown", "default": true,
-		"options": {"reason": "requires external evidence"},
-		"request": {"method": "", "path": "", "body": {}}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "manual review",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": []
+    }
+  }
+}`)
 	return casesRoot
 }
 
@@ -744,11 +817,28 @@ func TestAuditRunCanRenderHumanLifecycle(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001", "name": "manual review", "dimension": "protocol",
-		"protocol": "openai-chat", "kind": "manual_unknown", "default": true,
-		"options": {"reason": "requires external evidence"},
-		"request": {"method": "", "path": "", "body": {}}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "manual review",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": []
+    }
+  }
+}`)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run(
@@ -781,11 +871,28 @@ func TestAuditRunClassifiesConfigCredentialAndReportErrorsWithoutSecrets(t *test
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001", "name": "manual review", "dimension": "protocol",
-		"protocol": "openai-chat", "kind": "manual_unknown", "default": true,
-		"options": {"reason": "requires external evidence"},
-		"request": {"method": "", "path": "", "body": {}}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "manual review",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": []
+    }
+  }
+}`)
 	tests := []struct {
 		name         string
 		args         []string
@@ -884,13 +991,42 @@ func (do httpDoerFunc) Do(request *http.Request) (*http.Response, error) {
 func TestAuditRunPropagatesCallerCancellation(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-		"id": "C001", "name": "chat sync", "dimension": "protocol",
-		"protocol": "openai-chat", "kind": "chat_sync", "default": true,
-		"request": {
-			"method": "POST", "path": "/v1/chat/completions",
-			"body": {"messages": [{"role": "user", "content": "hello"}]}
-		}
-	}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 	requestStarted := make(chan struct{})
 	dependencies := defaultDependencies()
 	dependencies.getenv = func(name string) string {
@@ -995,13 +1131,42 @@ func TestAuditRunHumanPlanNilOrTruncatedWriterStopsBeforeHTTPAndReport(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-				"id": "C001", "name": "chat sync", "dimension": "protocol",
-				"protocol": "openai-chat", "kind": "chat_sync", "default": true,
-				"request": {
-					"method": "POST", "path": "/v1/chat/completions",
-					"body": {"messages": [{"role": "user", "content": "hello"}]}
-				}
-			}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 			var httpCalls atomic.Int32
 			var reportCalls atomic.Int32
 			dependencies := defaultDependencies()
@@ -1088,13 +1253,42 @@ func TestAuditRunFirstPlanWriteFailureCancelsBeforeHTTP(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-				"id": "C001", "name": "chat sync", "dimension": "protocol",
-				"protocol": "openai-chat", "kind": "chat_sync", "default": true,
-				"request": {
-					"method": "POST", "path": "/v1/chat/completions",
-					"body": {"messages": [{"role": "user", "content": "hello"}]}
-				}
-			}`)
+  "schema_version": 3,
+  "key": "C001",
+  "name": "chat sync",
+  "dimension": "protocol",
+  "protocol": "openai-chat",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        }
+      ]
+    }
+  }
+}`)
 			var httpCalls atomic.Int32
 			dependencies := defaultDependencies()
 			dependencies.getenv = func(string) string { return "sk-paid-secret" }

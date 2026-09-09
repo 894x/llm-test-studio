@@ -36,10 +36,62 @@ func (doer *miniMaxSequenceDoer) Do(request *http.Request) (*http.Response, erro
 func TestRunMiniMaxVideoPollsH3TaskToVerifiedBusinessSuccess(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "minimax-video", "H3001", `{
-		"id":"H3001","name":"H3 minimum duration","dimension":"boundary","protocol":"minimax-video","model_targets":["MiniMax-H3"],
-		"kind":"minimax_video_task_success","default":true,
-		"request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":4,"ratio":"16:9"}}
-	}`)
+  "schema_version": 3,
+  "key": "H3001",
+  "name": "H3 minimum duration",
+  "dimension": "boundary",
+  "protocol": "minimax-video",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "minimax-video",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "cat"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 4,
+          "ratio": "16:9"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "terminal",
+          "source": "task",
+          "pointer": "/status",
+          "operator": "equals",
+          "value": "succeeded"
+        },
+        {
+          "id": "video",
+          "source": "response",
+          "pointer": "/task/content/url",
+          "operator": "type",
+          "value": "string"
+        }
+      ],
+      "workflow": {
+        "mode": "wait"
+      }
+    }
+  }
+}`)
 	doer := &miniMaxSequenceDoer{responses: []miniMaxResponse{
 		{status: http.StatusOK, body: `{"task_id":"task-123"}`},
 		{status: http.StatusOK, body: `{"task":{"id":"task-123","model":"MiniMax-H3","status":"running","resolution":"768P","duration":4,"ratio":"16:9","task_type":"generation","modality":"video"}}`},
@@ -86,10 +138,52 @@ func TestRunMiniMaxVideoPassesOnlyForStructuredBadRequestRejection(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeCase(t, casesRoot, "minimax-video", "H3002", `{
-				"id":"H3002","name":"H3 duration below minimum","dimension":"boundary","protocol":"minimax-video","model_targets":["MiniMax-H3"],
-				"kind":"minimax_video_task_rejected","default":true,
-				"request":{"method":"POST","path":"/v2/video_generation","headers":{},"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":3,"ratio":"16:9"}}
-			}`)
+  "schema_version": 3,
+  "key": "H3002",
+  "name": "H3 duration below minimum",
+  "dimension": "boundary",
+  "protocol": "minimax-video",
+  "enabled": true,
+  "default": true,
+  "severity": "critical",
+  "execution_mode": "automatic",
+  "definition": {
+    "schema_version": 2,
+    "type": "minimax-video",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "content": [
+            {
+              "type": "text",
+              "text": "cat"
+            }
+          ],
+          "resolution": "768P",
+          "duration": 3,
+          "ratio": "16:9"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error",
+          "source": "response",
+          "pointer": "/error/type",
+          "operator": "equals",
+          "value": "bad_request_error"
+        }
+      ]
+    }
+  }
+}`)
 			doer := &miniMaxSequenceDoer{responses: []miniMaxResponse{{status: test.status, body: test.body}}}
 			var written apiaudit.Report
 			service := compatibility.New(compatibility.Dependencies{

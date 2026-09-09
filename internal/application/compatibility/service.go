@@ -3,6 +3,7 @@ package compatibility
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,9 +16,12 @@ import (
 
 	"github.com/894x/llm-test-studio/engine/apiaudit"
 	"github.com/894x/llm-test-studio/internal/protocol"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 type RunRequest struct {
+	Seed         uint64
+	Inputs       json.RawMessage
 	Suite        string
 	CasesRoot    string
 	BaseURL      string
@@ -28,7 +32,6 @@ type RunRequest struct {
 	AllCases     bool
 	AllModels    bool
 	DryRun       bool
-	NoWait       bool
 	PollInterval time.Duration
 	Timeout      time.Duration
 	Concurrency  int
@@ -147,10 +150,14 @@ func (service *Service) Run(ctx context.Context, request RunRequest) (FinalEvent
 	if err != nil {
 		return FinalEvent{}, &ConfigError{Err: err}
 	}
-	cases = apiaudit.FilterCasesForModel(cases, config.Model)
 	selected, err := apiaudit.SelectCases(cases, request.CaseIDs, request.AllCases)
 	if err != nil {
 		return FinalEvent{}, &ConfigError{Err: err}
+	}
+	for _, item := range selected {
+		if _, err := testspec.ValidateInputs(item.Spec.Inputs, config.Inputs); err != nil {
+			return FinalEvent{}, &ConfigError{Err: fmt.Errorf("case %s: %w", item.ID, err)}
+		}
 	}
 	runs, err := apiaudit.ExpandRuns(config, selected)
 	if err != nil {
@@ -214,12 +221,7 @@ func (service *Service) runDry(ctx context.Context, config apiaudit.RunConfig, r
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		var result apiaudit.CaseResult
-		if config.Suite == "openai-chat" {
-			result = dryRunResult(config, planned)
-		} else {
-			result = service.runPlannedCase(ctx, config, planned)
-		}
+		result := service.runPlannedCase(ctx, config, planned)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -305,7 +307,12 @@ func (service *Service) runPlannedCase(parent context.Context, config apiaudit.R
 	defer cancelCase()
 	result, err := apiaudit.RunCase(caseContext, service.httpDoer, config, planned)
 	if err != nil {
-		return apiaudit.CaseResult{ID: planned.ResultID, Name: planned.Case.Name, Dimension: planned.Case.Dimension, Protocol: planned.Case.Protocol, Model: planned.Model, Severity: planned.Case.Severity, Status: apiaudit.StatusFail, Evidence: err.Error()}
+		return apiaudit.CaseResult{
+			ID: planned.ResultID, Name: planned.Case.Name, Dimension: planned.Case.Dimension,
+			Protocol: planned.Case.Protocol, Model: planned.Model, Severity: planned.Case.Severity,
+			Status: apiaudit.StatusFail, Evidence: err.Error(),
+			Verification: testspec.Verdict{Status: testspec.VerdictIndeterminate, Assertions: []testspec.AssertionResult{}},
+		}
 	}
 	return result
 }
@@ -361,8 +368,13 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 
 	config := apiaudit.RunConfig{
 		Suite: request.Suite, BaseURL: request.BaseURL, APIKey: strings.TrimSpace(request.APIKey), Model: strings.TrimSpace(request.Model),
-		DryRun: request.DryRun, NoWait: request.NoWait,
+		DryRun: request.DryRun, Seed: request.Seed,
 		PollInterval: request.PollInterval, Timeout: request.Timeout,
+	}
+	if len(request.Inputs) > 0 {
+		if err := json.Unmarshal(request.Inputs, &config.Inputs); err != nil || config.Inputs == nil {
+			return apiaudit.RunConfig{}, errors.New("--inputs must be a JSON object of declared case inputs")
+		}
 	}
 	if request.Suite == "seedance" {
 		if config.Model == "" {
@@ -380,7 +392,7 @@ func newPlanEvent(metadata EventMetadata, runs []apiaudit.PlannedRun) PlanEvent 
 	for _, planned := range runs {
 		plannedRuns = append(plannedRuns, PlannedRun{
 			ID: planned.ResultID, CaseID: planned.Case.ID, Name: planned.Case.Name,
-			Dimension: planned.Case.Dimension, Kind: planned.Case.Kind, Model: planned.Model,
+			Dimension: planned.Case.Dimension, Protocol: planned.Case.Protocol, Model: planned.Model,
 		})
 	}
 	return PlanEvent{
@@ -432,34 +444,4 @@ func newUUID() (string, error) {
 	value[6] = (value[6] & 0x0f) | 0x40
 	value[8] = (value[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
-}
-
-func dryRunResult(config apiaudit.RunConfig, planned apiaudit.PlannedRun) apiaudit.CaseResult {
-	result := apiaudit.CaseResult{
-		ID: planned.ResultID, Name: planned.Case.Name, Dimension: planned.Case.Dimension,
-		Protocol: planned.Case.Protocol, Model: planned.Model, Status: apiaudit.StatusUnknown,
-		Severity: planned.Case.Severity, Evidence: "dry-run: request was not submitted",
-	}
-	if planned.Case.Kind == "manual_unknown" {
-		result.Evidence = "dry-run: manual/externally-instrumented case has no HTTP request"
-		return result
-	}
-	body := make(map[string]any, len(planned.Case.Request.Body)+1)
-	for key, value := range planned.Case.Request.Body {
-		body[key] = value
-	}
-	if planned.Case.Kind != "models_contains" {
-		body["model"] = planned.Model
-	}
-	if len(body) == 0 {
-		body = nil
-	}
-	path := planned.Case.Request.Path
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	result.Exchanges = []apiaudit.HTTPExchange{{
-		Method: planned.Case.Request.Method, URL: strings.TrimRight(config.BaseURL, "/") + path, RequestBody: body,
-	}}
-	return result
 }

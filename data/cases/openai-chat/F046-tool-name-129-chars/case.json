@@ -1,18 +1,57 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "tool_name_129_chars",
   "name": "工具定义 · 函数名 129 字符应拒绝",
   "dimension": "tools",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
-    "kind": "error_schema",
-    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "调用工具"}], "tools": [{"type": "function", "function": {"name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", "description": "非法长度", "parameters": {"type": "object"}}}], "max_completion_tokens": 32}},
-    "options": {
-        "expected_http_status": 400}
-  }}
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "调用工具"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+                "description": "非法长度",
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            }
+          ],
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
 }

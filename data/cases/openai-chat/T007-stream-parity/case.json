@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T007",
   "name": "流式与非流式计费一致性",
   "dimension": "billing",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "stream_parity",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -26,14 +23,129 @@
             }
           ],
           "temperature": 0,
-          "max_tokens": 256,
-          "stream": true,
-          "stream_options": {
-            "include_usage": true
-          }
+          "max_tokens": 256
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "equals",
+          "value": true,
+          "pointer": "/1/stream_completed"
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/metrics/stream_frames",
+          "value": 2
+        },
+        {
+          "id": "r9",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices/0/finish_reason"
+        },
+        {
+          "id": "r10",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "r11",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r12",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/message/content",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/choices/0/message/content"
+          }
+        },
+        {
+          "id": "r13",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/usage/total_tokens",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/total_tokens"
+          }
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "仅输出 STREAM_PARITY_OK"
+                  }
+                ],
+                "temperature": 0,
+                "max_tokens": 256,
+                "stream": true,
+                "stream_options": {
+                  "include_usage": true
+                }
+              }
+            }
+          }
+        ]
+      }
     }
   }
 }

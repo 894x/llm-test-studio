@@ -13,11 +13,12 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 const (
 	CurrentSchemaVersion       = 1
-	CurrentDetailSchemaVersion = 2
+	CurrentDetailSchemaVersion = 3
 	// MaxSnapshotReports is the published latest-first report-list boundary.
 	// Storage ports must never return more entries in one snapshot.
 	MaxSnapshotReports = 100
@@ -55,19 +56,23 @@ const (
 )
 
 type ReportProjection struct {
-	ID              string
-	RunID           string
-	GeneratedAt     time.Time
-	RunStatus       domain.RunStatus
-	PlanName        string
-	ModelName       string
-	ChannelName     string
-	Passed          bool
-	Verdict         string
-	IssueCount      int64
-	CaseCount       int64
-	FailedCaseCount int64
-	AttachmentCount int64
+	PassedCaseCount        int64
+	VerifiedCaseCount      int64
+	ObservedCaseCount      int64
+	IndeterminateCaseCount int64
+	ID                     string
+	RunID                  string
+	GeneratedAt            time.Time
+	RunStatus              domain.RunStatus
+	PlanName               string
+	ModelName              string
+	ChannelName            string
+	Passed                 bool
+	Verdict                string
+	IssueCount             int64
+	CaseCount              int64
+	FailedCaseCount        int64
+	AttachmentCount        int64
 }
 
 type Service struct {
@@ -84,20 +89,24 @@ type Snapshot struct {
 }
 
 type Summary struct {
-	Source          ReportSource     `json:"source"`
-	ID              string           `json:"id"`
-	RunID           string           `json:"run_id,omitempty"`
-	GeneratedAt     time.Time        `json:"generated_at"`
-	RunStatus       domain.RunStatus `json:"run_status"`
-	PlanName        string           `json:"plan_name"`
-	ModelName       string           `json:"model_name"`
-	ChannelName     string           `json:"channel_name"`
-	Passed          bool             `json:"passed"`
-	Verdict         string           `json:"verdict"`
-	IssueCount      uint64           `json:"issue_count"`
-	CaseCount       uint64           `json:"case_count"`
-	FailedCaseCount uint64           `json:"failed_case_count"`
-	AttachmentCount uint64           `json:"attachment_count"`
+	PassedCaseCount        uint64           `json:"passed_case_count"`
+	VerifiedCaseCount      uint64           `json:"verified_case_count"`
+	ObservedCaseCount      uint64           `json:"observed_case_count"`
+	IndeterminateCaseCount uint64           `json:"indeterminate_case_count"`
+	Source                 ReportSource     `json:"source"`
+	ID                     string           `json:"id"`
+	RunID                  string           `json:"run_id,omitempty"`
+	GeneratedAt            time.Time        `json:"generated_at"`
+	RunStatus              domain.RunStatus `json:"run_status"`
+	PlanName               string           `json:"plan_name"`
+	ModelName              string           `json:"model_name"`
+	ChannelName            string           `json:"channel_name"`
+	Passed                 bool             `json:"passed"`
+	Verdict                string           `json:"verdict"`
+	IssueCount             uint64           `json:"issue_count"`
+	CaseCount              uint64           `json:"case_count"`
+	FailedCaseCount        uint64           `json:"failed_case_count"`
+	AttachmentCount        uint64           `json:"attachment_count"`
 }
 
 // Detail is the complete machine-readable report view. Report contains the
@@ -108,19 +117,26 @@ type Detail struct {
 	Source                   ReportSource                 `json:"source"`
 	Report                   domain.Report                `json:"report"`
 	RequestResults           []domain.Result              `json:"request_results"`
-	Suites                   []SuiteDetail                `json:"suites"`
+	Entries                  []EntryDetail                `json:"entries"`
 	UnassignedRequestResults []domain.Result              `json:"unassigned_request_results"`
 	Performance              *quicktest.PerformanceReport `json:"performance,omitempty"`
 }
 
-type SuiteDetail struct {
-	SuiteEntryID  string                        `json:"suite_entry_id"`
-	SuiteID       string                        `json:"suite_id"`
-	SuiteRevision uint64                        `json:"suite_revision"`
-	SuiteKey      string                        `json:"suite_key"`
-	SuiteName     string                        `json:"suite_name"`
-	Status        domain.SuiteReportStatus      `json:"status"`
+type EntryDetail struct {
+	WarmupCount   uint32                        `json:"warmup_count"`
+	Settings      testspec.RunSettings          `json:"settings"`
+	EntryID       string                        `json:"entry_id"`
+	TargetKind    domain.PlanTargetKind         `json:"target_kind"`
+	TargetID      string                        `json:"target_id"`
+	Name          string                        `json:"name"`
+	Key           string                        `json:"key"`
+	Protocol      domain.Protocol               `json:"protocol"`
+	Parameters    map[string]json.RawMessage    `json:"parameters"`
+	Load          domain.LoadProfile            `json:"load"`
+	Seed          uint64                        `json:"seed"`
+	Status        domain.EntryReportStatus      `json:"status"`
 	Conclusion    domain.ReportConclusion       `json:"conclusion"`
+	Verification  domain.VerificationSummary    `json:"verification"`
 	SLA           map[string]domain.MetricValue `json:"sla"`
 	Metrics       map[string]domain.MetricValue `json:"metrics"`
 	Timeline      []json.RawMessage             `json:"timeline"`
@@ -129,14 +145,15 @@ type SuiteDetail struct {
 }
 
 type CaseDetail struct {
-	CaseID          string          `json:"case_id"`
-	Revision        uint64          `json:"revision"`
-	Key             string          `json:"key"`
-	Name            string          `json:"name"`
-	CaseType        domain.CaseType `json:"case_type"`
-	CaseTypeVersion uint32          `json:"case_type_version"`
-	SummaryResult   *domain.Result  `json:"summary_result,omitempty"`
-	RequestResults  []domain.Result `json:"request_results"`
+	CaseID         string                        `json:"case_id"`
+	Revision       uint64                        `json:"revision"`
+	Key            string                        `json:"key"`
+	Name           string                        `json:"name"`
+	Protocol       domain.Protocol               `json:"protocol"`
+	Verification   domain.VerificationSummary    `json:"verification"`
+	Metrics        map[string]domain.MetricValue `json:"metrics"`
+	SummaryResult  *domain.Result                `json:"summary_result,omitempty"`
+	RequestResults []domain.Result               `json:"request_results"`
 }
 
 func (service Service) Detail(ctx context.Context, reportID string) (Detail, error) {
@@ -158,7 +175,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 			return Detail{
 				SchemaVersion: CurrentSchemaVersion, Source: SourceQuickPerformance,
 				Performance: &performance, RequestResults: []domain.Result{},
-				Suites: []SuiteDetail{}, UnassignedRequestResults: []domain.Result{},
+				Entries: []EntryDetail{}, UnassignedRequestResults: []domain.Result{},
 			}, nil
 		}
 		if !errors.Is(err, quicktest.ErrPerformanceArchiveNotFound) {
@@ -197,24 +214,7 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 			requestResults = append(requestResults, result)
 		}
 	}
-	var suites []SuiteDetail
-	var unassigned []domain.Result
-	if len(report.PlanSnapshot.Suites) > 0 {
-		suites, unassigned, err = hierarchicalDetail(report, requestResults)
-	} else if report.PlanSnapshot.QuickTask != nil {
-		canonical := make([]domain.Result, len(requestResults))
-		for index, result := range requestResults {
-			if result.SuiteEntryID != "" || result.CaseID == "" {
-				return Detail{}, classified(ErrInconsistent, errors.New("quick-task request result has invalid stored ownership"))
-			}
-			result.SuiteEntryID = report.RunID
-			canonical[index] = result
-		}
-		requestResults = canonical
-		suites, unassigned, err = quickTaskDetail(report, requestResults)
-	} else {
-		err = errors.New("run report has neither authored suites nor quick-task provenance")
-	}
+	suites, unassigned, err := hierarchicalDetail(report, requestResults)
 	if err != nil {
 		return Detail{}, classified(ErrInconsistent, err)
 	}
@@ -223,76 +223,18 @@ func (service Service) Detail(ctx context.Context, reportID string) (Detail, err
 		Source:                   SourceRun,
 		Report:                   report,
 		RequestResults:           requestResults,
-		Suites:                   suites,
+		Entries:                  suites,
 		UnassignedRequestResults: unassigned,
 	}, nil
 }
 
-func quickTaskDetail(report domain.Report, requestResults []domain.Result) ([]SuiteDetail, []domain.Result, error) {
-	snapshot := report.PlanSnapshot
-	if snapshot.QuickTask == nil || len(snapshot.Cases) != len(snapshot.CaseDefinitions) {
-		return nil, nil, errors.New("quick-task report snapshot is incomplete")
-	}
-	knownCases := make(map[string]int, len(snapshot.Cases))
-	for index, ref := range snapshot.Cases {
-		knownCases[ref.CaseID] = index
-	}
-	groupedRequests := make(map[string][]domain.Result, len(snapshot.Cases))
-	unassigned := make([]domain.Result, 0)
-	for _, result := range requestResults {
-		if result.SuiteEntryID != report.RunID || result.CaseID == "" {
-			unassigned = append(unassigned, result)
-			continue
-		}
-		if _, exists := knownCases[result.CaseID]; !exists {
-			return nil, nil, errors.New("quick-task request result references a case outside the report snapshot")
-		}
-		groupedRequests[result.CaseID] = append(groupedRequests[result.CaseID], result)
-	}
-	summaries := make(map[string]domain.Result, len(report.CaseResults))
-	for _, result := range report.CaseResults {
-		if result.SuiteEntryID != report.RunID {
-			return nil, nil, errors.New("quick-task case result has invalid synthetic ownership")
-		}
-		if _, exists := knownCases[result.CaseID]; !exists {
-			return nil, nil, errors.New("quick-task case result references a case outside the report snapshot")
-		}
-		if _, duplicate := summaries[result.CaseID]; duplicate {
-			return nil, nil, errors.New("duplicate quick-task case result ownership")
-		}
-		summaries[result.CaseID] = result
-	}
-	cases := make([]CaseDetail, 0, len(snapshot.CaseDefinitions))
-	for index, definition := range snapshot.CaseDefinitions {
-		ref := snapshot.Cases[index]
-		var summary *domain.Result
-		if result, exists := summaries[ref.CaseID]; exists {
-			copy := result
-			summary = &copy
-		}
-		cases = append(cases, CaseDetail{
-			CaseID: ref.CaseID, Revision: ref.Revision, Key: definition.Key, Name: definition.Name,
-			CaseType: definition.Definition.Type, CaseTypeVersion: definition.Definition.TypeVersion,
-			SummaryResult: summary, RequestResults: append([]domain.Result{}, groupedRequests[ref.CaseID]...),
-		})
-	}
-	suiteReport := report.SuiteReports[0]
-	return []SuiteDetail{{
-		SuiteEntryID: suiteReport.SuiteEntryID, SuiteID: suiteReport.SuiteID, SuiteRevision: suiteReport.SuiteRevision,
-		SuiteKey: suiteReport.SuiteKey, SuiteName: suiteReport.SuiteName, Status: suiteReport.Status,
-		Conclusion: suiteReport.Conclusion, SLA: suiteReport.SLA, Metrics: suiteReport.Metrics,
-		Timeline:      append([]json.RawMessage{}, suiteReport.Timeline...),
-		Distributions: append([]json.RawMessage{}, suiteReport.Distributions...), Cases: cases,
-	}}, unassigned, nil
-}
-
-func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([]SuiteDetail, []domain.Result, error) {
+func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([]EntryDetail, []domain.Result, error) {
 	type owner struct {
 		suiteIndex int
 		caseIndex  int
 	}
 	owners := make(map[string]owner)
-	for suiteIndex, suite := range report.PlanSnapshot.Suites {
+	for suiteIndex, suite := range report.PlanSnapshot.Entries {
 		for caseIndex, ref := range suite.Cases {
 			owners[detailResultKey(suite.EntryID, ref.CaseID)] = owner{suiteIndex: suiteIndex, caseIndex: caseIndex}
 		}
@@ -300,11 +242,11 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 	groupedRequests := make(map[string][]domain.Result)
 	unassigned := make([]domain.Result, 0)
 	for _, result := range requestResults {
-		if result.SuiteEntryID == "" || result.CaseID == "" {
+		if result.EntryID == "" || result.CaseID == "" {
 			unassigned = append(unassigned, result)
 			continue
 		}
-		key := detailResultKey(result.SuiteEntryID, result.CaseID)
+		key := detailResultKey(result.EntryID, result.CaseID)
 		if _, exists := owners[key]; !exists {
 			return nil, nil, errors.New("request result references a suite or case outside the report snapshot")
 		}
@@ -313,7 +255,7 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 
 	summaries := make(map[string]domain.Result, len(report.CaseResults))
 	for _, result := range report.CaseResults {
-		key := detailResultKey(result.SuiteEntryID, result.CaseID)
+		key := detailResultKey(result.EntryID, result.CaseID)
 		if _, exists := owners[key]; !exists {
 			return nil, nil, errors.New("case result references a suite or case outside the report snapshot")
 		}
@@ -323,9 +265,9 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 		summaries[key] = result
 	}
 
-	suites := make([]SuiteDetail, 0, len(report.PlanSnapshot.Suites))
-	for suiteIndex, snapshot := range report.PlanSnapshot.Suites {
-		suiteReport := report.SuiteReports[suiteIndex]
+	suites := make([]EntryDetail, 0, len(report.PlanSnapshot.Entries))
+	for suiteIndex, snapshot := range report.PlanSnapshot.Entries {
+		suiteReport := report.EntryReports[suiteIndex]
 		cases := make([]CaseDetail, 0, len(snapshot.CaseDefinitions))
 		for caseIndex, definition := range snapshot.CaseDefinitions {
 			ref := snapshot.Cases[caseIndex]
@@ -337,22 +279,18 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 			}
 			requests := append([]domain.Result{}, groupedRequests[key]...)
 			cases = append(cases, CaseDetail{
-				CaseID:          ref.CaseID,
-				Revision:        ref.Revision,
-				Key:             definition.Key,
-				Name:            definition.Name,
-				CaseType:        definition.Definition.Type,
-				CaseTypeVersion: definition.Definition.TypeVersion,
-				SummaryResult:   summary,
-				RequestResults:  requests,
+				CaseID:   ref.CaseID,
+				Revision: ref.Revision,
+				Key:      definition.Key,
+				Name:     definition.Name,
+				Protocol: definition.Protocol, Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
+				SummaryResult:  summary,
+				RequestResults: requests,
 			})
 		}
-		suites = append(suites, SuiteDetail{
-			SuiteEntryID:  suiteReport.SuiteEntryID,
-			SuiteID:       suiteReport.SuiteID,
-			SuiteRevision: suiteReport.SuiteRevision,
-			SuiteKey:      suiteReport.SuiteKey,
-			SuiteName:     suiteReport.SuiteName,
+		suites = append(suites, EntryDetail{
+			EntryID: suiteReport.EntryID, WarmupCount: suiteReport.WarmupCount, Settings: suiteReport.Settings, TargetKind: suiteReport.TargetKind, TargetID: suiteReport.TargetID, Name: suiteReport.Name, Key: suiteReport.Key, Protocol: suiteReport.Protocol,
+			Parameters: suiteReport.Parameters, Load: suiteReport.Load, Seed: suiteReport.Seed, Verification: suiteReport.Verification,
 			Status:        suiteReport.Status,
 			Conclusion:    suiteReport.Conclusion,
 			SLA:           suiteReport.SLA,
@@ -514,7 +452,7 @@ func (projection ReportProjection) summary() Summary {
 		ModelName: projection.ModelName, ChannelName: projection.ChannelName,
 		Passed: projection.Passed, Verdict: projection.Verdict,
 		IssueCount: uint64(projection.IssueCount), CaseCount: uint64(projection.CaseCount),
-		FailedCaseCount: uint64(projection.FailedCaseCount), AttachmentCount: uint64(projection.AttachmentCount),
+		FailedCaseCount: uint64(projection.FailedCaseCount), PassedCaseCount: uint64(projection.PassedCaseCount), VerifiedCaseCount: uint64(projection.VerifiedCaseCount), ObservedCaseCount: uint64(projection.ObservedCaseCount), IndeterminateCaseCount: uint64(projection.IndeterminateCaseCount), AttachmentCount: uint64(projection.AttachmentCount),
 	}
 }
 

@@ -1,0 +1,33 @@
+{
+  "file_schema_version": 4,
+  "id": "c432d272-a615-53e4-b714-7d116e3c2ec0",
+  "revision": 1,
+  "created_at": "2026-09-09T00:00:00Z",
+  "updated_at": "2026-09-09T00:00:00Z",
+  "name": "TTFT 首 Token 延迟采样计划",
+  "protocol": "openai-chat",
+  "seed": 894,
+  "entries": [
+    {
+      "entry_id": "7b65eb78-5b8e-5528-8705-78c6a9a0242a",
+      "target_kind": "case",
+      "target_id": "45c9189f-1e36-587f-a7dc-b999132db872",
+      "parameters": {},
+      "load": {
+        "mode": "fixed_concurrency",
+        "concurrency": 1,
+        "request_count": 3,
+        "rate_per_second": 0,
+        "duration_ms": 0,
+        "request_timeout_ms": 600000
+      },
+      "sla": {
+        "thresholds": {
+          "first_frame_p50_ms": 5000
+        }
+      },
+      "warmup_count": 0,
+      "settings": {}
+    }
+  ]
+}

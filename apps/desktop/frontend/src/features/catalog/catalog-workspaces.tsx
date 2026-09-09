@@ -1,7 +1,7 @@
 import { caseTypeLabel } from "./presentation"
-import { translateDesktop as tx } from "@/i18n/runtime"
 import { useMemo, useState } from "react"
-import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
+import { NewRunSheet } from "@/features/runs/run-workspace"
+import type { StartRunTargetCommand } from "@/features/runs/data"
 import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
@@ -536,10 +536,10 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
   ]))
   const caseSearch = useCatalogSearch(catalog.test_cases, (testCase) => [
     testCase.key, testCase.name, testCase.type, typeLabels.get(`${testCase.type}@${testCase.type_version}`) ?? caseTypeLabel(testCase.type),
-    testCase.protocol, PROTOCOL_LABELS[testCase.protocol], modelTargetLabel(testCase), t(casePolicyKey(testCase)),
+    testCase.protocol, PROTOCOL_LABELS[testCase.protocol], caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
   ])
   const suiteSearch = useCatalogSearch(catalog.suites, (suite) => [
-    suite.key, suite.name, suite.protocol, PROTOCOL_LABELS[suite.protocol], suite.model_target,
+    suite.key, suite.name, suite.protocol, PROTOCOL_LABELS[suite.protocol],
   ])
   const search = tab === "cases" ? caseSearch : suiteSearch
   const selected = caseSearch.rows.find((item) => item.id === selectedID) ?? caseSearch.rows[0]
@@ -570,7 +570,6 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-2 text-[11px]">{tx("desktop:catalog_case")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_case_type")}</TableHead>
-                <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_applicable_models")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_policy")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -590,7 +589,6 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                     <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
                   </TableCell>
                   <TableCell className="py-1 text-[11px]">{typeLabels.get(`${testCase.type}@${testCase.type_version}`) ?? caseTypeLabel(testCase.type)}</TableCell>
-                  <TableCell className="max-w-56 py-1 text-[11px] text-muted-foreground">{modelTargetSummary(testCase)}</TableCell>
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />
                   </TableCell>
@@ -633,7 +631,7 @@ function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: Cata
                   <span aria-hidden="true" className="mt-1.5 size-1 shrink-0 rounded-full bg-muted-foreground" />
                   <span className="min-w-0 break-words text-xs font-medium leading-4">
                     {cases.get(ref.case_id)?.name ?? tx("desktop:catalog_unknown_case")}
-                    {cases.get(ref.case_id) ? <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{modelTargetLabel(cases.get(ref.case_id)!)}</span> : null}
+                    {cases.get(ref.case_id) ? <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">{caseProtocolLabel(cases.get(ref.case_id)!)}</span> : null}
                   </span>
                 </li>
               ))}
@@ -657,7 +655,7 @@ function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catal
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={tx("desktop:catalog_source_key")} value={testCase.key} />
         <InspectorRow label={tx("desktop:catalog_protocol")} value={PROTOCOL_LABELS[testCase.protocol]} />
-        <InspectorRow label={tx("desktop:catalog_applicable_models")} value={modelTargetLabel(testCase)} />
+        <InspectorRow label={tx("desktop:catalog_applicable_models")} value={caseProtocolLabel(testCase)} />
         <InspectorRow label={tx("desktop:catalog_dimension")} value={testCase.dimension} />
         <InspectorRow label={tx("desktop:catalog_execution_policy")} value={t(casePolicyKey(testCase))} />
         <InspectorRow label={tx("desktop:catalog_severity")} value={testCase.severity === "critical" ? tx("desktop:catalog_critical") : tx("desktop:catalog_normal")} />
@@ -695,14 +693,8 @@ function casePolicyKey(testCase: CatalogTestCase): string {
   return "cases.policyAutomatic"
 }
 
-function modelTargetLabel(testCase: CatalogTestCase): string {
-  return testCase.model_targets.length ? testCase.model_targets.join(" · ") : tx("desktop:catalog_all_models")
-}
+function caseProtocolLabel(testCase: CatalogTestCase) { return PROTOCOL_LABELS[testCase.protocol] }
 
-function modelTargetSummary(testCase: CatalogTestCase): string {
-  if (testCase.model_targets.length <= 2) return modelTargetLabel(testCase)
-  return tx("desktop:catalog_value_and_others_value_models", { value1: testCase.model_targets[0], value2: testCase.model_targets.length })
-}
 
 export function PlansWorkspace({
   catalog,
@@ -719,18 +711,15 @@ export function PlansWorkspace({
   mutationPending: boolean
   mutationError: string
   commandPending: boolean
-  onStartPlan: (planID: string) => Promise<void>
+  onStartPlan: (command: StartRunTargetCommand) => Promise<void>
 }) {
   const { t } = useTranslation("catalog")
   const [selectedID, setSelectedID] = useState("")
-  const modelNames = new Map(catalog.models.map((model) => [model.id, model.name]))
-  const channelNames = new Map(catalog.channels.map((channel) => [channel.id, channel.name]))
   const search = useCatalogSearch(catalog.plans, (plan) => [
     plan.id, plan.name,
-    ...plan.model_ids.map((id) => modelNames.get(id) ?? ""),
-    ...plan.channel_ids.map((id) => channelNames.get(id) ?? ""),
-    ...plan.suites.flatMap((suite) => [
-      suite.entry_id, suite.suite_id, suite.suite_key, suite.suite_name, suite.load_mode,
+    plan.protocol,
+    ...plan.entries.flatMap((suite) => [
+      suite.entry_id, suite.target_id, suite.target_key, suite.target_name, suite.load_mode,
       t(`plans.load${suite.load_mode === "single" ? "Single" : suite.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`),
     ]),
   ])
@@ -742,7 +731,7 @@ export function PlansWorkspace({
       count={t("plans.count", { count: catalog.plans.length })}
       inspector={
         selected ? (
-          <PlanInspector plan={selected} commandPending={commandPending} onStartPlan={onStartPlan} />
+          <PlanInspector key={selected.id} catalog={catalog} plan={selected} commandPending={commandPending} onStartPlan={onStartPlan} />
         ) : (
           <EmptyInspector label={t("plans.noneSelected")} />
         )
@@ -783,9 +772,9 @@ export function PlansWorkspace({
                     <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision}</div>
                   </TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
-                    {t("plans.objectCount", { models: plan.model_count, channels: plan.channel_count, suites: plan.suite_count, cases: plan.case_count })}
+                    {t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })}
                   </TableCell>
-                  <TableCell className="py-1 text-xs">{plan.suites.map((suite, index) => `${index + 1}. ${suite.suite_name}`).join(" → ")}</TableCell>
+                  <TableCell className="py-1 text-xs">{plan.entries.map((suite, index) => `${index + 1}. ${suite.target_name}`).join(" → ")}</TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">{t("plans.sequentialContinue")}</TableCell>
                 </TableRow>
               ))}
@@ -799,12 +788,14 @@ export function PlansWorkspace({
 
 function PlanInspector({
   plan,
+  catalog,
   commandPending,
   onStartPlan,
 }: {
   plan: CatalogPlan
+  catalog: CatalogSnapshot
   commandPending: boolean
-  onStartPlan: (planID: string) => Promise<void>
+  onStartPlan: (command: StartRunTargetCommand) => Promise<void>
 }) {
   const { t } = useTranslation("catalog")
   return (
@@ -813,26 +804,24 @@ function PlanInspector({
       <Separator />
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
-        <InspectorRow label={t("plans.objects")} value={t("plans.suiteObjectCount", { suites: plan.suite_count, cases: plan.case_count })} />
+        <InspectorRow label={t("plans.objects")} value={t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })} />
         <InspectorRow label={t("plans.executionPolicy")} value={t("plans.sequentialContinue")} />
       </dl>
       <div className="border-t px-4 py-2">
         <div className="text-[11px] font-medium text-muted-foreground">{t("plans.suiteOrder")}</div>
         <ol className="mt-1 space-y-2">
-          {plan.suites.map((suite, index) => {
+          {plan.entries.map((suite, index) => {
             const loadLabel = t(`plans.load${suite.load_mode === "single" ? "Single" : suite.load_mode === "fixed_concurrency" ? "Fixed" : "Open"}`)
             const sendTarget = t(suite.request_count > 0 ? "common.requestCount" : "common.seconds", { count: suite.request_count > 0 ? suite.request_count : Math.round(suite.duration_ms / 1000) })
             return <li key={suite.entry_id} className="min-w-0">
-              <div className="text-xs font-medium [overflow-wrap:anywhere]">{index + 1}. {suite.suite_name}</div>
-              <div className="text-[10px] text-muted-foreground [overflow-wrap:anywhere]">{suite.suite_key} · r{suite.suite_revision} · {loadLabel} · {t("plans.concurrency", { count: suite.concurrency })} · {sendTarget}</div>
+              <div className="text-xs font-medium [overflow-wrap:anywhere]">{index + 1}. {suite.target_name}</div>
+              <div className="text-[10px] text-muted-foreground [overflow-wrap:anywhere]">{suite.target_key} · {suite.target_kind} · {loadLabel} · {t("plans.concurrency", { count: suite.concurrency })} · {sendTarget}</div>
             </li>
           })}
         </ol>
       </div>
       <div className="border-t px-4 py-3">
-        <Button size="sm" disabled={commandPending} onClick={() => void onStartPlan(plan.id)}>
-          <PlayIcon data-icon="inline-start" /> {t(commandPending ? "plans.creating" : "plans.run")}
-        </Button>
+        <NewRunSheet plans={[{ id: plan.id, name: plan.name, description: plan.protocol, caseCount: plan.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
       </div>
     </>
   )

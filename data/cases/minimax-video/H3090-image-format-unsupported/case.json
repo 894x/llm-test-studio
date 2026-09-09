@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "h3.image.format_unsupported",
   "name": "MiniMax H3 · 拒绝不支持的图片格式",
   "dimension": "media-format",
   "protocol": "minimax-video",
-  "model_targets": [
-    "MiniMax-H3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "minimax-video",
     "type_version": 1,
     "spec": {
-      "kind": "minimax_video_task_rejected",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v2/video_generation",
-        "headers": {},
         "body": {
           "content": [
             {
@@ -40,13 +34,42 @@
           "ratio": "adaptive"
         }
       },
-      "options": {
-        "reason": "需要有效 GIF fixture",
-        "fixture_requirements": {
-          "fixture_id": "H3_IMAGE_GIF",
-          "format": "GIF"
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/type",
+          "value": "error"
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/type",
+          "value": "bad_request_error"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/http_code",
+          "value": "400"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
         }
-      }
+      ]
     }
   }
 }

@@ -34,9 +34,7 @@ type Repository interface {
 	GetChannel(context.Context, string) (domain.Channel, error)
 	GetChannelModel(context.Context, string) (domain.ChannelModel, error)
 	GetTestCase(context.Context, string) (domain.TestCase, error)
-	GetTestCaseRevision(context.Context, string, uint64) (domain.TestCase, error)
 	GetSuite(context.Context, string) (domain.Suite, error)
-	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
 	GetPlan(context.Context, string) (domain.Plan, error)
 
 	CreateModel(context.Context, domain.Model) error

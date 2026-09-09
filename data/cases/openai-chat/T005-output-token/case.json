@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T005",
   "name": "输出 Token 精准核验",
   "dimension": "billing",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -29,11 +26,52 @@
           "max_tokens": 8
         }
       },
-      "options": {
-        "expected_exact": "5",
-        "max_completion_tokens": 3,
-        "require_usage": true
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "equals",
+          "value": "5",
+          "transform": "trim"
+        },
+        {
+          "id": "r6",
+          "source": "usage",
+          "operator": "type",
+          "value": "object"
+        },
+        {
+          "id": "r7",
+          "source": "usage",
+          "operator": "lte",
+          "pointer": "/completion_tokens",
+          "value": 3
+        }
+      ]
     }
   }
 }

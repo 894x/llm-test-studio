@@ -1,18 +1,51 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "prompt_cache_key",
   "name": "缓存键 · prompt_cache_key 字符串应接受",
   "dimension": "cache",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3"],
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {"schema_version": 2, "type": "legacy.apiaudit", "type_version": 1, "spec": {
-    "kind": "chat_sync",
-    "request": {"method": "POST", "path": "/v1/chat/completions", "headers": {}, "body": {"messages": [{"role": "user", "content": "只回答：你好"}], "prompt_cache_key": "k3-boundary-session-001", "max_completion_tokens": 32}},
-    "options": {
-        "require_content": false}
-  }}
+  "definition": {
+    "schema_version": 2,
+    "type": "openai-chat",
+    "type_version": 1,
+    "spec": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "只回答：你好"
+            }
+          ],
+          "prompt_cache_key": "k3-boundary-session-001",
+          "max_completion_tokens": 32
+        }
+      },
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        }
+      ]
+    }
+  }
 }

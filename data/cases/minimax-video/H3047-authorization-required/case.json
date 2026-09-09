@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "h3.authorization.required",
   "name": "MiniMax H3 · Authorization 必填",
   "dimension": "authorization",
   "protocol": "minimax-video",
-  "model_targets": [
-    "MiniMax-H3"
-  ],
-  "enabled": true,
+  "enabled": false,
   "default": false,
   "severity": "critical",
-  "execution_mode": "automatic",
+  "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "minimax-video",
     "type_version": 1,
     "spec": {
-      "kind": "minimax_video_auth_rejected",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v2/video_generation",
-        "headers": {},
         "body": {
           "content": [
             {
@@ -33,9 +27,42 @@
           "ratio": "16:9"
         }
       },
-      "options": {
-        "omit_authorization": true
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 401
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/type",
+          "value": "error"
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/type",
+          "value": "authorized_error"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/http_code",
+          "value": "401"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
     }
   }
 }

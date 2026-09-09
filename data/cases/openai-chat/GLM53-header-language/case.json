@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.header.language",
   "name": "GLM 5.3 · header.language（待验证模板）",
   "dimension": "glm53.language_header",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -32,20 +26,7 @@
           "reasoning_effort": "low"
         }
       },
-      "options": {
-        "contract_row": "language_header",
-        "source_urls": [
-          "https://docs.z.ai/api-reference/llm/chat-completion"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T2",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
-        "reason": "Verify endpoint-specific Accept-Language support, then check structured error code remains stable across language variants.",
-        "required_scenarios": [
-          "omitted/explicit documented header",
-          "error localization without matching exact prose"
-        ]
-      }
+      "assertions": []
     }
   }
 }

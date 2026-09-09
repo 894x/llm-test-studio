@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T027",
   "name": "缓存生效检测",
   "dimension": "billing",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "cache_visibility",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -29,8 +26,81 @@
           "max_tokens": 16
         }
       },
-      "options": {
-        "repetitions": 2
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices"
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "缓存黑盒探针：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。请仅输出 CACHE_OK。缓存黑盒探针：alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu。"
+                  }
+                ],
+                "temperature": 0,
+                "max_tokens": 16
+              }
+            }
+          }
+        ]
       }
     }
   }

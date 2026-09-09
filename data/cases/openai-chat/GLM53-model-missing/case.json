@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.model.missing",
   "name": "GLM 5.3 · model.missing",
   "dimension": "glm53.model",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
-  "enabled": true,
+  "enabled": false,
   "default": false,
   "severity": "critical",
-  "execution_mode": "automatic",
+  "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "glm53_rejected",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -32,22 +26,32 @@
           "reasoning_effort": "low"
         }
       },
-      "options": {
-        "contract_row": "model",
-        "source_urls": [
-          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T2",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
-        "model_mode": "preserve",
-        "expected_http_status": 400,
-        "error_codes": [
-          "1210",
-          "1213",
-          "1214"
-        ]
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "in",
+          "pointer": "/error/code",
+          "value": [
+            "1210",
+            "1213",
+            "1214"
+          ]
+        }
+      ]
     }
   }
 }

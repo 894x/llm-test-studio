@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T004",
   "name": "输入 usage 增长检测",
   "dimension": "billing",
@@ -10,28 +10,114 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "usage_baseline",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
               "role": "user",
-              "content": "usage probe"
+              "content": "仅输出 USAGE_OK"
             }
           ],
           "temperature": 0,
           "max_tokens": 16
         }
       },
-      "options": {
-        "long_prompt": "这是一个仅使用接口返回 usage 的黑盒审计长输入。请忽略前面的填充说明并仅输出 USAGE_OK。为了制造可观测的输入长度差异，这段说明重复表达同一个要求：只输出 USAGE_OK，不要解释，不要添加标点。",
-        "short_prompt": "仅输出 USAGE_OK"
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices"
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r9",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r10",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/usage/prompt_tokens"
+          }
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "这是一个仅使用接口返回 usage 的黑盒审计长输入。请忽略前面的填充说明并仅输出 USAGE_OK。为了制造可观测的输入长度差异，这段说明重复表达同一个要求：只输出 USAGE_OK，不要解释，不要添加标点。"
+                  }
+                ],
+                "temperature": 0,
+                "max_tokens": 16
+              }
+            }
+          }
+        ]
       }
     }
   }

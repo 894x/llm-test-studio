@@ -26,7 +26,7 @@
 | 对象 | 说明 | 持久化位置 |
 | --- | --- | --- |
 | Model Profile | 模型 ID、协议、端点、能力和可用测试套件，不含凭据 | `data/definitions/models/*.json` |
-| Test Case | 协议、维度、runner kind、请求定义和判定选项 | `data/cases/<protocol>/<case>/case.json` |
+| Test Case | 协议、维度、请求定义和判定选项 | `data/cases/<protocol>/<case>/case.json` |
 | Performance Plan | 请求数、分发窗口、连接上限、超时、token 与多模态配置 | 运行时对象；摘要保存到 SQLite |
 | Audit Plan | suite、模型、用例选择、dry-run、并发和 Seedance 安全选项 | Go 引擎 JSONL `plan` 事件；摘要保存到 SQLite |
 | Request Result | 单请求状态、延迟、token、流式 chunk、错误与采样响应 | SQLite `run_results` |
@@ -59,13 +59,14 @@
 ### FR-300 测试用例管理
 
 - FR-301：系统必须递归读取 `data/cases/` 下所有 `case.json` 并验证其目录协议与内容协议一致。
-- FR-302：Catalog 必须支持按协议、维度、runner kind、启用状态、默认状态和关键词筛选用例；Dashboard 必须提供关键词、协议、维度和严重度筛选。
+- FR-302：Catalog 必须支持按协议、维度、启用状态、默认状态和关键词筛选用例；Dashboard 必须提供关键词、协议、维度和严重度筛选。
 - FR-303：用户必须能够创建和编辑用例；已存在用例的 ID 与协议不可在编辑时修改。
-- FR-304：用例必须包含非空的 `id`、`name`、`dimension`、`protocol`、`kind` 和 JSON 对象 `request`。
+- FR-304：用例采用外层 schema 3，包含稳定 `key`、`name`、`dimension`、`protocol`，以及 schema 2 的协议 definition；spec 显式声明 `inputs`、`request.body` 与 `assertions`。
 - FR-305：新用例必须显式提供 `data/cases/` 下的相对路径，并保持 `<protocol>/<case-directory>/case.json` 结构。
 - FR-306：系统必须拒绝逃逸 `data/cases/` 目录、错误文件名、错误协议目录和非 JSON 兼容值。
-- FR-307：用例可通过 `default` 控制默认选择、通过 `disabled` 禁用、通过 `severity` 标记严重度、通过 `options` 提供 runner 专用判定参数。
+- FR-307：用例通过 `enabled`、`execution_mode` 和 `severity` 管理执行资格与严重度；显式断言决定验证结论，空断言仅观察。模型、渠道和凭据由 Run 统一绑定。
 - FR-308：系统必须原子写入用例文件。
+- FR-309：Suite schema 2 只保存同协议 Case 引用与显式输入映射；Plan 按序引用 Case 或 Suite，并保留每条目的负载、预热、协议设置和参数。Run 启动时统一解析当前引用、绑定模型与渠道并冻结快照；任一 Suite 断言失败不阻止后续条目执行，除非取消。
 
 验收标准：现有 OpenAI Chat、Kimi K3、Seedance 用例必须全部通过 Catalog 验证；新用例保存后仍位于指定 suite 目录。
 
@@ -80,7 +81,7 @@
 - FR-407：系统必须基于统一起点把请求分布到分发窗口中；连接槽不足时，请求必须等待，并单独记录 queue time。
 - FR-408：系统必须在运行期间展示完成数、成功数、失败数、在途数、QPS 和总 TPM；失败时展示最近失败信息。
 - FR-409：每个请求必须使用独立超时；一个请求失败不得阻止其余请求完成和记录。
-- FR-410：HTTP 200 视为成功；超时和客户端异常必须保留为独立错误状态。
+- FR-410：性能传输统计与协议 Case 验证结论必须区分；HTTP 200 不自动通过 Case 断言，HTTP 400 可满足负向断言。超时和客户端异常必须保留为独立执行状态。
 
 验收标准：计划结束后 `done` 等于配置请求数，`running=false`，每个请求有请求级结果，并生成一个持久化 run ID。
 

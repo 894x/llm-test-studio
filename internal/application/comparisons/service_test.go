@@ -180,26 +180,26 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 		Protocol: model.Protocol, Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("request.single"),
+			Type:          domain.CaseType("openai-chat"),
 			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
+			Spec:          json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`),
 		},
 	}
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	suite := domain.Suite{
 		EntityMeta: meta("60000000-0000-4000-8000-000000000012"), Key: "comparison", Name: "Comparison",
-		Protocol: model.Protocol, ModelTarget: "model-a", Cases: []domain.CaseRevisionRef{caseRef},
+		Protocol: model.Protocol, Inputs: []domain.SuiteInput{}, Cases: []domain.CaseRef{{CaseID: caseRef.CaseID}},
 	}
-	entry := domain.PlanSuiteEntry{
-		EntryID: "60000000-0000-4000-8000-000000000013", SuiteID: suite.ID, SuiteRevision: suite.Revision,
+	entry := domain.PlanEntry{
+		EntryID: "60000000-0000-4000-8000-000000000013", TargetKind: domain.PlanTargetSuite, TargetID: suite.ID,
 		Parameters: map[string]json.RawMessage{},
 		Load:       domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1000},
 		SLA:        domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1000}},
 	}
 	plan := domain.Plan{
 		EntityMeta: meta("60000000-0000-4000-8000-000000000007"), Name: "compare",
-		ModelIDs: []string{model.ID}, ChannelIDs: []string{channels[0].ID, channels[1].ID},
-		Suites: []domain.PlanSuiteEntry{entry},
+		Protocol: model.Protocol, Seed: 1,
+		Entries: []domain.PlanEntry{entry},
 	}
 	runIDs := []string{"60000000-0000-4000-8000-000000000010", "60000000-0000-4000-8000-000000000011"}
 	completed := make([]domain.Run, 2)
@@ -213,8 +213,8 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 			Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channels[index].ID, Revision: 1}, Name: channels[index].Name, BaseURL: channels[index].BaseURL, Protocol: model.Protocol, UpstreamModelName: mappings[index].UpstreamModelName},
 			Environment:   domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
 			PlanDocument:  &planDocument, Mapping: &mappingDocument,
-			Suites: []domain.RunSuiteSnapshot{{
-				EntryID: entry.EntryID, Suite: suite, Cases: []domain.CaseRevisionRef{caseRef},
+			Entries: []domain.RunEntrySnapshot{{
+				EntryID: entry.EntryID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite, CaseInputs: map[string]map[string]json.RawMessage{caseID: {}}, Cases: []domain.CaseRevisionRef{caseRef},
 				CaseDefinitions: []domain.TestCase{testCase}, Parameters: map[string]json.RawMessage{},
 				Load: entry.Load, SLA: entry.SLA,
 			}},

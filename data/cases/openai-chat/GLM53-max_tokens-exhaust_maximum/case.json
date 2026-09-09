@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.max_tokens.exhaust_maximum",
   "name": "GLM 5.3 · max_tokens.exhaust_maximum（待验证模板）",
   "dimension": "glm53.max_tokens",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -32,23 +26,7 @@
           "reasoning_effort": "low"
         }
       },
-      "options": {
-        "contract_row": "max_tokens",
-        "source_urls": [
-          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
-          "https://docs.bigmodel.cn/cn/guide/start/concept-param"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T3",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
-        "reason": "Generate until length termination at 131072 and verify usage with reasoning included; requires explicit spend and timeout budgets.",
-        "required_scenarios": [
-          "omitted/default",
-          "0/1/1024/131072/131073",
-          "wrong type/null/fraction",
-          "1 token must truncate with usage <=1"
-        ]
-      }
+      "assertions": []
     }
   }
 }

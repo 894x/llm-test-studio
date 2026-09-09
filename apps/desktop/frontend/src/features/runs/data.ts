@@ -1,3 +1,4 @@
+import type { CatalogPlanParameterValue } from "@/features/catalog/data"
 import { translateDesktop as tx } from "@/i18n/runtime"
 export type CoreRunStatus =
   | "queued"
@@ -22,15 +23,17 @@ export interface StartQuickTaskCommand {
   source_run_id?: string
   credential_run_id?: string
   suite_id: string
-  suite_revision: number
+  seed: number
+  request_timeout_ms: number
   model: string
   channel_id?: string
   base_url?: string
   api_key?: string
-  inputs: Record<string, string | number | boolean>
+  inputs: Record<string, CatalogPlanParameterValue>
 }
 
 export type WorkspacePlan = {
+  protocol: import("@/features/catalog/data").CatalogProtocol
   id: string
   revision: number
   name: string
@@ -44,7 +47,7 @@ export type WorkspacePlan = {
   request_timeout_ms: number
 }
 
-export type SuiteCaseProgress = {
+export type EntryProgress = {
   entry_id: string
   name: string
   case_count: number
@@ -55,7 +58,7 @@ export type SuiteCaseProgress = {
 export type WorkspaceRun = {
   case_count: number
   observed_case_count: number
-  suite_progress: SuiteCaseProgress[]
+  entry_progress: EntryProgress[]
   source?: "quick_task"
   id: string
   revision: number
@@ -80,13 +83,15 @@ export type WorkspaceRun = {
   completed: number
   passed: number
   failed: number
+  observed: number
+  indeterminate: number
   artifact_count: number
   started_at: string
   updated_at: string
 }
 
 export type WorkspaceSnapshot = {
-  schema_version: 1
+  schema_version: 2
   plans: WorkspacePlan[]
   runs: WorkspaceRun[]
   active_run_id?: string
@@ -112,7 +117,7 @@ export type TestPlan = {
 export type RunRecord = {
   caseCount: number
   observedCaseCount: number
-  suiteProgress: SuiteCaseProgress[]
+  entryProgress: EntryProgress[]
   quickTask?: boolean
   id: string
   title: string
@@ -128,6 +133,8 @@ export type RunRecord = {
   total: number
   targetDurationMS: number
   passed: number
+  observed: number
+  indeterminate: number
   p95: string
   started: string
   duration: string
@@ -164,7 +171,7 @@ export function presentWorkspace(
     runs: snapshot.runs.map((item) => ({
       caseCount: item.case_count,
       observedCaseCount: item.observed_case_count,
-      suiteProgress: item.suite_progress,
+      entryProgress: item.entry_progress,
       quickTask: item.source === "quick_task",
       id: item.id,
       title: item.plan_name,
@@ -179,7 +186,7 @@ export function presentWorkspace(
       completed: item.completed,
       total: item.planned,
       targetDurationMS: item.duration_ms,
-      passed: item.passed,
+      passed: item.passed, observed: item.observed, indeterminate: item.indeterminate,
       p95: "—",
       started: formatStartedAt(item.started_at, options.locale ?? "zh-CN"),
       duration: formatDuration(item),

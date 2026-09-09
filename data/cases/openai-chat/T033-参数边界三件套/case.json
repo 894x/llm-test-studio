@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T033",
   "name": "参数边界三件套",
   "dimension": "boundary",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "parameter_boundaries",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -25,10 +22,162 @@
               "content": "仅输出 BOUNDARY_OK"
             }
           ],
-          "max_tokens": 16
+          "max_tokens": 0
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r10",
+          "any": [
+            {
+              "id": "r5",
+              "all": [
+                {
+                  "id": "r1",
+                  "source": "requests",
+                  "operator": "gte",
+                  "value": 200,
+                  "pointer": "/0/http_status"
+                },
+                {
+                  "id": "r2",
+                  "source": "requests",
+                  "operator": "lt",
+                  "value": 300,
+                  "pointer": "/0/http_status"
+                },
+                {
+                  "id": "r3",
+                  "source": "requests",
+                  "operator": "non_empty",
+                  "pointer": "/0/response/choices"
+                },
+                {
+                  "id": "r4",
+                  "source": "requests",
+                  "operator": "non_empty",
+                  "transform": "trim",
+                  "pointer": "/0/response/choices/0/message/content"
+                }
+              ]
+            },
+            {
+              "id": "r9",
+              "all": [
+                {
+                  "id": "r6",
+                  "source": "requests",
+                  "operator": "gte",
+                  "value": 400,
+                  "pointer": "/0/http_status"
+                },
+                {
+                  "id": "r7",
+                  "source": "requests",
+                  "operator": "lt",
+                  "value": 500,
+                  "pointer": "/0/http_status"
+                },
+                {
+                  "id": "r8",
+                  "source": "requests",
+                  "operator": "non_empty",
+                  "pointer": "/0/response/error/message",
+                  "transform": "trim"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "r11",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r12",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r13",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices"
+        },
+        {
+          "id": "r14",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r15",
+          "source": "requests",
+          "operator": "gte",
+          "value": 400,
+          "pointer": "/2/http_status"
+        },
+        {
+          "id": "r16",
+          "source": "requests",
+          "operator": "lt",
+          "value": 500,
+          "pointer": "/2/http_status"
+        },
+        {
+          "id": "r17",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/2/response/error/message",
+          "transform": "trim"
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "仅输出 BOUNDARY_OK"
+                  }
+                ],
+                "max_tokens": 16,
+                "temperature": 0.5
+              }
+            }
+          },
+          {
+            "id": "step-2",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "仅输出 BOUNDARY_OK"
+                  }
+                ],
+                "max_tokens": 16,
+                "tool_choice": {
+                  "type": "function",
+                  "function": {
+                    "name": "missing_audit_tool"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
     }
   }
 }

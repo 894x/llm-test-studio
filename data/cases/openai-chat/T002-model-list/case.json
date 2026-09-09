@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T002",
   "name": "模型列表身份存在性",
   "dimension": "identity",
@@ -10,17 +10,45 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "models_contains",
+      "inputs": {},
       "request": {
-        "method": "GET",
-        "path": "/v1/models",
-        "headers": {},
-        "body": null
+        "body": {}
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "pointer": "/data",
+          "each": [
+            {
+              "id": "r3",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/id",
+              "expected_from": {
+                "source": "model"
+              }
+            }
+          ],
+          "each_mode": "any"
+        }
+      ],
+      "operation": "models.list"
     }
   }
 }

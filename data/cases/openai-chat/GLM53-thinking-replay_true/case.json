@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.thinking.replay_true",
   "name": "GLM 5.3 · 历史思考回传 true",
   "dimension": "glm53.clear_thinking",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "glm53_replay",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -35,14 +29,454 @@
           }
         }
       },
-      "options": {
-        "contract_row": "clear_thinking",
-        "source_urls": [
-          "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T1",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases."
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "equals",
+          "value": 200,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/id",
+          "transform": "trim"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/request_id",
+          "transform": "trim"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/model",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/created",
+          "value": "integer"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/0/response/created",
+          "value": 0
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "length_equals",
+          "pointer": "/0/response/choices",
+          "value": 1
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/index",
+          "value": 0
+        },
+        {
+          "id": "r9",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/message/role",
+          "value": "assistant"
+        },
+        {
+          "id": "r10",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices/0/message/reasoning_content",
+          "transform": "trim"
+        },
+        {
+          "id": "r11",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/finish_reason",
+          "value": "stop"
+        },
+        {
+          "id": "r12",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r15",
+          "any": [
+            {
+              "id": "r13",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/0/response/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r14",
+              "source": "requests",
+              "operator": "length_equals",
+              "pointer": "/0/response/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "r16",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r17",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r18",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/usage/completion_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r19",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/completion_tokens",
+          "value": 0
+        },
+        {
+          "id": "r20",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/0/response/usage/total_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r21",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/total_tokens",
+          "value": 0
+        },
+        {
+          "id": "r22",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/0/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r23",
+          "source": "requests",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/prompt_tokens",
+              "/completion_tokens"
+            ]
+          },
+          "pointer": "/0/response/usage"
+        },
+        {
+          "id": "r29",
+          "any": [
+            {
+              "id": "r28",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/0/response/usage/prompt_tokens_details"
+            },
+            {
+              "id": "r27",
+              "all": [
+                {
+                  "id": "r24",
+                  "source": "requests",
+                  "operator": "type",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": "integer"
+                },
+                {
+                  "id": "r25",
+                  "source": "requests",
+                  "operator": "gte",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": 0
+                },
+                {
+                  "id": "r26",
+                  "source": "requests",
+                  "operator": "lte",
+                  "pointer": "/0/response/usage/prompt_tokens_details/cached_tokens",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/0/response/usage/prompt_tokens"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "r30",
+          "source": "requests",
+          "operator": "equals",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r31",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/id",
+          "transform": "trim"
+        },
+        {
+          "id": "r32",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/request_id",
+          "transform": "trim"
+        },
+        {
+          "id": "r33",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/model",
+          "transform": "trim"
+        },
+        {
+          "id": "r34",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/created",
+          "value": "integer"
+        },
+        {
+          "id": "r35",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/created",
+          "value": 0
+        },
+        {
+          "id": "r36",
+          "source": "requests",
+          "operator": "length_equals",
+          "pointer": "/1/response/choices",
+          "value": 1
+        },
+        {
+          "id": "r37",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/index",
+          "value": 0
+        },
+        {
+          "id": "r38",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/message/role",
+          "value": "assistant"
+        },
+        {
+          "id": "r39",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices/0/message/reasoning_content",
+          "transform": "trim"
+        },
+        {
+          "id": "r40",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/finish_reason",
+          "value": "stop"
+        },
+        {
+          "id": "r41",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r42",
+          "source": "requests",
+          "operator": "equals",
+          "value": "GLM_REPLAY_OK",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r45",
+          "any": [
+            {
+              "id": "r43",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/1/response/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r44",
+              "source": "requests",
+              "operator": "length_equals",
+              "pointer": "/1/response/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "r46",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r47",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r48",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/usage/completion_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r49",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/completion_tokens",
+          "value": 0
+        },
+        {
+          "id": "r50",
+          "source": "requests",
+          "operator": "type",
+          "pointer": "/1/response/usage/total_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "r51",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/total_tokens",
+          "value": 0
+        },
+        {
+          "id": "r52",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/usage/prompt_tokens",
+          "value": 0
+        },
+        {
+          "id": "r53",
+          "source": "requests",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/prompt_tokens",
+              "/completion_tokens"
+            ]
+          },
+          "pointer": "/1/response/usage"
+        },
+        {
+          "id": "r59",
+          "any": [
+            {
+              "id": "r58",
+              "source": "requests",
+              "operator": "not_exists",
+              "pointer": "/1/response/usage/prompt_tokens_details"
+            },
+            {
+              "id": "r57",
+              "all": [
+                {
+                  "id": "r54",
+                  "source": "requests",
+                  "operator": "type",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": "integer"
+                },
+                {
+                  "id": "r55",
+                  "source": "requests",
+                  "operator": "gte",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "value": 0
+                },
+                {
+                  "id": "r56",
+                  "source": "requests",
+                  "operator": "lte",
+                  "pointer": "/1/response/usage/prompt_tokens_details/cached_tokens",
+                  "expected_from": {
+                    "source": "requests",
+                    "pointer": "/1/response/usage/prompt_tokens"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Reply with the word GLM_OK."
+                  },
+                  {
+                    "$response": "initial",
+                    "pointer": "/choices/0/message"
+                  },
+                  {
+                    "role": "user",
+                    "content": "Reply only with GLM_REPLAY_OK."
+                  }
+                ],
+                "max_tokens": 1024,
+                "reasoning_effort": "low",
+                "thinking": {
+                  "clear_thinking": true
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

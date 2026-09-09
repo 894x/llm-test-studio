@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "h3.resolution.string_required",
   "name": "MiniMax H3 · resolution 必须为字符串",
   "dimension": "boundary",
   "protocol": "minimax-video",
-  "model_targets": [
-    "MiniMax-H3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "minimax-video",
     "type_version": 1,
     "spec": {
-      "kind": "minimax_video_task_rejected",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v2/video_generation",
-        "headers": {},
         "body": {
           "content": [
             {
@@ -33,7 +27,42 @@
           "ratio": "16:9"
         }
       },
-      "options": {}
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "r2",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/type",
+          "value": "error"
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/type",
+          "value": "bad_request_error"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/http_code",
+          "value": "400"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
     }
   }
 }

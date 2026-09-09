@@ -133,6 +133,8 @@
     "forgetting": "正在忘记…",
     "useOtherKey": "使用其他密钥",
     "rememberFailed": "无法记住密钥。请先对此连接运行一次测试，再重试；已启动的测试不受影响。",
-    "forgetFailed": "无法移除已保存的密钥，请检查系统凭据库后重试。"
+    "forgetFailed": "无法移除已保存的密钥，请检查系统凭据库后重试。",
+    "seed": "根随机种子",
+    "requestTimeout": "Case 超时（ms）"
   }
 }

@@ -41,8 +41,8 @@ func (repository filesystemRuntimeRepository) GetPlanRevision(ctx context.Contex
 	return plan, nil
 }
 
-func (repository filesystemRuntimeRepository) GetTestCaseRevision(ctx context.Context, id string, revision uint64) (domain.TestCase, error) {
-	testCase, err := repository.catalog.GetTestCaseRevision(ctx, id, revision)
+func (repository filesystemRuntimeRepository) GetTestCase(ctx context.Context, id string) (domain.TestCase, error) {
+	testCase, err := repository.catalog.GetTestCase(ctx, id)
 	if err != nil {
 		return domain.TestCase{}, err
 	}
@@ -64,8 +64,8 @@ func (repository filesystemRuntimeRepository) GetTestCaseRevision(ctx context.Co
 	return testCase, nil
 }
 
-func (repository filesystemRuntimeRepository) GetSuiteRevision(ctx context.Context, id string, revision uint64) (domain.Suite, error) {
-	suite, err := repository.catalog.GetSuiteRevision(ctx, id, revision)
+func (repository filesystemRuntimeRepository) GetSuite(ctx context.Context, id string) (domain.Suite, error) {
+	suite, err := repository.catalog.GetSuite(ctx, id)
 	if err != nil {
 		return domain.Suite{}, err
 	}
@@ -88,9 +88,7 @@ func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 	if !reflect.DeepEqual(document.Plan, plan) {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
-	if len(plan.ModelIDs) > 0 && (!containsRuntimeID(plan.ModelIDs, modelID) || !containsRuntimeID(plan.ChannelIDs, channelID)) {
-		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
-	}
+
 	model, err := repository.catalog.GetModel(ctx, modelID)
 	if err != nil {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, err
@@ -116,17 +114,8 @@ func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 	if selected.ID == "" {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
-	if !channel.Enabled || model.Protocol != channel.Protocol || selected.ModelID != model.ID || selected.ChannelID != channel.ID {
+	if !channel.Enabled || model.Protocol != plan.Protocol || model.Protocol != channel.Protocol || selected.ModelID != model.ID || selected.ChannelID != channel.ID {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
 	return model, channel, selected, nil
-}
-
-func containsRuntimeID(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }

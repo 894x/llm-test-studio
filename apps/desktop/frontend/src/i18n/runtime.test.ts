@@ -25,7 +25,7 @@ describe("desktop translation integration", () => {
     expect(performanceProgressPhaseLabel("ramping")).toBe("Ramping")
     expect(performanceCompletion(0, 2, 100).label).toBe("Completed (duration mode)")
     expect(performanceCapacitySummary({ status: "failed", rungs: [] }, "fixed_concurrency")).toBe("Capacity failed")
-    expect(caseTypeLabel("latency.input_ladder")).toBe("Input latency ladder")
+    expect(caseTypeLabel("openai-chat")).toBe("OpenAI Chat")
     expect(caseTypeLabel("custom.type", "User-defined name")).toBe("User-defined name")
     expect(() => parseCatalogSnapshot({})).toThrow(DesktopDataError)
     document.documentElement.lang = "zh-CN"

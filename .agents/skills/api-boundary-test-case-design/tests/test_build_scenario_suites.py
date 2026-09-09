@@ -1,239 +1,97 @@
 from __future__ import annotations
 
+import importlib.util
 import json
-import subprocess
-import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
-from typing import Any
-
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "build_scenario_suites.py"
+module_spec = importlib.util.spec_from_file_location("suite_builder", SCRIPT)
+builder = importlib.util.module_from_spec(module_spec)
+module_spec.loader.exec_module(builder)
 
 
 class BuildScenarioSuitesTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        self.cases_root = self.root / "cases" / "demo-api"
-        self.suites_root = self.root / "suites" / "demo-api"
-        self.manifest = self.root / "demo-v1.suite-profiles.json"
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.cases = self.root / "cases"
+        self.cases.mkdir()
+        self.case_path = self.cases / "case.json"
+        self.case_id = str(uuid.uuid5(uuid.UUID("7680782d-7ae8-558b-9f32-17d13f31a66b"), "builtin.cases/v2/openai-chat/demo.smoke"))
+        self.case = {
+            "schema_version": 3, "key": "demo.smoke", "name": "Smoke", "protocol": "openai-chat",
+            "definition": {"schema_version": 2, "type": "openai-chat", "type_version": 1,
+                "spec": {"inputs": {"prompt": {"type": "string"}}, "request": {"body": {}}, "assertions": []}},
+        }
+        self.profile = {"directory": "smoke", "schema_version": 2, "key": "demo.smoke",
+            "name": "Smoke", "protocol": "openai-chat", "description": "Current Suite",
+            "cases": [{"case_id": self.case_id}], "inputs": [{"name": "prompt", "type": "string",
+                "bindings": [{"case_id": self.case_id, "input": "prompt"}]}]}
+        self.manifest = {"schema_version": 1, "protocol": "openai-chat", "profiles": [self.profile]}
+        self.manifest_path = self.root / "profiles.json"
+        self.save()
 
-        self.write_case("C001-smoke", "demo.smoke", "automatic", "demo_success")
-        self.write_case("C002-auth", "demo.auth", "automatic", "demo_auth_rejected")
-        self.write_case("C003-invalid", "demo.invalid", "automatic", "demo_rejected")
-        self.write_case("C004-media", "demo.media", "manual", "demo_success")
-        self.write_case(
-            "C005-disabled", "demo.disabled", "manual", "demo_success", enabled=False
-        )
-        self.write_case(
-            "C006-other-model",
-            "demo.other",
-            "automatic",
-            "demo_success",
-            model_targets=["demo-v2"],
-        )
-        self.write_manifest()
+    def save(self):
+        self.case_path.write_text(json.dumps(self.case), encoding="utf-8")
+        self.manifest_path.write_text(json.dumps(self.manifest), encoding="utf-8")
 
-    def write_case(
-        self,
-        directory: str,
-        key: str,
-        execution_mode: str,
-        kind: str,
-        *,
-        enabled: bool = True,
-        model_targets: list[str] | None = None,
-    ) -> None:
-        target = self.cases_root / directory / "case.json"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(
-                {
-                    "schema_version": 2,
-                    "key": key,
-                    "name": key,
-                    "dimension": "parameters",
-                    "protocol": "demo-api",
-                    "model_targets": model_targets or ["demo-v1"],
-                    "enabled": enabled,
-                    "default": False,
-                    "severity": "critical",
-                    "execution_mode": execution_mode,
-                    "definition": {
-                        "schema_version": 2,
-                        "type": "legacy.apiaudit",
-                        "type_version": 1,
-                        "spec": {"kind": kind, "request": {}, "options": {}},
-                    },
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+    def build(self):
+        return builder.build_documents(self.cases, self.manifest_path)
 
-    def write_manifest(self, *, basic_keys: list[str] | None = None) -> None:
-        self.manifest.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "protocol": "demo-api",
-                    "model_target": "demo-v1",
-                    "profiles": [
-                        {
-                            "directory": "demo-v1-connectivity",
-                            "key": "demo-api.demo-v1.connectivity",
-                            "name": "Demo V1 connectivity",
-                            "case_keys": ["demo.smoke", "demo.auth"],
-                        },
-                        {
-                            "directory": "demo-v1-basic",
-                            "key": "demo-api.demo-v1.basic",
-                            "name": "Demo V1 basic",
-                            "case_keys": basic_keys or ["demo.smoke", "demo.media"],
-                        },
-                        {
-                            "directory": "demo-v1-parameter-rejection",
-                            "key": "demo-api.demo-v1.parameter-rejection",
-                            "name": "Demo V1 parameter rejection",
-                            "selector": {
-                                "enabled": True,
-                                "execution_modes": ["automatic"],
-                                "kinds": ["demo_rejected"],
-                            },
-                        },
-                        {
-                            "directory": "demo-v1-automatic",
-                            "key": "demo-api.demo-v1.automatic",
-                            "name": "Demo V1 automatic",
-                            "selector": {
-                                "enabled": True,
-                                "execution_modes": ["automatic"],
-                            },
-                        },
-                        {
-                            "directory": "demo-v1-complete",
-                            "key": "demo-api.demo-v1.complete",
-                            "name": "Demo V1 complete",
-                            "selector": {},
-                        },
-                    ],
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+    def test_current_references_and_bindings_round_trip(self):
+        documents = self.build()
+        target = self.root / "suites" / "smoke" / "suite.json"
+        builder.write_document(target, documents[0][1])
+        self.assertEqual(builder.check_documents(self.root / "suites", documents), [])
+        self.assertEqual(json.loads(target.read_text())["cases"], [{"case_id": self.case_id}])
+        self.assertNotIn("directory", documents[0][1])
+        target.write_text("{}")
+        self.assertIn("out of date", builder.check_documents(self.root / "suites", documents)[0])
 
-    def run_script(self, mode: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
-                sys.executable,
-                str(SCRIPT),
-                "--cases-root",
-                str(self.cases_root),
-                "--suites-root",
-                str(self.suites_root),
-                "--manifest",
-                str(self.manifest),
-                mode,
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+    def test_obsolete_formats_are_rejected_without_mutation(self):
+        self.case["schema_version"] = 2
+        self.save()
+        before = self.case_path.read_bytes()
+        with self.assertRaisesRegex(builder.SuiteBuildError, "schema_version 3"):
+            self.build()
+        self.assertEqual(before, self.case_path.read_bytes())
+        self.assertFalse((self.root / "suites").exists())
 
-    def read_suite(self, directory: str) -> dict[str, Any]:
-        return json.loads(
-            (self.suites_root / directory / "suite.json").read_text(encoding="utf-8")
-        )
+    def test_invalid_members_and_bindings(self):
+        for field, value in [("cases", [{"case_id": str(uuid.uuid4())}]),
+                             ("cases", [{"case_id": self.case_id}] * 2),
+                             ("inputs", [{"bindings": [{"case_id": self.case_id, "input": "absent"}]}]),
+                             ("inputs", [{"bindings": [{"case_id": str(uuid.uuid4()), "input": "prompt"}]}]),
+                             ("protocol", "seedance"), ("directory", "..")]:
+            with self.subTest(field=field, value=value):
+                original = self.profile[field]
+                self.profile[field] = value
+                self.save()
+                with self.assertRaises(builder.SuiteBuildError):
+                    self.build()
+                self.profile[field] = original
 
-    def test_write_builds_explicit_and_selector_profiles(self) -> None:
-        result = self.run_script("--write")
+    def test_old_selectors_and_model_routing_are_rejected(self):
+        self.manifest["model_target"] = "superseded"
+        self.save()
+        with self.assertRaises(builder.SuiteBuildError):
+            self.build()
+        del self.manifest["model_target"]
+        self.profile["selector"] = {"kinds": ["old_success"]}
+        self.save()
+        with self.assertRaises(builder.SuiteBuildError):
+            self.build()
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            self.read_suite("demo-v1-connectivity"),
-            {
-                "schema_version": 1,
-                "key": "demo-api.demo-v1.connectivity",
-                "name": "Demo V1 connectivity",
-                "protocol": "demo-api",
-                "model_target": "demo-v1",
-                "case_keys": ["demo.smoke", "demo.auth"],
-            },
-        )
-        self.assertEqual(
-            self.read_suite("demo-v1-basic")["case_keys"],
-            ["demo.smoke", "demo.media"],
-        )
-        self.assertEqual(
-            self.read_suite("demo-v1-parameter-rejection")["case_keys"],
-            ["demo.invalid"],
-        )
-        self.assertEqual(
-            self.read_suite("demo-v1-automatic")["case_keys"],
-            ["demo.smoke", "demo.auth", "demo.invalid"],
-        )
-        self.assertEqual(
-            self.read_suite("demo-v1-complete")["case_keys"],
-            [
-                "demo.smoke",
-                "demo.auth",
-                "demo.invalid",
-                "demo.media",
-                "demo.disabled",
-            ],
-        )
-
-    def test_check_detects_suite_membership_drift(self) -> None:
-        written = self.run_script("--write")
-        self.assertEqual(written.returncode, 0, written.stderr)
-        self.assertEqual(self.run_script("--check").returncode, 0)
-
-        suite = self.read_suite("demo-v1-automatic")
-        suite["case_keys"] = ["demo.smoke"]
-        target = self.suites_root / "demo-v1-automatic" / "suite.json"
-        target.write_text(json.dumps(suite, indent=2), encoding="utf-8")
-
-        checked = self.run_script("--check")
-        self.assertNotEqual(checked.returncode, 0)
-        self.assertIn("out of date", checked.stderr)
-
-    def test_quick_task_metadata_round_trips_and_participates_in_drift_check(self) -> None:
-        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
-        task = {"description": "Run connectivity", "timeout_ms": 30000, "inputs": []}
-        manifest["profiles"][0]["quick_test"] = task
-        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
-        written = self.run_script("--write")
-        self.assertEqual(written.returncode, 0, written.stderr)
-        self.assertEqual(self.read_suite("demo-v1-connectivity").get("quick_test"), task)
-        self.assertNotIn("quick_test", self.read_suite("demo-v1-basic"))
-        self.assertEqual(self.run_script("--check").returncode, 0)
-        manifest["profiles"][0]["quick_test"]["timeout_ms"] = 40000
-        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
-        self.assertNotEqual(self.run_script("--check").returncode, 0)
-
-    def test_quick_task_metadata_requires_an_object(self) -> None:
-        for value in (None, [], "task"):
-            with self.subTest(value=value):
-                manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
-                manifest["profiles"][0]["quick_test"] = value
-                self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
-                result = self.run_script("--write")
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("quick_test must be an object", result.stderr)
-
-    def test_explicit_profile_rejects_unknown_or_inapplicable_keys(self) -> None:
-        for invalid_key in ("demo.missing", "demo.other"):
-            with self.subTest(invalid_key=invalid_key):
-                self.write_manifest(basic_keys=["demo.smoke", invalid_key])
-                result = self.run_script("--write")
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(invalid_key, result.stderr)
+    def test_all_profiles_are_validated_before_writing(self):
+        self.manifest["profiles"].append({**self.profile, "directory": "other"})
+        self.save()
+        with self.assertRaises(builder.SuiteBuildError):
+            self.build()
+        self.assertFalse((self.root / "suites").exists())
 
 
 if __name__ == "__main__":

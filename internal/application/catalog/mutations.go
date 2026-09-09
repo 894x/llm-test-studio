@@ -257,9 +257,9 @@ func (service *Service) CreateSuite(ctx context.Context, command CreateSuiteComm
 	}
 	suite := domain.Suite{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
-		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases), QuickTest: command.QuickTest.Clone(),
+		Description: command.Description, Cases: cloneCaseRefs(command.Cases), Inputs: domain.CloneSuiteInputs(command.Inputs),
 	}
-	if err := service.validateSuiteCases(ctx, suite); err != nil {
+	if err := suite.Validate(); err != nil {
 		return MutationResult{}, err
 	}
 	if err := service.repository.CreateSuite(ctx, suite); err != nil {
@@ -292,9 +292,9 @@ func (service *Service) UpdateSuite(ctx context.Context, command UpdateSuiteComm
 	}
 	suite := domain.Suite{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Protocol: command.Protocol,
-		ModelTarget: command.ModelTarget, Cases: cloneCaseRefs(command.Cases), QuickTest: command.QuickTest.Clone(),
+		Description: command.Description, Cases: cloneCaseRefs(command.Cases), Inputs: domain.CloneSuiteInputs(command.Inputs),
 	}
-	if err := service.validateSuiteCases(ctx, suite); err != nil {
+	if err := suite.Validate(); err != nil {
 		return MutationResult{}, err
 	}
 	if err := service.repository.UpdateSuite(ctx, command.ExpectedRevision, suite); err != nil {
@@ -312,7 +312,7 @@ func (service *Service) CreatePlan(ctx context.Context, command CreatePlanComman
 	if err != nil {
 		return MutationResult{}, err
 	}
-	entries, err := service.resolvePlanSuiteEntries(ctx, meta.ID, meta.Revision, nil, command.Suites)
+	entries, err := service.resolvePlanEntries(ctx, meta.ID, meta.Revision, nil, command.Entries)
 	if err != nil {
 		return MutationResult{}, err
 	}
@@ -341,18 +341,18 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 	if err := ctx.Err(); err != nil {
 		return MutationResult{}, err
 	}
-	if err := current.Validate(); err != nil || current.ID != command.ID || len(current.Suites) == 0 {
+	if err := current.Validate(); err != nil || current.ID != command.ID || len(current.Entries) == 0 {
 		return MutationResult{}, ErrCorrupt
 	}
 	meta, err := service.nextMeta(ctx, current.EntityMeta, command.ExpectedRevision)
 	if err != nil {
 		return MutationResult{}, err
 	}
-	existingEntries := make(map[string]struct{}, len(current.Suites))
-	for _, entry := range current.Suites {
+	existingEntries := make(map[string]struct{}, len(current.Entries))
+	for _, entry := range current.Entries {
 		existingEntries[entry.EntryID] = struct{}{}
 	}
-	entries, err := service.resolvePlanSuiteEntries(ctx, meta.ID, meta.Revision, existingEntries, command.Suites)
+	entries, err := service.resolvePlanEntries(ctx, meta.ID, meta.Revision, existingEntries, command.Entries)
 	if err != nil {
 		return MutationResult{}, err
 	}
@@ -515,38 +515,17 @@ func (service *Service) validateBinding(ctx context.Context, channelID, modelID 
 	return nil
 }
 
-func (service *Service) validateSuiteCases(ctx context.Context, suite domain.Suite) error {
-	if suite.Validate() != nil {
-		return ErrInvalid
-	}
-	definitions := make([]domain.TestCase, 0, len(suite.Cases))
-	for _, ref := range suite.Cases {
-		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
-		if err != nil {
-			return service.portError(ctx, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		definitions = append(definitions, testCase)
-	}
-	if suite.ValidateCases(definitions) != nil {
-		return ErrInvalid
-	}
-	return nil
-}
-
-func (service *Service) resolvePlanSuiteEntries(
+func (service *Service) resolvePlanEntries(
 	ctx context.Context,
 	planID string,
 	planRevision uint64,
 	existingEntries map[string]struct{},
-	inputs []PlanSuiteInput,
-) ([]domain.PlanSuiteEntry, error) {
+	inputs []PlanEntryInput,
+) ([]domain.PlanEntry, error) {
 	if len(inputs) == 0 {
 		return nil, ErrInvalid
 	}
-	entries := make([]domain.PlanSuiteEntry, 0, len(inputs))
+	entries := make([]domain.PlanEntry, 0, len(inputs))
 	seen := make(map[string]struct{}, len(inputs))
 	for index, input := range inputs {
 		if err := ctx.Err(); err != nil {
@@ -554,7 +533,7 @@ func (service *Service) resolvePlanSuiteEntries(
 		}
 		entryID := input.EntryID
 		if entryID == "" {
-			entryID = generatedPlanSuiteEntryID(planID, planRevision, index, input.SuiteID, input.SuiteRevision)
+			entryID = generatedPlanEntryID(planID, planRevision, index, input.TargetID)
 		} else if !domain.IsUUID(entryID) {
 			return nil, ErrInvalid
 		} else if _, exists := existingEntries[entryID]; !exists {
@@ -569,9 +548,9 @@ func (service *Service) resolvePlanSuiteEntries(
 		if parameters == nil {
 			parameters = map[string]json.RawMessage{}
 		}
-		entry := domain.PlanSuiteEntry{
-			EntryID: entryID, SuiteID: input.SuiteID, SuiteRevision: input.SuiteRevision,
-			Parameters: parameters,
+		entry := domain.PlanEntry{
+			EntryID: entryID, TargetKind: input.TargetKind, TargetID: input.TargetID,
+			Parameters: parameters, WarmupCount: input.WarmupCount, Settings: input.Settings,
 			Load: domain.LoadProfile{
 				Mode: input.LoadMode, Concurrency: input.Concurrency, RequestCount: input.RequestCount,
 				RatePerSecond: input.RatePerSecond, DurationMS: input.DurationMS, RequestTimeoutMS: input.RequestTimeoutMS,
@@ -586,14 +565,11 @@ func (service *Service) resolvePlanSuiteEntries(
 	return entries, nil
 }
 
-func generatedPlanSuiteEntryID(planID string, planRevision uint64, index int, suiteID string, suiteRevision uint64) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("plan-suite-entry:%s:%d:%d:%s:%d", planID, planRevision, index, suiteID, suiteRevision)))
+func generatedPlanEntryID(planID string, revision uint64, index int, targetID string) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("plan-entry:%s:%d:%d:%s", planID, revision, index, targetID)))
 	digest[6] = digest[6]&0x0f | 0x50
 	digest[8] = digest[8]&0x3f | 0x80
-	return fmt.Sprintf(
-		"%08x-%04x-%04x-%04x-%012x",
-		digest[0:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16],
-	)
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", digest[0:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16])
 }
 
 func sliceContains(values []string, target string) bool {
@@ -654,8 +630,7 @@ func testCaseFromCreate(meta domain.EntityMeta, command CreateTestCaseCommand) d
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
 		Protocol: command.Protocol, Enabled: command.Enabled, Default: command.Default,
-		ModelTargets: append([]string(nil), command.ModelTargets...),
-		Severity:     command.Severity, ExecutionMode: command.ExecutionMode,
+		Severity: command.Severity, ExecutionMode: command.ExecutionMode,
 		Definition: definitionFromCreate(command),
 	}
 }
@@ -664,8 +639,7 @@ func testCaseFromUpdate(meta domain.EntityMeta, command UpdateTestCaseCommand) d
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
 		Protocol: command.Protocol, Enabled: command.Enabled, Default: command.Default,
-		ModelTargets: append([]string(nil), command.ModelTargets...),
-		Severity:     command.Severity, ExecutionMode: command.ExecutionMode,
+		Severity: command.Severity, ExecutionMode: command.ExecutionMode,
 		Definition: definitionFromUpdate(command),
 	}
 }
@@ -683,10 +657,10 @@ func newDefinition(schemaVersion int, caseType domain.CaseType, typeVersion uint
 	}
 }
 
-func cloneCaseRefs(values []CaseRevisionInput) []domain.CaseRevisionRef {
-	result := make([]domain.CaseRevisionRef, len(values))
+func cloneCaseRefs(values []CaseInput) []domain.CaseRef {
+	result := make([]domain.CaseRef, len(values))
 	for index, value := range values {
-		result[index] = domain.CaseRevisionRef{CaseID: value.CaseID, Revision: value.Revision}
+		result[index] = domain.CaseRef{CaseID: value.CaseID}
 	}
 	return result
 }
@@ -710,7 +684,7 @@ func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMess
 	return result
 }
 
-func sameCaseRefs(left, right []domain.CaseRevisionRef) bool {
+func sameCaseRefs(left, right []domain.CaseRef) bool {
 	if len(left) != len(right) {
 		return false
 	}
@@ -722,22 +696,22 @@ func sameCaseRefs(left, right []domain.CaseRevisionRef) bool {
 	return true
 }
 
-func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanSuiteEntry) domain.Plan {
+func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
-		EntityMeta: meta, Name: command.Name, ModelIDs: append([]string(nil), command.ModelIDs...), ChannelIDs: append([]string(nil), command.ChannelIDs...),
-		Suites: clonePlanSuiteEntries(entries),
+		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
+		Entries: clonePlanEntries(entries),
 	}
 }
 
-func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand, entries []domain.PlanSuiteEntry) domain.Plan {
+func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
-		EntityMeta: meta, Name: command.Name, ModelIDs: append([]string(nil), command.ModelIDs...), ChannelIDs: append([]string(nil), command.ChannelIDs...),
-		Suites: clonePlanSuiteEntries(entries),
+		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
+		Entries: clonePlanEntries(entries),
 	}
 }
 
-func clonePlanSuiteEntries(entries []domain.PlanSuiteEntry) []domain.PlanSuiteEntry {
-	result := make([]domain.PlanSuiteEntry, len(entries))
+func clonePlanEntries(entries []domain.PlanEntry) []domain.PlanEntry {
+	result := make([]domain.PlanEntry, len(entries))
 	for index, entry := range entries {
 		result[index] = entry
 		result[index].Parameters = cloneRawMessages(entry.Parameters)

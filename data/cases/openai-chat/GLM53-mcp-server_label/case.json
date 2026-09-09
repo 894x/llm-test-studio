@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.mcp.server_label",
   "name": "GLM 5.3 · mcp.server_label（待验证模板）",
   "dimension": "glm53.mcp_server_label",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -32,22 +26,7 @@
           "reasoning_effort": "low"
         }
       },
-      "options": {
-        "contract_row": "mcp_server_label",
-        "source_urls": [
-          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T3",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
-        "reason": "Design with provider-owned deterministic mcp fixture. Verify built-in server label versus external server_url and injected credential headers via channel configuration. Validate tool execution result and this field independently, not merely HTTP 200.",
-        "required_scenarios": [
-          "omitted/default or required rejection",
-          "valid representative and all enum behaviors",
-          "wrong type/null/unknown enum",
-          "documented numeric edges and dependencies"
-        ]
-      }
+      "assertions": []
     }
   }
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -36,6 +37,7 @@ import (
 var desktopApplicationVersion = "dev"
 
 type productionOptions struct {
+	protocolTransport       http.RoundTripper
 	userConfigDir           func() (string, error)
 	appVersion              string
 	caseBundle              fs.FS
@@ -134,7 +136,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("locate executable suite directory: %w", err)
 		}
-		suiteFiles, err := suitecatalog.New(suitecatalog.Options{Builtin: suiteBundleFS, UserRoot: userSuiteRoot, Cases: caseFiles})
+		suiteFiles, err := suitecatalog.New(suitecatalog.Options{Builtin: suiteBundleFS, UserRoot: userSuiteRoot})
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create filesystem suite catalog: %w", err)
 		}
@@ -228,15 +230,10 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			QuickTasks:           catalogRepository,
 			CaseTypes:            caseTypes,
 			Credentials:          credentialStore,
-			Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{
-				casetypes.TypeLegacyAPIAudit:     runs.NewLegacyAPIAuditExecutor(nil),
-				casetypes.TypeRequestSingle:      runs.NewLoadExecutor(nil),
-				casetypes.TypeResponseProbe:      runs.NewResponseProbeExecutor(nil),
-				casetypes.TypeInputLatencyLadder: runs.NewInputLatencyLadderExecutor(nil),
-			}),
-			Clock:            productionClock{},
-			Reporter:         reportGenerator,
-			ReportDiagnostic: options.reportRunDiagnostic,
+			Executor:             runs.NewProtocolExecutor(options.protocolTransport),
+			Clock:                productionClock{},
+			Reporter:             reportGenerator,
+			ReportDiagnostic:     options.reportRunDiagnostic,
 			Environment: func() domain.EnvironmentSnapshot {
 				return domain.EnvironmentSnapshot{
 					OS: runtime.GOOS, Arch: runtime.GOARCH, Region: "local",
@@ -274,7 +271,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, domain.ProtocolOpenAIChat)
 				},
 				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string) (string, error) {
-					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SuiteRevision: task.SuiteRevision, SourceRunID: task.SourceRunID, Model: model})
+					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model})
 				},
 				Archive:            quickPerformanceArchive,
 				Clock:              productionClock{},

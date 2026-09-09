@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T032",
   "name": "采样参数透传",
   "dimension": "stability",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "sampling_effect",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -25,11 +22,277 @@
               "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
             }
           ],
-          "max_tokens": 256
+          "max_tokens": 256,
+          "temperature": 0
         }
       },
-      "options": {
-        "repetitions": 6
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r2",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/0/http_status"
+        },
+        {
+          "id": "r3",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/response/choices"
+        },
+        {
+          "id": "r4",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/0/response/choices/0/message/content"
+        },
+        {
+          "id": "r5",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r6",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/1/http_status"
+        },
+        {
+          "id": "r7",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/1/response/choices"
+        },
+        {
+          "id": "r8",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/1/response/choices/0/message/content"
+        },
+        {
+          "id": "r9",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/2/http_status"
+        },
+        {
+          "id": "r10",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/2/http_status"
+        },
+        {
+          "id": "r11",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/2/response/choices"
+        },
+        {
+          "id": "r12",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/2/response/choices/0/message/content"
+        },
+        {
+          "id": "r13",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/3/http_status"
+        },
+        {
+          "id": "r14",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/3/http_status"
+        },
+        {
+          "id": "r15",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/3/response/choices"
+        },
+        {
+          "id": "r16",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/3/response/choices/0/message/content"
+        },
+        {
+          "id": "r17",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/4/http_status"
+        },
+        {
+          "id": "r18",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/4/http_status"
+        },
+        {
+          "id": "r19",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/4/response/choices"
+        },
+        {
+          "id": "r20",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/4/response/choices/0/message/content"
+        },
+        {
+          "id": "r21",
+          "source": "requests",
+          "operator": "gte",
+          "value": 200,
+          "pointer": "/5/http_status"
+        },
+        {
+          "id": "r22",
+          "source": "requests",
+          "operator": "lt",
+          "value": 300,
+          "pointer": "/5/http_status"
+        },
+        {
+          "id": "r23",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/5/response/choices"
+        },
+        {
+          "id": "r24",
+          "source": "requests",
+          "operator": "non_empty",
+          "transform": "trim",
+          "pointer": "/5/response/choices/0/message/content"
+        },
+        {
+          "id": "r25",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/choices/0/message/content",
+          "transform": "trim",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/choices/0/message/content",
+            "transform": "trim"
+          }
+        },
+        {
+          "id": "r26",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/2/response/choices/0/message/content",
+          "transform": "trim",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/0/response/choices/0/message/content",
+            "transform": "trim"
+          }
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
+                  }
+                ],
+                "max_tokens": 256,
+                "temperature": 0
+              }
+            }
+          },
+          {
+            "id": "step-2",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
+                  }
+                ],
+                "max_tokens": 256,
+                "temperature": 0
+              }
+            }
+          },
+          {
+            "id": "step-3",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
+                  }
+                ],
+                "max_tokens": 256,
+                "temperature": 1
+              }
+            }
+          },
+          {
+            "id": "step-4",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
+                  }
+                ],
+                "max_tokens": 256,
+                "temperature": 1
+              }
+            }
+          },
+          {
+            "id": "step-5",
+            "request": {
+              "body": {
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "从红、蓝、绿、黄、紫中任选一个颜色，仅输出颜色名称。"
+                  }
+                ],
+                "max_tokens": 256,
+                "temperature": 1
+              }
+            }
+          }
+        ]
       }
     }
   }

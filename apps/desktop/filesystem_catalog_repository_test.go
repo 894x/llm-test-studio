@@ -24,54 +24,9 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
 	"github.com/894x/llm-test-studio/internal/casecodec"
-	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
-
-func TestFilesystemCatalogRepositoryRefusesToDeleteTheOnlyMappingForABoundPlan(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	root := t.TempDir()
-	channelPath := filepath.Join(root, "channels.json")
-	channels, err := channelcatalog.New(channelPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plans, err := plancatalog.New(filepath.Join(root, "plans"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	channel, mapping, plan := filesystemCatalogMappingFixtures(false)
-	if err := channels.CreateChannel(ctx, channel); err != nil {
-		t.Fatal(err)
-	}
-	if err := channels.CreateMapping(ctx, mapping); err != nil {
-		t.Fatal(err)
-	}
-	if err := plans.CreateDocument(ctx, plancatalog.Document{
-		FileSchemaVersion: plancatalog.CurrentFileSchemaVersion,
-		Plan:              plan,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	before, err := os.ReadFile(channelPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	repository := filesystemCatalogRepository{lockPath: filepath.Join(root, "catalog.lock"), channels: channels, plans: plans}
-	if err := repository.DeleteChannelModel(ctx, mapping.ID, mapping.Revision); !errors.Is(err, catalog.ErrConflict) {
-		t.Fatalf("DeleteChannelModel() error = %v, want %v", err, catalog.ErrConflict)
-	}
-	after, err := os.ReadFile(channelPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(after) != string(before) {
-		t.Fatal("channels.json changed after a rejected mapping deletion")
-	}
-}
 
 func TestFilesystemCatalogRepositoryAllowsMappingDeletionForTargetlessPlan(t *testing.T) {
 	t.Parallel()
@@ -121,7 +76,7 @@ func TestFilesystemCatalogRepositoryDefersPlanTargetValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +108,6 @@ func TestFilesystemCatalogRepositoryDefersPlanTargetValidation(t *testing.T) {
 	}
 	testCase = caseEntries[0].TestCase
 	suite := filesystemCatalogSuiteFixture(testCase)
-	suite.ModelTarget = "different-upstream"
 	if err := repository.CreateSuite(ctx, suite); err != nil {
 		t.Fatal(err)
 	}
@@ -504,98 +458,6 @@ func TestFilesystemCatalogRepositoryReportsUnreferencedCredential(t *testing.T) 
 	}
 }
 
-func TestFilesystemCatalogRepositoryStoresAndReadsAnExactCaseRevision(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	root := t.TempDir()
-	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	current := filesystemCatalogTestCase(1)
-	if err := cases.SaveCase(ctx, string(current.Protocol), current.Key, current); err != nil {
-		t.Fatal(err)
-	}
-	entries, err := cases.Entries(ctx)
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("Entries() = %#v, %v", entries, err)
-	}
-	current = entries[0].TestCase
-	legacy := current
-	legacy.Revision = 7
-	legacy.Name = "legacy pinned definition"
-	legacy.UpdatedAt = legacy.UpdatedAt.Add(7 * time.Minute)
-	repository := filesystemCatalogRepository{lockPath: filepath.Join(root, "catalog.lock"), cases: cases}
-	if err := repository.StoreTestCaseRevision(ctx, legacy); err != nil {
-		t.Fatalf("StoreTestCaseRevision() error = %v", err)
-	}
-	got, err := repository.GetTestCaseRevision(ctx, legacy.ID, legacy.Revision)
-	if err != nil {
-		t.Fatalf("GetTestCaseRevision() error = %v", err)
-	}
-	if got.ID != legacy.ID || got.Revision != legacy.Revision || got.Name != legacy.Name {
-		t.Fatalf("GetTestCaseRevision() = %#v, want %#v", got, legacy)
-	}
-	if _, err := repository.GetTestCaseRevision(ctx, "63000000-0000-4000-8000-000000000099", 1); !errors.Is(err, catalog.ErrNotFound) {
-		t.Fatalf("GetTestCaseRevision(missing) error = %v, want %v", err, catalog.ErrNotFound)
-	}
-}
-
-func TestFilesystemCatalogRepositoryStoresAndReadsAnExactSuiteRevision(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	root := t.TempDir()
-	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "cases")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	currentCase := filesystemCatalogTestCase(1)
-	if err := cases.SaveCase(ctx, string(currentCase.Protocol), currentCase.Key, currentCase); err != nil {
-		t.Fatal(err)
-	}
-	caseEntries, err := cases.Entries(ctx)
-	if err != nil || len(caseEntries) != 1 {
-		t.Fatalf("Case Entries() = %#v, %v", caseEntries, err)
-	}
-	currentCase = caseEntries[0].TestCase
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate := domain.Suite{
-		EntityMeta: domain.EntityMeta{
-			ID: "63000000-0000-4000-8000-000000000010", SchemaVersion: domain.CurrentEntitySchemaVersion,
-			Revision: 1, CreatedAt: currentCase.CreatedAt, UpdatedAt: currentCase.UpdatedAt,
-		},
-		Key: "exact-suite", Name: "current Suite", Protocol: currentCase.Protocol,
-		ModelTarget: "upstream-model", Cases: []domain.CaseRevisionRef{{CaseID: currentCase.ID, Revision: currentCase.Revision}},
-	}
-	if err := suites.SaveSuite(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
-		t.Fatal(err)
-	}
-	suiteEntries, err := suites.Entries(ctx)
-	if err != nil || len(suiteEntries) != 1 {
-		t.Fatalf("Suite Entries() = %#v, %v", suiteEntries, err)
-	}
-	legacy := suiteEntries[0].Suite
-	legacy.Revision = 7
-	legacy.Name = "legacy pinned Suite"
-	legacy.UpdatedAt = legacy.UpdatedAt.Add(7 * time.Minute)
-	repository := filesystemCatalogRepository{
-		lockPath: filepath.Join(root, "catalog.lock"), cases: cases, suites: suites,
-	}
-	if err := repository.StoreSuiteRevision(ctx, legacy); err != nil {
-		t.Fatalf("StoreSuiteRevision() error = %v", err)
-	}
-	got, err := repository.GetSuiteRevision(ctx, legacy.ID, legacy.Revision)
-	if err != nil {
-		t.Fatalf("GetSuiteRevision() error = %v", err)
-	}
-	if got.ID != legacy.ID || got.Revision != legacy.Revision || got.Name != legacy.Name || len(got.Cases) != 1 || got.Cases[0] != legacy.Cases[0] {
-		t.Fatalf("GetSuiteRevision() = %#v, want %#v", got, legacy)
-	}
-}
-
 func TestFilesystemCatalogRepositoryPlanReferencesRemainUnchangedAfterExternalEdits(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -629,7 +491,7 @@ func TestFilesystemCatalogRepositoryPlanReferencesRemainUnchangedAfterExternalEd
 	suiteCase := casesByKey[suiteCandidate.Key]
 
 	suiteRoot := filepath.Join(root, "suites")
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot, Cases: cases})
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -726,7 +588,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeCaseRevisions(t *t
 				t.Fatalf("Entries() = %#v, %v", entries, err)
 			}
 			suites, err := suitecatalog.New(suitecatalog.Options{
-				Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases,
+				Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -757,7 +619,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeCaseRevisions(t *t
 			want := fs.ErrPermission
 			repository := filesystemCatalogRepository{
 				lockPath: filepath.Join(root, "catalog.lock"),
-				cases:    &failingStoreRevisionCaseCatalog{Service: cases, err: want},
+				cases:    &failingReadCaseCatalog{Service: cases, err: want},
 				suites:   suites,
 				plans:    plans,
 			}
@@ -794,7 +656,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeSuiteRevisions(t *
 	if err != nil || len(caseEntries) != 1 {
 		t.Fatalf("Case Entries() = %#v, %v", caseEntries, err)
 	}
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -815,7 +677,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeSuiteRevisions(t *
 	want := fs.ErrPermission
 	repository := filesystemCatalogRepository{
 		lockPath: filepath.Join(root, "catalog.lock"), cases: cases,
-		suites: &failingStoreRevisionSuiteCatalog{Service: suites, err: want}, plans: plans,
+		suites: &failingReadSuiteCatalog{Service: suites, err: want}, plans: plans,
 	}
 	if err := repository.CreatePlan(ctx, plan); err != nil {
 		t.Fatalf("Plan save tried to archive Suite: %v", err)
@@ -825,7 +687,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeSuiteRevisions(t *
 	}
 }
 
-func TestFilesystemCatalogRepositoryCaseUpdatePreservesTheAffectedSuiteRevision(t *testing.T) {
+func TestFilesystemCatalogRepositoryCaseUpdateLeavesSuiteDocumentUnchanged(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -842,7 +704,7 @@ func TestFilesystemCatalogRepositoryCaseUpdatePreservesTheAffectedSuiteRevision(
 		t.Fatalf("Case Entries() = %#v, %v", caseEntries, err)
 	}
 	pinnedCase := caseEntries[0].TestCase
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +723,7 @@ func TestFilesystemCatalogRepositoryCaseUpdatePreservesTheAffectedSuiteRevision(
 	updated := pinnedCase
 	updated.Revision++
 	updated.UpdatedAt = updated.UpdatedAt.Add(time.Minute)
-	updated.Name = "updated Case changes active Suite content"
+	updated.Name = "updated Case does not change Suite"
 	if err := repository.UpdateTestCase(ctx, pinnedCase.Revision, updated); err != nil {
 		t.Fatalf("UpdateTestCase() error = %v", err)
 	}
@@ -869,65 +731,12 @@ func TestFilesystemCatalogRepositoryCaseUpdatePreservesTheAffectedSuiteRevision(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if currentSuite.Suite.Revision == pinnedSuite.Revision {
-		t.Fatal("Case update did not change the active Suite content revision")
-	}
-	exact, err := repository.GetSuiteRevision(ctx, pinnedSuite.ID, pinnedSuite.Revision)
-	if err != nil {
-		t.Fatalf("GetSuiteRevision(previous after Case update) error = %v", err)
-	}
-	if exact.Name != pinnedSuite.Name || len(exact.Cases) != 1 || exact.Cases[0] != pinnedSuite.Cases[0] {
-		t.Fatalf("previous Suite = %#v, want exact %#v", exact, pinnedSuite)
+	if !reflect.DeepEqual(currentSuite.Suite, pinnedSuite) {
+		t.Fatal("Case update changed Suite references or revision")
 	}
 }
 
-func TestFilesystemCatalogRepositorySuiteArchiveFailurePreventsCaseUpdate(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	root := t.TempDir()
-	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "cases")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate := filesystemCatalogTestCase(1)
-	if err := cases.SaveCase(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
-		t.Fatal(err)
-	}
-	caseEntries, err := cases.Entries(ctx)
-	if err != nil || len(caseEntries) != 1 {
-		t.Fatalf("Case Entries() = %#v, %v", caseEntries, err)
-	}
-	current := caseEntries[0].TestCase
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
-	if err != nil {
-		t.Fatal(err)
-	}
-	suite := filesystemCatalogSuiteFixture(current)
-	if err := suites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
-		t.Fatal(err)
-	}
-	want := fs.ErrPermission
-	repository := filesystemCatalogRepository{
-		lockPath: filepath.Join(root, "catalog.lock"), cases: cases,
-		suites: &failingStoreRevisionSuiteCatalog{Service: suites, err: want},
-	}
-	updated := current
-	updated.Revision++
-	updated.UpdatedAt = updated.UpdatedAt.Add(time.Minute)
-	updated.Name = "must not be committed"
-	if err := repository.UpdateTestCase(ctx, current.Revision, updated); !errors.Is(err, want) {
-		t.Fatalf("UpdateTestCase() error = %v, want wrapped %v", err, want)
-	}
-	stored, err := cases.Find(ctx, current.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.TestCase.Name != current.Name || stored.TestCase.Revision != current.Revision {
-		t.Fatalf("failed Case update changed active Case = %#v, want %#v", stored.TestCase, current)
-	}
-}
-
-func TestFilesystemCatalogRepositoryRefusesToDeleteCaseReferencedOnlyByHistoricalPlanSuite(t *testing.T) {
+func TestFilesystemCatalogRepositoryAllowsCaseDeletionWithoutChangingReferences(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -958,7 +767,7 @@ func TestFilesystemCatalogRepositoryRefusesToDeleteCaseReferencedOnlyByHistorica
 	first := byKey[firstCandidate.Key]
 	second := byKey[secondCandidate.Key]
 
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -968,7 +777,7 @@ func TestFilesystemCatalogRepositoryRefusesToDeleteCaseReferencedOnlyByHistorica
 			Revision: 1, CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
 		},
 		Key: "historical-suite", Name: "historical Suite", Protocol: first.Protocol,
-		ModelTarget: "upstream-model", Cases: []domain.CaseRevisionRef{{CaseID: first.ID, Revision: first.Revision}},
+		Cases: []domain.CaseRef{{CaseID: first.ID}}, Inputs: []domain.SuiteInput{},
 	}
 	if err := suites.SaveSuite(ctx, string(suiteCandidate.Protocol), suiteCandidate.Key, suiteCandidate); err != nil {
 		t.Fatal(err)
@@ -979,7 +788,7 @@ func TestFilesystemCatalogRepositoryRefusesToDeleteCaseReferencedOnlyByHistorica
 	}
 	updatedSuite := initialSuite.Suite
 	updatedSuite.Name = "current Suite"
-	updatedSuite.Cases = []domain.CaseRevisionRef{{CaseID: second.ID, Revision: second.Revision}}
+	updatedSuite.Cases = []domain.CaseRef{{CaseID: second.ID}}
 	if err := suites.SaveSuite(ctx, initialSuite.Group, initialSuite.Directory, updatedSuite); err != nil {
 		t.Fatal(err)
 	}
@@ -1002,8 +811,12 @@ func TestFilesystemCatalogRepositoryRefusesToDeleteCaseReferencedOnlyByHistorica
 	repository := filesystemCatalogRepository{
 		lockPath: filepath.Join(root, "catalog.lock"), cases: cases, suites: suites, plans: plans,
 	}
-	if err := repository.DeleteTestCase(ctx, first.ID, first.Revision); !errors.Is(err, catalog.ErrConflict) {
-		t.Fatalf("DeleteTestCase() error = %v, want conflict from historical Suite reference", err)
+	if err := repository.DeleteTestCase(ctx, first.ID, first.Revision); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := plans.Get(ctx, plan.ID)
+	if err != nil || !reflect.DeepEqual(stored, plan) {
+		t.Fatalf("deletion changed Plan: %v", err)
 	}
 }
 
@@ -1014,15 +827,6 @@ func stableSuiteIDForTest(t *testing.T, suites *suitecatalog.Service) string {
 		t.Fatalf("Suite Entries() = %#v, %v", entries, err)
 	}
 	return entries[0].Suite.ID
-}
-
-func TestFilesystemCatalogRepositoryPreservesCaseRevisionStoreIOCause(t *testing.T) {
-	t.Parallel()
-	want := fs.ErrPermission
-	repository := filesystemCatalogRepository{lockPath: filepath.Join(t.TempDir(), "catalog.lock"), cases: caseRevisionCatalogStub{storeErr: want}}
-	if err := repository.StoreTestCaseRevision(context.Background(), filesystemCatalogTestCase(2)); !errors.Is(err, want) {
-		t.Fatalf("StoreTestCaseRevision() error = %v, want wrapped %v", err, want)
-	}
 }
 
 func TestMapFileCatalogErrorDeclaresOnlyARedactedDiagnosticCause(t *testing.T) {
@@ -1061,7 +865,7 @@ func TestFilesystemCatalogRepositoryRereadsDesiredStateAfterAmbiguousCommittedWr
 	if err != nil {
 		t.Fatal(err)
 	}
-	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites"), Cases: cases})
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1193,11 +997,11 @@ func TestFilesystemCatalogRepositorySerializesSameRevisionSuiteUpdatesAcrossInst
 	}
 	caseEntry := caseEntries[0]
 	suiteRoot := filepath.Join(root, "suites")
-	firstSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot, Cases: firstCases})
+	firstSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot})
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot, Cases: secondCases})
+	secondSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1326,11 +1130,11 @@ func TestFilesystemCatalogRepositorySerializesCaseDeleteAgainstPlanCreate(t *tes
 		t.Fatalf("Entries() = %#v, %v", caseEntries, err)
 	}
 	caseEntry := caseEntries[0]
-	firstSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot, Cases: firstCases})
+	firstSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot})
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot, Cases: secondCases})
+	secondSuites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: suiteRoot})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1375,37 +1179,33 @@ func TestFilesystemCatalogRepositorySerializesCaseDeleteAgainstPlanCreate(t *tes
 	if err := <-createResult; err != nil {
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
-	if err := <-deleteResult; !errors.Is(err, catalog.ErrConflict) {
-		t.Fatalf("DeleteTestCase() error = %v, want %v", err, catalog.ErrConflict)
+	if err := <-deleteResult; err != nil {
+		t.Fatal(err)
 	}
-	if _, err := secondCases.Find(ctx, caseEntry.TestCase.ID); err != nil {
-		t.Fatalf("Find(case) error = %v; plan target was orphaned", err)
+	if _, err := secondCases.Find(ctx, caseEntry.TestCase.ID); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("deleted Case still found: %v", err)
 	}
 	if _, err := secondPlans.Get(ctx, plan.ID); err != nil {
 		t.Fatalf("Get(plan) error = %v", err)
 	}
 }
 
-type caseRevisionCatalogStub struct {
-	storeErr error
-}
-
-type failingStoreRevisionCaseCatalog struct {
+type failingReadCaseCatalog struct {
 	*casecatalog.Service
 	err error
 }
 
-func (catalog *failingStoreRevisionCaseCatalog) StoreRevision(context.Context, domain.TestCase) error {
-	return catalog.err
+func (catalog *failingReadCaseCatalog) Entries(context.Context) ([]casecatalog.Entry, error) {
+	return nil, catalog.err
 }
 
-type failingStoreRevisionSuiteCatalog struct {
+type failingReadSuiteCatalog struct {
 	*suitecatalog.Service
 	err error
 }
 
-func (catalog *failingStoreRevisionSuiteCatalog) StoreRevision(context.Context, domain.Suite) error {
-	return catalog.err
+func (catalog *failingReadSuiteCatalog) Entries(context.Context) ([]suitecatalog.Entry, error) {
+	return nil, catalog.err
 }
 
 type blockingCaseCatalog struct {
@@ -1552,30 +1352,6 @@ func (catalog *committedErrorPlanCatalog) Delete(ctx context.Context, id string,
 	return fs.ErrPermission
 }
 
-func (caseRevisionCatalogStub) Entries(context.Context) ([]casecatalog.Entry, error) {
-	return nil, nil
-}
-
-func (caseRevisionCatalogStub) Find(context.Context, string) (casecatalog.Entry, error) {
-	return casecatalog.Entry{}, fs.ErrNotExist
-}
-
-func (caseRevisionCatalogStub) FindRevision(context.Context, string, uint64) (casecatalog.Entry, error) {
-	return casecatalog.Entry{}, fs.ErrNotExist
-}
-
-func (caseRevisionCatalogStub) SaveCase(context.Context, string, string, domain.TestCase) error {
-	return nil
-}
-
-func (stub caseRevisionCatalogStub) StoreRevision(context.Context, domain.TestCase) error {
-	return stub.storeErr
-}
-
-func (caseRevisionCatalogStub) Delete(context.Context, string, uint64) error {
-	return nil
-}
-
 func filesystemCatalogMappingFixtures(targetless bool) (domain.Channel, domain.ChannelModel, domain.Plan) {
 	now := time.Date(2026, 9, 4, 15, 0, 0, 0, time.UTC)
 	meta := func(id string) domain.EntityMeta {
@@ -1589,29 +1365,24 @@ func filesystemCatalogMappingFixtures(targetless bool) (domain.Channel, domain.C
 		EntityMeta: meta("62000000-0000-4000-8000-000000000002"),
 		ChannelID:  channel.ID, ModelID: "62000000-0000-4000-8000-000000000003", UpstreamModelName: "upstream-model",
 	}
-	modelIDs := []string{mapping.ModelID}
-	channelIDs := []string{mapping.ChannelID}
-	if targetless {
-		modelIDs = []string{}
-		channelIDs = []string{}
-	}
 	plan := domain.Plan{
 		EntityMeta: meta("62000000-0000-4000-8000-000000000004"),
-		Name:       "plan", ModelIDs: modelIDs, ChannelIDs: channelIDs,
+		Name:       "plan", Protocol: domain.ProtocolOpenAIChat,
 	}
 	filesystemCatalogSetPlanSuites(&plan, domain.Suite{
 		EntityMeta: meta("62000000-0000-4000-8000-000000000006"),
-		Cases:      []domain.CaseRevisionRef{{CaseID: "62000000-0000-4000-8000-000000000005", Revision: 1}},
+		Cases:      []domain.CaseRef{{CaseID: "62000000-0000-4000-8000-000000000005"}},
 	})
 	return channel, mapping, plan
 }
 
 func filesystemCatalogSetPlanSuites(plan *domain.Plan, suites ...domain.Suite) {
-	plan.Suites = make([]domain.PlanSuiteEntry, len(suites))
+	plan.Protocol = domain.ProtocolOpenAIChat
+	plan.Entries = make([]domain.PlanEntry, len(suites))
 	for index, suite := range suites {
-		plan.Suites[index] = domain.PlanSuiteEntry{
-			EntryID: fmt.Sprintf("65000000-0000-4000-8000-%012d", index+1),
-			SuiteID: suite.ID, SuiteRevision: suite.Revision,
+		plan.Entries[index] = domain.PlanEntry{
+			EntryID:    fmt.Sprintf("65000000-0000-4000-8000-%012d", index+1),
+			TargetKind: domain.PlanTargetSuite, TargetID: suite.ID,
 			Parameters: map[string]json.RawMessage{},
 			Load: domain.LoadProfile{
 				Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
@@ -1638,8 +1409,8 @@ func filesystemCatalogSuiteFixture(testCase domain.TestCase) domain.Suite {
 			ID: "64000000-0000-4000-8000-000000000001", SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: 1, CreatedAt: now, UpdatedAt: now,
 		},
-		Key: "suite-1", Name: "file suite", Protocol: testCase.Protocol, ModelTarget: "upstream-model",
-		Cases: []domain.CaseRevisionRef{{CaseID: testCase.ID, Revision: testCase.Revision}},
+		Key: "suite-1", Name: "file suite", Protocol: testCase.Protocol,
+		Cases: []domain.CaseRef{{CaseID: testCase.ID}}, Inputs: []domain.SuiteInput{},
 	}
 }
 
@@ -1654,9 +1425,9 @@ func filesystemCatalogTestCase(revision uint64) domain.TestCase {
 		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		Definition: domain.TestCaseDefinition{
 			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          casetypes.TypeRequestSingle,
+			Type:          domain.CaseType("openai-chat"),
 			TypeVersion:   1,
-			Spec:          []byte(`{"request":{"method":"POST","path":"/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hi"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"text","config":{"non_empty":true}}]}`),
+			Spec:          []byte(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}`),
 		},
 	}
 }

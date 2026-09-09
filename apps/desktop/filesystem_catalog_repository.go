@@ -28,7 +28,7 @@ import (
 type filesystemCatalogRepository struct {
 	// lockPath is shared by every authored catalog rooted beside the same
 	// executable. It serializes cross-file validation and the single-file
-	// commit so concurrent repository instances cannot create dangling refs.
+	// commit so concurrent repository instances preserve compare-and-swap semantics.
 	lockPath string
 	models   interface {
 		List(context.Context) ([]domain.Model, error)
@@ -52,17 +52,13 @@ type filesystemCatalogRepository struct {
 	cases interface {
 		Entries(context.Context) ([]casecatalog.Entry, error)
 		Find(context.Context, string) (casecatalog.Entry, error)
-		FindRevision(context.Context, string, uint64) (casecatalog.Entry, error)
 		SaveCase(context.Context, string, string, domain.TestCase) error
-		StoreRevision(context.Context, domain.TestCase) error
 		Delete(context.Context, string, uint64) error
 	}
 	suites interface {
 		Entries(context.Context) ([]suitecatalog.Entry, error)
 		Find(context.Context, string) (suitecatalog.Entry, error)
-		FindRevision(context.Context, string, uint64) (suitecatalog.Entry, error)
 		SaveSuite(context.Context, string, string, domain.Suite) error
-		StoreRevision(context.Context, domain.Suite) error
 		Delete(context.Context, string, uint64) error
 	}
 	plans interface {
@@ -217,17 +213,6 @@ func (repository filesystemCatalogRepository) deleteModelUnlocked(ctx context.Co
 			return catalog.ErrConflict
 		}
 	}
-	plans, err := repository.ListPlans(ctx)
-	if err != nil {
-		return err
-	}
-	for _, plan := range plans {
-		for _, modelID := range plan.ModelIDs {
-			if modelID == id {
-				return catalog.ErrConflict
-			}
-		}
-	}
 	return state.write(func() error { return mapFileCatalogError(repository.models.Delete(ctx, id, expectedRevision)) })
 }
 
@@ -279,17 +264,6 @@ func (repository filesystemCatalogRepository) deleteChannelUnlocked(ctx context.
 			return catalog.ErrConflict
 		}
 	}
-	plans, err := repository.ListPlans(ctx)
-	if err != nil {
-		return err
-	}
-	for _, plan := range plans {
-		for _, channelID := range plan.ChannelIDs {
-			if channelID == id {
-				return catalog.ErrConflict
-			}
-		}
-	}
 	return state.write(func() error { return mapFileCatalogError(repository.channels.DeleteChannel(ctx, id, expectedRevision)) })
 }
 
@@ -338,36 +312,6 @@ func (repository filesystemCatalogRepository) DeleteChannelModel(ctx context.Con
 }
 
 func (repository filesystemCatalogRepository) deleteChannelModelUnlocked(ctx context.Context, state *filesystemCatalogMutationState, id string, expectedRevision uint64) error {
-	mapping, err := repository.GetChannelModel(ctx, id)
-	if err != nil {
-		return err
-	}
-	mappings, err := repository.ListChannelModels(ctx)
-	if err != nil {
-		return err
-	}
-	plans, err := repository.ListPlans(ctx)
-	if err != nil {
-		return err
-	}
-	for _, plan := range plans {
-		if len(plan.ModelIDs) == 0 && len(plan.ChannelIDs) == 0 {
-			continue
-		}
-		if !containsCatalogID(plan.ModelIDs, mapping.ModelID) || !containsCatalogID(plan.ChannelIDs, mapping.ChannelID) {
-			continue
-		}
-		uniqueBinding := true
-		for _, candidate := range mappings {
-			if candidate.ID != mapping.ID && candidate.ModelID == mapping.ModelID && candidate.ChannelID == mapping.ChannelID {
-				uniqueBinding = false
-				break
-			}
-		}
-		if uniqueBinding {
-			return catalog.ErrConflict
-		}
-	}
 	return state.write(func() error { return mapFileCatalogError(repository.channels.DeleteMapping(ctx, id, expectedRevision)) })
 }
 
@@ -398,29 +342,6 @@ func (repository filesystemCatalogRepository) GetTestCase(ctx context.Context, i
 		return domain.TestCase{}, catalog.ErrNotFound
 	}
 	return entry.TestCase, err
-}
-
-func (repository filesystemCatalogRepository) GetTestCaseRevision(ctx context.Context, id string, revision uint64) (domain.TestCase, error) {
-	entry, err := repository.cases.FindRevision(ctx, id, revision)
-	if errors.Is(err, fs.ErrNotExist) {
-		return domain.TestCase{}, catalog.ErrNotFound
-	}
-	if err != nil {
-		return domain.TestCase{}, mapFileCatalogError(err)
-	}
-	return entry.TestCase, nil
-}
-
-func (repository filesystemCatalogRepository) StoreTestCaseRevision(ctx context.Context, testCase domain.TestCase) error {
-	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
-		return state.write(func() error { return mapFileCatalogError(repository.cases.StoreRevision(ctx, testCase)) })
-	}, func(verifyCtx context.Context) (bool, error) {
-		got, err := repository.GetTestCaseRevision(verifyCtx, testCase.ID, testCase.Revision)
-		if errors.Is(err, catalog.ErrNotFound) {
-			return false, nil
-		}
-		return canonicalCatalogValuesEqual(got, testCase), err
-	})
 }
 
 func (repository filesystemCatalogRepository) CreateTestCase(ctx context.Context, testCase domain.TestCase) error {
@@ -470,9 +391,6 @@ func (repository filesystemCatalogRepository) updateTestCaseUnlocked(ctx context
 	if entry.TestCase.Key != testCase.Key || entry.TestCase.Protocol != testCase.Protocol {
 		return catalog.ErrInvalid
 	}
-	if err := repository.prepareSuitesForCaseUpdateUnlocked(ctx, testCase); err != nil {
-		return err
-	}
 	return state.write(func() error {
 		return mapFileCatalogError(repository.cases.SaveCase(ctx, entry.Group, entry.Directory, testCase))
 	})
@@ -497,34 +415,6 @@ func (repository filesystemCatalogRepository) deleteTestCaseUnlocked(ctx context
 	}
 	if entry.TestCase.Revision != expectedRevision {
 		return catalog.ErrConflict
-	}
-	suites, err := repository.ListSuites(ctx)
-	if err != nil {
-		return err
-	}
-	for _, suite := range suites {
-		for _, ref := range suite.Cases {
-			if ref.CaseID == id {
-				return catalog.ErrConflict
-			}
-		}
-	}
-	plans, err := repository.ListPlans(ctx)
-	if err != nil {
-		return err
-	}
-	for _, plan := range plans {
-		for _, planSuite := range plan.Suites {
-			pinnedSuite, err := repository.GetSuiteRevision(ctx, planSuite.SuiteID, planSuite.SuiteRevision)
-			if err != nil {
-				return err
-			}
-			for _, ref := range pinnedSuite.Cases {
-				if ref.CaseID == id {
-					return catalog.ErrConflict
-				}
-			}
-		}
 	}
 	return state.write(func() error {
 		return mapFileCatalogError(repository.cases.Delete(ctx, id, expectedRevision))
@@ -551,32 +441,6 @@ func (repository filesystemCatalogRepository) GetSuite(ctx context.Context, id s
 	return entry.Suite, err
 }
 
-func (repository filesystemCatalogRepository) GetSuiteRevision(ctx context.Context, id string, revision uint64) (domain.Suite, error) {
-	entry, err := repository.suites.FindRevision(ctx, id, revision)
-	if errors.Is(err, fs.ErrNotExist) {
-		return domain.Suite{}, catalog.ErrNotFound
-	}
-	if err != nil {
-		return domain.Suite{}, mapFileCatalogError(err)
-	}
-	if err := repository.validateSuiteReferencesUnlocked(ctx, entry.Suite); err != nil {
-		return domain.Suite{}, err
-	}
-	return entry.Suite, nil
-}
-
-func (repository filesystemCatalogRepository) StoreSuiteRevision(ctx context.Context, suite domain.Suite) error {
-	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
-		if err := repository.validateSuiteReferencesUnlocked(ctx, suite); err != nil {
-			return err
-		}
-		return state.write(func() error { return mapFileCatalogError(repository.suites.StoreRevision(ctx, suite)) })
-	}, func(verifyCtx context.Context) (bool, error) {
-		got, err := repository.GetSuiteRevision(verifyCtx, suite.ID, suite.Revision)
-		return catalogDesiredStateEqual(got, suite, err)
-	})
-}
-
 func (repository filesystemCatalogRepository) CreateSuite(ctx context.Context, suite domain.Suite) error {
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
 		return repository.createSuiteUnlocked(ctx, state, suite)
@@ -586,7 +450,7 @@ func (repository filesystemCatalogRepository) CreateSuite(ctx context.Context, s
 }
 
 func (repository filesystemCatalogRepository) createSuiteUnlocked(ctx context.Context, state *filesystemCatalogMutationState, suite domain.Suite) error {
-	if err := repository.validateSuiteReferencesUnlocked(ctx, suite); err != nil {
+	if err := suite.Validate(); err != nil {
 		return err
 	}
 	entries, err := repository.suites.Entries(ctx)
@@ -627,7 +491,7 @@ func (repository filesystemCatalogRepository) updateSuiteUnlocked(ctx context.Co
 	if entry.Suite.Key != suite.Key || entry.Suite.Protocol != suite.Protocol {
 		return catalog.ErrInvalid
 	}
-	if err := repository.validateSuiteReferencesUnlocked(ctx, suite); err != nil {
+	if err := suite.Validate(); err != nil {
 		return err
 	}
 	return state.write(func() error {
@@ -654,17 +518,6 @@ func (repository filesystemCatalogRepository) deleteSuiteUnlocked(ctx context.Co
 	}
 	if entry.Suite.Revision != expectedRevision {
 		return catalog.ErrConflict
-	}
-	plans, err := repository.ListPlans(ctx)
-	if err != nil {
-		return err
-	}
-	for _, plan := range plans {
-		for _, planSuite := range plan.Suites {
-			if planSuite.SuiteID == id {
-				return catalog.ErrConflict
-			}
-		}
 	}
 	return state.write(func() error {
 		return mapFileCatalogError(repository.suites.Delete(ctx, id, expectedRevision))
@@ -761,80 +614,6 @@ func (repository filesystemCatalogRepository) validateMappingReferencesUnlocked(
 	}
 	if model.Protocol != channel.Protocol {
 		return catalog.ErrInvalid
-	}
-	return nil
-}
-
-func (repository filesystemCatalogRepository) validateSuiteReferencesUnlocked(ctx context.Context, suite domain.Suite) error {
-	definitions, err := repository.resolveSuiteCasesUnlocked(ctx, suite)
-	if err != nil {
-		return err
-	}
-	if suite.ValidateCases(definitions) != nil {
-		return catalog.ErrInvalid
-	}
-	return nil
-}
-
-func (repository filesystemCatalogRepository) resolveSuiteCasesUnlocked(ctx context.Context, suite domain.Suite) ([]domain.TestCase, error) {
-	definitions := make([]domain.TestCase, 0, len(suite.Cases))
-	for _, ref := range suite.Cases {
-		entry, err := repository.cases.FindRevision(ctx, ref.CaseID, ref.Revision)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, catalog.ErrNotFound
-		}
-		if err != nil {
-			return nil, mapFileCatalogError(err)
-		}
-		definitions = append(definitions, entry.TestCase)
-	}
-	return definitions, nil
-}
-
-func (repository filesystemCatalogRepository) prepareSuitesForCaseUpdateUnlocked(ctx context.Context, candidate domain.TestCase) error {
-	// Some focused repository tests intentionally provide only a Case catalog.
-	// Production always supplies the complete authored boundary.
-	if repository.suites == nil {
-		return nil
-	}
-	entries, err := repository.suites.Entries(ctx)
-	if err != nil {
-		return mapFileCatalogError(err)
-	}
-	affected := make([]domain.Suite, 0)
-	for _, entry := range entries {
-		referenced := false
-		for _, ref := range entry.Suite.Cases {
-			if ref.CaseID == candidate.ID {
-				referenced = true
-				break
-			}
-		}
-		if !referenced {
-			continue
-		}
-		definitions, err := repository.resolveSuiteCasesUnlocked(ctx, entry.Suite)
-		if err != nil {
-			return err
-		}
-		prospective := entry.Suite
-		prospective.Cases = append([]domain.CaseRevisionRef(nil), entry.Suite.Cases...)
-		for index, ref := range prospective.Cases {
-			if ref.CaseID == candidate.ID {
-				prospective.Cases[index].Revision = candidate.Revision
-				definitions[index] = candidate
-			}
-		}
-		if prospective.ValidateCases(definitions) != nil {
-			return catalog.ErrInvalid
-		}
-		affected = append(affected, entry.Suite)
-	}
-	// Validate every dependent Suite before writing any revision sidecar.
-	for _, suite := range affected {
-		if err := repository.suites.StoreRevision(ctx, suite); err != nil {
-			return mapFileCatalogError(err)
-		}
 	}
 	return nil
 }

@@ -25,7 +25,9 @@
     "emptyFiltered": "No runs for this plan yet",
     "empty": "No runs yet",
     "emptyFilteredDescription": "Choose another plan or start a run from this plan.",
-    "emptyDescription": "Start a run from the upper-right corner and its results will appear here."
+    "emptyDescription": "Start a run from the upper-right corner and its results will appear here.",
+    "observed": "{{count}} observed",
+    "indeterminate": "{{count}} indeterminate"
   },
   "inspector": {
     "details": "Run details",

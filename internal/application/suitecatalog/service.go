@@ -17,17 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
-	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 type Source string
 
@@ -41,20 +38,14 @@ var (
 	ErrCollision = errors.New("suite catalog: duplicate suite identity")
 )
 
-type CaseSource interface {
-	Entries(context.Context) ([]casecatalog.Entry, error)
-}
-
 type Options struct {
 	Builtin  fs.FS
 	UserRoot string
-	Cases    CaseSource
 }
 
 type Service struct {
 	builtin  fs.FS
 	userRoot string
-	cases    CaseSource
 }
 
 type Entry struct {
@@ -62,17 +53,16 @@ type Entry struct {
 	Directory string
 	Source    Source
 	Suite     domain.Suite
-	CaseKeys  []string
 }
 
 type document struct {
-	SchemaVersion int                    `json:"schema_version"`
-	Key           string                 `json:"key"`
-	Name          string                 `json:"name"`
-	Protocol      domain.Protocol        `json:"protocol"`
-	ModelTarget   string                 `json:"model_target"`
-	CaseKeys      []string               `json:"case_keys"`
-	QuickTest     *domain.SuiteQuickTest `json:"quick_test,omitempty"`
+	SchemaVersion int                 `json:"schema_version"`
+	Key           string              `json:"key"`
+	Name          string              `json:"name"`
+	Protocol      domain.Protocol     `json:"protocol"`
+	Description   string              `json:"description"`
+	Cases         []domain.CaseRef    `json:"cases"`
+	Inputs        []domain.SuiteInput `json:"inputs"`
 }
 
 type discovered struct {
@@ -82,10 +72,10 @@ type discovered struct {
 }
 
 func New(options Options) (*Service, error) {
-	if options.Builtin == nil || options.Cases == nil || strings.TrimSpace(options.UserRoot) == "" || !filepath.IsAbs(options.UserRoot) {
+	if options.Builtin == nil || strings.TrimSpace(options.UserRoot) == "" || !filepath.IsAbs(options.UserRoot) {
 		return nil, ErrInvalid
 	}
-	return &Service{builtin: options.Builtin, userRoot: filepath.Clean(options.UserRoot), cases: options.Cases}, nil
+	return &Service{builtin: options.Builtin, userRoot: filepath.Clean(options.UserRoot)}, nil
 }
 
 func UserRootForExecutable(executablePath string) (string, error) {
@@ -103,18 +93,6 @@ func UserRootForExecutable(executablePath string) (string, error) {
 func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 	if service == nil || ctx == nil {
 		return nil, ErrInvalid
-	}
-	caseEntries, err := service.cases.Entries(ctx)
-	if err != nil {
-		return nil, err
-	}
-	casesByIdentity := make(map[string]domain.TestCase, len(caseEntries))
-	for _, entry := range caseEntries {
-		identity := string(entry.TestCase.Protocol) + "/" + entry.TestCase.Key
-		if _, duplicate := casesByIdentity[identity]; duplicate {
-			return nil, fmt.Errorf("%w: duplicate case %s", ErrCollision, identity)
-		}
-		casesByIdentity[identity] = entry.TestCase
 	}
 	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin)
 	if err != nil {
@@ -152,13 +130,13 @@ func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 
 	entries := make([]Entry, len(discoveredEntries))
 	for index, candidate := range discoveredEntries {
-		suite, materializeErr := materialize(candidate.document, casesByIdentity)
+		suite, materializeErr := materialize(candidate.document)
 		if materializeErr != nil {
 			return nil, fmt.Errorf("resolve suite %s/%s: %w", candidate.group, candidate.directory, materializeErr)
 		}
 		entries[index] = Entry{
 			Group: candidate.group, Directory: candidate.directory, Source: candidate.source,
-			Suite: suite, CaseKeys: append([]string(nil), candidate.document.CaseKeys...),
+			Suite: suite,
 		}
 	}
 	return entries, nil
@@ -180,96 +158,13 @@ func (service *Service) Find(ctx context.Context, id string) (Entry, error) {
 	return Entry{}, fs.ErrNotExist
 }
 
-// FindRevision resolves an exact immutable Suite revision. The active
-// suite.json remains the authored document; historical revisions live in
-// executable-relative sidecars and are never included by Entries.
-func (service *Service) FindRevision(ctx context.Context, id string, revision uint64) (Entry, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(id) || revision == 0 {
-		return Entry{}, ErrInvalid
-	}
-	entry, err := service.Find(ctx, id)
-	if err != nil {
-		return Entry{}, err
-	}
-	if entry.Suite.Revision == revision {
-		return entry, nil
-	}
-	target := service.revisionPath(entry.Group, entry.Directory, revision)
-	if !withinRoot(service.userRoot, target) {
-		return Entry{}, ErrInvalid
-	}
-	raw, err := os.ReadFile(target)
-	if err != nil {
-		return Entry{}, err
-	}
-	suite, err := decodeStoredSuiteRevision(raw)
-	if err != nil || suite.ID != id || suite.Revision != revision ||
-		suite.Protocol != entry.Suite.Protocol || suite.Key != entry.Suite.Key {
-		return Entry{}, ErrInvalid
-	}
-	return Entry{
-		Group: entry.Group, Directory: entry.Directory, Source: SourceUser,
-		Suite: suite,
-	}, nil
-}
-
-// StoreRevision persists a complete exact Suite without changing the active
-// suite.json. Revision values are content hashes, so only exact equality is
-// meaningful; their numeric ordering is deliberately ignored.
-func (service *Service) StoreRevision(ctx context.Context, suite domain.Suite) error {
-	if service == nil || ctx == nil || suite.Validate() != nil {
-		return ErrInvalid
-	}
-	entry, err := service.Find(ctx, suite.ID)
-	if err != nil {
-		return err
-	}
-	if entry.Suite.Protocol != suite.Protocol || entry.Suite.Key != suite.Key {
-		return ErrInvalid
-	}
-	if entry.Suite.Revision == suite.Revision {
-		if !equalStoredSuiteRevision(entry.Suite, suite) {
-			return ErrCollision
-		}
-		raw, encodeErr := encodeStoredSuiteRevision(suite)
-		if encodeErr != nil {
-			return ErrInvalid
-		}
-		return service.storeRevision(ctx, entry.Group, entry.Directory, suite, raw)
-	}
-	raw, err := encodeStoredSuiteRevision(suite)
-	if err != nil {
-		return ErrInvalid
-	}
-	return service.storeRevision(ctx, entry.Group, entry.Directory, suite, raw)
-}
-
 func (service *Service) SaveSuite(ctx context.Context, group, directory string, suite domain.Suite) error {
 	if err := suite.Validate(); err != nil || string(suite.Protocol) != group {
 		return ErrInvalid
 	}
-	caseEntries, err := service.cases.Entries(ctx)
-	if err != nil {
-		return err
-	}
-	caseKeys := make([]string, len(suite.Cases))
-	for index, ref := range suite.Cases {
-		found := false
-		for _, entry := range caseEntries {
-			testCase := entry.TestCase
-			if testCase.ID == ref.CaseID && testCase.Revision == ref.Revision && suite.AcceptsCase(testCase) {
-				caseKeys[index] = testCase.Key
-				found = true
-				break
-			}
-		}
-		if !found {
-			return ErrInvalid
-		}
-	}
 	raw, err := json.MarshalIndent(document{
 		SchemaVersion: CurrentSchemaVersion, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol,
-		ModelTarget: suite.ModelTarget, CaseKeys: caseKeys, QuickTest: suite.QuickTest.Clone(),
+		Description: suite.Description, Cases: append([]domain.CaseRef{}, suite.Cases...), Inputs: domain.CloneSuiteInputs(suite.Inputs),
 	}, "", "  ")
 	if err != nil {
 		return ErrInvalid
@@ -288,15 +183,7 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	if err != nil || string(doc.Protocol) != group {
 		return ErrInvalid
 	}
-	caseEntries, err := service.cases.Entries(ctx)
-	if err != nil {
-		return err
-	}
-	casesByIdentity := make(map[string]domain.TestCase, len(caseEntries))
-	for _, entry := range caseEntries {
-		casesByIdentity[string(entry.TestCase.Protocol)+"/"+entry.TestCase.Key] = entry.TestCase
-	}
-	suite, err := materialize(doc, casesByIdentity)
+	suite, err := materialize(doc)
 	if err != nil {
 		return ErrInvalid
 	}
@@ -305,15 +192,7 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 		if current.Group != group || current.Directory != directory {
 			return ErrCollision
 		}
-		if current.Suite.Revision != suite.Revision {
-			previous, encodeErr := encodeStoredSuiteRevision(current.Suite)
-			if encodeErr != nil {
-				return ErrInvalid
-			}
-			if err := service.storeRevision(ctx, group, directory, current.Suite, previous); err != nil {
-				return err
-			}
-		}
+
 	} else if !errors.Is(findErr, fs.ErrNotExist) {
 		return findErr
 	}
@@ -349,69 +228,6 @@ func (service *Service) Delete(ctx context.Context, id string, expectedRevision 
 	_ = os.Remove(targetDirectory)
 	_ = os.Remove(filepath.Dir(targetDirectory))
 	return nil
-}
-
-func (service *Service) storeRevision(ctx context.Context, group, directory string, suite domain.Suite, raw []byte) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	target := service.revisionPath(group, directory, suite.Revision)
-	if !withinRoot(service.userRoot, target) {
-		return ErrInvalid
-	}
-	if existing, err := os.ReadFile(target); err == nil {
-		stored, decodeErr := decodeStoredSuiteRevision(existing)
-		if decodeErr != nil || !equalStoredSuiteRevision(stored, suite) {
-			return ErrCollision
-		}
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect suite revision: %w", err)
-	}
-	if err := fileconfig.WriteAtomically(ctx, target, raw); err != nil {
-		return fmt.Errorf("write suite revision: %w", err)
-	}
-	return nil
-}
-
-func (service *Service) revisionPath(group, directory string, revision uint64) string {
-	return filepath.Join(service.userRoot, group, directory, "revisions", strconv.FormatUint(revision, 10)+".json")
-}
-
-func encodeStoredSuiteRevision(suite domain.Suite) ([]byte, error) {
-	if err := suite.Validate(); err != nil {
-		return nil, err
-	}
-	payload, err := json.MarshalIndent(suite, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(payload, '\n'), nil
-}
-
-func decodeStoredSuiteRevision(raw []byte) (domain.Suite, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	var suite domain.Suite
-	if err := decoder.Decode(&suite); err != nil {
-		return domain.Suite{}, err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return domain.Suite{}, errors.New("suite revision must contain one object")
-		}
-		return domain.Suite{}, err
-	}
-	if err := suite.Validate(); err != nil {
-		return domain.Suite{}, err
-	}
-	return suite, nil
-}
-
-func equalStoredSuiteRevision(left, right domain.Suite) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {
@@ -464,38 +280,17 @@ func decodeDocument(raw []byte) (document, error) {
 		}
 		return document{}, err
 	}
-	if doc.SchemaVersion != CurrentSchemaVersion || !validKey(doc.Key) || strings.TrimSpace(doc.Name) == "" || doc.Protocol.Validate() != nil || (doc.ModelTarget != "" && !validModelTarget(doc.ModelTarget)) || (doc.ModelTarget == "" && doc.QuickTest == nil) || len(doc.CaseKeys) == 0 {
-		return document{}, ErrInvalid
+	if doc.SchemaVersion != CurrentSchemaVersion {
+		return document{}, fmt.Errorf("unsupported suite schema version %d; explicitly upgrade to %d", doc.SchemaVersion, CurrentSchemaVersion)
 	}
-	seen := make(map[string]struct{}, len(doc.CaseKeys))
-	for _, key := range doc.CaseKeys {
-		if !validKey(key) {
-			return document{}, ErrInvalid
-		}
-		if _, duplicate := seen[key]; duplicate {
-			return document{}, ErrInvalid
-		}
-		seen[key] = struct{}{}
+	if _, err := materialize(doc); err != nil {
+		return document{}, err
 	}
 	return doc, nil
 }
 
-func materialize(doc document, cases map[string]domain.TestCase) (domain.Suite, error) {
-	refs := make([]domain.CaseRevisionRef, len(doc.CaseKeys))
-	definitions := make([]domain.TestCase, len(doc.CaseKeys))
-	selector := domain.Suite{Protocol: doc.Protocol, ModelTarget: doc.ModelTarget, QuickTest: doc.QuickTest}
-	for index, key := range doc.CaseKeys {
-		testCase, found := cases[string(doc.Protocol)+"/"+key]
-		if !found || !selector.AcceptsCase(testCase) {
-			return domain.Suite{}, ErrInvalid
-		}
-		refs[index] = domain.CaseRevisionRef{CaseID: testCase.ID, Revision: testCase.Revision}
-		definitions[index] = testCase
-	}
-	encoded, err := json.Marshal(struct {
-		Document document                 `json:"document"`
-		Cases    []domain.CaseRevisionRef `json:"cases"`
-	}{Document: doc, Cases: refs})
+func materialize(doc document) (domain.Suite, error) {
+	encoded, err := json.Marshal(doc)
 	if err != nil {
 		return domain.Suite{}, err
 	}
@@ -510,9 +305,13 @@ func materialize(doc document, cases map[string]domain.TestCase) (domain.Suite, 
 			ID: stableSuiteID(string(doc.Protocol) + "/" + doc.Key), SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: revision, CreatedAt: stamp, UpdatedAt: stamp,
 		},
-		Key: doc.Key, Name: doc.Name, Protocol: doc.Protocol, ModelTarget: doc.ModelTarget, Cases: refs, QuickTest: doc.QuickTest.Clone(),
+		Key: doc.Key, Name: doc.Name, Protocol: doc.Protocol, Description: doc.Description,
+		Cases: append([]domain.CaseRef{}, doc.Cases...), Inputs: domain.CloneSuiteInputs(doc.Inputs),
 	}
-	if err := suite.ValidateCases(definitions); err != nil {
+	if doc.Cases == nil || doc.Inputs == nil {
+		return domain.Suite{}, errors.New("suite requires cases and inputs arrays")
+	}
+	if err := suite.Validate(); err != nil {
 		return domain.Suite{}, err
 	}
 	return suite, nil
@@ -541,10 +340,6 @@ func validKey(value string) bool {
 		return false
 	}
 	return true
-}
-
-func validModelTarget(value string) bool {
-	return strings.TrimSpace(value) != "" && strings.TrimSpace(value) == value && len(value) <= 256 && strings.IndexFunc(value, unicode.IsControl) < 0
 }
 
 func validSegment(value string) bool {

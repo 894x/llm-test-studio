@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T028",
   "name": "流式字符交付速率测试",
   "dimension": "stability",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "stream_throughput",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -27,12 +24,69 @@
           ],
           "temperature": 0,
           "max_tokens": 128,
-          "stream": true
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
         }
       },
-      "options": {
-        "repetitions": 3
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "r4",
+          "source": "metrics",
+          "operator": "gte",
+          "pointer": "/stream_frames",
+          "value": 2
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices/0/finish_reason"
+        },
+        {
+          "id": "r6",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "r9",
+          "any": [
+            {
+              "id": "r7",
+              "source": "text",
+              "operator": "non_empty",
+              "transform": "trim"
+            },
+            {
+              "id": "r8",
+              "source": "response",
+              "operator": "non_empty",
+              "pointer": "/choices/0/message/reasoning_content",
+              "transform": "trim"
+            }
+          ]
+        }
+      ]
     }
   }
 }

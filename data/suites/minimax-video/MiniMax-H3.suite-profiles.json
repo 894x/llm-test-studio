@@ -1,97 +1,827 @@
 {
   "schema_version": 1,
   "protocol": "minimax-video",
-  "model_target": "MiniMax-H3",
   "profiles": [
     {
       "directory": "MiniMax-H3-connectivity",
+      "schema_version": 2,
       "key": "minimax-video.MiniMax-H3.connectivity",
       "name": "MiniMax H3 连通性测试套件",
-      "case_keys": [
-        "h3.t2v.min_duration",
-        "h3.authorization.required",
-        "h3.authorization.invalid"
+      "protocol": "minimax-video",
+      "description": "验证 MiniMax H3 文生视频创建、轮询与成功终态。",
+      "cases": [
+        {
+          "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c"
+        }
       ],
-      "quick_test": {
-        "description": "依次检查文生视频结果、缺失凭据和无效凭据的拒绝响应。",
-        "timeout_ms": 600000,
-        "inputs": [
-          {
-            "key": "prompt",
-            "label": "提示词",
-            "type": "text",
-            "default": "一只小猫在月光下奔跑，电影感镜头",
-            "bindings": [
-              {
-                "case_key": "h3.t2v.min_duration",
-                "pointer": "/request/body/content/0/text"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "directory": "MiniMax-H3-basic",
-      "key": "minimax-video.MiniMax-H3.basic",
-      "name": "MiniMax H3 基本功能测试套件",
-      "case_keys": [
-        "h3.t2v.min_duration",
-        "h3.authorization.required",
-        "h3.authorization.invalid",
-        "h3.content.required",
-        "h3.model.required",
-        "h3.resolution.required",
-        "h3.duration.required",
-        "h3.t2v.ratio_required",
-        "h3.content.text_min",
-        "h3.resolution.2k",
-        "h3.duration.interior",
-        "h3.t2v.ratio_9_16",
-        "h3.callback_url.valid",
-        "h3.aigc_watermark.false",
-        "h3.aigc_watermark.true",
-        "h3.i2v.role_omitted",
-        "h3.i2v.first_frame",
-        "h3.i2v.first_last_frame",
-        "h3.r2v.reference_image",
-        "h3.r2v.reference_video",
-        "h3.r2v.reference_audio",
-        "h3.r2v.all_media",
-        "h3.usage.t2v_seconds",
-        "h3.usage.multimodal"
+      "inputs": [
+        {
+          "key": "prompt",
+          "label": "提示词",
+          "type": "string",
+          "default": "一只小猫在月光下奔跑，电影感镜头",
+          "bindings": [
+            {
+              "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c",
+              "input": "prompt"
+            }
+          ]
+        }
       ]
     },
     {
+      "directory": "MiniMax-H3-basic",
+      "schema_version": 2,
+      "key": "minimax-video.MiniMax-H3.basic",
+      "name": "MiniMax H3 基本功能测试套件",
+      "protocol": "minimax-video",
+      "description": "",
+      "cases": [
+        {
+          "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c"
+        },
+        {
+          "case_id": "8726e1ac-0cee-5893-930e-5f7b024d947a"
+        },
+        {
+          "case_id": "57357cfc-b237-5802-8d0f-4b275b4ed5f9"
+        },
+        {
+          "case_id": "0985a7f1-7d2a-54a6-b78b-b1c74160b8e0"
+        },
+        {
+          "case_id": "f5d0f3c4-7708-557a-a168-0097af8af284"
+        },
+        {
+          "case_id": "5e879c7a-5056-5fd9-aba5-40ec2df1f8c8"
+        },
+        {
+          "case_id": "99799157-22c8-5933-b2e9-a11faf621a37"
+        },
+        {
+          "case_id": "9ff8aa5b-8d6b-5ab8-b28f-be5108ea1623"
+        },
+        {
+          "case_id": "a3461ff2-37a2-5a84-a551-e270435ed58e"
+        },
+        {
+          "case_id": "c37aad4f-a97b-5cc3-814b-ea06454dccc6"
+        },
+        {
+          "case_id": "b3fa5b33-3350-501b-a13c-a3a9b1430c8c"
+        },
+        {
+          "case_id": "fefe9246-9f49-507d-86a4-3d65a4a11b89"
+        },
+        {
+          "case_id": "6c8ba032-647a-53b1-89fe-b3d980edadd6"
+        },
+        {
+          "case_id": "76c549c6-d91c-5721-a42e-05e0e4c14d16"
+        },
+        {
+          "case_id": "25bdb763-0274-5ecc-b534-43c801f48e44"
+        },
+        {
+          "case_id": "5cb51aa7-b019-5d35-86f7-bd3847d35955"
+        },
+        {
+          "case_id": "7dbf6314-4c88-51d9-b30e-2ca387ba5bee"
+        },
+        {
+          "case_id": "c53bbb0b-d2ff-5c8f-95d1-898a52f8db35"
+        },
+        {
+          "case_id": "80ed0cf0-df9c-5774-a4fa-4332d15c34a1"
+        },
+        {
+          "case_id": "58fb31b2-19a0-59ff-b82e-a27759a432ea"
+        },
+        {
+          "case_id": "4824a965-3aa1-50e2-9501-3bc0bf3657c9"
+        }
+      ],
+      "inputs": []
+    },
+    {
       "directory": "MiniMax-H3-parameter-rejection",
+      "schema_version": 2,
       "key": "minimax-video.MiniMax-H3.parameter-rejection",
       "name": "MiniMax H3 参数拒绝测试套件",
-      "selector": {
-        "enabled": true,
-        "execution_modes": [
-          "automatic"
-        ],
-        "kinds": [
-          "minimax_video_task_rejected"
-        ]
-      }
+      "protocol": "minimax-video",
+      "description": "",
+      "cases": [
+        {
+          "case_id": "8726e1ac-0cee-5893-930e-5f7b024d947a"
+        },
+        {
+          "case_id": "78d5d2d0-6313-545d-9630-31e2b1eb08ea"
+        },
+        {
+          "case_id": "a4f93d48-8bec-5616-8d15-e3a5538138e5"
+        },
+        {
+          "case_id": "2babd61b-774f-5760-a7a1-5dd67f6ab639"
+        },
+        {
+          "case_id": "3832c879-7e7c-5a88-8d91-d73ea2516653"
+        },
+        {
+          "case_id": "57357cfc-b237-5802-8d0f-4b275b4ed5f9"
+        },
+        {
+          "case_id": "f7f999f2-1ad4-5ea3-9cda-72a6130fab5a"
+        },
+        {
+          "case_id": "a837cd5e-576f-558f-8881-ff5c074e009e"
+        },
+        {
+          "case_id": "0985a7f1-7d2a-54a6-b78b-b1c74160b8e0"
+        },
+        {
+          "case_id": "ff8b83ae-743e-5e74-9223-d9c8a020181f"
+        },
+        {
+          "case_id": "5c0525b6-894e-5bb2-9f6d-7b203d90a1a9"
+        },
+        {
+          "case_id": "7b804bce-4012-5568-8f84-983be7fe4767"
+        },
+        {
+          "case_id": "f5d0f3c4-7708-557a-a168-0097af8af284"
+        },
+        {
+          "case_id": "de21a5cb-2dc1-5544-8739-7bf3fbba6f57"
+        },
+        {
+          "case_id": "068c81ff-ce70-5355-af27-1c3f8e58bbc8"
+        },
+        {
+          "case_id": "20d84d65-3296-5520-a67e-dc4bed262978"
+        },
+        {
+          "case_id": "2b60a053-211f-5625-9bb7-1a1b3c2c16f6"
+        },
+        {
+          "case_id": "ff91daf7-8bc9-5a65-ae2c-dc8d1211e99c"
+        },
+        {
+          "case_id": "5c204379-56d3-57f8-a8ea-bf8031c15a45"
+        },
+        {
+          "case_id": "f2595e1d-76c1-5415-96f2-09b3eea4f732"
+        },
+        {
+          "case_id": "42b40447-5a34-5b35-b960-f55b4caf128b"
+        },
+        {
+          "case_id": "cd393ce2-22d4-5765-9618-f11b1d73e8ec"
+        },
+        {
+          "case_id": "b6fb4763-a0dd-5700-b876-69c4d58dca4a"
+        },
+        {
+          "case_id": "6df71327-9d42-5440-99ce-d1027d473d3c"
+        },
+        {
+          "case_id": "b8332784-3aac-5365-bbfa-b6acec3a5b18"
+        },
+        {
+          "case_id": "edf68459-e480-5295-9420-ccf25693180e"
+        },
+        {
+          "case_id": "7100b8f7-a54d-5543-b2d3-6de9124b2b6d"
+        },
+        {
+          "case_id": "b637c87b-46a2-543b-aa81-821cfdab2381"
+        },
+        {
+          "case_id": "80220575-e5fa-574f-963e-ca559cce6106"
+        },
+        {
+          "case_id": "00078e44-d44d-59d2-b232-e8794e021c25"
+        },
+        {
+          "case_id": "a0bd70b6-e53c-56c5-97a2-723cf92eb204"
+        },
+        {
+          "case_id": "dc35345f-5416-503e-b4f7-216af7fd9ca7"
+        },
+        {
+          "case_id": "adb7f601-0ae0-582d-b279-85529df31455"
+        },
+        {
+          "case_id": "1cc0badb-0885-58c8-afae-8213fe3c27f7"
+        },
+        {
+          "case_id": "1bf9a105-116f-5324-8d74-e866956aec6d"
+        },
+        {
+          "case_id": "a355a104-1734-5153-b66f-6264192ecc1a"
+        },
+        {
+          "case_id": "aba56491-0126-56fa-b3f2-77bc33db71d5"
+        },
+        {
+          "case_id": "ead64f43-0455-5b16-9990-8f18de93de01"
+        },
+        {
+          "case_id": "accd34be-db25-5c21-b142-d17e295540d7"
+        },
+        {
+          "case_id": "b715563e-564e-564c-b22e-3eb687cd81ee"
+        },
+        {
+          "case_id": "5e6ce892-182e-573a-b68f-e23f675b55fd"
+        },
+        {
+          "case_id": "e768a5db-56d3-53cc-99fc-3c36fe564a68"
+        }
+      ],
+      "inputs": []
     },
     {
       "directory": "MiniMax-H3-automatic-regression",
+      "schema_version": 2,
       "key": "minimax-video.MiniMax-H3.automatic-regression",
       "name": "MiniMax H3 自动化核心回归套件",
-      "selector": {
-        "enabled": true,
-        "execution_modes": [
-          "automatic"
-        ]
-      }
+      "protocol": "minimax-video",
+      "description": "",
+      "cases": [
+        {
+          "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c"
+        },
+        {
+          "case_id": "8726e1ac-0cee-5893-930e-5f7b024d947a"
+        },
+        {
+          "case_id": "78d5d2d0-6313-545d-9630-31e2b1eb08ea"
+        },
+        {
+          "case_id": "a4f93d48-8bec-5616-8d15-e3a5538138e5"
+        },
+        {
+          "case_id": "2babd61b-774f-5760-a7a1-5dd67f6ab639"
+        },
+        {
+          "case_id": "3832c879-7e7c-5a88-8d91-d73ea2516653"
+        },
+        {
+          "case_id": "57357cfc-b237-5802-8d0f-4b275b4ed5f9"
+        },
+        {
+          "case_id": "f7f999f2-1ad4-5ea3-9cda-72a6130fab5a"
+        },
+        {
+          "case_id": "a837cd5e-576f-558f-8881-ff5c074e009e"
+        },
+        {
+          "case_id": "0985a7f1-7d2a-54a6-b78b-b1c74160b8e0"
+        },
+        {
+          "case_id": "ff8b83ae-743e-5e74-9223-d9c8a020181f"
+        },
+        {
+          "case_id": "5c0525b6-894e-5bb2-9f6d-7b203d90a1a9"
+        },
+        {
+          "case_id": "7b804bce-4012-5568-8f84-983be7fe4767"
+        },
+        {
+          "case_id": "f5d0f3c4-7708-557a-a168-0097af8af284"
+        },
+        {
+          "case_id": "de21a5cb-2dc1-5544-8739-7bf3fbba6f57"
+        },
+        {
+          "case_id": "068c81ff-ce70-5355-af27-1c3f8e58bbc8"
+        },
+        {
+          "case_id": "20d84d65-3296-5520-a67e-dc4bed262978"
+        },
+        {
+          "case_id": "2b60a053-211f-5625-9bb7-1a1b3c2c16f6"
+        },
+        {
+          "case_id": "ff91daf7-8bc9-5a65-ae2c-dc8d1211e99c"
+        },
+        {
+          "case_id": "5c204379-56d3-57f8-a8ea-bf8031c15a45"
+        },
+        {
+          "case_id": "f2595e1d-76c1-5415-96f2-09b3eea4f732"
+        },
+        {
+          "case_id": "42b40447-5a34-5b35-b960-f55b4caf128b"
+        },
+        {
+          "case_id": "cd393ce2-22d4-5765-9618-f11b1d73e8ec"
+        },
+        {
+          "case_id": "b6fb4763-a0dd-5700-b876-69c4d58dca4a"
+        },
+        {
+          "case_id": "6df71327-9d42-5440-99ce-d1027d473d3c"
+        },
+        {
+          "case_id": "b8332784-3aac-5365-bbfa-b6acec3a5b18"
+        },
+        {
+          "case_id": "edf68459-e480-5295-9420-ccf25693180e"
+        },
+        {
+          "case_id": "7100b8f7-a54d-5543-b2d3-6de9124b2b6d"
+        },
+        {
+          "case_id": "b637c87b-46a2-543b-aa81-821cfdab2381"
+        },
+        {
+          "case_id": "80220575-e5fa-574f-963e-ca559cce6106"
+        },
+        {
+          "case_id": "00078e44-d44d-59d2-b232-e8794e021c25"
+        },
+        {
+          "case_id": "a0bd70b6-e53c-56c5-97a2-723cf92eb204"
+        },
+        {
+          "case_id": "dc35345f-5416-503e-b4f7-216af7fd9ca7"
+        },
+        {
+          "case_id": "adb7f601-0ae0-582d-b279-85529df31455"
+        },
+        {
+          "case_id": "1cc0badb-0885-58c8-afae-8213fe3c27f7"
+        },
+        {
+          "case_id": "1bf9a105-116f-5324-8d74-e866956aec6d"
+        },
+        {
+          "case_id": "a355a104-1734-5153-b66f-6264192ecc1a"
+        },
+        {
+          "case_id": "aba56491-0126-56fa-b3f2-77bc33db71d5"
+        },
+        {
+          "case_id": "ead64f43-0455-5b16-9990-8f18de93de01"
+        },
+        {
+          "case_id": "accd34be-db25-5c21-b142-d17e295540d7"
+        },
+        {
+          "case_id": "b715563e-564e-564c-b22e-3eb687cd81ee"
+        },
+        {
+          "case_id": "5e6ce892-182e-573a-b68f-e23f675b55fd"
+        },
+        {
+          "case_id": "e768a5db-56d3-53cc-99fc-3c36fe564a68"
+        }
+      ],
+      "inputs": []
     },
     {
       "directory": "MiniMax-H3",
+      "schema_version": 2,
       "key": "minimax-video.MiniMax-H3",
       "name": "MiniMax H3 视频生成完整边界套件",
-      "selector": {}
+      "protocol": "minimax-video",
+      "description": "",
+      "cases": [
+        {
+          "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c"
+        },
+        {
+          "case_id": "8726e1ac-0cee-5893-930e-5f7b024d947a"
+        },
+        {
+          "case_id": "78d5d2d0-6313-545d-9630-31e2b1eb08ea"
+        },
+        {
+          "case_id": "a4f93d48-8bec-5616-8d15-e3a5538138e5"
+        },
+        {
+          "case_id": "2babd61b-774f-5760-a7a1-5dd67f6ab639"
+        },
+        {
+          "case_id": "3832c879-7e7c-5a88-8d91-d73ea2516653"
+        },
+        {
+          "case_id": "57357cfc-b237-5802-8d0f-4b275b4ed5f9"
+        },
+        {
+          "case_id": "f7f999f2-1ad4-5ea3-9cda-72a6130fab5a"
+        },
+        {
+          "case_id": "a837cd5e-576f-558f-8881-ff5c074e009e"
+        },
+        {
+          "case_id": "0985a7f1-7d2a-54a6-b78b-b1c74160b8e0"
+        },
+        {
+          "case_id": "ff8b83ae-743e-5e74-9223-d9c8a020181f"
+        },
+        {
+          "case_id": "5c0525b6-894e-5bb2-9f6d-7b203d90a1a9"
+        },
+        {
+          "case_id": "7b804bce-4012-5568-8f84-983be7fe4767"
+        },
+        {
+          "case_id": "f5d0f3c4-7708-557a-a168-0097af8af284"
+        },
+        {
+          "case_id": "de21a5cb-2dc1-5544-8739-7bf3fbba6f57"
+        },
+        {
+          "case_id": "068c81ff-ce70-5355-af27-1c3f8e58bbc8"
+        },
+        {
+          "case_id": "20d84d65-3296-5520-a67e-dc4bed262978"
+        },
+        {
+          "case_id": "2b60a053-211f-5625-9bb7-1a1b3c2c16f6"
+        },
+        {
+          "case_id": "ff91daf7-8bc9-5a65-ae2c-dc8d1211e99c"
+        },
+        {
+          "case_id": "5c204379-56d3-57f8-a8ea-bf8031c15a45"
+        },
+        {
+          "case_id": "f2595e1d-76c1-5415-96f2-09b3eea4f732"
+        },
+        {
+          "case_id": "42b40447-5a34-5b35-b960-f55b4caf128b"
+        },
+        {
+          "case_id": "cd393ce2-22d4-5765-9618-f11b1d73e8ec"
+        },
+        {
+          "case_id": "b6fb4763-a0dd-5700-b876-69c4d58dca4a"
+        },
+        {
+          "case_id": "6df71327-9d42-5440-99ce-d1027d473d3c"
+        },
+        {
+          "case_id": "b8332784-3aac-5365-bbfa-b6acec3a5b18"
+        },
+        {
+          "case_id": "edf68459-e480-5295-9420-ccf25693180e"
+        },
+        {
+          "case_id": "7100b8f7-a54d-5543-b2d3-6de9124b2b6d"
+        },
+        {
+          "case_id": "b637c87b-46a2-543b-aa81-821cfdab2381"
+        },
+        {
+          "case_id": "80220575-e5fa-574f-963e-ca559cce6106"
+        },
+        {
+          "case_id": "00078e44-d44d-59d2-b232-e8794e021c25"
+        },
+        {
+          "case_id": "a0bd70b6-e53c-56c5-97a2-723cf92eb204"
+        },
+        {
+          "case_id": "dc35345f-5416-503e-b4f7-216af7fd9ca7"
+        },
+        {
+          "case_id": "adb7f601-0ae0-582d-b279-85529df31455"
+        },
+        {
+          "case_id": "1cc0badb-0885-58c8-afae-8213fe3c27f7"
+        },
+        {
+          "case_id": "1bf9a105-116f-5324-8d74-e866956aec6d"
+        },
+        {
+          "case_id": "a355a104-1734-5153-b66f-6264192ecc1a"
+        },
+        {
+          "case_id": "aba56491-0126-56fa-b3f2-77bc33db71d5"
+        },
+        {
+          "case_id": "ead64f43-0455-5b16-9990-8f18de93de01"
+        },
+        {
+          "case_id": "accd34be-db25-5c21-b142-d17e295540d7"
+        },
+        {
+          "case_id": "b715563e-564e-564c-b22e-3eb687cd81ee"
+        },
+        {
+          "case_id": "5e6ce892-182e-573a-b68f-e23f675b55fd"
+        },
+        {
+          "case_id": "e768a5db-56d3-53cc-99fc-3c36fe564a68"
+        },
+        {
+          "case_id": "5e879c7a-5056-5fd9-aba5-40ec2df1f8c8"
+        },
+        {
+          "case_id": "94dbede0-9314-57ab-ada4-3a1d3cb767b0"
+        },
+        {
+          "case_id": "99799157-22c8-5933-b2e9-a11faf621a37"
+        },
+        {
+          "case_id": "9ff8aa5b-8d6b-5ab8-b28f-be5108ea1623"
+        },
+        {
+          "case_id": "02927c08-29a3-5824-8608-c4b7c8e978ca"
+        },
+        {
+          "case_id": "06b601ff-19a4-5f79-989d-bff114294584"
+        },
+        {
+          "case_id": "6312f1d0-c2bf-581c-a633-be955278f19d"
+        },
+        {
+          "case_id": "3b69383c-7ad6-5d83-bfcb-7162aeb59080"
+        },
+        {
+          "case_id": "a1bb52bc-4882-5cf3-a168-ef48212b7c20"
+        },
+        {
+          "case_id": "a3461ff2-37a2-5a84-a551-e270435ed58e"
+        },
+        {
+          "case_id": "c37aad4f-a97b-5cc3-814b-ea06454dccc6"
+        },
+        {
+          "case_id": "b3fa5b33-3350-501b-a13c-a3a9b1430c8c"
+        },
+        {
+          "case_id": "fefe9246-9f49-507d-86a4-3d65a4a11b89"
+        },
+        {
+          "case_id": "6c8ba032-647a-53b1-89fe-b3d980edadd6"
+        },
+        {
+          "case_id": "76c549c6-d91c-5721-a42e-05e0e4c14d16"
+        },
+        {
+          "case_id": "25bdb763-0274-5ecc-b534-43c801f48e44"
+        },
+        {
+          "case_id": "5cb51aa7-b019-5d35-86f7-bd3847d35955"
+        },
+        {
+          "case_id": "7dbf6314-4c88-51d9-b30e-2ca387ba5bee"
+        },
+        {
+          "case_id": "c53bbb0b-d2ff-5c8f-95d1-898a52f8db35"
+        },
+        {
+          "case_id": "80ed0cf0-df9c-5774-a4fa-4332d15c34a1"
+        },
+        {
+          "case_id": "83642a51-6691-5d3f-baaf-fadd69259deb"
+        },
+        {
+          "case_id": "ada76859-7f94-511c-bb45-bf219b4043b5"
+        },
+        {
+          "case_id": "86d90322-c859-57a7-8272-cc3489170a41"
+        },
+        {
+          "case_id": "4ba464fc-885f-5a07-a262-ab6f3fa12c74"
+        },
+        {
+          "case_id": "85683561-0335-55d9-91f1-7f3ef24b48bb"
+        },
+        {
+          "case_id": "c704d88c-22e6-5be6-ae75-574dd1d1ba6c"
+        },
+        {
+          "case_id": "612efdaa-9b82-5aa9-b4f5-f0c8487aae4c"
+        },
+        {
+          "case_id": "bc663db9-5ca4-5db7-8848-cf65a5741d75"
+        },
+        {
+          "case_id": "57b83e7e-5de8-5361-a557-d656dd65a2d0"
+        },
+        {
+          "case_id": "e73aed7c-aa87-5cb1-85c1-d94d7f6a3df4"
+        },
+        {
+          "case_id": "0daab1bf-bdf0-5422-8ace-c976ad3cc3f0"
+        },
+        {
+          "case_id": "8a80edcd-da2d-5577-ba30-b442fa8b60ef"
+        },
+        {
+          "case_id": "145b8943-7713-557b-8aad-295e757fb747"
+        },
+        {
+          "case_id": "90892576-9c13-58db-a321-300b28f58f7f"
+        },
+        {
+          "case_id": "c72bf3d8-cd32-59a6-9de3-06095724d514"
+        },
+        {
+          "case_id": "ebc203bb-bd39-5629-8766-5ca2835888cf"
+        },
+        {
+          "case_id": "de111b4e-970f-5c9e-9724-f0b8e92d4f41"
+        },
+        {
+          "case_id": "84716bdc-fd32-54c2-92ce-b58d97f2510f"
+        },
+        {
+          "case_id": "c3a29adb-9123-555f-9c7d-04be3f7fe368"
+        },
+        {
+          "case_id": "33d4e770-0cfb-56ed-80a3-00ca34fa03ae"
+        },
+        {
+          "case_id": "3e5404ed-8509-51b9-a93f-10cb1dcf0adf"
+        },
+        {
+          "case_id": "07cd849a-bd39-579b-9f2a-1a47f1956bf9"
+        },
+        {
+          "case_id": "34dc763a-8ad3-5862-944b-8097bc0484e8"
+        },
+        {
+          "case_id": "9936d06f-d3e5-5bdb-9d65-b72a8ff9ca50"
+        },
+        {
+          "case_id": "65ef261c-f883-5095-89cc-16bd992f278c"
+        },
+        {
+          "case_id": "c094411c-c935-59bb-b353-a40662bcf826"
+        },
+        {
+          "case_id": "51a7d8e7-3820-5162-8d50-cb814a7b6c12"
+        },
+        {
+          "case_id": "27f61c93-b4ae-51e3-b1d7-57b51d8b3be2"
+        },
+        {
+          "case_id": "ede2527e-fcae-5e23-8cd9-7f4bb111e74a"
+        },
+        {
+          "case_id": "6c70f5ac-d411-5349-95d5-5094f9bc0eac"
+        },
+        {
+          "case_id": "a2041357-841f-5b49-9d9c-01be3699bea1"
+        },
+        {
+          "case_id": "33a5ee90-086e-5446-befd-efb9f5ba513e"
+        },
+        {
+          "case_id": "444a86e7-af28-59f6-b76e-81206139cdac"
+        },
+        {
+          "case_id": "15c0884b-8688-58fd-ad51-4db13ef536ca"
+        },
+        {
+          "case_id": "a6e3f932-0719-5a44-afe5-03dce6923dde"
+        },
+        {
+          "case_id": "5efff57a-4e68-5d15-951a-c2413b51d3fa"
+        },
+        {
+          "case_id": "0df5be8f-4be4-5af6-bdef-c3561f4ab3fa"
+        },
+        {
+          "case_id": "1612304f-2f91-5b0c-87a3-d78d577d2439"
+        },
+        {
+          "case_id": "3fb3cfd6-767c-595e-a42b-4f6ba220245a"
+        },
+        {
+          "case_id": "c002d63b-677f-50b4-b687-6873c1e324d8"
+        },
+        {
+          "case_id": "a35c3eed-f419-51e5-b06b-2a9d7897cee7"
+        },
+        {
+          "case_id": "621008e4-4b51-595a-bad4-caf4cc91615f"
+        },
+        {
+          "case_id": "27954f32-c8e1-53da-aa1b-62d4fe61c2b9"
+        },
+        {
+          "case_id": "925b9f9f-7ad1-5487-89d6-fc0e2b96a0bb"
+        },
+        {
+          "case_id": "21286b95-f957-5591-b457-2e61aaf3d4c7"
+        },
+        {
+          "case_id": "4e46ccde-ecc9-5645-a5ab-3dbc0485b070"
+        },
+        {
+          "case_id": "dafba791-92d8-5843-8f6b-f8c1ce2cfbea"
+        },
+        {
+          "case_id": "37357b4d-1916-5b7d-a209-feaa3eb53887"
+        },
+        {
+          "case_id": "76d2a5a6-9f03-518c-8a4d-9697a72e30e7"
+        },
+        {
+          "case_id": "f665a5bc-97a8-5ba0-bd62-05254ee0bccd"
+        },
+        {
+          "case_id": "92ce4e68-d735-57c7-b2a2-f3646af7bbf9"
+        },
+        {
+          "case_id": "08f36693-1afc-595f-92f2-19512e68c4b4"
+        },
+        {
+          "case_id": "8e817b6c-2084-5ca3-b970-9f4ce189a121"
+        },
+        {
+          "case_id": "431b9a96-8388-53ca-8862-3f2f40cc4fdc"
+        },
+        {
+          "case_id": "eae22b46-49f8-505f-ad89-ef3c9fd091a3"
+        },
+        {
+          "case_id": "b93f065d-f0c1-5ff4-8be8-dac093e3864d"
+        },
+        {
+          "case_id": "d52dc172-4efa-5adb-a2a3-b417c3ed8f2e"
+        },
+        {
+          "case_id": "87bbdb97-28d6-5b11-a19d-df20ee02b9b9"
+        },
+        {
+          "case_id": "2b4cd63b-a02d-5750-95b7-54ad356fc0f2"
+        },
+        {
+          "case_id": "2c8d4556-b5e5-59e1-8e9a-95bf7d72f3df"
+        },
+        {
+          "case_id": "bc7e606f-2a21-5764-9d29-73bb2c4e4d3a"
+        },
+        {
+          "case_id": "4a74349e-3d42-52c9-af85-72d723c92086"
+        },
+        {
+          "case_id": "dd7ca165-78f0-5ddd-9d4d-f0badb9afef0"
+        },
+        {
+          "case_id": "38e27cef-560b-5afa-82de-b6d96fdc8326"
+        },
+        {
+          "case_id": "d247e55e-c996-5149-9fe1-13ae2b86e385"
+        },
+        {
+          "case_id": "0c49fc50-82ae-56e0-b45f-d77ecdbf8e66"
+        },
+        {
+          "case_id": "7f8d39bb-044d-5c07-9d21-0cd8b3032509"
+        },
+        {
+          "case_id": "77ba1efd-46af-5b21-8803-d8e3f62b70df"
+        },
+        {
+          "case_id": "d485503a-862a-541f-9ca5-17a7e5869afb"
+        },
+        {
+          "case_id": "ccb70457-e356-5eaa-846c-8adcc61bc0b1"
+        },
+        {
+          "case_id": "1f3b9fab-8b5b-57b1-958d-e193eb41f046"
+        },
+        {
+          "case_id": "693eb39f-8fab-5fa9-b6a4-271257490ede"
+        },
+        {
+          "case_id": "d111f9bb-c5d6-50fd-9cba-c6e8116b6f63"
+        },
+        {
+          "case_id": "87e81039-da77-5159-a15c-7cc63bd97d18"
+        },
+        {
+          "case_id": "f02f8c8b-30b8-529f-9e9d-297c20fe4be5"
+        },
+        {
+          "case_id": "18998b71-fb85-5c5e-b0b4-7cdf4ff36005"
+        },
+        {
+          "case_id": "7317aae6-dcdb-5240-8348-48305665ee10"
+        },
+        {
+          "case_id": "af9c31ff-be9c-5e0b-8c1e-f2667b394ee7"
+        },
+        {
+          "case_id": "933818df-66a4-55af-85d1-74edc2f3b701"
+        },
+        {
+          "case_id": "58fb31b2-19a0-59ff-b82e-a27759a432ea"
+        },
+        {
+          "case_id": "4824a965-3aa1-50e2-9501-3bc0bf3657c9"
+        }
+      ],
+      "inputs": []
     }
   ]
 }

@@ -12,34 +12,30 @@ const task = {
   ...FIXTURE_CATALOG.suites[0],
   name: "Video connectivity",
   protocol: "seedance" as const,
-  model_target: "",
-  quick_test: {
     description: "Run video",
-    timeout_ms: 600000,
     inputs: [
       {
         key: "prompt",
         label: "视频提示词",
-        type: "text" as const,
+        type: "string" as const,
         default: "cat",
-        bindings: [{ case_key: "V001", pointer: "/request/body/content/0/text" }],
+        bindings: [{ case_id: FIXTURE_CATALOG.test_cases[0].id, input: "prompt" }],
       },
       {
         key: "duration",
         label: "时长",
         type: "number" as const,
         default: 4,
-        bindings: [{ case_key: "V001", pointer: "/request/body/duration" }],
+        bindings: [{ case_id: FIXTURE_CATALOG.test_cases[0].id, input: "duration" }],
       },
       {
         key: "audio",
         label: "音频",
         type: "boolean" as const,
         default: false,
-        bindings: [{ case_key: "V001", pointer: "/request/body/audio" }],
+        bindings: [{ case_id: FIXTURE_CATALOG.test_cases[0].id, input: "audio" }],
       },
     ],
-  },
 }
 
 function setup(
@@ -62,7 +58,7 @@ function setup(
       <QuickTaskWorkspace
         catalog={{
           ...FIXTURE_CATALOG,
-          suites: [task, FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!],
+          suites: [task, FIXTURE_CATALOG.suites[1]],
         }}
         workspace={workspace}
         reports={FIXTURE_REPORTS}
@@ -104,7 +100,7 @@ describe("Suite quick task workspace", () => {
     await waitFor(() =>
       expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
         suite_id: task.id,
-        suite_revision: task.revision,
+        seed: 1, request_timeout_ms: 60000,
         model: "video-model",
         base_url: "https://example.test",
         api_key: "private-key",
@@ -159,7 +155,7 @@ describe("Suite quick task workspace", () => {
       )
       const historicalTask = { ...task, revision: 7 }
       actions.getQuickTask.mockResolvedValue({
-        schema_version: 1,
+        schema_version: 2, seed: 1, request_timeout_ms: 60000,
         run_id: run.id,
         suite: historicalTask,
         model: "past-model",
@@ -174,7 +170,7 @@ describe("Suite quick task workspace", () => {
       await user.click(screen.getByRole("button", { name: "开始测试" }))
       expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
-          suite_revision: 7,
+          seed: 1, request_timeout_ms: 60000,
           source_run_id: run.id,
           inputs: { prompt: "past prompt edited", duration: 8, audio: true },
         }),
@@ -184,7 +180,7 @@ describe("Suite quick task workspace", () => {
 
   it("uses a saved channel without sending an exposed credential", async () => {
     const user = userEvent.setup()
-    const selected = FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!
+    const selected = FIXTURE_CATALOG.suites[1]
     const channel = FIXTURE_CATALOG.channels.find(
       (channel) => channel.protocol === selected.protocol && channel.credential_configured,
     )!
@@ -198,7 +194,7 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
       suite_id: selected.id,
-      suite_revision: selected.revision,
+      seed: 1, request_timeout_ms: 60000,
       channel_id: channel.id,
       model: "upstream",
       inputs: { prompt: "hello" },
@@ -207,7 +203,7 @@ describe("Suite quick task workspace", () => {
 
   it("keeps Suite identity when opening performance testing without a preliminary request", async () => {
     const user = userEvent.setup()
-    const selected = FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!
+    const selected = FIXTURE_CATALOG.suites[1]
     const actions = setup({
       ...createTaskDraft(selected),
       base_url: "https://example.test",
@@ -292,7 +288,7 @@ describe("Suite quick task workspace", () => {
 
   it("reuses a remembered key for performance and drops it when the endpoint changes", async () => {
     const user = userEvent.setup()
-    const selected = FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!
+    const selected = FIXTURE_CATALOG.suites[1]
     const actions = setup({
       ...createTaskDraft(selected),
       base_url: "https://example.test",

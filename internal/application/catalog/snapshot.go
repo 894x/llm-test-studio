@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -105,54 +104,6 @@ func (service *Service) buildSnapshot(
 	suites []domain.Suite,
 	plans []domain.Plan,
 ) (Snapshot, error) {
-	type caseRevisionKey struct {
-		id       string
-		revision uint64
-	}
-	type suiteRevisionKey struct {
-		id       string
-		revision uint64
-	}
-	caseRevisionCache := make(map[caseRevisionKey]domain.TestCase)
-	resolveCaseRevision := func(ref domain.CaseRevisionRef) (domain.TestCase, error) {
-		key := caseRevisionKey{id: ref.CaseID, revision: ref.Revision}
-		if cached, found := caseRevisionCache[key]; found {
-			return cached, nil
-		}
-		testCase, err := service.repository.GetTestCaseRevision(ctx, ref.CaseID, ref.Revision)
-		if err != nil {
-			mapped := service.portError(ctx, err)
-			if errors.Is(mapped, ErrNotFound) || errors.Is(mapped, ErrCorrupt) {
-				return domain.TestCase{}, ErrCorrupt
-			}
-			return domain.TestCase{}, mapped
-		}
-		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Validate() != nil {
-			return domain.TestCase{}, ErrCorrupt
-		}
-		caseRevisionCache[key] = testCase
-		return testCase, nil
-	}
-	suiteRevisionCache := make(map[suiteRevisionKey]domain.Suite)
-	resolveSuiteRevision := func(id string, revision uint64) (domain.Suite, error) {
-		key := suiteRevisionKey{id: id, revision: revision}
-		if cached, found := suiteRevisionCache[key]; found {
-			return cached, nil
-		}
-		suite, err := service.repository.GetSuiteRevision(ctx, id, revision)
-		if err != nil {
-			mapped := service.portError(ctx, err)
-			if errors.Is(mapped, ErrNotFound) || errors.Is(mapped, ErrCorrupt) {
-				return domain.Suite{}, ErrCorrupt
-			}
-			return domain.Suite{}, mapped
-		}
-		if suite.ID != id || suite.Revision != revision || suite.Validate() != nil {
-			return domain.Suite{}, ErrCorrupt
-		}
-		suiteRevisionCache[key] = suite
-		return suite, nil
-	}
 	modelByID := make(map[string]domain.Model, len(models))
 	for _, model := range models {
 		if err := ctx.Err(); err != nil {
@@ -191,7 +142,6 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, ErrCorrupt
 		}
 		testCaseByID[testCase.ID] = testCase
-		caseRevisionCache[caseRevisionKey{id: testCase.ID, revision: testCase.Revision}] = testCase
 	}
 
 	mappingByBinding := make(map[string]domain.ChannelModel, len(mappings))
@@ -232,45 +182,21 @@ func (service *Service) buildSnapshot(
 		if _, duplicate := suiteByID[suite.ID]; duplicate {
 			return Snapshot{}, ErrCorrupt
 		}
-		definitions := make([]domain.TestCase, 0, len(suite.Cases))
-		for _, ref := range suite.Cases {
-			testCase, err := resolveCaseRevision(ref)
-			if err != nil {
-				return Snapshot{}, err
-			}
-			if _, found := testCaseByID[testCase.ID]; !found {
-				return Snapshot{}, ErrCorrupt
-			}
-			definitions = append(definitions, testCase)
-		}
-		if suite.ValidateCases(definitions) != nil {
-			return Snapshot{}, ErrCorrupt
-		}
 		suiteByID[suite.ID] = suite
-		suiteRevisionCache[suiteRevisionKey{id: suite.ID, revision: suite.Revision}] = suite
 	}
 	planIDs := make(map[string]struct{}, len(plans))
 	for _, plan := range plans {
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		if err := plan.Validate(); err != nil || len(plan.Suites) == 0 {
+		if err := plan.Validate(); err != nil || len(plan.Entries) == 0 {
 			return Snapshot{}, ErrCorrupt
 		}
 		if _, duplicate := planIDs[plan.ID]; duplicate {
 			return Snapshot{}, ErrCorrupt
 		}
 		planIDs[plan.ID] = struct{}{}
-		for _, id := range plan.ModelIDs {
-			if _, exists := modelByID[id]; !exists {
-				return Snapshot{}, ErrCorrupt
-			}
-		}
-		for _, id := range plan.ChannelIDs {
-			if _, exists := channelByID[id]; !exists {
-				return Snapshot{}, ErrCorrupt
-			}
-		}
+
 	}
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
@@ -318,8 +244,7 @@ func (service *Service) buildSnapshot(
 		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
 			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 			Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
-			ModelTargets: append([]string{}, testCase.ModelTargets...),
-			Severity:     testCase.Severity, ExecutionMode: testCase.ExecutionMode,
+			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
 			DefinitionSchemaVersion: testCase.Definition.SchemaVersion,
 			Type:                    testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
 			Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),
@@ -329,38 +254,43 @@ func (service *Service) buildSnapshot(
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		cases := make([]CaseRevisionInput, len(suite.Cases))
+		cases := make([]CaseInput, len(suite.Cases))
 		for index, ref := range suite.Cases {
-			cases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
+			cases[index] = CaseInput{CaseID: ref.CaseID}
 		}
 		snapshot.Suites = append(snapshot.Suites, SuiteSummary{
 			ID: suite.ID, Revision: suite.Revision, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol,
-			ModelTarget: suite.ModelTarget, CaseCount: len(suite.Cases), Cases: cases, QuickTest: suite.QuickTest.Clone(),
+			Description: suite.Description, CaseCount: len(suite.Cases), Cases: cases, Inputs: domain.CloneSuiteInputs(suite.Inputs),
 		})
 	}
 	for _, plan := range plans {
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		suiteSummaries := make([]PlanSuiteSummary, 0, len(plan.Suites))
+		entrySummaries := make([]PlanEntrySummary, 0, len(plan.Entries))
 		caseCount := 0
-		for _, entry := range plan.Suites {
-			suite, err := resolveSuiteRevision(entry.SuiteID, entry.SuiteRevision)
-			if err != nil {
-				return Snapshot{}, err
+		for _, entry := range plan.Entries {
+			summary := planEntrySummary(entry)
+			switch entry.TargetKind {
+			case domain.PlanTargetCase:
+				if target, exists := testCaseByID[entry.TargetID]; exists {
+					summary.TargetKey = target.Key
+					summary.TargetName = target.Name
+					summary.CaseCount = 1
+				}
+			case domain.PlanTargetSuite:
+				if target, exists := suiteByID[entry.TargetID]; exists {
+					summary.TargetKey = target.Key
+					summary.TargetName = target.Name
+					summary.CaseCount = len(target.Cases)
+				}
 			}
-			entryCases := make([]CaseRevisionInput, len(suite.Cases))
-			for index, ref := range suite.Cases {
-				entryCases[index] = CaseRevisionInput{CaseID: ref.CaseID, Revision: ref.Revision}
-			}
-			caseCount += len(suite.Cases)
-			suiteSummaries = append(suiteSummaries, planSuiteSummary(entry, suite, entryCases))
+			caseCount += summary.CaseCount
+			entrySummaries = append(entrySummaries, summary)
 		}
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{
-			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
-			ModelCount: len(plan.ModelIDs), ChannelCount: len(plan.ChannelIDs), CaseCount: caseCount,
-			ModelIDs: append([]string(nil), plan.ModelIDs...), ChannelIDs: append([]string(nil), plan.ChannelIDs...),
-			SuiteCount: len(suiteSummaries), Suites: suiteSummaries,
+			ID: plan.ID, Revision: plan.Revision, Name: plan.Name, Protocol: plan.Protocol, Seed: plan.Seed,
+			EntryCount: len(plan.Entries), CaseCount: caseCount, Entries: entrySummaries,
 		})
 	}
 
@@ -395,17 +325,13 @@ func (service *Service) buildSnapshot(
 	return snapshot, nil
 }
 
-func planSuiteSummary(entry domain.PlanSuiteEntry, suite domain.Suite, cases []CaseRevisionInput) PlanSuiteSummary {
-	return PlanSuiteSummary{
-		PlanSuiteInput: PlanSuiteInput{
-			EntryID: entry.EntryID, SuiteID: entry.SuiteID, SuiteRevision: entry.SuiteRevision,
-			LoadMode: entry.Load.Mode, Concurrency: entry.Load.Concurrency, RequestCount: entry.Load.RequestCount,
-			RatePerSecond: entry.Load.RatePerSecond, DurationMS: entry.Load.DurationMS, RequestTimeoutMS: entry.Load.RequestTimeoutMS,
-			SLAThresholds: cloneThresholds(entry.SLA.Thresholds), Parameters: cloneRawMessages(entry.Parameters),
-		},
-		SuiteKey: suite.Key, SuiteName: suite.Name, Protocol: suite.Protocol, ModelTarget: suite.ModelTarget,
-		CaseCount: len(cases), Cases: cases, QuickTest: suite.QuickTest.Clone(),
-	}
+func planEntrySummary(entry domain.PlanEntry) PlanEntrySummary {
+	return PlanEntrySummary{PlanEntryInput: PlanEntryInput{
+		EntryID: entry.EntryID, TargetKind: entry.TargetKind, TargetID: entry.TargetID,
+		LoadMode: entry.Load.Mode, Concurrency: entry.Load.Concurrency, RequestCount: entry.Load.RequestCount,
+		RatePerSecond: entry.Load.RatePerSecond, DurationMS: entry.Load.DurationMS, RequestTimeoutMS: entry.Load.RequestTimeoutMS,
+		SLAThresholds: cloneThresholds(entry.SLA.Thresholds), Parameters: cloneRawMessages(entry.Parameters), WarmupCount: entry.WarmupCount, Settings: entry.Settings,
+	}}
 }
 
 func lessNameID(leftName, leftID, rightName, rightID string) bool {

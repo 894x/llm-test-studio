@@ -1,3 +1,4 @@
+import { protocolReportFixture } from "@/test/protocol-report-fixture"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -31,7 +32,7 @@ describe("Wails desktop client", () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding.GetWorkspace.mockRejectedValueOnce(new Error("refresh failed"))
     const command = {
-      suite_id: "11111111-1111-4111-8111-111111111111", suite_revision: 2,
+      suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000,
       model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key",
       inputs: { prompt: "hello", duration: 4, audio: false },
     }
@@ -43,14 +44,14 @@ describe("Wails desktop client", () => {
   it.each(["", "not-a-run", null, { run_id: "private-test-key" }])("rejects malformed quick task acceptance %j", async (payload) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding.StartQuickTask.mockResolvedValueOnce(payload as never)
-    await expect(createDesktopClient().startQuickTask({ suite_id: "11111111-1111-4111-8111-111111111111", suite_revision: 1, model: "model", inputs: {} })).rejects.toBeInstanceOf(DesktopDataError)
+    await expect(createDesktopClient().startQuickTask({ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000, model: "model", inputs: {} })).rejects.toBeInstanceOf(DesktopDataError)
     expect(binding.StartQuickTask).toHaveBeenCalledTimes(1)
   })
 
   it("loads only safe task history and rejects a different Run identity", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const runID = FIXTURE_WORKSPACE.runs[0].id
-    const detail = { schema_version: 1, run_id: runID, suite: FIXTURE_CATALOG.suites.find((suite) => suite.quick_test)!, model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
+    const detail = { schema_version: 2, seed: 1, request_timeout_ms: 60000, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
     binding.GetQuickTask.mockResolvedValueOnce({ ...detail, api_key: "private-key", case_definitions: [{ raw: "hidden" }] })
     await expect(createDesktopClient().getQuickTask(runID)).resolves.toEqual(detail)
     expect(binding.GetQuickTask).toHaveBeenCalledExactlyOnceWith(runID)
@@ -65,7 +66,6 @@ describe("Wails desktop client", () => {
     await expect(client.getWorkspace()).resolves.toEqual(FIXTURE_WORKSPACE)
     await expect(client.getCatalog()).resolves.toEqual(FIXTURE_CATALOG)
     await expect(client.getReports()).resolves.toEqual(FIXTURE_REPORTS)
-    await client.startRun(FIXTURE_WORKSPACE.plans[0].id)
 		const targetCommand = {
 			plan_id: FIXTURE_WORKSPACE.plans[0].id,
 			model_id: FIXTURE_CATALOG.models[0].id,
@@ -111,7 +111,6 @@ describe("Wails desktop client", () => {
       success: true,
       metrics: { completed: 4, succeeded: 4 },
     })
-    expect(binding.StartRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.plans[0].id)
 		expect(binding.StartRunTarget).toHaveBeenCalledWith(targetCommand)
     expect(binding.StopSending).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
     expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
@@ -123,7 +122,7 @@ describe("Wails desktop client", () => {
   it("loads quick task history without an authored plan while retaining formal Run reference checks", async () => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     payload.plans = []
-    payload.runs = [{ ...payload.runs[0], source: "quick_task", plan_id: payload.runs[0].id, planned: 0, duration_ms: 0 }]
+    payload.runs = [{ ...payload.runs[0], source: "quick_task", plan_id: payload.runs[0].id, load_mode: "single", planned: payload.runs[0].case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed: 0, indeterminate: 0 }]
     payload.active_run_id = payload.runs[0].id
     const binding = installBinding(payload)
     await expect(createDesktopClient().getWorkspace()).resolves.toEqual(payload)
@@ -136,14 +135,15 @@ describe("Wails desktop client", () => {
   it("keeps fixture quick Runs separate from authored targets and supports cancellation", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     const suite = catalog.suites[0]
-    suite.quick_test = { description: "Connectivity", timeout_ms: 30000, inputs: [] }
+    suite.description = "Connectivity"
+    suite.inputs = []
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-    const command = { suite_id: suite.id, suite_revision: suite.revision, model: suite.model_target || "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+    const command = { suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
     const firstID = await client.startQuickTask(command)
     const secondID = await client.startQuickTask(command)
     expect(firstID).not.toBe(secondID)
     const snapshot = await client.getWorkspace()
-    expect(snapshot.runs.find((run) => run.id === firstID)).toMatchObject({ source: "quick_task", status: "queued", plan_id: firstID, planned: 0 })
+    expect(snapshot.runs.find((run) => run.id === firstID)).toMatchObject({ source: "quick_task", status: "queued", plan_id: firstID, planned: suite.case_count })
     expect(JSON.stringify(snapshot)).not.toContain("private-test-key")
     expect(await client.getCatalog()).toEqual(catalog)
     expect((await client.cancelRun(secondID)).runs.find((run) => run.id === secondID)?.status).toBe("cancelled")
@@ -154,8 +154,7 @@ describe("Wails desktop client", () => {
     catalog.plans = []
     const suite = catalog.suites[0]
     const entry = {
-      suite_id: suite.id,
-      suite_revision: suite.revision,
+      warmup_count: 0, settings: {}, target_kind: "suite" as const, target_id: suite.id,
       parameters: { prompt: "first" },
       load_mode: "fixed_concurrency" as const,
       concurrency: 2,
@@ -169,69 +168,27 @@ describe("Wails desktop client", () => {
 
     const result = await client.createPlan({
       name: "Repeated suite fixture",
-      model_ids: [],
-      channel_ids: [],
-      suites: [{ ...entry }, { ...entry, parameters: { prompt: "second" }, concurrency: 7 }],
+      protocol: "openai-chat", seed: 1,
+      entries: [{ ...entry }, { ...entry, parameters: { prompt: "second" }, concurrency: 7 }],
     })
 
     const plan = result.plans[0]
-    expect(plan).toMatchObject({ suite_count: 2, case_count: suite.case_count * 2 })
-    expect(plan.suites[0]).toMatchObject({ parameters: { prompt: "first" }, concurrency: 2 })
-    expect(plan.suites[1]).toMatchObject({ parameters: { prompt: "second" }, concurrency: 7 })
-    expect(plan.suites[0].entry_id).not.toBe(plan.suites[1].entry_id)
+    expect(plan).toMatchObject({ entry_count: 2, case_count: suite.case_count * 2 })
+    expect(plan.entries[0]).toMatchObject({ parameters: { prompt: "first" }, concurrency: 2 })
+    expect(plan.entries[1]).toMatchObject({ parameters: { prompt: "second" }, concurrency: 7 })
+    expect(plan.entries[0].entry_id).not.toBe(plan.entries[1].entry_id)
   })
 
-  it("preserves pinned Suite metadata when a browser fixture Plan is edited", async () => {
+  it("resolves current target names while keeping only references in fixture plan commands", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
-    const plan = catalog.plans[0]
-    const entry = plan.suites[0]
-    const currentSuite = catalog.suites.find((suite) => suite.id === entry.suite_id)!
-    entry.suite_revision = currentSuite.revision - 1
-    entry.suite_key = "historical-suite"
-    entry.suite_name = "Historical Suite"
-    delete entry.quick_test
-    entry.parameters = {}
-    currentSuite.quick_test = {
-      description: "New metadata",
-      timeout_ms: 30_000,
-      inputs: [{
-        key: "prompt",
-        label: "Prompt",
-        type: "text",
-        default: "new default",
-        bindings: [{ case_key: "fixture", pointer: "/request/body/prompt" }],
-      }],
-    }
+    catalog.suites[0].name = "Updated suite"
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-
-    const updated = await client.updatePlan({
-      id: plan.id,
-      expected_revision: plan.revision,
-      name: plan.name,
-      model_ids: plan.model_ids,
-      channel_ids: plan.channel_ids,
-      suites: [{
-        entry_id: entry.entry_id,
-        suite_id: entry.suite_id,
-        suite_revision: entry.suite_revision,
-        parameters: {},
-        load_mode: entry.load_mode,
-        concurrency: entry.concurrency,
-        request_count: entry.request_count,
-        rate_per_second: entry.rate_per_second,
-        duration_ms: entry.duration_ms,
-        request_timeout_ms: entry.request_timeout_ms,
-        sla_thresholds: entry.sla_thresholds,
-      }],
-    })
-
-    expect(updated.plans.find((candidate) => candidate.id === plan.id)?.suites[0]).toMatchObject({
-      suite_revision: entry.suite_revision,
-      suite_key: "historical-suite",
-      suite_name: "Historical Suite",
-      parameters: {},
-    })
-    expect(updated.plans.find((candidate) => candidate.id === plan.id)?.suites[0].quick_test).toBeUndefined()
+    const plan = catalog.plans[0]
+    const updated = await client.updatePlan({ id: plan.id, expected_revision: plan.revision, name: plan.name, protocol: plan.protocol, seed: plan.seed,
+      entries: plan.entries.map(({ target_name: _name, target_key: _key, case_count: _count, ...entry }) => entry) })
+    expect(updated.plans[0].entries[0]).toMatchObject({ target_id: catalog.suites[0].id, target_name: "Updated suite" })
+    expect(updated.plans[0].entries[0]).not.toHaveProperty("suite_revision")
+    expect(updated.plans[0].entries[0]).not.toHaveProperty("cases")
   })
 
   it("forwards explicit credential actions without restarting or refreshing the task", async () => {
@@ -248,9 +205,9 @@ describe("Wails desktop client", () => {
 
   it("replays remembered fixture targets without storing secret values and forgets all references", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
-    const suite = catalog.suites.find((item) => item.quick_test)!
+    const suite = catalog.suites[1]
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-    const command = { suite_id: suite.id, suite_revision: suite.revision, model: suite.model_target || "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+    const command = { suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
     const runID = await client.startQuickTask(command)
     expect((await client.getQuickTask(runID)).credential_run_id).toBeUndefined()
     await client.rememberQuickTaskCredential({ run_id: runID, base_url: command.base_url, protocol: suite.protocol, api_key: command.api_key })
@@ -787,12 +744,10 @@ describe("Wails desktop client", () => {
 	const plan = FIXTURE_CATALOG.plans[0]
 	const planInput = {
 		name: plan.name,
-		model_ids: plan.model_ids,
-		channel_ids: plan.channel_ids,
-		suites: plan.suites.map((entry) => ({
+		protocol: plan.protocol, seed: plan.seed,
+		entries: plan.entries.map((entry) => ({
 			entry_id: entry.entry_id,
-			suite_id: entry.suite_id,
-			suite_revision: entry.suite_revision,
+			target_id: entry.target_id, target_kind: entry.target_kind,
 			parameters: entry.parameters,
 			load_mode: entry.load_mode,
 			concurrency: entry.concurrency,
@@ -818,8 +773,8 @@ describe("Wails desktop client", () => {
 		["CreateTestCase", "createTestCase", withoutIdentity(testCase)],
 		["UpdateTestCase", "updateTestCase", { ...withoutIdentity(testCase), id: testCase.id, expected_revision: testCase.revision }],
 		["DeleteTestCase", "deleteTestCase", deletion(testCase.id, testCase.revision)],
-		["CreateSuite", "createSuite", { key: "new-suite", name: "new suite", protocol: suite.protocol, model_target: suite.model_target, cases: suite.cases }],
-		["UpdateSuite", "updateSuite", { id: suite.id, expected_revision: suite.revision, key: suite.key, name: suite.name, protocol: suite.protocol, model_target: suite.model_target, cases: suite.cases }],
+		["CreateSuite", "createSuite", { key: "new-suite", name: "new suite", protocol: suite.protocol, description: suite.description, inputs: suite.inputs, cases: suite.cases }],
+		["UpdateSuite", "updateSuite", { id: suite.id, expected_revision: suite.revision, key: suite.key, name: suite.name, protocol: suite.protocol, description: suite.description, inputs: suite.inputs, cases: suite.cases }],
 		["DeleteSuite", "deleteSuite", deletion(suite.id, suite.revision)],
 		["CreatePlan", "createPlan", planInput],
 		["UpdatePlan", "updatePlan", { ...planInput, id: plan.id, expected_revision: plan.revision }],
@@ -836,7 +791,7 @@ describe("Wails desktop client", () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
 		binding.CreateChannel.mockResolvedValueOnce({
 			...structuredClone(FIXTURE_CATALOG),
-			schema_version: 4,
+			schema_version: 3,
 		} as never)
 		const client = createDesktopClient()
 
@@ -878,7 +833,7 @@ describe("Wails desktop client", () => {
 	})
 
   it.each([
-    [{ ...FIXTURE_WORKSPACE, schema_version: 2 }, "协议版本"],
+    [{ ...FIXTURE_WORKSPACE, schema_version: 1 }, "协议版本"],
     [{ ...FIXTURE_WORKSPACE, plans: [{ id: "broken" }] }, "测试计划"],
     [
       {
@@ -986,21 +941,28 @@ describe("Wails desktop client", () => {
     expect(snapshot.runs[0]).not.toHaveProperty("error_code")
   })
 
-  it("accepts Suite history whose Case members own a variable request schedule", async () => {
+  it("counts observed and indeterminate outcomes in completed executions", async () => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
-    Object.assign(payload.runs[0], { source: "quick_task", planned: 0, duration_ms: 0, completed: 6, passed: 5, failed: 1 })
+    Object.assign(payload.runs[0], { completed: 6, passed: 2, failed: 1, observed: 2, indeterminate: 1 })
     installBinding(payload)
-    expect((await createDesktopClient().getWorkspace()).runs[0]).toMatchObject({ source: "quick_task", planned: 0, completed: 6 })
+    expect((await createDesktopClient().getWorkspace()).runs[0]).toMatchObject({ completed: 6, observed: 2, indeterminate: 1 })
+  })
+
+  it("uses the resolved Case count as a quick task request budget", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    Object.assign(payload.runs[0], { source: "quick_task", load_mode: "single", planned: payload.runs[0].case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed: 0, indeterminate: 0 })
+    installBinding(payload)
+    expect((await createDesktopClient().getWorkspace()).runs[0]).toMatchObject({ source: "quick_task", planned: payload.runs[0].case_count })
   })
 
   it.each([
-    { source: "quick_task", planned: 1, duration_ms: 0 },
+    { source: "quick_task", planned: 0, duration_ms: 0 },
     { source: "quick_task", planned: 0, duration_ms: 1000 },
     { source: "unknown", planned: 0, duration_ms: 0 },
     { planned: 0, duration_ms: 0, case_count: 0 },
     { case_count: 3 },
     { observed_case_count: 5 },
-    { suite_progress: [] },
+    { entry_progress: [] },
   ])("rejects inconsistent task progress metadata %j", async (progress) => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     Object.assign(payload.runs[0], progress)
@@ -1072,7 +1034,7 @@ describe("Wails desktop client", () => {
     Object.assign(testCase, {
       key: longKey,
       dimension: longDimension,
-      type: "request.single",
+      type: "openai-chat",
       type_version: 1,
       spec: { request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: {} }, expected: { allowed_http_statuses: [200], stream_completion: "not_applicable" }, assertions: [{ kind: "custom", config: { mode: "manual" } }] },
     })
@@ -1082,7 +1044,7 @@ describe("Wails desktop client", () => {
     expect(snapshot.test_cases[0]).toMatchObject({
       key: longKey,
       dimension: longDimension,
-      type: "request.single",
+      type: "openai-chat",
       type_version: 1,
     })
   })
@@ -1141,7 +1103,7 @@ describe("Wails desktop client", () => {
 		const catalog = structuredClone(FIXTURE_CATALOG) as unknown as {
 			test_cases: Array<Record<string, unknown>>
 		}
-		catalog.test_cases[0].model_targets = [42]
+		catalog.test_cases[0].protocol = "unknown"
 		const binding = installBinding(FIXTURE_WORKSPACE, catalog)
 
 		await expect(createDesktopClient().getCatalog()).rejects.toThrow("桌面目录测试用例数据无效")
@@ -1156,7 +1118,7 @@ describe("Wails desktop client", () => {
 		const catalog = structuredClone(FIXTURE_CATALOG) as unknown as {
 			test_cases: Array<Record<string, unknown>>
 		}
-		catalog.test_cases[0].model_targets = [42]
+		catalog.test_cases[0].protocol = "unknown"
 		const binding = installBinding(FIXTURE_WORKSPACE, catalog)
 		binding.ReportFrontendDiagnostic.mockRejectedValueOnce(new Error("diagnostics unavailable"))
 		const logError = vi.fn()
@@ -1245,7 +1207,6 @@ function installBinding(
 			SaveReportExport: vi.fn(async () => true),
 			CopyReportPNG: vi.fn(async () => undefined),
 			GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-    StartRun: vi.fn(async () => structuredClone(payload)),
 		StartRunTarget: vi.fn(async () => structuredClone(payload)),
 		StartQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
 		GetQuickTask: vi.fn(),
@@ -1330,31 +1291,10 @@ function zeroPerformanceMetrics() {
 }
 
 function reportDetailFixture(reportID: string) {
-	const summary = FIXTURE_REPORTS.reports.find((report) => report.id === reportID) ?? FIXTURE_REPORTS.reports[0]
-	return {
-		schema_version: 2,
-		source: "run",
-		report: {
-			id: summary.id, run_id: summary.run_id!, run_status: summary.run_status, generated_at: summary.generated_at,
-			model: { id: "22222222-2222-4222-8222-222222222221", name: summary.model_name },
-			channel: { id: "33333333-3333-4333-8333-333333333331", name: summary.channel_name },
-			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "go-core-v1" },
-			conclusion: { passed: summary.passed, verdict: summary.verdict, issues: [] },
-			sla: {}, metrics: {}, case_results: [],
-		},
-		request_results: [],
-		suites: [{
-			suite_entry_id: "88888888-8888-4888-8888-888888888881",
-			suite_id: "88888888-8888-4888-8888-888888888882",
-			suite_revision: 1,
-			suite_key: "fixture-suite",
-			suite_name: "Fixture suite",
-			status: summary.run_status,
-			conclusion: { passed: summary.passed, verdict: summary.passed ? "pass" : "fail", issues: [] },
-			sla: {}, metrics: {}, timeline: [], distributions: [], cases: [],
-		}],
-		unassigned_request_results: [],
-	}
+  const summary = FIXTURE_REPORTS.reports.find(report => report.id === reportID) ?? FIXTURE_REPORTS.reports[0]
+  const detail = protocolReportFixture()
+  detail.report.id = summary.id; detail.report.run_id = summary.run_id!; detail.report.run_status = summary.run_status
+  return detail
 }
 
 function withoutIdentity<T extends { id: string; revision: number }>(value: T): Omit<T, "id" | "revision"> {

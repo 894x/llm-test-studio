@@ -11,6 +11,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 type fakeDocumentCatalog struct {
@@ -92,17 +93,17 @@ func TestDetailAndExportsUseTheSameSealedReportAndRequestResults(t *testing.T) {
 
 func TestFormalHTMLAndPNGPresentationKeepRepeatedSuitesOrderedAndIsolated(t *testing.T) {
 	detail := repeatedSuiteExportFixture(t)
-	first := detail.Suites[0]
-	second := detail.Suites[1]
+	first := detail.Entries[0]
+	second := detail.Entries[1]
 
 	contents, err := renderHTML(detail, "suite-export", "en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
 	html := string(contents)
-	firstSuite := strings.Index(html, `data-suite-entry-id="`+first.SuiteEntryID+`"`)
+	firstSuite := strings.Index(html, `data-suite-entry-id="`+first.EntryID+`"`)
 	firstRequest := strings.Index(html, first.Cases[0].RequestResults[0].RequestID)
-	secondSuite := strings.Index(html, `data-suite-entry-id="`+second.SuiteEntryID+`"`)
+	secondSuite := strings.Index(html, `data-suite-entry-id="`+second.EntryID+`"`)
 	secondRequest := strings.Index(html, second.Cases[0].RequestResults[0].RequestID)
 	if firstSuite < 0 || firstRequest <= firstSuite || secondSuite <= firstRequest || secondRequest <= secondSuite {
 		t.Fatalf("HTML suite/request order is not isolated: first suite=%d first request=%d second suite=%d second request=%d", firstSuite, firstRequest, secondSuite, secondRequest)
@@ -110,7 +111,7 @@ func TestFormalHTMLAndPNGPresentationKeepRepeatedSuitesOrderedAndIsolated(t *tes
 	for _, want := range []string{
 		`data-suite-status="completed"`, `data-suite-conclusion="pass"`,
 		`data-suite-conclusion="fail"`,
-		"e2e_p95_ms", "Cases (1)", "request.single v1",
+		"e2e_p95_ms", "Cases (1)", "openai-chat",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("HTML suite section omits %q", want)
@@ -118,16 +119,16 @@ func TestFormalHTMLAndPNGPresentationKeepRepeatedSuitesOrderedAndIsolated(t *tes
 	}
 
 	imageText := strings.Join(formalReportImageLines(detail), "\n")
-	firstSuite = strings.Index(imageText, "ENTRY "+first.SuiteEntryID)
+	firstSuite = strings.Index(imageText, "ENTRY "+first.EntryID)
 	firstRequest = strings.Index(imageText, first.Cases[0].RequestResults[0].RequestID)
-	secondSuite = strings.Index(imageText, "ENTRY "+second.SuiteEntryID)
+	secondSuite = strings.Index(imageText, "ENTRY "+second.EntryID)
 	secondRequest = strings.Index(imageText, second.Cases[0].RequestResults[0].RequestID)
 	if firstSuite < 0 || firstRequest <= firstSuite || secondSuite <= firstRequest || secondRequest <= secondSuite {
 		t.Fatalf("PNG presentation suite/request order is not isolated:\n%s", imageText)
 	}
 	for _, want := range []string{
 		"STATUS completed  CONCLUSION pass", "STATUS completed  CONCLUSION fail",
-		"SLA e2e_p95_ms", "CASES 1", "TYPE request.single V1", "REQUEST RESULTS 1",
+		"SLA e2e_p95_ms", "CASES 1", "TYPE openai-chat V1", "REQUEST RESULTS 1",
 	} {
 		if !strings.Contains(imageText, want) {
 			t.Fatalf("PNG presentation omits %q:\n%s", want, imageText)
@@ -529,8 +530,8 @@ func exportFixture(t *testing.T) Detail {
 	run := generatorRun(t, now)
 	request := domain.Result{
 		EntityMeta: generatorMeta("50000000-0000-4000-8000-000000000001", now),
-		RunID:      run.Meta().ID, CaseID: run.Snapshot().Cases[0].CaseID, RequestID: "request-1",
-		Success: domain.SuccessDimensions{Transport: true, Protocol: true, Semantic: true, SLA: true},
+		RunID:      run.Meta().ID, EntryID: run.Snapshot().Entries[0].EntryID, CaseID: run.Snapshot().Entries[0].Cases[0].CaseID, RequestID: "request-1",
+		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 		Metrics: map[string]float64{
 			"e2e_ms": 120, "ttfb_ms": 10, "ttft_ms": 40, "ttft_any_ms": 40, "ttft_visible_ms": 50,
 			"ttst_ms": 60, "observed_icl_ms": 20, "semantic_chunk_count": 2, "tpot_ms": 10,
@@ -540,8 +541,8 @@ func exportFixture(t *testing.T) Detail {
 	caseResult := request
 	caseResult.EntityMeta = generatorMeta("50000000-0000-4000-8000-000000000002", now)
 	caseResult.RequestID = ""
-	caseResult.CaseID = run.Snapshot().Cases[0].CaseID
-	repository := &fakeReportRepository{run: run, results: []domain.Result{request, caseResult}, evidence: []domain.Evidence{}}
+	caseResult.CaseID = run.Snapshot().Entries[0].Cases[0].CaseID
+	repository := &fakeReportRepository{run: run, results: []domain.Result{request, caseResult, completedEntryMarker(run)}, evidence: []domain.Evidence{}}
 	generator, err := NewGenerator(GeneratorDependencies{
 		Repository: repository, Clock: fixedReportClock{now: now.Add(time.Minute)},
 		IDFactory: func(time.Time) (string, error) { return "50000000-0000-4000-8000-000000000003", nil },
@@ -555,7 +556,11 @@ func exportFixture(t *testing.T) Detail {
 	if _, err := json.Marshal(repository.report); err != nil {
 		t.Fatal(err)
 	}
-	return Detail{SchemaVersion: CurrentSchemaVersion, Report: repository.report, RequestResults: []domain.Result{request}}
+	detail, err := New(&fakeDocumentCatalog{report: repository.report, results: repository.results}).Detail(context.Background(), repository.report.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return detail
 }
 
 func legacyQuickPerformanceExportFixture() quicktest.PerformanceReport {

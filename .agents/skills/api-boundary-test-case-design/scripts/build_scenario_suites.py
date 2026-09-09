@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic model-scoped suite.json files from case metadata."""
+"""Validate and write current reference-only scenario Suite documents."""
 
 from __future__ import annotations
 
@@ -9,13 +9,12 @@ import os
 import re
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
 
 SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
-SELECTOR_FIELDS = {"enabled", "execution_modes", "kinds", "dimensions", "severities"}
-
 
 class SuiteBuildError(ValueError):
     """Raised when cases or the suite profile manifest are invalid."""
@@ -54,160 +53,74 @@ def required_string(value: Any, label: str, *, safe: bool = False) -> str:
     return value
 
 
-def string_list(value: Any, label: str, *, allow_empty: bool = False) -> list[str]:
-    if not isinstance(value, list) or (not value and not allow_empty):
-        raise SuiteBuildError(f"{label} must be a non-empty string array")
-    result: list[str] = []
-    for index, item in enumerate(value):
-        result.append(required_string(item, f"{label}[{index}]"))
-    if len(set(result)) != len(result):
-        raise SuiteBuildError(f"{label} must not contain duplicate values")
-    return result
-
-
-def load_cases(
-    root: Path, protocol: str, model_target: str
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+def load_cases(root: Path, protocol: str) -> dict[str, dict[str, Any]]:
     if not root.is_dir():
         raise SuiteBuildError(f"case root is not a directory: {root}")
-    all_cases: dict[str, dict[str, Any]] = {}
-    applicable: list[dict[str, Any]] = []
-    paths = sorted(root.rglob("case.json"), key=lambda path: path.relative_to(root).as_posix())
-    if not paths:
-        raise SuiteBuildError(f"case root contains no case.json files: {root}")
-
-    for path in paths:
+    cases = {}
+    namespace = uuid.UUID("7680782d-7ae8-558b-9f32-17d13f31a66b")
+    for path in sorted(root.rglob("case.json")):
         document = load_object(path, "case")
-        key = required_string(document.get("key"), f"case {path} key")
-        if key in all_cases:
-            raise SuiteBuildError(f"duplicate case key {key!r}: {path}")
+        if document.get("schema_version") != 3 or "model_targets" in document:
+            raise SuiteBuildError(f"case {path} must use current schema_version 3")
         if document.get("protocol") != protocol:
-            raise SuiteBuildError(
-                f"case {path} protocol {document.get('protocol')!r} does not match {protocol!r}"
-            )
-        targets = document.get("model_targets") or []
-        if not isinstance(targets, list) or any(not isinstance(item, str) for item in targets):
-            raise SuiteBuildError(f"case {path} model_targets must be a string array")
-        case = {
-            "key": key,
-            "enabled": document.get("enabled"),
-            "execution_mode": document.get("execution_mode"),
-            "dimension": document.get("dimension"),
-            "severity": document.get("severity"),
-            "kind": document.get("definition", {}).get("spec", {}).get("kind"),
-            "model_targets": targets,
-        }
-        all_cases[key] = case
-        if not targets or model_target in targets:
-            applicable.append(case)
-    return all_cases, applicable
+            raise SuiteBuildError(f"case {path} protocol differs from manifest")
+        key = required_string(document.get("key"), f"case {path} key", safe=True)
+        definition = document.get("definition", {})
+        spec = definition.get("spec", {})
+        if definition.get("schema_version") != 2 or definition.get("type") != protocol or definition.get("type_version") != 1:
+            raise SuiteBuildError(f"case {path} must use the current protocol definition")
+        if not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list) or "kind" in spec:
+            raise SuiteBuildError(f"case {path} must declare inputs and assertions")
+        case_id = str(uuid.uuid5(namespace, f"builtin.cases/v2/{protocol}/{key}"))
+        if case_id in cases:
+            raise SuiteBuildError(f"duplicate case key {key!r}")
+        cases[case_id] = document
+    if not cases:
+        raise SuiteBuildError("case root contains no current cases")
+    return cases
 
 
-def matches_selector(case: dict[str, Any], selector: dict[str, Any], label: str) -> bool:
-    unknown = set(selector) - SELECTOR_FIELDS
-    if unknown:
-        raise SuiteBuildError(f"{label} has unknown selector fields: {', '.join(sorted(unknown))}")
-    if "enabled" in selector:
-        if not isinstance(selector["enabled"], bool):
-            raise SuiteBuildError(f"{label}.enabled must be a boolean")
-        if case["enabled"] is not selector["enabled"]:
-            return False
-    for field, case_field in (
-        ("execution_modes", "execution_mode"),
-        ("kinds", "kind"),
-        ("dimensions", "dimension"),
-        ("severities", "severity"),
-    ):
-        if field in selector:
-            accepted = string_list(selector[field], f"{label}.{field}")
-            if case[case_field] not in accepted:
-                return False
-    return True
-
-
-def select_case_keys(
-    profile: dict[str, Any],
-    profile_label: str,
-    all_cases: dict[str, dict[str, Any]],
-    applicable: list[dict[str, Any]],
-    model_target: str,
-) -> list[str]:
-    has_explicit = "case_keys" in profile
-    has_selector = "selector" in profile
-    if has_explicit == has_selector:
-        raise SuiteBuildError(
-            f"{profile_label} must define exactly one of case_keys or selector"
-        )
-    applicable_keys = {case["key"] for case in applicable}
-    if has_explicit:
-        keys = string_list(profile["case_keys"], f"{profile_label}.case_keys")
-        for key in keys:
-            if key not in all_cases:
-                raise SuiteBuildError(f"{profile_label} references unknown case key {key!r}")
-            if key not in applicable_keys:
-                raise SuiteBuildError(
-                    f"{profile_label} case key {key!r} does not apply to model {model_target!r}"
-                )
-        return keys
-
-    selector = profile["selector"]
-    if not isinstance(selector, dict):
-        raise SuiteBuildError(f"{profile_label}.selector must be an object")
-    keys = [
-        case["key"]
-        for case in applicable
-        if matches_selector(case, selector, f"{profile_label}.selector")
-    ]
-    if not keys:
-        raise SuiteBuildError(f"{profile_label}.selector matched no cases")
-    return keys
-
-
-def build_documents(
-    cases_root: Path, manifest_path: Path
-) -> list[tuple[str, dict[str, Any]]]:
+def build_documents(cases_root: Path, manifest_path: Path) -> list[tuple[str, dict[str, Any]]]:
     manifest = load_object(manifest_path, "manifest")
-    if manifest.get("schema_version") != 1:
-        raise SuiteBuildError("manifest schema_version must be 1")
+    if manifest.get("schema_version") != 1 or set(manifest) != {"schema_version", "protocol", "profiles"}:
+        raise SuiteBuildError("manifest must contain only schema_version 1, protocol and profiles")
     protocol = required_string(manifest.get("protocol"), "manifest protocol", safe=True)
-    model_target = required_string(manifest.get("model_target"), "manifest model_target")
+    cases = load_cases(cases_root, protocol)
     profiles = manifest.get("profiles")
     if not isinstance(profiles, list) or not profiles:
         raise SuiteBuildError("manifest profiles must be a non-empty array")
-
-    all_cases, applicable = load_cases(cases_root, protocol, model_target)
-    documents: list[tuple[str, dict[str, Any]]] = []
-    seen_directories: set[str] = set()
-    seen_suite_keys: set[str] = set()
-    for index, profile in enumerate(profiles):
-        label = f"manifest profiles[{index}]"
-        if not isinstance(profile, dict):
-            raise SuiteBuildError(f"{label} must be an object")
-        directory = required_string(profile.get("directory"), f"{label}.directory", safe=True)
-        suite_key = required_string(profile.get("key"), f"{label}.key", safe=True)
-        name = required_string(profile.get("name"), f"{label}.name")
-        if directory in seen_directories:
-            raise SuiteBuildError(f"duplicate suite directory {directory!r}")
-        if suite_key in seen_suite_keys:
-            raise SuiteBuildError(f"duplicate suite key {suite_key!r}")
-        seen_directories.add(directory)
-        seen_suite_keys.add(suite_key)
-        case_keys = select_case_keys(profile, label, all_cases, applicable, model_target)
-        document = {
-            "schema_version": 1,
-            "key": suite_key,
-            "name": name,
-            "protocol": protocol,
-            "model_target": model_target,
-            "case_keys": case_keys,
-        }
-        if "quick_test" in profile:
-            if not isinstance(profile["quick_test"], dict):
-                raise SuiteBuildError(f"{label}.quick_test must be an object")
-            # Keep Suite metadata intact; the catalog's shared domain validation
-            # checks input types, bindings, and applicability against real Cases.
-            document["quick_test"] = profile["quick_test"]
-        documents.append((directory, document))
+    documents = []
+    directories, keys = set(), set()
+    fields = {"schema_version", "key", "name", "protocol", "description", "cases", "inputs"}
+    for profile in profiles:
+        if not isinstance(profile, dict) or set(profile) != fields | {"directory"}:
+            raise SuiteBuildError("profile requires directory and the current Suite document fields")
+        directory = required_string(profile["directory"], "profile directory", safe=True)
+        if directory in {".", ".."} or directory in directories:
+            raise SuiteBuildError("duplicate or unsafe suite directory")
+        key = required_string(profile["key"], "suite key", safe=True)
+        required_string(profile["name"], "suite name")
+        if key in keys or profile["schema_version"] != 2 or profile["protocol"] != protocol:
+            raise SuiteBuildError("duplicate key or unsupported Suite protocol/format")
+        if not isinstance(profile["description"], str) or not isinstance(profile["cases"], list) or not profile["cases"] or not isinstance(profile["inputs"], list):
+            raise SuiteBuildError("Suite description, cases and inputs have invalid shapes")
+        members = set()
+        for ref in profile["cases"]:
+            if not isinstance(ref, dict) or set(ref) != {"case_id"} or ref["case_id"] not in cases or ref["case_id"] in members:
+                raise SuiteBuildError("Suite requires unique, existing Case ID references")
+            members.add(ref["case_id"])
+        for item in profile["inputs"]:
+            if not isinstance(item, dict) or not isinstance(item.get("bindings"), list):
+                raise SuiteBuildError("Suite input requires explicit bindings")
+            for binding in item["bindings"]:
+                if not isinstance(binding, dict) or set(binding) != {"case_id", "input"} or binding["case_id"] not in members:
+                    raise SuiteBuildError("input binding must reference a Suite member")
+                spec = cases[binding["case_id"]]["definition"]["spec"]
+                if binding["input"] not in spec["inputs"]:
+                    raise SuiteBuildError("binding references an undeclared Case input")
+        directories.add(directory)
+        keys.add(key)
+        documents.append((directory, {key: value for key, value in profile.items() if key != "directory"}))
     return documents
 
 
@@ -246,7 +159,7 @@ def check_documents(
 def print_summary(mode: str, documents: list[tuple[str, dict[str, Any]]]) -> None:
     print(f"mode={mode} suites={len(documents)}")
     for directory, document in documents:
-        print(f"{directory}: {len(document['case_keys'])} cases")
+        print(f"{directory}: {len(document['cases'])} cases")
 
 
 def main() -> int:

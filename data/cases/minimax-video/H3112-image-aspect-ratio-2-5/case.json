@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "h3.image.aspect_ratio_2_5",
   "name": "MiniMax H3 · 图片 aspect_ratio=2.5",
   "dimension": "media-boundary",
   "protocol": "minimax-video",
-  "model_targets": [
-    "MiniMax-H3"
-  ],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "minimax-video",
     "type_version": 1,
     "spec": {
-      "kind": "minimax_video_task_success",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v2/video_generation",
-        "headers": {},
         "body": {
           "content": [
             {
@@ -40,16 +34,101 @@
           "ratio": "adaptive"
         }
       },
-      "options": {
-        "reason": "需要仅 aspect_ratio 位于目标边界的确定性 fixture",
-        "expected_resolution": "768P",
-        "expected_duration": 4,
-        "expected_ratio": "adaptive",
-        "require_video_usage": true,
-        "fixture_requirements": {
-          "fixture_id": "H3_IMAGE_ASPECT_RATIO_2_5",
-          "aspect_ratio": 2.5
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "task",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "succeeded"
+        },
+        {
+          "id": "r4",
+          "source": "response",
+          "operator": "http_url",
+          "pointer": "/task/content/url"
+        },
+        {
+          "id": "r5",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/id",
+          "expected_from": {
+            "source": "task",
+            "pointer": "/id"
+          }
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/model",
+          "expected_from": {
+            "source": "model"
+          }
+        },
+        {
+          "id": "r7",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/task_type",
+          "value": "generation"
+        },
+        {
+          "id": "r8",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/modality",
+          "value": "video"
+        },
+        {
+          "id": "r9",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/resolution",
+          "value": "768P"
+        },
+        {
+          "id": "r10",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/duration",
+          "value": 4
+        },
+        {
+          "id": "r11",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/task/ratio",
+          "value": "adaptive"
+        },
+        {
+          "id": "r12",
+          "source": "usage",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_seconds",
+            "parts": [
+              "/input_seconds",
+              "/output_seconds"
+            ]
+          }
         }
+      ],
+      "workflow": {
+        "mode": "wait"
       }
     }
   }

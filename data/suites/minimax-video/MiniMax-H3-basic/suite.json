@@ -1,33 +1,73 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "minimax-video.MiniMax-H3.basic",
   "name": "MiniMax H3 基本功能测试套件",
   "protocol": "minimax-video",
-  "model_target": "MiniMax-H3",
-  "case_keys": [
-    "h3.t2v.min_duration",
-    "h3.authorization.required",
-    "h3.authorization.invalid",
-    "h3.content.required",
-    "h3.model.required",
-    "h3.resolution.required",
-    "h3.duration.required",
-    "h3.t2v.ratio_required",
-    "h3.content.text_min",
-    "h3.resolution.2k",
-    "h3.duration.interior",
-    "h3.t2v.ratio_9_16",
-    "h3.callback_url.valid",
-    "h3.aigc_watermark.false",
-    "h3.aigc_watermark.true",
-    "h3.i2v.role_omitted",
-    "h3.i2v.first_frame",
-    "h3.i2v.first_last_frame",
-    "h3.r2v.reference_image",
-    "h3.r2v.reference_video",
-    "h3.r2v.reference_audio",
-    "h3.r2v.all_media",
-    "h3.usage.t2v_seconds",
-    "h3.usage.multimodal"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c"
+    },
+    {
+      "case_id": "8726e1ac-0cee-5893-930e-5f7b024d947a"
+    },
+    {
+      "case_id": "57357cfc-b237-5802-8d0f-4b275b4ed5f9"
+    },
+    {
+      "case_id": "0985a7f1-7d2a-54a6-b78b-b1c74160b8e0"
+    },
+    {
+      "case_id": "f5d0f3c4-7708-557a-a168-0097af8af284"
+    },
+    {
+      "case_id": "5e879c7a-5056-5fd9-aba5-40ec2df1f8c8"
+    },
+    {
+      "case_id": "99799157-22c8-5933-b2e9-a11faf621a37"
+    },
+    {
+      "case_id": "9ff8aa5b-8d6b-5ab8-b28f-be5108ea1623"
+    },
+    {
+      "case_id": "a3461ff2-37a2-5a84-a551-e270435ed58e"
+    },
+    {
+      "case_id": "c37aad4f-a97b-5cc3-814b-ea06454dccc6"
+    },
+    {
+      "case_id": "b3fa5b33-3350-501b-a13c-a3a9b1430c8c"
+    },
+    {
+      "case_id": "fefe9246-9f49-507d-86a4-3d65a4a11b89"
+    },
+    {
+      "case_id": "6c8ba032-647a-53b1-89fe-b3d980edadd6"
+    },
+    {
+      "case_id": "76c549c6-d91c-5721-a42e-05e0e4c14d16"
+    },
+    {
+      "case_id": "25bdb763-0274-5ecc-b534-43c801f48e44"
+    },
+    {
+      "case_id": "5cb51aa7-b019-5d35-86f7-bd3847d35955"
+    },
+    {
+      "case_id": "7dbf6314-4c88-51d9-b30e-2ca387ba5bee"
+    },
+    {
+      "case_id": "c53bbb0b-d2ff-5c8f-95d1-898a52f8db35"
+    },
+    {
+      "case_id": "80ed0cf0-df9c-5774-a4fa-4332d15c34a1"
+    },
+    {
+      "case_id": "58fb31b2-19a0-59ff-b82e-a27759a432ea"
+    },
+    {
+      "case_id": "4824a965-3aa1-50e2-9501-3bc0bf3657c9"
+    }
+  ],
+  "inputs": []
 }

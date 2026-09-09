@@ -1,28 +1,20 @@
 # LLM Test Studio case integration
 
-Use this reference only inside `E:\GITHUB\llm-test`.
+Use this reference inside `E:\GITHUB\llm-test` and its worktrees.
 
-## Discovery
+Follow AGENTS.md graph discovery rules. Inspect `internal/casecodec`, `internal/testspec`, `internal/protocols`, `internal/application/casecatalog`, `data/cases` and neighboring definitions. Trace the selected assertion operator and observation source before claiming a business outcome.
 
-1. Follow the repository `AGENTS.md` graph-first discovery rules.
-2. Inspect `internal/casecodec`, `internal/application/casecatalog`, `internal/domain/test_case.go`, `data/cases/bundle.go`, and neighboring `case.json` definitions relevant to the target suite.
-3. Trace how the selected assertion `kind` is executed before claiming it proves a business outcome.
-4. Check built-in suite filtering, `model_targets`, enabled/default flags, execution mode, and persisted revision behavior.
-5. When creating or materially extending a model catalog, read [suite-generation.md](suite-generation.md) and classify cases into execution profiles before finalizing the catalog.
+## Current artifact contract
 
-## Artifact rules
-
-- Preserve `schema_version`, stable case keys, model applicability, execution mode, and repository naming conventions.
-- Give each case one primary boundary or dependency claim. Do not duplicate the same request under several report labels when an aggregate can derive them.
-- Use an existing assertion kind only when it can distinguish the expected positive or negative contract outcome. Add focused runner tests before introducing a new kind.
-- Keep deterministic fixtures repository-owned. Do not fabricate provider-scoped file IDs, asset IDs, or credentials.
-- Separate first-party provider baselines from downstream compatibility or characterization behavior.
-- Keep T3 cases disabled or outside the default plan unless their spend and environment are explicitly authorized.
-- Store semantic Suite membership such as connectivity and basic functionality as explicit keys; derive mechanical Suite membership such as automatic rejection, automatic regression, and complete coverage from metadata selectors.
-- Generate Suite files from the checked-in profile manifest. Do not maintain selector-derived lists by hand.
+- Case envelope schema 3; definition schema 2, type equal to the protocol, type version 1. Preserve stable keys and IDs. Declare inputs and assertions explicitly. Empty assertions mean observation only.
+- Inputs use explicit template references. Cases do not own the runtime model, credential, URL or load policy. Do not add model targets, aliases or old kind-based dispatch.
+- Suite schema 2 holds ordered Case references and explicit input bindings. Plan entries target a Case or Suite with per-entry load, warmup and protocol settings. The Run binds one model/channel/credential.
+- Give each Case a primary contract claim. HTTP 2xx and task admission alone do not prove business success; waiting belongs in the workflow and terminal success belongs in assertions.
+- Keep fixtures repository-owned and never fabricate provider asset IDs or credentials. Keep expensive Cases disabled or outside automatic profiles unless execution is authorized.
+- Generate Suites from reviewed current manifests using [suite-generation.md](suite-generation.md). Reject unsupported old files without mutating them; historical upgrades belong in separately invoked temporary scripts.
 
 ## Validation
 
-Run checks proportional to the change: case JSON parsing and embedded-bundle tests; case import/conversion and model-target tests; assertion-runner tests for changed kinds; `build_scenario_suites.py --check`; built-in suite/plan seed tests when membership changes; `go test -p 1 ./...` for a completed backend/catalog change; frontend checks only when DTOs, bindings, or UI behavior changed; and `git diff --check` with explicit changed-file inspection.
+Validate current Case parsing, protocol request preparation and assertion evaluation; all bundled Suite references and input bindings; the generator's `--check`; Plan seeds; and old-format rejection without file mutation. Run relevant Go tests, frontend checks for changed DTO/rendering contracts, and `git diff --check`.
 
-Do not run a provider-backed case merely because its file was added. Report static validation separately from live T1/T2/T3 execution.
+Keep static/fixture evidence distinct from live provider execution. Adding an authored Case does not authorize spending provider quota.

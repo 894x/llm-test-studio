@@ -282,8 +282,7 @@ func validateComparisonReferences(ctx context.Context, queryer relationQueryer, 
 		}
 		if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
 			snapshot.PlanDocument.ID != planRef.ID || snapshot.PlanDocument.Revision != planRef.Revision ||
-			!containsString(snapshot.PlanDocument.ModelIDs, modelRef.ID) ||
-			!containsString(snapshot.PlanDocument.ChannelIDs, item.Channel.ID) {
+			snapshot.PlanDocument.Protocol != snapshot.Model.Protocol || snapshot.PlanDocument.Protocol != snapshot.Channel.Protocol {
 			return errors.New("comparison run configuration does not match its pinned target")
 		}
 	}

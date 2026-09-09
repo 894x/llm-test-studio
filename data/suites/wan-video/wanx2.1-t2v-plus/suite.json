@@ -1,12 +1,19 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wanx2.1-t2v-plus",
   "name": "Wan 2.1 Plus 边界套件",
   "protocol": "wan-video",
-  "model_target": "wanx2.1-t2v-plus",
-  "case_keys": [
-    "wan21.plus.duration_5",
-    "wan21.plus.duration_invalid",
-    "wan21.plus.size_invalid"
-  ]
+  "description": "",
+  "cases": [
+    {
+      "case_id": "1ad2d0e4-0025-5b5a-a551-ae74c539bff8"
+    },
+    {
+      "case_id": "c6a32f63-484a-57bb-8799-547d996e14d4"
+    },
+    {
+      "case_id": "5901a1d9-6fe7-5fb3-ac92-6026566d9bfe"
+    }
+  ],
+  "inputs": []
 }

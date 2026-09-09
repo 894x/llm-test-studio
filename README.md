@@ -59,7 +59,7 @@ Versioned Test Case ──> Suite ──> Plan ──> Immutable Run Snapshot
                                            Results + Evidence ──> Report
 ```
 
-The reusable boundary is the exact case revision. Suites group those revisions; plans bind them to candidate channels, load behavior, timeouts, and SLA thresholds; runs freeze the complete input before execution. This keeps test intent independent from the provider-specific endpoint that happens to serve the model.
+The reusable boundary is the exact case revision. Suites group Case references; plans define their ordered execution, inputs, load, timeouts and SLA thresholds; runs resolve current revisions, bind the selected channel/model, and freeze the complete input before execution. This keeps test intent independent from the provider-specific endpoint that happens to serve the model.
 
 ## Quick start
 
@@ -94,6 +94,15 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 ```
 
 On Windows PowerShell, run the binary as `.\llm-test-studio.exe`.
+
+
+### Current protocol runtime
+
+Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `seedance`, `wan-video`, and `minimax-video`. Cases use envelope schema 3 and explicit assertions; Suites use schema 2 with ordered Case references and input bindings. Plans retain per-entry load, warmup, settings and seed. The Run binds one model, channel and credential.
+
+CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` accepts only inputs declared by selected Cases. Omit `--inputs` to use their declared defaults. `--all-cases` selects enabled automatic Cases; manual/disabled selections fail explicitly. `--dry-run` prepares requests without network calls or verification claims. Waiting is authored as `workflow.mode`, replacing `--no-wait`.
+
+The repository contains 711 current Cases, 44 Suites and 5 performance Plans. Sixteen previous model/authentication mutation Cases are disabled because those fields belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [runtime integration and acceptance](doc/design/protocol-case-runtime-implementation.md) for format changes and historical-data impact.
 
 <details>
 <summary><strong>CLI examples</strong></summary>

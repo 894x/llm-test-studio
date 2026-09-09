@@ -1,24 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "must.tool_choice_none",
   "name": "工具调用 · tool_choice=none",
   "dimension": "tools",
   "protocol": "openai-chat",
-  "model_targets": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -50,9 +46,50 @@
           "max_tokens": 200
         }
       },
-      "options": {
-        "forbid_tool_calls": true
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r7",
+          "any": [
+            {
+              "id": "r5",
+              "source": "response",
+              "operator": "not_exists",
+              "pointer": "/choices/0/message/tool_calls"
+            },
+            {
+              "id": "r6",
+              "source": "response",
+              "operator": "length_equals",
+              "pointer": "/choices/0/message/tool_calls",
+              "value": 0
+            }
+          ]
+        }
+      ]
     }
   }
 }

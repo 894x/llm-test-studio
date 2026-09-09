@@ -13,7 +13,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 var (
 	ErrUnavailable  = errors.New("workspace service unavailable")
@@ -25,7 +25,6 @@ var (
 type Catalog interface {
 	ListPlans(context.Context) ([]domain.Plan, error)
 	ListSuites(context.Context) ([]domain.Suite, error)
-	GetSuiteRevision(context.Context, string, uint64) (domain.Suite, error)
 	ListRunProjections(context.Context) ([]RunProjection, error)
 }
 
@@ -58,19 +57,21 @@ type RunProjection struct {
 	Completed     uint64
 	Passed        uint64
 	Failed        uint64
+	Observed      uint64
+	Indeterminate uint64
 	ArtifactCount uint64
 	Conclusion    Conclusion
-	SuiteResults  []SuiteResultProjection
+	EntryResults  []EntryResultProjection
 }
 
-// SuiteResultProjection counts distinct Cases with persisted results, not requests.
-type SuiteResultProjection struct {
+// EntryResultProjection counts distinct Cases with persisted results, not requests.
+type EntryResultProjection struct {
 	EntryID       string
 	ObservedCases uint64
-	Status        domain.SuiteExecutionStatus
+	Status        domain.EntryExecutionStatus
 }
 
-type SuiteProgress struct {
+type EntryProgress struct {
 	EntryID           string `json:"entry_id"`
 	Name              string `json:"name"`
 	CaseCount         uint64 `json:"case_count"`
@@ -97,6 +98,7 @@ type PlanSummary struct {
 	ID             string          `json:"id"`
 	Revision       uint64          `json:"revision"`
 	Name           string          `json:"name"`
+	Protocol       domain.Protocol `json:"protocol"`
 	CaseCount      int             `json:"case_count"`
 	RunCount       int             `json:"run_count"`
 	LoadMode       domain.LoadMode `json:"load_mode"`
@@ -110,7 +112,7 @@ type PlanSummary struct {
 type RunSummary struct {
 	CaseCount         uint64           `json:"case_count"`
 	ObservedCaseCount uint64           `json:"observed_case_count"`
-	SuiteProgress     []SuiteProgress  `json:"suite_progress"`
+	EntryProgress     []EntryProgress  `json:"entry_progress"`
 	Source            string           `json:"source,omitempty"`
 	ID                string           `json:"id"`
 	Revision          uint64           `json:"revision"`
@@ -135,6 +137,8 @@ type RunSummary struct {
 	Completed         uint64           `json:"completed"`
 	Passed            uint64           `json:"passed"`
 	Failed            uint64           `json:"failed"`
+	Observed          uint64           `json:"observed"`
+	Indeterminate     uint64           `json:"indeterminate"`
 	ArtifactCount     uint64           `json:"artifact_count"`
 	StartedAt         time.Time        `json:"started_at"`
 	UpdatedAt         time.Time        `json:"updated_at"`
@@ -208,21 +212,19 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 	}
 	for _, plan := range plans {
-		load := summarizeSuiteLoads(plan.Suites)
+		load := summarizeEntryLoads(plan.Entries)
 		caseCount := 0
-		for _, entry := range plan.Suites {
-			suite, exists := suitesByID[entry.SuiteID]
-			if !exists || suite.Revision != entry.SuiteRevision {
-				var err error
-				suite, err = service.catalog.GetSuiteRevision(ctx, entry.SuiteID, entry.SuiteRevision)
-				if err != nil {
-					return Snapshot{}, safePortError(ctx, err)
-				}
+		for _, entry := range plan.Entries {
+			if entry.TargetKind == domain.PlanTargetCase {
+				caseCount++
+				continue
 			}
-			caseCount += len(suite.Cases)
+			if suite, exists := suitesByID[entry.TargetID]; exists {
+				caseCount += len(suite.Cases)
+			}
 		}
 		planSummaries = append(planSummaries, PlanSummary{
-			ID: plan.ID, Revision: plan.Revision, Name: plan.Name,
+			ID: plan.ID, Revision: plan.Revision, Name: plan.Name, Protocol: plan.Protocol,
 			CaseCount: caseCount, RunCount: runCounts[plan.ID],
 			LoadMode: load.Mode, Concurrency: load.Concurrency,
 			RequestCount: load.RequestCount, RatePerSecond: load.RatePerSecond,
@@ -273,28 +275,22 @@ func validateProjection(projection RunProjection) error {
 	run := projection.Run
 	snapshot := run.Snapshot()
 	plan := projection.PinnedPlan
-	if snapshot.QuickTask != nil {
-		if snapshot.PlanDocument != nil || !reflect.DeepEqual(plan, domain.Plan{}) {
-			return errors.New("quick task must not have an authored pinned plan")
-		}
-	} else {
-		if err := plan.Validate(); err != nil {
-			return err
-		}
-		if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
-			plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision ||
-			!reflect.DeepEqual(plan, *snapshot.PlanDocument) {
-			return errors.New("run snapshot differs from pinned plan")
-		}
+	if err := plan.Validate(); err != nil {
+		return err
 	}
-	if projection.Completed != projection.Passed+projection.Failed {
+	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
+		plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision ||
+		!reflect.DeepEqual(plan, *snapshot.PlanDocument) {
+		return errors.New("run snapshot differs from pinned plan")
+	}
+	if projection.Completed != projection.Passed+projection.Failed+projection.Observed+projection.Indeterminate {
 		return errors.New("run result counts are inconsistent")
 	}
 	budget := snapshotRequestBudget(snapshot)
 	if budget > 0 && projection.Completed > budget {
 		return errors.New("run completed more requests than planned")
 	}
-	if err := validateSuiteResults(projection); err != nil {
+	if err := validateEntryResults(projection); err != nil {
 		return err
 	}
 	switch projection.Conclusion {
@@ -318,9 +314,6 @@ func summarizeRun(projection RunProjection) RunSummary {
 	snapshot := run.Snapshot()
 	_, load := summarizeSnapshotLoads(snapshot)
 	planName := projection.PinnedPlan.Name
-	if snapshot.QuickTask != nil {
-		planName = snapshot.QuickTask.Suite.Name
-	}
 	summary := RunSummary{
 		ID: meta.ID, Revision: meta.Revision,
 		PlanID: run.PlanID(), PlanRevision: snapshot.Plan.Revision, PlanName: planName,
@@ -330,12 +323,12 @@ func summarizeRun(projection RunProjection) RunSummary {
 		LoadMode: load.Mode, Concurrency: load.Concurrency,
 		RatePerSecond: load.RatePerSecond, Planned: snapshotRequestBudget(snapshot),
 		DurationMS: load.DurationMS,
-		Completed:  projection.Completed, Passed: projection.Passed, Failed: projection.Failed,
+		Completed:  projection.Completed, Passed: projection.Passed, Failed: projection.Failed, Observed: projection.Observed, Indeterminate: projection.Indeterminate,
 		ArtifactCount: projection.ArtifactCount,
 		StartedAt:     meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
 	}
-	summary.SuiteProgress = summarizeSuiteProgress(projection)
-	for _, suite := range summary.SuiteProgress {
+	summary.EntryProgress = summarizeEntryProgress(projection)
+	for _, suite := range summary.EntryProgress {
 		summary.CaseCount += suite.CaseCount
 		summary.ObservedCaseCount += suite.ObservedCaseCount
 	}
@@ -344,14 +337,12 @@ func summarizeRun(projection RunProjection) RunSummary {
 		summary.ErrorCode = failure.ErrorCode
 	}
 	if snapshot.QuickTask != nil {
-		// A task executes each member once; a member can own a variable number
-		// of observations. Its Case count is not a request budget.
-		summary.Source, summary.Planned = "quick_task", 0
+		summary.Source = "quick_task"
 	}
 	return summary
 }
 
-func summarizeSuiteLoads(suites []domain.PlanSuiteEntry) domain.LoadProfile {
+func summarizeEntryLoads(suites []domain.PlanEntry) domain.LoadProfile {
 	loads := make([]domain.LoadProfile, len(suites))
 	for index, suite := range suites {
 		loads[index] = suite.Load
@@ -360,12 +351,9 @@ func summarizeSuiteLoads(suites []domain.PlanSuiteEntry) domain.LoadProfile {
 }
 
 func summarizeSnapshotLoads(snapshot domain.RunSnapshot) (int, domain.LoadProfile) {
-	if snapshot.QuickTask != nil {
-		return len(snapshot.Cases), snapshot.Load
-	}
-	loads := make([]domain.LoadProfile, len(snapshot.Suites))
+	loads := make([]domain.LoadProfile, len(snapshot.Entries))
 	caseCount := 0
-	for index, suite := range snapshot.Suites {
+	for index, suite := range snapshot.Entries {
 		caseCount += len(suite.Cases)
 		loads[index] = suite.Load
 	}

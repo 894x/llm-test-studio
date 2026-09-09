@@ -246,10 +246,12 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	casesRoot := flags.String("cases-root", "data/cases", "case definition root")
 	baseURL := flags.String("base-url", "", "HTTPS gateway base URL")
 	model := flags.String("model", "", "model to audit")
-	allCases := flags.Bool("all-cases", false, "run every case in the suite")
+	allCases := flags.Bool("all-cases", false, "run every enabled automatic case in the protocol")
 	allModels := flags.Bool("all-models", false, "run all configured Seedance models")
+	seed := flags.Uint64("seed", 0, "deterministic request generator seed")
+	inputs := flags.String("inputs", "{}", "JSON object assigning declared case inputs")
 	dryRun := flags.Bool("dry-run", false, "render requests without network calls")
-	noWait := flags.Bool("no-wait", false, "do not poll video tasks to terminal status")
+
 	keyEnv := flags.String("api-key-env", "API_AUDIT_API_KEY", "environment variable containing the bearer key")
 	output := flags.String("output", "", "report output directory")
 	pollInterval := flags.Duration("poll-interval", 10*time.Second, "video task polling interval")
@@ -326,17 +328,18 @@ func runAuditRun(ctx context.Context, args []string, stdout, stderr io.Writer, d
 		return diagnosticExit(stderr, format.value, "core_unavailable", "Go core is unavailable", 1)
 	}
 	final, err := application.Run(runContext, compatibility.RunRequest{
-		Suite:        *suite,
-		CasesRoot:    *casesRoot,
-		BaseURL:      *baseURL,
-		APIKey:       apiKey,
-		Model:        strings.TrimSpace(*model),
-		CaseIDs:      append([]string(nil), caseIDs...),
-		OutputDir:    *output,
-		AllCases:     *allCases,
-		AllModels:    *allModels,
-		DryRun:       *dryRun,
-		NoWait:       *noWait,
+		Seed: *seed, Inputs: json.RawMessage(*inputs),
+		Suite:     *suite,
+		CasesRoot: *casesRoot,
+		BaseURL:   *baseURL,
+		APIKey:    apiKey,
+		Model:     strings.TrimSpace(*model),
+		CaseIDs:   append([]string(nil), caseIDs...),
+		OutputDir: *output,
+		AllCases:  *allCases,
+		AllModels: *allModels,
+		DryRun:    *dryRun,
+
 		PollInterval: *pollInterval,
 		Timeout:      *timeout,
 		Concurrency:  *concurrency,
@@ -458,7 +461,7 @@ func emitHumanRunEvent(output io.Writer, event compatibility.Event) error {
 	case compatibility.PlanEvent:
 		fmt.Fprintf(&contents, "PLAN %d case run(s)\n", event.Payload.Total)
 		for _, planned := range event.Payload.Runs {
-			fmt.Fprintf(&contents, "- %s %s [%s]\n", planned.ID, planned.Model, planned.Kind)
+			fmt.Fprintf(&contents, "- %s %s [%s]\n", planned.ID, planned.Model, planned.Protocol)
 		}
 	case compatibility.ProgressEvent:
 		fmt.Fprintf(&contents, "DONE %d/%d %s %s (%d ms)\n", event.Payload.Completed, event.Payload.Total, event.Payload.Result.ID, event.Payload.Result.Status, event.Payload.Result.ElapsedMS)
@@ -478,13 +481,14 @@ type listPayload struct {
 }
 
 type caseSummary struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Dimension string `json:"dimension"`
-	Protocol  string `json:"protocol"`
-	Kind      string `json:"kind"`
-	Default   bool   `json:"default"`
-	Severity  string `json:"severity"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Dimension     string `json:"dimension"`
+	Protocol      string `json:"protocol"`
+	Disabled      bool   `json:"disabled"`
+	ExecutionMode string `json:"execution_mode"`
+	Default       bool   `json:"default"`
+	Severity      string `json:"severity"`
 }
 
 type listResponse struct {
@@ -553,10 +557,9 @@ func summarizeCases(cases []compatibility.CaseDefinition) []caseSummary {
 			ID:        definition.ID,
 			Name:      definition.Name,
 			Dimension: definition.Dimension,
-			Protocol:  definition.Protocol,
-			Kind:      definition.Kind,
-			Default:   definition.Default,
-			Severity:  definition.Severity,
+			Protocol:  definition.Protocol, Disabled: definition.Disabled, ExecutionMode: definition.ExecutionMode,
+			Default:  definition.Default,
+			Severity: definition.Severity,
 		})
 	}
 	return summaries

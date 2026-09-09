@@ -15,7 +15,6 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
-	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
@@ -192,8 +191,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 426 || disabled != 178 || manual != 107 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 426/178/107", runnable, disabled, manual)
+	if runnable != 410 || disabled != 194 || manual != 107 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 410/194/107", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -282,14 +281,14 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		"Kimi K2.6 官方基础套件":                {target: "kimi-k2.6", count: 11},
 		"Wan 3.0 标准版 · 连通性测试":             {target: "wan3.0-video", count: 1},
 		"Wan 3.0 标准版 · 基本功能测试":            {target: "wan3.0-video", count: 6},
-		"Wan 3.0 标准版 · 参数拒绝测试":            {target: "wan3.0-video", count: 39},
-		"Wan 3.0 标准版 · 完整测试（自动可执行）":       {target: "wan3.0-video", count: 74},
-		"Wan 3.0 标准版 · 完整矩阵（含禁用模板）":       {target: "wan3.0-video", count: 191},
+		"Wan 3.0 标准版 · 参数拒绝测试":            {target: "wan3.0-video", count: 35},
+		"Wan 3.0 标准版 · 完整测试（自动可执行）":       {target: "wan3.0-video", count: 70},
+		"Wan 3.0 标准版 · 完整矩阵（含禁用模板）":       {target: "wan3.0-video", count: 187},
 		"Wan 3.0 Prime · 连通性测试":           {target: "wan3.0-video-prime", count: 1},
 		"Wan 3.0 Prime · 基本功能测试":          {target: "wan3.0-video-prime", count: 6},
-		"Wan 3.0 Prime · 参数拒绝测试":          {target: "wan3.0-video-prime", count: 39},
-		"Wan 3.0 Prime · 完整测试（自动可执行）":     {target: "wan3.0-video-prime", count: 74},
-		"Wan 3.0 Prime · 完整矩阵（含禁用模板）":     {target: "wan3.0-video-prime", count: 191},
+		"Wan 3.0 Prime · 参数拒绝测试":          {target: "wan3.0-video-prime", count: 35},
+		"Wan 3.0 Prime · 完整测试（自动可执行）":     {target: "wan3.0-video-prime", count: 70},
+		"Wan 3.0 Prime · 完整矩阵（含禁用模板）":     {target: "wan3.0-video-prime", count: 187},
 		"Wan 2.7 文生视频边界套件":                {target: "wan2.7-t2v", count: 7},
 		"Wan 2.7 2026-06-12 快照边界套件":       {target: "wan2.7-t2v-2026-06-12", count: 7},
 		"Wan 2.6 文生视频边界套件":                {target: "wan2.6-t2v", count: 4},
@@ -297,16 +296,16 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		"Wan 2.2 文生视频边界套件":                {target: "wan2.2-t2v-plus", count: 3},
 		"Wan 2.1 Turbo 边界套件":              {target: "wanx2.1-t2v-turbo", count: 3},
 		"Wan 2.1 Plus 边界套件":               {target: "wanx2.1-t2v-plus", count: 3},
-		"MiniMax H3 连通性测试套件":              {target: "MiniMax-H3", count: 3},
-		"MiniMax H3 基本功能测试套件":             {target: "MiniMax-H3", count: 24},
-		"MiniMax H3 参数拒绝测试套件":             {target: "MiniMax-H3", count: 45},
-		"MiniMax H3 自动化核心回归套件":            {target: "MiniMax-H3", count: 48},
-		"MiniMax H3 视频生成完整边界套件":           {target: "MiniMax-H3", count: 149},
-		"GLM 5.3 连通性套件":                   {target: "glm-5.3", count: 3},
-		"GLM 5.3 基本功能套件":                  {target: "glm-5.3", count: 12},
-		"GLM 5.3 参数拒绝套件":                  {target: "glm-5.3", count: 101},
-		"GLM 5.3 自动回归套件":                  {target: "glm-5.3", count: 165},
-		"GLM 5.3 完整设计（含禁用模板）套件":           {target: "glm-5.3", count: 212},
+		"MiniMax H3 连通性测试套件":              {target: "MiniMax-H3", count: 1},
+		"MiniMax H3 基本功能测试套件":             {target: "MiniMax-H3", count: 21},
+		"MiniMax H3 参数拒绝测试套件":             {target: "MiniMax-H3", count: 42},
+		"MiniMax H3 自动化核心回归套件":            {target: "MiniMax-H3", count: 43},
+		"MiniMax H3 视频生成完整边界套件":           {target: "MiniMax-H3", count: 144},
+		"GLM 5.3 连通性套件":                   {target: "glm-5.3", count: 1},
+		"GLM 5.3 基本功能套件":                  {target: "glm-5.3", count: 10},
+		"GLM 5.3 参数拒绝套件":                  {target: "glm-5.3", count: 96},
+		"GLM 5.3 自动回归套件":                  {target: "glm-5.3", count: 158},
+		"GLM 5.3 完整设计（含禁用模板）套件":           {target: "glm-5.3", count: 205},
 	}
 	firstByName := make(map[string]catalog.SuiteSummary, len(firstSnapshot.Suites))
 	secondByName := make(map[string]catalog.SuiteSummary, len(secondSnapshot.Suites))
@@ -328,8 +327,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		}
 		for _, ref := range firstSuite.Cases {
 			testCase, found := caseByID[ref.CaseID]
-			if !found || !containsString(testCase.ModelTargets, want.target) {
-				t.Fatalf("suite %q includes case %+v with targets %#v", name, ref, testCase.ModelTargets)
+			if !found || testCase.Protocol != firstSuite.Protocol {
+				t.Fatalf("suite %q includes case %+v with protocol %s", name, ref, testCase.Protocol)
 			}
 		}
 	}
@@ -413,25 +412,24 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	defer dependencies.close()
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
 		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		ModelTargets: []string{"gpt-5.2", "gpt-4.1-mini"},
-		Enabled:      true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
+		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
-		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
+		Type:                    "openai-chat", TypeVersion: 1,
+		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
 	path := filepath.Join(executableDirectory, "data", "cases", "openai-chat", "T900", "case.json")
-	if raw, err := os.ReadFile(path); err != nil || !json.Valid(raw) || !strings.Contains(string(raw), `"model_targets"`) || !strings.Contains(string(raw), `"gpt-5.2"`) {
+	if raw, err := os.ReadFile(path); err != nil || !json.Valid(raw) || strings.Contains(string(raw), `"model_targets"`) || !strings.Contains(string(raw), `"openai-chat"`) {
 		t.Fatalf("shareable case file = %q, %v", raw, err)
 	}
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
 		Key: "T900", Name: "must not replace", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
-		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"replacement"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
+		Type:                    "openai-chat", TypeVersion: 1,
+		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"replacement"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
 	})
 	if !errors.Is(err, catalog.ErrConflict) {
 		t.Fatalf("duplicate CreateTestCase() error = %v, want ErrConflict", err)
@@ -440,14 +438,14 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 		Key: "T901", Name: "reserved", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    casetypes.TypeLegacyAPIAudit, TypeVersion: 1,
+		Type:                    "removed.protocol", TypeVersion: 1,
 		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`),
 	})
 	if !errors.Is(err, catalog.ErrInvalid) {
 		t.Fatalf("reserved CreateTestCase() error = %v, want ErrInvalid", err)
 	}
 	snapshot, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Key != "T900" || snapshot.TestCases[0].Name != "shareable" || len(snapshot.TestCases[0].ModelTargets) != 2 {
+	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Key != "T900" || snapshot.TestCases[0].Name != "shareable" {
 		t.Fatalf("filesystem catalog after create = %#v, %v", snapshot.TestCases, err)
 	}
 }
@@ -510,23 +508,23 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 		Key: "T950", Name: "file-backed case", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
-		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
+		Type:                    "openai-chat", TypeVersion: 1,
+		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
 	createdSuite, err := dependencies.catalogCommands.CreateSuite(context.Background(), catalog.CreateSuiteCommand{
-		Key: "file-backed-suite", Name: "file-backed suite", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "file-backed-model",
-		Cases: []catalog.CaseRevisionInput{{CaseID: createdCase.ID, Revision: createdCase.Revision}},
+		Key: "file-backed-suite", Name: "file-backed suite", Protocol: domain.ProtocolOpenAIChat,
+		Cases: []catalog.CaseInput{{CaseID: createdCase.ID}},
 	})
 	if err != nil {
 		t.Fatalf("CreateSuite() error = %v", err)
 	}
 	createdPlan, err := dependencies.catalogCommands.CreatePlan(context.Background(), catalog.CreatePlanCommand{
-		Name: "file-backed plan",
-		Suites: []catalog.PlanSuiteInput{{
-			SuiteID: createdSuite.ID, SuiteRevision: createdSuite.Revision,
+		Name: "file-backed plan", Protocol: domain.ProtocolOpenAIChat, Seed: 1,
+		Entries: []catalog.PlanEntryInput{{
+			TargetKind: domain.PlanTargetSuite, TargetID: createdSuite.ID,
 			LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
 			SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000}, Parameters: map[string]json.RawMessage{},
 		}},
@@ -729,19 +727,18 @@ func TestProductionSuiteCreateWritesShareableFileBesideExecutableWithoutDatabase
 	defer dependencies.close()
 
 	createdCase, err := dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
-		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		ModelTargets: []string{"gpt-5.2"}, Enabled: true, Default: false,
+		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: false,
 		Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    casetypes.TypeRequestSingle, TypeVersion: 1,
-		Spec: json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"Content-Type":"application/json"},"body":{"messages":[{"role":"user","content":"hello"}]}},"expected":{"allowed_http_statuses":[200],"stream_completion":"not_applicable"},"assertions":[{"kind":"response_schema","config":{"required":true}}]}`),
+		Type:                    "openai-chat", TypeVersion: 1,
+		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
 	createdSuite, err := dependencies.catalogCommands.CreateSuite(context.Background(), catalog.CreateSuiteCommand{
-		Key: "gpt-5.2-smoke", Name: "GPT-5.2 smoke", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "gpt-5.2",
-		Cases: []catalog.CaseRevisionInput{{CaseID: createdCase.ID, Revision: createdCase.Revision}},
+		Key: "gpt-5.2-smoke", Name: "GPT-5.2 smoke", Protocol: domain.ProtocolOpenAIChat,
+		Cases: []catalog.CaseInput{{CaseID: createdCase.ID}},
 	})
 	if err != nil {
 		t.Fatalf("CreateSuite() error = %v", err)
@@ -749,11 +746,11 @@ func TestProductionSuiteCreateWritesShareableFileBesideExecutableWithoutDatabase
 
 	path := filepath.Join(executableDirectory, "data", "suites", "openai-chat", "gpt-5.2-smoke", "suite.json")
 	raw, err := os.ReadFile(path)
-	if err != nil || !json.Valid(raw) || !strings.Contains(string(raw), `"case_keys"`) || strings.Contains(string(raw), `"case_id"`) {
+	if err != nil || !json.Valid(raw) || strings.Contains(string(raw), `"case_keys"`) || !strings.Contains(string(raw), `"case_id"`) {
 		t.Fatalf("shareable suite file = %q, %v", raw, err)
 	}
 	snapshot, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(snapshot.Suites) != 1 || snapshot.Suites[0].ID != createdSuite.ID || snapshot.Suites[0].ModelTarget != "gpt-5.2" {
+	if err != nil || len(snapshot.Suites) != 1 || snapshot.Suites[0].ID != createdSuite.ID || snapshot.Suites[0].Protocol != domain.ProtocolOpenAIChat {
 		t.Fatalf("filesystem suite catalog = %#v, %v", snapshot.Suites, err)
 	}
 
@@ -779,9 +776,9 @@ func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *tes
 	}
 	suite := snapshot.Suites[0]
 	_, err = dependencies.catalogCommands.CreatePlan(context.Background(), catalog.CreatePlanCommand{
-		Name: "filesystem suite plan",
-		Suites: []catalog.PlanSuiteInput{{
-			SuiteID: suite.ID, SuiteRevision: suite.Revision,
+		Name: "filesystem suite plan", Protocol: suite.Protocol, Seed: 1,
+		Entries: []catalog.PlanEntryInput{{
+			TargetKind: domain.PlanTargetSuite, TargetID: suite.ID,
 			LoadMode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
 			SLAThresholds: map[string]float64{"e2e_p95_ms": 3_000}, Parameters: map[string]json.RawMessage{},
 		}},
@@ -790,8 +787,8 @@ func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *tes
 		t.Fatalf("CreatePlan() with filesystem suite error = %v", err)
 	}
 	updated, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(updated.Plans) != 1 || len(updated.Plans[0].Suites) != 1 ||
-		updated.Plans[0].Suites[0].SuiteID != suite.ID || updated.Plans[0].Suites[0].SuiteRevision != suite.Revision {
+	if err != nil || len(updated.Plans) != 1 || len(updated.Plans[0].Entries) != 1 ||
+		updated.Plans[0].Entries[0].TargetID != suite.ID {
 		t.Fatalf("plan referencing filesystem suite = %#v, %v", updated.Plans, err)
 	}
 }
@@ -826,5 +823,5 @@ func assertProductionOperationalSchemaV1(t *testing.T, database string) {
 }
 
 func productionCaseDocument(name string) string {
-	return `{"schema_version":2,"key":"T001","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"legacy.apiaudit","type_version":1,"spec":{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}}}`
+	return `{"schema_version":3,"key":"T001","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}}}`
 }

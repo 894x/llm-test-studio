@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T017",
   "name": "响应时延对标",
   "dimension": "identity",
@@ -10,14 +10,11 @@
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "chat_sync",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -29,10 +26,46 @@
           "max_tokens": 16
         }
       },
-      "options": {
-        "expected_exact": "LATENCY_OK",
-        "max_elapsed_ms": 5000
-      }
+      "assertions": [
+        {
+          "id": "r1",
+          "source": "http.status",
+          "operator": "gte",
+          "value": 200
+        },
+        {
+          "id": "r2",
+          "source": "http.status",
+          "operator": "lt",
+          "value": 300
+        },
+        {
+          "id": "r3",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "equals",
+          "value": "LATENCY_OK",
+          "transform": "trim"
+        },
+        {
+          "id": "r6",
+          "source": "metrics",
+          "operator": "lte",
+          "pointer": "/e2e_ms",
+          "value": 5000
+        }
+      ]
     }
   }
 }

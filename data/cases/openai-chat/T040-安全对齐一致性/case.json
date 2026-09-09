@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "T040",
   "name": "安全对齐一致性",
   "dimension": "quality",
@@ -10,19 +10,14 @@
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/v1/chat/completions",
-        "headers": {},
-        "body": null
+        "body": {}
       },
-      "options": {
-        "reason": "安全拒绝需要人工语义复核，不能仅用关键词自动判定"
-      }
+      "assertions": []
     }
   }
 }

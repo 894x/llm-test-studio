@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -67,7 +66,7 @@ func TestSnapshotIsStableSecretFreeAndReadsEachCollectionOnce(t *testing.T) {
 	if len(snapshot.Channels) != 1 || !snapshot.Channels[0].CredentialConfigured || snapshot.Channels[0].ModelCount != 2 {
 		t.Fatalf("Snapshot().Channels = %#v, want configured channel with 2 models", snapshot.Channels)
 	}
-	if snapshot.Suites[0].CaseCount != 1 || snapshot.Plans[0].ModelCount != 2 || snapshot.Plans[0].ChannelCount != 1 || snapshot.Plans[0].CaseCount != 1 {
+	if snapshot.Suites[0].CaseCount != 1 || snapshot.Plans[0].EntryCount != 1 || snapshot.Plans[0].CaseCount != 1 {
 		t.Fatalf("Snapshot() relation counts are wrong: suite=%#v plan=%#v", snapshot.Suites[0], snapshot.Plans[0])
 	}
 	if got := snapshot.TestCases[0]; got.Key != "T001" || got.Dimension != "boundary" || !got.Enabled || !got.Default || got.Severity != domain.CaseSeverityCritical || got.ExecutionMode != domain.CaseExecutionAutomatic {
@@ -99,93 +98,23 @@ func TestSnapshotIsStableSecretFreeAndReadsEachCollectionOnce(t *testing.T) {
 func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 	repository := validRepository()
 	service := newTestService(t, repository, fixtureTime())
-
 	snapshot, err := service.Snapshot(context.Background())
 	if err != nil {
-		t.Fatalf("Snapshot() error = %v", err)
+		t.Fatal(err)
 	}
-	testCase := snapshot.TestCases[0]
-	if testCase.DefinitionSchemaVersion != domain.CurrentTestCaseDefinitionSchemaVersion ||
-		testCase.Type != casetypes.TypeRequestSingle || testCase.TypeVersion != 1 ||
-		string(testCase.Spec) != string(validRequestSingleSpec()) {
-		t.Fatalf("Snapshot().TestCases[0] editor payload = %#v", testCase)
+	if len(snapshot.Plans[0].Entries) != 1 || snapshot.Plans[0].Entries[0].TargetID != suiteID {
+		t.Fatal("missing plan refs")
 	}
-	if len(snapshot.Suites[0].Cases) != 1 || snapshot.Suites[0].Cases[0].CaseID != caseID {
-		t.Fatalf("Snapshot().Suites[0] editor payload = %#v", snapshot.Suites[0])
-	}
-	plan := snapshot.Plans[0]
-	if len(plan.ModelIDs) != 2 || len(plan.ChannelIDs) != 1 || len(plan.Suites) != 1 ||
-		plan.Suites[0].SuiteID != suiteID || plan.Suites[0].SuiteRevision != 1 ||
-		len(plan.Suites[0].Cases) != 1 || plan.Suites[0].Cases[0].CaseID != caseID ||
-		plan.Suites[0].SLAThresholds["p95_ms"] != 1500 {
-		t.Fatalf("Snapshot().Plans[0] editor payload = %#v", plan)
-	}
-
-	testCase.Spec[0] = '['
-	snapshot.Suites[0].Cases[0].Revision = 99
-	plan.ModelIDs[0] = modelBID
-	plan.Suites[0].SLAThresholds["p95_ms"] = 1
-
+	snapshot.TestCases[0].Spec[0] = '['
+	snapshot.Suites[0].Cases[0].CaseID = modelAID
+	snapshot.Plans[0].Entries[0].SLAThresholds["p95_ms"] = 1
 	fresh, err := service.Snapshot(context.Background())
 	if err != nil {
-		t.Fatalf("second Snapshot() error = %v", err)
+		t.Fatal(err)
 	}
-	if string(fresh.TestCases[0].Spec) != string(validRequestSingleSpec()) ||
-		fresh.Suites[0].Cases[0].Revision != 1 || fresh.Plans[0].ModelIDs[0] != modelAID ||
-		fresh.Plans[0].Suites[0].SLAThresholds["p95_ms"] != 1500 {
-		t.Fatalf("Snapshot() editor payload aliases repository state: %#v", fresh)
+	if string(fresh.TestCases[0].Spec) != string(validRequestSingleSpec()) || fresh.Suites[0].Cases[0].CaseID != caseID || fresh.Plans[0].Entries[0].SLAThresholds["p95_ms"] != 1500 {
+		t.Fatal("snapshot aliases repository")
 	}
-}
-
-func TestSnapshotAcceptsPlanPinnedToHistoricalContentHashSuiteRevision(t *testing.T) {
-	repository := validRepository()
-	// Suite file revisions are content hashes, not monotonic counters. The
-	// repository has already resolved the Plan's exact historical sidecar; the
-	// snapshot only carries the current Suite summary for editing.
-	repository.suites[0].Revision = 7
-	repository.plans[0].Suites[0].SuiteRevision = 42
-	historical := repository.suites[0]
-	historical.Revision = 42
-	repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{
-		{suiteID: historical.ID, revision: historical.Revision}: historical,
-	}
-	service := newTestService(t, repository, fixtureTime())
-
-	snapshot, err := service.Snapshot(context.Background())
-	if err != nil {
-		t.Fatalf("Snapshot() error = %v", err)
-	}
-	if got := snapshot.Plans[0].Suites[0].SuiteRevision; got != 42 {
-		t.Fatalf("Snapshot().Plans[0].Suites[0].SuiteRevision = %d, want historical revision 42", got)
-	}
-}
-
-func TestSnapshotAcceptsExactHistoricalCaseHashAndRejectsMissingLowerHash(t *testing.T) {
-	t.Run("exact historical hash may be numerically greater", func(t *testing.T) {
-		repository := validRepository()
-		repository.testCases[0].Revision = 7
-		repository.suites[0].Cases[0].Revision = 7
-		historical := repository.testCases[0]
-		historical.Revision = 42
-		repository.suites[0].Cases[0].Revision = historical.Revision
-		repository.testCaseRevisions = map[exactCaseRevisionKey]domain.TestCase{
-			{caseID: historical.ID, revision: historical.Revision}: historical,
-		}
-		service := newTestService(t, repository, fixtureTime())
-		if _, err := service.Snapshot(context.Background()); err != nil {
-			t.Fatalf("Snapshot() error = %v", err)
-		}
-	})
-
-	t.Run("numerically lower hash is rejected when exact sidecar is missing", func(t *testing.T) {
-		repository := validRepository()
-		repository.testCases[0].Revision = 42
-		repository.suites[0].Cases[0].Revision = 7
-		service := newTestService(t, repository, fixtureTime())
-		if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrCorrupt) {
-			t.Fatalf("Snapshot() error = %v, want ErrCorrupt", err)
-		}
-	})
 }
 
 func TestDeleteCommandsValidateIdentityAndDelegateByEntityKind(t *testing.T) {
@@ -241,12 +170,6 @@ func TestSnapshotFailsClosedOnDuplicateBadReferenceAndProtocolMismatch(t *testin
 		}},
 		{name: "plan case protocol mismatch", mutate: func(repository *fakeRepository) {
 			repository.testCases[0].Protocol = domain.ProtocolSeedance
-		}},
-		{name: "suite references future case revision", mutate: func(repository *fakeRepository) {
-			repository.suites[0].Cases[0].Revision = 2
-		}},
-		{name: "plan references missing channel", mutate: func(repository *fakeRepository) {
-			repository.plans[0].ChannelIDs[0] = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 		}},
 	}
 	for _, test := range tests {
@@ -336,8 +259,8 @@ func TestCreateCommandsOwnMetadataAndDoNotAcceptEntityMeta(t *testing.T) {
 	caseResult, err := service.CreateTestCase(ctx, validCreateTestCaseCommand("New case"))
 	assertMutation(t, caseResult, ids[3], err)
 	suiteResult, err := service.CreateSuite(ctx, CreateSuiteCommand{
-		Key: "gpt-smoke", Name: "New suite", Protocol: domain.ProtocolOpenAIChat, ModelTarget: "alpha-upstream",
-		Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}},
+		Key: "gpt-smoke", Name: "New suite", Protocol: domain.ProtocolOpenAIChat,
+		Cases: []CaseInput{{CaseID: caseID}}, Inputs: []domain.SuiteInput{},
 	})
 	assertMutation(t, suiteResult, ids[4], err)
 	planResult, err := service.CreatePlan(ctx, validCreatePlanCommand("New plan"))
@@ -373,8 +296,8 @@ func TestUpdateCommandsPreserveCreatedAtAndAdvanceRevisionAndTime(t *testing.T) 
 	assertUpdate(t, caseResult, caseID, err, repository.updatedTestCase.EntityMeta)
 	suiteResult, err := service.UpdateSuite(ctx, UpdateSuiteCommand{
 		ID: suiteID, ExpectedRevision: 1, Key: "gpt-smoke", Name: "Renamed suite",
-		Protocol: domain.ProtocolOpenAIChat, ModelTarget: "alpha-upstream",
-		Cases: []CaseRevisionInput{{CaseID: caseID, Revision: 1}},
+		Protocol: domain.ProtocolOpenAIChat,
+		Cases:    []CaseInput{{CaseID: caseID}}, Inputs: []domain.SuiteInput{},
 	})
 	assertUpdate(t, suiteResult, suiteID, err, repository.updatedSuite.EntityMeta)
 	planCommand := validUpdatePlanCommand(planID, "Renamed plan")
@@ -477,64 +400,19 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 	}
 }
 
-func TestCreatePlanResolvesExactHistoricalCaseAndSuiteRevisions(t *testing.T) {
-	t.Run("exact historical content hashes are accepted regardless of numeric order", func(t *testing.T) {
-		repository := validRepository()
-		repository.testCases[0].Revision = 7
-		repository.suites[0].Cases[0].Revision = 7
-		historicalCase := repository.testCases[0]
-		historicalCase.Revision = 42
-		repository.testCaseRevisions = map[exactCaseRevisionKey]domain.TestCase{
-			{caseID: historicalCase.ID, revision: historicalCase.Revision}: historicalCase,
-		}
-		repository.suites[0].Revision = 9
-		historicalSuite := repository.suites[0]
-		historicalSuite.Revision = 88
-		historicalSuite.Cases[0].Revision = historicalCase.Revision
-		repository.suiteRevisions = map[exactSuiteRevisionKey]domain.Suite{
-			{suiteID: historicalSuite.ID, revision: historicalSuite.Revision}: historicalSuite,
-		}
-		service := newTestService(t, repository, fixtureTime())
-		command := validCreatePlanCommand("historical refs")
-		command.Suites[0].SuiteRevision = historicalSuite.Revision
-
-		if _, err := service.CreatePlan(context.Background(), command); err != nil {
-			t.Fatalf("CreatePlan() error = %v", err)
-		}
-		if repository.createPlanCalls != 1 || len(repository.createdPlan.Suites) != 1 ||
-			repository.createdPlan.Suites[0].SuiteRevision != historicalSuite.Revision {
-			t.Fatalf("created Plan = %#v", repository.createdPlan)
-		}
-	})
-
-	t.Run("case resolution is deferred until execution", func(t *testing.T) {
-		repository := validRepository()
-		repository.testCases[0].Revision = 42
-		repository.suites[0].Cases[0].Revision = 7
-		service := newTestService(t, repository, fixtureTime())
-		command := validCreatePlanCommand("missing exact ref")
-		if _, err := service.CreatePlan(context.Background(), command); err != nil {
-			t.Fatalf("CreatePlan() error = %v, want saved reference", err)
-		}
-		if repository.createPlanCalls != 1 {
-			t.Fatalf("CreatePlan() writes = %d, want 1", repository.createPlanCalls)
-		}
-	})
-}
-
 func TestCatalogEnforcesCaseTypeCreationPolicy(t *testing.T) {
 	repository := validRepository()
 	service := newTestService(t, repository, fixtureTime())
 
 	create := validCreateTestCaseCommand("reserved case")
-	create.Type = casetypes.TypeLegacyAPIAudit
+	create.Type = domain.CaseType("legacy.apiaudit")
 	create.Spec = json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`)
 	if _, err := service.CreateTestCase(context.Background(), create); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("CreateTestCase(non-creatable type) error = %v, want ErrInvalid", err)
 	}
 
 	update := validUpdateTestCaseCommand(caseID, "reserved transition")
-	update.Type = casetypes.TypeLegacyAPIAudit
+	update.Type = domain.CaseType("legacy.apiaudit")
 	update.Spec = create.Spec
 	if _, err := service.UpdateTestCase(context.Background(), update); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("UpdateTestCase(non-creatable transition) error = %v, want ErrInvalid", err)
@@ -607,14 +485,13 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
 	caseCommand.Spec[2] = 'X'
-	planCommand.ModelIDs[0] = modelBID
-	planCommand.Suites[0].SuiteID = modelAID
-	planCommand.Suites[0].SLAThresholds["p95_ms"] = 9999
+	planCommand.Entries[0].TargetID = modelAID
+	planCommand.Entries[0].SLAThresholds["p95_ms"] = 9999
 	if string(repository.createdTestCase.Definition.Spec) != string(validRequestSingleSpec()) {
 		t.Fatalf("CreateTestCase() retained caller aliases: %#v", repository.createdTestCase)
 	}
-	if repository.createdPlan.ModelIDs[0] != modelAID || len(repository.createdPlan.Suites) != 1 ||
-		repository.createdPlan.Suites[0].SuiteID != suiteID || repository.createdPlan.Suites[0].SLA.Thresholds["p95_ms"] != 1500 {
+	if len(repository.createdPlan.Entries) != 1 ||
+		repository.createdPlan.Entries[0].TargetID != suiteID || repository.createdPlan.Entries[0].SLA.Thresholds["p95_ms"] != 1500 {
 		t.Fatalf("CreatePlan() retained caller aliases: %#v", repository.createdPlan)
 	}
 
@@ -918,7 +795,7 @@ func validRepository() *fakeRepository {
 	}
 	definition := domain.TestCaseDefinition{
 		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:          casetypes.TypeRequestSingle,
+		Type:          domain.CaseType("openai-chat"),
 		TypeVersion:   1,
 		Spec:          validRequestSingleSpec(),
 	}
@@ -940,12 +817,12 @@ func validRepository() *fakeRepository {
 		}},
 		suites: []domain.Suite{{
 			EntityMeta: meta(suiteID), Key: "gpt-smoke", Name: "Smoke", Protocol: domain.ProtocolOpenAIChat,
-			ModelTarget: "alpha-upstream", Cases: []domain.CaseRevisionRef{{CaseID: caseID, Revision: 1}},
+			Cases: []domain.CaseRef{{CaseID: caseID}}, Inputs: []domain.SuiteInput{},
 		}},
 		plans: []domain.Plan{{
-			EntityMeta: meta(planID), Name: "Baseline", ModelIDs: []string{modelAID, modelBID}, ChannelIDs: []string{channelID},
-			Suites: []domain.PlanSuiteEntry{{
-				EntryID: planEntryID, SuiteID: suiteID, SuiteRevision: 1,
+			EntityMeta: meta(planID), Name: "Baseline", Protocol: domain.ProtocolOpenAIChat,
+			Entries: []domain.PlanEntry{{
+				EntryID: planEntryID, TargetID: suiteID, TargetKind: domain.PlanTargetSuite,
 				Parameters: map[string]json.RawMessage{},
 				Load:       domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 2, RequestCount: 10, RequestTimeoutMS: 30_000},
 				SLA:        domain.SLAProfile{Thresholds: map[string]float64{"p95_ms": 1500}},
@@ -960,14 +837,14 @@ func validCreateTestCaseCommand(name string) CreateTestCaseCommand {
 		Key: "T001", Name: name, Dimension: "boundary", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, Default: true, Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
 		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    casetypes.TypeRequestSingle,
+		Type:                    domain.CaseType("openai-chat"),
 		TypeVersion:             1,
 		Spec:                    validRequestSingleSpec(),
 	}
 }
 
 func validRequestSingleSpec() json.RawMessage {
-	return json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":{"X-Test":"safe"},"body":{"model":"gpt-5"}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
+	return json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)
 }
 
 func validUpdateTestCaseCommand(id, name string) UpdateTestCaseCommand {
@@ -982,9 +859,9 @@ func validUpdateTestCaseCommand(id, name string) UpdateTestCaseCommand {
 
 func validCreatePlanCommand(name string) CreatePlanCommand {
 	return CreatePlanCommand{
-		Name: name, ModelIDs: []string{modelAID}, ChannelIDs: []string{channelID},
-		Suites: []PlanSuiteInput{{
-			SuiteID: suiteID, SuiteRevision: 1, LoadMode: domain.LoadFixedConcurrency, Concurrency: 2,
+		Name: name, Protocol: domain.ProtocolOpenAIChat,
+		Entries: []PlanEntryInput{{
+			TargetID: suiteID, TargetKind: domain.PlanTargetSuite, LoadMode: domain.LoadFixedConcurrency, Concurrency: 2,
 			RequestCount: 10, RequestTimeoutMS: 30_000, SLAThresholds: map[string]float64{"p95_ms": 1500},
 			Parameters: map[string]json.RawMessage{},
 		}},
@@ -994,8 +871,8 @@ func validCreatePlanCommand(name string) CreatePlanCommand {
 func validUpdatePlanCommand(id, name string) UpdatePlanCommand {
 	create := validCreatePlanCommand(name)
 	return UpdatePlanCommand{
-		ID: id, ExpectedRevision: 1, Name: create.Name, ModelIDs: create.ModelIDs, ChannelIDs: create.ChannelIDs,
-		Suites: append([]PlanSuiteInput(nil), create.Suites...),
+		ID: id, ExpectedRevision: 1, Name: create.Name, Protocol: create.Protocol,
+		Entries: append([]PlanEntryInput(nil), create.Entries...),
 	}
 }
 

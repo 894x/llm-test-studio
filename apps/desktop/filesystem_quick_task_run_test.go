@@ -43,21 +43,13 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	caseTypes := casetypes.MustBuiltinRegistry()
 	probe := first.TestCase
 	probe.ID, probe.Key = "63000000-0000-4000-8000-000000000031", "probe"
-	for _, descriptor := range caseTypes.Descriptors() {
-		if descriptor.Type == casetypes.TypeResponseProbe {
-			probe.Definition.Type = descriptor.Type
-			probe.Definition.Spec = descriptor.DefaultSpec
-		}
-	}
+	probe.Definition.Spec = json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"observe"}]}},"assertions":[]}`)
 	third := first.TestCase
 	third.ID, third.Key = "63000000-0000-4000-8000-000000000032", "third"
 	ladder := first.TestCase
-	ladder.ID, ladder.Key = "63000000-0000-4000-8000-000000000033", "ladder"
-	ladder.Definition.Type, ladder.Definition.TypeVersion = casetypes.TypeInputLatencyLadder, 2
-	ladder.Definition.Spec, _ = json.Marshal(casetypes.InputLatencyLadderSpec{
-		Request: domain.TestRequest{Method: domain.RequestPOST, Path: "/chat/completions", Headers: map[string]string{}, Body: json.RawMessage(`{"messages":[{"role":"user","content":"hello"}]}`)},
-		Stages:  []casetypes.InputLatencyStage{{InputTokens: 8}}, SamplesPerStep: 3, OutputTokens: 4, TimeoutMS: 1000, CacheMode: casetypes.CacheModeCold,
-	})
+	ladder.ID, ladder.Key = "63000000-0000-4000-8000-000000000033", "generated"
+	ladder.Definition.Spec = json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":{"$generate":"repeat_text","text":"token ","length":48}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)
+
 	for _, testCase := range []domain.TestCase{probe, third, ladder} {
 		if err := catalog.cases.SaveCase(ctx, string(testCase.Protocol), testCase.Key, testCase); err != nil {
 			t.Fatal(err)
@@ -73,7 +65,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	}
 	for _, key := range []string{probe.Key, third.Key, ladder.Key} {
 		testCase := byKey[key]
-		suite.Cases = append(suite.Cases, domain.CaseRevisionRef{CaseID: testCase.ID, Revision: testCase.Revision})
+		suite.Cases = append(suite.Cases, domain.CaseRef{CaseID: testCase.ID})
 	}
 	if err := catalog.suites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
 		t.Fatal(err)
@@ -144,7 +136,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	rememberedStore := credentials.NewMemoryStore()
 	service, err := runs.New(runs.Dependencies{QuickTaskCredentials: rememberedStore, Repository: repository, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(),
 		Reporter: reporter,
-		Executor: runs.MustExecutorRouter(caseTypes, map[domain.CaseType]runs.Executor{casetypes.TypeRequestSingle: runs.NewLoadExecutor(server.Client().Transport), casetypes.TypeResponseProbe: runs.NewResponseProbeExecutor(server.Client().Transport), casetypes.TypeInputLatencyLadder: runs.NewInputLatencyLadderExecutor(server.Client().Transport)}),
+		Executor: runs.NewProtocolExecutor(server.Client().Transport),
 		Clock:    productionClock{}, Environment: func() domain.EnvironmentSnapshot {
 			return domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"}
 		},
@@ -158,7 +150,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	})
 	app.onStartup(ctx)
 	defer app.shutdown()
-	id, err := app.StartQuickTask(runs.QuickTaskCommand{SuiteID: suite.ID, SuiteRevision: suite.Revision, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
+	id, err := app.StartQuickTask(runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +176,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 		t.Fatal(err)
 	}
 	mu.Lock()
-	if len(messages) != 6 || messages[0] != "edited" || messages[2] != "hi" {
+	if len(messages) != 4 || messages[0] != "edited" || messages[2] != "hi" {
 		t.Errorf("Suite order or request count changed: %v", messages)
 	}
 	mu.Unlock()
@@ -192,7 +184,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if err != nil || len(projections) != 1 {
 		t.Fatalf("durable task projection count=%d error=%v", len(projections), err)
 	}
-	if projections[0].Completed != 6 || (projections[0].Failed > 0) != failRequests {
+	if projections[0].Completed != 4 || (projections[0].Failed > 0) != failRequests {
 		t.Fatalf("durable task counts completed=%d failed=%d", projections[0].Completed, projections[0].Failed)
 	}
 	reports, err := operational.ListReportsForRuns(ctx, []string{id})
@@ -204,13 +196,13 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if err != nil || len(reportList.Reports) != 1 || reportList.Reports[0].ID != report.ID {
 		t.Fatalf("desktop cannot load sealed quick report: %+v, %v", reportList, err)
 	}
-	if detail, err := app.GetReportDetail(report.ID); err != nil || len(detail.Suites) != 1 {
+	if detail, err := app.GetReportDetail(report.ID); err != nil || len(detail.Entries) != 1 {
 		t.Fatalf("desktop cannot open sealed quick report: %+v, %v", detail, err)
 	}
 	if report.Conclusion.Passed == failRequests || report.PlanSnapshot.QuickTask == nil || len(report.CaseResults) != 4 {
 		t.Fatalf("quick report was not sealed correctly: %v", err)
 	}
-	if elapsed := report.Metrics["elapsed_seconds"].Value; elapsed < 0.08 {
+	if elapsed := report.Metrics["elapsed_seconds"].Value; elapsed < 0.05 {
 		t.Errorf("sequential task timeline reset between Cases: elapsed=%fs", elapsed)
 	}
 	var previousFinish float64
@@ -225,7 +217,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 		previousFinish = item.Finished
 	}
 	view, err := workspace.New(repository).Snapshot(ctx)
-	if err != nil || len(view.Runs) != 1 || view.Runs[0].Completed != 6 || view.Runs[0].Planned != 0 || view.Runs[0].Source != "quick_task" {
+	if err != nil || len(view.Runs) != 1 || view.Runs[0].Completed != 4 || view.Runs[0].Planned != 4 || view.Runs[0].Source != "quick_task" {
 		t.Fatalf("variable task history cannot be displayed: %+v, %v", view, err)
 	}
 	if err := operational.Close(); err != nil {
@@ -239,7 +231,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if restored, err := reopened.GetReport(ctx, report.ID); err != nil || restored.PlanSnapshot.QuickTask == nil || restored.Conclusion.Passed == failRequests {
 		t.Fatalf("task history did not survive reopening SQLite: %v", err)
 	}
-	replayService, err := runs.New(runs.Dependencies{QuickTaskCredentials: rememberedStore, Repository: filesystemRuntimeRepository{Repository: reopened, catalog: catalog}, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(), Executor: runs.NewLoadExecutor(server.Client().Transport), Clock: productionClock{}, Environment: func() domain.EnvironmentSnapshot { return stored.Snapshot().Environment }})
+	replayService, err := runs.New(runs.Dependencies{QuickTaskCredentials: rememberedStore, Repository: filesystemRuntimeRepository{Repository: reopened, catalog: catalog}, QuickTasks: catalog, CaseTypes: caseTypes, Credentials: credentials.NewMemoryStore(), Executor: runs.NewProtocolExecutor(server.Client().Transport), Clock: productionClock{}, Environment: func() domain.EnvironmentSnapshot { return stored.Snapshot().Environment }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +247,7 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if strings.Contains(string(historyJSON), "test-temporary-key") || strings.Contains(string(historyJSON), "case_definitions") {
 		t.Fatal("native history leaked private data")
 	}
-	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, SuiteRevision: history.Suite.Revision, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs})
+	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, Seed: history.Seed, RequestTimeoutMS: history.RequestTimeoutMS, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs})
 	if err != nil || replayID == id {
 		t.Fatalf("replay after restart: %s, %v", replayID, err)
 	}

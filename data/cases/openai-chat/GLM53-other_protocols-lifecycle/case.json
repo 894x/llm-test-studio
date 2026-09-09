@@ -1,26 +1,20 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "key": "glm53.other_protocols.lifecycle",
   "name": "GLM 5.3 · other_protocols.lifecycle（待验证模板）",
   "dimension": "glm53.other_protocols",
   "protocol": "openai-chat",
-  "model_targets": [
-    "glm-5.3"
-  ],
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
     "schema_version": 2,
-    "type": "legacy.apiaudit",
+    "type": "openai-chat",
     "type_version": 1,
     "spec": {
-      "kind": "manual_unknown",
+      "inputs": {},
       "request": {
-        "method": "POST",
-        "path": "/chat/completions",
-        "headers": {},
         "body": {
           "messages": [
             {
@@ -32,21 +26,7 @@
           "reasoning_effort": "low"
         }
       },
-      "options": {
-        "contract_row": "other_protocols",
-        "source_urls": [
-          "https://docs.bigmodel.cn/api-reference/模型-api/对话补全",
-          "https://docs.bigmodel.cn/cn/api/api-code",
-          "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3"
-        ],
-        "retrieved_at": "2026-09-08",
-        "execution_tier": "T3",
-        "preconditions": "General Model API; enabled glm-5.3 mapping; valid credentials except explicit auth cases.",
-        "reason": "Catalog uses existing openai-chat model protocol; these separate transports require dedicated adapters and a separate contract inventory. Required scenarios: each has separate request/response/stream/tool contract and eligibility",
-        "required_scenarios": [
-          "each has separate request/response/stream/tool contract and eligibility"
-        ]
-      }
+      "assertions": []
     }
   }
 }

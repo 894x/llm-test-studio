@@ -80,11 +80,11 @@ describe("ReportWorkspace", () => {
         {
           id: "66666666-6666-4666-8666-666666666661", source: "run", run_id: "55555555-5555-4555-8555-555555555551",
           generated_at: "2026-08-31T14:00:00Z", run_status: "completed", plan_name: "正式计划", model_name: "gpt-formal", channel_name: "正式渠道",
-          passed: true, verdict: "兼容性门禁通过", issue_count: 0, case_count: 1, failed_case_count: 0, attachment_count: 0,
+          passed: true, verdict: "兼容性门禁通过", issue_count: 0, case_count: 1, failed_case_count: 0, passed_case_count: 1, verified_case_count: 1, observed_case_count: 0, indeterminate_case_count: 0, attachment_count: 0,
         },
         {
           id: quickID, source: "quick_performance", generated_at: "2026-08-31T14:30:00Z", run_status: "completed", plan_name: "快速性能测试",
-          model_name: "gpt-fast", channel_name: "api.example.test", passed: true, verdict: "快速性能测试通过", issue_count: 0, case_count: 3, failed_case_count: 0, attachment_count: 0,
+          model_name: "gpt-fast", channel_name: "api.example.test", passed: true, verdict: "快速性能测试通过", issue_count: 0, case_count: 3, failed_case_count: 0, passed_case_count: 3, verified_case_count: 3, observed_case_count: 0, indeterminate_case_count: 0, attachment_count: 0,
         },
       ],
     } as unknown as ReportSnapshot
@@ -208,7 +208,7 @@ describe("ReportWorkspace", () => {
       schema_version: 1,
       reports: [{
         id: quickID, source: "quick_performance", generated_at: "2026-08-31T14:30:00Z", run_status: "completed", plan_name: "快速性能测试",
-        model_name: "gpt-fast", channel_name: "api.example.test", passed: false, verdict: "快速性能测试未通过", issue_count: 1, case_count: 3, failed_case_count: 1, attachment_count: 0,
+        model_name: "gpt-fast", channel_name: "api.example.test", passed: false, verdict: "快速性能测试未通过", issue_count: 1, case_count: 3, failed_case_count: 1, passed_case_count: 2, verified_case_count: 3, observed_case_count: 0, indeterminate_case_count: 0, attachment_count: 0,
       }],
     } as unknown as ReportSnapshot
     const getDetail = vi.fn(async () => failedQuickDetail(quickID) as unknown as ReportDetail)
@@ -240,35 +240,6 @@ describe("ReportWorkspace", () => {
     expect(requestDetail).toHaveTextContent("quota exhausted")
     expect(requestDetail).not.toHaveTextContent("sk-report-private")
   })
-
-  it("shows Go-aggregated upstream response probe distributions", async () => {
-		const user = userEvent.setup()
-		const reportID = "66666666-6666-4666-8666-666666666662"
-		const snapshot = {
-			schema_version: 1,
-			reports: [{
-				id: reportID, source: "run", run_id: "55555555-5555-4555-8555-555555555552",
-				generated_at: "2026-09-05T08:00:00Z", run_status: "completed", plan_name: "渠道探测", model_name: "gpt-probe", channel_name: "聚合上游",
-				passed: true, verdict: "pass", issue_count: 0, case_count: 1, failed_case_count: 0, attachment_count: 0,
-			}],
-		} as unknown as ReportSnapshot
-		const detail = parseReportDetail(formalProbeDetail(reportID))
-
-		render(
-			<ReportWorkspace
-				snapshot={snapshot}
-				getDetail={vi.fn(async () => detail)}
-				exportReport={vi.fn(async () => ({ filename: `${reportID}.json`, media_type: "application/json", data_base64: "e30=" }))}
-				saveReportExport={vi.fn(async () => true)}
-				copyReportPNG={vi.fn(async () => undefined)}
-			/>,
-		)
-
-		await user.click(screen.getByRole("button", { name: "查看报告：通过" }))
-		const distribution = await screen.findByRole("table", { name: "上游响应分布" })
-		expect(within(distribution).getByRole("row", { name: /provider-a.*已匹配.*sha256:known.*2.*66.67%/ })).toBeInTheDocument()
-		expect(within(distribution).getByRole("row", { name: /unknown.*未知格式.*sha256:mystery.*1.*33.33%/ })).toBeInTheDocument()
-	})
 
   it("renders SLO goodput, violation counters, and the capacity rung table in visible and exported reports", async () => {
     const user = userEvent.setup()
@@ -371,7 +342,7 @@ describe("ReportWorkspace", () => {
       reports: [{
         id: quickID, source: "quick_performance", generated_at: "2026-08-31T14:30:00Z", run_status: "completed",
         plan_name: "旧版快速性能测试", model_name: "gpt-fast", channel_name: "api.example.test", passed: true,
-        verdict: "旧版快速性能测试通过", issue_count: 0, case_count: 3, failed_case_count: 0, attachment_count: 0,
+        verdict: "旧版快速性能测试通过", issue_count: 0, case_count: 3, failed_case_count: 0, passed_case_count: 3, verified_case_count: 3, observed_case_count: 0, indeterminate_case_count: 0, attachment_count: 0,
       }],
     } as unknown as ReportSnapshot
 
@@ -410,7 +381,7 @@ function quickSnapshot(reportID: string, verdict: string): ReportSnapshot {
       verdict,
       issue_count: 0,
       case_count: 4,
-      failed_case_count: 0,
+      failed_case_count: 0, passed_case_count: 4, verified_case_count: 4, observed_case_count: 0, indeterminate_case_count: 0,
       attachment_count: 0,
     }],
   }
@@ -720,64 +691,4 @@ function failedQuickDetail(reportID: string) {
       failures: [{ error_code: "authentication_failed", count: 1 }],
     },
   }
-}
-
-function formalProbeDetail(reportID: string) {
-	const runID = "55555555-5555-4555-8555-555555555552"
-	const caseID = "44444444-4444-4444-8444-444444444442"
-	const suiteEntryID = "99999999-9999-4999-8999-999999999991"
-	const caseResult = {
-		id: "11111111-1111-4111-8111-111111111111",
-		suite_entry_id: suiteEntryID,
-		case_id: caseID,
-		success: { transport: true, protocol: true, semantic: true, sla: true },
-		metrics: {},
-	}
-	const distributions = [
-		{ kind: "response_probe", case_id: caseID, bucket: "provider-a", classification: "matched", format: "json", shape: "sha256:known", count: 2, share_percent: 200 / 3 },
-		{ kind: "response_probe", case_id: caseID, bucket: "unknown", classification: "unknown", format: "json", shape: "sha256:mystery", count: 1, share_percent: 100 / 3 },
-	]
-	return {
-		schema_version: 2,
-		source: "run",
-		report: {
-			id: reportID,
-			run_id: runID,
-			run_status: "completed",
-			generated_at: "2026-09-05T08:00:00Z",
-			model: { id: "33333333-3333-4333-8333-333333333332", name: "gpt-probe" },
-			channel: { id: "22222222-2222-4222-8222-222222222222", name: "聚合上游" },
-			environment: { os: "windows", arch: "amd64", region: "local", network_egress: "direct", app_version: "test", engine_version: "test" },
-			conclusion: { passed: true, verdict: "pass", issues: [] },
-			sla: {},
-			metrics: {},
-			distributions: [],
-			case_results: [caseResult],
-		},
-		request_results: [],
-		unassigned_request_results: [],
-		suites: [{
-			suite_entry_id: suiteEntryID,
-			suite_id: "99999999-9999-4999-8999-999999999992",
-			suite_revision: 1,
-			suite_key: "response-probe",
-			suite_name: "上游响应探测",
-			status: "completed",
-			conclusion: { passed: true, verdict: "pass", issues: [] },
-			sla: {},
-			metrics: {},
-			timeline: [],
-			distributions,
-			cases: [{
-				case_id: caseID,
-				revision: 1,
-				key: "response-probe",
-				name: "上游响应探测",
-				case_type: "response.probe",
-				case_type_version: 1,
-				summary_result: caseResult,
-				request_results: [],
-			}],
-		}],
-	}
 }

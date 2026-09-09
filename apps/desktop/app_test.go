@@ -182,7 +182,7 @@ func TestDesktopQuickTaskReturnsRunIdentityWithoutARefreshMutation(t *testing.T)
 	if !ok {
 		t.Fatal("native desktop binding does not expose Suite quick tasks")
 	}
-	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", SuiteRevision: 2, Model: "temporary-model", BaseURL: "https://example.test", APIKey: "private-test-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"hello"`)}}
+	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", Model: "temporary-model", BaseURL: "https://example.test", APIKey: "private-test-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"hello"`)}}
 	id, err := starter.StartQuickTask(command)
 	if err != nil || id != "44444444-4444-4444-8444-444444444444" || len(commands.quickTasks) != 1 || !reflect.DeepEqual(commands.quickTasks[0], command) {
 		t.Fatalf("quick task command did not return its Run: id=%q err=%v calls=%d", id, err, len(commands.quickTasks))
@@ -199,7 +199,7 @@ func TestDesktopQuickTaskReturnsRunIdentityWithoutARefreshMutation(t *testing.T)
 }
 
 func TestDesktopQuickTaskUsesSafeRunErrorsAndLifecycle(t *testing.T) {
-	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", SuiteRevision: 1, Model: "model"}
+	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", Model: "model"}
 	for _, scenario := range []struct {
 		err  error
 		code string
@@ -236,18 +236,11 @@ func TestDesktopQuickTaskUsesSafeRunErrorsAndLifecycle(t *testing.T) {
 
 func (commands *recordingRunCommands) StartTarget(_ context.Context, command runs.StartCommand) (string, error) {
 	commands.startTargets = append(commands.startTargets, command)
+	commands.startIDs = append(commands.startIDs, command.PlanID)
 	if commands.commandEnded != nil {
 		*commands.commandEnded = true
 	}
 	return "", commands.startErr
-}
-
-func (commands *recordingRunCommands) StartRun(_ context.Context, id string) error {
-	commands.startIDs = append(commands.startIDs, id)
-	if commands.commandEnded != nil {
-		*commands.commandEnded = true
-	}
-	return commands.startErr
 }
 
 func (commands *recordingRunCommands) StopSending(_ context.Context, id string) error {
@@ -546,7 +539,9 @@ func TestDesktopAppCommandsReturnAuthoritativeWorkspaceAfterSuccess(t *testing.T
 		invoke     func(*DesktopApp, string) (workspace.Snapshot, error)
 		calledWith func(*recordingRunCommands) []string
 	}{
-		{name: "start run", id: planID, invoke: (*DesktopApp).StartRun, calledWith: func(commands *recordingRunCommands) []string { return commands.startIDs }},
+		{name: "start run", id: planID, invoke: func(app *DesktopApp, id string) (workspace.Snapshot, error) {
+			return app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
+		}, calledWith: func(commands *recordingRunCommands) []string { return commands.startIDs }},
 		{name: "stop sending", id: runID, invoke: (*DesktopApp).StopSending, calledWith: func(commands *recordingRunCommands) []string { return commands.stopIDs }},
 		{name: "cancel run", id: runID, invoke: (*DesktopApp).CancelRun, calledWith: func(commands *recordingRunCommands) []string { return commands.cancelIDs }},
 	}
@@ -623,7 +618,9 @@ func TestDesktopAppCommandErrorsDoNotQueryOrInventWorkspace(t *testing.T) {
 		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
 		setup  func(*recordingRunCommands)
 	}{
-		{name: "start run", id: planID, invoke: (*DesktopApp).StartRun, setup: func(commands *recordingRunCommands) { commands.startErr = commandFailure }},
+		{name: "start run", id: planID, invoke: func(app *DesktopApp, id string) (workspace.Snapshot, error) {
+			return app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
+		}, setup: func(commands *recordingRunCommands) { commands.startErr = commandFailure }},
 		{name: "stop sending", id: runID, invoke: (*DesktopApp).StopSending, setup: func(commands *recordingRunCommands) { commands.stopErr = commandFailure }},
 		{name: "cancel run", id: runID, invoke: (*DesktopApp).CancelRun, setup: func(commands *recordingRunCommands) { commands.cancelErr = commandFailure }},
 	}
@@ -667,7 +664,9 @@ func TestDesktopAppCommandsRejectInvalidIdentifiersBeforeDelegation(t *testing.T
 		name   string
 		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
 	}{
-		{name: "start run", invoke: (*DesktopApp).StartRun},
+		{name: "start run", invoke: func(app *DesktopApp, id string) (workspace.Snapshot, error) {
+			return app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
+		}},
 		{name: "stop sending", invoke: (*DesktopApp).StopSending},
 		{name: "cancel run", invoke: (*DesktopApp).CancelRun},
 	}
@@ -695,7 +694,7 @@ func TestDesktopAppRejectsCallsBeforeStartup(t *testing.T) {
 
 	_, err := app.GetWorkspace()
 	assertBindingErrorCode(t, err, "desktop_not_started")
-	_, err = app.StartRun("11111111-1111-4111-8111-111111111111")
+	_, err = app.StartRunTarget(runs.StartCommand{PlanID: "11111111-1111-4111-8111-111111111111", ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
 	assertBindingErrorCode(t, err, "desktop_not_started")
 	if query.calls != 0 || len(commands.startIDs) != 0 {
 		t.Fatal("call before startup reached an application dependency")
@@ -781,7 +780,7 @@ func TestDesktopAppTreatsTypedNilDependenciesAsUnavailable(t *testing.T) {
 		app := NewDesktopApp(query, commands)
 		app.onStartup(context.Background())
 
-		_, err := app.StartRun(planID)
+		_, err := app.StartRunTarget(runs.StartCommand{PlanID: planID, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
 		assertBindingErrorCode(t, err, "run_commands_unavailable")
 		if query.calls != 0 {
 			t.Fatalf("workspace query calls = %d, want 0", query.calls)
@@ -1083,7 +1082,7 @@ func TestDesktopAppBindingErrorsAreStableAndDoNotLeakSensitiveDetails(t *testing
 				return NewDesktopApp(&recordingWorkspaceQuery{}, &recordingRunCommands{startErr: sensitiveFailure})
 			},
 			invoke: func(app *DesktopApp) error {
-				_, err := app.StartRun(validID)
+				_, err := app.StartRunTarget(runs.StartCommand{PlanID: validID, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
 				return err
 			},
 		},

@@ -1,28 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "wan-video.wan2.7-t2v.connectivity",
   "name": "wan2.7-t2v 连通性测试",
   "protocol": "wan-video",
-  "model_target": "wan2.7-t2v",
-  "case_keys": [
-    "wan27.t2v.min_duration"
+  "description": "提交一次文生视频任务，等待终态并检查视频输出。",
+  "cases": [
+    {
+      "case_id": "c40b0d98-2395-5311-b4d7-2864c88a9ea6"
+    }
   ],
-  "quick_test": {
-    "description": "提交一次文生视频任务，等待终态并检查视频输出。",
-    "timeout_ms": 600000,
-    "inputs": [
-      {
-        "key": "prompt",
-        "label": "提示词",
-        "type": "text",
-        "default": "一只小猫在月光下奔跑",
-        "bindings": [
-          {
-            "case_key": "wan27.t2v.min_duration",
-            "pointer": "/request/body/input/prompt"
-          }
-        ]
-      }
-    ]
-  }
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "提示词",
+      "type": "string",
+      "default": "一只小猫在月光下奔跑",
+      "bindings": [
+        {
+          "case_id": "c40b0d98-2395-5311-b4d7-2864c88a9ea6",
+          "input": "prompt"
+        }
+      ]
+    }
+  ]
 }
