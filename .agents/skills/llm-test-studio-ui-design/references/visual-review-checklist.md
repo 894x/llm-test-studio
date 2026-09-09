@@ -4,7 +4,7 @@
 
 - Read `doc/design/desktop-ui-system.md`, `apps/desktop/frontend/src/index.css`, and the nearby component/tests.
 - State the target route, primary task, data source, expected record volume, and required states.
-- Identify which existing shadcn/Radix primitive owns every control.
+- Identify which existing shadcn/Radix/Base UI primitive owns every control.
 - Audit dropdown-like controls for raw `<select>`, HTML `datalist`, and hand-built listbox/menu behavior before accepting the implementation.
 - Identify the root, table/list, and inspector scroll owners.
 - Decide whether the validation surface is Vite fixture mode or Wails production data.
@@ -20,7 +20,10 @@
 - Check icon-only actions have accessible names, Tooltips where needed, and visible focus.
 - Check the 28 px circular theme trigger, three radio choices, focus restoration, persistence, and system-theme updates.
 - Check every overlay uses the resolved theme and has an accessible title and close path.
-- Check Select, Combobox, Autocomplete, and menu popups match their trigger width where appropriate, use semantic popover tokens, stay inside the viewport, and expose keyboard-reachable highlighted/selected/empty states.
+- Check SearchableSelect, Autocomplete, and menu popups match their trigger width where appropriate, use semantic popover tokens, stay inside the viewport, and expose keyboard-reachable highlighted/selected/empty states. Input-like controls use the semantic focus border without an extra outer ring.
+- For nested sheet dropdowns, verify the popup remains inside the sheet focus boundary and outside the form's scroll viewport. Exercise selection, scrolling while open, Escape closing order, and sheet reopening; confirm position and focus remain correct.
+- For search/detail changes, exercise no matches, clear, selection after filtering, and return from details with the query preserved. For editable matrices, exercise configured and empty cells, unavailable/pending states, keyboard activation, and focus restoration.
+- For dense forms, check actual panel width with long labels and inline errors, and empty/repeated groups. Column changes must preserve values, field associations, and reading order.
 - Check running tasks through queued, sending, draining, completed, failed, cancelled, stop-sending, and cancellation behavior where applicable.
 - Force vertical and horizontal overflow and confirm 5 px rails with 4 px inset do not change container geometry.
 - Remove nested cards, decorative accent usage, duplicate explanatory text, fake controls, and presentation-side business inference.
@@ -42,6 +45,8 @@ Verify at minimum:
 For a browser-preview task, use the available Browser integration and collect a DOM/state check, console health, interaction proof, and screenshot. For a Wails-only lifecycle or binding claim, verify the native application plus its Go tests and production SQLite path.
 
 ## Commands
+
+For product changes, run the relevant frontend commands below and desktop checks when the listed boundaries change. For skill/documentation-only changes, validate skill structure, referenced paths, and consistency instead; do not claim runtime or visual acceptance from documentation checks.
 
 Run from `apps/desktop/frontend`:
 

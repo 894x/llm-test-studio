@@ -7,6 +7,8 @@ description: Apply and review LLM Test Studio's compact town-derived desktop pro
 
 Apply the stable tool-oriented visual language adopted from `town-ui-design` without copying Animetown components or framework choices. Treat this skill as design and review policy; keep React components and CSS in the application as the executable implementation.
 
+Preserve established project tokens and interaction boundaries. Choose composition from the current task and available space; a nearby page's column count, editor width, or click action is a local example, not a universal requirement. Add guidance only when it captures a reusable decision or prevents a demonstrated failure. Repository paths below are relative to the project root; `references/` links are relative to this skill.
+
 ## Workflow
 
 1. Identify the target route, primary user task, data authority, expected record volume, and required states.
@@ -14,7 +16,7 @@ Apply the stable tool-oriented visual language adopted from `town-ui-design` wit
 3. Read [design-tokens.md](references/design-tokens.md) before changing colors, typography, spacing, radii, elevation, theme behavior, or control dimensions.
 4. Read [component-patterns.md](references/component-patterns.md) before creating or changing components, workspaces, tables, forms, navigation, inspectors, overlays, or asynchronous task states.
 5. Read [responsive-layout.md](references/responsive-layout.md) before changing scroll ownership, window composition, compact-desktop behavior, minimum dimensions, or any narrow-screen layout.
-6. Reuse local shadcn/ui components, Radix-backed primitives, Lucide icons, semantic CSS variables, and established shell/layout components.
+6. Reuse local shadcn/ui components, Radix- or Base UI-backed primitives, Lucide icons, semantic CSS variables, and established shell/layout components.
 7. Define and implement every applicable default, hover, focus-visible, active, selected, disabled, loading, empty, partial, success, warning, and error state.
 8. Keep Go Application Core authoritative for validation, lifecycle, persistence, credentials, execution, and reports. Keep React limited to interaction and presentation state.
 9. Run the relevant checks and follow [visual-review-checklist.md](references/visual-review-checklist.md) before declaring the surface complete.
@@ -46,7 +48,7 @@ Apply the stable tool-oriented visual language adopted from `town-ui-design` wit
 
 ## Data and security boundary
 
-- Treat Wails snapshots and command results as versioned allow-listed DTOs. Reject unknown or malformed boundary data rather than passing it into React state.
+- Accept only the current allow-listed Wails DTO contract. A version marker validates that contract; it must not select historical decoders or fallback behavior. Reject unknown or malformed boundary data rather than passing it into React state.
 - Never render credentials, provider secrets, raw internal errors, unrestricted request/response payloads, or filesystem details.
 - Do not infer business conclusions, run status, counts, or report verdicts in React when Go Core owns them.
 - Treat Vite fixtures only as browser-development samples. Never present fixture counts or behavior as evidence that Wails production SQLite data is correct.
@@ -59,13 +61,15 @@ Use these files in order of relevance:
 - `doc/design/desktop-ui-system.md`: normative project design and interaction baseline.
 - `apps/desktop/frontend/src/index.css`: executable semantic tokens and global behavior.
 - `apps/desktop/frontend/src/app/theme.tsx`: theme preference, persistence, and resolution.
-- `apps/desktop/frontend/src/components/ui`: local shadcn/Radix primitive implementations.
+- `apps/desktop/frontend/src/components/ui`: local shadcn/Radix/Base UI primitive implementations.
 - `apps/desktop/frontend/src/features/shell`: application shell, navigation, page frame, and inspector composition.
-- Nearby feature components and tests: established local behavior that must remain compatible unless the task explicitly refactors it.
+- Nearby feature components and tests: evidence of current behavior and reusable patterns. Preserve behavior outside the task's scope; update affected consumers together when replacing a contract, without retaining a superseded path.
 
 Keep the normative document and executable tokens synchronized when a task intentionally changes a stable value. Do not silently resolve a discrepancy by inventing a third value.
 
 ## Acceptance gate
+
+Apply the checks below to affected product behavior. For skill/documentation-only edits, validate the skill structure, links, and consistency with the current implementation; frontend builds and visual acceptance are needed only when product code or styles also change. Report which checks were actually performed.
 
 - Validate `1440 x 900`, `1024 x 768`, and the application's `960 x 640` minimum window boundary.
 - Confirm no page-level horizontal scrolling, clipped primary actions, overlapping fixed chrome, double scrollbar ownership, or layout shift when overflow appears.

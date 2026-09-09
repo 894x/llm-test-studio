@@ -12,7 +12,6 @@ Prefer existing project components and shadcn/ui composition:
 | Status | Semantic `Badge`; put detail in Tooltip or inspector |
 | Search | Existing input-group primitives, with visible label or accessible name |
 | Bounded choices | `SearchableSelect` with searchable, keyboard-reachable items |
-| Filterable bounded choices | `Combobox`; the committed value must resolve to an available item |
 | Suggestions plus free text | Shared `Autocomplete`; suggestions may complete the input but must not reject an arbitrary value |
 | Create/edit workflow | `Sheet` or dialog with an accessible title and description |
 | Forms | `FieldGroup` and `Field`; pair invalid styling with `aria-invalid` |
@@ -33,6 +32,8 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 - Show loading on the initiating control, keep its geometry stable, and block duplicate submission.
 - Put labels above fields in inspectors and narrow forms.
 - Keep helper text only when it changes a decision.
+- Prefer readable option names. Include protocol, revision, or other metadata only when it helps distinguish choices or make a decision; keep stable identifiers in values rather than exposing them by default in labels.
+- Group related short fields according to available container width; give long text and complex controls more space. Do not copy a fixed column count from another form. Avoid empty wrappers and overlapping legend/section spacing that leave unexplained gaps.
 - Place validation next to the affected field and preserve entered values after failure.
 - Implement applicable read-only, disabled, loading, success, warning, and error states.
 
@@ -41,10 +42,16 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 - Use global navigation for product destinations and tabs for peer views that share one workspace.
 - Use a segmented or radio control only for a small closed set of peer modes.
 - Use menus or selects for numerous or secondary options.
-- Use `Combobox` only when filtering helps but the value is still restricted to the supplied items. Use `Autocomplete` when suggestions are optional and users may keep free-form text.
+- Use `SearchableSelect` for closed dropdown choices, including short lists. Use `Autocomplete` when suggestions are optional and users may keep free-form text; this distinction does not replace tabs, checkboxes, or peer-mode controls.
 - Make selection visible through both surface and text/icon treatment, not color alone.
 - Preserve URL/hash navigation, focus, and keyboard activation for primary destinations.
 - Do not leave enabled-looking controls without an action.
+
+## Search and detail navigation
+
+- Reuse the existing search input-group and filtering pattern. Distinguish initial empty from no matches, provide a clear/reset action, and keep result-count feedback from shifting controls. Counts of locally filtered rows describe the displayed collection; they must not replace Go-owned execution totals or conclusions.
+- Preserve the query when returning from details. Keep selection and displayed details consistent with the visible collection, and handle a selected record disappearing after filtering or refresh.
+- Choose row selection, explicit navigation, and contextual editing according to the workspace task. Make their effects distinguishable and keyboard reachable; do not make every table row open an editor merely because a matrix uses that interaction.
 
 ## Shell and workspaces
 
@@ -58,7 +65,8 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 
 ## Tables, lists, and inspectors
 
-- Model/channel matrices highlight both axes on cell hover or keyboard focus, with a deeper rounded intersection. Apply this to configured and unconfigured cells; keep selection distinguishable. Case and suite editor sheets use a 768 px maximum width, capped by the viewport.
+- Model/channel matrices highlight both axes on cell hover or keyboard focus, with a deeper rounded intersection. Apply this to configured and unconfigured cells; keep selection distinguishable.
+- When matrix cells are editing entry points, open the existing record or prefill a new record from the cell's axes. Reuse the catalog editor and its validation; respect pending/unavailable states and restore focus to the initiating cell on close. Empty cells must make the available action or unavailable state clear.
 
 - Use tables for comparable records with stable columns and lists for heterogeneous records or prominent row actions.
 - Render all tables without borders, including wrappers, headers, footers, rows, and columns. Header cells have a persistent quiet rounded surface; tables use zero border spacing to prevent initial sticky-header movement, and body rows use a continuous 6 px rounded background on hover or selection. Paint the background on cells and round only the first/last cell so internal columns remain joined; use separate borders with zero horizontal spacing. Selected backgrounds take precedence over hover. Preserve visible keyboard focus; do not wrap tables in cards.
@@ -74,6 +82,8 @@ Do not use HTML `datalist` for suggestions in the desktop product. Its browser-o
 
 - Use a dialog for blocking decisions and a sheet/inspector for contextual editing that should preserve workspace context.
 - Keep every overlay titled, closeable, keyboard reachable, theme synchronized, and focus restoring.
+- Dropdowns inside sheets belong within the modal focus boundary but outside the scrolling form. Reuse the shared dropdown primitives and `apps/desktop/frontend/src/components/ui/use-floating-portal-container.ts`; retain their fixed positioning rather than switching coordinate systems or adding feature-specific animation workarounds.
+- Selecting an option must not dismiss the editor. Escape closes the active popup before the enclosing sheet; verify focus return, scrolling while open, and closing/reopening the sheet when changing nested overlays.
 - Keep a long-running task's start action, stage, progress, sent/in-flight/completed counts, stop-sending command, cancel command, error, and recovery in one stable surface.
 - Distinguish queued, sending, draining, completed, failed, and cancelled without changing task geometry.
 - Preserve useful logs and evidence after failure. Put long JSON or traces in bounded monospace regions.
@@ -95,11 +105,9 @@ For each interactive component, deliberately decide whether these states apply:
 | --- | --- |
 | Default | Clear purpose and hierarchy |
 | Hover | Surface, border, icon, or text response |
-| Focus-visible | Visible keyboard focus ring |
+| Focus-visible | Visible keyboard focus using the control's token/variant; input-like controls use the focus border, not an added outer ring |
 | Active/selected | Persistent non-color-only distinction |
 | Disabled | Blocked interaction and reduced emphasis |
 | Loading | Stable geometry and duplicate prevention |
 | Empty | Helpful distinction between no data and no matches |
 | Error | Semantic treatment plus actionable text |
-
-- Dropdown popups inside sheets use fixed positioning and portal into the sheet surface, outside the scrolling form. Keep them inside the modal focus boundary; do not switch the positioned popup between fixed and absolute coordinates.

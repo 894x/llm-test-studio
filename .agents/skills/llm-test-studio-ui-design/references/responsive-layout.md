@@ -6,6 +6,7 @@ LLM Test Studio is currently a cross-platform desktop product with a minimum Wai
 
 - Resolve layout at the application shell or workspace boundary. Do not scatter unrelated raw breakpoint tests across feature components.
 - Base decisions on available viewport/container space and content fit, not user-agent or operating-system detection.
+- Use container-based field layout inside constrained panels and sheets; viewport width alone does not describe the space available to a form. Reduce columns before labels, validation messages, or controls become cramped.
 - Preserve one semantic component tree and one command/data state where practical.
 - Keep full-window chrome fixed and assign scrolling to explicit content regions.
 - Do not make the whole page scroll horizontally.
@@ -44,6 +45,8 @@ Prioritize Header content in this order:
 - Keep toolbars and page headers shrink-free while the data region owns remaining height.
 - Preserve selection when an inspector changes composition.
 - Keep empty and error states inside the same region as their successful data surface.
+- Size editing sheets for their content separately from detail inspectors. Current case/suite editors use a 768 px maximum capped by the viewport; this is not the default for every editor. Reuse the relevant editor's composition and adjust it only when the task needs different space.
+- In adjacent open workspace columns, the parent Flex/Grid owns the 16 px gap. Do not add another horizontal inset on both sides of that gap; keep navigation items' 8 px internal padding separate from panel spacing.
 
 - Quick Test keeps two columns across supported desktop sizes (960 px and above): inputs on the left and progress/history on the right, each with its own bounded ScrollArea below the fixed page header.
 
@@ -74,5 +77,3 @@ At `1440 x 900`, `1024 x 768`, and `960 x 640`, verify:
 - loading, empty, filtered-empty, error, and large-data states preserve layout;
 - primary commands remain reachable;
 - light and dark themes keep equivalent hierarchy and contrast.
-
-- In adjacent open workspace columns, the parent Flex/Grid owns the 16 px gap. Do not add another horizontal inset on both sides of that gap; keep navigation items' 8 px internal padding separate from panel spacing.
