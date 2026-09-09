@@ -210,7 +210,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   }))
   const set = <K extends keyof typeof value>(key: K, next: (typeof value)[K]) => setValue((current) => ({ ...current, [key]: next }))
   const descriptor = catalog.case_types.find((candidate) => candidate.type === value.type && candidate.type_version === value.type_version)
-  const typeOptions = availableTypes.filter((candidate) => candidate.supported_protocols.includes(value.protocol)).map((candidate) => [`${candidate.type}@${candidate.type_version}`, `${caseTypeLabel(candidate.type, candidate.label)} · v${candidate.type_version}`] as [string, string])
+  const typeOptions = availableTypes.filter((candidate) => candidate.supported_protocols.includes(value.protocol)).map((candidate) => [`${candidate.type}@${candidate.type_version}`, caseTypeLabel(candidate.type, candidate.label)] as [string, string])
   const selectType = (key: string) => {
     const next = catalog.case_types.find((candidate) => `${candidate.type}@${candidate.type_version}` === key)
     if (!next) return
@@ -269,7 +269,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     <div className="grid grid-cols-2 gap-3"><CheckField label={tx("desktop:catalog_enabled")} checked={value.enabled} clearFields={[tx("desktop:catalog_enabled_by_default")]} onChange={(v) => set("enabled", v)} /><CheckField label={tx("desktop:catalog_enabled_by_default")} checked={value.default} clearFields={[tx("desktop:catalog_enabled")]} onChange={(v) => set("default", v)} /></div>
     {value.type === "latency.input_ladder" ? <>
       <div className="grid grid-cols-2 gap-3"><NumberField label={tx("desktop:catalog_default_warmups_per_step")} value={value.warmups_per_step} maximum={10} onChange={(v) => set("warmups_per_step", v)} /><NumberField label={tx("desktop:catalog_default_samples_per_step")} value={value.samples_per_step} minimum={1} maximum={100} onChange={(v) => set("samples_per_step", v)} /></div>
-      <fieldset className="space-y-2 rounded-lg border p-3">
+      <fieldset className="space-y-2 rounded-lg border p-3 [&>legend]:mb-0">
         <legend className="px-1 text-xs font-medium">{tx("desktop:catalog_input_token_ladder")}</legend>
         <FieldDescription>{tx("desktop:catalog_leave_warmups_or_samples_empty_to_inherit_the_defaults_above")}</FieldDescription>
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 px-1 text-[10px] text-muted-foreground" aria-hidden="true">
@@ -431,19 +431,19 @@ function PlanSuiteList({ entries, suites, suiteID, pending, onSuiteIDChange, onA
   const { t: tx } = useTranslation()
   const validation = useCatalogValidation("plan.suites")
   const errorID = "catalog-plan-suites-error"
-  return <fieldset className="space-y-3 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key="plan.suites">
+  return <fieldset className="space-y-2 rounded-lg border p-3 [&>legend]:mb-0" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key="plan.suites">
     <legend className="px-1 text-xs font-medium">{tx("desktop:catalog_plan_suites")}</legend>
     <FieldDescription>{tx("desktop:catalog_plan_suites_run_in_order_and_continue_after_failure")}</FieldDescription>
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
-      <SelectField fieldKey="plan.suite-picker" label={tx("desktop:catalog_suite")} value={suiteID} disabled={!suites.length || pending} options={suites.map((suite) => [suite.id, `${suite.name} · r${suite.revision}`])} onChange={(value) => { validation.clear(); onSuiteIDChange(value) }} />
+      <SelectField fieldKey="plan.suite-picker" label={tx("desktop:catalog_suite")} value={suiteID} disabled={!suites.length || pending} options={suites.map((suite) => [suite.id, suite.name])} onChange={(value) => { validation.clear(); onSuiteIDChange(value) }} />
       <Button type="button" size="sm" variant="outline" disabled={!suiteID || pending} onClick={() => { validation.clear(); onAdd() }}>
         <PlusIcon data-icon="inline-start" />{tx("desktop:catalog_add_suite")}
       </Button>
     </div>
     {!suites.length ? <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription> : null}
-    <div className="space-y-3">
+    {entries.length > 0 ? <div className="space-y-2">
       {entries.map((entry, index) => <PlanSuiteEntryEditor key={entry.draftKey} entry={entry} index={index} count={entries.length} pending={pending} onUpdate={(update) => onUpdate(entry.draftKey, update)} onMove={onMove} onRemove={() => onRemove(entry.draftKey)} />)}
-    </div>
+    </div> : null}
     {validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}
   </fieldset>
 }
@@ -460,7 +460,7 @@ function PlanSuiteEntryEditor({ entry, index, count, pending, onUpdate, onMove, 
   const { t: tx } = useTranslation()
   const prefix = `plan.suites.${entry.draftKey}`
   const updateNumber = (name: keyof PlanSuiteNumberDrafts, value: string) => onUpdate({ numbers: { ...entry.numbers, [name]: value } })
-  return <fieldset className="min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" disabled={pending}>
+  return <fieldset className="@container min-w-0 space-y-3 rounded-lg border bg-muted/20 p-3" disabled={pending}>
     <legend className="sr-only">{tx("desktop:catalog_suite_position_name", { value1: index + 1, value2: entry.suiteName })}</legend>
     <div className="flex min-w-0 items-center gap-2">
       <div className="min-w-0 flex-1">
@@ -471,8 +471,8 @@ function PlanSuiteEntryEditor({ entry, index, count, pending, onUpdate, onMove, 
       <Button type="button" size="icon-sm" variant="ghost" disabled={index === count - 1 || pending} aria-label={tx("desktop:catalog_move_suite_down", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_move_suite_down", { value1: index + 1, value2: entry.suiteName })} onClick={() => onMove(index, 1)}><ArrowDownIcon /></Button>
       <Button type="button" size="icon-sm" variant="ghost" disabled={pending} aria-label={tx("desktop:catalog_remove_suite", { value1: index + 1, value2: entry.suiteName })} title={tx("desktop:catalog_remove_suite", { value1: index + 1, value2: entry.suiteName })} onClick={onRemove}><Trash2Icon /></Button>
     </div>
-    <SelectField fieldKey={`${prefix}.load_mode`} label={tx("desktop:catalog_load_mode")} value={entry.loadMode} options={[["single",tx("desktop:catalog_single_request")],["fixed_concurrency",tx("desktop:catalog_fixed_concurrency")],["open_loop",tx("desktop:catalog_open_loop")]]} onChange={(value) => onUpdate({ loadMode: value as CatalogLoadMode })} />
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-x-3 gap-y-2 @xs:grid-cols-2 @lg:grid-cols-4 [&>*]:min-w-0">
+      <SelectField fieldKey={`${prefix}.load_mode`} label={tx("desktop:catalog_load_mode")} value={entry.loadMode} options={[["single",tx("desktop:catalog_single_request")],["fixed_concurrency",tx("desktop:catalog_fixed_concurrency")],["open_loop",tx("desktop:catalog_open_loop")]]} onChange={(value) => onUpdate({ loadMode: value as CatalogLoadMode })} />
       <DraftNumberField fieldKey={`${prefix}.concurrency`} label={tx("desktop:catalog_concurrency")} value={entry.numbers.concurrency} minimum={1} onChange={(value) => updateNumber("concurrency", value)} />
       <DraftNumberField fieldKey={`${prefix}.request_count`} label={tx("desktop:catalog_request_count")} value={entry.numbers.request_count} minimum={0} clearFields={[`${prefix}.duration_ms`]} onChange={(value) => updateNumber("request_count", value)} />
       <DraftNumberField fieldKey={`${prefix}.rate_per_second`} label={tx("desktop:catalog_requests_per_second")} value={entry.numbers.rate_per_second} minimum={0} step="any" onChange={(value) => updateNumber("rate_per_second", value)} />
@@ -593,7 +593,7 @@ function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields =
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, clearFields, label)
   const errorID = `${catalogFieldID(key)}-error`
-  return <fieldset className="space-y-2 rounded-lg border p-3" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? <div className={multiColumn ? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-4 gap-y-2 [&>[data-slot=field]]:min-w-0 [&_[data-slot=field-label]]:[overflow-wrap:anywhere]" : "space-y-2"}>{values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />)}</div> : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
+  return <fieldset className="space-y-2 rounded-lg border p-3 [&>legend]:mb-0" tabIndex={-1} data-invalid={validation.invalid || undefined} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} data-field-key={key} data-field-name={label}><legend className="px-1 text-xs font-medium">{label}</legend>{values.length ? <div className={multiColumn ? "grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-4 gap-y-2 [&>[data-slot=field]]:min-w-0 [&_[data-slot=field-label]]:[overflow-wrap:anywhere]" : "space-y-2"}>{values.map(value => <CheckField key={value.id} fieldKey={`${key}.${value.id}`} controlID={`${catalogFieldID(key)}-${encodeURIComponent(value.id)}-check`} label={value.label} checked={selected.has(value.id)} onChange={(checked) => { validation.clear(); const next = new Set(selected); if (checked) next.add(value.id); else next.delete(value.id); onChange(next) }} />)}</div> : <FieldDescription>{tx("desktop:catalog_no_available_options")}</FieldDescription>}{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</fieldset>
 }
 
 function StageNumberField({ label, value, minimum, maximum, placeholder, onChange }: { label: string; value: string | number; minimum: number; maximum: number; placeholder?: string; onChange: (value: string) => void }) {

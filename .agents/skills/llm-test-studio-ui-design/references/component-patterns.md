@@ -101,3 +101,5 @@ For each interactive component, deliberately decide whether these states apply:
 | Loading | Stable geometry and duplicate prevention |
 | Empty | Helpful distinction between no data and no matches |
 | Error | Semantic treatment plus actionable text |
+
+- Dropdown popups inside sheets use fixed positioning and portal into the sheet surface, outside the scrolling form. Keep them inside the modal focus boundary; do not switch the positioned popup between fixed and absolute coordinates.

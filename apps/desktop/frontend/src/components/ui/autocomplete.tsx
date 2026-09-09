@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { useFloatingPortalContainer } from "./use-floating-portal-container"
 
 const Autocomplete = AutocompletePrimitive.Root
 
@@ -56,9 +57,11 @@ function AutocompleteContent({
 }: AutocompletePrimitive.Popup.Props &
   Pick<AutocompletePrimitive.Positioner.Props, "side" | "align" | "sideOffset"> &
   Pick<AutocompletePrimitive.Portal.Props, "container">) {
+  const portalContainer = useFloatingPortalContainer(container)
   return (
-    <AutocompletePrimitive.Portal container={container}>
+    <AutocompletePrimitive.Portal container={portalContainer}>
       <AutocompletePrimitive.Positioner
+        positionMethod="fixed"
         side={side}
         sideOffset={sideOffset}
         align={align}

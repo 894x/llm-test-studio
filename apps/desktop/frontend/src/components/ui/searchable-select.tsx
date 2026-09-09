@@ -4,6 +4,7 @@ import CheckIcon from "lucide-react/dist/esm/icons/check.mjs"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
+import { useFloatingPortalContainer } from "./use-floating-portal-container"
 
 export type SelectOption = { value: string; label: string; disabled?: boolean }
 
@@ -18,6 +19,7 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
 }) {
   const { t } = useTranslation("common")
   const container = useRef<HTMLDivElement>(null)
+  const portalContainer = useFloatingPortalContainer(container)
   const selected = options.some(option => option.value === value) ? value : null
   return <div ref={container} className={cn("min-w-0 w-full", className)}>
     <Combobox.Root items={options.map(option => option.value)} value={selected} disabled={disabled} openOnInputClick
@@ -30,8 +32,8 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
           <ChevronDownIcon className="size-4" />
         </Combobox.Trigger>
       </Combobox.InputGroup>
-      <Combobox.Portal container={container}>
-        <Combobox.Positioner sideOffset={4} align="start" className="z-50 isolate">
+      <Combobox.Portal container={portalContainer}>
+        <Combobox.Positioner positionMethod="fixed" sideOffset={4} align="start" className="z-50 isolate">
           <Combobox.Popup className="w-[var(--anchor-width)] max-w-[var(--available-width)] max-h-[var(--available-height)] overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
             <Combobox.Empty className="px-3 py-2 text-xs text-muted-foreground empty:hidden">{t("select.empty")}</Combobox.Empty>
             <Combobox.List className="max-h-60 overflow-y-auto overscroll-contain p-1 [scrollbar-width:thin] data-empty:p-0">

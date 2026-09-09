@@ -197,7 +197,7 @@ describe("CatalogEditor filesystem suite", () => {
     const updateSuite = vi.fn().mockResolvedValue(catalog)
     render(<CatalogEditor kind="suite" item={item} catalog={catalog} actions={{ updateSuite } as unknown as CatalogActions} pending={false} mutate={async (operation) => { await operation() }} />)
     await user.click(screen.getByRole("button", { name: "编辑套件" }))
-    expect(screen.queryByRole("checkbox", { name: "Scoped chat · r7" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Scoped chat" })).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "保存套件" }))
     expect(updateSuite).toHaveBeenCalledWith(expect.objectContaining({ model_target: "", quick_test: quickTest, cases: item.cases }))
   })
