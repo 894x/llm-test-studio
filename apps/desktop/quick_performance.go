@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"math"
 	"time"
@@ -70,12 +71,21 @@ func (app *DesktopApp) RunQuickPerformanceTest(command quicktest.PerformanceComm
 		report, err = lease.quickTests.RunPerformance(lease.ctx, command)
 	}
 	if err != nil {
-		// As with connectivity testing, provider and credential details must stay
-		// behind the allowlisted performance report boundary.
-		return quicktest.PerformanceReport{}, app.safeBindingError(errQuickTestOperationFailed)
+		return quicktest.PerformanceReport{}, app.safeBindingError(classifyQuickPerformanceError(err))
 	}
 	app.reportQuickPerformanceDiagnostics(report)
 	return report, nil
+}
+
+func classifyQuickPerformanceError(err error) error {
+	switch {
+	case errors.Is(err, quicktest.ErrServiceUnavailable):
+		return ErrQuickTestUnavailable
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return err
+	default:
+		return errQuickTestOperationFailed
+	}
 }
 
 func (app *DesktopApp) reportQuickPerformanceDiagnostics(report quicktest.PerformanceReport) {

@@ -4,6 +4,7 @@ import { I18nextProvider } from "react-i18next"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
+import { DesktopClientError } from "@/app/desktop-client"
 import { createAppI18n } from "@/i18n/i18n"
 
 import { QuickPerformanceSheet } from "./quick-performance-sheet"
@@ -81,6 +82,22 @@ describe("QuickPerformanceSheet", () => {
     await waitFor(() =>
       expect(screen.queryByRole("region", { name: "性能报告" })).not.toBeInTheDocument(),
     )
+  })
+
+  it("shows cancelled and unavailable start failures instead of asking the user to check logs", async () => {
+    const user = userEvent.setup()
+    const runQuickPerformanceTest = vi.fn()
+      .mockRejectedValueOnce(new DesktopClientError("operation_cancelled"))
+      .mockRejectedValueOnce(new DesktopClientError("quick_test_unavailable"))
+    render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={runQuickPerformanceTest} />)
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    expect(await within(dialog).findByText("操作已取消")).toBeInTheDocument()
+    expect(within(dialog).queryByText("快速性能测试暂不可用，请检查本地日志")).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    expect(await within(dialog).findByText("快速测试暂不可用")).toBeInTheDocument()
+    expect(within(dialog).queryByText("操作已取消")).not.toBeInTheDocument()
   })
 
   it("runs a configurable performance test from the immutable connection and renders its report", async () => {

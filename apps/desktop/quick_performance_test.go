@@ -37,25 +37,43 @@ func (runner *recordingQuickPerformanceRunner) RunPerformanceWithProgress(ctx co
 
 func TestRunQuickPerformanceReturnsStableErrorsWithoutLeakingRunnerDetails(t *testing.T) {
 	const sensitive = "sk-should-never-be-reported"
-	runner := &recordingQuickPerformanceRunner{err: errors.New(sensitive)}
-	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
-		return desktopDependencies{quickTests: runner}, nil
-	})
-	var reported error
-	app.setErrorReporter(func(err error) { reported = err })
-	app.onStartup(context.Background())
+	tests := []struct {
+		name string
+		err  error
+		want string
+		leak string
+	}{
+		{name: "unknown runner error", err: errors.New(sensitive), want: desktopCodeOperationFailed, leak: sensitive},
+		{name: "cancelled", err: context.Canceled, want: desktopCodeOperationCancelled},
+		{name: "deadline exceeded", err: context.DeadlineExceeded, want: desktopCodeOperationCancelled},
+		{name: "service unavailable", err: quicktest.ErrServiceUnavailable, want: desktopCodeQuickTestMissing},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &recordingQuickPerformanceRunner{err: test.err}
+			app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+				return desktopDependencies{quickTests: runner}, nil
+			})
+			var reported error
+			app.setErrorReporter(func(err error) { reported = err })
+			app.onStartup(context.Background())
 
-	_, err := app.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, "")
-	assertBindingErrorCode(t, err, desktopCodeOperationFailed)
-	if reported == nil || strings.Contains(reported.Error(), sensitive) {
-		t.Fatalf("reported error leaked runner detail: %v", reported)
+			_, err := app.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, "")
+			assertBindingErrorCode(t, err, test.want)
+			if reported == nil {
+				t.Fatal("expected the original failure to be reported internally")
+			}
+			if test.leak != "" && strings.Contains(reported.Error(), test.leak) {
+				t.Fatalf("reported error leaked runner detail: %v", reported)
+			}
+		})
 	}
 
 	missing := newDesktopApp(func(context.Context) (desktopDependencies, error) {
 		return desktopDependencies{}, nil
 	})
 	missing.onStartup(context.Background())
-	_, err = missing.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, "")
+	_, err := missing.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, "")
 	assertBindingErrorCode(t, err, desktopCodeQuickTestMissing)
 }
 
