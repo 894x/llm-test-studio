@@ -242,21 +242,6 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 	if detail.Performance != nil {
 		performance = detail.Performance
 	}
-	if detail.Performance != nil && (detail.Performance.SchemaVersion == quicktest.LegacyPerformanceSchemaVersion ||
-		detail.Performance.SchemaVersion == quicktest.PerformanceSchemaVersionV2) {
-		encoded, err := json.Marshal(detail.Performance)
-		if err != nil {
-			return nil, err
-		}
-		var projected any
-		decoder := json.NewDecoder(bytes.NewReader(encoded))
-		decoder.UseNumber()
-		if err := decoder.Decode(&projected); err != nil {
-			return nil, err
-		}
-		removeSchemaV3QuickPerformanceFields(projected)
-		performance = projected
-	}
 	return json.MarshalIndent(struct {
 		Watermark      string          `json:"watermark"`
 		SchemaVersion  int             `json:"schema_version"`
@@ -272,34 +257,6 @@ func renderJSON(detail Detail, watermark string) ([]byte, error) {
 		Suites: detail.Entries, Unassigned: detail.UnassignedRequestResults,
 		Performance: performance,
 	}, "", "  ")
-}
-
-var schemaV3QuickPerformanceFields = map[string]struct{}{
-	"average_ms": {}, "ttfb": {}, "ttft_any": {}, "ttft_visible": {}, "ttst": {}, "observed_icl": {}, "semantic_chunk_count": {},
-	"ttfb_ms": {}, "ttft_any_ms": {}, "ttft_visible_ms": {}, "ttst_ms": {}, "observed_icl_ms": {}, "ttft_samples": {},
-	"ttfb_samples": {}, "ttfb_p50_ms": {}, "ttfb_p95_ms": {}, "ttfb_p99_ms": {}, "ttfb_average_ms": {},
-	"ttft_any_samples": {}, "ttft_any_p50_ms": {}, "ttft_any_p95_ms": {}, "ttft_any_p99_ms": {}, "ttft_any_average_ms": {},
-	"ttft_visible_samples": {}, "ttft_visible_p50_ms": {}, "ttft_visible_p95_ms": {}, "ttft_visible_p99_ms": {}, "ttft_visible_average_ms": {},
-	"ttst_samples": {}, "ttst_p50_ms": {}, "ttst_p95_ms": {}, "ttst_p99_ms": {}, "ttst_average_ms": {},
-	"observed_icl_samples": {}, "observed_icl_p50_ms": {}, "observed_icl_p95_ms": {}, "observed_icl_p99_ms": {}, "observed_icl_average_ms": {},
-	"semantic_chunk_count_samples": {}, "semantic_chunk_count_p50": {}, "semantic_chunk_count_p95": {}, "semantic_chunk_count_p99": {}, "semantic_chunk_count_average": {},
-}
-
-func removeSchemaV3QuickPerformanceFields(value any) {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, child := range typed {
-			if _, v3Only := schemaV3QuickPerformanceFields[key]; v3Only {
-				delete(typed, key)
-				continue
-			}
-			removeSchemaV3QuickPerformanceFields(child)
-		}
-	case []any:
-		for _, child := range typed {
-			removeSchemaV3QuickPerformanceFields(child)
-		}
-	}
 }
 
 func exportHTMLLabels(locale string) htmlLabels {
@@ -510,10 +467,9 @@ var reportHTMLTemplate = template.Must(template.New("report").Parse(`<!doctype h
 </main></body></html>`))
 
 var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(template.FuncMap{
-	"sampledValue":      sampledMetricValue,
-	"sampledSamples":    sampledMetricSamples,
-	"legacyTTFTSamples": quickPerformanceLegacyTTFTSamples,
-	"tpotSamples":       quickPerformanceTPOTSamples,
+	"sampledValue":   sampledMetricValue,
+	"sampledSamples": sampledMetricSamples,
+	"tpotSamples":    quickPerformanceTPOTSamples,
 }).Parse(`<!doctype html>
 <html lang="{{.Language}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LLM Test Studio Quick Performance Report {{.Detail.Performance.ReportID}}</title><style>
@@ -525,19 +481,19 @@ var quickReportHTMLTemplate = template.Must(template.New("quick-report").Funcs(t
 <h2>{{.Labels.CoreMetrics}}</h2><section class="grid">
 <div class="card"><strong>{{.Detail.Performance.Metrics.SuccessRatePercent}}%</strong><span>{{.Labels.SuccessRate}}</span></div>
 <div class="card"><strong>{{.Detail.Performance.Metrics.RequestQPS}} req/s</strong><span>{{.Labels.RequestRate}}</span></div>
-{{if ne .Detail.Performance.SchemaVersion 3}}<div class="card"><strong>{{sampledValue (legacyTTFTSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TTFTP50}} / {{sampledValue (legacyTTFTSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TTFTP95}} ms</strong><span>TTFT P50 / P95</span></div>{{end}}
+
 <div class="card"><strong>{{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP50}} / {{sampledValue (tpotSamples .Detail.Performance.Samples) .Detail.Performance.Metrics.TPOTP95}} ms/token</strong><span>TPOT P50 / P95</span></div>
 <div class="card"><strong>{{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP50}} / {{sampledValue .Detail.Performance.Metrics.Succeeded .Detail.Performance.Metrics.E2EP95}} ms</strong><span>E2E P50 / P95</span></div>
 </section>
-{{if eq .Detail.Performance.SchemaVersion 3}}<h2>{{.Labels.StreamingTiming}}</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Metric}}</th><th>{{.Labels.Average}}</th><th>P50</th><th>P95</th><th>P99</th><th>{{.Labels.Samples}}</th></tr></thead><tbody>
+<h2>{{.Labels.StreamingTiming}}</h2><div class="scroll"><table><thead><tr><th>{{.Labels.Metric}}</th><th>{{.Labels.Average}}</th><th>P50</th><th>P95</th><th>P99</th><th>{{.Labels.Samples}}</th></tr></thead><tbody>
 <tr><td>TTFB (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFBSamples .Detail.Performance.Metrics.TTFBP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFBSamples}}</td></tr>
 <tr><td>{{.Labels.TTFTAny}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTAnySamples .Detail.Performance.Metrics.TTFTAnyP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTAnySamples}}</td></tr>
 <tr><td>{{.Labels.TTFTVisible}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTFTVisibleSamples .Detail.Performance.Metrics.TTFTVisibleP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTFTVisibleSamples}}</td></tr>
 <tr><td>{{.Labels.TTST}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.TTSTSamples .Detail.Performance.Metrics.TTSTP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.TTSTSamples}}</td></tr>
 <tr><td>{{.Labels.ObservedICL}} (ms)</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.ObservedICLSamples .Detail.Performance.Metrics.ObservedICLP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.ObservedICLSamples}}</td></tr>
 <tr><td>{{.Labels.SemanticChunks}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountAverage}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP50}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP95}}</td><td>{{sampledValue .Detail.Performance.Metrics.SemanticChunkCountSamples .Detail.Performance.Metrics.SemanticChunkCountP99}}</td><td>{{sampledSamples .Detail.Performance.Metrics.SemanticChunkCountSamples}}</td></tr>
-</tbody></table></div>{{end}}
-<h2>{{.Labels.RequestSamples}} ({{len .Detail.Performance.Samples}})</h2>{{if eq .Detail.Performance.SchemaVersion 3}}<div class="scroll"><table><thead><tr><th>#</th><th>{{.Labels.Status}}</th><th>HTTP</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFBMS}}{{.TTFBMS}}{{else}}-{{end}}</td><td>{{if .TTFTAnyMS}}{{.TTFTAnyMS}}{{else}}-{{end}}</td><td>{{if .TTFTVisibleMS}}{{.TTFTVisibleMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.TTSTMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.ObservedICLMS}}{{else}}-{{end}}</td><td>{{.SemanticChunkCount}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>{{else}}<div class="scroll"><table><thead><tr><th>#</th><th>{{.Labels.Status}}</th><th>HTTP</th><th>E2E ms</th><th>TTFT ms</th><th>TPOT ms</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFTMS}}{{.TTFTMS}}{{else}}-{{end}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>{{end}}
+</tbody></table></div>
+<h2>{{.Labels.RequestSamples}} ({{len .Detail.Performance.Samples}})</h2><div class="scroll"><table><thead><tr><th>#</th><th>{{.Labels.Status}}</th><th>HTTP</th><th>E2E ms</th><th>TTFB ms</th><th>{{.Labels.TTFTAny}} ms</th><th>{{.Labels.TTFTVisible}} ms</th><th>{{.Labels.TTST}} ms</th><th>{{.Labels.ObservedICL}} ms</th><th>{{.Labels.SemanticChunks}}</th><th>TPOT ms/token</th><th>{{.Labels.Input}}</th><th>{{.Labels.Output}}</th><th>{{.Labels.Error}}</th></tr></thead><tbody>{{range .Detail.Performance.Samples}}<tr><td>{{.RequestIndex}}</td><td>{{if .Success}}{{$.Labels.StatusPassed}}{{else}}{{$.Labels.StatusFailed}}{{end}}</td><td>{{.HTTPStatus}}</td><td>{{.E2EMS}}</td><td>{{if .TTFBMS}}{{.TTFBMS}}{{else}}-{{end}}</td><td>{{if .TTFTAnyMS}}{{.TTFTAnyMS}}{{else}}-{{end}}</td><td>{{if .TTFTVisibleMS}}{{.TTFTVisibleMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.TTSTMS}}{{else}}-{{end}}</td><td>{{if ge .SemanticChunkCount 2}}{{.ObservedICLMS}}{{else}}-{{end}}</td><td>{{.SemanticChunkCount}}</td><td>{{if .TPOTMS}}{{.TPOTMS}}{{else}}-{{end}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.ErrorCode}}</td></tr>{{end}}</tbody></table></div>
 <p class="muted">Schema v{{.Detail.Performance.SchemaVersion}} · {{.Labels.QuickFooter}}</p>
 </main></body></html>`))
 
@@ -660,19 +616,6 @@ func drawQuickPerformanceImage(canvas *image.RGBA, report quicktest.PerformanceR
 	for _, sample := range report.Samples {
 		values = append(values, sample.E2EMS)
 	}
-	if report.SchemaVersion != quicktest.PerformanceSchemaVersion {
-		drawBitmapText(canvas, 80, 660, 3, "E2E LATENCY MS", color.RGBA{23, 32, 51, 255})
-		drawBars(canvas, image.Rect(80, 710, 1320, 1100), values)
-		drawBitmapText(canvas, 80, 1170, 3, "REQUEST SAMPLES", color.RGBA{23, 32, 51, 255})
-		for index, sample := range report.Samples {
-			if index >= 16 {
-				break
-			}
-			line := quickPerformanceLegacySampleLine(sample)
-			drawBitmapText(canvas, 80, 1220+index*26, 2, line, color.RGBA{56, 67, 84, 255})
-		}
-		return
-	}
 	drawBitmapText(canvas, 80, 980, 3, "E2E LATENCY MS", color.RGBA{23, 32, 51, 255})
 	drawBars(canvas, image.Rect(80, 1030, 1320, 1280), values)
 	drawBitmapText(canvas, 80, 1340, 3, "REQUEST SAMPLES", color.RGBA{23, 32, 51, 255})
@@ -695,22 +638,12 @@ func quickPerformanceImageMetrics(report quicktest.PerformanceReport) []quickPer
 	metrics := []quickPerformanceImageMetric{
 		{"SUCCESS RATE", formatNumber(report.Metrics.SuccessRatePercent) + " %"},
 		{"REQUEST QPS", formatNumber(report.Metrics.RequestQPS)},
-	}
-	if report.SchemaVersion == quicktest.PerformanceSchemaVersion {
-		metrics = append(metrics,
-			quickPerformanceImageMetric{"TTFB P50", sampledMetricText(report.Metrics.TTFBSamples, report.Metrics.TTFBP50, " MS")},
-			quickPerformanceImageMetric{"TTFT ANY INCLUDES REASONING P50", sampledMetricText(report.Metrics.TTFTAnySamples, report.Metrics.TTFTAnyP50, " MS")},
-			quickPerformanceImageMetric{"TTFT VISIBLE CONTENT P50", sampledMetricText(report.Metrics.TTFTVisibleSamples, report.Metrics.TTFTVisibleP50, " MS")},
-			quickPerformanceImageMetric{"TTST SECOND SEMANTIC CHUNK P50", sampledMetricText(report.Metrics.TTSTSamples, report.Metrics.TTSTP50, " MS")},
-			quickPerformanceImageMetric{"OBS ICL SEMANTIC GAP NOT TOKEN ITL AVG", sampledMetricText(report.Metrics.ObservedICLSamples, report.Metrics.ObservedICLAverage, " MS")},
-			quickPerformanceImageMetric{"SEMANTIC CHUNKS AVG", sampledMetricText(report.Metrics.SemanticChunkCountSamples, report.Metrics.SemanticChunkCountAverage, "")},
-		)
-	} else {
-		ttftSamples := quickPerformanceLegacyTTFTSamples(report.Samples)
-		metrics = append(metrics,
-			quickPerformanceImageMetric{"TTFT P50", sampledMetricText(ttftSamples, report.Metrics.TTFTP50, " MS")},
-			quickPerformanceImageMetric{"TTFT P95", sampledMetricText(ttftSamples, report.Metrics.TTFTP95, " MS")},
-		)
+		{"TTFB P50", sampledMetricText(report.Metrics.TTFBSamples, report.Metrics.TTFBP50, " MS")},
+		{"TTFT ANY INCLUDES REASONING P50", sampledMetricText(report.Metrics.TTFTAnySamples, report.Metrics.TTFTAnyP50, " MS")},
+		{"TTFT VISIBLE CONTENT P50", sampledMetricText(report.Metrics.TTFTVisibleSamples, report.Metrics.TTFTVisibleP50, " MS")},
+		{"TTST SECOND SEMANTIC CHUNK P50", sampledMetricText(report.Metrics.TTSTSamples, report.Metrics.TTSTP50, " MS")},
+		{"OBS ICL SEMANTIC GAP NOT TOKEN ITL AVG", sampledMetricText(report.Metrics.ObservedICLSamples, report.Metrics.ObservedICLAverage, " MS")},
+		{"SEMANTIC CHUNKS AVG", sampledMetricText(report.Metrics.SemanticChunkCountSamples, report.Metrics.SemanticChunkCountAverage, "")},
 	}
 	tpotSamples := quickPerformanceTPOTSamples(report.Samples)
 	return append(metrics,
@@ -745,29 +678,11 @@ func quickPerformanceSampleLines(sample quicktest.PerformanceSample) []string {
 	}
 }
 
-func quickPerformanceLegacySampleLine(sample quicktest.PerformanceSample) string {
-	status := "PASSED"
-	if !sample.Success {
-		status = "FAILED"
-	}
-	return fmt.Sprintf("%d  %s  HTTP %d  E2E %.2f  TTFT %s  TPOT %s", sample.RequestIndex, status, sample.HTTPStatus, sample.E2EMS, optionalPerformanceMetric(sample.TTFTMS, sample.TTFTMS > 0), optionalPerformanceMetric(sample.TPOTMS, sample.TPOTMS > 0))
-}
-
 func optionalPerformanceMetric(value float64, available bool) string {
 	if !available {
 		return "-"
 	}
 	return formatNumber(value)
-}
-
-func quickPerformanceLegacyTTFTSamples(samples []quicktest.PerformanceSample) uint64 {
-	var count uint64
-	for _, sample := range samples {
-		if sample.Success && sample.TTFTMS > 0 {
-			count++
-		}
-	}
-	return count
 }
 
 func quickPerformanceTPOTSamples(samples []quicktest.PerformanceSample) uint64 {

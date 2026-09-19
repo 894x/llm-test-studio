@@ -46,6 +46,25 @@ func (repository filesystemRuntimeRepository) GetTestCase(ctx context.Context, i
 	if err != nil {
 		return domain.TestCase{}, err
 	}
+	return normalizeRuntimeTestCase(testCase)
+}
+
+func (repository filesystemRuntimeRepository) ListTestCases(ctx context.Context) ([]domain.TestCase, error) {
+	testCases, err := repository.catalog.ListTestCases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.TestCase, len(testCases))
+	for index, testCase := range testCases {
+		result[index], err = normalizeRuntimeTestCase(testCase)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func normalizeRuntimeTestCase(testCase domain.TestCase) (domain.TestCase, error) {
 	// SQLite persists Run snapshots as canonical JSON and compares a later
 	// state transition with the decoded snapshot. Normalize filesystem JSON
 	// first so insignificant formatting and object-key order cannot make those

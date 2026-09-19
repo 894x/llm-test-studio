@@ -23,11 +23,11 @@ class BuildScenarioSuitesTest(unittest.TestCase):
         self.case_path = self.cases / "case.json"
         self.case_id = str(uuid.uuid5(uuid.UUID("7680782d-7ae8-558b-9f32-17d13f31a66b"), "builtin.cases/v2/openai-chat/demo.smoke"))
         self.case = {
-            "schema_version": 3, "key": "demo.smoke", "name": "Smoke", "protocol": "openai-chat",
-            "definition": {"schema_version": 2, "type": "openai-chat", "type_version": 1,
+            "schema_version": 1, "key": "demo.smoke", "name": "Smoke", "protocol": "openai-chat",
+            "definition": {"schema_version": 1, "type": "openai-chat", "type_version": 1,
                 "spec": {"inputs": {"prompt": {"type": "string"}}, "request": {"body": {}}, "assertions": []}},
         }
-        self.profile = {"directory": "smoke", "schema_version": 2, "key": "demo.smoke",
+        self.profile = {"directory": "smoke", "schema_version": 1, "key": "demo.smoke",
             "name": "Smoke", "protocol": "openai-chat", "description": "Current Suite",
             "cases": [{"case_id": self.case_id}], "inputs": [{"name": "prompt", "type": "string",
                 "bindings": [{"case_id": self.case_id, "input": "prompt"}]}]}
@@ -56,7 +56,7 @@ class BuildScenarioSuitesTest(unittest.TestCase):
         self.case["schema_version"] = 2
         self.save()
         before = self.case_path.read_bytes()
-        with self.assertRaisesRegex(builder.SuiteBuildError, "schema_version 3"):
+        with self.assertRaisesRegex(builder.SuiteBuildError, "schema_version 1"):
             self.build()
         self.assertEqual(before, self.case_path.read_bytes())
         self.assertFalse((self.root / "suites").exists())

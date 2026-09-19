@@ -143,7 +143,7 @@ go run ./cmd/llm-test-studio load run \
   --output load-result.json
 ```
 
-使用 `--rate` 和 `--duration` 配置开放环调度。使用 `--request-file data/cases/<group>/<case>/case.json` 读取 Case 请求体。默认拒绝明文 HTTP；只有显式指定 `--allow-insecure-loopback` 时才允许 localhost 测试服务器。
+使用 `--rate` 和 `--duration` 配置开放环调度。使用 `--request-file data/cases/<group>/<case>/case.json` 读取 Case 请求体。支持 `http://` 和 `https://` 接口；需要传输机密性时请使用 HTTPS。
 
 不要直接通过命令参数传递凭据，因为 shell 可能把它们保留在历史记录中。Windows PowerShell 用户可以先通过 `$env:VARIABLE_NAME = 'value'` 设置相同变量，再运行命令。
 

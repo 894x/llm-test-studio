@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "prediction_text_array",
   "name": "Predicted Output · content 文本对象数组",
   "dimension": "workflow",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

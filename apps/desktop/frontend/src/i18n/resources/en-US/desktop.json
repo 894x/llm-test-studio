@@ -410,7 +410,6 @@
   "quick-test_the_endpoint_must_not_contain_backslashes": "The endpoint must not contain backslashes.",
   "quick-test_enter_a_valid_url_starting_with_http_or_https": "Enter a valid URL starting with http:// or https://.",
   "quick-test_the_endpoint_must_not_contain_credentials_query_parameters_or_fragments": "The endpoint must not contain credentials, query parameters or fragments.",
-  "quick-test_remote_endpoints_must_use_https_http_is_only_allowed_for": "Remote endpoints must use https://. http:// is only allowed for loopback addresses.",
   "quick-test_a_full_url_must_end_with_chat_completions": "A full URL must end with /chat/completions.",
   "reports_plan_report": "Plan report",
   "reports_suite_aria": "Suite {{value1}}",
@@ -528,5 +527,6 @@
   "catalog_type_response_probe": "Response fingerprint probe",
   "catalog_type_legacy_apiaudit": "Built-in compatibility audit",
   "catalog_type_latency_input_ladder": "Input latency ladder",
-  "quick_task_invalid_run_identity": "The quick task start response has no valid Run identity."
+  "quick_task_invalid_run_identity": "The quick task start response has no valid Run identity.",
+  "run_invalid_run_identity": "The plan start response has no valid Run identity."
 }

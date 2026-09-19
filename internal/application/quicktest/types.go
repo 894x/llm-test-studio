@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	PerformanceSchemaVersion                = 3
-	PerformanceSchemaVersionV2              = 2
-	LegacyPerformanceSchemaVersion          = 1
+	PerformanceSchemaVersion = 1
 	MaxPerformanceRequests           uint64 = 10_000
 	MaxPerformanceConcurrency        uint32 = 256
 	MaxPerformanceInFlight           uint32 = load.MaxOpenLoopInFlight
@@ -43,7 +41,6 @@ const (
 
 const (
 	ErrorInvalidRequest       domain.ErrorCode = "invalid_request"
-	ErrorInsecureEndpoint     domain.ErrorCode = "insecure_endpoint"
 	ErrorCredentialRequired   domain.ErrorCode = "credential_required"
 	ErrorAuthenticationFailed domain.ErrorCode = "authentication_failed"
 )
@@ -384,14 +381,13 @@ type PerformanceClock interface {
 type PerformanceReportIDFactory func(time.Time) (string, error)
 
 type Dependencies struct {
-	TaskCredential              func(context.Context, string, string) (*credentials.Lease, error)
-	TaskPath                    func(context.Context, TaskReference, string) (string, error)
-	Transport                   http.RoundTripper
-	AllowLoopbackHTTPForTesting bool
-	ChannelConnections          ChannelConnectionResolver
-	Archive                     PerformanceArchive
-	Clock                       PerformanceClock
-	IDFactory                   PerformanceReportIDFactory
+	TaskCredential     func(context.Context, string, string) (*credentials.Lease, error)
+	TaskPath           func(context.Context, TaskReference, string) (string, error)
+	Transport          http.RoundTripper
+	ChannelConnections ChannelConnectionResolver
+	Archive            PerformanceArchive
+	Clock              PerformanceClock
+	IDFactory          PerformanceReportIDFactory
 }
 
 // TaskReference pins the same Suite definitions used by a quick task, including

@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "glm53.tools.count_128",
   "name": "GLM 5.3 · 工具数量 128",
   "dimension": "glm53.tools",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

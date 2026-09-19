@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "wan30.video.ratio_8_1",
   "name": "Wan 3.0 · 视频宽高比 8:1",
   "dimension": "media-boundary",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "wan-video",
     "type_version": 1,
     "spec": {

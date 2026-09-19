@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "frequency_penalty_above_fixed",
   "name": "固定采样 · frequency_penalty=0.1 应拒绝",
   "dimension": "parameters",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

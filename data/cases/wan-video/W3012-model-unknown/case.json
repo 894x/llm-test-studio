@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "wan30.model.unknown",
   "name": "Wan 3.0 · model 为未知枚举",
   "dimension": "parameters",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "wan-video",
     "type_version": 1,
     "spec": {

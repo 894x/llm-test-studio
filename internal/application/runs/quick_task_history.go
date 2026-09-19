@@ -53,7 +53,7 @@ func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskD
 		return QuickTaskDetail{}, err
 	}
 	task := snapshot.QuickTask
-	return QuickTaskDetail{SchemaVersion: 2, RunID: runID, Suite: QuickTaskSuite{Suite: *snapshot.Entries[0].Suite, CaseCount: len(snapshot.Entries[0].Cases)}, Model: snapshot.Channel.UpstreamModelName,
+	return QuickTaskDetail{SchemaVersion: 1, RunID: runID, Suite: QuickTaskSuite{Suite: *snapshot.Entries[0].Suite, CaseCount: len(snapshot.Entries[0].Cases)}, Model: snapshot.Channel.UpstreamModelName,
 		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID, CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot), Inputs: snapshot.Entries[0].Parameters, Seed: snapshot.PlanDocument.Seed, RequestTimeoutMS: snapshot.Entries[0].Load.RequestTimeoutMS}, nil
 }
 

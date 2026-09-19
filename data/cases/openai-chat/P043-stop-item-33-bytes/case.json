@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "stop_item_33_bytes",
   "name": "Stop · 单项 33 字节应拒绝",
   "dimension": "parameters",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

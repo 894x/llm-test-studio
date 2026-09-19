@@ -13,7 +13,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
-const CurrentTestCaseDefinitionSchemaVersion = 2
+const CurrentTestCaseDefinitionSchemaVersion = 1
 
 type CaseType string
 

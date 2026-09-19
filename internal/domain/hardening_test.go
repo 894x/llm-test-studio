@@ -96,7 +96,7 @@ func validRunSnapshot() RunSnapshot {
 
 func TestRunSnapshotRejectsLegacySchema(t *testing.T) {
 	snapshot := validRunSnapshot()
-	snapshot.SchemaVersion = 1
+	snapshot.SchemaVersion = 99
 	if err := snapshot.Validate(); err == nil {
 		t.Fatal("legacy Run snapshot validated")
 	}
@@ -597,7 +597,7 @@ func TestReportV2SerializesEveryRequiredSectionAndValidatesNestedData(t *testing
 
 func TestReportRejectsSchemaOne(t *testing.T) {
 	report := validReport()
-	report.SchemaVersion = 1
+	report.SchemaVersion = 99
 	if err := report.Validate(); err == nil {
 		t.Fatal("schema 1 report validated")
 	}

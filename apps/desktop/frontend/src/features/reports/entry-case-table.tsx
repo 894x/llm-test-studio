@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
@@ -13,12 +13,40 @@ import type { ReportCaseDetail, ReportEntryDetail, ReportResult } from "./data"
 const PAGE_SIZE = 50
 const DETAIL_PAGE_SIZE = 20
 
-export function EntryCaseTable({ entry }: { entry: ReportEntryDetail }) {
+export function EntryCaseTable({
+  entry,
+  selectedCaseID = "",
+  caseNavigationRequest = 0,
+}: {
+  entry: ReportEntryDetail
+  selectedCaseID?: string
+  caseNavigationRequest?: number
+}) {
   const { t } = useTranslation("reports")
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const columns = protocolPresentation(entry.protocol).columns
   const visible = entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  useEffect(() => {
+    if (!selectedCaseID) return
+    const caseIndex = entry.cases.findIndex((caseItem) => caseItem.case_id === selectedCaseID)
+    if (caseIndex < 0) return
+    const selectedPage = Math.floor(caseIndex / PAGE_SIZE)
+    if (selectedPage !== page) {
+      setPage(selectedPage)
+      return
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const row = document.getElementById(reportCaseRowID(entry.entry_id, selectedCaseID))
+      if (!row) return
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      row.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center", inline: "nearest" })
+      row.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [caseNavigationRequest, entry.cases, entry.entry_id, page, selectedCaseID])
+
   return <>
     <div className="overflow-x-auto">
       <Table aria-label={t("protocolDesign.caseTable")} className="min-w-[660px]">
@@ -32,8 +60,20 @@ export function EntryCaseTable({ entry }: { entry: ReportEntryDetail }) {
           const open = expanded === caseItem.case_id
           const detailID = `case-${entry.entry_id}-${caseItem.case_id}`
           return <Fragment key={caseItem.case_id}>
-            <TableRow className="h-9" data-state={open ? "selected" : undefined}>
-              <TableCell className="py-1 pl-2"><Button type="button" variant="ghost" size="sm" className="h-auto min-h-7 max-w-full justify-start whitespace-normal py-1 text-left" aria-expanded={open} aria-controls={detailID} onClick={() => setExpanded(open ? null : caseItem.case_id)}>
+            <TableRow
+              id={reportCaseRowID(entry.entry_id, caseItem.case_id)}
+              className="h-9 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+              data-state={open || selectedCaseID === caseItem.case_id ? "selected" : undefined}
+              aria-selected={selectedCaseID === caseItem.case_id}
+              tabIndex={-1}
+              onClick={() => setExpanded(open ? null : caseItem.case_id)}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return
+                event.preventDefault()
+                setExpanded(open ? null : caseItem.case_id)
+              }}
+            >
+              <TableCell className="py-1 pl-2"><Button type="button" variant="ghost" size="sm" className="h-auto min-h-7 max-w-full justify-start whitespace-normal py-1 text-left" aria-expanded={open} aria-controls={detailID}>
                 {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className="line-clamp-2 break-words">{caseItem.name}</span>
               </Button></TableCell>
               <TableCell className="py-1"><VerificationBadge status={caseItem.verification.status} /></TableCell>
@@ -50,6 +90,10 @@ export function EntryCaseTable({ entry }: { entry: ReportEntryDetail }) {
     </div>
     <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE} onPage={setPage} />
   </>
+}
+
+function reportCaseRowID(entryID: string, caseID: string): string {
+  return `report-case-${entryID}-${caseID}`
 }
 
 export function VerificationBadge({ status }: { status: VerificationStatus }) {

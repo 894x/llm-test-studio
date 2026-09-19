@@ -38,6 +38,7 @@ import {
   type ReportSnapshot,
 } from "@/features/reports/data"
 import {
+  estimateQuickPerformanceOpenLoopRampRequestCap,
   estimateQuickPerformanceOpenLoopRequestCap,
   parseQuickPerformanceProgress,
   parseQuickPerformanceReport,
@@ -137,7 +138,7 @@ export interface DesktopClient extends CatalogActions {
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(): Promise<ComparisonSnapshot>
-  startRunTarget(command: StartRunTargetCommand): Promise<WorkspaceSnapshot>
+  startRunTarget(command: StartRunTargetCommand): Promise<string>
   startQuickTask(command: StartQuickTaskCommand): Promise<string>
   getQuickTask(runId: string): Promise<QuickTaskDetail>
   rememberQuickTaskCredential(command: RememberQuickTaskCredentialCommand): Promise<void>
@@ -298,7 +299,20 @@ export function createFixtureClient(
 			const channel = catalogState.channels.find((item) => item.id === command.channel_id)
 			const mapped = catalogState.channel_models.some((item) => item.model_id === command.model_id && item.channel_id === command.channel_id)
 			if (!plan || !model || !channel || !mapped) throw new DesktopClientError("invalid_identifier")
-			return cloneSnapshot(workspace)
+			const id = nextID()
+			const now = new Date().toISOString()
+			workspace.runs.unshift({
+				id, revision: 1, plan_id: plan.id, plan_revision: plan.revision, plan_name: plan.name,
+				case_count: plan.case_count, observed_case_count: 0,
+				entry_progress: [], model_id: model.id, model_revision: model.revision, model_name: model.name,
+				channel_id: channel.id, channel_revision: channel.revision, channel_name: channel.name,
+				status: "queued", conclusion: "none", load_mode: "fixed_concurrency", concurrency: 1,
+				rate_per_second: 0, planned: plan.case_count, duration_ms: 0, completed: 0,
+				passed: 0, failed: 0, observed: 0, indeterminate: 0, artifact_count: 0,
+				started_at: now, updated_at: now,
+			})
+			workspace.active_run_id = id
+			return id
 		},
     async startQuickTask(command) {
       const suite = command.source_run_id ? quickTasks.get(command.source_run_id)?.suite : catalogState.suites.find((item) => item.id === command.suite_id)
@@ -323,7 +337,7 @@ export function createFixtureClient(
         artifact_count: 0, started_at: now, updated_at: now,
       })
       workspace.active_run_id = id
-      quickTasks.set(id, { schema_version: 2, seed:command.seed,request_timeout_ms:command.request_timeout_ms, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
+      quickTasks.set(id, { schema_version: 1, seed:command.seed,request_timeout_ms:command.request_timeout_ms, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
       return id
     },
     async getQuickTask(runId) {
@@ -573,7 +587,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 				"comparison_unavailable",
 			),
 		startRunTarget: async (command) =>
-			callBinding(() => binding.StartRunTarget(command), parseSnapshot),
+			callBinding(() => binding.StartRunTarget(command), (value) => {
+				if (!isUUID(value)) throw new DesktopDataError(tx("desktop:run_invalid_run_identity"))
+				return value
+			}),
 		startQuickTask: async (command) =>
 			callBinding(() => binding.StartQuickTask(command), (value) => {
         if (!isUUID(value)) throw new DesktopDataError(tx("desktop:quick_task_invalid_run_identity"))
@@ -874,7 +891,7 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     ? undefined
     : capacityResult.rungs[capacityResult.selected_rung_index]
   return {
-    schema_version: 3,
+    schema_version: 1,
     archived: false,
     archive_status: "not_attempted",
     model_id: command.model_id,
@@ -932,12 +949,15 @@ function fixtureHasPhaseThreeConfiguration(command: QuickPerformanceCommand): bo
 }
 
 function fixtureQuickPerformanceBudget(command: QuickPerformanceCommand): NonNullable<QuickPerformanceReport["request_budget"]> {
-  const rampIntensity = command.ramp_duration_ms / 1_000 * command.rate_per_second * 0.55
   const rampCap = command.ramp_duration_ms === 0
     ? 0
     : command.load_mode === "fixed_concurrency"
       ? command.ramp_request_cap
-      : fixtureOpenLoopRequestCap(rampIntensity, command.arrival_pattern)
+      : estimateQuickPerformanceOpenLoopRampRequestCap(
+          command.ramp_duration_ms,
+          command.rate_per_second,
+          command.arrival_pattern,
+        )
   const measuredCap = command.capacity_enabled
     ? command.request_count * fixtureQuickPerformanceCapacityTargets(command).length
     : command.request_count > 0
@@ -1000,10 +1020,6 @@ function fixtureQuickPerformanceSLOAssessment(
     goodput_qps: totalDurationMS > 0 ? goodRequests / (totalDurationMS / 1_000) : 0,
     violations,
   }
-}
-
-function fixtureOpenLoopRequestCap(intensity: number, pattern: QuickPerformanceCommand["arrival_pattern"]): number {
-  return pattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
 }
 
 function fixtureQuickPerformanceTraffic(
@@ -1230,7 +1246,7 @@ function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
  const verification = {status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed_case_count,failed:summary.failed_case_count,observed:summary.observed_case_count,indeterminate:0}
  return {
-  schema_version:3,source:"run",
+  schema_version:1,source:"run",
   report:{id:summary.id,run_id:summary.run_id!,run_status:summary.run_status,generated_at:summary.generated_at,protocol:"openai-chat",
    model:{id:"10000000-0000-4000-8000-000000000001",name:summary.model_name},channel:{id:"10000000-0000-4000-8000-000000000002",name:summary.channel_name},
    environment:{os:"windows",arch:"amd64",region:"local",network_egress:"direct",app_version:"fixture",engine_version:"go-core"},
@@ -1286,7 +1302,7 @@ function parseBoolean(value: unknown): boolean {
 }
 
 function parseSnapshot(value: unknown): WorkspaceSnapshot {
-  if (!isRecord(value) || value.schema_version !== 2) {
+  if (!isRecord(value) || value.schema_version !== 1) {
     throw new DesktopDataError(tx("desktop:app_unsupported_desktop_data_protocol_version"))
   }
   if (!Array.isArray(value.plans) || !Array.isArray(value.runs)) {
@@ -1311,7 +1327,7 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
     throw new DesktopDataError(tx("desktop:app_invalid_active_desktop_run_reference"))
   }
   return {
-    schema_version: 2,
+    schema_version: 1,
     plans,
     runs,
     ...(value.active_run_id === undefined

@@ -158,6 +158,7 @@ func (query *recordingReportingQuery) ExportLocalized(ctx context.Context, _ str
 type recordingRunCommands struct {
 	startIDs     []string
 	startTargets []runs.StartCommand
+	startRunID   string
 	quickTasks   []runs.QuickTaskCommand
 	stopIDs      []string
 	cancelIDs    []string
@@ -241,7 +242,11 @@ func (commands *recordingRunCommands) StartTarget(_ context.Context, command run
 	if commands.commandEnded != nil {
 		*commands.commandEnded = true
 	}
-	return "", commands.startErr
+	runID := commands.startRunID
+	if runID == "" {
+		runID = "44444444-4444-4444-8444-444444444444"
+	}
+	return runID, commands.startErr
 }
 
 func (commands *recordingRunCommands) StopSending(_ context.Context, id string) error {
@@ -572,7 +577,6 @@ func TestDesktopAppCatalogCommandReportsCommittedRefreshFailureWithoutRepeatingM
 }
 
 func TestDesktopAppCommandsReturnAuthoritativeWorkspaceAfterSuccess(t *testing.T) {
-	const planID = "11111111-1111-4111-8111-111111111111"
 	const runID = "22222222-2222-4222-8222-222222222222"
 	tests := []struct {
 		name       string
@@ -580,9 +584,6 @@ func TestDesktopAppCommandsReturnAuthoritativeWorkspaceAfterSuccess(t *testing.T
 		invoke     func(*DesktopApp, string) (workspace.Snapshot, error)
 		calledWith func(*recordingRunCommands) []string
 	}{
-		{name: "start run", id: planID, invoke: func(app *DesktopApp, id string) (workspace.Snapshot, error) {
-			return app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
-		}, calledWith: func(commands *recordingRunCommands) []string { return commands.startIDs }},
 		{name: "stop sending", id: runID, invoke: (*DesktopApp).StopSending, calledWith: func(commands *recordingRunCommands) []string { return commands.stopIDs }},
 		{name: "cancel run", id: runID, invoke: (*DesktopApp).CancelRun, calledWith: func(commands *recordingRunCommands) []string { return commands.cancelIDs }},
 	}
@@ -630,16 +631,19 @@ func TestDesktopAppStartsOneExplicitRuntimeTarget(t *testing.T) {
 		ChannelID: "33333333-3333-4333-8333-333333333333",
 	}
 	commands := &recordingRunCommands{}
-	want := workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion, ActiveRunID: "44444444-4444-4444-8444-444444444444"}
-	app := NewDesktopApp(&recordingWorkspaceQuery{snapshot: want}, commands)
+	query := &recordingWorkspaceQuery{snapshot: workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}}
+	app := NewDesktopApp(query, commands)
 	app.onStartup(context.Background())
 
 	got, err := app.StartRunTarget(command)
 	if err != nil {
 		t.Fatalf("StartRunTarget() error = %v", err)
 	}
-	if got.ActiveRunID != want.ActiveRunID || len(commands.startTargets) != 1 || commands.startTargets[0] != command {
-		t.Fatalf("StartRunTarget() = snapshot:%+v commands:%+v", got, commands.startTargets)
+	if got != "44444444-4444-4444-8444-444444444444" || len(commands.startTargets) != 1 || commands.startTargets[0] != command {
+		t.Fatalf("StartRunTarget() = run:%q commands:%+v", got, commands.startTargets)
+	}
+	if query.calls != 0 {
+		t.Fatalf("StartRunTarget() queried workspace %d times, want 0", query.calls)
 	}
 
 	_, err = app.StartRunTarget(runs.StartCommand{PlanID: command.PlanID, ModelID: "invalid", ChannelID: command.ChannelID})
@@ -650,7 +654,6 @@ func TestDesktopAppStartsOneExplicitRuntimeTarget(t *testing.T) {
 }
 
 func TestDesktopAppCommandErrorsDoNotQueryOrInventWorkspace(t *testing.T) {
-	const planID = "11111111-1111-4111-8111-111111111111"
 	const runID = "22222222-2222-4222-8222-222222222222"
 	commandFailure := errors.New("application command rejected")
 	tests := []struct {
@@ -659,9 +662,6 @@ func TestDesktopAppCommandErrorsDoNotQueryOrInventWorkspace(t *testing.T) {
 		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
 		setup  func(*recordingRunCommands)
 	}{
-		{name: "start run", id: planID, invoke: func(app *DesktopApp, id string) (workspace.Snapshot, error) {
-			return app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
-		}, setup: func(commands *recordingRunCommands) { commands.startErr = commandFailure }},
 		{name: "stop sending", id: runID, invoke: (*DesktopApp).StopSending, setup: func(commands *recordingRunCommands) { commands.stopErr = commandFailure }},
 		{name: "cancel run", id: runID, invoke: (*DesktopApp).CancelRun, setup: func(commands *recordingRunCommands) { commands.cancelErr = commandFailure }},
 	}
@@ -686,6 +686,21 @@ func TestDesktopAppCommandErrorsDoNotQueryOrInventWorkspace(t *testing.T) {
 				t.Fatalf("locally reported error = %v, want application failure", reported)
 			}
 		})
+	}
+	query := &recordingWorkspaceQuery{snapshot: workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}}
+	commands := &recordingRunCommands{startErr: commandFailure}
+	app := NewDesktopApp(query, commands)
+	var reported error
+	app.setErrorReporter(func(err error) { reported = err })
+	app.onStartup(context.Background())
+	_, err := app.StartRunTarget(runs.StartCommand{
+		PlanID:    "11111111-1111-4111-8111-111111111111",
+		ModelID:   "22222222-2222-4222-8222-222222222222",
+		ChannelID: "33333333-3333-4333-8333-333333333333",
+	})
+	assertBindingErrorCode(t, err, desktopCodeOperationFailed)
+	if query.calls != 0 || !errors.Is(reported, commandFailure) {
+		t.Fatalf("failed start queried workspace or lost diagnostic: calls=%d reported=%v", query.calls, reported)
 	}
 }
 
@@ -730,9 +745,6 @@ func TestDesktopAppCommandsRejectInvalidIdentifiersBeforeDelegation(t *testing.T
 		name   string
 		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
 	}{
-		{name: "start run", invoke: func(app *DesktopApp, id string) (workspace.Snapshot, error) {
-			return app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
-		}},
 		{name: "stop sending", invoke: (*DesktopApp).StopSending},
 		{name: "cancel run", invoke: (*DesktopApp).CancelRun},
 	}
@@ -744,6 +756,10 @@ func TestDesktopAppCommandsRejectInvalidIdentifiersBeforeDelegation(t *testing.T
 				assertBindingErrorCode(t, err, "invalid_identifier")
 			})
 		}
+	}
+	for _, id := range invalidIDs {
+		_, err := app.StartRunTarget(runs.StartCommand{PlanID: id, ModelID: "22222222-2222-4222-8222-222222222222", ChannelID: "33333333-3333-4333-8333-333333333333"})
+		assertBindingErrorCode(t, err, desktopCodeInvalidIdentifier)
 	}
 	if len(commands.startIDs)+len(commands.stopIDs)+len(commands.cancelIDs) != 0 {
 		t.Fatalf("invalid identifiers reached commands: start=%v stop=%v cancel=%v", commands.startIDs, commands.stopIDs, commands.cancelIDs)

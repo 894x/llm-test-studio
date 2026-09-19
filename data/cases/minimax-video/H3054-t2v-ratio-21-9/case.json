@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "h3.t2v.ratio_21_9",
   "name": "MiniMax H3 · 文生视频比例 21:9",
   "dimension": "enum",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {

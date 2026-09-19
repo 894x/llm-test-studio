@@ -51,7 +51,7 @@ describe("Wails desktop client", () => {
   it("loads only safe task history and rejects a different Run identity", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const runID = FIXTURE_WORKSPACE.runs[0].id
-    const detail = { schema_version: 2, seed: 1, request_timeout_ms: 60000, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
+    const detail = { schema_version: 1, seed: 1, request_timeout_ms: 60000, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
     binding.GetQuickTask.mockResolvedValueOnce({ ...detail, api_key: "private-key", case_definitions: [{ raw: "hidden" }] })
     await expect(createDesktopClient().getQuickTask(runID)).resolves.toEqual(detail)
     expect(binding.GetQuickTask).toHaveBeenCalledExactlyOnceWith(runID)
@@ -257,7 +257,7 @@ describe("Wails desktop client", () => {
       output_tokens: 32,
     })
 
-    expect(report.schema_version).toBe(3)
+    expect(report.schema_version).toBe(1)
     expect(report.samples[0]).toMatchObject({
       ttfb_ms: 15, ttft_any_ms: 35, ttft_ms: 35, ttft_visible_ms: 45,
       ttst_ms: 60, observed_icl_ms: 25, semantic_chunk_count: 2,
@@ -274,7 +274,7 @@ describe("Wails desktop client", () => {
       ttft: { count: 4, average_ms: 35 },
       semantic_chunk_count: { count: 4, average: 2 },
     })
-    expect(parseQuickPerformanceReport(structuredClone(report))).toMatchObject({ schema_version: 3 })
+    expect(parseQuickPerformanceReport(structuredClone(report))).toMatchObject({ schema_version: 1 })
     expect(report.time_slices?.[1]).toMatchObject({
       start_ms: 2_000,
       end_ms: 2_500,
@@ -408,7 +408,7 @@ describe("Wails desktop client", () => {
       success: false,
       base_url: "",
       endpoint: "",
-      profile: { request_count: 0, duration_ms: 0, concurrency: 0, timeout_ms: 0, input_tokens: 0, output_tokens: 0 },
+      profile: { load_mode: "fixed_concurrency", request_count: 0, duration_ms: 0, concurrency: 0, timeout_ms: 0, input_tokens: 0, output_tokens: 0 },
       progress: {
         phase: "not_started", planned: 0, launched: 0, completed: 0,
         peak_in_flight: 0, succeeded: 0, failed: 0, rejected: 0,
@@ -437,7 +437,17 @@ describe("Wails desktop client", () => {
       ...fixture,
       success: false,
       progress: { ...fixture.progress, succeeded: 3, failed: 1 },
-      metrics: { ...fixture.metrics, succeeded: 3, failed: 1, success_rate_percent: 75 },
+      metrics: {
+        ...fixture.metrics,
+        succeeded: 3,
+        failed: 1,
+        success_rate_percent: 75,
+        ttft_samples: 3,
+        ttfb_samples: 3,
+        ttft_any_samples: 3,
+        ttft_visible_samples: 3,
+        semantic_chunk_count_samples: 3,
+      },
       failures: [{ error_code: "authentication_failed", count: 1 }],
       samples: fixture.samples.map((sample, index) => index === 0 ? {
         ...sample,
@@ -558,12 +568,12 @@ describe("Wails desktop client", () => {
 		expect(report.metrics.schedule_lag_p99_ms).toBe(0)
 	})
 
-	it("parses schema v2 load semantics without fabricating them for legacy reports", async () => {
+	it("parses current load semantics without fabricating them for sparse reports", async () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
 		const fixture = performanceReportFixture()
 		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
 			...fixture,
-			schema_version: 2,
+			schema_version: 1,
 			profile: {
 				...fixture.profile,
 				load_mode: "open_loop",
@@ -579,7 +589,6 @@ describe("Wails desktop client", () => {
 				warmup_requests: 1,
 				ramp_duration_ms: 1_000,
 				ramp_request_cap: 0,
-				slice_duration_ms: 1_000,
 			},
 			progress: { ...fixture.progress, offered: 4, capped: false },
 			metrics: {
@@ -604,15 +613,6 @@ describe("Wails desktop client", () => {
 				traffic: { ...phaseThreeTrafficSummary(15, 15), send_duration_ms: 1_000, total_duration_ms: 1_020 },
 				provider_internal: "drop",
 			},
-			time_slices: [{
-				slice_index: 0, start_ms: 0, end_ms: 320, partial: true,
-				offered: 4, launched: 4, completed: 4, succeeded: 4, failed: 0, rejected: 0,
-				prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20,
-				ttft: { count: 4, p50_ms: 30, p95_ms: 42, p99_ms: 44 },
-				tpot: { count: 4, p50_ms: 4, p95_ms: 6, p99_ms: 7 },
-				e2e: { count: 4, p50_ms: 60, p95_ms: 80, p99_ms: 84 },
-				provider_internal: "drop",
-			}],
 		} as never)
 
 		const v2 = await createDesktopClient().runQuickPerformanceTest({
@@ -626,25 +626,25 @@ describe("Wails desktop client", () => {
 			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
-		expect(v2.schema_version).toBe(2)
+		expect(v2.schema_version).toBe(1)
 			expect(v2.profile).toMatchObject({
 			load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37,
 			arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
 			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
-			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0, slice_duration_ms: 1_000,
+			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0,
 		})
 		expect(v2.progress.offered).toBe(4)
 		expect(v2.progress.capped).toBe(false)
 		expect(v2.request_budget).toEqual({ limit: 10_000, warmup_cap: 1, ramp_cap: 15, measured_cap: 4, total_cap: 20 })
 		expect(v2.ramp).toMatchObject({ shape: "linear_staircase", steps: 10, target_rate_per_second: 12.5 })
-		expect(v2.time_slices?.[0]).toMatchObject({ slice_index: 0, offered: 4, completed: 4 })
+		expect(v2.time_slices).toBeUndefined()
 		expect(v2.metrics).toMatchObject({ offered_qps: 15, launched_qps: 12.5, completed_qps: 11, successful_request_qps: 10 })
 		expect(v2.samples[0]).toMatchObject({ target_input_tokens: 18, target_output_tokens: 28 })
 		expect(JSON.stringify(v2.samples)).not.toContain("must be dropped")
 
 		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
 			...fixture,
-			schema_version: 2,
+			schema_version: 1,
 			profile: { ...fixture.profile, load_mode: "fixed_concurrency" },
 			progress: { ...fixture.progress, offered: 4 },
 			metrics: {
@@ -670,8 +670,12 @@ describe("Wails desktop client", () => {
 		expect(phaseOneV2.profile.workload_mode).toBeUndefined()
 		expect(phaseOneV2.samples[0].target_input_tokens).toBeUndefined()
 
-		binding.RunQuickPerformanceTest.mockResolvedValueOnce(fixture as never)
-		const legacy = await createDesktopClient().runQuickPerformanceTest({
+		const { load_mode: _loadMode, ...sparseProfile } = fixture.profile
+		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
+			...fixture,
+			profile: sparseProfile,
+		} as never)
+		await expect(createDesktopClient().runQuickPerformanceTest({
 			address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
 			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
@@ -681,12 +685,7 @@ describe("Wails desktop client", () => {
 			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
 			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
-		})
-		expect(legacy.schema_version).toBe(1)
-		expect(legacy.profile.load_mode).toBeUndefined()
-		expect(legacy.progress.offered).toBeUndefined()
-		expect(legacy.metrics.offered_qps).toBeUndefined()
-		expect(legacy.metrics.successful_request_qps).toBeUndefined()
+		})).rejects.toThrow("快速性能报告数据结构无效")
 	})
 
 	it("reads complete report details and forwards all export formats", async () => {
@@ -833,7 +832,7 @@ describe("Wails desktop client", () => {
 	})
 
   it.each([
-    [{ ...FIXTURE_WORKSPACE, schema_version: 1 }, "协议版本"],
+    [{ ...FIXTURE_WORKSPACE, schema_version: 99 }, "协议版本"],
     [{ ...FIXTURE_WORKSPACE, plans: [{ id: "broken" }] }, "测试计划"],
     [
       {
@@ -1212,7 +1211,7 @@ function installBinding(
 			SaveReportExport: vi.fn(async () => true),
 			CopyReportPNG: vi.fn(async () => undefined),
 			GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		StartRunTarget: vi.fn(async () => structuredClone(payload)),
+		StartRunTarget: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
 		StartQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
 		GetQuickTask: vi.fn(),
     RememberQuickTaskCredential: vi.fn(async () => undefined), ForgetQuickTaskCredential: vi.fn(async () => undefined),
@@ -1248,13 +1247,26 @@ function installBinding(
 }
 
 function performanceReportFixture() {
+  const fine = {
+    ttfb_ms: 10, ttft_any_ms: 30, ttft_visible_ms: 30, ttst_ms: 0, observed_icl_ms: 0, semantic_chunk_count: 1,
+  }
+  const fineMetrics = {
+    ttft_samples: 4, ttft_p50_ms: 30, ttft_p90_ms: 30, ttft_p95_ms: 30, ttft_p99_ms: 30, ttft_average_ms: 30,
+    ttfb_samples: 4, ttfb_p50_ms: 10, ttfb_p95_ms: 10, ttfb_p99_ms: 10, ttfb_average_ms: 10,
+    ttft_any_samples: 4, ttft_any_p50_ms: 30, ttft_any_p95_ms: 30, ttft_any_p99_ms: 30, ttft_any_average_ms: 30,
+    ttft_visible_samples: 4, ttft_visible_p50_ms: 30, ttft_visible_p95_ms: 30, ttft_visible_p99_ms: 30, ttft_visible_average_ms: 30,
+    ttst_samples: 0, ttst_p50_ms: 0, ttst_p95_ms: 0, ttst_p99_ms: 0, ttst_average_ms: 0,
+    observed_icl_samples: 0, observed_icl_p50_ms: 0, observed_icl_p95_ms: 0, observed_icl_p99_ms: 0, observed_icl_average_ms: 0,
+    semantic_chunk_count_samples: 4, semantic_chunk_count_p50: 1, semantic_chunk_count_p95: 1,
+    semantic_chunk_count_p99: 1, semantic_chunk_count_average: 1,
+  }
   return {
     schema_version: 1, archived: false, archive_status: "not_attempted", model_id: "gpt-test", success: true, address_mode: "base_url",
     base_url: "https://api.example.test/v1",
     endpoint: "https://api.example.test/v1/chat/completions",
-    profile: { request_count: 4, duration_ms: 0, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
+    profile: { load_mode: "fixed_concurrency", request_count: 4, duration_ms: 0, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },
     progress: {
-      phase: "completed", planned: 4, launched: 4, completed: 4,
+      phase: "completed", planned: 4, offered: 4, launched: 4, completed: 4,
       peak_in_flight: 2, succeeded: 4, failed: 0, rejected: 0,
       send_duration_ms: 300, drain_duration_ms: 20, total_duration_ms: 320,
     },
@@ -1262,22 +1274,27 @@ function performanceReportFixture() {
       completed: 4, succeeded: 4, failed: 0, timed_out: 0,
       success_rate_percent: 100, request_qps: 12.5, rpm: 750,
       input_tpm: 15_000, output_tpm: 24_000, total_tpm: 39_000, generation_tps: 400,
-      ttft_p50_ms: 30, ttft_p90_ms: 40, ttft_p95_ms: 42, ttft_p99_ms: 44, ttft_average_ms: 32,
+      ...fineMetrics,
       tpot_p50_ms: 4, tpot_p90_ms: 5, tpot_p95_ms: 6, tpot_p99_ms: 7, tpot_average_ms: 4.5,
       e2e_p50_ms: 60, e2e_p90_ms: 75, e2e_p95_ms: 80, e2e_p99_ms: 84, e2e_average_ms: 65,
 			schedule_lag_p50_ms: 1.5, schedule_lag_p90_ms: 2.7, schedule_lag_p95_ms: 2.85, schedule_lag_p99_ms: 2.97, schedule_lag_average_ms: 1.5,
       prompt_tokens: 80, completion_tokens: 128, cached_tokens: 20, cache_rate_percent: 25,
     },
     samples: [
-      performanceSample(0, 60, 60, 30, 4), performanceSample(1, 75, 74, 40, 5),
-      performanceSample(2, 84, 82, 44, 7), performanceSample(3, 90, 88, 42, 6),
+      performanceSample(0, 60, 60, 30, 4, fine), performanceSample(1, 75, 74, 30, 5, fine),
+      performanceSample(2, 84, 82, 30, 7, fine), performanceSample(3, 90, 88, 30, 6, fine),
     ],
     failures: [],
   }
 }
 
-function performanceSample(requestIndex: number, finished: number, e2e: number, ttft: number, tpot: number) {
-  return { request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished, schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false, prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5 }
+function performanceSample(requestIndex: number, finished: number, e2e: number, ttft: number, tpot: number, fine?: Record<string, number>) {
+  return {
+    request_index: requestIndex, scheduled_offset_ms: 0, started_offset_ms: requestIndex, finished_offset_ms: finished,
+    schedule_lag_ms: requestIndex, e2e_ms: e2e, ttft_ms: ttft, tpot_ms: tpot, http_status: 200, success: true, timed_out: false,
+    prompt_tokens: 20, completion_tokens: 32, cached_tokens: 5,
+    ...(fine ?? {}),
+  }
 }
 
 function phaseThreeTrafficSummary(requestCap: number, completed: number) {

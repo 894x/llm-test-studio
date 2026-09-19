@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "h3.i2v.first_frame",
   "name": "MiniMax H3 · first_frame 图生视频",
   "dimension": "dependency",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {

@@ -16,10 +16,15 @@ import (
 )
 
 const (
-	currentSchemaName    = "0002_protocol_runtime"
+	currentSchemaName    = "0001_protocol_runtime"
 	defaultBusyTime      = 5 * time.Second
-	CurrentSchemaVersion = 2
+	CurrentSchemaVersion = 1
 )
+
+// CurrentSchemaIdentity returns the single operational schema marker.
+func CurrentSchemaIdentity() (version int, name, checksum string) {
+	return CurrentSchemaVersion, currentSchemaName, currentSchemaChecksum()
+}
 
 // ErrSchemaResetRequired classifies databases that do not exactly match the
 // current operational schema. The product intentionally provides no migration
@@ -92,14 +97,14 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 				return fmt.Errorf("apply sqlite migration %s object %q: %w", currentSchemaName, object.name, err)
 			}
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, name, checksum, applied_at, app_version) VALUES(2, ?, ?, ?, ?)`,
+		if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, name, checksum, applied_at, app_version) VALUES(1, ?, ?, ?, ?)`,
 			currentSchemaName, currentSchemaChecksum(), time.Now().UTC().Format(time.RFC3339Nano), options.AppVersion); err != nil {
 			return fmt.Errorf("record sqlite migration %s: %w", currentSchemaName, err)
 		}
-		if _, err := conn.ExecContext(ctx, "PRAGMA user_version = 2"); err != nil {
+		if _, err := conn.ExecContext(ctx, "PRAGMA user_version = 1"); err != nil {
 			return fmt.Errorf("set sqlite user version: %w", err)
 		}
-		version = 2
+		version = 1
 	}
 	if version != CurrentSchemaVersion {
 		return schemaResetRequired("unsupported migration version %d", version)
@@ -215,7 +220,7 @@ func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 		return 0, schemaResetRequired("migration history contains %d rows ending at version %d", count, version)
 	}
 	var name, checksum, appliedAt, appVersion string
-	if err := conn.QueryRowContext(ctx, `SELECT name, checksum, applied_at, app_version FROM schema_migrations WHERE version = 2`).Scan(&name, &checksum, &appliedAt, &appVersion); err != nil {
+	if err := conn.QueryRowContext(ctx, `SELECT name, checksum, applied_at, app_version FROM schema_migrations WHERE version = 1`).Scan(&name, &checksum, &appliedAt, &appVersion); err != nil {
 		return 0, fmt.Errorf("read sqlite migration record: %w", err)
 	}
 	if name != currentSchemaName || checksum != currentSchemaChecksum() {

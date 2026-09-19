@@ -11,7 +11,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
-const CurrentSnapshotSchemaVersion = 4
+const CurrentSnapshotSchemaVersion = 1
 
 type Snapshot struct {
 	SchemaVersion int                    `json:"schema_version"`

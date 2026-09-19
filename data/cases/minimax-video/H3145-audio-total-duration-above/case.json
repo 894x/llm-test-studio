@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "h3.audio.total_duration_above",
   "name": "MiniMax H3 · 参考音频总时长超过 15 秒",
   "dimension": "media-boundary",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {

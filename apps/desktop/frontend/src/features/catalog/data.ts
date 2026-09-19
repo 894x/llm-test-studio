@@ -141,7 +141,7 @@ export interface CatalogActions {
 }
 
 export interface CatalogSnapshot {
-  schema_version: 4
+  schema_version: 1
   case_types: CatalogCaseTypeDescriptor[]
   models: CatalogModel[]
   channels: CatalogChannel[]
@@ -152,7 +152,7 @@ export interface CatalogSnapshot {
 }
 
 export const EMPTY_CATALOG: CatalogSnapshot = {
-  schema_version: 4,
+  schema_version: 1,
   case_types: [],
   models: [],
   channels: [],
@@ -163,7 +163,7 @@ export const EMPTY_CATALOG: CatalogSnapshot = {
 }
 
 export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
-  if (!isRecord(value) || value.schema_version !== 4) {
+  if (!isRecord(value) || value.schema_version !== 1) {
     throw new DesktopDataError(tx("desktop:catalog_unsupported_desktop_catalog_protocol_version"))
   }
   if (
@@ -227,7 +227,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   }
 
   return {
-    schema_version: 4,
+    schema_version: 1,
     case_types: caseTypes,
     models,
     channels,

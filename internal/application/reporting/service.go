@@ -18,7 +18,7 @@ import (
 
 const (
 	CurrentSchemaVersion       = 1
-	CurrentDetailSchemaVersion = 3
+	CurrentDetailSchemaVersion = 1
 	// MaxSnapshotReports is the published latest-first report-list boundary.
 	// Storage ports must never return more entries in one snapshot.
 	MaxSnapshotReports = 100

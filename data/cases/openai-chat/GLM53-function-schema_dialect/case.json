@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "glm53.function.schema_dialect",
   "name": "GLM 5.3 · function.schema_dialect（待验证模板）",
   "dimension": "glm53.function_schema",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

@@ -8,10 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -31,8 +28,8 @@ var (
 type Repository interface {
 	GetPlan(context.Context, string) (domain.Plan, error)
 	ResolvePlanTargetSelection(context.Context, domain.Plan, string, string) (domain.Model, domain.Channel, domain.ChannelModel, error)
-	GetTestCase(context.Context, string) (domain.TestCase, error)
-	GetSuite(context.Context, string) (domain.Suite, error)
+	ListTestCases(context.Context) ([]domain.TestCase, error)
+	ListSuites(context.Context) ([]domain.Suite, error)
 	CreateRun(context.Context, domain.Run) error
 	GetRun(context.Context, string) (domain.Run, error)
 	UpdateRun(context.Context, uint64, domain.Run) error
@@ -103,8 +100,14 @@ type Diagnostic struct {
 	RequestID    string
 	Operation    string
 	ErrorCode    string
+	Duration     time.Duration
 	DroppedCount uint64
 	Err          error
+}
+
+type startPhaseTiming struct {
+	operation string
+	duration  time.Duration
 }
 
 type Dependencies struct {
@@ -120,27 +123,23 @@ type Dependencies struct {
 	Reporter             ReportGenerator
 	ReportError          func(error)
 	ReportDiagnostic     func(Diagnostic)
-	// AllowInsecureLoopback is restricted to explicit test harnesses. Desktop
-	// production construction deliberately leaves it false.
-	AllowInsecureLoopback bool
 }
 
 type Service struct {
-	repository            Repository
-	quickTasks            QuickTaskCatalog
-	caseTypes             *casetypes.Registry
-	credentials           CredentialStore
-	quickTaskCredentials  credentials.Store
-	executor              Executor
-	clock                 Clock
-	metaFactory           MetaFactory
-	environment           EnvironmentProvider
-	reporter              ReportGenerator
-	reportError           func(error)
-	diagnostics           *diagnosticDispatcher
-	allowInsecureLoopback bool
-	recoveryContext       context.Context
-	stopRecovery          context.CancelFunc
+	repository           Repository
+	quickTasks           QuickTaskCatalog
+	caseTypes            *casetypes.Registry
+	credentials          CredentialStore
+	quickTaskCredentials credentials.Store
+	executor             Executor
+	clock                Clock
+	metaFactory          MetaFactory
+	environment          EnvironmentProvider
+	reporter             ReportGenerator
+	reportError          func(error)
+	diagnostics          *diagnosticDispatcher
+	recoveryContext      context.Context
+	stopRecovery         context.CancelFunc
 
 	mu     sync.Mutex
 	active map[string]*runControl
@@ -195,16 +194,26 @@ func New(dependencies Dependencies) (*Service, error) {
 		executor:             dependencies.Executor, clock: dependencies.Clock,
 		metaFactory: factory, environment: dependencies.Environment,
 		reporter: dependencies.Reporter, reportError: dependencies.ReportError,
-		diagnostics:           newDiagnosticDispatcher(dependencies.ReportDiagnostic),
-		allowInsecureLoopback: dependencies.AllowInsecureLoopback,
-		recoveryContext:       recoveryContext, stopRecovery: stopRecovery,
+		diagnostics:     newDiagnosticDispatcher(dependencies.ReportDiagnostic),
+		recoveryContext: recoveryContext, stopRecovery: stopRecovery,
 		active: make(map[string]*runControl),
 	}, nil
 }
 
 func (service *Service) StartTarget(ctx context.Context, command StartCommand) (string, error) {
+	startedAt := time.Now()
 	runID, err := service.PrepareTarget(ctx, command)
-	return service.activatePrepared(ctx, runID, err)
+	if err != nil {
+		return "", err
+	}
+	activationStartedAt := time.Now()
+	runID, err = service.activatePrepared(ctx, runID, nil)
+	if err != nil {
+		return "", err
+	}
+	service.reportStartTiming(runID, "start_run_activate", time.Since(activationStartedAt))
+	service.reportStartTiming(runID, "start_run_total", time.Since(startedAt))
+	return runID, nil
 }
 
 func (service *Service) activatePrepared(ctx context.Context, runID string, err error) (string, error) {
@@ -235,6 +244,8 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	}
 	service.mu.Unlock()
 
+	timings := make([]startPhaseTiming, 0, 5)
+	phaseStartedAt := time.Now()
 	plan, err := service.repository.GetPlan(ctx, command.PlanID)
 	if err != nil {
 		return "", fmt.Errorf("load plan: %w", err)
@@ -242,9 +253,11 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err := plan.Validate(); err != nil {
 		return "", fmt.Errorf("invalid plan: %w", err)
 	}
+	timings = append(timings, startPhaseTiming{operation: "start_run_load_plan", duration: time.Since(phaseStartedAt)})
 	if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
 		return "", ErrNotRunnable
 	}
+	phaseStartedAt = time.Now()
 	model, channel, mapping, err := service.repository.ResolvePlanTargetSelection(ctx, plan, command.ModelID, command.ChannelID)
 	if err != nil {
 		return "", fmt.Errorf("resolve run binding: %w", err)
@@ -253,13 +266,17 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if !channel.Enabled || !bindingMatches {
 		return "", ErrNotRunnable
 	}
+	timings = append(timings, startPhaseTiming{operation: "start_run_resolve_binding", duration: time.Since(phaseStartedAt)})
+	phaseStartedAt = time.Now()
 	entries, err := service.resolveEntries(ctx, plan)
 	if err != nil {
 		return "", err
 	}
-	if channel.CredentialID == "" || !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
+	timings = append(timings, startPhaseTiming{operation: "start_run_resolve_entries", duration: time.Since(phaseStartedAt)})
+	if channel.CredentialID == "" || channel.Validate() != nil {
 		return "", ErrNotRunnable
 	}
+	phaseStartedAt = time.Now()
 	storeRef, refErr := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
 	if refErr != nil {
 		return "", ErrNotRunnable
@@ -268,6 +285,8 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if leaseErr != nil {
 		return "", fmt.Errorf("lease channel credential: %w", leaseErr)
 	}
+	timings = append(timings, startPhaseTiming{operation: "start_run_lease_credential", duration: time.Since(phaseStartedAt)})
+	phaseStartedAt = time.Now()
 	meta, metaErr := service.metaFactory(service.clock.Now())
 	if metaErr != nil {
 		_ = lease.Close()
@@ -282,7 +301,21 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
 		Environment:   service.environment(), PlanDocument: &planDocument, Mapping: &mappingDocument, Entries: entries,
 	}
-	return service.prepareRun(ctx, meta, plan.ID, snapshot, lease)
+	runID, err := service.prepareRun(ctx, meta, plan.ID, snapshot, lease)
+	if err != nil {
+		return "", err
+	}
+	timings = append(timings, startPhaseTiming{operation: "start_run_persist_queued", duration: time.Since(phaseStartedAt)})
+	for _, timing := range timings {
+		service.reportStartTiming(runID, timing.operation, timing.duration)
+	}
+	return runID, nil
+}
+
+func (service *Service) reportStartTiming(runID, operation string, duration time.Duration) {
+	service.report(Diagnostic{
+		RunID: runID, Operation: operation, ErrorCode: "phase_timing", Duration: duration,
+	})
 }
 
 // prepareRun takes ownership of the lease on every path. Both authored Plans
@@ -370,25 +403,6 @@ func (service *Service) ActivateRun(ctx context.Context, runID string) error {
 	control.mu.Unlock()
 	go service.execute(executionContext, control)
 	return nil
-}
-
-func secureCredentialEndpoint(rawURL string, allowInsecureLoopback bool) bool {
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.User != nil || parsed.Hostname() == "" {
-		return false
-	}
-	if parsed.Scheme == "https" {
-		return true
-	}
-	if parsed.Scheme != "http" || !allowInsecureLoopback {
-		return false
-	}
-	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
-	if hostname == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(hostname)
-	return ip != nil && ip.IsLoopback()
 }
 
 func (service *Service) StopSending(ctx context.Context, runID string) error {

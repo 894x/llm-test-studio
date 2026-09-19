@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "openai-chat.glm-5.3.parameter-rejection",
   "name": "GLM 5.3 参数拒绝套件",
   "protocol": "openai-chat",

@@ -6,7 +6,7 @@ import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-
 
 describe("PerformanceStreamingTimingTable", () => {
   it("shows the six compact v3 cohorts and renders an empty cohort entirely as dashes", () => {
-    render(<PerformanceStreamingTimingTable schemaVersion={3} metrics={streamingMetrics()} />)
+    render(<PerformanceStreamingTimingTable metrics={streamingMetrics()} />)
 
     const table = screen.getByRole("table", { name: "流式时序统计" })
     expect(within(table).getByRole("row", { name: /TTFB/ })).toHaveTextContent(/15 ms.*15 ms.*20 ms.*20 ms.*2/)
@@ -20,13 +20,6 @@ describe("PerformanceStreamingTimingTable", () => {
     expect(within(empty).getAllByText("—")).toHaveLength(5)
   })
 
-  it("does not expose fine telemetry for schema-v1 or schema-v2 reports", () => {
-    const { rerender } = render(<PerformanceStreamingTimingTable schemaVersion={1} metrics={streamingMetrics()} />)
-    expect(screen.queryByRole("table", { name: "流式时序统计" })).not.toBeInTheDocument()
-
-    rerender(<PerformanceStreamingTimingTable schemaVersion={2} metrics={streamingMetrics()} />)
-    expect(screen.queryByRole("table", { name: "流式时序统计" })).not.toBeInTheDocument()
-  })
 })
 
 function streamingMetrics(): QuickPerformanceMetrics {

@@ -4,7 +4,7 @@
   "profiles": [
     {
       "directory": "glm-5.3-connectivity",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "openai-chat.glm-5.3.connectivity",
       "name": "GLM 5.3 连通性套件",
       "protocol": "openai-chat",
@@ -31,7 +31,7 @@
     },
     {
       "directory": "glm-5.3-basic",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "openai-chat.glm-5.3.basic",
       "name": "GLM 5.3 基本功能套件",
       "protocol": "openai-chat",
@@ -72,7 +72,7 @@
     },
     {
       "directory": "glm-5.3-parameter-rejection",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "openai-chat.glm-5.3.parameter-rejection",
       "name": "GLM 5.3 参数拒绝套件",
       "protocol": "openai-chat",
@@ -371,7 +371,7 @@
     },
     {
       "directory": "glm-5.3-automatic-regression",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "openai-chat.glm-5.3.automatic-regression",
       "name": "GLM 5.3 自动回归套件",
       "protocol": "openai-chat",
@@ -856,7 +856,7 @@
     },
     {
       "directory": "glm-5.3-complete",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "openai-chat.glm-5.3.complete",
       "name": "GLM 5.3 完整设计（含禁用模板）套件",
       "protocol": "openai-chat",

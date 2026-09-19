@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "wan-video.wan3.0-video-prime.negative",
   "name": "Wan 3.0 Prime · 参数拒绝测试",
   "protocol": "wan-video",

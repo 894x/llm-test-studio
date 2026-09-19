@@ -92,7 +92,7 @@ func TestFilesystemCaseV2RoundTrip(t *testing.T) {
 }
 
 func TestFilesystemCaseRejectsRemovedModelTargets(t *testing.T) {
-	raw := []byte(`{"schema_version":3,"key":"K001","name":"Scoped","dimension":"compatibility","protocol":"openai-chat","model_targets":["model"],"enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{}},"assertions":[]}}}`)
+	raw := []byte(`{"schema_version":1,"key":"K001","name":"Scoped","dimension":"compatibility","protocol":"openai-chat","model_targets":["model"],"enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":1,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{}},"assertions":[]}}}`)
 	if _, err := DecodeFilesystemCase("cases/openai-chat/K001/case.json", raw); err == nil {
 		t.Fatal("accepted removed model_targets")
 	}

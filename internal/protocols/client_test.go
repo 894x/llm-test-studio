@@ -29,7 +29,7 @@ func testClient(t *testing.T, server *httptest.Server, protocol domain.Protocol)
 		EntityRevisionRef: domain.EntityRevisionRef{ID: "00000000-0000-4000-8000-000000000001", Revision: 1},
 		Name:              "test", Protocol: protocol, BaseURL: server.URL, UpstreamModelName: "bound-model",
 	}
-	client, err := protocols.NewClient(protocols.NewRegistry(), lease, channel, server.Client().Transport, protocols.WithLoopbackHTTPForTesting())
+	client, err := protocols.NewClient(protocols.NewRegistry(), lease, channel, server.Client().Transport)
 	if err != nil {
 		t.Fatal(err)
 	}

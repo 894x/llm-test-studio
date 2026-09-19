@@ -41,7 +41,7 @@ const CASE_IDS = {
 const SUITE_ID = "88888888-8888-4888-8888-888888888881"
 
 function caseEditor(_assertionKinds: string[]): Pick<CatalogTestCase, "definition_schema_version" | "type" | "type_version" | "spec"> {
-  return { definition_schema_version: 2, type: "openai-chat", type_version: 1,
+  return { definition_schema_version: 1, type: "openai-chat", type_version: 1,
     spec: { inputs: { prompt: { type: "string", default: "hello" } }, request: { body: { messages: [{ role: "user", content: { $input: "prompt" } }] } }, assertions: [{ id: "http-status", source: "http.status", operator: "equals", value: 200 }] } }
 }
 
@@ -77,7 +77,7 @@ function fixturePlanEntry(
 }
 
 export const FIXTURE_CATALOG: CatalogSnapshot = {
-  schema_version: 4,
+  schema_version: 1,
   case_types: [
     { type: "openai-chat", type_version: 1, label: "OpenAI Chat", category: "protocol", scheduling_owner: "plan", supported_protocols: ["openai-chat"], creatable: true, default_spec: caseEditor([]).spec },
     { type: "seedance", type_version: 1, label: "Seedance", category: "protocol", scheduling_owner: "plan", supported_protocols: ["seedance"], creatable: true, default_spec: { inputs: {}, request: { body: { content: [] } }, assertions: [] } },
@@ -135,7 +135,7 @@ export const FIXTURE_REPORTS: ReportSnapshot = {
 }
 
 export const FIXTURE_WORKSPACE: WorkspaceSnapshot = {
-  schema_version: 2,
+  schema_version: 1,
   active_run_id: "55555555-5555-4555-8555-555555555551",
   plans: [
     plan(PLAN_IDS.copy, "营销文案基准", 36, 2, "fixed_concurrency", 4, 120),

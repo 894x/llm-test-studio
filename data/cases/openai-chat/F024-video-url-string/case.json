@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "must.video_url_string",
   "name": "多模态视频 · video_url 字符串形式",
   "dimension": "multimodal",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

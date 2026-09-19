@@ -236,7 +236,7 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 }
 
 func legacySnapshot(snapshot domain.RunSnapshot) domain.RunSnapshot {
-	snapshot.SchemaVersion = 1
+	snapshot.SchemaVersion = 99
 	snapshot.PlanDocument = nil
 	snapshot.Mapping = nil
 	snapshot.Entries = nil

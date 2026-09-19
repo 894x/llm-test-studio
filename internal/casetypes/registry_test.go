@@ -21,7 +21,7 @@ func TestRegistryExposesOnlyCurrentProtocolDefinitions(t *testing.T) {
 		if !descriptor.Creatable || descriptor.SchedulingOwner != casetypes.SchedulingOwnerPlan {
 			t.Fatalf("invalid descriptor: %+v", descriptor)
 		}
-		definition := domain.TestCaseDefinition{SchemaVersion: 2, Type: descriptor.Type, TypeVersion: 1, Spec: descriptor.DefaultSpec}
+		definition := domain.TestCaseDefinition{SchemaVersion: 1, Type: descriptor.Type, TypeVersion: 1, Spec: descriptor.DefaultSpec}
 		if err := registry.Validate(domain.Protocol(descriptor.Type), definition); err != nil {
 			t.Fatalf("default %s: %v", descriptor.Type, err)
 		}
@@ -39,7 +39,7 @@ func TestRegistryExposesOnlyCurrentProtocolDefinitions(t *testing.T) {
 func TestRegistryRejectsOldSpecWithoutReinterpretation(t *testing.T) {
 	registry := casetypes.MustBuiltinRegistry()
 	definition := domain.TestCaseDefinition{
-		SchemaVersion: 2, Type: "openai-chat", TypeVersion: 1,
+		SchemaVersion: 1, Type: "openai-chat", TypeVersion: 1,
 		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{}},"options":{}}`),
 	}
 	before := string(definition.Spec)

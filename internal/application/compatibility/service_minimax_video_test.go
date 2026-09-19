@@ -36,7 +36,7 @@ func (doer *miniMaxSequenceDoer) Do(request *http.Request) (*http.Response, erro
 func TestRunMiniMaxVideoPollsH3TaskToVerifiedBusinessSuccess(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "minimax-video", "H3001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "H3001",
   "name": "H3 minimum duration",
   "dimension": "boundary",
@@ -46,7 +46,7 @@ func TestRunMiniMaxVideoPollsH3TaskToVerifiedBusinessSuccess(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {
@@ -138,7 +138,7 @@ func TestRunMiniMaxVideoPassesOnlyForStructuredBadRequestRejection(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeCase(t, casesRoot, "minimax-video", "H3002", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "H3002",
   "name": "H3 duration below minimum",
   "dimension": "boundary",
@@ -148,7 +148,7 @@ func TestRunMiniMaxVideoPassesOnlyForStructuredBadRequestRejection(t *testing.T)
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {

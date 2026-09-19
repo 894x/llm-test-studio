@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "wan30.media.link_count_2",
   "name": "Wan 3.0 · 网页链接数量 2 超限",
   "dimension": "boundary",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "wan-video",
     "type_version": 1,
     "spec": {

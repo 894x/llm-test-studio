@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "glm53.user_id.unicode",
   "name": "GLM 5.3 · user_id Unicode 字符",
   "dimension": "glm53.user_id",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

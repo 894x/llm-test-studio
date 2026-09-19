@@ -26,6 +26,13 @@
   "viewAria": "View report: {{name}}",
   "detailError": "Unable to read report details; check local logs",
   "detailLoading": "Reading request details…",
+  "caseMap": {
+    "aria": "Case outcome navigation",
+    "passed": "Passed",
+    "review": "Observed / indeterminate",
+    "failed": "Failed",
+    "caseAria": "Go to case: {{name}}, outcome: {{status}}"
+  },
   "request": {
     "truncated": "Showing the first 1,000 requests; all {{count}} are available in the JSON export.",
     "aria": "Request-level results",

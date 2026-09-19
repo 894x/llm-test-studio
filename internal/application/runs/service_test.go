@@ -17,6 +17,7 @@ import (
 
 func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 	fixture := newRunFixture(t)
+	fixture.channel.BaseURL = "http://api.example.test/v1"
 	repository := &fakeRepository{fixture: fixture}
 	store := credentials.NewMemoryStore()
 	storeRef, err := credentials.StoreRefFromCredential(fixture.credential)
@@ -46,7 +47,7 @@ func TestStartRunPinsPlanExecutesAndPersistsResults(t *testing.T) {
 	}
 	request := <-executor.entered
 	snapshot := request.Run.Snapshot()
-	if snapshot.Model.ID != fixture.model.ID || snapshot.Channel.ID != fixture.channel.ID {
+	if snapshot.Model.ID != fixture.model.ID || snapshot.Channel.ID != fixture.channel.ID || snapshot.Channel.BaseURL != fixture.channel.BaseURL {
 		t.Fatalf("execution snapshot target = %#v", snapshot)
 	}
 	if snapshot.PlanDocument == nil || snapshot.PlanDocument.ID != fixture.plan.ID ||
@@ -174,29 +175,6 @@ func TestStartRunRejectsManualCasesBeforeCreatingDurableState(t *testing.T) {
 	if repository.run.Meta().ID != "" {
 		t.Fatal("manual case created a durable run")
 	}
-}
-
-func TestStartRunRejectsInsecureEndpointBeforeCredentialLease(t *testing.T) {
-	fixture := newRunFixture(t)
-	fixture.channel.BaseURL = "http://api.example.test/v1"
-	repository := &fakeRepository{fixture: fixture}
-	service, err := runs.New(runs.Dependencies{
-		Repository: repository, Credentials: panicCredentialStore{}, Executor: &recordingExecutor{},
-		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer service.Close()
-	if err := startFixtureRun(service, context.Background(), fixture); !errors.Is(err, runs.ErrNotRunnable) {
-		t.Fatalf("StartRun(http endpoint) error = %v, want ErrNotRunnable", err)
-	}
-}
-
-type panicCredentialStore struct{}
-
-func (panicCredentialStore) Get(context.Context, credentials.StoreRef) (*credentials.Lease, error) {
-	panic("credential lease must not be requested for an insecure endpoint")
 }
 
 func TestStartTargetUsesAnExplicitModelAndChannelForComparisonRuns(t *testing.T) {
@@ -895,18 +873,22 @@ func (repository *fakeRepository) ResolvePlanTargetSelection(_ context.Context, 
 	return repository.fixture.model, repository.fixture.channel, repository.fixture.mapping, nil
 }
 
-func (repository *fakeRepository) GetTestCase(_ context.Context, id string) (domain.TestCase, error) {
-	if repository.testCases != nil {
-		return repository.testCases[id], nil
+func (repository *fakeRepository) ListTestCases(context.Context) ([]domain.TestCase, error) {
+	if repository.testCases == nil {
+		return []domain.TestCase{repository.fixture.testCase}, nil
 	}
-	return repository.fixture.testCase, nil
+	testCases := make([]domain.TestCase, 0, len(repository.testCases))
+	for _, testCase := range repository.testCases {
+		testCases = append(testCases, testCase)
+	}
+	return testCases, nil
 }
 
-func (repository *fakeRepository) GetSuite(_ context.Context, id string) (domain.Suite, error) {
-	if repository.fixture.suite.ID == id {
-		return repository.fixture.suite, nil
+func (repository *fakeRepository) ListSuites(context.Context) ([]domain.Suite, error) {
+	if repository.fixture.suite.ID == "" {
+		return []domain.Suite{}, nil
 	}
-	return domain.Suite{}, errors.New("suite not found")
+	return []domain.Suite{repository.fixture.suite}, nil
 }
 
 func (repository *fakeRepository) GetCredentialRef(context.Context, string) (domain.CredentialRef, error) {

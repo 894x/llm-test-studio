@@ -244,12 +244,12 @@ type multiSuiteRepository struct {
 	suites map[string]domain.Suite
 }
 
-func (repository *multiSuiteRepository) GetSuite(_ context.Context, id string) (domain.Suite, error) {
-	suite, ok := repository.suites[id]
-	if !ok {
-		return domain.Suite{}, errors.New("suite not found")
+func (repository *multiSuiteRepository) ListSuites(context.Context) ([]domain.Suite, error) {
+	suites := make([]domain.Suite, 0, len(repository.suites))
+	for _, suite := range repository.suites {
+		suites = append(suites, suite)
 	}
-	return suite, nil
+	return suites, nil
 }
 
 type orderedSuiteExecutor struct {

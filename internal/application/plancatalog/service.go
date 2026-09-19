@@ -18,7 +18,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentFileSchemaVersion = 4
+const CurrentFileSchemaVersion = 1
 
 var (
 	ErrInvalid  = errors.New("plan catalog: invalid input")

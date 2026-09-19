@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const CurrentRunSnapshotSchemaVersion = 4
+const CurrentRunSnapshotSchemaVersion = 1
 
 type RunStatus string
 

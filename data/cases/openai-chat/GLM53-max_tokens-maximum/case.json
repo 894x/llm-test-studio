@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "glm53.max_tokens.maximum",
   "name": "GLM 5.3 · 131072 上限接受（高预算）",
   "dimension": "glm53.max_tokens",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

@@ -12,17 +12,25 @@ import (
 // resolveEntries reads each current reference once and freezes those same values.
 // No provider request or credential access occurs during resolution.
 func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([]domain.RunEntrySnapshot, error) {
-	cases := map[string]domain.TestCase{}
+	testCases, err := service.repository.ListTestCases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load Case catalog: %w", err)
+	}
+	cases, err := indexTestCases(testCases)
+	if err != nil {
+		return nil, err
+	}
+
 	suites := map[string]domain.Suite{}
-	getCase := func(id string) (domain.TestCase, error) {
-		if value, found := cases[id]; found {
-			return value, nil
+	if planContainsSuites(plan) {
+		catalogSuites, listErr := service.repository.ListSuites(ctx)
+		if listErr != nil {
+			return nil, fmt.Errorf("load Suite catalog: %w", listErr)
 		}
-		value, err := service.repository.GetTestCase(ctx, id)
-		if err == nil {
-			cases[id] = value
+		suites, err = indexSuites(catalogSuites)
+		if err != nil {
+			return nil, err
 		}
-		return value, err
 	}
 	entries := make([]domain.RunEntrySnapshot, 0, len(plan.Entries))
 	for _, item := range plan.Entries {
@@ -35,9 +43,14 @@ func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([
 		supplied := map[string]map[string]json.RawMessage{}
 		switch item.TargetKind {
 		case domain.PlanTargetCase:
-			testCase, err := getCase(item.TargetID)
-			if err != nil {
-				return nil, fmt.Errorf("resolve entry %s Case: %w", item.EntryID, err)
+			testCase, found := cases[item.TargetID]
+			if !found {
+				return nil, fmt.Errorf(
+					"%w: entry %s references unavailable Case %s",
+					ErrNotRunnable,
+					item.EntryID,
+					item.TargetID,
+				)
 			}
 			entry.Name, entry.Key = testCase.Name, testCase.Key
 			definitions = append(definitions, testCase)
@@ -45,21 +58,26 @@ func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([
 		case domain.PlanTargetSuite:
 			suite, found := suites[item.TargetID]
 			if !found {
-				var err error
-				suite, err = service.repository.GetSuite(ctx, item.TargetID)
-				if err != nil {
-					return nil, fmt.Errorf("resolve entry %s Suite: %w", item.EntryID, err)
-				}
-				suites[item.TargetID] = suite
+				return nil, fmt.Errorf(
+					"%w: entry %s references unavailable Suite %s",
+					ErrNotRunnable,
+					item.EntryID,
+					item.TargetID,
+				)
 			}
 			if suite.Protocol != plan.Protocol {
 				return nil, fmt.Errorf("%w: entry %s has a different protocol", ErrNotRunnable, item.EntryID)
 			}
 			entry.Suite, entry.Name, entry.Key = &suite, suite.Name, suite.Key
 			for _, ref := range suite.Cases {
-				testCase, err := getCase(ref.CaseID)
-				if err != nil {
-					return nil, fmt.Errorf("resolve entry %s member: %w", item.EntryID, err)
+				testCase, exists := cases[ref.CaseID]
+				if !exists {
+					return nil, fmt.Errorf(
+						"%w: entry %s references unavailable Case %s",
+						ErrNotRunnable,
+						item.EntryID,
+						ref.CaseID,
+					)
 				}
 				definitions = append(definitions, testCase)
 			}
@@ -102,4 +120,41 @@ func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+func indexTestCases(testCases []domain.TestCase) (map[string]domain.TestCase, error) {
+	indexed := make(map[string]domain.TestCase, len(testCases))
+	for _, testCase := range testCases {
+		if !domain.IsUUID(testCase.ID) {
+			return nil, fmt.Errorf("%w: Case catalog contains an invalid identifier", ErrNotRunnable)
+		}
+		if _, duplicate := indexed[testCase.ID]; duplicate {
+			return nil, fmt.Errorf("%w: Case catalog contains duplicate identifier %s", ErrNotRunnable, testCase.ID)
+		}
+		indexed[testCase.ID] = testCase
+	}
+	return indexed, nil
+}
+
+func indexSuites(suites []domain.Suite) (map[string]domain.Suite, error) {
+	indexed := make(map[string]domain.Suite, len(suites))
+	for _, suite := range suites {
+		if !domain.IsUUID(suite.ID) {
+			return nil, fmt.Errorf("%w: Suite catalog contains an invalid identifier", ErrNotRunnable)
+		}
+		if _, duplicate := indexed[suite.ID]; duplicate {
+			return nil, fmt.Errorf("%w: Suite catalog contains duplicate identifier %s", ErrNotRunnable, suite.ID)
+		}
+		indexed[suite.ID] = suite
+	}
+	return indexed, nil
+}
+
+func planContainsSuites(plan domain.Plan) bool {
+	for _, entry := range plan.Entries {
+		if entry.TargetKind == domain.PlanTargetSuite {
+			return true
+		}
+	}
+	return false
 }

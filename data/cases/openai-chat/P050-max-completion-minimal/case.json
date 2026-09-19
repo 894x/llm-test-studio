@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "max_completion_minimal",
   "name": "输出长度 · max_completion_tokens=1 最小代表值",
   "dimension": "parameters",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

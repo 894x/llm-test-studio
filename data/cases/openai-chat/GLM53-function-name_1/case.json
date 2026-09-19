@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "glm53.function.name_1",
   "name": "GLM 5.3 · 函数名长度 1",
   "dimension": "glm53.function_name",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

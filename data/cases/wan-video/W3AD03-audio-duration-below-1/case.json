@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "wan30.reference_audio.duration_below_1",
   "name": "Wan 3.0 · 参考音频时长低于 1 秒",
   "dimension": "media-boundary",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "wan-video",
     "type_version": 1,
     "spec": {

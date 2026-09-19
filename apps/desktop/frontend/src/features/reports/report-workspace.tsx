@@ -26,6 +26,7 @@ import { PerformanceCharts } from "./performance-charts"
 import { PerformanceLatencyTable } from "./performance-latency-table"
 import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-table"
 import { EntryCaseTable, ExecutionDetails, VerificationCounts, VerificationBadge } from "./entry-case-table"
+import { CaseOutcomeNavigator, type ReportCaseTarget } from "./case-outcome-navigator"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
@@ -219,6 +220,8 @@ function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "
 
 function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
   const { t: tx } = useTranslation()
+  const [selectedCase, setSelectedCase] = useState<ReportCaseTarget | null>(null)
+  const [caseNavigationRequest, setCaseNavigationRequest] = useState(0)
   const entries = detail.entries
   const unassignedResults = detail.unassigned_request_results
   const planLabel = tx("desktop:reports_plan_report")
@@ -234,10 +237,20 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
         </div>
         <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
+      <CaseOutcomeNavigator
+        entries={entries}
+        selected={selectedCase}
+        onSelect={(target) => {
+          setSelectedCase(target)
+          setCaseNavigationRequest((request) => request + 1)
+        }}
+      />
       {entries.map((suite) => (
         <SuiteReportSection
           key={suite.entry_id}
           suite={suite}
+          selectedCaseID={selectedCase?.entryID === suite.entry_id ? selectedCase.caseID : ""}
+          caseNavigationRequest={caseNavigationRequest}
         />
       ))}
       {unassignedResults.length ? (
@@ -252,7 +265,15 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
   )
 }
 
-function SuiteReportSection({ suite }: { suite: ReportEntryDetail }) {
+function SuiteReportSection({
+  suite,
+  selectedCaseID,
+  caseNavigationRequest,
+}: {
+  suite: ReportEntryDetail
+  selectedCaseID: string
+  caseNavigationRequest: number
+}) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
   const displayName = suite.name
@@ -287,7 +308,7 @@ function SuiteReportSection({ suite }: { suite: ReportEntryDetail }) {
         <summary className="cursor-pointer rounded-sm text-[11px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("inspector.coreMetrics")}</summary>
         <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
       </details> : null}
-      <EntryCaseTable entry={suite} />
+      <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} />
     </section>
   )
 }
@@ -456,7 +477,6 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <SummaryValue label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(report.metrics.launched_qps)} />
         <SummaryValue label={tx("desktop:quick-test_completed_request_throughput")} value={optionalRequestRate(report.metrics.completed_qps)} />
         <SummaryValue label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(report.metrics.successful_request_qps)} />
-        {report.schema_version === 1 ? <SummaryValue label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatPerformanceInteger(report.metrics.request_qps)} req/s`} /> : null}
         <SummaryValue label={report.profile.load_mode === "open_loop" ? tx("desktop:quick-test_peak_in_flight_limit") : tx("desktop:quick-test_peak_in_flight_configured_concurrency")} value={`${report.progress.peak_in_flight} / ${report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? "—") : (report.progress.capacity_target ?? report.profile.concurrency)}`} />
         <SummaryValue label={tx("desktop:quick-test_total_duration")} value={`${formatMetric(report.progress.total_duration_ms / 1_000)} s`} />
         <SummaryValue label="RPM" value={formatPerformanceInteger(report.metrics.rpm)} />
@@ -469,7 +489,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
       </div>
     </div>
     <PerformanceLatencyTable metrics={report.metrics} />
-    <PerformanceStreamingTimingTable schemaVersion={report.schema_version} metrics={report.metrics} />
+    <PerformanceStreamingTimingTable metrics={report.metrics} />
     {report.time_slices !== undefined ? <PerformanceTimeSliceTable slices={report.time_slices} /> : null}
     <PerformanceCharts samples={report.samples} percentiles={report.metrics} />
     {includeRequestAnalysis ? (
@@ -596,7 +616,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
     </div>
     {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
-    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} />{quick.schema_version === 1 ? <InspectorRow label={tx("desktop:quick-test_legacy_request_throughput")} value={`${formatPerformanceInteger(quick.metrics.request_qps)} req/s`} /> : null}<InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
+    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} /><InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
   </>
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -203,7 +202,7 @@ func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T)
 			if test.format == ExportHTML && (!strings.Contains(string(contents), "Observed ICL（语义块间隔，非 Token ITL） (ms)") || !strings.Contains(string(contents), "语义块数")) {
 				t.Fatal("quick HTML export omits fine streaming telemetry labels")
 			}
-			if test.format == ExportHTML && !strings.Contains(string(contents), "Schema v3") {
+			if test.format == ExportHTML && !strings.Contains(string(contents), "Schema v1") {
 				t.Fatal("quick HTML export shows the wrong performance schema version")
 			}
 			if test.format == ExportJSON && (!strings.Contains(string(contents), `"observed_icl_ms"`) || !strings.Contains(string(contents), `"semantic_chunk_count"`)) {
@@ -235,109 +234,6 @@ func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T)
 	}
 	if string(originalPNG) == string(changedPNG) {
 		t.Fatal("quick PNG export does not reflect observed inter-chunk latency")
-	}
-}
-
-func TestQuickPerformanceSchemaV2ExportKeepsLegacyTTFTPresentation(t *testing.T) {
-	report := validArchivedQuickPerformanceReport()
-	report.SchemaVersion = quicktest.PerformanceSchemaVersionV2
-	service := New(&fakeMixedCatalog{get: report})
-	exported, err := service.Export(context.Background(), report.ReportID, ExportHTML, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	contents, err := base64.StdEncoding.DecodeString(exported.DataBase64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	html := string(contents)
-	if !strings.Contains(html, "TTFT P50 / P95") || !strings.Contains(html, "<th>TTFT ms</th>") {
-		t.Fatal("schema v2 HTML export lost legacy TTFT presentation")
-	}
-	for _, v3Label := range []string{"Streaming timing distributions", "Observed ICL (semantic inter-chunk latency, not Token ITL) (ms)", "Semantic chunks"} {
-		if strings.Contains(html, v3Label) {
-			t.Fatalf("schema v2 HTML export contains v3 label %q", v3Label)
-		}
-	}
-
-	baseline, err := renderPNG(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fineOnly := report
-	fineOnly.Metrics.ObservedICLAverage++
-	ignored, err := renderPNG(Detail{Source: SourceQuickPerformance, Performance: &fineOnly}, DefaultWatermark)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(baseline) != string(ignored) {
-		t.Fatal("schema v2 PNG export rendered v3-only telemetry")
-	}
-	legacyTTFT := report
-	legacyTTFT.Metrics.TTFTP50++
-	visible, err := renderPNG(Detail{Source: SourceQuickPerformance, Performance: &legacyTTFT}, DefaultWatermark)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(baseline) == string(visible) {
-		t.Fatal("schema v2 PNG export does not reflect legacy TTFT")
-	}
-}
-
-func TestQuickPerformanceSchemaV2MarksMissingRequestMetricsUnavailable(t *testing.T) {
-	report := validArchivedQuickPerformanceReport()
-	report.SchemaVersion = quicktest.PerformanceSchemaVersionV2
-	report.Samples[0].Success = false
-	report.Samples[0].TTFTMS = 0
-	report.Samples[0].TPOTMS = 0
-
-	contents, err := renderHTML(Detail{Source: SourceQuickPerformance, Performance: &report}, DefaultWatermark, "en-US")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "<tr><td>0</td><td>failed</td><td>200</td><td>11</td><td>-</td><td>-</td>"
-	if !strings.Contains(string(contents), want) {
-		t.Fatalf("schema v2 missing request metrics did not render unavailable markers: %s", contents)
-	}
-	line := quickPerformanceLegacySampleLine(report.Samples[0])
-	for _, want := range []string{"TTFT -", "TPOT -"} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("legacy PNG request text omits %q: %s", want, line)
-		}
-	}
-}
-
-func TestQuickPerformanceLegacyJSONExportExcludesSchemaV3FieldsRecursively(t *testing.T) {
-	base := legacyQuickPerformanceExportFixture()
-	for _, schemaVersion := range []int{quicktest.LegacyPerformanceSchemaVersion, quicktest.PerformanceSchemaVersionV2} {
-		t.Run(fmt.Sprintf("schema-v%d", schemaVersion), func(t *testing.T) {
-			report := base
-			report.SchemaVersion = schemaVersion
-			exported, err := New(&fakeMixedCatalog{get: report}).Export(context.Background(), report.ReportID, ExportJSON, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			contents, err := base64.StdEncoding.DecodeString(exported.DataBase64)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var document map[string]any
-			if err := json.Unmarshal(contents, &document); err != nil {
-				t.Fatal(err)
-			}
-			performance, ok := document["performance"].(map[string]any)
-			if !ok {
-				t.Fatalf("performance payload = %#v", document["performance"])
-			}
-			for _, forbidden := range schemaV3QuickPerformanceJSONFields() {
-				if jsonTreeContainsKey(performance, forbidden) {
-					t.Fatalf("schema v%d JSON export contains v3-only field %q: %s", schemaVersion, forbidden, contents)
-				}
-			}
-			if !jsonTreeContainsKey(performance, "ttft_ms") || !jsonTreeContainsKey(performance, "ttft_p50_ms") {
-				t.Fatalf("schema v%d JSON export lost legacy TTFT fields: %s", schemaVersion, contents)
-			}
-		})
 	}
 }
 
@@ -561,64 +457,4 @@ func exportFixture(t *testing.T) Detail {
 		t.Fatal(err)
 	}
 	return detail
-}
-
-func legacyQuickPerformanceExportFixture() quicktest.PerformanceReport {
-	report := validArchivedQuickPerformanceReport()
-	report.Profile.SliceDurationMS = 1_000
-	report.RequestBudget = &quicktest.PerformanceRequestBudget{
-		Limit: quicktest.MaxPerformanceRequests, MeasuredCap: 1, TotalCap: 1,
-	}
-	report.Samples[0].ScheduleLagMS = 1
-	report.Metrics.ScheduleLagP50 = 1
-	report.Metrics.ScheduleLagP90 = 1
-	report.Metrics.ScheduleLagP95 = 1
-	report.Metrics.ScheduleLagP99 = 1
-	report.Metrics.ScheduleLagAverage = 1
-	report.TimeSlices = []quicktest.PerformanceTimeSlice{{
-		SliceIndex: 0, StartMS: 0, EndMS: 12, Partial: true,
-		Offered: 1, Launched: 1, Completed: 1, Succeeded: 1,
-		PromptTokens: 10, CompletionTokens: 3, CachedTokens: 2,
-		TTFB:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 1, P95MS: 1, P99MS: 1, AverageMS: 1},
-		TTFTAny:            quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
-		TTFTVisible:        quicktest.PerformanceLatencySlice{Count: 1, P50MS: 3, P95MS: 3, P99MS: 3, AverageMS: 3},
-		TTFT:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
-		TTST:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4, P95MS: 4, P99MS: 4, AverageMS: 4},
-		ObservedICL:        quicktest.PerformanceLatencySlice{Count: 1, P50MS: 2, P95MS: 2, P99MS: 2, AverageMS: 2},
-		SemanticChunkCount: quicktest.PerformanceCountSlice{Count: 1, P50: 2, P95: 2, P99: 2, Average: 2},
-		TPOT:               quicktest.PerformanceLatencySlice{Count: 1, P50MS: 4.5, P95MS: 4.5, P99MS: 4.5, AverageMS: 4.5},
-		E2E:                quicktest.PerformanceLatencySlice{Count: 1, P50MS: 11, P95MS: 11, P99MS: 11, AverageMS: 11},
-	}}
-	return report
-}
-
-func schemaV3QuickPerformanceJSONFields() []string {
-	return []string{
-		"average_ms", "ttfb", "ttft_any", "ttft_visible", "ttst", "observed_icl", "semantic_chunk_count",
-		"ttfb_ms", "ttft_any_ms", "ttft_visible_ms", "ttst_ms", "observed_icl_ms", "ttft_samples",
-		"ttfb_samples", "ttfb_p50_ms", "ttfb_p95_ms", "ttfb_p99_ms", "ttfb_average_ms",
-		"ttft_any_samples", "ttft_any_p50_ms", "ttft_any_p95_ms", "ttft_any_p99_ms", "ttft_any_average_ms",
-		"ttft_visible_samples", "ttft_visible_p50_ms", "ttft_visible_p95_ms", "ttft_visible_p99_ms", "ttft_visible_average_ms",
-		"ttst_samples", "ttst_p50_ms", "ttst_p95_ms", "ttst_p99_ms", "ttst_average_ms",
-		"observed_icl_samples", "observed_icl_p50_ms", "observed_icl_p95_ms", "observed_icl_p99_ms", "observed_icl_average_ms",
-		"semantic_chunk_count_samples", "semantic_chunk_count_p50", "semantic_chunk_count_p95", "semantic_chunk_count_p99", "semantic_chunk_count_average",
-	}
-}
-
-func jsonTreeContainsKey(value any, target string) bool {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, child := range typed {
-			if key == target || jsonTreeContainsKey(child, target) {
-				return true
-			}
-		}
-	case []any:
-		for _, child := range typed {
-			if jsonTreeContainsKey(child, target) {
-				return true
-			}
-		}
-	}
-	return false
 }

@@ -18,11 +18,10 @@ import (
 type ProtocolExecutor struct {
 	registry  *protocols.Registry
 	transport http.RoundTripper
-	options   []protocols.Option
 }
 
-func NewProtocolExecutor(transport http.RoundTripper, options ...protocols.Option) *ProtocolExecutor {
-	return &ProtocolExecutor{registry: protocols.NewRegistry(), transport: transport, options: options}
+func NewProtocolExecutor(transport http.RoundTripper) *ProtocolExecutor {
+	return &ProtocolExecutor{registry: protocols.NewRegistry(), transport: transport}
 }
 
 func (executor *ProtocolExecutor) Execute(ctx context.Context, request ExecutionRequest, emit func(ResultDraft) error) error {
@@ -62,7 +61,7 @@ func (executor *ProtocolExecutor) executePhase(
 		return ErrInvalid
 	}
 	snapshot := request.Run.Snapshot()
-	client, err := protocols.NewClient(executor.registry, request.Credential, snapshot.Channel, executor.transport, executor.options...)
+	client, err := protocols.NewClient(executor.registry, request.Credential, snapshot.Channel, executor.transport)
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "kimi-k3.official-foundation",
   "name": "Kimi K3 官方基础套件",
   "protocol": "openai-chat",

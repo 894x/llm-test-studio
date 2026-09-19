@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "wan-video.wanx2.1-t2v-plus",
   "name": "Wan 2.1 Plus 边界套件",
   "protocol": "wan-video",

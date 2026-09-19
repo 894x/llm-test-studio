@@ -16,7 +16,7 @@ import (
 // ValidateArchivedPerformanceReport protects every persistence and reporting
 // adapter from malformed or unsafe quick-report documents.
 func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, error) {
-	if (report.SchemaVersion != LegacyPerformanceSchemaVersion && report.SchemaVersion != PerformanceSchemaVersionV2 && report.SchemaVersion != PerformanceSchemaVersion) || !domain.IsUUID(report.ReportID) {
+	if report.SchemaVersion != PerformanceSchemaVersion || !domain.IsUUID(report.ReportID) {
 		return time.Time{}, errors.New("quick performance report identity is invalid")
 	}
 	generatedAt, err := time.Parse(time.RFC3339Nano, report.GeneratedAt)
@@ -38,8 +38,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	arrival := normalizedArrivalPattern(report.Profile.ArrivalPattern)
 	workloadMode := normalizedWorkloadMode(report.Profile.WorkloadMode)
 	effectiveProfile := performanceReportEffectiveProfile(report)
-	if report.SchemaVersion >= PerformanceSchemaVersionV2 {
-		if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
+	if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
 			report.Progress.Completed != report.Progress.Offered {
 			return time.Time{}, errors.New("quick performance report load profile is invalid")
 		}
@@ -91,7 +90,6 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			!approximatelyEqual(report.Metrics.LaunchedQPS/report.Metrics.OfferedQPS, float64(report.Progress.Launched)/float64(report.Progress.Offered)) {
 			return time.Time{}, errors.New("quick performance report load rate ratio is inconsistent")
 		}
-	}
 	if report.Progress.Launched == 0 || report.Progress.Completed != uint64(len(report.Samples)) || report.Metrics.Completed != report.Progress.Completed ||
 		report.Progress.Succeeded+report.Progress.Failed != report.Progress.Completed || report.Metrics.Succeeded != report.Progress.Succeeded || report.Metrics.Failed != report.Progress.Failed {
 		return time.Time{}, errors.New("quick performance report counts are inconsistent")
@@ -107,7 +105,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	}
 	seen := make(map[uint64]struct{}, len(report.Samples))
 	var workload *performanceWorkload
-	if report.SchemaVersion >= PerformanceSchemaVersionV2 && workloadMode == PerformanceWorkloadNormal {
+	if workloadMode == PerformanceWorkloadNormal {
 		workload, err = newPerformanceWorkload(report.Profile)
 		if err != nil {
 			return time.Time{}, errors.New("quick performance report workload is invalid")
@@ -136,7 +134,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			!finiteNonNegative(sample.TTFTMS) || !finiteNonNegative(sample.TPOTMS) || sample.FinishedOffsetMS < sample.StartedOffsetMS {
 			return time.Time{}, errors.New("quick performance report sample measurement is invalid")
 		}
-		if report.SchemaVersion == PerformanceSchemaVersion && !validPerformanceFineSample(sample) {
+		if !validPerformanceFineSample(sample) {
 			return time.Time{}, errors.New("quick performance report fine streaming sample is invalid")
 		}
 		if sample.Success {
@@ -171,15 +169,13 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		promptTokens != report.Metrics.PromptTokens || completionTokens != report.Metrics.CompletionTokens || cachedTokens != report.Metrics.CachedTokens {
 		return time.Time{}, errors.New("quick performance report sample totals are inconsistent")
 	}
-	if report.SchemaVersion >= PerformanceSchemaVersionV2 {
-		if !validPerformanceMetricScalars(report.Metrics) {
+	if !validPerformanceMetricScalars(report.Metrics) {
 			return time.Time{}, errors.New("quick performance report metrics are invalid")
 		}
 		expectedMetrics := rebuildPerformanceMetrics(report.Samples, report.Progress, effectiveProfile, arrival)
-		if !equalPerformanceMetrics(report.Metrics, expectedMetrics, report.SchemaVersion == PerformanceSchemaVersion) {
+		if !equalPerformanceMetrics(report.Metrics, expectedMetrics, true) {
 			return time.Time{}, errors.New("quick performance report metrics are inconsistent with its samples")
 		}
-	}
 	if !sort.SliceIsSorted(report.Failures, func(left, right int) bool { return report.Failures[left].ErrorCode < report.Failures[right].ErrorCode }) {
 		return time.Time{}, errors.New("quick performance report failures are not stable")
 	}
@@ -192,8 +188,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	if len(failureCounts) != 0 {
 		return time.Time{}, errors.New("quick performance report failures are incomplete")
 	}
-	if report.SchemaVersion >= PerformanceSchemaVersionV2 {
-		if err := validatePerformanceSLO(report); err != nil {
+	if err := validatePerformanceSLO(report); err != nil {
 			return time.Time{}, err
 		}
 		if err := validatePerformanceCapacity(report); err != nil {
@@ -202,12 +197,9 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		if err := validatePerformancePhaseThree(report); err != nil {
 			return time.Time{}, err
 		}
-	}
-	if report.SchemaVersion == PerformanceSchemaVersion {
-		if err := validatePerformanceFineMetrics(report.Metrics, report.Samples); err != nil {
+	if err := validatePerformanceFineMetrics(report.Metrics, report.Samples); err != nil {
 			return time.Time{}, err
 		}
-	}
 	return generatedAt, nil
 }
 
@@ -336,7 +328,7 @@ func validatePerformancePhaseThree(report PerformanceReport) error {
 		return errors.New("quick performance report time slices are incomplete")
 	}
 	for index := range expectedSlices {
-		if !equalPerformanceTimeSlice(report.TimeSlices[index], expectedSlices[index], report.SchemaVersion == PerformanceSchemaVersion) {
+		if !equalPerformanceTimeSlice(report.TimeSlices[index], expectedSlices[index], true) {
 			return errors.New("quick performance report time slices are inconsistent")
 		}
 	}
@@ -716,13 +708,13 @@ func ValidatePerformanceArchiveSummary(summary PerformanceArchiveSummary) (time.
 
 func validArchivedBaseURL(value string) bool {
 	parsed, err := url.Parse(value)
-	return err == nil && parsed.Scheme == "https" && parsed.Hostname() != "" && parsed.User == nil &&
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" && parsed.User == nil &&
 		parsed.RawQuery == "" && parsed.Fragment == "" && parsed.RawPath == "" && strings.TrimRight(value, "/") == value
 }
 
 func safePerformanceErrorCode(code domain.ErrorCode) bool {
 	switch code {
-	case ErrorInvalidRequest, ErrorInsecureEndpoint, ErrorCredentialRequired, ErrorAuthenticationFailed,
+	case ErrorInvalidRequest, ErrorCredentialRequired, ErrorAuthenticationFailed,
 		load.ErrorNetwork, load.ErrorTimeout, load.ErrorCancelled, load.ErrorHTTP, load.ErrorRateLimited,
 		load.ErrorProtocol, load.ErrorIncompleteStream, load.ErrorSemanticEmpty, load.ErrorResponseTooLarge,
 		load.ErrorClientClosed, load.ErrorSchedulerOverload, load.ErrorExecutorPanic, load.ErrorRequestFailed,

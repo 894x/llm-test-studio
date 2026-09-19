@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "wan30.prompt.length_20000",
   "name": "Wan 3.0 · Prompt 长度上限 20000",
   "dimension": "boundary",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "wan-video",
     "type_version": 1,
     "spec": {

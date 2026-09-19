@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "dynamic_tool_with_content",
   "name": "动态工具 · tools 消息同时携带 content 应拒绝",
   "dimension": "tools",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

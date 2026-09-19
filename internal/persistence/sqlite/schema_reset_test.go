@@ -154,7 +154,7 @@ func TestMigrateClassifiesEveryIncompatibleSchemaAsResetRequired(t *testing.T) {
 	}{
 		{
 			name:   "checksum mismatch",
-			tamper: `UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 2`,
+			tamper: `UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 1`,
 			check: func(t *testing.T, path string) {
 				db := openDatabase(t, path)
 				defer db.Close()

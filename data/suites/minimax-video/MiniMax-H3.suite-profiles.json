@@ -4,7 +4,7 @@
   "profiles": [
     {
       "directory": "MiniMax-H3-connectivity",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "minimax-video.MiniMax-H3.connectivity",
       "name": "MiniMax H3 连通性测试套件",
       "protocol": "minimax-video",
@@ -31,7 +31,7 @@
     },
     {
       "directory": "MiniMax-H3-basic",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "minimax-video.MiniMax-H3.basic",
       "name": "MiniMax H3 基本功能测试套件",
       "protocol": "minimax-video",
@@ -105,7 +105,7 @@
     },
     {
       "directory": "MiniMax-H3-parameter-rejection",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "minimax-video.MiniMax-H3.parameter-rejection",
       "name": "MiniMax H3 参数拒绝测试套件",
       "protocol": "minimax-video",
@@ -242,7 +242,7 @@
     },
     {
       "directory": "MiniMax-H3-automatic-regression",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "minimax-video.MiniMax-H3.automatic-regression",
       "name": "MiniMax H3 自动化核心回归套件",
       "protocol": "minimax-video",
@@ -382,7 +382,7 @@
     },
     {
       "directory": "MiniMax-H3",
-      "schema_version": 2,
+      "schema_version": 1,
       "key": "minimax-video.MiniMax-H3",
       "name": "MiniMax H3 视频生成完整边界套件",
       "protocol": "minimax-video",

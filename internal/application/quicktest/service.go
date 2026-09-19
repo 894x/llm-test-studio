@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -30,7 +29,6 @@ type Service struct {
 	taskCredential     func(context.Context, string, string) (*credentials.Lease, error)
 	taskPath           func(context.Context, TaskReference, string) (string, error)
 	transport          http.RoundTripper
-	allowLoopbackHTTP  bool
 	channelConnections ChannelConnectionResolver
 	archive            PerformanceArchive
 	clock              PerformanceClock
@@ -53,7 +51,6 @@ func New(dependencies Dependencies) *Service {
 		taskCredential:     dependencies.TaskCredential,
 		taskPath:           dependencies.TaskPath,
 		transport:          dependencies.Transport,
-		allowLoopbackHTTP:  dependencies.AllowLoopbackHTTPForTesting,
 		channelConnections: dependencies.ChannelConnections,
 		archive:            dependencies.Archive,
 		clock:              clock,
@@ -163,7 +160,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		command.URL = strings.TrimRight(command.URL, "/") + path
 		command.AddressMode = AddressModeFullURL
 	}
-	address, code := normalizeAddress(command.AddressMode, command.URL, service.allowLoopbackHTTP)
+	address, code := normalizeAddress(command.AddressMode, command.URL)
 	report.BaseURL, report.Endpoint = address.baseURL, address.endpoint
 	if code != "" {
 		report.ErrorCode = code
@@ -772,12 +769,9 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 		_ = store.Delete(context.Background(), storeRef)
 		return nil, func() {}, classifyContext(ctx.Err())
 	}
-	options := make([]openai.Option, 0, 2)
+	options := make([]openai.Option, 0, 1)
 	if onFailureEvidence != nil {
 		options = append(options, openai.WithFailureResponseEvidence(MaxPerformanceEvidenceBodyBytes, onFailureEvidence))
-	}
-	if service.allowLoopbackHTTP {
-		options = append(options, openai.WithLoopbackHTTPForTesting())
 	}
 	channel := domain.ChannelSnapshot{
 		EntityRevisionRef: domain.EntityRevisionRef{ID: quickTestChannelID, Revision: 1},
@@ -1019,7 +1013,7 @@ type normalizedAddress struct {
 	endpoint string
 }
 
-func normalizeAddress(mode AddressMode, rawURL string, allowLoopbackHTTP bool) (normalizedAddress, domain.ErrorCode) {
+func normalizeAddress(mode AddressMode, rawURL string) (normalizedAddress, domain.ErrorCode) {
 	if rawURL == "" || strings.TrimSpace(rawURL) != rawURL || strings.Contains(rawURL, "\\") {
 		return normalizedAddress{}, ErrorInvalidRequest
 	}
@@ -1027,8 +1021,8 @@ func normalizeAddress(mode AddressMode, rawURL string, allowLoopbackHTTP bool) (
 	if err != nil || parsed.Opaque != "" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.ForceQuery || parsed.RawPath != "" {
 		return normalizedAddress{}, ErrorInvalidRequest
 	}
-	if !secureEndpoint(parsed, allowLoopbackHTTP) {
-		return normalizedAddress{}, ErrorInsecureEndpoint
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return normalizedAddress{}, ErrorInvalidRequest
 	}
 	trimmed := strings.TrimRight(rawURL, "/")
 	var baseURL string
@@ -1049,21 +1043,6 @@ func normalizeAddress(mode AddressMode, rawURL string, allowLoopbackHTTP bool) (
 	return normalizedAddress{baseURL: baseURL, endpoint: baseURL + "/chat/completions"}, ""
 }
 
-func secureEndpoint(parsed *url.URL, allowLoopbackHTTP bool) bool {
-	if parsed.Scheme == "https" {
-		return true
-	}
-	if parsed.Scheme != "http" || !allowLoopbackHTTP {
-		return false
-	}
-	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
-	if hostname == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(hostname)
-	return ip != nil && ip.IsLoopback()
-}
-
 func classifyContext(err error) domain.ErrorCode {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return load.ErrorTimeout
@@ -1076,8 +1055,6 @@ func classifyContext(err error) domain.ErrorCode {
 
 func classifyConstruction(err error) domain.ErrorCode {
 	switch {
-	case errors.Is(err, openai.ErrInsecureEndpoint):
-		return ErrorInsecureEndpoint
 	case errors.Is(err, openai.ErrCredentialRequired), errors.Is(err, openai.ErrCredentialUnavailable):
 		return ErrorCredentialRequired
 	case errors.Is(err, openai.ErrClientClosed):

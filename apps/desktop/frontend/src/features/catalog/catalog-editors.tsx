@@ -214,7 +214,7 @@ function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
       key: safeCatalogKey(key, tx("desktop:catalog_case_key")), name: required(name, tx("desktop:catalog_case_name")),
       dimension: required(dimension, tx("desktop:catalog_dimension")), protocol, enabled,
       default: item?.default ?? false, severity: item?.severity ?? "normal" as const,
-      execution_mode: "automatic" as const, definition_schema_version: 2, type: protocol, type_version: 1,
+      execution_mode: "automatic" as const, definition_schema_version: 1, type: protocol, type_version: 1,
       spec: { inputs: recordJSON<unknown>(inputs, t("protocolDesign.inputs")), request: { body: parseJSON(body, t("protocolDesign.body")) },
         assertions: parsedAssertions, ...(operation === "default" ? {} : { operation }), ...(parsedWorkflow === null ? {} : { workflow: parsedWorkflow }) },
     }
@@ -277,7 +277,11 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const move = (index: number, offset: number) => setEntries(current => { const next = [...current]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next })
   return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
     integerField(seed, t("protocolDesign.seed"), 0, Number.MAX_SAFE_INTEGER)
-    const command = { name: required(name, t("common.plan")), protocol, seed,
+    const planName = required(name, t("common.plan"))
+    if (entries.length === 0) {
+      throw new FormValidationError("planEntries", t("protocolDesign.entryRequired"), t("protocolDesign.target"))
+    }
+    const command = { name: planName, protocol, seed,
       entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
         parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
         sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) })) }
@@ -288,14 +292,12 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
     <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
     <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
-    <div className="flex min-w-0 items-end gap-2"><div className="min-w-0 flex-1"><SelectField label={t("protocolDesign.target")} value={target} options={targets} onChange={setTarget} /></div>
-      <Button type="button" size="sm" variant="outline" disabled={!target} onClick={() => {
+    <PlanEntryTargetField target={target} targets={targets} onTargetChange={setTarget} onAdd={() => {
         const [kind, id] = target.split(":")
         setEntries(current => [...current, { draftKey: crypto.randomUUID(), target_kind: kind as "case" | "suite", target_id: id,
           warmup_count: 0, settings: {}, parameters: {}, parametersJSON: "{}", sla_thresholds: {}, slaJSON: "{}", load_mode: "single", concurrency: 1,
           request_count: 1, rate_per_second: 1, duration_ms: 0, request_timeout_ms: 60000 }])
-      }}><PlusIcon />{t("protocolDesign.add")}</Button>
-    </div>
+      }} />
     <div className="divide-y">
       {entries.map((entry, index) => <section key={entry.draftKey} className="space-y-3 py-3">
         <header className="flex min-w-0 items-center gap-2"><h3 className="min-w-0 flex-1 truncate text-xs font-semibold">{index + 1}. {targets.find(([id]) => id === `${entry.target_kind}:${entry.target_id}`)?.[1] ?? entry.target_id}</h3>
@@ -319,6 +321,34 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
       </section>)}
     </div>
   </FormShell>
+}
+
+function PlanEntryTargetField({ target, targets, onTargetChange, onAdd }: {
+  target: string
+  targets: readonly (readonly [string, string])[]
+  onTargetChange: (value: string) => void
+  onAdd: () => void
+}) {
+  const { t } = useTranslation("catalog")
+  const fieldKey = "planEntries"
+  const label = t("protocolDesign.target")
+  const validation = useCatalogValidation(fieldKey, [], label)
+  const id = catalogFieldID(fieldKey)
+  const errorID = `${id}-error`
+  return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={fieldKey} data-field-name={label}>
+    <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <FieldContent>
+      <div className="flex min-w-0 items-center gap-2">
+        <SearchableSelect value={target} onValueChange={onTargetChange} id={id} aria-label={label}
+          aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined}
+          className="min-w-0 flex-1" options={targets.map(([value, optionLabel]) => ({ value, label: optionLabel }))} />
+        <Button type="button" variant="outline" disabled={!target} onClick={() => { validation.clear(); onAdd() }}>
+          <PlusIcon />{t("protocolDesign.add")}
+        </Button>
+      </div>
+      {validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}
+    </FieldContent>
+  </Field>
 }
 
 type CatalogValidationContextValue = {

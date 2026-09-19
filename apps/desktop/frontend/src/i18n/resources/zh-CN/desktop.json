@@ -410,7 +410,6 @@
   "quick-test_the_endpoint_must_not_contain_backslashes": "接口地址不能包含反斜杠。",
   "quick-test_enter_a_valid_url_starting_with_http_or_https": "请输入以 http:// 或 https:// 开头的有效地址。",
   "quick-test_the_endpoint_must_not_contain_credentials_query_parameters_or_fragments": "接口地址不能包含账号、密码、查询参数或片段。",
-  "quick-test_remote_endpoints_must_use_https_http_is_only_allowed_for": "远程接口必须使用 https://；http:// 仅适用于本机回环地址。",
   "quick-test_a_full_url_must_end_with_chat_completions": "完整 URL 必须以 /chat/completions 结尾。",
   "reports_plan_report": "计划报告",
   "reports_suite_aria": "测试套件：{{value1}}",
@@ -528,5 +527,6 @@
   "catalog_type_response_probe": "响应指纹探测",
   "catalog_type_legacy_apiaudit": "内置兼容性审计",
   "catalog_type_latency_input_ladder": "输入阶梯延迟",
-  "quick_task_invalid_run_identity": "快速任务启动响应缺少有效的运行标识"
+  "quick_task_invalid_run_identity": "快速任务启动响应缺少有效的运行标识",
+  "run_invalid_run_identity": "运行计划启动响应缺少有效的运行标识"
 }

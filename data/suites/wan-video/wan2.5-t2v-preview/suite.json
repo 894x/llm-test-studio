@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "wan-video.wan2.5-t2v-preview",
   "name": "Wan 2.5 文生视频边界套件",
   "protocol": "wan-video",

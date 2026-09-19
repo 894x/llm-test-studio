@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "h3.video.size_mb_50_001",
   "name": "MiniMax H3 · 视频 size_mb=50.001",
   "dimension": "media-boundary",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {

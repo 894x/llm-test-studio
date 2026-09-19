@@ -58,6 +58,9 @@
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
   --color-info-strong: var(--info-strong);
+  --color-outcome-pass: var(--outcome-pass);
+  --color-outcome-review: var(--outcome-review);
+  --color-outcome-fail: var(--outcome-fail);
   --radius-sm: calc(var(--radius) * 0.75);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) * 1.25);
@@ -115,6 +118,9 @@
   --info: #586b80;
   --info-soft: #e5ebf1;
   --info-strong: #405469;
+  --outcome-pass: #15803d;
+  --outcome-review: #b7791f;
+  --outcome-fail: #c24152;
 }
 
 .dark {
@@ -166,6 +172,9 @@
   --info: #7c8ea3;
   --info-soft: #29323c;
   --info-strong: #aab9c9;
+  --outcome-pass: #4ade80;
+  --outcome-review: #f2c97d;
+  --outcome-fail: #ff7f91;
 }
 
 @layer base {

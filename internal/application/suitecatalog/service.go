@@ -24,7 +24,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 1
 
 type Source string
 

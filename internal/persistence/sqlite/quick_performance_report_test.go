@@ -20,9 +20,9 @@ const frozenSchemaV1QuickPerformanceReport = `{"address_mode":"base_url","archiv
 
 const frozenSchemaV2PhaseFourQuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","capacity_result":{"highest_passing_rung_index":1,"rungs":[{"failures":[],"index":0,"metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2},"progress":{"capacity_rung_count":2,"capacity_rung_number":1,"capacity_target":1,"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"slo_assessment":{"bad_requests":0,"good_request_percent":100,"good_requests":1,"goodput_qps":80,"status":"passed","target_percent":100,"thresholds":{"e2e_ms":20,"tpot_ms":0,"ttft_ms":0},"total_requests":1,"violations":{"e2e":0,"tpot":0,"transport":0,"ttft":0}},"success":true,"target":1},{"failures":[],"index":1,"metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2},"progress":{"capacity_rung_count":2,"capacity_rung_number":2,"capacity_target":2,"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"slo_assessment":{"bad_requests":0,"good_request_percent":100,"good_requests":1,"goodput_qps":80,"status":"passed","target_percent":100,"thresholds":{"e2e_ms":20,"tpot_ms":0,"ttft_ms":0},"total_requests":1,"violations":{"e2e":0,"tpot":0,"transport":0,"ttft":0}},"success":true,"target":2}],"selected_rung_index":1,"status":"passed"},"endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2},"model_id":"model-a","profile":{"arrival_pattern":"constant","capacity_enabled":true,"capacity_start":1,"capacity_step":1,"concurrency":2,"duration_ms":0,"input_tokens":10,"load_mode":"fixed_concurrency","output_tokens":3,"request_count":1,"slice_duration_ms":100,"slo_e2e_ms":20,"slo_target_percent":100,"timeout_ms":2000,"workload_mode":"fixed"},"progress":{"capacity_rung_count":2,"capacity_rung_number":2,"capacity_target":2,"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"report_id":"77777777-7777-4777-8777-777777777773","request_budget":{"limit":10000,"measured_cap":2,"ramp_cap":0,"total_cap":2,"warmup_cap":0},"samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":1,"scheduled_offset_ms":0,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttft_ms":2}],"schema_version":2,"slo_assessment":{"bad_requests":0,"good_request_percent":100,"good_requests":1,"goodput_qps":80,"status":"passed","target_percent":100,"thresholds":{"e2e_ms":20,"tpot_ms":0,"ttft_ms":0},"total_requests":1,"violations":{"e2e":0,"tpot":0,"transport":0,"ttft":0}},"success":true,"time_slices":[{"cached_tokens":2,"completed":1,"completion_tokens":3,"e2e":{"count":1,"p50_ms":11,"p95_ms":11,"p99_ms":11},"end_ms":12.5,"failed":0,"launched":1,"offered":1,"partial":true,"prompt_tokens":10,"rejected":0,"slice_index":0,"start_ms":0,"succeeded":1,"tpot":{"count":1,"p50_ms":4.5,"p95_ms":4.5,"p99_ms":4.5},"ttft":{"count":1,"p50_ms":2,"p95_ms":2,"p99_ms":2}}]}`
 
-const frozenSchemaV3QuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"observed_icl_average_ms":2,"observed_icl_p50_ms":2,"observed_icl_p95_ms":2,"observed_icl_p99_ms":2,"observed_icl_samples":1,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"semantic_chunk_count_average":2,"semantic_chunk_count_p50":2,"semantic_chunk_count_p95":2,"semantic_chunk_count_p99":2,"semantic_chunk_count_samples":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttfb_average_ms":1,"ttfb_p50_ms":1,"ttfb_p95_ms":1,"ttfb_p99_ms":1,"ttfb_samples":1,"ttft_any_average_ms":2,"ttft_any_p50_ms":2,"ttft_any_p95_ms":2,"ttft_any_p99_ms":2,"ttft_any_samples":1,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2,"ttft_samples":1,"ttft_visible_average_ms":3,"ttft_visible_p50_ms":3,"ttft_visible_p95_ms":3,"ttft_visible_p99_ms":3,"ttft_visible_samples":1,"ttst_average_ms":4,"ttst_p50_ms":4,"ttst_p95_ms":4,"ttst_p99_ms":4,"ttst_samples":1},"model_id":"model-a","profile":{"arrival_pattern":"constant","concurrency":1,"duration_ms":0,"input_tokens":10,"load_mode":"fixed_concurrency","output_tokens":3,"request_count":1,"timeout_ms":2000,"workload_mode":"fixed"},"progress":{"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"report_id":"77777777-7777-4777-8777-777777777773","samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"observed_icl_ms":2,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":1,"scheduled_offset_ms":0,"semantic_chunk_count":2,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttfb_ms":1,"ttft_any_ms":2,"ttft_ms":2,"ttft_visible_ms":3,"ttst_ms":4}],"schema_version":3,"success":true}`
+const frozenSchemaV3QuickPerformanceReport = `{"address_mode":"base_url","archive_status":"archived","archived":true,"base_url":"https://example.com/v1","endpoint":"https://example.com/v1/chat/completions","failures":[],"generated_at":"2026-08-31T15:32:00Z","metrics":{"cache_rate_percent":20,"cached_tokens":2,"completed":1,"completed_qps":80,"completion_tokens":3,"e2e_average_ms":11,"e2e_p50_ms":11,"e2e_p90_ms":11,"e2e_p95_ms":11,"e2e_p99_ms":11,"failed":0,"generation_tps":240,"input_tpm":48000,"launched_qps":80,"observed_icl_average_ms":2,"observed_icl_p50_ms":2,"observed_icl_p95_ms":2,"observed_icl_p99_ms":2,"observed_icl_samples":1,"offered_qps":80,"output_tpm":14400,"prompt_tokens":10,"request_qps":80,"rpm":4800,"schedule_lag_average_ms":1,"schedule_lag_p50_ms":1,"schedule_lag_p90_ms":1,"schedule_lag_p95_ms":1,"schedule_lag_p99_ms":1,"semantic_chunk_count_average":2,"semantic_chunk_count_p50":2,"semantic_chunk_count_p95":2,"semantic_chunk_count_p99":2,"semantic_chunk_count_samples":1,"succeeded":1,"success_rate_percent":100,"successful_request_qps":80,"timed_out":0,"total_tpm":62400,"tpot_average_ms":4.5,"tpot_p50_ms":4.5,"tpot_p90_ms":4.5,"tpot_p95_ms":4.5,"tpot_p99_ms":4.5,"ttfb_average_ms":1,"ttfb_p50_ms":1,"ttfb_p95_ms":1,"ttfb_p99_ms":1,"ttfb_samples":1,"ttft_any_average_ms":2,"ttft_any_p50_ms":2,"ttft_any_p95_ms":2,"ttft_any_p99_ms":2,"ttft_any_samples":1,"ttft_average_ms":2,"ttft_p50_ms":2,"ttft_p90_ms":2,"ttft_p95_ms":2,"ttft_p99_ms":2,"ttft_samples":1,"ttft_visible_average_ms":3,"ttft_visible_p50_ms":3,"ttft_visible_p95_ms":3,"ttft_visible_p99_ms":3,"ttft_visible_samples":1,"ttst_average_ms":4,"ttst_p50_ms":4,"ttst_p95_ms":4,"ttst_p99_ms":4,"ttst_samples":1},"model_id":"model-a","profile":{"arrival_pattern":"constant","concurrency":1,"duration_ms":0,"input_tokens":10,"load_mode":"fixed_concurrency","output_tokens":3,"request_count":1,"timeout_ms":2000,"workload_mode":"fixed"},"progress":{"completed":1,"drain_duration_ms":0,"failed":0,"launched":1,"offered":1,"peak_in_flight":1,"phase":"completed","planned":1,"rejected":0,"send_duration_ms":12.5,"succeeded":1,"total_duration_ms":12.5},"report_id":"77777777-7777-4777-8777-777777777773","samples":[{"cached_tokens":2,"completion_tokens":3,"e2e_ms":11,"finished_offset_ms":12,"http_status":200,"observed_icl_ms":2,"prompt_tokens":10,"request_index":0,"schedule_lag_ms":1,"scheduled_offset_ms":0,"semantic_chunk_count":2,"started_offset_ms":1,"success":true,"timed_out":false,"tpot_ms":4.5,"ttfb_ms":1,"ttft_any_ms":2,"ttft_ms":2,"ttft_visible_ms":3,"ttst_ms":4}],"schema_version":1,"success":true}`
 
-func TestRepositoryLoadsFrozenSchemaV3QuickPerformanceReport(t *testing.T) {
+func TestRepositoryLoadsFrozenCurrentQuickPerformanceReport(t *testing.T) {
 	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV3QuickPerformanceReport)
 	defer repository.Close()
 
@@ -31,7 +31,7 @@ func TestRepositoryLoadsFrozenSchemaV3QuickPerformanceReport(t *testing.T) {
 		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
 	}
 	if loaded.SchemaVersion != quicktest.PerformanceSchemaVersion || len(loaded.Samples) != 1 {
-		t.Fatalf("loaded frozen v3 report = %#v", loaded)
+		t.Fatalf("loaded current report = %#v", loaded)
 	}
 	sample := loaded.Samples[0]
 	if sample.TTFBMS != 1 || sample.TTFTAnyMS != 2 || sample.TTFTVisibleMS != 3 || sample.TTSTMS != 4 ||
@@ -44,36 +44,14 @@ func TestRepositoryLoadsFrozenSchemaV3QuickPerformanceReport(t *testing.T) {
 	}
 }
 
-func TestRepositoryLoadsFrozenSchemaV1QuickPerformanceReport(t *testing.T) {
-	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV1QuickPerformanceReport)
-	defer repository.Close()
-
-	loaded, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
-	if err != nil {
-		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
-	}
-	if loaded.SchemaVersion != quicktest.LegacyPerformanceSchemaVersion || loaded.Profile.LoadMode != "" || loaded.Progress.Offered != 0 {
-		t.Fatalf("loaded legacy report = %#v", loaded)
-	}
-	if loaded.Metrics.OfferedQPS != 0 || loaded.Metrics.LaunchedQPS != 0 || loaded.Metrics.CompletedQPS != 0 || loaded.Metrics.SuccessfulRequestQPS != 0 {
-		t.Fatalf("loaded legacy throughput = %#v", loaded.Metrics)
-	}
-}
-
-func TestRepositoryLoadsFrozenSchemaV2PhaseFourQuickPerformanceReport(t *testing.T) {
-	repository := openRepositoryWithQuickPerformanceDocument(t, frozenSchemaV2PhaseFourQuickPerformanceReport)
-	defer repository.Close()
-
-	loaded, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
-	if err != nil {
-		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
-	}
-	if loaded.SchemaVersion != quicktest.PerformanceSchemaVersionV2 || loaded.CapacityResult == nil || len(loaded.CapacityResult.Rungs) != 2 ||
-		len(loaded.TimeSlices) != 1 || loaded.TimeSlices[0].TTFT.Count != 1 {
-		t.Fatalf("loaded frozen v2 report = %#v", loaded)
-	}
-	if loaded.Metrics.TTFBSamples != 0 || loaded.Samples[0].TTFBMS != 0 || loaded.TimeSlices[0].TTFB.Count != 0 {
-		t.Fatalf("loaded v2 report contains v3 telemetry = %#v", loaded)
+func TestRepositoryRejectsFrozenLegacyQuickPerformanceReports(t *testing.T) {
+	for _, document := range []string{frozenSchemaV1QuickPerformanceReport, frozenSchemaV2PhaseFourQuickPerformanceReport} {
+		repository := openRepositoryWithQuickPerformanceDocument(t, document)
+		_, err := repository.GetQuickPerformanceReport(context.Background(), "77777777-7777-4777-8777-777777777773")
+		if err == nil {
+			t.Fatal("GetQuickPerformanceReport() loaded a superseded performance document")
+		}
+		repository.Close()
 	}
 }
 
@@ -107,8 +85,8 @@ func TestRepositoryReadsPhaseOneSchemaV3DefaultsAsFixedAndConstant(t *testing.T)
 	if err != nil {
 		t.Fatalf("GetQuickPerformanceReport() error = %v", err)
 	}
-	if loaded.Profile.ArrivalPattern != load.ArrivalConstant || loaded.Profile.WorkloadMode != quicktest.PerformanceWorkloadFixed {
-		t.Fatalf("loaded phase-one defaults = %#v", loaded.Profile)
+	if loaded.Profile.ArrivalPattern != "" || loaded.Profile.WorkloadMode != "" {
+		t.Fatalf("loaded omitted arrival/workload = %#v", loaded.Profile)
 	}
 }
 
@@ -228,7 +206,7 @@ func TestRepositoryQuickPerformanceOpenDurationPhaseThreeRoundTrip(t *testing.T)
 func TestRepositoryOnlyWritesCurrentQuickPerformanceSchema(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
-	for _, schemaVersion := range []int{quicktest.LegacyPerformanceSchemaVersion, quicktest.PerformanceSchemaVersionV2} {
+	for _, schemaVersion := range []int{2, 99} {
 		report := validQuickPerformanceReport("77777777-7777-4777-8777-777777777775", "2026-08-31T15:34:00Z")
 		report.SchemaVersion = schemaVersion
 		if err := repository.SaveQuickPerformanceReport(context.Background(), report); err == nil {

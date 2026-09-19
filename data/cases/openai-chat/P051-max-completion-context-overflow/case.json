@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "max_completion_context_overflow",
   "name": "输出长度 · 1M 输出预算加输入超过上下文应拒绝",
   "dimension": "parameters",
@@ -9,7 +9,7 @@
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

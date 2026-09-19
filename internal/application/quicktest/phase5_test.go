@@ -39,7 +39,7 @@ func TestRunPerformanceSchemaV3CarriesFineStreamingTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != 3 || !report.Success || len(report.Samples) != 1 {
+	if report.SchemaVersion != PerformanceSchemaVersion || !report.Success || len(report.Samples) != 1 {
 		t.Fatalf("report header = %#v", report)
 	}
 	sample := report.Samples[0]

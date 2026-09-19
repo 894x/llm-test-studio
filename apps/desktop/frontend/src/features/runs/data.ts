@@ -91,7 +91,7 @@ export type WorkspaceRun = {
 }
 
 export type WorkspaceSnapshot = {
-  schema_version: 2
+  schema_version: 1
   plans: WorkspacePlan[]
   runs: WorkspaceRun[]
   active_run_id?: string

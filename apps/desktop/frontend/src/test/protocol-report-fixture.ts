@@ -15,7 +15,7 @@ export function protocolReportFixture(status: VerificationStatus = "passed"): Fo
     status: "completed", conclusion: { passed: status === "passed", verdict: status, issues: [] }, verification: summary, sla: {}, metrics: {}, timeline: [], distributions: [],
     cases: [{ case_id: reportID(6), revision: 2, key: "reject-parameter", name: "Reject invalid parameter", protocol: "openai-chat", verification: summary, metrics: { e2e_ms: { value: 32, samples: 1, unit: "ms" } }, summary_result: { ...request, id: reportID(11), request_id: undefined }, request_results: [request] }],
   }
-  return { schema_version: 3, source: "run", report: {
+  return { schema_version: 1, source: "run", report: {
     id: reportID(1), run_id: reportID(2), protocol: "openai-chat", run_status: "completed", generated_at: "2026-09-09T14:00:00Z",
     model: { id: reportID(7), name: "test-model" }, channel: { id: reportID(8), name: "test-channel" },
     environment: { os: "windows", arch: "amd64", region: "", network_egress: "", app_version: "test", engine_version: "test" },

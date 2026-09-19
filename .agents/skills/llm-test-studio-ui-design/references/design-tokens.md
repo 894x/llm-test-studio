@@ -12,6 +12,7 @@ Use the established roles rather than literal theme colors:
 - primary, secondary, muted, and disabled text;
 - accent, accent hover, and accent pressed;
 - success, warning, error, and their soft/strong variants.
+- report Case outcome pass, review, and fail colors for the compact outcome navigator.
 
 Consume the roles through CSS custom properties, Tailwind theme mappings, or existing component variants. Do not use `white`, `black`, arbitrary opacity utilities, raw hex values, or JSX `dark:` color branches for interface styling.
 

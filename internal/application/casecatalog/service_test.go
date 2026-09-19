@@ -101,5 +101,5 @@ func writeUserCase(t *testing.T, root, group, name, contents string) {
 }
 
 func caseJSON(id, name string) string {
-	return `{"schema_version":3,"key":"` + id + `","name":"` + name + `","dimension":"compatibility","protocol":"openai-chat","enabled":true,"default":true,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":2,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}}}`
+	return `{"schema_version":1,"key":"` + id + `","name":"` + name + `","dimension":"compatibility","protocol":"openai-chat","enabled":true,"default":true,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":1,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}}}`
 }

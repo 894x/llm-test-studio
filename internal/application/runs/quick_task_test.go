@@ -42,7 +42,7 @@ func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T
 	}
 	t.Cleanup(func() { _ = service.Close() })
 	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000,
-		Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret",
+		Model: "temporary-model", BaseURL: "http://example.test/v1", APIKey: "temporary-secret",
 		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +184,7 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 }
 
 func TestQuickTaskRejectsInvalidSelectionBeforeDurableState(t *testing.T) {
-	for _, scenario := range []string{"unknown input", "wrong type", "insecure endpoint", "mixed channel credentials", "disabled channel"} {
+	for _, scenario := range []string{"unknown input", "wrong type", "mixed channel credentials", "disabled channel"} {
 		t.Run(scenario, func(t *testing.T) {
 			fixture := newRunFixture(t)
 			repository := &fakeRepository{fixture: fixture}
@@ -195,9 +195,6 @@ func TestQuickTaskRejectsInvalidSelectionBeforeDurableState(t *testing.T) {
 				command.Inputs = map[string]json.RawMessage{"missing": json.RawMessage(`"value"`)}
 			case "wrong type":
 				command.Inputs = map[string]json.RawMessage{"prompt": json.RawMessage(`42`)}
-
-			case "insecure endpoint":
-				command.BaseURL = "http://example.test"
 			case "mixed channel credentials":
 				command.ChannelID = fixture.channel.ID
 			case "disabled channel":

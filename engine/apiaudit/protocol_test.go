@@ -117,7 +117,7 @@ func TestCLILoadsAllCurrentProtocolsAndRejectsOldDataWithoutWriting(t *testing.T
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSuite(root, "openai-chat"); err == nil || !strings.Contains(err.Error(), "explicitly upgrade to schema_version 3") {
+	if _, err := LoadSuite(root, "openai-chat"); err == nil || !strings.Contains(err.Error(), "explicitly upgrade to schema_version 1") {
 		t.Fatalf("old format error = %v", err)
 	}
 	after, err := os.ReadFile(path)

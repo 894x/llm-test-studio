@@ -11,7 +11,7 @@ describe("QuickPerformanceRequestAnalysis streaming telemetry", () => {
   it("translates request evidence labels and error codes while preserving the selected request", async () => {
     const user = userEvent.setup()
     const instance = createAppI18n("zh-CN")
-    const result = report(3)
+    const result = report(1)
     result.samples[0].success = false
     result.samples[0].error_code = "authentication_failed"
     render(<I18nextProvider i18n={instance}><QuickPerformanceRequestAnalysis report={result} /></I18nextProvider>)
@@ -26,7 +26,7 @@ describe("QuickPerformanceRequestAnalysis streaming telemetry", () => {
 
   it("labels legacy TTFT as including reasoning and shows every v3 scalar in the selected request", async () => {
     const user = userEvent.setup()
-    render(<QuickPerformanceRequestAnalysis report={report(3)} />)
+    render(<QuickPerformanceRequestAnalysis report={report(1)} />)
 
     expect(screen.getByRole("columnheader", { name: "TTFT（含推理）" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "查看请求 1 详情" }))
@@ -39,18 +39,9 @@ describe("QuickPerformanceRequestAnalysis streaming telemetry", () => {
     expect(within(detail).getByText("语义块数").nextElementSibling).toHaveTextContent("3")
   })
 
-  it("does not fabricate v3 request details for older reports", async () => {
-    const user = userEvent.setup()
-    render(<QuickPerformanceRequestAnalysis report={report(2)} />)
-    await user.click(screen.getByRole("button", { name: "查看请求 1 详情" }))
-
-    const detail = screen.getByRole("region", { name: "请求 1 详情" })
-    expect(within(detail).queryByText("TTFB")).not.toBeInTheDocument()
-    expect(within(detail).queryByText("语义块数")).not.toBeInTheDocument()
-  })
 })
 
-function report(schemaVersion: 2 | 3): QuickPerformanceReport {
+function report(_schemaVersion: 1): QuickPerformanceReport {
   const metrics: QuickPerformanceReport["metrics"] = {
     completed: 1, succeeded: 1, failed: 0, timed_out: 0, success_rate_percent: 100,
     request_qps: 1, rpm: 60, input_tpm: 1_200, output_tpm: 1_920, total_tpm: 3_120, generation_tps: 32,
@@ -60,7 +51,7 @@ function report(schemaVersion: 2 | 3): QuickPerformanceReport {
     schedule_lag_p50_ms: 0, schedule_lag_p90_ms: 0, schedule_lag_p95_ms: 0,
     schedule_lag_p99_ms: 0, schedule_lag_average_ms: 0,
     prompt_tokens: 20, completion_tokens: 32, cached_tokens: 0, cache_rate_percent: 0,
-    ...(schemaVersion === 3 ? {
+    ...({
       ttft_samples: 1,
       ttfb_samples: 1, ttfb_p50_ms: 10, ttfb_p95_ms: 10, ttfb_p99_ms: 10, ttfb_average_ms: 10,
       ttft_any_samples: 1, ttft_any_p50_ms: 20, ttft_any_p95_ms: 20, ttft_any_p99_ms: 20, ttft_any_average_ms: 20,
@@ -69,10 +60,10 @@ function report(schemaVersion: 2 | 3): QuickPerformanceReport {
       observed_icl_samples: 1, observed_icl_p50_ms: 20, observed_icl_p95_ms: 20, observed_icl_p99_ms: 20, observed_icl_average_ms: 20,
       semantic_chunk_count_samples: 1, semantic_chunk_count_p50: 3, semantic_chunk_count_p95: 3,
       semantic_chunk_count_p99: 3, semantic_chunk_count_average: 3,
-    } : {}),
+    }),
   }
   return {
-    schema_version: schemaVersion,
+    schema_version: 1,
     archived: false,
     archive_status: "not_attempted",
     model_id: "gpt-test",
@@ -93,10 +84,10 @@ function report(schemaVersion: 2 | 3): QuickPerformanceReport {
     samples: [{
       request_index: 0, scheduled_offset_ms: 0, started_offset_ms: 0, finished_offset_ms: 60,
       schedule_lag_ms: 0, e2e_ms: 60, ttft_ms: 20, tpot_ms: 1,
-      ...(schemaVersion === 3 ? {
+      ...({
         ttfb_ms: 10, ttft_any_ms: 20, ttft_visible_ms: 30, ttst_ms: 40,
         observed_icl_ms: 20, semantic_chunk_count: 3,
-      } : {}),
+      }),
       http_status: 200, success: true, timed_out: false,
       prompt_tokens: 20, completion_tokens: 32, cached_tokens: 0,
     }],

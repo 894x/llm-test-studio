@@ -26,6 +26,13 @@
   "viewAria": "查看报告：{{name}}",
   "detailError": "无法读取报告详情，请检查本地日志",
   "detailLoading": "正在读取请求明细…",
+  "caseMap": {
+    "aria": "用例结论导航",
+    "passed": "通过",
+    "review": "仅观测 / 无法判定",
+    "failed": "失败",
+    "caseAria": "定位到用例：{{name}}，结论：{{status}}"
+  },
   "request": {
     "truncated": "当前显示前 1,000 条请求；完整 {{count}} 条可导出 JSON。",
     "aria": "请求级结果",

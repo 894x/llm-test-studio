@@ -143,7 +143,7 @@ go run ./cmd/llm-test-studio load run \
   --output load-result.json
 ```
 
-Use `--rate` with `--duration` for open-loop scheduling. Use `--request-file data/cases/<group>/<case>/case.json` to load a case request body. Plain HTTP is rejected unless `--allow-insecure-loopback` explicitly enables a localhost test server.
+Use `--rate` with `--duration` for open-loop scheduling. Use `--request-file data/cases/<group>/<case>/case.json` to load a case request body. Both `http://` and `https://` endpoints are supported; use HTTPS whenever transport confidentiality is required.
 
 Avoid passing credentials directly as command arguments because shells may retain them in history. Windows PowerShell users can set the same variables with `$env:VARIABLE_NAME = 'value'` before running a command.
 

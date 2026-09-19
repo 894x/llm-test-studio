@@ -10,7 +10,7 @@ describe("current protocol report contract", () => {
     expect(detail.entries[0].parameters).toEqual({ content_length: 4000 })
     expect(detail.entries[0].cases[0].request_results[0].observation?.http_status).toBe(400)
   })
-  it.each([1, 2, 4])("rejects unsupported report schema %s without mutating it", schema_version => {
+  it.each([2, 3, 4])("rejects unsupported report schema %s without mutating it", schema_version => {
     const source = { ...protocolReportFixture(), schema_version }; const before = structuredClone(source)
     expect(() => parseReportDetail(source)).toThrow(); expect(source).toEqual(before)
   })

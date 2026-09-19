@@ -4,7 +4,6 @@ export type QuickTestAddressMode = "base_url" | "full_url"
 
 export const QUICK_TEST_ERROR_CODES = [
   "invalid_request",
-  "insecure_endpoint",
   "credential_required",
   "authentication_failed",
   "network_error",
@@ -64,7 +63,7 @@ export interface QuickPerformanceCommand {
 export type QuickPerformanceLoadMode = "fixed_concurrency" | "open_loop"
 export type QuickPerformanceArrivalPattern = "constant" | "poisson"
 export type QuickPerformanceWorkloadMode = "fixed" | "normal"
-export type QuickPerformanceSchemaVersion = 1 | 2 | 3
+export type QuickPerformanceSchemaVersion = 1
 
 export interface QuickPerformanceProfile {
   load_mode?: QuickPerformanceLoadMode
@@ -413,7 +412,7 @@ function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceRespo
 }
 
 export function parseQuickPerformanceReport(value: unknown): QuickPerformanceReport {
-  if (!isRecord(value) || (value.schema_version !== 1 && value.schema_version !== 2 && value.schema_version !== 3)) {
+  if (!isRecord(value) || (value.schema_version !== 1)) {
     throw new DesktopDataError(tx("desktop:quick-test_unsupported_quick_performance_report_protocol_version"))
   }
   const schemaVersion = value.schema_version
@@ -449,22 +448,22 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   const progress = value.progress
   const metrics = value.metrics
   const samples = value.samples.map((sample) => parsePerformanceSample(sample, schemaVersion))
-  const requestBudget = schemaVersion >= 2 && value.request_budget !== undefined
+  const requestBudget = value.request_budget !== undefined
     ? parsePerformanceRequestBudget(value.request_budget)
     : undefined
-  const warmup = schemaVersion >= 2 && value.warmup !== undefined
+  const warmup = value.warmup !== undefined
     ? parsePerformanceTrafficSummary(value.warmup)
     : undefined
-  const ramp = schemaVersion >= 2 && value.ramp !== undefined
+  const ramp = value.ramp !== undefined
     ? parsePerformanceRamp(value.ramp)
     : undefined
-  const timeSlices = schemaVersion >= 2 && value.time_slices !== undefined
+  const timeSlices = value.time_slices !== undefined
     ? parsePerformanceTimeSlices(value.time_slices, value.profile, progress.total_duration_ms, schemaVersion, samples)
     : undefined
-  const sloAssessment = schemaVersion >= 2 && value.slo_assessment !== undefined
+  const sloAssessment = value.slo_assessment !== undefined
     ? parsePerformanceSLOAssessment(value.slo_assessment, value.profile, progress, metrics, samples)
     : undefined
-  const capacityResult = schemaVersion >= 2 && value.capacity_result !== undefined
+  const capacityResult = value.capacity_result !== undefined
     ? parsePerformanceCapacityResult(value.capacity_result, value.profile, schemaVersion)
     : undefined
   const evidenceBytes = samples.reduce((sum, sample) => sum + new TextEncoder().encode(sample.response_evidence?.body ?? "").length, 0)
@@ -476,9 +475,9 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     metrics.succeeded + metrics.failed !== metrics.completed ||
     failureCount !== metrics.failed ||
     samples.length !== metrics.completed ||
-    (schemaVersion >= 2 && !performanceSampleTargetsMatchWorkload(value.profile, samples)) ||
-    (schemaVersion === 3 && !performanceV3MetricsMatchSamples(metrics, samples)) ||
-    (schemaVersion >= 2 && !performancePhaseThreeReportMatches(
+    (!performanceSampleTargetsMatchWorkload(value.profile, samples)) ||
+    (!performanceV3MetricsMatchSamples(metrics, samples)) ||
+    (!performancePhaseThreeReportMatches(
       value.profile,
       progress,
       metrics,
@@ -488,7 +487,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
       timeSlices,
       value.error_code !== undefined,
     )) ||
-    (schemaVersion >= 2 && !performancePhaseFourReportMatches(
+    (!performancePhaseFourReportMatches(
       schemaVersion,
       value.profile,
       value.success,
@@ -524,7 +523,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     base_url: value.base_url,
     endpoint: value.endpoint,
     profile: pickPerformanceProfile(value.profile, schemaVersion),
-    progress: pickPerformanceProgress(progress, schemaVersion >= 2),
+    progress: pickPerformanceProgress(progress, true),
     metrics: pickPerformanceMetrics(metrics, schemaVersion),
     samples,
     failures,
@@ -540,10 +539,10 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
 
 function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceSample {
   if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_sample_data"))
-  const includeTargets = schemaVersion >= 2
+  const includeTargets = true
   const offsets = [value.scheduled_offset_ms, value.started_offset_ms, value.finished_offset_ms, value.schedule_lag_ms, value.e2e_ms, value.ttft_ms, value.tpot_ms]
   const fineLatencyValues = [value.ttfb_ms, value.ttft_any_ms, value.ttft_visible_ms, value.ttst_ms, value.observed_icl_ms]
-  if (schemaVersion === 3 && (!fineLatencyValues.every(isNonNegativeFinite) || !isNonNegativeInteger(value.semantic_chunk_count))) {
+  if (!fineLatencyValues.every(isNonNegativeFinite) || !isNonNegativeInteger(value.semantic_chunk_count)) {
     throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   if (
@@ -573,14 +572,14 @@ function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceS
     schedule_lag_ms: Number(value.schedule_lag_ms),
     e2e_ms: Number(value.e2e_ms),
     ttft_ms: Number(value.ttft_ms),
-    ...(schemaVersion === 3 ? {
+    ...{
       ttfb_ms: Number(value.ttfb_ms),
       ttft_any_ms: Number(value.ttft_any_ms),
       ttft_visible_ms: Number(value.ttft_visible_ms),
       ttst_ms: Number(value.ttst_ms),
       observed_icl_ms: Number(value.observed_icl_ms),
       semantic_chunk_count: Number(value.semantic_chunk_count),
-    } : {}),
+    },
     tpot_ms: Number(value.tpot_ms),
     http_status: value.http_status,
     success: value.success,
@@ -593,7 +592,7 @@ function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceS
     ...(value.error_code === undefined ? {} : { error_code: value.error_code }),
     ...(value.response_evidence === undefined ? {} : { response_evidence: parsePerformanceResponseEvidence(value.response_evidence) }),
   }
-  if (schemaVersion === 3 && !performanceV3SampleMilestonesValid(sample)) {
+  if (!performanceV3SampleMilestonesValid(sample)) {
     throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return sample
@@ -929,7 +928,7 @@ function parsePerformanceTimeSlices(
       throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
     }
   }
-  if (schemaVersion === 3 && !performanceV3TimeSlicesMatchSamples(slices, samples, totalDurationMS, durationMS)) {
+  if (!performanceV3TimeSlicesMatchSamples(slices, samples, totalDurationMS, durationMS)) {
     throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   return slices
@@ -951,7 +950,7 @@ function parsePerformanceTimeSlice(value: unknown, schemaVersion: QuickPerforman
     Number(value.rejected) > Number(value.failed) ||
     Number(value.cached_tokens) > Number(value.prompt_tokens)
   ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
-  const includeFineTelemetry = schemaVersion === 3
+  const includeFineTelemetry = true
   const ttft = parsePerformanceSliceLatency(value.ttft, includeFineTelemetry)
   const tpot = parsePerformanceSliceLatency(value.tpot, includeFineTelemetry)
   const e2e = parsePerformanceSliceLatency(value.e2e, includeFineTelemetry)
@@ -1456,7 +1455,11 @@ function performanceRequestBudgetMatchesProfile(profile: QuickPerformanceProfile
     ? 0
     : profile.load_mode === "fixed_concurrency"
       ? profile.ramp_request_cap ?? 0
-      : estimateOpenLoopRequestCap(rampDurationSeconds * (profile.rate_per_second ?? 0) * 0.55, profile.arrival_pattern ?? "constant")
+      : estimateQuickPerformanceOpenLoopRampRequestCap(
+          profile.ramp_duration_ms ?? 0,
+          profile.rate_per_second ?? 0,
+          profile.arrival_pattern ?? "constant",
+        )
   const capacityTargets = performanceCapacityTargets(profile)
   const measuredCap = profile.request_count > 0
     ? profile.request_count * (capacityTargets?.length ?? 1)
@@ -1467,7 +1470,23 @@ function performanceRequestBudgetMatchesProfile(profile: QuickPerformanceProfile
     budget.measured_cap === measuredCap && budget.total_cap === warmupCap + rampCap + measuredCap
 }
 
-function estimateOpenLoopRequestCap(intensity: number, pattern: QuickPerformanceArrivalPattern): number {
+export function estimateQuickPerformanceOpenLoopRampRequestCap(
+  durationMS: number,
+  ratePerSecond: number,
+  pattern: QuickPerformanceArrivalPattern,
+): number {
+  const steps = 10
+  const durationNanoseconds = durationMS * 1_000_000
+  const quotient = Math.floor(durationNanoseconds / steps)
+  const remainder = durationNanoseconds % steps
+  const boundary = (index: number) => index >= steps
+    ? durationNanoseconds
+    : quotient * index + Math.min(index, remainder)
+  let intensity = 0
+  for (let step = 0; step < steps; step += 1) {
+    const stepRate = ratePerSecond * (step + 1) / steps
+    intensity += stepRate * (boundary(step + 1) - boundary(step)) / 1_000_000_000
+  }
   return pattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
 }
 
@@ -1490,7 +1509,6 @@ function isPerformanceProfile(value: unknown, schemaVersion: QuickPerformanceSch
     isNonNegativeInteger(value.timeout_ms) &&
     isNonNegativeInteger(value.input_tokens) &&
     isNonNegativeInteger(value.output_tokens))) return false
-  if (schemaVersion === 1) return true
   return isPerformanceLoadMode(value.load_mode) &&
     (value.rate_per_second === undefined || isNonNegativeFinite(value.rate_per_second)) &&
     (value.max_in_flight === undefined || isNonNegativeInteger(value.max_in_flight)) &&
@@ -1516,7 +1534,6 @@ function isPerformanceProfile(value: unknown, schemaVersion: QuickPerformanceSch
 function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVersion: QuickPerformanceSchemaVersion): boolean {
   if (!((value.request_count > 0 || value.duration_ms > 0) &&
     value.timeout_ms > 0 && value.input_tokens > 0 && value.output_tokens > 0)) return false
-  if (schemaVersion === 1) return value.concurrency > 0
   if (value.load_mode === "fixed_concurrency") {
     if (!(value.concurrency > 0 && (value.rate_per_second ?? 0) === 0 && (value.max_in_flight ?? 0) === 0)) return false
   } else if (!(value.load_mode === "open_loop" && value.concurrency === 0 &&
@@ -1553,29 +1570,29 @@ function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVers
 
 function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceProfile {
   return {
-    ...(schemaVersion >= 2 ? { load_mode: value.load_mode } : {}),
+    ...(value.load_mode === undefined ? {} : { load_mode: value.load_mode }),
     request_count: value.request_count,
     duration_ms: value.duration_ms,
     concurrency: value.concurrency,
-    ...(schemaVersion >= 2 && value.rate_per_second !== undefined ? { rate_per_second: value.rate_per_second } : {}),
-    ...(schemaVersion >= 2 && value.max_in_flight !== undefined ? { max_in_flight: value.max_in_flight } : {}),
-    ...(schemaVersion >= 2 && value.arrival_pattern !== undefined ? { arrival_pattern: value.arrival_pattern } : {}),
-    ...(schemaVersion >= 2 && value.workload_mode !== undefined ? { workload_mode: value.workload_mode } : {}),
-    ...(schemaVersion >= 2 && value.random_seed !== undefined ? { random_seed: value.random_seed } : {}),
-    ...(schemaVersion >= 2 && value.input_tokens_stddev !== undefined ? { input_tokens_stddev: value.input_tokens_stddev } : {}),
-    ...(schemaVersion >= 2 && value.output_tokens_stddev !== undefined ? { output_tokens_stddev: value.output_tokens_stddev } : {}),
-    ...(schemaVersion >= 2 && value.shared_prefix_tokens !== undefined ? { shared_prefix_tokens: value.shared_prefix_tokens } : {}),
-    ...(schemaVersion >= 2 && value.warmup_requests !== undefined ? { warmup_requests: value.warmup_requests } : {}),
-    ...(schemaVersion >= 2 && value.ramp_duration_ms !== undefined ? { ramp_duration_ms: value.ramp_duration_ms } : {}),
-    ...(schemaVersion >= 2 && value.ramp_request_cap !== undefined ? { ramp_request_cap: value.ramp_request_cap } : {}),
-    ...(schemaVersion >= 2 && value.slice_duration_ms !== undefined ? { slice_duration_ms: value.slice_duration_ms } : {}),
-    ...(schemaVersion >= 2 && value.slo_ttft_ms !== undefined ? { slo_ttft_ms: value.slo_ttft_ms } : {}),
-    ...(schemaVersion >= 2 && value.slo_tpot_ms !== undefined ? { slo_tpot_ms: value.slo_tpot_ms } : {}),
-    ...(schemaVersion >= 2 && value.slo_e2e_ms !== undefined ? { slo_e2e_ms: value.slo_e2e_ms } : {}),
-    ...(schemaVersion >= 2 && value.slo_target_percent !== undefined ? { slo_target_percent: value.slo_target_percent } : {}),
-    ...(schemaVersion >= 2 && value.capacity_enabled !== undefined ? { capacity_enabled: value.capacity_enabled } : {}),
-    ...(schemaVersion >= 2 && value.capacity_start !== undefined ? { capacity_start: value.capacity_start } : {}),
-    ...(schemaVersion >= 2 && value.capacity_step !== undefined ? { capacity_step: value.capacity_step } : {}),
+    ...(value.rate_per_second !== undefined ? { rate_per_second: value.rate_per_second } : {}),
+    ...(value.max_in_flight !== undefined ? { max_in_flight: value.max_in_flight } : {}),
+    ...(value.arrival_pattern !== undefined ? { arrival_pattern: value.arrival_pattern } : {}),
+    ...(value.workload_mode !== undefined ? { workload_mode: value.workload_mode } : {}),
+    ...(value.random_seed !== undefined ? { random_seed: value.random_seed } : {}),
+    ...(value.input_tokens_stddev !== undefined ? { input_tokens_stddev: value.input_tokens_stddev } : {}),
+    ...(value.output_tokens_stddev !== undefined ? { output_tokens_stddev: value.output_tokens_stddev } : {}),
+    ...(value.shared_prefix_tokens !== undefined ? { shared_prefix_tokens: value.shared_prefix_tokens } : {}),
+    ...(value.warmup_requests !== undefined ? { warmup_requests: value.warmup_requests } : {}),
+    ...(value.ramp_duration_ms !== undefined ? { ramp_duration_ms: value.ramp_duration_ms } : {}),
+    ...(value.ramp_request_cap !== undefined ? { ramp_request_cap: value.ramp_request_cap } : {}),
+    ...(value.slice_duration_ms !== undefined ? { slice_duration_ms: value.slice_duration_ms } : {}),
+    ...(value.slo_ttft_ms !== undefined ? { slo_ttft_ms: value.slo_ttft_ms } : {}),
+    ...(value.slo_tpot_ms !== undefined ? { slo_tpot_ms: value.slo_tpot_ms } : {}),
+    ...(value.slo_e2e_ms !== undefined ? { slo_e2e_ms: value.slo_e2e_ms } : {}),
+    ...(value.slo_target_percent !== undefined ? { slo_target_percent: value.slo_target_percent } : {}),
+    ...(value.capacity_enabled !== undefined ? { capacity_enabled: value.capacity_enabled } : {}),
+    ...(value.capacity_start !== undefined ? { capacity_start: value.capacity_start } : {}),
+    ...(value.capacity_step !== undefined ? { capacity_step: value.capacity_step } : {}),
     timeout_ms: value.timeout_ms,
     input_tokens: value.input_tokens,
     output_tokens: value.output_tokens,
@@ -1614,10 +1631,10 @@ function pickPerformanceMetrics(value: QuickPerformanceMetrics, schemaVersion: Q
     failed: value.failed,
     timed_out: value.timed_out,
     success_rate_percent: value.success_rate_percent,
-    ...(schemaVersion >= 2 && value.offered_qps !== undefined ? { offered_qps: value.offered_qps } : {}),
-    ...(schemaVersion >= 2 && value.launched_qps !== undefined ? { launched_qps: value.launched_qps } : {}),
-    ...(schemaVersion >= 2 && value.completed_qps !== undefined ? { completed_qps: value.completed_qps } : {}),
-    ...(schemaVersion >= 2 && value.successful_request_qps !== undefined ? { successful_request_qps: value.successful_request_qps } : {}),
+    ...(value.offered_qps !== undefined ? { offered_qps: value.offered_qps } : {}),
+    ...(value.launched_qps !== undefined ? { launched_qps: value.launched_qps } : {}),
+    ...(value.completed_qps !== undefined ? { completed_qps: value.completed_qps } : {}),
+    ...(value.successful_request_qps !== undefined ? { successful_request_qps: value.successful_request_qps } : {}),
     request_qps: value.request_qps,
     rpm: value.rpm,
     input_tpm: value.input_tpm,
@@ -1649,8 +1666,7 @@ function pickPerformanceMetrics(value: QuickPerformanceMetrics, schemaVersion: Q
     cached_tokens: value.cached_tokens,
     cache_rate_percent: value.cache_rate_percent,
   }
-  if (schemaVersion === 3) {
-    Object.assign(metrics, {
+  Object.assign(metrics, {
       ttft_samples: value.ttft_samples,
       ttfb_samples: value.ttfb_samples,
       ttfb_p50_ms: value.ttfb_p50_ms,
@@ -1683,7 +1699,6 @@ function pickPerformanceMetrics(value: QuickPerformanceMetrics, schemaVersion: Q
       semantic_chunk_count_p99: value.semantic_chunk_count_p99,
       semantic_chunk_count_average: value.semantic_chunk_count_average,
     })
-  }
   return metrics
 }
 
@@ -1722,11 +1737,11 @@ function isPerformanceMetrics(value: unknown, schemaVersion: QuickPerformanceSch
   const v2Fields = ["offered_qps", "launched_qps", "completed_qps", "successful_request_qps"] as const
   const validBase = integerFields.every((field) => isNonNegativeInteger(value[field])) &&
     numberFields.every((field) => isNonNegativeFinite(value[field])) &&
-    (schemaVersion === 1 || v2Fields.every((field) => value[field] === undefined || isNonNegativeFinite(value[field]))) &&
+    v2Fields.every((field) => value[field] === undefined || isNonNegativeFinite(value[field])) &&
     (value.schedule_lag_p90_ms === undefined || isNonNegativeFinite(value.schedule_lag_p90_ms)) &&
     (value.schedule_lag_p99_ms === undefined || isNonNegativeFinite(value.schedule_lag_p99_ms)) &&
     Number(value.success_rate_percent) <= 100 && Number(value.cache_rate_percent) <= 100
-  if (!validBase || schemaVersion !== 3) return validBase
+  if (!validBase) return false
   const v3IntegerFields = [
     "ttft_samples", "ttfb_samples", "ttft_any_samples", "ttft_visible_samples", "ttst_samples",
     "observed_icl_samples", "semantic_chunk_count_samples",
@@ -1803,7 +1818,8 @@ function isOptionalSafeURL(value: unknown): value is string {
   if (value === "") return true
   if (typeof value !== "string" || value !== value.trim()) return false
   try {
-    return new URL(value).protocol === "https:"
+    const protocol = new URL(value).protocol
+    return protocol === "http:" || protocol === "https:"
   } catch {
     return false
   }

@@ -13,7 +13,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 1
 
 var (
 	ErrUnavailable  = errors.New("workspace service unavailable")

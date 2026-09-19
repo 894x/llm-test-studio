@@ -2,7 +2,7 @@ import { desktopLocale } from "@/i18n/runtime"
 import { useTranslation } from "react-i18next"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { QuickPerformanceMetrics, QuickPerformanceSchemaVersion } from "@/features/quick-test/data"
+import type { QuickPerformanceMetrics } from "@/features/quick-test/data"
 import { formatPerformanceInteger } from "./performance-format"
 
 interface StreamingTimingRow {
@@ -15,12 +15,11 @@ interface StreamingTimingRow {
   p99: number
 }
 
-export function PerformanceStreamingTimingTable({ schemaVersion, metrics }: {
-  schemaVersion: QuickPerformanceSchemaVersion
+export function PerformanceStreamingTimingTable({ metrics }: {
   metrics: QuickPerformanceMetrics
 }) {
   const { t: tx } = useTranslation()
-  if (schemaVersion !== 3 || metrics.ttfb_samples === undefined) return null
+  if (metrics.ttfb_samples === undefined) return null
   const rows: StreamingTimingRow[] = [
     latencyRow("TTFB", metrics.ttfb_samples, metrics.ttfb_average_ms, metrics.ttfb_p50_ms, metrics.ttfb_p95_ms, metrics.ttfb_p99_ms),
     latencyRow(tx("desktop:quick-test_ttft_includes_reasoning"), metrics.ttft_any_samples, metrics.ttft_any_average_ms, metrics.ttft_any_p50_ms, metrics.ttft_any_p95_ms, metrics.ttft_any_p99_ms),

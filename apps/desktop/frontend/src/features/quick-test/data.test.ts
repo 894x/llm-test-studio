@@ -72,8 +72,46 @@ describe("parseQuickPerformanceReport phase-three fields", () => {
     expect(JSON.stringify(report)).not.toContain("provider_internal")
   })
 
-  it("does not invent phase-three data for an earlier schema-v2 report", () => {
+  it("accepts the backend ramp budget at a floating-point ceiling boundary", () => {
     const raw = phaseThreeReport()
+    const report = parseQuickPerformanceReport({
+      ...raw,
+      profile: {
+        ...raw.profile,
+        load_mode: "open_loop",
+        concurrency: 0,
+        rate_per_second: 20,
+        max_in_flight: 100,
+        ramp_duration_ms: 5_000,
+        ramp_request_cap: 0,
+      },
+      request_budget: {
+        ...raw.request_budget,
+        ramp_cap: 55,
+        total_cap: 58,
+      },
+      ramp: {
+        ...raw.ramp,
+        duration_ms: 5_000,
+        steps: 10,
+        target_concurrency: undefined,
+        target_rate_per_second: 20,
+        completed_window: true,
+        traffic: {
+          ...raw.ramp.traffic,
+          request_cap: 55,
+          capped: false,
+          send_duration_ms: 5_000,
+          total_duration_ms: 5_020,
+        },
+      },
+    })
+
+    expect(report.request_budget?.ramp_cap).toBe(55)
+  })
+
+  it("does not invent phase-three data when those windows are omitted", () => {
+    const raw = phaseFiveReport()
     const { warmup_requests: _warmup, ramp_duration_ms: _ramp, ramp_request_cap: _cap, slice_duration_ms: _slice, ...legacyProfile } = raw.profile
     const { capped: _capped, ...legacyProgress } = raw.progress
     const legacy = parseQuickPerformanceReport({
@@ -228,7 +266,7 @@ describe("parseQuickPerformanceReport phase-four fields", () => {
   })
 
   it("keeps an allow-listed SLO assessment and a capacity prefix through the selected rung", () => {
-    const report = parseQuickPerformanceReport(phaseFourReport())
+    const report = parseQuickPerformanceReport(phaseFiveCapacityReport())
 
     expect(report.profile).toMatchObject({
       slo_ttft_ms: 50,
@@ -338,8 +376,34 @@ describe("parseQuickPerformanceReport phase-four fields", () => {
 
   it("treats missing configured TTFT and TPOT as SLO violations", () => {
     const raw = phaseFourSLOOnlyReport()
-    raw.samples[0].ttft_ms = 0
-    raw.samples[0].tpot_ms = 0
+    Object.assign(raw.samples[0], {
+      ttft_ms: 0,
+      tpot_ms: 0,
+      ttfb_ms: 10,
+      ttft_any_ms: 0,
+      ttft_visible_ms: 0,
+      ttst_ms: 0,
+      observed_icl_ms: 0,
+      semantic_chunk_count: 0,
+    })
+    Object.assign(raw.metrics, {
+      ttft_samples: 1, ttft_p50_ms: 40, ttft_p90_ms: 40, ttft_p95_ms: 40, ttft_p99_ms: 40, ttft_average_ms: 40,
+      ttft_any_samples: 1, ttft_any_p50_ms: 40, ttft_any_p95_ms: 40, ttft_any_p99_ms: 40, ttft_any_average_ms: 40,
+      ttft_visible_samples: 0, ttft_visible_p50_ms: 0, ttft_visible_p95_ms: 0, ttft_visible_p99_ms: 0, ttft_visible_average_ms: 0,
+      ttst_samples: 1, ttst_p50_ms: 60, ttst_p95_ms: 60, ttst_p99_ms: 60, ttst_average_ms: 60,
+      observed_icl_samples: 1, observed_icl_p50_ms: 20, observed_icl_p95_ms: 20, observed_icl_p99_ms: 20, observed_icl_average_ms: 20,
+      semantic_chunk_count_samples: 2, semantic_chunk_count_p50: 1, semantic_chunk_count_p95: 1.9,
+      semantic_chunk_count_p99: 1.98, semantic_chunk_count_average: 1,
+    })
+    Object.assign(raw.time_slices[0], {
+      ttft_any: { count: 1, p50_ms: 40, p95_ms: 40, p99_ms: 40, average_ms: 40 },
+      ttft: { count: 1, p50_ms: 40, p95_ms: 40, p99_ms: 40, average_ms: 40 },
+      ttft_visible: { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 },
+      ttst: { count: 1, p50_ms: 60, p95_ms: 60, p99_ms: 60, average_ms: 60 },
+      observed_icl: { count: 1, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+      semantic_chunk_count: { count: 2, p50: 1, p95: 1.9, p99: 1.98, average: 1 },
+      tpot: { count: 1, p50_ms: 4, p95_ms: 4, p99_ms: 4, average_ms: 4 },
+    })
     raw.slo_assessment = {
       ...raw.slo_assessment,
       status: "failed",
@@ -429,8 +493,8 @@ describe("parseQuickPerformanceReport phase-four fields", () => {
     expect(() => parseQuickPerformanceReport(twentyOne)).toThrow("快速性能报告数据结构无效")
   })
 
-  it("keeps earlier schema-v2 reports free of empty SLO and capacity objects", () => {
-    const report = parseQuickPerformanceReport(phaseThreeReport())
+  it("keeps reports without SLO or capacity objects free of empty placeholders", () => {
+    const report = parseQuickPerformanceReport(phaseFiveReport())
     expect(report.slo_assessment).toBeUndefined()
     expect(report.capacity_result).toBeUndefined()
   })
@@ -440,7 +504,7 @@ describe("parseQuickPerformanceReport phase-five streaming telemetry", () => {
   it("keeps a schema-v3 report whose fine streaming metrics reconstruct from successful samples", () => {
     const report = parseQuickPerformanceReport(phaseFiveReport())
 
-    expect(report.schema_version).toBe(3)
+    expect(report.schema_version).toBe(1)
     expect(report.samples[0]).toMatchObject({
       ttfb_ms: 10,
       ttft_any_ms: 20,
@@ -568,26 +632,15 @@ describe("parseQuickPerformanceReport phase-five streaming telemetry", () => {
     expect(() => parseQuickPerformanceReport(impossibleP90)).toThrow("快速性能报告数据结构无效")
   })
 
-  it("does not retain or fabricate fine telemetry for schema-v1 and schema-v2 reports", () => {
+  it("rejects unsupported schema versions and documents missing current fine telemetry", () => {
     const raw = phaseThreeReport() as any
-    Object.assign(raw.samples[0], { ttfb_ms: 10, ttft_any_ms: 20, semantic_chunk_count: 2 })
-    Object.assign(raw.metrics, { ttfb_samples: 2, ttfb_p50_ms: 10 })
-    const v2 = parseQuickPerformanceReport(raw)
-    expect(v2.samples[0].ttfb_ms).toBeUndefined()
-    expect(v2.metrics.ttfb_samples).toBeUndefined()
-
-    const v1Raw = structuredClone(raw)
-    v1Raw.schema_version = 1
-    for (const field of ["load_mode", "arrival_pattern", "workload_mode", "random_seed", "input_tokens_stddev", "output_tokens_stddev", "shared_prefix_tokens", "warmup_requests", "ramp_duration_ms", "ramp_request_cap", "slice_duration_ms"]) delete v1Raw.profile[field]
-    for (const field of ["offered", "stopped", "capped"]) delete v1Raw.progress[field]
-    for (const field of ["offered_qps", "launched_qps", "completed_qps", "successful_request_qps"]) delete v1Raw.metrics[field]
-    delete v1Raw.request_budget
-    delete v1Raw.warmup
-    delete v1Raw.ramp
-    delete v1Raw.time_slices
-    const v1 = parseQuickPerformanceReport(v1Raw)
-    expect(v1.samples[0].ttfb_ms).toBeUndefined()
-    expect(v1.metrics.ttfb_samples).toBeUndefined()
+    expect(() => parseQuickPerformanceReport({ ...raw, schema_version: 2 })).toThrow("快速性能报告数据协议版本不受支持")
+    expect(() => parseQuickPerformanceReport({ ...raw, schema_version: 99 })).toThrow("快速性能报告数据协议版本不受支持")
+    const withoutFineTelemetry = {
+      ...raw,
+      samples: raw.samples.map(({ ttfb_ms: _ttfb, ttft_any_ms: _any, ttft_visible_ms: _visible, ttst_ms: _ttst, observed_icl_ms: _icl, semantic_chunk_count: _chunks, ...sample }: any) => sample),
+    }
+    expect(() => parseQuickPerformanceReport(withoutFineTelemetry)).toThrow("快速性能报告数据结构无效")
   })
 })
 
@@ -613,15 +666,15 @@ function phaseThreeReport() {
     capped: false,
     provider_internal: "drop me",
   }
-  return {
-    schema_version: 2 as const,
+  const raw = {
+    schema_version: 1 as const,
     archived: false,
     archive_status: "not_attempted",
     model_id: "gpt-test",
     success: true,
     address_mode: "base_url",
-    base_url: "https://api.example.test/v1",
-    endpoint: "https://api.example.test/v1/chat/completions",
+    base_url: "http://api.example.test/v1",
+    endpoint: "http://api.example.test/v1/chat/completions",
     profile: {
       load_mode: "fixed_concurrency",
       request_count: 2,
@@ -726,6 +779,7 @@ function phaseThreeReport() {
     ],
     provider_internal: "drop me",
   }
+  return withCurrentStreamingTelemetry(raw)
 }
 
 function phaseFourReport(): PhaseFourFixture {
@@ -864,8 +918,11 @@ function timeSlice(sliceIndex: number, startMS: number, endMS: number, partial: 
 }
 
 function phaseFiveReport(): any {
-  const raw: any = phaseThreeReport()
-  raw.schema_version = 3
+  return phaseThreeReport()
+}
+
+function withCurrentStreamingTelemetry(raw: any) {
+  raw.schema_version = 1
   Object.assign(raw.samples[0], {
     ttfb_ms: 10, ttft_any_ms: 20, ttft_visible_ms: 30, ttft_ms: 20,
     ttst_ms: 40, observed_icl_ms: 20, semantic_chunk_count: 3,
@@ -877,22 +934,24 @@ function phaseFiveReport(): any {
   Object.assign(raw.metrics, phaseFiveMetrics())
   const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
   const emptyCount = { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
-  Object.assign(raw.time_slices[0], {
-    ttfb: { count: 2, p50_ms: 15, p95_ms: 19.5, p99_ms: 19.9, average_ms: 15 },
-    ttft_any: { count: 2, p50_ms: 30, p95_ms: 39, p99_ms: 39.8, average_ms: 30 },
-    ttft_visible: { count: 1, p50_ms: 30, p95_ms: 30, p99_ms: 30, average_ms: 30 },
-    ttft: { count: 2, p50_ms: 30, p95_ms: 39, p99_ms: 39.8, average_ms: 30 },
-    ttst: { count: 2, p50_ms: 50, p95_ms: 59, p99_ms: 59.8, average_ms: 50 },
-    observed_icl: { count: 2, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
-    semantic_chunk_count: { count: 2, p50: 2.5, p95: 2.95, p99: 2.99, average: 2.5 },
-    tpot: { count: 2, p50_ms: 4, p95_ms: 4, p99_ms: 4, average_ms: 4 },
-    e2e: { count: 2, p50_ms: 70, p95_ms: 79, p99_ms: 79.8, average_ms: 70 },
-  })
-  Object.assign(raw.time_slices[1], {
-    ttfb: emptyLatency, ttft_any: emptyLatency, ttft_visible: emptyLatency, ttft: emptyLatency,
-    ttst: emptyLatency, observed_icl: emptyLatency, semantic_chunk_count: emptyCount,
-    tpot: emptyLatency, e2e: emptyLatency,
-  })
+  if (raw.time_slices) {
+    Object.assign(raw.time_slices[0], {
+      ttfb: { count: 2, p50_ms: 15, p95_ms: 19.5, p99_ms: 19.9, average_ms: 15 },
+      ttft_any: { count: 2, p50_ms: 30, p95_ms: 39, p99_ms: 39.8, average_ms: 30 },
+      ttft_visible: { count: 1, p50_ms: 30, p95_ms: 30, p99_ms: 30, average_ms: 30 },
+      ttft: { count: 2, p50_ms: 30, p95_ms: 39, p99_ms: 39.8, average_ms: 30 },
+      ttst: { count: 2, p50_ms: 50, p95_ms: 59, p99_ms: 59.8, average_ms: 50 },
+      observed_icl: { count: 2, p50_ms: 20, p95_ms: 20, p99_ms: 20, average_ms: 20 },
+      semantic_chunk_count: { count: 2, p50: 2.5, p95: 2.95, p99: 2.99, average: 2.5 },
+      tpot: { count: 2, p50_ms: 4, p95_ms: 4, p99_ms: 4, average_ms: 4 },
+      e2e: { count: 2, p50_ms: 70, p95_ms: 79, p99_ms: 79.8, average_ms: 70 },
+    })
+    Object.assign(raw.time_slices[1], {
+      ttfb: emptyLatency, ttft_any: emptyLatency, ttft_visible: emptyLatency, ttft: emptyLatency,
+      ttst: emptyLatency, observed_icl: emptyLatency, semantic_chunk_count: emptyCount,
+      tpot: emptyLatency, e2e: emptyLatency,
+    })
+  }
   return raw
 }
 
@@ -942,7 +1001,7 @@ function phaseFiveMixedReport(): any {
 
 function phaseFiveCapacityReport(): any {
   const raw: any = phaseFourReport()
-  raw.schema_version = 3
+  raw.schema_version = 1
   raw.profile.warmup_requests = 0
   raw.profile.slice_duration_ms = 0
   delete raw.warmup

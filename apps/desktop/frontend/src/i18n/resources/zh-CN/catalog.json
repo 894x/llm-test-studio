@@ -267,6 +267,7 @@
     "runBindingHint": "渠道、凭据和模型在启动运行时选择；届时读取当前引用并检查。",
     "target": "Case 或 Suite",
     "add": "添加执行项",
+    "entryRequired": "请选择一个 Case 或 Suite，然后点击“添加执行项”。",
     "moveUp": "上移执行项",
     "moveDown": "下移执行项",
     "remove": "删除执行项",

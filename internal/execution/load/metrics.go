@@ -22,8 +22,7 @@ type Metrics struct {
 	LaunchedQPS          float64 `json:"launched_qps,omitempty"`
 	CompletedQPS         float64 `json:"completed_qps,omitempty"`
 	SuccessfulRequestQPS float64 `json:"successful_request_qps,omitempty"`
-	// RequestQPS retains the legacy all-outcomes rate for shared schema-v1
-	// consumers. New reports should present SuccessfulRequestQPS explicitly.
+	// RequestQPS is the all-outcomes completion rate over the full window.
 	RequestQPS                float64 `json:"request_qps"`
 	RPM                       float64 `json:"rpm"`
 	InputTPM                  float64 `json:"input_tpm"`

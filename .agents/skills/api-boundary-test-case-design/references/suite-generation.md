@@ -1,6 +1,6 @@
 # Current scenario Suite generation
 
-Case files use schema 3 and protocol definitions with explicit inputs, request bodies and assertions. Suite files use schema 2: ordered Case ID references and explicit mappings from Suite inputs to declared Case inputs. The Run binds one model, channel and credential. A Suite never selects a model or overrides a Case body implicitly.
+Case files use schema 1 and protocol definitions with explicit inputs, request bodies and assertions. Suite files use schema 1: ordered Case ID references and explicit mappings from Suite inputs to declared Case inputs. The Run binds one model, channel and credential. A Suite never selects a model or overrides a Case body implicitly.
 
 The manifest has exactly `schema_version: 1`, `protocol`, and `profiles`. Each profile contains `directory` plus the complete current Suite document (`schema_version`, `key`, `name`, `protocol`, `description`, `cases`, `inputs`). The manifest format is a single authoring format, not a historical decoder.
 
@@ -10,7 +10,7 @@ The manifest has exactly `schema_version: 1`, `protocol`, and `profiles`. Each p
   "protocol": "openai-chat",
   "profiles": [{
     "directory": "example-connectivity",
-    "schema_version": 2,
+    "schema_version": 1,
     "key": "example.connectivity",
     "name": "Connectivity",
     "protocol": "openai-chat",

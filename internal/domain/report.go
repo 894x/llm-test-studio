@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const CurrentReportSchemaVersion = 3
+const CurrentReportSchemaVersion = 1
 
 type ReportSubject struct {
 	ID   string `json:"id"`

@@ -30,7 +30,7 @@ import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
-import { isRunActive, presentWorkspace, type WorkspaceSnapshot } from "@/features/runs/data"
+import { isRunActive, presentWorkspace, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
   RunWorkspace,
@@ -70,6 +70,7 @@ function AppWorkspace({
   const [catalogMutationError, setCatalogMutationError] = useState("")
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [quickRunID, setQuickRunID] = useState("")
+  const [startingRunID, setStartingRunID] = useState("")
   const [quickDraft, setQuickDraft] = useState<TaskDraft>(() => {
     try { return decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY)) ?? createTaskDraft(null) }
     catch { return createTaskDraft(null) }
@@ -134,7 +135,7 @@ function AppWorkspace({
   }
 
   const [retryPoll, setRetryPoll] = useState(false)
-  const shouldPoll = !!(retryPoll || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisons?.comparisons.some((comparison) => comparison.status === "running") || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
+  const shouldPoll = !!(retryPoll || startingRunID || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisons?.comparisons.some((comparison) => comparison.status === "running") || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
   useEffect(() => {
 		if (!shouldPoll) return
 		let active = true
@@ -157,6 +158,12 @@ function AppWorkspace({
 		timer = window.setTimeout(() => void refresh(), 1_000)
 		return () => { active = false; window.clearTimeout(timer) }
 	}, [client, shouldPoll])
+
+  useEffect(() => {
+    if (startingRunID && snapshot?.runs.some((run) => run.id === startingRunID)) {
+      setStartingRunID("")
+    }
+  }, [snapshot, startingRunID])
 
   const refreshQuickTask = useCallback(async () => {
     setSnapshot(await client.getWorkspace())
@@ -208,6 +215,19 @@ function AppWorkspace({
     },
     [t],
   )
+
+  const startRun = useCallback(async (command: StartRunTargetCommand): Promise<void> => {
+    setCommandPending(true)
+    setCommandError("")
+    try {
+      setStartingRunID(await client.startRunTarget(command))
+    } catch (error) {
+      setCommandError(publicDesktopErrorMessage(error, t("app:commandError")))
+      throw error
+    } finally {
+      setCommandPending(false)
+    }
+  }, [client, t])
 
   const mutateCatalog = useCallback(
     async (operation: () => Promise<CatalogSnapshot>, operationLabel: string): Promise<void> => {
@@ -311,7 +331,7 @@ function AppWorkspace({
 						catalog={catalog}
 						commandPending={commandPending}
 						onStartRun={async (command) => {
-							await runCommand(() => client.startRunTarget(command))
+							await startRun(command)
 							navigate("runs")
 						}}
 					/>
@@ -348,7 +368,7 @@ function AppWorkspace({
           mutationError={localizeStoredMessage(catalogMutationError, tx)}
           commandPending={commandPending}
           onStartPlan={async (command) => {
-            await runCommand(() => client.startRunTarget(command))
+            await startRun(command)
             navigate("runs")
           }}
         />

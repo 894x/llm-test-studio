@@ -737,18 +737,23 @@ func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (compar
 	return snapshot, nil
 }
 
-func (app *DesktopApp) StartRunTarget(command runs.StartCommand) (workspace.Snapshot, error) {
+func (app *DesktopApp) StartRunTarget(command runs.StartCommand) (string, error) {
 	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
-		return workspace.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
+		return "", app.safeBindingError(ErrInvalidIdentifier)
 	}
-	snapshot, err := app.executeRunCommand("start run target", command.PlanID, func(ctx context.Context, commands RunCommands) error {
-		_, err := commands.StartTarget(ctx, command)
-		return err
-	})
+	lease, err := app.acquire(desktopRequirements{commands: true})
 	if err != nil {
-		return workspace.Snapshot{}, app.safeBindingError(err)
+		return "", app.safeBindingError(err)
 	}
-	return snapshot, nil
+	defer lease.release()
+	runID, err := lease.commands.StartTarget(lease.ctx, command)
+	if err != nil {
+		return "", app.safeBindingError(fmt.Errorf("start run target: %w", err))
+	}
+	if !domain.IsUUID(runID) {
+		return "", app.safeBindingError(fmt.Errorf("start run target: %w", ErrInvalidIdentifier))
+	}
+	return runID, nil
 }
 
 func (app *DesktopApp) StopSending(runID string) (workspace.Snapshot, error) {

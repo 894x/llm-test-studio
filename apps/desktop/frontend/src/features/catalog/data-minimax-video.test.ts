@@ -4,7 +4,7 @@ import { parseCatalogSnapshot } from "./data"
 describe("MiniMax video catalog protocol", () => {
   it("accepts MiniMax H3 models in catalog snapshots", () => {
     const parsed = parseCatalogSnapshot({
-      schema_version: 4,
+      schema_version: 1,
       case_types: [],
       models: [{
         id: "11111111-1111-4111-8111-111111111111",

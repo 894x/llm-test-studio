@@ -51,4 +51,27 @@ describe("current protocol catalog editors", () => {
     expect(command.entries[0]).toMatchObject({ entry_id: item.entries[1].entry_id, parameters: { prompt: "second" } })
     expect(command.entries[1].parameters).toEqual({}); expect(command).not.toHaveProperty("model_ids")
   })
+
+  it("explains how to add a required plan entry before submitting", async () => {
+    const user = userEvent.setup()
+    const createPlan = vi.fn(async (_command: Record<string, any>) => FIXTURE_CATALOG)
+    const mutate = vi.fn(async (operation: () => Promise<unknown>) => { await operation() })
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><CatalogEditor kind="plan" catalog={FIXTURE_CATALOG} actions={{ createPlan } as unknown as CatalogActions} pending={false} mutate={mutate} /></I18nextProvider>)
+
+    await user.click(screen.getByRole("button", { name: "新增计划" }))
+    await user.type(screen.getByLabelText("计划"), "缺少执行项的计划")
+    await user.click(screen.getByRole("combobox", { name: "Case 或 Suite" }))
+    await user.click(screen.getByRole("option", { name: "用例 · 基础对话" }))
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+
+    const target = screen.getByRole("combobox", { name: "Case 或 Suite" })
+    expect(target).toHaveAttribute("aria-invalid", "true")
+    expect(target).toHaveAccessibleDescription("请选择一个 Case 或 Suite，然后点击“添加执行项”。")
+    expect(target).toHaveFocus()
+    expect(mutate).not.toHaveBeenCalled()
+    expect(createPlan).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "添加执行项" }))
+    expect(target).not.toHaveAttribute("aria-invalid")
+  })
 })

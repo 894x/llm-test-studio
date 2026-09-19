@@ -37,7 +37,6 @@ Options:
   --output PATH               Optional JSON result path
   --format json|human         Standard output format
   --diagnostic-detail        Include a redacted internal error detail
-  --allow-insecure-loopback   Permit HTTP only for explicit localhost testing
 `
 
 type loadRunResponse struct {
@@ -91,7 +90,6 @@ func runLoadRun(ctx context.Context, args []string, stdout, stderr io.Writer, de
 	output := flags.String("output", "", "optional JSON result path")
 	format := flags.String("format", "json", "output format: json or human")
 	diagnosticDetail := flags.Bool("diagnostic-detail", false, "include a redacted internal error detail")
-	allowLoopback := flags.Bool("allow-insecure-loopback", false, "permit HTTP only for localhost testing")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return writeUsage(stdout, stderr, loadUsage)
@@ -134,7 +132,7 @@ func runLoadRun(ctx context.Context, args []string, stdout, stderr io.Writer, de
 	if err != nil {
 		return diagnosticExitCause(stderr, *format, "config_error", "load configuration is invalid", err, *diagnosticDetail, 2)
 	}
-	outcome, err := executeCLILoad(ctx, baseURL, requestPath, strings.TrimSpace(*model), secret, body, profile, *allowLoopback)
+	outcome, err := executeCLILoad(ctx, baseURL, requestPath, strings.TrimSpace(*model), secret, body, profile)
 	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		return diagnosticExitCause(stderr, *format, "run_error", "load run failed", err, *diagnosticDetail, 1)
 	}
@@ -268,7 +266,7 @@ func loadProfile(requests uint64, concurrency uint32, rate float64, duration, ti
 	return profile, profile.Validate()
 }
 
-func executeCLILoad(ctx context.Context, baseURL, requestPath, model, secret string, body json.RawMessage, profile domain.LoadProfile, allowLoopback bool) (load.Outcome, error) {
+func executeCLILoad(ctx context.Context, baseURL, requestPath, model, secret string, body json.RawMessage, profile domain.LoadProfile) (load.Outcome, error) {
 	ref, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, "10000000-0000-4000-8000-000000000001")
 	if err != nil {
 		return load.Outcome{}, err
@@ -289,11 +287,7 @@ func executeCLILoad(ctx context.Context, baseURL, requestPath, model, secret str
 		EntityRevisionRef: domain.EntityRevisionRef{ID: "10000000-0000-4000-8000-000000000002", Revision: 1},
 		Name:              "CLI", BaseURL: baseURL, Protocol: domain.ProtocolOpenAIChat, UpstreamModelName: model,
 	}
-	options := []openai.Option{}
-	if allowLoopback {
-		options = append(options, openai.WithLoopbackHTTPForTesting())
-	}
-	client, err := openai.NewClient(channel, lease, nil, options...)
+	client, err := openai.NewClient(channel, lease, nil)
 	if err != nil {
 		return load.Outcome{}, err
 	}

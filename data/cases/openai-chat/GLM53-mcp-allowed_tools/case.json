@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "glm53.mcp.allowed_tools",
   "name": "GLM 5.3 · mcp.allowed_tools（待验证模板）",
   "dimension": "glm53.mcp_allowed_tools",
@@ -9,7 +9,7 @@
   "severity": "normal",
   "execution_mode": "manual",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

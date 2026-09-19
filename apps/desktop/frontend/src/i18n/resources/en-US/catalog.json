@@ -267,6 +267,7 @@
     "runBindingHint": "Channel, credential, and model are selected when starting a run. References are resolved and checked then.",
     "target": "Case or suite",
     "add": "Add entry",
+    "entryRequired": "Select a case or suite, then choose Add entry.",
     "moveUp": "Move entry up",
     "moveDown": "Move entry down",
     "remove": "Remove entry",

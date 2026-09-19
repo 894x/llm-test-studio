@@ -60,14 +60,14 @@ def load_cases(root: Path, protocol: str) -> dict[str, dict[str, Any]]:
     namespace = uuid.UUID("7680782d-7ae8-558b-9f32-17d13f31a66b")
     for path in sorted(root.rglob("case.json")):
         document = load_object(path, "case")
-        if document.get("schema_version") != 3 or "model_targets" in document:
-            raise SuiteBuildError(f"case {path} must use current schema_version 3")
+        if document.get("schema_version") != 1 or "model_targets" in document:
+            raise SuiteBuildError(f"case {path} must use current schema_version 1")
         if document.get("protocol") != protocol:
             raise SuiteBuildError(f"case {path} protocol differs from manifest")
         key = required_string(document.get("key"), f"case {path} key", safe=True)
         definition = document.get("definition", {})
         spec = definition.get("spec", {})
-        if definition.get("schema_version") != 2 or definition.get("type") != protocol or definition.get("type_version") != 1:
+        if definition.get("schema_version") != 1 or definition.get("type") != protocol or definition.get("type_version") != 1:
             raise SuiteBuildError(f"case {path} must use the current protocol definition")
         if not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list) or "kind" in spec:
             raise SuiteBuildError(f"case {path} must declare inputs and assertions")
@@ -100,7 +100,7 @@ def build_documents(cases_root: Path, manifest_path: Path) -> list[tuple[str, di
             raise SuiteBuildError("duplicate or unsafe suite directory")
         key = required_string(profile["key"], "suite key", safe=True)
         required_string(profile["name"], "suite name")
-        if key in keys or profile["schema_version"] != 2 or profile["protocol"] != protocol:
+        if key in keys or profile["schema_version"] != 1 or profile["protocol"] != protocol:
             raise SuiteBuildError("duplicate key or unsupported Suite protocol/format")
         if not isinstance(profile["description"], str) or not isinstance(profile["cases"], list) or not profile["cases"] or not isinstance(profile["inputs"], list):
             raise SuiteBuildError("Suite description, cases and inputs have invalid shapes")

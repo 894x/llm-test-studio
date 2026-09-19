@@ -99,8 +99,8 @@ func TestSuiteRejectsOldAndUnknownFormatsWithoutChangingFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := [][]byte{
-		[]byte(`{"schema_version":1,"key":"smoke","name":"old","protocol":"openai-chat","model_target":"model","case_keys":["T001"]}`),
-		bytes.Replace(current, []byte(`"schema_version":2`), []byte(`"schema_version":999`), 1),
+		[]byte(`{"schema_version":2,"key":"smoke","name":"old","protocol":"openai-chat","model_target":"model","case_keys":["T001"]}`),
+		bytes.Replace(current, []byte(`"schema_version":1`), []byte(`"schema_version":999`), 1),
 		append(append([]byte{}, current...), []byte(` {}`)...),
 	}
 	for _, raw := range bad {

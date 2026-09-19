@@ -28,12 +28,12 @@ func (do httpDoerFunc) Do(request *http.Request) (*http.Response, error) {
 	return do(request)
 }
 
-func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
+func TestRunDryRunAcceptsHTTPAndEmitsVersionedLifecycle(t *testing.T) {
 	t.Parallel()
 
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -43,7 +43,7 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -100,7 +100,7 @@ func TestRunDryRunEmitsVersionedLifecycleAndWritesReport(t *testing.T) {
 		Inputs:       json.RawMessage(`{"payload": {"api_key": "sk-test-secret", "client_secret": "opaque-client-secret", "nested": {"refresh_token": "opaque-refresh-token"}}}`),
 		Suite:        "openai-chat",
 		CasesRoot:    casesRoot,
-		BaseURL:      "https://gateway.example/v1",
+		BaseURL:      "http://gateway.example/v1",
 		APIKey:       "sk-test-secret",
 		Model:        "test-model",
 		DryRun:       true,
@@ -239,7 +239,7 @@ func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
 func TestRunDryRunSupportsMiniMaxVideoSuiteAndInjectsH3Model(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "minimax-video", "H3001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "H3001",
   "name": "H3 minimum duration",
   "dimension": "boundary",
@@ -249,7 +249,7 @@ func TestRunDryRunSupportsMiniMaxVideoSuiteAndInjectsH3Model(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "minimax-video",
     "type_version": 1,
     "spec": {
@@ -320,7 +320,7 @@ func TestListLoadsCasesThroughApplicationService(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -330,7 +330,7 @@ func TestListLoadsCasesThroughApplicationService(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -384,7 +384,7 @@ func TestRunRejectsCredentialBearingBaseURL(t *testing.T) {
 func TestRunPropagatesCallerCancellationToLiveRequest(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -394,7 +394,7 @@ func TestRunPropagatesCallerCancellationToLiveRequest(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

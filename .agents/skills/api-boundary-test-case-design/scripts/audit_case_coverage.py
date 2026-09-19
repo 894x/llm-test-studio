@@ -40,9 +40,9 @@ def load_case(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: top-level JSON value must be an object")
     definition = value.get("definition", {})
-    if value.get("schema_version") != 3 or "model_targets" in value:
-        raise ValueError(f"{path}: expected current Case schema_version 3")
-    if definition.get("schema_version") != 2 or definition.get("type") != value.get("protocol") or definition.get("type_version") != 1:
+    if value.get("schema_version") != 1 or "model_targets" in value:
+        raise ValueError(f"{path}: expected current Case schema_version 1")
+    if definition.get("schema_version") != 1 or definition.get("type") != value.get("protocol") or definition.get("type_version") != 1:
         raise ValueError(f"{path}: expected current protocol definition")
     spec = definition.get("spec", {})
     if "kind" in spec or not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list):

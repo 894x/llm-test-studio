@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "kimi-k2.6.official-foundation",
   "name": "Kimi K2.6 官方基础套件",
   "protocol": "openai-chat",

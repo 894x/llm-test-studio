@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "minimax-video.MiniMax-H3",
   "name": "MiniMax H3 视频生成完整边界套件",
   "protocol": "minimax-video",

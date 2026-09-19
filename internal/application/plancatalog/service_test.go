@@ -103,8 +103,8 @@ func TestPlanCatalogStoresSelectedIDsWithoutTargetBindings(t *testing.T) {
 }
 
 func TestPlanCatalogRequiresCurrentSchemaMultiSuiteDocuments(t *testing.T) {
-	if CurrentFileSchemaVersion != 4 {
-		t.Fatalf("CurrentFileSchemaVersion = %d, want 4", CurrentFileSchemaVersion)
+	if CurrentFileSchemaVersion != 1 {
+		t.Fatalf("CurrentFileSchemaVersion = %d, want 1", CurrentFileSchemaVersion)
 	}
 
 	service, err := New(filepath.Join(t.TempDir(), "plans"))

@@ -392,7 +392,7 @@ function quickDetail(reportID: string) {
     schema_version: 1,
     source: "quick_performance",
     performance: {
-      schema_version: 2,
+      schema_version: 1,
       report_id: reportID,
       generated_at: "2026-08-31T14:30:00Z",
       archived: true,
@@ -446,7 +446,7 @@ function phaseFiveQuickDetail(reportID: string) {
     ...detail,
     performance: {
       ...detail.performance,
-      schema_version: 3,
+      schema_version: 1,
       metrics: {
         ...detail.performance.metrics,
         offered_qps: 1.25, launched_qps: 1.25, completed_qps: 1.2, successful_request_qps: 1.2,

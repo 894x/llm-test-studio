@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "kimi-k3.kimi-k2.7-code.connectivity",
   "name": "kimi-k2.7-code 连通性测试",
   "protocol": "openai-chat",

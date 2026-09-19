@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -47,7 +46,6 @@ var (
 	ErrCredentialRequired    = errors.New("OpenAI credential lease is required")
 	ErrCredentialUnavailable = errors.New("OpenAI credential is unavailable")
 	ErrInvalidTransport      = errors.New("invalid OpenAI HTTP transport")
-	ErrInsecureEndpoint      = errors.New("OpenAI endpoint must use HTTPS")
 	ErrInvalidOption         = errors.New("invalid OpenAI client option")
 	ErrInvalidRequest        = errors.New("invalid OpenAI request definition")
 	ErrClientClosed          = errors.New("OpenAI client is closed")
@@ -61,16 +59,6 @@ func WithMaxResponseBytes(limit int64) Option {
 			return ErrInvalidOption
 		}
 		client.state.maxResponseBytes = limit
-		return nil
-	}
-}
-
-// WithLoopbackHTTPForTesting permits plaintext HTTP only for localhost or a
-// literal loopback address. It is intentionally explicit and cannot weaken
-// transport security for remote endpoints.
-func WithLoopbackHTTPForTesting() Option {
-	return func(client *Client) error {
-		client.state.allowLoopbackHTTP = true
 		return nil
 	}
 }
@@ -95,7 +83,6 @@ type clientState struct {
 	maxSSELines             int64
 	maxFailureEvidenceBytes int64
 	failureEvidenceSink     FailureResponseEvidenceSink
-	allowLoopbackHTTP       bool
 
 	lifecycleContext context.Context
 	cancelLifecycle  context.CancelFunc
@@ -136,10 +123,6 @@ func NewClient(channel domain.ChannelSnapshot, lease *credentials.Lease, transpo
 			return nil, ErrInvalidOption
 		}
 	}
-	if !secureEndpoint(client.state.baseURL, client.state.allowLoopbackHTTP) {
-		return nil, ErrInsecureEndpoint
-	}
-
 	secret, err := lease.Bytes()
 	if err != nil || len(secret) == 0 {
 		clear(secret)
@@ -171,25 +154,6 @@ func applyOption(option Option, client *Client) (err error) {
 		}
 	}()
 	return option(client)
-}
-
-func secureEndpoint(rawURL string, allowLoopbackHTTP bool) bool {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return false
-	}
-	if parsed.Scheme == "https" {
-		return true
-	}
-	if parsed.Scheme != "http" || !allowLoopbackHTTP {
-		return false
-	}
-	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
-	if hostname == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(hostname)
-	return ip != nil && ip.IsLoopback()
 }
 
 type preparedRequest struct {

@@ -5,10 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptrace"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -26,22 +24,15 @@ var ErrInvalidExecution = errors.New("invalid protocol execution configuration")
 type Client struct{ state *clientState }
 
 type clientState struct {
-	mu            sync.Mutex
-	registry      *Registry
-	channel       domain.ChannelSnapshot
-	secret        []byte
-	http          *http.Client
-	allowLoopback bool
-	closed        bool
-	lifecycle     context.Context
-	cancel        context.CancelFunc
-	active        sync.WaitGroup
-}
-
-type Option func(*Client) error
-
-func WithLoopbackHTTPForTesting() Option {
-	return func(client *Client) error { client.state.allowLoopback = true; return nil }
+	mu        sync.Mutex
+	registry  *Registry
+	channel   domain.ChannelSnapshot
+	secret    []byte
+	http      *http.Client
+	closed    bool
+	lifecycle context.Context
+	cancel    context.CancelFunc
+	active    sync.WaitGroup
 }
 
 type Execution struct {
@@ -56,7 +47,6 @@ func NewClient(
 	lease *credentials.Lease,
 	channel domain.ChannelSnapshot,
 	transport http.RoundTripper,
-	options ...Option,
 ) (*Client, error) {
 	if registry == nil || lease == nil || channel.Validate() != nil {
 		return nil, ErrInvalidBinding
@@ -65,16 +55,6 @@ func NewClient(
 		return nil, ErrInvalidBinding
 	}
 	client := &Client{state: &clientState{registry: registry, channel: channel}}
-	for _, option := range options {
-		if option != nil {
-			if err := option(client); err != nil {
-				return nil, ErrInvalidBinding
-			}
-		}
-	}
-	if !secureEndpoint(channel.BaseURL, client.state.allowLoopback) {
-		return nil, ErrInvalidBinding
-	}
 	secret, err := lease.Bytes()
 	if err != nil || len(secret) == 0 {
 		clear(secret)
@@ -225,25 +205,4 @@ func (Client) String() string   { return "[protocol client]" }
 func (Client) GoString() string { return "[protocol client]" }
 func (Client) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("protocol clients cannot be serialized")
-}
-
-func secureEndpoint(value string, allowLoopback bool) bool {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
-		return false
-	}
-	if parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
-	}
-	if parsed.Scheme == "https" {
-		return true
-	}
-	if parsed.Scheme != "http" || !allowLoopback {
-		return false
-	}
-	if parsed.Hostname() == "localhost" {
-		return true
-	}
-	address := net.ParseIP(parsed.Hostname())
-	return address != nil && address.IsLoopback()
 }

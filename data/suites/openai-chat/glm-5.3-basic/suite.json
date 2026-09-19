@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "openai-chat.glm-5.3.basic",
   "name": "GLM 5.3 基本功能套件",
   "protocol": "openai-chat",

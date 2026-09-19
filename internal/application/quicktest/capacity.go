@@ -122,7 +122,7 @@ func validatePerformanceCapacity(report PerformanceReport) error {
 			!approximatelyEqual(rung.Progress.CapacityTarget, rung.Target) {
 			return errors.New("quick performance report capacity rung plan is inconsistent")
 		}
-		if err := validatePerformanceCapacityRung(report.Profile, rung, report.SchemaVersion == PerformanceSchemaVersion); err != nil {
+		if err := validatePerformanceCapacityRung(report.Profile, rung, true); err != nil {
 			return err
 		}
 		if index < len(capacity.Rungs)-1 && rung.SLOAssessment.Status != PerformanceSLOPassed {

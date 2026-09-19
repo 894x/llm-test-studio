@@ -66,7 +66,7 @@ export interface ReportEntryDetail {
   timeline: ReportDistribution[]; distributions: ReportDistribution[]; cases: ReportCaseDetail[]
 }
 export interface FormalReportDetail {
-  schema_version: 3; source: "run"
+  schema_version: 1; source: "run"
   report: {
     id: string; run_id: string; protocol: CatalogProtocol; run_status: ReportSummary["run_status"]; generated_at: string
     model: { id: string; name: string }; channel: { id: string; name: string }
@@ -136,7 +136,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
     if (!performance.archived || !performance.report_id) throw invalidReport()
     return { schema_version: 1, source: "quick_performance", performance }
   }
-  if (value.schema_version !== 3 || !isRecord(value.report) || !Array.isArray(value.entries) ||
+  if (value.schema_version !== 1 || !isRecord(value.report) || !Array.isArray(value.entries) ||
     !Array.isArray(value.request_results) || !Array.isArray(value.unassigned_request_results) || "suites" in value) throw invalidReport()
   const report = value.report
   if (!isUUID(report.id) || !isUUID(report.run_id) || !isProtocol(report.protocol) || !isRunStatus(report.run_status) ||
@@ -154,7 +154,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
   }))
   const ids = [...owned, ...unassigned].map(result => result.id)
   if (new Set(ids).size !== ids.length || ids.length !== requestResults.length || requestResults.some(result => !ids.includes(result.id))) throw invalidReport()
-  return { schema_version: 3, source: "run", report: {
+  return { schema_version: 1, source: "run", report: {
     id: report.id, run_id: report.run_id, protocol: report.protocol, run_status: report.run_status,
     generated_at: report.generated_at, model: { id: report.model.id, name: report.model.name },
     channel: { id: report.channel.id, name: report.channel.name }, environment: { ...report.environment },

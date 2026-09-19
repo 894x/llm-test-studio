@@ -155,7 +155,7 @@ describe("Suite quick task workspace", () => {
       )
       const historicalTask = { ...task, revision: 7 }
       actions.getQuickTask.mockResolvedValue({
-        schema_version: 2, seed: 1, request_timeout_ms: 60000,
+        schema_version: 1, seed: 1, request_timeout_ms: 60000,
         run_id: run.id,
         suite: historicalTask,
         model: "past-model",

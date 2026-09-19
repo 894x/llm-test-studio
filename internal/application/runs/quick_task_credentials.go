@@ -87,7 +87,7 @@ func (service *Service) quickTaskCredentialRef(ctx context.Context, runID, baseU
 	if err != nil {
 		return credentials.StoreRef{}, err
 	}
-	if snapshot.QuickTask.SavedChannelID != "" || snapshot.Channel.BaseURL != baseURL || snapshot.Channel.Protocol != protocol || !secureCredentialEndpoint(baseURL, service.allowInsecureLoopback) {
+	if snapshot.QuickTask.SavedChannelID != "" || snapshot.Channel.BaseURL != baseURL || snapshot.Channel.Protocol != protocol {
 		return credentials.StoreRef{}, ErrNotRunnable
 	}
 	return credentials.NewStoreRef(domain.CredentialQuickTaskAPIKey, runID)

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "wan-video.wan2.5-t2v-preview.connectivity",
   "name": "wan2.5-t2v-preview 连通性测试",
   "protocol": "wan-video",

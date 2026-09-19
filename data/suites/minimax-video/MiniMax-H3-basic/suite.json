@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "minimax-video.MiniMax-H3.basic",
   "name": "MiniMax H3 基本功能测试套件",
   "protocol": "minimax-video",

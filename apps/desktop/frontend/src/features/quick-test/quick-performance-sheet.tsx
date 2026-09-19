@@ -37,6 +37,7 @@ import { PerformanceLatencyTable } from "@/features/reports/performance-latency-
 import { PerformanceStreamingTimingTable } from "@/features/reports/performance-streaming-timing-table"
 
 import {
+  estimateQuickPerformanceOpenLoopRampRequestCap,
   estimateQuickPerformanceOpenLoopRequestCap,
   type QuickPerformanceArrivalPattern,
   type QuickPerformanceCommand,
@@ -1178,13 +1179,6 @@ function QuickPerformanceReportPanel({
             value={formatOptionalRate(report.metrics.successful_request_qps)}
             numeric
           />
-          {report.schema_version === 1 ? (
-            <ResultValue
-              label={tx("desktop:quick-test_legacy_request_throughput")}
-              value={`${formatPerformanceInteger(report.metrics.request_qps)} req/s`}
-              numeric
-            />
-          ) : null}
           <ResultValue label="RPM" value={`${formatPerformanceInteger(report.metrics.rpm)} RPM`} numeric />
           <ResultValue
             label="Input TPM"
@@ -1209,7 +1203,6 @@ function QuickPerformanceReportPanel({
         </MetricSection>
         <PerformanceLatencyTable metrics={report.metrics} />
         <PerformanceStreamingTimingTable
-          schemaVersion={report.schema_version}
           metrics={report.metrics}
         />
         <MetricSection title="Token">
@@ -1620,8 +1613,9 @@ function performanceRequestBudget(form: PerformanceForm): PerformanceRequestBudg
       ? 0
       : form.loadMode === "fixed_concurrency"
         ? nonNegativeFiniteOrZero(form.rampRequestCap)
-        : performanceOpenLoopRequestCap(
-            rampDurationSeconds * nonNegativeFiniteOrZero(form.ratePerSecond) * 0.55,
+        : estimateQuickPerformanceOpenLoopRampRequestCap(
+            rampDurationSeconds * 1_000,
+            nonNegativeFiniteOrZero(form.ratePerSecond),
             form.arrivalPattern,
           )
   const capacityTargets = performanceCapacityTargets(form)
@@ -1683,13 +1677,6 @@ function performanceCapacityTargets(form: PerformanceForm): number[] | undefined
     return undefined
   }
   return targets
-}
-
-function performanceOpenLoopRequestCap(
-  intensity: number,
-  arrivalPattern: QuickPerformanceArrivalPattern,
-): number {
-  return arrivalPattern === "poisson" ? Math.ceil(2 * intensity) + 1 : Math.ceil(intensity)
 }
 
 function nonNegativeFiniteOrZero(value: number): number {

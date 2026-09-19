@@ -61,7 +61,7 @@ describe("quick task drafts", () => {
 
   it("restores safe history metadata and rejects inconsistent fields", () => {
     const payload = {
-      schema_version: 2, seed: 1, request_timeout_ms: 60000,
+      schema_version: 1, seed: 1, request_timeout_ms: 60000,
       run_id: "11111111-1111-4111-8111-111111111111",
       suite: task,
       model: "model",

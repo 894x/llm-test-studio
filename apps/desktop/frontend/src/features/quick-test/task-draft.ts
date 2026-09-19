@@ -4,7 +4,7 @@ import type { StartQuickTaskCommand } from "@/features/runs/data"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { connectionURLHint } from "./connection-url"
 
-export const TASK_DRAFT_KEY = "llm-test-studio.quick-task-draft.v2"
+export const TASK_DRAFT_KEY = "llm-test-studio.quick-task-draft.v1"
 export type TaskDraft = {
   task: CatalogSuite | null
   model: string
@@ -19,7 +19,7 @@ export type TaskDraft = {
 }
 
 export type QuickTaskDetail = {
-  schema_version: 2
+  schema_version: 1
   run_id: string
   suite: CatalogSuite
   model: string
@@ -117,7 +117,7 @@ export function encodeTaskDraft(draft: TaskDraft): string {
   // Deliberately project fields instead of serializing the form with its key.
   const baseURL = connectionURLHint(draft.base_url.trim(), "base_url") ? "" : draft.base_url.trim()
   return JSON.stringify({
-    schema_version: 2,
+    schema_version: 1,
     task: draft.task,
     model: draft.model,
     base_url: baseURL,
@@ -134,7 +134,7 @@ export function decodeTaskDraft(raw: string | null): TaskDraft | null {
     const value: unknown = JSON.parse(raw)
     if (
       !record(value) ||
-      value.schema_version !== 2 ||
+      value.schema_version !== 1 ||
       typeof value.model !== "string" ||
       typeof value.base_url !== "string" ||
       typeof value.channel_id !== "string" ||
@@ -178,7 +178,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
   const invalid = () => new DesktopDataError(tx("quickTest:task.invalidHistory"))
   if (
     !record(value) ||
-    value.schema_version !== 2 ||
+    value.schema_version !== 1 ||
     !isUUID(value.run_id) ||
     typeof value.model !== "string" ||
     !value.model.trim() ||
@@ -203,7 +203,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
     inputs[key] = item
   }
   return {
-    schema_version: 2,
+    schema_version: 1,
     run_id: value.run_id,
     suite,
     model: value.model, seed: value.seed as number, request_timeout_ms: value.request_timeout_ms as number,

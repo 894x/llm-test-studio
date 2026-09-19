@@ -24,7 +24,7 @@ func TestRunDryRunJSONLCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	caseJSON := `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
@@ -34,7 +34,7 @@ func TestRunDryRunJSONLCompatibility(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

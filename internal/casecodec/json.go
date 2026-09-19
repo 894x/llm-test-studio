@@ -18,6 +18,8 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
+const CurrentFilesystemSchemaVersion = 1
+
 type shareableFilesystemCase struct {
 	SchemaVersion int                       `json:"schema_version"`
 	Key           string                    `json:"key"`
@@ -77,7 +79,7 @@ func EncodeFilesystemCase(testCase domain.TestCase) ([]byte, error) {
 		return nil, err
 	}
 	payload := shareableFilesystemCase{
-		SchemaVersion: 3, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
+		SchemaVersion: CurrentFilesystemSchemaVersion, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 		Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
 		Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode, Definition: testCase.Definition,
 	}
@@ -89,8 +91,8 @@ func convertFilesystemCase(sourcePath string, raw []byte) (convertedCase, error)
 		return convertedCase{}, errors.New("filesystem case source path is required")
 	}
 	var payload shareableFilesystemCase
-	if err := decodeStrictJSON(raw, &payload); err != nil || payload.SchemaVersion != 3 {
-		return convertedCase{}, errors.New("unsupported filesystem case format; explicitly upgrade to schema_version 3")
+	if err := decodeStrictJSON(raw, &payload); err != nil || payload.SchemaVersion != CurrentFilesystemSchemaVersion {
+		return convertedCase{}, errors.New("unsupported filesystem case format; explicitly upgrade to schema_version 1")
 	}
 	entity := domain.TestCase{
 		Key: payload.Key, Name: payload.Name, Dimension: payload.Dimension, Protocol: payload.Protocol,
@@ -133,7 +135,7 @@ func sha256Hex(value []byte) string {
 
 func materializedHash(testCase domain.TestCase) (string, error) {
 	payload := shareableFilesystemCase{
-		SchemaVersion: 3, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
+		SchemaVersion: CurrentFilesystemSchemaVersion, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 		Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
 		Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode, Definition: testCase.Definition,
 	}

@@ -148,7 +148,7 @@ func TestLoadRunUsesGoSchedulerAndNeverEmitsCredential(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{
 		"load", "run", "--url", server.URL + "/v1/chat/completions",
-		"--requests", "2", "--concurrency", "1", "--allow-insecure-loopback",
+		"--requests", "2", "--concurrency", "1",
 	}, strings.NewReader(""), &stdout, &stderr, dependencies)
 	if code != 0 || stderr.Len() != 0 {
 		t.Fatalf("run() code = %d, stderr = %q", code, stderr.String())
@@ -312,7 +312,7 @@ func TestAuditListUsesVersionedResponseEnvelope(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -322,7 +322,7 @@ func TestAuditListUsesVersionedResponseEnvelope(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -397,7 +397,7 @@ func TestAuditListCanRenderHumanOutput(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -407,7 +407,7 @@ func TestAuditListCanRenderHumanOutput(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -563,7 +563,7 @@ func TestAuditRunDefaultsToCanonicalEventEnvelopes(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
@@ -573,7 +573,7 @@ func TestAuditRunDefaultsToCanonicalEventEnvelopes(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -787,7 +787,7 @@ func writeManualAuditCase(t *testing.T) string {
 	t.Helper()
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
@@ -797,7 +797,7 @@ func writeManualAuditCase(t *testing.T) string {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -817,7 +817,7 @@ func TestAuditRunCanRenderHumanLifecycle(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
@@ -827,7 +827,7 @@ func TestAuditRunCanRenderHumanLifecycle(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -871,7 +871,7 @@ func TestAuditRunClassifiesConfigCredentialAndReportErrorsWithoutSecrets(t *test
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
@@ -881,7 +881,7 @@ func TestAuditRunClassifiesConfigCredentialAndReportErrorsWithoutSecrets(t *test
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -991,7 +991,7 @@ func (do httpDoerFunc) Do(request *http.Request) (*http.Response, error) {
 func TestAuditRunPropagatesCallerCancellation(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -1001,7 +1001,7 @@ func TestAuditRunPropagatesCallerCancellation(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -1131,7 +1131,7 @@ func TestAuditRunHumanPlanNilOrTruncatedWriterStopsBeforeHTTPAndReport(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -1141,7 +1141,7 @@ func TestAuditRunHumanPlanNilOrTruncatedWriterStopsBeforeHTTPAndReport(t *testin
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {
@@ -1253,7 +1253,7 @@ func TestAuditRunFirstPlanWriteFailureCancelsBeforeHTTP(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 3,
+  "schema_version": 1,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
@@ -1263,7 +1263,7 @@ func TestAuditRunFirstPlanWriteFailureCancelsBeforeHTTP(t *testing.T) {
   "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
-    "schema_version": 2,
+    "schema_version": 1,
     "type": "openai-chat",
     "type_version": 1,
     "spec": {

@@ -31,7 +31,6 @@ func TestPerformanceRejectsInvalidOrUnsafeConnectionsBeforeTransport(t *testing.
 		code    string
 	}{
 		{name: "unknown mode", command: validConnectionCommand(), code: string(ErrorInvalidRequest)},
-		{name: "remote http", command: withConnectionCommand(validConnectionCommand(), func(command *PerformanceCommand) { command.URL = "http://example.com/v1" }), code: string(ErrorInsecureEndpoint)},
 		{name: "query", command: withConnectionCommand(validConnectionCommand(), func(command *PerformanceCommand) { command.URL += "?key=secret" }), code: string(ErrorInvalidRequest)},
 		{name: "fragment", command: withConnectionCommand(validConnectionCommand(), func(command *PerformanceCommand) { command.URL += "#fragment" }), code: string(ErrorInvalidRequest)},
 		{name: "userinfo", command: withConnectionCommand(validConnectionCommand(), func(command *PerformanceCommand) { command.URL = "https://user:pass@example.com/v1" }), code: string(ErrorInvalidRequest)},
@@ -65,7 +64,7 @@ func TestPerformanceRejectsInvalidOrUnsafeConnectionsBeforeTransport(t *testing.
 
 func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testing.T) {
 	var calls atomic.Int64
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
 		if request.URL.Path != "/v1/chat/completions" {
 			t.Errorf("path = %q", request.URL.Path)

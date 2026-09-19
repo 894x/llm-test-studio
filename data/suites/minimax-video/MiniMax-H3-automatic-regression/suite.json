@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "minimax-video.MiniMax-H3.automatic-regression",
   "name": "MiniMax H3 自动化核心回归套件",
   "protocol": "minimax-video",

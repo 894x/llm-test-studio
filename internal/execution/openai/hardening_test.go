@@ -52,17 +52,14 @@ func TestClientOwnsRedirectPolicyAndNeverFollows307(t *testing.T) {
 	}
 }
 
-func TestNewClientRequiresHTTPSAndLimitsHTTPTestEscapeHatchToLoopback(t *testing.T) {
+func TestNewClientAcceptsRemoteAndLoopbackHTTPEndpoints(t *testing.T) {
 	lease := testLease(t, "super-secret")
-	_, err := NewClient(testChannel("http://api.example.test"), lease, nil)
-	if !errors.Is(err, ErrInsecureEndpoint) {
-		t.Fatalf("remote HTTP error = %v", err)
-	}
-	_, err = NewClient(testChannel("http://api.example.test"), lease, nil, WithLoopbackHTTPForTesting())
-	if !errors.Is(err, ErrInsecureEndpoint) {
-		t.Fatalf("remote HTTP with test option error = %v", err)
-	}
+	remoteClient, err := NewClient(testChannel("http://api.example.test"), lease, nil)
 	_ = lease.Close()
+	if err != nil {
+		t.Fatalf("remote HTTP client error = %v", err)
+	}
+	_ = remoteClient.Close()
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -70,7 +67,7 @@ func TestNewClientRequiresHTTPSAndLimitsHTTPTestEscapeHatchToLoopback(t *testing
 	}))
 	defer server.Close()
 	lease = testLease(t, "super-secret")
-	client, err := NewClient(testChannel(server.URL), lease, server.Client().Transport, WithLoopbackHTTPForTesting())
+	client, err := NewClient(testChannel(server.URL), lease, server.Client().Transport)
 	_ = lease.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +78,7 @@ func TestNewClientRequiresHTTPSAndLimitsHTTPTestEscapeHatchToLoopback(t *testing
 		t.Fatal(err)
 	}
 	if observation := executor(context.Background(), load.Request{}); !observation.Success {
-		t.Fatalf("loopback HTTP observation = %#v", observation)
+		t.Fatalf("HTTP observation = %#v", observation)
 	}
 }
 

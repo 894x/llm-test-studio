@@ -1278,7 +1278,7 @@ async function replaceNumber(
 
 function successfulPerformanceReport(): QuickPerformanceReport {
   return {
-    schema_version: 2,
+    schema_version: 1,
     report_id: "77777777-7777-4777-8777-777777777771",
     generated_at: "2026-08-31T14:30:00Z",
     archived: true,
@@ -1427,7 +1427,7 @@ function phaseFivePerformanceReport(): QuickPerformanceReport {
   const report = successfulPerformanceReport()
   return {
     ...report,
-    schema_version: 3,
+    schema_version: 1,
     metrics: {
       ...report.metrics,
       ttft_samples: 4,

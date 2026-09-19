@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "key": "wan-video.wan3.0-video.connectivity",
   "name": "Wan 3.0 标准版 · 连通性测试",
   "protocol": "wan-video",

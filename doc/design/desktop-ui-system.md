@@ -67,6 +67,9 @@ shadcn/ui，不引入 Naive UI 运行时，也不复制 Animetown 的组件代�
 | Success | `#aab8c7` | `#4f6175` |
 | Warning | `#f2c97d` | `#8a5b12` |
 | Error | `#ff9aa8` | `#a23445` |
+| Case outcome passed | `#4ade80` | `#15803d` |
+| Case outcome review | `#f2c97d` | `#b7791f` |
+| Case outcome failed | `#ff7f91` | `#c24152` |
 
 几何与密度：
 

@@ -338,8 +338,8 @@ func buildConfig(request RunRequest) (apiaudit.RunConfig, error) {
 		return apiaudit.RunConfig{}, fmt.Errorf("--suite must be %s", choices)
 	}
 	parsedBase, err := url.Parse(request.BaseURL)
-	if err != nil || parsedBase.Scheme != "https" || parsedBase.Host == "" {
-		return apiaudit.RunConfig{}, fmt.Errorf("--base-url must be an absolute HTTPS URL")
+	if err != nil || (parsedBase.Scheme != "http" && parsedBase.Scheme != "https") || parsedBase.Host == "" {
+		return apiaudit.RunConfig{}, fmt.Errorf("--base-url must be an absolute HTTP or HTTPS URL")
 	}
 	if parsedBase.User != nil || parsedBase.RawQuery != "" || parsedBase.Fragment != "" {
 		return apiaudit.RunConfig{}, fmt.Errorf("--base-url must not contain credentials, a query, or a fragment")

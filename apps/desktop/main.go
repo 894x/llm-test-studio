@@ -84,15 +84,19 @@ func desktopRunDiagnosticReporter(operator *diagnostics.Logger, fallback *log.Lo
 	return func(diagnostic runs.Diagnostic) {
 		level := diagnostics.LevelError
 		message := "run operation failed"
-		if diagnostic.ErrorCode == "diagnostics_dropped" {
+		if diagnostic.ErrorCode == "phase_timing" {
+			level = diagnostics.LevelInfo
+			message = "run start phase completed"
+		} else if diagnostic.ErrorCode == "diagnostics_dropped" {
 			level = diagnostics.LevelWarn
 			message = "run diagnostics were dropped"
 		}
 		if fallback != nil {
 			fallback.Printf(
-				"%s: run=%s request=%s operation=%s code=%s dropped=%d: %s",
+				"%s: run=%s request=%s operation=%s code=%s duration=%s dropped=%d: %s",
 				message,
 				diagnostic.RunID, diagnostic.RequestID, diagnostic.Operation, diagnostic.ErrorCode,
+				diagnostic.Duration,
 				diagnostic.DroppedCount,
 				diagnostics.RedactText(errorText(diagnostic.Err)),
 			)
@@ -102,7 +106,7 @@ func desktopRunDiagnosticReporter(operator *diagnostics.Logger, fallback *log.Lo
 				Level: level, Message: message,
 				Component: "runs", Operation: diagnostic.Operation, ErrorCode: diagnostic.ErrorCode,
 				RunID: diagnostic.RunID, RequestID: diagnostic.RequestID,
-				DroppedCount: diagnostic.DroppedCount, Err: diagnostic.Err,
+				Duration: diagnostic.Duration, DroppedCount: diagnostic.DroppedCount, Err: diagnostic.Err,
 			}); err != nil && fallback != nil {
 				fallback.Printf("structured diagnostic degraded: %s", diagnostics.RedactText(err.Error()))
 			}

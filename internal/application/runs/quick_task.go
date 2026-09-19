@@ -116,7 +116,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		}
 		channel.Name = endpoint.Host
 	}
-	if !secureCredentialEndpoint(channel.BaseURL, service.allowInsecureLoopback) {
+	if channel.Validate() != nil {
 		return "", ErrNotRunnable
 	}
 	timeout := command.RequestTimeoutMS
@@ -175,11 +175,23 @@ func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickT
 	if err != nil {
 		return domain.Suite{}, nil, err
 	}
+	testCases, err := service.repository.ListTestCases(ctx)
+	if err != nil {
+		return domain.Suite{}, nil, fmt.Errorf("load quick task Case catalog: %w", err)
+	}
+	caseByID, err := indexTestCases(testCases)
+	if err != nil {
+		return domain.Suite{}, nil, err
+	}
 	cases := make([]domain.TestCase, 0, len(suite.Cases))
 	for _, ref := range suite.Cases {
-		testCase, err := service.repository.GetTestCase(ctx, ref.CaseID)
-		if err != nil {
-			return domain.Suite{}, nil, fmt.Errorf("load quick task case: %w", err)
+		testCase, found := caseByID[ref.CaseID]
+		if !found {
+			return domain.Suite{}, nil, fmt.Errorf(
+				"%w: quick task references unavailable Case %s",
+				ErrNotRunnable,
+				ref.CaseID,
+			)
 		}
 		cases = append(cases, testCase)
 	}
