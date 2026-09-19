@@ -77,7 +77,7 @@ export function ExecutionDetails({ results }: { results: ReportResult[] }) {
         <VerificationBadge status={result.verification.status} />
         {result.dimensions?.phase === "warmup" ? <span className="text-muted-foreground">{t("protocolDesign.warmupExecution")}</span> : null}
         {result.observation?.http_status !== undefined ? <span>HTTP {result.observation.http_status}</span> : null}
-        {result.error_code ? <span className="break-all text-destructive">{result.error_code}</span> : null}
+        {result.error_code ? <span className="break-all text-destructive">{t(`common:errorCode.${result.error_code}`, { defaultValue: result.error_code })}</span> : null}
       </summary>
       <div className="min-w-0 space-y-3 pt-2">
         <div className="break-all font-mono text-[10px] text-muted-foreground">{result.request_id ?? result.id}</div>

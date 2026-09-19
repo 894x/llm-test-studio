@@ -1,5 +1,7 @@
 import { getI18n } from "react-i18next"
 
+import enCommon from "./resources/en-US/common.json"
+import zhCommon from "./resources/zh-CN/common.json"
 import enDesktop from "./resources/en-US/desktop.json"
 import zhDesktop from "./resources/zh-CN/desktop.json"
 import { resources } from "./i18n"
@@ -8,6 +10,28 @@ import { resources } from "./i18n"
 // provider's useTranslation hook so language changes also trigger a render.
 export function desktopLocale(): "zh-CN" | "en-US" {
   return typeof document !== "undefined" && document.documentElement.lang === "en-US" ? "en-US" : "zh-CN"
+}
+
+export function translateExecutionError(code: string, locale?: string): string {
+  return lookupCommonMessage("errorCode", code, locale)
+}
+
+export function translateFailurePhase(phase: string, locale?: string): string {
+  return lookupCommonMessage("failurePhase", phase, locale)
+}
+
+export function translateRunFailureSummary(phase: string | undefined, code: string, locale?: string): string {
+  return `${translateFailurePhase(phase || "run", locale)} · ${translateExecutionError(code, locale)}`
+}
+
+function lookupCommonMessage(group: "errorCode" | "failurePhase", code: string, locale?: string): string {
+  const lng = locale === "en-US" || locale === "zh-CN" ? locale : desktopLocale()
+  const key = `common:${group}.${code}`
+  const instance = getI18n()
+  if (instance?.exists(key, { lng })) return String(instance.t(key, { lng }))
+  const bundle = lng === "en-US" ? enCommon : zhCommon
+  const table = bundle[group] as Record<string, string>
+  return table[code] ?? code
 }
 
 export function translateDesktop(key: string, values: Record<string, unknown> = {}): string {

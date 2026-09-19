@@ -67,26 +67,6 @@
     "warming_up": "Warming up",
     "ramping": "Ramping"
   },
-  "errorCode": {
-    "invalid_request": "Invalid test parameters",
-    "insecure_endpoint": "Only HTTPS endpoints are supported",
-    "credential_required": "API Key is required",
-    "authentication_failed": "Authentication failed",
-    "network_error": "Unable to connect to the endpoint",
-    "timeout": "Request timed out",
-    "cancelled": "Test cancelled",
-    "http_error": "Endpoint returned an error status",
-    "rate_limited": "Endpoint rate limit reached",
-    "protocol_error": "Invalid endpoint response protocol",
-    "incomplete_stream": "Streaming response ended unexpectedly",
-    "semantic_empty": "Endpoint returned no valid model content",
-    "response_too_large": "Endpoint response exceeded the safety limit",
-    "client_closed": "Test client closed",
-    "executor_panic": "Test executor failed",
-    "scheduler_overload": "Local scheduling capacity exhausted",
-    "request_failed": "Endpoint request failed",
-    "unclassified_error": "Endpoint returned an unclassified error"
-  },
   "task": {
     "choose": "Choose a test task.",
     "numberRequired": "Enter a valid number.",

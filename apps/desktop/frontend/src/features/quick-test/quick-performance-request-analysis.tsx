@@ -49,10 +49,10 @@ export function QuickPerformanceRequestAnalysis({ report }: { report: QuickPerfo
                   size="sm"
                   variant={filter === failure.error_code ? "secondary" : "outline"}
                   aria-pressed={filter === failure.error_code}
-                  aria-label={tx("desktop:quick-test_filter_by_value_value_requests", { value1: tx(`quickTest:errorCode.${failure.error_code}`), value2: failure.count })}
+                  aria-label={tx("desktop:quick-test_filter_by_value_value_requests", { value1: tx(`common:errorCode.${failure.error_code}`, { defaultValue: failure.error_code }), value2: failure.count })}
                   onClick={() => changeFilter(failure.error_code)}
                 >
-                  {tx(`quickTest:errorCode.${failure.error_code}`)} <span className="tabular-nums">{failure.count}</span>
+                  {tx(`common:errorCode.${failure.error_code}`, { defaultValue: failure.error_code })} <span className="tabular-nums">{failure.count}</span>
                 </Button>
               ))}
             </div>
@@ -92,7 +92,7 @@ export function QuickPerformanceRequestAnalysis({ report }: { report: QuickPerfo
                 <TableCell className="font-mono">{tx("desktop:quick-test_request")} {sample.request_index + 1}</TableCell>
                 <TableCell><Badge variant={sample.success ? "secondary" : "destructive"}>{sample.success ? tx("desktop:quick-test_succeeded") : tx("desktop:quick-test_failed")}</Badge></TableCell>
                 <TableCell className="text-right tabular-nums">{sample.http_status || "—"}</TableCell>
-                <TableCell>{sample.error_code ? tx(`quickTest:errorCode.${sample.error_code}`) : "—"}</TableCell>
+                <TableCell>{sample.error_code ? tx(`common:errorCode.${sample.error_code}`, { defaultValue: sample.error_code }) : "—"}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatMS(sample.e2e_ms)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatMS(sample.ttft_ms)}</TableCell>
                 <TableCell className="text-right tabular-nums">{sample.prompt_tokens} / {sample.completion_tokens}</TableCell>
@@ -166,7 +166,7 @@ function RequestDetail({ sample }: { sample: QuickPerformanceSample }) {
         <Badge variant={sample.success ? "secondary" : "destructive"}>{sample.success ? tx("desktop:quick-test_succeeded") : tx("desktop:quick-test_failed")}</Badge>
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3">
-        <DetailValue label={tx("desktop:quick-test_error_reason")} value={sample.error_code ? tx(`quickTest:errorCode.${sample.error_code}`) : tx("desktop:quick-test_none")} />
+        <DetailValue label={tx("desktop:quick-test_error_reason")} value={sample.error_code ? tx(`common:errorCode.${sample.error_code}`, { defaultValue: sample.error_code }) : tx("desktop:quick-test_none")} />
         <DetailValue label={tx("desktop:quick-test_http_status")} value={sample.http_status ? String(sample.http_status) : tx("desktop:quick-test_no_response_received")} numeric />
         <DetailValue label={tx("desktop:quick-test_request_id")} value={evidence?.request_id || tx("desktop:quick-test_not_provided")} mono />
         <DetailValue label="Content-Type" value={evidence?.content_type || tx("desktop:quick-test_not_provided")} mono />

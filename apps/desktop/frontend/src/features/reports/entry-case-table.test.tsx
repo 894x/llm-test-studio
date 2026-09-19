@@ -25,6 +25,28 @@ describe("protocol execution details", () => {
     expect(screen.getByText(/预热/)).toBeInTheDocument()
     expect(openAIChatPresentation.columns.find(column => column.id === "tokens")?.metric).toBe("completion_tokens")
   })
+
+  it("translates known execution error codes and keeps unknown codes readable", () => {
+    const results: ReportResult[] = [
+      {
+        id: "known", request_id: "req-auth", execution_status: "failed",
+        verification: { status: "failed", assertions: [] },
+        error_code: "authentication_failed",
+        metrics: {},
+      },
+      {
+        id: "unknown", request_id: "req-raw", execution_status: "failed",
+        verification: { status: "failed", assertions: [] },
+        error_code: "provider_internal_timeout",
+        metrics: {},
+      },
+    ]
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ExecutionDetails results={results} /></I18nextProvider>)
+    expect(screen.getByText("鉴权失败")).toBeInTheDocument()
+    expect(screen.getByText("provider_internal_timeout")).toBeInTheDocument()
+    expect(screen.queryByText("authentication_failed")).not.toBeInTheDocument()
+    expect(screen.queryByText("common:errorCode.provider_internal_timeout")).not.toBeInTheDocument()
+  })
 })
 
 it("shows distinct measured HTTP observations without counting warmup", () => {

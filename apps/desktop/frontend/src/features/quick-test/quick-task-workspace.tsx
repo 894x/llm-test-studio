@@ -561,7 +561,11 @@ export function QuickTaskWorkspace({
                         {new Date(selectedRun.started_at).toLocaleString(i18n.language)}
                       </p>
                       {selectedRun.error_code ? (
-                        <p className="text-xs text-destructive">{selectedRun.error_code}</p>
+                        <p className="text-xs text-destructive">
+                          {t(`common:errorCode.${selectedRun.error_code}`, {
+                            defaultValue: selectedRun.error_code,
+                          })}
+                        </p>
                       ) : null}
                     </>
                   ) : (

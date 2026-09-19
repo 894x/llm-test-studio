@@ -1,5 +1,5 @@
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
-import { desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
+import { desktopLocale, translateDesktop as tx, translateExecutionError } from "@/i18n/runtime"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
 import { useTranslation } from "react-i18next"
@@ -552,7 +552,7 @@ function CapacityRungTable({ report }: { report: QuickPerformanceReport }) {
           <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.ttft_p95_ms)} ms</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.tpot_p95_ms)} ms/token</TableCell>
           <TableCell className="py-1 text-xs tabular-nums">{formatPerformanceInteger(rung.metrics.e2e_p95_ms)} ms</TableCell>
-          <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${tx(`quickTest:errorCode.${failure.error_code}`)} ${failure.count}`).join(" · ") : "—"}</TableCell>
+          <TableCell className="py-1 pr-3 text-xs text-muted-foreground">{rung.failures.length ? rung.failures.map((failure) => `${translateExecutionError(failure.error_code)} ${failure.count}`).join(" · ") : "—"}</TableCell>
         </TableRow>
       ))}</TableBody>
     </Table>

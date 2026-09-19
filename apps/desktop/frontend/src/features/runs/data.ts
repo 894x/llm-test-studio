@@ -1,5 +1,5 @@
 import type { CatalogPlanParameterValue } from "@/features/catalog/data"
-import { translateDesktop as tx } from "@/i18n/runtime"
+import { translateDesktop as tx, translateRunFailureSummary } from "@/i18n/runtime"
 export type CoreRunStatus =
   | "queued"
   | "starting"
@@ -194,7 +194,7 @@ export function presentWorkspace(
       artifactCount: item.artifact_count,
       failureSummary:
         item.error_code
-          ? `${item.failure_phase ?? "run"} · ${item.error_code}`
+          ? translateRunFailureSummary(item.failure_phase, item.error_code, options.locale)
           : item.failed > 0
           ? (options.t ?? defaultRunTranslator)("presentation.failedRequests", { count: item.failed })
           : item.conclusion === "failed"

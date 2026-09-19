@@ -937,7 +937,9 @@ function QuickPerformanceReportPanel({
     ? t("performance.complete")
     : completedWithFailures
       ? t("performance.completeWithFailures")
-      : t(`errorCode.${report.error_code ?? "request_failed"}`)
+      : t(`common:errorCode.${report.error_code ?? "request_failed"}`, {
+          defaultValue: report.error_code ?? "request_failed",
+        })
   return (
     <section
       aria-label={t("performance.reportAria")}
@@ -1241,7 +1243,9 @@ function QuickPerformanceReportPanel({
               {report.failures.map((failure) => (
                 <li key={failure.error_code} className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">
-                    {t(`errorCode.${failure.error_code}`)}
+                    {t(`common:errorCode.${failure.error_code}`, {
+                      defaultValue: failure.error_code,
+                    })}
                   </span>
                   <span className="tabular-nums">{failure.count}</span>
                 </li>

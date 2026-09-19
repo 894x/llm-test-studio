@@ -5,7 +5,7 @@ import { caseTypeLabel } from "@/features/catalog/presentation"
 import { parseCatalogSnapshot } from "@/features/catalog/data"
 import { performanceCapacitySummary, performanceCompletion, performanceProgressPhaseLabel } from "@/features/quick-test/performance-summary"
 import { createAppI18n } from "./i18n"
-import { localizeStoredMessage } from "./runtime"
+import { localizeStoredMessage, translateExecutionError, translateRunFailureSummary } from "./runtime"
 
 describe("desktop translation integration", () => {
   it("switches retained validation errors in both directions, including range parameters", () => {
@@ -30,5 +30,20 @@ describe("desktop translation integration", () => {
     expect(() => parseCatalogSnapshot({})).toThrow(DesktopDataError)
     document.documentElement.lang = "zh-CN"
     expect(performanceProgressPhaseLabel("ramping")).toBe("正在爬坡")
+  })
+
+  it("translates shared execution error codes without leaking unknown values as resource keys", () => {
+    document.documentElement.lang = "zh-CN"
+    createAppI18n("zh-CN")
+    expect(translateExecutionError("authentication_failed")).toBe("鉴权失败")
+    expect(translateRunFailureSummary("execute", "run_execution_failed")).toBe("执行 · 运行执行失败")
+    expect(translateExecutionError("provider_said_sk-secret")).toBe("provider_said_sk-secret")
+    document.documentElement.lang = "en-US"
+    createAppI18n("en-US")
+    expect(translateExecutionError("authentication_failed", "en-US")).toBe("Authentication failed")
+    expect(translateRunFailureSummary("persist_suite_result", "result_persistence_failed", "en-US")).toBe(
+      "Saving suite results · The run could not save results",
+    )
+    document.documentElement.lang = "zh-CN"
   })
 })
