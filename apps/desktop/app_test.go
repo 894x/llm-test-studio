@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
@@ -466,6 +467,46 @@ func TestDesktopAppCatalogCommandsDelegateAndReturnAuthoritativeCatalog(t *testi
 	if query.calls != len(tests) {
 		t.Fatalf("catalog snapshot calls = %d, want %d", query.calls, len(tests))
 	}
+}
+
+func TestDesktopStartComparisonMapsSelectionErrors(t *testing.T) {
+	command := comparisons.StartCommand{
+		PlanID:     "11111111-1111-4111-8111-111111111111",
+		ModelID:    "22222222-2222-4222-8222-222222222222",
+		ChannelIDs: []string{"33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"},
+	}
+	tests := []struct {
+		err  error
+		code string
+	}{
+		{comparisons.ErrInvalid, desktopCodeComparisonInvalid},
+		{comparisons.ErrNotReady, desktopCodeComparisonNotReady},
+		{comparisons.ErrTargetUnmapped, desktopCodeComparisonTargetUnmapped},
+		{comparisons.ErrChannelNotReady, desktopCodeComparisonChannelNotReady},
+	}
+	for _, test := range tests {
+		t.Run(test.code, func(t *testing.T) {
+			app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+				return desktopDependencies{comparisons: &recordingComparisons{startErr: test.err}}, nil
+			})
+			app.onStartup(context.Background())
+			_, err := app.StartComparison(command)
+			assertBindingErrorCode(t, err, test.code)
+		})
+	}
+}
+
+type recordingComparisons struct {
+	startErr error
+	snapshot comparisons.Snapshot
+}
+
+func (service *recordingComparisons) Start(context.Context, comparisons.StartCommand) (string, error) {
+	return "", service.startErr
+}
+
+func (service *recordingComparisons) Snapshot(context.Context) (comparisons.Snapshot, error) {
+	return service.snapshot, nil
 }
 
 func TestDesktopAppCatalogCommandErrorsKeepStablePublicMeaning(t *testing.T) {

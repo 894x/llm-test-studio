@@ -1059,6 +1059,10 @@ describe("Wails desktop client", () => {
     ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
     ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],
     ["catalog_saved_refresh_failed", "已保存，但目录刷新失败", "CreateModel", "createModel"],
+    ["comparison_invalid", "渠道对比请求无效", "StartComparison", "startComparison"],
+    ["comparison_not_ready", "所选渠道无法用同一个模型版本公平对比", "StartComparison", "startComparison"],
+    ["comparison_target_unmapped", "所选模型尚未绑定到其中一个渠道", "StartComparison", "startComparison"],
+    ["comparison_channel_not_ready", "其中一个渠道未启用或未配置密钥", "StartComparison", "startComparison"],
   ] as const)("maps the public %s binding error", async (code, message, bindingMethod, clientMethod) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce(new Error(code))

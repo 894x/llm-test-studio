@@ -3,10 +3,12 @@ package comparisons_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -58,11 +60,84 @@ func TestStartCreatesOnePinnedRunPerChannelAndRefreshCompletesTheComparison(t *t
 	}
 }
 
+func TestStartClassifiesSelectionFailures(t *testing.T) {
+	tests := []struct {
+		name  string
+		tweak func(*comparisonFixture, *comparisonRepository)
+		ids   func(comparisonFixture) []string
+		want  error
+	}{
+		{
+			name: "duplicate channels",
+			ids: func(fixture comparisonFixture) []string {
+				return []string{fixture.channels[0].ID, fixture.channels[0].ID}
+			},
+			want: comparisons.ErrInvalid,
+		},
+		{
+			name: "unmapped channel",
+			tweak: func(fixture *comparisonFixture, repository *comparisonRepository) {
+				repository.missing = map[string]struct{}{fixture.channels[1].ID: {}}
+			},
+			want: comparisons.ErrTargetUnmapped,
+		},
+		{
+			name: "disabled channel",
+			tweak: func(fixture *comparisonFixture, _ *comparisonRepository) {
+				fixture.channels[1].Enabled = false
+			},
+			want: comparisons.ErrChannelNotReady,
+		},
+		{
+			name: "channel without credential",
+			tweak: func(fixture *comparisonFixture, _ *comparisonRepository) {
+				fixture.channels[1].CredentialID = ""
+			},
+			want: comparisons.ErrChannelNotReady,
+		},
+		{
+			name: "model revision mismatch",
+			tweak: func(fixture *comparisonFixture, repository *comparisonRepository) {
+				repository.revisions = map[string]uint64{fixture.channels[1].ID: fixture.model.Revision + 1}
+			},
+			want: comparisons.ErrNotReady,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newComparisonFixture(t)
+			repository := &comparisonRepository{fixture: fixture}
+			if test.tweak != nil {
+				test.tweak(&repository.fixture, repository)
+			}
+			service, err := comparisons.New(comparisons.Dependencies{
+				Repository: repository, Runner: &comparisonRunner{fixture: fixture, repository: repository},
+				Clock: &comparisonClock{now: fixture.now},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			channelIDs := []string{fixture.channels[0].ID, fixture.channels[1].ID}
+			if test.ids != nil {
+				channelIDs = test.ids(repository.fixture)
+			}
+			_, err = service.Start(context.Background(), comparisons.StartCommand{
+				PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelIDs: channelIDs,
+			})
+			if !errors.Is(err, test.want) {
+				t.Fatalf("Start() error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
 type comparisonRepository struct {
 	mu         sync.Mutex
 	fixture    comparisonFixture
 	latestPlan *domain.Plan
 	comparison domain.Comparison
+	missing    map[string]struct{}
+	revisions  map[string]uint64
 }
 
 func (repository *comparisonRepository) GetPlan(context.Context, string) (domain.Plan, error) {
@@ -75,9 +150,16 @@ func (repository *comparisonRepository) GetPlanRevision(context.Context, string,
 	return domain.Plan{}, context.Canceled
 }
 func (repository *comparisonRepository) ResolvePlanTargetSelection(_ context.Context, _ domain.Plan, _ string, channelID string) (domain.Model, domain.Channel, domain.ChannelModel, error) {
+	if _, missing := repository.missing[channelID]; missing {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
+	}
 	for index, channel := range repository.fixture.channels {
 		if channel.ID == channelID {
-			return repository.fixture.model, channel, repository.fixture.mappings[index], nil
+			model := repository.fixture.model
+			if revision, ok := repository.revisions[channelID]; ok {
+				model.Revision = revision
+			}
+			return model, channel, repository.fixture.mappings[index], nil
 		}
 	}
 	return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, context.Canceled

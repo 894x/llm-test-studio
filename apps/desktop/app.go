@@ -55,6 +55,10 @@ const (
 	desktopCodeCatalogConflict           = "catalog_revision_conflict"
 	desktopCodeCatalogNotFound           = "catalog_not_found"
 	desktopCodeCatalogSavedRefreshFailed = "catalog_saved_refresh_failed"
+	desktopCodeComparisonInvalid         = "comparison_invalid"
+	desktopCodeComparisonNotReady        = "comparison_not_ready"
+	desktopCodeComparisonTargetUnmapped  = "comparison_target_unmapped"
+	desktopCodeComparisonChannelNotReady = "comparison_channel_not_ready"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -952,6 +956,14 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeCatalogConflict}
 	case errors.Is(internal, catalog.ErrNotFound):
 		return DesktopBindingError{Code: desktopCodeCatalogNotFound}
+	case errors.Is(internal, comparisons.ErrTargetUnmapped):
+		return DesktopBindingError{Code: desktopCodeComparisonTargetUnmapped}
+	case errors.Is(internal, comparisons.ErrChannelNotReady):
+		return DesktopBindingError{Code: desktopCodeComparisonChannelNotReady}
+	case errors.Is(internal, comparisons.ErrNotReady):
+		return DesktopBindingError{Code: desktopCodeComparisonNotReady}
+	case errors.Is(internal, comparisons.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeComparisonInvalid}
 	case errors.Is(internal, runs.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeRunInvalid}
 	case errors.Is(internal, runs.ErrNotRunnable):
@@ -987,7 +999,11 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeCatalogInvalid,
 		desktopCodeCatalogConflict,
 		desktopCodeCatalogNotFound,
-		desktopCodeCatalogSavedRefreshFailed:
+		desktopCodeCatalogSavedRefreshFailed,
+		desktopCodeComparisonInvalid,
+		desktopCodeComparisonNotReady,
+		desktopCodeComparisonTargetUnmapped,
+		desktopCodeComparisonChannelNotReady:
 		return true
 	default:
 		return false

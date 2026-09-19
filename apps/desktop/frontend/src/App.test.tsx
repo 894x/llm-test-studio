@@ -218,7 +218,7 @@ describe("desktop run workspace", () => {
 		})
 		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
 		vi.mocked(client.startComparison).mockRejectedValueOnce(
-			new DesktopClientError("comparison_unavailable"),
+			new DesktopClientError("comparison_not_ready"),
 		)
 
 		render(<App client={client} />)
@@ -229,7 +229,7 @@ describe("desktop run workspace", () => {
 		await user.click(within(dialog).getByRole("button", { name: "对比 2 个渠道" }))
 
 		expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-			"启动渠道对比（计划：营销文案基准，模型：gpt-5.2，渠道：2 个）失败：无法读取渠道对比，请重试；日志操作名：load_comparisons",
+			"启动渠道对比（计划：营销文案基准，模型：gpt-5.2，渠道：2 个）失败：所选渠道无法用同一个模型版本公平对比，请检查模型映射后重试",
 		)
 	})
 

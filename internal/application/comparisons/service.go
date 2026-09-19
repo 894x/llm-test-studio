@@ -9,13 +9,16 @@ import (
 	"sort"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 var (
-	ErrInvalid  = errors.New("comparisons: invalid input")
-	ErrNotReady = errors.New("comparisons: selected channels are not comparable")
+	ErrInvalid         = errors.New("comparisons: invalid input")
+	ErrNotReady        = errors.New("comparisons: selected channels are not comparable")
+	ErrTargetUnmapped  = errors.New("comparisons: model is not mapped to a selected channel")
+	ErrChannelNotReady = errors.New("comparisons: a selected channel is not ready")
 )
 
 type Repository interface {
@@ -128,12 +131,8 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (string
 	var protocol domain.Protocol
 	for index, channelID := range command.ChannelIDs {
 		model, channel, mapping, resolveErr := service.repository.ResolvePlanTargetSelection(ctx, plan, command.ModelID, channelID)
-		if resolveErr != nil {
-			return "", resolveErr
-		}
-		if model.ID != command.ModelID || !channel.Enabled || channel.CredentialID == "" ||
-			mapping.ChannelID != channel.ID || mapping.ModelID != model.ID || channel.Protocol != model.Protocol || model.Protocol != plan.Protocol {
-			return "", ErrNotReady
+		if classifyErr := classifyComparisonTarget(command.ModelID, plan, model, channel, mapping, resolveErr); classifyErr != nil {
+			return "", classifyErr
 		}
 		if index == 0 {
 			modelRevision, protocol = model.Revision, model.Protocol
@@ -180,6 +179,30 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (string
 		}
 	}
 	return comparison.Meta().ID, nil
+}
+
+func classifyComparisonTarget(modelID string, plan domain.Plan, model domain.Model, channel domain.Channel, mapping domain.ChannelModel, resolveErr error) error {
+	if resolveErr != nil {
+		switch {
+		case errors.Is(resolveErr, catalog.ErrPlanProtocolMismatch):
+			return resolveErr
+		case errors.Is(resolveErr, catalog.ErrNotFound):
+			return ErrTargetUnmapped
+		case errors.Is(resolveErr, catalog.ErrInvalid):
+			return ErrInvalid
+		default:
+			return resolveErr
+		}
+	}
+	bindingMatches := model.ID == modelID && mapping.ChannelID == channel.ID && mapping.ModelID == model.ID &&
+		channel.Protocol == model.Protocol && model.Protocol == plan.Protocol
+	if !bindingMatches {
+		return ErrNotReady
+	}
+	if !channel.Enabled || channel.CredentialID == "" {
+		return ErrChannelNotReady
+	}
+	return nil
 }
 
 func (service *Service) cancelStarted(started []domain.ComparisonRunRef) {

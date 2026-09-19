@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
+	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
@@ -225,6 +227,126 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("run executor was not started")
+	}
+}
+
+func TestFilesystemRuntimeRepositoryDistinguishesUnmappedAndDisabledTargets(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	models, err := modelcatalog.New(filepath.Join(root, "models.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	channels, err := channelcatalog.New(filepath.Join(root, "channels.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := plancatalog.New(filepath.Join(root, "plans"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "cases")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	suites, err := suitecatalog.New(suitecatalog.Options{Builtin: fstest.MapFS{}, UserRoot: filepath.Join(root, "suites")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC)
+	meta := func(id string) domain.EntityMeta {
+		return domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now}
+	}
+	model := domain.Model{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000011"),
+		Name:       "selection model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"},
+	}
+	mapped := domain.Channel{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000012"),
+		Name:       "mapped channel", BaseURL: "https://mapped.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Enabled: true, CredentialID: "41000000-0000-4000-8000-000000000013",
+	}
+	unmapped := domain.Channel{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000014"),
+		Name:       "unmapped channel", BaseURL: "https://unmapped.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Enabled: true, CredentialID: "41000000-0000-4000-8000-000000000015",
+	}
+	disabled := domain.Channel{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000016"),
+		Name:       "disabled channel", BaseURL: "https://disabled.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Enabled: false, CredentialID: "41000000-0000-4000-8000-000000000017",
+	}
+	if err := models.Create(ctx, model); err != nil {
+		t.Fatal(err)
+	}
+	for _, channel := range []domain.Channel{mapped, unmapped, disabled} {
+		if err := channels.CreateChannel(ctx, channel); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := channels.CreateMapping(ctx, domain.ChannelModel{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000018"),
+		ChannelID:  mapped.ID, ModelID: model.ID, UpstreamModelName: "upstream-mapped",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := channels.CreateMapping(ctx, domain.ChannelModel{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000019"),
+		ChannelID:  disabled.ID, ModelID: model.ID, UpstreamModelName: "upstream-disabled",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	testCase := domain.TestCase{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000020"),
+		Key:        "T971", Name: "selection case", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
+		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
+		Definition: domain.TestCaseDefinition{
+			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
+			Type:          domain.CaseType("openai-chat"),
+			TypeVersion:   1,
+			Spec:          json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`),
+		},
+	}
+	if err := cases.SaveCase(ctx, string(domain.ProtocolOpenAIChat), testCase.Key, testCase); err != nil {
+		t.Fatal(err)
+	}
+	caseEntries, err := cases.Entries(ctx)
+	if err != nil || len(caseEntries) != 1 {
+		t.Fatalf("case entries = %#v, %v", caseEntries, err)
+	}
+	suite := filesystemCatalogSuiteFixture(caseEntries[0].TestCase)
+	if err := suites.SaveSuite(ctx, string(suite.Protocol), suite.Key, suite); err != nil {
+		t.Fatal(err)
+	}
+	suiteEntries, err := suites.Entries(ctx)
+	if err != nil || len(suiteEntries) != 1 {
+		t.Fatalf("suite entries = %#v, %v", suiteEntries, err)
+	}
+	plan := domain.Plan{
+		EntityMeta: meta("41000000-0000-4000-8000-000000000021"),
+		Name:       "selection plan", Protocol: domain.ProtocolOpenAIChat, Seed: 1,
+	}
+	filesystemCatalogSetPlanSuites(&plan, suiteEntries[0].Suite)
+	catalogRepository := filesystemCatalogRepository{
+		lockPath: filepath.Join(root, "catalog.lock"), models: models, channels: channels,
+		cases: cases, suites: suites, plans: plans,
+	}
+	if err := catalogRepository.CreatePlan(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	repository := filesystemRuntimeRepository{catalog: catalogRepository}
+
+	_, _, mapping, err := repository.ResolvePlanTargetSelection(ctx, plan, model.ID, mapped.ID)
+	if err != nil || mapping.ChannelID != mapped.ID {
+		t.Fatalf("mapped target = %#v, %v", mapping, err)
+	}
+	_, _, _, err = repository.ResolvePlanTargetSelection(ctx, plan, model.ID, unmapped.ID)
+	if !errors.Is(err, catalog.ErrNotFound) {
+		t.Fatalf("unmapped target error = %v, want ErrNotFound", err)
+	}
+	gotModel, gotChannel, gotMapping, err := repository.ResolvePlanTargetSelection(ctx, plan, model.ID, disabled.ID)
+	if err != nil || gotChannel.Enabled || gotMapping.ChannelID != disabled.ID || gotModel.ID != model.ID {
+		t.Fatalf("disabled mapped target = model=%#v channel=%#v mapping=%#v err=%v", gotModel, gotChannel, gotMapping, err)
 	}
 }
 

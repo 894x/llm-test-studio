@@ -114,8 +114,8 @@ func (repository filesystemRuntimeRepository) ResolvePlanTargetSelection(
 	if selected.ID == "" {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
 	}
-	if !channel.Enabled || model.Protocol != plan.Protocol || model.Protocol != channel.Protocol || selected.ModelID != model.ID || selected.ChannelID != channel.ID {
-		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
+	if model.Protocol != plan.Protocol || model.Protocol != channel.Protocol || selected.ModelID != model.ID || selected.ChannelID != channel.ID {
+		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrPlanProtocolMismatch
 	}
 	return model, channel, selected, nil
 }

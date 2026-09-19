@@ -12,6 +12,7 @@ import (
 	"testing/fstest"
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 )
 
@@ -133,6 +134,10 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		{name: "catalog invalid", err: catalog.ErrInvalid, want: "catalog_invalid"},
 		{name: "catalog conflict", err: catalog.ErrConflict, want: "catalog_revision_conflict"},
 		{name: "catalog not found", err: catalog.ErrNotFound, want: "catalog_not_found"},
+		{name: "comparison invalid", err: comparisons.ErrInvalid, want: "comparison_invalid"},
+		{name: "comparison not ready", err: comparisons.ErrNotReady, want: "comparison_not_ready"},
+		{name: "comparison unmapped", err: comparisons.ErrTargetUnmapped, want: "comparison_target_unmapped"},
+		{name: "comparison channel not ready", err: comparisons.ErrChannelNotReady, want: "comparison_channel_not_ready"},
 		{name: "catalog saved refresh failed", err: ErrCatalogSavedRefreshFailed, want: "catalog_saved_refresh_failed"},
 		{name: "cancelled", err: context.Canceled, want: "operation_cancelled"},
 		{name: "deadline", err: context.DeadlineExceeded, want: "operation_cancelled"},
@@ -187,6 +192,10 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeCatalogConflict:           {},
 		desktopCodeCatalogNotFound:           {},
 		desktopCodeCatalogSavedRefreshFailed: {},
+		desktopCodeComparisonInvalid:         {},
+		desktopCodeComparisonNotReady:        {},
+		desktopCodeComparisonTargetUnmapped:  {},
+		desktopCodeComparisonChannelNotReady: {},
 	}
 	if len(gotCodes) != len(wantCodes) {
 		t.Fatalf("frontend error codes = %v, want exact backend code set %v", gotCodes, wantCodes)

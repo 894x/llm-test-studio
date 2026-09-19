@@ -72,6 +72,10 @@ export type DesktopErrorCode =
   | "catalog_revision_conflict"
   | "catalog_not_found"
   | "catalog_saved_refresh_failed"
+  | "comparison_invalid"
+  | "comparison_not_ready"
+  | "comparison_target_unmapped"
+  | "comparison_channel_not_ready"
 
 type PublicErrorMessages = Record<DesktopErrorCode, string> & {
   operationFailed: string
