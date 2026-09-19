@@ -689,6 +689,31 @@ func TestDesktopAppCommandErrorsDoNotQueryOrInventWorkspace(t *testing.T) {
 	}
 }
 
+func TestDesktopStopAndCancelMapInactiveRuns(t *testing.T) {
+	const runID = "22222222-2222-4222-8222-222222222222"
+	tests := []struct {
+		name   string
+		code   string
+		invoke func(*DesktopApp, string) (workspace.Snapshot, error)
+		setup  func(*recordingRunCommands)
+	}{
+		{name: "stop inactive", code: desktopCodeRunNotActive, invoke: (*DesktopApp).StopSending, setup: func(commands *recordingRunCommands) { commands.stopErr = runs.ErrNotActive }},
+		{name: "cancel inactive", code: desktopCodeRunNotActive, invoke: (*DesktopApp).CancelRun, setup: func(commands *recordingRunCommands) { commands.cancelErr = runs.ErrNotActive }},
+		{name: "stop closed", code: desktopCodeCommandsMissing, invoke: (*DesktopApp).StopSending, setup: func(commands *recordingRunCommands) { commands.stopErr = runs.ErrClosed }},
+		{name: "cancel closed", code: desktopCodeCommandsMissing, invoke: (*DesktopApp).CancelRun, setup: func(commands *recordingRunCommands) { commands.cancelErr = runs.ErrClosed }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			commands := &recordingRunCommands{}
+			test.setup(commands)
+			app := NewDesktopApp(&recordingWorkspaceQuery{snapshot: workspace.Snapshot{SchemaVersion: workspace.CurrentSchemaVersion}}, commands)
+			app.onStartup(context.Background())
+			_, err := test.invoke(app, runID)
+			assertBindingErrorCode(t, err, test.code)
+		})
+	}
+}
+
 func TestDesktopAppCommandsRejectInvalidIdentifiersBeforeDelegation(t *testing.T) {
 	invalidIDs := []string{
 		"",

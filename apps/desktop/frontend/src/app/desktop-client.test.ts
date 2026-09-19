@@ -1055,6 +1055,7 @@ describe("Wails desktop client", () => {
     ["plan_protocol_mismatch", "计划中的用例、模型和渠道协议不一致", "CreatePlan", "createPlan"],
     ["run_invalid", "测试输入无效", "StartQuickTask", "startQuickTask"],
     ["run_not_runnable", "所选任务或目标无法执行", "StartQuickTask", "startQuickTask"],
+    ["run_not_active", "当前运行已结束，无法取消或停止发送", "CancelRun", "cancelRun"],
     ["catalog_invalid", "目录内容无效", "CreateModel", "createModel"],
     ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
     ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],

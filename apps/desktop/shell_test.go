@@ -13,6 +13,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 )
 
@@ -139,6 +140,8 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		{name: "comparison unmapped", err: comparisons.ErrTargetUnmapped, want: "comparison_target_unmapped"},
 		{name: "comparison channel not ready", err: comparisons.ErrChannelNotReady, want: "comparison_channel_not_ready"},
 		{name: "catalog saved refresh failed", err: ErrCatalogSavedRefreshFailed, want: "catalog_saved_refresh_failed"},
+		{name: "run not active", err: runs.ErrNotActive, want: "run_not_active"},
+		{name: "run closed", err: runs.ErrClosed, want: "run_commands_unavailable"},
 		{name: "cancelled", err: context.Canceled, want: "operation_cancelled"},
 		{name: "deadline", err: context.DeadlineExceeded, want: "operation_cancelled"},
 		{name: "unknown", err: errors.New("unknown"), want: "operation_failed"},
@@ -187,6 +190,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeOperationFailed:           {},
 		desktopCodeRunInvalid:                {},
 		desktopCodeRunNotRunnable:            {},
+		desktopCodeRunNotActive:              {},
 		desktopCodePlanProtocolMismatch:      {},
 		desktopCodeCatalogInvalid:            {},
 		desktopCodeCatalogConflict:           {},

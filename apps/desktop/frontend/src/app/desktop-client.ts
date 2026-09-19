@@ -66,6 +66,7 @@ export type DesktopErrorCode =
   | "operation_failed"
   | "run_invalid"
   | "run_not_runnable"
+  | "run_not_active"
   | "quick_task_credential_unavailable"
   | "plan_protocol_mismatch"
   | "catalog_invalid"
