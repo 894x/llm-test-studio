@@ -41,7 +41,11 @@ func synthesizeCurrentResult(document map[string]any, entryID, fallbackCaseID st
 	if entryID != "" {
 		document["entry_id"] = entryID
 	}
-	if _, ok := document["case_id"]; !ok && fallbackCaseID != "" {
+	_, hasCaseID := document["case_id"]
+	requestID, hasRequestID := asString(document["request_id"])
+	_, hasEntryStatus := document["entry_status"]
+	isSuiteMarker := hasEntryStatus && !hasCaseID && (!hasRequestID || requestID == "")
+	if !isSuiteMarker && !hasCaseID && fallbackCaseID != "" {
 		document["case_id"] = fallbackCaseID
 	}
 	if _, ok := document["execution_status"]; !ok {

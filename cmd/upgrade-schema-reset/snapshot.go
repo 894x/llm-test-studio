@@ -38,6 +38,19 @@ func convertRunSnapshotDocument(raw []byte) ([]byte, error) {
 	return marshalCanonical(snapshot)
 }
 
+func extractRunSnapshotDocument(raw []byte) ([]byte, error) {
+	var document struct {
+		PlanSnapshot json.RawMessage `json:"plan_snapshot"`
+	}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		return nil, err
+	}
+	if len(document.PlanSnapshot) == 0 || !json.Valid(document.PlanSnapshot) {
+		return nil, fmt.Errorf("run document is missing a valid plan snapshot")
+	}
+	return append([]byte(nil), document.PlanSnapshot...), nil
+}
+
 func convertLegacySnapshot(document map[string]any) (map[string]any, error) {
 	model, _ := document["model"].(map[string]any)
 	protocol, _ := asString(model["protocol"])

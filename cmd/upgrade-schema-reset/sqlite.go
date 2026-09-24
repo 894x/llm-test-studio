@@ -177,6 +177,10 @@ func upgradeRunRevisions(ctx context.Context, db *sql.DB) (int, error) {
 		if err != nil {
 			return 0, fmt.Errorf("run %s revision %d document: %w", next.runID, next.revision, err)
 		}
+		snapshotJSON, err = extractRunSnapshotDocument(documentJSON)
+		if err != nil {
+			return 0, fmt.Errorf("run %s revision %d snapshot alignment: %w", next.runID, next.revision, err)
+		}
 		if _, err := db.ExecContext(ctx, `
 			UPDATE execution_run_revisions
 			SET schema_version = json_extract(?, '$.schema_version'),
@@ -412,11 +416,7 @@ func overlayPlanSnapshot(reportJSON, snapshotJSON []byte) ([]byte, error) {
 	if err := json.Unmarshal(rewritten, &report); err != nil {
 		return nil, err
 	}
-	var snapshot any
-	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
-		return nil, err
-	}
-	report["plan_snapshot"] = snapshot
+	report["plan_snapshot"] = json.RawMessage(snapshotJSON)
 	return json.Marshal(report)
 }
 
