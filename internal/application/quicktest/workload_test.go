@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -143,5 +144,40 @@ func TestNormalPerformanceWorkloadBuildsExactWordsWithSharedPrefixAndUniqueSuffi
 	}
 	if reflect.DeepEqual(firstWords[profile.SharedPrefixTokens:], secondWords[profile.SharedPrefixTokens:]) {
 		t.Fatalf("request suffixes are not unique: %v == %v", firstWords, secondWords)
+	}
+}
+
+func TestRandomInputPrefixesEveryRequestWithoutChangingConfiguredWordCount(t *testing.T) {
+	for _, mode := range []PerformanceWorkloadMode{PerformanceWorkloadFixed, PerformanceWorkloadNormal} {
+		profile := PerformanceProfile{
+			WorkloadMode: mode, RandomInput: true, InputTokens: 5, OutputTokens: 2,
+		}
+		if mode == PerformanceWorkloadNormal {
+			profile.RandomSeed = 1
+			profile.SharedPrefixTokens = 3
+		}
+		workload, err := newPerformanceWorkload(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var first string
+		for _, index := range []uint64{0, 1, performanceRampRequestIndexBase, performanceWarmupRequestIndexBase, 1 << 32} {
+			target := workload.target(index)
+			words := strings.Fields(workload.prompt(index, target.InputTokens))
+			if len(words) != int(target.InputTokens) || !strings.HasSuffix(words[0], "-"+strconv.FormatUint(index, 36)) {
+				t.Fatalf("mode %q request %d prompt = %q", mode, index, words)
+			}
+			if first != "" && words[0] == first {
+				t.Fatalf("mode %q request %d reused prefix %q", mode, index, first)
+			}
+			first = words[0]
+		}
+		secondRun, err := newPerformanceWorkload(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if workload.prompt(0, 1) == secondRun.prompt(0, 1) {
+			t.Fatalf("mode %q reused prefix in a second run", mode)
+		}
 	}
 }

@@ -28,6 +28,19 @@ const connection = {
 }
 
 describe("QuickPerformanceSheet", () => {
+  it("sends the random-input setting", async () => {
+    const user = userEvent.setup()
+    const run = vi.fn(async () => successfulPerformanceReport())
+    render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={run} />)
+    const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
+    const randomInput = within(dialog).getByRole("checkbox", { name: "随机输入" })
+    expect(randomInput).not.toBeChecked()
+    await user.click(randomInput)
+    expect(randomInput).toBeChecked()
+    await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({ random_input: true }), expect.any(Function)))
+  })
+
   it("rounds result throughput and latency presentation while keeping percentage precision", async () => {
     const user = userEvent.setup()
     const result = successfulPerformanceReport()
@@ -147,6 +160,7 @@ describe("QuickPerformanceSheet", () => {
           max_in_flight: 0,
           arrival_pattern: "constant",
           workload_mode: "fixed",
+          random_input: false,
           random_seed: 0,
           input_tokens_stddev: 0,
           output_tokens_stddev: 0,
@@ -275,6 +289,7 @@ describe("QuickPerformanceSheet", () => {
           max_in_flight: 37,
           arrival_pattern: "constant",
           workload_mode: "fixed",
+          random_input: false,
           random_seed: 0,
           input_tokens_stddev: 0,
           output_tokens_stddev: 0,
@@ -538,6 +553,7 @@ describe("QuickPerformanceSheet", () => {
           max_in_flight: 256,
           arrival_pattern: "poisson",
           workload_mode: "normal",
+          random_input: false,
           random_seed: 424242,
           input_tokens_stddev: 20,
           output_tokens_stddev: 8,

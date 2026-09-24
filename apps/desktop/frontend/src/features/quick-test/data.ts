@@ -40,6 +40,7 @@ export interface QuickPerformanceCommand {
   max_in_flight: number
   arrival_pattern: QuickPerformanceArrivalPattern
   workload_mode: QuickPerformanceWorkloadMode
+  random_input: boolean
   random_seed: number
   input_tokens_stddev: number
   output_tokens_stddev: number
@@ -74,6 +75,7 @@ export interface QuickPerformanceProfile {
   max_in_flight?: number
   arrival_pattern?: QuickPerformanceArrivalPattern
   workload_mode?: QuickPerformanceWorkloadMode
+  random_input?: boolean
   random_seed?: number
   input_tokens_stddev?: number
   output_tokens_stddev?: number
@@ -112,7 +114,8 @@ export function parseQuickPerformanceProfile(value: unknown): QuickPerformancePr
     (value.workload_mode !== "fixed" && value.workload_mode !== "normal") ||
     !integerFields.every((field) => isNonNegativeInteger(value[field])) ||
     !numberFields.every((field) => isNonNegativeFinite(value[field])) ||
-    typeof value.capacity_enabled !== "boolean"
+    typeof value.capacity_enabled !== "boolean" ||
+    (value.random_input !== undefined && typeof value.random_input !== "boolean")
   ) throw invalidQuickPerformanceProfile()
   return { ...value } as unknown as QuickPerformanceProfile
 }
@@ -1541,6 +1544,7 @@ function isPerformanceProfile(value: unknown, _schemaVersion: QuickPerformanceSc
     (value.max_in_flight === undefined || isNonNegativeInteger(value.max_in_flight)) &&
     (value.arrival_pattern === undefined || isPerformanceArrivalPattern(value.arrival_pattern)) &&
     (value.workload_mode === undefined || isPerformanceWorkloadMode(value.workload_mode)) &&
+    (value.random_input === undefined || typeof value.random_input === "boolean") &&
     (value.random_seed === undefined || isUint32(value.random_seed)) &&
     (value.input_tokens_stddev === undefined || isUint32(value.input_tokens_stddev)) &&
     (value.output_tokens_stddev === undefined || isUint32(value.output_tokens_stddev)) &&
@@ -1605,6 +1609,7 @@ function pickPerformanceProfile(value: QuickPerformanceProfile, _schemaVersion: 
     ...(value.max_in_flight !== undefined ? { max_in_flight: value.max_in_flight } : {}),
     ...(value.arrival_pattern !== undefined ? { arrival_pattern: value.arrival_pattern } : {}),
     ...(value.workload_mode !== undefined ? { workload_mode: value.workload_mode } : {}),
+    ...(value.random_input !== undefined ? { random_input: value.random_input } : {}),
     ...(value.random_seed !== undefined ? { random_seed: value.random_seed } : {}),
     ...(value.input_tokens_stddev !== undefined ? { input_tokens_stddev: value.input_tokens_stddev } : {}),
     ...(value.output_tokens_stddev !== undefined ? { output_tokens_stddev: value.output_tokens_stddev } : {}),

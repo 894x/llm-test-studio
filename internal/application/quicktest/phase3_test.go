@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -268,6 +269,58 @@ func TestRunPerformancePreparationIsExcludedAndEvidenceStartsFresh(t *testing.T)
 	encoded, _ := json.Marshal(report)
 	if strings.Contains(string(encoded), "warmup-only") || strings.Contains(string(encoded), "ramp-only") {
 		t.Fatalf("report leaked preparation evidence: %s", encoded)
+	}
+}
+
+func TestRunPerformanceRandomInputUsesUniquePrefixesAcrossPhases(t *testing.T) {
+	var mu sync.Mutex
+	prefixes := make(map[string]bool)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil || len(body.Messages) != 1 {
+			t.Errorf("invalid request body: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		words := strings.Fields(body.Messages[0].Content)
+		if len(words) != 4 || !strings.HasPrefix(words[0], "r") {
+			t.Errorf("unexpected prompt: %q", body.Messages[0].Content)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		prefixes[words[0]] = true
+		mu.Unlock()
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	archive := &capturingPerformanceArchive{}
+	report, err := New(Dependencies{Transport: server.Client().Transport, Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+		RandomInput: true, RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 4, OutputTokens: 2,
+		WarmupRequests: 1, RampDurationMS: 1_000, RampRequestCap: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !report.Success || !report.Profile.RandomInput || !report.Archived || len(archive.saved) != 1 || len(prefixes) != 4 || len(report.Samples) != 2 {
+		t.Fatalf("random-input report = %#v, unique prefixes = %d", report, len(prefixes))
+	}
+	if _, err := ValidateArchivedPerformanceReport(report); err != nil {
+		t.Fatalf("archived random-input report is invalid: %v", err)
+	}
+	for _, sample := range report.Samples {
+		if sample.TargetInputTokens != 0 || sample.TargetOutputTokens != 0 {
+			t.Fatalf("fixed random-input sample has workload targets: %#v", sample)
+		}
 	}
 }
 

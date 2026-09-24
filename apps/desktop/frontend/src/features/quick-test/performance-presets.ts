@@ -11,7 +11,7 @@ export const QUICK_PERFORMANCE_PRESET_IDS: QuickPerformancePresetID[] = [
 
 const PRESETS: Record<QuickPerformancePresetID, QuickPerformanceProfile> = {
   smoke: {
-    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed",
+    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed", random_input: false,
     request_count: 10, duration_ms: 0, concurrency: 1, rate_per_second: 1, max_in_flight: 256,
     timeout_ms: 60_000, input_tokens: 100, output_tokens: 100, random_seed: 1,
     warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 0,
@@ -19,7 +19,7 @@ const PRESETS: Record<QuickPerformancePresetID, QuickPerformanceProfile> = {
     capacity_enabled: false, capacity_start: 1, capacity_step: 1,
   },
   baseline: {
-    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed",
+    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed", random_input: false,
     request_count: 100, duration_ms: 0, concurrency: 4, rate_per_second: 1, max_in_flight: 256,
     timeout_ms: 60_000, input_tokens: 256, output_tokens: 128, random_seed: 1,
     warmup_requests: 10, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 5,
@@ -27,7 +27,7 @@ const PRESETS: Record<QuickPerformancePresetID, QuickPerformanceProfile> = {
     capacity_enabled: false, capacity_start: 1, capacity_step: 1,
   },
   sustained: {
-    load_mode: "open_loop", arrival_pattern: "constant", workload_mode: "fixed",
+    load_mode: "open_loop", arrival_pattern: "constant", workload_mode: "fixed", random_input: false,
     request_count: 0, duration_ms: 60_000, concurrency: 1, rate_per_second: 2, max_in_flight: 64,
     timeout_ms: 60_000, input_tokens: 256, output_tokens: 128, random_seed: 1,
     warmup_requests: 10, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 5,
@@ -35,7 +35,7 @@ const PRESETS: Record<QuickPerformancePresetID, QuickPerformanceProfile> = {
     capacity_enabled: false, capacity_start: 1, capacity_step: 1,
   },
   capacity: {
-    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed",
+    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed", random_input: false,
     request_count: 20, duration_ms: 0, concurrency: 8, rate_per_second: 1, max_in_flight: 256,
     timeout_ms: 60_000, input_tokens: 256, output_tokens: 128, random_seed: 1,
     warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 5,

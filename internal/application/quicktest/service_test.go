@@ -89,6 +89,9 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 		if words := len(strings.Fields(body.Messages[0].Content)); words != 20 {
 			t.Errorf("generated prompt words = %d, want 20", words)
 		}
+		if body.Messages[0].Content != strings.TrimSpace(strings.Repeat("test ", 20)) {
+			t.Errorf("fixed prompt changed with random input disabled: %q", body.Messages[0].Content)
+		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
 		fmt.Fprint(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":32,\"prompt_tokens_details\":{\"cached_tokens\":5}}}\n\n")

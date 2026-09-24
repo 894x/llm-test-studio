@@ -2,6 +2,8 @@ package quicktest
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
@@ -29,7 +31,9 @@ type performanceWorkloadTarget struct {
 }
 
 type performanceWorkload struct {
-	profile PerformanceProfile
+	profile   PerformanceProfile
+	runNonce  uint64
+	rungIndex uint32
 }
 
 func normalizedWorkloadMode(mode PerformanceWorkloadMode) PerformanceWorkloadMode {
@@ -47,19 +51,40 @@ func normalizedArrivalPattern(pattern load.ArrivalPattern) load.ArrivalPattern {
 }
 
 func newPerformanceWorkload(profile PerformanceProfile) (*performanceWorkload, error) {
-	if normalizedWorkloadMode(profile.WorkloadMode) != PerformanceWorkloadNormal ||
-		profile.RandomSeed == 0 ||
-		profile.InputTokens == 0 || profile.OutputTokens == 0 ||
-		profile.InputTokens > MaxPerformanceInputTokens || profile.OutputTokens > MaxPerformanceOutputTokens ||
-		profile.InputTokensStdDev > profile.InputTokens || profile.OutputTokensStdDev > profile.OutputTokens ||
-		profile.SharedPrefixTokens >= profile.InputTokens || profile.SharedPrefixTokens >= MaxPerformanceInputTokens {
-		return nil, errors.New("invalid normal performance workload")
+	profile.WorkloadMode = normalizedWorkloadMode(profile.WorkloadMode)
+	if profile.InputTokens == 0 || profile.OutputTokens == 0 ||
+		profile.InputTokens > MaxPerformanceInputTokens || profile.OutputTokens > MaxPerformanceOutputTokens {
+		return nil, errors.New("invalid performance workload")
 	}
-	profile.WorkloadMode = PerformanceWorkloadNormal
-	return &performanceWorkload{profile: profile}, nil
+	switch profile.WorkloadMode {
+	case PerformanceWorkloadFixed:
+		if !profile.RandomInput || profile.InputTokensStdDev != 0 || profile.OutputTokensStdDev != 0 || profile.SharedPrefixTokens != 0 {
+			return nil, errors.New("invalid fixed performance workload")
+		}
+	case PerformanceWorkloadNormal:
+		if profile.RandomSeed == 0 || profile.InputTokensStdDev > profile.InputTokens ||
+			profile.OutputTokensStdDev > profile.OutputTokens ||
+			profile.SharedPrefixTokens >= profile.InputTokens || profile.SharedPrefixTokens >= MaxPerformanceInputTokens {
+			return nil, errors.New("invalid normal performance workload")
+		}
+	default:
+		return nil, errors.New("unsupported performance workload")
+	}
+	workload := &performanceWorkload{profile: profile}
+	if profile.RandomInput {
+		var nonce [8]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return nil, err
+		}
+		workload.runNonce = binary.BigEndian.Uint64(nonce[:])
+	}
+	return workload, nil
 }
 
 func (workload *performanceWorkload) target(index uint64) performanceWorkloadTarget {
+	if workload.profile.WorkloadMode == PerformanceWorkloadFixed {
+		return performanceWorkloadTarget{InputTokens: workload.profile.InputTokens, OutputTokens: workload.profile.OutputTokens}
+	}
 	inputMinimum := uint32(1)
 	if workload.profile.SharedPrefixTokens > 0 {
 		inputMinimum = workload.profile.SharedPrefixTokens + 1
@@ -92,7 +117,14 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 	}
 	sharedCount := min(workload.profile.SharedPrefixTokens, target)
 	uniqueWord := "r" + strconv.FormatUint(index, 36)
+	if workload.profile.RandomInput {
+		uniqueWord = "r" + strconv.FormatUint(workload.runNonce, 36) + "-" +
+			strconv.FormatUint(uint64(workload.rungIndex), 36) + "-" + strconv.FormatUint(index, 36)
+	}
 	estimatedBytes := uint64(sharedCount)*2 + uint64(target-sharedCount)*uint64(len(uniqueWord)+1)
+	if workload.profile.WorkloadMode == PerformanceWorkloadFixed {
+		estimatedBytes = uint64(target)*5 + uint64(len(uniqueWord))
+	}
 	if estimatedBytes > 0 {
 		estimatedBytes--
 	}
@@ -101,6 +133,14 @@ func (workload *performanceWorkload) prompt(index uint64, target uint32) string 
 	for position := uint32(0); position < target; position++ {
 		if position > 0 {
 			builder.WriteByte(' ')
+		}
+		if position == 0 && workload.profile.RandomInput {
+			builder.WriteString(uniqueWord)
+			continue
+		}
+		if workload.profile.WorkloadMode == PerformanceWorkloadFixed {
+			builder.WriteString("test")
+			continue
 		}
 		if position < sharedCount {
 			builder.WriteByte('s')

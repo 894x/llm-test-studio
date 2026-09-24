@@ -40,6 +40,12 @@ type PhaseFourFixture = ReturnType<typeof phaseThreeReport> & {
 }
 
 describe("parseQuickPerformanceReport phase-three fields", () => {
+  it("keeps a validated random-input setting in report profiles", () => {
+    const raw = phaseThreeReport()
+    expect(parseQuickPerformanceReport({ ...raw, profile: { ...raw.profile, random_input: true } }).profile.random_input).toBe(true)
+    expect(() => parseQuickPerformanceReport({ ...raw, profile: { ...raw.profile, random_input: "yes" } })).toThrow("快速性能报告数据结构无效")
+  })
+
   it("keeps validated preparation, budget, and sparse time-slice data while dropping unknown fields", () => {
     const raw = phaseThreeReport()
     const report = parseQuickPerformanceReport(raw)

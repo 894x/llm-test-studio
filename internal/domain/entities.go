@@ -307,6 +307,7 @@ type PerformancePlanProfile struct {
 	LoadMode           LoadMode `json:"load_mode"`
 	ArrivalPattern     string   `json:"arrival_pattern"`
 	WorkloadMode       string   `json:"workload_mode"`
+	RandomInput        bool     `json:"random_input"`
 	RandomSeed         uint32   `json:"random_seed"`
 	RequestCount       uint64   `json:"request_count"`
 	DurationMS         uint64   `json:"duration_ms"`

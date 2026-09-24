@@ -71,6 +71,7 @@ interface PerformanceForm {
   loadMode: QuickPerformanceLoadMode
   arrivalPattern: QuickPerformanceArrivalPattern
   workloadMode: QuickPerformanceWorkloadMode
+  randomInput: boolean
   requestCount: number
   durationSeconds: number
   concurrency: number
@@ -100,7 +101,7 @@ interface PerformanceForm {
 
 type PerformanceNumberFieldName = Exclude<
   keyof PerformanceForm,
-  "loadMode" | "arrivalPattern" | "workloadMode" | "capacityEnabled"
+  "loadMode" | "arrivalPattern" | "workloadMode" | "randomInput" | "capacityEnabled"
 >
 type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
@@ -117,6 +118,7 @@ function performanceFormFromProfile(profile?: QuickPerformanceProfile): Performa
     loadMode: source.load_mode ?? "fixed_concurrency",
     arrivalPattern: source.arrival_pattern ?? "constant",
     workloadMode: source.workload_mode ?? "fixed",
+    randomInput: source.random_input ?? false,
     requestCount: source.request_count,
     durationSeconds: source.duration_ms / 1_000,
     concurrency: source.concurrency,
@@ -339,6 +341,11 @@ export function QuickPerformanceSheet({
     resetOutput()
   }
 
+  const updateRandomInput = (randomInput: boolean) => {
+    setForm((current) => ({ ...current, randomInput }))
+    resetOutput()
+  }
+
   const updateLoadMode = (loadMode: QuickPerformanceLoadMode) => {
     setForm((current) => ({ ...current, loadMode }))
     setFieldErrors((current) => {
@@ -419,6 +426,7 @@ export function QuickPerformanceSheet({
         max_in_flight: form.loadMode === "open_loop" ? form.maxInFlight : 0,
         arrival_pattern: form.loadMode === "open_loop" ? form.arrivalPattern : "constant",
         workload_mode: form.workloadMode,
+        random_input: form.randomInput,
         random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
         input_tokens_stddev: form.workloadMode === "normal" ? form.inputTokensStdDev : 0,
         output_tokens_stddev: form.workloadMode === "normal" ? form.outputTokensStdDev : 0,
@@ -546,6 +554,18 @@ export function QuickPerformanceSheet({
                         updateWorkloadMode(value as QuickPerformanceWorkloadMode)
                       } id="quick-performance-workloadMode" aria-label={tx("desktop:quick-test_workload")} className="w-full" options={[({value: "fixed", label: tx("desktop:quick-test_fixed_tokens")}), ({value: "normal", label: tx("desktop:quick-test_normal_distribution")})]} />
                   </FieldContent>
+                </Field>
+                <Field className="block min-w-0">
+                  <FieldLabel htmlFor="quick-performance-randomInput" className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5">
+                    <Checkbox
+                      id="quick-performance-randomInput"
+                      checked={form.randomInput}
+                      disabled={pending}
+                      onCheckedChange={(checked) => updateRandomInput(checked === true)}
+                    />
+                    <span>{tx("desktop:quick-test_random_input")}</span>
+                  </FieldLabel>
+                  <FieldDescription>{tx("desktop:quick-test_random_input_hint")}</FieldDescription>
                 </Field>
                 <PerformanceNumberField
                   field="requestCount"
@@ -1250,6 +1270,10 @@ function QuickPerformanceReportPanel({
           <ResultValue
             label={tx("desktop:quick-test_token_distribution")}
             value={performanceWorkloadMode(report)}
+          />
+          <ResultValue
+            label={tx("desktop:quick-test_random_input")}
+            value={report.profile.random_input ? tx("desktop:quick-test_enabled") : tx("desktop:quick-test_disabled")}
           />
           <ResultValue
             label={tx("desktop:quick-test_random_seed")}

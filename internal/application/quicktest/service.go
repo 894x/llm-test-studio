@@ -88,6 +88,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			LoadMode:           command.LoadMode,
 			ArrivalPattern:     command.ArrivalPattern,
 			WorkloadMode:       command.WorkloadMode,
+			RandomInput:        command.RandomInput,
 			RandomSeed:         command.RandomSeed,
 			RequestCount:       command.RequestCount,
 			DurationMS:         command.DurationMS,
@@ -195,7 +196,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		workload *performanceWorkload
 		err      error
 	)
-	if command.WorkloadMode == PerformanceWorkloadNormal {
+	if command.WorkloadMode == PerformanceWorkloadNormal || command.RandomInput {
 		workload, err = newPerformanceWorkload(report.Profile)
 		if err != nil {
 			report.ErrorCode = ErrorInvalidRequest
@@ -370,6 +371,9 @@ func (service *Service) runPerformanceCapacity(
 		evidenceRecorder.enableFresh()
 		progressCallback := capacityProgressCallback(onProgress, rungIndex, uint32(len(targets)), target)
 		options := performanceLoadOptions(effectiveProfile, effectiveProfile.RequestCount, progressCallback)
+		if workload != nil && workload.profile.RandomInput {
+			workload.rungIndex = rungIndex + 1
+		}
 		outcome, runErr := load.Run(
 			ctx,
 			performanceLoadProfile(effectiveProfile, effectiveProfile.RequestCount),
@@ -677,7 +681,7 @@ func (service *Service) archivePerformanceReport(ctx context.Context, report *Pe
 
 func validPerformanceProfile(command PerformanceCommand) bool {
 	return validPerformanceProfileValues(PerformanceProfile{
-		LoadMode: command.LoadMode, ArrivalPattern: command.ArrivalPattern, WorkloadMode: command.WorkloadMode, RandomSeed: command.RandomSeed,
+		LoadMode: command.LoadMode, ArrivalPattern: command.ArrivalPattern, WorkloadMode: command.WorkloadMode, RandomInput: command.RandomInput, RandomSeed: command.RandomSeed,
 		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
 		Concurrency: command.Concurrency, RatePerSecond: command.RatePerSecond, MaxInFlight: command.MaxInFlight,
 		TimeoutMS: command.TimeoutMS, InputTokens: command.InputTokens, OutputTokens: command.OutputTokens,
@@ -905,7 +909,7 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 			ErrorCode:        code,
 			ResponseEvidence: evidence[observation.Index],
 		}
-		if workload != nil {
+		if workload != nil && workload.profile.WorkloadMode == PerformanceWorkloadNormal {
 			target := workload.target(observation.Index)
 			sample.TargetInputTokens = target.InputTokens
 			sample.TargetOutputTokens = target.OutputTokens

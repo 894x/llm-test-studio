@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	PerformanceSchemaVersion = 1
+	PerformanceSchemaVersion                = 1
 	MaxPerformanceRequests           uint64 = 10_000
 	MaxPerformanceConcurrency        uint32 = 256
 	MaxPerformanceInFlight           uint32 = load.MaxOpenLoopInFlight
@@ -62,6 +62,7 @@ type PerformanceCommand struct {
 	LoadMode           domain.LoadMode         `json:"load_mode,omitempty"`
 	ArrivalPattern     load.ArrivalPattern     `json:"arrival_pattern,omitempty"`
 	WorkloadMode       PerformanceWorkloadMode `json:"workload_mode,omitempty"`
+	RandomInput        bool                    `json:"random_input,omitempty"`
 	RandomSeed         uint32                  `json:"random_seed,omitempty"`
 	RequestCount       uint64                  `json:"request_count"`
 	DurationMS         uint64                  `json:"duration_ms"`
@@ -91,6 +92,7 @@ type PerformanceProfile struct {
 	LoadMode           domain.LoadMode         `json:"load_mode,omitempty"`
 	ArrivalPattern     load.ArrivalPattern     `json:"arrival_pattern,omitempty"`
 	WorkloadMode       PerformanceWorkloadMode `json:"workload_mode,omitempty"`
+	RandomInput        bool                    `json:"random_input,omitempty"`
 	RandomSeed         uint32                  `json:"random_seed,omitempty"`
 	RequestCount       uint64                  `json:"request_count"`
 	DurationMS         uint64                  `json:"duration_ms"`

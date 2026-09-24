@@ -397,6 +397,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
         <ContextValue label={tx("desktop:catalog_load_mode")} value={performanceLoadMode(report.profile.load_mode)} />
         {report.profile.load_mode === "open_loop" ? <ContextValue label={tx("desktop:quick-test_arrival_distribution")} value={performanceArrivalPattern(report)} /> : null}
         <ContextValue label={tx("desktop:quick-test_workload")} value={performanceWorkloadMode(report)} />
+        <ContextValue label={tx("desktop:quick-test_random_input")} value={report.profile.random_input ? tx("desktop:quick-test_enabled") : tx("desktop:quick-test_disabled")} />
         <ContextValue label={tx("desktop:reports_stop_condition")} value={performanceMode(report.profile.request_count, report.profile.duration_ms)} />
         <ContextValue label={report.profile.load_mode === "open_loop" ? tx("desktop:quick-test_maximum_in_flight") : tx("desktop:reports_configured_concurrency")} value={formatMetric(report.profile.load_mode === "open_loop" ? (report.profile.max_in_flight ?? 0) : report.profile.concurrency)} />
         <ContextValue label={tx("desktop:reports_request_timeout")} value={formatDuration(report.profile.timeout_ms)} />

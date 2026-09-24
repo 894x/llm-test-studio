@@ -231,6 +231,46 @@ func TestRunPerformanceCapacityReusesNormalWorkloadIndicesAcrossRungs(t *testing
 	}
 }
 
+func TestRunPerformanceRandomInputUsesDisjointCapacityRungPrefixes(t *testing.T) {
+	var mu sync.Mutex
+	prefixes := make(map[string]bool)
+	transport := roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		var body struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			return nil, err
+		}
+		words := strings.Fields(body.Messages[0].Content)
+		mu.Lock()
+		prefixes[words[0]] = true
+		mu.Unlock()
+		return successfulStreamResponse(), nil
+	})
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
+		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		RequestCount: 2, Concurrency: 2, TimeoutMS: 2_000,
+		InputTokens: 10, OutputTokens: 2, RandomInput: true,
+		SLOE2EMS: 10_000, SLOTargetPercent: 100,
+		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
+	})
+	if err != nil || report.CapacityResult == nil || len(report.CapacityResult.Rungs) != 2 {
+		t.Fatalf("report = %#v, error = %v", report, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(prefixes) != 4 {
+		t.Fatalf("unique capacity prefixes = %d, want 4", len(prefixes))
+	}
+	for index, sample := range report.Samples {
+		if sample.RequestIndex != uint64(index) {
+			t.Fatalf("capacity sample %d has shifted index %d", index, sample.RequestIndex)
+		}
+	}
+}
+
 func TestRunPerformanceCapacityCancellationStopsLadderAndDoesNotArchive(t *testing.T) {
 	started := make(chan struct{})
 	transport := roundTripperFunc(func(request *http.Request) (*http.Response, error) {

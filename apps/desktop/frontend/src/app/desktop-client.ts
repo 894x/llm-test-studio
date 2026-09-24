@@ -907,6 +907,7 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
       ...(command.load_mode === "open_loop" ? { rate_per_second: command.rate_per_second, max_in_flight: command.max_in_flight } : {}),
       arrival_pattern: command.arrival_pattern,
       workload_mode: command.workload_mode,
+      random_input: command.random_input,
       random_seed: command.random_seed,
       input_tokens_stddev: command.input_tokens_stddev,
       output_tokens_stddev: command.output_tokens_stddev,
