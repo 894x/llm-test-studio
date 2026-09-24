@@ -1,0 +1,92 @@
+{
+  "head": "6fb3087ca19657a591eee53fb468e50ba11c1f87",
+  "go": "go version go1.26.6 windows/amd64",
+  "source_sha256": {
+    "internal/application/reporting/generator.go": "e6802b32f5fade26b27dedfa6b9cd0fac141121254fac9486ffa01376b8bffc6",
+    "engine/apiaudit/openai_evaluators.go": "7c585de5f6b5c1c7346397f829d27b1f051dc7033f5c04f26e689af87347ad66",
+    "engine/apiaudit/response_limit_test.go": "bb2df4937a15769831449307691006f969e4771aa9be919519b028304180dccb",
+    "internal/application/reporting/generator_test.go": "2c19891acf67003aae5a2f2648f456e4851a35150daf5732910f8f62f51c32f1"
+  },
+  "runs": [
+    {
+      "variant": "baseline",
+      "exit_code": 0,
+      "passed": [
+        "TestAblationStreamFixtures/healthy",
+        "TestAblationStreamFixtures/http_500",
+        "TestAblationStreamFixtures/missing_done",
+        "TestAblationStreamFixtures/missing_finish",
+        "TestAblationStreamFixtures/duplicate_finish",
+        "TestAblationStreamFixtures/empty_content",
+        "TestAblationStreamFixtures/single_frame",
+        "TestAblationStreamFixtures",
+        "TestGeneratorBuildsAndPersistsACompletePerformanceReport",
+        "TestGeneratorFailsConclusionWhenObservedSLAIsBreached",
+        "TestFineStreamingReportMetricsUseOnlySuccessfulCohorts",
+        "TestAblationMetricReadout"
+      ],
+      "failed": []
+    },
+    {
+      "variant": "without_sse_contract",
+      "exit_code": 1,
+      "passed": [
+        "TestAblationStreamFixtures/healthy",
+        "TestAblationStreamFixtures/http_500",
+        "TestGeneratorBuildsAndPersistsACompletePerformanceReport",
+        "TestGeneratorFailsConclusionWhenObservedSLAIsBreached",
+        "TestFineStreamingReportMetricsUseOnlySuccessfulCohorts",
+        "TestAblationMetricReadout"
+      ],
+      "failed": [
+        "TestAblationStreamFixtures/missing_done",
+        "TestAblationStreamFixtures/missing_finish",
+        "TestAblationStreamFixtures/duplicate_finish",
+        "TestAblationStreamFixtures/empty_content",
+        "TestAblationStreamFixtures/single_frame",
+        "TestAblationStreamFixtures"
+      ]
+    },
+    {
+      "variant": "without_sla_gate",
+      "exit_code": 1,
+      "passed": [
+        "TestAblationStreamFixtures/healthy",
+        "TestAblationStreamFixtures/http_500",
+        "TestAblationStreamFixtures/missing_done",
+        "TestAblationStreamFixtures/missing_finish",
+        "TestAblationStreamFixtures/duplicate_finish",
+        "TestAblationStreamFixtures/empty_content",
+        "TestAblationStreamFixtures/single_frame",
+        "TestAblationStreamFixtures",
+        "TestGeneratorBuildsAndPersistsACompletePerformanceReport",
+        "TestFineStreamingReportMetricsUseOnlySuccessfulCohorts",
+        "TestAblationMetricReadout"
+      ],
+      "failed": [
+        "TestGeneratorFailsConclusionWhenObservedSLAIsBreached"
+      ]
+    },
+    {
+      "variant": "without_success_cohort",
+      "exit_code": 1,
+      "passed": [
+        "TestAblationStreamFixtures/healthy",
+        "TestAblationStreamFixtures/http_500",
+        "TestAblationStreamFixtures/missing_done",
+        "TestAblationStreamFixtures/missing_finish",
+        "TestAblationStreamFixtures/duplicate_finish",
+        "TestAblationStreamFixtures/empty_content",
+        "TestAblationStreamFixtures/single_frame",
+        "TestAblationStreamFixtures",
+        "TestGeneratorBuildsAndPersistsACompletePerformanceReport",
+        "TestGeneratorFailsConclusionWhenObservedSLAIsBreached",
+        "TestAblationMetricReadout"
+      ],
+      "failed": [
+        "TestFineStreamingReportMetricsUseOnlySuccessfulCohorts"
+      ]
+    }
+  ],
+  "source_unchanged": true
+}

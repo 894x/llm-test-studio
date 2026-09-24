@@ -1,0 +1,5335 @@
+{
+  "root": "E:\\GITHUB\\llm-test\\data\\cases",
+  "model": null,
+  "case_files": 711,
+  "selected_cases": 426,
+  "negative_kind_heuristic_count": 243,
+  "dimensions": {
+    "authorization": 2,
+    "billing": 11,
+    "boundary": 70,
+    "cache": 1,
+    "compatibility": 15,
+    "defaults": 9,
+    "glm53.cache": 1,
+    "glm53.clear_thinking": 5,
+    "glm53.do_sample": 5,
+    "glm53.function_name": 10,
+    "glm53.function_schema": 7,
+    "glm53.max_tokens": 7,
+    "glm53.message_fields": 14,
+    "glm53.messages": 9,
+    "glm53.model": 6,
+    "glm53.reasoning_effort": 11,
+    "glm53.request_id": 10,
+    "glm53.response": 1,
+    "glm53.response_format": 10,
+    "glm53.sampling_dependency": 2,
+    "glm53.stop": 3,
+    "glm53.stream": 4,
+    "glm53.temperature": 8,
+    "glm53.thinking": 9,
+    "glm53.tool_choice": 8,
+    "glm53.tool_lifecycle": 1,
+    "glm53.tool_stream": 5,
+    "glm53.tools": 7,
+    "glm53.top_p": 9,
+    "glm53.transport": 3,
+    "glm53.user_id": 10,
+    "identity": 9,
+    "messages": 3,
+    "multimodal": 10,
+    "must": 10,
+    "parameters": 46,
+    "performance": 1,
+    "protocol": 3,
+    "quality": 3,
+    "reasoning": 3,
+    "reasoning-parameters": 5,
+    "required": 5,
+    "safety": 1,
+    "stability": 9,
+    "structured-output": 6,
+    "tools": 13,
+    "type": 22,
+    "workflow": 4
+  },
+  "request_parameters": {
+    "aigc_watermark": 2,
+    "callback_url": 2,
+    "content": 53,
+    "do_sample": 6,
+    "duration": 53,
+    "frequency_penalty": 3,
+    "input": 96,
+    "logprobs": 4,
+    "max_completion_tokens": 47,
+    "max_tokens": 226,
+    "messages": 273,
+    "model": 9,
+    "n": 3,
+    "parameters": 95,
+    "prediction": 3,
+    "presence_penalty": 3,
+    "prompt_cache_key": 1,
+    "ratio": 53,
+    "reasoning_effort": 169,
+    "request_id": 9,
+    "resolution": 53,
+    "response_format": 16,
+    "safety_identifier": 1,
+    "stop": 8,
+    "stream": 18,
+    "stream_options": 3,
+    "temperature": 43,
+    "thinking": 15,
+    "tool_choice": 17,
+    "tool_stream": 4,
+    "tools": 48,
+    "top_logprobs": 5,
+    "top_p": 13,
+    "user_id": 9
+  },
+  "assertion_kinds": {
+    "cache_visibility": 1,
+    "chat_sync": 32,
+    "concurrency_probe": 1,
+    "deterministic_stability": 1,
+    "error_no_usage": 1,
+    "error_schema": 37,
+    "glm53_auth_rejected": 2,
+    "glm53_rejected": 101,
+    "glm53_replay": 3,
+    "glm53_stream": 4,
+    "glm53_sync": 54,
+    "glm53_tool_roundtrip": 1,
+    "id_consistency": 1,
+    "logprobs_contract": 1,
+    "long_stream_stability": 1,
+    "minimax_video_auth_rejected": 2,
+    "minimax_video_task_rejected": 45,
+    "minimax_video_task_success": 1,
+    "models_contains": 1,
+    "multi_turn_usage": 1,
+    "needle_retrieval": 1,
+    "padding_ratio": 1,
+    "parameter_boundaries": 1,
+    "reasoning_visibility": 8,
+    "response_id": 1,
+    "sampling_effect": 1,
+    "seedance_task": 6,
+    "sse_integrity": 2,
+    "stop_parameter": 1,
+    "stream_parity": 1,
+    "stream_throughput": 1,
+    "stream_ttft": 1,
+    "stream_usage": 2,
+    "structured_json": 2,
+    "structured_stability": 1,
+    "tool_call": 6,
+    "unspecified": 1,
+    "usage_baseline": 1,
+    "usage_growth": 1,
+    "wan_task_rejected": 55,
+    "wan_task_success": 41
+  },
+  "warnings": [],
+  "cases": [
+    {
+      "path": "minimax-video/H3001-min-duration/case.json",
+      "key": "h3.t2v.min_duration",
+      "dimension": "compatibility",
+      "kind": "minimax_video_task_success",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "minimax-video/H3002-content-missing/case.json",
+      "key": "h3.content.required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3003-content-empty/case.json",
+      "key": "h3.content.non_empty",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3004-text-empty/case.json",
+      "key": "h3.content.text_non_empty",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3005-text-above-max/case.json",
+      "key": "h3.content.text_above_max",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3006-content-wrong-type/case.json",
+      "key": "h3.content.array_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3007-resolution-missing/case.json",
+      "key": "h3.resolution.required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3008-resolution-480p/case.json",
+      "key": "h3.resolution.480p_unsupported",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3009-resolution-invalid/case.json",
+      "key": "h3.resolution.invalid",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3010-duration-missing/case.json",
+      "key": "h3.duration.required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3011-duration-below/case.json",
+      "key": "h3.duration.below_min",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3012-duration-above/case.json",
+      "key": "h3.duration.above_max",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3013-duration-non-integer/case.json",
+      "key": "h3.duration.integer_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3014-ratio-missing/case.json",
+      "key": "h3.t2v.ratio_required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3015-ratio-adaptive/case.json",
+      "key": "h3.t2v.adaptive_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3016-ratio-invalid/case.json",
+      "key": "h3.ratio.invalid",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3017-ratio-wrong-type/case.json",
+      "key": "h3.ratio.string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3018-image-url-missing/case.json",
+      "key": "h3.image_url.url_required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3019-video-url-missing/case.json",
+      "key": "h3.video_url.url_required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3020-audio-url-missing/case.json",
+      "key": "h3.audio_url.url_required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3021-watermark-wrong-type/case.json",
+      "key": "h3.aigc_watermark.boolean_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "aigc_watermark",
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3022-content-type-invalid/case.json",
+      "key": "h3.content.type_invalid",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3023-model-required/case.json",
+      "key": "h3.model.required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3024-model-unknown/case.json",
+      "key": "h3.model.unknown",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "model",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3025-model-string-required/case.json",
+      "key": "h3.model.string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "model",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3026-content-null-rejected/case.json",
+      "key": "h3.content.null_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3027-content-item-type-required/case.json",
+      "key": "h3.content.item_type_required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3028-content-item-type-string-required/case.json",
+      "key": "h3.content.item_type_string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3029-content-text-required/case.json",
+      "key": "h3.content.text_required",
+      "dimension": "must",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3030-content-text-string-required/case.json",
+      "key": "h3.content.text_string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3031-resolution-string-required/case.json",
+      "key": "h3.resolution.string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3032-resolution-null-rejected/case.json",
+      "key": "h3.resolution.null_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3033-duration-string-rejected/case.json",
+      "key": "h3.duration.string_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3034-duration-null-rejected/case.json",
+      "key": "h3.duration.null_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3035-ratio-null-rejected/case.json",
+      "key": "h3.ratio.null_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3036-callback-url-string-required/case.json",
+      "key": "h3.callback_url.string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "callback_url",
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3037-callback-url-null-rejected/case.json",
+      "key": "h3.callback_url.null_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "callback_url",
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3038-aigc-watermark-null-rejected/case.json",
+      "key": "h3.aigc_watermark.null_rejected",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "aigc_watermark",
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3039-image-url-object-required/case.json",
+      "key": "h3.image_url.object_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3040-image-url-non-empty-url/case.json",
+      "key": "h3.image_url.non_empty_url",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3041-video-url-object-required/case.json",
+      "key": "h3.video_url.object_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3042-video-url-non-empty-url/case.json",
+      "key": "h3.video_url.non_empty_url",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3043-audio-url-object-required/case.json",
+      "key": "h3.audio_url.object_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3044-audio-url-non-empty-url/case.json",
+      "key": "h3.audio_url.non_empty_url",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3045-role-invalid/case.json",
+      "key": "h3.role.invalid",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3046-role-string-required/case.json",
+      "key": "h3.role.string_required",
+      "dimension": "boundary",
+      "kind": "minimax_video_task_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3047-authorization-required/case.json",
+      "key": "h3.authorization.required",
+      "dimension": "authorization",
+      "kind": "minimax_video_auth_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "minimax-video/H3048-authorization-invalid/case.json",
+      "key": "h3.authorization.invalid",
+      "dimension": "authorization",
+      "kind": "minimax_video_auth_rejected",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F001-stream-integrity/case.json",
+      "key": "must.stream_integrity",
+      "dimension": "protocol",
+      "kind": "sse_integrity",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F002-usage-non-stream/case.json",
+      "key": "must.usage_non_stream",
+      "dimension": "protocol",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F003-usage-stream/case.json",
+      "key": "must.usage_stream",
+      "dimension": "protocol",
+      "kind": "stream_usage",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "stream_options"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F004-image-url-object/case.json",
+      "key": "must.image_url_object",
+      "dimension": "multimodal",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F005-image-url-string/case.json",
+      "key": "must.image_url_string",
+      "dimension": "multimodal",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F006-tool-call/case.json",
+      "key": "must.tool_call",
+      "dimension": "tools",
+      "kind": "tool_call",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F007-tool-choice-default/case.json",
+      "key": "must.tool_choice_default",
+      "dimension": "tools",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F008-tool-choice-auto/case.json",
+      "key": "must.tool_choice_auto",
+      "dimension": "tools",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F009-tool-choice-required/case.json",
+      "key": "must.tool_choice_required",
+      "dimension": "tools",
+      "kind": "tool_call",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F010-tool-choice-none/case.json",
+      "key": "must.tool_choice_none",
+      "dimension": "tools",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F011-tool-choice-function/case.json",
+      "key": "optional.tool_choice_function",
+      "dimension": "tools",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F015-thinking-type-enabled/case.json",
+      "key": "must.thinking_thinking_type_enabled",
+      "dimension": "reasoning",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F016-thinking-type-disabled/case.json",
+      "key": "must.thinking_thinking_type_disabled",
+      "dimension": "reasoning",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F020-thinking-default/case.json",
+      "key": "must.thinking_default",
+      "dimension": "reasoning",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F021-json-object/case.json",
+      "key": "must.json_object",
+      "dimension": "structured-output",
+      "kind": "structured_json",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "response_format"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F022-json-schema/case.json",
+      "key": "must.json_schema",
+      "dimension": "structured-output",
+      "kind": "structured_json",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "response_format"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F023-video-url-object/case.json",
+      "key": "must.video_url_object",
+      "dimension": "multimodal",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F024-video-url-string/case.json",
+      "key": "must.video_url_string",
+      "dimension": "multimodal",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F025-multimodal-type-required/case.json",
+      "key": "must.multimodal_type_required",
+      "dimension": "multimodal",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F027-multimodal-text-required/case.json",
+      "key": "must.multimodal_text_required",
+      "dimension": "multimodal",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F028-multimodal-image-url-required/case.json",
+      "key": "must.multimodal_image_url_required",
+      "dimension": "multimodal",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F029-multimodal-video-url-required/case.json",
+      "key": "must.multimodal_video_url_required",
+      "dimension": "multimodal",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F030-image-url-object-url-required/case.json",
+      "key": "must.image_url_object_url_required",
+      "dimension": "multimodal",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F031-video-url-object-url-required/case.json",
+      "key": "must.video_url_object_url_required",
+      "dimension": "multimodal",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F032-json-schema-missing-name/case.json",
+      "key": "json_schema_missing_name",
+      "dimension": "structured-output",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F033-json-schema-missing-schema/case.json",
+      "key": "json_schema_missing_schema",
+      "dimension": "structured-output",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F034-json-schema-non-object/case.json",
+      "key": "json_schema_non_object",
+      "dimension": "structured-output",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F035-response-format-invalid-type/case.json",
+      "key": "response_format_invalid_type",
+      "dimension": "structured-output",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F040-dynamic-tool/case.json",
+      "key": "dynamic_tool",
+      "dimension": "tools",
+      "kind": "tool_call",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "tool_choice"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F041-dynamic-tool-with-content/case.json",
+      "key": "dynamic_tool_with_content",
+      "dimension": "tools",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F042-dynamic-and-global-tools/case.json",
+      "key": "dynamic_and_global_tools",
+      "dimension": "tools",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F043-tool-name-one-char/case.json",
+      "key": "tool_name_one_char",
+      "dimension": "tools",
+      "kind": "tool_call",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F044-tool-name-128-chars/case.json",
+      "key": "tool_name_128_chars",
+      "dimension": "tools",
+      "kind": "tool_call",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F045-tool-name-invalid-first-char/case.json",
+      "key": "tool_name_invalid_first_char",
+      "dimension": "tools",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F046-tool-name-129-chars/case.json",
+      "key": "tool_name_129_chars",
+      "dimension": "tools",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F050-partial-mode/case.json",
+      "key": "partial_mode",
+      "dimension": "workflow",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F052-prediction-string/case.json",
+      "key": "prediction_string",
+      "dimension": "workflow",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "prediction"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F053-prediction-text-array/case.json",
+      "key": "prediction_text_array",
+      "dimension": "workflow",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "prediction"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F054-prediction-invalid-type/case.json",
+      "key": "prediction_invalid_type",
+      "dimension": "workflow",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "prediction"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F055-messages-required/case.json",
+      "key": "messages_required",
+      "dimension": "messages",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F056-messages-empty/case.json",
+      "key": "messages_empty",
+      "dimension": "messages",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F057-message-empty-content/case.json",
+      "key": "message_empty_content",
+      "dimension": "messages",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/F058-prompt-cache-key/case.json",
+      "key": "prompt_cache_key",
+      "dimension": "cache",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "prompt_cache_key"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/F059-safety-identifier/case.json",
+      "key": "safety_identifier",
+      "dimension": "safety",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "safety_identifier"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-auth-invalid/case.json",
+      "key": "glm53.auth.invalid",
+      "dimension": "glm53.transport",
+      "kind": "glm53_auth_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-auth-missing/case.json",
+      "key": "glm53.auth.missing",
+      "dimension": "glm53.transport",
+      "kind": "glm53_auth_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-cache-counter/case.json",
+      "key": "glm53.cache.counter",
+      "dimension": "glm53.cache",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-connectivity/case.json",
+      "key": "glm53.connectivity",
+      "dimension": "glm53.transport",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-do_sample-invalid_0/case.json",
+      "key": "glm53.do_sample.invalid_0",
+      "dimension": "glm53.do_sample",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "do_sample",
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-do_sample-invalid_1/case.json",
+      "key": "glm53.do_sample.invalid_1",
+      "dimension": "glm53.do_sample",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "do_sample",
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-do_sample-omitted/case.json",
+      "key": "glm53.do_sample.omitted",
+      "dimension": "glm53.do_sample",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-do_sample-valid_0/case.json",
+      "key": "glm53.do_sample.valid_0",
+      "dimension": "glm53.do_sample",
+      "kind": "glm53_sync",
+      "parameters": [
+        "do_sample",
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-do_sample-valid_1/case.json",
+      "key": "glm53.do_sample.valid_1",
+      "dimension": "glm53.do_sample",
+      "kind": "glm53_sync",
+      "parameters": [
+        "do_sample",
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-format-json/case.json",
+      "key": "glm53.format.json",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-format-missing_type/case.json",
+      "key": "glm53.format.missing_type",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-format-null/case.json",
+      "key": "glm53.format.null",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-format-null_type/case.json",
+      "key": "glm53.format.null_type",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-format-object_type/case.json",
+      "key": "glm53.format.object_type",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-format-omitted/case.json",
+      "key": "glm53.format.omitted",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-format-schema/case.json",
+      "key": "glm53.format.schema",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-format-text/case.json",
+      "key": "glm53.format.text",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-format-type/case.json",
+      "key": "glm53.format.type",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-format-unknown/case.json",
+      "key": "glm53.format.unknown",
+      "dimension": "glm53.response_format",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "response_format"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-description_missing/case.json",
+      "key": "glm53.function.description_missing",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-description_null/case.json",
+      "key": "glm53.function.description_null",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-description_type/case.json",
+      "key": "glm53.function.description_type",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_1/case.json",
+      "key": "glm53.function.name_1",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_16/case.json",
+      "key": "glm53.function.name_16",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_64/case.json",
+      "key": "glm53.function.name_64",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_empty/case.json",
+      "key": "glm53.function.name_empty",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_missing/case.json",
+      "key": "glm53.function.name_missing",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_null/case.json",
+      "key": "glm53.function.name_null",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_over/case.json",
+      "key": "glm53.function.name_over",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_punctuation/case.json",
+      "key": "glm53.function.name_punctuation",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_type/case.json",
+      "key": "glm53.function.name_type",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-name_unicode/case.json",
+      "key": "glm53.function.name_unicode",
+      "dimension": "glm53.function_name",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-no_arguments/case.json",
+      "key": "glm53.function.no_arguments",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-function-parameters_null/case.json",
+      "key": "glm53.function.parameters_null",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-parameters_type/case.json",
+      "key": "glm53.function.parameters_type",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-function-schema/case.json",
+      "key": "glm53.function.schema",
+      "dimension": "glm53.function_schema",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-fraction/case.json",
+      "key": "glm53.max_tokens.fraction",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-interior/case.json",
+      "key": "glm53.max_tokens.interior",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-null/case.json",
+      "key": "glm53.max_tokens.null",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-one/case.json",
+      "key": "glm53.max_tokens.one",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-over/case.json",
+      "key": "glm53.max_tokens.over",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-wrong_type/case.json",
+      "key": "glm53.max_tokens.wrong_type",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-max_tokens-zero/case.json",
+      "key": "glm53.max_tokens.zero",
+      "dimension": "glm53.max_tokens",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-bad_role/case.json",
+      "key": "glm53.message.system.bad_role",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-content_type/case.json",
+      "key": "glm53.message.system.content_type",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-missing_content/case.json",
+      "key": "glm53.message.system.missing_content",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-missing_role/case.json",
+      "key": "glm53.message.system.missing_role",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-null_content/case.json",
+      "key": "glm53.message.system.null_content",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-null_role/case.json",
+      "key": "glm53.message.system.null_role",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-system-role_type/case.json",
+      "key": "glm53.message.system.role_type",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-bad_role/case.json",
+      "key": "glm53.message.user.bad_role",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-content_type/case.json",
+      "key": "glm53.message.user.content_type",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-missing_content/case.json",
+      "key": "glm53.message.user.missing_content",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-missing_role/case.json",
+      "key": "glm53.message.user.missing_role",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-null_content/case.json",
+      "key": "glm53.message.user.null_content",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-null_role/case.json",
+      "key": "glm53.message.user.null_role",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-message-user-role_type/case.json",
+      "key": "glm53.message.user.role_type",
+      "dimension": "glm53.message_fields",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-messages-assistant_only/case.json",
+      "key": "glm53.messages.assistant_only",
+      "dimension": "glm53.messages",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-messages-empty/case.json",
+      "key": "glm53.messages.empty",
+      "dimension": "glm53.messages",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-messages-history/case.json",
+      "key": "glm53.messages.history",
+      "dimension": "glm53.messages",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-messages-missing/case.json",
+      "key": "glm53.messages.missing",
+      "dimension": "glm53.messages",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-messages-null/case.json",
+      "key": "glm53.messages.null",
+      "dimension": "glm53.messages",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-messages-object/case.json",
+      "key": "glm53.messages.object",
+      "dimension": "glm53.messages",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-messages-one/case.json",
+      "key": "glm53.messages.one",
+      "dimension": "glm53.messages",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-messages-system/case.json",
+      "key": "glm53.messages.system",
+      "dimension": "glm53.messages",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-messages-system_only/case.json",
+      "key": "glm53.messages.system_only",
+      "dimension": "glm53.messages",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-model-empty/case.json",
+      "key": "glm53.model.empty",
+      "dimension": "glm53.model",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "model",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-model-missing/case.json",
+      "key": "glm53.model.missing",
+      "dimension": "glm53.model",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-model-null/case.json",
+      "key": "glm53.model.null",
+      "dimension": "glm53.model",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "model",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-model-unknown/case.json",
+      "key": "glm53.model.unknown",
+      "dimension": "glm53.model",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "model",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-model-valid/case.json",
+      "key": "glm53.model.valid",
+      "dimension": "glm53.model",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-model-wrong_type/case.json",
+      "key": "glm53.model.wrong_type",
+      "dimension": "glm53.model",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "model",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_0/case.json",
+      "key": "glm53.reasoning_effort.invalid_0",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_1/case.json",
+      "key": "glm53.reasoning_effort.invalid_1",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_2/case.json",
+      "key": "glm53.reasoning_effort.invalid_2",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_3/case.json",
+      "key": "glm53.reasoning_effort.invalid_3",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_4/case.json",
+      "key": "glm53.reasoning_effort.invalid_4",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_5/case.json",
+      "key": "glm53.reasoning_effort.invalid_5",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-invalid_6/case.json",
+      "key": "glm53.reasoning_effort.invalid_6",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-omitted/case.json",
+      "key": "glm53.reasoning_effort.omitted",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-valid_0/case.json",
+      "key": "glm53.reasoning_effort.valid_0",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-valid_1/case.json",
+      "key": "glm53.reasoning_effort.valid_1",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-reasoning_effort-valid_2/case.json",
+      "key": "glm53.reasoning_effort.valid_2",
+      "dimension": "glm53.reasoning_effort",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-length_0/case.json",
+      "key": "glm53.request_id.length_0",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-length_16/case.json",
+      "key": "glm53.request_id.length_16",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-length_5/case.json",
+      "key": "glm53.request_id.length_5",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-length_6/case.json",
+      "key": "glm53.request_id.length_6",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-length_64/case.json",
+      "key": "glm53.request_id.length_64",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-length_65/case.json",
+      "key": "glm53.request_id.length_65",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-null/case.json",
+      "key": "glm53.request_id.null",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-omitted/case.json",
+      "key": "glm53.request_id.omitted",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-type/case.json",
+      "key": "glm53.request_id.type",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-request_id-unicode/case.json",
+      "key": "glm53.request_id.unicode",
+      "dimension": "glm53.request_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "request_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-response-contract/case.json",
+      "key": "glm53.response.contract",
+      "dimension": "glm53.response",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-sampling-disabled_high/case.json",
+      "key": "glm53.sampling.disabled_high",
+      "dimension": "glm53.sampling_dependency",
+      "kind": "glm53_sync",
+      "parameters": [
+        "do_sample",
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-sampling-disabled_low/case.json",
+      "key": "glm53.sampling.disabled_low",
+      "dimension": "glm53.sampling_dependency",
+      "kind": "glm53_sync",
+      "parameters": [
+        "do_sample",
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-stop-item_type/case.json",
+      "key": "glm53.stop.item_type",
+      "dimension": "glm53.stop",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stop"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-stop-one/case.json",
+      "key": "glm53.stop.one",
+      "dimension": "glm53.stop",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stop"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-stop-type/case.json",
+      "key": "glm53.stop.type",
+      "dimension": "glm53.stop",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stop"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-stream-false/case.json",
+      "key": "glm53.stream.false",
+      "dimension": "glm53.stream",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-stream-null/case.json",
+      "key": "glm53.stream.null",
+      "dimension": "glm53.stream",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-stream-true/case.json",
+      "key": "glm53.stream.true",
+      "dimension": "glm53.stream",
+      "kind": "glm53_stream",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-stream-type/case.json",
+      "key": "glm53.stream.type",
+      "dimension": "glm53.stream",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-invalid_0/case.json",
+      "key": "glm53.temperature.invalid_0",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-invalid_1/case.json",
+      "key": "glm53.temperature.invalid_1",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-invalid_2/case.json",
+      "key": "glm53.temperature.invalid_2",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-invalid_3/case.json",
+      "key": "glm53.temperature.invalid_3",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-omitted/case.json",
+      "key": "glm53.temperature.omitted",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-valid_0/case.json",
+      "key": "glm53.temperature.valid_0",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-valid_1/case.json",
+      "key": "glm53.temperature.valid_1",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-temperature-valid_2/case.json",
+      "key": "glm53.temperature.valid_2",
+      "dimension": "glm53.temperature",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-clear_null/case.json",
+      "key": "glm53.thinking.clear_null",
+      "dimension": "glm53.clear_thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-clear_type/case.json",
+      "key": "glm53.thinking.clear_type",
+      "dimension": "glm53.clear_thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-disabled/case.json",
+      "key": "glm53.thinking.disabled",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-empty/case.json",
+      "key": "glm53.thinking.empty",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-enabled/case.json",
+      "key": "glm53.thinking.enabled",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-null/case.json",
+      "key": "glm53.thinking.null",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-null_type/case.json",
+      "key": "glm53.thinking.null_type",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-object_type/case.json",
+      "key": "glm53.thinking.object_type",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-omitted/case.json",
+      "key": "glm53.thinking.omitted",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-replay_false/case.json",
+      "key": "glm53.thinking.replay_false",
+      "dimension": "glm53.clear_thinking",
+      "kind": "glm53_replay",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-replay_omitted/case.json",
+      "key": "glm53.thinking.replay_omitted",
+      "dimension": "glm53.clear_thinking",
+      "kind": "glm53_replay",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-replay_true/case.json",
+      "key": "glm53.thinking.replay_true",
+      "dimension": "glm53.clear_thinking",
+      "kind": "glm53_replay",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-type/case.json",
+      "key": "glm53.thinking.type",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-thinking-unknown/case.json",
+      "key": "glm53.thinking.unknown",
+      "dimension": "glm53.thinking",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "thinking"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-auto/case.json",
+      "key": "glm53.tool_choice.auto",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-named/case.json",
+      "key": "glm53.tool_choice.named",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-none/case.json",
+      "key": "glm53.tool_choice.none",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-null/case.json",
+      "key": "glm53.tool_choice.null",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-omitted/case.json",
+      "key": "glm53.tool_choice.omitted",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-required/case.json",
+      "key": "glm53.tool_choice.required",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-type/case.json",
+      "key": "glm53.tool_choice.type",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_choice-unknown/case.json",
+      "key": "glm53.tool_choice.unknown",
+      "dimension": "glm53.tool_choice",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_stream-null/case.json",
+      "key": "glm53.tool_stream.null",
+      "dimension": "glm53.tool_stream",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream",
+        "tool_stream"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tool_stream-type/case.json",
+      "key": "glm53.tool_stream.type",
+      "dimension": "glm53.tool_stream",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream",
+        "tool_stream"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tools-missing_function/case.json",
+      "key": "glm53.tools.missing_function",
+      "dimension": "glm53.tools",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tools-missing_type/case.json",
+      "key": "glm53.tools.missing_type",
+      "dimension": "glm53.tools",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tools-null/case.json",
+      "key": "glm53.tools.null",
+      "dimension": "glm53.tools",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tools-omitted/case.json",
+      "key": "glm53.tools.omitted",
+      "dimension": "glm53.tools",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tools-one/case.json",
+      "key": "glm53.tools.one",
+      "dimension": "glm53.tools",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tools-roundtrip/case.json",
+      "key": "glm53.tools.roundtrip",
+      "dimension": "glm53.tool_lifecycle",
+      "kind": "glm53_tool_roundtrip",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tools-stream_false/case.json",
+      "key": "glm53.tools.stream_false",
+      "dimension": "glm53.tool_stream",
+      "kind": "glm53_stream",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream",
+        "tool_stream",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tools-stream_omitted/case.json",
+      "key": "glm53.tools.stream_omitted",
+      "dimension": "glm53.tool_stream",
+      "kind": "glm53_stream",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tools-stream_true/case.json",
+      "key": "glm53.tools.stream_true",
+      "dimension": "glm53.tool_stream",
+      "kind": "glm53_stream",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "stream",
+        "tool_stream",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-tools-type/case.json",
+      "key": "glm53.tools.type",
+      "dimension": "glm53.tools",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-tools-unknown_type/case.json",
+      "key": "glm53.tools.unknown_type",
+      "dimension": "glm53.tools",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "tools"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-invalid_0/case.json",
+      "key": "glm53.top_p.invalid_0",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-invalid_1/case.json",
+      "key": "glm53.top_p.invalid_1",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-invalid_2/case.json",
+      "key": "glm53.top_p.invalid_2",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-invalid_3/case.json",
+      "key": "glm53.top_p.invalid_3",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-omitted/case.json",
+      "key": "glm53.top_p.omitted",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-valid_0/case.json",
+      "key": "glm53.top_p.valid_0",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-valid_1/case.json",
+      "key": "glm53.top_p.valid_1",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-valid_2/case.json",
+      "key": "glm53.top_p.valid_2",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-top_p-valid_3/case.json",
+      "key": "glm53.top_p.valid_3",
+      "dimension": "glm53.top_p",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-length_0/case.json",
+      "key": "glm53.user_id.length_0",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-length_128/case.json",
+      "key": "glm53.user_id.length_128",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-length_129/case.json",
+      "key": "glm53.user_id.length_129",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-length_16/case.json",
+      "key": "glm53.user_id.length_16",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-length_5/case.json",
+      "key": "glm53.user_id.length_5",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-length_6/case.json",
+      "key": "glm53.user_id.length_6",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-null/case.json",
+      "key": "glm53.user_id.null",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-omitted/case.json",
+      "key": "glm53.user_id.omitted",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-type/case.json",
+      "key": "glm53.user_id.type",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_rejected",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/GLM53-user_id-unicode/case.json",
+      "key": "glm53.user_id.unicode",
+      "dimension": "glm53.user_id",
+      "kind": "glm53_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "reasoning_effort",
+        "user_id"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P001-thinking-default-on/case.json",
+      "key": "thinking_default_on",
+      "dimension": "reasoning-parameters",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P010-param-omit-sampling/case.json",
+      "key": "param_omit_sampling",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P011-fixed-sampling-values/case.json",
+      "key": "fixed_sampling_values",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "frequency_penalty",
+        "max_completion_tokens",
+        "messages",
+        "n",
+        "presence_penalty",
+        "temperature",
+        "top_p"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P012-temperature-below-fixed/case.json",
+      "key": "temperature_below_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P013-temperature-above-fixed/case.json",
+      "key": "temperature_above_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P014-top-p-below-fixed/case.json",
+      "key": "top_p_below_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "top_p"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P015-top-p-above-fixed/case.json",
+      "key": "top_p_above_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "top_p"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P016-n-below-fixed/case.json",
+      "key": "n_below_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "n"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P017-n-above-fixed/case.json",
+      "key": "n_above_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "n"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P018-presence-penalty-below-fixed/case.json",
+      "key": "presence_penalty_below_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "presence_penalty"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P019-presence-penalty-above-fixed/case.json",
+      "key": "presence_penalty_above_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "presence_penalty"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P020-frequency-penalty-below-fixed/case.json",
+      "key": "frequency_penalty_below_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "frequency_penalty",
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P021-frequency-penalty-above-fixed/case.json",
+      "key": "frequency_penalty_above_fixed",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "frequency_penalty",
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P030-top-logprobs-lower-bound/case.json",
+      "key": "top_logprobs_lower_bound",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "logprobs",
+        "max_completion_tokens",
+        "messages",
+        "top_logprobs"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P031-top-logprobs-upper-bound/case.json",
+      "key": "top_logprobs_upper_bound",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "logprobs",
+        "max_completion_tokens",
+        "messages",
+        "top_logprobs"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P032-top-logprobs-below-bound/case.json",
+      "key": "top_logprobs_below_bound",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "logprobs",
+        "max_completion_tokens",
+        "messages",
+        "top_logprobs"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P033-top-logprobs-above-bound/case.json",
+      "key": "top_logprobs_above_bound",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "logprobs",
+        "max_completion_tokens",
+        "messages",
+        "top_logprobs"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P034-top-logprobs-requires-logprobs/case.json",
+      "key": "top_logprobs_requires_logprobs",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "top_logprobs"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P040-stop-one-item-32-bytes/case.json",
+      "key": "stop_one_item_32_bytes",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "stop"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P041-stop-five-items/case.json",
+      "key": "stop_five_items",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "stop"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P042-stop-six-items/case.json",
+      "key": "stop_six_items",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "stop"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P043-stop-item-33-bytes/case.json",
+      "key": "stop_item_33_bytes",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "stop"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P050-max-completion-minimal/case.json",
+      "key": "max_completion_minimal",
+      "dimension": "parameters",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/P051-max-completion-context-overflow/case.json",
+      "key": "max_completion_context_overflow",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/P052-max-completion-over-model-limit/case.json",
+      "key": "max_completion_over_model_limit",
+      "dimension": "parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/R001-reasoning-effort-low/case.json",
+      "key": "reasoning_effort_low",
+      "dimension": "reasoning-parameters",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/R002-reasoning-effort-high/case.json",
+      "key": "reasoning_effort_high",
+      "dimension": "reasoning-parameters",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/R003-reasoning-effort-max/case.json",
+      "key": "reasoning_effort_max",
+      "dimension": "reasoning-parameters",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/R004-reasoning-effort-invalid/case.json",
+      "key": "reasoning_effort_invalid",
+      "dimension": "reasoning-parameters",
+      "kind": "error_schema",
+      "parameters": [
+        "max_completion_tokens",
+        "messages",
+        "reasoning_effort"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/T001-sync-response/case.json",
+      "key": "T001",
+      "dimension": "boundary",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T002-model-list/case.json",
+      "key": "T002",
+      "dimension": "identity",
+      "kind": "models_contains",
+      "parameters": [],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T003-auth/case.json",
+      "key": "T003",
+      "dimension": "identity",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T004-input-token-baseline/case.json",
+      "key": "T004",
+      "dimension": "billing",
+      "kind": "usage_baseline",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T005-output-token/case.json",
+      "key": "T005",
+      "dimension": "billing",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T006-hidden-prompt/case.json",
+      "key": "T006",
+      "dimension": "billing",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T007-stream-parity/case.json",
+      "key": "T007",
+      "dimension": "billing",
+      "kind": "stream_parity",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "stream_options",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T008-stream-chunks/case.json",
+      "key": "T008",
+      "dimension": "billing",
+      "kind": "sse_integrity",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T009-stream-usage/case.json",
+      "key": "T009",
+      "dimension": "billing",
+      "kind": "stream_usage",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "stream_options",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T011-思考模式检测/case.json",
+      "key": "T011",
+      "dimension": "identity",
+      "kind": "reasoning_visibility",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T012-响应-id-协议-schema-校验/case.json",
+      "key": "T012",
+      "dimension": "identity",
+      "kind": "response_id",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T013-协议污染检测/case.json",
+      "key": "T013",
+      "dimension": "identity",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T014-隐藏-system-注入自爆/case.json",
+      "key": "T014",
+      "dimension": "identity",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T015-对数概率-logprobs-指纹/case.json",
+      "key": "T015",
+      "dimension": "identity",
+      "kind": "logprobs_contract",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T016-智商-逻辑陷阱题库/case.json",
+      "key": "T016",
+      "dimension": "identity",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T017-响应时延对标/case.json",
+      "key": "T017",
+      "dimension": "identity",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T020-输出变异系数/case.json",
+      "key": "T020",
+      "dimension": "stability",
+      "kind": "deterministic_stability",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T021-多轮对话一致性与重复计费/case.json",
+      "key": "T021",
+      "dimension": "billing",
+      "kind": "multi_turn_usage",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T022-结构化输出-JSON-字段稳定性/case.json",
+      "key": "T022",
+      "dimension": "stability",
+      "kind": "structured_stability",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "response_format",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T023-速率限制-并发与-429/case.json",
+      "key": "T023",
+      "dimension": "stability",
+      "kind": "concurrency_probe",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T024-TTFT-首-Token-延迟/case.json",
+      "key": "T024",
+      "dimension": "stability",
+      "kind": "stream_ttft",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T025-长流式断连率/case.json",
+      "key": "T025",
+      "dimension": "stability",
+      "kind": "long_stream_stability",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T026-图片识别检测/case.json",
+      "key": "T026",
+      "dimension": "quality",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T027-缓存生效检测/case.json",
+      "key": "T027",
+      "dimension": "billing",
+      "kind": "cache_visibility",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T028-生成速率测试/case.json",
+      "key": "T028",
+      "dimension": "stability",
+      "kind": "stream_throughput",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stream",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T029-stop-参数测试/case.json",
+      "key": "T029",
+      "dimension": "boundary",
+      "kind": "stop_parameter",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "stop",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T030-禁用工具测试/case.json",
+      "key": "T030",
+      "dimension": "boundary",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T031-ID-格式一致性/case.json",
+      "key": "T031",
+      "dimension": "stability",
+      "kind": "id_consistency",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T032-采样参数透传/case.json",
+      "key": "T032",
+      "dimension": "stability",
+      "kind": "sampling_effect",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T033-参数边界三件套/case.json",
+      "key": "T033",
+      "dimension": "boundary",
+      "kind": "parameter_boundaries",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T034-错误响应-schema-一致性/case.json",
+      "key": "T034",
+      "dimension": "boundary",
+      "kind": "error_schema",
+      "parameters": [
+        "max_tokens",
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/T035-超长上下文线性计费/case.json",
+      "key": "T035",
+      "dimension": "billing",
+      "kind": "usage_growth",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T036-大海捞针-NIAH/case.json",
+      "key": "T036",
+      "dimension": "quality",
+      "kind": "needle_retrieval",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T037-Function-Calling/case.json",
+      "key": "T037",
+      "dimension": "billing",
+      "kind": "tool_call",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature",
+        "tool_choice",
+        "tools"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T038-异常报错计费/case.json",
+      "key": "T038",
+      "dimension": "billing",
+      "kind": "error_no_usage",
+      "parameters": [
+        "messages"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "openai-chat/T039-知识时效性与未来边界/case.json",
+      "key": "T039",
+      "dimension": "quality",
+      "kind": "chat_sync",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T041-批量随机-Prompt-平均注水率/case.json",
+      "key": "T041",
+      "dimension": "stability",
+      "kind": "padding_ratio",
+      "parameters": [
+        "max_tokens",
+        "messages",
+        "temperature"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "openai-chat/T044-input-latency-ladder/case.json",
+      "key": "T044",
+      "dimension": "performance",
+      "kind": "",
+      "parameters": [
+        "messages",
+        "stream"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "seedance/V001-text/case.json",
+      "key": "V001",
+      "dimension": "compatibility",
+      "kind": "seedance_task",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "seedance/V002-first-frame/case.json",
+      "key": "V002",
+      "dimension": "compatibility",
+      "kind": "seedance_task",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "seedance/V003-first-last-frame/case.json",
+      "key": "V003",
+      "dimension": "compatibility",
+      "kind": "seedance_task",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "seedance/V004-reference-image/case.json",
+      "key": "V004",
+      "dimension": "compatibility",
+      "kind": "seedance_task",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "seedance/V005-reference-video/case.json",
+      "key": "V005",
+      "dimension": "compatibility",
+      "kind": "seedance_task",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "seedance/V006-mixed-reference/case.json",
+      "key": "V006",
+      "dimension": "compatibility",
+      "kind": "seedance_task",
+      "parameters": [
+        "content",
+        "duration",
+        "ratio",
+        "resolution"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W21P1-duration-5/case.json",
+      "key": "wan21.plus.duration_5",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W21P2-duration-invalid/case.json",
+      "key": "wan21.plus.duration_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W21P3-size-invalid/case.json",
+      "key": "wan21.plus.size_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W21T1-duration-5/case.json",
+      "key": "wan21.turbo.duration_5",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W21T2-duration-invalid/case.json",
+      "key": "wan21.turbo.duration_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W21T3-size-invalid/case.json",
+      "key": "wan21.turbo.size_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2201-duration-5/case.json",
+      "key": "wan22.t2v.duration_5",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W2202-duration-invalid/case.json",
+      "key": "wan22.t2v.duration_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2203-size-invalid/case.json",
+      "key": "wan22.t2v.size_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2501-duration-5/case.json",
+      "key": "wan25.t2v.duration_5",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W2502-duration-invalid/case.json",
+      "key": "wan25.t2v.duration_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2601-min-duration/case.json",
+      "key": "wan26.t2v.min_duration",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W2602-duration-below/case.json",
+      "key": "wan26.t2v.duration_below_min",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2603-duration-above/case.json",
+      "key": "wan26.t2v.duration_above_max",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2604-size-invalid/case.json",
+      "key": "wan26.t2v.size_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2701-min-duration/case.json",
+      "key": "wan27.t2v.min_duration",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W2702-duration-below/case.json",
+      "key": "wan27.t2v.duration_below_min",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2703-duration-above/case.json",
+      "key": "wan27.t2v.duration_above_max",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2704-resolution-invalid/case.json",
+      "key": "wan27.t2v.resolution_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2705-ratio-invalid/case.json",
+      "key": "wan27.t2v.ratio_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2706-seed-below/case.json",
+      "key": "wan27.t2v.seed_below_min",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W2707-seed-above/case.json",
+      "key": "wan27.t2v.seed_above_max",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3001-min-duration/case.json",
+      "key": "wan30.t2v.min_duration",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3002-duration-below/case.json",
+      "key": "wan30.t2v.duration_below_min",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3003-duration-above/case.json",
+      "key": "wan30.t2v.duration_above_max",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3004-seed-below/case.json",
+      "key": "wan30.t2v.seed_below_min",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3005-seed-above/case.json",
+      "key": "wan30.t2v.seed_above_max",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3006-resolution-invalid/case.json",
+      "key": "wan30.t2v.resolution_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3007-ratio-invalid/case.json",
+      "key": "wan30.t2v.ratio_invalid",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3008-input-missing/case.json",
+      "key": "wan30.input.prompt_or_media_required",
+      "dimension": "required",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3009-model-target-success/case.json",
+      "key": "wan30.model.target_valid",
+      "dimension": "compatibility",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3010-model-missing/case.json",
+      "key": "wan30.model.required",
+      "dimension": "required",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3011-model-empty/case.json",
+      "key": "wan30.model.empty",
+      "dimension": "parameters",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "model",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3012-model-unknown/case.json",
+      "key": "wan30.model.unknown",
+      "dimension": "parameters",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "model",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3013-model-wrong-type/case.json",
+      "key": "wan30.model.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "model",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3014-input-null/case.json",
+      "key": "wan30.input.null",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3015-input-string/case.json",
+      "key": "wan30.input.string",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3016-input-array/case.json",
+      "key": "wan30.input.array",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3017-parameters-omitted/case.json",
+      "key": "wan30.parameters.omitted",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3018-parameters-empty/case.json",
+      "key": "wan30.parameters.empty_object",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3020-parameters-string/case.json",
+      "key": "wan30.parameters.string",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3021-parameters-array/case.json",
+      "key": "wan30.parameters.array",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3022-prompt-length-1/case.json",
+      "key": "wan30.prompt.length_1",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3023-prompt-length-20000/case.json",
+      "key": "wan30.prompt.length_20000",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3024-prompt-length-20001/case.json",
+      "key": "wan30.prompt.length_20001_truncated",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3025-prompt-wrong-type/case.json",
+      "key": "wan30.prompt.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3026-duration-omitted/case.json",
+      "key": "wan30.duration.omitted_default_5",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3027-duration-minus-2/case.json",
+      "key": "wan30.duration.below_union",
+      "dimension": "boundary",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3028-duration-smart-minus-1/case.json",
+      "key": "wan30.duration.smart_minus_1",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3029-duration-explicit-5/case.json",
+      "key": "wan30.duration.explicit_5",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3030-duration-max-30/case.json",
+      "key": "wan30.duration.max_30",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3031-duration-wrong-type/case.json",
+      "key": "wan30.duration.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3032-duration-non-integer/case.json",
+      "key": "wan30.duration.non_integer",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3033-seed-omitted/case.json",
+      "key": "wan30.seed.omitted_random",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3034-seed-minus-1/case.json",
+      "key": "wan30.seed.random_minus_1",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3035-seed-interior-42/case.json",
+      "key": "wan30.seed.interior_42",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3036-seed-max/case.json",
+      "key": "wan30.seed.max",
+      "dimension": "boundary",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3037-seed-wrong-type/case.json",
+      "key": "wan30.seed.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3038-seed-non-integer/case.json",
+      "key": "wan30.seed.non_integer",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3039-resolution-omitted/case.json",
+      "key": "wan30.resolution.omitted_default_1080p",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3040-resolution-480p/case.json",
+      "key": "wan30.resolution.480p",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3041-resolution-720p/case.json",
+      "key": "wan30.resolution.720p",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3042-resolution-1080p/case.json",
+      "key": "wan30.resolution.1080p",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3043-resolution-wrong-type/case.json",
+      "key": "wan30.resolution.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3044-ratio-omitted/case.json",
+      "key": "wan30.ratio.omitted_default_adaptive",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3045-ratio-adaptive/case.json",
+      "key": "wan30.ratio.adaptive",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3046-ratio-16_9/case.json",
+      "key": "wan30.ratio.16_9",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3047-ratio-4_3/case.json",
+      "key": "wan30.ratio.4_3",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3048-ratio-1_1/case.json",
+      "key": "wan30.ratio.1_1",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3049-ratio-3_4/case.json",
+      "key": "wan30.ratio.3_4",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3050-ratio-9_16/case.json",
+      "key": "wan30.ratio.9_16",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3051-ratio-wrong-type/case.json",
+      "key": "wan30.ratio.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3052-audio-omitted/case.json",
+      "key": "wan30.audio.omitted_default_true",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3053-audio-true/case.json",
+      "key": "wan30.audio.true",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3054-audio-false/case.json",
+      "key": "wan30.audio.false",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3055-audio-wrong-type/case.json",
+      "key": "wan30.audio.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3056-prompt-extend-omitted/case.json",
+      "key": "wan30.prompt_extend.omitted_default_true",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3057-prompt-extend-true/case.json",
+      "key": "wan30.prompt_extend.true",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3058-prompt-extend-false/case.json",
+      "key": "wan30.prompt_extend.false",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3059-prompt-extend-wrong-type/case.json",
+      "key": "wan30.prompt_extend.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3060-watermark-omitted/case.json",
+      "key": "wan30.watermark.omitted_default_false",
+      "dimension": "defaults",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3061-watermark-false/case.json",
+      "key": "wan30.watermark.false",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3062-watermark-true/case.json",
+      "key": "wan30.watermark.true",
+      "dimension": "parameters",
+      "kind": "wan_task_success",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": false
+    },
+    {
+      "path": "wan-video/W3063-watermark-wrong-type/case.json",
+      "key": "wan30.watermark.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3067-media-wrong-type/case.json",
+      "key": "wan30.media.wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3068-media-item-wrong-type/case.json",
+      "key": "wan30.media.item_wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3069-media-missing-type/case.json",
+      "key": "wan30.media.missing_type",
+      "dimension": "required",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3070-media-missing-url/case.json",
+      "key": "wan30.media.missing_url",
+      "dimension": "required",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3071-media-type-wrong-type/case.json",
+      "key": "wan30.media.type_wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3072-media-unknown-type/case.json",
+      "key": "wan30.media.type_unknown",
+      "dimension": "parameters",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3073-media-url-wrong-type/case.json",
+      "key": "wan30.media.url_wrong_type",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3074-media-empty-no-prompt/case.json",
+      "key": "wan30.media.empty_without_prompt",
+      "dimension": "required",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3075-parameters-number/case.json",
+      "key": "wan30.parameters.number",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3076-media-type-case-variant/case.json",
+      "key": "wan30.media.type_case_variant",
+      "dimension": "parameters",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3077-media-type-whitespace/case.json",
+      "key": "wan30.media.type_whitespace",
+      "dimension": "parameters",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    },
+    {
+      "path": "wan-video/W3078-input-number/case.json",
+      "key": "wan30.input.number",
+      "dimension": "type",
+      "kind": "wan_task_rejected",
+      "parameters": [
+        "input",
+        "parameters"
+      ],
+      "negative_kind_heuristic": true
+    }
+  ]
+}

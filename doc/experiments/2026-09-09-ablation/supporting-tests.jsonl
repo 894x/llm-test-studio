@@ -1,0 +1,16 @@
+{"Time":"2026-09-09T02:12:05.4167568+08:00","Action":"start","Package":"github.com/894x/llm-test-studio/internal/execution/load"}
+{"Time":"2026-09-09T02:12:05.4341835+08:00","Action":"start","Package":"github.com/894x/llm-test-studio/internal/domain"}
+{"Time":"2026-09-09T02:12:05.7145443+08:00","Action":"run","Package":"github.com/894x/llm-test-studio/internal/execution/load","Test":"TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests"}
+{"Time":"2026-09-09T02:12:05.7145443+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/execution/load","Test":"TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests","Output":"=== RUN   TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests\n"}
+{"Time":"2026-09-09T02:12:05.7188772+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/execution/load","Test":"TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests","Output":"--- PASS: TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests (0.00s)\n"}
+{"Time":"2026-09-09T02:12:05.7188772+08:00","Action":"pass","Package":"github.com/894x/llm-test-studio/internal/execution/load","Test":"TestRunOpenLoopLaunchesOnScheduleWithoutWaitingForInflightRequests","Elapsed":0}
+{"Time":"2026-09-09T02:12:05.7188772+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/execution/load","Output":"PASS\n"}
+{"Time":"2026-09-09T02:12:05.720578+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/execution/load","Output":"ok  \tgithub.com/894x/llm-test-studio/internal/execution/load\t0.304s\n"}
+{"Time":"2026-09-09T02:12:05.720578+08:00","Action":"pass","Package":"github.com/894x/llm-test-studio/internal/execution/load","Elapsed":0.304}
+{"Time":"2026-09-09T02:12:05.7550859+08:00","Action":"run","Package":"github.com/894x/llm-test-studio/internal/domain","Test":"TestRunSnapshotIsCompleteAndDefensivelyCopied"}
+{"Time":"2026-09-09T02:12:05.7550859+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/domain","Test":"TestRunSnapshotIsCompleteAndDefensivelyCopied","Output":"=== RUN   TestRunSnapshotIsCompleteAndDefensivelyCopied\n"}
+{"Time":"2026-09-09T02:12:05.7550859+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/domain","Test":"TestRunSnapshotIsCompleteAndDefensivelyCopied","Output":"--- PASS: TestRunSnapshotIsCompleteAndDefensivelyCopied (0.00s)\n"}
+{"Time":"2026-09-09T02:12:05.755609+08:00","Action":"pass","Package":"github.com/894x/llm-test-studio/internal/domain","Test":"TestRunSnapshotIsCompleteAndDefensivelyCopied","Elapsed":0}
+{"Time":"2026-09-09T02:12:05.755609+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/domain","Output":"PASS\n"}
+{"Time":"2026-09-09T02:12:05.7571786+08:00","Action":"output","Package":"github.com/894x/llm-test-studio/internal/domain","Output":"ok  \tgithub.com/894x/llm-test-studio/internal/domain\t0.323s\n"}
+{"Time":"2026-09-09T02:12:05.7571786+08:00","Action":"pass","Package":"github.com/894x/llm-test-studio/internal/domain","Elapsed":0.323}
