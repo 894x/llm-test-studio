@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "key": "enable_thinking_true_active",
-  "name": "思考 · enable_thinking=true（非官方参数）",
-  "dimension": "reasoning-parameters",
+  "key": "param_fixed_presence_penalty",
+  "name": "参数约束 · presence_penalty=0（官方固定值，应接受）",
+  "dimension": "parameters",
   "protocol": "openai-chat",
   "enabled": true,
   "default": false,
@@ -19,11 +19,11 @@
           "messages": [
             {
               "role": "user",
-              "content": "1+1 等于几？为什么？"
+              "content": "只回答：你好"
             }
           ],
-          "enable_thinking": true,
-          "max_tokens": 200
+          "presence_penalty": 0,
+          "max_completion_tokens": 32
         }
       },
       "assertions": [
@@ -41,10 +41,9 @@
         },
         {
           "id": "r3",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/reasoning_visible",
-          "value": 1
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/choices"
         }
       ]
     }

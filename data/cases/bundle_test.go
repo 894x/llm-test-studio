@@ -39,7 +39,11 @@ func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 	for _, path := range []string{
 		"openai-chat/R001-reasoning-effort-low/case.json",
 		"openai-chat/R004-reasoning-effort-invalid/case.json",
-		"openai-chat/P011-fixed-sampling-values/case.json",
+		"openai-chat/P022-param-fixed-temperature/case.json",
+		"openai-chat/P023-param-fixed-top-p/case.json",
+		"openai-chat/P024-param-fixed-n/case.json",
+		"openai-chat/P025-param-fixed-presence-penalty/case.json",
+		"openai-chat/P026-param-fixed-frequency-penalty/case.json",
 		"openai-chat/P034-top-logprobs-requires-logprobs/case.json",
 		"openai-chat/P043-stop-item-33-bytes/case.json",
 		"openai-chat/P052-max-completion-over-model-limit/case.json",
