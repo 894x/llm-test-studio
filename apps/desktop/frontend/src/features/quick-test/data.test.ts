@@ -157,7 +157,7 @@ describe("parseQuickPerformanceReport phase-three fields", () => {
         const raw = phaseThreeReport()
         return {
           ...raw,
-          time_slices: raw.time_slices.map((slice, index) => index === 0
+          time_slices: raw.time_slices.map((slice: (typeof raw.time_slices)[number], index: number) => index === 0
             ? { ...slice, ttft: { count: 1, p50_ms: 30, p95_ms: 20, p99_ms: 40 } }
             : slice),
         }

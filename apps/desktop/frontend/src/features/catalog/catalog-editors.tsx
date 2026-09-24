@@ -25,6 +25,11 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
+import {
+  quickPerformancePresetFromProfile,
+  quickPerformanceProfileForPreset,
+  type QuickPerformancePresetID,
+} from "@/features/quick-test/performance-presets"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
@@ -266,6 +271,10 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const [name, setName] = useState(item?.name ?? "")
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [seed, setSeed] = useState(item?.seed ?? 1)
+  const [planMode, setPlanMode] = useState<"protocol" | "performance">(item?.performance ? "performance" : "protocol")
+  const [performancePreset, setPerformancePreset] = useState<QuickPerformancePresetID>(
+    item?.performance ? quickPerformancePresetFromProfile(item.performance) : "smoke",
+  )
   const [target, setTarget] = useState("")
   const [entries, setEntries] = useState<EntryDraft[]>(() => item?.entries.map(entry => ({ ...entry,
     draftKey: entry.entry_id, parametersJSON: json(entry.parameters), slaJSON: json(entry.sla_thresholds) })) ?? [])
@@ -278,27 +287,38 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
     integerField(seed, t("protocolDesign.seed"), 0, Number.MAX_SAFE_INTEGER)
     const planName = required(name, t("common.plan"))
-    if (entries.length === 0) {
+    if (planMode === "protocol" && entries.length === 0) {
       throw new FormValidationError("planEntries", t("protocolDesign.entryRequired"), t("protocolDesign.target"))
     }
-    const command = { name: planName, protocol, seed,
-      entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
-        parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
-        sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) })) }
+    const command = planMode === "performance"
+      ? { name: planName, protocol: "openai-chat" as CatalogProtocol, seed, entries: [], performance: quickPerformanceProfileForPreset(performancePreset) }
+      : { name: planName, protocol, seed,
+        entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
+          parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
+          sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) })) }
     await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), formTitle)
     onSaved()
   }}>
     <TextField label={t("common.plan")} value={name} onChange={setName} />
-    <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
+    <SelectField label={t("plans.executionPolicy")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance") setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
+    {planMode === "protocol" ? <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} /> : null}
     <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
-    <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
-    <PlanEntryTargetField target={target} targets={targets} onTargetChange={setTarget} onAdd={() => {
+    {planMode === "performance" ? <SelectField label={t("plans.performancePreset")} value={performancePreset} options={[
+      ["smoke", t("quickTest:performance.presets.smoke")],
+      ["baseline", t("quickTest:performance.presets.baseline")],
+      ["sustained", t("quickTest:performance.presets.sustained")],
+      ["capacity", t("quickTest:performance.presets.capacity")],
+    ]} onChange={value => setPerformancePreset(value as QuickPerformancePresetID)} /> : null}
+    {planMode === "protocol" ? <>
+      <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
+      <PlanEntryTargetField target={target} targets={targets} onTargetChange={setTarget} onAdd={() => {
         const [kind, id] = target.split(":")
         setEntries(current => [...current, { draftKey: crypto.randomUUID(), target_kind: kind as "case" | "suite", target_id: id,
           warmup_count: 0, settings: {}, parameters: {}, parametersJSON: "{}", sla_thresholds: {}, slaJSON: "{}", load_mode: "single", concurrency: 1,
           request_count: 1, rate_per_second: 1, duration_ms: 0, request_timeout_ms: 60000 }])
       }} />
-    <div className="divide-y">
+    </> : null}
+    {planMode === "protocol" ? <div className="divide-y">
       {entries.map((entry, index) => <section key={entry.draftKey} className="space-y-3 py-3">
         <header className="flex min-w-0 items-center gap-2"><h3 className="min-w-0 flex-1 truncate text-xs font-semibold">{index + 1}. {targets.find(([id]) => id === `${entry.target_kind}:${entry.target_id}`)?.[1] ?? entry.target_id}</h3>
           <Button type="button" variant="ghost" size="icon-xs" disabled={index === 0} aria-label={t("protocolDesign.moveUp")} onClick={() => move(index, -1)}><ArrowUpIcon /></Button>
@@ -319,7 +339,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
         <TextAreaField label={`${index + 1}. ${t("protocolDesign.parameters")}`} value={entry.parametersJSON} onChange={value => update(index, { parametersJSON: value })} description={t("protocolDesign.parametersHint")} />
         <TextAreaField label={`${index + 1}. ${t("protocolDesign.thresholds")}`} value={entry.slaJSON} onChange={value => update(index, { slaJSON: value })} />
       </section>)}
-    </div>
+    </div> : null}
   </FormShell>
 }
 

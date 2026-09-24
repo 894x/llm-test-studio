@@ -291,6 +291,7 @@ func (service *Service) buildSnapshot(
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{
 			ID: plan.ID, Revision: plan.Revision, Name: plan.Name, Protocol: plan.Protocol, Seed: plan.Seed,
 			EntryCount: len(plan.Entries), CaseCount: caseCount, Entries: entrySummaries,
+			Performance: clonePerformancePlanProfile(plan.Performance),
 		})
 	}
 

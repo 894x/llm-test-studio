@@ -293,10 +293,68 @@ const (
 
 type Plan struct {
 	EntityMeta
-	Name     string      `json:"name"`
-	Protocol Protocol    `json:"protocol"`
-	Seed     uint64      `json:"seed"`
-	Entries  []PlanEntry `json:"entries"`
+	Name        string                  `json:"name"`
+	Protocol    Protocol                `json:"protocol"`
+	Seed        uint64                  `json:"seed"`
+	Entries     []PlanEntry             `json:"entries"`
+	Performance *PerformancePlanProfile `json:"performance,omitempty"`
+}
+
+// PerformancePlanProfile is the authored, connection-independent profile for
+// a quick performance plan. Model and channel selection remains a run-time
+// concern so one plan can be compared across bindings.
+type PerformancePlanProfile struct {
+	LoadMode           LoadMode `json:"load_mode"`
+	ArrivalPattern     string   `json:"arrival_pattern"`
+	WorkloadMode       string   `json:"workload_mode"`
+	RandomSeed         uint32   `json:"random_seed"`
+	RequestCount       uint64   `json:"request_count"`
+	DurationMS         uint64   `json:"duration_ms"`
+	Concurrency        uint32   `json:"concurrency"`
+	RatePerSecond      float64  `json:"rate_per_second"`
+	MaxInFlight        uint32   `json:"max_in_flight"`
+	TimeoutMS          uint64   `json:"timeout_ms"`
+	InputTokens        uint32   `json:"input_tokens"`
+	OutputTokens       uint32   `json:"output_tokens"`
+	InputTokensStdDev  uint32   `json:"input_tokens_stddev"`
+	OutputTokensStdDev uint32   `json:"output_tokens_stddev"`
+	SharedPrefixTokens uint32   `json:"shared_prefix_tokens"`
+	WarmupRequests     uint64   `json:"warmup_requests"`
+	RampDurationMS     uint64   `json:"ramp_duration_ms"`
+	RampRequestCap     uint64   `json:"ramp_request_cap"`
+	SliceDurationMS    uint64   `json:"slice_duration_ms"`
+	SLOTTFTMS          float64  `json:"slo_ttft_ms"`
+	SLOTPOTMS          float64  `json:"slo_tpot_ms"`
+	SLOE2EMS           float64  `json:"slo_e2e_ms"`
+	SLOTargetPercent   float64  `json:"slo_target_percent"`
+	CapacityEnabled    bool     `json:"capacity_enabled"`
+	CapacityStart      float64  `json:"capacity_start"`
+	CapacityStep       float64  `json:"capacity_step"`
+}
+
+func (profile PerformancePlanProfile) Validate() error {
+	if profile.LoadMode != LoadFixedConcurrency && profile.LoadMode != LoadOpenLoop {
+		return errors.New("performance plan load mode must be fixed_concurrency or open_loop")
+	}
+	if profile.ArrivalPattern != "constant" && profile.ArrivalPattern != "poisson" {
+		return errors.New("performance plan arrival pattern is unsupported")
+	}
+	if profile.WorkloadMode != "fixed" && profile.WorkloadMode != "normal" {
+		return errors.New("performance plan workload mode is unsupported")
+	}
+	if profile.RequestCount == 0 && profile.DurationMS == 0 {
+		return errors.New("performance plan requires a request count or duration")
+	}
+	if profile.TimeoutMS == 0 || profile.InputTokens == 0 || profile.OutputTokens == 0 {
+		return errors.New("performance plan timeout and token targets must be positive")
+	}
+	if profile.Concurrency == 0 && profile.LoadMode == LoadFixedConcurrency {
+		return errors.New("performance plan concurrency must be positive")
+	}
+	if profile.RatePerSecond <= 0 && profile.LoadMode == LoadOpenLoop {
+		return errors.New("open-loop performance plan rate must be positive")
+	}
+	return nil
 }
 
 // PlanEntry references one current Case or Suite; repetitions keep their own identity.
@@ -362,6 +420,15 @@ func (plan Plan) Validate() error {
 	}
 	if plan.Seed > (1<<53)-1 {
 		return errors.New("plan seed exceeds the JSON safe integer range")
+	}
+	if plan.Performance != nil {
+		if plan.Protocol != ProtocolOpenAIChat {
+			return errors.New("performance plan requires openai-chat protocol")
+		}
+		if len(plan.Entries) != 0 {
+			return errors.New("performance plan cannot contain protocol entries")
+		}
+		return plan.Performance.Validate()
 	}
 	if len(plan.Entries) == 0 {
 		return errors.New("plan requires at least one entry")

@@ -1,4 +1,5 @@
 import { isProtocolRunSettings, type ProtocolRunSettings } from "@/features/protocols/types"
+import { parseQuickPerformanceProfile, type QuickPerformanceProfile } from "@/features/quick-test/data"
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { isProtocol, type ProtocolID } from "./protocols"
@@ -95,7 +96,7 @@ export interface CatalogPlanEntry {
 }
 export interface CatalogPlan {
   id: string; revision: number; name: string; protocol: CatalogProtocol; seed: number
-  entry_count: number; case_count: number; entries: CatalogPlanEntry[]
+  entry_count: number; case_count: number; entries: CatalogPlanEntry[]; performance?: QuickPerformanceProfile
 }
 
 export type CreateModelCommand = Pick<CatalogModel, "name" | "protocol" | "capabilities">
@@ -115,7 +116,7 @@ export type PlanEntryCommand = Pick<CatalogPlanEntry,
   "target_kind" | "target_id" | "parameters" | "load_mode" | "concurrency" | "request_count" |
   "rate_per_second" | "duration_ms" | "request_timeout_ms" | "sla_thresholds" | "warmup_count" | "settings"
 > & { entry_id?: string }
-export type CreatePlanCommand = Pick<CatalogPlan, "name" | "protocol" | "seed"> & { entries: PlanEntryCommand[] }
+export type CreatePlanCommand = Pick<CatalogPlan, "name" | "protocol" | "seed"> & { entries: PlanEntryCommand[]; performance?: QuickPerformanceProfile }
 export type UpdatePlanCommand = CreatePlanCommand & { id: string; expected_revision: number }
 export interface DeleteCommand { id: string; expected_revision: number }
 
@@ -409,8 +410,11 @@ function parsePlan(value: unknown): CatalogPlan {
     !Array.isArray(value.entries) || ["suites", "model_ids", "channel_ids"].some(key => key in value)) throw invalidCatalog()
   const entries = value.entries.map(parsePlanEntry)
   if (entries.length !== value.entry_count || new Set(entries.map(entry => entry.entry_id)).size !== entries.length) throw invalidCatalog()
+  const performance = value.performance === undefined ? undefined : parseQuickPerformanceProfile(value.performance)
+  if (performance !== undefined && entries.length !== 0) throw invalidCatalog()
   return { id: value.id, revision: value.revision, name: value.name, protocol: value.protocol,
-    seed: value.seed, entry_count: value.entry_count, case_count: value.case_count, entries }
+    seed: value.seed, entry_count: value.entry_count, case_count: value.case_count, entries,
+    ...(performance === undefined ? {} : { performance }) }
 }
 function parsePlanEntry(value: unknown): CatalogPlanEntry {
   if (!isRecord(value) || !isUUID(value.entry_id) || !isUUID(value.target_id) ||

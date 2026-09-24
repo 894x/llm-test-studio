@@ -196,6 +196,7 @@
   "quick-test_unsupported_quick_performance_report_protocol_version": "快速性能报告数据协议版本不受支持",
   "quick-test_invalid_quick_performance_report_structure": "快速性能报告数据结构无效",
   "quick-test_invalid_quick_performance_report_sample_data": "快速性能报告样本数据无效",
+  "quick-test_invalid_quick_performance_profile": "快速性能配置无效",
   "quick-test_slo_passed": "SLO 通过",
   "quick-test_slo_failed": "SLO 未通过",
   "quick-test_slo_not_evaluated": "SLO 未评估",

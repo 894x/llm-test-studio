@@ -15,6 +15,21 @@
   "performance": {
     "title": "快速性能测试",
     "description": "使用当前连接运行流式负载；实际发起请求后会自动封存报告。",
+    "preset": "预设配置",
+    "presets": {
+      "smoke": "快速检查 · 10 次请求",
+      "baseline": "基准测试 · 100 次请求 / 并发 4",
+      "sustained": "持续负载 · 60 秒 / 2 RPS",
+      "capacity": "容量阶梯 · SLO 95%"
+    },
+    "selectBinding": "运行性能计划",
+    "selectBindingHint": "为本次运行选择模型和渠道；已保存的性能配置不会改变。",
+    "model": "模型",
+    "channel": "渠道",
+    "noModels": "没有可用模型",
+    "noChannels": "该模型没有可用渠道",
+    "cancel": "取消",
+    "continue": "继续",
     "needTarget": "请求数和持续时间至少填写一项",
     "invalid": "性能测试参数超出允许范围",
     "error": "快速性能测试暂不可用，请检查本地日志",

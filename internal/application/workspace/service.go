@@ -212,6 +212,9 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 	}
 	for _, plan := range plans {
+		if plan.Performance != nil {
+			continue
+		}
 		load := summarizeEntryLoads(plan.Entries)
 		caseCount := 0
 		for _, entry := range plan.Entries {

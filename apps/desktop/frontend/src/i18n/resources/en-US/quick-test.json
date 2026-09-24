@@ -15,6 +15,21 @@
   "performance": {
     "title": "Quick performance test",
     "description": "Run a streaming workload with the current connection. Reports are archived after requests are executed.",
+    "preset": "Preset",
+    "presets": {
+      "smoke": "Smoke check · 10 requests",
+      "baseline": "Baseline · 100 requests / concurrency 4",
+      "sustained": "Sustained · 60 seconds / 2 RPS",
+      "capacity": "Capacity ladder · SLO 95%"
+    },
+    "selectBinding": "Run performance plan",
+    "selectBindingHint": "Choose the model and channel for this run. The saved performance profile stays unchanged.",
+    "model": "Model",
+    "channel": "Channel",
+    "noModels": "No eligible models",
+    "noChannels": "No eligible channels for this model",
+    "cancel": "Cancel",
+    "continue": "Continue",
     "needTarget": "Enter a request count or duration",
     "invalid": "Performance-test parameters are out of range",
     "error": "Quick performance test is unavailable; check local logs",

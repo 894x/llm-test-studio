@@ -253,6 +253,9 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err := plan.Validate(); err != nil {
 		return "", fmt.Errorf("invalid plan: %w", err)
 	}
+	if plan.Performance != nil {
+		return "", ErrNotRunnable
+	}
 	timings = append(timings, startPhaseTiming{operation: "start_run_load_plan", duration: time.Since(phaseStartedAt)})
 	if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
 		return "", ErrNotRunnable

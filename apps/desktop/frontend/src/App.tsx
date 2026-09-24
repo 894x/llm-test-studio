@@ -367,6 +367,7 @@ function AppWorkspace({
           mutationPending={catalogMutationPending}
           mutationError={localizeStoredMessage(catalogMutationError, tx)}
           commandPending={commandPending}
+          onRunPerformance={client.runQuickPerformanceTest}
           onStartPlan={async (command) => {
             await startRun(command)
             navigate("runs")

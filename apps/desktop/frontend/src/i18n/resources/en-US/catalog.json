@@ -248,7 +248,10 @@
     "run": "Run this plan",
     "loadSingle": "Single",
     "loadFixed": "Fixed concurrency",
-    "loadOpen": "Open loop"
+    "loadOpen": "Open loop",
+    "protocolPlan": "Protocol plan",
+    "performancePlan": "Quick performance plan",
+    "performancePreset": "Performance preset"
   },
   "protocolDesign": {
     "inputs": "Input definitions (JSON)",

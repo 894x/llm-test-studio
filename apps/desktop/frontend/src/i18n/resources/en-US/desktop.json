@@ -196,6 +196,7 @@
   "quick-test_unsupported_quick_performance_report_protocol_version": "Unsupported quick performance report protocol version",
   "quick-test_invalid_quick_performance_report_structure": "Invalid quick performance report structure",
   "quick-test_invalid_quick_performance_report_sample_data": "Invalid quick performance report sample data",
+  "quick-test_invalid_quick_performance_profile": "Invalid quick performance profile",
   "quick-test_slo_passed": "SLO passed",
   "quick-test_slo_failed": "SLO failed",
   "quick-test_slo_not_evaluated": "SLO not evaluated",

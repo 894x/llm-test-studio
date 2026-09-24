@@ -248,7 +248,10 @@
     "run": "运行这个计划",
     "loadSingle": "单次",
     "loadFixed": "固定并发",
-    "loadOpen": "开放环"
+    "loadOpen": "开放环",
+    "protocolPlan": "协议测试计划",
+    "performancePlan": "快速性能计划",
+    "performancePreset": "性能预设"
   },
   "protocolDesign": {
     "inputs": "输入定义（JSON）",

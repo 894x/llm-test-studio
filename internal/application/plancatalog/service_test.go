@@ -74,6 +74,31 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 	}
 }
 
+func TestPlanCatalogRoundTripsPerformanceProfileWithoutBinding(t *testing.T) {
+	service, err := New(filepath.Join(t.TempDir(), "plans"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
+	document.Entries = []domain.PlanEntry{}
+	document.Performance = &domain.PerformancePlanProfile{
+		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: "constant", WorkloadMode: "fixed",
+		RequestCount: 100, Concurrency: 4, TimeoutMS: 60_000, InputTokens: 256, OutputTokens: 128,
+	}
+	if err := service.CreateDocument(context.Background(), document); err != nil {
+		t.Fatal(err)
+	}
+	got, err := service.GetDocument(context.Background(), document.ID)
+	if err != nil || !reflect.DeepEqual(got, document) {
+		t.Fatalf("performance document round trip = %#v, %v", got, err)
+	}
+	got.Performance.RequestCount = 1
+	again, err := service.GetDocument(context.Background(), document.ID)
+	if err != nil || again.Performance.RequestCount != 100 {
+		t.Fatalf("performance profile was not independently copied: %#v, %v", again, err)
+	}
+}
+
 func TestPlanCatalogOmitsExecutionSnapshots(t *testing.T) {
 	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
 	raw, err := json.Marshal(document)

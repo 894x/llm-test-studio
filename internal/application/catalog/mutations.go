@@ -308,13 +308,19 @@ func (service *Service) CreatePlan(ctx context.Context, command CreatePlanComman
 	if err != nil {
 		return MutationResult{}, err
 	}
+	if command.Performance != nil && len(command.Entries) != 0 {
+		return MutationResult{}, ErrInvalid
+	}
 	meta, err := service.newMeta(ctx)
 	if err != nil {
 		return MutationResult{}, err
 	}
-	entries, err := service.resolvePlanEntries(ctx, meta.ID, meta.Revision, nil, command.Entries)
-	if err != nil {
-		return MutationResult{}, err
+	entries := []domain.PlanEntry{}
+	if command.Performance == nil {
+		entries, err = service.resolvePlanEntries(ctx, meta.ID, meta.Revision, nil, command.Entries)
+		if err != nil {
+			return MutationResult{}, err
+		}
 	}
 	plan := planFromCreate(meta, command, entries)
 	if err := plan.Validate(); err != nil {
@@ -331,6 +337,9 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 	if err != nil {
 		return MutationResult{}, err
 	}
+	if command.Performance != nil && len(command.Entries) != 0 {
+		return MutationResult{}, ErrInvalid
+	}
 	if !validUpdateIdentity(command.ID, command.ExpectedRevision) {
 		return MutationResult{}, ErrInvalid
 	}
@@ -341,20 +350,23 @@ func (service *Service) UpdatePlan(ctx context.Context, command UpdatePlanComman
 	if err := ctx.Err(); err != nil {
 		return MutationResult{}, err
 	}
-	if err := current.Validate(); err != nil || current.ID != command.ID || len(current.Entries) == 0 {
+	if err := current.Validate(); err != nil || current.ID != command.ID {
 		return MutationResult{}, ErrCorrupt
 	}
 	meta, err := service.nextMeta(ctx, current.EntityMeta, command.ExpectedRevision)
 	if err != nil {
 		return MutationResult{}, err
 	}
-	existingEntries := make(map[string]struct{}, len(current.Entries))
-	for _, entry := range current.Entries {
-		existingEntries[entry.EntryID] = struct{}{}
-	}
-	entries, err := service.resolvePlanEntries(ctx, meta.ID, meta.Revision, existingEntries, command.Entries)
-	if err != nil {
-		return MutationResult{}, err
+	entries := []domain.PlanEntry{}
+	if command.Performance == nil {
+		existingEntries := make(map[string]struct{}, len(current.Entries))
+		for _, entry := range current.Entries {
+			existingEntries[entry.EntryID] = struct{}{}
+		}
+		entries, err = service.resolvePlanEntries(ctx, meta.ID, meta.Revision, existingEntries, command.Entries)
+		if err != nil {
+			return MutationResult{}, err
+		}
 	}
 	plan := planFromUpdate(meta, command, entries)
 	if err := plan.Validate(); err != nil {
@@ -699,15 +711,23 @@ func sameCaseRefs(left, right []domain.CaseRef) bool {
 func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
-		Entries: clonePlanEntries(entries),
+		Entries: clonePlanEntries(entries), Performance: clonePerformancePlanProfile(command.Performance),
 	}
 }
 
 func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
-		Entries: clonePlanEntries(entries),
+		Entries: clonePlanEntries(entries), Performance: clonePerformancePlanProfile(command.Performance),
 	}
+}
+
+func clonePerformancePlanProfile(profile *domain.PerformancePlanProfile) *domain.PerformancePlanProfile {
+	if profile == nil {
+		return nil
+	}
+	clone := *profile
+	return &clone
 }
 
 func clonePlanEntries(entries []domain.PlanEntry) []domain.PlanEntry {

@@ -81,14 +81,15 @@ type SuiteSummary struct {
 }
 
 type PlanSummary struct {
-	ID         string             `json:"id"`
-	Revision   uint64             `json:"revision"`
-	Name       string             `json:"name"`
-	Protocol   domain.Protocol    `json:"protocol"`
-	Seed       uint64             `json:"seed"`
-	EntryCount int                `json:"entry_count"`
-	CaseCount  int                `json:"case_count"`
-	Entries    []PlanEntrySummary `json:"entries"`
+	ID          string                         `json:"id"`
+	Revision    uint64                         `json:"revision"`
+	Name        string                         `json:"name"`
+	Protocol    domain.Protocol                `json:"protocol"`
+	Seed        uint64                         `json:"seed"`
+	EntryCount  int                            `json:"entry_count"`
+	CaseCount   int                            `json:"case_count"`
+	Entries     []PlanEntrySummary             `json:"entries"`
+	Performance *domain.PerformancePlanProfile `json:"performance,omitempty"`
 }
 
 type PlanEntryInput struct {
@@ -228,17 +229,19 @@ type UpdateSuiteCommand struct {
 }
 
 type CreatePlanCommand struct {
-	Name     string           `json:"name"`
-	Protocol domain.Protocol  `json:"protocol"`
-	Seed     uint64           `json:"seed"`
-	Entries  []PlanEntryInput `json:"entries"`
+	Name        string                         `json:"name"`
+	Protocol    domain.Protocol                `json:"protocol"`
+	Seed        uint64                         `json:"seed"`
+	Entries     []PlanEntryInput               `json:"entries"`
+	Performance *domain.PerformancePlanProfile `json:"performance,omitempty"`
 }
 
 type UpdatePlanCommand struct {
-	ID               string           `json:"id"`
-	ExpectedRevision uint64           `json:"expected_revision"`
-	Name             string           `json:"name"`
-	Protocol         domain.Protocol  `json:"protocol"`
-	Seed             uint64           `json:"seed"`
-	Entries          []PlanEntryInput `json:"entries"`
+	ID               string                         `json:"id"`
+	ExpectedRevision uint64                         `json:"expected_revision"`
+	Name             string                         `json:"name"`
+	Protocol         domain.Protocol                `json:"protocol"`
+	Seed             uint64                         `json:"seed"`
+	Entries          []PlanEntryInput               `json:"entries"`
+	Performance      *domain.PerformancePlanProfile `json:"performance,omitempty"`
 }

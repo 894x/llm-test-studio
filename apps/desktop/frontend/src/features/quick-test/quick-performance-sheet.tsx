@@ -25,16 +25,20 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from "@/components/ui/sheet"
 import { Spinner } from "@/components/ui/spinner"
 import { PerformanceCharts } from "@/features/reports/performance-charts"
 import { PerformanceLatencyTable } from "@/features/reports/performance-latency-table"
 import { PerformanceStreamingTimingTable } from "@/features/reports/performance-streaming-timing-table"
+import type { CatalogSnapshot } from "@/features/catalog/data"
+import { eligibleRuntimeChannels, eligibleRuntimeModels } from "@/features/runs/run-targets"
 
 import {
   estimateQuickPerformanceOpenLoopRampRequestCap,
@@ -43,9 +47,16 @@ import {
   type QuickPerformanceCommand,
   type QuickPerformanceLoadMode,
   type QuickPerformanceProgress,
+  type QuickPerformanceProfile,
   type QuickPerformanceReport,
   type QuickPerformanceWorkloadMode,
 } from "./data"
+import {
+  QUICK_PERFORMANCE_PRESET_IDS,
+  quickPerformancePresetFromProfile,
+  quickPerformanceProfileForPreset,
+  type QuickPerformancePresetID,
+} from "./performance-presets"
 import {
   performanceCapacitySummary,
   performanceCompletion,
@@ -100,35 +111,38 @@ function performanceTargetErrors() {
   } as const
 }
 
-const DEFAULT_PERFORMANCE_FORM: PerformanceForm = {
-  loadMode: "fixed_concurrency",
-  arrivalPattern: "constant",
-  workloadMode: "fixed",
-  requestCount: 10,
-  durationSeconds: 0,
-  concurrency: 1,
-  ratePerSecond: 1,
-  maxInFlight: 256,
-  timeoutSeconds: 60,
-  inputTokens: 100,
-  outputTokens: 100,
-  inputTokensStdDev: 10,
-  outputTokensStdDev: 10,
-  sharedPrefixTokens: 0,
-  randomSeed: 1,
-  warmupRequests: 0,
-  rampDurationSeconds: 0,
-  rampRequestCap: 1_000,
-  sliceDurationSeconds: 0,
-  sloTTFTMS: 0,
-  sloTPOTMS: 0,
-  sloE2EMS: 0,
-  sloTargetPercent: 0,
-  capacityEnabled: false,
-  fixedCapacityStart: 1,
-  fixedCapacityStep: 1,
-  openCapacityStart: 1,
-  openCapacityStep: 1,
+function performanceFormFromProfile(profile?: QuickPerformanceProfile): PerformanceForm {
+  const source = profile ?? quickPerformanceProfileForPreset("smoke")
+  return {
+    loadMode: source.load_mode ?? "fixed_concurrency",
+    arrivalPattern: source.arrival_pattern ?? "constant",
+    workloadMode: source.workload_mode ?? "fixed",
+    requestCount: source.request_count,
+    durationSeconds: source.duration_ms / 1_000,
+    concurrency: source.concurrency,
+    ratePerSecond: source.rate_per_second ?? 1,
+    maxInFlight: source.max_in_flight ?? 256,
+    timeoutSeconds: source.timeout_ms / 1_000,
+    inputTokens: source.input_tokens,
+    outputTokens: source.output_tokens,
+    inputTokensStdDev: source.input_tokens_stddev ?? 0,
+    outputTokensStdDev: source.output_tokens_stddev ?? 0,
+    sharedPrefixTokens: source.shared_prefix_tokens ?? 0,
+    randomSeed: source.random_seed ?? 1,
+    warmupRequests: source.warmup_requests ?? 0,
+    rampDurationSeconds: (source.ramp_duration_ms ?? 0) / 1_000,
+    rampRequestCap: source.ramp_request_cap ?? 1_000,
+    sliceDurationSeconds: (source.slice_duration_ms ?? 0) / 1_000,
+    sloTTFTMS: source.slo_ttft_ms ?? 0,
+    sloTPOTMS: source.slo_tpot_ms ?? 0,
+    sloE2EMS: source.slo_e2e_ms ?? 0,
+    sloTargetPercent: source.slo_target_percent ?? 0,
+    capacityEnabled: source.capacity_enabled ?? false,
+    fixedCapacityStart: source.load_mode === "fixed_concurrency" ? source.capacity_start ?? 1 : 1,
+    fixedCapacityStep: source.load_mode === "fixed_concurrency" ? source.capacity_step ?? 1 : 1,
+    openCapacityStart: source.load_mode === "open_loop" ? source.capacity_start ?? 1 : 1,
+    openCapacityStep: source.load_mode === "open_loop" ? source.capacity_step ?? 1 : 1,
+  }
 }
 
 export type QuickPerformanceConnection = Pick<
@@ -136,11 +150,87 @@ export type QuickPerformanceConnection = Pick<
   "address_mode" | "url" | "api_key" | "channel_id" | "credential_run_id" | "model_id" | "task"
 >
 
+export function PlanPerformanceRunSheet({
+  planID,
+  catalog,
+  profile,
+  run,
+  onArchived,
+  onOpenReport,
+  triggerLabel,
+}: {
+  planID: string
+  catalog: CatalogSnapshot
+  profile: QuickPerformanceProfile
+  run: (
+    command: QuickPerformanceCommand,
+    onProgress?: (progress: QuickPerformanceProgress) => void,
+  ) => Promise<QuickPerformanceReport>
+  onArchived?: (reportID: string) => void | Promise<void>
+  onOpenReport?: (reportID: string) => void | Promise<void>
+  triggerLabel: string
+}) {
+  const { t } = useTranslation("quickTest")
+  const [selectionOpen, setSelectionOpen] = useState(false)
+  const [performanceOpen, setPerformanceOpen] = useState(false)
+  const [selectedModel, setSelectedModel] = useState("")
+  const [selectedChannel, setSelectedChannel] = useState("")
+  const models = eligibleRuntimeModels(catalog, planID)
+  const effectiveModel = models.some((model) => model.id === selectedModel) ? selectedModel : (models[0]?.id ?? "")
+  const channels = eligibleRuntimeChannels(catalog, planID, effectiveModel)
+  const effectiveChannel = channels.some((channel) => channel.id === selectedChannel) ? selectedChannel : (channels[0]?.id ?? "")
+  const channel = channels.find((item) => item.id === effectiveChannel)
+
+  return <>
+    <Sheet open={selectionOpen} onOpenChange={setSelectionOpen}>
+      <SheetTrigger asChild>
+        <Button size="sm" disabled={!models.length}>{triggerLabel}</Button>
+      </SheetTrigger>
+      <SheetContent className="sm:max-w-[420px]">
+        <SheetHeader>
+          <SheetTitle>{t("performance.selectBinding")}</SheetTitle>
+          <SheetDescription>{t("performance.selectBindingHint")}</SheetDescription>
+        </SheetHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+          <Field className="block">
+            <FieldLabel>{t("performance.model")}</FieldLabel>
+            <FieldContent>
+              <SearchableSelect value={effectiveModel} onValueChange={(value) => { setSelectedModel(value); setSelectedChannel("") }} options={models.map((model) => ({ value: model.id, label: model.name }))} aria-label={t("performance.model")} className="w-full" />
+            </FieldContent>
+          </Field>
+          <Field className="block">
+            <FieldLabel>{t("performance.channel")}</FieldLabel>
+            <FieldContent>
+              <SearchableSelect value={effectiveChannel} onValueChange={setSelectedChannel} options={channels.map((item) => ({ value: item.id, label: item.name }))} aria-label={t("performance.channel")} className="w-full" />
+            </FieldContent>
+          </Field>
+          {models.length === 0 ? <p className="text-xs text-destructive">{t("performance.noModels")}</p> : null}
+          {models.length > 0 && channels.length === 0 ? <p className="text-xs text-destructive">{t("performance.noChannels")}</p> : null}
+        </div>
+        <SheetFooter className="flex-row justify-end border-t">
+          <SheetClose asChild><Button variant="outline">{t("performance.cancel")}</Button></SheetClose>
+          <Button disabled={!effectiveModel || !effectiveChannel} onClick={() => { setSelectionOpen(false); setPerformanceOpen(true) }}>{t("performance.continue")}</Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+    {channel && effectiveModel ? <QuickPerformanceSheet
+      open={performanceOpen}
+      onOpenChange={setPerformanceOpen}
+      connection={{ address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
+      initialProfile={profile}
+      run={run}
+      onArchived={onArchived}
+      onOpenReport={onOpenReport}
+    /> : null}
+  </>
+}
+
 export function QuickPerformanceSheet({
   open,
   onOpenChange,
   onCloseAutoFocus,
   connection,
+  initialProfile,
   run,
   onArchived,
   onOpenReport,
@@ -149,6 +239,7 @@ export function QuickPerformanceSheet({
   onOpenChange: (open: boolean) => void
   onCloseAutoFocus?: (event: Event) => void
   connection: QuickPerformanceConnection
+  initialProfile?: QuickPerformanceProfile
   run: (
     command: QuickPerformanceCommand,
     onProgress?: (progress: QuickPerformanceProgress) => void,
@@ -158,7 +249,10 @@ export function QuickPerformanceSheet({
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("quickTest")
-  const [form, setForm] = useState<PerformanceForm>(DEFAULT_PERFORMANCE_FORM)
+  const [form, setForm] = useState<PerformanceForm>(() => performanceFormFromProfile(initialProfile))
+  const [preset, setPreset] = useState<QuickPerformancePresetID>(() =>
+    initialProfile ? quickPerformancePresetFromProfile(initialProfile) : "smoke",
+  )
   const [pending, setPending] = useState(false)
   const [report, setReport] = useState<QuickPerformanceReport | null>(null)
   const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
@@ -399,6 +493,29 @@ export function QuickPerformanceSheet({
         <ScrollArea className="min-h-0 flex-1 px-4">
           <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4" noValidate>
             <FieldGroup>
+              <Field className="block min-w-0">
+                <FieldLabel htmlFor="quick-performance-preset">{t("performance.preset")}</FieldLabel>
+                <FieldContent>
+                  <SearchableSelect
+                    value={preset}
+                    disabled={pending}
+                    onValueChange={(value) => {
+                      const nextPreset = value as QuickPerformancePresetID
+                      setPreset(nextPreset)
+                      setForm(performanceFormFromProfile(quickPerformanceProfileForPreset(nextPreset)))
+                      setFieldErrors({})
+                      resetOutput()
+                    }}
+                    id="quick-performance-preset"
+                    aria-label={t("performance.preset")}
+                    className="w-full"
+                    options={QUICK_PERFORMANCE_PRESET_IDS.map((id) => ({
+                      value: id,
+                      label: t(`performance.presets.${id}`),
+                    }))}
+                  />
+                </FieldContent>
+              </Field>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Field className="block min-w-0">
                   <FieldLabel htmlFor="quick-performance-loadMode">

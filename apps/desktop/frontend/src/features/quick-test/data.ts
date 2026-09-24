@@ -94,6 +94,33 @@ export interface QuickPerformanceProfile {
   output_tokens: number
 }
 
+export function parseQuickPerformanceProfile(value: unknown): QuickPerformanceProfile {
+  if (!isRecord(value)) throw invalidQuickPerformanceProfile()
+  const integerFields = [
+    "request_count", "duration_ms", "concurrency", "max_in_flight", "timeout_ms",
+    "input_tokens", "output_tokens", "input_tokens_stddev", "output_tokens_stddev",
+    "shared_prefix_tokens", "warmup_requests", "ramp_duration_ms", "ramp_request_cap",
+    "slice_duration_ms", "random_seed",
+  ] as const
+  const numberFields = [
+    "rate_per_second", "slo_ttft_ms", "slo_tpot_ms", "slo_e2e_ms", "slo_target_percent",
+    "capacity_start", "capacity_step",
+  ] as const
+  if (
+    (value.load_mode !== "fixed_concurrency" && value.load_mode !== "open_loop") ||
+    (value.arrival_pattern !== "constant" && value.arrival_pattern !== "poisson") ||
+    (value.workload_mode !== "fixed" && value.workload_mode !== "normal") ||
+    !integerFields.every((field) => isNonNegativeInteger(value[field])) ||
+    !numberFields.every((field) => isNonNegativeFinite(value[field])) ||
+    typeof value.capacity_enabled !== "boolean"
+  ) throw invalidQuickPerformanceProfile()
+  return { ...value } as unknown as QuickPerformanceProfile
+}
+
+function invalidQuickPerformanceProfile(): DesktopDataError {
+  return new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_profile"))
+}
+
 export type QuickPerformancePhase = "not_started" | "warming_up" | "ramping" | "sending" | "draining" | "completed" | "cancelled"
 
 export interface QuickPerformanceProgress {
@@ -537,7 +564,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   }
 }
 
-function parsePerformanceSample(value: unknown, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceSample {
+function parsePerformanceSample(value: unknown, _schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceSample {
   if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_sample_data"))
   const includeTargets = true
   const offsets = [value.scheduled_offset_ms, value.started_offset_ms, value.finished_offset_ms, value.schedule_lag_ms, value.e2e_ms, value.ttft_ms, value.tpot_ms]
@@ -934,7 +961,7 @@ function parsePerformanceTimeSlices(
   return slices
 }
 
-function parsePerformanceTimeSlice(value: unknown, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceTimeSlice {
+function parsePerformanceTimeSlice(value: unknown, _schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceTimeSlice {
   if (!isRecord(value)) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   const integerFields = [
     "slice_index", "offered", "launched", "completed", "succeeded", "failed", "rejected",
@@ -1501,7 +1528,7 @@ export function estimateQuickPerformanceOpenLoopRequestCap(
   return Math.ceil(durationMS * 1_000_000 / intervalNanoseconds)
 }
 
-function isPerformanceProfile(value: unknown, schemaVersion: QuickPerformanceSchemaVersion): value is QuickPerformanceProfile {
+function isPerformanceProfile(value: unknown, _schemaVersion: QuickPerformanceSchemaVersion): value is QuickPerformanceProfile {
   if (!(isRecord(value) &&
     isNonNegativeInteger(value.request_count) &&
     isNonNegativeInteger(value.duration_ms) &&
@@ -1531,7 +1558,7 @@ function isPerformanceProfile(value: unknown, schemaVersion: QuickPerformanceSch
     (value.capacity_step === undefined || isNonNegativeFinite(value.capacity_step))
 }
 
-function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVersion: QuickPerformanceSchemaVersion): boolean {
+function isRunnablePerformanceProfile(value: QuickPerformanceProfile, _schemaVersion: QuickPerformanceSchemaVersion): boolean {
   if (!((value.request_count > 0 || value.duration_ms > 0) &&
     value.timeout_ms > 0 && value.input_tokens > 0 && value.output_tokens > 0)) return false
   if (value.load_mode === "fixed_concurrency") {
@@ -1568,7 +1595,7 @@ function isRunnablePerformanceProfile(value: QuickPerformanceProfile, schemaVers
   return inputStdDev <= value.input_tokens && outputStdDev <= value.output_tokens && sharedPrefix < value.input_tokens
 }
 
-function pickPerformanceProfile(value: QuickPerformanceProfile, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceProfile {
+function pickPerformanceProfile(value: QuickPerformanceProfile, _schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceProfile {
   return {
     ...(value.load_mode === undefined ? {} : { load_mode: value.load_mode }),
     request_count: value.request_count,
@@ -1624,7 +1651,7 @@ function pickPerformanceProgress(value: QuickPerformanceProgress, includeOffered
   }
 }
 
-function pickPerformanceMetrics(value: QuickPerformanceMetrics, schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceMetrics {
+function pickPerformanceMetrics(value: QuickPerformanceMetrics, _schemaVersion: QuickPerformanceSchemaVersion): QuickPerformanceMetrics {
   const metrics: QuickPerformanceMetrics = {
     completed: value.completed,
     succeeded: value.succeeded,
@@ -1724,7 +1751,7 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
     isRepresentableDurationMS(value.total_duration_ms)
 }
 
-function isPerformanceMetrics(value: unknown, schemaVersion: QuickPerformanceSchemaVersion = 1): value is QuickPerformanceMetrics {
+function isPerformanceMetrics(value: unknown, _schemaVersion: QuickPerformanceSchemaVersion = 1): value is QuickPerformanceMetrics {
   if (!isRecord(value)) return false
   const integerFields = ["completed", "succeeded", "failed", "timed_out", "prompt_tokens", "completion_tokens", "cached_tokens"] as const
   const numberFields = [

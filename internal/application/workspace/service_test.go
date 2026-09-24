@@ -125,6 +125,33 @@ func TestSnapshotBuildsASecretFreeDesktopProjection(t *testing.T) {
 	}
 }
 
+func TestSnapshotExcludesPerformancePlansFromStandardRunPicker(t *testing.T) {
+	now := time.Date(2026, time.September, 24, 8, 0, 0, 0, time.UTC)
+	standard, _ := validPlanAndRun(t, now, domain.LoadProfile{
+		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+	})
+	performance := standard
+	performance.ID = "99999999-9999-4999-8999-999999999999"
+	performance.Name = "Performance baseline"
+	performance.Entries = []domain.PlanEntry{}
+	performance.Performance = &domain.PerformancePlanProfile{
+		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: "constant", WorkloadMode: "fixed",
+		RequestCount: 10, Concurrency: 1, TimeoutMS: 60_000, InputTokens: 100, OutputTokens: 100,
+	}
+	if err := performance.Validate(); err != nil {
+		t.Fatalf("performance fixture: %v", err)
+	}
+	catalog := &fakeCatalog{plans: []domain.Plan{standard, performance}}
+
+	snapshot, err := New(catalog).Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if len(snapshot.Plans) != 1 || snapshot.Plans[0].ID != standard.ID {
+		t.Fatalf("standard run picker plans = %#v", snapshot.Plans)
+	}
+}
+
 func TestSnapshotUsesTwoPortCallsForManyRunsAndPinnedHistoricalLabels(t *testing.T) {
 	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
 	historical, firstRun := validPlanAndRun(t, now, domain.LoadProfile{

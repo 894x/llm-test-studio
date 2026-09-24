@@ -38,10 +38,11 @@ type Document struct {
 type authoredDocument struct {
 	FileSchemaVersion int `json:"file_schema_version"`
 	domain.EntityMeta
-	Name     string             `json:"name"`
-	Protocol domain.Protocol    `json:"protocol"`
-	Seed     uint64             `json:"seed"`
-	Entries  []domain.PlanEntry `json:"entries"`
+	Name        string                         `json:"name"`
+	Protocol    domain.Protocol                `json:"protocol"`
+	Seed        uint64                         `json:"seed"`
+	Entries     []domain.PlanEntry             `json:"entries"`
+	Performance *domain.PerformancePlanProfile `json:"performance,omitempty"`
 }
 
 func (document Document) MarshalJSON() ([]byte, error) {
@@ -49,7 +50,7 @@ func (document Document) MarshalJSON() ([]byte, error) {
 		FileSchemaVersion: document.FileSchemaVersion,
 		EntityMeta:        document.EntityMeta,
 		Name:              document.Name,
-		Protocol:          document.Protocol, Seed: document.Seed, Entries: document.Entries,
+		Protocol:          document.Protocol, Seed: document.Seed, Entries: document.Entries, Performance: document.Performance,
 	})
 }
 
@@ -70,7 +71,7 @@ func (document *Document) UnmarshalJSON(raw []byte) error {
 		FileSchemaVersion: decoded.FileSchemaVersion,
 		Plan: domain.Plan{
 			EntityMeta: decoded.EntityMeta,
-			Name:       decoded.Name, Protocol: decoded.Protocol, Seed: decoded.Seed, Entries: decoded.Entries,
+			Name:       decoded.Name, Protocol: decoded.Protocol, Seed: decoded.Seed, Entries: decoded.Entries, Performance: decoded.Performance,
 		},
 	}
 	return nil
@@ -360,6 +361,10 @@ func clonePlan(plan domain.Plan) domain.Plan {
 			entries[index].SLA.Thresholds = cloneThresholds(entry.SLA.Thresholds)
 		}
 		plan.Entries = entries
+	}
+	if plan.Performance != nil {
+		profile := *plan.Performance
+		plan.Performance = &profile
 	}
 	return plan
 }
