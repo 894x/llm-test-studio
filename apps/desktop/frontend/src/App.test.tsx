@@ -262,8 +262,49 @@ describe("desktop run workspace", () => {
     }
     expect(client.getWorkspace).toHaveBeenCalledTimes(1)
     expect(client.getCatalog).toHaveBeenCalledTimes(1)
-    expect(client.getReports).toHaveBeenCalledTimes(1)
+    expect(client.getReports).toHaveBeenCalledTimes(2)
   })
+
+  it("loads a newly generated report when navigating from runs to reports", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    let reportReady = false
+    vi.mocked(client.getReports).mockImplementation(async () =>
+      reportReady ? structuredClone(FIXTURE_REPORTS) : { schema_version: 1, reports: [] },
+    )
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "运行工作区" })
+    reportReady = true
+    await user.click(screen.getByRole("button", { name: "报告" }))
+
+    expect((await screen.findAllByText("兼容性门禁通过")).length).toBeGreaterThan(0)
+    expect(client.getReports).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps checking briefly when a completed run is still awaiting its report", async () => {
+    window.history.replaceState(null, "", "#reports")
+    const client = desktopClient()
+    const runID = "c69e26b6-bcd6-4a8b-9053-5132e39a87e7"
+    const report = { ...FIXTURE_REPORTS.reports[0], run_id: runID }
+    client.workspace = {
+      ...client.workspace,
+      active_run_id: undefined,
+      runs: [{ ...client.workspace.runs[0], id: runID, status: "completed", updated_at: new Date().toISOString() }],
+    }
+    let reportReady = false
+    vi.mocked(client.getReports).mockImplementation(async () => ({
+      schema_version: 1,
+      reports: reportReady ? [report] : [],
+    }))
+    render(<App client={client} />)
+
+    await screen.findByRole("heading", { name: "测试报告" })
+    await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
+    reportReady = true
+
+    expect((await screen.findAllByText("兼容性门禁通过", {}, { timeout: 8_000 })).length).toBeGreaterThan(0)
+  }, 10_000)
 
   it("opens diagnostics from compact header chrome without exposing a filesystem path", async () => {
 		const user = userEvent.setup()

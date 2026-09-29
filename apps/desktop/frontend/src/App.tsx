@@ -30,7 +30,7 @@ import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
-import { isRunActive, presentWorkspace, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
+import { isRunActive, presentWorkspace, type StartRunTargetCommand, type WorkspaceRun, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
   RunWorkspace,
@@ -43,6 +43,11 @@ import {
   desktopPageFromHash,
   type DesktopPage,
 } from "@/features/shell/navigation"
+
+function recentlyFinished(run: WorkspaceRun): boolean {
+  const age = Date.now() - Date.parse(run.updated_at)
+  return !isRunActive(run.status) && age >= 0 && age < 60_000
+}
 
 function AppWorkspace({
   client,
@@ -164,6 +169,39 @@ function AppWorkspace({
       setStartingRunID("")
     }
   }, [snapshot, startingRunID])
+
+  useEffect(() => {
+    if (page !== "reports") return
+    let active = true
+    void client.getReports().then(
+      (nextReports) => { if (active) setReports(nextReports) },
+      () => { /* Keep the last successfully loaded report list. */ },
+    )
+    return () => { active = false }
+  }, [client, page])
+
+  const recentRunAwaitingReport = page === "reports" && !!snapshot?.runs.some((run) =>
+    recentlyFinished(run) &&
+    !reports?.reports.some((report) => report.run_id === run.id),
+  )
+  useEffect(() => {
+    if (!recentRunAwaitingReport) return
+    let active = true
+    let timer: number | undefined
+    const refresh = async () => {
+      try {
+        const nextReports = await client.getReports()
+        if (active) setReports(nextReports)
+      } catch {
+        // A later read can recover a transient report generation or read error.
+      }
+      if (active && snapshot?.runs.some(recentlyFinished)) {
+        timer = window.setTimeout(() => void refresh(), 2_000)
+      }
+    }
+    timer = window.setTimeout(() => void refresh(), 2_000)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [client, recentRunAwaitingReport, snapshot])
 
   const refreshQuickTask = useCallback(async () => {
     setSnapshot(await client.getWorkspace())
