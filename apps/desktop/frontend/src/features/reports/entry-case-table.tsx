@@ -17,16 +17,18 @@ export function EntryCaseTable({
   entry,
   selectedCaseID = "",
   caseNavigationRequest = 0,
+  paginate = true,
 }: {
   entry: ReportEntryDetail
   selectedCaseID?: string
   caseNavigationRequest?: number
+  paginate?: boolean
 }) {
   const { t } = useTranslation("reports")
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const columns = protocolPresentation(entry.protocol).columns
-  const visible = entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const visible = paginate ? entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : entry.cases
 
   useEffect(() => {
     if (!selectedCaseID) return
@@ -82,13 +84,13 @@ export function EntryCaseTable({
             </TableRow>
             {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 3} className="bg-muted/20 p-3">
               <div className="mb-2 break-all font-mono text-[10px] text-muted-foreground">{caseItem.key} · {caseItem.case_id}</div>
-              <ExecutionDetails results={caseItem.request_results} />
+              <ExecutionDetails results={caseItem.request_results} paginate={paginate} />
             </TableCell></TableRow> : null}
           </Fragment>
         }) : <TableRow><TableCell colSpan={columns.length + 3} className="py-6 text-center text-xs text-muted-foreground">{t("hierarchy.noRecordedCases")}</TableCell></TableRow>}</TableBody>
       </Table>
     </div>
-    <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE} onPage={setPage} />
+    {paginate ? <ResultPagination page={page} count={entry.cases.length} size={PAGE_SIZE} onPage={setPage} /> : null}
   </>
 }
 
@@ -109,10 +111,10 @@ export function VerificationCounts({ summary }: { summary: VerificationSummary }
   return <span className="tabular-nums">{t("protocolDesign.counts", { ...summary })}</span>
 }
 
-export function ExecutionDetails({ results }: { results: ReportResult[] }) {
+export function ExecutionDetails({ results, paginate = true }: { results: ReportResult[]; paginate?: boolean }) {
   const { t } = useTranslation("reports")
   const [page, setPage] = useState(0)
-  const visible = results.slice(page * DETAIL_PAGE_SIZE, (page + 1) * DETAIL_PAGE_SIZE)
+  const visible = paginate ? results.slice(page * DETAIL_PAGE_SIZE, (page + 1) * DETAIL_PAGE_SIZE) : results
   return <div className="min-w-0 space-y-2">
     {visible.map((result, index) => <details key={result.id} className="min-w-0 border-b pb-2" open={results.length === 1}>
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 rounded-sm py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -137,7 +139,7 @@ export function ExecutionDetails({ results }: { results: ReportResult[] }) {
       </div>
     </details>)}
     {!results.length ? <p className="py-2 text-xs text-muted-foreground">{t("protocolDesign.noExecutions")}</p> : null}
-    <ResultPagination page={page} count={results.length} size={DETAIL_PAGE_SIZE} onPage={setPage} />
+    {paginate ? <ResultPagination page={page} count={results.length} size={DETAIL_PAGE_SIZE} onPage={setPage} /> : null}
   </div>
 }
 

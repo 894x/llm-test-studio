@@ -218,7 +218,7 @@ function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "
   )
 }
 
-function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
+function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDetail, { source: "run" }>; paginate?: boolean }) {
   const { t: tx } = useTranslation()
   const [selectedCase, setSelectedCase] = useState<ReportCaseTarget | null>(null)
   const [caseNavigationRequest, setCaseNavigationRequest] = useState(0)
@@ -251,6 +251,7 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
           suite={suite}
           selectedCaseID={selectedCase?.entryID === suite.entry_id ? selectedCase.caseID : ""}
           caseNavigationRequest={caseNavigationRequest}
+          paginate={paginate}
         />
       ))}
       {unassignedResults.length ? (
@@ -258,7 +259,7 @@ function RunReportBody({ detail }: { detail: Extract<ReportDetail, { source: "ru
           <header className="border-b bg-muted/25 py-2">
             <h3 className="text-xs font-semibold">{unassignedLabel}</h3>
           </header>
-          <div className="p-3"><ExecutionDetails results={unassignedResults} /></div>
+          <div className="p-3"><ExecutionDetails results={unassignedResults} paginate={paginate} /></div>
         </section>
       ) : null}
     </section>
@@ -269,10 +270,12 @@ function SuiteReportSection({
   suite,
   selectedCaseID,
   caseNavigationRequest,
+  paginate = true,
 }: {
   suite: ReportEntryDetail
   selectedCaseID: string
   caseNavigationRequest: number
+  paginate?: boolean
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
@@ -308,7 +311,7 @@ function SuiteReportSection({
         <summary className="cursor-pointer rounded-sm text-[11px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("inspector.coreMetrics")}</summary>
         <div className="grid gap-3 pt-2 md:grid-cols-2"><SuiteMetricSummary title={t("inspector.coreMetrics")} metrics={suite.metrics} /><SuiteMetricSummary title="SLA" metrics={suite.sla} /></div>
       </details> : null}
-      <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} />
+      <EntryCaseTable entry={suite} selectedCaseID={selectedCaseID} caseNavigationRequest={caseNavigationRequest} paginate={paginate} />
     </section>
   )
 }
@@ -517,7 +520,7 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
         <p className="mt-1 text-[11px] text-muted-foreground">{t("detailDescription", { name: displayReportVerdict(report, t) })}</p>
       </header>
       <div className="border-t">
-        {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} /> : <RunReportBody detail={detail} />}
+        {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} /> : <RunReportBody detail={detail} paginate={false} />}
       </div>
       <div className="absolute inset-0 z-10 grid grid-cols-2 content-around overflow-hidden" data-report-watermark>
         {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{label}</span>)}

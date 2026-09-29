@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nextProvider } from "react-i18next"
 import { describe, expect, it, vi } from "vitest"
@@ -38,5 +38,35 @@ describe("compact protocol reports", () => {
     expect(screen.queryByRole("button", { name: "Case 50" })).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Next" }))
     expect(screen.getByRole("button", { name: "Case 50" })).toBeVisible()
+  })
+
+  it("exports all report cases instead of the first visible page", async () => {
+    const detail = protocolReportFixture()
+    const entry = detail.entries[0]
+    const seed = entry.cases[0]
+    entry.cases = Array.from({ length: 80 }, (_, index) => ({ ...seed, case_id: reportID(200 + index), name: `Case ${index}` }))
+    const exportVisualReport = vi.fn(async (element: HTMLElement) => {
+      expect(element).toHaveTextContent("Case 0")
+      expect(element).toHaveTextContent("Case 79")
+      return { filename: `${detail.report.id}.html`, mediaType: "text/html", blob: new Blob(["report"]) }
+    })
+    const user = userEvent.setup()
+
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><ReportWorkspace
+      snapshot={protocolReportSnapshot(detail)}
+      preferredReportID={detail.report.id}
+      getDetail={async () => detail}
+      exportReport={vi.fn()}
+      saveReportExport={vi.fn(async () => true)}
+      copyReportPNG={vi.fn()}
+      exportVisualReport={exportVisualReport}
+    /></I18nextProvider>)
+
+    const table = await screen.findByRole("table", { name: "Cases in execution entry" })
+    await user.click(screen.getByRole("button", { name: "Next" }))
+    expect(within(table).getByRole("button", { name: "Case 50" })).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(exportVisualReport).toHaveBeenCalledTimes(1))
   })
 })
