@@ -7,5 +7,13 @@
   "openErrorTitle": "Unable to open the local workspace",
   "openLogs": "Open log folder",
   "openingLogs": "Opening…",
-  "loading": "Reading the local workspace…"
+  "loading": "Reading the local workspace…",
+  "loadingTitle": "Opening the local workspace",
+  "loadingProgress": "{{completed}} of {{total}} reads complete",
+  "loadingSteps": {
+    "workspace": "Run workspace",
+    "catalog": "Model, channel, and case catalog",
+    "reports": "Test report catalog",
+    "comparisons": "Channel comparison records"
+  }
 }

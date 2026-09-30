@@ -7,5 +7,13 @@
   "openErrorTitle": "无法打开本地工作台",
   "openLogs": "打开日志文件夹",
   "openingLogs": "正在打开…",
-  "loading": "正在读取本地工作区…"
+  "loading": "正在读取本地工作区…",
+  "loadingTitle": "正在打开本地工作区",
+  "loadingProgress": "已完成 {{completed}} / {{total}} 项读取",
+  "loadingSteps": {
+    "workspace": "运行工作区",
+    "catalog": "模型、渠道与用例目录",
+    "reports": "测试报告目录",
+    "comparisons": "渠道对比记录"
+  }
 }

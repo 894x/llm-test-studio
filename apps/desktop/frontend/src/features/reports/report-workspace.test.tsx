@@ -9,6 +9,27 @@ import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./dat
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
+  it("shows a centered loading state while report details are being read", async () => {
+    const user = userEvent.setup()
+    const reportID = "77777777-7777-4777-8777-777777777771"
+    const getDetail = vi.fn(() => new Promise<ReportDetail>(() => undefined))
+
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={quickSnapshot(reportID, "全部请求成功")}
+      getDetail={getDetail}
+      exportReport={vi.fn()}
+      saveReportExport={vi.fn()}
+      copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+
+    await user.click(screen.getByRole("button", { name: "查看报告：全部请求成功" }))
+
+    const loading = screen.getByRole("status")
+    expect(loading).toHaveTextContent("正在读取报告详情…")
+    expect(loading).toHaveClass("items-center", "justify-center")
+    expect(loading).toHaveAttribute("aria-busy", "true")
+  })
+
   it("filters reports by multiple fields and preserves the query when returning from details", async () => {
     const user = userEvent.setup()
     const reportID = "77777777-7777-4777-8777-777777777771"

@@ -25,7 +25,8 @@
   "view": "查看报告",
   "viewAria": "查看报告：{{name}}",
   "detailError": "无法读取报告详情，请检查本地日志",
-  "detailLoading": "正在读取请求明细…",
+  "detailLoading": "正在读取报告详情…",
+  "detailLoadingHint": "报告可能包含较多请求记录，请稍候。",
   "caseMap": {
     "aria": "用例结论导航",
     "passed": "通过",

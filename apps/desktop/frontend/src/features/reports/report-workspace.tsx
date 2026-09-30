@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 import { CatalogSearch, CatalogSearchEmpty } from "@/features/catalog/catalog-search"
 import { useCatalogSearch } from "@/features/catalog/use-catalog-search"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -205,7 +206,22 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
 function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
   const { t } = useTranslation("reports")
   if (error) return <div role="alert" className="border-t px-4 py-3 text-xs text-destructive">{error}</div>
-  if (!detail) return <div className="border-t px-4 py-3 text-xs text-muted-foreground">{t("detailLoading")}</div>
+  if (!detail) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        className="flex min-h-0 flex-1 items-center justify-center border-t px-4 py-12"
+      >
+        <div className="flex max-w-sm flex-col items-center text-center">
+          <Spinner className="size-7 text-primary" />
+          <p className="mt-3 text-sm font-medium text-foreground">{t("detailLoading")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("detailLoadingHint")}</p>
+        </div>
+      </div>
+    )
+  }
   if (detail.source === "quick_performance") return <QuickPerformanceDetail detail={detail} />
   return <RunReportDetail detail={detail} />
 }

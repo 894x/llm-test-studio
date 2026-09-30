@@ -25,7 +25,8 @@
   "view": "View report",
   "viewAria": "View report: {{name}}",
   "detailError": "Unable to read report details; check local logs",
-  "detailLoading": "Reading request details…",
+  "detailLoading": "Reading report details…",
+  "detailLoadingHint": "Reports with many request records may take a moment.",
   "caseMap": {
     "aria": "Case outcome navigation",
     "passed": "Passed",

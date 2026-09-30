@@ -12,6 +12,7 @@ import {
 } from "@/app/desktop-client"
 import { ThemeProvider } from "@/app/theme"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { createAppI18n } from "@/i18n/i18n"
 import { LanguageProvider } from "@/i18n/language-context"
@@ -44,6 +45,9 @@ import {
   type DesktopPage,
 } from "@/features/shell/navigation"
 
+const INITIAL_LOAD_STEPS = ["workspace", "catalog", "reports", "comparisons"] as const
+type InitialLoadStep = typeof INITIAL_LOAD_STEPS[number]
+
 function recentlyFinished(run: WorkspaceRun): boolean {
   const age = Date.now() - Date.parse(run.updated_at)
   return !isRunActive(run.status) && age >= 0 && age < 60_000
@@ -74,6 +78,12 @@ function AppWorkspace({
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
   const [catalogMutationError, setCatalogMutationError] = useState("")
   const [loadAttempt, setLoadAttempt] = useState(0)
+  const [initialLoadSteps, setInitialLoadSteps] = useState<Record<InitialLoadStep, boolean>>({
+    workspace: false,
+    catalog: false,
+    reports: false,
+    comparisons: false,
+  })
   const [quickRunID, setQuickRunID] = useState("")
   const [startingRunID, setStartingRunID] = useState("")
   const [quickDraft, setQuickDraft] = useState<TaskDraft>(() => {
@@ -95,11 +105,15 @@ function AppWorkspace({
 
   useEffect(() => {
     let active = true
+    const trackLoad = <T,>(step: InitialLoadStep, promise: Promise<T>): Promise<T> => Promise.resolve(promise).then((value) => {
+      if (active) setInitialLoadSteps((completed) => ({ ...completed, [step]: true }))
+      return value
+    })
     void Promise.all([
-      client.getWorkspace(),
-      client.getCatalog(),
-      client.getReports(),
-			client.getComparisons(),
+      trackLoad("workspace", client.getWorkspace()),
+      trackLoad("catalog", client.getCatalog()),
+      trackLoad("reports", client.getReports()),
+      trackLoad("comparisons", client.getComparisons()),
     ])
       .then(([nextWorkspace, nextCatalog, nextReports, nextComparisons]) => {
         if (active) {
@@ -123,6 +137,7 @@ function AppWorkspace({
   const retryInitialLoad = useCallback(() => {
     setLoadError("")
     setOpenLogsError(null)
+    setInitialLoadSteps({ workspace: false, catalog: false, reports: false, comparisons: false })
     onRecreateClient()
     setLoadAttempt((attempt) => attempt + 1)
   }, [onRecreateClient])
@@ -349,9 +364,38 @@ function AppWorkspace({
     )
   }
   if (!snapshot || !catalog || !reports || !comparisons) {
+    const loadTotal = 4
+    const loadCompleted = INITIAL_LOAD_STEPS.filter((step) => initialLoadSteps[step]).length
+    const loadPercent = Math.round((loadCompleted / loadTotal) * 100)
     return (
-      <div className="flex h-svh min-h-[640px] items-center justify-center bg-background text-xs text-muted-foreground">
-        {t("app:loading")}
+      <div className="flex h-svh min-h-[640px] items-center justify-center bg-background p-6 text-foreground">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          className="flex w-full max-w-sm flex-col items-center text-center"
+        >
+          <Spinner className="size-8 text-primary" />
+          <h1 className="mt-4 text-sm font-semibold">{t("app:loadingTitle")}</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("app:loadingProgress", { completed: loadCompleted, total: loadTotal })}
+          </p>
+          <Progress
+            value={loadPercent}
+            aria-label={t("app:loadingProgress", { completed: loadCompleted, total: loadTotal })}
+            className="mt-4"
+          />
+          <ul className="mt-4 w-full space-y-2 text-left text-xs text-muted-foreground">
+            {INITIAL_LOAD_STEPS.map((step) => (
+              <li key={step} className={initialLoadSteps[step] ? "text-foreground" : undefined}>
+                <span aria-hidden="true" className="mr-2 inline-block w-3 text-center">
+                  {initialLoadSteps[step] ? "✓" : "·"}
+                </span>
+                {t(`app:loadingSteps.${step}`)}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     )
   }
