@@ -9,6 +9,87 @@ import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./dat
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
 
 describe("ReportWorkspace", () => {
+  it("loads details only when opened and reuses the sealed report when returning", async () => {
+    const user = userEvent.setup()
+    const reportID = "77777777-7777-4777-8777-777777777771"
+    const snapshot = quickSnapshot(reportID, "全部请求成功")
+    snapshot.reports.push({ ...snapshot.reports[0], id: "77777777-7777-4777-8777-777777777772", model_name: "other-model" })
+    const getDetail = vi.fn(async () => quickDetail(reportID) as unknown as ReportDetail)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={snapshot} getDetail={getDetail} exportReport={vi.fn()}
+      saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+
+    expect(getDetail).not.toHaveBeenCalled()
+    await user.click(screen.getByText("other-model"))
+    await user.type(screen.getByRole("searchbox"), "gpt")
+    expect(getDetail).not.toHaveBeenCalled()
+    await user.click(within(screen.getByRole("table")).getByRole("button"))
+    await screen.findByRole("region", { name: "归档性能报告" })
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    await user.click(within(screen.getByRole("table")).getByRole("button"))
+    await screen.findByRole("region", { name: "归档性能报告" })
+    expect(getDetail).toHaveBeenCalledExactlyOnceWith(reportID)
+  })
+
+  it("reads details on demand for visual exports from the list", async () => {
+    const user = userEvent.setup()
+    const reportID = "77777777-7777-4777-8777-777777777771"
+    const getDetail = vi.fn(async () => quickDetail(reportID) as unknown as ReportDetail)
+    const save = vi.fn(async () => true)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={quickSnapshot(reportID, "全部请求成功")} getDetail={getDetail}
+      exportReport={vi.fn()} saveReportExport={save} copyReportPNG={vi.fn()}
+      exportVisualReport={async () => ({ filename: "report.html", mediaType: "text/html", blob: new Blob(["html"]) })}
+    /></I18nextProvider>)
+    expect(getDetail).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "HTML" }))
+    await waitFor(() => expect(save).toHaveBeenCalledOnce())
+    expect(getDetail).toHaveBeenCalledExactlyOnceWith(reportID)
+    expect(screen.getByRole("table", { name: "测试报告目录" })).toBeInTheDocument()
+  })
+
+  it("restores cached details after another report fails or resolves late", async () => {
+    const user = userEvent.setup()
+    const reportID = "77777777-7777-4777-8777-777777777771"
+    const otherID = "77777777-7777-4777-8777-777777777772"
+    const snapshot = quickSnapshot(reportID, "全部请求成功")
+    snapshot.reports.push({ ...snapshot.reports[0], id: otherID, model_name: "other-model" })
+    let rejectOther!: (error: Error) => void
+    const getDetail = vi.fn((id: string) => id === reportID
+      ? Promise.resolve(quickDetail(id) as unknown as ReportDetail)
+      : new Promise<ReportDetail>((_resolve, reject) => { rejectOther = reject }))
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={snapshot} getDetail={getDetail} exportReport={vi.fn()}
+      saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    const open = async (model: string) => {
+      const row = screen.getByRole("table").querySelectorAll("tbody tr")
+      const target = Array.from(row).find((item) => item.textContent?.includes(model))!
+      await user.click(within(target as HTMLElement).getByRole("button"))
+    }
+    await open("gpt")
+    await screen.findByRole("region", { name: "归档性能报告" })
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    await open("other-model")
+    await waitFor(() => expect(getDetail).toHaveBeenCalledWith(otherID))
+    rejectOther(new Error("unavailable"))
+    await screen.findAllByRole("alert")
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    await open("gpt")
+    await screen.findByRole("region", { name: "归档性能报告" })
+    expect(getDetail.mock.calls.filter(([id]) => id === reportID)).toHaveLength(1)
+
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    await open("other-model")
+    await waitFor(() => expect(getDetail).toHaveBeenCalledTimes(3))
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    await open("gpt")
+    rejectOther(new Error("late failure"))
+    await screen.findByRole("region", { name: "归档性能报告" })
+    expect(screen.queryAllByRole("alert")).toHaveLength(0)
+  })
+
   it("shows a centered loading state while report details are being read", async () => {
     const user = userEvent.setup()
     const reportID = "77777777-7777-4777-8777-777777777771"

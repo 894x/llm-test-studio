@@ -1,7 +1,7 @@
 import { protocolReportFixture } from "@/test/protocol-report-fixture"
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
@@ -19,6 +19,7 @@ import {
 import type { WorkspaceSnapshot } from "./features/runs/data"
 import { EMPTY_COMPARISONS } from "./features/comparisons/data"
 import type { QuickPerformanceReport } from "./features/quick-test/data"
+import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY } from "./features/quick-test/task-draft"
 import indexHtml from "../index.html?raw"
 
 const indexCss = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8")
@@ -128,6 +129,10 @@ function archivedPerformanceReport(reportID: string): QuickPerformanceReport {
 }
 
 describe("desktop run workspace", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
   beforeEach(() => {
     window.localStorage.clear()
     document.documentElement.className = ""
@@ -300,7 +305,7 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
 
     await screen.findByRole("heading", { name: "测试报告" })
-    await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
+    expect(client.getReports).toHaveBeenCalledTimes(1)
     reportReady = true
 
     expect((await screen.findAllByText("兼容性门禁通过", {}, { timeout: 8_000 })).length).toBeGreaterThan(0)
@@ -605,6 +610,24 @@ describe("desktop run workspace", () => {
     )
     expect(screen.getAllByText(FIXTURE_CATALOG.models[0].name).length).toBeGreaterThan(0)
     expect(screen.queryByText(/保存未完成/)).not.toBeInTheDocument()
+  })
+
+  it("closes a saved catalog editor while the secondary workspace refresh is still pending", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const backgroundRefresh = deferred<WorkspaceSnapshot>()
+    vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockReturnValueOnce(backgroundRefresh.promise)
+    render(<App client={client} />)
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    await user.click(screen.getByRole("button", { name: "新增模型" }))
+    await user.type(screen.getByLabelText("模型名称"), "gpt-saved")
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "新增模型" })).not.toBeInTheDocument())
+    expect(client.createModel).toHaveBeenCalledTimes(1)
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("button", { name: "新增模型" })).toBeEnabled()
+    await act(async () => { backgroundRefresh.resolve(client.workspace) })
   })
 
   it("exposes CRUD entry points for mappings, cases, suites, and plans", async () => {
@@ -1128,6 +1151,116 @@ describe("desktop run workspace", () => {
     vi.mocked(client.getReports).mockResolvedValueOnce(FIXTURE_REPORTS).mockRejectedValueOnce(new Error("temporary report error")).mockResolvedValue(FIXTURE_REPORTS)
     render(<App client={client} />)
     await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(3), { timeout: 3500 })
+  })
+
+  it("polls only workspace progress during a normal active run", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(4)
+    expect(client.getCatalog).toHaveBeenCalledTimes(1)
+    expect(client.getReports).toHaveBeenCalledTimes(1)
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+  })
+
+  it("waits for a slow progress read before scheduling another poll", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    const progress = deferred<WorkspaceSnapshot>()
+    vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockReturnValueOnce(progress.promise)
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    await act(async () => { progress.resolve(client.workspace) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(3)
+  })
+
+  it("refreshes a completed run's generated report from another page and stops after it appears", async () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, "", "#catalog")
+    const client = desktopClient()
+    const runID = client.workspace.runs[0].id
+    const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
+    const waitingReports = { ...FIXTURE_REPORTS, reports: FIXTURE_REPORTS.reports.filter((report) => report.run_id !== runID) }
+    const readyReports = { ...waitingReports, reports: [...waitingReports.reports, ...client.workspace.runs.map((run) => ({ ...FIXTURE_REPORTS.reports[0], run_id: run.id }))] }
+    vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
+    vi.mocked(client.getReports).mockResolvedValueOnce(waitingReports).mockResolvedValueOnce(waitingReports).mockResolvedValue(readyReports)
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(client.getReports).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(client.getReports).toHaveBeenCalledTimes(3)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(client.getReports).toHaveBeenCalledTimes(3)
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not let an older progress response replace a completed cancel command", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    const oldWorkspace = structuredClone(client.workspace)
+    const progress = deferred<WorkspaceSnapshot>()
+    vi.mocked(client.getWorkspace).mockResolvedValueOnce(oldWorkspace).mockReturnValueOnce(progress.promise)
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    fireEvent.click(screen.getByRole("button", { name: "取消运行" }))
+    await act(async () => {})
+    expect(screen.getByText("无活动运行")).toBeInTheDocument()
+    await act(async () => { progress.resolve(oldWorkspace) })
+    expect(screen.getByText("无活动运行")).toBeInTheDocument()
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+  })
+
+  it("stops checking for an unavailable generated report after the brief generation window", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    client.workspace = {
+      ...client.workspace, active_run_id: undefined,
+      runs: [{ ...client.workspace.runs[0], status: "completed", updated_at: new Date().toISOString() }],
+    }
+    vi.mocked(client.getReports).mockResolvedValue({ schema_version: 1, reports: [] })
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(62_000) })
+    const reportReads = vi.mocked(client.getReports).mock.calls.length
+    expect(reportReads).toBeGreaterThan(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(client.getReports).toHaveBeenCalledTimes(reportReads)
+    expect(client.getWorkspace).toHaveBeenCalledTimes(1)
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+  })
+
+  it("debounces draft writes and flushes the current safe draft on pagehide and unmount", async () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, "", "#quick-test")
+    const draft = createTaskDraft(FIXTURE_CATALOG.suites[1])
+    localStorage.setItem(TASK_DRAFT_KEY, encodeTaskDraft(draft))
+    const write = vi.spyOn(Storage.prototype, "setItem")
+    const rendered = render(<App client={desktopClient()} />)
+    await act(async () => {})
+    write.mockClear()
+    fireEvent.change(screen.getByLabelText("模型 ID"), { target: { value: "first" } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(200) })
+    fireEvent.change(screen.getByLabelText("模型 ID"), { target: { value: "latest" } })
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "private-draft-key" } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(249) })
+    expect(write.mock.calls.filter(([key]) => key === TASK_DRAFT_KEY)).toHaveLength(0)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(write.mock.calls.filter(([key]) => key === TASK_DRAFT_KEY)).toHaveLength(1)
+    expect(decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY))?.model).toBe("latest")
+    expect(localStorage.getItem(TASK_DRAFT_KEY)).not.toContain("private-draft-key")
+    fireEvent.change(screen.getByLabelText("模型 ID"), { target: { value: "pagehide" } })
+    fireEvent(window, new Event("pagehide"))
+    expect(decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY))?.model).toBe("pagehide")
+    fireEvent.change(screen.getByLabelText("模型 ID"), { target: { value: "unmount" } })
+    rendered.unmount()
+    expect(decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY))?.model).toBe("unmount")
   })
 
   it("preserves quick task drafts across navigation and reload while keeping credentials in memory only", async () => {

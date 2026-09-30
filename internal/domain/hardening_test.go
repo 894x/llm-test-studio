@@ -3,11 +3,12 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/894x/llm-test-studio/internal/testspec"
 	"math"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 const (
@@ -471,6 +472,116 @@ func TestRunJSONRoundTripRestoresValidatedPrivateSnapshot(t *testing.T) {
 	}
 	if decoded.Snapshot().Entries[0].Cases[0].Revision != 7 {
 		t.Fatalf("decoded snapshot = %#v", decoded.Snapshot())
+	}
+}
+
+func TestRunReadValidationDoesNotDecodeFrozenCasesAgain(t *testing.T) {
+	run, err := NewRun(validEntityMeta(testRunID), testPlanID, validRunSnapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(100, func() {
+		if err := run.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocations > 10 {
+		t.Fatalf("immutable Run validation allocated %v times", allocations)
+	}
+}
+
+func TestDecodedRunAndTransitionOwnFrozenSnapshot(t *testing.T) {
+	snapshot := validRunSnapshot()
+	minimum := 1.0
+	snapshot.Entries[0].Suite.Inputs = []SuiteInput{{
+		Key: "size", Label: "Size",
+		Input:    testspec.Input{Type: "integer", Default: json.RawMessage(`2`), Minimum: &minimum},
+		Bindings: []SuiteInputBinding{{CaseID: testCaseID, Input: "size"}},
+	}}
+	snapshot.Entries[0].Parameters["size"] = json.RawMessage(`2`)
+	snapshot.PlanDocument.Entries[0].Parameters["size"] = json.RawMessage(`2`)
+	snapshot.Entries[0].CaseInputs[testCaseID]["size"] = json.RawMessage(`2`)
+	snapshot.Entries[0].CaseDefinitions[0].Definition.Spec = json.RawMessage(`{
+		"inputs":{"size":{"type":"integer","default":2}},
+		"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},
+		"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]
+	}`)
+	run, err := NewRun(validEntityMeta(testRunID), testPlanID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Run
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	next, err := decoded.Transition(RunStarting, decoded.Meta().UpdatedAt.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(decoded)
+	nextBefore, _ := json.Marshal(next)
+	for index := range encoded {
+		encoded[index] = 'x'
+	}
+	for _, value := range []Run{decoded, next} {
+		copy := value.Snapshot()
+		copy.Entries[0].CaseDefinitions[0].Definition.Spec[0] = 'x'
+		copy.Entries[0].Parameters["size"][0] = '9'
+		copy.PlanDocument.Entries[0].Parameters["size"][0] = '9'
+		copy.Entries[0].CaseInputs[testCaseID]["size"][0] = '9'
+		copy.Entries[0].Suite.Inputs[0].Default[0] = '9'
+		*copy.Entries[0].Suite.Inputs[0].Minimum = 9
+		copy.Entries[0].Suite.Inputs[0].Bindings[0].Input = "changed"
+	}
+	actual, err := json.Marshal(decoded)
+	nextActual, nextErr := json.Marshal(next)
+	if err != nil || nextErr != nil || string(actual) != string(before) || string(nextActual) != string(nextBefore) {
+		t.Fatal("decoded Run or its transition retained a mutable snapshot alias")
+	}
+}
+
+func TestRunUnmarshalStillRejectsInvalidSnapshotWithoutChangingValidatedRun(t *testing.T) {
+	run, err := NewRun(validEntityMeta(testRunID), testPlanID, validRunSnapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(original, &document); err != nil {
+		t.Fatal(err)
+	}
+	document["plan_snapshot"] = json.RawMessage(`{"schema_version":0}`)
+	invalid, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(invalid, &run); err == nil {
+		t.Fatal("a previously validated Run accepted an invalid replacement snapshot")
+	}
+	actual, err := json.Marshal(run)
+	if err != nil || string(actual) != string(original) {
+		t.Fatal("rejected snapshot changed the existing Run")
+	}
+}
+
+func BenchmarkRunValidate(b *testing.B) {
+	run, err := NewRun(validEntityMeta(testRunID), testPlanID, validRunSnapshot())
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if err := run.Validate(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

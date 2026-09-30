@@ -96,6 +96,9 @@ type Run struct {
 	status       RunStatus
 	planSnapshot RunSnapshot
 	failure      *RunFailure
+	// The private snapshot is copied at construction and never mutated. Validate
+	// it at the input boundary instead of decoding every Case on each accessor.
+	snapshotValidated bool
 }
 
 type serializedRun struct {
@@ -124,6 +127,7 @@ func NewRun(meta EntityMeta, planID string, snapshot RunSnapshot) (Run, error) {
 	}
 	return Run{
 		meta: meta, planID: planID, status: RunQueued, planSnapshot: snapshot.clone(),
+		snapshotValidated: true,
 	}, nil
 }
 
@@ -169,8 +173,10 @@ func (run Run) Validate() error {
 			return err
 		}
 	}
-	if err := run.planSnapshot.Validate(); err != nil {
-		return fmt.Errorf("invalid run plan snapshot: %w", err)
+	if !run.snapshotValidated {
+		if err := run.planSnapshot.Validate(); err != nil {
+			return fmt.Errorf("invalid run plan snapshot: %w", err)
+		}
 	}
 	if run.planSnapshot.Plan.ID != run.planID {
 		return errors.New("run plan id does not match its snapshot")
@@ -198,7 +204,6 @@ func (run Run) Transition(next RunStatus, at time.Time) (Run, error) {
 	}
 	run.meta = meta
 	run.status = next
-	run.planSnapshot = run.planSnapshot.clone()
 	return run, nil
 }
 
@@ -219,7 +224,7 @@ func (run Run) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("marshal run: %w", err)
 	}
 	return json.Marshal(serializedRun{
-		EntityMeta: run.meta, PlanID: run.planID, Status: run.status, PlanSnapshot: run.Snapshot(), Failure: run.Failure(),
+		EntityMeta: run.meta, PlanID: run.planID, Status: run.status, PlanSnapshot: run.planSnapshot, Failure: run.Failure(),
 	})
 }
 
@@ -232,12 +237,13 @@ func (run *Run) UnmarshalJSON(data []byte) error {
 		meta:         serialized.EntityMeta,
 		planID:       serialized.PlanID,
 		status:       serialized.Status,
-		planSnapshot: serialized.PlanSnapshot.clone(),
+		planSnapshot: serialized.PlanSnapshot,
 		failure:      serialized.Failure,
 	}
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
+	candidate.snapshotValidated = true
 	*run = candidate
 	return nil
 }

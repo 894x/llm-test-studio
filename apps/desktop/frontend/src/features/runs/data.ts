@@ -153,6 +153,19 @@ export type RunPresentationOptions = {
   t?: RunTranslator
 }
 
+export function presentPlans(
+  plans: WorkspacePlan[],
+  options: RunPresentationOptions = {},
+): TestPlan[] {
+  return plans.map((item) => ({
+    id: item.id,
+    name: item.name,
+    description: describeLoad(item, options.t ?? defaultRunTranslator),
+    caseCount: item.case_count,
+    runCount: item.run_count,
+  }))
+}
+
 export function presentWorkspace(
   snapshot: WorkspaceSnapshot,
   options: RunPresentationOptions = {},
@@ -161,13 +174,7 @@ export function presentWorkspace(
   runs: RunRecord[]
 } {
   return {
-    plans: snapshot.plans.map((item) => ({
-      id: item.id,
-      name: item.name,
-      description: describeLoad(item, options.t ?? defaultRunTranslator),
-      caseCount: item.case_count,
-      runCount: item.run_count,
-    })),
+    plans: presentPlans(snapshot.plans, options),
     runs: snapshot.runs.map((item) => ({
       caseCount: item.case_count,
       observedCaseCount: item.observed_case_count,

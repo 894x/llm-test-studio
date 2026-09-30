@@ -198,6 +198,35 @@ func TestWorkspaceRunProjectionsRejectSummaryCriticalCorruption(t *testing.T) {
 			},
 		},
 		{
+			name: "result case outside frozen entry",
+			mutate: func(t *testing.T, path string, fixture repositoryFixture) {
+				const foreignCaseID = "10000000-0000-4000-8000-000000000099"
+				tamper(t, path, `
+					UPDATE case_results SET case_id = ?,
+					  document_json = json_set(document_json, '$.case_id', ?) WHERE id = ?
+				`, foreignCaseID, foreignCaseID, fixture.result.ID)
+			},
+		},
+		{
+			name: "result entry outside frozen run",
+			mutate: func(t *testing.T, path string, fixture repositoryFixture) {
+				const foreignEntryID = "10000000-0000-4000-8000-000000000099"
+				tamper(t, path, `
+					UPDATE case_results SET entry_id = ?,
+					  document_json = json_set(document_json, '$.entry_id', ?) WHERE id = ?
+				`, foreignEntryID, foreignEntryID, fixture.result.ID)
+			},
+		},
+		{
+			name: "entry marker with request identity",
+			mutate: func(t *testing.T, path string, fixture repositoryFixture) {
+				tamper(t, path, `
+					UPDATE case_results
+					SET document_json = json_set(document_json, '$.entry_status', 'completed') WHERE id = ?
+				`, fixture.result.ID)
+			},
+		},
+		{
 			name: "evidence owner document",
 			mutate: func(t *testing.T, path string, fixture repositoryFixture) {
 				tamper(t, path, `UPDATE evidence SET document_json = json_set(document_json, '$.run_id', ?) WHERE id = ?`,

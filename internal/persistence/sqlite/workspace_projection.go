@@ -224,7 +224,23 @@ func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
 }
 
 const workspaceProjectionQuery = `
-WITH result_observations AS (
+WITH planned_entries AS MATERIALIZED (
+	SELECT root.id AS run_id, json_extract(entry.value, '$.entry_id') AS entry_id,
+	       CASE WHEN json_type(entry.value, '$.cases') = 'array'
+	         THEN json_extract(entry.value, '$.cases') ELSE '[]' END AS cases
+	FROM execution_runs AS root
+	JOIN execution_run_revisions AS revision
+	  ON revision.run_id = root.id AND revision.revision = root.current_revision
+	JOIN json_each(revision.snapshot_json, '$.entries') AS entry
+	WHERE json_type(revision.snapshot_json, '$.entries') = 'array' AND entry.type = 'object'
+),
+planned_cases AS MATERIALIZED (
+	SELECT entry.run_id, entry.entry_id, json_extract(item.value, '$.case_id') AS case_id
+	FROM planned_entries AS entry
+	JOIN json_each(entry.cases) AS item
+	WHERE item.type = 'object'
+),
+result_observations AS (
 	SELECT item.*,
 	       CASE WHEN json_type(item.document_json, '$.entry_status') = 'text' OR json_extract(item.document_json, '$.dimensions.phase') = 'warmup' THEN 0
 	         WHEN item.request_id IS NOT NULL OR
@@ -273,25 +289,18 @@ result_stats AS (
 	           ) AND
 	           EXISTS (
 	             SELECT 1
-	             FROM execution_runs AS result_root
-	             JOIN execution_run_revisions AS result_revision
-	               ON result_revision.run_id = result_root.id AND result_revision.revision = result_root.current_revision
-	             WHERE result_root.id = item.run_id AND (
-	               (json_type(result_revision.snapshot_json, '$.entries') = 'array' AND item.entry_id IS NOT NULL AND EXISTS (
-	                 SELECT 1 FROM json_each(result_revision.snapshot_json, '$.entries') AS planned_suite
-	                 WHERE planned_suite.type = 'object' AND
-	                       json_extract(planned_suite.value, '$.entry_id') = item.entry_id AND (
+	             FROM planned_entries AS planned_suite
+	             WHERE planned_suite.run_id = item.run_id AND item.entry_id IS NOT NULL AND
+	                   planned_suite.entry_id = item.entry_id AND (
 	                         (json_type(item.document_json, '$.entry_status') = 'text' AND
 	                           json_extract(item.document_json, '$.entry_status') IN ('completed', 'failed') AND
 	                           item.case_id IS NULL AND item.request_id IS NULL) OR
 	                         (json_type(item.document_json, '$.entry_status') IS NULL AND item.case_id IS NOT NULL AND EXISTS (
-	                           SELECT 1 FROM json_each(planned_suite.value, '$.cases') AS planned_case
-	                           WHERE planned_case.type = 'object' AND
-	                                 json_extract(planned_case.value, '$.case_id') = item.case_id
+	                           SELECT 1 FROM planned_cases AS planned_case
+	                           WHERE planned_case.run_id = item.run_id AND
+	                                 planned_case.entry_id = item.entry_id AND planned_case.case_id = item.case_id
 	                         ))
-	                       )
-	               ))
-	             )
+	                   )
 	           )
 	         THEN 0 ELSE 1 END) AS corrupt
 	FROM result_observations AS item

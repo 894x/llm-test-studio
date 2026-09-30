@@ -1,6 +1,6 @@
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { desktopLocale, translateDesktop as tx, translateExecutionError } from "@/i18n/runtime"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
 import { useTranslation } from "react-i18next"
 
@@ -55,6 +55,8 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   } | null>(null)
   const exportDocumentRef = useRef<HTMLElement>(null)
   const exportDocumentReadyRef = useRef<((element: HTMLElement) => void) | null>(null)
+  const detailCache = useRef<{ reportID: string; reader: typeof getDetail; detail: ReportDetail } | null>(null)
+  const detailRequest = useRef<{ reportID: string; reader: typeof getDetail; promise: Promise<ReportDetail> } | null>(null)
   const search = useCatalogSearch(snapshot.reports, (report) => [
     report.id, report.run_id ?? "", displayReportVerdict(report, t), displayReportPlan(report, t),
     report.model_name, report.channel_name,
@@ -67,15 +69,47 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   const isViewingReport = viewingReportID !== "" && viewingReportID === selectedReportID
   const selectedVerdict = selected ? displayReportVerdict(selected, t) : t("generic")
 
+  const loadDetail = useCallback((reportID: string): Promise<ReportDetail> => {
+    const cached = detailCache.current
+    if (cached?.reportID === reportID && cached.reader === getDetail) {
+      detailRequest.current = null
+      setDetailState({ reportID, detail: cached.detail })
+      return Promise.resolve(cached.detail)
+    }
+    const pending = detailRequest.current
+    if (pending?.reportID === reportID && pending.reader === getDetail) return pending.promise
+
+    setDetailState({ reportID })
+
+    const request = {
+      reportID,
+      reader: getDetail,
+      promise: Promise.resolve().then(() => getDetail(reportID)),
+    }
+    request.promise = request.promise.then(
+      (value) => {
+        if (detailRequest.current === request) {
+          detailCache.current = { reportID, reader: getDetail, detail: value }
+          setDetailState({ reportID, detail: value })
+        }
+        return value
+      },
+      (error: unknown) => {
+        if (detailRequest.current === request) setDetailState({ reportID, error: true })
+        throw error
+      },
+    ).finally(() => {
+      if (detailRequest.current === request) detailRequest.current = null
+    })
+    detailRequest.current = request
+    return request.promise
+  }, [getDetail])
+
   useEffect(() => {
-    if (!selectedReportID) return
-    let active = true
-    void getDetail(selectedReportID).then(
-      (value) => { if (active) setDetailState({ reportID: selectedReportID, detail: value }) },
-      () => { if (active) setDetailState({ reportID: selectedReportID, error: true }) },
-    )
-    return () => { active = false }
-  }, [getDetail, selectedReportID])
+    if (isViewingReport && selectedReportID) {
+      void loadDetail(selectedReportID).catch(() => undefined)
+    }
+  }, [isViewingReport, loadDetail, selectedReportID])
 
   const attachExportDocument = useCallback((element: HTMLElement | null) => {
     exportDocumentRef.current = element
@@ -106,8 +140,8 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         const exported = await exportReport(selected.id, format, watermark, i18n.resolvedLanguage ?? i18n.language)
         await saveReportExport(exported.filename, exported.media_type, exported.data_base64, i18n.resolvedLanguage ?? i18n.language)
       } else {
-        if (!detail) throw new Error("report rendering unavailable")
-        const element = await mountExportDocument(selected, detail)
+        const reportDetail = detail ?? await loadDetail(selected.id)
+        const element = await mountExportDocument(selected, reportDetail)
         const exported = await exportVisualReport(element, format, selected.id)
         await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob), i18n.resolvedLanguage ?? i18n.language)
       }
@@ -128,8 +162,8 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
     setExporting("copy")
     setExportError("")
     try {
-      if (!detail) throw new Error("report rendering unavailable")
-      const element = await mountExportDocument(selected, detail)
+      const reportDetail = detail ?? await loadDetail(selected.id)
+      const element = await mountExportDocument(selected, reportDetail)
       const exported = await exportVisualReport(element, "png", selected.id)
       try {
         await copyReportPNG(await blobToBase64(exported.blob))
@@ -168,7 +202,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
         </ScrollArea>
       ) : isViewingReport ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <ReportContent detail={detail} error={detailError} />
+          <ReportContent key={selectedReportID} detail={detail} error={detailError} />
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -203,7 +237,7 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   </>
 }
 
-function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
+const ReportContent = memo(function ReportContent({ detail, error }: { detail: ReportDetail | null; error: string }) {
   const { t } = useTranslation("reports")
   if (error) return <div role="alert" className="border-t px-4 py-3 text-xs text-destructive">{error}</div>
   if (!detail) {
@@ -224,7 +258,7 @@ function ReportContent({ detail, error }: { detail: ReportDetail | null; error: 
   }
   if (detail.source === "quick_performance") return <QuickPerformanceDetail detail={detail} />
   return <RunReportDetail detail={detail} />
-}
+})
 
 function RunReportDetail({ detail }: { detail: Extract<ReportDetail, { source: "run" }> }) {
   return (

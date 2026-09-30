@@ -1,5 +1,5 @@
 import { localizeStoredMessage } from "@/i18n/runtime"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import FolderOpenIcon from "lucide-react/dist/esm/icons/folder-open.mjs"
 
@@ -8,6 +8,7 @@ import {
   isCatalogSavedRefreshFailure,
   publicDesktopErrorMessage,
   publicDesktopOperationErrorMessage,
+  singleFlightRead,
   type DesktopClient,
 } from "@/app/desktop-client"
 import { ThemeProvider } from "@/app/theme"
@@ -31,7 +32,7 @@ import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
-import { isRunActive, presentWorkspace, type StartRunTargetCommand, type WorkspaceRun, type WorkspaceSnapshot } from "@/features/runs/data"
+import { isRunActive, presentPlans, type StartRunTargetCommand, type WorkspaceRun, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
   RunWorkspace,
@@ -51,6 +52,12 @@ type InitialLoadStep = typeof INITIAL_LOAD_STEPS[number]
 function recentlyFinished(run: WorkspaceRun): boolean {
   const age = Date.now() - Date.parse(run.updated_at)
   return !isRunActive(run.status) && age >= 0 && age < 60_000
+}
+
+function persistDraft(draft: TaskDraft): void {
+  if (!draft.task && !draft.base_url && !draft.model) return
+  try { localStorage.setItem(TASK_DRAFT_KEY, encodeTaskDraft(draft)) }
+  catch { /* The in-memory draft remains usable when storage is unavailable. */ }
 }
 
 function AppWorkspace({
@@ -90,12 +97,44 @@ function AppWorkspace({
     try { return decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY)) ?? createTaskDraft(null) }
     catch { return createTaskDraft(null) }
   })
+  const reads = useMemo(() => ({
+    getWorkspace: singleFlightRead(() => client.getWorkspace()),
+    getCatalog: singleFlightRead(() => client.getCatalog()),
+    getReports: singleFlightRead(() => client.getReports()),
+    getComparisons: singleFlightRead(() => client.getComparisons()),
+  }), [client])
+  const latestDraft = useRef(quickDraft)
+  const workspaceGeneration = useRef(0)
+  const comparisonGeneration = useRef(0)
+  const catalogGeneration = useRef(0)
+  const invalidateWorkspace = useCallback(() => {
+    workspaceGeneration.current += 1
+    reads.getWorkspace.invalidate()
+  }, [reads])
+  const refreshWorkspace = useCallback(async () => {
+    const generation = workspaceGeneration.current
+    const nextWorkspace = await reads.getWorkspace()
+    if (generation === workspaceGeneration.current) setSnapshot(nextWorkspace)
+  }, [reads])
+  const updateWorkspace = useCallback((nextWorkspace: WorkspaceSnapshot) => {
+    invalidateWorkspace()
+    setSnapshot(nextWorkspace)
+  }, [invalidateWorkspace])
 
   useEffect(() => {
-    if (!quickDraft.task && !quickDraft.base_url && !quickDraft.model) return
-    try { localStorage.setItem(TASK_DRAFT_KEY, encodeTaskDraft(quickDraft)) }
-    catch { /* The in-memory draft remains usable when storage is unavailable. */ }
+    latestDraft.current = quickDraft
+    const timer = window.setTimeout(() => persistDraft(quickDraft), 250)
+    return () => window.clearTimeout(timer)
   }, [quickDraft])
+
+  useEffect(() => {
+    const flush = () => persistDraft(latestDraft.current)
+    window.addEventListener("pagehide", flush)
+    return () => {
+      window.removeEventListener("pagehide", flush)
+      flush()
+    }
+  }, [])
 
   useEffect(() => {
     const syncPage = () => setPage(desktopPageFromHash(window.location.hash))
@@ -110,10 +149,10 @@ function AppWorkspace({
       return value
     })
     void Promise.all([
-      trackLoad("workspace", client.getWorkspace()),
-      trackLoad("catalog", client.getCatalog()),
-      trackLoad("reports", client.getReports()),
-      trackLoad("comparisons", client.getComparisons()),
+      trackLoad("workspace", reads.getWorkspace()),
+      trackLoad("catalog", reads.getCatalog()),
+      trackLoad("reports", reads.getReports()),
+      trackLoad("comparisons", reads.getComparisons()),
     ])
       .then(([nextWorkspace, nextCatalog, nextReports, nextComparisons]) => {
         if (active) {
@@ -132,7 +171,7 @@ function AppWorkspace({
     return () => {
       active = false
     }
-  }, [client, loadAttempt])
+  }, [reads, loadAttempt])
 
   const retryInitialLoad = useCallback(() => {
     setLoadError("")
@@ -154,30 +193,54 @@ function AppWorkspace({
     }
   }
 
-  const [retryPoll, setRetryPoll] = useState(false)
-  const shouldPoll = !!(retryPoll || startingRunID || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisons?.comparisons.some((comparison) => comparison.status === "running") || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
+  const [retryWorkspacePoll, setRetryWorkspacePoll] = useState(false)
+  const [retryComparisonPoll, setRetryComparisonPoll] = useState(false)
+  const comparisonRunning = !!comparisons?.comparisons.some((comparison) => comparison.status === "running")
+  const shouldPollWorkspace = !!(retryWorkspacePoll || startingRunID || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisonRunning || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
   useEffect(() => {
-		if (!shouldPoll) return
+		if (!shouldPollWorkspace) return
 		let active = true
 		let timer: number | undefined
 		const refresh = async () => {
+			const generation = workspaceGeneration.current
 			try {
-				const [nextWorkspace, nextReports, nextComparisons] = await Promise.allSettled([
-					client.getWorkspace(), client.getReports(), client.getComparisons(),
-				])
-				if (active) {
-					setRetryPoll([nextWorkspace, nextReports, nextComparisons].some((result) => result.status === "rejected"))
-					if (nextWorkspace.status === "fulfilled") setSnapshot(nextWorkspace.value)
-					if (nextReports.status === "fulfilled") setReports(nextReports.value)
-					if (nextComparisons.status === "fulfilled") setComparisons(nextComparisons.value)
+				const nextWorkspace = await reads.getWorkspace()
+				if (active && generation === workspaceGeneration.current) {
+					setRetryWorkspacePoll(false)
+					setSnapshot(nextWorkspace)
 				}
+			} catch {
+				if (active && generation === workspaceGeneration.current) setRetryWorkspacePoll(true)
 			} finally {
 				if (active) timer = window.setTimeout(() => void refresh(), 1_000)
 			}
 		}
 		timer = window.setTimeout(() => void refresh(), 1_000)
 		return () => { active = false; window.clearTimeout(timer) }
-	}, [client, shouldPoll])
+	}, [reads, shouldPollWorkspace])
+
+  const shouldPollComparisons = comparisonRunning || retryComparisonPoll
+  useEffect(() => {
+    if (!shouldPollComparisons) return
+    let active = true
+    let timer: number | undefined
+    const refresh = async () => {
+      const generation = comparisonGeneration.current
+      try {
+        const nextComparisons = await reads.getComparisons()
+        if (active && generation === comparisonGeneration.current) {
+          setRetryComparisonPoll(false)
+          setComparisons(nextComparisons)
+        }
+      } catch {
+        if (active && generation === comparisonGeneration.current) setRetryComparisonPoll(true)
+      } finally {
+        if (active) timer = window.setTimeout(() => void refresh(), 1_000)
+      }
+    }
+    timer = window.setTimeout(() => void refresh(), 1_000)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [reads, shouldPollComparisons])
 
   useEffect(() => {
     if (startingRunID && snapshot?.runs.some((run) => run.id === startingRunID)) {
@@ -185,43 +248,81 @@ function AppWorkspace({
     }
   }, [snapshot, startingRunID])
 
-  useEffect(() => {
-    if (page !== "reports") return
-    let active = true
-    void client.getReports().then(
-      (nextReports) => { if (active) setReports(nextReports) },
-      () => { /* Keep the last successfully loaded report list. */ },
-    )
-    return () => { active = false }
-  }, [client, page])
+  const [reportRetryUntil, setReportRetryUntil] = useState(0)
+  const [finishedRunsAwaitingReport, setFinishedRunsAwaitingReport] = useState<Record<string, number>>({})
+  const updateReports = useCallback((nextReports: ReportSnapshot) => {
+    const reportRunIDs = new Set(nextReports.reports.map((report) => report.run_id))
+    setReports(nextReports)
+    setReportRetryUntil(0)
+    setFinishedRunsAwaitingReport((pending) => Object.fromEntries(Object.entries(pending).filter(([id, until]) =>
+      until > Date.now() && !reportRunIDs.has(id),
+    )))
+  }, [])
+  const retryReports = useCallback(() => {
+    setReportRetryUntil((until) => until || Date.now() + 60_000)
+  }, [])
+  const refreshReports = useCallback(async () => {
+    try {
+      const nextReports = await reads.getReports()
+      updateReports(nextReports)
+      return nextReports
+    } catch (error) {
+      retryReports()
+      throw error
+    }
+  }, [reads, updateReports, retryReports])
 
-  const recentRunAwaitingReport = page === "reports" && !!snapshot?.runs.some((run) =>
-    recentlyFinished(run) &&
-    !reports?.reports.some((report) => report.run_id === run.id),
-  )
+  const previousActiveRuns = useRef(new Set<string>())
   useEffect(() => {
-    if (!recentRunAwaitingReport) return
+    if (!snapshot) return
+    const finished = snapshot.runs.filter((run) => previousActiveRuns.current.has(run.id) && !isRunActive(run.status))
+    previousActiveRuns.current = new Set(snapshot.runs.filter((run) => isRunActive(run.status)).map((run) => run.id))
+    if (!finished.length) return
+    setFinishedRunsAwaitingReport((pending) => ({ ...pending, ...Object.fromEntries(finished.map((run) => [run.id, Date.now() + 60_000])) }))
+    void refreshReports().catch(() => { /* Retry while report generation is pending. */ })
+  }, [snapshot, refreshReports])
+
+  useEffect(() => {
+    if (page === "reports") void reads.getReports().then(updateReports, retryReports)
+  }, [reads, updateReports, retryReports, page])
+
+  const reportRunIDs = useMemo(() => new Set(reports?.reports.map((report) => report.run_id)), [reports])
+  const recentRunAwaitingReport = !!snapshot?.runs.some((run) => recentlyFinished(run) && !reportRunIDs.has(run.id))
+  const shouldPollReports = !!(reportRetryUntil || recentRunAwaitingReport || Object.keys(finishedRunsAwaitingReport).length)
+  const reportPollContext = useRef({ snapshot, reportRunIDs, reportRetryUntil, finishedRunsAwaitingReport })
+  useEffect(() => {
+    reportPollContext.current = { snapshot, reportRunIDs, reportRetryUntil, finishedRunsAwaitingReport }
+  }, [snapshot, reportRunIDs, reportRetryUntil, finishedRunsAwaitingReport])
+  useEffect(() => {
+    if (!shouldPollReports) return
     let active = true
     let timer: number | undefined
     const refresh = async () => {
+      const current = reportPollContext.current
+      const now = Date.now()
+      if (current.reportRetryUntil <= now &&
+        !Object.values(current.finishedRunsAwaitingReport).some((until) => until > now) &&
+        !current.snapshot?.runs.some((run) => recentlyFinished(run) && !current.reportRunIDs.has(run.id))) {
+        setReportRetryUntil(0)
+        setFinishedRunsAwaitingReport({})
+        return
+      }
       try {
-        const nextReports = await client.getReports()
-        if (active) setReports(nextReports)
+        await refreshReports()
       } catch {
         // A later read can recover a transient report generation or read error.
       }
-      if (active && snapshot?.runs.some(recentlyFinished)) {
+      if (active) {
         timer = window.setTimeout(() => void refresh(), 2_000)
       }
     }
     timer = window.setTimeout(() => void refresh(), 2_000)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [client, recentRunAwaitingReport, snapshot])
+  }, [refreshReports, shouldPollReports])
 
   const refreshQuickTask = useCallback(async () => {
-    setSnapshot(await client.getWorkspace())
-    setReports(await client.getReports())
-  }, [client])
+    await Promise.all([refreshWorkspace(), refreshReports()])
+  }, [refreshWorkspace, refreshReports])
 
   const navigate = useCallback((next: DesktopPage) => {
     if (desktopPageFromHash(window.location.hash) === next) {
@@ -232,31 +333,34 @@ function AppWorkspace({
   }, [])
 
   const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
+    reads.getReports.invalidate()
     try {
-      setReports(await client.getReports())
+      await refreshReports()
       setPreferredReportID(reportID)
     } catch {
       // The quick-test result remains available in its sheet; the reports
       // workspace can be refreshed again through normal app polling/reload.
     }
-  }, [client])
+  }, [reads, refreshReports])
 
   const openReport = useCallback(async (reportID: string): Promise<void> => {
     setPreferredReportID(reportID)
     navigate("reports")
     try {
-      setReports(await client.getReports())
+      await refreshReports()
     } catch {
       // Keep the reports workspace open with the last authoritative snapshot.
     }
-  }, [client, navigate])
+  }, [refreshReports, navigate])
 
   const runCommand = useCallback(
     async (operation: () => Promise<WorkspaceSnapshot>): Promise<void> => {
       setCommandPending(true)
       setCommandError("")
       try {
-        setSnapshot(await operation())
+        const nextWorkspace = await operation()
+        invalidateWorkspace()
+        setSnapshot(nextWorkspace)
       } catch (error) {
         setCommandError(
           publicDesktopErrorMessage(error, t("app:commandError")),
@@ -266,45 +370,46 @@ function AppWorkspace({
         setCommandPending(false)
       }
     },
-    [t],
+    [invalidateWorkspace, t],
   )
 
   const startRun = useCallback(async (command: StartRunTargetCommand): Promise<void> => {
     setCommandPending(true)
     setCommandError("")
     try {
-      setStartingRunID(await client.startRunTarget(command))
+      const runID = await client.startRunTarget(command)
+      invalidateWorkspace()
+      setStartingRunID(runID)
     } catch (error) {
       setCommandError(publicDesktopErrorMessage(error, t("app:commandError")))
       throw error
     } finally {
       setCommandPending(false)
     }
-  }, [client, t])
+  }, [client, invalidateWorkspace, t])
 
   const mutateCatalog = useCallback(
     async (operation: () => Promise<CatalogSnapshot>, operationLabel: string): Promise<void> => {
       setCatalogMutationPending(true)
       setCatalogMutationError("")
       try {
-        setCatalog(await operation())
-        try {
-          setSnapshot(await client.getWorkspace())
-        } catch {
+        const nextCatalog = await operation()
+        catalogGeneration.current += 1
+        setCatalog(nextCatalog)
+        reads.getCatalog.invalidate()
+        invalidateWorkspace()
+        void refreshWorkspace().catch(() => {
           setCatalogMutationError(t("app:catalogRefreshError", { operation: operationLabel }))
-        }
+        })
       } catch (error) {
         if (isCatalogSavedRefreshFailure(error)) {
-          try {
-            setCatalog(await client.getCatalog())
-          } catch {
-            // Keep the last authoritative catalog; the mutation is already committed.
-          }
-          try {
-            setSnapshot(await client.getWorkspace())
-          } catch {
-            // Keep the last workspace snapshot and let a later reload recover it.
-          }
+          const generation = ++catalogGeneration.current
+          reads.getCatalog.invalidate()
+          invalidateWorkspace()
+          void reads.getCatalog().then((nextCatalog) => {
+            if (generation === catalogGeneration.current) setCatalog(nextCatalog)
+          }, () => { /* The mutation is already committed. */ })
+          void refreshWorkspace().catch(() => { /* A later reload can recover the workspace. */ })
           setCatalogMutationError(publicDesktopErrorMessage(error, tx("desktop:app_saved_but_the_catalog_could_not_refresh_refresh_or_reopen")))
           return
         }
@@ -314,29 +419,34 @@ function AppWorkspace({
         setCatalogMutationPending(false)
       }
     },
-    [client, t, tx],
+    [reads, invalidateWorkspace, refreshWorkspace, t, tx],
   )
 
   const startComparison = useCallback(async (command: StartComparisonCommand): Promise<void> => {
 		setCommandPending(true)
 		setCommandError("")
 		try {
-			setComparisons(await client.startComparison(command))
-			setSnapshot(await client.getWorkspace())
+			const nextComparisons = await client.startComparison(command)
+			comparisonGeneration.current += 1
+			reads.getComparisons.invalidate()
+			setComparisons(nextComparisons)
+			invalidateWorkspace()
+			void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
 		} catch (error) {
 			setCommandError(publicDesktopErrorMessage(error, t("app:comparisonError")))
 			throw error
 		} finally {
 			setCommandPending(false)
 		}
-	}, [client, t])
+	}, [client, reads, invalidateWorkspace, refreshWorkspace, t])
 
+  const workspacePlans = snapshot?.plans
   const plans = useMemo(
-    () => (snapshot ? presentWorkspace(snapshot, {
+    () => (workspacePlans ? presentPlans(workspacePlans, {
       locale: i18n.resolvedLanguage ?? i18n.language,
       t: (key, values) => t(`runs:${key}`, values),
-    }).plans : []),
-    [i18n.language, i18n.resolvedLanguage, snapshot, t],
+    }) : []),
+    [i18n.language, i18n.resolvedLanguage, workspacePlans, t],
   )
 
   if (loadError) {
@@ -433,7 +543,7 @@ function AppWorkspace({
           onRunSelected={setQuickRunID}
           actions={client}
           refresh={refreshQuickTask}
-          onWorkspaceUpdated={setSnapshot}
+          onWorkspaceUpdated={updateWorkspace}
           onPerformanceArchived={refreshArchivedPerformanceReport}
           onOpenReport={openReport}
         />

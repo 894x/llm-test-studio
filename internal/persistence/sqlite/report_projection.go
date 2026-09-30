@@ -1,11 +1,13 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -50,7 +52,6 @@ func (repository *Repository) ListReportProjections(ctx context.Context) ([]repo
 	}
 	projections := make([]reporting.ReportProjection, 0, reporting.MaxSnapshotReports)
 	currentRuns := make(map[string]reportRunExpectation, reporting.MaxSnapshotReports)
-	referenceRunIDs := make(map[[sha256.Size]byte]string)
 	for rows.Next() {
 		var row storedReportProjection
 		if err := row.scan(rows); err != nil {
@@ -68,9 +69,6 @@ func (repository *Repository) ListReportProjections(ctx context.Context) ([]repo
 		}
 		projections = append(projections, projection)
 		currentRuns[expectedRun.id] = expectedRun
-		if _, exists := referenceRunIDs[expectedRun.snapshotDigest]; !exists {
-			referenceRunIDs[expectedRun.snapshotDigest] = expectedRun.id
-		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -91,26 +89,8 @@ func (repository *Repository) ListReportProjections(ctx context.Context) ([]repo
 	if reportCount != len(projections) {
 		return nil, fmt.Errorf("%w: report projection owner", ErrCorrupt)
 	}
-	for snapshotDigest, runID := range referenceRunIDs {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		run, err := queryCurrentRun(ctx, tx, runID)
-		if err != nil {
-			return nil, reportProjectionCorrupt(ctx, "reload report run", err)
-		}
-		runDocument, err := marshalCanonical(run)
-		if err != nil || sha256.Sum256(runDocument) != currentRuns[runID].documentDigest {
-			return nil, fmt.Errorf("%w: reloaded report run", ErrCorrupt)
-		}
-		snapshotDocument, err := marshalCanonical(run.Snapshot())
-		if err != nil || sha256.Sum256(snapshotDocument) != snapshotDigest {
-			return nil, fmt.Errorf("%w: reloaded report snapshot", ErrCorrupt)
-		}
-		if err := validateStoredRunReferences(ctx, tx, run); err != nil {
-			return nil, reportProjectionCorrupt(ctx, "report pinned references", err)
-		}
-	}
+	// Each owner was validated while decoding its row in this same transaction.
+	// History validation below also checks the current document and frozen snapshot.
 	if err := validateReportRunHistories(ctx, tx, currentRuns); err != nil {
 		return nil, err
 	}
@@ -225,17 +205,13 @@ func decodeStoredReportProjection(ctx context.Context, tx *sql.Tx, row storedRep
 		validated.failedCaseCount != projection.FailedCaseCount || validated.attachmentCount != projection.AttachmentCount {
 		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report projection validated summary", ErrCorrupt)
 	}
-	snapshotDocument, err := marshalCanonical(run.Snapshot())
-	if err != nil {
-		return reporting.ReportProjection{}, reportRunExpectation{}, fmt.Errorf("%w: report pinned snapshot", ErrCorrupt)
-	}
 	return projection, reportRunExpectation{
 		id:             run.Meta().ID,
 		createdAt:      formatTime(run.Meta().CreatedAt),
 		ordinal:        uint64(row.ordinal),
 		revision:       run.Meta().Revision,
 		documentDigest: sha256.Sum256(row.run.document),
-		snapshotDigest: sha256.Sum256(snapshotDocument),
+		snapshotDigest: sha256.Sum256(row.run.snapshotDocument),
 	}, nil
 }
 
@@ -316,15 +292,17 @@ func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map
 		if err != nil {
 			return err
 		}
-		var snapshot domain.RunSnapshot
-		if err := decodeCanonical(snapshotDocument, &snapshot, func() error { return snapshot.Validate() }); err != nil {
+		snapshot := run.Snapshot()
+		canonicalSnapshot, err := marshalCanonical(snapshot)
+		if err != nil || !bytes.Equal(canonicalSnapshot, snapshotDocument) ||
+			sha256.Sum256(snapshotDocument) != expected.snapshotDigest {
 			return fmt.Errorf("%w: report run snapshot document", ErrCorrupt)
 		}
 		meta := run.Meta()
 		if int64(meta.SchemaVersion) != schemaVersion || int64(meta.Revision) != revision ||
 			formatTime(meta.CreatedAt) != createdAt || formatTime(meta.UpdatedAt) != updatedAt ||
-			run.PlanID() != planID || int64(run.Snapshot().Plan.Revision) != planRevision ||
-			string(run.Status()) != status || !equalCanonicalDocuments(run.Snapshot(), snapshot) {
+			run.PlanID() != planID || int64(snapshot.Plan.Revision) != planRevision ||
+			string(run.Status()) != status {
 			return fmt.Errorf("%w: report run history columns", ErrCorrupt)
 		}
 		if revisionCount == 0 {
@@ -333,7 +311,7 @@ func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map
 			}
 		} else {
 			want, transitionErr := previous.Transition(run.Status(), meta.UpdatedAt)
-			if transitionErr != nil || !equalCanonicalDocuments(want, run) {
+			if transitionErr != nil || !reflect.DeepEqual(want, run) {
 				return fmt.Errorf("%w: report run revision transition", ErrCorrupt)
 			}
 		}

@@ -282,16 +282,17 @@ func (row storedRunRow) decode(requireCurrent bool) (domain.Run, error) {
 	if err != nil {
 		return domain.Run{}, err
 	}
-	var snapshot domain.RunSnapshot
-	if err := decodeCanonical(row.snapshotDocument, &snapshot, func() error { return snapshot.Validate() }); err != nil {
+	snapshot := run.Snapshot()
+	snapshotDocument, err := marshalCanonical(snapshot)
+	if err != nil {
 		return domain.Run{}, fmt.Errorf("%w: run snapshot document", ErrCorrupt)
 	}
 	meta := run.Meta()
 	if int64(meta.SchemaVersion) != row.schemaVersion || int64(meta.Revision) != row.revision ||
 		formatTime(meta.CreatedAt) != row.revisionCreated || formatTime(meta.UpdatedAt) != row.revisionUpdated ||
 		row.rootCreated != row.revisionCreated || run.PlanID() != row.planID ||
-		int64(run.Snapshot().Plan.Revision) != row.planRevision || string(run.Status()) != row.status ||
-		!equalCanonicalDocuments(run.Snapshot(), snapshot) {
+		int64(snapshot.Plan.Revision) != row.planRevision || string(run.Status()) != row.status ||
+		!bytes.Equal(snapshotDocument, row.snapshotDocument) {
 		return domain.Run{}, fmt.Errorf("%w: run columns do not match its document", ErrCorrupt)
 	}
 	if requireCurrent && row.sealed == 1 {
@@ -398,7 +399,7 @@ func validateRunReferences(ctx context.Context, _ relationQueryer, run domain.Ru
 	if err := run.Validate(); err != nil {
 		return fmt.Errorf("validate run snapshot: %w", err)
 	}
-	return validateWritableRunSnapshot(run.Snapshot())
+	return nil
 }
 
 func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
@@ -718,13 +719,20 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 		}
 	}
 	evidenceCache := make(map[string]domain.Evidence)
+	snapshot := owner.Snapshot()
 	result := make([]domain.Result, 0, len(stored))
 	for _, row := range stored {
 		item, err := row.decode(runID)
 		if err != nil {
 			return nil, err
 		}
-		if err := validateStoredResultAgainstRun(ctx, repository.db, item, owner, evidenceCache); err != nil {
+		if err := validateStoredResultAgainstSnapshot(
+			ctx,
+			repository.db,
+			item,
+			snapshot,
+			evidenceCache,
+		); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -774,11 +782,26 @@ func validateStoredResultReferences(ctx context.Context, queryer relationQueryer
 	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
 		return err
 	}
-	return validateStoredResultAgainstRun(ctx, queryer, result, run, make(map[string]domain.Evidence))
+	return validateStoredResultAgainstSnapshot(
+		ctx,
+		queryer,
+		result,
+		run.Snapshot(),
+		make(map[string]domain.Evidence),
+	)
 }
 
-func validateStoredResultAgainstRun(ctx context.Context, queryer relationQueryer, result domain.Result, run domain.Run, evidenceCache map[string]domain.Evidence) error {
-	if !resultBelongsToSnapshot(run.Snapshot(), result) {
+func validateStoredResultAgainstSnapshot(
+	ctx context.Context,
+	queryer relationQueryer,
+	result domain.Result,
+	snapshot domain.RunSnapshot,
+	evidenceCache map[string]domain.Evidence,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !resultBelongsToSnapshot(snapshot, result) {
 		return fmt.Errorf("%w: result suite or case is outside run snapshot", ErrCorrupt)
 	}
 	for _, evidenceID := range result.EvidenceIDs {

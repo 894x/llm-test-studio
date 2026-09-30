@@ -544,33 +544,53 @@ function createLazyFixtureClient(): DesktopClient {
   }
 }
 
+export function singleFlightRead<T>(read: () => Promise<T>): (() => Promise<T>) & { invalidate(): void } {
+  let pending: Promise<T> | undefined
+  let queued: Promise<T> | undefined
+  let invalidated = false
+  const get = (): Promise<T> => {
+    if (pending && invalidated) {
+      queued ??= pending.then(() => undefined, () => undefined).then(() => {
+        queued = undefined
+        return get()
+      })
+      return queued
+    }
+    if (!pending) invalidated = false
+    pending ??= Promise.resolve(read()).finally(() => { pending = undefined })
+    return pending
+  }
+  get.invalidate = () => { if (pending) invalidated = true }
+  return get
+}
+
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   return {
     getDiagnostics: async () =>
       callBinding(() => binding.GetDiagnostics(), parseDiagnosticsSnapshot),
     openDiagnosticsDirectory: async () =>
       callBinding(() => binding.OpenDiagnosticsDirectory(), parseVoid),
-    getWorkspace: async () =>
+    getWorkspace: singleFlightRead(() =>
       callBinding(
         () => binding.GetWorkspace(),
         parseSnapshot,
         reportFrontendFailure(binding, "load_workspace"),
         "workspace_unavailable",
-      ),
-    getCatalog: async () =>
+      )),
+    getCatalog: singleFlightRead(() =>
       callBinding(
         () => binding.GetCatalog(),
         parseCatalogSnapshot,
         reportFrontendFailure(binding, "load_catalog"),
         "catalog_unavailable",
-      ),
-    getReports: async () =>
+      )),
+    getReports: singleFlightRead(() =>
       callBinding(
         () => binding.GetReports(),
         parseReportSnapshot,
         reportFrontendFailure(binding, "load_reports"),
         "reports_unavailable",
-      ),
+      )),
 		getReportDetail: async (reportId) =>
 			callBinding(() => binding.GetReportDetail(reportId), parseReportDetail),
 		exportReport: async (reportId, format, watermark, locale) =>
@@ -579,13 +599,13 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 			callBinding(() => binding.SaveReportExport(filename, mediaType, dataBase64, locale), parseBoolean),
 		copyReportPNG: async (dataBase64) =>
 			callBinding(() => binding.CopyReportPNG(dataBase64), parseVoid),
-		getComparisons: async () =>
+		getComparisons: singleFlightRead(() =>
 			callBinding(
 				() => binding.GetComparisons(),
 				parseComparisonSnapshot,
 				reportFrontendFailure(binding, "load_comparisons"),
 				"comparison_unavailable",
-			),
+			)),
 		startRunTarget: async (command) =>
 			callBinding(() => binding.StartRunTarget(command), (value) => {
 				if (!isUUID(value)) throw new DesktopDataError(tx("desktop:run_invalid_run_identity"))

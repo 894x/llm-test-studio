@@ -9,7 +9,7 @@ import {
 import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
-import { createDesktopClient, createFixtureClient } from "./desktop-client"
+import { createDesktopClient, createFixtureClient, singleFlightRead } from "./desktop-client"
 import { DesktopDataError } from "./data-error"
 
 describe("Wails desktop client", () => {
@@ -26,6 +26,63 @@ describe("Wails desktop client", () => {
     binding.GetWorkspace.mockResolvedValueOnce({})
     await expect(createDesktopClient().getWorkspace()).rejects.toThrow("Unsupported desktop data protocol version")
     expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ operation: "load_workspace", error_code: "frontend_data_invalid" }))
+  })
+
+  it.each([
+    ["getWorkspace", "GetWorkspace", FIXTURE_WORKSPACE],
+    ["getCatalog", "GetCatalog", FIXTURE_CATALOG],
+    ["getReports", "GetReports", FIXTURE_REPORTS],
+    ["getComparisons", "GetComparisons", EMPTY_COMPARISONS],
+  ] as const)("shares concurrent %s reads and performs a fresh read after settlement", async (method, bindingMethod, payload) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    let resolveRead!: (value: unknown) => void
+    binding[bindingMethod].mockReturnValueOnce(new Promise((resolve) => { resolveRead = resolve }) as never)
+    const client = createDesktopClient()
+    const first = client[method]()
+    const second = client[method]()
+    expect(binding[bindingMethod]).toHaveBeenCalledTimes(1)
+    expect(first).toBe(second)
+    resolveRead(payload)
+    await expect(first).resolves.toEqual(payload)
+    await expect(second).resolves.toEqual(payload)
+    await client[method]()
+    expect(binding[bindingMethod]).toHaveBeenCalledTimes(2)
+  })
+
+  it("queues one fresh read after invalidation without overlapping an older request", async () => {
+    let resolveOld!: (value: string) => void
+    const read = vi.fn().mockReturnValueOnce(new Promise<string>((resolve) => { resolveOld = resolve })).mockResolvedValue("after command")
+    const get = singleFlightRead<string>(read)
+    const old = get()
+    get.invalidate()
+    const refreshed = get()
+    const concurrent = get()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(refreshed).toBe(concurrent)
+    resolveOld("before command")
+    await expect(old).resolves.toBe("before command")
+    await expect(refreshed).resolves.toBe("after command")
+    await expect(concurrent).resolves.toBe("after command")
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ["getWorkspace", "GetWorkspace", FIXTURE_WORKSPACE],
+    ["getCatalog", "GetCatalog", FIXTURE_CATALOG],
+    ["getReports", "GetReports", FIXTURE_REPORTS],
+    ["getComparisons", "GetComparisons", EMPTY_COMPARISONS],
+  ] as const)("allows retry after a shared %s read rejects", async (method, bindingMethod, payload) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding[bindingMethod].mockRejectedValueOnce(new Error("temporary read failure"))
+    const client = createDesktopClient()
+    const first = client[method]()
+    const second = client[method]()
+    const results = await Promise.allSettled([first, second])
+    expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"])
+    expect(binding[bindingMethod]).toHaveBeenCalledTimes(1)
+    await expect(client[method]()).resolves.toEqual(payload)
+    expect(binding[bindingMethod]).toHaveBeenCalledTimes(2)
+    expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledTimes(1)
   })
 
   it("starts a Suite task once and returns its Run identity without refreshing", async () => {
