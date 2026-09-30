@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "key": "prediction_string",
-  "name": "Predicted Output · content 字符串",
-  "dimension": "workflow",
+  "key": "k3.stop_runtime_truncation",
+  "name": "Stop · 运行时输出应在 stop 序列处截断",
+  "dimension": "parameters",
   "protocol": "openai-chat",
   "enabled": true,
   "default": false,
-  "severity": "normal",
+  "severity": "critical",
   "execution_mode": "automatic",
   "definition": {
     "schema_version": 1,
@@ -19,13 +19,10 @@
           "messages": [
             {
               "role": "user",
-              "content": "原样输出 Hello, world!"
+              "content": "仅逐字输出 AAABBBCCC，不要空格、换行或解释。"
             }
           ],
-          "prediction": {
-            "type": "content",
-            "content": "Hello, world!"
-          },
+          "stop": ["BBB"],
           "max_completion_tokens": 64
         }
       },
@@ -41,6 +38,25 @@
           "source": "response",
           "operator": "non_empty",
           "pointer": "/choices"
+        },
+        {
+          "id": "r4",
+          "source": "text",
+          "operator": "contains",
+          "value": "AAA"
+        },
+        {
+          "id": "r5",
+          "source": "text",
+          "operator": "not_contains",
+          "value": "BBB"
+        },
+        {
+          "id": "r6",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/choices/0/finish_reason",
+          "value": "stop"
         }
       ]
     }

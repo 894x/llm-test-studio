@@ -48,16 +48,10 @@
       },
       "assertions": [
         {
-          "id": "r1",
+          "id": "status",
           "source": "http.status",
-          "operator": "gte",
+          "operator": "equals",
           "value": 200
-        },
-        {
-          "id": "r2",
-          "source": "http.status",
-          "operator": "lt",
-          "value": 300
         },
         {
           "id": "r3",
