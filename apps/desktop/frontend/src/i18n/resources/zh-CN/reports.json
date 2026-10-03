@@ -1,4 +1,14 @@
 {
+  "generation": {
+    "loading_run": "运行已结束，正在准备报告…",
+    "loading_results": "正在读取报告结果…",
+    "loading_evidence": "正在读取报告证据…",
+    "building": "正在汇总报告结果…",
+    "persisting": "正在校验并保存报告…",
+    "ready": "报告已生成，正在更新报告列表…",
+    "failed": "报告生成失败，请查看诊断日志",
+    "openLogs": "打开日志目录"
+  },
   "search": {
     "label": "搜索报告",
     "placeholder": "结论、计划、模型、渠道或编号"

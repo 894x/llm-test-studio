@@ -27,4 +27,6 @@ pnpm build
 
 ## Production boundary
 
-The production bundle expects the Wails shell to provide `GetWorkspace`, `StartRun`, `StopSending`, and `CancelRun`. Missing bindings or invalid responses are reported as errors; the UI does not substitute fixture data or manufacture successful state transitions.
+The production bundle expects the current Wails bindings, including `GetWorkspace`, `GetReports`, `GetReportGeneration`, `StartRunTarget`, `StopSending`, and `CancelRun`. Missing bindings or invalid responses are reported as errors; the UI does not substitute fixture data or manufacture successful state transitions.
+
+Report generation publishes `report-generation-progress` events. The UI displays the actual phase, uses processed/total counts only during aggregation, and refreshes the report list after durable persistence. `GetReportGeneration` supplies the current in-memory phase snapshot when the UI subscribes; generating a report does not trigger repeated full report-list polling.

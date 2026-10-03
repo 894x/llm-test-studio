@@ -28,6 +28,35 @@ describe("Wails desktop client", () => {
     expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ operation: "load_workspace", error_code: "frontend_data_invalid" }))
   })
 
+  it("reads only the current report generation snapshot", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const progress = { sequence: 1, run_id: FIXTURE_WORKSPACE.runs[0].id, phase: "building", processed: 2, total: 4, elapsed_ms: 20 }
+    binding.GetReportGeneration.mockResolvedValueOnce({ schema_version: 1, runs: [progress] } as never)
+    const client = createDesktopClient()
+    await expect(client.getReportGeneration()).resolves.toEqual({ schema_version: 1, runs: [progress] })
+    binding.GetReportGeneration.mockResolvedValueOnce({ schema_version: 0, runs: [] } as never)
+    await expect(client.getReportGeneration()).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
+  it("rejects malformed generation events and releases the runtime subscription", () => {
+    installBinding(FIXTURE_WORKSPACE)
+    let event!: (payload: unknown) => void
+    const detach = vi.fn()
+    const eventsOn = vi.fn((_name: string, receive: (payload: unknown) => void) => { event = receive; return detach })
+    Object.assign(window, { runtime: { EventsOn: eventsOn } })
+    const receive = vi.fn()
+    const unsubscribe = createDesktopClient().subscribeReportGeneration(receive)
+    expect(eventsOn).toHaveBeenCalledWith("report-generation-progress", expect.any(Function))
+    const progress = { sequence: 1, run_id: FIXTURE_WORKSPACE.runs[0].id, phase: "building", processed: 2, total: 4, elapsed_ms: 20 }
+    event({ ...progress, total: 1 })
+    event({ ...progress, api_key: "private" })
+    expect(receive).not.toHaveBeenCalled()
+    event(progress)
+    expect(receive).toHaveBeenCalledExactlyOnceWith(progress)
+    unsubscribe()
+    expect(detach).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     ["getWorkspace", "GetWorkspace", FIXTURE_WORKSPACE],
     ["getCatalog", "GetCatalog", FIXTURE_CATALOG],
@@ -1255,6 +1284,7 @@ function installBinding(
     GetWorkspace: vi.fn(async () => structuredClone(payload)),
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
+    GetReportGeneration: vi.fn(async () => ({ schema_version: 1, runs: [] })),
 		GetDiagnostics: vi.fn(async () => ({
 			schema_version: 1, available: true, format: "jsonl",
 			max_file_bytes: 10 * 1024 * 1024, backup_files: 5,

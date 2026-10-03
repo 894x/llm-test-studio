@@ -15,7 +15,6 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/domain"
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var (
@@ -104,6 +103,11 @@ type ReportingQuery interface {
 	Snapshot(context.Context) (reporting.Snapshot, error)
 }
 
+type ReportGenerationSource interface {
+	GenerationSnapshot() reporting.GenerationSnapshot
+	SubscribeProgress(func(reporting.GenerationProgress)) func()
+}
+
 type ReportDocumentQuery interface {
 	ReportingQuery
 	Detail(context.Context, string) (reporting.Detail, error)
@@ -140,14 +144,15 @@ type QuickPerformanceProgressRunner interface {
 type desktopEventEmitter func(context.Context, string, ...interface{})
 
 type desktopDependencies struct {
-	query           WorkspaceQuery
-	catalog         CatalogQuery
-	catalogCommands CatalogCommands
-	reports         ReportingQuery
-	commands        RunCommands
-	comparisons     ComparisonService
-	quickTests      QuickPerformanceRunner
-	close           func() error
+	query            WorkspaceQuery
+	catalog          CatalogQuery
+	catalogCommands  CatalogCommands
+	reports          ReportingQuery
+	reportGeneration ReportGenerationSource
+	commands         RunCommands
+	comparisons      ComparisonService
+	quickTests       QuickPerformanceRunner
+	close            func() error
 }
 
 type desktopInitializer func(context.Context) (desktopDependencies, error)
@@ -171,6 +176,7 @@ type DesktopApp struct {
 	catalog                  CatalogQuery
 	catalogCommands          CatalogCommands
 	reports                  ReportingQuery
+	reportGeneration         ReportGenerationSource
 	commands                 RunCommands
 	comparisons              ComparisonService
 	quickTests               QuickPerformanceRunner
@@ -253,7 +259,6 @@ func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
 func newDesktopApp(initialize desktopInitializer) *DesktopApp {
 	app := &DesktopApp{
 		initialize:       initialize,
-		emitEvent:        wailsruntime.EventsEmit,
 		saveReportExport: saveReportExportToFile,
 		copyReportPNG:    writePNGToClipboard,
 	}
@@ -429,10 +434,25 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.catalog = dependencies.catalog
 	app.catalogCommands = dependencies.catalogCommands
 	app.reports = dependencies.reports
+	app.reportGeneration = dependencies.reportGeneration
 	app.commands = dependencies.commands
 	app.comparisons = dependencies.comparisons
 	app.quickTests = dependencies.quickTests
 	app.close = dependencies.close
+	if dependencies.reportGeneration != nil {
+		unsubscribe := dependencies.reportGeneration.SubscribeProgress(func(progress reporting.GenerationProgress) {
+			if lifecycleContext.Err() == nil {
+				app.emitDesktopEvent(lifecycleContext, "report-generation-progress", progress)
+			}
+		})
+		app.close = func() error {
+			unsubscribe()
+			if dependencies.close != nil {
+				return dependencies.close()
+			}
+			return nil
+		}
+	}
 	app.startupDone.Broadcast()
 	app.mu.Unlock()
 }
@@ -443,6 +463,21 @@ func (app *DesktopApp) GetWorkspace() (workspace.Snapshot, error) {
 		return workspace.Snapshot{}, app.safeBindingError(err)
 	}
 	return snapshot, nil
+}
+
+func (app *DesktopApp) GetReportGeneration() (reporting.GenerationSnapshot, error) {
+	lease, err := app.acquire(desktopRequirements{})
+	if err != nil {
+		return reporting.GenerationSnapshot{}, app.safeBindingError(err)
+	}
+	defer lease.release()
+	app.mu.Lock()
+	source := app.reportGeneration
+	app.mu.Unlock()
+	if source == nil {
+		return reporting.GenerationSnapshot{SchemaVersion: 1, Runs: []reporting.GenerationProgress{}}, nil
+	}
+	return source.GenerationSnapshot(), nil
 }
 
 func (app *DesktopApp) getWorkspace() (workspace.Snapshot, error) {

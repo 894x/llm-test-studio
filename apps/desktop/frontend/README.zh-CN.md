@@ -27,4 +27,6 @@ pnpm build
 
 ## 生产边界
 
-生产构建要求 Wails 壳提供 `GetWorkspace`、`StartRun`、`StopSending` 和 `CancelRun`。绑定缺失或响应无效时会明确报错；界面不会用夹具替代真实数据，也不会伪造成功状态。
+生产构建要求当前 Wails 绑定，包括 `GetWorkspace`、`GetReports`、`GetReportGeneration`、`StartRunTarget`、`StopSending` 和 `CancelRun`。绑定缺失或响应无效时会明确报错；界面不会用夹具替代真实数据，也不会伪造成功状态。
+
+报告生成通过 `report-generation-progress` 事件发布进度。界面显示真实阶段，仅在汇总阶段显示已处理/总数，并在持久化成功后刷新报告列表。`GetReportGeneration` 在界面订阅时提供当前内存中的阶段快照；生成期间不再反复轮询完整报告列表。

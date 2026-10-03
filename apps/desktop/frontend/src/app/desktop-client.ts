@@ -50,6 +50,10 @@ import {
 } from "@/features/quick-test/data"
 import enCommon from "@/i18n/resources/en-US/common.json"
 import zhCommon from "@/i18n/resources/zh-CN/common.json"
+import {
+  parseReportGenerationProgress, parseReportGenerationSnapshot,
+  type ReportGenerationProgress, type ReportGenerationSnapshot,
+} from "@/features/reports/generation-progress"
 
 export type DesktopErrorCode =
   | "desktop_not_started"
@@ -133,6 +137,8 @@ export interface DesktopClient extends CatalogActions {
   getWorkspace(): Promise<WorkspaceSnapshot>
   getCatalog(): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
+  getReportGeneration(): Promise<ReportGenerationSnapshot>
+  subscribeReportGeneration(onProgress: (progress: ReportGenerationProgress) => void): () => void
   getReportDetail(reportId: string): Promise<ReportDetail>
   exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
@@ -166,6 +172,7 @@ type WailsDesktopBinding = {
   GetWorkspace(): Promise<unknown>
   GetCatalog(): Promise<unknown>
   GetReports(): Promise<unknown>
+  GetReportGeneration(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
   ExportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<unknown>
   SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
@@ -210,7 +217,7 @@ type FrontendDiagnostic = {
 
 const REQUIRED_WAILS_BINDING_METHODS = [
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
-  "GetWorkspace", "GetCatalog", "GetReports", "GetReportDetail", "ExportReport",
+  "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "StopSending", "CancelRun", "StartComparison", "RunQuickPerformanceTest",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
@@ -263,6 +270,8 @@ export function createFixtureClient(
       return fixtureDiagnosticsSnapshot()
     },
     async openDiagnosticsDirectory() {},
+    async getReportGeneration() { return { schema_version: 1, runs: [] } },
+    subscribeReportGeneration() { return () => {} },
     async getWorkspace() {
       return cloneSnapshot(workspace)
     },
@@ -512,6 +521,15 @@ function createLazyFixtureClient(): DesktopClient {
     getWorkspace: async () => (await client).getWorkspace(),
     getCatalog: async () => (await client).getCatalog(),
     getReports: async () => (await client).getReports(),
+    getReportGeneration: async () => (await client).getReportGeneration(),
+    subscribeReportGeneration: (onProgress) => {
+      let active = true
+      let unsubscribe = () => {}
+      void client.then((ready) => {
+        if (active) unsubscribe = ready.subscribeReportGeneration(onProgress)
+      })
+      return () => { active = false; unsubscribe() }
+    },
 		getReportDetail: async (reportId) => (await client).getReportDetail(reportId),
 		exportReport: async (reportId, format, watermark, locale) => (await client).exportReport(reportId, format, watermark, locale),
 		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
@@ -569,6 +587,16 @@ export function singleFlightRead<T>(read: () => Promise<T>): (() => Promise<T>) 
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   return {
+    getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
+    subscribeReportGeneration: (onProgress) => {
+      const runtime = (window as typeof window & {
+        runtime?: { EventsOn?: (name: string, callback: (payload: unknown) => void) => () => void }
+      }).runtime
+      return runtime?.EventsOn?.("report-generation-progress", (payload) => {
+        try { onProgress(parseReportGenerationProgress(payload)) }
+        catch { /* Reject malformed progress at the boundary. */ }
+      }) ?? (() => {})
+    },
     getDiagnostics: async () =>
       callBinding(() => binding.GetDiagnostics(), parseDiagnosticsSnapshot),
     openDiagnosticsDirectory: async () =>

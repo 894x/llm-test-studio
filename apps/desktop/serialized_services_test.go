@@ -57,20 +57,18 @@ func (archive probedQuickPerformanceArchive) SaveQuickPerformanceReport(context.
 	return nil
 }
 
-func TestProductionServiceGateSerializesSharedConnectionCalls(t *testing.T) {
+func TestProductionServiceGateSerializesCatalogSpanningWorkflows(t *testing.T) {
 	probe := &sharedConnectionProbe{}
 	gate := &productionServiceGate{}
 	workspaceQuery := serializedWorkspaceQuery{gate: gate, query: probedWorkspaceService{probe: probe}}
 	catalogQuery := serializedCatalogService{gate: gate, query: probedCatalogService{probe: probe}}
-	reportingQuery := serializedReportingQuery{gate: gate, query: probedReportingService{probe: probe}}
 	quickArchive := serializedQuickPerformanceArchive{gate: gate, archive: probedQuickPerformanceArchive{probe: probe}}
 
 	start := make(chan struct{})
-	errors := make(chan error, 4)
+	errors := make(chan error, 3)
 	for _, call := range []func() error{
 		func() error { _, err := workspaceQuery.Snapshot(context.Background()); return err },
 		func() error { _, err := catalogQuery.Snapshot(context.Background()); return err },
-		func() error { _, err := reportingQuery.Snapshot(context.Background()); return err },
 		func() error {
 			return quickArchive.SaveQuickPerformanceReport(context.Background(), quicktest.PerformanceReport{})
 		},
@@ -87,7 +85,27 @@ func TestProductionServiceGateSerializesSharedConnectionCalls(t *testing.T) {
 		}
 	}
 	if probe.overlap.Load() {
-		t.Fatal("production services overlapped on their shared connection")
+		t.Fatal("catalog-spanning workflows overlapped")
+	}
+}
+
+func TestReportListDoesNotWaitForTheAuthoredCatalogGate(t *testing.T) {
+	gate := &productionServiceGate{}
+	release := gate.enter()
+	defer release()
+	query := serializedReportingQuery{gate: gate, query: probedReportingService{probe: &sharedConnectionProbe{}}}
+	done := make(chan error, 1)
+	go func() {
+		_, err := query.Snapshot(context.Background())
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("report list waited for an unrelated catalog workflow")
 	}
 }
 

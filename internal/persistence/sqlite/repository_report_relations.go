@@ -127,16 +127,23 @@ func validateReportResults(ctx context.Context, queryer relationQueryer, report 
 	if len(storedRows) != len(report.CaseResults) {
 		return storageCorrupt("report result collection")
 	}
-	stored := make(map[string]domain.Result, len(storedRows))
+	stored := make(map[string][]byte, len(storedRows))
 	for _, row := range storedRows {
 		result, err := row.decode(report.RunID)
 		if err != nil {
 			return storageCorrupt("report result collection")
 		}
-		stored[result.ID] = result
+		stored[result.ID] = row.document
 	}
 	for _, want := range report.CaseResults {
-		if got, exists := stored[want.ID]; !exists || !canonicalValuesEqual(got, want) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		document, err := marshalCanonical(want)
+		if err != nil {
+			return storageCorrupt("report result collection")
+		}
+		if got, exists := stored[want.ID]; !exists || !bytes.Equal(got, document) {
 			return storageCorrupt("report result collection")
 		}
 	}

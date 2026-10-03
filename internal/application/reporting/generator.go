@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -34,12 +35,20 @@ type GeneratorDependencies struct {
 	Repository ReportRepository
 	Clock      GeneratorClock
 	IDFactory  ReportIDFactory
+	Timing     func(GenerationTiming)
 }
 
 type Generator struct {
-	repository ReportRepository
-	clock      GeneratorClock
-	idFactory  ReportIDFactory
+	repository    ReportRepository
+	clock         GeneratorClock
+	idFactory     ReportIDFactory
+	timing        func(GenerationTiming)
+	progressMu    sync.Mutex
+	progress      map[string]GenerationProgress
+	progressOrder []string
+	observers     map[uint64]func(GenerationProgress)
+	nextObserver  uint64
+	nextProgress  uint64
 }
 
 func NewGenerator(dependencies GeneratorDependencies) (*Generator, error) {
@@ -53,13 +62,39 @@ func NewGenerator(dependencies GeneratorDependencies) (*Generator, error) {
 			return meta.ID, err
 		}
 	}
-	return &Generator{repository: dependencies.Repository, clock: dependencies.Clock, idFactory: factory}, nil
+	return &Generator{
+		repository: dependencies.Repository, clock: dependencies.Clock, idFactory: factory,
+		timing: dependencies.Timing, progress: map[string]GenerationProgress{},
+		progressOrder: []string{}, observers: map[uint64]func(GenerationProgress){},
+	}, nil
 }
 
-func (generator *Generator) Generate(ctx context.Context, runID string) error {
+func (generator *Generator) Generate(ctx context.Context, runID string) (generationErr error) {
 	if generator == nil || ctx == nil || !domain.IsUUID(runID) {
 		return ErrGenerationInvalid
 	}
+	started := time.Now()
+	phaseStarted := started
+	phase := ""
+	advance := func(next string, processed, total uint64, reportID string) {
+		if next != phase && phase != "" && generator.timing != nil {
+			generator.timing(GenerationTiming{RunID: runID, Phase: phase, Duration: time.Since(phaseStarted)})
+		}
+		if next != phase {
+			phaseStarted = time.Now()
+		}
+		phase = next
+		generator.publishProgress(GenerationProgress{
+			RunID: runID, Phase: next, Processed: processed, Total: total,
+			ElapsedMS: uint64(time.Since(started).Milliseconds()), ReportID: reportID,
+		})
+	}
+	defer func() {
+		if generationErr != nil {
+			advance("failed", 0, 0, "")
+		}
+	}()
+	advance("loading_run", 0, 0, "")
 	run, err := generator.repository.GetRun(ctx, runID)
 	if err != nil {
 		return fmt.Errorf("load report run: %w", err)
@@ -69,19 +104,28 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 	default:
 		return ErrGenerationInvalid
 	}
+	advance("loading_results", 0, 0, "")
 	results, err := generator.repository.ListResults(ctx, runID)
 	if err != nil {
 		return fmt.Errorf("load report results: %w", err)
 	}
+	advance("loading_evidence", 0, 0, "")
 	evidence, err := generator.repository.ListEvidence(ctx, runID)
 	if err != nil {
 		return fmt.Errorf("load report evidence: %w", err)
 	}
 	snapshot := run.Snapshot()
+	advance("building", 0, uint64(len(results)), "")
 	caseResults, requestResults := []domain.Result{}, []domain.Result{}
-	for _, result := range results {
+	for index, result := range results {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := result.Validate(); err != nil {
 			return fmt.Errorf("invalid stored result: %w", err)
+		}
+		if (index+1)%64 == 0 || index+1 == len(results) {
+			advance("building", uint64(index+1), uint64(len(results)), "")
 		}
 		if result.EntryStatus != "" {
 			continue
@@ -122,12 +166,12 @@ func (generator *Generator) Generate(ctx context.Context, runID string) error {
 		Conclusion: conclusion, SLA: map[string]domain.MetricValue{}, Metrics: aggregateMetrics(requestResults), Timeline: resultTimeline(requestResults), Distributions: resultDistributions(requestResults),
 		CaseResults: caseResults, EntryReports: entries, ErrorClusters: []json.RawMessage{}, Evidence: append([]domain.Evidence{}, evidence...), Baseline: json.RawMessage(`{}`), Attachments: []domain.ReportAttachment{},
 	}
-	if err := report.Validate(); err != nil {
-		return fmt.Errorf("build report: %w", err)
-	}
+	// The storage boundary validates the complete report before any write.
+	advance("persisting", 0, 0, "")
 	if err := generator.repository.CreateReport(ctx, report); err != nil {
 		return fmt.Errorf("persist report: %w", err)
 	}
+	advance("ready", 0, 0, report.ID)
 	return nil
 }
 
@@ -147,6 +191,7 @@ func verificationConclusion(summary domain.VerificationSummary, completed bool, 
 
 func buildEntryReports(snapshot domain.RunSnapshot, runStatus domain.RunStatus, results []domain.Result) ([]domain.EntryReport, error) {
 	known := map[string]bool{}
+	byEntry := make(map[string][]domain.Result, len(snapshot.Entries))
 	for _, entry := range snapshot.Entries {
 		known[entry.EntryID] = true
 	}
@@ -154,16 +199,14 @@ func buildEntryReports(snapshot domain.RunSnapshot, runStatus domain.RunStatus, 
 		if !known[result.EntryID] {
 			return nil, errors.New("result refers to unknown plan entry")
 		}
+		byEntry[result.EntryID] = append(byEntry[result.EntryID], result)
 	}
 	reports := make([]domain.EntryReport, 0, len(snapshot.Entries))
 	stopped := false
 	for _, entry := range snapshot.Entries {
 		summaries, requests := []domain.Result{}, []domain.Result{}
 		status := domain.EntryReportNotStarted
-		for _, result := range results {
-			if result.EntryID != entry.EntryID {
-				continue
-			}
+		for _, result := range byEntry[entry.EntryID] {
 			if result.EntryStatus == domain.EntryExecutionCompleted {
 				status = domain.EntryReportCompleted
 				continue

@@ -204,6 +204,14 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		reportGenerator, err := reporting.NewGenerator(reporting.GeneratorDependencies{
 			Repository: repository,
 			Clock:      productionClock{},
+			Timing: func(timing reporting.GenerationTiming) {
+				if options.reportRunDiagnostic != nil {
+					options.reportRunDiagnostic(runs.Diagnostic{
+						RunID: timing.RunID, Operation: "generate_report_" + timing.Phase,
+						ErrorCode: "phase_timing", Duration: timing.Duration,
+					})
+				}
+			},
 		})
 		if err != nil {
 			_ = repository.Close()
@@ -260,12 +268,13 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			gate: gate, query: catalogQuery, commands: catalogCommands, channels: channelService,
 		}
 		return desktopDependencies{
-			query:           serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
-			catalog:         serializedCatalog,
-			catalogCommands: serializedCatalog,
-			reports:         serializedReportingQuery{gate: gate, query: reportingQuery},
-			commands:        runService,
-			comparisons:     comparisonService,
+			query:            serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
+			catalog:          serializedCatalog,
+			catalogCommands:  serializedCatalog,
+			reports:          serializedReportingQuery{gate: gate, query: reportingQuery},
+			reportGeneration: reportGenerator,
+			commands:         runService,
+			comparisons:      comparisonService,
 			quickTests: quicktest.New(quicktest.Dependencies{
 				TaskCredential: func(ctx context.Context, runID, baseURL string) (*credentials.Lease, error) {
 					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, domain.ProtocolOpenAIChat)

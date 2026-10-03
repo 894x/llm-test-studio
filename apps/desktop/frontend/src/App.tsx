@@ -30,9 +30,11 @@ import { QuickTaskWorkspace } from "@/features/quick-test/quick-task-workspace"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY, type TaskDraft } from "@/features/quick-test/task-draft"
 import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
+import type { ReportGenerationProgress } from "@/features/reports/generation-progress"
+import { ReportGenerationStatus } from "@/features/reports/report-generation-status"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
-import { isRunActive, presentPlans, type StartRunTargetCommand, type WorkspaceRun, type WorkspaceSnapshot } from "@/features/runs/data"
+import { isRunActive, presentPlans, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
   RunWorkspace,
@@ -48,11 +50,6 @@ import {
 
 const INITIAL_LOAD_STEPS = ["workspace", "catalog", "reports", "comparisons"] as const
 type InitialLoadStep = typeof INITIAL_LOAD_STEPS[number]
-
-function recentlyFinished(run: WorkspaceRun): boolean {
-  const age = Date.now() - Date.parse(run.updated_at)
-  return !isRunActive(run.status) && age >= 0 && age < 60_000
-}
 
 function persistDraft(draft: TaskDraft): void {
   if (!draft.task && !draft.base_url && !draft.model) return
@@ -75,6 +72,8 @@ function AppWorkspace({
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
   const [reports, setReports] = useState<ReportSnapshot | null>(null)
+  const [reportGeneration, setReportGeneration] = useState<Record<string, ReportGenerationProgress>>({})
+  const reportReadGeneration = useRef(0)
   const [preferredReportID, setPreferredReportID] = useState("")
   const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
@@ -144,6 +143,7 @@ function AppWorkspace({
 
   useEffect(() => {
     let active = true
+    const reportGenerationAtRead = reportReadGeneration.current
     const trackLoad = <T,>(step: InitialLoadStep, promise: Promise<T>): Promise<T> => Promise.resolve(promise).then((value) => {
       if (active) setInitialLoadSteps((completed) => ({ ...completed, [step]: true }))
       return value
@@ -159,7 +159,7 @@ function AppWorkspace({
           setLoadError(null)
           setSnapshot(nextWorkspace)
           setCatalog(nextCatalog)
-          setReports(nextReports)
+          if (reportGenerationAtRead === reportReadGeneration.current) setReports(nextReports)
 					setComparisons(nextComparisons)
         }
       })
@@ -249,76 +249,68 @@ function AppWorkspace({
   }, [snapshot, startingRunID])
 
   const [reportRetryUntil, setReportRetryUntil] = useState(0)
-  const [finishedRunsAwaitingReport, setFinishedRunsAwaitingReport] = useState<Record<string, number>>({})
   const updateReports = useCallback((nextReports: ReportSnapshot) => {
-    const reportRunIDs = new Set(nextReports.reports.map((report) => report.run_id))
     setReports(nextReports)
     setReportRetryUntil(0)
-    setFinishedRunsAwaitingReport((pending) => Object.fromEntries(Object.entries(pending).filter(([id, until]) =>
-      until > Date.now() && !reportRunIDs.has(id),
-    )))
   }, [])
   const retryReports = useCallback(() => {
     setReportRetryUntil((until) => until || Date.now() + 60_000)
   }, [])
   const refreshReports = useCallback(async () => {
+    const generation = reportReadGeneration.current
     try {
       const nextReports = await reads.getReports()
-      updateReports(nextReports)
+      if (generation === reportReadGeneration.current) updateReports(nextReports)
       return nextReports
     } catch (error) {
-      retryReports()
+      if (generation === reportReadGeneration.current) retryReports()
       throw error
     }
   }, [reads, updateReports, retryReports])
 
-  const previousActiveRuns = useRef(new Set<string>())
   useEffect(() => {
-    if (!snapshot) return
-    const finished = snapshot.runs.filter((run) => previousActiveRuns.current.has(run.id) && !isRunActive(run.status))
-    previousActiveRuns.current = new Set(snapshot.runs.filter((run) => isRunActive(run.status)).map((run) => run.id))
-    if (!finished.length) return
-    setFinishedRunsAwaitingReport((pending) => ({ ...pending, ...Object.fromEntries(finished.map((run) => [run.id, Date.now() + 60_000])) }))
-    void refreshReports().catch(() => { /* Retry while report generation is pending. */ })
-  }, [snapshot, refreshReports])
+    let active = true
+    const latest = new Map<string, number>()
+    const receive = (progress: ReportGenerationProgress) => {
+      if (!active || progress.sequence <= (latest.get(progress.run_id) ?? 0)) return
+      latest.set(progress.run_id, progress.sequence)
+      setReportGeneration((previous) => ({ ...previous, [progress.run_id]: progress }))
+      if (progress.phase === "ready") {
+        reportReadGeneration.current += 1
+        reads.getReports.invalidate()
+        void Promise.all([refreshReports(), refreshWorkspace()]).catch(() => {
+          // A transient read failure is retried without restarting generation.
+        })
+      }
+    }
+    const unsubscribe = client.subscribeReportGeneration(receive)
+    void client.getReportGeneration().then((next) => {
+      if (active) next.runs.forEach(receive)
+    }).catch((error: unknown) => {
+      if (active) setCommandError(publicDesktopErrorMessage(error, t("app:loadError")))
+    })
+    return () => { active = false; unsubscribe() }
+  }, [client, reads, refreshReports, refreshWorkspace, t])
 
   useEffect(() => {
-    if (page === "reports") void reads.getReports().then(updateReports, retryReports)
-  }, [reads, updateReports, retryReports, page])
+    if (page === "reports") void refreshReports().catch(() => {})
+  }, [refreshReports, page])
 
-  const reportRunIDs = useMemo(() => new Set(reports?.reports.map((report) => report.run_id)), [reports])
-  const recentRunAwaitingReport = !!snapshot?.runs.some((run) => recentlyFinished(run) && !reportRunIDs.has(run.id))
-  const shouldPollReports = !!(reportRetryUntil || recentRunAwaitingReport || Object.keys(finishedRunsAwaitingReport).length)
-  const reportPollContext = useRef({ snapshot, reportRunIDs, reportRetryUntil, finishedRunsAwaitingReport })
   useEffect(() => {
-    reportPollContext.current = { snapshot, reportRunIDs, reportRetryUntil, finishedRunsAwaitingReport }
-  }, [snapshot, reportRunIDs, reportRetryUntil, finishedRunsAwaitingReport])
-  useEffect(() => {
-    if (!shouldPollReports) return
+    if (!reportRetryUntil) return
     let active = true
     let timer: number | undefined
     const refresh = async () => {
-      const current = reportPollContext.current
-      const now = Date.now()
-      if (current.reportRetryUntil <= now &&
-        !Object.values(current.finishedRunsAwaitingReport).some((until) => until > now) &&
-        !current.snapshot?.runs.some((run) => recentlyFinished(run) && !current.reportRunIDs.has(run.id))) {
+      if (Date.now() >= reportRetryUntil) {
         setReportRetryUntil(0)
-        setFinishedRunsAwaitingReport({})
         return
       }
-      try {
-        await refreshReports()
-      } catch {
-        // A later read can recover a transient report generation or read error.
-      }
-      if (active) {
-        timer = window.setTimeout(() => void refresh(), 2_000)
-      }
+      try { await refreshReports() } catch { /* Retry a failed list read. */ }
+      if (active) timer = window.setTimeout(() => void refresh(), 2_000)
     }
     timer = window.setTimeout(() => void refresh(), 2_000)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [refreshReports, shouldPollReports])
+  }, [refreshReports, reportRetryUntil])
 
   const refreshQuickTask = useCallback(async () => {
     await Promise.all([refreshWorkspace(), refreshReports()])
@@ -586,6 +578,12 @@ function AppWorkspace({
           onCancelRun={(runId) => runCommand(() => client.cancelRun(runId))}
         />
       )}
+      <ReportGenerationStatus
+        progress={Object.values(reportGeneration).filter((progress) =>
+          progress.phase !== "ready" || !reports.reports.some((report) => report.id === progress.report_id),
+        )}
+        onOpenLogs={() => { void openLogs() }}
+      />
     </DesktopShell>
   )
 }

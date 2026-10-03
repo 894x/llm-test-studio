@@ -17,6 +17,7 @@ import {
   FIXTURE_WORKSPACE,
 } from "./features/runs/fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
+import type { ReportGenerationProgress } from "./features/reports/generation-progress"
 import { EMPTY_COMPARISONS } from "./features/comparisons/data"
 import type { QuickPerformanceReport } from "./features/quick-test/data"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY } from "./features/quick-test/task-draft"
@@ -40,6 +41,8 @@ function desktopClient(): DesktopClient & {
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
     getCatalog: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
+    getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
+    subscribeReportGeneration: vi.fn((_receive: (progress: ReportGenerationProgress) => void) => () => {}),
 		getDiagnostics: vi.fn(async () => ({
 			schema_version: 1 as const, available: true, format: "jsonl" as const,
 			max_file_bytes: 10 * 1024 * 1024, backup_files: 5,
@@ -287,7 +290,7 @@ describe("desktop run workspace", () => {
     expect(client.getReports).toHaveBeenCalledTimes(2)
   })
 
-  it("keeps checking briefly when a completed run is still awaiting its report", async () => {
+  it("shows generation phases and refreshes reports on completion without polling the list", async () => {
     window.history.replaceState(null, "", "#reports")
     const client = desktopClient()
     const runID = "c69e26b6-bcd6-4a8b-9053-5132e39a87e7"
@@ -298,6 +301,8 @@ describe("desktop run workspace", () => {
       runs: [{ ...client.workspace.runs[0], id: runID, status: "completed", updated_at: new Date().toISOString() }],
     }
     let reportReady = false
+    let receive!: (progress: ReportGenerationProgress) => void
+    vi.mocked(client.subscribeReportGeneration).mockImplementation((callback) => { receive = callback; return () => {} })
     vi.mocked(client.getReports).mockImplementation(async () => ({
       schema_version: 1,
       reports: reportReady ? [report] : [],
@@ -306,9 +311,16 @@ describe("desktop run workspace", () => {
 
     await screen.findByRole("heading", { name: "测试报告" })
     expect(client.getReports).toHaveBeenCalledTimes(1)
+    act(() => receive({ sequence: 1, run_id: runID, phase: "building", processed: 64, total: 169, elapsed_ms: 100 }))
+    expect(screen.getByText("正在汇总报告结果…")).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", String(64 / 169 * 100))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 2_100)) })
+    expect(client.getReports).toHaveBeenCalledTimes(1)
     reportReady = true
-
+    act(() => receive({ sequence: 2, run_id: runID, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: report.id }))
     expect((await screen.findAllByText("兼容性门禁通过", {}, { timeout: 8_000 })).length).toBeGreaterThan(0)
+    expect(client.getReports).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText("报告已生成，正在更新报告列表…")).not.toBeInTheDocument()
   }, 10_000)
 
   it("opens diagnostics from compact header chrome without exposing a filesystem path", async () => {
@@ -1056,6 +1068,8 @@ describe("desktop run workspace", () => {
       }),
       getCatalog: vi.fn(),
       getReports: vi.fn(),
+      getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
+      subscribeReportGeneration: vi.fn(() => () => {}),
 			getReportDetail: vi.fn(),
 			exportReport: vi.fn(),
 			saveReportExport: vi.fn(),
@@ -1147,10 +1161,14 @@ describe("desktop run workspace", () => {
 
   it("retries a failed report query after the last running task reaches its terminal state", async () => {
     const client = desktopClient()
+		let receive!: (progress: ReportGenerationProgress) => void
+		vi.mocked(client.subscribeReportGeneration).mockImplementation((callback) => { receive = callback; return () => {} })
     const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
     vi.mocked(client.getReports).mockResolvedValueOnce(FIXTURE_REPORTS).mockRejectedValueOnce(new Error("temporary report error")).mockResolvedValue(FIXTURE_REPORTS)
     render(<App client={client} />)
+    await screen.findByRole("heading", { name: "运行工作区" })
+    act(() => receive({ sequence: 1, run_id: client.workspace.runs[0].id, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: FIXTURE_REPORTS.reports[0].id }))
     await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(3), { timeout: 3500 })
   })
 
@@ -1185,19 +1203,23 @@ describe("desktop run workspace", () => {
     window.history.replaceState(null, "", "#catalog")
     const client = desktopClient()
     const runID = client.workspace.runs[0].id
+    let receive!: (progress: ReportGenerationProgress) => void
+    vi.mocked(client.subscribeReportGeneration).mockImplementation((callback) => { receive = callback; return () => {} })
     const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
     const waitingReports = { ...FIXTURE_REPORTS, reports: FIXTURE_REPORTS.reports.filter((report) => report.run_id !== runID) }
     const readyReports = { ...waitingReports, reports: [...waitingReports.reports, ...client.workspace.runs.map((run) => ({ ...FIXTURE_REPORTS.reports[0], run_id: run.id }))] }
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
-    vi.mocked(client.getReports).mockResolvedValueOnce(waitingReports).mockResolvedValueOnce(waitingReports).mockResolvedValue(readyReports)
+    vi.mocked(client.getReports).mockResolvedValueOnce(waitingReports).mockResolvedValue(readyReports)
     render(<App client={client} />)
     await act(async () => {})
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(client.getReports).toHaveBeenCalledTimes(1)
+    await act(async () => receive({ sequence: 1, run_id: runID, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: readyReports.reports[0].id }))
     expect(client.getReports).toHaveBeenCalledTimes(2)
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
-    expect(client.getReports).toHaveBeenCalledTimes(3)
+    expect(client.getReports).toHaveBeenCalledTimes(2)
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
-    expect(client.getReports).toHaveBeenCalledTimes(3)
+    expect(client.getReports).toHaveBeenCalledTimes(2)
     expect(client.getComparisons).toHaveBeenCalledTimes(1)
   })
 
@@ -1218,9 +1240,11 @@ describe("desktop run workspace", () => {
     expect(client.getWorkspace).toHaveBeenCalledTimes(2)
   })
 
-  it("stops checking for an unavailable generated report after the brief generation window", async () => {
+  it("keeps long generation visible and exposes failure without repeatedly reading reports", async () => {
     vi.useFakeTimers()
     const client = desktopClient()
+    let receive!: (progress: ReportGenerationProgress) => void
+    vi.mocked(client.subscribeReportGeneration).mockImplementation((callback) => { receive = callback; return () => {} })
     client.workspace = {
       ...client.workspace, active_run_id: undefined,
       runs: [{ ...client.workspace.runs[0], status: "completed", updated_at: new Date().toISOString() }],
@@ -1228,9 +1252,17 @@ describe("desktop run workspace", () => {
     vi.mocked(client.getReports).mockResolvedValue({ schema_version: 1, reports: [] })
     render(<App client={client} />)
     await act(async () => {})
+    act(() => receive({ sequence: 1, run_id: client.workspace.runs[0].id, phase: "persisting", processed: 0, total: 0, elapsed_ms: 200 }))
     await act(async () => { await vi.advanceTimersByTimeAsync(62_000) })
     const reportReads = vi.mocked(client.getReports).mock.calls.length
-    expect(reportReads).toBeGreaterThan(1)
+    expect(reportReads).toBe(1)
+    expect(screen.getByText("正在校验并保存报告…")).toBeInTheDocument()
+    expect(within(screen.getByText("正在校验并保存报告…").closest('[role="status"]') as HTMLElement).queryByRole("progressbar")).not.toBeInTheDocument()
+    act(() => receive({ sequence: 2, run_id: client.workspace.runs[0].id, phase: "failed", processed: 0, total: 0, elapsed_ms: 62_000 }))
+    expect(screen.getByRole("alert")).toHaveTextContent("报告生成失败")
+    fireEvent.click(screen.getByRole("button", { name: "打开日志目录" }))
+    await act(async () => {})
+    expect(client.openDiagnosticsDirectory).toHaveBeenCalledOnce()
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
     expect(client.getReports).toHaveBeenCalledTimes(reportReads)
     expect(client.getWorkspace).toHaveBeenCalledTimes(1)

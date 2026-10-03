@@ -9,7 +9,6 @@ import (
 	"unsafe"
 
 	"github.com/894x/llm-test-studio/internal/application/reporting"
-	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func TestReportProjectionRetainedRunStateIsLightweight(t *testing.T) {
@@ -45,10 +44,6 @@ func TestReportProjectionQuerySortsBeforeLoadingWideDocuments(t *testing.T) {
 		context.Background(),
 		"EXPLAIN QUERY PLAN "+reportProjectionQuery,
 		reporting.MaxSnapshotReports,
-		domain.CurrentReportSchemaVersion,
-		MaxReportProjectionDocumentBytes,
-		domain.CurrentEntitySchemaVersion,
-		domain.CurrentEntitySchemaVersion,
 		MaxReportProjectionDocumentBytes,
 	)
 	if err != nil {
@@ -97,7 +92,6 @@ func TestReportProjectionQueryDoesNotLoadThePlanCatalog(t *testing.T) {
 
 func TestProjectionQueriesRejectLegacyFlatReports(t *testing.T) {
 	for name, query := range map[string]string{
-		"report":    reportProjectionQuery,
 		"workspace": workspaceProjectionQuery,
 	} {
 		t.Run(name, func(t *testing.T) {

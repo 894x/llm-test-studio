@@ -41,8 +41,8 @@ type serializedReportingQuery struct {
 }
 
 func (query serializedReportingQuery) Snapshot(ctx context.Context) (reporting.Snapshot, error) {
-	release := query.gate.enter()
-	defer release()
+	// Report summaries depend only on operational data. Their repository owns
+	// the read transaction; catalog file workflows must not delay this read.
 	return query.query.Snapshot(ctx)
 }
 

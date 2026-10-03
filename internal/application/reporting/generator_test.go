@@ -231,6 +231,9 @@ func (repository *fakeReportRepository) ListEvidence(context.Context, string) ([
 	return append([]domain.Evidence(nil), repository.evidence...), nil
 }
 func (repository *fakeReportRepository) CreateReport(_ context.Context, report domain.Report) error {
+	if err := report.Validate(); err != nil {
+		return err
+	}
 	repository.report = report
 	return nil
 }

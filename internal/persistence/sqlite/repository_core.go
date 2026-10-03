@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -29,7 +30,9 @@ type RepositoryOptions struct {
 // Repository uses a one-connection pool. database/sql reserves that connection
 // for each complete transaction and queues other operations with their context.
 type Repository struct {
-	db *sql.DB
+	db                 *sql.DB
+	reportProjectionMu sync.Mutex
+	reportProjections  map[string]cachedReportProjection
 }
 
 type rowQueryer interface {

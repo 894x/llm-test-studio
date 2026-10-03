@@ -1,4 +1,14 @@
 {
+  "generation": {
+    "loading_run": "Run finished. Preparing report…",
+    "loading_results": "Loading report results…",
+    "loading_evidence": "Loading report evidence…",
+    "building": "Summarizing report results…",
+    "persisting": "Validating and saving report…",
+    "ready": "Report generated. Updating report list…",
+    "failed": "Report generation failed. Check diagnostics logs.",
+    "openLogs": "Open logs"
+  },
   "search": {
     "label": "Search reports",
     "placeholder": "Verdict, plan, model, channel or ID"

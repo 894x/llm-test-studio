@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -41,6 +42,7 @@ func main() {
 	production.reportRunDiagnostic = desktopRunDiagnosticReporter(operator, log.Default())
 	production.reportCredentialCleanup = report
 	app := newDesktopApp(newProductionInitializer(production))
+	app.setEventEmitter(wailsruntime.EventsEmit)
 	configureDesktopDiagnostics(app, operator, openDirectory)
 	if err := wails.Run(desktopOptions(app, frontendAssets, report)); err != nil {
 		report(fmt.Errorf("run Wails desktop shell: %w", err))
@@ -86,7 +88,7 @@ func desktopRunDiagnosticReporter(operator *diagnostics.Logger, fallback *log.Lo
 		message := "run operation failed"
 		if diagnostic.ErrorCode == "phase_timing" {
 			level = diagnostics.LevelInfo
-			message = "run start phase completed"
+			message = "run phase completed"
 		} else if diagnostic.ErrorCode == "diagnostics_dropped" {
 			level = diagnostics.LevelWarn
 			message = "run diagnostics were dropped"
