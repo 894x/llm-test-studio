@@ -175,8 +175,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 711 || len(catalogSnapshot.Suites) != 44 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 711 file-backed cases and 44 scenario suites",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 717 || len(catalogSnapshot.Suites) != 44 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 717 file-backed cases and 44 scenario suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -191,8 +191,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 			runnable++
 		}
 	}
-	if runnable != 410 || disabled != 194 || manual != 107 {
-		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 410/194/107", runnable, disabled, manual)
+	if runnable != 424 || disabled != 186 || manual != 107 {
+		t.Fatalf("built-in case policy counts = runnable:%d disabled:%d manual:%d, want 424/186/107", runnable, disabled, manual)
 	}
 	reportSnapshot, err := dependencies.reports.Snapshot(context.Background())
 	if err != nil {
@@ -264,8 +264,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
 
-	if len(firstSnapshot.TestCases) != 711 || len(secondSnapshot.TestCases) != 711 {
-		t.Fatalf("case counts across restart = %d/%d, want 711/711", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
+	if len(firstSnapshot.TestCases) != 717 || len(secondSnapshot.TestCases) != 717 {
+		t.Fatalf("case counts across restart = %d/%d, want 717/717", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
 	if len(firstSnapshot.Suites) != 44 || len(secondSnapshot.Suites) != 44 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
 		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 44 scenario suites and no plans",
@@ -275,7 +275,7 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		target string
 		count  int
 	}{
-		"Kimi K3 官方基础套件":                  {target: "kimi-k3", count: 60},
+		"Kimi K3 官方基础套件":                  {target: "kimi-k3", count: 84},
 		"Kimi K2.7 Code 官方基础套件":           {target: "kimi-k2.7-code", count: 10},
 		"Kimi K2.7 Code Highspeed 官方基础套件": {target: "kimi-k2.7-code-highspeed", count: 10},
 		"Kimi K2.6 官方基础套件":                {target: "kimi-k2.6", count: 11},

@@ -5,10 +5,10 @@ All cases use the `openai-chat` wire protocol; Kimi names identify models, not p
 The desktop application groups runnable Kimi-oriented cases under `data/cases/openai-chat` into four model-specific foundation suites, alongside smaller connectivity suites. Shared cases are referenced by each applicable suite instead of being copied; the Run selects the model and channel.
 
 - The current model targets are `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, and `kimi-k2.6`.
-- The catalog exposes 82 enabled K3 cases across 11 dimensions. `Kimi K3 官方基础套件` references all 82 enabled cases, including the 10 media-heavy T3 cases. Their `default=false` setting excludes them from default individual Case selection, but running the whole suite includes them.
+- The catalog exposes 84 enabled K3 cases across 11 dimensions. `Kimi K3 官方基础套件` references all 84 enabled cases, including the 10 media-heavy T3 cases and the stop-runtime/cache workflow probes. Their `default=false` setting excludes them from default individual Case selection, but running the whole suite includes them.
 - `Kimi K2.7 Code 官方基础套件` and `Kimi K2.7 Code Highspeed 官方基础套件` contain 10 cases each.
 - `Kimi K2.6 官方基础套件` contains 11 cases.
-- The four foundation suites reference 85 unique enabled HTTP/SSE cases. Suite membership selects the Cases; the Run binds the model and channel.
+- The four foundation suites reference 87 unique enabled HTTP/SSE cases. Suite membership selects the Cases; the Run binds the model and channel.
 - Cases do not encode model targets. Suite names communicate intended coverage, so operators must bind a compatible model when running a suite.
 - K3-only cases cover always-on reasoning and `tool_choice=required`; K2.6 cases cover `thinking.type=enabled|disabled`; K2.7 Code and Highspeed share the preserved-thinking baseline.
 - Shared protocol, usage, auto/none tool choice, structured-output, and fixed-parameter baselines are maintained once and target all four models.
@@ -20,6 +20,7 @@ The desktop application groups runnable Kimi-oriented cases under `data/cases/op
 - Kimi-K3's fixed sampling contract has five independent cases for the official exact values and expects HTTP 400 for representative values immediately below or above each fixed value. The omitted-parameter case remains the recommended baseline.
 - The report's `must.tool_choice`, `must.thinking_switch`, and `must.structured_output` rows are derived aggregates, so they are not duplicated as no-op cases.
 - The report's `note.content_filter` row requires supplier-side manual confirmation and is not represented as an automated pass.
+- The K3 prefix-cache workflow uses two sequential requests and asserts the second response's `usage.prompt_tokens_details.cached_tokens`; it is a non-default provider-observation probe, not a guaranteed billing result for every compatible gateway.
 - `load-profile-32k.json` records the report's 32K load scenario, but the regular `api-audit` run does not automatically execute that paid 160-request workload.
 
 The K3 suite covers selected documented request boundaries with equivalence classes, numeric/cardinality boundaries, dependency tables, and workflow cases; it is not a claim of complete contract coverage. See [coverage-matrix.md](coverage-matrix.md) for exact coverage, execution tiers, documentation conflicts, and the remaining runner gaps for preserved-thinking replay and signed request headers.

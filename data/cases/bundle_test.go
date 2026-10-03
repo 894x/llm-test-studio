@@ -46,6 +46,8 @@ func TestBundleContainsCompleteV2Catalog(t *testing.T) {
 		"openai-chat/P026-param-fixed-frequency-penalty/case.json",
 		"openai-chat/P034-top-logprobs-requires-logprobs/case.json",
 		"openai-chat/P043-stop-item-33-bytes/case.json",
+		"openai-chat/K3-stop-runtime-truncation/case.json",
+		"openai-chat/K3-cache-prefix-hit/case.json",
 		"openai-chat/P052-max-completion-over-model-limit/case.json",
 		"openai-chat/F032-json-schema-missing-name/case.json",
 		"openai-chat/F040-dynamic-tool/case.json",
