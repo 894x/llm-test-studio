@@ -61,7 +61,7 @@ describe("quick task drafts", () => {
 
   it("restores safe history metadata and rejects inconsistent fields", () => {
     const payload = {
-      schema_version: 1, seed: 1, request_timeout_ms: 60000,
+      schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
       run_id: "11111111-1111-4111-8111-111111111111",
       suite: task,
       model: "model",
@@ -74,8 +74,28 @@ describe("quick task drafts", () => {
       { ...payload, inputs: { ...payload.inputs, duration: "5" } },
       { ...payload, base_url: "https://user:key@example.test" },
       { ...payload, run_id: "invalid" },
+      { ...payload, case_concurrency: undefined },
+      { ...payload, case_concurrency: 0 },
+      { ...payload, case_concurrency: 9 },
+      { ...payload, case_concurrency: 1.5 },
+      { ...payload, case_concurrency: "4" },
     ]) {
       expect(() => parseQuickTaskDetail(invalid)).toThrow(DesktopDataError)
+    }
+  })
+  it("defaults to four concurrent cases and validates overrides", () => {
+    const draft = {
+      ...createTaskDraft(task),
+      base_url: "https://example.test",
+      api_key: "private-test-key",
+      model: "model",
+    }
+    expect(quickTaskCommand(draft).command?.case_concurrency).toBe(4)
+    for (const concurrency of [1, 2, 3, 4, 8]) {
+      expect(quickTaskCommand(draft, concurrency).command?.case_concurrency).toBe(concurrency)
+    }
+    for (const concurrency of [0, -1, 1.5, 9, Number.NaN]) {
+      expect(quickTaskCommand(draft, concurrency).command).toBeUndefined()
     }
   })
   it("never persists credentials embedded in rejected URLs", () => {

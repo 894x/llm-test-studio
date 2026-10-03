@@ -2,6 +2,13 @@
   "title": "运行工作区",
   "description": "比较固定版本、追踪执行状态并检查可复现证据",
   "count": "{{count}} 次运行",
+  "caseConcurrency": {
+    "label": "Case 并发数",
+    "serial": "1 · 串行",
+    "option": "{{count}} 个并发",
+    "hint": "套件内同时执行的 Case 数量。默认 4 个；排查问题或需要顺序执行时可选 1。仅用于每个 Case 执行一次的套件。",
+    "invalid": "Case 并发数必须是 1 到 8 的整数。"
+  },
   "plans": {
     "aria": "测试计划",
     "title": "测试计划",
@@ -85,6 +92,7 @@
     "details": "详情"
   },
   "presentation": {
+    "caseConcurrency": "每个 Case 一次 · {{concurrency}} 个并发",
     "quickSuite": "按 Suite 执行",
     "failedRequests": "{{count}} 个请求未通过完整成功判定。",
     "failedConclusion": "运行结论未通过，请检查报告中的 SLA 与汇总。",

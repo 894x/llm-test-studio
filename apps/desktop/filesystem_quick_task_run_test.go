@@ -81,6 +81,8 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	}
 	var mu sync.Mutex
 	var messages []string
+	var inFlight, peakInFlight int
+	allStarted := make(chan struct{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer test-temporary-key" {
 			t.Error("missing temporary credential")
@@ -99,10 +101,25 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 			t.Error("wrong upstream target or missing message")
 		}
 		mu.Lock()
+		inFlight++
+		peakInFlight = max(peakInFlight, inFlight)
 		if len(body.Messages) > 0 {
 			messages = append(messages, body.Messages[0].Content)
 		}
+		if len(messages) == 4 {
+			close(allStarted)
+		}
 		mu.Unlock()
+		defer func() {
+			mu.Lock()
+			inFlight--
+			mu.Unlock()
+		}()
+		select {
+		case <-allStarted:
+		case <-request.Context().Done():
+			return
+		}
 		time.Sleep(15 * time.Millisecond)
 		if failRequests {
 			writer.Header().Set("Content-Type", "application/json")
@@ -176,8 +193,12 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 		t.Fatal(err)
 	}
 	mu.Lock()
-	if len(messages) != 4 || messages[0] != "edited" || messages[2] != "hi" {
-		t.Errorf("Suite order or request count changed: %v", messages)
+	counts := map[string]int{}
+	for _, message := range messages {
+		counts[message]++
+	}
+	if len(messages) != 4 || counts["edited"] != 1 || counts["hi"] != 1 || peakInFlight != 4 {
+		t.Errorf("Suite executions or concurrency changed: messages=%v peak=%d", messages, peakInFlight)
 	}
 	mu.Unlock()
 	projections, err := operational.ListRunProjections(ctx)
@@ -196,25 +217,23 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if err != nil || len(reportList.Reports) != 1 || reportList.Reports[0].ID != report.ID {
 		t.Fatalf("desktop cannot load sealed quick report: %+v, %v", reportList, err)
 	}
-	if detail, err := app.GetReportDetail(report.ID); err != nil || len(detail.Entries) != 1 {
+	if detail, err := app.GetReportDetail(report.ID); err != nil || len(detail.Entries) != 1 || detail.Entries[0].Load.Concurrency != 4 {
 		t.Fatalf("desktop cannot open sealed quick report: %+v, %v", detail, err)
 	}
 	if report.Conclusion.Passed == failRequests || report.PlanSnapshot.QuickTask == nil || len(report.CaseResults) != 4 {
 		t.Fatalf("quick report was not sealed correctly: %v", err)
 	}
-	if elapsed := report.Metrics["elapsed_seconds"].Value; elapsed < 0.05 {
-		t.Errorf("sequential task timeline reset between Cases: elapsed=%fs", elapsed)
+	if report.PlanSnapshot.Entries[0].Load.Concurrency != 4 {
+		t.Fatal("report did not retain effective case concurrency")
 	}
-	var previousFinish float64
 	for _, raw := range report.Timeline {
 		var item struct {
 			Started  float64 `json:"started_offset_ms"`
 			Finished float64 `json:"finished_offset_ms"`
 		}
-		if err := json.Unmarshal(raw, &item); err != nil || item.Started < previousFinish || item.Finished <= item.Started {
-			t.Fatalf("sequential request timeline overlaps: %s, %v", raw, err)
+		if err := json.Unmarshal(raw, &item); err != nil || item.Started < 0 || item.Finished <= item.Started {
+			t.Fatalf("invalid concurrent request timeline: %s, %v", raw, err)
 		}
-		previousFinish = item.Finished
 	}
 	view, err := workspace.New(repository).Snapshot(ctx)
 	if err != nil || len(view.Runs) != 1 || view.Runs[0].Completed != 4 || view.Runs[0].Planned != 4 || view.Runs[0].Source != "quick_task" {
@@ -240,14 +259,14 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	replayApp.onStartup(ctx)
 	defer replayApp.shutdown()
 	history, err := replayApp.GetQuickTask(id)
-	if err != nil || history.RunID != id || history.CredentialRunID != id || history.Model != "arbitrary-model" || string(history.Inputs["prompt"]) != `"edited"` {
+	if err != nil || history.RunID != id || history.CaseConcurrency != 4 || history.CredentialRunID != id || history.Model != "arbitrary-model" || string(history.Inputs["prompt"]) != `"edited"` {
 		t.Fatalf("native history after reopening: %+v, %v", history, err)
 	}
 	historyJSON, _ := json.Marshal(history)
 	if strings.Contains(string(historyJSON), "test-temporary-key") || strings.Contains(string(historyJSON), "case_definitions") {
 		t.Fatal("native history leaked private data")
 	}
-	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, Seed: history.Seed, RequestTimeoutMS: history.RequestTimeoutMS, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs})
+	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, Seed: history.Seed, CaseConcurrency: history.CaseConcurrency, RequestTimeoutMS: history.RequestTimeoutMS, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs})
 	if err != nil || replayID == id {
 		t.Fatalf("replay after restart: %s, %v", replayID, err)
 	}

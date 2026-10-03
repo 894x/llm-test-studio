@@ -1,7 +1,7 @@
 import { DesktopDataError } from "@/app/data-error"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
-import type { StartQuickTaskCommand, StartRunTargetCommand, WorkspaceSnapshot } from "@/features/runs/data"
+import { DEFAULT_CASE_CONCURRENCY, type StartQuickTaskCommand, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
   parseComparisonSnapshot,
@@ -306,7 +306,10 @@ export function createFixtureClient(
 				case_count: plan.case_count, observed_case_count: 0,
 				entry_progress: [], model_id: model.id, model_revision: model.revision, model_name: model.name,
 				channel_id: channel.id, channel_revision: channel.revision, channel_name: channel.name,
-				status: "queued", conclusion: "none", load_mode: "fixed_concurrency", concurrency: 1,
+				status: "queued", conclusion: "none", load_mode: plan.entries[0].load_mode,
+				concurrency: plan.entries[0].load_mode === "single"
+          ? Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, plan.entries[0].case_count)
+          : plan.entries[0].concurrency,
 				rate_per_second: 0, planned: plan.case_count, duration_ms: 0, completed: 0,
 				passed: 0, failed: 0, observed: 0, indeterminate: 0, artifact_count: 0,
 				started_at: now, updated_at: now,
@@ -332,12 +335,12 @@ export function createFixtureClient(
         entry_progress: [{ entry_id: id, name: suite.name, case_count: suite.cases.length, observed_case_count: 0, status: "queued" }],
         model_id: nextID(), model_revision: 1, model_name: command.model,
         channel_id: channel?.id ?? nextID(), channel_revision: channel?.revision ?? 1, channel_name: channel?.name ?? new URL(command.base_url!).host,
-        status: "queued", conclusion: "none", load_mode: "fixed_concurrency", concurrency: 1,
+        status: "queued", conclusion: "none", load_mode: "single", concurrency: Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, suite.case_count),
         rate_per_second: 0, planned: suite.case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed:0,indeterminate:0,
         artifact_count: 0, started_at: now, updated_at: now,
       })
       workspace.active_run_id = id
-      quickTasks.set(id, { schema_version: 1, seed:command.seed,request_timeout_ms:command.request_timeout_ms, run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
+      quickTasks.set(id, { schema_version: 1, seed:command.seed,request_timeout_ms:command.request_timeout_ms, case_concurrency: Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, suite.case_count), run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
       return id
     },
     async getQuickTask(runId) {

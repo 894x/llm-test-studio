@@ -48,6 +48,7 @@ import type { ComparisonSnapshot } from "@/features/comparisons/data"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
 import {
+  DEFAULT_CASE_CONCURRENCY,
   formatTargetDuration,
   presentWorkspace,
   type RunRecord,
@@ -56,6 +57,7 @@ import {
   type TestPlan,
   type WorkspaceSnapshot,
 } from "./data"
+import { CaseConcurrencyField } from "./case-concurrency-field"
 import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
 
 type ActiveTaskState = "queued" | "starting" | "running" | "draining"
@@ -430,9 +432,13 @@ export function NewRunSheet({
 	const [selectedModel, setSelectedModel] = useState("")
 	const [selectedChannel, setSelectedChannel] = useState("")
   const [startError, setStartError] = useState("")
+  const [caseConcurrency, setCaseConcurrency] = useState(DEFAULT_CASE_CONCURRENCY)
   const effectiveSelectedPlan = plans.some((plan) => plan.id === selectedPlan)
     ? selectedPlan
     : (plans[0]?.id ?? "")
+  const hasSinglePassEntries = catalog.plans
+    .find((plan) => plan.id === effectiveSelectedPlan)?.entries
+    .some((entry) => entry.load_mode === "single") ?? false
 	const models = useMemo(() => eligibleRuntimeModels(catalog, effectiveSelectedPlan), [catalog, effectiveSelectedPlan])
 	const effectiveSelectedModel = models.some((model) => model.id === selectedModel) ? selectedModel : (models[0]?.id ?? "")
 	const channels = useMemo(
@@ -449,6 +455,7 @@ export function NewRunSheet({
         plan_id: effectiveSelectedPlan,
         model_id: effectiveSelectedModel,
         channel_id: effectiveSelectedChannel,
+        case_concurrency: caseConcurrency,
       })
       setOpen(false)
     } catch (error) {
@@ -529,6 +536,7 @@ export function NewRunSheet({
           <div className="border-t pt-3 text-[11px] leading-5 text-muted-foreground">
             {t("newRun.credentialNote")}
           </div>
+          {hasSinglePassEntries ? <CaseConcurrencyField value={caseConcurrency} onChange={setCaseConcurrency} disabled={commandPending} /> : null}
           {startError ? (
             <p role="alert" className="text-xs text-destructive">
               {startError}

@@ -30,10 +30,12 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { CatalogSnapshot, CatalogSuite } from "@/features/catalog/data"
-import { isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
+import { DEFAULT_CASE_CONCURRENCY, isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
+import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
 import type { ReportSnapshot } from "@/features/reports/data"
 import { QuickPerformanceSheet, type QuickPerformanceConnection } from "./quick-performance-sheet"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
+import { cn } from "@/lib/utils"
 
 type Actions = Pick<
   DesktopClient,
@@ -81,6 +83,7 @@ export function QuickTaskWorkspace({
   const performanceTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState("")
+  const [caseConcurrency, setCaseConcurrency] = useState(DEFAULT_CASE_CONCURRENCY)
   const [refreshError, setRefreshError] = useState(false)
   const [performanceCommand, setPerformanceCommand] = useState<QuickPerformanceConnection | null>(
     null,
@@ -149,7 +152,7 @@ export function QuickTaskWorkspace({
     }
   }
   const validCommand = (element: Element) => {
-    const checked = quickTaskCommand(form)
+    const checked = quickTaskCommand(form, caseConcurrency)
     if (missingChannel) checked.errors.channel_id = t("task.missingChannel")
     setErrors(checked.errors)
     if (Object.keys(checked.errors).length) {
@@ -190,6 +193,7 @@ export function QuickTaskWorkspace({
     try {
       const detail = await actions.getQuickTask(id)
       update(restoreTaskDraft(detail, form))
+      setCaseConcurrency(detail.case_concurrency)
       onRunSelected(id)
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
@@ -438,57 +442,86 @@ export function QuickTaskWorkspace({
                         </Button>
                       ) : null)}
                   </TaskField>
-                  <fieldset disabled={!!pending} className="space-y-3">
+                  <fieldset disabled={!!pending} className="@container/quick-task-parameters min-w-0 space-y-3">
                     <legend className="mb-3 text-sm font-semibold">{t("task.parameters")}</legend>
-                    <TaskField id="seed" label={t("task.seed")} error={errors.seed}><Input id="quick-task-seed" type="number" min={0} max={Number.MAX_SAFE_INTEGER} value={form.seed} onChange={event => update({ ...form, seed: Number(event.target.value) })} /></TaskField>
-                    <TaskField id="request_timeout_ms" label={t("task.requestTimeout")} error={errors.request_timeout_ms}><Input id="quick-task-request_timeout_ms" type="number" min={1} value={form.request_timeout_ms} onChange={event => update({ ...form, request_timeout_ms: Number(event.target.value) })} /></TaskField>
-                    {task.inputs.map((input) => (
-                      <TaskField
-                        key={input.key}
-                        id={`input.${input.key}`}
-                        label={input.label}
-                        error={errors[`input.${input.key}`]}
-                      >
-                        {input.type === "boolean" ? (
-                          <Checkbox
-                            id={`quick-task-input.${input.key}`}
-                            checked={form.inputs[input.key] === true}
-                            onCheckedChange={(checked) =>
-                              update({
-                                ...form,
-                                inputs: { ...form.inputs, [input.key]: checked === true },
-                              })
-                            }
-                          />
-                        ) : (input.type === "number" || input.type === "integer") ? (
-                          <Input
-                            id={`quick-task-input.${input.key}`}
-                            type="number"
-                            step="any"
-                            value={String(form.inputs[input.key] ?? "")}
-                            aria-invalid={!!errors[`input.${input.key}`] || undefined}
-                            onChange={(event) =>
-                              update({
-                                ...form,
-                                inputs: { ...form.inputs, [input.key]: event.target.value },
-                              })
-                            }
-                          />
-                        ) : (
-                          <Textarea
-                            id={`quick-task-input.${input.key}`}
-                            value={String(form.inputs[input.key] ?? "")}
-                            className="min-h-24"
-                            onChange={(event) =>
-                              update({
-                                ...form,
-                                inputs: { ...form.inputs, [input.key]: event.target.value },
-                              })
-                            }
-                          />
-                        )}
+                    <div className="grid min-w-0 grid-cols-1 items-start gap-3 @xs/quick-task-parameters:grid-cols-2 @md/quick-task-parameters:grid-cols-3">
+                      <CaseConcurrencyField
+                        value={caseConcurrency}
+                        onChange={setCaseConcurrency}
+                        disabled={!!pending}
+                        externalDescriptionId="quick-task-case-concurrency-hint"
+                      />
+                      <TaskField id="seed" label={t("task.seed")} error={errors.seed}>
+                        <Input
+                          id="quick-task-seed"
+                          type="number"
+                          min={0}
+                          max={Number.MAX_SAFE_INTEGER}
+                          value={form.seed}
+                          onChange={(event) => update({ ...form, seed: Number(event.target.value) })}
+                        />
                       </TaskField>
-                    ))}
+                      <TaskField id="request_timeout_ms" label={t("task.requestTimeout")} error={errors.request_timeout_ms}>
+                        <Input
+                          id="quick-task-request_timeout_ms"
+                          type="number"
+                          min={1}
+                          value={form.request_timeout_ms}
+                          onChange={(event) => update({ ...form, request_timeout_ms: Number(event.target.value) })}
+                        />
+                      </TaskField>
+                      <p id="quick-task-case-concurrency-hint" className="col-span-full text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+                        {t("runs:caseConcurrency.hint")}
+                      </p>
+                      {task.inputs.map((input) => (
+                        <TaskField
+                          key={input.key}
+                          id={`input.${input.key}`}
+                          label={input.label}
+                          error={errors[`input.${input.key}`]}
+                          className={input.type === "boolean" || input.type === "number" || input.type === "integer" ? undefined : "col-span-full"}
+                        >
+                          {input.type === "boolean" ? (
+                            <Checkbox
+                              id={`quick-task-input.${input.key}`}
+                              checked={form.inputs[input.key] === true}
+                              onCheckedChange={(checked) =>
+                                update({
+                                  ...form,
+                                  inputs: { ...form.inputs, [input.key]: checked === true },
+                                })
+                              }
+                            />
+                          ) : (input.type === "number" || input.type === "integer") ? (
+                            <Input
+                              id={`quick-task-input.${input.key}`}
+                              type="number"
+                              step="any"
+                              value={String(form.inputs[input.key] ?? "")}
+                              aria-invalid={!!errors[`input.${input.key}`] || undefined}
+                              onChange={(event) =>
+                                update({
+                                  ...form,
+                                  inputs: { ...form.inputs, [input.key]: event.target.value },
+                                })
+                              }
+                            />
+                          ) : (
+                            <Textarea
+                              id={`quick-task-input.${input.key}`}
+                              value={String(form.inputs[input.key] ?? "")}
+                              className="min-h-24"
+                              onChange={(event) =>
+                                update({
+                                  ...form,
+                                  inputs: { ...form.inputs, [input.key]: event.target.value },
+                                })
+                              }
+                            />
+                          )}
+                        </TaskField>
+                      ))}
+                    </div>
                   </fieldset>
                   <p className="text-[11px] text-muted-foreground">{t("task.draftNote")}</p>
                   <div className="flex flex-wrap gap-2">
@@ -676,15 +709,17 @@ function TaskField({
   label,
   error,
   children,
+  className,
 }: {
   id: string
   label: string
   error?: string
   children: ReactNode
+  className?: string
 }) {
   return (
-    <Field className="block min-w-0 space-y-2" data-invalid={!!error || undefined}>
-      <FieldLabel htmlFor={`quick-task-${id}`}>{label}</FieldLabel>
+    <Field className={cn("block min-w-0 space-y-2", className)} data-invalid={!!error || undefined}>
+      <FieldLabel htmlFor={`quick-task-${id}`} className="[overflow-wrap:anywhere]">{label}</FieldLabel>
       {children}
       {error ? <FieldError id={`quick-task-${id}-error`}>{error}</FieldError> : null}
     </Field>

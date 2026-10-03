@@ -83,6 +83,20 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("groups short parameters while keeping long inputs and the shared hint full width", () => {
+    setup()
+    const concurrency = screen.getByRole("combobox", { name: "Case 并发数" })
+    const grid = concurrency.closest('[data-slot="field"]')!.parentElement!
+    for (const control of [screen.getByLabelText("根随机种子"), screen.getByLabelText("Case 超时（ms）"), screen.getByLabelText("时长"), screen.getByRole("checkbox", { name: "音频" })]) {
+      expect(control.closest('[data-slot="field"]')!.parentElement).toBe(grid)
+    }
+    expect(screen.getByLabelText("视频提示词").closest('[data-slot="field"]')).toHaveClass("col-span-full")
+    const hint = document.getElementById(concurrency.getAttribute("aria-describedby")!)!
+    expect(hint).toHaveClass("col-span-full")
+    expect(hint.parentElement).toBe(grid)
+    expect(concurrency).toHaveAccessibleDescription(hint.textContent!)
+  })
+
   it("renders typed Suite inputs, focuses missing fields, and sends a temporary video task", async () => {
     const user = userEvent.setup()
     const actions = setup()
@@ -100,7 +114,7 @@ describe("Suite quick task workspace", () => {
     await waitFor(() =>
       expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
         suite_id: task.id,
-        seed: 1, request_timeout_ms: 60000,
+        seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
         model: "video-model",
         base_url: "https://example.test",
         api_key: "private-key",
@@ -155,7 +169,7 @@ describe("Suite quick task workspace", () => {
       )
       const historicalTask = { ...task, revision: 7 }
       actions.getQuickTask.mockResolvedValue({
-        schema_version: 1, seed: 1, request_timeout_ms: 60000,
+        schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 2,
         run_id: run.id,
         suite: historicalTask,
         model: "past-model",
@@ -170,7 +184,7 @@ describe("Suite quick task workspace", () => {
       await user.click(screen.getByRole("button", { name: "开始测试" }))
       expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
-          seed: 1, request_timeout_ms: 60000,
+          seed: 1, request_timeout_ms: 60000, case_concurrency: 2,
           source_run_id: run.id,
           inputs: { prompt: "past prompt edited", duration: 8, audio: true },
         }),
@@ -194,7 +208,7 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
       suite_id: selected.id,
-      seed: 1, request_timeout_ms: 60000,
+      seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
       channel_id: channel.id,
       model: "upstream",
       inputs: { prompt: "hello" },

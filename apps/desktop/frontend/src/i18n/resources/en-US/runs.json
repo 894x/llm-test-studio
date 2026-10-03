@@ -2,6 +2,13 @@
   "title": "Run workspace",
   "description": "Compare pinned versions, track execution, and inspect reproducible evidence",
   "count": "{{count}} runs",
+  "caseConcurrency": {
+    "label": "Case concurrency",
+    "serial": "1 · Sequential",
+    "option": "{{count}} concurrent cases",
+    "hint": "Cases running at the same time within a suite. Defaults to 4; choose 1 for troubleshooting or ordered execution. Applies to suites that execute each case once.",
+    "invalid": "Case concurrency must be an integer between 1 and 8."
+  },
   "plans": {
     "aria": "Test plans",
     "title": "Test plans",
@@ -85,6 +92,7 @@
     "details": "Details"
   },
   "presentation": {
+    "caseConcurrency": "Each case once · {{concurrency}} concurrent cases",
     "quickSuite": "Run Suite members",
     "failedRequests": "{{count}} requests did not meet the complete success criteria.",
     "failedConclusion": "The run did not pass; review the SLA and summary in the report.",

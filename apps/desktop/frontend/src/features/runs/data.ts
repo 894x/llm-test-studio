@@ -1,5 +1,11 @@
 import type { CatalogPlanParameterValue } from "@/features/catalog/data"
 import { translateDesktop as tx, translateRunFailureSummary } from "@/i18n/runtime"
+
+export const DEFAULT_CASE_CONCURRENCY = 4
+
+export function isCaseConcurrency(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 8
+}
 export type CoreRunStatus =
   | "queued"
   | "starting"
@@ -17,6 +23,7 @@ export interface StartRunTargetCommand {
   plan_id: string
   model_id: string
   channel_id: string
+  case_concurrency?: number
 }
 
 export interface StartQuickTaskCommand {
@@ -25,6 +32,7 @@ export interface StartQuickTaskCommand {
   suite_id: string
   seed: number
   request_timeout_ms: number
+  case_concurrency?: number
   model: string
   channel_id?: string
   base_url?: string
@@ -224,13 +232,14 @@ function describeLoad(plan: WorkspacePlan, t: RunTranslator): string {
 }
 
 function describeRunLoad(run: WorkspaceRun, t: RunTranslator): string {
-  if (run.source === "quick_task") return t("presentation.quickSuite")
+  if (run.source === "quick_task" || run.load_mode === "single") {
+    return t("presentation.caseConcurrency", { concurrency: run.concurrency })
+  }
   if (run.planned === 0 && run.duration_ms > 0) {
     const rate = run.load_mode === "open_loop" ? `${run.rate_per_second} RPS · ` : ""
     return t("presentation.continuous", { rate, duration: formatTargetDuration(run.duration_ms) })
   }
   if (run.load_mode === "open_loop") return t("presentation.openLoop", { rate: run.rate_per_second })
-  if (run.load_mode === "single") return t("presentation.single")
   return t("presentation.fixedTotal", { concurrency: run.concurrency })
 }
 
@@ -268,7 +277,7 @@ function formatStartedAt(value: string, locale: string): string {
 }
 
 const DEFAULT_RUN_MESSAGES: Record<string, string> = {
-  "presentation.quickSuite": "runs:presentation.quickSuite",
+  "presentation.caseConcurrency": "runs:presentation.caseConcurrency",
   "presentation.failedRequests": "desktop:runs_value_requests_failed_the_full_success_criteria",
   "presentation.failedConclusion": "desktop:runs_the_run_did_not_pass_check_the_report_sla_and",
   "presentation.continuous": "desktop:runs_value_for_value",

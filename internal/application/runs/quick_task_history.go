@@ -13,6 +13,7 @@ import (
 type QuickTaskDetail struct {
 	Seed             uint64                     `json:"seed"`
 	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
+	CaseConcurrency  uint32                     `json:"case_concurrency"`
 	SchemaVersion    int                        `json:"schema_version"`
 	RunID            string                     `json:"run_id"`
 	Suite            QuickTaskSuite             `json:"suite"`
@@ -53,8 +54,17 @@ func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskD
 		return QuickTaskDetail{}, err
 	}
 	task := snapshot.QuickTask
-	return QuickTaskDetail{SchemaVersion: 1, RunID: runID, Suite: QuickTaskSuite{Suite: *snapshot.Entries[0].Suite, CaseCount: len(snapshot.Entries[0].Cases)}, Model: snapshot.Channel.UpstreamModelName,
-		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID, CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot), Inputs: snapshot.Entries[0].Parameters, Seed: snapshot.PlanDocument.Seed, RequestTimeoutMS: snapshot.Entries[0].Load.RequestTimeoutMS}, nil
+	entry := snapshot.Entries[0]
+	return QuickTaskDetail{
+		SchemaVersion: 1, RunID: runID,
+		Suite:   QuickTaskSuite{Suite: *entry.Suite, CaseCount: len(entry.Cases)},
+		Model:   snapshot.Channel.UpstreamModelName,
+		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID,
+		CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot),
+		Inputs:          entry.Parameters, Seed: snapshot.PlanDocument.Seed,
+		RequestTimeoutMS: entry.Load.RequestTimeoutMS,
+		CaseConcurrency:  entry.Load.Concurrency,
+	}, nil
 }
 
 func (service *Service) quickTaskSnapshot(ctx context.Context, runID string) (domain.RunSnapshot, error) {

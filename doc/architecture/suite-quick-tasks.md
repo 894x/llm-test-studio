@@ -93,8 +93,25 @@ input including defaults, and the saved channel ID when used. Case definitions
 in the snapshot retain their authored values. A temporary API key is held only
 in a lease closed by the shared lifecycle; no keyring entry is created.
 
-The router runs members sequentially in Suite order. Plan-scheduled members
-receive one request each; Case-scheduled members keep their own sample schedule.
+Single-pass Suite execution schedules complete Case workflows with a bounded
+concurrency limit. The optional `case_concurrency` start setting defaults to 4
+and accepts integers from 1 through 8; desktop controls offer 1, 2, 4, and 8.
+The effective limit is the smaller of this setting and the Suite member count.
+Each Case runs once, and steps inside a Case remain sequential. Plan entries
+still execute in order. Fixed-concurrency and open-loop load entries retain
+their configured load profiles.
+
+The effective limit is stored in the existing `entry.load.concurrency` and in
+the frozen Plan document, so reports and `GetQuickTask.case_concurrency` read
+the persisted value. Authored catalog Plans are not modified. Selecting 1 is
+the supported sequential policy; existing snapshots with an explicit limit of
+1 remain valid current-format data. No snapshot/schema upgrade is required.
+The history DTO now requires `case_concurrency`; frontend and native bindings
+must be deployed together. Pending form selections are local interaction state;
+restoring a Run restores its recorded limit.
+
+Plan-scheduled members receive one execution each;
+load-scheduled members keep their own sample schedule.
 Request IDs are distinct across members and time offsets share a Run origin.
 The workspace therefore labels these records `source: "quick_task"` and reports
 observed request counts with `planned: 0`; the member count is not a request

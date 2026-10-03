@@ -195,6 +195,7 @@
     "previous": "上一页",
     "next": "下一页",
     "loadSummary": "{{mode}} · 并发 {{concurrency}} · {{count}} 次执行 · 超时 {{timeout}} ms",
+    "caseConcurrencySummary": "每个 Case 一次 · {{concurrency}} 个并发 · 超时 {{timeout}} ms",
     "warmup": "预热 {{count}} 次",
     "poll_interval_ms": "轮询间隔",
     "task_timeout_ms": "任务超时",

@@ -37,9 +37,10 @@ type Repository interface {
 }
 
 type StartCommand struct {
-	PlanID    string `json:"plan_id"`
-	ModelID   string `json:"model_id"`
-	ChannelID string `json:"channel_id"`
+	PlanID          string `json:"plan_id"`
+	ModelID         string `json:"model_id"`
+	ChannelID       string `json:"channel_id"`
+	CaseConcurrency uint32 `json:"case_concurrency,omitempty"`
 }
 
 type CredentialStore interface {
@@ -65,7 +66,7 @@ func (request ExecutionRequest) LoadProfile() domain.LoadProfile {
 	profile := request.Entry.Load
 	if profile.Mode == domain.LoadSingle {
 		profile.Mode = domain.LoadFixedConcurrency
-		profile.Concurrency = 1
+		profile.Concurrency = min(profile.Concurrency, uint32(len(request.Cases)))
 		profile.RequestCount = uint64(len(request.Cases))
 	}
 	return profile
@@ -237,6 +238,10 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	caseConcurrency, err := resolveCaseConcurrency(command.CaseConcurrency)
+	if err != nil {
+		return "", err
+	}
 	service.mu.Lock()
 	if service.closed {
 		service.mu.Unlock()
@@ -274,6 +279,15 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	entries, err := service.resolveEntries(ctx, plan)
 	if err != nil {
 		return "", err
+	}
+	// The frozen plan captures run-time overrides without changing the catalog.
+	plan.Entries = append([]domain.PlanEntry{}, plan.Entries...)
+	for index := range entries {
+		if entries[index].Load.Mode == domain.LoadSingle {
+			concurrency := min(caseConcurrency, uint32(len(entries[index].Cases)))
+			entries[index].Load.Concurrency = concurrency
+			plan.Entries[index].Load.Concurrency = concurrency
+		}
 	}
 	timings = append(timings, startPhaseTiming{operation: "start_run_resolve_entries", duration: time.Since(phaseStartedAt)})
 	if channel.CredentialID == "" || channel.Validate() != nil {

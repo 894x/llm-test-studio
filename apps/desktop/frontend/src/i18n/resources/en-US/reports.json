@@ -195,6 +195,7 @@
     "previous": "Previous",
     "next": "Next",
     "loadSummary": "{{mode}} · concurrency {{concurrency}} · {{count}} executions · timeout {{timeout}} ms",
+    "caseConcurrencySummary": "Each case once · {{concurrency}} concurrent cases · timeout {{timeout}} ms",
     "warmup": "Warmup {{count}}",
     "poll_interval_ms": "Poll interval",
     "task_timeout_ms": "Task timeout",

@@ -351,7 +351,7 @@ function SuiteReportSection({
       ) : null}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b px-3 py-2 text-[11px] text-muted-foreground">
         <VerificationCounts summary={suite.verification} />
-        <span>{t("protocolDesign.loadSummary", { mode: suite.load.mode, concurrency: suite.load.concurrency, count: suite.load.request_count, timeout: suite.load.request_timeout_ms })}</span>
+        <span>{t(suite.load.mode === "single" ? "protocolDesign.caseConcurrencySummary" : "protocolDesign.loadSummary", { mode: suite.load.mode, concurrency: suite.load.concurrency, count: suite.load.request_count, timeout: suite.load.request_timeout_ms })}</span>
         <span>Seed {suite.seed}</span>
         <span>{t("protocolDesign.warmup", { count: suite.warmup_count })}</span>
         {Object.entries(suite.settings).map(([key, value]) => <span key={key}>{t(`protocolDesign.${key}`)}: {value} ms</span>)}

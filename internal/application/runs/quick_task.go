@@ -24,6 +24,7 @@ type QuickTaskCommand struct {
 	SuiteID          string                     `json:"suite_id"`
 	Seed             uint64                     `json:"seed"`
 	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
+	CaseConcurrency  uint32                     `json:"case_concurrency,omitempty"`
 	Model            string                     `json:"model"`
 	ChannelID        string                     `json:"channel_id,omitempty"`
 	BaseURL          string                     `json:"base_url,omitempty"`
@@ -44,6 +45,10 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		return "", ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	caseConcurrency, err := resolveCaseConcurrency(command.CaseConcurrency)
+	if err != nil {
 		return "", err
 	}
 	service.mu.Lock()
@@ -123,7 +128,10 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if timeout == 0 {
 		timeout = 60000
 	}
-	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: timeout}
+	load := domain.LoadProfile{
+		Mode: domain.LoadSingle, Concurrency: min(caseConcurrency, uint32(len(cases))),
+		RequestCount: 1, RequestTimeoutMS: timeout,
+	}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{}}
 	mapping := domain.ChannelModel{EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID, UpstreamModelName: command.Model}
 	entry := domain.RunEntrySnapshot{EntryID: meta.ID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite,

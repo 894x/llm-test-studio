@@ -51,7 +51,7 @@ describe("NewRunSheet video execution", () => {
     catalog.channel_models = [{ id: "77777777-7777-4777-8777-777777777779", revision: 1, channel_id: channelID, model_id: modelID, upstream_model_name: "video-model" }]
     catalog.test_cases = [{ ...catalog.test_cases[0], id: caseID, protocol, type: protocol }]
     catalog.suites = [{ ...catalog.suites[0], id: suiteID, protocol, cases: [{ case_id: caseID }], case_count: 1 }]
-    catalog.plans = [{ ...catalog.plans[0], id: planID, protocol, entries: [{ ...catalog.plans[0].entries[0], target_id: suiteID, case_count: 1 }] }]
+    catalog.plans = [{ ...catalog.plans[0], id: planID, protocol, entries: [{ ...catalog.plans[0].entries[0], target_id: suiteID, case_count: 1, load_mode: "single", concurrency: 1, request_count: 1 }] }]
     const onStartRun = vi.fn(async () => undefined)
 	const secondChannelID = "33333333-3333-4333-8333-333333333338"
 	catalog.channels.push({ ...catalog.channels[0], id: secondChannelID, name: "第二渠道" })
@@ -71,12 +71,27 @@ describe("NewRunSheet video execution", () => {
 	await user.click(within(dialog).getByRole("combobox", { name: "执行渠道" }))
 	await user.click(screen.getByRole("option", { name: "第二渠道" }))
 	expect(within(dialog).getByRole("button", { name: "开始运行" })).toBeEnabled()
+	await user.click(within(dialog).getByRole("combobox", { name: "Case 并发数" }))
+	await user.click(screen.getByRole("option", { name: "8 个并发" }))
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
 
     expect(onStartRun).toHaveBeenCalledWith({
       plan_id: planID,
       model_id: modelID,
       channel_id: secondChannelID,
+      case_concurrency: 8,
     })
   })
+})
+
+it("does not expose a Case override for load-only Plans", async () => {
+  const user = userEvent.setup()
+  render(<NewRunSheet
+    plans={[{ id: FIXTURE_CATALOG.plans[0].id, name: "负载计划", description: "固定并发", caseCount: 4, runCount: 0 }]}
+    catalog={FIXTURE_CATALOG}
+    commandPending={false}
+    onStartRun={vi.fn(async () => undefined)}
+  />)
+  await user.click(screen.getByRole("button", { name: "新建运行" }))
+  expect(within(screen.getByRole("dialog")).queryByRole("combobox", { name: "Case 并发数" })).not.toBeInTheDocument()
 })

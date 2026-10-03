@@ -108,7 +108,7 @@ describe("Wails desktop client", () => {
   it("loads only safe task history and rejects a different Run identity", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const runID = FIXTURE_WORKSPACE.runs[0].id
-    const detail = { schema_version: 1, seed: 1, request_timeout_ms: 60000, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
+    const detail = { schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 4, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
     binding.GetQuickTask.mockResolvedValueOnce({ ...detail, api_key: "private-key", case_definitions: [{ raw: "hidden" }] })
     await expect(createDesktopClient().getQuickTask(runID)).resolves.toEqual(detail)
     expect(binding.GetQuickTask).toHaveBeenCalledExactlyOnceWith(runID)

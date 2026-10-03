@@ -867,6 +867,7 @@ describe("desktop run workspace", () => {
 			plan_id: FIXTURE_WORKSPACE.plans[1].id,
 			model_id: FIXTURE_CATALOG.models[0].id,
 			channel_id: FIXTURE_CATALOG.channels[0].id,
+    case_concurrency: 4,
 		})
   })
 

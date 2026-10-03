@@ -1,6 +1,6 @@
 import { DesktopDataError } from "@/app/data-error"
 import { parseSuite, isUUID, isJSONValue, type CatalogSuite } from "@/features/catalog/data"
-import type { StartQuickTaskCommand } from "@/features/runs/data"
+import { DEFAULT_CASE_CONCURRENCY, isCaseConcurrency, type StartQuickTaskCommand } from "@/features/runs/data"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { connectionURLHint } from "./connection-url"
 
@@ -28,6 +28,7 @@ export type QuickTaskDetail = {
   credential_run_id?: string
   seed: number
   request_timeout_ms: number
+  case_concurrency: number
   inputs: StartQuickTaskCommand["inputs"]
 }
 
@@ -54,11 +55,12 @@ export function createTaskDraft(task: CatalogSuite | null): TaskDraft {
   }
 }
 
-export function quickTaskCommand(draft: TaskDraft): {
+export function quickTaskCommand(draft: TaskDraft, caseConcurrency = DEFAULT_CASE_CONCURRENCY): {
   command?: StartQuickTaskCommand
   errors: Record<string, string>
 } {
   const errors: Record<string, string> = {}
+  if (!isCaseConcurrency(caseConcurrency)) errors.case_concurrency = tx("runs:caseConcurrency.invalid")
   const task = draft.task
   if (!task) errors.task = tx("quickTest:task.choose")
   if (!draft.channel_id) {
@@ -98,6 +100,7 @@ export function quickTaskCommand(draft: TaskDraft): {
     command: {
       suite_id: task.id,
       seed: draft.seed, request_timeout_ms: draft.request_timeout_ms,
+      case_concurrency: caseConcurrency,
       model: draft.model.trim(),
       inputs,
       ...(draft.source_run_id ? { source_run_id: draft.source_run_id } : {}),
@@ -179,6 +182,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
   if (
     !record(value) ||
     value.schema_version !== 1 ||
+    !isCaseConcurrency(value.case_concurrency) ||
     !isUUID(value.run_id) ||
     typeof value.model !== "string" ||
     !value.model.trim() ||
@@ -207,6 +211,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
     run_id: value.run_id,
     suite,
     model: value.model, seed: value.seed as number, request_timeout_ms: value.request_timeout_ms as number,
+    case_concurrency: value.case_concurrency,
     base_url: value.base_url,
     inputs,
     ...(typeof value.channel_id === "string" ? { channel_id: value.channel_id } : {}),
