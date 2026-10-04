@@ -1,13 +1,13 @@
 module github.com/894x/llm-test-studio
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.26.6
 
 require (
 	github.com/wailsapp/wails/v2 v2.15.0
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.48.0
 	modernc.org/sqlite v1.35.0
 )
 
