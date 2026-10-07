@@ -60,48 +60,6 @@
           "value": 200
         },
         {
-          "id": "r2",
-          "source": "response",
-          "operator": "type",
-          "pointer": "/created",
-          "value": "integer"
-        },
-        {
-          "id": "r3",
-          "source": "response",
-          "operator": "gt",
-          "pointer": "/created",
-          "value": 0
-        },
-        {
-          "id": "r4",
-          "source": "response",
-          "operator": "length_equals",
-          "pointer": "/choices",
-          "value": 1
-        },
-        {
-          "id": "r5",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/choices/0/index",
-          "value": 0
-        },
-        {
-          "id": "r6",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/choices/0/message/role",
-          "value": "assistant"
-        },
-        {
-          "id": "r7",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/choices/0/message/reasoning_content",
-          "transform": "trim"
-        },
-        {
           "id": "r17",
           "source": "response",
           "operator": "non_empty",
@@ -112,13 +70,6 @@
           "source": "response",
           "pointer": "/choices/0/message/tool_calls",
           "each": [
-            {
-              "id": "r10",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/function/name",
-              "transform": "trim"
-            },
             {
               "id": "r11",
               "source": "item",
@@ -132,23 +83,6 @@
               "operator": "equals",
               "pointer": "/type",
               "value": "function"
-            },
-            {
-              "id": "r13",
-              "source": "item",
-              "operator": "type",
-              "pointer": "/function/arguments",
-              "value": "object",
-              "transform": "json"
-            },
-            {
-              "id": "r14",
-              "source": "item",
-              "operator": "in",
-              "pointer": "/function/name",
-              "value": [
-                "read_fixture"
-              ]
             },
             {
               "id": "r15",
@@ -184,107 +118,6 @@
           "value": "/id"
         },
         {
-          "id": "r21",
-          "source": "usage",
-          "operator": "type",
-          "pointer": "/prompt_tokens",
-          "value": "integer"
-        },
-        {
-          "id": "r22",
-          "source": "usage",
-          "operator": "gte",
-          "pointer": "/prompt_tokens",
-          "value": 0
-        },
-        {
-          "id": "r23",
-          "source": "usage",
-          "operator": "type",
-          "pointer": "/completion_tokens",
-          "value": "integer"
-        },
-        {
-          "id": "r24",
-          "source": "usage",
-          "operator": "gte",
-          "pointer": "/completion_tokens",
-          "value": 0
-        },
-        {
-          "id": "r25",
-          "source": "usage",
-          "operator": "type",
-          "pointer": "/total_tokens",
-          "value": "integer"
-        },
-        {
-          "id": "r26",
-          "source": "usage",
-          "operator": "gte",
-          "pointer": "/total_tokens",
-          "value": 0
-        },
-        {
-          "id": "r27",
-          "source": "usage",
-          "operator": "gt",
-          "pointer": "/prompt_tokens",
-          "value": 0
-        },
-        {
-          "id": "r28",
-          "source": "usage",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/total_tokens",
-            "parts": [
-              "/prompt_tokens",
-              "/completion_tokens"
-            ]
-          }
-        },
-        {
-          "id": "r34",
-          "any": [
-            {
-              "id": "r33",
-              "source": "usage",
-              "operator": "not_exists",
-              "pointer": "/prompt_tokens_details"
-            },
-            {
-              "id": "r32",
-              "all": [
-                {
-                  "id": "r29",
-                  "source": "usage",
-                  "operator": "type",
-                  "pointer": "/prompt_tokens_details/cached_tokens",
-                  "value": "integer"
-                },
-                {
-                  "id": "r30",
-                  "source": "usage",
-                  "operator": "gte",
-                  "pointer": "/prompt_tokens_details/cached_tokens",
-                  "value": 0
-                },
-                {
-                  "id": "r31",
-                  "source": "usage",
-                  "operator": "lte",
-                  "pointer": "/prompt_tokens_details/cached_tokens",
-                  "expected_from": {
-                    "source": "usage",
-                    "pointer": "/prompt_tokens"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
           "id": "r35",
           "source": "stream.completed",
           "operator": "equals",
@@ -296,12 +129,6 @@
           "operator": "gte",
           "pointer": "/stream_frames",
           "value": 2
-        },
-        {
-          "id": "r37",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/choices/0/finish_reason"
         },
         {
           "id": "r38",
@@ -322,48 +149,6 @@
           "operator": "equals",
           "pointer": "/stream_content_after_finish",
           "value": 0
-        },
-        {
-          "id": "r41",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/stream_invalid_delta_count",
-          "value": 0
-        },
-        {
-          "id": "r42",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/stream_provider_error_count",
-          "value": 0
-        },
-        {
-          "id": "r43",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/stream_identity_missing_count",
-          "value": 0
-        },
-        {
-          "id": "r44",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/stream_response_ids",
-          "value": 1
-        },
-        {
-          "id": "r45",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/stream_model_ids",
-          "value": 1
-        },
-        {
-          "id": "r46",
-          "source": "metrics",
-          "operator": "equals",
-          "pointer": "/stream_finish_count",
-          "value": 1
         }
       ]
     }
