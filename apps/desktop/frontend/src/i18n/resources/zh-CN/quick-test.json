@@ -108,7 +108,7 @@
     "progress": "运行进度",
     "observed": "已完成 {{completed}} 次请求 · 通过 {{passed}} · 失败 {{failed}}",
     "draftNote": "输入会保留为草稿；临时 API Key 仅在本次会话中保留。运行后可选择记住密钥。",
-    "historyVersion": "已恢复历史任务版本和参数，可编辑后再次运行。",
+    "historyVersion": "已填入历史连接和参数，重新测试使用当前套件定义。",
     "missingChannel": "原渠道已不可用，请选择其他渠道或填写临时连接。",
     "endpointHint": "任务定义负责请求路径；填写服务的 Base URL。",
     "performanceUnavailable": "此任务使用独立的视频执行流程。",

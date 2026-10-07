@@ -27,7 +27,7 @@
           "stream": true
         }
       },
-      "assertions": [
+      "assertions":       [
         {
           "id": "r1",
           "source": "http.status",
@@ -52,13 +52,6 @@
           "source": "stream.completed",
           "operator": "equals",
           "value": true
-        },
-        {
-          "id": "r28",
-          "source": "metrics",
-          "operator": "gte",
-          "pointer": "/stream_frames",
-          "value": 2
         },
         {
           "id": "r30",

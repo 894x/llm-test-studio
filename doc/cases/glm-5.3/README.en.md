@@ -23,16 +23,17 @@ All cases set `default=false` and apply only to `glm-5.3`. Generated suites sele
 3. Find the `GLM 5.3` cases and the five suites in the catalog. Start a Plan with connectivity or basic functionality. For ordinary regression, use concurrency 1 and a per-case timeout of at least 120 seconds; history/tool roundtrip cases make two requests.
 4. Keep T3 large-output, context, cache-load, large-tool-array, external-service, and documentation-dependent templates disabled. Complete each template's prerequisites and assertions before enabling and running it separately.
 
-The connectivity suite also exposes a Quick Test entry with an editable prompt and final-answer, reasoning, and response-structure assertions. Missing/invalid credential cases retain fixed minimal requests.
+The connectivity suite also exposes a Quick Test entry with an editable prompt; it checks HTTP success and non-empty final text. Missing/invalid credential cases retain fixed minimal requests.
 
 The standard API supports only `reasoning_effort=low/high/max`. Coding Plan alias mapping and default historical-reasoning behavior differ; Responses and Anthropic endpoints need separate contracts. This suite cannot directly establish their compatibility. Gateways that normalize error codes can also fail these assertions; record that as a compatibility difference.
 
 ## Assertions and reports
 
-- Normal responses require non-empty final text and `reasoning_content`, `stop` termination, response identity, assistant role, and consistent usage arithmetic. `max_tokens=1` separately checks `length` truncation and usage limits.
+- Ordinary success cases retain HTTP status, final text, and termination checks. The dedicated response-contract case checks only assistant role, `reasoning_content`, and usage arithmetic. Identity/timestamp metadata and envelope details such as `choices` count are no longer repeated assertions, so the coverage matrix marks this row partial. `max_tokens=1` separately checks `length` truncation and usage limits.
 - Parameter rejection requires HTTP 400 and allowed business codes such as `1210/1213/1214`. Authentication, missing-model, and safety errors are checked separately; an arbitrary error is not a passing parameter test.
 - Streaming assertions accumulate final text, reasoning, and function arguments separately; they verify a unique termination, `[DONE]`, usage, and valid function-argument JSON. Reasoning without a final result fails.
-- Tool roundtrips use synthetic local constant fixtures and never execute arbitrary model-returned functions. They return the original assistant message, reasoning, and matching tool call ID, and sum token usage across both requests.
+- Tool-boundary cases only confirm that the request is accepted and returns valid text or a tool call. Dedicated roundtrip/stream cases check the exact tool name and arguments, without separate non-empty name/ID or `type=function` assertions. Single-tool cases read the first call directly instead of nesting `each`; the roundtrip result verifies whether the ID is usable. Roundtrips use synthetic local constant fixtures and never execute arbitrary model-returned functions; they return the original assistant message, reasoning, and matching tool call ID, and sum token usage across both requests.
+- Restoring a historical task and testing again reuses its connection and inputs while loading the current suite and case definitions. Historical reports retain their original assertions. A missing current suite or case prevents the run from starting; execution definitions are never restored from a historical snapshot.
 - The existing `legacy.apiaudit` reporting path displays results, brief failure reasons, request counts, and usage. No new configuration form or report DTO is required. Templates are not presented as verified successes.
 
 Example prompts, identifiers, and tool outputs are synthetic test materials created with AI assistance for this project and distributed under the repository's Apache-2.0 license. Official documentation supplies API facts; full documentation, production data, credentials, and third-party media were not copied.

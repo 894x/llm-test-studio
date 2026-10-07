@@ -146,7 +146,7 @@ describe("Suite quick task workspace", () => {
     expect(document.body).not.toHaveTextContent("private refresh error")
   })
   it.each(["passed", "failed"] as const)(
-    "restores %s history and resubmits its pinned definition with edits",
+    "restores %s history and uses the current suite with edited inputs",
     async (conclusion) => {
       const user = userEvent.setup()
       const run = {
@@ -177,7 +177,8 @@ describe("Suite quick task workspace", () => {
         inputs: { prompt: "past prompt", duration: 8, audio: true },
       })
       await user.click(screen.getByRole("button", { name: "填入并编辑 Past video task" }))
-      expect(await screen.findByText(/已恢复历史任务版本/)).toBeInTheDocument()
+      expect(await screen.findByText(/重新测试使用当前套件定义/)).toBeInTheDocument()
+      expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(task.name)
       expect(screen.getByLabelText("时长")).toHaveValue(8)
       expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
       await user.type(screen.getByLabelText("视频提示词"), " edited")

@@ -18,8 +18,8 @@ type QuickTaskCatalog interface {
 	GetChannel(context.Context, string) (domain.Channel, error)
 }
 
-// QuickTaskCommand selects an immutable task and either a saved channel or a
-// temporary connection. Model is the upstream identifier, not a catalog ID.
+// QuickTaskCommand selects the current task definition and either a saved channel
+// or a temporary connection. Model is the upstream identifier, not a catalog ID.
 type QuickTaskCommand struct {
 	SuiteID          string                     `json:"suite_id"`
 	Seed             uint64                     `json:"seed"`
@@ -177,7 +177,9 @@ func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickT
 		if err != nil {
 			return domain.Suite{}, nil, err
 		}
-		return *snapshot.Entries[0].Suite, snapshot.Entries[0].CaseDefinitions, nil
+		if snapshot.Entries[0].Suite.ID != command.SuiteID {
+			return domain.Suite{}, nil, fmt.Errorf("%w: source quick task uses a different Suite", ErrNotRunnable)
+		}
 	}
 	suite, err := service.quickTasks.GetSuite(ctx, command.SuiteID)
 	if err != nil {

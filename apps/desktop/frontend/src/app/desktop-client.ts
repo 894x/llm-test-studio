@@ -327,7 +327,8 @@ export function createFixtureClient(
 			return id
 		},
     async startQuickTask(command) {
-      const suite = command.source_run_id ? quickTasks.get(command.source_run_id)?.suite : catalogState.suites.find((item) => item.id === command.suite_id)
+      if (command.source_run_id && quickTasks.get(command.source_run_id)?.suite.id !== command.suite_id) throw new DesktopClientError("run_not_runnable")
+      const suite = catalogState.suites.find((item) => item.id === command.suite_id)
       if (!suite) throw new DesktopClientError("run_not_runnable")
       const channel = catalogState.channels.find((item) => item.id === command.channel_id)
       if (command.channel_id && (!channel?.enabled || channel.protocol !== suite.protocol || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")

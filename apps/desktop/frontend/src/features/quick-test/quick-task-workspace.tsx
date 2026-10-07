@@ -90,7 +90,7 @@ export function QuickTaskWorkspace({
   )
   const [performanceOpen, setPerformanceOpen] = useState(false)
   const currentTasks = catalog.suites
-  const task = draft.task ?? currentTasks[0]
+  const task = currentTasks.find((item) => item.id === draft.task?.id) ?? draft.task ?? currentTasks[0]
   const form =
     draft.task || !task
       ? draft
@@ -152,7 +152,10 @@ export function QuickTaskWorkspace({
     }
   }
   const validCommand = (element: Element) => {
-    const checked = quickTaskCommand(form, caseConcurrency)
+    const checked = quickTaskCommand(
+      { ...form, task: currentTasks.find((item) => item.id === task?.id) ?? null },
+      caseConcurrency,
+    )
     if (missingChannel) checked.errors.channel_id = t("task.missingChannel")
     setErrors(checked.errors)
     if (Object.keys(checked.errors).length) {

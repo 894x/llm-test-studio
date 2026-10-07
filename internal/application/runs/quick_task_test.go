@@ -116,8 +116,18 @@ func TestQuickTaskSavedChannelResolvesItsCredentialWithoutAuthoredModel(t *testi
 	waitForStatus(t, repository, domain.RunCancelled)
 }
 
-func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.T) {
+func TestQuickTaskHistoryUsesCurrentDefinitionsAfterCatalogChanges(t *testing.T) {
 	fixture := newRunFixture(t)
+	currentSpec := fixture.testCase.Definition.Spec
+	fixture.testCase.Definition.Spec = json.RawMessage(`{
+		"inputs":{"prompt":{"type":"string","default":"hi"}},
+		"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},
+		"assertions":[
+			{"id":"status","source":"http.status","operator":"equals","value":200},
+			{"id":"created_type","source":"response","pointer":"/created","operator":"type","value":"integer"},
+			{"id":"created_positive","source":"response","pointer":"/created","operator":"gt","value":0}
+		]
+	}`)
 	repository := &fakeRepository{fixture: fixture}
 	suite := quickTaskSuite(fixture)
 	service, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(), Executor: &controlledExecutor{},
@@ -161,9 +171,31 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 	if _, err := service.PrepareQuickTask(context.Background(), wrong); !errors.Is(err, runs.ErrNotRunnable) {
 		t.Fatalf("mismatched replay revision accepted: %v", err)
 	}
-	// Replay must work even when the current catalog no longer contains this Suite.
-	replayer, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{}, Credentials: credentials.NewMemoryStore(), Executor: &controlledExecutor{},
-		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
+	command.SourceRunID = id
+	unavailable, err := runs.New(runs.Dependencies{
+		Repository: repository, QuickTasks: quickTaskCatalog{}, Credentials: credentials.NewMemoryStore(),
+		Executor: &controlledExecutor{}, Clock: &stepClock{next: fixture.now},
+		Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unavailable.Close()
+	if _, err := unavailable.PrepareQuickTask(context.Background(), command); !errors.Is(err, runs.ErrNotRunnable) {
+		t.Fatalf("missing current Suite reused historical definitions: %v", err)
+	}
+	if repository.run.Meta().ID != id {
+		t.Fatal("rejected rerun changed historical data")
+	}
+	historicalSnapshot := repository.run.Snapshot()
+	repository.fixture.testCase.Definition.Spec = currentSpec
+	repository.fixture.testCase.Revision++
+	suite.Revision++
+	replayer, err := runs.New(runs.Dependencies{
+		Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(),
+		Executor: &controlledExecutor{}, Clock: &stepClock{next: fixture.now},
+		Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,6 +212,16 @@ func TestQuickTaskHistoryReplaysPinnedDefinitionsAfterCatalogChanges(t *testing.
 	}
 	if string(repository.run.Snapshot().Entries[0].Parameters["prompt"]) != `"edited again"` {
 		t.Fatal("replay ignored edits")
+	}
+	entry := repository.run.Snapshot().Entries[0]
+	if entry.Suite.Revision != suite.Revision || entry.CaseDefinitions[0].Revision != repository.fixture.testCase.Revision {
+		t.Fatal("rerun did not use current Suite and Case revisions")
+	}
+	if string(entry.CaseDefinitions[0].Definition.Spec) != string(currentSpec) {
+		t.Fatal("rerun retained removed assertions")
+	}
+	if !strings.Contains(string(historicalSnapshot.Entries[0].CaseDefinitions[0].Definition.Spec), `"/created"`) {
+		t.Fatal("current definitions rewrote the historical snapshot")
 	}
 }
 

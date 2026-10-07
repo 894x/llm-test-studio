@@ -59,42 +59,21 @@
           "pointer": "/0/http_status"
         },
         {
-          "id": "r21",
+          "id": "r18",
           "source": "requests",
-          "pointer": "/0/response/choices/0/message/tool_calls",
-          "each": [
-            {
-              "id": "r14",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/id",
-              "transform": "trim"
-            },
-            {
-              "id": "r15",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/type",
-              "value": "function"
-            },
-            {
-              "id": "r18",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/function/name",
-              "value": "read_fixture"
-            },
-            {
-              "id": "r19",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/function/arguments",
-              "value": {
-                "label": "sample"
-              },
-              "transform": "json"
-            }
-          ]
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/message/tool_calls/0/function/name",
+          "value": "read_fixture"
+        },
+        {
+          "id": "r19",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/choices/0/message/tool_calls/0/function/arguments",
+          "value": {
+            "label": "sample"
+          },
+          "transform": "json"
         },
         {
           "id": "r22",

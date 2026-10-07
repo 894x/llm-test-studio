@@ -60,8 +60,12 @@ func TestQuickTaskExplicitCredentialRememberReplayAndForget(t *testing.T) {
 			t.Fatal("credential crossed its target boundary")
 		}
 	}
-	// The persisted Run is sufficient after rebuilding the application service.
-	reopened, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{}, Credentials: credentials.NewMemoryStore(), QuickTaskCredentials: store, Executor: &controlledExecutor{}, Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
+	// Reopening retains the credential reference and loads current definitions.
+	reopened, err := runs.New(runs.Dependencies{
+		Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(),
+		QuickTaskCredentials: store, Executor: &controlledExecutor{}, Clock: &stepClock{next: fixture.now},
+		Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

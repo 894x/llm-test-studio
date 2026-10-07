@@ -108,7 +108,7 @@
     "progress": "Run progress",
     "observed": "{{completed}} requests completed · {{passed}} passed · {{failed}} failed",
     "draftNote": "Inputs are kept as a draft. Temporary API keys stay in this session; after running, you can explicitly remember the key.",
-    "historyVersion": "Historical task revision and inputs restored. Edit them to run again.",
+    "historyVersion": "Historical connection and inputs restored. Testing again uses the current suite definition.",
     "missingChannel": "The original channel is unavailable. Choose another channel or enter a temporary connection.",
     "endpointHint": "The task defines the request path. Enter the service Base URL.",
     "performanceUnavailable": "This task uses a separate video execution flow.",

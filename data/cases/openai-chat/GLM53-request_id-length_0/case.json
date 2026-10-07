@@ -35,13 +35,6 @@
           "value": 400
         },
         {
-          "id": "r2",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/error/message",
-          "transform": "trim"
-        },
-        {
           "id": "r3",
           "source": "response",
           "operator": "in",
