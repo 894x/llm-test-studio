@@ -13,6 +13,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/protocol"
 	"github.com/894x/llm-test-studio/internal/protocols/runtime"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
@@ -139,14 +140,12 @@ func (client *Client) Send(ctx context.Context, request runtime.Request) (runtim
 		object["model"], _ = json.Marshal(state.channel.UpstreamModelName)
 		body, _ = json.Marshal(object)
 	}
-	baseURL := strings.TrimRight(state.channel.BaseURL, "/")
-	path := request.Path
-	// The binding may already contain /v1. This is external endpoint joining,
-	// not a project format fallback.
-	if strings.HasSuffix(baseURL, "/v1") && strings.HasPrefix(path, "/v1/") {
-		path = strings.TrimPrefix(path, "/v1")
+	descriptor, _ := protocol.Lookup(string(state.channel.Protocol))
+	address, err := protocol.ResolveAddress(state.channel.BaseURL, request.Path, descriptor.RequestPaths)
+	if err != nil {
+		return runtime.Response{}, ErrInvalidExecution
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, request.Method, baseURL+path, bytes.NewReader(body))
+	httpRequest, err := http.NewRequestWithContext(ctx, request.Method, address.Endpoint, bytes.NewReader(body))
 	if err != nil {
 		return runtime.Response{}, ErrInvalidExecution
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/protocol"
 	"github.com/894x/llm-test-studio/internal/protocols/runtime"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
@@ -71,9 +72,9 @@ func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspe
 			runtime.AddIssue(&observation, step.ID, "request_generation_failed")
 			break
 		}
-		request := runtime.Request{Method: http.MethodPost, Path: "/v1/chat/completions", Body: body}
+		request := runtime.Request{Method: http.MethodPost, Path: protocol.OpenAIChatPath, Body: body}
 		if execution.Spec.Operation == "models.list" {
-			request = runtime.Request{Method: http.MethodGet, Path: "/v1/models"}
+			request = runtime.Request{Method: http.MethodGet, Path: protocol.OpenAIModelsPath}
 		}
 		response, err := execution.Transport.Send(ctx, request)
 		if err != nil {

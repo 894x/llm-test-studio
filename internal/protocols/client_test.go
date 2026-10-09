@@ -14,9 +14,89 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/protocol"
 	"github.com/894x/llm-test-studio/internal/protocols"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
+
+func TestProtocolExecutesCompletedAddressesAndSiblingRoutes(t *testing.T) {
+	const chatSpec = `{"inputs":{},"request":{"body":{}},"assertions":[]}`
+	const modelsSpec = `{"operation":"models.list","inputs":{},"request":{"body":{}},"assertions":[]}`
+	const videoSpec = `{"inputs":{},"request":{"body":{"content":[]}},"workflow":{"mode":"wait"},"assertions":[]}`
+	tests := []struct {
+		name, input, spec string
+		protocol          domain.Protocol
+		paths             []string
+	}{
+		{name: "root", spec: chatSpec, protocol: domain.ProtocolOpenAIChat,
+			paths: []string{protocol.OpenAIChatPath}},
+		{name: "version slash", input: "/v1/", spec: chatSpec, protocol: domain.ProtocolOpenAIChat,
+			paths: []string{protocol.OpenAIChatPath}},
+		{name: "partial path", input: "/proxy/v1/ch", spec: chatSpec, protocol: domain.ProtocolOpenAIChat,
+			paths: []string{"/proxy" + protocol.OpenAIChatPath}},
+		{name: "full endpoint", input: "/proxy/v1/chat/completions/", spec: chatSpec,
+			protocol: domain.ProtocolOpenAIChat, paths: []string{"/proxy" + protocol.OpenAIChatPath}},
+		{name: "versionless endpoint", input: "/proxy/chat/completions", spec: chatSpec,
+			protocol: domain.ProtocolOpenAIChat, paths: []string{"/proxy/chat/completions"}},
+		{name: "model list sibling", input: "/proxy/v1/chat/completions", spec: modelsSpec,
+			protocol: domain.ProtocolOpenAIChat, paths: []string{"/proxy" + protocol.OpenAIModelsPath}},
+		{name: "video submit and poll", input: "/proxy" + protocol.SeedancePath, spec: videoSpec,
+			protocol: domain.ProtocolSeedance,
+			paths:    []string{"/proxy" + protocol.SeedancePath, "/proxy" + protocol.SeedancePath + "/task-1"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			paths := []string{}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paths = append(paths, r.URL.Path)
+				if r.Header.Get("Authorization") != "Bearer test-address-key" {
+					t.Error("missing credential")
+				}
+				if test.protocol == domain.ProtocolSeedance {
+					if r.Method == http.MethodPost {
+						io.WriteString(w, `{"id":"task-1","status":"running"}`)
+						return
+					}
+					io.WriteString(w, `{"id":"task-1","status":"succeeded"}`)
+					return
+				}
+				io.WriteString(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+			}))
+			defer server.Close()
+			lease, err := credentials.NewTemporaryLease([]byte("test-address-key"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer lease.Close()
+			channel := domain.ChannelSnapshot{
+				EntityRevisionRef: domain.EntityRevisionRef{ID: "00000000-0000-4000-8000-000000000001", Revision: 1},
+				Name:              "address",
+				Protocol:          test.protocol,
+				BaseURL:           server.URL + test.input,
+				UpstreamModelName: "model",
+			}
+			client, err := protocols.NewClient(
+				protocols.NewRegistry(),
+				lease,
+				channel,
+				server.Client().Transport,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			_, err = client.Execute(context.Background(), protocols.Execution{Spec: decodeSpec(t, test.spec)})
+			if err != nil || strings.Join(paths, ",") != strings.Join(test.paths, ",") {
+				t.Fatalf(
+					"actual paths = %v, want %v, error = %v",
+					paths,
+					test.paths,
+					err,
+				)
+			}
+		})
+	}
+}
 
 func testClient(t *testing.T, server *httptest.Server, protocol domain.Protocol) *protocols.Client {
 	t.Helper()

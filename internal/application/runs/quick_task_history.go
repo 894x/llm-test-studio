@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 // QuickTaskDetail exposes only fields needed to restore a task form. Credentials,
@@ -40,7 +41,7 @@ func (service *Service) QuickTaskPerformancePath(ctx context.Context, command Qu
 	if suite.ID != command.SuiteID || suite.Protocol != domain.ProtocolOpenAIChat || suite.ValidateCases(cases) != nil {
 		return "", ErrNotRunnable
 	}
-	return "/v1/chat/completions", nil
+	return protocol.OpenAIChatPath, nil
 }
 
 type QuickTaskSuite struct {

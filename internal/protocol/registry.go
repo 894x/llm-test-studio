@@ -7,21 +7,35 @@ const (
 	Seedance     = "seedance"
 	WanVideo     = "wan-video"
 	MiniMaxVideo = "minimax-video"
+
+	OpenAIChatPath   = "/v1/chat/completions"
+	OpenAIModelsPath = "/v1/models"
+	SeedancePath     = "/api/v3/contents/generations/tasks"
+	WanVideoPath     = "/api/v1/services/aigc/video-generation/video-synthesis"
+	MiniMaxVideoPath = "/v2/video_generation"
 )
+
+type RequestPath struct {
+	Operation string
+	Path      string
+}
 
 // Descriptor contains protocol-wide behavior. Model-specific limits and
 // request contracts remain in version-scoped Case definitions.
 type Descriptor struct {
-	ID    string
-	Label string
-	Async bool
+	ID           string
+	Label        string
+	Async        bool
+	RequestPaths []RequestPath
 }
 
 var descriptors = [...]Descriptor{
-	{ID: OpenAIChat, Label: "OpenAI Chat"},
-	{ID: Seedance, Label: "Seedance", Async: true},
-	{ID: WanVideo, Label: "Wan Video", Async: true},
-	{ID: MiniMaxVideo, Label: "MiniMax Video", Async: true},
+	{ID: OpenAIChat, Label: "OpenAI Chat", RequestPaths: []RequestPath{
+		{Path: OpenAIChatPath}, {Operation: "models.list", Path: OpenAIModelsPath},
+	}},
+	{ID: Seedance, Label: "Seedance", Async: true, RequestPaths: []RequestPath{{Path: SeedancePath}}},
+	{ID: WanVideo, Label: "Wan Video", Async: true, RequestPaths: []RequestPath{{Path: WanVideoPath}}},
+	{ID: MiniMaxVideo, Label: "MiniMax Video", Async: true, RequestPaths: []RequestPath{{Path: MiniMaxVideoPath}}},
 }
 
 func All() []Descriptor { return append([]Descriptor(nil), descriptors[:]...) }

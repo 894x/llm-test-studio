@@ -1,6 +1,8 @@
 import { DesktopDataError } from "@/app/data-error"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
+import { resolveConnectionURL } from "@/features/quick-test/connection-url"
+import { PROTOCOLS } from "@/features/catalog/protocols"
 import { DEFAULT_CASE_CONCURRENCY, type StartQuickTaskCommand, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
@@ -812,6 +814,11 @@ function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerforma
 }
 
 function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
+  const protocol = PROTOCOLS.find((item) => item.id === "openai-chat")!
+  const endpoint = command.address_mode === "base_url"
+    ? resolveConnectionURL(command.url, protocol.request_paths[0].path, protocol.request_paths)?.endpoint
+    : command.url.replace(/\/+$/, "")
+  if (!endpoint) throw new DesktopClientError("run_invalid")
   const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
   const requestBudget = fixtureQuickPerformanceBudget(command)
   const completed = command.request_count || Math.min(requestBudget.measured_cap, Math.max(1, configuredInFlight * 2))
@@ -949,10 +956,8 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     model_id: command.model_id,
     success: true,
     address_mode: command.address_mode,
-    base_url: command.url.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, ""),
-    endpoint: command.address_mode === "base_url"
-      ? `${command.url.replace(/\/+$/, "")}/chat/completions`
-      : command.url,
+    base_url: endpoint.replace(/\/chat\/completions$/, ""),
+    endpoint,
     profile: {
       load_mode: command.load_mode, request_count: command.request_count, duration_ms: command.duration_ms,
       concurrency: command.concurrency,

@@ -3,13 +3,15 @@ package minimaxvideo
 
 import (
 	"encoding/json"
+
+	"github.com/894x/llm-test-studio/internal/protocol"
 	"github.com/894x/llm-test-studio/internal/protocols/runtime"
 )
 
 func New() runtime.Module {
 	return runtime.TaskProtocol{
 		ID: "minimax-video", Label: "MiniMax Video",
-		SubmitPath: "/v2/video_generation", PollPath: "/v2/query/video_generation/",
+		SubmitPath: protocol.MiniMaxVideoPath, PollPath: "/v2/query/video_generation/",
 		IDPointer: "/task_id", StatusPointer: "/task/status", UsagePointer: "/task/usage",
 		ArtifactPointers: map[string]string{"video": "/task/content/url"},
 		TerminalStatuses: []string{"succeeded", "failed", "cancelled"},

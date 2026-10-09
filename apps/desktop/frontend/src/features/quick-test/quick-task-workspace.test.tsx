@@ -83,6 +83,30 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("keeps the gray completion outside the editable value and submits a full endpoint intact", async () => {
+    const user = userEvent.setup()
+    const actions = setup()
+    const address = screen.getByLabelText("接口地址")
+    const suffix = document.querySelector('[data-slot="connection-url-suffix"]')!
+    await user.type(address, "https://example.test/api/v3/")
+    expect(address).toHaveValue("https://example.test/api/v3/")
+    expect(suffix).toHaveTextContent("contents/generations/tasks")
+    expect(suffix.closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(address).toHaveAccessibleDescription(expect.stringContaining("https://example.test/api/v3/contents/generations/tasks"))
+    await user.keyboard("{End}{ArrowRight}{Delete}")
+    expect(address).toHaveValue("https://example.test/api/v3/")
+    expect(suffix).toHaveTextContent("contents/generations/tasks")
+    await user.type(address, "contents/generations/tasks")
+    expect(suffix).toHaveTextContent("")
+    await user.type(screen.getByLabelText("API Key"), "test-key")
+    await user.type(screen.getByLabelText("模型 ID"), "model")
+    await user.keyboard("{Escape}")
+    await user.click(screen.getByRole("button", { name: "开始测试" }))
+    expect(actions.startQuickTask).toHaveBeenCalledWith(expect.objectContaining({
+      base_url: "https://example.test/api/v3/contents/generations/tasks",
+    }))
+  })
+
   it("groups short parameters while keeping long inputs and the shared hint full width", () => {
     setup()
     const concurrency = screen.getByRole("combobox", { name: "Case 并发数" })

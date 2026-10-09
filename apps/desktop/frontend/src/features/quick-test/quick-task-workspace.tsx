@@ -36,6 +36,8 @@ import type { ReportSnapshot } from "@/features/reports/data"
 import { QuickPerformanceSheet, type QuickPerformanceConnection } from "./quick-performance-sheet"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
 import { cn } from "@/lib/utils"
+import { taskConnectionURLs } from "./connection-url"
+import { ConnectionURLInput } from "./connection-url-input"
 
 type Actions = Pick<
   DesktopClient,
@@ -110,6 +112,7 @@ export function QuickTaskWorkspace({
   )
   const channel = channels.find((item) => item.id === form.channel_id)
   const missingChannel = !!form.channel_id && !channel
+  const connectionURLs = taskConnectionURLs(channel?.base_url ?? form.base_url, task, catalog)
   const models = [
     ...new Set([
       ...catalog.channel_models
@@ -333,13 +336,18 @@ export function QuickTaskWorkspace({
                           ))]} />
                   </TaskField>
                   <div className="grid min-w-0 grid-cols-2 items-start gap-4">
-                    <TaskField id="base_url" label={t("address")} error={errors.base_url}>
-                      <Input
+                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="col-span-full">
+                      <ConnectionURLInput
                         id="quick-task-base_url"
                         value={channel?.base_url ?? form.base_url}
+                        suffix={connectionURLs[0]?.suffix ?? ""}
                         disabled={!!pending || !!form.channel_id}
                         aria-invalid={!!errors.base_url || undefined}
-                        aria-describedby={errors.base_url ? "quick-task-base_url-error" : undefined}
+                        aria-describedby={[
+                          "quick-task-base_url-hint",
+                          ...(connectionURLs.length ? ["quick-task-base_url-preview"] : []),
+                          ...(errors.base_url ? ["quick-task-base_url-error"] : []),
+                        ].join(" ")}
                         onChange={(event) =>
                           update({
                             ...form,
@@ -350,9 +358,16 @@ export function QuickTaskWorkspace({
                         }
                         placeholder="https://api.example.com"
                       />
-                      <p className="text-[11px] text-muted-foreground">{t("task.endpointHint")}</p>
+                      <p id="quick-task-base_url-hint" className="text-[11px] text-muted-foreground">{t("task.endpointHint")}</p>
+                      {connectionURLs.length > 0 && (
+                        <div id="quick-task-base_url-preview" className="space-y-1 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+                          {connectionURLs.map(({ endpoint }) => (
+                            <p key={endpoint}>{t("task.endpointPreview", { endpoint })}</p>
+                          ))}
+                        </div>
+                      )}
                     </TaskField>
-                    <TaskField id="model" label={t("model.label")} error={errors.model}>
+                    <TaskField id="model" label={t("model.label")} error={errors.model} className="col-span-full">
                       <Autocomplete
                         modal={false}
                         openOnInputClick

@@ -17,6 +17,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 	"github.com/894x/llm-test-studio/internal/execution/openai"
+	"github.com/894x/llm-test-studio/internal/protocol"
 )
 
 const (
@@ -156,9 +157,13 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			report.ErrorCode = ErrorInvalidRequest
 			return report, nil
 		}
-		// Match Suite execution: append its pinned request path to the service
-		// base URL, then use the existing full-endpoint validation and adapter.
-		command.URL = strings.TrimRight(command.URL, "/") + path
+		descriptor, _ := protocol.Lookup(protocol.OpenAIChat)
+		resolved, resolveErr := protocol.ResolveAddress(command.URL, path, descriptor.RequestPaths)
+		if resolveErr != nil {
+			report.ErrorCode = ErrorInvalidRequest
+			return report, nil
+		}
+		command.URL = resolved.Endpoint
 		command.AddressMode = AddressModeFullURL
 	}
 	address, code := normalizeAddress(command.AddressMode, command.URL)
@@ -1032,7 +1037,12 @@ func normalizeAddress(mode AddressMode, rawURL string) (normalizedAddress, domai
 	var baseURL string
 	switch mode {
 	case AddressModeBaseURL:
-		baseURL = trimmed
+		descriptor, _ := protocol.Lookup(protocol.OpenAIChat)
+		address, err := protocol.ResolveAddress(rawURL, protocol.OpenAIChatPath, descriptor.RequestPaths)
+		if err != nil {
+			return normalizedAddress{}, ErrorInvalidRequest
+		}
+		baseURL = strings.TrimSuffix(address.Endpoint, "/chat/completions")
 	case AddressModeFullURL:
 		if !strings.HasSuffix(trimmed, "/chat/completions") {
 			return normalizedAddress{}, ErrorInvalidRequest
