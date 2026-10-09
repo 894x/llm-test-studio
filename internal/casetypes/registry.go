@@ -82,22 +82,25 @@ func (registry *Registry) Descriptor(caseType domain.CaseType, version uint32) (
 	return Descriptor{}, false
 }
 
-func (registry *Registry) Validate(protocol domain.Protocol, definition domain.TestCaseDefinition) error {
+func (registry *Registry) Validate(protocol domain.Protocol, raw json.RawMessage) error {
 	if registry == nil {
 		return errors.New("case type registry is unavailable")
 	}
-	if err := definition.Validate(); err != nil {
-		return err
-	}
-	if definition.TypeVersion != 1 {
-		return errors.New("unsupported case type format; use the current protocol contract")
-	}
-	if string(definition.Type) != string(protocol) {
-		return errors.New("case type must equal its protocol")
-	}
-	spec, err := testspec.Decode(definition.Spec)
+	spec, err := testspec.Decode(raw)
 	if err != nil {
 		return err
 	}
 	return registry.protocols.Validate(string(protocol), spec)
+}
+
+func (registry *Registry) ValidateDefinitions(definitions domain.ProtocolDefinitions) error {
+	if err := definitions.Validate(); err != nil {
+		return err
+	}
+	for protocol, raw := range definitions {
+		if err := registry.Validate(protocol, raw); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func TestPerformanceUsesPinnedSuitePathForTemporaryAndSavedConnections(t *testing.T) {
@@ -26,8 +27,8 @@ func TestPerformanceUsesPinnedSuitePathForTemporaryAndSavedConnections(t *testin
 			}))
 			defer server.Close()
 			task := TaskReference{SuiteID: "123e4567-e89b-42d3-a456-426614174001", SuiteRevision: 2, SourceRunID: "123e4567-e89b-42d3-a456-426614174002"}
-			command := PerformanceCommand{Task: &task, AddressMode: AddressModeBaseURL, URL: server.URL + "/proxy", APIKey: "test-key", ModelID: "model", RequestCount: 1, Concurrency: 1, TimeoutMS: 2000, InputTokens: 2, OutputTokens: 2}
-			dependencies := Dependencies{Transport: server.Client().Transport, TaskPath: func(_ context.Context, got TaskReference, model string) (string, error) {
+			command := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, Task: &task, AddressMode: AddressModeBaseURL, URL: server.URL + "/proxy", APIKey: "test-key", ModelID: "model", RequestCount: 1, Concurrency: 1, TimeoutMS: 2000, InputTokens: 2, OutputTokens: 2}
+			dependencies := Dependencies{Transport: server.Client().Transport, TaskPath: func(_ context.Context, got TaskReference, model string, _ domain.Protocol) (string, error) {
 				if got != task || model != "model" {
 					t.Fatal("lost Suite identity or target")
 				}
@@ -35,11 +36,11 @@ func TestPerformanceUsesPinnedSuitePathForTemporaryAndSavedConnections(t *testin
 			}}
 			if mode == "channel" {
 				command.ChannelID, command.APIKey, command.URL = "123e4567-e89b-42d3-a456-426614174003", "", "https://ignored.example.test"
-				dependencies.ChannelConnections = &stubChannelConnectionResolver{connection: ChannelConnection{BaseURL: server.URL + "/proxy", APIKey: []byte("test-key")}}
+				dependencies.ChannelConnections = &stubChannelConnectionResolver{connection: ChannelConnection{Protocol: domain.ProtocolOpenAIChat, BaseURL: server.URL + "/proxy", APIKey: []byte("test-key")}}
 			}
 			if mode == "remembered" {
 				command.CredentialRunID, command.APIKey = task.SourceRunID, ""
-				dependencies.TaskCredential = func(_ context.Context, id, baseURL string) (*credentials.Lease, error) {
+				dependencies.TaskCredential = func(_ context.Context, id, baseURL string, _ domain.Protocol) (*credentials.Lease, error) {
 					if id != task.SourceRunID || baseURL != server.URL+"/proxy" {
 						t.Fatal("lost remembered connection identity")
 					}
@@ -75,12 +76,11 @@ func TestPerformanceCompletesPartialAndFullSuiteAddresses(t *testing.T) {
 			defer server.Close()
 			service := New(Dependencies{
 				Transport: server.Client().Transport,
-				TaskPath: func(context.Context, TaskReference, string) (string, error) {
+				TaskPath: func(context.Context, TaskReference, string, domain.Protocol) (string, error) {
 					return "/v1/chat/completions", nil
 				},
 			})
-			report, err := service.RunPerformance(context.Background(), PerformanceCommand{
-				Task:        &TaskReference{SuiteID: "123e4567-e89b-42d3-a456-426614174001", SuiteRevision: 1},
+			report, err := service.RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, Task: &TaskReference{SuiteID: "123e4567-e89b-42d3-a456-426614174001", SuiteRevision: 1},
 				AddressMode: AddressModeBaseURL, URL: server.URL + "/proxy" + suffix,
 				APIKey: "test-key", ModelID: "model", RequestCount: 1, Concurrency: 1,
 				TimeoutMS: 2000, InputTokens: 2, OutputTokens: 2,
@@ -100,7 +100,7 @@ func TestPerformanceCompletesPartialAndFullSuiteAddresses(t *testing.T) {
 func TestPerformanceRejectsUnresolvedOrUnsafeSuitePaths(t *testing.T) {
 	for _, path := range []string{"", "https://different.test/chat/completions", "//different.test/chat/completions", "/v1/chat/completions?key=secret", "/v1/chat/completions#private", "/tasks"} {
 		t.Run(path, func(t *testing.T) {
-			report, err := New(Dependencies{TaskPath: func(context.Context, TaskReference, string) (string, error) { return path, nil }}).RunPerformance(context.Background(), PerformanceCommand{Task: &TaskReference{}, AddressMode: AddressModeBaseURL, URL: "https://example.test", APIKey: "test-key", ModelID: "model", RequestCount: 1, Concurrency: 1, TimeoutMS: 1000, InputTokens: 2, OutputTokens: 2})
+			report, err := New(Dependencies{TaskPath: func(context.Context, TaskReference, string, domain.Protocol) (string, error) { return path, nil }}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, Task: &TaskReference{}, AddressMode: AddressModeBaseURL, URL: "https://example.test", APIKey: "test-key", ModelID: "model", RequestCount: 1, Concurrency: 1, TimeoutMS: 1000, InputTokens: 2, OutputTokens: 2})
 			if err != nil || report.ErrorCode != ErrorInvalidRequest || report.Progress.Launched != 0 {
 				t.Fatal("invalid Suite path was not rejected before execution")
 			}
@@ -112,11 +112,11 @@ func TestPerformanceRejectsAmbiguousOrUnavailableRememberedKeys(t *testing.T) {
 	for _, scenario := range []string{"key", "channel", "missing-task", "full-url", "unavailable", "missing-resolver"} {
 		t.Run(scenario, func(t *testing.T) {
 			calls := 0
-			dependencies := Dependencies{TaskCredential: func(context.Context, string, string) (*credentials.Lease, error) {
+			dependencies := Dependencies{TaskCredential: func(context.Context, string, string, domain.Protocol) (*credentials.Lease, error) {
 				calls++
 				return nil, credentials.ErrNotFound
 			}}
-			command := PerformanceCommand{Task: &TaskReference{}, CredentialRunID: "123e4567-e89b-42d3-a456-426614174002", AddressMode: AddressModeBaseURL, URL: "https://example.test"}
+			command := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, Task: &TaskReference{}, CredentialRunID: "123e4567-e89b-42d3-a456-426614174002", AddressMode: AddressModeBaseURL, URL: "https://example.test"}
 			switch scenario {
 			case "key":
 				command.APIKey = "test-key"

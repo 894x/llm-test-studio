@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "fba00849-7d60-530a-8168-c67317d7fe5c",
   "key": "wan30.watermark.false",
   "name": "Wan 3.0 · watermark=false",
   "dimension": "parameters",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

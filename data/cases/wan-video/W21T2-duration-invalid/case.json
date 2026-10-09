@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "143ff9e5-e6e7-5b17-a23b-ecffdecc5849",
   "key": "wan21.turbo.duration_invalid",
   "name": "Wan 2.1 Turbo · 非固定时长 4 秒",
   "dimension": "boundary",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

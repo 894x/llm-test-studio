@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "2bad0909-3ba5-581a-9221-d8305ca11631",
   "key": "T026",
   "name": "图片识别检测",
   "dimension": "quality",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "b29ddd10-4d76-5419-b727-743b32f75fdf",
   "key": "glm53.tools.invalid_replay",
   "name": "GLM 5.3 · tools.invalid_replay（待验证模板）",
   "dimension": "glm53.tool_lifecycle",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

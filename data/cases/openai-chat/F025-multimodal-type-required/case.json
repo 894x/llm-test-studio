@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "e9202e63-c05b-5392-b353-148f20859064",
   "key": "must.multimodal_type_required",
   "name": "多模态字段 · type 必填",
   "dimension": "multimodal",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

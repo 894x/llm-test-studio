@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "12149906-5f9f-585a-8671-1319877e4628",
   "key": "glm53.max_tokens.null",
   "name": "GLM 5.3 · max_tokens.null",
   "dimension": "glm53.max_tokens",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

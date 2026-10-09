@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "51a7d8e7-3820-5162-8d50-cb814a7b6c12",
   "key": "h3.video.codec_unsupported",
   "name": "MiniMax H3 · 拒绝不支持的视频编码",
   "dimension": "media-format",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

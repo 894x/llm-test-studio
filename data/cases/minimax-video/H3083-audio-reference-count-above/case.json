@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "c72bf3d8-cd32-59a6-9de3-06095724d514",
   "key": "h3.audio.reference_count_above",
   "name": "MiniMax H3 · reference_audio 超过 3 个",
   "dimension": "cardinality",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

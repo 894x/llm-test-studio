@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "746b1d15-b674-5d19-ae63-6dd9705665a7",
   "key": "T019",
   "name": "知识截止对齐",
   "dimension": "identity",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}

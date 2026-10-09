@@ -814,7 +814,7 @@ function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerforma
 }
 
 function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
-  const protocol = PROTOCOLS.find((item) => item.id === "openai-chat")!
+  const protocol = PROTOCOLS.find((item) => item.id === command.protocol)!
   const endpoint = command.address_mode === "base_url"
     ? resolveConnectionURL(command.url, protocol.request_paths[0].path, protocol.request_paths)?.endpoint
     : command.url.replace(/\/+$/, "")
@@ -950,13 +950,14 @@ function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickP
     ? undefined
     : capacityResult.rungs[capacityResult.selected_rung_index]
   return {
-    schema_version: 1,
+    schema_version: 2,
+    protocol: command.protocol,
     archived: false,
     archive_status: "not_attempted",
     model_id: command.model_id,
     success: true,
     address_mode: command.address_mode,
-    base_url: endpoint.replace(/\/chat\/completions$/, ""),
+    base_url: endpoint.replace(/\/(chat\/completions|responses|messages)$/, ""),
     endpoint,
     profile: {
       load_mode: command.load_mode, request_count: command.request_count, duration_ms: command.duration_ms,

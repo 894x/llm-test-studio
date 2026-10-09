@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "b83aaf98-6ec0-511a-b6dd-c5a1ae1c0a92",
   "key": "wan30.image.ratio_over_8_1",
   "name": "Wan 3.0 · 图片宽高比超过 8:1",
   "dimension": "media-boundary",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

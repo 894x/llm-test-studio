@@ -33,21 +33,19 @@ func TestPerformanceResolvesSelectedChannelCredentialInsideApplicationCore(t *te
 	defer server.Close()
 
 	secret := []byte("stored-secret")
-	resolver := &stubChannelConnectionResolver{connection: ChannelConnection{
-		BaseURL: server.URL + "/v1",
-		APIKey:  secret,
+	resolver := &stubChannelConnectionResolver{connection: ChannelConnection{Protocol: domain.ProtocolOpenAIChat, BaseURL: server.URL + "/v1",
+		APIKey: secret,
 	}}
 	service := New(Dependencies{
 		Transport:          server.Client().Transport,
 		ChannelConnections: resolver,
 	})
 	const channelID = "10000000-0000-4000-8000-000000000001"
-	result, err := service.RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL,
-		URL:         "https://stale.example.test/v1",
-		ChannelID:   channelID,
-		ModelID:     "model-a",
-		TimeoutMS:   2_000, RequestCount: 1, Concurrency: 1, InputTokens: 2, OutputTokens: 2,
+	result, err := service.RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL,
+		URL:       "https://stale.example.test/v1",
+		ChannelID: channelID,
+		ModelID:   "model-a",
+		TimeoutMS: 2_000, RequestCount: 1, Concurrency: 1, InputTokens: 2, OutputTokens: 2,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "9ff8aa5b-8d6b-5ab8-b28f-be5108ea1623",
   "key": "h3.duration.interior",
   "name": "MiniMax H3 · 时长中间值 8 秒",
   "dimension": "boundary",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

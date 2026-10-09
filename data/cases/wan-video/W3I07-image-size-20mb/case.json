@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "12a3fc9c-1d19-57df-bc0d-47483326001a",
   "key": "wan30.image.size_20mb",
   "name": "Wan 3.0 · 图片大小 20MB",
   "dimension": "media-boundary",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

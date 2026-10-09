@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "fefe9246-9f49-507d-86a4-3d65a4a11b89",
   "key": "h3.aigc_watermark.true",
   "name": "MiniMax H3 · 开启 AIGC 水印",
   "dimension": "boundary",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"sort"
 	"strings"
 	"unicode"
 
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
-
-const CurrentTestCaseDefinitionSchemaVersion = 1
 
 type CaseType string
 
@@ -140,96 +139,90 @@ func (assertion TestAssertion) Validate() error {
 	return nil
 }
 
-type TestCaseDefinition struct {
-	SchemaVersion int             `json:"schema_version"`
-	Type          CaseType        `json:"type"`
-	TypeVersion   uint32          `json:"type_version"`
-	Spec          json.RawMessage `json:"spec"`
-}
+// ProtocolDefinitions holds complete native specs for the protocols supported by one Case.
+type ProtocolDefinitions map[Protocol]json.RawMessage
 
-type serializedTestCaseDefinition TestCaseDefinition
-
-func (definition TestCaseDefinition) Validate() error {
-	if definition.SchemaVersion != CurrentTestCaseDefinitionSchemaVersion {
-		return fmt.Errorf("unsupported test case definition schema version %d", definition.SchemaVersion)
+func (definitions ProtocolDefinitions) Validate() error {
+	if len(definitions) == 0 {
+		return errors.New("case definitions must contain at least one protocol")
 	}
-	if err := Protocol(definition.Type).Validate(); err != nil {
-		return errors.New("unsupported case type; use a registered protocol type")
-	}
-	if definition.TypeVersion != 1 {
-		return errors.New("unsupported case type format; use type_version 1 with the current protocol spec")
-	}
-	object, err := decodeSafeJSONObject(definition.Spec)
-	if err != nil {
-		return fmt.Errorf("invalid test case definition spec: %w", err)
-	}
-	if len(object) == 0 {
-		return errors.New("test case definition spec must not be empty")
-	}
-	if _, err := testspec.Decode(definition.Spec); err != nil {
-		return err
+	for protocol, raw := range definitions {
+		if err := protocol.Validate(); err != nil {
+			return err
+		}
+		if _, err := decodeSafeJSONObject(raw); err != nil {
+			return fmt.Errorf("invalid %s definition: %w", protocol, err)
+		}
+		if _, err := testspec.Decode(raw); err != nil {
+			return fmt.Errorf("invalid %s definition: %w", protocol, err)
+		}
 	}
 	return nil
 }
 
-func isSafeCaseType(value CaseType) bool {
-	text := string(value)
-	if text == "" || strings.TrimSpace(text) != text || strings.HasPrefix(text, ".") || strings.HasSuffix(text, ".") {
-		return false
+func (definitions ProtocolDefinitions) Clone() ProtocolDefinitions {
+	if definitions == nil {
+		return nil
 	}
-	for _, segment := range strings.Split(text, ".") {
-		if segment == "" {
-			return false
-		}
-		for index, character := range segment {
-			if character >= 'a' && character <= 'z' || index > 0 && (character >= '0' && character <= '9' || character == '_' || character == '-') {
-				continue
-			}
-			return false
-		}
+	cloned := make(ProtocolDefinitions, len(definitions))
+	for protocol, raw := range definitions {
+		cloned[protocol] = append(json.RawMessage(nil), raw...)
 	}
-	return true
+	return cloned
 }
 
-func (definition TestCaseDefinition) MarshalJSON() ([]byte, error) {
-	if err := definition.Validate(); err != nil {
-		return nil, fmt.Errorf("marshal test case definition: %w", err)
+func (definitions ProtocolDefinitions) MarshalJSON() ([]byte, error) {
+	if err := definitions.Validate(); err != nil {
+		return nil, err
 	}
-	return json.Marshal(serializedTestCaseDefinition(definition))
+	return json.Marshal(map[Protocol]json.RawMessage(definitions))
 }
 
-func (definition *TestCaseDefinition) UnmarshalJSON(data []byte) error {
+func (definitions *ProtocolDefinitions) UnmarshalJSON(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var serialized serializedTestCaseDefinition
-	if err := decoder.Decode(&serialized); err != nil {
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return errors.New("case definitions must be a protocol-keyed object")
+	}
+	candidate := ProtocolDefinitions{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		protocol := Protocol(key.(string))
+		if _, found := candidate[protocol]; found {
+			return fmt.Errorf("duplicate case protocol %q", protocol)
+		}
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			return err
+		}
+		candidate[protocol] = raw
+	}
+	if _, err := decoder.Token(); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		if err == nil {
-			return errors.New("test case definition JSON must contain exactly one value")
-		}
-		return err
+		return errors.New("case definitions must contain exactly one JSON object")
 	}
-	candidate := TestCaseDefinition(serialized)
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	*definition = candidate
+	*definitions = candidate
 	return nil
 }
 
 type TestCase struct {
 	EntityMeta
-	Key           string             `json:"key"`
-	Name          string             `json:"name"`
-	Dimension     string             `json:"dimension"`
-	Protocol      Protocol           `json:"protocol"`
-	Enabled       bool               `json:"enabled"`
-	Default       bool               `json:"default"`
-	Severity      CaseSeverity       `json:"severity"`
-	ExecutionMode CaseExecutionMode  `json:"execution_mode"`
-	Definition    TestCaseDefinition `json:"definition"`
+	Key           string              `json:"key"`
+	Name          string              `json:"name"`
+	Dimension     string              `json:"dimension"`
+	Enabled       bool                `json:"enabled"`
+	Default       bool                `json:"default"`
+	Severity      CaseSeverity        `json:"severity"`
+	ExecutionMode CaseExecutionMode   `json:"execution_mode"`
+	Definitions   ProtocolDefinitions `json:"definitions"`
 }
 
 type CaseSeverity string
@@ -277,9 +270,6 @@ func (testCase TestCase) Validate() error {
 	if strings.TrimSpace(testCase.Dimension) == "" || strings.TrimSpace(testCase.Dimension) != testCase.Dimension {
 		return errors.New("test case dimension must be a trimmed non-empty value")
 	}
-	if err := testCase.Protocol.Validate(); err != nil {
-		return err
-	}
 	if testCase.Default && !testCase.Enabled {
 		return errors.New("a default test case must be enabled")
 	}
@@ -289,12 +279,50 @@ func (testCase TestCase) Validate() error {
 	if err := testCase.ExecutionMode.Validate(); err != nil {
 		return err
 	}
-	if err := testCase.Definition.Validate(); err != nil {
-		return fmt.Errorf("invalid test case definition: %w", err)
+	if err := testCase.Definitions.Validate(); err != nil {
+		return err
 	}
-	if string(testCase.Definition.Type) != string(testCase.Protocol) {
-		return errors.New("case type must equal protocol")
+
+	return nil
+}
+
+func (testCase TestCase) SupportsProtocol(protocol Protocol) bool {
+	_, found := testCase.Definitions[protocol]
+	return found
+}
+
+func (testCase TestCase) Protocols() []Protocol {
+	result := make([]Protocol, 0, len(testCase.Definitions))
+	for protocol := range testCase.Definitions {
+		result = append(result, protocol)
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
+func (testCase TestCase) SpecFor(protocol Protocol) (testspec.Spec, error) {
+	raw, found := testCase.Definitions[protocol]
+	if !found {
+		return testspec.Spec{}, fmt.Errorf("Case %s has no definition for protocol %s", testCase.Key, protocol)
+	}
+	return testspec.Decode(raw)
+}
+
+func (testCase *TestCase) UnmarshalJSON(data []byte) error {
+	type currentCase TestCase
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var candidate currentCase
+	if err := decoder.Decode(&candidate); err != nil {
+		return fmt.Errorf("unsupported Case format; explicitly upgrade to protocol-keyed definitions: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("Case JSON must contain exactly one value")
+	}
+	if err := TestCase(candidate).Validate(); err != nil {
+		return err
+	}
+	*testCase = TestCase(candidate)
 	return nil
 }
 

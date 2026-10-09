@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96",
   "key": "must.usage_non_stream",
   "name": "协议 · Usage 非流式",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {
         "prompt": {
           "type": "string",
@@ -57,6 +54,131 @@
           "source": "usage",
           "operator": "type",
           "value": "object"
+        }
+      ]
+    },
+    "openai-responses": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "说你好"
+        }
+      },
+      "request": {
+        "body": {
+          "input": {
+            "$input": "prompt"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "completed",
+          "source": "response",
+          "pointer": "/status",
+          "operator": "equals",
+          "value": "completed"
+        },
+        {
+          "id": "usage",
+          "source": "usage",
+          "pointer": "/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "output_tokens",
+          "source": "usage",
+          "pointer": "/output_tokens",
+          "operator": "gte",
+          "value": 1
+        },
+        {
+          "id": "text",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    },
+    "anthropic-messages": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "说你好"
+        }
+      },
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": {
+                "$input": "prompt"
+              }
+            }
+          ],
+          "max_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "message",
+          "source": "response",
+          "pointer": "/type",
+          "operator": "equals",
+          "value": "message"
+        },
+        {
+          "id": "stop",
+          "source": "response",
+          "pointer": "/stop_reason",
+          "operator": "non_empty"
+        },
+        {
+          "id": "usage",
+          "source": "usage",
+          "pointer": "/input_tokens",
+          "operator": "gte",
+          "value": 0
+        },
+        {
+          "id": "output_tokens",
+          "source": "usage",
+          "pointer": "/output_tokens",
+          "operator": "gte",
+          "value": 1
+        },
+        {
+          "id": "text",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
         }
       ]
     }

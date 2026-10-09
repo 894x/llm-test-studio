@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "d239fb4a-b59d-5856-87f8-d313d9fe2b05",
   "key": "wan30.video.side_4097",
   "name": "Wan 3.0 · 视频单边 4097",
   "dimension": "media-boundary",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

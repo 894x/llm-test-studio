@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "fe151436-b2d8-5ebb-afa4-2a38756dc44b",
   "key": "wan30.prompt.wrong_type",
   "name": "Wan 3.0 · Prompt 类型错误",
   "dimension": "type",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

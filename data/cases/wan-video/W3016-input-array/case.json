@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "b111a631-ea84-57d4-85d1-b54265c8ebc9",
   "key": "wan30.input.array",
   "name": "Wan 3.0 · input 为数组",
   "dimension": "type",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

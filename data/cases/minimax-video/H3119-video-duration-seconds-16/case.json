@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "92ce4e68-d735-57c7-b2a2-f3646af7bbf9",
   "key": "h3.video.duration_seconds_16",
   "name": "MiniMax H3 · 视频 duration_seconds=16",
   "dimension": "media-boundary",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "8ac55529-2b31-5b3a-bbd6-7c4d54ddd69c",
   "key": "messages_required",
   "name": "消息 · 缺少 messages 应拒绝",
   "dimension": "messages",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "44f343c1-36ce-5352-a88d-678c1a7c34e1",
   "key": "h3.model.string_required",
   "name": "MiniMax H3 · model 必须为字符串",
   "dimension": "boundary",
-  "protocol": "minimax-video",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

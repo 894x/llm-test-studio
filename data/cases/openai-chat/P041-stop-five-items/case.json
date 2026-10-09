@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "f909093d-609d-57b8-8523-944a269c373e",
   "key": "stop_five_items",
   "name": "Stop · 5 个字符串上边界",
   "dimension": "parameters",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

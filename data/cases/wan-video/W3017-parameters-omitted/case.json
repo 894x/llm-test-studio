@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "7ff04cd8-6607-5b8f-81df-c9f2676cf5cc",
   "key": "wan30.parameters.omitted",
   "name": "Wan 3.0 · 省略 parameters 使用默认值",
   "dimension": "defaults",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

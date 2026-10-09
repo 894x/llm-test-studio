@@ -1,6 +1,6 @@
 # Kimi official multi-model foundation cases
 
-All cases use the `openai-chat` wire protocol; Kimi names identify models, not protocols.
+The Kimi foundation suites select `openai-chat`; Kimi names identify models. Five shared text Cases also define native `openai-responses` and `anthropic-messages` requests. The new connectivity and text-contract Suites select these protocols and reuse the same Case IDs. Bind a model and channel that support the selected endpoint; no automatic protocol conversion is performed.
 
 The desktop application groups runnable Kimi-oriented cases under `data/cases/openai-chat` into four model-specific foundation suites, alongside smaller connectivity suites. Shared cases are referenced by each applicable suite instead of being copied; the Run selects the model and channel.
 

@@ -26,7 +26,7 @@ func (catalog quickTaskCatalog) GetChannel(context.Context, string) (domain.Chan
 }
 
 func quickTaskSuite(fixture runFixture) domain.Suite {
-	return domain.Suite{EntityMeta: fixture.suite.EntityMeta, Key: "connection", Name: "Connection", Protocol: fixture.testCase.Protocol, Cases: fixture.suite.Cases,
+	return domain.Suite{EntityMeta: fixture.suite.EntityMeta, Key: "connection", Name: "Connection", Protocol: fixture.suite.Protocol, Cases: fixture.suite.Cases,
 		Inputs: []domain.SuiteInput{{Key: "prompt", Label: "Message", Input: testspec.Input{Type: "string", Default: json.RawMessage(`"default"`)}, Bindings: []domain.SuiteInputBinding{{CaseID: fixture.testCase.ID, Input: "prompt"}}}}}
 }
 
@@ -63,7 +63,7 @@ func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T
 	if snapshot.QuickTask == nil || snapshot.Entries[0].Suite.ID != suite.ID || string(snapshot.Entries[0].Parameters["prompt"]) != `"edited"` || request.Run.PlanID() != id {
 		t.Fatalf("task provenance missing: %+v", snapshot)
 	}
-	if !strings.Contains(string(snapshot.Entries[0].CaseDefinitions[0].Definition.Spec), `"hi"`) || string(request.Entry.CaseInputs[fixture.testCase.ID]["prompt"]) != `"edited"` {
+	if !strings.Contains(string(snapshot.Entries[0].CaseDefinitions[0].Definitions[domain.ProtocolOpenAIChat]), `"hi"`) || string(request.Entry.CaseInputs[fixture.testCase.ID]["prompt"]) != `"edited"` {
 		t.Fatal("effective and authored request values mixed")
 	}
 	encoded, err := json.Marshal(request.Run)
@@ -118,8 +118,8 @@ func TestQuickTaskSavedChannelResolvesItsCredentialWithoutAuthoredModel(t *testi
 
 func TestQuickTaskHistoryUsesCurrentDefinitionsAfterCatalogChanges(t *testing.T) {
 	fixture := newRunFixture(t)
-	currentSpec := fixture.testCase.Definition.Spec
-	fixture.testCase.Definition.Spec = json.RawMessage(`{
+	currentSpec := fixture.testCase.Definitions[domain.ProtocolOpenAIChat]
+	fixture.testCase.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{
 		"inputs":{"prompt":{"type":"string","default":"hi"}},
 		"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},
 		"assertions":[
@@ -188,7 +188,7 @@ func TestQuickTaskHistoryUsesCurrentDefinitionsAfterCatalogChanges(t *testing.T)
 		t.Fatal("rejected rerun changed historical data")
 	}
 	historicalSnapshot := repository.run.Snapshot()
-	repository.fixture.testCase.Definition.Spec = currentSpec
+	repository.fixture.testCase.Definitions[domain.ProtocolOpenAIChat] = currentSpec
 	repository.fixture.testCase.Revision++
 	suite.Revision++
 	replayer, err := runs.New(runs.Dependencies{
@@ -201,7 +201,7 @@ func TestQuickTaskHistoryUsesCurrentDefinitionsAfterCatalogChanges(t *testing.T)
 	}
 	defer replayer.Close()
 	command.SourceRunID = id
-	path, err := replayer.QuickTaskPerformancePath(context.Background(), command)
+	path, err := replayer.QuickTaskPerformancePath(context.Background(), command, domain.ProtocolOpenAIChat)
 	if err != nil || path != "/v1/chat/completions" {
 		t.Fatalf("historical performance path=%q err=%v", path, err)
 	}
@@ -217,10 +217,10 @@ func TestQuickTaskHistoryUsesCurrentDefinitionsAfterCatalogChanges(t *testing.T)
 	if entry.Suite.Revision != suite.Revision || entry.CaseDefinitions[0].Revision != repository.fixture.testCase.Revision {
 		t.Fatal("rerun did not use current Suite and Case revisions")
 	}
-	if string(entry.CaseDefinitions[0].Definition.Spec) != string(currentSpec) {
+	if string(entry.CaseDefinitions[0].Definitions[domain.ProtocolOpenAIChat]) != string(currentSpec) {
 		t.Fatal("rerun retained removed assertions")
 	}
-	if !strings.Contains(string(historicalSnapshot.Entries[0].CaseDefinitions[0].Definition.Spec), `"/created"`) {
+	if !strings.Contains(string(historicalSnapshot.Entries[0].CaseDefinitions[0].Definitions[domain.ProtocolOpenAIChat]), `"/created"`) {
 		t.Fatal("current definitions rewrote the historical snapshot")
 	}
 }
@@ -269,9 +269,8 @@ func TestQuickTaskPreparesVideoSelectionsWithoutAnExtraConfirmation(t *testing.T
 	} {
 		t.Run(string(test.protocol), func(t *testing.T) {
 			fixture := newRunFixture(t)
-			fixture.testCase.Protocol = test.protocol
-			fixture.testCase.Definition.Type = domain.CaseType(test.protocol)
-			fixture.testCase.Definition.Spec = json.RawMessage(`{"inputs":{},"request":{"body":{"prompt":"hello"}},"assertions":[]}`)
+			fixture.suite.Protocol = test.protocol
+			fixture.testCase.Definitions = domain.ProtocolDefinitions{test.protocol: json.RawMessage(`{"inputs":{},"request":{"body":{"prompt":"hello"}},"assertions":[]}`)}
 			repository := &fakeRepository{fixture: fixture, testCases: map[string]domain.TestCase{fixture.testCase.ID: fixture.testCase}}
 			suite := quickTaskSuite(fixture)
 			suite.Inputs = []domain.SuiteInput{}
@@ -295,5 +294,58 @@ func TestQuickTaskPreparesVideoSelectionsWithoutAnExtraConfirmation(t *testing.T
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestQuickTaskSelectsProtocolDefinitionWithoutChangingCaseIdentity(t *testing.T) {
+	for _, selected := range []domain.Protocol{domain.ProtocolOpenAIResponses, domain.ProtocolAnthropicMessages} {
+		t.Run(string(selected), func(t *testing.T) {
+			fixture := newRunFixture(t)
+			fixture.suite.Protocol = selected
+			fixture.testCase.Definitions = domain.ProtocolDefinitions{
+				domain.ProtocolOpenAIResponses:   json.RawMessage(`{"inputs":{"prompt":{"type":"string"}},"request":{"body":{"input":{"$input":"prompt"}}},"assertions":[]}`),
+				domain.ProtocolAnthropicMessages: json.RawMessage(`{"inputs":{"prompt":{"type":"string"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}],"max_tokens":32}},"assertions":[]}`),
+			}
+			repository := &fakeRepository{fixture: fixture}
+			suite := quickTaskSuite(fixture)
+			service, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(), Executor: &recordingExecutor{}, Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = service.Close() })
+			command := runs.QuickTaskCommand{SuiteID: suite.ID, Model: "k3", BaseURL: "https://example.test", APIKey: "temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}}
+			id, err := service.PrepareQuickTask(context.Background(), command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot := repository.run.Snapshot()
+			if snapshot.Channel.Protocol != selected || snapshot.Entries[0].CaseDefinitions[0].ID != fixture.testCase.ID {
+				t.Fatal("selected protocol or Case identity lost")
+			}
+			frozen := snapshot.Entries[0].CaseDefinitions[0].Definitions[selected][0]
+			fixture.testCase.Definitions[selected][0] = '!'
+			if repository.run.Snapshot().Entries[0].CaseDefinitions[0].Definitions[selected][0] != frozen {
+				t.Fatal("snapshot shares mutable definitions")
+			}
+			if err := service.CancelRun(context.Background(), id); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestQuickTaskMissingProtocolFailsBeforeCreatingRun(t *testing.T) {
+	fixture := newRunFixture(t)
+	fixture.suite.Protocol = domain.ProtocolOpenAIResponses
+	repository := &fakeRepository{fixture: fixture}
+	suite := quickTaskSuite(fixture)
+	service, err := runs.New(runs.Dependencies{Repository: repository, QuickTasks: quickTaskCatalog{suite: suite}, Credentials: credentials.NewMemoryStore(), Executor: &recordingExecutor{}, Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	_, err = service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Model: "k3", BaseURL: "https://example.test", APIKey: "temporary-key"})
+	if !errors.Is(err, runs.ErrNotRunnable) || !strings.Contains(err.Error(), "openai-responses") || len(repository.statuses) != 0 {
+		t.Fatalf("missing definition = %v", err)
 	}
 }

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "3f27c5d8-562f-58f4-a7f7-6ab9967257f6",
   "key": "wan30.prompt.video_indexing",
   "name": "Wan 3.0 · Prompt 按顺序引用视频编号",
   "dimension": "semantic",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

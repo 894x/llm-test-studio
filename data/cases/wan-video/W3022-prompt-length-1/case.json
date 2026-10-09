@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "d4e3447d-35b5-520e-a687-50b24ce6819b",
   "key": "wan30.prompt.length_1",
   "name": "Wan 3.0 · Prompt 长度 1",
   "dimension": "boundary",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

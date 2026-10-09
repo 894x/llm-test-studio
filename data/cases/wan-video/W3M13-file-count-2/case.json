@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "e3c1ad40-5e1c-5202-96dc-de1985651de3",
   "key": "wan30.media.file_count_2",
   "name": "Wan 3.0 · 文件数量 2 超限",
   "dimension": "boundary",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

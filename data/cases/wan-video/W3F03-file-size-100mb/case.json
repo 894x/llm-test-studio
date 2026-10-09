@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "3a8e7b26-0588-5e11-a4e3-a6aa742491fd",
   "key": "wan30.file.size_100mb",
   "name": "Wan 3.0 · 文件大小 100MB",
   "dimension": "media-boundary",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

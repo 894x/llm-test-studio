@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "353a4de4-ac48-55d3-a2bb-a1038a4a37ef",
   "key": "wan30.media.duplicate_first_frame",
   "name": "Wan 3.0 · 重复首帧",
   "dimension": "dependencies",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

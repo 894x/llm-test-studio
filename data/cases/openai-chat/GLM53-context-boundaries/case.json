@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "70d51a2b-0c1b-5850-8751-d3208a950135",
   "key": "glm53.context.boundaries",
   "name": "GLM 5.3 · context.boundaries（待验证模板）",
   "dimension": "glm53.context",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

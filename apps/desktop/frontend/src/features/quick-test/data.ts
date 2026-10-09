@@ -1,3 +1,4 @@
+import type { CatalogProtocol } from "@/features/catalog/data"
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 export type QuickTestAddressMode = "base_url" | "full_url"
@@ -25,6 +26,7 @@ export const QUICK_TEST_ERROR_CODES = [
 export type QuickTestErrorCode = (typeof QUICK_TEST_ERROR_CODES)[number]
 
 export interface QuickPerformanceCommand {
+  protocol: CatalogProtocol
   credential_run_id?: string
   task?: { suite_id: string; suite_revision: number; source_run_id?: string }
   address_mode: QuickTestAddressMode
@@ -64,7 +66,7 @@ export interface QuickPerformanceCommand {
 export type QuickPerformanceLoadMode = "fixed_concurrency" | "open_loop"
 export type QuickPerformanceArrivalPattern = "constant" | "poisson"
 export type QuickPerformanceWorkloadMode = "fixed" | "normal"
-export type QuickPerformanceSchemaVersion = 1
+export type QuickPerformanceSchemaVersion = 2
 
 export interface QuickPerformanceProfile {
   load_mode?: QuickPerformanceLoadMode
@@ -382,6 +384,7 @@ export interface QuickPerformanceCapacityResult {
 }
 
 export interface QuickPerformanceReport {
+  protocol: CatalogProtocol
   schema_version: QuickPerformanceSchemaVersion
   report_id?: string
   generated_at?: string
@@ -442,10 +445,11 @@ function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceRespo
 }
 
 export function parseQuickPerformanceReport(value: unknown): QuickPerformanceReport {
-  if (!isRecord(value) || (value.schema_version !== 1)) {
+  if (!isRecord(value) || (value.schema_version !== 2)) {
     throw new DesktopDataError(tx("desktop:quick-test_unsupported_quick_performance_report_protocol_version"))
   }
   const schemaVersion = value.schema_version
+  if (!isQuickPerformanceProtocol(value.protocol)) throw new DesktopDataError("Unsupported performance protocol")
   if (
     typeof value.success !== "boolean" ||
     typeof value.archived !== "boolean" ||
@@ -543,6 +547,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   }
   return {
     schema_version: schemaVersion,
+    protocol: value.protocol,
     ...(value.report_id === undefined ? {} : { report_id: value.report_id }),
     ...(value.generated_at === undefined ? {} : { generated_at: value.generated_at }),
     archived: value.archived,
@@ -1756,7 +1761,7 @@ function isPerformanceProgress(value: unknown): value is QuickPerformanceProgres
     isRepresentableDurationMS(value.total_duration_ms)
 }
 
-function isPerformanceMetrics(value: unknown, _schemaVersion: QuickPerformanceSchemaVersion = 1): value is QuickPerformanceMetrics {
+function isPerformanceMetrics(value: unknown, _schemaVersion: QuickPerformanceSchemaVersion = 2): value is QuickPerformanceMetrics {
   if (!isRecord(value)) return false
   const integerFields = ["completed", "succeeded", "failed", "timed_out", "prompt_tokens", "completion_tokens", "cached_tokens"] as const
   const numberFields = [
@@ -1893,4 +1898,8 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isPositiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0
+}
+
+export function isQuickPerformanceProtocol(value: unknown): value is "openai-chat" | "openai-responses" | "anthropic-messages" {
+  return value === "openai-chat" || value === "openai-responses" || value === "anthropic-messages"
 }

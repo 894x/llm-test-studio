@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "58d21f07-c537-5bec-856e-a5fb0e1cf324",
   "key": "glm53.function.parameters_omitted",
   "name": "GLM 5.3 · function.parameters_omitted（待验证模板）",
   "dimension": "glm53.function_schema",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

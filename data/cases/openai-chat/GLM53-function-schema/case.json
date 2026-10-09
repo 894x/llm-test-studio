@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "19f45218-f575-5c52-8846-208e8bf88d05",
   "key": "glm53.function.schema",
   "name": "GLM 5.3 · 函数对象参数 Schema",
   "dimension": "glm53.function_schema",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -50,7 +47,7 @@
           ]
         }
       },
-      "assertions":       [
+      "assertions": [
         {
           "id": "r1",
           "source": "http.status",

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "7870c0d3-dcbc-52b1-893d-c5f5a6d159e5",
   "key": "glm53.disconnect.lifecycle",
   "name": "GLM 5.3 · disconnect.lifecycle（待验证模板）",
   "dimension": "glm53.disconnect",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

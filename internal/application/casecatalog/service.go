@@ -51,20 +51,19 @@ type Group struct {
 }
 
 type Case struct {
-	ID            string                    `json:"id"`
-	Revision      uint64                    `json:"revision"`
-	Group         string                    `json:"group"`
-	Directory     string                    `json:"directory"`
-	Key           string                    `json:"key"`
-	Name          string                    `json:"name"`
-	Dimension     string                    `json:"dimension"`
-	Protocol      domain.Protocol           `json:"protocol"`
-	Enabled       bool                      `json:"enabled"`
-	Default       bool                      `json:"default"`
-	Severity      domain.CaseSeverity       `json:"severity"`
-	ExecutionMode domain.CaseExecutionMode  `json:"execution_mode"`
-	Source        Source                    `json:"source"`
-	Definition    domain.TestCaseDefinition `json:"definition"`
+	ID            string                     `json:"id"`
+	Revision      uint64                     `json:"revision"`
+	Group         string                     `json:"group"`
+	Directory     string                     `json:"directory"`
+	Key           string                     `json:"key"`
+	Name          string                     `json:"name"`
+	Dimension     string                     `json:"dimension"`
+	Enabled       bool                       `json:"enabled"`
+	Default       bool                       `json:"default"`
+	Severity      domain.CaseSeverity        `json:"severity"`
+	ExecutionMode domain.CaseExecutionMode   `json:"execution_mode"`
+	Source        Source                     `json:"source"`
+	Definitions   domain.ProtocolDefinitions `json:"definitions"`
 }
 
 type discovered struct {
@@ -115,9 +114,9 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		testCase := entry.TestCase
 		groups[len(groups)-1].Cases = append(groups[len(groups)-1].Cases, Case{
 			ID: testCase.ID, Revision: testCase.Revision, Group: entry.Group, Directory: entry.Directory,
-			Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension, Protocol: testCase.Protocol,
+			Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
 			Enabled: testCase.Enabled, Default: testCase.Default, Severity: testCase.Severity,
-			ExecutionMode: testCase.ExecutionMode, Source: entry.Source, Definition: testCase.Definition,
+			ExecutionMode: testCase.ExecutionMode, Source: entry.Source, Definitions: testCase.Definitions.Clone(),
 		})
 	}
 	return Snapshot{Groups: groups}, nil
@@ -141,12 +140,15 @@ func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 		return nil, fmt.Errorf("inspect user case root: %w", statErr)
 	}
 	for key, value := range user {
+		if original, exists := builtin[key]; exists && original.testCase.ID != value.testCase.ID {
+			return nil, fmt.Errorf("%w: user override %s must preserve the built-in id", ErrCollision, key)
+		}
 		builtin[key] = value
 	}
 	discoveredEntries := make([]discovered, 0, len(builtin))
 	identities := make(map[string]string, len(builtin))
 	for path, entry := range builtin {
-		identity := string(entry.testCase.Protocol) + "/" + entry.testCase.Key
+		identity := entry.testCase.ID
 		if previous, duplicate := identities[identity]; duplicate {
 			return nil, fmt.Errorf("%w: %s and %s", ErrCollision, previous, path)
 		}
@@ -221,23 +223,21 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	protocol := domain.Protocol(group)
-	if err := protocol.Validate(); err != nil {
-		return ErrInvalid
-	}
 	sourcePath := group + "/" + directory + "/case.json"
 	testCase, err := casecodec.DecodeFilesystemCase(sourcePath, raw)
-	if err != nil || testCase.Protocol != protocol {
+	if err != nil {
 		return ErrInvalid
 	}
-	current, findErr := service.Find(ctx, testCase.ID)
-	if findErr == nil {
-		if current.Group != group || current.Directory != directory {
+	entries, err := service.Entries(ctx)
+	if err != nil {
+		return err
+	}
+	for _, current := range entries {
+		samePath := current.Group == group && current.Directory == directory
+		sameID := current.TestCase.ID == testCase.ID
+		if samePath != sameID {
 			return ErrCollision
 		}
-
-	} else if !errors.Is(findErr, fs.ErrNotExist) {
-		return findErr
 	}
 	targetDirectory := filepath.Join(service.userRoot, group, directory)
 	target := filepath.Join(targetDirectory, "case.json")
@@ -274,7 +274,7 @@ func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]
 			return err
 		}
 		testCase, err := casecodec.DecodeFilesystemCase(path, raw)
-		if err != nil || string(testCase.Protocol) != parts[0] {
+		if err != nil {
 			return fmt.Errorf("invalid case file %q", path)
 		}
 		key := parts[0] + "/" + parts[1]

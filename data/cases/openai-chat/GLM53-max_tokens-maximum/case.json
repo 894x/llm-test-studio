@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "df272463-3f13-5c0e-b294-4ab685cd46eb",
   "key": "glm53.max_tokens.maximum",
   "name": "GLM 5.3 · 131072 上限接受（高预算）",
   "dimension": "glm53.max_tokens",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

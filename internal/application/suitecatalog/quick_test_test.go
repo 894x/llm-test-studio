@@ -21,7 +21,7 @@ func TestAllAuthoredSuitesUseCurrentReferenceContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 44 {
+	if len(entries) != 48 {
 		t.Fatalf("suite count %d", len(entries))
 	}
 	for _, entry := range entries {

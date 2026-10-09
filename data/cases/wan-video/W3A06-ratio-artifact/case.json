@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "e5097ca8-efea-5b94-9f5c-bc1a8e68a585",
   "key": "wan30.artifact.ratio_matches",
   "name": "Wan 3.0 · 产物比例匹配 ratio",
   "dimension": "artifact",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "3b69383c-7ad6-5d83-bfcb-7162aeb59080",
   "key": "h3.t2v.ratio_1_1",
   "name": "MiniMax H3 · 文生视频比例 1:1",
   "dimension": "enum",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

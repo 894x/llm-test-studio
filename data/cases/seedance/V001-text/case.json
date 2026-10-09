@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "b8884c60-a426-5ee0-81b0-d0631aa0adf9",
   "key": "V001",
   "name": "纯文本生成视频",
   "dimension": "compatibility",
-  "protocol": "seedance",
   "enabled": true,
   "default": true,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "seedance",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "seedance": {
       "inputs": {
         "prompt": {
           "type": "string",

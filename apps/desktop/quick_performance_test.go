@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 type recordingQuickPerformanceRunner struct {
@@ -78,13 +79,11 @@ func TestRunQuickPerformanceReturnsStableErrorsWithoutLeakingRunnerDetails(t *te
 }
 
 func TestRunQuickPerformanceTestDelegatesThroughLifecycleContext(t *testing.T) {
-	command := quicktest.PerformanceCommand{
-		AddressMode: quicktest.AddressModeBaseURL, URL: "https://api.example.test/v1",
+	command := quicktest.PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: quicktest.AddressModeBaseURL, URL: "https://api.example.test/v1",
 		APIKey: "sk-ephemeral", ModelID: "upstream-model", RequestCount: 10,
 		Concurrency: 2, TimeoutMS: 30_000, InputTokens: 100, OutputTokens: 100,
 	}
-	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{
-		SchemaVersion: quicktest.PerformanceSchemaVersion, Success: true,
+	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion, Success: true,
 		AddressMode: quicktest.AddressModeBaseURL, Endpoint: "https://api.example.test/v1/chat/completions",
 	}}
 	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
@@ -110,7 +109,7 @@ func TestRunQuickPerformanceTestDelegatesThroughLifecycleContext(t *testing.T) {
 func TestRunQuickPerformanceTestPublishesCorrelatedProgressEvents(t *testing.T) {
 	const progressID = "88888888-8888-4888-8888-888888888888"
 	runner := &recordingQuickPerformanceRunner{
-		performanceReport: quicktest.PerformanceReport{SchemaVersion: quicktest.PerformanceSchemaVersion},
+		performanceReport: quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion},
 		progress: []quicktest.PerformanceProgress{
 			{Phase: "sending", Planned: 4, Completed: 1, PeakInFlight: 2, Succeeded: 1},
 			{Phase: "completed", Planned: 4, Completed: 4, PeakInFlight: 2, Succeeded: 4, TotalDurationMS: 320},

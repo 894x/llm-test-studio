@@ -99,7 +99,8 @@ function catalogMutationMocks() {
 
 function archivedPerformanceReport(reportID: string): QuickPerformanceReport {
   return {
-    schema_version: 1,
+    schema_version: 2,
+    protocol: "openai-chat" as const,
     report_id: reportID,
     generated_at: "2026-08-31T14:30:00Z",
     archived: true,

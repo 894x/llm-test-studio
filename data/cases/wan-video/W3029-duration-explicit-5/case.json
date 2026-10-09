@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "0b7351af-3efd-5fe5-bc5a-1689d9a0c8b4",
   "key": "wan30.duration.explicit_5",
   "name": "Wan 3.0 · duration 显式 5 秒",
   "dimension": "parameters",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

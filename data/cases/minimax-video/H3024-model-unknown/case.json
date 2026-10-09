@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "97520e5e-54dd-5aa4-94e1-baa682d4059b",
   "key": "h3.model.unknown",
   "name": "MiniMax H3 · model 未知枚举",
   "dimension": "boundary",
-  "protocol": "minimax-video",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

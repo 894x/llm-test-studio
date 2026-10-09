@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "6894e87b-70da-5a1e-94d2-83c0d478fbbb",
   "key": "glm53.reasoning_effort.omitted",
   "name": "GLM 5.3 · reasoning_effort 省略",
   "dimension": "glm53.reasoning_effort",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

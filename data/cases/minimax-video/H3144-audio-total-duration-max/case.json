@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "18998b71-fb85-5c5e-b0b4-7cdf4ff36005",
   "key": "h3.audio.total_duration_max",
   "name": "MiniMax H3 · 参考音频总时长最大 15 秒",
   "dimension": "media-boundary",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

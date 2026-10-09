@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "8657c471-5742-5da7-b562-6ac1d2d81962",
   "key": "wan30.artifact.audio_true_has_track",
   "name": "Wan 3.0 · audio=true 产物含音轨",
   "dimension": "artifact",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

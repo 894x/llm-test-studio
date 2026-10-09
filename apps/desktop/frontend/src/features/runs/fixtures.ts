@@ -40,9 +40,8 @@ const CASE_IDS = {
 
 const SUITE_ID = "88888888-8888-4888-8888-888888888881"
 
-function caseEditor(_assertionKinds: string[]): Pick<CatalogTestCase, "definition_schema_version" | "type" | "type_version" | "spec"> {
-  return { definition_schema_version: 1, type: "openai-chat", type_version: 1,
-    spec: { inputs: { prompt: { type: "string", default: "hello" } }, request: { body: { messages: [{ role: "user", content: { $input: "prompt" } }] } }, assertions: [{ id: "http-status", source: "http.status", operator: "equals", value: 200 }] } }
+function caseEditor(_assertionKinds: string[]): Pick<CatalogTestCase, "definitions"> {
+  return { definitions: { "openai-chat": { inputs: { prompt: { type: "string", default: "hello" } }, request: { body: { messages: [{ role: "user", content: { $input: "prompt" } }] } }, assertions: [{ id: "http-status", source: "http.status", operator: "equals", value: 200 }] } } }
 }
 
 const ALL_CASE_REVISIONS = [
@@ -79,7 +78,9 @@ function fixturePlanEntry(
 export const FIXTURE_CATALOG: CatalogSnapshot = {
   schema_version: 1,
   case_types: [
-    { type: "openai-chat", type_version: 1, label: "OpenAI Chat", category: "protocol", scheduling_owner: "plan", supported_protocols: ["openai-chat"], creatable: true, default_spec: caseEditor([]).spec },
+    { type: "openai-chat", type_version: 1, label: "OpenAI Chat", category: "protocol", scheduling_owner: "plan", supported_protocols: ["openai-chat"], creatable: true, default_spec: caseEditor([]).definitions["openai-chat"]! },
+    { type: "openai-responses", type_version: 1, label: "OpenAI Responses", category: "protocol", scheduling_owner: "plan", supported_protocols: ["openai-responses"], creatable: true, default_spec: { inputs: {}, request: { body: { input: "Hello", max_output_tokens: 128 } }, assertions: [] } },
+    { type: "anthropic-messages", type_version: 1, label: "Anthropic Messages", category: "protocol", scheduling_owner: "plan", supported_protocols: ["anthropic-messages"], creatable: true, default_spec: { inputs: {}, request: { body: { messages: [{ role: "user", content: "Hello" }], max_tokens: 128 } }, assertions: [] } },
     { type: "seedance", type_version: 1, label: "Seedance", category: "protocol", scheduling_owner: "plan", supported_protocols: ["seedance"], creatable: true, default_spec: { inputs: {}, request: { body: { content: [] } }, assertions: [] } },
     { type: "wan-video", type_version: 1, label: "Wan Video", category: "protocol", scheduling_owner: "plan", supported_protocols: ["wan-video"], creatable: true, default_spec: { inputs: {}, request: { body: { input: {} } }, assertions: [] } },
     { type: "minimax-video", type_version: 1, label: "MiniMax Video", category: "protocol", scheduling_owner: "plan", supported_protocols: ["minimax-video"], creatable: true, default_spec: { inputs: {}, request: { body: { prompt: "hello" } }, assertions: [] } },
@@ -108,10 +109,10 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
     { id: "77777777-7777-4777-8777-777777777776", revision: 1, channel_id: CHANNEL_IDS.compatible, model_id: MODEL_IDS.deepseek, upstream_model_name: "deepseek-v3.2" },
   ],
   test_cases: [
-    { id: CASE_IDS.chat, revision: 3, key: "T001", name: "基础对话", dimension: "must", protocol: "openai-chat", enabled: true, default: true, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "text"]) },
-    { id: CASE_IDS.json, revision: 2, key: "T016", name: "JSON 模式", dimension: "response", protocol: "openai-chat", enabled: true, default: false, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "json"]) },
-    { id: CASE_IDS.tools, revision: 1, key: "T037", name: "工具调用", dimension: "tools", protocol: "openai-chat", enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["response_schema", "tool_call"]) },
-    { id: CASE_IDS.stream, revision: 2, key: "T008", name: "流式结束", dimension: "streaming", protocol: "openai-chat", enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["stream_end", "text"]) },
+    { id: CASE_IDS.chat, revision: 3, key: "T001", name: "基础对话", dimension: "must", enabled: true, default: true, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "text"]) },
+    { id: CASE_IDS.json, revision: 2, key: "T016", name: "JSON 模式", dimension: "response", enabled: true, default: false, severity: "critical", execution_mode: "automatic", ...caseEditor(["response_schema", "json"]) },
+    { id: CASE_IDS.tools, revision: 1, key: "T037", name: "工具调用", dimension: "tools", enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["response_schema", "tool_call"]) },
+    { id: CASE_IDS.stream, revision: 2, key: "T008", name: "流式结束", dimension: "streaming", enabled: true, default: false, severity: "normal", execution_mode: "automatic", ...caseEditor(["stream_end", "text"]) },
   ],
   suites: [
     { id: SUITE_ID, revision: 2, key: "openai-regression", name: "OpenAI 回归套件", protocol: "openai-chat", description: "OpenAI protocol regression", inputs: [], case_count: 4, cases: ALL_CASE_REVISIONS },

@@ -202,7 +202,7 @@ func TestExportDefaultsWatermarkAndSupportsQuickPerformanceReports(t *testing.T)
 			if test.format == ExportHTML && (!strings.Contains(string(contents), "Observed ICL（语义块间隔，非 Token ITL） (ms)") || !strings.Contains(string(contents), "语义块数")) {
 				t.Fatal("quick HTML export omits fine streaming telemetry labels")
 			}
-			if test.format == ExportHTML && !strings.Contains(string(contents), "Schema v1") {
+			if test.format == ExportHTML && !strings.Contains(string(contents), "Schema v2") {
 				t.Fatal("quick HTML export shows the wrong performance schema version")
 			}
 			if test.format == ExportJSON && (!strings.Contains(string(contents), `"observed_icl_ms"`) || !strings.Contains(string(contents), `"semantic_chunk_count"`)) {

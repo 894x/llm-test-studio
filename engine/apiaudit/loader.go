@@ -2,6 +2,7 @@ package apiaudit
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -9,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/894x/llm-test-studio/internal/casecodec"
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/protocols"
-	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 var safeResultIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]*$`)
@@ -20,17 +21,25 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 	if !containsProtocol(suite) {
 		return nil, fmt.Errorf("unsupported protocol %q", suite)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, suite))
+	paths := []string{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("case catalog must not contain symbolic links")
+		}
+		if !entry.IsDir() && entry.Name() == "case.json" {
+			paths = append(paths, path)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	cases := []CaseDefinition{}
 	seen := map[string]bool{}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(root, suite, entry.Name(), "case.json")
+	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
@@ -39,10 +48,10 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", path, err)
 		}
-		if string(candidate.Protocol) != suite {
-			return nil, fmt.Errorf("case protocol differs from directory")
+		if !candidate.SupportsProtocol(domain.Protocol(suite)) {
+			continue
 		}
-		spec, err := testspec.Decode(candidate.Definition.Spec)
+		spec, err := candidate.SpecFor(domain.Protocol(suite))
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +64,7 @@ func LoadSuite(root, suite string) ([]CaseDefinition, error) {
 		seen[candidate.Key] = true
 		cases = append(cases, CaseDefinition{
 			ID: candidate.Key, Name: candidate.Name, Dimension: candidate.Dimension,
-			Protocol: suite, Type: string(candidate.Definition.Type),
+			Protocol: suite, Type: suite,
 			Default: candidate.Default, Disabled: !candidate.Enabled,
 			ExecutionMode: string(candidate.ExecutionMode), Severity: string(candidate.Severity), Spec: spec,
 		})

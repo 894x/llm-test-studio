@@ -41,7 +41,7 @@ describe("connection path completion", () => {
 
   it("previews each distinct operation of the selected Suite", () => {
     const cases = FIXTURE_CATALOG.test_cases.slice(0, 2).map((testCase, index) => ({
-      ...testCase, spec: index ? { ...testCase.spec, operation: "models.list" } : { ...testCase.spec, operation: "" },
+      ...testCase, definitions: { "openai-chat": { ...testCase.definitions["openai-chat"], operation: index ? "models.list" : "" } },
     }))
     const catalog = { ...FIXTURE_CATALOG, test_cases: cases }
     const task = { ...catalog.suites[0], protocol: "openai-chat" as const, cases: cases.map(({ id }) => ({ case_id: id })) }

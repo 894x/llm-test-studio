@@ -445,6 +445,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
     <div>
       <h4 className="mb-2 text-xs font-semibold">{t("performance.config")}</h4>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
+        <ContextValue label={tx("desktop:catalog_protocol")} value={report.protocol} />
         <ContextValue label={tx("desktop:catalog_model")} value={report.model_id} />
         <ContextValue label={tx("desktop:quick-test_endpoint")} value={report.endpoint} mono />
         <ContextValue label={tx("desktop:catalog_load_mode")} value={performanceLoadMode(report.profile.load_mode)} />
@@ -727,7 +728,7 @@ function shortSLOStatus(status: NonNullable<QuickPerformanceReport["slo_assessme
 }
 function performanceArrivalPattern(report: QuickPerformanceReport): string {
   if (report.profile.arrival_pattern === "poisson") return tx("desktop:quick-test_poisson_arrivals")
-  return report.profile.arrival_pattern === "constant" ? tx("desktop:quick-test_constant_interval") : tx("desktop:quick-test_constant_interval_legacy_report")
+  return tx("desktop:quick-test_constant_interval")
 }
 
 function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerformanceReport["time_slices"]> }) {
@@ -773,14 +774,14 @@ function PerformanceTimeSliceTable({ slices }: { slices: NonNullable<QuickPerfor
 }
 function performanceWorkloadMode(report: QuickPerformanceReport): string {
   if (report.profile.workload_mode === "normal") return tx("desktop:quick-test_normal_distribution")
-  return report.profile.workload_mode === "fixed" ? tx("desktop:quick-test_fixed_tokens") : tx("desktop:quick-test_fixed_tokens_legacy_report")
+  return tx("desktop:quick-test_fixed_tokens")
 }
 function performanceSeed(report: QuickPerformanceReport): string {
-  if (report.profile.random_seed === undefined) return tx("desktop:quick-test_legacy_report")
+  if (report.profile.random_seed === undefined) return tx("desktop:quick-test_not_used")
   return report.profile.random_seed > 0 ? formatMetric(report.profile.random_seed) : tx("desktop:quick-test_not_used")
 }
 function performanceSharedPrefix(report: QuickPerformanceReport): string {
-  if (report.profile.shared_prefix_tokens === undefined) return tx("desktop:quick-test_0_tokens_legacy_report")
+  if (report.profile.shared_prefix_tokens === undefined) return "0 Token"
   return `${formatMetric(report.profile.shared_prefix_tokens)} Token`
 }
 function performanceWarmupConfiguration(report: QuickPerformanceReport): string {

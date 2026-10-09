@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "7de8ab75-e13a-579e-b866-9cc18a21bb76",
   "key": "h3.authorization.required",
   "name": "MiniMax H3 · Authorization 必填",
   "dimension": "authorization",
-  "protocol": "minimax-video",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

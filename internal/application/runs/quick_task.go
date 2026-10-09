@@ -67,18 +67,21 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if err != nil {
 		return "", fmt.Errorf("load quick task: %w", err)
 	}
-	if suite.ID != command.SuiteID || suite.Validate() != nil || suite.ValidateCases(cases) != nil {
+	if suite.ID != command.SuiteID || suite.Validate() != nil {
 		return "", ErrNotRunnable
+	}
+	if err := suite.ValidateCases(cases); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrNotRunnable, err)
 	}
 	inputs, caseInputs, err := suite.ResolveInputs(command.Inputs)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	for _, testCase := range cases {
-		if testCase.Validate() != nil || !testCase.Enabled || service.caseTypes.Validate(testCase.Protocol, testCase.Definition) != nil {
+		if testCase.Validate() != nil || !testCase.Enabled || service.caseTypes.Validate(suite.Protocol, testCase.Definitions[suite.Protocol]) != nil {
 			return "", ErrNotRunnable
 		}
-		spec, err := testspec.Decode(testCase.Definition.Spec)
+		spec, err := testCase.SpecFor(suite.Protocol)
 		if err != nil {
 			return "", err
 		}

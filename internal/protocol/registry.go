@@ -3,16 +3,20 @@
 package protocol
 
 const (
-	OpenAIChat   = "openai-chat"
-	Seedance     = "seedance"
-	WanVideo     = "wan-video"
-	MiniMaxVideo = "minimax-video"
+	OpenAIChat        = "openai-chat"
+	OpenAIResponses   = "openai-responses"
+	AnthropicMessages = "anthropic-messages"
+	Seedance          = "seedance"
+	WanVideo          = "wan-video"
+	MiniMaxVideo      = "minimax-video"
 
-	OpenAIChatPath   = "/v1/chat/completions"
-	OpenAIModelsPath = "/v1/models"
-	SeedancePath     = "/api/v3/contents/generations/tasks"
-	WanVideoPath     = "/api/v1/services/aigc/video-generation/video-synthesis"
-	MiniMaxVideoPath = "/v2/video_generation"
+	OpenAIChatPath        = "/v1/chat/completions"
+	OpenAIResponsesPath   = "/v1/responses"
+	AnthropicMessagesPath = "/v1/messages"
+	OpenAIModelsPath      = "/v1/models"
+	SeedancePath          = "/api/v3/contents/generations/tasks"
+	WanVideoPath          = "/api/v1/services/aigc/video-generation/video-synthesis"
+	MiniMaxVideoPath      = "/v2/video_generation"
 )
 
 type RequestPath struct {
@@ -33,6 +37,8 @@ var descriptors = [...]Descriptor{
 	{ID: OpenAIChat, Label: "OpenAI Chat", RequestPaths: []RequestPath{
 		{Path: OpenAIChatPath}, {Operation: "models.list", Path: OpenAIModelsPath},
 	}},
+	{ID: OpenAIResponses, Label: "OpenAI Responses", RequestPaths: []RequestPath{{Path: OpenAIResponsesPath}}},
+	{ID: AnthropicMessages, Label: "Anthropic Messages", RequestPaths: []RequestPath{{Path: AnthropicMessagesPath}}},
 	{ID: Seedance, Label: "Seedance", Async: true, RequestPaths: []RequestPath{{Path: SeedancePath}}},
 	{ID: WanVideo, Label: "Wan Video", Async: true, RequestPaths: []RequestPath{{Path: WanVideoPath}}},
 	{ID: MiniMaxVideo, Label: "MiniMax Video", Async: true, RequestPaths: []RequestPath{{Path: MiniMaxVideoPath}}},

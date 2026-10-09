@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "4ba464fc-885f-5a07-a262-ab6f3fa12c74",
   "key": "h3.r2v.ratio_adaptive",
   "name": "MiniMax H3 · 参考生视频显式 adaptive",
   "dimension": "dependency",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

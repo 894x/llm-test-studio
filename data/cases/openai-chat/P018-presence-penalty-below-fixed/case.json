@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "3ead7ae5-aef0-5f89-87e2-196941e2f448",
   "key": "presence_penalty_below_fixed",
   "name": "固定采样 · presence_penalty=-0.1 应拒绝",
   "dimension": "parameters",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

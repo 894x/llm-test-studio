@@ -147,12 +147,11 @@ func convertLegacySnapshot(document map[string]any) (map[string]any, error) {
 func convertLegacyCaseDefinition(protocol string, definition map[string]any) map[string]any {
 	converted := map[string]any{}
 	for key, value := range definition {
-		if key == "model_targets" || key == "definition" {
+		if key == "model_targets" || key == "definition" || key == "protocol" {
 			continue
 		}
 		converted[key] = value
 	}
-	converted["protocol"] = protocol
 	converted["schema_version"] = json.Number("1")
 	body := json.RawMessage(`{}`)
 	if nested, ok := definition["definition"].(map[string]any); ok {
@@ -166,16 +165,14 @@ func convertLegacyCaseDefinition(protocol string, definition map[string]any) map
 	}
 	var bodyValue any
 	_ = json.Unmarshal(body, &bodyValue)
-	converted["definition"] = map[string]any{
-		"schema_version": json.Number("1"),
-		"type":           protocol,
-		"type_version":   json.Number("1"),
-		"spec": map[string]any{
+	converted["definitions"] = map[string]any{
+		protocol: map[string]any{
 			"inputs":     map[string]any{},
 			"request":    map[string]any{"body": bodyValue},
 			"assertions": []any{},
 		},
 	}
+
 	return converted
 }
 

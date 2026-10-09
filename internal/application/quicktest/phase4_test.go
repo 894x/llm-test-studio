@@ -57,8 +57,7 @@ func TestRunPerformanceCapacityStopsAtFirstFailureAndProjectsHighestPassingRung(
 		return successfulStreamResponse(), nil
 	})
 	var progress []PerformanceProgress
-	report, err := New(Dependencies{Transport: transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 3, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		WarmupRequests: 1, SLOE2EMS: 10_000, SLOTargetPercent: 100,
 		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -126,8 +125,7 @@ func TestRunPerformanceCapacityKeepsOnlySelectedRungSamplesAndEvidence(t *testin
 			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"` + body + `"}}`)),
 		}, nil
 	})
-	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 2, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		SLOE2EMS: 10_000, SLOTargetPercent: 50,
 		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -151,8 +149,7 @@ func TestRunPerformanceCapacitySelectsMaximumWhenEveryRungPasses(t *testing.T) {
 	report, err := New(Dependencies{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		calls.Add(1)
 		return successfulStreamResponse(), nil
-	})}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	})}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 3, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		SLOE2EMS: 10_000, SLOTargetPercent: 100,
 		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -175,8 +172,7 @@ func TestRunPerformanceCapacityFirstFailureIsSelectedWithItsEvidence(t *testing.
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
 			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"first-rung-only"}}`)),
 		}, nil
-	})}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	})}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		SLOE2EMS: 10_000, SLOTargetPercent: 100,
 		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -210,8 +206,7 @@ func TestRunPerformanceCapacityReusesNormalWorkloadIndicesAcrossRungs(t *testing
 		mu.Unlock()
 		return successfulStreamResponse(), nil
 	})
-	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 2, Concurrency: 2, TimeoutMS: 2_000,
 		InputTokens: 20, OutputTokens: 4, WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 17,
 		InputTokensStdDev: 2, OutputTokensStdDev: 1, SharedPrefixTokens: 4,
@@ -249,8 +244,7 @@ func TestRunPerformanceRandomInputUsesDisjointCapacityRungPrefixes(t *testing.T)
 		mu.Unlock()
 		return successfulStreamResponse(), nil
 	})
-	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 2, Concurrency: 2, TimeoutMS: 2_000,
 		InputTokens: 10, OutputTokens: 2, RandomInput: true,
 		SLOE2EMS: 10_000, SLOTargetPercent: 100,
@@ -282,8 +276,7 @@ func TestRunPerformanceCapacityCancellationStopsLadderAndDoesNotArchive(t *testi
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan PerformanceReport, 1)
 	go func() {
-		report, _ := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{
-			AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		report, _ := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 			RequestCount: 2, Concurrency: 3, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 			SLOE2EMS: 10_000, SLOTargetPercent: 100,
 			CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -312,8 +305,7 @@ func TestRunPerformanceCapacityCancellationBetweenRungsDoesNotStartNextRung(t *t
 			return successfulStreamResponse(), nil
 		}),
 		Archive: archive,
-	}).RunPerformanceWithProgress(ctx, PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	}).RunPerformanceWithProgress(ctx, PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 3, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		SLOE2EMS: 10_000, SLOTargetPercent: 100,
 		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -343,8 +335,7 @@ func TestRunPerformanceCapacityCancellationAfterWarmupDoesNotStartLadder(t *test
 			return successfulStreamResponse(), nil
 		}),
 		Archive: archive,
-	}).RunPerformanceWithProgress(ctx, PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	}).RunPerformanceWithProgress(ctx, PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		WarmupRequests: 1, SLOE2EMS: 10_000, SLOTargetPercent: 100,
 		CapacityEnabled: true, CapacityStart: 1, CapacityStep: 1,
@@ -610,8 +601,7 @@ func TestValidateArchivedOpenCapacityUsesSelectedRungRate(t *testing.T) {
 		Archive:   archive,
 		Clock:     fixedPerformanceClock{now: time.Date(2026, time.September, 5, 5, 6, 7, 8, time.UTC)},
 		IDFactory: func(time.Time) (string, error) { return "77777777-7777-4777-8777-777777777759", nil },
-	}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		LoadMode: domain.LoadOpenLoop, ArrivalPattern: load.ArrivalConstant,
 		RequestCount: 1, RatePerSecond: 2, MaxInFlight: 1,
 		TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
@@ -655,8 +645,7 @@ func clonePerformanceReport(t *testing.T, report PerformanceReport) PerformanceR
 func archivedSLOReport(t *testing.T, capacity bool) PerformanceReport {
 	t.Helper()
 	archive := &capturingPerformanceArchive{}
-	command := PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	command := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		SLOE2EMS: 10_000, SLOTargetPercent: 100,
 	}
@@ -681,8 +670,7 @@ func archivedSLOReport(t *testing.T, capacity bool) PerformanceReport {
 func TestRunPerformanceReportsSLOWithoutChangingTransportSuccess(t *testing.T) {
 	report, err := New(Dependencies{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return successfulStreamResponse(), nil
-	})}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	})}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		SLOTPOTMS: 100, SLOTargetPercent: 100,
 	})
@@ -856,7 +844,7 @@ func TestPerformanceCapacityValidationAndGlobalBudget(t *testing.T) {
 }
 
 func TestPhaseThreeReportKeepsCanonicalShapeWithoutPhaseFourConfiguration(t *testing.T) {
-	report := PerformanceReport{SchemaVersion: PerformanceSchemaVersion, Profile: PerformanceProfile{}}
+	report := PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: PerformanceSchemaVersion, Profile: PerformanceProfile{}}
 	encoded, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)

@@ -189,7 +189,7 @@ func (service serializedCatalogService) CreateTestCase(ctx context.Context, comm
 	if err != nil {
 		return result, err
 	}
-	return service.canonicalCaseMutationResult(ctx, command.Protocol, command.Key, result)
+	return service.canonicalCaseMutationResult(ctx, command.Key, result)
 }
 
 func (service serializedCatalogService) UpdateTestCase(ctx context.Context, command catalog.UpdateTestCaseCommand) (catalog.MutationResult, error) {
@@ -199,7 +199,7 @@ func (service serializedCatalogService) UpdateTestCase(ctx context.Context, comm
 	if err != nil {
 		return result, err
 	}
-	return service.canonicalCaseMutationResult(ctx, command.Protocol, command.Key, result)
+	return service.canonicalCaseMutationResult(ctx, command.Key, result)
 }
 
 func (service serializedCatalogService) DeleteTestCase(ctx context.Context, command catalog.DeleteCommand) error {
@@ -230,7 +230,6 @@ func (service serializedCatalogService) UpdateSuite(ctx context.Context, command
 
 func (service serializedCatalogService) canonicalCaseMutationResult(
 	ctx context.Context,
-	protocol domain.Protocol,
 	key string,
 	fallback catalog.MutationResult,
 ) (catalog.MutationResult, error) {
@@ -239,7 +238,7 @@ func (service serializedCatalogService) canonicalCaseMutationResult(
 		return fallback, nil
 	}
 	for _, testCase := range snapshot.TestCases {
-		if testCase.Protocol == protocol && testCase.Key == key {
+		if testCase.Key == key {
 			return catalog.MutationResult{ID: testCase.ID, Revision: testCase.Revision}, nil
 		}
 	}

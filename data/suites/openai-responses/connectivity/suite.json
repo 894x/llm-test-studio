@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "key": "openai-responses.connectivity",
+  "name": "OpenAI Responses 连通性测试",
+  "protocol": "openai-responses",
+  "description": "使用同一组 Case 的原生协议配置。",
+  "cases": [
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    }
+  ],
+  "inputs": []
+}

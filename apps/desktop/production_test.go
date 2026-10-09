@@ -175,8 +175,8 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	}
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
 		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 717 || len(catalogSnapshot.Suites) != 44 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 717 file-backed cases and 44 scenario suites",
+			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 717 || len(catalogSnapshot.Suites) != 48 {
+		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 717 file-backed cases and 48 scenario suites",
 			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
 			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
 	}
@@ -246,8 +246,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	assertProductionOperationalSchemaV1(t, database)
-	if len(firstSnapshot.Suites) != 44 {
-		t.Fatalf("file suites = %d, want 44", len(firstSnapshot.Suites))
+	if len(firstSnapshot.Suites) != 48 {
+		t.Fatalf("file suites = %d, want 48", len(firstSnapshot.Suites))
 	}
 
 	second, err := initialize(context.Background())
@@ -267,8 +267,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if len(firstSnapshot.TestCases) != 717 || len(secondSnapshot.TestCases) != 717 {
 		t.Fatalf("case counts across restart = %d/%d, want 717/717", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 44 || len(secondSnapshot.Suites) != 44 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 44 scenario suites and no plans",
+	if len(firstSnapshot.Suites) != 48 || len(secondSnapshot.Suites) != 48 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
+		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 48 scenario suites and no plans",
 			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
 	}
 	wantSuites := map[string]struct {
@@ -327,8 +327,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		}
 		for _, ref := range firstSuite.Cases {
 			testCase, found := caseByID[ref.CaseID]
-			if !found || testCase.Protocol != firstSuite.Protocol {
-				t.Fatalf("suite %q includes case %+v with protocol %s", name, ref, testCase.Protocol)
+			if _, supports := testCase.Definitions[firstSuite.Protocol]; !found || !supports {
+				t.Fatalf("suite %q includes case %+v without protocol %s", name, ref, firstSuite.Protocol)
 			}
 		}
 	}
@@ -411,35 +411,26 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	}
 	defer dependencies.close()
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
-		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    "openai-chat", TypeVersion: 1,
-		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
+		Key: "T900", Name: "shareable", Dimension: "compatibility",
+		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)},
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
-	path := filepath.Join(executableDirectory, "data", "cases", "openai-chat", "T900", "case.json")
+	path := filepath.Join(executableDirectory, "data", "cases", "custom", "T900", "case.json")
 	if raw, err := os.ReadFile(path); err != nil || !json.Valid(raw) || strings.Contains(string(raw), `"model_targets"`) || !strings.Contains(string(raw), `"openai-chat"`) {
 		t.Fatalf("shareable case file = %q, %v", raw, err)
 	}
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
-		Key: "T900", Name: "must not replace", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    "openai-chat", TypeVersion: 1,
-		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"replacement"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
+		Key: "T900", Name: "must not replace", Dimension: "compatibility",
+		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"replacement"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)},
 	})
 	if !errors.Is(err, catalog.ErrConflict) {
 		t.Fatalf("duplicate CreateTestCase() error = %v, want ErrConflict", err)
 	}
 	_, err = dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
-		Key: "T901", Name: "reserved", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    "removed.protocol", TypeVersion: 1,
-		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`),
+		Key: "T901", Name: "reserved", Dimension: "compatibility",
+		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`)},
 	})
 	if !errors.Is(err, catalog.ErrInvalid) {
 		t.Fatalf("reserved CreateTestCase() error = %v, want ErrInvalid", err)
@@ -505,11 +496,8 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 		t.Fatalf("CreateModel() error = %v", err)
 	}
 	createdCase, err := dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
-		Key: "T950", Name: "file-backed case", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    "openai-chat", TypeVersion: 1,
-		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
+		Key: "T950", Name: "file-backed case", Dimension: "compatibility",
+		Enabled: true, Default: false, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)},
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
@@ -727,11 +715,8 @@ func TestProductionSuiteCreateWritesShareableFileBesideExecutableWithoutDatabase
 	defer dependencies.close()
 
 	createdCase, err := dependencies.catalogCommands.CreateTestCase(context.Background(), catalog.CreateTestCaseCommand{
-		Key: "T900", Name: "shareable", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: false,
-		Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    "openai-chat", TypeVersion: 1,
-		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`),
+		Key: "T900", Name: "shareable", Dimension: "compatibility", Enabled: true, Default: false,
+		Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)},
 	})
 	if err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
@@ -823,5 +808,5 @@ func assertProductionOperationalSchemaV1(t *testing.T, database string) {
 }
 
 func productionCaseDocument(name string) string {
-	return `{"schema_version":1,"key":"T001","name":"` + name + `","dimension":"boundary","protocol":"openai-chat","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":1,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}}}`
+	return `{"schema_version":2,"id":"062b66ef-8d2e-59a1-95cb-dadf03dfe264","key":"T001","name":"` + name + `","dimension":"boundary","enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definitions":{"openai-chat":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}}}`
 }

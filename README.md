@@ -98,11 +98,11 @@ On Windows PowerShell, run the binary as `.\llm-test-studio.exe`.
 
 ### Current protocol runtime
 
-Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `seedance`, `wan-video`, and `minimax-video`. Cases use envelope schema 3 and explicit assertions; Suites use schema 2 with ordered Case references and input bindings. Plans retain per-entry load, warmup, settings and seed. The Run binds one model, channel and credential.
+Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `openai-responses`, `anthropic-messages`, `seedance`, `wan-video`, and `minimax-video`. Case files use schema 2 with an explicit stable ID and protocol-keyed `definitions`; each definition owns its native inputs, body, workflow and assertions. A Suite selects one protocol and uses schema 1 with ordered Case references and input bindings. Plans retain per-entry load, warmup, settings and seed. The Run binds one model, channel and credential.
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` accepts only inputs declared by selected Cases. Omit `--inputs` to use their declared defaults. `--all-cases` selects enabled automatic Cases; manual/disabled selections fail explicitly. `--dry-run` prepares requests without network calls or verification claims. Waiting is authored as `workflow.mode`, replacing `--no-wait`.
 
-The repository contains 711 current Cases, 44 Suites and 5 performance Plans. Sixteen previous model/authentication mutation Cases are disabled because those fields belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [runtime integration and acceptance](doc/design/protocol-case-runtime-implementation.md) for format changes and historical-data impact.
+The repository contains 717 current Cases, 48 Suites and 5 performance Plans. Sixteen previous model/authentication mutation Cases are disabled because those fields belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
 
 <details>
 <summary><strong>CLI examples</strong></summary>
@@ -224,7 +224,7 @@ The desktop and CLI share the same application services and domain rules. There 
 - `internal/application` — catalog, run, comparison, reporting, and workspace orchestration.
 - `internal/execution` and `engine` — load and compatibility execution engines.
 - `internal/persistence/sqlite` — operational schema and runtime-evidence repositories.
-- `data/cases` — embedded, shareable cases grouped by protocol.
+- `data/cases` — embedded, shareable cases grouped in authoring folders.
 - `data/suites` — embedded suite definitions and scenario manifests.
 - `data/definitions` — non-secret model definition fixtures.
 

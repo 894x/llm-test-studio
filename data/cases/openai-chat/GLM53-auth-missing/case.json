@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "37836d0b-71ca-5651-9629-a44fc863d1eb",
   "key": "glm53.auth.missing",
   "name": "GLM 5.3 · 鉴权 missing",
   "dimension": "glm53.transport",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

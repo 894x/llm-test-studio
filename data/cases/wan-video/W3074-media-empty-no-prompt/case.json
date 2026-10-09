@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "1552045d-0768-5d6e-b33b-62e39fe9c55a",
   "key": "wan30.media.empty_without_prompt",
   "name": "Wan 3.0 · 空 media 且无 Prompt",
   "dimension": "required",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

@@ -145,9 +145,8 @@ func TestDetailReturnsQuickPerformanceDocumentBySource(t *testing.T) {
 }
 
 func validArchivedQuickPerformanceReport() quicktest.PerformanceReport {
-	return quicktest.PerformanceReport{
-		SchemaVersion: quicktest.PerformanceSchemaVersion,
-		ReportID:      "77777777-7777-4777-8777-777777777777", GeneratedAt: "2026-08-31T15:30:00Z",
+	return quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion,
+		ReportID: "77777777-7777-4777-8777-777777777777", GeneratedAt: "2026-08-31T15:30:00Z",
 		Archived: true, ArchiveStatus: quicktest.PerformanceArchiveArchived,
 		Success: true, AddressMode: quicktest.AddressModeBaseURL,
 		BaseURL: "https://example.com/v1", Endpoint: "https://example.com/v1/chat/completions", ModelID: "quick-model",

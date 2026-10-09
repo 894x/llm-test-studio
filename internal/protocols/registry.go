@@ -5,8 +5,10 @@ import (
 	"errors"
 	"sort"
 
+	"github.com/894x/llm-test-studio/internal/protocols/anthropicmessages"
 	"github.com/894x/llm-test-studio/internal/protocols/minimaxvideo"
 	"github.com/894x/llm-test-studio/internal/protocols/openaichat"
+	"github.com/894x/llm-test-studio/internal/protocols/openairesponses"
 	"github.com/894x/llm-test-studio/internal/protocols/runtime"
 	"github.com/894x/llm-test-studio/internal/protocols/seedance"
 	"github.com/894x/llm-test-studio/internal/protocols/wanvideo"
@@ -18,7 +20,10 @@ type Registry struct{ modules map[string]runtime.Module }
 func NewRegistry() *Registry {
 	registry := &Registry{modules: map[string]runtime.Module{}}
 	// Composition is explicit and local; protocol packages do not register via init.
-	for _, module := range []runtime.Module{openaichat.New(), seedance.New(), wanvideo.New(), minimaxvideo.New()} {
+	for _, module := range []runtime.Module{
+		openaichat.New(), openairesponses.New(), anthropicmessages.New(),
+		seedance.New(), wanvideo.New(), minimaxvideo.New(),
+	} {
 		registry.modules[module.Descriptor().ID] = module
 	}
 	return registry

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "f4c8e282-7ee4-5f19-abe1-bbb856f5cbb7",
   "key": "wan30.model.unknown",
   "name": "Wan 3.0 · model 为未知枚举",
   "dimension": "parameters",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

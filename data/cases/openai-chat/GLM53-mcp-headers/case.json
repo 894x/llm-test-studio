@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "77dc8998-0405-5ccb-a658-e4a9b2ece2ec",
   "key": "glm53.mcp.headers",
   "name": "GLM 5.3 · mcp.headers（待验证模板）",
   "dimension": "glm53.mcp_headers",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

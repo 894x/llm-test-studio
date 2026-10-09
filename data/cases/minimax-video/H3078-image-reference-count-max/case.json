@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "e73aed7c-aa87-5cb1-85c1-d94d7f6a3df4",
   "key": "h3.image.reference_count_max",
   "name": "MiniMax H3 · reference_image 最大 9 张",
   "dimension": "cardinality",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

@@ -118,7 +118,8 @@ describe("Wails desktop client", () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding.GetWorkspace.mockRejectedValueOnce(new Error("refresh failed"))
     const command = {
-      suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000,
+      protocol: "openai-chat" as const,
+suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000,
       model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key",
       inputs: { prompt: "hello", duration: 4, audio: false },
     }
@@ -161,7 +162,8 @@ describe("Wails desktop client", () => {
     await client.stopSending(FIXTURE_WORKSPACE.runs[0].id)
     await client.cancelRun(FIXTURE_WORKSPACE.runs[0].id)
     const performanceCommand = {
-      address_mode: "base_url" as const,
+      protocol: "openai-chat" as const,
+address_mode: "base_url" as const,
       url: "https://api.example.test/v1",
       api_key: "sk-private-value",
       model_id: "gpt-test",
@@ -194,7 +196,7 @@ describe("Wails desktop client", () => {
       output_tokens: 32,
     }
     await expect(client.runQuickPerformanceTest(performanceCommand)).resolves.toMatchObject({
-      schema_version: 1,
+      schema_version: 2,
       success: true,
       metrics: { completed: 4, succeeded: 4 },
     })
@@ -225,7 +227,8 @@ describe("Wails desktop client", () => {
     suite.description = "Connectivity"
     suite.inputs = []
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-    const command = { suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+    const command = { protocol: "openai-chat" as const,
+suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
     const firstID = await client.startQuickTask(command)
     const secondID = await client.startQuickTask(command)
     expect(firstID).not.toBe(secondID)
@@ -294,7 +297,8 @@ describe("Wails desktop client", () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     const suite = catalog.suites[1]
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-    const command = { suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+    const command = { protocol: "openai-chat" as const,
+suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
     const runID = await client.startQuickTask(command)
     expect((await client.getQuickTask(runID)).credential_run_id).toBeUndefined()
     await client.rememberQuickTaskCredential({ run_id: runID, base_url: command.base_url, protocol: suite.protocol, api_key: command.api_key })
@@ -312,7 +316,8 @@ describe("Wails desktop client", () => {
 
   it("keeps idle fixture windows sparse while retaining an empty final partial slice", async () => {
     const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
-      address_mode: "base_url",
+      protocol: "openai-chat",
+address_mode: "base_url",
       url: "https://api.example.test/v1",
       api_key: "sk-private-value",
       model_id: "gpt-test",
@@ -345,7 +350,7 @@ describe("Wails desktop client", () => {
       output_tokens: 32,
     })
 
-    expect(report.schema_version).toBe(1)
+    expect(report.schema_version).toBe(2)
     expect(report.samples[0]).toMatchObject({
       ttfb_ms: 15, ttft_any_ms: 35, ttft_ms: 35, ttft_visible_ms: 45,
       ttst_ms: 60, observed_icl_ms: 25, semantic_chunk_count: 2,
@@ -362,7 +367,7 @@ describe("Wails desktop client", () => {
       ttft: { count: 4, average_ms: 35 },
       semantic_chunk_count: { count: 4, average: 2 },
     })
-    expect(parseQuickPerformanceReport(structuredClone(report))).toMatchObject({ schema_version: 1 })
+    expect(parseQuickPerformanceReport(structuredClone(report))).toMatchObject({ schema_version: 2 })
     expect(report.time_slices?.[1]).toMatchObject({
       start_ms: 2_000,
       end_ms: 2_500,
@@ -376,7 +381,8 @@ describe("Wails desktop client", () => {
 
   it("builds a coherent SLO capacity ladder in the desktop fixture", async () => {
     const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
-      address_mode: "base_url",
+      protocol: "openai-chat",
+address_mode: "base_url",
       url: "https://api.example.test/v1",
       api_key: "sk-private-value",
       model_id: "gpt-test",
@@ -426,7 +432,8 @@ describe("Wails desktop client", () => {
 
   it("keeps a near-terminal fixture target before the exact open-loop maximum", async () => {
     const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
-      address_mode: "base_url",
+      protocol: "openai-chat",
+address_mode: "base_url",
       url: "https://api.example.test/v1",
       api_key: "sk-private-value",
       model_id: "gpt-test",
@@ -475,7 +482,8 @@ describe("Wails desktop client", () => {
       api_key: "sk-secret",
     } as never)
     const command = {
-      address_mode: "base_url" as const, url: "https://api.example.test/v1",
+      protocol: "openai-chat" as const,
+address_mode: "base_url" as const, url: "https://api.example.test/v1",
       api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
       duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
       arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_input: false, random_seed: 0,
@@ -558,7 +566,8 @@ describe("Wails desktop client", () => {
     } as never)
 
     const report = await createDesktopClient().runQuickPerformanceTest({
-      address_mode: "base_url", url: "https://api.example.test/v1",
+      protocol: "openai-chat",
+address_mode: "base_url", url: "https://api.example.test/v1",
       api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
       duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
       arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
@@ -605,7 +614,8 @@ describe("Wails desktop client", () => {
 		})
 		const progress = vi.fn()
 		const command = {
-			address_mode: "base_url" as const, url: "https://api.example.test/v1",
+			protocol: "openai-chat" as const,
+address_mode: "base_url" as const, url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
 			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
 			arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_input: false, random_seed: 0,
@@ -643,7 +653,8 @@ describe("Wails desktop client", () => {
 		} as never)
 
 		const report = await createDesktopClient().runQuickPerformanceTest({
-			address_mode: "base_url", url: "https://api.example.test/v1",
+			protocol: "openai-chat",
+address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
 			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
 			arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
@@ -663,7 +674,7 @@ describe("Wails desktop client", () => {
 		const fixture = performanceReportFixture()
 		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
 			...fixture,
-			schema_version: 1,
+			schema_version: 2,
 			profile: {
 				...fixture.profile,
 				load_mode: "open_loop",
@@ -706,7 +717,8 @@ describe("Wails desktop client", () => {
 		} as never)
 
 		const v2 = await createDesktopClient().runQuickPerformanceTest({
-			address_mode: "base_url", url: "https://api.example.test/v1",
+			protocol: "openai-chat",
+address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "open_loop",
 			request_count: 4, duration_ms: 0, concurrency: 0, rate_per_second: 12.5,
 			max_in_flight: 37, arrival_pattern: "poisson", workload_mode: "normal", random_input: false, random_seed: 424242,
@@ -716,7 +728,7 @@ describe("Wails desktop client", () => {
 			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
 			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
 		})
-		expect(v2.schema_version).toBe(1)
+		expect(v2.schema_version).toBe(2)
 			expect(v2.profile).toMatchObject({
 			load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37,
 			arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
@@ -734,7 +746,7 @@ describe("Wails desktop client", () => {
 
 		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
 			...fixture,
-			schema_version: 1,
+			schema_version: 2,
 			profile: { ...fixture.profile, load_mode: "fixed_concurrency" },
 			progress: { ...fixture.progress, offered: 4 },
 			metrics: {
@@ -746,7 +758,8 @@ describe("Wails desktop client", () => {
 			},
 		} as never)
 		const phaseOneV2 = await createDesktopClient().runQuickPerformanceTest({
-			address_mode: "base_url", url: "https://api.example.test/v1",
+			protocol: "openai-chat",
+address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
 			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
 			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
@@ -766,7 +779,8 @@ describe("Wails desktop client", () => {
 			profile: sparseProfile,
 		} as never)
 		await expect(createDesktopClient().runQuickPerformanceTest({
-			address_mode: "base_url", url: "https://api.example.test/v1",
+			protocol: "openai-chat",
+address_mode: "base_url", url: "https://api.example.test/v1",
 			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
 			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
 			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
@@ -1123,9 +1137,7 @@ describe("Wails desktop client", () => {
     Object.assign(testCase, {
       key: longKey,
       dimension: longDimension,
-      type: "openai-chat",
-      type_version: 1,
-      spec: { request: { method: "POST", path: "/v1/chat/completions", headers: {}, body: {} }, expected: { allowed_http_statuses: [200], stream_completion: "not_applicable" }, assertions: [{ kind: "custom", config: { mode: "manual" } }] },
+      definitions: { "openai-chat": { inputs: {}, request: { body: {} }, assertions: [] }, "openai-responses": { inputs: {}, request: { body: { input: "hello" } }, assertions: [] } },
     })
     installBinding(FIXTURE_WORKSPACE, catalog)
 
@@ -1133,8 +1145,7 @@ describe("Wails desktop client", () => {
     expect(snapshot.test_cases[0]).toMatchObject({
       key: longKey,
       dimension: longDimension,
-      type: "openai-chat",
-      type_version: 1,
+      definitions: { "openai-chat": { inputs: {} }, "openai-responses": { request: { body: { input: "hello" } } } },
     })
   })
 
@@ -1352,7 +1363,8 @@ function performanceReportFixture() {
     semantic_chunk_count_p99: 1, semantic_chunk_count_average: 1,
   }
   return {
-    schema_version: 1, archived: false, archive_status: "not_attempted", model_id: "gpt-test", success: true, address_mode: "base_url",
+    schema_version: 2,
+    protocol: "openai-chat" as const, archived: false, archive_status: "not_attempted", model_id: "gpt-test", success: true, address_mode: "base_url",
     base_url: "https://api.example.test/v1",
     endpoint: "https://api.example.test/v1/chat/completions",
     profile: { load_mode: "fixed_concurrency", request_count: 4, duration_ms: 0, concurrency: 2, timeout_ms: 30_000, input_tokens: 20, output_tokens: 32 },

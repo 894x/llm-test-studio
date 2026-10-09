@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "8e47eb42-de53-574f-803f-b16238289bb6",
   "key": "must.tool_choice_allowed_tools",
   "name": "工具调用 · tool_choice=allowed_tools",
   "dimension": "tools",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

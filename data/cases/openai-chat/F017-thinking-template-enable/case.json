@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "5dc1c71d-8823-594d-b163-1470661df610",
   "key": "must.thinking_chat_template_kwargs_enable_thinking",
   "name": "思考 · chat_template_kwargs.enable_thinking=true",
   "dimension": "reasoning",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

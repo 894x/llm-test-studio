@@ -22,7 +22,7 @@ func (roundTrip protocolRoundTrip) RoundTrip(request *http.Request) (*http.Respo
 
 func TestProtocolWarmupPreservesMeasuredSeedAndStopsBeforeMeasurement(t *testing.T) {
 	fixture := newRunFixture(t)
-	fixture.testCase.Definition.Spec = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hello"}},"request":{"body":{"messages":[{"role":"user","content":{"$generate":"random_text","length":16,"alphabet":"abcXYZ012"}}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)
+	fixture.testCase.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hello"}},"request":{"body":{"messages":[{"role":"user","content":{"$generate":"random_text","length":16,"alphabet":"abcXYZ012"}}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)
 	snapshot := fixture.snapshot()
 	run, err := domain.NewRun(fixture.plan.EntityMeta, fixture.plan.ID, snapshot)
 	if err != nil {

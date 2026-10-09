@@ -16,6 +16,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/domain"
 )
 
 func TestDesktopErrorReporterPersistsStructuredDiagnosticsUnderUserConfig(t *testing.T) {
@@ -434,11 +435,10 @@ func TestQuickPerformanceFailureProducesSafeStructuredDiagnostic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openDesktopDiagnostics() error = %v", err)
 	}
-	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{
-		SchemaVersion: quicktest.PerformanceSchemaVersion,
-		Success:       false,
-		ErrorCode:     quicktest.ErrorAuthenticationFailed,
-		Progress:      quicktest.PerformanceProgress{TotalDurationMS: 125},
+	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion,
+		Success:   false,
+		ErrorCode: quicktest.ErrorAuthenticationFailed,
+		Progress:  quicktest.PerformanceProgress{TotalDurationMS: 125},
 	}}
 	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
 		return desktopDependencies{quickTests: runner}, nil
@@ -446,9 +446,7 @@ func TestQuickPerformanceFailureProducesSafeStructuredDiagnostic(t *testing.T) {
 	app.setErrorReporter(desktopErrorReporter(operator, log.New(io.Discard, "", 0)))
 	app.onStartup(context.Background())
 
-	_, err = app.RunQuickPerformanceTest(quicktest.PerformanceCommand{
-		URL: "https://private-provider.example/v1", APIKey: "sk-private-quick-key", ModelID: "private-model",
-	}, "")
+	_, err = app.RunQuickPerformanceTest(quicktest.PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, URL: "https://private-provider.example/v1", APIKey: "sk-private-quick-key", ModelID: "private-model"}, "")
 	if err != nil {
 		t.Fatalf("RunQuickPerformanceTest() error = %v", err)
 	}
@@ -489,8 +487,7 @@ func TestQuickPerformanceFailuresAndArchiveFailureProduceCorrelatedDiagnostics(t
 		t.Fatalf("openDesktopDiagnostics() error = %v", err)
 	}
 	const reportID = "77777777-7777-4777-8777-777777777777"
-	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{
-		SchemaVersion: quicktest.PerformanceSchemaVersion,
+	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion,
 		ReportID:      reportID,
 		ArchiveStatus: quicktest.PerformanceArchiveFailed,
 		Success:       false,
@@ -508,9 +505,7 @@ func TestQuickPerformanceFailuresAndArchiveFailureProduceCorrelatedDiagnostics(t
 	app.setErrorReporter(desktopErrorReporter(operator, log.New(io.Discard, "", 0)))
 	app.onStartup(context.Background())
 
-	_, err = app.RunQuickPerformanceTest(quicktest.PerformanceCommand{
-		URL: "https://private-performance.example/v1", APIKey: "sk-private-performance-key", ModelID: "private-performance-model",
-	}, "")
+	_, err = app.RunQuickPerformanceTest(quicktest.PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, URL: "https://private-performance.example/v1", APIKey: "sk-private-performance-key", ModelID: "private-performance-model"}, "")
 	if err != nil {
 		t.Fatalf("RunQuickPerformanceTest() error = %v", err)
 	}

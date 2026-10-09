@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "640f358e-673d-57be-8e4a-8bc69b53119d",
   "key": "wan30.audio.omitted_default_true",
   "name": "Wan 3.0 · 省略 audio 默认 true",
   "dimension": "defaults",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

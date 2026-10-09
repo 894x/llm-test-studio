@@ -78,14 +78,8 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 	}
 	testCase := domain.TestCase{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000005"),
-		Key:        "T970", Name: "file case", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`),
-		},
+		Key:        "T970", Name: "file case", Dimension: "compatibility",
+		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`)},
 	}
 	if err := cases.SaveCase(ctx, string(domain.ProtocolOpenAIChat), testCase.Key, testCase); err != nil {
 		t.Fatal(err)
@@ -298,14 +292,8 @@ func TestFilesystemRuntimeRepositoryDistinguishesUnmappedAndDisabledTargets(t *t
 	}
 	testCase := domain.TestCase{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000020"),
-		Key:        "T971", Name: "selection case", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`),
-		},
+		Key:        "T971", Name: "selection case", Dimension: "compatibility",
+		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`)},
 	}
 	if err := cases.SaveCase(ctx, string(domain.ProtocolOpenAIChat), testCase.Key, testCase); err != nil {
 		t.Fatal(err)

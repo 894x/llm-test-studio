@@ -63,7 +63,8 @@ function report(_schemaVersion: 1): QuickPerformanceReport {
     }),
   }
   return {
-    schema_version: 1,
+    schema_version: 2,
+    protocol: "openai-chat" as const,
     archived: false,
     archive_status: "not_attempted",
     model_id: "gpt-test",

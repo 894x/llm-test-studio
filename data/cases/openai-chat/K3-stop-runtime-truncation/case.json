@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "5e1eceec-536d-5ab1-a11c-40a1a99fccea",
   "key": "k3.stop_runtime_truncation",
   "name": "Stop · 运行时输出应在 stop 序列处截断",
   "dimension": "parameters",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -22,7 +19,9 @@
               "content": "仅逐字输出 AAABBBCCC，不要空格、换行或解释。"
             }
           ],
-          "stop": ["BBB"],
+          "stop": [
+            "BBB"
+          ],
           "max_completion_tokens": 64
         }
       },

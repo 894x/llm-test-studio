@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "585106e5-e6a1-59cc-b352-de6060da9ef6",
   "key": "glm53.function.no_arguments",
   "name": "GLM 5.3 · 无参数函数 Schema",
   "dimension": "glm53.function_schema",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -39,7 +36,7 @@
           ]
         }
       },
-      "assertions":             [
+      "assertions": [
         {
           "id": "r1",
           "source": "http.status",

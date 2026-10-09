@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "d9d03691-546f-5345-94e0-e8a7efbc7231",
   "key": "glm53.auth_expiry.lifecycle",
   "name": "GLM 5.3 · auth_expiry.lifecycle（待验证模板）",
   "dimension": "glm53.auth_expiry",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

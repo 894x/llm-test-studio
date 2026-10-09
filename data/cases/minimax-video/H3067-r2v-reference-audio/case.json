@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "c53bbb0b-d2ff-5c8f-95d1-898a52f8db35",
   "key": "h3.r2v.reference_audio",
   "name": "MiniMax H3 · reference_audio 参考生视频",
   "dimension": "dependency",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

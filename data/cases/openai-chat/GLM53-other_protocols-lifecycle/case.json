@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "329a1ef6-307f-5964-bbf0-36ed8357e21f",
   "key": "glm53.other_protocols.lifecycle",
   "name": "GLM 5.3 · other_protocols.lifecycle（待验证模板）",
   "dimension": "glm53.other_protocols",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

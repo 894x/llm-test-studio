@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "29627c55-33b7-5c96-93ef-c1d09bf710e1",
   "key": "V005",
   "name": "参考视频生成",
   "dimension": "compatibility",
-  "protocol": "seedance",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "seedance",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "seedance": {
       "inputs": {},
       "request": {
         "body": {

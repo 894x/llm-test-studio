@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "7668ea02-9f7f-5ac5-b846-dfeb850b278f",
   "key": "glm53.thinking.replay_false",
   "name": "GLM 5.3 · 历史思考回传 false",
   "dimension": "glm53.clear_thinking",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

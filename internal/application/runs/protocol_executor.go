@@ -68,14 +68,14 @@ func (executor *ProtocolExecutor) executePhase(
 	defer client.Close()
 	specs := make([]testspec.Spec, len(request.Cases))
 	for index, testCase := range request.Cases {
-		if !testCase.Enabled || testCase.Protocol != snapshot.Channel.Protocol {
+		if !testCase.Enabled || !testCase.SupportsProtocol(snapshot.Channel.Protocol) {
 			return ErrNotRunnable
 		}
-		spec, err := testspec.Decode(testCase.Definition.Spec)
+		spec, err := testCase.SpecFor(snapshot.Channel.Protocol)
 		if err != nil {
 			return err
 		}
-		if err := executor.registry.Validate(string(testCase.Protocol), spec); err != nil {
+		if err := executor.registry.Validate(string(snapshot.Channel.Protocol), spec); err != nil {
 			return err
 		}
 		if _, err := testspec.ValidateInputs(spec.Inputs, request.Entry.CaseInputs[testCase.ID]); err != nil {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "d7e0b6ea-4669-5e51-8f3e-b6e79f540f6a",
   "key": "glm53.message.system.role_type",
   "name": "GLM 5.3 · message.system.role_type",
   "dimension": "glm53.message_fields",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

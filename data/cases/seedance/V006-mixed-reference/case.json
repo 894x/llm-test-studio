@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "5b91c8b4-9b68-52fa-a94d-f0bfd953aa77",
   "key": "V006",
   "name": "图像与视频混合参考",
   "dimension": "compatibility",
-  "protocol": "seedance",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "seedance",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "seedance": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "65ef261c-f883-5095-89cc-16bd992f278c",
   "key": "h3.video.format_mov_h264_aac",
   "name": "MiniMax H3 · 视频格式 MOV H.264/AAC",
   "dimension": "media-format",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

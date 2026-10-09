@@ -57,21 +57,22 @@ def load_cases(root: Path, protocol: str) -> dict[str, dict[str, Any]]:
     if not root.is_dir():
         raise SuiteBuildError(f"case root is not a directory: {root}")
     cases = {}
-    namespace = uuid.UUID("7680782d-7ae8-558b-9f32-17d13f31a66b")
     for path in sorted(root.rglob("case.json")):
         document = load_object(path, "case")
-        if document.get("schema_version") != 1 or "model_targets" in document:
-            raise SuiteBuildError(f"case {path} must use current schema_version 1")
-        if document.get("protocol") != protocol:
-            raise SuiteBuildError(f"case {path} protocol differs from manifest")
+        if document.get("schema_version") != 2 or "model_targets" in document or "definition" in document or "protocol" in document:
+            raise SuiteBuildError(f"case {path} must use current schema_version 2 with id and definitions")
         key = required_string(document.get("key"), f"case {path} key", safe=True)
-        definition = document.get("definition", {})
-        spec = definition.get("spec", {})
-        if definition.get("schema_version") != 1 or definition.get("type") != protocol or definition.get("type_version") != 1:
-            raise SuiteBuildError(f"case {path} must use the current protocol definition")
-        if not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list) or "kind" in spec:
+        definitions = document.get("definitions")
+        if not isinstance(definitions, dict) or not definitions:
+            raise SuiteBuildError(f"case {path} must declare protocol-keyed definitions")
+        if protocol not in definitions:
+            continue
+        spec = definitions[protocol]
+        if not isinstance(spec, dict) or not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list) or "kind" in spec:
             raise SuiteBuildError(f"case {path} must declare inputs and assertions")
-        case_id = str(uuid.uuid5(namespace, f"builtin.cases/v2/{protocol}/{key}"))
+        case_id = required_string(document.get("id"), f"case {path} id")
+        if str(uuid.UUID(case_id)) != case_id:
+            raise SuiteBuildError(f"case {path} id must be a canonical UUID")
         if case_id in cases:
             raise SuiteBuildError(f"duplicate case key {key!r}")
         cases[case_id] = document
@@ -115,7 +116,7 @@ def build_documents(cases_root: Path, manifest_path: Path) -> list[tuple[str, di
             for binding in item["bindings"]:
                 if not isinstance(binding, dict) or set(binding) != {"case_id", "input"} or binding["case_id"] not in members:
                     raise SuiteBuildError("input binding must reference a Suite member")
-                spec = cases[binding["case_id"]]["definition"]["spec"]
+                spec = cases[binding["case_id"]]["definitions"][protocol]
                 if binding["input"] not in spec["inputs"]:
                     raise SuiteBuildError("binding references an undeclared Case input")
         directories.add(directory)

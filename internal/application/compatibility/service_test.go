@@ -33,20 +33,17 @@ func TestRunDryRunAcceptsHTTPAndEmitsVersionedLifecycle(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {
         "payload": {
           "type": "object",
@@ -239,20 +236,17 @@ func TestRunDryRunSupportsWanVideoSuite(t *testing.T) {
 func TestRunDryRunSupportsMiniMaxVideoSuiteAndInjectsH3Model(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "minimax-video", "H3001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "H3001",
   "name": "H3 minimum duration",
   "dimension": "boundary",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "id": "71bf84be-ea22-5384-86fc-337f5b794076",
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {
@@ -320,20 +314,17 @@ func TestListLoadsCasesThroughApplicationService(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -384,20 +375,17 @@ func TestRunRejectsCredentialBearingBaseURL(t *testing.T) {
 func TestRunPropagatesCallerCancellationToLiveRequest(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "65b4486a-d6d7-511f-9d60-72bf909e66c7",
   "key": "glm53.max_tokens.fraction",
   "name": "GLM 5.3 · max_tokens.fraction",
   "dimension": "glm53.max_tokens",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

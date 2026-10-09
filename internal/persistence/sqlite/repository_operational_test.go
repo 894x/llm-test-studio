@@ -54,14 +54,8 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	testCaseSpec := json.RawMessage(`{"assertions":[{"id":"status","operator":"equals","source":"http.status","value":200}],"inputs":{},"request":{"body":{"messages":[{"content":"hello","role":"user"}]}}}`)
 	testCase := domain.TestCase{
 		EntityMeta: entityMeta(caseID, 1), Key: "T001", Name: "Basic chat", Dimension: "boundary",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
-		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          testCaseSpec,
-		},
+		Enabled: true, Default: true,
+		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): testCaseSpec},
 	}
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	suite := domain.Suite{

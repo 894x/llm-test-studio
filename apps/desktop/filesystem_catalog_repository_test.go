@@ -475,7 +475,7 @@ func TestFilesystemCatalogRepositoryPlanReferencesRemainUnchangedAfterExternalEd
 	suiteCandidate.Key = "suite-plan-case"
 	suiteCandidate.Name = "Suite Plan Case"
 	for _, candidate := range []domain.TestCase{directCandidate, suiteCandidate} {
-		if err := cases.SaveCase(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+		if err := cases.SaveCase(ctx, "openai-chat", candidate.Key, candidate); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -501,7 +501,7 @@ func TestFilesystemCatalogRepositoryPlanReferencesRemainUnchangedAfterExternalEd
 	directSuite.Name = "direct Plan Suite"
 	suite := filesystemCatalogSuiteFixture(suiteCase.TestCase)
 	for _, candidate := range []domain.Suite{directSuite, suite} {
-		if err := suites.SaveSuite(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+		if err := suites.SaveSuite(ctx, "openai-chat", candidate.Key, candidate); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -580,7 +580,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeCaseRevisions(t *t
 				t.Fatal(err)
 			}
 			candidate := filesystemCatalogTestCase(1)
-			if err := cases.SaveCase(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+			if err := cases.SaveCase(ctx, "openai-chat", candidate.Key, candidate); err != nil {
 				t.Fatal(err)
 			}
 			entries, err := cases.Entries(ctx)
@@ -649,7 +649,7 @@ func TestFilesystemCatalogRepositoryPlanSaveDoesNotMaterializeSuiteRevisions(t *
 		t.Fatal(err)
 	}
 	candidate := filesystemCatalogTestCase(1)
-	if err := cases.SaveCase(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+	if err := cases.SaveCase(ctx, "openai-chat", candidate.Key, candidate); err != nil {
 		t.Fatal(err)
 	}
 	caseEntries, err := cases.Entries(ctx)
@@ -696,7 +696,7 @@ func TestFilesystemCatalogRepositoryCaseUpdateLeavesSuiteDocumentUnchanged(t *te
 		t.Fatal(err)
 	}
 	candidate := filesystemCatalogTestCase(1)
-	if err := cases.SaveCase(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+	if err := cases.SaveCase(ctx, "openai-chat", candidate.Key, candidate); err != nil {
 		t.Fatal(err)
 	}
 	caseEntries, err := cases.Entries(ctx)
@@ -752,7 +752,7 @@ func TestFilesystemCatalogRepositoryAllowsCaseDeletionWithoutChangingReferences(
 	secondCandidate.Key = "current-suite-case"
 	secondCandidate.Name = "current Suite Case"
 	for _, candidate := range []domain.TestCase{firstCandidate, secondCandidate} {
-		if err := cases.SaveCase(ctx, string(candidate.Protocol), candidate.Key, candidate); err != nil {
+		if err := cases.SaveCase(ctx, "openai-chat", candidate.Key, candidate); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -776,7 +776,7 @@ func TestFilesystemCatalogRepositoryAllowsCaseDeletionWithoutChangingReferences(
 			ID: "63000000-0000-4000-8000-000000000012", SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: 1, CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
 		},
-		Key: "historical-suite", Name: "historical Suite", Protocol: first.Protocol,
+		Key: "historical-suite", Name: "historical Suite", Protocol: domain.ProtocolOpenAIChat,
 		Cases: []domain.CaseRef{{CaseID: first.ID}}, Inputs: []domain.SuiteInput{},
 	}
 	if err := suites.SaveSuite(ctx, string(suiteCandidate.Protocol), suiteCandidate.Key, suiteCandidate); err != nil {
@@ -932,7 +932,7 @@ func TestFilesystemCatalogRepositorySerializesSameRevisionCaseUpdatesAcrossInsta
 		t.Fatal(err)
 	}
 	initial := filesystemCatalogTestCase(1)
-	if err := firstCases.SaveCase(ctx, string(initial.Protocol), initial.Key, initial); err != nil {
+	if err := firstCases.SaveCase(ctx, "openai-chat", initial.Key, initial); err != nil {
 		t.Fatal(err)
 	}
 	caseEntries, err := firstCases.Entries(ctx)
@@ -988,7 +988,7 @@ func TestFilesystemCatalogRepositorySerializesSameRevisionSuiteUpdatesAcrossInst
 		t.Fatal(err)
 	}
 	testCase := filesystemCatalogTestCase(1)
-	if err := firstCases.SaveCase(ctx, string(testCase.Protocol), testCase.Key, testCase); err != nil {
+	if err := firstCases.SaveCase(ctx, "openai-chat", testCase.Key, testCase); err != nil {
 		t.Fatal(err)
 	}
 	caseEntries, err := firstCases.Entries(ctx)
@@ -1006,7 +1006,7 @@ func TestFilesystemCatalogRepositorySerializesSameRevisionSuiteUpdatesAcrossInst
 		t.Fatal(err)
 	}
 	initial := filesystemCatalogSuiteFixture(caseEntry.TestCase)
-	if err := firstSuites.SaveSuite(ctx, string(initial.Protocol), initial.Key, initial); err != nil {
+	if err := firstSuites.SaveSuite(ctx, "openai-chat", initial.Key, initial); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := firstSuites.Entries(ctx)
@@ -1122,7 +1122,7 @@ func TestFilesystemCatalogRepositorySerializesCaseDeleteAgainstPlanCreate(t *tes
 		t.Fatal(err)
 	}
 	testCase := filesystemCatalogTestCase(1)
-	if err := firstCases.SaveCase(ctx, string(testCase.Protocol), testCase.Key, testCase); err != nil {
+	if err := firstCases.SaveCase(ctx, "openai-chat", testCase.Key, testCase); err != nil {
 		t.Fatal(err)
 	}
 	caseEntries, err := firstCases.Entries(ctx)
@@ -1409,7 +1409,7 @@ func filesystemCatalogSuiteFixture(testCase domain.TestCase) domain.Suite {
 			ID: "64000000-0000-4000-8000-000000000001", SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: 1, CreatedAt: now, UpdatedAt: now,
 		},
-		Key: "suite-1", Name: "file suite", Protocol: testCase.Protocol,
+		Key: "suite-1", Name: "file suite", Protocol: domain.ProtocolOpenAIChat,
 		Cases: []domain.CaseRef{{CaseID: testCase.ID}}, Inputs: []domain.SuiteInput{},
 	}
 }
@@ -1421,13 +1421,7 @@ func filesystemCatalogTestCase(revision uint64) domain.TestCase {
 			ID: "63000000-0000-4000-8000-000000000001", SchemaVersion: domain.CurrentEntitySchemaVersion,
 			Revision: revision, CreatedAt: now, UpdatedAt: now.Add(time.Duration(revision-1) * time.Minute),
 		},
-		Key: "T980", Name: "file case", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          []byte(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}`),
-		},
+		Key: "T980", Name: "file case", Dimension: "compatibility",
+		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): []byte(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}`)},
 	}
 }

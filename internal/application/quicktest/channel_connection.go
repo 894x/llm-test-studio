@@ -11,8 +11,9 @@ import (
 var errChannelConnectionUnavailable = errors.New("quick test channel connection is unavailable")
 
 type ChannelConnection struct {
-	BaseURL string
-	APIKey  []byte
+	Protocol domain.Protocol
+	BaseURL  string
+	APIKey   []byte
 }
 
 type ChannelConnectionResolver interface {
@@ -37,7 +38,7 @@ func (resolver *StoredChannelConnectionResolver) Resolve(ctx context.Context, ch
 		return ChannelConnection{}, errChannelConnectionUnavailable
 	}
 	channel, err := resolver.repository.GetChannel(ctx, channelID)
-	if err != nil || !channel.Enabled || channel.Protocol != domain.ProtocolOpenAIChat || channel.CredentialID == "" {
+	if err != nil || !channel.Enabled || !SupportsPerformance(channel.Protocol) || channel.CredentialID == "" {
 		return ChannelConnection{}, errChannelConnectionUnavailable
 	}
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
@@ -54,5 +55,5 @@ func (resolver *StoredChannelConnectionResolver) Resolve(ctx context.Context, ch
 		clear(secret)
 		return ChannelConnection{}, errChannelConnectionUnavailable
 	}
-	return ChannelConnection{BaseURL: channel.BaseURL, APIKey: secret}, nil
+	return ChannelConnection{Protocol: channel.Protocol, BaseURL: channel.BaseURL, APIKey: secret}, nil
 }

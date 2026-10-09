@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "f7b2ff2d-ed9a-52a0-8df7-8d7c9cb53cf6",
   "key": "wan26.t2v.min_duration",
   "name": "Wan 2.6 · 最小时长 2 秒",
   "dimension": "compatibility",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {
         "prompt": {
           "type": "string",

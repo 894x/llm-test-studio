@@ -149,7 +149,7 @@ function performanceFormFromProfile(profile?: QuickPerformanceProfile): Performa
 
 export type QuickPerformanceConnection = Pick<
   QuickPerformanceCommand,
-  "address_mode" | "url" | "api_key" | "channel_id" | "credential_run_id" | "model_id" | "task"
+  "protocol" | "address_mode" | "url" | "api_key" | "channel_id" | "credential_run_id" | "model_id" | "task"
 >
 
 export function PlanPerformanceRunSheet({
@@ -218,7 +218,7 @@ export function PlanPerformanceRunSheet({
     {channel && effectiveModel ? <QuickPerformanceSheet
       open={performanceOpen}
       onOpenChange={setPerformanceOpen}
-      connection={{ address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
+      connection={{ protocol: channel.protocol, address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
       initialProfile={profile}
       run={run}
       onArchived={onArchived}
@@ -409,6 +409,7 @@ export function QuickPerformanceSheet({
     const generation = ++requestGeneration.current.value
     void run(
       {
+        protocol: connection.protocol,
         address_mode: connection.address_mode,
         ...(connection.task ? { task: connection.task } : {}),
         url: connection.url,
@@ -1918,7 +1919,7 @@ function performanceArrivalPattern(report: QuickPerformanceReport): string {
   if (report.profile.arrival_pattern === "poisson") return tx("desktop:quick-test_poisson_arrivals")
   return report.profile.arrival_pattern === "constant"
     ? tx("desktop:quick-test_constant_interval")
-    : tx("desktop:quick-test_constant_interval_legacy_report")
+    : tx("desktop:quick-test_constant_interval")
 }
 
 function performanceWorkloadMode(report: QuickPerformanceReport): string {
@@ -1930,11 +1931,11 @@ function performanceWorkloadMode(report: QuickPerformanceReport): string {
   }
   return report.profile.workload_mode === "fixed"
     ? tx("desktop:quick-test_fixed_tokens")
-    : tx("desktop:quick-test_fixed_tokens_legacy_report")
+    : tx("desktop:quick-test_fixed_tokens")
 }
 
 function performanceSeed(report: QuickPerformanceReport): string {
-  if (report.profile.random_seed === undefined) return tx("desktop:quick-test_legacy_report")
+  if (report.profile.random_seed === undefined) return tx("desktop:quick-test_not_used")
   return report.profile.random_seed > 0
     ? formatNumber(report.profile.random_seed)
     : tx("desktop:quick-test_not_used")
@@ -1942,7 +1943,7 @@ function performanceSeed(report: QuickPerformanceReport): string {
 
 function performanceSharedPrefix(report: QuickPerformanceReport): string {
   if (report.profile.shared_prefix_tokens === undefined)
-    return tx("desktop:quick-test_0_tokens_legacy_report")
+    return "0 Token"
   return `${formatNumber(report.profile.shared_prefix_tokens)} Token`
 }
 

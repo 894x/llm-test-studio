@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "8c59c5eb-06e9-5ae6-8456-3b6335d94499",
   "key": "glm53.mcp.transport_type",
   "name": "GLM 5.3 · mcp.transport_type（待验证模板）",
   "dimension": "glm53.mcp_transport_type",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

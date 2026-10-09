@@ -276,11 +276,11 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			commands:         runService,
 			comparisons:      comparisonService,
 			quickTests: quicktest.New(quicktest.Dependencies{
-				TaskCredential: func(ctx context.Context, runID, baseURL string) (*credentials.Lease, error) {
-					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, domain.ProtocolOpenAIChat)
+				TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
+					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
 				},
-				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string) (string, error) {
-					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model})
+				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string, selectedProtocol domain.Protocol) (string, error) {
+					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model}, selectedProtocol)
 				},
 				Archive:            quickPerformanceArchive,
 				Clock:              productionClock{},

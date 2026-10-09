@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "b9f56616-de88-59cf-b2a2-ed2c6f625f6a",
   "key": "V002",
   "name": "首帧图生视频",
   "dimension": "compatibility",
-  "protocol": "seedance",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "seedance",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "seedance": {
       "inputs": {},
       "request": {
         "body": {

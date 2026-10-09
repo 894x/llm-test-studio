@@ -1,6 +1,6 @@
 # Current scenario Suite generation
 
-Case files use schema 1 and protocol definitions with explicit inputs, request bodies and assertions. Suite files use schema 1: ordered Case ID references and explicit mappings from Suite inputs to declared Case inputs. The Run binds one model, channel and credential. A Suite never selects a model or overrides a Case body implicitly.
+Case files use schema 2, explicit stable IDs and protocol-keyed `definitions` with explicit inputs, request bodies and assertions. Suite files use schema 1: ordered Case ID references and explicit mappings from Suite inputs to declared Case inputs. The Run binds one model, channel and credential. A Suite never selects a model or overrides a Case body implicitly.
 
 The manifest has exactly `schema_version: 1`, `protocol`, and `profiles`. Each profile contains `directory` plus the complete current Suite document (`schema_version`, `key`, `name`, `protocol`, `description`, `cases`, `inputs`). The manifest format is a single authoring format, not a historical decoder.
 
@@ -21,7 +21,7 @@ The manifest has exactly `schema_version: 1`, `protocol`, and `profiles`. Each p
 }
 ```
 
-Use the catalog's stable Case IDs. Connectivity/basic profiles require semantic review; rejection profiles must be justified by explicit transport or terminal-task assertions. Automatic regression includes enabled automatic Cases; complete catalogs may include manual Cases requiring fixtures. Disabled binding tests cannot become executable merely by including them in a Suite.
+Use the Case's explicit stable ID; never derive it from protocol/key. The selected protocol must exist in every member's `definitions`. Connectivity/basic profiles require semantic review; rejection profiles must be justified by explicit transport or terminal-task assertions. Automatic regression includes enabled automatic Cases; complete catalogs may include manual Cases requiring fixtures. Disabled binding tests cannot become executable merely by including them in a Suite.
 
 Store reviewed memberships in the manifest. The generator validates the full manifest before writing any file, preserves reference order, checks input mappings, and writes atomically. It rejects removed `model_target`, `model_targets`, `case_keys`, `selector`, `kind`, and `quick_test` contracts. It does not convert historical input or infer coverage from Case names.
 

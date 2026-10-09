@@ -24,20 +24,17 @@ func TestRunDryRunJSONLCompatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	caseJSON := `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -109,7 +106,7 @@ func TestRunConfigurationExitCodeCompatibility(t *testing.T) {
 		{
 			name:       "invalid suite is reported before credential",
 			args:       []string{"run", "--suite", "invalid", "--base-url", "https://gateway.example", "--model", "test-model"},
-			wantStderr: "CONFIG ERROR: --suite must be openai-chat, seedance, wan-video, or minimax-video\n",
+			wantStderr: "CONFIG ERROR: --suite must be openai-chat, openai-responses, anthropic-messages, seedance, wan-video, or minimax-video\n",
 		},
 		{
 			name:       "missing live credential names configured environment variable",

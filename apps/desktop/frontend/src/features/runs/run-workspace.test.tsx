@@ -49,7 +49,7 @@ describe("NewRunSheet video execution", () => {
     catalog.models = [{ id: modelID, revision: 1, name: "Video model", protocol, capabilities: ["video"] }]
     catalog.channels = [{ id: channelID, revision: 1, name: "Video channel", base_url: "https://workspace.example", protocol, enabled: true, credential_configured: true, model_count: 1 }]
     catalog.channel_models = [{ id: "77777777-7777-4777-8777-777777777779", revision: 1, channel_id: channelID, model_id: modelID, upstream_model_name: "video-model" }]
-    catalog.test_cases = [{ ...catalog.test_cases[0], id: caseID, protocol, type: protocol }]
+    catalog.test_cases = [{ ...catalog.test_cases[0], id: caseID, definitions: { [protocol]: catalog.test_cases[0].definitions["openai-chat"] } }]
     catalog.suites = [{ ...catalog.suites[0], id: suiteID, protocol, cases: [{ case_id: caseID }], case_count: 1 }]
     catalog.plans = [{ ...catalog.plans[0], id: planID, protocol, entries: [{ ...catalog.plans[0].entries[0], target_id: suiteID, case_count: 1, load_mode: "single", concurrency: 1, request_count: 1 }] }]
     const onStartRun = vi.fn(async () => undefined)

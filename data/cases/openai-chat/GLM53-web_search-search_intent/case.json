@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "1b9e2a4b-ef8e-59e7-b5f1-61179b2357d7",
   "key": "glm53.web_search.search_intent",
   "name": "GLM 5.3 · web_search.search_intent（待验证模板）",
   "dimension": "glm53.web_search_search_intent",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

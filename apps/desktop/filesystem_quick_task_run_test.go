@@ -42,16 +42,20 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	catalog.plans = plans
 	caseTypes := casetypes.MustBuiltinRegistry()
 	probe := first.TestCase
+	probe.Definitions = probe.Definitions.Clone()
+	probe.Definitions = probe.Definitions.Clone()
 	probe.ID, probe.Key = "63000000-0000-4000-8000-000000000031", "probe"
-	probe.Definition.Spec = json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"observe"}]}},"assertions":[]}`)
+	probe.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"observe"}]}},"assertions":[]}`)
 	third := first.TestCase
 	third.ID, third.Key = "63000000-0000-4000-8000-000000000032", "third"
 	ladder := first.TestCase
+	ladder.Definitions = ladder.Definitions.Clone()
+	ladder.Definitions = ladder.Definitions.Clone()
 	ladder.ID, ladder.Key = "63000000-0000-4000-8000-000000000033", "generated"
-	ladder.Definition.Spec = json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":{"$generate":"repeat_text","text":"token ","length":48}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)
+	ladder.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":{"$generate":"repeat_text","text":"token ","length":48}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)
 
 	for _, testCase := range []domain.TestCase{probe, third, ladder} {
-		if err := catalog.cases.SaveCase(ctx, string(testCase.Protocol), testCase.Key, testCase); err != nil {
+		if err := catalog.cases.SaveCase(ctx, string(domain.ProtocolOpenAIChat), testCase.Key, testCase); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -19,6 +19,7 @@ function render(ui: ReactElement) {
 }
 
 const connection = {
+  protocol: "openai-chat" as const,
   address_mode: "base_url" as const,
   url: "https://api.example.test/v1",
   api_key: "sk-private-value",
@@ -148,6 +149,7 @@ describe("QuickPerformanceSheet", () => {
     await waitFor(() =>
       expect(runQuickPerformanceTest).toHaveBeenCalledWith(
         {
+          protocol: "openai-chat",
           address_mode: "base_url",
           url: "https://api.example.test/v1",
           api_key: "sk-private-value",
@@ -277,6 +279,7 @@ describe("QuickPerformanceSheet", () => {
     await waitFor(() =>
       expect(runQuickPerformanceTest).toHaveBeenCalledWith(
         {
+          protocol: "openai-chat",
           address_mode: "base_url",
           url: "https://api.example.test/v1",
           api_key: "sk-private-value",
@@ -541,6 +544,7 @@ describe("QuickPerformanceSheet", () => {
     await waitFor(() =>
       expect(runQuickPerformanceTest).toHaveBeenCalledWith(
         {
+          protocol: "openai-chat",
           address_mode: "base_url",
           url: "https://api.example.test/v1",
           api_key: "sk-private-value",
@@ -1294,14 +1298,15 @@ async function replaceNumber(
 
 function successfulPerformanceReport(): QuickPerformanceReport {
   return {
-    schema_version: 1,
+    schema_version: 2,
     report_id: "77777777-7777-4777-8777-777777777771",
     generated_at: "2026-08-31T14:30:00Z",
     archived: true,
     archive_status: "archived",
     model_id: "gpt-new",
     success: true,
-    address_mode: "base_url",
+    protocol: "openai-chat",
+          address_mode: "base_url",
     base_url: "https://api.example.test/v1",
     endpoint: "https://api.example.test/v1/chat/completions",
     profile: {
@@ -1443,7 +1448,7 @@ function phaseFivePerformanceReport(): QuickPerformanceReport {
   const report = successfulPerformanceReport()
   return {
     ...report,
-    schema_version: 1,
+    schema_version: 2,
     metrics: {
       ...report.metrics,
       ttft_samples: 4,

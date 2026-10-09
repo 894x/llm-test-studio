@@ -191,10 +191,7 @@ func (service *Service) CreateTestCase(ctx context.Context, command CreateTestCa
 	if err := testCase.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
-	if err := service.caseTypes.Validate(testCase.Protocol, testCase.Definition); err != nil {
-		return MutationResult{}, ErrInvalid
-	}
-	if descriptor, found := service.caseTypes.Descriptor(testCase.Definition.Type, testCase.Definition.TypeVersion); !found || !descriptor.Creatable {
+	if err := service.caseTypes.ValidateDefinitions(testCase.Definitions); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
 	if err := service.repository.CreateTestCase(ctx, testCase); err != nil {
@@ -221,7 +218,7 @@ func (service *Service) UpdateTestCase(ctx context.Context, command UpdateTestCa
 	if err := current.Validate(); err != nil || current.ID != command.ID {
 		return MutationResult{}, ErrCorrupt
 	}
-	if command.Protocol != current.Protocol || command.Key != current.Key {
+	if command.Key != current.Key {
 		return MutationResult{}, ErrInvalid
 	}
 	meta, err := service.nextMeta(ctx, current.EntityMeta, command.ExpectedRevision)
@@ -232,13 +229,8 @@ func (service *Service) UpdateTestCase(ctx context.Context, command UpdateTestCa
 	if err := testCase.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
-	if err := service.caseTypes.Validate(testCase.Protocol, testCase.Definition); err != nil {
+	if err := service.caseTypes.ValidateDefinitions(testCase.Definitions); err != nil {
 		return MutationResult{}, ErrInvalid
-	}
-	if testCase.Definition.Type != current.Definition.Type || testCase.Definition.TypeVersion != current.Definition.TypeVersion {
-		if descriptor, found := service.caseTypes.Descriptor(testCase.Definition.Type, testCase.Definition.TypeVersion); !found || !descriptor.Creatable {
-			return MutationResult{}, ErrInvalid
-		}
 	}
 	if err := service.repository.UpdateTestCase(ctx, command.ExpectedRevision, testCase); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
@@ -634,38 +626,19 @@ func validUpdateIdentity(id string, revision uint64) bool {
 	return domain.IsUUID(id) && revision > 0
 }
 
-func definitionFromCreate(command CreateTestCaseCommand) domain.TestCaseDefinition {
-	return newDefinition(command.DefinitionSchemaVersion, command.Type, command.TypeVersion, command.Spec)
-}
-
 func testCaseFromCreate(meta domain.EntityMeta, command CreateTestCaseCommand) domain.TestCase {
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
-		Protocol: command.Protocol, Enabled: command.Enabled, Default: command.Default,
-		Severity: command.Severity, ExecutionMode: command.ExecutionMode,
-		Definition: definitionFromCreate(command),
+		Enabled: command.Enabled, Default: command.Default,
+		Severity: command.Severity, ExecutionMode: command.ExecutionMode, Definitions: command.Definitions.Clone(),
 	}
 }
 
 func testCaseFromUpdate(meta domain.EntityMeta, command UpdateTestCaseCommand) domain.TestCase {
 	return domain.TestCase{
 		EntityMeta: meta, Key: command.Key, Name: command.Name, Dimension: command.Dimension,
-		Protocol: command.Protocol, Enabled: command.Enabled, Default: command.Default,
-		Severity: command.Severity, ExecutionMode: command.ExecutionMode,
-		Definition: definitionFromUpdate(command),
-	}
-}
-
-func definitionFromUpdate(command UpdateTestCaseCommand) domain.TestCaseDefinition {
-	return newDefinition(command.DefinitionSchemaVersion, command.Type, command.TypeVersion, command.Spec)
-}
-
-func newDefinition(schemaVersion int, caseType domain.CaseType, typeVersion uint32, spec json.RawMessage) domain.TestCaseDefinition {
-	return domain.TestCaseDefinition{
-		SchemaVersion: schemaVersion,
-		Type:          caseType,
-		TypeVersion:   typeVersion,
-		Spec:          append(json.RawMessage(nil), spec...),
+		Enabled: command.Enabled, Default: command.Default,
+		Severity: command.Severity, ExecutionMode: command.ExecutionMode, Definitions: command.Definitions.Clone(),
 	}
 }
 

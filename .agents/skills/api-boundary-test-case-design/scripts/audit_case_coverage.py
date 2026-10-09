@@ -39,25 +39,27 @@ def load_case(path: Path) -> dict[str, Any]:
         raise ValueError(f"{path}: {exc}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"{path}: top-level JSON value must be an object")
-    definition = value.get("definition", {})
-    if value.get("schema_version") != 1 or "model_targets" in value:
-        raise ValueError(f"{path}: expected current Case schema_version 1")
-    if definition.get("schema_version") != 1 or definition.get("type") != value.get("protocol") or definition.get("type_version") != 1:
-        raise ValueError(f"{path}: expected current protocol definition")
-    spec = definition.get("spec", {})
-    if "kind" in spec or not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list):
-        raise ValueError(f"{path}: expected explicit current inputs and assertions")
+    definitions = value.get("definitions")
+    if value.get("schema_version") != 2 or "definition" in value or "protocol" in value or "model_targets" in value:
+        raise ValueError(f"{path}: expected current Case schema_version 2 with id and definitions")
+    if not isinstance(value.get("id"), str) or not isinstance(definitions, dict) or not definitions:
+        raise ValueError(f"{path}: expected id and nonempty protocol-keyed definitions")
+    for protocol, spec in definitions.items():
+        if not isinstance(protocol, str) or not isinstance(spec, dict):
+            raise ValueError(f"{path}: invalid protocol definition")
+        if "kind" in spec or not isinstance(spec.get("inputs"), dict) or not isinstance(spec.get("assertions"), list):
+            raise ValueError(f"{path}: {protocol}: expected explicit current inputs and assertions")
     return value
 
 
 def request_body(case: dict[str, Any]) -> dict[str, Any]:
-    body = (
-        case.get("definition", {})
-        .get("spec", {})
-        .get("request", {})
-        .get("body", {})
-    )
-    return body if isinstance(body, dict) else {}
+    result = {}
+    for spec in case["definitions"].values():
+        body = spec.get("request", {}).get("body", {})
+        if isinstance(body, dict):
+            result.update(body)
+    return result
+
 
 
 def assertions(case: dict[str, Any]) -> list[dict[str, Any]]:
@@ -67,7 +69,8 @@ def assertions(case: dict[str, Any]) -> list[dict[str, Any]]:
             result.append(item)
             for group in ("all", "any", "each"):
                 collect(item.get(group, []))
-    collect(case["definition"]["spec"]["assertions"])
+    for spec in case["definitions"].values():
+        collect(spec["assertions"])
     return result
 
 

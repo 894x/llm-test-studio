@@ -141,7 +141,7 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 			caseIDs := []string{}
 			for index, spec := range specs {
 				key := fmt.Sprintf("e2e.%s.%d", protocol, index)
-				snapshot, err := app.CreateTestCase(catalog.CreateTestCaseCommand{Key: key, Name: key, Dimension: "e2e", Protocol: protocol, Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, DefinitionSchemaVersion: 1, Type: domain.CaseType(protocol), TypeVersion: 1, Spec: json.RawMessage(spec)})
+				snapshot, err := app.CreateTestCase(catalog.CreateTestCaseCommand{Key: key, Name: key, Dimension: "e2e", Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{protocol: json.RawMessage(spec)}})
 				if err != nil {
 					t.Fatal(err)
 				}

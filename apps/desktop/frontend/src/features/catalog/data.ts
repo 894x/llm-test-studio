@@ -50,21 +50,19 @@ export interface CatalogChannelModel {
   upstream_model_name: string
 }
 
+export type CaseDefinitions = Partial<Record<CatalogProtocol, Record<string, unknown>>>
+
 export interface CatalogTestCase {
   id: string
   revision: number
   key: string
   name: string
   dimension: string
-  protocol: CatalogProtocol
   enabled: boolean
   default: boolean
   severity: CatalogCaseSeverity
   execution_mode: CatalogCaseExecutionMode
-  definition_schema_version: number
-  type: string
-  type_version: number
-  spec: Record<string, unknown>
+  definitions: CaseDefinitions
 }
 
 export type CatalogPlanParameterValue = string | number | boolean | null | CatalogPlanParameterValue[] | { [key: string]: CatalogPlanParameterValue }
@@ -106,8 +104,8 @@ export type UpdateChannelCommand = CreateChannelCommand & { id: string; expected
 export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name">
 export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name"> & { id: string; expected_revision: number }
 export type CreateTestCaseCommand = Pick<CatalogTestCase,
-  "key" | "name" | "dimension" | "protocol" | "enabled" | "default" | "severity" |
-  "execution_mode" | "definition_schema_version" | "type" | "type_version" | "spec"
+  "key" | "name" | "dimension" | "enabled" | "default" | "severity" |
+  "execution_mode" | "definitions"
 >
 export type UpdateTestCaseCommand = CreateTestCaseCommand & { id: string; expected_revision: number }
 export type CreateSuiteCommand = Pick<CatalogSuite, "key" | "name" | "protocol" | "cases" | "description" | "inputs">
@@ -193,10 +191,9 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   if (new Set(caseTypes.map((descriptor) => `${descriptor.type}@${descriptor.type_version}`)).size !== caseTypes.length) {
     throw new DesktopDataError(tx("desktop:catalog_duplicate_desktop_catalog_case_types"))
   }
-  const caseTypeByKey = new Map(caseTypes.map((descriptor) => [`${descriptor.type}@${descriptor.type_version}`, descriptor]))
+  const descriptorByProtocol = new Map(caseTypes.map(descriptor => [descriptor.type, descriptor]))
   for (const testCase of testCases) {
-    const descriptor = caseTypeByKey.get(`${testCase.type}@${testCase.type_version}`)
-    if (!descriptor || !descriptor.supported_protocols.includes(testCase.protocol)) {
+    if (Object.keys(testCase.definitions).some(protocol => !descriptorByProtocol.has(protocol))) {
       throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_test_case_type"))
     }
   }
@@ -313,17 +310,13 @@ function parseTestCase(value: unknown): CatalogTestCase {
     !isSafeCaseKey(value.key) ||
     !isNonBlank(value.name) ||
     !isSafeDimension(value.dimension) ||
-    !isProtocol(value.protocol) ||
     typeof value.enabled !== "boolean" ||
     typeof value.default !== "boolean" ||
     (value.default && !value.enabled) ||
     !isCaseSeverity(value.severity) ||
     !isCaseExecutionMode(value.execution_mode) ||
-    !isPositiveInteger(value.definition_schema_version) ||
-    !isSafeCaseType(value.type) ||
-    !isPositiveInteger(value.type_version) ||
-    !isRecord(value.spec) ||
-    Object.keys(value.spec).length === 0
+    !isCaseDefinitions(value.definitions) ||
+    ["protocol", "definition", "definition_schema_version", "type", "type_version", "spec"].some(key => key in value)
   ) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_test_case_data"))
   }
@@ -333,16 +326,19 @@ function parseTestCase(value: unknown): CatalogTestCase {
     key: value.key,
     name: value.name,
     dimension: value.dimension,
-    protocol: value.protocol,
     enabled: value.enabled,
     default: value.default,
     severity: value.severity,
     execution_mode: value.execution_mode,
-    definition_schema_version: value.definition_schema_version,
-    type: value.type,
-    type_version: value.type_version,
-    spec: structuredClone(value.spec),
+    definitions: structuredClone(value.definitions),
   }
+}
+
+export function isCaseDefinitions(value: unknown): value is CaseDefinitions {
+  if (!isRecord(value) || Object.keys(value).length === 0) return false
+  return Object.entries(value).every(([protocol, spec]) => isProtocol(protocol) &&
+    isRecord(spec) && isRecord(spec.inputs) && isRecord(spec.request) && "body" in spec.request &&
+    Array.isArray(spec.assertions) && Object.keys(spec).every(key => ["inputs", "request", "assertions", "operation", "workflow"].includes(key)))
 }
 
 function parseCaseTypeDescriptor(value: unknown): CatalogCaseTypeDescriptor {

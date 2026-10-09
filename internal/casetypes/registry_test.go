@@ -14,18 +14,18 @@ func TestRegistryExposesOnlyCurrentProtocolDefinitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptors := registry.Descriptors()
-	if len(descriptors) != 4 {
+	if len(descriptors) != 6 {
 		t.Fatalf("protocol count = %d", len(descriptors))
 	}
 	for _, descriptor := range descriptors {
 		if !descriptor.Creatable || descriptor.SchedulingOwner != casetypes.SchedulingOwnerPlan {
 			t.Fatalf("invalid descriptor: %+v", descriptor)
 		}
-		definition := domain.TestCaseDefinition{SchemaVersion: 1, Type: descriptor.Type, TypeVersion: 1, Spec: descriptor.DefaultSpec}
-		if err := registry.Validate(domain.Protocol(descriptor.Type), definition); err != nil {
+		definition := domain.ProtocolDefinitions{domain.Protocol(descriptor.Type): descriptor.DefaultSpec}
+		if err := registry.ValidateDefinitions(definition); err != nil {
 			t.Fatalf("default %s: %v", descriptor.Type, err)
 		}
-		if err := registry.Validate(domain.Protocol("different"), definition); err == nil {
+		if err := registry.Validate(domain.Protocol("different"), descriptor.DefaultSpec); err == nil {
 			t.Fatal("cross-protocol definition accepted")
 		}
 	}
@@ -38,15 +38,12 @@ func TestRegistryExposesOnlyCurrentProtocolDefinitions(t *testing.T) {
 
 func TestRegistryRejectsOldSpecWithoutReinterpretation(t *testing.T) {
 	registry := casetypes.MustBuiltinRegistry()
-	definition := domain.TestCaseDefinition{
-		SchemaVersion: 1, Type: "openai-chat", TypeVersion: 1,
-		Spec: json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{}},"options":{}}`),
-	}
-	before := string(definition.Spec)
-	if err := registry.Validate(domain.ProtocolOpenAIChat, definition); err == nil {
+	definition := domain.ProtocolDefinitions{domain.Protocol("openai-chat"): json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/chat/completions","headers":{},"body":{}},"options":{}}`)}
+	before := string(definition[domain.ProtocolOpenAIChat])
+	if err := registry.ValidateDefinitions(definition); err == nil {
 		t.Fatal("old spec accepted")
 	}
-	if string(definition.Spec) != before {
+	if string(definition[domain.ProtocolOpenAIChat]) != before {
 		t.Fatal("rejected data was mutated")
 	}
 }

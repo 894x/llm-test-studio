@@ -79,7 +79,7 @@ export function taskConnectionURLs(address: string, task: CatalogSuite | undefin
   const descriptor = PROTOCOLS.find((protocol) => protocol.id === task.protocol)!
   const paths = task.cases.map(({ case_id }) => {
     const testCase = catalog.test_cases.find((item) => item.id === case_id)
-    const operation = testCase?.spec.operation ?? ""
+    const operation = testCase?.definitions[task.protocol]?.operation ?? ""
     return descriptor.request_paths.find((route) => route.operation === operation)?.path
   }).filter((path): path is NonNullable<typeof path> => !!path)
   if (!paths.length) paths.push(descriptor.request_paths[0].path)

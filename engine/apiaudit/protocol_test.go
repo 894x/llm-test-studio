@@ -104,7 +104,7 @@ func TestCLILoadsAllCurrentProtocolsAndRejectsOldDataWithoutWriting(t *testing.T
 			}
 		}
 	}
-	if total != 711 {
+	if total != 727 {
 		t.Fatalf("catalog count = %d", total)
 	}
 	root := t.TempDir()
@@ -117,7 +117,7 @@ func TestCLILoadsAllCurrentProtocolsAndRejectsOldDataWithoutWriting(t *testing.T
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSuite(root, "openai-chat"); err == nil || !strings.Contains(err.Error(), "explicitly upgrade to schema_version 1") {
+	if _, err := LoadSuite(root, "openai-chat"); err == nil || !strings.Contains(err.Error(), "schema_version 2 with id and definitions") {
 		t.Fatalf("old format error = %v", err)
 	}
 	after, err := os.ReadFile(path)

@@ -127,8 +127,12 @@ func TestReportGenerationFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: executor,
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		Reporter:         &recordingReporter{err: reportFailure},
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		Reporter: &recordingReporter{err: reportFailure},
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -432,7 +436,11 @@ func TestExecutionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: failingExecutor{err: executionFailure},
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -475,7 +483,11 @@ func TestFailedRequestReportsRunAndRequestCorrelation(t *testing.T) {
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: requestFailureExecutor{},
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -513,7 +525,11 @@ func TestBackgroundTransitionFailureReportsCorrelatedRunDiagnostic(t *testing.T)
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -551,7 +567,11 @@ func TestCaseSummaryPersistenceFailureReportsCorrelatedRunDiagnostic(t *testing.
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: executor,
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -591,7 +611,11 @@ func TestTerminalTransitionFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: executor,
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -626,7 +650,11 @@ func TestIncompleteExecutionReportsCorrelatedRunDiagnostic(t *testing.T) {
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -660,7 +688,11 @@ func TestBackgroundDrainingTransitionFailureReportsCorrelatedRunDiagnostic(t *te
 	service, err := runs.New(runs.Dependencies{
 		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
 		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
-		ReportDiagnostic: func(diagnostic runs.Diagnostic) { reported <- diagnostic },
+		ReportDiagnostic: func(diagnostic runs.Diagnostic) {
+			if diagnostic.ErrorCode != "phase_timing" {
+				reported <- diagnostic
+			}
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -998,14 +1030,8 @@ func newRunFixture(t *testing.T) runFixture {
 	channel := domain.Channel{EntityMeta: meta(channelID), Name: "test-channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{EntityMeta: meta(mappingID), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-model"}
 	testCase := domain.TestCase{
-		EntityMeta: meta(caseID), Key: "T001", Name: "basic", Dimension: "compatibility", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hi"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`),
-		},
+		EntityMeta: meta(caseID), Key: "T001", Name: "basic", Dimension: "compatibility",
+		Enabled: true, Default: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hi"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)},
 	}
 	caseRef := domain.CaseRef{CaseID: caseID}
 	suite := domain.Suite{

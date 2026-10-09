@@ -105,14 +105,14 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 	if len(snapshot.Plans[0].Entries) != 1 || snapshot.Plans[0].Entries[0].TargetID != suiteID {
 		t.Fatal("missing plan refs")
 	}
-	snapshot.TestCases[0].Spec[0] = '['
+	snapshot.TestCases[0].Definitions[domain.ProtocolOpenAIChat][0] = '['
 	snapshot.Suites[0].Cases[0].CaseID = modelAID
 	snapshot.Plans[0].Entries[0].SLAThresholds["p95_ms"] = 1
 	fresh, err := service.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(fresh.TestCases[0].Spec) != string(validRequestSingleSpec()) || fresh.Suites[0].Cases[0].CaseID != caseID || fresh.Plans[0].Entries[0].SLAThresholds["p95_ms"] != 1500 {
+	if string(fresh.TestCases[0].Definitions[domain.ProtocolOpenAIChat]) != string(validRequestSingleSpec()) || fresh.Suites[0].Cases[0].CaseID != caseID || fresh.Plans[0].Entries[0].SLAThresholds["p95_ms"] != 1500 {
 		t.Fatal("snapshot aliases repository")
 	}
 }
@@ -168,8 +168,8 @@ func TestSnapshotFailsClosedOnDuplicateBadReferenceAndProtocolMismatch(t *testin
 		{name: "mapping protocol mismatch", mutate: func(repository *fakeRepository) {
 			repository.models[0].Protocol = domain.ProtocolSeedance
 		}},
-		{name: "plan case protocol mismatch", mutate: func(repository *fakeRepository) {
-			repository.testCases[0].Protocol = domain.ProtocolSeedance
+		{name: "unknown case protocol", mutate: func(repository *fakeRepository) {
+			repository.testCases[0].Definitions = domain.ProtocolDefinitions{"unknown": validRequestSingleSpec()}
 		}},
 	}
 	for _, test := range tests {
@@ -218,7 +218,7 @@ func TestListMethodsReturnSortedIndependentAllowListCopies(t *testing.T) {
 		t.Fatalf("list summaries are incomplete: %#v %#v %#v %#v %#v %#v", models, channels, mappings, testCases, suites, plans)
 	}
 	models[0].Capabilities[0] = "caller-mutated"
-	testCases[0].Spec[0] = '['
+	testCases[0].Definitions[domain.ProtocolOpenAIChat][0] = '['
 	fresh, err := service.ListModels(ctx)
 	if err != nil {
 		t.Fatalf("second ListModels() error = %v", err)
@@ -227,7 +227,7 @@ func TestListMethodsReturnSortedIndependentAllowListCopies(t *testing.T) {
 		t.Fatal("ListModels() returned an aliased capabilities slice")
 	}
 	freshCases, err := service.ListTestCases(ctx)
-	if err != nil || string(freshCases[0].Spec) != string(validRequestSingleSpec()) {
+	if err != nil || string(freshCases[0].Definitions[domain.ProtocolOpenAIChat]) != string(validRequestSingleSpec()) {
 		t.Fatal("ListTestCases() returned an aliased spec")
 	}
 }
@@ -341,7 +341,7 @@ func TestUpdatesRejectStaleRevisionWithoutWriting(t *testing.T) {
 			t.Fatalf("UpdateChannel(protocol change) error = %v, want ErrInvalid", err)
 		}
 		command := validUpdateTestCaseCommand(caseID, "case")
-		command.Protocol = domain.ProtocolSeedance
+		command.Key = "changed-key"
 		if _, err := service.UpdateTestCase(context.Background(), command); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("UpdateTestCase(protocol change) error = %v, want ErrInvalid", err)
 		}
@@ -372,7 +372,7 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 		t.Fatalf("CreateChannel() error = %q, want safe ErrInvalid", err)
 	}
 	missingHeaders := validCreateTestCaseCommand("missing headers")
-	missingHeaders.Spec = json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":null,"body":{}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
+	missingHeaders.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"request":{"method":"POST","path":"/v1/chat/completions","headers":null,"body":{}},"expected":{"allowed_http_statuses":[200],"stream_completion":"required"},"assertions":[{"kind":"text","config":{"contains":"ok"}}]}`)
 	if _, err := service.CreateTestCase(context.Background(), missingHeaders); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("CreateTestCase(nil headers) error = %v, want ErrInvalid", err)
 	}
@@ -405,15 +405,15 @@ func TestCatalogEnforcesCaseTypeCreationPolicy(t *testing.T) {
 	service := newTestService(t, repository, fixtureTime())
 
 	create := validCreateTestCaseCommand("reserved case")
-	create.Type = domain.CaseType("legacy.apiaudit")
-	create.Spec = json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`)
+	create.Definitions = domain.ProtocolDefinitions{"legacy.apiaudit": validRequestSingleSpec()}
+	create.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"kind":"chat_sync","request":{"method":"POST","path":"/v1/chat/completions","headers":{},"body":{"messages":[{"role":"user","content":"hello"}]}},"options":{}}`)
 	if _, err := service.CreateTestCase(context.Background(), create); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("CreateTestCase(non-creatable type) error = %v, want ErrInvalid", err)
 	}
 
 	update := validUpdateTestCaseCommand(caseID, "reserved transition")
-	update.Type = domain.CaseType("legacy.apiaudit")
-	update.Spec = create.Spec
+	update.Definitions = create.Definitions.Clone()
+	update.Definitions[domain.ProtocolOpenAIChat] = create.Definitions[domain.ProtocolOpenAIChat]
 	if _, err := service.UpdateTestCase(context.Background(), update); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("UpdateTestCase(non-creatable transition) error = %v, want ErrInvalid", err)
 	}
@@ -484,10 +484,10 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 	if _, err := service.CreatePlan(context.Background(), planCommand); err != nil {
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
-	caseCommand.Spec[2] = 'X'
+	caseCommand.Definitions[domain.ProtocolOpenAIChat][2] = 'X'
 	planCommand.Entries[0].TargetID = modelAID
 	planCommand.Entries[0].SLAThresholds["p95_ms"] = 9999
-	if string(repository.createdTestCase.Definition.Spec) != string(validRequestSingleSpec()) {
+	if string(repository.createdTestCase.Definitions[domain.ProtocolOpenAIChat]) != string(validRequestSingleSpec()) {
 		t.Fatalf("CreateTestCase() retained caller aliases: %#v", repository.createdTestCase)
 	}
 	if len(repository.createdPlan.Entries) != 1 ||
@@ -793,12 +793,7 @@ func validRepository() *fakeRepository {
 	meta := func(id string) domain.EntityMeta {
 		return domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now}
 	}
-	definition := domain.TestCaseDefinition{
-		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:          domain.CaseType("openai-chat"),
-		TypeVersion:   1,
-		Spec:          validRequestSingleSpec(),
-	}
+	definition := domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): validRequestSingleSpec()}
 	return &fakeRepository{
 		models: []domain.Model{
 			{EntityMeta: meta(modelAID), Name: "Zulu", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat", "tools"}},
@@ -811,9 +806,8 @@ func validRepository() *fakeRepository {
 		},
 		testCases: []domain.TestCase{{
 			EntityMeta: meta(caseID), Key: "T001", Name: "Chat", Dimension: "boundary",
-			Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
-			Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
-			Definition: definition,
+			Enabled: true, Default: true,
+			Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: definition,
 		}},
 		suites: []domain.Suite{{
 			EntityMeta: meta(suiteID), Key: "gpt-smoke", Name: "Smoke", Protocol: domain.ProtocolOpenAIChat,
@@ -834,12 +828,8 @@ func validRepository() *fakeRepository {
 
 func validCreateTestCaseCommand(name string) CreateTestCaseCommand {
 	return CreateTestCaseCommand{
-		Key: "T001", Name: name, Dimension: "boundary", Protocol: domain.ProtocolOpenAIChat,
-		Enabled: true, Default: true, Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
-		DefinitionSchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:                    domain.CaseType("openai-chat"),
-		TypeVersion:             1,
-		Spec:                    validRequestSingleSpec(),
+		Key: "T001", Name: name, Dimension: "boundary",
+		Enabled: true, Default: true, Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: validRequestSingleSpec()},
 	}
 }
 
@@ -851,9 +841,7 @@ func validUpdateTestCaseCommand(id, name string) UpdateTestCaseCommand {
 	create := validCreateTestCaseCommand(name)
 	return UpdateTestCaseCommand{
 		ID: id, ExpectedRevision: 1, Key: create.Key, Name: create.Name, Dimension: create.Dimension,
-		Protocol: create.Protocol, Enabled: create.Enabled, Default: create.Default, Severity: create.Severity, ExecutionMode: create.ExecutionMode,
-		DefinitionSchemaVersion: create.DefinitionSchemaVersion,
-		Type:                    create.Type, TypeVersion: create.TypeVersion, Spec: create.Spec,
+		Enabled: create.Enabled, Default: create.Default, Severity: create.Severity, ExecutionMode: create.ExecutionMode, Definitions: create.Definitions,
 	}
 }
 

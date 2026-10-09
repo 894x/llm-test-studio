@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "612efdaa-9b82-5aa9-b4f5-f0c8487aae4c",
   "key": "h3.role.frame_reference_mutually_exclusive",
   "name": "MiniMax H3 · frame 与 reference role 互斥",
   "dimension": "dependency",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

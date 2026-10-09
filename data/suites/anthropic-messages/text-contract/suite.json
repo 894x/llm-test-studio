@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "key": "anthropic-messages.text-contract",
+  "name": "Anthropic Messages 文本协议契约",
+  "protocol": "anthropic-messages",
+  "description": "使用同一组 Case 的原生协议配置。",
+  "cases": [
+    {
+      "case_id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264"
+    },
+    {
+      "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+    },
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    },
+    {
+      "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+    },
+    {
+      "case_id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595"
+    }
+  ],
+  "inputs": []
+}

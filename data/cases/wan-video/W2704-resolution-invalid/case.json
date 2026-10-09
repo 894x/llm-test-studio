@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "9f0f23c7-0242-5c5d-9364-6de4c3b38156",
   "key": "wan27.t2v.resolution_invalid",
   "name": "Wan 2.7 · 非法分辨率 480P",
   "dimension": "boundary",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

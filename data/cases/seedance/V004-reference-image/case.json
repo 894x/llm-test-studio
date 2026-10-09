@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "e3c3f8ea-7dd5-50ec-ae09-fcd405aa1b3c",
   "key": "V004",
   "name": "参考图片生成视频",
   "dimension": "compatibility",
-  "protocol": "seedance",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "seedance",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "seedance": {
       "inputs": {},
       "request": {
         "body": {

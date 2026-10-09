@@ -98,11 +98,11 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 
 ### 当前协议运行时
 
-桌面端与 CLI 审计执行共用 `openai-chat`、`seedance`、`wan-video`、`minimax-video` 协议运行时。Case 使用外层 schema 3 和显式断言；Suite 使用 schema 2，保存有序 Case 引用和输入绑定。Plan 保留各条目的负载、预热、协议设置与随机种子。Run 统一绑定一个模型、渠道和凭据。
+桌面端与 CLI 审计执行共用 `openai-chat`、`openai-responses`、`anthropic-messages`、`seedance`、`wan-video`、`minimax-video` 协议运行时。Case 文件使用 schema 2，包含显式稳定 ID 和以协议为 key 的 `definitions`；每份定义独立保存原生输入、请求体、工作流和断言。Suite 选择一个协议，使用 schema 1，保存有序 Case 引用和输入绑定。Plan 保留各条目的负载、预热、协议设置与随机种子。Run 统一绑定一个模型、渠道和凭据。
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` 只接受所选 Case 声明的输入；省略 `--inputs` 时使用已声明默认值。`--all-cases` 选择已启用的自动 Case，手动或停用项会明确报错。`--dry-run` 仅准备请求，不联网，也不声称断言已通过。等待行为由 `workflow.mode` 定义，替代 `--no-wait`。
 
-仓库包含 711 个当前格式 Case、44 个 Suite 和 5 个性能 Plan。此前修改模型或认证的 16 个 Case 已停用，因为这些字段属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[运行时合并与验收记录](doc/design/protocol-case-runtime-implementation.md)。
+仓库包含 717 个当前格式 Case、48 个 Suite 和 5 个性能 Plan。此前修改模型或认证的 16 个 Case 已停用，因为这些字段属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
 
 <details>
 <summary><strong>CLI 示例</strong></summary>

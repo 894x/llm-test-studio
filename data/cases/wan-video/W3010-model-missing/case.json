@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "306cf3db-b52a-5b45-8b16-a621de6f0ae7",
   "key": "wan30.model.required",
   "name": "Wan 3.0 · 缺少 model",
   "dimension": "required",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

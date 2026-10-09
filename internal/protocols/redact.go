@@ -80,7 +80,9 @@ func redactValue(value any, secret string) any {
 	switch current := value.(type) {
 	case map[string]any:
 		for key, nested := range current {
-			if credentialField(key) {
+			thinkingSignature := key == "signature" &&
+				(current["type"] == "thinking" || current["type"] == "signature_delta")
+			if credentialField(key) && !thinkingSignature {
 				current[key] = "[redacted]"
 				continue
 			}

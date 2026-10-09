@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "bbd0d978-b867-5372-8b73-eb49da64a4f1",
   "key": "glm53.thinking.corrupt_history",
   "name": "GLM 5.3 · thinking.corrupt_history（待验证模板）",
   "dimension": "glm53.clear_thinking",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

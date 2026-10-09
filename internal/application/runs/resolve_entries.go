@@ -93,13 +93,13 @@ func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([
 			return nil, ErrNotRunnable
 		}
 		for _, testCase := range definitions {
-			if !testCase.Enabled || testCase.ExecutionMode != domain.CaseExecutionAutomatic || testCase.Protocol != plan.Protocol {
+			if !testCase.Enabled || testCase.ExecutionMode != domain.CaseExecutionAutomatic || !testCase.SupportsProtocol(plan.Protocol) {
 				return nil, fmt.Errorf("%w: Case %s is disabled, nonautomatic or belongs to another protocol", ErrNotRunnable, testCase.Key)
 			}
-			if err := service.caseTypes.Validate(testCase.Protocol, testCase.Definition); err != nil {
+			if err := service.caseTypes.Validate(plan.Protocol, testCase.Definitions[plan.Protocol]); err != nil {
 				return nil, fmt.Errorf("Case %s: %w", testCase.Key, err)
 			}
-			spec, err := testspec.Decode(testCase.Definition.Spec)
+			spec, err := testCase.SpecFor(plan.Protocol)
 			if err != nil {
 				return nil, err
 			}

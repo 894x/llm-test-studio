@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "af9c31ff-be9c-5e0b-8c1e-f2667b394ee7",
   "key": "h3.request_body.size_max",
   "name": "MiniMax H3 · 请求体最大 64 MB",
   "dimension": "payload-size",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -243,11 +242,9 @@ func (service *Service) buildSnapshot(
 		}
 		snapshot.TestCases = append(snapshot.TestCases, TestCaseSummary{
 			ID: testCase.ID, Revision: testCase.Revision, Key: testCase.Key, Name: testCase.Name, Dimension: testCase.Dimension,
-			Protocol: testCase.Protocol, Enabled: testCase.Enabled, Default: testCase.Default,
+			Enabled: testCase.Enabled, Default: testCase.Default,
 			Severity: testCase.Severity, ExecutionMode: testCase.ExecutionMode,
-			DefinitionSchemaVersion: testCase.Definition.SchemaVersion,
-			Type:                    testCase.Definition.Type, TypeVersion: testCase.Definition.TypeVersion,
-			Spec: append(json.RawMessage(nil), testCase.Definition.Spec...),
+			Definitions: testCase.Definitions.Clone(),
 		})
 	}
 	for _, suite := range suites {

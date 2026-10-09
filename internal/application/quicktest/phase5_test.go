@@ -2,6 +2,7 @@ package quicktest
 
 import (
 	"context"
+	"github.com/894x/llm-test-studio/internal/domain"
 	"io"
 	"net/http"
 	"net/http/httptrace"
@@ -24,8 +25,7 @@ func TestRunPerformanceSchemaV3CarriesFineStreamingTelemetry(t *testing.T) {
 					"data: [DONE]\n\n",
 			)),
 		}, nil
-	})}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode:     AddressModeBaseURL,
+	})}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL,
 		URL:             "https://example.com/v1",
 		APIKey:          "secret",
 		ModelID:         "model",
@@ -276,8 +276,7 @@ func (reader *delayedStreamReader) Read(buffer []byte) (int, error) {
 }
 
 func performancePhaseFiveCommand() PerformanceCommand {
-	return PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	return PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2, SliceDurationMS: 1_000,
 	}
 }

@@ -27,8 +27,8 @@ const (
 )
 
 type Service struct {
-	taskCredential     func(context.Context, string, string) (*credentials.Lease, error)
-	taskPath           func(context.Context, TaskReference, string) (string, error)
+	taskCredential     func(context.Context, string, string, domain.Protocol) (*credentials.Lease, error)
+	taskPath           func(context.Context, TaskReference, string, domain.Protocol) (string, error)
 	transport          http.RoundTripper
 	channelConnections ChannelConnectionResolver
 	archive            PerformanceArchive
@@ -82,6 +82,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	command.WorkloadMode = normalizedWorkloadMode(command.WorkloadMode)
 	report := PerformanceReport{
 		SchemaVersion: PerformanceSchemaVersion,
+		Protocol:      command.Protocol,
 		AddressMode:   command.AddressMode,
 		ModelID:       command.ModelID,
 		ArchiveStatus: PerformanceArchiveNotAttempted,
@@ -118,11 +119,11 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		Samples:  []PerformanceSample{},
 		Progress: PerformanceProgress{Phase: PerformancePhaseNotStarted},
 	}
-	if ctx == nil {
+	if ctx == nil || !SupportsPerformance(command.Protocol) {
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
 	}
-	if code := service.applySelectedChannel(ctx, command.ChannelID, &command.AddressMode, &command.URL, &command.APIKey); code != "" {
+	if code := service.applySelectedChannel(ctx, command.ChannelID, command.Protocol, &command.AddressMode, &command.URL, &command.APIKey); code != "" {
 		report.ErrorCode = code
 		return report, nil
 	}
@@ -131,7 +132,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			report.ErrorCode = ErrorInvalidRequest
 			return report, nil
 		}
-		lease, err := service.taskCredential(ctx, command.CredentialRunID, command.URL)
+		lease, err := service.taskCredential(ctx, command.CredentialRunID, command.URL, command.Protocol)
 		if err != nil {
 			report.ErrorCode = ErrorCredentialRequired
 			return report, nil
@@ -151,13 +152,13 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			report.ErrorCode = ErrorInvalidRequest
 			return report, nil
 		}
-		path, err := service.taskPath(ctx, *command.Task, command.ModelID)
+		path, err := service.taskPath(ctx, *command.Task, command.ModelID, command.Protocol)
 		parsed, parseErr := url.Parse(path)
-		if err != nil || parseErr != nil || parsed.IsAbs() || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/chat/completions") {
+		if err != nil || parseErr != nil || parsed.IsAbs() || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(path, "/") || path != performancePath(command.Protocol) {
 			report.ErrorCode = ErrorInvalidRequest
 			return report, nil
 		}
-		descriptor, _ := protocol.Lookup(protocol.OpenAIChat)
+		descriptor, _ := protocol.Lookup(string(command.Protocol))
 		resolved, resolveErr := protocol.ResolveAddress(command.URL, path, descriptor.RequestPaths)
 		if resolveErr != nil {
 			report.ErrorCode = ErrorInvalidRequest
@@ -166,7 +167,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		command.URL = resolved.Endpoint
 		command.AddressMode = AddressModeFullURL
 	}
-	address, code := normalizeAddress(command.AddressMode, command.URL)
+	address, code := normalizeAddress(command.Protocol, command.AddressMode, command.URL)
 	report.BaseURL, report.Endpoint = address.baseURL, address.endpoint
 	if code != "" {
 		report.ErrorCode = code
@@ -209,11 +210,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		}
 	} else {
 		prompt := strings.TrimSpace(strings.Repeat("test ", int(command.InputTokens)))
-		body, err = json.Marshal(map[string]any{
-			"messages":   []map[string]string{{"role": "user", "content": prompt}},
-			"max_tokens": command.OutputTokens,
-			"stream":     true,
-		})
+		body, err = performanceBody(command.Protocol, prompt, command.OutputTokens)
 		if err != nil {
 			report.ErrorCode = load.ErrorRequestFailed
 			return report, nil
@@ -221,7 +218,10 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 	}
 
 	evidenceRecorder := newPerformanceEvidenceRecorder()
-	executor, cleanup, code := service.performanceExecutor(ctx, address, command.APIKey, command.ModelID, body, workload, evidenceRecorder.record)
+	executor, cleanup, code := service.performanceExecutor(ctx, performanceExecutionConfig{
+		Protocol: command.Protocol, Address: address, APIKey: command.APIKey, Model: command.ModelID,
+		Body: body, Workload: workload, OnFailure: evidenceRecorder.record,
+	})
 	command.APIKey = ""
 	if code != "" {
 		report.ErrorCode = code
@@ -643,7 +643,7 @@ func performanceTrafficSummary(requestCap uint64, outcome load.Outcome) *Perform
 	}
 }
 
-func (service *Service) applySelectedChannel(ctx context.Context, channelID string, addressMode *AddressMode, address, apiKey *string) domain.ErrorCode {
+func (service *Service) applySelectedChannel(ctx context.Context, channelID string, selectedProtocol domain.Protocol, addressMode *AddressMode, address, apiKey *string) domain.ErrorCode {
 	if channelID == "" {
 		return ""
 	}
@@ -651,7 +651,7 @@ func (service *Service) applySelectedChannel(ctx context.Context, channelID stri
 		return ErrorInvalidRequest
 	}
 	connection, err := service.channelConnections.Resolve(ctx, channelID)
-	if err != nil || strings.TrimSpace(connection.BaseURL) == "" || len(connection.APIKey) == 0 {
+	if err != nil || connection.Protocol != selectedProtocol || strings.TrimSpace(connection.BaseURL) == "" || len(connection.APIKey) == 0 {
 		clear(connection.APIKey)
 		return ErrorInvalidRequest
 	}
@@ -761,7 +761,21 @@ func validPerformanceProfileValues(profile PerformanceProfile) bool {
 	return err == nil
 }
 
-func (service *Service) performanceExecutor(ctx context.Context, address normalizedAddress, apiKey, modelID string, body json.RawMessage, workload *performanceWorkload, onFailureEvidence openai.FailureResponseEvidenceSink) (load.Executor, func(), domain.ErrorCode) {
+type performanceExecutionConfig struct {
+	Protocol      domain.Protocol
+	Address       normalizedAddress
+	APIKey, Model string
+	Body          json.RawMessage
+	Workload      *performanceWorkload
+	OnFailure     openai.FailureResponseEvidenceSink
+}
+
+func (service *Service) performanceExecutor(ctx context.Context, config performanceExecutionConfig) (load.Executor, func(), domain.ErrorCode) {
+	selectedProtocol, address := config.Protocol, config.Address
+	apiKey, modelID := config.APIKey, config.Model
+	body, workload := config.Body, config.Workload
+	onFailureEvidence := config.OnFailure
+
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, quickTestCredentialID)
 	if err != nil {
 		return nil, func() {}, load.ErrorRequestFailed
@@ -777,6 +791,12 @@ func (service *Service) performanceExecutor(ctx context.Context, address normali
 	if err != nil {
 		_ = store.Delete(context.Background(), storeRef)
 		return nil, func() {}, classifyContext(ctx.Err())
+	}
+	if selectedProtocol != domain.ProtocolOpenAIChat {
+		config.APIKey = ""
+		return service.nativePerformanceExecutor(config, lease, func() {
+			_ = store.Delete(context.Background(), storeRef)
+		})
 	}
 	options := make([]openai.Option, 0, 1)
 	if onFailureEvidence != nil {
@@ -1022,7 +1042,7 @@ type normalizedAddress struct {
 	endpoint string
 }
 
-func normalizeAddress(mode AddressMode, rawURL string) (normalizedAddress, domain.ErrorCode) {
+func normalizeAddress(selectedProtocol domain.Protocol, mode AddressMode, rawURL string) (normalizedAddress, domain.ErrorCode) {
 	if rawURL == "" || strings.TrimSpace(rawURL) != rawURL || strings.Contains(rawURL, "\\") {
 		return normalizedAddress{}, ErrorInvalidRequest
 	}
@@ -1033,28 +1053,33 @@ func normalizeAddress(mode AddressMode, rawURL string) (normalizedAddress, domai
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return normalizedAddress{}, ErrorInvalidRequest
 	}
+	if !SupportsPerformance(selectedProtocol) {
+		return normalizedAddress{}, ErrorInvalidRequest
+	}
+	nativePath := performancePath(selectedProtocol)
+	suffix := strings.TrimPrefix(nativePath, "/v1")
 	trimmed := strings.TrimRight(rawURL, "/")
 	var baseURL string
 	switch mode {
 	case AddressModeBaseURL:
-		descriptor, _ := protocol.Lookup(protocol.OpenAIChat)
-		address, err := protocol.ResolveAddress(rawURL, protocol.OpenAIChatPath, descriptor.RequestPaths)
+		descriptor, _ := protocol.Lookup(string(selectedProtocol))
+		address, err := protocol.ResolveAddress(rawURL, nativePath, descriptor.RequestPaths)
 		if err != nil {
 			return normalizedAddress{}, ErrorInvalidRequest
 		}
-		baseURL = strings.TrimSuffix(address.Endpoint, "/chat/completions")
+		baseURL = strings.TrimSuffix(address.Endpoint, suffix)
 	case AddressModeFullURL:
-		if !strings.HasSuffix(trimmed, "/chat/completions") {
+		if !strings.HasSuffix(trimmed, suffix) {
 			return normalizedAddress{}, ErrorInvalidRequest
 		}
-		baseURL = strings.TrimSuffix(trimmed, "/chat/completions")
+		baseURL = strings.TrimSuffix(trimmed, suffix)
 	default:
 		return normalizedAddress{}, ErrorInvalidRequest
 	}
 	if baseURL == "" {
 		return normalizedAddress{}, ErrorInvalidRequest
 	}
-	return normalizedAddress{baseURL: baseURL, endpoint: baseURL + "/chat/completions"}, ""
+	return normalizedAddress{baseURL: baseURL, endpoint: baseURL + suffix}, ""
 }
 
 func classifyContext(err error) domain.ErrorCode {

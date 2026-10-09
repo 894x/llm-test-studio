@@ -99,8 +99,7 @@ func TestPerformanceRequestBudgetUsesExecutionOpenLoopSchedulerPrecision(t *test
 }
 
 func TestValidPerformanceProfileRejectsInvalidPhaseThreeRelationships(t *testing.T) {
-	base := PerformanceCommand{
-		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: load.ArrivalConstant, WorkloadMode: PerformanceWorkloadFixed,
+	base := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: load.ArrivalConstant, WorkloadMode: PerformanceWorkloadFixed,
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 	}
 	for _, test := range []struct {
@@ -241,8 +240,7 @@ func TestRunPerformancePreparationIsExcludedAndEvidenceStartsFresh(t *testing.T)
 	defer server.Close()
 
 	var phases []load.Phase
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		WarmupRequests: 1, RampDurationMS: 1_000, RampRequestCap: 1, SliceDurationMS: 100,
 	}, func(progress PerformanceProgress) {
@@ -301,8 +299,7 @@ func TestRunPerformanceRandomInputUsesUniquePrefixesAcrossPhases(t *testing.T) {
 	defer server.Close()
 
 	archive := &capturingPerformanceArchive{}
-	report, err := New(Dependencies{Transport: server.Client().Transport, Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport, Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		RandomInput: true, RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 4, OutputTokens: 2,
 		WarmupRequests: 1, RampDurationMS: 1_000, RampRequestCap: 1,
 	})
@@ -335,8 +332,7 @@ func TestRunPerformanceCancellationDuringWarmupDoesNotArchive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan PerformanceReport, 1)
 	go func() {
-		report, _ := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{
-			AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		report, _ := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 			RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2, WarmupRequests: 2,
 		})
 		done <- report
@@ -360,8 +356,7 @@ func TestRunPerformanceCancellationDuringRampDoesNotArchive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan PerformanceReport, 1)
 	go func() {
-		report, _ := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{
-			AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+		report, _ := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 			RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 			RampDurationMS: 60_000, RampRequestCap: 1,
 		})
@@ -383,8 +378,7 @@ func TestRunPerformanceRampIsSummarizedAndMeasuredRunStartsFresh(t *testing.T) {
 		return successfulStreamResponse(), nil
 	})
 	var phases []load.Phase
-	report, err := New(Dependencies{Transport: transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		WarmupRequests: 1, RampDurationMS: 100, RampRequestCap: 2,
 	}, func(progress PerformanceProgress) {
@@ -414,8 +408,7 @@ func TestRunPerformanceFixedDurationMarksMeasuredBudgetExhaustionAsCapped(t *tes
 		return successfulStreamResponse(), nil
 	})
 	var latestProgress PerformanceProgress
-	report, err := New(Dependencies{Transport: transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		DurationMS: 60_000, Concurrency: MaxPerformanceConcurrency, TimeoutMS: 2_000, InputTokens: 1, OutputTokens: 1,
 		WarmupRequests: MaxPerformanceRequests - 1,
 	}, func(progress PerformanceProgress) {
@@ -443,8 +436,7 @@ func TestRunPerformanceOpenRampUsesDerivedCapAndCompletesWindow(t *testing.T) {
 		Archive:   archive,
 		Clock:     fixedPerformanceClock{now: time.Date(2026, time.September, 5, 2, 3, 4, 5, time.UTC)},
 		IDFactory: func(time.Time) (string, error) { return "77777777-7777-4777-8777-777777777767", nil },
-	}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		LoadMode: domain.LoadOpenLoop, ArrivalPattern: load.ArrivalConstant,
 		RequestCount: 1, RatePerSecond: 100, MaxInFlight: 2,
 		TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2, RampDurationMS: 100,
@@ -471,8 +463,7 @@ func TestRunPerformancePreparationDoesNotShiftNormalMeasuredTargets(t *testing.T
 	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return successfulStreamResponse(), nil
 	})
-	base := PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	base := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 5, Concurrency: 1, TimeoutMS: 2_000,
 		InputTokens: 50, OutputTokens: 10, WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 77,
 		InputTokensStdDev: 10, OutputTokensStdDev: 2, SharedPrefixTokens: 5,
@@ -511,8 +502,7 @@ func TestRunPerformanceNormalPreparationUsesDisjointPromptNamespace(t *testing.T
 		prompts = append(prompts, body.Messages[0].Content)
 		return successfulStreamResponse(), nil
 	})
-	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000,
 		InputTokens: 20, OutputTokens: 4, WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 9,
 		InputTokensStdDev: 2, OutputTokensStdDev: 1, SharedPrefixTokens: 4, WarmupRequests: 1,
@@ -540,8 +530,7 @@ func TestRunPerformanceProducesValidArchivedPhaseThreeReport(t *testing.T) {
 		Archive:   archive,
 		Clock:     fixedPerformanceClock{now: generatedAt},
 		IDFactory: func(time.Time) (string, error) { return "77777777-7777-4777-8777-777777777768", nil },
-	}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 2,
 		WarmupRequests: 1, RampDurationMS: 20, RampRequestCap: 1, SliceDurationMS: 10,
 	})
@@ -557,7 +546,7 @@ func TestRunPerformanceProducesValidArchivedPhaseThreeReport(t *testing.T) {
 }
 
 func TestPhaseTwoReportKeepsCanonicalShapeWithoutPhaseThreeConfiguration(t *testing.T) {
-	report := PerformanceReport{SchemaVersion: PerformanceSchemaVersion, Profile: PerformanceProfile{}}
+	report := PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: PerformanceSchemaVersion, Profile: PerformanceProfile{}}
 	encoded, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)

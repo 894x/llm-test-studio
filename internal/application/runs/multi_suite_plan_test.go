@@ -16,7 +16,7 @@ import (
 
 func TestMultiSuitePlanRunsInOrderContinuesAfterFailureAndKeepsOwnership(t *testing.T) {
 	fixture := newRunFixture(t)
-	fixture.testCase.Definition.Spec = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"default"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},"assertions":[]}`)
+	fixture.testCase.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"default"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},"assertions":[]}`)
 	suite := domain.Suite{
 		EntityMeta: domain.EntityMeta{
 			ID: "85000000-0000-4000-8000-000000000001", SchemaVersion: 1, Revision: 1,

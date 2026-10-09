@@ -359,13 +359,13 @@ func (repository filesystemCatalogRepository) createTestCaseUnlocked(ctx context
 	}
 	directory := filesystemCaseDirectory(testCase.Key)
 	for _, entry := range entries {
-		if entry.TestCase.ID == testCase.ID || entry.TestCase.Protocol == testCase.Protocol && entry.TestCase.Key == testCase.Key ||
-			entry.Group == string(testCase.Protocol) && entry.Directory == directory {
+		if entry.TestCase.ID == testCase.ID || entry.TestCase.Key == testCase.Key ||
+			entry.Group == "custom" && entry.Directory == directory {
 			return catalog.ErrConflict
 		}
 	}
 	return state.write(func() error {
-		return mapFileCatalogError(repository.cases.SaveCase(ctx, string(testCase.Protocol), directory, testCase))
+		return mapFileCatalogError(repository.cases.SaveCase(ctx, "custom", directory, testCase))
 	})
 }
 
@@ -388,7 +388,7 @@ func (repository filesystemCatalogRepository) updateTestCaseUnlocked(ctx context
 	if entry.TestCase.Revision != expectedRevision {
 		return catalog.ErrConflict
 	}
-	if entry.TestCase.Key != testCase.Key || entry.TestCase.Protocol != testCase.Protocol {
+	if entry.TestCase.Key != testCase.Key {
 		return catalog.ErrInvalid
 	}
 	return state.write(func() error {
@@ -675,7 +675,7 @@ func (repository filesystemCatalogRepository) authoredCaseMatches(ctx context.Co
 	}
 	for _, entry := range entries {
 		current := entry.TestCase
-		if current.Protocol != desired.Protocol || current.Key != desired.Key {
+		if current.ID != desired.ID || current.Key != desired.Key {
 			continue
 		}
 		currentDigest, err := casecodec.MaterializedSHA256(current)

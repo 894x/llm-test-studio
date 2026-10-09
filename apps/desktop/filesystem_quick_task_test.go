@@ -27,8 +27,8 @@ func filesystemQuickTaskFixture(t *testing.T) (filesystemCatalogRepository, doma
 		t.Fatal(err)
 	}
 	testCase := filesystemCatalogTestCase(1)
-	testCase.Definition.Spec = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hi"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)
-	if err := cases.SaveCase(ctx, string(testCase.Protocol), testCase.Key, testCase); err != nil {
+	testCase.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hi"}},"request":{"body":{"messages":[{"role":"user","content":{"$input":"prompt"}}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)
+	if err := cases.SaveCase(ctx, string(domain.ProtocolOpenAIChat), testCase.Key, testCase); err != nil {
 		t.Fatal(err)
 	}
 	caseEntries, err := cases.Entries(ctx)
@@ -89,7 +89,7 @@ func TestCaseUpdateDoesNotCascadeIntoSuite(t *testing.T) {
 				changed.ExecutionMode = domain.CaseExecutionManual
 			case "remove field", "change type":
 				var spec map[string]any
-				if err := json.Unmarshal(changed.Definition.Spec, &spec); err != nil {
+				if err := json.Unmarshal(changed.Definitions[domain.ProtocolOpenAIChat], &spec); err != nil {
 					t.Fatal(err)
 				}
 				message := spec["request"].(map[string]any)["body"].(map[string]any)["messages"].([]any)[0].(map[string]any)
@@ -98,7 +98,7 @@ func TestCaseUpdateDoesNotCascadeIntoSuite(t *testing.T) {
 				} else {
 					message["content"] = 42
 				}
-				changed.Definition.Spec, err = json.Marshal(spec)
+				changed.Definitions[domain.ProtocolOpenAIChat], err = json.Marshal(spec)
 				if err != nil {
 					t.Fatal(err)
 				}

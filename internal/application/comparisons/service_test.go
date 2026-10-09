@@ -259,13 +259,7 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	caseID := "60000000-0000-4000-8000-000000000006"
 	testCase := domain.TestCase{
 		EntityMeta: meta(caseID), Key: "T001", Name: "comparison", Dimension: "compatibility",
-		Protocol: model.Protocol, Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`),
-		},
+		Enabled: true, Severity: domain.CaseSeverityNormal, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(`{"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"inputs":{},"assertions":[]}`)},
 	}
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	suite := domain.Suite{

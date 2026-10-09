@@ -100,7 +100,7 @@ func Exchange(step string, request Request, response Response) testspec.Exchange
 }
 
 func Milliseconds(started time.Time) float64 {
-	return float64(time.Since(started).Microseconds()) / 1000
+	return float64(time.Since(started)) / float64(time.Millisecond)
 }
 
 func ErrorCode(ctx context.Context) string {

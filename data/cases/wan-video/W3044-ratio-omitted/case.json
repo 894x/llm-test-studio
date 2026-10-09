@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "faef57d7-14d5-50b9-9641-abe831c7e9da",
   "key": "wan30.ratio.omitted_default_adaptive",
   "name": "Wan 3.0 · 省略 ratio 默认 adaptive",
   "dimension": "defaults",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

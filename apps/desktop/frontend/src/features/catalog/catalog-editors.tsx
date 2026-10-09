@@ -1,3 +1,4 @@
+import { isQuickPerformanceProtocol } from "@/features/quick-test/data"
 import { protocolOptions } from "./protocols"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { protocolPresentation } from "@/features/protocols/registry"
@@ -196,44 +197,74 @@ function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSav
   </FormShell>
 }
 
+interface CaseProtocolDraft {
+  inputs: string; body: string; assertions: string; operation: string; workflow: string
+}
+
+function caseProtocolDraft(spec: Record<string, unknown>): CaseProtocolDraft {
+  return { inputs: json(spec.inputs ?? {}), body: json((spec.request as { body?: unknown })?.body ?? {}),
+    assertions: json(spec.assertions ?? []), operation: typeof spec.operation === "string" ? spec.operation : "default",
+    workflow: json(spec.workflow ?? null) }
+}
+
 function CaseForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogTestCase>) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
-  const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
-  const descriptor = catalog.case_types.find(type => type.type === protocol)
-  const initial = item?.spec ?? descriptor?.default_spec ?? {}
+  const initialProtocol = Object.keys(item?.definitions ?? {})[0] as CatalogProtocol | undefined
+  const [protocol, setProtocol] = useState<CatalogProtocol>(initialProtocol ?? "openai-chat")
+  const defaultDraft = (value: CatalogProtocol) => caseProtocolDraft(catalog.case_types.find(type => type.type === value)?.default_spec ?? {})
+  const [drafts, setDrafts] = useState<Partial<Record<CatalogProtocol, CaseProtocolDraft>>>(() => item
+    ? Object.fromEntries(Object.entries(item.definitions).map(([value, spec]) => [value, caseProtocolDraft(spec)]))
+    : { "openai-chat": defaultDraft("openai-chat") })
+  const draft = drafts[protocol] ?? defaultDraft(protocol)
+  const updateDraft = (field: keyof CaseProtocolDraft, value: string) => setDrafts(current => ({ ...current, [protocol]: { ...draft, [field]: value } }))
+  const toggleProtocol = (value: CatalogProtocol, checked: boolean) => {
+    const next = { ...drafts }
+    if (checked) { next[value] = next[value] ?? defaultDraft(value); setProtocol(value) }
+    else {
+      if (Object.keys(next).length === 1) return
+      delete next[value]
+      if (protocol === value) setProtocol(Object.keys(next)[0] as CatalogProtocol)
+    }
+    setDrafts(next)
+  }
   const [key, setKey] = useState(item?.key ?? "")
   const [name, setName] = useState(item?.name ?? "")
   const [dimension, setDimension] = useState(item?.dimension ?? "compatibility")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
-  const [inputs, setInputs] = useState(json(initial.inputs ?? {}))
-  const [body, setBody] = useState(json((initial.request as { body?: unknown })?.body ?? protocolPresentation(protocol).requestExample))
-  const [assertions, setAssertions] = useState(json(initial.assertions ?? []))
-  const [operation, setOperation] = useState(typeof initial.operation === "string" ? initial.operation : "default")
-  const [workflow, setWorkflow] = useState(json(initial.workflow ?? null))
   return <FormShell pending={pending} label={tx("desktop:catalog_save_case")} formTitle={formTitle} onSubmit={async () => {
-    const parsedAssertions = parseJSON(assertions, t("protocolDesign.assertions"))
-    if (!Array.isArray(parsedAssertions)) throw new FormValidationError(t("protocolDesign.assertions"), t("protocolDesign.arrayRequired"))
-    const parsedWorkflow = parseJSON(workflow, t("protocolDesign.workflow"))
+    const definitions: CatalogTestCase["definitions"] = {}
+    for (const [value, current] of Object.entries(drafts)) {
+      const parsedAssertions = parseJSON(current.assertions, `${value} · ${t("protocolDesign.assertions")}`)
+      if (!Array.isArray(parsedAssertions)) throw new FormValidationError(t("protocolDesign.assertions"), t("protocolDesign.arrayRequired"))
+      const parsedWorkflow = parseJSON(current.workflow, `${value} · ${t("protocolDesign.workflow")}`)
+      definitions[value as CatalogProtocol] = {
+        inputs: recordJSON<unknown>(current.inputs, `${value} · ${t("protocolDesign.inputs")}`),
+        request: { body: parseJSON(current.body, `${value} · ${t("protocolDesign.body")}`) }, assertions: parsedAssertions,
+        ...(current.operation === "default" ? {} : { operation: current.operation }),
+        ...(parsedWorkflow === null ? {} : { workflow: parsedWorkflow }),
+      }
+    }
     const command = {
       key: safeCatalogKey(key, tx("desktop:catalog_case_key")), name: required(name, tx("desktop:catalog_case_name")),
-      dimension: required(dimension, tx("desktop:catalog_dimension")), protocol, enabled,
+      dimension: required(dimension, tx("desktop:catalog_dimension")), enabled,
       default: item?.default ?? false, severity: item?.severity ?? "normal" as const,
-      execution_mode: "automatic" as const, definition_schema_version: 1, type: protocol, type_version: 1,
-      spec: { inputs: recordJSON<unknown>(inputs, t("protocolDesign.inputs")), request: { body: parseJSON(body, t("protocolDesign.body")) },
-        assertions: parsedAssertions, ...(operation === "default" ? {} : { operation }), ...(parsedWorkflow === null ? {} : { workflow: parsedWorkflow }) },
+      execution_mode: item?.execution_mode ?? "automatic" as const, definitions,
     }
     await mutate(() => item ? actions.updateTestCase({ ...command, id: item.id, expected_revision: item.revision }) : actions.createTestCase(command), formTitle)
     onSaved()
   }}>
     <div className="grid min-w-0 grid-cols-2 gap-3"><TextField label={tx("desktop:catalog_case_key")} value={key} onChange={setKey} disabled={!!item} /><TextField label={tx("desktop:catalog_case_name")} value={name} onChange={setName} /></div>
-    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={value => { const next = value as CatalogProtocol; setProtocol(next); setBody(json(protocolPresentation(next).requestExample)); setOperation("default") }} />
-    {protocolPresentation(protocol).operations.length ? <SelectField label={t("protocolDesign.operation")} value={operation} options={[["default", t("protocolDesign.defaultOperation")], ...protocolPresentation(protocol).operations.map(value => [value, value] as [string,string])]} onChange={setOperation} /> : null}
+    <Field><FieldLabel>{t("protocolDesign.supportedProtocols")}</FieldLabel><FieldDescription>{t("protocolDesign.supportedProtocolsHint")}</FieldDescription>
+      <div className="grid grid-cols-2 gap-2">{protocolOptions.map(([value, label]) => <CheckField key={value} label={label} checked={!!drafts[value as CatalogProtocol]} onChange={checked => toggleProtocol(value as CatalogProtocol, checked)} />)}</div>
+    </Field>
+    <SelectField label={t("protocolDesign.editProtocol")} value={protocol} options={protocolOptions.filter(([value]) => !!drafts[value as CatalogProtocol])} onChange={value => setProtocol(value as CatalogProtocol)} />
+    {protocolPresentation(protocol).operations.length ? <SelectField label={t("protocolDesign.operation")} value={draft.operation} options={[["default", t("protocolDesign.defaultOperation")], ...protocolPresentation(protocol).operations.map(value => [value, value] as [string,string])]} onChange={value => updateDraft("operation", value)} /> : null}
     <TextField label={tx("desktop:catalog_dimension")} value={dimension} onChange={setDimension} />
-    <TextAreaField label={t("protocolDesign.inputs")} value={inputs} onChange={setInputs} description={t("protocolDesign.inputsHint")} />
-    <TextAreaField label={t("protocolDesign.body")} value={body} onChange={setBody} description={t("protocolDesign.bodyHint")} />
-    <TextAreaField label={t("protocolDesign.assertions")} value={assertions} onChange={setAssertions} description={t("protocolDesign.assertionsHint")} />
-    <TextAreaField label={t("protocolDesign.workflow")} value={workflow} onChange={setWorkflow} description={t("protocolDesign.workflowHint")} />
+    <TextAreaField label={t("protocolDesign.inputs")} value={draft.inputs} onChange={value => updateDraft("inputs", value)} description={t("protocolDesign.inputsHint")} />
+    <TextAreaField label={t("protocolDesign.body")} value={draft.body} onChange={value => updateDraft("body", value)} description={t("protocolDesign.bodyHint")} />
+    <TextAreaField label={t("protocolDesign.assertions")} value={draft.assertions} onChange={value => updateDraft("assertions", value)} description={t("protocolDesign.assertionsHint")} />
+    <TextAreaField label={t("protocolDesign.workflow")} value={draft.workflow} onChange={value => updateDraft("workflow", value)} description={t("protocolDesign.workflowHint")} />
     <CheckField label={tx("desktop:catalog_enabled")} checked={enabled} onChange={setEnabled} />
   </FormShell>
 }
@@ -247,7 +278,7 @@ function SuiteForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
   const [description, setDescription] = useState(item?.description ?? "")
   const [inputs, setInputs] = useState(json(item?.inputs ?? []))
   const [selected, setSelected] = useState(() => new Set(item?.cases.map(ref => ref.case_id) ?? []))
-  const availableCases = catalog.test_cases.filter(testCase => testCase.protocol === protocol)
+  const availableCases = catalog.test_cases.filter(testCase => !!testCase.definitions[protocol])
   return <FormShell pending={pending} label={tx("desktop:catalog_save_suite")} formTitle={formTitle} onSubmit={async () => {
     const parsedInputs = parseJSON(inputs, t("protocolDesign.mapping"))
     if (!Array.isArray(parsedInputs)) throw new FormValidationError(t("protocolDesign.mapping"), t("protocolDesign.arrayRequired"))
@@ -279,7 +310,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const [entries, setEntries] = useState<EntryDraft[]>(() => item?.entries.map(entry => ({ ...entry,
     draftKey: entry.entry_id, parametersJSON: json(entry.parameters), slaJSON: json(entry.sla_thresholds) })) ?? [])
   const targets = [
-    ...catalog.test_cases.filter(value => value.protocol === protocol).map(value => [`case:${value.id}`, `${t("editor.noun.case")} · ${value.name}`] as [string, string]),
+    ...catalog.test_cases.filter(value => !!value.definitions[protocol]).map(value => [`case:${value.id}`, `${t("editor.noun.case")} · ${value.name}`] as [string, string]),
     ...catalog.suites.filter(value => value.protocol === protocol).map(value => [`suite:${value.id}`, `${t("editor.noun.suite")} · ${value.name}`] as [string, string]),
   ]
   const update = (index: number, patch: Partial<EntryDraft>) => setEntries(current => current.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
@@ -291,7 +322,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
       throw new FormValidationError("planEntries", t("protocolDesign.entryRequired"), t("protocolDesign.target"))
     }
     const command = planMode === "performance"
-      ? { name: planName, protocol: "openai-chat" as CatalogProtocol, seed, entries: [], performance: quickPerformanceProfileForPreset(performancePreset) }
+      ? { name: planName, protocol, seed, entries: [], performance: quickPerformanceProfileForPreset(performancePreset) }
       : { name: planName, protocol, seed,
         entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
           parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
@@ -300,8 +331,8 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     onSaved()
   }}>
     <TextField label={t("common.plan")} value={name} onChange={setName} />
-    <SelectField label={t("plans.executionPolicy")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance") setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
-    {planMode === "protocol" ? <SelectField label={t("common.protocol")} value={protocol} options={protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} /> : null}
+    <SelectField label={t("plans.executionPolicy")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance" && !isQuickPerformanceProtocol(protocol)) setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
+    <SelectField label={t("common.protocol")} value={protocol} options={planMode === "performance" ? protocolOptions.filter(([id]) => isQuickPerformanceProtocol(id)) : protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
     <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
     {planMode === "performance" ? <SelectField label={t("plans.performancePreset")} value={performancePreset} options={[
       ["smoke", t("quickTest:performance.presets.smoke")],

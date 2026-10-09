@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "da4fe79f-6ab6-5b26-9fb4-7dd5b5f4055b",
   "key": "wan30.media.link_count_2",
   "name": "Wan 3.0 · 网页链接数量 2 超限",
   "dimension": "boundary",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

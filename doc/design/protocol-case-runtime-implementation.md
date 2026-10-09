@@ -1,5 +1,7 @@
 # Protocol Case Runtime Integration
 
+> Historical implementation record. The current Case contract and native text protocols are described in [multi-protocol-cases.md](../design/multi-protocol-cases.md); the definition envelope below is superseded.
+
 Integrated on 2026-09-10 using a two-parent merge from `codex/protocol-case-runtime` (`a6773dd08e0f75e8bd64d68a911209e0535ba705`) into local `main` (`84ab8df458b1bb06d554a881a1282aae04538439`). Work was verified in an isolated worktree; main's unrelated `doc/experiments/` content and source-worktree private conversion artifacts were preserved. Git reported seven conflicting paths: five textual conflicts (13 regions) and two obsolete renderer deletion conflicts.
 
 ## Current contracts

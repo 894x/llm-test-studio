@@ -24,9 +24,11 @@ func concurrentSuiteFixture(t *testing.T, count int) (runFixture, map[string]dom
 	cases := make(map[string]domain.TestCase, count)
 	for index := range count {
 		testCase := fixture.testCase
+		testCase.Definitions = testCase.Definitions.Clone()
+		testCase.Definitions = testCase.Definitions.Clone()
 		testCase.ID = fmt.Sprintf("31000000-0000-4000-8000-%012d", index+1)
 		testCase.Key = fmt.Sprintf("case-%d", index+1)
-		testCase.Definition.Spec = json.RawMessage(fmt.Sprintf(
+		testCase.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(fmt.Sprintf(
 			`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"case-%d"}]}},
 			"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`,
 			index+1,
@@ -142,7 +144,7 @@ func TestProtocolCaseConcurrencyExecutesEachWorkflowOnceAndKeepsStepsOrdered(t *
 			fixture, cases := concurrentSuiteFixture(t, 9)
 			for id, testCase := range cases {
 				var spec map[string]any
-				if err := json.Unmarshal(testCase.Definition.Spec, &spec); err != nil {
+				if err := json.Unmarshal(testCase.Definitions[domain.ProtocolOpenAIChat], &spec); err != nil {
 					t.Fatal(err)
 				}
 				spec["workflow"] = map[string]any{
@@ -160,7 +162,7 @@ func TestProtocolCaseConcurrencyExecutesEachWorkflowOnceAndKeepsStepsOrdered(t *
 				if err != nil {
 					t.Fatal(err)
 				}
-				testCase.Definition.Spec = raw
+				testCase.Definitions[domain.ProtocolOpenAIChat] = raw
 				cases[id] = testCase
 			}
 			request := concurrentExecutionRequest(t, fixture, cases, limit)

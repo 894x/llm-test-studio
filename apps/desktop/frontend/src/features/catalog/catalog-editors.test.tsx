@@ -34,9 +34,31 @@ describe("current protocol catalog editors", () => {
     expect(screen.queryByLabelText(/API key|Service URL|Applicable models/)).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Save case" }))
     await waitFor(() => expect(updateTestCase).toHaveBeenCalled())
-    expect(updateTestCase.mock.calls[0][0]).toMatchObject({ type: "openai-chat", spec: { inputs: { prompt: { type: "string", default: "hello" } }, assertions: [] } })
+    expect(updateTestCase.mock.calls[0][0]).toMatchObject({ definitions: { "openai-chat": { inputs: { prompt: { type: "string", default: "hello" } }, assertions: [] } } })
     expect(updateTestCase.mock.calls[0][0]).not.toHaveProperty("model_targets")
   })
+  it("keeps independent protocol drafts while saving one Case", async () => {
+    const user = userEvent.setup()
+    const item = structuredClone(FIXTURE_CATALOG.test_cases[0])
+    const updateTestCase = vi.fn(async (_command: Record<string, any>) => FIXTURE_CATALOG)
+    render(<I18nextProvider i18n={createAppI18n("en-US")}><CatalogEditor kind="case" item={item} catalog={FIXTURE_CATALOG} actions={{ updateTestCase } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "Edit case" }))
+    const bodyLabel = "Request body / Generator (JSON)"
+    fireEvent.change(screen.getByLabelText(bodyLabel), { target: { value: '{"messages":[' } })
+    await user.click(screen.getByRole("checkbox", { name: "OpenAI Responses" }))
+    fireEvent.change(screen.getByLabelText(bodyLabel), { target: { value: '{"input":"native response"}' } })
+    await user.click(screen.getByRole("combobox", { name: "Edit protocol" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI Chat" }))
+    expect(screen.getByLabelText(bodyLabel)).toHaveValue('{"messages":[')
+    fireEvent.change(screen.getByLabelText(bodyLabel), { target: { value: '{"messages":[{"role":"user","content":"chat draft"}]}' } })
+    await user.click(screen.getByRole("button", { name: "Save case" }))
+    await waitFor(() => expect(updateTestCase).toHaveBeenCalledOnce())
+    expect(updateTestCase.mock.calls[0][0]).toMatchObject({ id: item.id, definitions: {
+      "openai-chat": { request: { body: { messages: [{ role: "user", content: "chat draft" }] } } },
+      "openai-responses": { request: { body: { input: "native response" } } },
+    } })
+  })
+
   it("keeps plan entry ids and parameters independent without authoring model/channel bindings", async () => {
     const user = userEvent.setup(); const updatePlan = vi.fn(async (_command: Record<string, any>) => FIXTURE_CATALOG)
     const item = structuredClone(FIXTURE_CATALOG.plans[0]); item.entries.push({ ...item.entries[0], entry_id: crypto.randomUUID() }); item.entry_count = 2

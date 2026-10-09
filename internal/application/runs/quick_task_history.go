@@ -25,9 +25,9 @@ type QuickTaskDetail struct {
 	Inputs           map[string]json.RawMessage `json:"inputs"`
 }
 
-// QuickTaskPerformancePath resolves the unique chat endpoint from the selected
+// QuickTaskPerformancePath resolves the native create endpoint from the selected
 // definitions; performance inputs remain owned by the performance service.
-func (service *Service) QuickTaskPerformancePath(ctx context.Context, command QuickTaskCommand) (string, error) {
+func (service *Service) QuickTaskPerformancePath(ctx context.Context, command QuickTaskCommand, selectedProtocol domain.Protocol) (string, error) {
 	if service == nil || ctx == nil || !domain.IsUUID(command.SuiteID) || isNil(service.quickTasks) {
 		return "", ErrInvalid
 	}
@@ -38,10 +38,22 @@ func (service *Service) QuickTaskPerformancePath(ctx context.Context, command Qu
 	if err != nil {
 		return "", err
 	}
-	if suite.ID != command.SuiteID || suite.Protocol != domain.ProtocolOpenAIChat || suite.ValidateCases(cases) != nil {
+	if suite.ID != command.SuiteID || suite.Protocol != selectedProtocol || suite.ValidateCases(cases) != nil {
 		return "", ErrNotRunnable
 	}
-	return protocol.OpenAIChatPath, nil
+	for _, testCase := range cases {
+		spec, err := testCase.SpecFor(selectedProtocol)
+		if err != nil || spec.Operation != "" {
+			return "", ErrNotRunnable
+		}
+	}
+	switch selectedProtocol {
+	case domain.ProtocolOpenAIChat, domain.ProtocolOpenAIResponses, domain.ProtocolAnthropicMessages:
+		descriptor, _ := protocol.Lookup(string(selectedProtocol))
+		return descriptor.RequestPaths[0].Path, nil
+	default:
+		return "", ErrNotRunnable
+	}
 }
 
 type QuickTaskSuite struct {

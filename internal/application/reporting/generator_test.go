@@ -256,14 +256,8 @@ func generatorRun(t *testing.T, now time.Time) domain.Run {
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	testCase := domain.TestCase{
 		EntityMeta: generatorMeta(caseID, now), Key: "basic", Name: "Basic", Dimension: "boundary",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
-		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          "openai-chat",
-			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`),
-		},
+		Enabled: true, Default: true,
+		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol("openai-chat"): json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)},
 	}
 	load := domain.LoadProfile{Mode: domain.LoadFixedConcurrency, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 1_000}}

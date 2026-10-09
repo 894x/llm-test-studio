@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "ee4d9489-bf72-5a5b-bb61-22cd5f857ab9",
   "key": "wan30.media.reference_video_count_5_total_15",
   "name": "Wan 3.0 · 5 个参考视频且总时长 15 秒",
   "dimension": "dependencies",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

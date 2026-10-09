@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "d3202f02-1c61-59be-af74-1b8969ccd9ba",
   "key": "glm53.stop.count_5",
   "name": "GLM 5.3 · stop.count_5（待验证模板）",
   "dimension": "glm53.stop",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "2e5df312-c3e1-5e45-bd52-5d1be5ac313c",
   "key": "h3.t2v.min_duration",
   "name": "MiniMax H3 · 最小时长 4 秒",
   "dimension": "compatibility",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {
         "prompt": {
           "type": "string",

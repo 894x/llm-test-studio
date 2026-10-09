@@ -510,7 +510,7 @@ describe("parseQuickPerformanceReport phase-five streaming telemetry", () => {
   it("keeps a schema-v3 report whose fine streaming metrics reconstruct from successful samples", () => {
     const report = parseQuickPerformanceReport(phaseFiveReport())
 
-    expect(report.schema_version).toBe(1)
+    expect(report.schema_version).toBe(2)
     expect(report.samples[0]).toMatchObject({
       ttfb_ms: 10,
       ttft_any_ms: 20,
@@ -640,7 +640,7 @@ describe("parseQuickPerformanceReport phase-five streaming telemetry", () => {
 
   it("rejects unsupported schema versions and documents missing current fine telemetry", () => {
     const raw = phaseThreeReport() as any
-    expect(() => parseQuickPerformanceReport({ ...raw, schema_version: 2 })).toThrow("快速性能报告数据协议版本不受支持")
+    expect(() => parseQuickPerformanceReport({ ...raw, schema_version: 1 })).toThrow("快速性能报告数据协议版本不受支持")
     expect(() => parseQuickPerformanceReport({ ...raw, schema_version: 99 })).toThrow("快速性能报告数据协议版本不受支持")
     const withoutFineTelemetry = {
       ...raw,
@@ -673,7 +673,8 @@ function phaseThreeReport() {
     provider_internal: "drop me",
   }
   const raw = {
-    schema_version: 1 as const,
+    schema_version: 2 as const,
+    protocol: "openai-chat" as const,
     archived: false,
     archive_status: "not_attempted",
     model_id: "gpt-test",
@@ -928,7 +929,7 @@ function phaseFiveReport(): any {
 }
 
 function withCurrentStreamingTelemetry(raw: any) {
-  raw.schema_version = 1
+  raw.schema_version = 2
   Object.assign(raw.samples[0], {
     ttfb_ms: 10, ttft_any_ms: 20, ttft_visible_ms: 30, ttft_ms: 20,
     ttst_ms: 40, observed_icl_ms: 20, semantic_chunk_count: 3,
@@ -1007,7 +1008,7 @@ function phaseFiveMixedReport(): any {
 
 function phaseFiveCapacityReport(): any {
   const raw: any = phaseFourReport()
-  raw.schema_version = 1
+  raw.schema_version = 2
   raw.profile.warmup_requests = 0
   raw.profile.slice_duration_ms = 0
   delete raw.warmup

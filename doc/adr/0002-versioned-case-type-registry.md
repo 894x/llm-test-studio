@@ -1,5 +1,7 @@
 # ADR-0002：版本化 Case Type 注册表
 
+> Historical implementation record. The current Case contract and native text protocols are described in [multi-protocol-cases.md](../design/multi-protocol-cases.md); the definition envelope below is superseded.
+
 - 状态：Accepted
 - 日期：2026-09-04
 - 决策范围：测试用例定义、创建、持久化与执行

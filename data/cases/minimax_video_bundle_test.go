@@ -26,15 +26,15 @@ func TestBundleContainsMiniMaxH3BoundaryCatalog(t *testing.T) {
 			t.Fatalf("embedded %s is empty", path)
 		}
 		var document struct {
-			Enabled       bool   `json:"enabled"`
-			Default       bool   `json:"default"`
-			ExecutionMode string `json:"execution_mode"`
-			Protocol      string `json:"protocol"`
+			Enabled       bool                       `json:"enabled"`
+			Default       bool                       `json:"default"`
+			ExecutionMode string                     `json:"execution_mode"`
+			Definitions   map[string]json.RawMessage `json:"definitions"`
 		}
 		if err := json.Unmarshal(contents, &document); err != nil {
 			t.Fatalf("decode embedded %s: %v", path, err)
 		}
-		if document.Default || document.Protocol != "minimax-video" {
+		if document.Default || document.Definitions["minimax-video"] == nil {
 			t.Fatalf("embedded %s policy = %#v", path, document)
 		}
 		if !document.Enabled {

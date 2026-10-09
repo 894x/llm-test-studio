@@ -1,7 +1,10 @@
 package casecatalog_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +12,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
+	"github.com/google/uuid"
 )
 
 func TestCatalogMergesBuiltinAndUserCasesByGroupWithUserOverride(t *testing.T) {
@@ -100,6 +104,30 @@ func writeUserCase(t *testing.T, root, group, name, contents string) {
 	}
 }
 
-func caseJSON(id, name string) string {
-	return `{"schema_version":1,"key":"` + id + `","name":"` + name + `","dimension":"compatibility","protocol":"openai-chat","enabled":true,"default":true,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":1,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}}}`
+func caseJSON(key, name string) string {
+	id := uuid.NewSHA1(uuid.MustParse("7680782d-7ae8-558b-9f32-17d13f31a66b"), []byte("builtin.cases/v2/openai-chat/"+key)).String()
+	return `{"schema_version":2,"id":"` + id + `","key":"` + key + `","name":"` + name + `","dimension":"compatibility","enabled":true,"default":true,"severity":"normal","execution_mode":"automatic","definitions":{"openai-chat":{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hi"}]}},"assertions":[]}}}`
+}
+
+func TestSaveRejectsChangingAnExistingPathIdentityWithoutWriting(t *testing.T) {
+	root := t.TempDir()
+	original := []byte(caseJSON("same", "Original"))
+	service, err := casecatalog.New(casecatalog.Options{Builtin: fstest.MapFS{"openai-chat/same/case.json": &fstest.MapFile{Data: original}}, UserRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Save(context.Background(), "openai-chat", "same", original); err != nil {
+		t.Fatal(err)
+	}
+	var candidate map[string]any
+	_ = json.Unmarshal(original, &candidate)
+	candidate["id"] = uuid.NewString()
+	raw, _ := json.Marshal(candidate)
+	if err := service.Save(context.Background(), "openai-chat", "same", raw); !errors.Is(err, casecatalog.ErrCollision) {
+		t.Fatalf("changed identity error = %v", err)
+	}
+	saved, err := os.ReadFile(filepath.Join(root, "openai-chat", "same", "case.json"))
+	if err != nil || !bytes.Equal(saved, original) {
+		t.Fatal("rejected save changed the original file")
+	}
 }

@@ -288,6 +288,9 @@
     "poll_interval_ms": "Poll interval (ms)",
     "task_timeout_ms": "Task timeout (ms)",
     "operation": "Protocol operation",
-    "defaultOperation": "Default request"
+    "defaultOperation": "Default request",
+    "supportedProtocols": "Supported protocols",
+    "supportedProtocolsHint": "Each protocol keeps its own request body and assertions.",
+    "editProtocol": "Edit protocol"
   }
 }

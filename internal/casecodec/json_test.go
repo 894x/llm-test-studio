@@ -2,6 +2,7 @@ package casecodec
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -28,13 +29,12 @@ func TestEveryBuiltinCaseUsesCurrentProtocolContract(t *testing.T) {
 			t.Errorf("%s: %v", path, err)
 			return nil
 		}
-		if string(candidate.Definition.Type) != string(candidate.Protocol) || candidate.Definition.TypeVersion != 1 {
-			t.Errorf("%s: mismatched type", path)
-		}
-		if err := casetypes.MustBuiltinRegistry().Validate(candidate.Protocol, candidate.Definition); err != nil {
+		if err := casetypes.MustBuiltinRegistry().ValidateDefinitions(candidate.Definitions); err != nil {
 			t.Errorf("%s: %v", path, err)
 		}
-		counts[candidate.Protocol]++
+		for _, protocol := range candidate.Protocols() {
+			counts[protocol]++
+		}
 		return nil
 	})
 	if err != nil {
@@ -78,21 +78,43 @@ func TestFilesystemCaseV2RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	originalSpec, err := canonicalJSON(testCase.Definition.Spec)
+	originalSpec, err := canonicalJSON(testCase.Definitions[domain.ProtocolOpenAIChat])
 	if err != nil {
 		t.Fatal(err)
 	}
-	roundTripSpec, err := canonicalJSON(decoded.Definition.Spec)
+	roundTripSpec, err := canonicalJSON(decoded.Definitions[domain.ProtocolOpenAIChat])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Key != testCase.Key || decoded.Definition.Type != testCase.Definition.Type || !bytes.Equal(roundTripSpec, originalSpec) {
+	if decoded.Key != testCase.Key || decoded.ID != testCase.ID || !bytes.Equal(roundTripSpec, originalSpec) {
 		t.Fatalf("round trip mismatch: %#v != %#v", decoded, testCase)
 	}
 }
 
 func TestFilesystemCaseRejectsRemovedModelTargets(t *testing.T) {
-	raw := []byte(`{"schema_version":1,"key":"K001","name":"Scoped","dimension":"compatibility","protocol":"openai-chat","model_targets":["model"],"enabled":true,"default":false,"severity":"normal","execution_mode":"automatic","definition":{"schema_version":1,"type":"openai-chat","type_version":1,"spec":{"inputs":{},"request":{"body":{}},"assertions":[]}}}`)
+	raw := []byte(`{
+  "schema_version": 2,
+  "key": "K001",
+  "name": "Scoped",
+  "dimension": "compatibility",
+  "model_targets": [
+    "model"
+  ],
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "id": "108f1df0-2cf5-5827-8307-4b98cfbe9edb",
+  "definitions": {
+    "openai-chat": {
+      "inputs": {},
+      "request": {
+        "body": {}
+      },
+      "assertions": []
+    }
+  }
+}`)
 	if _, err := DecodeFilesystemCase("cases/openai-chat/K001/case.json", raw); err == nil {
 		t.Fatal("accepted removed model_targets")
 	}
@@ -105,4 +127,46 @@ func testRepositoryRoot(t *testing.T) string {
 		t.Fatal("runtime.Caller() failed")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(current), "..", ".."))
+}
+
+func TestAddingProtocolDefinitionPreservesCaseIdentityAndEveryNativeSpec(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(testRepositoryRoot(t), "data", "cases", "openai-chat", "T001-sync-response", "case.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := DecodeFilesystemCase("group/case/case.json", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Definitions = domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: original.Definitions[domain.ProtocolOpenAIChat]}
+	encoded, err := EncodeFilesystemCase(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	single, err := DecodeFilesystemCase("group/case/case.json", encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	single.Definitions[domain.ProtocolOpenAIResponses] = json.RawMessage(`{"inputs":{},"request":{"body":{"input":"native"}},"assertions":[]}`)
+	multiRaw, err := EncodeFilesystemCase(single)
+	if err != nil {
+		t.Fatal(err)
+	}
+	multi, err := DecodeFilesystemCase("different-group/same/case.json", multiRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if multi.ID != single.ID || len(multi.Definitions) != 2 {
+		t.Fatal("protocol definitions changed the Case identity")
+	}
+	for protocol, spec := range single.Definitions {
+		a, _ := canonicalJSON(spec)
+		b, _ := canonicalJSON(multi.Definitions[protocol])
+		if !bytes.Equal(a, b) {
+			t.Fatalf("lost %s native spec", protocol)
+		}
+	}
+	if _, err := multi.SpecFor(domain.ProtocolAnthropicMessages); err == nil {
+		t.Fatal("missing protocol accepted")
+	}
 }

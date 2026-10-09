@@ -1,4 +1,3 @@
-import { caseTypeLabel } from "./presentation"
 import { useMemo, useState } from "react"
 import { NewRunSheet } from "@/features/runs/run-workspace"
 import type { StartRunTargetCommand } from "@/features/runs/data"
@@ -34,6 +33,7 @@ import type {
   CatalogChannelModel,
   CatalogModel,
   CatalogPlan,
+  CatalogProtocol,
   CatalogSnapshot,
   CatalogSuite,
   CatalogTestCase,
@@ -534,12 +534,8 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
   const [tab, setTab] = useState<"cases" | "suites">("cases")
   const [selectedID, setSelectedID] = useState("")
   const [selectedSuiteID, setSelectedSuiteID] = useState("")
-  const typeLabels = new Map(catalog.case_types.map((descriptor) => [
-    `${descriptor.type}@${descriptor.type_version}`, caseTypeLabel(descriptor.type, descriptor.label),
-  ]))
   const caseSearch = useCatalogSearch(catalog.test_cases, (testCase) => [
-    testCase.key, testCase.name, testCase.type, typeLabels.get(`${testCase.type}@${testCase.type_version}`) ?? caseTypeLabel(testCase.type),
-    testCase.protocol, PROTOCOL_LABELS[testCase.protocol], caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
+    testCase.key, testCase.name, ...Object.keys(testCase.definitions), caseProtocolLabel(testCase), t(casePolicyKey(testCase)),
   ])
   const suiteSearch = useCatalogSearch(catalog.suites, (suite) => [
     suite.key, suite.name, suite.protocol, PROTOCOL_LABELS[suite.protocol],
@@ -572,7 +568,7 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-2 text-[11px]">{tx("desktop:catalog_case")}</TableHead>
-                <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_case_type")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{tx("catalog:protocolDesign.supportedProtocols")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{tx("desktop:catalog_policy")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -589,9 +585,9 @@ export function CasesWorkspace({ catalog, actions, mutate, mutationPending, muta
                     <Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline" aria-label={t("cases.view", { name: testCase.name })}>
                       {testCase.name}
                     </Button>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground">{PROTOCOL_LABELS[testCase.protocol]}</div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">{testCase.key}</div>
                   </TableCell>
-                  <TableCell className="py-1 text-[11px]">{typeLabels.get(`${testCase.type}@${testCase.type_version}`) ?? caseTypeLabel(testCase.type)}</TableCell>
+                  <TableCell className="py-1 text-[11px]">{caseProtocolLabel(testCase)}</TableCell>
                   <TableCell className="py-1">
                     <CasePolicyBadge testCase={testCase} />
                   </TableCell>
@@ -650,20 +646,18 @@ function SuiteInspector({ suite, catalog }: { suite: CatalogSuite; catalog: Cata
 function CaseInspector({ testCase, catalog }: { testCase: CatalogTestCase; catalog: CatalogSnapshot }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
-  const descriptor = catalog.case_types.find((value) => value.type === testCase.type && value.type_version === testCase.type_version)
   return (
     <>
       <InspectorHeader title={testCase.name} subtitle={testCase.id} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={tx("desktop:catalog_source_key")} value={testCase.key} />
-        <InspectorRow label={tx("desktop:catalog_protocol")} value={PROTOCOL_LABELS[testCase.protocol]} />
+        <InspectorRow label={tx("desktop:catalog_protocol")} value={testCase.key} />
         <InspectorRow label={tx("desktop:catalog_applicable_models")} value={caseProtocolLabel(testCase)} />
         <InspectorRow label={tx("desktop:catalog_dimension")} value={testCase.dimension} />
         <InspectorRow label={tx("desktop:catalog_execution_policy")} value={t(casePolicyKey(testCase))} />
         <InspectorRow label={tx("desktop:catalog_severity")} value={testCase.severity === "critical" ? tx("desktop:catalog_critical") : tx("desktop:catalog_normal")} />
-        <InspectorRow label={tx("desktop:catalog_case_type")} value={`${caseTypeLabel(testCase.type, descriptor?.label)} · v${testCase.type_version}`} />
-        <InspectorRow label={tx("desktop:catalog_scheduling_owner")} value={descriptor?.scheduling_owner === "case" ? tx("desktop:catalog_scheduled_within_the_case") : tx("desktop:catalog_scheduled_by_plan_load")} />
+        <InspectorRow label={tx("desktop:catalog_scheduling_owner")} value={tx("desktop:catalog_scheduled_by_plan_load")} />
         <InspectorRow label={tx("desktop:catalog_suite_catalog")} value={tx("desktop:catalog_value_reusable_suites", { value1: catalog.suites.length })} />
       </dl>
     </>
@@ -696,7 +690,7 @@ function casePolicyKey(testCase: CatalogTestCase): string {
   return "cases.policyAutomatic"
 }
 
-function caseProtocolLabel(testCase: CatalogTestCase) { return PROTOCOL_LABELS[testCase.protocol] }
+function caseProtocolLabel(testCase: CatalogTestCase) { return Object.keys(testCase.definitions).map(value => PROTOCOL_LABELS[value as CatalogProtocol]).join(" · ") }
 
 
 export function PlansWorkspace({

@@ -166,22 +166,17 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 	sla := domain.SLAProfile{Thresholds: map[string]float64{"e2e_p95_ms": 5_000}}
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	testCase := domain.TestCase{
-		EntityMeta:    entityMeta(caseID, 1),
-		Key:           "T-SNAPSHOT-ONLY",
-		Name:          "Snapshot-only run case",
-		Dimension:     "persistence",
-		Protocol:      domain.ProtocolOpenAIChat,
+		EntityMeta: entityMeta(caseID, 1),
+		Key:        "T-SNAPSHOT-ONLY",
+		Name:       "Snapshot-only run case",
+		Dimension:  "persistence",
+
 		Enabled:       true,
 		Default:       true,
 		Severity:      domain.CaseSeverityCritical,
-		ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec: json.RawMessage(
-				`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`,
-			),
+		ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(
+			`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`,
+		),
 		},
 	}
 	suite := domain.Suite{

@@ -417,14 +417,8 @@ func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.R
 	caseMeta.Revision = 1
 	testCase := domain.TestCase{
 		EntityMeta: caseMeta, Key: "T001", Name: "workspace case", Dimension: "boundary",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true, Default: true,
-		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic,
-		Definition: domain.TestCaseDefinition{
-			SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-			Type:          domain.CaseType("openai-chat"),
-			TypeVersion:   1,
-			Spec:          json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}`),
-		},
+		Enabled: true, Default: true,
+		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}`)},
 	}
 	mapping := domain.ChannelModel{
 		EntityMeta: meta(mappingID, now), ChannelID: channelID, ModelID: modelID,

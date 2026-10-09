@@ -283,7 +283,7 @@ func hierarchicalDetail(report domain.Report, requestResults []domain.Result) ([
 				Revision: ref.Revision,
 				Key:      definition.Key,
 				Name:     definition.Name,
-				Protocol: definition.Protocol, Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
+				Protocol: report.Protocol, Verification: domain.SummarizeVerification(requests), Metrics: aggregateMetrics(requests),
 				SummaryResult:  summary,
 				RequestResults: requests,
 			})

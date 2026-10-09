@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "55d0ac3f-8ec4-5ed4-927f-14cde18150c2",
   "key": "glm53.stream.true",
   "name": "GLM 5.3 · 流式思考与最终回答",
   "dimension": "glm53.stream",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -27,7 +24,7 @@
           "stream": true
         }
       },
-      "assertions":       [
+      "assertions": [
         {
           "id": "r1",
           "source": "http.status",

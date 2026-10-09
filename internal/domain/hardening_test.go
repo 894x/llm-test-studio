@@ -65,9 +65,8 @@ func validRunSnapshot() RunSnapshot {
 	testCase := TestCase{
 		EntityMeta: validEntityMeta(testCaseID),
 		Key:        "T001", Name: "basic", Dimension: "compatibility",
-		Protocol: ProtocolOpenAIChat, Enabled: true, Default: true,
-		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic,
-		Definition: validTestCaseDefinition(),
+		Enabled: true, Default: true,
+		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic, Definitions: validProtocolDefinitions(),
 	}
 	testCase.Revision = 7
 	return RunSnapshot{
@@ -103,13 +102,8 @@ func TestRunSnapshotRejectsLegacySchema(t *testing.T) {
 	}
 }
 
-func validTestCaseDefinition() TestCaseDefinition {
-	return TestCaseDefinition{
-		SchemaVersion: CurrentTestCaseDefinitionSchemaVersion,
-		Type:          CaseType("openai-chat"),
-		TypeVersion:   1,
-		Spec:          json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`),
-	}
+func validProtocolDefinitions() ProtocolDefinitions {
+	return ProtocolDefinitions{Protocol(CaseType("openai-chat")): json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)}
 }
 
 func validEvidence() Evidence {
@@ -287,14 +281,13 @@ func TestChannelModelAndTestCaseValidateTheirOwnedIdentity(t *testing.T) {
 	testCase := TestCase{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174024"),
 		Key:        "T001", Name: "chat smoke", Dimension: "boundary",
-		Protocol: ProtocolOpenAIChat, Enabled: true, Default: true,
-		Severity: CaseSeverityCritical, ExecutionMode: CaseExecutionAutomatic,
-		Definition: validTestCaseDefinition(),
+		Enabled: true, Default: true,
+		Severity: CaseSeverityCritical, ExecutionMode: CaseExecutionAutomatic, Definitions: validProtocolDefinitions(),
 	}
 	if err := testCase.Validate(); err != nil {
 		t.Fatalf("TestCase.Validate() error = %v", err)
 	}
-	testCase.Definition.Spec = json.RawMessage(`[]`)
+	testCase.Definitions[ProtocolOpenAIChat] = json.RawMessage(`[]`)
 	if err := testCase.Validate(); err == nil {
 		t.Fatal("test case with a non-object request body validated")
 	}
@@ -306,9 +299,8 @@ func TestTestCaseValidatesCatalogPolicyFields(t *testing.T) {
 	valid := TestCase{
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174024"),
 		Key:        "must.tool_call", Name: "tool call", Dimension: "tools",
-		Protocol: ProtocolOpenAIChat, Enabled: true,
-		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic,
-		Definition: validTestCaseDefinition(),
+		Enabled:  true,
+		Severity: CaseSeverityNormal, ExecutionMode: CaseExecutionAutomatic, Definitions: validProtocolDefinitions(),
 	}
 	for _, test := range []struct {
 		name   string
@@ -331,10 +323,10 @@ func TestTestCaseValidatesCatalogPolicyFields(t *testing.T) {
 	}
 }
 
-func TestTestCaseDefinitionRejectsCredentialsInOpaqueSpec(t *testing.T) {
-	definition := validTestCaseDefinition()
+func TestProtocolDefinitionsRejectsCredentialsInOpaqueSpec(t *testing.T) {
+	definition := validProtocolDefinitions()
 	if err := definition.Validate(); err != nil {
-		t.Fatalf("TestCaseDefinition.Validate() error = %v", err)
+		t.Fatalf("ProtocolDefinitions.Validate() error = %v", err)
 	}
 
 	for _, spec := range []string{
@@ -344,55 +336,51 @@ func TestTestCaseDefinitionRejectsCredentialsInOpaqueSpec(t *testing.T) {
 		`{"nested":{"client_secret":"plaintext"}}`,
 		`{"password":"plaintext"}`,
 	} {
-		candidate := validTestCaseDefinition()
-		candidate.Spec = json.RawMessage(spec)
+		candidate := validProtocolDefinitions()
+		candidate[ProtocolOpenAIChat] = json.RawMessage(spec)
 		if err := candidate.Validate(); err == nil {
 			t.Fatalf("secret-bearing spec validated: %s", spec)
 		}
 	}
 }
 
-func TestTestCaseDefinitionRejectsCredentialLikeValueUnderBenignName(t *testing.T) {
-	candidate := validTestCaseDefinition()
-	candidate.Spec = json.RawMessage(`{"value":"sk-plaintext"}`)
+func TestProtocolDefinitionsRejectsCredentialLikeValueUnderBenignName(t *testing.T) {
+	candidate := validProtocolDefinitions()
+	candidate[ProtocolOpenAIChat] = json.RawMessage(`{"value":"sk-plaintext"}`)
 	if err := candidate.Validate(); err == nil {
 		t.Fatal("credential-like value under a benign field name validated")
 	}
 }
 
-func TestTestCaseDefinitionValidatesV2Envelope(t *testing.T) {
-	tests := []struct {
-		name   string
-		mutate func(*TestCaseDefinition)
-	}{
-		{"schema", func(value *TestCaseDefinition) { value.SchemaVersion++ }},
-		{"type", func(value *TestCaseDefinition) { value.Type = "Request.Single" }},
-		{"type version", func(value *TestCaseDefinition) { value.TypeVersion = 0 }},
-		{"empty spec", func(value *TestCaseDefinition) { value.Spec = json.RawMessage(`{}`) }},
-		{"spec type", func(value *TestCaseDefinition) { value.Spec = json.RawMessage(`[]`) }},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			candidate := validTestCaseDefinition()
-			test.mutate(&candidate)
-			if err := candidate.Validate(); err == nil {
-				t.Fatalf("invalid definition validated: %#v", candidate)
-			}
-		})
+func TestProtocolDefinitionsRejectInvalidMaps(t *testing.T) {
+	for _, raw := range []string{
+		`null`, `[]`, `{}`, `{"unknown":{}}`,
+		`{"openai-chat":{}}`, `{"openai-chat":[]}`,
+		`{"openai-chat":{"inputs":{},"request":{"body":{}},"assertions":[]},"openai-chat":{"inputs":{},"request":{"body":{}},"assertions":[]}}`,
+	} {
+		original := validProtocolDefinitions()
+		before, _ := json.Marshal(original)
+		if err := json.Unmarshal([]byte(raw), &original); err == nil {
+			t.Fatalf("accepted %s", raw)
+		}
+		after, _ := json.Marshal(original)
+		if string(before) != string(after) {
+			t.Fatal("rejected definitions were mutated")
+		}
 	}
 }
 
-func TestTestCaseDefinitionJSONRejectsUnknownCredentialFields(t *testing.T) {
+func TestProtocolDefinitionsJSONRejectsUnknownCredentialFields(t *testing.T) {
 	raw := `{"schema_version":2,"type":"request.single","type_version":1,"spec":{"api_key":"plaintext"},"request":{"method":"POST"}}`
-	var definition TestCaseDefinition
+	var definition ProtocolDefinitions
 	if err := json.Unmarshal([]byte(raw), &definition); err == nil {
 		t.Fatal("unknown credential field in request JSON was accepted")
 	}
 }
 
-func TestTestCaseDefinitionMarshalRejectsSecretBearingBody(t *testing.T) {
-	definition := validTestCaseDefinition()
-	definition.Spec = json.RawMessage(`{"api_key":"plaintext"}`)
+func TestProtocolDefinitionsMarshalRejectsSecretBearingBody(t *testing.T) {
+	definition := validProtocolDefinitions()
+	definition[ProtocolOpenAIChat] = json.RawMessage(`{"api_key":"plaintext"}`)
 	if _, err := json.Marshal(definition); err == nil {
 		t.Fatal("secret-bearing test definition was serialized")
 	}
@@ -501,7 +489,7 @@ func TestDecodedRunAndTransitionOwnFrozenSnapshot(t *testing.T) {
 	snapshot.Entries[0].Parameters["size"] = json.RawMessage(`2`)
 	snapshot.PlanDocument.Entries[0].Parameters["size"] = json.RawMessage(`2`)
 	snapshot.Entries[0].CaseInputs[testCaseID]["size"] = json.RawMessage(`2`)
-	snapshot.Entries[0].CaseDefinitions[0].Definition.Spec = json.RawMessage(`{
+	snapshot.Entries[0].CaseDefinitions[0].Definitions[ProtocolOpenAIChat] = json.RawMessage(`{
 		"inputs":{"size":{"type":"integer","default":2}},
 		"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},
 		"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]
@@ -529,7 +517,7 @@ func TestDecodedRunAndTransitionOwnFrozenSnapshot(t *testing.T) {
 	}
 	for _, value := range []Run{decoded, next} {
 		copy := value.Snapshot()
-		copy.Entries[0].CaseDefinitions[0].Definition.Spec[0] = 'x'
+		copy.Entries[0].CaseDefinitions[0].Definitions[ProtocolOpenAIChat][0] = 'x'
 		copy.Entries[0].Parameters["size"][0] = '9'
 		copy.PlanDocument.Entries[0].Parameters["size"][0] = '9'
 		copy.Entries[0].CaseInputs[testCaseID]["size"][0] = '9'

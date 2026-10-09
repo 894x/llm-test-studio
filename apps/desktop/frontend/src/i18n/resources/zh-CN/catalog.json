@@ -288,6 +288,9 @@
     "poll_interval_ms": "轮询间隔（ms）",
     "task_timeout_ms": "任务超时（ms）",
     "operation": "协议操作",
-    "defaultOperation": "默认请求"
+    "defaultOperation": "默认请求",
+    "supportedProtocols": "支持的协议",
+    "supportedProtocolsHint": "每个协议分别保存请求体和断言。",
+    "editProtocol": "编辑协议"
   }
 }

@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "7694659a-dd71-56da-971b-bebc99c637b9",
   "key": "wan30.model.wrong_type",
   "name": "Wan 3.0 · model 类型错误",
   "dimension": "type",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

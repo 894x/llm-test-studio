@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "84398f83-06dc-5915-8bd0-44a4e45d28cc",
   "key": "glm53.temperature.invalid_0",
   "name": "GLM 5.3 · temperature.invalid_0",
   "dimension": "glm53.temperature",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

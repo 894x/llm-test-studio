@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "58fb31b2-19a0-59ff-b82e-a27759a432ea",
   "key": "h3.usage.t2v_seconds",
   "name": "MiniMax H3 · 文生视频 usage 秒数",
   "dimension": "response-contract",
-  "protocol": "minimax-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "minimax-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "minimax-video": {
       "inputs": {},
       "request": {
         "body": {

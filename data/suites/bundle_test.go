@@ -37,7 +37,7 @@ func TestBundledSuiteReferencesAndInputMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 44 || len(byID) != 717 {
+	if len(entries) != 48 || len(byID) != 717 {
 		t.Fatalf("catalog size = %d Suites / %d Cases", len(entries), len(byID))
 	}
 	protocols := map[domain.Protocol]bool{}
@@ -54,10 +54,10 @@ func TestBundledSuiteReferencesAndInputMappings(t *testing.T) {
 		}
 		for _, member := range suite.Cases {
 			candidate, exists := byID[member.CaseID]
-			if !exists || candidate.Protocol != suite.Protocol {
+			if !exists || !candidate.SupportsProtocol(suite.Protocol) {
 				t.Fatalf("%s has missing or cross-protocol member %s", suite.Key, member.CaseID)
 			}
-			spec, err := testspec.Decode(candidate.Definition.Spec)
+			spec, err := candidate.SpecFor(suite.Protocol)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,7 +93,7 @@ func TestBundledSuiteReferencesAndInputMappings(t *testing.T) {
 			t.Fatalf("%s mutated by input resolution", suite.Key)
 		}
 	}
-	if len(protocols) != 4 {
+	if len(protocols) != 6 {
 		t.Fatalf("bundled protocols = %v", protocols)
 	}
 	// Scenario membership stays authored; model/channel binding happens once at Run start.

@@ -21,10 +21,12 @@ import (
 type Protocol string
 
 const (
-	ProtocolOpenAIChat   Protocol = protocol.OpenAIChat
-	ProtocolSeedance     Protocol = protocol.Seedance
-	ProtocolWanVideo     Protocol = protocol.WanVideo
-	ProtocolMiniMaxVideo Protocol = protocol.MiniMaxVideo
+	ProtocolOpenAIChat        Protocol = protocol.OpenAIChat
+	ProtocolOpenAIResponses   Protocol = protocol.OpenAIResponses
+	ProtocolAnthropicMessages Protocol = protocol.AnthropicMessages
+	ProtocolSeedance          Protocol = protocol.Seedance
+	ProtocolWanVideo          Protocol = protocol.WanVideo
+	ProtocolMiniMaxVideo      Protocol = protocol.MiniMaxVideo
 )
 
 func (value Protocol) Validate() error {
@@ -423,8 +425,8 @@ func (plan Plan) Validate() error {
 		return errors.New("plan seed exceeds the JSON safe integer range")
 	}
 	if plan.Performance != nil {
-		if plan.Protocol != ProtocolOpenAIChat {
-			return errors.New("performance plan requires openai-chat protocol")
+		if plan.Protocol != ProtocolOpenAIChat && plan.Protocol != ProtocolOpenAIResponses && plan.Protocol != ProtocolAnthropicMessages {
+			return errors.New("performance plan requires a supported text protocol")
 		}
 		if len(plan.Entries) != 0 {
 			return errors.New("performance plan cannot contain protocol entries")

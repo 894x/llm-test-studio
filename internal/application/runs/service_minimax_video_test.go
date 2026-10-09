@@ -19,13 +19,8 @@ func TestPrepareTargetStartsMiniMaxDirectlyAndRejectsMixedProtocol(t *testing.T)
 	fixture.mapping.UpstreamModelName = "MiniMax-H3"
 	fixture.suite.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.plan.Protocol = domain.ProtocolMiniMaxVideo
-	fixture.testCase.Protocol = domain.ProtocolMiniMaxVideo
 
-	fixture.testCase.Definition = domain.TestCaseDefinition{
-		SchemaVersion: domain.CurrentTestCaseDefinitionSchemaVersion,
-		Type:          domain.CaseType("minimax-video"), TypeVersion: 1,
-		Spec: json.RawMessage(`{"inputs":{},"request":{"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":3,"ratio":"16:9"}},"assertions":[]}`),
-	}
+	fixture.testCase.Definitions = domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("minimax-video")): json.RawMessage(`{"inputs":{},"request":{"body":{"content":[{"type":"text","text":"cat"}],"resolution":"768P","duration":3,"ratio":"16:9"}},"assertions":[]}`)}
 	repository := &fakeRepository{fixture: fixture}
 	store := credentials.NewMemoryStore()
 	storeRef, err := credentials.StoreRefFromCredential(fixture.credential)
@@ -48,7 +43,7 @@ func TestPrepareTargetStartsMiniMaxDirectlyAndRejectsMixedProtocol(t *testing.T)
 	if id, err := service.PrepareTarget(context.Background(), command); err != nil || !domain.IsUUID(id) {
 		t.Fatalf("PrepareTarget() = %q, %v", id, err)
 	}
-	repository.fixture.testCase.Protocol = domain.ProtocolWanVideo
+	repository.fixture.testCase.Definitions = domain.ProtocolDefinitions{domain.ProtocolWanVideo: repository.fixture.testCase.Definitions[domain.ProtocolMiniMaxVideo]}
 	if _, err := service.PrepareTarget(context.Background(), command); !errors.Is(err, runs.ErrNotRunnable) {
 		t.Fatalf("unscoped PrepareTarget() error = %v, want ErrNotRunnable", err)
 	}

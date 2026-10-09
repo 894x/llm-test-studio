@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595",
   "key": "must.tool_call",
   "name": "工具调用 · Tool Call 能力",
   "dimension": "tools",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -79,6 +76,144 @@
               "value": "get_weather"
             }
           ]
+        }
+      ]
+    },
+    "openai-responses": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "查询北京天气。"
+        }
+      },
+      "request": {
+        "body": {
+          "input": {
+            "$input": "prompt"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "name": "get_weather",
+              "description": "查询天气",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ]
+              }
+            }
+          ],
+          "tool_choice": "required"
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "completed",
+          "source": "response",
+          "pointer": "/status",
+          "operator": "equals",
+          "value": "completed"
+        },
+        {
+          "id": "tool",
+          "source": "metrics",
+          "pointer": "/tool_call_count",
+          "operator": "gte",
+          "value": 1
+        }
+      ]
+    },
+    "anthropic-messages": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "查询北京天气。"
+        }
+      },
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": {
+                "$input": "prompt"
+              }
+            }
+          ],
+          "max_tokens": 2048,
+          "tools": [
+            {
+              "name": "get_weather",
+              "description": "查询天气",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ]
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "any"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "message",
+          "source": "response",
+          "pointer": "/type",
+          "operator": "equals",
+          "value": "message"
+        },
+        {
+          "id": "stop",
+          "source": "response",
+          "pointer": "/stop_reason",
+          "operator": "non_empty"
+        },
+        {
+          "id": "tool",
+          "source": "metrics",
+          "pointer": "/tool_call_count",
+          "operator": "gte",
+          "value": 1
         }
       ]
     }

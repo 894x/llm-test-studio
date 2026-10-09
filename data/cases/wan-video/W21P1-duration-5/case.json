@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "1ad2d0e4-0025-5b5a-a551-ae74c539bff8",
   "key": "wan21.plus.duration_5",
   "name": "Wan 2.1 Plus · 固定时长 5 秒",
   "dimension": "compatibility",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {
         "prompt": {
           "type": "string",

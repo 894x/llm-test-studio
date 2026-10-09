@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "1d7f3a7e-d56f-5874-8626-c71e2e7bd3a9",
   "key": "wan30.prompt.empty_characterization",
   "name": "Wan 3.0 · 空 Prompt 行为刻画",
   "dimension": "characterization",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

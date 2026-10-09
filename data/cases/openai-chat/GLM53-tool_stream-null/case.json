@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "228cf4fb-3d3a-58fa-9cbe-1b048380545f",
   "key": "glm53.tool_stream.null",
   "name": "GLM 5.3 · tool_stream.null",
   "dimension": "glm53.tool_stream",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

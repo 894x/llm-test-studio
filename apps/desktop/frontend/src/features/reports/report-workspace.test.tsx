@@ -436,7 +436,7 @@ describe("ReportWorkspace", () => {
     expect(report).toHaveTextContent(label)
   })
 
-  it("renders earlier schema-v2 reports with legacy constant and fixed defaults without phase-three sections", async () => {
+  it("renders current sparse reports using optional profile defaults", async () => {
     const user = userEvent.setup()
     const quickID = "77777777-7777-4777-8777-777777777773"
     const snapshot = {
@@ -451,7 +451,7 @@ describe("ReportWorkspace", () => {
     render(
       <ReportWorkspace
         snapshot={snapshot}
-        getDetail={vi.fn(async () => legacyQuickDetail(quickID) as unknown as ReportDetail)}
+        getDetail={vi.fn(async () => sparseQuickDetail(quickID) as unknown as ReportDetail)}
         exportReport={vi.fn()}
         saveReportExport={vi.fn()}
         copyReportPNG={vi.fn()}
@@ -460,8 +460,8 @@ describe("ReportWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "查看报告：旧版快速性能测试通过" }))
 
     const archivedReport = await screen.findByRole("region", { name: "归档性能报告" })
-    expect(archivedReport).toHaveTextContent("恒定间隔（旧报告）")
-    expect(archivedReport).toHaveTextContent("固定 Token（旧报告）")
+    expect(archivedReport).toHaveTextContent("恒定间隔")
+    expect(archivedReport).toHaveTextContent("固定 Token")
     expect(archivedReport).not.toHaveTextContent("准备阶段与预算")
     expect(archivedReport).not.toHaveTextContent("SLO 与容量")
     expect(within(archivedReport).queryByRole("table", { name: "时间切片" })).not.toBeInTheDocument()
@@ -494,7 +494,8 @@ function quickDetail(reportID: string) {
     schema_version: 1,
     source: "quick_performance",
     performance: {
-      schema_version: 1,
+      schema_version: 2,
+    protocol: "openai-chat" as const,
       report_id: reportID,
       generated_at: "2026-08-31T14:30:00Z",
       archived: true,
@@ -548,7 +549,7 @@ function phaseFiveQuickDetail(reportID: string) {
     ...detail,
     performance: {
       ...detail.performance,
-      schema_version: 1,
+      schema_version: 2,
       metrics: {
         ...detail.performance.metrics,
         offered_qps: 1.25, launched_qps: 1.25, completed_qps: 1.2, successful_request_qps: 1.2,
@@ -718,7 +719,7 @@ function timeSlice(sliceIndex: number, startMS: number, endMS: number, partial: 
   }
 }
 
-function legacyQuickDetail(reportID: string) {
+function sparseQuickDetail(reportID: string) {
   const detail = quickDetail(reportID)
   const {
     request_budget: _budget,

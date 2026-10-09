@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	PerformanceSchemaVersion                = 1
+	PerformanceSchemaVersion                = 2
 	MaxPerformanceRequests           uint64 = 10_000
 	MaxPerformanceConcurrency        uint32 = 256
 	MaxPerformanceInFlight           uint32 = load.MaxOpenLoopInFlight
@@ -52,6 +52,7 @@ var ErrPerformanceArchiveNotFound = errors.New("quick performance report not fou
 // PerformanceCommand accepts a temporary or saved connection and optional Suite
 // provenance. It does not create authored Model, Channel, Case, or Plan entities.
 type PerformanceCommand struct {
+	Protocol           domain.Protocol         `json:"protocol"`
 	CredentialRunID    string                  `json:"credential_run_id,omitempty"`
 	Task               *TaskReference          `json:"task,omitempty"`
 	AddressMode        AddressMode             `json:"address_mode"`
@@ -335,6 +336,7 @@ type PerformanceSample struct {
 // PerformanceReport is an ephemeral, bounded report. It contains no Model,
 // Channel, Case, Plan, credential, prompt, provider payload, or raw error.
 type PerformanceReport struct {
+	Protocol       domain.Protocol            `json:"protocol"`
 	SchemaVersion  int                        `json:"schema_version"`
 	ReportID       string                     `json:"report_id,omitempty"`
 	GeneratedAt    string                     `json:"generated_at,omitempty"`
@@ -383,8 +385,8 @@ type PerformanceClock interface {
 type PerformanceReportIDFactory func(time.Time) (string, error)
 
 type Dependencies struct {
-	TaskCredential     func(context.Context, string, string) (*credentials.Lease, error)
-	TaskPath           func(context.Context, TaskReference, string) (string, error)
+	TaskCredential     func(context.Context, string, string, domain.Protocol) (*credentials.Lease, error)
+	TaskPath           func(context.Context, TaskReference, string, domain.Protocol) (string, error)
 	Transport          http.RoundTripper
 	ChannelConnections ChannelConnectionResolver
 	Archive            PerformanceArchive

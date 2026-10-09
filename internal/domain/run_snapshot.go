@@ -155,13 +155,10 @@ func (entry RunEntrySnapshot) Validate(protocol Protocol) error {
 			return err
 		}
 		ref := entry.Cases[index]
-		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || testCase.Protocol != protocol {
+		if testCase.ID != ref.CaseID || testCase.Revision != ref.Revision || !testCase.SupportsProtocol(protocol) {
 			return errors.New("run Case identity or protocol mismatch")
 		}
-		if string(testCase.Definition.Type) != string(protocol) {
-			return errors.New("run Case type differs from protocol")
-		}
-		spec, err := testspec.Decode(testCase.Definition.Spec)
+		spec, err := testCase.SpecFor(protocol)
 		if err != nil {
 			return err
 		}
@@ -245,7 +242,7 @@ func cloneRunPlan(plan Plan) Plan {
 func cloneRunCases(values []TestCase) []TestCase {
 	result := make([]TestCase, len(values))
 	for index, value := range values {
-		value.Definition.Spec = append(json.RawMessage(nil), value.Definition.Spec...)
+		value.Definitions = value.Definitions.Clone()
 		result[index] = value
 	}
 	return result

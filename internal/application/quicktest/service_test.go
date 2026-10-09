@@ -99,8 +99,7 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode:  AddressModeBaseURL,
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL,
 		URL:          server.URL + "/v1",
 		APIKey:       "performance-secret",
 		ModelID:      "performance-model",
@@ -152,8 +151,7 @@ func TestRunPerformanceReturnsRedactedFailureResponseEvidence(t *testing.T) {
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-sensitive", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-sensitive", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
 	})
 	if err != nil {
@@ -180,8 +178,7 @@ func TestRunPerformanceBoundsOversizedFailureResponseEvidence(t *testing.T) {
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
 	})
 	if err != nil {
@@ -202,8 +199,7 @@ func TestRunPerformanceDoesNotExposeUndecodableTruncatedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
 	})
 	if err != nil {
@@ -223,8 +219,7 @@ func TestRunPerformanceBoundsJSONExpandedDuringRedaction(t *testing.T) {
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-safe", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
 	})
 	if err != nil {
@@ -246,8 +241,7 @@ func TestRunPerformanceWithProgressPublishesAuthoritativeLifecycleSnapshots(t *t
 	defer server.Close()
 
 	progress := make([]PerformanceProgress, 0)
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformanceWithProgress(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
 	}, func(next PerformanceProgress) {
 		progress = append(progress, next)
@@ -296,8 +290,7 @@ func TestRunPerformanceSupportsRateControlledOpenLoop(t *testing.T) {
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		LoadMode: domain.LoadOpenLoop, RatePerSecond: 50, RequestCount: 3, MaxInFlight: 3,
 		TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
 	})
@@ -345,8 +338,7 @@ func TestRunPerformanceNormalWorkloadRecordsTargetsWithoutPromptLeakage(t *testi
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		RequestCount: 3, Concurrency: 1, TimeoutMS: 2_000,
 		WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 91,
 		InputTokens: 20, InputTokensStdDev: 4, SharedPrefixTokens: 5,
@@ -404,8 +396,7 @@ func TestPerformanceInputBudgetGatesDynamicRunsWithoutTouchingFixedFastPath(t *t
 		}, nil
 	})
 	service := New(Dependencies{Transport: transport})
-	command := PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	command := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 500, InputTokens: 10, OutputTokens: 2,
 	}
 	fixed, err := service.RunPerformance(context.Background(), command)
@@ -439,8 +430,7 @@ func TestPerformanceInputBudgetGatesDynamicRunsWithoutTouchingFixedFastPath(t *t
 }
 
 func TestRunPerformanceRejectsInvalidLoadModeCombinations(t *testing.T) {
-	base := PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
+	base := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
 		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
 	}
 	for name, mutate := range map[string]func(*PerformanceCommand){
@@ -474,8 +464,7 @@ func TestRunPerformanceRejectsInvalidLoadModeCombinations(t *testing.T) {
 }
 
 func TestRunPerformanceRejectsInvalidArrivalAndWorkloadCombinations(t *testing.T) {
-	base := PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
+	base := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com", APIKey: "secret", ModelID: "model",
 		RequestCount: 3, Concurrency: 2, TimeoutMS: 2_000, InputTokens: 20, OutputTokens: 3,
 	}
 	for name, mutate := range map[string]func(*PerformanceCommand){
@@ -538,8 +527,7 @@ func TestRunPerformanceRejectsInvalidArrivalAndWorkloadCombinations(t *testing.T
 }
 
 func TestValidPerformanceProfileAcceptsNormalStddevAtMeanBoundary(t *testing.T) {
-	command := PerformanceCommand{
-		LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: load.ArrivalConstant,
+	command := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, LoadMode: domain.LoadFixedConcurrency, ArrivalPattern: load.ArrivalConstant,
 		WorkloadMode: PerformanceWorkloadNormal, RandomSeed: 1,
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 1_000,
 		InputTokens: 10, InputTokensStdDev: 10,
@@ -567,8 +555,7 @@ func TestRunPerformanceArchivesLaunchedSamplesWithStableIdentity(t *testing.T) {
 		Clock:     fixedPerformanceClock{now: generatedAt},
 		IDFactory: func(time.Time) (string, error) { return "77777777-7777-4777-8777-777777777777", nil },
 	})
-	report, err := service.RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "archive-secret", ModelID: "archive-model",
+	report, err := service.RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "archive-secret", ModelID: "archive-model",
 		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3,
 	})
 	if err != nil {
@@ -606,8 +593,7 @@ func TestRunPerformanceKeepsImmediateReportWhenArchiveFails(t *testing.T) {
 	}))
 	defer server.Close()
 	archive := &capturingPerformanceArchive{err: fmt.Errorf("sqlite path contains sk-do-not-leak")}
-	report, err := New(Dependencies{Transport: server.Client().Transport, Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport, Archive: archive}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 3,
 	})
 	if err != nil {
@@ -647,8 +633,7 @@ func TestRunPerformanceAcceptsOneMillionInputTokens(t *testing.T) {
 			)),
 		}, nil
 	})
-	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 1, Concurrency: 1, TimeoutMS: 30_000, InputTokens: 1_000_000, OutputTokens: 1,
 	})
 	if err != nil {
@@ -665,8 +650,7 @@ func TestRunPerformanceRejectsUnsafeOrUnboundedProfilesBeforeTransport(t *testin
 		calls.Add(1)
 		return nil, fmt.Errorf("transport must not be called")
 	})
-	valid := PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	valid := PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 10, Concurrency: 2, TimeoutMS: 30_000, InputTokens: 100, OutputTokens: 100,
 	}
 	tests := []struct {
@@ -720,8 +704,7 @@ func TestRunPerformanceDurationOnlyPreservesRequestedProfileAndCapsLaunches(t *t
 			)),
 		}, nil
 	})
-	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 0, DurationMS: 1_000, Concurrency: MaxPerformanceConcurrency,
 		TimeoutMS: 2_000, InputTokens: 1, OutputTokens: 2,
 	})
@@ -748,8 +731,7 @@ func TestRunPerformanceArchivesAfterCancellationWithIndependentShortDeadline(t *
 		return nil, request.Context().Err()
 	})
 	archive := &contextCheckingPerformanceArchive{}
-	report, err := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+	report, err := New(Dependencies{Transport: transport, Archive: archive}).RunPerformance(ctx, PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
 		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 1, OutputTokens: 2,
 	})
 	if err != nil {
@@ -767,8 +749,7 @@ func TestRunPerformanceAggregatesStableFailureCodesWithRedactedEvidence(t *testi
 	}))
 	defer server.Close()
 
-	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{
-		AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-sensitive", ModelID: "model",
+	report, err := New(Dependencies{Transport: server.Client().Transport}).RunPerformance(context.Background(), PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: server.URL, APIKey: "sk-sensitive", ModelID: "model",
 		RequestCount: 2, Concurrency: 1, TimeoutMS: 2_000, InputTokens: 10, OutputTokens: 10,
 	})
 	if err != nil {
@@ -787,7 +768,7 @@ func TestRunPerformanceAggregatesStableFailureCodesWithRedactedEvidence(t *testi
 }
 
 func validConnectionCommand() PerformanceCommand {
-	return PerformanceCommand{AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "sk-private", ModelID: "test-model", RequestCount: 1, Concurrency: 1, TimeoutMS: 1000, InputTokens: 2, OutputTokens: 2}
+	return PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL, URL: "https://example.com/v1", APIKey: "sk-private", ModelID: "test-model", RequestCount: 1, Concurrency: 1, TimeoutMS: 1000, InputTokens: 2, OutputTokens: 2}
 }
 
 func withConnectionCommand(command PerformanceCommand, change func(*PerformanceCommand)) PerformanceCommand {

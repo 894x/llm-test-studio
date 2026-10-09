@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "8c47cac5-8436-56d1-acec-6d358181168e",
   "key": "glm53.sampling.disabled_high",
   "name": "GLM 5.3 · 禁用采样与high参数",
   "dimension": "glm53.sampling_dependency",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

@@ -94,13 +94,15 @@ func (suite Suite) ValidateCases(cases []TestCase) error {
 			return err
 		}
 		if !suite.AcceptsCase(testCase) {
-			return errors.New("suite case protocol does not match suite protocol")
+			return fmt.Errorf("Case %s has no definition for Suite protocol %s", testCase.Key, suite.Protocol)
 		}
 	}
 	return nil
 }
 
-func (suite Suite) AcceptsCase(testCase TestCase) bool { return testCase.Protocol == suite.Protocol }
+func (suite Suite) AcceptsCase(testCase TestCase) bool {
+	return testCase.SupportsProtocol(suite.Protocol)
+}
 
 // ResolveInputs applies Suite defaults and explicit bindings without altering Case definitions.
 func (suite Suite) ResolveInputs(values map[string]json.RawMessage) (map[string]json.RawMessage, map[string]map[string]json.RawMessage, error) {

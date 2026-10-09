@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "062b66ef-8d2e-59a1-95cb-dadf03dfe264",
   "key": "T001",
   "name": "同步响应检测",
   "dimension": "boundary",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {
         "prompt": {
           "type": "string",
@@ -53,6 +50,103 @@
         },
         {
           "id": "r4",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    },
+    "openai-responses": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "仅输出数字 5"
+        }
+      },
+      "request": {
+        "body": {
+          "input": {
+            "$input": "prompt"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "completed",
+          "source": "response",
+          "pointer": "/status",
+          "operator": "equals",
+          "value": "completed"
+        },
+        {
+          "id": "text",
+          "source": "text",
+          "operator": "non_empty",
+          "transform": "trim"
+        }
+      ]
+    },
+    "anthropic-messages": {
+      "inputs": {
+        "prompt": {
+          "type": "string",
+          "default": "仅输出数字 5"
+        }
+      },
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "role": "user",
+              "content": {
+                "$input": "prompt"
+              }
+            }
+          ],
+          "max_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "status",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "message",
+          "source": "response",
+          "pointer": "/type",
+          "operator": "equals",
+          "value": "message"
+        },
+        {
+          "id": "stop",
+          "source": "response",
+          "pointer": "/stop_reason",
+          "operator": "non_empty"
+        },
+        {
+          "id": "text",
           "source": "text",
           "operator": "non_empty",
           "transform": "trim"

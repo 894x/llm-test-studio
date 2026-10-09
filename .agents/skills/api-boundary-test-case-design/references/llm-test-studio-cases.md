@@ -6,9 +6,9 @@ Follow AGENTS.md graph discovery rules. Inspect `internal/casecodec`, `internal/
 
 ## Current artifact contract
 
-- Case envelope schema 3; definition schema 2, type equal to the protocol, type version 1. Preserve stable keys and IDs. Declare inputs and assertions explicitly. Empty assertions mean observation only.
+- Case file schema 2 has an explicit stable ID and `definitions` keyed by protocol. Each value is a complete native Spec with explicit inputs, request body and assertions, plus optional operation/workflow. Keep one logical Case and ID across protocols. Empty assertions mean observation only.
 - Inputs use explicit template references. Cases do not own the runtime model, credential, URL or load policy. Do not add model targets, aliases or old kind-based dispatch.
-- Suite schema 2 holds ordered Case references and explicit input bindings. Plan entries target a Case or Suite with per-entry load, warmup and protocol settings. The Run binds one model/channel/credential.
+- Suite schema 1 holds ordered Case references and explicit input bindings. Plan entries target a Case or Suite with per-entry load, warmup and protocol settings. The Run binds one model/channel/credential.
 - Give each Case a primary contract claim. HTTP 2xx and task admission alone do not prove business success; waiting belongs in the workflow and terminal success belongs in assertions.
 - Keep fixtures repository-owned and never fabricate provider asset IDs or credentials. Keep expensive Cases disabled or outside automatic profiles unless execution is authorized.
 - Generate Suites from reviewed current manifests using [suite-generation.md](suite-generation.md). Reject unsupported old files without mutating them; historical upgrades belong in separately invoked temporary scripts.

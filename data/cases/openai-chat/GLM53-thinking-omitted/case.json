@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "851e58db-0c72-5fc2-83b9-5213c2cf8018",
   "key": "glm53.thinking.omitted",
   "name": "GLM 5.3 · 省略 thinking 仍有思考",
   "dimension": "glm53.thinking",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

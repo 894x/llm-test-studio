@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "4a351738-2aa6-5468-a8f0-7137f9241a95",
   "key": "glm53.tools.count_128",
   "name": "GLM 5.3 · 工具数量 128",
   "dimension": "glm53.tools",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -2844,7 +2841,7 @@
           ]
         }
       },
-      "assertions":             [
+      "assertions": [
         {
           "id": "r1",
           "source": "http.status",

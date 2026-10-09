@@ -312,20 +312,17 @@ func TestAuditListUsesVersionedResponseEnvelope(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -397,20 +394,17 @@ func TestAuditListCanRenderHumanOutput(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -563,20 +557,17 @@ func TestAuditRunDefaultsToCanonicalEventEnvelopes(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -787,20 +778,17 @@ func writeManualAuditCase(t *testing.T) string {
 	t.Helper()
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -817,20 +805,17 @@ func TestAuditRunCanRenderHumanLifecycle(t *testing.T) {
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -871,20 +856,17 @@ func TestAuditRunClassifiesConfigCredentialAndReportErrorsWithoutSecrets(t *test
 
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "manual review",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {}
@@ -991,20 +973,17 @@ func (do httpDoerFunc) Do(request *http.Request) (*http.Response, error) {
 func TestAuditRunPropagatesCallerCancellation(t *testing.T) {
 	casesRoot := t.TempDir()
 	writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -1131,20 +1110,17 @@ func TestAuditRunHumanPlanNilOrTruncatedWriterStopsBeforeHTTPAndReport(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -1253,20 +1229,17 @@ func TestAuditRunFirstPlanWriteFailureCancelsBeforeHTTP(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			casesRoot := t.TempDir()
 			writeTestCase(t, casesRoot, "openai-chat", "C001", `{
-  "schema_version": 1,
+  "schema_version": 2,
   "key": "C001",
   "name": "chat sync",
   "dimension": "protocol",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": true,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "id": "3a1000c6-a20a-5f31-b8b3-c9a434a76657",
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {

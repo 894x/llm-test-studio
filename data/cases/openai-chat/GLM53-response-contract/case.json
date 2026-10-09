@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "f7f3a8ab-74c0-5a2f-81d9-d3eddf6ce7c3",
   "key": "glm53.response.contract",
   "name": "GLM 5.3 · 响应结构、终止原因与用量",
   "dimension": "glm53.response",
-  "protocol": "openai-chat",
   "enabled": true,
   "default": false,
   "severity": "normal",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
@@ -26,7 +23,7 @@
           "reasoning_effort": "low"
         }
       },
-      "assertions":       [
+      "assertions": [
         {
           "id": "r9",
           "source": "response",

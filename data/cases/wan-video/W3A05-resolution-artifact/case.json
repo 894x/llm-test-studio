@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "8ce13e3b-378f-5903-a89d-e5526fc01133",
   "key": "wan30.artifact.resolution_matches",
   "name": "Wan 3.0 · 产物分辨率匹配 resolution",
   "dimension": "artifact",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

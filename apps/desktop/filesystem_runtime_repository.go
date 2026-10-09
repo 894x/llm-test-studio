@@ -69,17 +69,20 @@ func normalizeRuntimeTestCase(testCase domain.TestCase) (domain.TestCase, error)
 	// state transition with the decoded snapshot. Normalize filesystem JSON
 	// first so insignificant formatting and object-key order cannot make those
 	// otherwise identical Run values compare differently.
-	decoder := json.NewDecoder(bytes.NewReader(testCase.Definition.Spec))
-	decoder.UseNumber()
-	var normalized any
-	if err := decoder.Decode(&normalized); err != nil {
-		return domain.TestCase{}, err
+	testCase.Definitions = testCase.Definitions.Clone()
+	for protocol, raw := range testCase.Definitions {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		var normalized any
+		if err := decoder.Decode(&normalized); err != nil {
+			return domain.TestCase{}, err
+		}
+		canonical, err := json.Marshal(normalized)
+		if err != nil {
+			return domain.TestCase{}, err
+		}
+		testCase.Definitions[protocol] = canonical
 	}
-	canonical, err := json.Marshal(normalized)
-	if err != nil {
-		return domain.TestCase{}, err
-	}
-	testCase.Definition.Spec = append(json.RawMessage(nil), canonical...)
 	return testCase, nil
 }
 

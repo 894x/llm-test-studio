@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "6e56637b-2f6b-519f-beb4-0309f4afce3c",
   "key": "wan30.artifact.watermark_false_absent",
   "name": "Wan 3.0 · watermark=false 产物无水印",
   "dimension": "artifact",
-  "protocol": "wan-video",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {},
       "request": {
         "body": {

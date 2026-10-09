@@ -1,3 +1,4 @@
+import { isQuickPerformanceProtocol } from "./data"
 import {
   useRef,
   useState,
@@ -269,6 +270,7 @@ export function QuickTaskWorkspace({
     const formElement = element.closest("form")
     if (!formElement || !validCommand(formElement)) return
     setPerformanceCommand({
+      protocol: task!.protocol,
       task: {
         suite_id: task!.id,
         suite_revision: task!.revision,
@@ -551,7 +553,7 @@ export function QuickTaskWorkspace({
                       )}
                       {pending === "start" ? t("task.starting") : t("task.start")}
                     </Button>
-                    {task.protocol === "openai-chat" ? (
+                    {isQuickPerformanceProtocol(task.protocol) ? (
                       <Button
                         ref={performanceTrigger}
                         type="button"

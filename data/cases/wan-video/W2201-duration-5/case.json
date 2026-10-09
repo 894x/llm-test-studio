@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "83e7aa1e-6047-581a-bfae-75f9b5ffb147",
   "key": "wan22.t2v.duration_5",
   "name": "Wan 2.2 · 固定时长 5 秒",
   "dimension": "compatibility",
-  "protocol": "wan-video",
   "enabled": true,
   "default": false,
   "severity": "critical",
   "execution_mode": "automatic",
-  "definition": {
-    "schema_version": 1,
-    "type": "wan-video",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "wan-video": {
       "inputs": {
         "prompt": {
           "type": "string",

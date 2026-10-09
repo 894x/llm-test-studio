@@ -1,18 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "3dd2de7d-cccf-5bc8-880c-d84912a71cd1",
   "key": "glm53.retrieval.knowledge_id",
   "name": "GLM 5.3 · retrieval.knowledge_id（待验证模板）",
   "dimension": "glm53.retrieval_knowledge_id",
-  "protocol": "openai-chat",
   "enabled": false,
   "default": false,
   "severity": "normal",
   "execution_mode": "manual",
-  "definition": {
-    "schema_version": 1,
-    "type": "openai-chat",
-    "type_version": 1,
-    "spec": {
+  "definitions": {
+    "openai-chat": {
       "inputs": {},
       "request": {
         "body": {
