@@ -282,7 +282,7 @@
   "quick-test_shared_prefix_tokens": "共享前缀 Token",
   "quick-test_random_seed": "随机种子",
   "quick-test_random_input": "随机输入",
-  "quick-test_random_input_hint": "每次运行使用随机标识，每个请求在输入开头加入唯一序号，避免命中前缀缓存；覆盖预热、爬坡和容量测试，也会打断已配置的共享前缀。",
+  "quick-test_random_input_hint": "唯一前缀用于测试无缓存速度。",
   "quick-test_enabled": "已启用",
   "quick-test_disabled": "未启用",
   "quick-test_slo_and_capacity": "SLO 与容量",

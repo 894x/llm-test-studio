@@ -282,7 +282,7 @@
   "quick-test_shared_prefix_tokens": "Shared prefix tokens",
   "quick-test_random_seed": "Random seed",
   "quick-test_random_input": "Random input",
-  "quick-test_random_input_hint": "Prefix each input with a random run ID and unique request number to avoid prefix-cache hits, including warmup, ramp, and capacity runs. This breaks any configured shared prefix.",
+  "quick-test_random_input_hint": "Unique prefixes test uncached speed.",
   "quick-test_enabled": "Enabled",
   "quick-test_disabled": "Disabled",
   "quick-test_slo_and_capacity": "SLO and capacity",

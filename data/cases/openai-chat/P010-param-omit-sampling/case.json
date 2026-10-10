@@ -36,6 +36,55 @@
           "pointer": "/choices"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "说你好"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "completed"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        }
+      ]
     }
   }
 }

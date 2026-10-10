@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "key": "openai-responses.kimi-k3.official-foundation",
+  "name": "Kimi K3 Responses 官方基础套件",
+  "protocol": "openai-responses",
+  "description": "Kimi K3 Responses 39 个基础与边界场景；包含图片与双请求缓存探测。",
+  "cases": [
+    {
+      "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
+    },
+    {
+      "case_id": "a67358ec-7ecc-5399-8660-dc4cd3d259e9"
+    },
+    {
+      "case_id": "28d60522-c7f4-5e42-b954-c743322c88e1"
+    },
+    {
+      "case_id": "50361472-cfbb-58a4-8f73-9bb3138a8ca0"
+    },
+    {
+      "case_id": "014dee74-a1f7-5539-abff-18522d477ca4"
+    },
+    {
+      "case_id": "b5e3ea2a-68e4-54b9-9e5f-2d69565d029f"
+    },
+    {
+      "case_id": "510151ef-a1fc-53e3-8d15-f0b28842a33e"
+    },
+    {
+      "case_id": "7a9bf03b-d94b-5ffd-ba80-af3b626c611d"
+    },
+    {
+      "case_id": "8ac55529-2b31-5b3a-bbd6-7c4d54ddd69c"
+    },
+    {
+      "case_id": "18ed9e4f-9572-53ca-952c-24ef738261e3"
+    },
+    {
+      "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+    },
+    {
+      "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+    },
+    {
+      "case_id": "68273e8a-309a-5f7c-9250-f44c5f4541ef"
+    },
+    {
+      "case_id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595"
+    },
+    {
+      "case_id": "1d52525c-bf36-57ab-a73e-995f3f8c7809"
+    },
+    {
+      "case_id": "75e1aa9b-4e08-5eff-8095-147ad690daac"
+    },
+    {
+      "case_id": "634b8cc2-8dc6-538d-9d29-c18eb8620ad8"
+    },
+    {
+      "case_id": "e5280550-a6ca-5d9d-bb65-efce43c73a7b"
+    },
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    },
+    {
+      "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+    },
+    {
+      "case_id": "2cef4d7e-afc0-5b7d-a5bf-203739780f6d"
+    },
+    {
+      "case_id": "2d2995c3-9766-52e4-be29-72a137d9b55d"
+    },
+    {
+      "case_id": "06d41641-33ad-57e3-a2a0-bd02889371c4"
+    },
+    {
+      "case_id": "4d87e691-dbe0-54be-b81b-c7c9669b4745"
+    },
+    {
+      "case_id": "6a7a187d-d556-5d2c-b4b6-29f961621c49"
+    },
+    {
+      "case_id": "e7958fd9-7c92-527d-a1d4-4010ccd9e89c"
+    },
+    {
+      "case_id": "34e241fa-9d4d-55d0-b3c2-49413480e8e9"
+    },
+    {
+      "case_id": "88975a47-466b-5bc3-a362-9ec9aa2ad157"
+    },
+    {
+      "case_id": "ea56b579-8797-527d-8fb7-bd4771ab3a02"
+    },
+    {
+      "case_id": "138f994f-01a2-575a-ad34-48d66074caa8"
+    },
+    {
+      "case_id": "f9e4de49-af2d-596b-b48c-d2814bc4a6a5"
+    },
+    {
+      "case_id": "f353bd16-2a5c-5fc8-9244-5c4738cf54c7"
+    },
+    {
+      "case_id": "12a02b6c-8cbb-5fc3-8e69-4f8c578b2aa8"
+    },
+    {
+      "case_id": "81dbf546-625f-5fd7-ae9d-b21db4c233d6"
+    },
+    {
+      "case_id": "b007bcfc-612e-5b82-afd2-8b79cff874b0"
+    },
+    {
+      "case_id": "e9202e63-c05b-5392-b353-148f20859064"
+    },
+    {
+      "case_id": "48ae6055-0345-5c82-af8f-203dc1f41cc0"
+    },
+    {
+      "case_id": "2f43514d-ac8d-5878-9ccb-e36ab3a93ea2"
+    },
+    {
+      "case_id": "4f9e20a8-1f28-5c13-903e-8a3959f5904a"
+    }
+  ],
+  "inputs": []
+}

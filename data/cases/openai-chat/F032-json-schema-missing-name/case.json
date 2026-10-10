@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "28d60522-c7f4-5e42-b954-c743322c88e1",
   "key": "json_schema_missing_name",
-  "name": "结构化输出 · json_schema 缺少 name 应拒绝",
+  "name": "结构化输出 · Schema name 省略行为",
   "dimension": "structured-output",
   "enabled": true,
   "default": false,
@@ -43,6 +43,70 @@
           "operator": "non_empty",
           "pointer": "/error/message",
           "transform": "trim"
+        }
+      ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "返回 JSON"
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "completed"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "json",
+          "source": "text",
+          "operator": "type",
+          "value": "object",
+          "transform": "json"
         }
       ]
     }

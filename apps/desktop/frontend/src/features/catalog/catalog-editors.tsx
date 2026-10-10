@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
 import {
+  QUICK_PERFORMANCE_PRESET_IDS,
   quickPerformancePresetFromProfile,
   quickPerformanceProfileForPreset,
   type QuickPerformancePresetID,
@@ -334,12 +335,9 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
     <SelectField label={t("plans.executionPolicy")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance" && !isQuickPerformanceProtocol(protocol)) setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
     <SelectField label={t("common.protocol")} value={protocol} options={planMode === "performance" ? protocolOptions.filter(([id]) => isQuickPerformanceProtocol(id)) : protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
     <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
-    {planMode === "performance" ? <SelectField label={t("plans.performancePreset")} value={performancePreset} options={[
-      ["smoke", t("quickTest:performance.presets.smoke")],
-      ["baseline", t("quickTest:performance.presets.baseline")],
-      ["sustained", t("quickTest:performance.presets.sustained")],
-      ["capacity", t("quickTest:performance.presets.capacity")],
-    ]} onChange={value => setPerformancePreset(value as QuickPerformancePresetID)} /> : null}
+    {planMode === "performance" ? <SelectField label={t("plans.performancePreset")} value={performancePreset} options={
+      QUICK_PERFORMANCE_PRESET_IDS.map(id => [id, t(`quickTest:performance.presets.${id}`)] as [string, string])
+    } onChange={value => setPerformancePreset(value as QuickPerformancePresetID)} /> : null}
     {planMode === "protocol" ? <>
       <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
       <PlanEntryTargetField target={target} targets={targets} onTargetChange={setTarget} onAdd={() => {

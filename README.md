@@ -102,7 +102,7 @@ Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `o
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` accepts only inputs declared by selected Cases. Omit `--inputs` to use their declared defaults. `--all-cases` selects enabled automatic Cases; manual/disabled selections fail explicitly. `--dry-run` prepares requests without network calls or verification claims. Waiting is authored as `workflow.mode`, replacing `--no-wait`.
 
-The repository contains 717 current Cases, 48 Suites and 5 performance Plans. Sixteen previous model/authentication mutation Cases are disabled because those fields belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
+The repository contains 717 current Cases, 51 Suites and 5 performance Plans. K3 Responses Suites reuse 39 existing Case IDs with native definitions; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Sixteen previous model/authentication mutation Cases are disabled because those fields belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
 
 <details>
 <summary><strong>CLI examples</strong></summary>

@@ -1,6 +1,18 @@
 # Kimi official multi-model foundation cases
 
-The Kimi foundation suites select `openai-chat`; Kimi names identify models. Five shared text Cases also define native `openai-responses` and `anthropic-messages` requests. The new connectivity and text-contract Suites select these protocols and reuse the same Case IDs. Bind a model and channel that support the selected endpoint; no automatic protocol conversion is performed.
+The four Kimi Chat foundation suites select `openai-chat`; Kimi names identify models. K3 additionally has native `openai-responses` connectivity, foundation and admission Suites. The Responses foundation reuses 39 of the existing 84 K3 Case IDs; the remaining 45 Chat claims have no documented equivalent or lack a stable native expectation. Five shared text Cases also define `anthropic-messages`. Bind a model and channel that support the selected endpoint; no automatic protocol conversion is performed.
+
+The Responses configuration follows the [Kimi Responses API](https://platform.kimi.com/docs/api/responses) and official OpenAPI retrieved on 2026-10-09. At the user's request, `tool_choice` expectations follow the existing K3 Chat Cases and [tool-choice guide](https://platform.kimi.com/docs/guide/use-tool-choice), reviewed on 2026-10-10: omitted/`auto` allow model selection, `none` requires text without tool calls, and `required` requires a tool call. Specified-function choice retains the Chat rejection expectation with thinking enabled. The Responses schema declares only `auto`; these Chat-derived expectations remain unverified against the Responses service. Reasoning uses `reasoning.effort`, structured output uses `text.format`, and omitted Schema `name` is accepted. The image field is a data URL string, and cache workflows assert native input/cached/cache-write usage. See [responses-coverage-matrix.md](responses-coverage-matrix.md) for all 84 mappings, the full field inventory and remaining gaps. This does not claim complete Responses boundary coverage.
+
+- Responses connectivity selects 3 Cases; foundation selects 39; admission selects 15 expected HTTP 400 Cases.
+- Running the foundation includes a T3 image fixture and two-request cache workflow. Select it explicitly; no paid Kimi request was executed during this change.
+- The logical catalog remains 717 Cases. Each protocol stores its own request and assertions under the existing Case ID; Chat definitions are preserved.
+
+Validate the authored memberships without sending provider requests:
+
+```powershell
+python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py --cases-root data/cases --suites-root data/suites/openai-responses --manifest data/suites/openai-responses/kimi-k3.suite-profiles.json --check
+```
 
 The desktop application groups runnable Kimi-oriented cases under `data/cases/openai-chat` into four model-specific foundation suites, alongside smaller connectivity suites. Shared cases are referenced by each applicable suite instead of being copied; the Run selects the model and channel.
 

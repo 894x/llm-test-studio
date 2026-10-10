@@ -1,6 +1,18 @@
 # Kimi 官方多模型基础用例
 
-Kimi 基础套件选择 `openai-chat` 协议；Kimi 名称标识模型。5 个共用文本 Case 还配置了 `openai-responses` 和 `anthropic-messages` 原生请求，新增的连通性与文本契约 Suite 选择这些协议并复用同一组 Case ID。运行时需绑定支持所选接口的模型和渠道；系统不自动转换协议。
+四个 Kimi Chat 基础套件选择 `openai-chat` 协议；Kimi 名称标识模型。K3 另有原生 `openai-responses` 连通性、基础与参数拒绝 Suite。Responses 基础套件复用现有 84 个 K3 Case 中的 39 个 ID；其余 45 个 Chat 场景没有文档对应项，或缺少稳定的原生预期。5 个共用文本 Case 还配置了 `anthropic-messages`。运行时需绑定支持所选接口的模型和渠道；系统不自动转换协议。
+
+Responses 配置依据 2026-10-09 查阅的 [Kimi Responses API](https://platform.kimi.com/docs/api/responses) 和官方 OpenAPI。按用户要求，`tool_choice` 预期参考现有 K3 Chat Case，以及 2026-10-10 查阅的[工具调用约束](https://platform.kimi.com/docs/guide/use-tool-choice)：省略或 `auto` 允许模型自行选择，`none` 要求文本回复且不调用工具，`required` 要求至少一次工具调用。指定函数选择保留 Chat 在思考开启时的拒绝预期。Responses Schema 仍只声明 `auto`；这些参考 Chat 的预期尚未经过 Responses 上游实测。推理使用 `reasoning.effort`，结构化输出使用 `text.format`，省略 Schema 的 `name` 会被接受。图片字段为 data URL 字符串，缓存工作流校验原生输入、缓存读取及缓存写入用量。全部 84 个场景的映射、完整字段清单和剩余缺口见 [responses-coverage-matrix.md](responses-coverage-matrix.md)。这不表示 Responses 边界契约已完整覆盖。
+
+- Responses 连通性套件引用 3 个 Case，基础套件引用 39 个，参数拒绝套件引用 15 个预期 HTTP 400 的 Case。
+- 运行完整基础套件会包含 T3 图片素材和两次请求的缓存工作流，需要显式选择；本次改动没有执行付费 Kimi 请求。
+- 逻辑目录仍为 717 个 Case。各协议的请求和断言保存在现有 Case ID 下；Chat 定义保持原样。
+
+不发送上游请求即可校验编写的套件成员：
+
+```powershell
+python .agents/skills/api-boundary-test-case-design/scripts/build_scenario_suites.py --cases-root data/cases --suites-root data/suites/openai-responses --manifest data/suites/openai-responses/kimi-k3.suite-profiles.json --check
+```
 
 桌面应用将 `data/cases/openai-chat` 下可运行的 Kimi 相关用例组织为四个按模型命名的基础套件，另有更小的连通性套件。共用用例由适用套件引用，无需复制；模型与渠道由运行时的 Run 选择。
 

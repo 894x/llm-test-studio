@@ -19,6 +19,8 @@
     "presets": {
       "smoke": "快速检查 · 10 次请求",
       "baseline": "基准测试 · 100 次请求 / 并发 4",
+      "uncached": "无缓存 · 500 次请求 / 并发 40",
+      "cached_suffix": "缓存后缀 · 500 次请求 / 并发 40",
       "sustained": "持续负载 · 60 秒 / 2 RPS",
       "capacity": "容量阶梯 · SLO 95%"
     },

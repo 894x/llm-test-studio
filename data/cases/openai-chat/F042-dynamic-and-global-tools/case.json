@@ -79,6 +79,136 @@
           "pointer": "/choices"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "additional_tools",
+              "role": "developer",
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "dynamic_calculate",
+                  "description": "计算算术表达式",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "expression": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expression"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "必须使用 dynamic_calculate 工具计算 23*47。"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "name": "global_lookup",
+              "description": "查询固定信息",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "completed"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "tool_count",
+          "source": "metrics",
+          "operator": "gte",
+          "pointer": "/tool_call_count",
+          "value": 1
+        },
+        {
+          "id": "function_call",
+          "source": "response",
+          "pointer": "/output",
+          "each_mode": "any",
+          "each": [
+            {
+              "id": "function_type",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/type",
+              "value": "function_call"
+            },
+            {
+              "id": "function_name",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/name",
+              "value": "dynamic_calculate"
+            },
+            {
+              "id": "call_id",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/call_id"
+            },
+            {
+              "id": "arguments",
+              "source": "item",
+              "operator": "json_valid",
+              "pointer": "/arguments"
+            }
+          ]
+        }
+      ]
     }
   }
 }

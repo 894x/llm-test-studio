@@ -120,6 +120,156 @@
           }
         ]
       }
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "message",
+              "role": "developer",
+              "content": {
+                "$generate": "repeat",
+                "text": "K3_CACHE_PREFIX_STATIC_BLOCK: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. ",
+                "count": 128
+              }
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "第一次请求仅输出 CACHE_READY。"
+            }
+          ],
+          "prompt_cache_key": "k3-prefix-cache-eval-001",
+          "reasoning": {
+            "effort": "low"
+          },
+          "prompt_cache_options": {
+            "mode": "implicit",
+            "ttl": "5m"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http_0",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/http_status",
+          "value": 200
+        },
+        {
+          "id": "terminal_0",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/0/response/status",
+          "value": "completed"
+        },
+        {
+          "id": "input_0",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/input_tokens",
+          "value": 256
+        },
+        {
+          "id": "cache_write_0",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
+          "value": 0
+        },
+        {
+          "id": "http_1",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/http_status",
+          "value": 200
+        },
+        {
+          "id": "terminal_1",
+          "source": "requests",
+          "operator": "equals",
+          "pointer": "/1/response/status",
+          "value": "completed"
+        },
+        {
+          "id": "input_1",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/input_tokens",
+          "value": 256
+        },
+        {
+          "id": "cache_write_1",
+          "source": "requests",
+          "operator": "gte",
+          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
+          "value": 0
+        },
+        {
+          "id": "cache_hit",
+          "source": "requests",
+          "operator": "gt",
+          "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+          "value": 0
+        },
+        {
+          "id": "cache_bound",
+          "source": "requests",
+          "operator": "lte",
+          "pointer": "/1/response/usage/input_tokens_details/cached_tokens",
+          "expected_from": {
+            "source": "requests",
+            "pointer": "/1/response/usage/input_tokens"
+          }
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "step-1",
+            "request": {
+              "body": {
+                "max_output_tokens": 2048,
+                "input": [
+                  {
+                    "type": "message",
+                    "role": "developer",
+                    "content": {
+                      "$generate": "repeat",
+                      "text": "K3_CACHE_PREFIX_STATIC_BLOCK: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu. ",
+                      "count": 128
+                    }
+                  },
+                  {
+                    "type": "message",
+                    "role": "user",
+                    "content": "第二次请求仅输出 CACHE_HIT。"
+                  }
+                ],
+                "prompt_cache_key": "k3-prefix-cache-eval-001",
+                "reasoning": {
+                  "effort": "low"
+                },
+                "prompt_cache_options": {
+                  "mode": "implicit",
+                  "ttl": "5m"
+                }
+              }
+            }
+          }
+        ]
+      }
     }
   }
 }

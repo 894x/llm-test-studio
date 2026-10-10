@@ -19,6 +19,8 @@
     "presets": {
       "smoke": "Smoke check · 10 requests",
       "baseline": "Baseline · 100 requests / concurrency 4",
+      "uncached": "Uncached · 500 requests / concurrency 40",
+      "cached_suffix": "Cached suffix · 500 requests / concurrency 40",
       "sustained": "Sustained · 60 seconds / 2 RPS",
       "capacity": "Capacity ladder · SLO 95%"
     },

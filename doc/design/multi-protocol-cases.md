@@ -46,6 +46,8 @@ Suite、Plan、Channel、Model 和一次 Run 各选择一个协议。执行时�
 
 全部 717 个 `data/cases/**/case.json` 已由单协议文件转换为当前格式，ID 按转换前的规则保存，已有 Suite 引用保持原值。5 个通用文本 Case 增加两个协议的定义；4 个新 Suite 复用这些 Case：每个协议各有 connectivity 和 text-contract。其他 Case 保留适用的协议，Case 数量没有增加。
 
+K3 后续按官方 Responses 文档为现有 84 个 Case 中的 39 个配置原生定义，并新增连通性、基础与参数拒绝 Suite；当前目录为 717 个 Case、51 个 Suite。协议差异、剩余 45 个 Chat 场景与原生契约缺口见 [K3 Responses 覆盖矩阵](../../data/cases/kimi-k3/responses-coverage-matrix.md)。
+
 这是项目内部契约的替换。旧的 protocol/definition 包装和旧性能报告格式不被运行时读取。历史数据升级使用单独调用的临时脚本，先备份、生成候选、用当前代码校验，再替换；启动不执行迁移。
 
 本机升级于 2026-10-09 执行：37 次运行、148 个修订、35 份正式报告、35 份性能报告通过当前 Repository 读取校验。2538 份 JSON 文档逐一反向比较，除约定的格式字段外内容保持一致，数据库触发器保持一致。升级前数据库保存在本机应用数据目录的 `backups/20261009-multi-protocol-before-upgrade.db`；原始 Case 文件备份在 `.tmp/multi-protocol/authored-cases-schema1.zip`。历史备份保持原格式。其他安装需要另行离线升级。

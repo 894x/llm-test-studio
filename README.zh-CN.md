@@ -102,7 +102,7 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` 只接受所选 Case 声明的输入；省略 `--inputs` 时使用已声明默认值。`--all-cases` 选择已启用的自动 Case，手动或停用项会明确报错。`--dry-run` 仅准备请求，不联网，也不声称断言已通过。等待行为由 `workflow.mode` 定义，替代 `--no-wait`。
 
-仓库包含 717 个当前格式 Case、48 个 Suite 和 5 个性能 Plan。此前修改模型或认证的 16 个 Case 已停用，因为这些字段属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
+仓库包含 717 个当前格式 Case、51 个 Suite 和 5 个性能 Plan。K3 Responses 套件通过原生定义复用 39 个现有 Case ID；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。此前修改模型或认证的 16 个 Case 已停用，因为这些字段属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
 
 <details>
 <summary><strong>CLI 示例</strong></summary>

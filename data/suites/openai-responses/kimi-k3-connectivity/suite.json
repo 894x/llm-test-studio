@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "key": "openai-responses.kimi-k3.connectivity",
+  "name": "Kimi K3 Responses 连通性",
+  "protocol": "openai-responses",
+  "description": "Kimi K3 Responses 短请求、流式文本与用量连通性检查。",
+  "cases": [
+    {
+      "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+    },
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    },
+    {
+      "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+    }
+  ],
+  "inputs": []
+}

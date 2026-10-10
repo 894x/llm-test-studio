@@ -173,12 +173,20 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if err != nil {
 		t.Fatalf("query initialized catalog: %v", err)
 	}
-	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion ||
-		len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+len(catalogSnapshot.ChannelModels)+
-			len(catalogSnapshot.Plans) != 0 || len(catalogSnapshot.TestCases) != 717 || len(catalogSnapshot.Suites) != 48 {
-		t.Fatalf("initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, want 717 file-backed cases and 48 scenario suites",
-			len(catalogSnapshot.Models), len(catalogSnapshot.Channels), len(catalogSnapshot.ChannelModels),
-			len(catalogSnapshot.TestCases), len(catalogSnapshot.Suites), len(catalogSnapshot.Plans))
+	emptyBindings := len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+
+		len(catalogSnapshot.ChannelModels)+len(catalogSnapshot.Plans) == 0
+	validCatalogCounts := len(catalogSnapshot.TestCases) == 717 && len(catalogSnapshot.Suites) == 51
+	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion || !emptyBindings || !validCatalogCounts {
+		t.Fatalf(
+			"initialized catalog cardinalities = models:%d channels:%d mappings:%d cases:%d suites:%d plans:%d, "+
+				"want 717 file-backed cases and 51 scenario suites",
+			len(catalogSnapshot.Models),
+			len(catalogSnapshot.Channels),
+			len(catalogSnapshot.ChannelModels),
+			len(catalogSnapshot.TestCases),
+			len(catalogSnapshot.Suites),
+			len(catalogSnapshot.Plans),
+		)
 	}
 	runnable, disabled, manual := 0, 0, 0
 	for _, testCase := range catalogSnapshot.TestCases {
@@ -246,8 +254,8 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	}
 	database := filepath.Join(configurationRoot, "llm-test-studio", "llm-test-studio.db")
 	assertProductionOperationalSchemaV1(t, database)
-	if len(firstSnapshot.Suites) != 48 {
-		t.Fatalf("file suites = %d, want 48", len(firstSnapshot.Suites))
+	if len(firstSnapshot.Suites) != 51 {
+		t.Fatalf("file suites = %d, want 51", len(firstSnapshot.Suites))
 	}
 
 	second, err := initialize(context.Background())
@@ -267,15 +275,26 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if len(firstSnapshot.TestCases) != 717 || len(secondSnapshot.TestCases) != 717 {
 		t.Fatalf("case counts across restart = %d/%d, want 717/717", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
-	if len(firstSnapshot.Suites) != 48 || len(secondSnapshot.Suites) != 48 || len(firstSnapshot.Plans) != 0 || len(secondSnapshot.Plans) != 0 {
-		t.Fatalf("suite/plan counts across restart = %d/%d suites, %d/%d plans, want 48 scenario suites and no plans",
-			len(firstSnapshot.Suites), len(secondSnapshot.Suites), len(firstSnapshot.Plans), len(secondSnapshot.Plans))
+	validSuiteCounts := len(firstSnapshot.Suites) == 51 && len(secondSnapshot.Suites) == 51
+	noPlans := len(firstSnapshot.Plans) == 0 && len(secondSnapshot.Plans) == 0
+	if !validSuiteCounts || !noPlans {
+		t.Fatalf(
+			"suite/plan counts across restart = %d/%d suites, %d/%d plans, "+
+				"want 51 scenario suites and no plans",
+			len(firstSnapshot.Suites),
+			len(secondSnapshot.Suites),
+			len(firstSnapshot.Plans),
+			len(secondSnapshot.Plans),
+		)
 	}
 	wantSuites := map[string]struct {
 		target string
 		count  int
 	}{
 		"Kimi K3 官方基础套件":                  {target: "kimi-k3", count: 84},
+		"Kimi K3 Responses 连通性":           {target: "kimi-k3", count: 3},
+		"Kimi K3 Responses 官方基础套件":        {target: "kimi-k3", count: 39},
+		"Kimi K3 Responses 参数拒绝":          {target: "kimi-k3", count: 15},
 		"Kimi K2.7 Code 官方基础套件":           {target: "kimi-k2.7-code", count: 10},
 		"Kimi K2.7 Code Highspeed 官方基础套件": {target: "kimi-k2.7-code-highspeed", count: 10},
 		"Kimi K2.6 官方基础套件":                {target: "kimi-k2.6", count: 11},

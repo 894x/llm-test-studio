@@ -36,6 +36,70 @@
           "pointer": "/choices"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 1,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "你好"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "incomplete"
+        },
+        {
+          "id": "limit_reason",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/incomplete_details/reason",
+          "value": "max_output_tokens"
+        },
+        {
+          "id": "bounded_output",
+          "source": "usage",
+          "operator": "lte",
+          "pointer": "/output_tokens",
+          "value": 1
+        },
+        {
+          "id": "expected_issue_count",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 1
+        },
+        {
+          "id": "expected_issue",
+          "source": "issues",
+          "operator": "equals",
+          "pointer": "/0/code",
+          "value": "provider_incomplete"
+        }
+      ]
     }
   }
 }

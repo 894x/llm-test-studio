@@ -86,6 +86,95 @@
           "transform": "json"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "小林今年 28 岁。提取姓名和年龄。"
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "person",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "age": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name",
+                  "age"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "completed"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "json",
+          "source": "text",
+          "operator": "type",
+          "value": "object",
+          "transform": "json"
+        },
+        {
+          "id": "person",
+          "source": "text",
+          "operator": "equals",
+          "value": {
+            "name": "小林",
+            "age": 28
+          },
+          "transform": "json"
+        }
+      ]
     }
   }
 }

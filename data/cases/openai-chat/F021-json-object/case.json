@@ -66,6 +66,51 @@
           "transform": "json"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "返回包含 name 和 age 的 JSON 对象，name 为小林，age 为 28。"
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_object",
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/type",
+          "value": "invalid_request_error"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
     }
   }
 }

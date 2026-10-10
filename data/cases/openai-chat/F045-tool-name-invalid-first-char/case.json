@@ -49,6 +49,53 @@
           "transform": "trim"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 2048,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "调用工具"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "name": "1tool",
+              "description": "非法名称",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/type",
+          "value": "invalid_request_error"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
     }
   }
 }

@@ -37,6 +37,43 @@
           "transform": "trim"
         }
       ]
+    },
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "max_output_tokens": 1048576,
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "你好"
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/error/type",
+          "value": "invalid_request_error"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message",
+          "transform": "trim"
+        }
+      ]
     }
   }
 }

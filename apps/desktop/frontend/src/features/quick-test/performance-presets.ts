@@ -1,10 +1,42 @@
 import type { QuickPerformanceProfile } from "./data"
 
-export type QuickPerformancePresetID = "smoke" | "baseline" | "sustained" | "capacity"
+export type QuickPerformancePresetID =
+  | "smoke"
+  | "baseline"
+  | "uncached"
+  | "cached_suffix"
+  | "sustained"
+  | "capacity"
+
+const OPTIONAL_PROFILE_DEFAULTS: Partial<QuickPerformanceProfile> = {
+  load_mode: "fixed_concurrency",
+  arrival_pattern: "constant",
+  workload_mode: "fixed",
+  random_input: false,
+  random_seed: 1,
+  rate_per_second: 1,
+  max_in_flight: 256,
+  input_tokens_stddev: 0,
+  output_tokens_stddev: 0,
+  shared_prefix_tokens: 0,
+  warmup_requests: 0,
+  ramp_duration_ms: 0,
+  ramp_request_cap: 1_000,
+  slice_duration_ms: 0,
+  slo_ttft_ms: 0,
+  slo_tpot_ms: 0,
+  slo_e2e_ms: 0,
+  slo_target_percent: 0,
+  capacity_enabled: false,
+  capacity_start: 1,
+  capacity_step: 1,
+}
 
 export const QUICK_PERFORMANCE_PRESET_IDS: QuickPerformancePresetID[] = [
   "smoke",
   "baseline",
+  "uncached",
+  "cached_suffix",
   "sustained",
   "capacity",
 ]
@@ -22,6 +54,23 @@ const PRESETS: Record<QuickPerformancePresetID, QuickPerformanceProfile> = {
     load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed", random_input: false,
     request_count: 100, duration_ms: 0, concurrency: 4, rate_per_second: 1, max_in_flight: 256,
     timeout_ms: 60_000, input_tokens: 256, output_tokens: 128, random_seed: 1,
+    warmup_requests: 10, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 5,
+    slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+    capacity_enabled: false, capacity_start: 1, capacity_step: 1,
+  },
+  uncached: {
+    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed", random_input: true,
+    request_count: 500, duration_ms: 0, concurrency: 40, rate_per_second: 1, max_in_flight: 256,
+    timeout_ms: 60_000, input_tokens: 256, output_tokens: 128, random_seed: 1,
+    warmup_requests: 10, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 5,
+    slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+    capacity_enabled: false, capacity_start: 1, capacity_step: 1,
+  },
+  cached_suffix: {
+    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "normal", random_input: false,
+    request_count: 500, duration_ms: 0, concurrency: 40, rate_per_second: 1, max_in_flight: 256,
+    timeout_ms: 60_000, input_tokens: 256, output_tokens: 128, random_seed: 1,
+    input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 128,
     warmup_requests: 10, ramp_duration_ms: 0, ramp_request_cap: 1_000, slice_duration_ms: 5,
     slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
     capacity_enabled: false, capacity_start: 1, capacity_step: 1,
@@ -49,9 +98,10 @@ export function quickPerformanceProfileForPreset(id: QuickPerformancePresetID): 
 }
 
 export function quickPerformancePresetFromProfile(profile: QuickPerformanceProfile): QuickPerformancePresetID {
+  const normalized = { ...OPTIONAL_PROFILE_DEFAULTS, ...profile }
   const match = QUICK_PERFORMANCE_PRESET_IDS.find((id) =>
     Object.entries(PRESETS[id]).every(([key, value]) =>
-      profile[key as keyof QuickPerformanceProfile] === value,
+      normalized[key as keyof QuickPerformanceProfile] === value,
     ),
   )
   return match ?? "smoke"

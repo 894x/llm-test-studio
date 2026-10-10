@@ -88,10 +88,10 @@
       },
       "request": {
         "body": {
+          "max_output_tokens": 2048,
           "input": {
             "$input": "prompt"
           },
-          "max_output_tokens": 2048,
           "tools": [
             {
               "type": "function",
@@ -115,7 +115,7 @@
       },
       "assertions": [
         {
-          "id": "status",
+          "id": "http",
           "source": "http.status",
           "operator": "equals",
           "value": 200
@@ -127,18 +127,65 @@
           "value": 0
         },
         {
-          "id": "completed",
+          "id": "object",
           "source": "response",
-          "pointer": "/status",
           "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
           "value": "completed"
         },
         {
-          "id": "tool",
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "tool_count",
           "source": "metrics",
-          "pointer": "/tool_call_count",
           "operator": "gte",
+          "pointer": "/tool_call_count",
           "value": 1
+        },
+        {
+          "id": "function_call",
+          "source": "response",
+          "pointer": "/output",
+          "each_mode": "any",
+          "each": [
+            {
+              "id": "function_type",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/type",
+              "value": "function_call"
+            },
+            {
+              "id": "function_name",
+              "source": "item",
+              "operator": "equals",
+              "pointer": "/name",
+              "value": "get_weather"
+            },
+            {
+              "id": "call_id",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/call_id"
+            },
+            {
+              "id": "arguments",
+              "source": "item",
+              "operator": "json_valid",
+              "pointer": "/arguments"
+            }
+          ]
         }
       ]
     },

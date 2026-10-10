@@ -93,16 +93,16 @@
       },
       "request": {
         "body": {
+          "max_output_tokens": 2048,
           "input": {
             "$input": "prompt"
           },
-          "max_output_tokens": 2048,
           "stream": true
         }
       },
       "assertions": [
         {
-          "id": "status",
+          "id": "http",
           "source": "http.status",
           "operator": "equals",
           "value": 200
@@ -114,37 +114,83 @@
           "value": 0
         },
         {
-          "id": "completed",
+          "id": "object",
           "source": "response",
-          "pointer": "/status",
           "operator": "equals",
+          "pointer": "/object",
+          "value": "response"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
           "value": "completed"
         },
         {
-          "id": "stream",
-          "source": "stream.completed",
-          "operator": "equals",
-          "value": true
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
         },
         {
-          "id": "usage",
+          "id": "input_tokens",
           "source": "usage",
+          "operator": "gt",
           "pointer": "/input_tokens",
-          "operator": "gte",
           "value": 0
         },
         {
           "id": "output_tokens",
           "source": "usage",
+          "operator": "gt",
           "pointer": "/output_tokens",
-          "operator": "gte",
-          "value": 1
+          "value": 0
         },
         {
-          "id": "text",
+          "id": "usage_arithmetic",
+          "source": "usage",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/input_tokens",
+              "/output_tokens"
+            ]
+          }
+        },
+        {
+          "id": "visible_text",
           "source": "text",
           "operator": "non_empty",
           "transform": "trim"
+        },
+        {
+          "id": "input_tokens_type",
+          "source": "usage",
+          "operator": "type",
+          "pointer": "/input_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "output_tokens_type",
+          "source": "usage",
+          "operator": "type",
+          "pointer": "/output_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "total_tokens_type",
+          "source": "usage",
+          "operator": "type",
+          "pointer": "/total_tokens",
+          "value": "integer"
+        },
+        {
+          "id": "stream_terminal",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
         }
       ]
     },

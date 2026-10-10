@@ -37,7 +37,7 @@ func TestBundledSuiteReferencesAndInputMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 48 || len(byID) != 717 {
+	if len(entries) != 51 || len(byID) != 717 {
 		t.Fatalf("catalog size = %d Suites / %d Cases", len(entries), len(byID))
 	}
 	protocols := map[domain.Protocol]bool{}
