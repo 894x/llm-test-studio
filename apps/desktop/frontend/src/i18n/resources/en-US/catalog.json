@@ -170,7 +170,7 @@
       "serviceUrl": "Service URL",
       "apiKey": "API Key",
       "enabledChannel": "Enable channel",
-      "apiKeyEditHint": "Saved as an independent credential for the new channel version; historical plans keep using the previous version.",
+      "apiKeyEditHint": "Leave blank to keep the current API Key. Enter a new key to replace it.",
       "apiKeyNewHint": "Written only to the system keychain; never saved in the database or frontend snapshot.",
       "channelSaveHint": "The service URL and API Key are saved together as one channel configuration.",
       "selectChannelModel": "Select a channel and model",

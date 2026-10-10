@@ -170,7 +170,7 @@
       "serviceUrl": "服务地址",
       "apiKey": "API Key",
       "enabledChannel": "启用渠道",
-      "apiKeyEditHint": "保存为渠道新版本的独立凭据；历史计划继续使用旧版本。",
+      "apiKeyEditHint": "留空保留现有 API Key；填写新 Key 时替换。",
       "apiKeyNewHint": "仅写入系统密钥环，不会保存到数据库或前端快照。",
       "channelSaveHint": "服务地址和 API Key 会作为同一个渠道配置一起保存。",
       "selectChannelModel": "请选择渠道和模型",

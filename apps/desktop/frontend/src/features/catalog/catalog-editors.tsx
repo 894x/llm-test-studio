@@ -170,7 +170,7 @@ function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: For
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
   const [apiKey, setAPIKey] = useState("")
   return <FormShell pending={pending} label={tx("desktop:catalog_save_channel")} formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, tx("desktop:catalog_channel_name")), base_url: serviceURL(baseURL), api_key: required(apiKey, "API Key"), protocol, enabled }
+    const command = { name: required(name, tx("desktop:catalog_channel_name")), base_url: serviceURL(baseURL), api_key: item ? apiKey.trim() : required(apiKey, "API Key"), protocol, enabled }
     await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), tx("desktop:catalog_save_value", { value1: formTitle })); onSaved()
   }}>
     <TextField label={t("editor.fields.channelName")} value={name} onChange={setName} />

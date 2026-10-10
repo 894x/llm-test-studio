@@ -150,7 +150,7 @@ type UpdateChannelCommand struct {
 	ExpectedRevision uint64          `json:"expected_revision"`
 	Name             string          `json:"name"`
 	BaseURL          string          `json:"base_url"`
-	APIKey           string          `json:"api_key"`
+	APIKey           string          `json:"api_key"` // Empty keeps the current credential.
 	Protocol         domain.Protocol `json:"protocol"`
 	Enabled          bool            `json:"enabled"`
 }

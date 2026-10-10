@@ -75,7 +75,7 @@ type UpdateCommand struct {
 	ExpectedRevision uint64
 	Name             string
 	BaseURL          string
-	APIKey           string
+	APIKey           string // Empty keeps the current credential.
 	Protocol         domain.Protocol
 	Enabled          bool
 }
@@ -84,7 +84,7 @@ type MutationResult struct {
 	ChannelID          string
 	ChannelRevision    uint64
 	CredentialID       string
-	CredentialRevision uint64
+	CredentialRevision uint64 // Zero when no new credential was stored.
 }
 
 func New(dependencies Dependencies) (*Service, error) {
@@ -186,7 +186,10 @@ func (service *Service) Update(ctx context.Context, command UpdateCommand) (Muta
 }
 
 func (service *Service) update(ctx context.Context, command UpdateCommand) (MutationResult, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(command.ID) || command.ExpectedRevision == 0 || command.APIKey == "" {
+	if service == nil || ctx == nil {
+		return MutationResult{}, ErrInvalid
+	}
+	if !domain.IsUUID(command.ID) || command.ExpectedRevision == 0 {
 		return MutationResult{}, ErrInvalid
 	}
 	current, err := service.repository.GetChannel(ctx, command.ID)
@@ -199,6 +202,26 @@ func (service *Service) update(ctx context.Context, command UpdateCommand) (Muta
 	if current.Revision != command.ExpectedRevision {
 		return MutationResult{}, catalog.ErrConflict
 	}
+	channelMeta, err := current.EntityMeta.NextRevision(service.clock.Now())
+	if err != nil {
+		return MutationResult{}, err
+	}
+	updatedChannel := domain.Channel{
+		EntityMeta: channelMeta, Name: command.Name, BaseURL: command.BaseURL,
+		Protocol: command.Protocol, Enabled: command.Enabled, CredentialID: current.CredentialID,
+	}
+	if command.APIKey == "" {
+		if current.CredentialID == "" || updatedChannel.Validate() != nil {
+			return MutationResult{}, ErrInvalid
+		}
+		if err := service.repository.UpdateChannel(ctx, current.Revision, updatedChannel); err != nil {
+			return MutationResult{}, fmt.Errorf("persist channel revision: %w", err)
+		}
+		return MutationResult{
+			ChannelID: updatedChannel.ID, ChannelRevision: updatedChannel.Revision,
+			CredentialID: current.CredentialID,
+		}, nil
+	}
 	secret := []byte(command.APIKey)
 	defer clear(secret)
 	credentialMeta, err := service.metaFactory(service.clock.Now())
@@ -209,14 +232,7 @@ func (service *Service) update(ctx context.Context, command UpdateCommand) (Muta
 	if err != nil {
 		return MutationResult{}, ErrInvalid
 	}
-	channelMeta, err := current.EntityMeta.NextRevision(service.clock.Now())
-	if err != nil {
-		return MutationResult{}, err
-	}
-	updatedChannel := domain.Channel{
-		EntityMeta: channelMeta, Name: command.Name, BaseURL: command.BaseURL,
-		Protocol: command.Protocol, Enabled: command.Enabled, CredentialID: credentialMeta.ID,
-	}
+	updatedChannel.CredentialID = credentialMeta.ID
 	if err := updatedChannel.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
