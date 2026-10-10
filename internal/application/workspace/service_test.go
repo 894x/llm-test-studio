@@ -420,7 +420,7 @@ func validRun(t *testing.T, id string, plan domain.Plan, now time.Time) domain.R
 		Enabled: true, Default: true,
 		Severity: domain.CaseSeverityCritical, ExecutionMode: domain.CaseExecutionAutomatic, Definitions: domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[]}`)},
 	}
-	mapping := domain.ChannelModel{
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: meta(mappingID, now), ChannelID: channelID, ModelID: modelID,
 		UpstreamModelName: "gpt-upstream",
 	}

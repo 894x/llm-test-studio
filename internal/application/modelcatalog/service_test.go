@@ -328,7 +328,7 @@ func validModel(id string, now time.Time) domain.Model {
 	return domain.Model{
 		EntityMeta:   domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
 		Name:         "Model " + id,
-		Protocol:     domain.ProtocolOpenAIChat,
+		Protocols:    []domain.Protocol{domain.ProtocolOpenAIChat},
 		Capabilities: []string{"chat"},
 	}
 }

@@ -30,7 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
-import type { CatalogSnapshot, CatalogSuite } from "@/features/catalog/data"
+import type { CatalogProtocol, CatalogSnapshot, CatalogSuite } from "@/features/catalog/data"
 import { DEFAULT_CASE_CONCURRENCY, isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
 import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
 import type { ReportSnapshot } from "@/features/reports/data"
@@ -39,6 +39,7 @@ import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } f
 import { cn } from "@/lib/utils"
 import { taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
+import { protocolOptions } from "@/features/catalog/protocols"
 
 type Actions = Pick<
   DesktopClient,
@@ -92,7 +93,9 @@ export function QuickTaskWorkspace({
     null,
   )
   const [performanceOpen, setPerformanceOpen] = useState(false)
-  const currentTasks = catalog.suites
+  const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(draft.task?.protocol ?? "openai-chat")
+  const protocol = draft.task?.protocol ?? selectedProtocol
+  const currentTasks = catalog.suites.filter(item => item.protocol === protocol)
   const task = currentTasks.find((item) => item.id === draft.task?.id) ?? draft.task ?? currentTasks[0]
   const form =
     draft.task || !task
@@ -109,7 +112,7 @@ export function QuickTaskWorkspace({
       : currentTasks
   const channels = catalog.channels.filter(
     (channel) =>
-      channel.protocol === task?.protocol && channel.enabled && channel.credential_configured,
+      channel.enabled && channel.credential_configured,
   )
   const channel = channels.find((item) => item.id === form.channel_id)
   const missingChannel = !!form.channel_id && !channel
@@ -117,10 +120,10 @@ export function QuickTaskWorkspace({
   const models = [
     ...new Set([
       ...catalog.channel_models
-        .filter((mapping) => mapping.channel_id === form.channel_id)
+        .filter((mapping) => mapping.channel_id === form.channel_id && mapping.protocols.includes(protocol))
         .map((mapping) => mapping.upstream_model_name),
       ...catalog.models
-        .filter((model) => model.protocol === task?.protocol)
+        .filter((model) => !form.channel_id && model.protocols.includes(protocol))
         .map((model) => model.name),
     ]),
   ]
@@ -147,6 +150,12 @@ export function QuickTaskWorkspace({
       })
     update(next)
   }
+  const changeProtocol = (value: string) => {
+    const nextProtocol = value as CatalogProtocol
+    setSelectedProtocol(nextProtocol)
+    const next = createTaskDraft(catalog.suites.find(item => item.protocol === nextProtocol) ?? null)
+    update({ ...next, base_url: form.base_url, channel_id: form.channel_id, api_key: form.api_key, model: form.model })
+  }
   const refreshProgress = async () => {
     try {
       await refresh()
@@ -161,6 +170,8 @@ export function QuickTaskWorkspace({
       caseConcurrency,
     )
     if (missingChannel) checked.errors.channel_id = t("task.missingChannel")
+    const configuredMappings = catalog.channel_models.filter(mapping => mapping.channel_id === form.channel_id && mapping.upstream_model_name === form.model.trim())
+    if (configuredMappings.length > 0 && !configuredMappings.some(mapping => mapping.protocols.includes(protocol))) checked.errors.model = t("task.unsupportedModelProtocol")
     setErrors(checked.errors)
     if (Object.keys(checked.errors).length) {
       const field = Object.keys(checked.errors)[0]
@@ -286,6 +297,20 @@ export function QuickTaskWorkspace({
     setPerformanceOpen(true)
   }
 
+  const protocolField = (
+    <TaskField id="protocol" label={t("protocol")}>
+      <SearchableSelect
+        id="quick-task-protocol"
+        aria-label={t("protocol")}
+        value={protocol}
+        disabled={!!pending}
+        onValueChange={changeProtocol}
+        className="w-full"
+        options={protocolOptions.map(([value, label]) => ({ value, label }))}
+      />
+    </TaskField>
+  )
+
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="quick-test-heading">
       <header className="shrink-0 px-4 py-3">
@@ -301,10 +326,13 @@ export function QuickTaskWorkspace({
             aria-label={t("connection")}
           >
             {!task ? (
-              <Empty>
-                <EmptyTitle>{t("task.empty")}</EmptyTitle>
-                <EmptyDescription>{t("task.emptyHint")}</EmptyDescription>
-              </Empty>
+              <>
+                <div className="mb-4">{protocolField}</div>
+                <Empty>
+                  <EmptyTitle>{t("task.empty")}</EmptyTitle>
+                  <EmptyDescription>{t("task.emptyHint")}</EmptyDescription>
+                </Empty>
+              </>
             ) : (
               <form onSubmit={(event) => void submit(event)} noValidate>
                 <FieldGroup>
@@ -369,7 +397,7 @@ export function QuickTaskWorkspace({
                         </div>
                       )}
                     </TaskField>
-                    <TaskField id="model" label={t("model.label")} error={errors.model} className="col-span-full">
+                    <TaskField id="model" label={t("model.label")} error={errors.model}>
                       <Autocomplete
                         modal={false}
                         openOnInputClick
@@ -399,6 +427,7 @@ export function QuickTaskWorkspace({
                         </AutocompleteContent>
                       </Autocomplete>
                     </TaskField>
+                    {protocolField}
                   </div>
                   <TaskField id="api_key" label="API Key" error={errors.api_key}>
                     <Input

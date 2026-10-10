@@ -123,7 +123,7 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
 	}
-	if code := service.applySelectedChannel(ctx, command.ChannelID, command.Protocol, &command.AddressMode, &command.URL, &command.APIKey); code != "" {
+	if code := service.applySelectedChannel(ctx, &command); code != "" {
 		report.ErrorCode = code
 		return report, nil
 	}
@@ -643,21 +643,28 @@ func performanceTrafficSummary(requestCap uint64, outcome load.Outcome) *Perform
 	}
 }
 
-func (service *Service) applySelectedChannel(ctx context.Context, channelID string, selectedProtocol domain.Protocol, addressMode *AddressMode, address, apiKey *string) domain.ErrorCode {
-	if channelID == "" {
+func (service *Service) applySelectedChannel(ctx context.Context, command *PerformanceCommand) domain.ErrorCode {
+	if command.ChannelID == "" {
 		return ""
 	}
-	if !domain.IsUUID(channelID) || strings.TrimSpace(*apiKey) != "" || service.channelConnections == nil {
+	validSelection := domain.IsUUID(command.ChannelID) && strings.TrimSpace(command.APIKey) == ""
+	if !validSelection || service.channelConnections == nil {
 		return ErrorInvalidRequest
 	}
-	connection, err := service.channelConnections.Resolve(ctx, channelID)
-	if err != nil || connection.Protocol != selectedProtocol || strings.TrimSpace(connection.BaseURL) == "" || len(connection.APIKey) == 0 {
+	selection := ChannelSelection{ChannelID: command.ChannelID, Model: command.ModelID, Protocol: command.Protocol}
+	connection, err := service.channelConnections.Resolve(ctx, selection)
+	if err != nil {
 		clear(connection.APIKey)
 		return ErrorInvalidRequest
 	}
-	*addressMode = AddressModeBaseURL
-	*address = connection.BaseURL
-	*apiKey = string(connection.APIKey)
+	usableConnection := strings.TrimSpace(connection.BaseURL) != "" && len(connection.APIKey) != 0
+	if !usableConnection {
+		clear(connection.APIKey)
+		return ErrorInvalidRequest
+	}
+	command.AddressMode = AddressModeBaseURL
+	command.URL = connection.BaseURL
+	command.APIKey = string(connection.APIKey)
 	clear(connection.APIKey)
 	return ""
 }

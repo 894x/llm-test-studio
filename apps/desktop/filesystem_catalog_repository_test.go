@@ -1361,7 +1361,7 @@ func filesystemCatalogMappingFixtures(targetless bool) (domain.Channel, domain.C
 		EntityMeta: meta("62000000-0000-4000-8000-000000000001"),
 		Name:       "channel", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
 	}
-	mapping := domain.ChannelModel{
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: meta("62000000-0000-4000-8000-000000000002"),
 		ChannelID:  channel.ID, ModelID: "62000000-0000-4000-8000-000000000003", UpstreamModelName: "upstream-model",
 	}
@@ -1398,7 +1398,7 @@ func filesystemCatalogModelFixture(id string, protocol domain.Protocol) domain.M
 		EntityMeta: domain.EntityMeta{
 			ID: id, SchemaVersion: domain.CurrentEntitySchemaVersion, Revision: 1, CreatedAt: now, UpdatedAt: now,
 		},
-		Name: "model", Protocol: protocol,
+		Name: "model", Protocols: []domain.Protocol{protocol},
 	}
 }
 

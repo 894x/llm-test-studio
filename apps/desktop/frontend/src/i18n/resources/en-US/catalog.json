@@ -211,7 +211,9 @@
       "timeoutMs": "Per-request timeout in milliseconds",
       "slaJson": "SLA thresholds JSON",
       "sla": "SLA thresholds",
-      "targetPair": "Model and channel restrictions must both be empty or both configured"
+      "targetPair": "Model and channel restrictions must both be empty or both configured",
+      "modelProtocolsHint": "Select at least one protocol. Update mappings before removing a protocol they use.",
+      "mappingProtocolHint": "Select the protocols supported by this model on this channel. These determine eligible tests and endpoint paths."
     },
     "options": {
       "normal": "Normal",

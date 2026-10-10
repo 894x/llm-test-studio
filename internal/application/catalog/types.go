@@ -25,11 +25,11 @@ type Snapshot struct {
 }
 
 type ModelSummary struct {
-	ID           string          `json:"id"`
-	Revision     uint64          `json:"revision"`
-	Name         string          `json:"name"`
-	Protocol     domain.Protocol `json:"protocol"`
-	Capabilities []string        `json:"capabilities"`
+	ID           string            `json:"id"`
+	Revision     uint64            `json:"revision"`
+	Name         string            `json:"name"`
+	Protocols    []domain.Protocol `json:"protocols"`
+	Capabilities []string          `json:"capabilities"`
 }
 
 type ChannelSummary struct {
@@ -44,11 +44,12 @@ type ChannelSummary struct {
 }
 
 type ChannelModelSummary struct {
-	ID                string `json:"id"`
-	Revision          uint64 `json:"revision"`
-	ChannelID         string `json:"channel_id"`
-	ModelID           string `json:"model_id"`
-	UpstreamModelName string `json:"upstream_model_name"`
+	ID                string            `json:"id"`
+	Revision          uint64            `json:"revision"`
+	ChannelID         string            `json:"channel_id"`
+	ModelID           string            `json:"model_id"`
+	UpstreamModelName string            `json:"upstream_model_name"`
+	Protocols         []domain.Protocol `json:"protocols"`
 }
 
 type TestCaseSummary struct {
@@ -122,17 +123,17 @@ type DeleteCommand struct {
 }
 
 type CreateModelCommand struct {
-	Name         string          `json:"name"`
-	Protocol     domain.Protocol `json:"protocol"`
-	Capabilities []string        `json:"capabilities"`
+	Name         string            `json:"name"`
+	Protocols    []domain.Protocol `json:"protocols"`
+	Capabilities []string          `json:"capabilities"`
 }
 
 type UpdateModelCommand struct {
-	ID               string          `json:"id"`
-	ExpectedRevision uint64          `json:"expected_revision"`
-	Name             string          `json:"name"`
-	Protocol         domain.Protocol `json:"protocol"`
-	Capabilities     []string        `json:"capabilities"`
+	ID               string            `json:"id"`
+	ExpectedRevision uint64            `json:"expected_revision"`
+	Name             string            `json:"name"`
+	Protocols        []domain.Protocol `json:"protocols"`
+	Capabilities     []string          `json:"capabilities"`
 }
 
 type CreateChannelCommand struct {
@@ -155,17 +156,19 @@ type UpdateChannelCommand struct {
 }
 
 type CreateChannelModelCommand struct {
-	ChannelID         string `json:"channel_id"`
-	ModelID           string `json:"model_id"`
-	UpstreamModelName string `json:"upstream_model_name"`
+	ChannelID         string            `json:"channel_id"`
+	ModelID           string            `json:"model_id"`
+	UpstreamModelName string            `json:"upstream_model_name"`
+	Protocols         []domain.Protocol `json:"protocols"`
 }
 
 // UpdateChannelModelCommand deliberately omits ChannelID and ModelID because a
 // binding's two owners are immutable after creation.
 type UpdateChannelModelCommand struct {
-	ID                string `json:"id"`
-	ExpectedRevision  uint64 `json:"expected_revision"`
-	UpstreamModelName string `json:"upstream_model_name"`
+	ID                string            `json:"id"`
+	ExpectedRevision  uint64            `json:"expected_revision"`
+	UpstreamModelName string            `json:"upstream_model_name"`
+	Protocols         []domain.Protocol `json:"protocols"`
 }
 
 type CreateTestCaseCommand struct {

@@ -187,6 +187,20 @@ func (repository filesystemCatalogRepository) CreateModel(ctx context.Context, m
 
 func (repository filesystemCatalogRepository) UpdateModel(ctx context.Context, expectedRevision uint64, model domain.Model) error {
 	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
+		mappings, err := repository.ListChannelModels(ctx)
+		if err != nil {
+			return err
+		}
+		for _, mapping := range mappings {
+			if mapping.ModelID != model.ID {
+				continue
+			}
+			for _, value := range mapping.Protocols {
+				if !model.SupportsProtocol(value) {
+					return catalog.ErrConflict
+				}
+			}
+		}
 		return state.write(func() error { return mapFileCatalogError(repository.models.Update(ctx, expectedRevision, model)) })
 	}, func(verifyCtx context.Context) (bool, error) {
 		got, err := repository.GetModel(verifyCtx, model.ID)
@@ -608,12 +622,14 @@ func (repository filesystemCatalogRepository) validateMappingReferencesUnlocked(
 	if err != nil {
 		return err
 	}
-	channel, err := repository.GetChannel(ctx, mapping.ChannelID)
+	_, err = repository.GetChannel(ctx, mapping.ChannelID)
 	if err != nil {
 		return err
 	}
-	if model.Protocol != channel.Protocol {
-		return catalog.ErrInvalid
+	for _, value := range mapping.Protocols {
+		if !model.SupportsProtocol(value) {
+			return catalog.ErrInvalid
+		}
 	}
 	return nil
 }

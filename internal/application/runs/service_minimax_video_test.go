@@ -14,8 +14,9 @@ import (
 
 func TestPrepareTargetStartsMiniMaxDirectlyAndRejectsMixedProtocol(t *testing.T) {
 	fixture := newRunFixture(t)
-	fixture.model.Protocol = domain.ProtocolMiniMaxVideo
+	fixture.model.Protocols[0] = domain.ProtocolMiniMaxVideo
 	fixture.channel.Protocol = domain.ProtocolMiniMaxVideo
+	fixture.mapping.Protocols = []domain.Protocol{domain.ProtocolMiniMaxVideo}
 	fixture.mapping.UpstreamModelName = "MiniMax-H3"
 	fixture.suite.Protocol = domain.ProtocolMiniMaxVideo
 	fixture.plan.Protocol = domain.ProtocolMiniMaxVideo

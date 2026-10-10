@@ -134,7 +134,8 @@ type FormProps<T> = {
 function ModelForm({ item, catalog, actions, mutate, pending, formTitle, onSaved }: FormProps<CatalogModel>) {
   const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
-  const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
+  const [protocols, setProtocols] = useState<CatalogProtocol[]>(item?.protocols ?? ["openai-chat"])
+  const usedProtocols = new Set(catalog.channel_models.filter(mapping => mapping.model_id === item?.id).flatMap(mapping => mapping.protocols))
   const [capabilities, setCapabilities] = useState<string[]>(item?.capabilities ?? [])
   const suggestedCapabilities = ["chat", "tools", "vision"] as const
   const capabilityOptions = [
@@ -144,11 +145,15 @@ function ModelForm({ item, catalog, actions, mutate, pending, formTitle, onSaved
       .map((value) => ({ value, label: value })),
   ]
   return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.model") })} formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, t("editor.fields.modelName")), protocol, capabilities }
+    const command = { name: required(name, t("editor.fields.modelName")), protocols, capabilities }
     await mutate(() => item ? actions.updateModel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createModel(command), t("editor.savedOperation", { title: formTitle })); onSaved()
   }}>
     <TextField label={t("editor.fields.modelName")} value={name} onChange={setName} />
-    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <Field className="block space-y-2"><FieldLabel>{t("protocolDesign.supportedProtocols")}</FieldLabel><FieldDescription>{t("editor.fields.modelProtocolsHint")}</FieldDescription>
+      <div className="grid grid-cols-2 gap-2">{protocolOptions.map(([value, label]) => <CheckField key={value} label={label}
+        checked={protocols.includes(value)} disabled={pending || usedProtocols.has(value) || (protocols.length === 1 && protocols.includes(value))}
+        onChange={checked => setProtocols(current => checked ? [...current, value] : current.filter(item => item !== value))} />)}</div>
+    </Field>
     <TagAutocomplete label={t("editor.fields.modelCapabilities")} value={capabilities} onChange={setCapabilities}
       options={capabilityOptions} description={t("editor.fields.capabilityHint")} disabled={pending}
       placeholder={t("capabilities.placeholder")} emptyText={t("capabilities.empty")}
@@ -181,19 +186,27 @@ function MappingForm({ item, catalog, actions, mutate, pending, formTitle, onSav
   const { t: tx } = useTranslation()
   const { t } = useTranslation("catalog")
   const [channelID, setChannelID] = useState(item?.channel_id ?? initialMapping?.channel_id ?? catalog.channels[0]?.id ?? "")
-  const compatibleModels = catalog.models.filter((model) => model.protocol === catalog.channels.find((channel) => channel.id === channelID)?.protocol)
+  const compatibleModels = catalog.models
   const [modelID, setModelID] = useState(item?.model_id ?? initialMapping?.model_id ?? compatibleModels[0]?.id ?? "")
+  const model = catalog.models.find(value => value.id === modelID)
+  const [protocols, setProtocols] = useState<CatalogProtocol[]>(item?.protocols ?? model?.protocols ?? [])
   const [upstreamName, setUpstreamName] = useState(item?.upstream_model_name ?? "")
   return <FormShell pending={pending} label={tx("desktop:catalog_save_mapping")} formTitle={formTitle} onSubmit={async () => {
     if (!channelID) throw new FormValidationError(tx("desktop:catalog_channel"), tx("desktop:catalog_select_a_channel"))
     if (!modelID) throw new FormValidationError(tx("desktop:catalog_logical_model"), tx("desktop:catalog_select_a_logical_model"))
     await mutate(() => item
-      ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel")) })
-      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel")) }), t("editor.savedOperation", { title: formTitle }))
+      ? actions.updateChannelModel({ id: item.id, expected_revision: item.revision, protocols, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel")) })
+      : actions.createChannelModel({ channel_id: channelID, model_id: modelID, protocols, upstream_model_name: required(upstreamName, t("editor.fields.upstreamModel")) }), t("editor.savedOperation", { title: formTitle }))
     onSaved()
   }}>
-    <SelectField label={t("common.channel")} value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={(value) => { setChannelID(value); const protocol = catalog.channels.find((channel) => channel.id === value)?.protocol; setModelID(catalog.models.find((model) => model.protocol === protocol)?.id ?? "") }} />
-    <SelectField label={t("editor.fields.logicalModel")} value={modelID} disabled={!!item} options={compatibleModels.map((value) => [value.id, value.name])} onChange={setModelID} />
+    <SelectField label={t("common.channel")} value={channelID} disabled={!!item} options={catalog.channels.map((value) => [value.id, value.name])} onChange={setChannelID} />
+    <SelectField label={t("editor.fields.logicalModel")} value={modelID} disabled={!!item} options={compatibleModels.map((value) => [value.id, value.name])} onChange={value => { setModelID(value); setProtocols(catalog.models.find(model => model.id === value)!.protocols) }} />
+    <Field className="block space-y-2"><FieldLabel>{t("protocolDesign.supportedProtocols")}</FieldLabel>
+      <div className="grid grid-cols-2 gap-2">{protocolOptions.filter(([value]) => model?.protocols.includes(value)).map(([value, label]) => <CheckField key={value} label={label}
+        checked={protocols.includes(value)} disabled={pending || (protocols.length === 1 && protocols.includes(value))}
+        onChange={checked => setProtocols(current => checked ? [...current, value] : current.filter(item => item !== value))} />)}</div>
+      <FieldDescription>{t("editor.fields.mappingProtocolHint")}</FieldDescription>
+    </Field>
     <TextField label={t("editor.fields.upstreamModel")} value={upstreamName} onChange={setUpstreamName} />
   </FormShell>
 }
@@ -477,12 +490,12 @@ function SelectField({ fieldKey, label, value, options, onChange, disabled = fal
   const errorID = `${id}-error`
   return <Field className="block" data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><FieldLabel htmlFor={id}>{label}</FieldLabel><FieldContent><SearchableSelect value={value} onValueChange={(next) => { validation.clear(); onChange(next) }} disabled={disabled} id={id} aria-label={label} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} className="w-full" options={[...options.map(([optionID, text]) => ({value: optionID, label: text}))]} />{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
-function CheckField({ fieldKey, label, checked, onChange, clearFields = [], controlID }: { fieldKey?: string; label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string }) {
+function CheckField({ fieldKey, label, checked, onChange, clearFields = [], controlID, disabled }: { fieldKey?: string; label: string; checked: boolean; onChange: (value: boolean) => void; clearFields?: string[]; controlID?: string; disabled?: boolean }) {
   const key = fieldKey ?? label
   const validation = useCatalogValidation(key, clearFields, label)
   const id = controlID ?? `${catalogFieldID(key)}-check`
   const errorID = `${id}-error`
-  return <Field data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
+  return <Field data-invalid={validation.invalid || undefined} data-field-key={key} data-field-name={label}><Checkbox id={id} aria-invalid={validation.invalid || undefined} aria-describedby={validation.invalid ? errorID : undefined} checked={checked} disabled={disabled} onCheckedChange={(value) => { validation.clear(); onChange(value === true) }} /><FieldContent><FieldLabel htmlFor={id}>{label}</FieldLabel>{validation.message ? <FieldError id={errorID}>{validation.message}</FieldError> : null}</FieldContent></Field>
 }
 function ChoiceList({ fieldKey, label, values, selected, onChange, clearFields = [], multiColumn = false }: { multiColumn?: boolean; fieldKey?: string; label: string; values: {id:string;label:string}[]; selected: Set<string>; onChange: (value: Set<string>) => void; clearFields?: string[] }) {
   const { t: tx } = useTranslation()

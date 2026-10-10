@@ -27,7 +27,7 @@ export interface CatalogModel {
   id: string
   revision: number
   name: string
-  protocol: CatalogProtocol
+  protocols: CatalogProtocol[]
   capabilities: string[]
 }
 
@@ -48,6 +48,7 @@ export interface CatalogChannelModel {
   channel_id: string
   model_id: string
   upstream_model_name: string
+  protocols: CatalogProtocol[]
 }
 
 export type CaseDefinitions = Partial<Record<CatalogProtocol, Record<string, unknown>>>
@@ -97,12 +98,12 @@ export interface CatalogPlan {
   entry_count: number; case_count: number; entries: CatalogPlanEntry[]; performance?: QuickPerformanceProfile
 }
 
-export type CreateModelCommand = Pick<CatalogModel, "name" | "protocol" | "capabilities">
+export type CreateModelCommand = Pick<CatalogModel, "name" | "protocols" | "capabilities">
 export type UpdateModelCommand = CreateModelCommand & { id: string; expected_revision: number }
 export type CreateChannelCommand = Pick<CatalogChannel, "name" | "base_url" | "protocol" | "enabled"> & { api_key: string }
 export type UpdateChannelCommand = CreateChannelCommand & { id: string; expected_revision: number }
-export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name">
-export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name"> & { id: string; expected_revision: number }
+export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name" | "protocols">
+export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name" | "protocols"> & { id: string; expected_revision: number }
 export type CreateTestCaseCommand = Pick<CatalogTestCase,
   "key" | "name" | "dimension" | "enabled" | "default" | "severity" |
   "execution_mode" | "definitions"
@@ -205,7 +206,7 @@ export function parseCatalogSnapshot(value: unknown): CatalogSnapshot {
   for (const mapping of channelModels) {
     const model = modelByID.get(mapping.model_id)
     const channel = channelByID.get(mapping.channel_id)
-    if (!model || !channel || model.protocol !== channel.protocol) {
+    if (!model || !channel || mapping.protocols.some(value => !model.protocols.includes(value))) {
       throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_model_mapping_reference"))
     }
     const binding = `${mapping.channel_id}\u0000${mapping.model_id}`
@@ -242,7 +243,9 @@ function parseModel(value: unknown): CatalogModel {
     !isUUID(value.id) ||
     !isPositiveInteger(value.revision) ||
     !isNonBlank(value.name) ||
-    !isProtocol(value.protocol) ||
+    "protocol" in value ||
+    !Array.isArray(value.protocols) || value.protocols.length === 0 ||
+    !value.protocols.every(isProtocol) || new Set(value.protocols).size !== value.protocols.length ||
     !isUniqueStrings(value.capabilities)
   ) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_model_data"))
@@ -251,7 +254,7 @@ function parseModel(value: unknown): CatalogModel {
     id: value.id,
     revision: value.revision,
     name: value.name,
-    protocol: value.protocol,
+    protocols: [...value.protocols] as CatalogProtocol[],
     capabilities: [...value.capabilities],
   }
 }
@@ -289,7 +292,10 @@ function parseChannelModel(value: unknown): CatalogChannelModel {
     !isPositiveInteger(value.revision) ||
     !isUUID(value.channel_id) ||
     !isUUID(value.model_id) ||
-    !isNonBlank(value.upstream_model_name)
+    !isNonBlank(value.upstream_model_name) ||
+    "protocol" in value ||
+    !Array.isArray(value.protocols) || value.protocols.length === 0 ||
+    !value.protocols.every(isProtocol) || new Set(value.protocols).size !== value.protocols.length
   ) {
     throw new DesktopDataError(tx("desktop:catalog_invalid_desktop_catalog_model_mapping_data"))
   }
@@ -299,6 +305,7 @@ function parseChannelModel(value: unknown): CatalogChannelModel {
     channel_id: value.channel_id,
     model_id: value.model_id,
     upstream_model_name: value.upstream_model_name,
+    protocols: [...value.protocols] as CatalogProtocol[],
   }
 }
 

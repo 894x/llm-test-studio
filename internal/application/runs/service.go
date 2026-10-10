@@ -270,8 +270,9 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	if err != nil {
 		return "", fmt.Errorf("resolve run binding: %w", err)
 	}
-	bindingMatches := model.Protocol == plan.Protocol && channel.Protocol == plan.Protocol && mapping.ModelID == model.ID && mapping.ChannelID == channel.ID
-	if !channel.Enabled || !bindingMatches {
+	protocolSupported := model.SupportsProtocol(plan.Protocol) && mapping.SupportsProtocol(plan.Protocol)
+	bindingMatches := mapping.ModelID == model.ID && mapping.ChannelID == channel.ID
+	if !channel.Enabled || !bindingMatches || !protocolSupported {
 		return "", ErrNotRunnable
 	}
 	timings = append(timings, startPhaseTiming{operation: "start_run_resolve_binding", duration: time.Since(phaseStartedAt)})
@@ -314,9 +315,16 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 	snapshot := domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
-		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
-		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
-		Environment:   service.environment(), PlanDocument: &planDocument, Mapping: &mappingDocument, Entries: entries,
+		Model: domain.ModelSnapshot{
+			EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision},
+			Name:              model.Name, Protocol: plan.Protocol, Capabilities: append([]string{}, model.Capabilities...),
+		},
+		Channel: domain.ChannelSnapshot{
+			EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision},
+			Name:              channel.Name, BaseURL: channel.BaseURL, Protocol: plan.Protocol,
+			UpstreamModelName: mapping.UpstreamModelName,
+		},
+		Environment: service.environment(), PlanDocument: &planDocument, Mapping: &mappingDocument, Entries: entries,
 	}
 	runID, err := service.prepareRun(ctx, meta, plan.ID, snapshot, lease)
 	if err != nil {

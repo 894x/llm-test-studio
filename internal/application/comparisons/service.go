@@ -128,15 +128,14 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (string
 	}
 	channelRefs := make([]domain.EntityRevisionRef, len(command.ChannelIDs))
 	var modelRevision uint64
-	var protocol domain.Protocol
 	for index, channelID := range command.ChannelIDs {
 		model, channel, mapping, resolveErr := service.repository.ResolvePlanTargetSelection(ctx, plan, command.ModelID, channelID)
 		if classifyErr := classifyComparisonTarget(command.ModelID, plan, model, channel, mapping, resolveErr); classifyErr != nil {
 			return "", classifyErr
 		}
 		if index == 0 {
-			modelRevision, protocol = model.Revision, model.Protocol
-		} else if model.Revision != modelRevision || model.Protocol != protocol {
+			modelRevision = model.Revision
+		} else if model.Revision != modelRevision {
 			return "", ErrNotReady
 		}
 		channelRefs[index] = domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}
@@ -195,7 +194,7 @@ func classifyComparisonTarget(modelID string, plan domain.Plan, model domain.Mod
 		}
 	}
 	bindingMatches := model.ID == modelID && mapping.ChannelID == channel.ID && mapping.ModelID == model.ID &&
-		channel.Protocol == model.Protocol && model.Protocol == plan.Protocol
+		model.SupportsProtocol(plan.Protocol) && mapping.SupportsProtocol(plan.Protocol)
 	if !bindingMatches {
 		return ErrNotReady
 	}

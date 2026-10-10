@@ -410,7 +410,7 @@ export function createFixtureClient(
         id: command.id,
         revision: command.expected_revision + 1,
         name: command.name,
-        protocol: command.protocol,
+        protocols: [...command.protocols],
         capabilities: [...command.capabilities],
       })
       return structuredClone(catalogState)
@@ -454,6 +454,7 @@ export function createFixtureClient(
         ...current,
         revision: command.expected_revision + 1,
         upstream_model_name: command.upstream_model_name,
+        protocols: [...command.protocols],
       })
       return structuredClone(catalogState)
     },

@@ -22,7 +22,7 @@ func TestMultiSuitePlanRunsInOrderContinuesAfterFailureAndKeepsOwnership(t *test
 			ID: "85000000-0000-4000-8000-000000000001", SchemaVersion: 1, Revision: 1,
 			CreatedAt: fixture.now, UpdatedAt: fixture.now,
 		},
-		Key: "ordered", Name: "Ordered", Protocol: fixture.model.Protocol,
+		Key: "ordered", Name: "Ordered", Protocol: fixture.model.Protocols[0],
 		Cases:  []domain.CaseRef{{CaseID: fixture.testCase.ID}},
 		Inputs: []domain.SuiteInput{{Key: "prompt", Label: "Prompt", Input: testspec.Input{Type: "string", Default: json.RawMessage(`"default"`)}, Bindings: []domain.SuiteInputBinding{{CaseID: fixture.testCase.ID, Input: "prompt"}}}},
 	}
@@ -97,7 +97,7 @@ func TestMultiSuitePlanCancellationStopsBeforeTheNextSuite(t *testing.T) {
 			ID: "85000000-0000-4000-8000-000000000011", SchemaVersion: 1, Revision: 1,
 			CreatedAt: fixture.now, UpdatedAt: fixture.now,
 		},
-		Key: "cancel-order", Name: "Cancel order", Protocol: fixture.model.Protocol, Inputs: []domain.SuiteInput{},
+		Key: "cancel-order", Name: "Cancel order", Protocol: fixture.model.Protocols[0], Inputs: []domain.SuiteInput{},
 		Cases: []domain.CaseRef{{CaseID: fixture.testCase.ID}},
 	}
 	load := domain.LoadProfile{Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 1_000}
@@ -180,7 +180,7 @@ func TestQueuedMultiSuitePlanCancellationGeneratesOneReportWithoutExecution(t *t
 			ID: "85000000-0000-4000-8000-000000000021", SchemaVersion: 1, Revision: 1,
 			CreatedAt: fixture.now, UpdatedAt: fixture.now,
 		},
-		Key: "queued-cancel", Name: "Queued cancel", Protocol: fixture.model.Protocol, Inputs: []domain.SuiteInput{},
+		Key: "queued-cancel", Name: "Queued cancel", Protocol: fixture.model.Protocols[0], Inputs: []domain.SuiteInput{},
 		Cases: []domain.CaseRef{{CaseID: fixture.testCase.ID}},
 	}
 	fixture.plan.Entries = []domain.PlanEntry{{

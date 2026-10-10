@@ -3,6 +3,28 @@ import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { parseCatalogSnapshot } from "./data"
 
 describe("reference-only protocol catalog", () => {
+
+  it("accepts per-channel protocol subsets independent of the channel default", () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.models[0].protocols = ["openai-chat", "openai-responses"]
+    catalog.channel_models[0].protocols = ["openai-responses"]
+    expect(parseCatalogSnapshot(catalog).channel_models[0].protocols).toEqual(["openai-responses"])
+    catalog.channel_models[0].protocols = ["anthropic-messages"]
+    expect(() => parseCatalogSnapshot(catalog)).toThrow()
+  })
+
+  it("rejects superseded model and mapping fields without changing input", () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    const old = { ...catalog.models[0], protocol: "openai-chat" } as Record<string, unknown>
+    delete old.protocols
+    const input = { ...catalog, models: [old, ...catalog.models.slice(1)] }
+    const before = structuredClone(input)
+    expect(() => parseCatalogSnapshot(input)).toThrow()
+    expect(input).toEqual(before)
+    const missing = { ...catalog.channel_models[0] } as Record<string, unknown>
+    delete missing.protocols
+    expect(() => parseCatalogSnapshot({ ...catalog, channel_models: [missing, ...catalog.channel_models.slice(1)] })).toThrow()
+  })
   it("parses the current contract with unpinned references and root seed", () => {
     const parsed = parseCatalogSnapshot(FIXTURE_CATALOG)
     expect(parsed.plans[0]).toMatchObject({ protocol: "openai-chat", seed: 1 })

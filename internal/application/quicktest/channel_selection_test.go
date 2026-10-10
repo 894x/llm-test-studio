@@ -17,8 +17,8 @@ type stubChannelConnectionResolver struct {
 	channelID  string
 }
 
-func (resolver *stubChannelConnectionResolver) Resolve(_ context.Context, channelID string) (ChannelConnection, error) {
-	resolver.channelID = channelID
+func (resolver *stubChannelConnectionResolver) Resolve(_ context.Context, selection ChannelSelection) (ChannelConnection, error) {
+	resolver.channelID = selection.ChannelID
 	return resolver.connection, nil
 }
 
@@ -33,7 +33,7 @@ func TestPerformanceResolvesSelectedChannelCredentialInsideApplicationCore(t *te
 	defer server.Close()
 
 	secret := []byte("stored-secret")
-	resolver := &stubChannelConnectionResolver{connection: ChannelConnection{Protocol: domain.ProtocolOpenAIChat, BaseURL: server.URL + "/v1",
+	resolver := &stubChannelConnectionResolver{connection: ChannelConnection{BaseURL: server.URL + "/v1",
 		APIKey: secret,
 	}}
 	service := New(Dependencies{
@@ -64,7 +64,12 @@ func TestPerformanceResolvesSelectedChannelCredentialInsideApplicationCore(t *te
 }
 
 type storedChannelRepository struct {
-	channel domain.Channel
+	channel  domain.Channel
+	mappings []domain.ChannelModel
+}
+
+func (repository storedChannelRepository) ListChannelModels(context.Context) ([]domain.ChannelModel, error) {
+	return repository.mappings, nil
 }
 
 func (repository storedChannelRepository) GetChannel(context.Context, string) (domain.Channel, error) {
@@ -87,12 +92,18 @@ func TestStoredChannelConnectionResolverReadsTheBoundCredentialStore(t *testing.
 	repository := storedChannelRepository{
 		channel: domain.Channel{
 			EntityMeta: domain.EntityMeta{ID: channelID, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-			Name:       "OpenAI 主渠道", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+			Name:       "OpenAI 主渠道", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIResponses,
 			Enabled: true, CredentialID: credentialID,
 		},
+		mappings: []domain.ChannelModel{{
+			EntityMeta: domain.EntityMeta{ID: "20000000-0000-4000-8000-000000000001", SchemaVersion: 1,
+				Revision: 1, CreatedAt: now, UpdatedAt: now},
+			ChannelID: channelID, ModelID: "30000000-0000-4000-8000-000000000001",
+			UpstreamModelName: "model-a", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
+		}},
 	}
 
-	connection, err := NewStoredChannelConnectionResolver(repository, store).Resolve(context.Background(), channelID)
+	connection, err := NewStoredChannelConnectionResolver(repository, store).Resolve(context.Background(), ChannelSelection{ChannelID: channelID, Protocol: domain.ProtocolOpenAIChat, Model: "model-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,4 +111,22 @@ func TestStoredChannelConnectionResolverReadsTheBoundCredentialStore(t *testing.
 	if connection.BaseURL != repository.channel.BaseURL || string(connection.APIKey) != "stored-secret" {
 		t.Fatalf("connection = %#v", connection)
 	}
+
+	repository.mappings[0].Protocols = []domain.Protocol{domain.ProtocolOpenAIResponses}
+	selection := ChannelSelection{ChannelID: channelID, Protocol: domain.ProtocolOpenAIChat, Model: "model-a"}
+	denied, err := NewStoredChannelConnectionResolver(repository, store).Resolve(context.Background(), selection)
+	if err != errChannelConnectionUnavailable || len(denied.APIKey) != 0 {
+		t.Fatal("unsupported mapped protocol must fail before resolving credentials")
+	}
+
+	alias := repository.mappings[0]
+	alias.ID = "20000000-0000-4000-8000-000000000002"
+	alias.ModelID = "30000000-0000-4000-8000-000000000002"
+	alias.Protocols = []domain.Protocol{domain.ProtocolOpenAIChat}
+	repository.mappings = append(repository.mappings, alias)
+	accepted, err := NewStoredChannelConnectionResolver(repository, store).Resolve(context.Background(), selection)
+	if err != nil {
+		t.Fatalf("another mapping of the same upstream model supports this protocol: %v", err)
+	}
+	clear(accepted.APIKey)
 }

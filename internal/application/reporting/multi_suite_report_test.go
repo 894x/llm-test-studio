@@ -120,7 +120,7 @@ func multiSuiteReportFixture(t *testing.T, now time.Time) (domain.Run, []domain.
 		EntityMeta: generatorMeta(planID, now), Name: "Repeated suites",
 		Protocol: domain.ProtocolOpenAIChat, Entries: entries,
 	}
-	mapping := domain.ChannelModel{
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: generatorMeta(mappingID, now), ChannelID: channelID,
 		ModelID: modelID, UpstreamModelName: "upstream",
 	}

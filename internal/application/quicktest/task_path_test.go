@@ -36,7 +36,7 @@ func TestPerformanceUsesPinnedSuitePathForTemporaryAndSavedConnections(t *testin
 			}}
 			if mode == "channel" {
 				command.ChannelID, command.APIKey, command.URL = "123e4567-e89b-42d3-a456-426614174003", "", "https://ignored.example.test"
-				dependencies.ChannelConnections = &stubChannelConnectionResolver{connection: ChannelConnection{Protocol: domain.ProtocolOpenAIChat, BaseURL: server.URL + "/proxy", APIKey: []byte("test-key")}}
+				dependencies.ChannelConnections = &stubChannelConnectionResolver{connection: ChannelConnection{BaseURL: server.URL + "/proxy", APIKey: []byte("test-key")}}
 			}
 			if mode == "remembered" {
 				command.CredentialRunID, command.APIKey = task.SourceRunID, ""

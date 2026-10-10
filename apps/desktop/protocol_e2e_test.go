@@ -100,13 +100,13 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 	for _, protocol := range []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolSeedance, domain.ProtocolWanVideo, domain.ProtocolMiniMaxVideo} {
 		t.Run(string(protocol), func(t *testing.T) {
 			before := requests.Load()
-			modelSnapshot, err := app.CreateModel(catalog.CreateModelCommand{Name: "E2E " + string(protocol), Protocol: protocol, Capabilities: []string{}})
+			modelSnapshot, err := app.CreateModel(catalog.CreateModelCommand{Name: "E2E " + string(protocol), Protocols: []domain.Protocol{protocol}, Capabilities: []string{}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			var modelID string
 			for _, item := range modelSnapshot.Models {
-				if item.Protocol == protocol {
+				if item.Protocols[0] == protocol {
 					modelID = item.ID
 				}
 			}
@@ -120,7 +120,7 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 					channelID = item.ID
 				}
 			}
-			if _, err = app.CreateChannelModel(catalog.CreateChannelModelCommand{ChannelID: channelID, ModelID: modelID, UpstreamModelName: "e2e-upstream"}); err != nil {
+			if _, err = app.CreateChannelModel(catalog.CreateChannelModelCommand{Protocols: []domain.Protocol{protocol}, ChannelID: channelID, ModelID: modelID, UpstreamModelName: "e2e-upstream"}); err != nil {
 				t.Fatal(err)
 			}
 			specs := []string{`{"inputs":{},"request":{"body":{}},"workflow":{"mode":"wait"},"assertions":[{"id":"terminal","source":"task","pointer":"/terminal","operator":"equals","value":true},{"id":"video","source":"response","pointer":"/content/video_url","operator":"http_url"}]}`}

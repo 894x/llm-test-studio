@@ -24,7 +24,7 @@ func TestProductionPlanSaveOnlyStoresReferencesWithoutMappings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer deps.close()
-	_, err = deps.catalogCommands.CreateModel(ctx, catalog.CreateModelCommand{Name: "glm-5.3", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"}})
+	_, err = deps.catalogCommands.CreateModel(ctx, catalog.CreateModelCommand{Name: "glm-5.3", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}})
 	if err != nil {
 		t.Fatal(err)
 	}

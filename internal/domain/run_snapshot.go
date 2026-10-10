@@ -184,6 +184,9 @@ func validateRunMapping(snapshot RunSnapshot) error {
 	if err := snapshot.Mapping.Validate(); err != nil {
 		return err
 	}
+	if !snapshot.Mapping.SupportsProtocol(snapshot.Channel.Protocol) {
+		return errors.New("run mapping protocol does not match target")
+	}
 	if snapshot.Mapping.ChannelID != snapshot.Channel.ID || snapshot.Mapping.ModelID != snapshot.Model.ID || snapshot.Mapping.UpstreamModelName != snapshot.Channel.UpstreamModelName {
 		return errors.New("run binding does not match target")
 	}
@@ -198,6 +201,7 @@ func (snapshot RunSnapshot) clone() RunSnapshot {
 	}
 	if snapshot.Mapping != nil {
 		mapping := *snapshot.Mapping
+		mapping.Protocols = append([]Protocol{}, mapping.Protocols...)
 		snapshot.Mapping = &mapping
 	}
 	snapshot.QuickTask = snapshot.QuickTask.clone()

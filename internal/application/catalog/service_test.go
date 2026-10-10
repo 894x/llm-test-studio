@@ -166,7 +166,7 @@ func TestSnapshotFailsClosedOnDuplicateBadReferenceAndProtocolMismatch(t *testin
 			repository.mappings[0].ModelID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 		}},
 		{name: "mapping protocol mismatch", mutate: func(repository *fakeRepository) {
-			repository.models[0].Protocol = domain.ProtocolSeedance
+			repository.models[0].Protocols[0] = domain.ProtocolSeedance
 		}},
 		{name: "unknown case protocol", mutate: func(repository *fakeRepository) {
 			repository.testCases[0].Definitions = domain.ProtocolDefinitions{"unknown": validRequestSingleSpec()}
@@ -242,19 +242,19 @@ func TestCreateCommandsOwnMetadataAndDoNotAcceptEntityMeta(t *testing.T) {
 	}
 	service := newTestServiceWithFactory(t, repository, now, sequentialMetaFactory(ids))
 	ctx := context.Background()
-	encodedCommand, err := json.Marshal(CreateModelCommand{Name: "New model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"}})
+	encodedCommand, err := json.Marshal(CreateModelCommand{Name: "New model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}})
 	if err != nil {
 		t.Fatalf("json.Marshal(CreateModelCommand) error = %v", err)
 	}
-	if string(encodedCommand) != `{"name":"New model","protocol":"openai-chat","capabilities":["chat"]}` {
+	if string(encodedCommand) != `{"name":"New model","protocols":["openai-chat"],"capabilities":["chat"]}` {
 		t.Fatalf("CreateModelCommand JSON = %s, want stable allow-list fields", encodedCommand)
 	}
 
-	modelResult, err := service.CreateModel(ctx, CreateModelCommand{Name: "New model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"}})
+	modelResult, err := service.CreateModel(ctx, CreateModelCommand{Name: "New model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}})
 	assertMutation(t, modelResult, ids[0], err)
 	channelResult, err := service.CreateChannel(ctx, CreateChannelCommand{Name: "New channel", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true})
 	assertMutation(t, channelResult, ids[1], err)
-	mappingResult, err := service.CreateChannelModel(ctx, CreateChannelModelCommand{ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "upstream"})
+	mappingResult, err := service.CreateChannelModel(ctx, CreateChannelModelCommand{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "upstream"})
 	assertMutation(t, mappingResult, ids[2], err)
 	caseResult, err := service.CreateTestCase(ctx, validCreateTestCaseCommand("New case"))
 	assertMutation(t, caseResult, ids[3], err)
@@ -282,14 +282,14 @@ func TestUpdateCommandsPreserveCreatedAtAndAdvanceRevisionAndTime(t *testing.T) 
 	service := newTestService(t, repository, now)
 	ctx := context.Background()
 
-	modelResult, err := service.UpdateModel(ctx, UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "Renamed model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"}})
+	modelResult, err := service.UpdateModel(ctx, UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "Renamed model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}})
 	assertUpdate(t, modelResult, modelAID, err, repository.updatedModel.EntityMeta)
 	channelResult, err := service.UpdateChannel(ctx, UpdateChannelCommand{ID: channelID, ExpectedRevision: 1, Name: "Renamed channel", BaseURL: "https://example.com/v2", Protocol: domain.ProtocolOpenAIChat, Enabled: false})
 	assertUpdate(t, channelResult, channelID, err, repository.updatedChannel.EntityMeta)
 	if repository.updatedChannel.CredentialID != credentialID {
 		t.Fatalf("UpdateChannel() credential id = %q, want existing binding preserved", repository.updatedChannel.CredentialID)
 	}
-	mappingResult, err := service.UpdateChannelModel(ctx, UpdateChannelModelCommand{ID: mappingAID, ExpectedRevision: 1, UpstreamModelName: "renamed-upstream"})
+	mappingResult, err := service.UpdateChannelModel(ctx, UpdateChannelModelCommand{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, ID: mappingAID, ExpectedRevision: 1, UpstreamModelName: "renamed-upstream"})
 	assertUpdate(t, mappingResult, mappingAID, err, repository.updatedMapping.EntityMeta)
 	caseCommand := validUpdateTestCaseCommand(caseID, "Renamed case")
 	caseResult, err := service.UpdateTestCase(ctx, caseCommand)
@@ -314,7 +314,7 @@ func TestUpdatesRejectStaleRevisionWithoutWriting(t *testing.T) {
 	service := newTestService(t, repository, fixtureTime().Add(time.Hour))
 
 	_, err := service.UpdateModel(context.Background(), UpdateModelCommand{
-		ID: modelAID, ExpectedRevision: 7, Name: "stale", Protocol: domain.ProtocolOpenAIChat,
+		ID: modelAID, ExpectedRevision: 7, Name: "stale", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 	})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("UpdateModel() error = %v, want ErrConflict", err)
@@ -325,17 +325,17 @@ func TestUpdatesRejectStaleRevisionWithoutWriting(t *testing.T) {
 
 	repository.models[0].Revision = math.MaxUint64
 	_, err = service.UpdateModel(context.Background(), UpdateModelCommand{
-		ID: modelAID, ExpectedRevision: math.MaxUint64, Name: "overflow", Protocol: domain.ProtocolOpenAIChat,
+		ID: modelAID, ExpectedRevision: math.MaxUint64, Name: "overflow", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 	})
 	if !errors.Is(err, ErrConflict) || repository.updateModelCalls != 0 {
 		t.Fatalf("UpdateModel(overflow) = %v calls=%d, want ErrConflict and no write", err, repository.updateModelCalls)
 	}
 
-	t.Run("protocol identity is immutable", func(t *testing.T) {
+	t.Run("referenced protocols cannot be removed", func(t *testing.T) {
 		repository := validRepository()
 		service := newTestService(t, repository, fixtureTime().Add(time.Hour))
-		if _, err := service.UpdateModel(context.Background(), UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "model", Protocol: domain.ProtocolSeedance}); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("UpdateModel(protocol change) error = %v, want ErrInvalid", err)
+		if _, err := service.UpdateModel(context.Background(), UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "model", Protocols: []domain.Protocol{domain.ProtocolSeedance}}); !errors.Is(err, ErrConflict) {
+			t.Fatalf("UpdateModel(protocol change) error = %v, want ErrConflict", err)
 		}
 		if _, err := service.UpdateChannel(context.Background(), UpdateChannelCommand{ID: channelID, ExpectedRevision: 1, Name: "channel", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolSeedance}); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("UpdateChannel(protocol change) error = %v, want ErrInvalid", err)
@@ -428,7 +428,7 @@ func TestContextCancellationWinsBeforeAndAfterRepositoryCalls(t *testing.T) {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := service.CreateModel(cancelled, CreateModelCommand{Name: "", Protocol: "secret-protocol"})
+	_, err := service.CreateModel(cancelled, CreateModelCommand{Name: "", Protocols: []domain.Protocol{"secret-protocol"}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("CreateModel(cancelled) error = %v, want context.Canceled", err)
 	}
@@ -463,7 +463,7 @@ func TestContextCancellationWinsBeforeAndAfterRepositoryCalls(t *testing.T) {
 			if corrupt {
 				expected = 1
 			}
-			_, err := service.UpdateModel(ctx, UpdateModelCommand{ID: modelAID, ExpectedRevision: expected, Name: "updated", Protocol: domain.ProtocolOpenAIChat})
+			_, err := service.UpdateModel(ctx, UpdateModelCommand{ID: modelAID, ExpectedRevision: expected, Name: "updated", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}})
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("UpdateModel(cancelled, corrupt=%t) error = %v, want context.Canceled", corrupt, err)
 			}
@@ -502,7 +502,7 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 	if err != nil {
 		t.Fatalf("New(bad factory) error = %v", err)
 	}
-	if _, err := badFactoryService.CreateModel(context.Background(), CreateModelCommand{Name: "model", Protocol: domain.ProtocolOpenAIChat}); !errors.Is(err, ErrCorrupt) {
+	if _, err := badFactoryService.CreateModel(context.Background(), CreateModelCommand{Name: "model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}}); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("CreateModel(bad factory) error = %v, want ErrCorrupt", err)
 	}
 }
@@ -796,13 +796,13 @@ func validRepository() *fakeRepository {
 	definition := domain.ProtocolDefinitions{domain.Protocol(domain.CaseType("openai-chat")): validRequestSingleSpec()}
 	return &fakeRepository{
 		models: []domain.Model{
-			{EntityMeta: meta(modelAID), Name: "Zulu", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat", "tools"}},
-			{EntityMeta: meta(modelBID), Name: "Alpha", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"}},
+			{EntityMeta: meta(modelAID), Name: "Zulu", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat", "tools"}},
+			{EntityMeta: meta(modelBID), Name: "Alpha", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}},
 		},
 		channels: []domain.Channel{{EntityMeta: meta(channelID), Name: "Primary", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}},
 		mappings: []domain.ChannelModel{
-			{EntityMeta: meta(mappingBID), ChannelID: channelID, ModelID: modelBID, UpstreamModelName: "alpha-upstream"},
-			{EntityMeta: meta(mappingAID), ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "alpha-upstream"},
+			{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta(mappingBID), ChannelID: channelID, ModelID: modelBID, UpstreamModelName: "alpha-upstream"},
+			{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta(mappingAID), ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "alpha-upstream"},
 		},
 		testCases: []domain.TestCase{{
 			EntityMeta: meta(caseID), Key: "T001", Name: "Chat", Dimension: "boundary",

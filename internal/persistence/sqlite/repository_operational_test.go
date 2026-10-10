@@ -48,9 +48,9 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		reportID     = "10000000-0000-4000-8000-00000000000b"
 		artifactID   = "10000000-0000-4000-8000-00000000000c"
 	)
-	model := domain.Model{EntityMeta: entityMeta(modelID, 1), Name: "Fixture model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat", "streaming"}}
+	model := domain.Model{EntityMeta: entityMeta(modelID, 1), Name: "Fixture model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat", "streaming"}}
 	channel := domain.Channel{EntityMeta: entityMeta(channelID, 1), Name: "Fixture channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
-	mapping := domain.ChannelModel{EntityMeta: entityMeta(mappingID, 1), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-fixture"}
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: entityMeta(mappingID, 1), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-fixture"}
 	testCaseSpec := json.RawMessage(`{"assertions":[{"id":"status","operator":"equals","source":"http.status","value":200}],"inputs":{},"request":{"body":{"messages":[{"content":"hello","role":"user"}]}}}`)
 	testCase := domain.TestCase{
 		EntityMeta: entityMeta(caseID, 1), Key: "T001", Name: "Basic chat", Dimension: "boundary",
@@ -75,7 +75,7 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 	snapshot := domain.RunSnapshot{
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: planID, Revision: 1},
-		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocol, Capabilities: append([]string(nil), model.Capabilities...)},
+		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocols[0], Capabilities: append([]string(nil), model.Capabilities...)},
 		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
 		Environment:   environment,
 		PlanDocument:  &plan,

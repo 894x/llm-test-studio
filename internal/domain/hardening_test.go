@@ -56,7 +56,7 @@ func validRunSnapshot() RunSnapshot {
 		}},
 	}
 	plan.Revision = 3
-	mapping := ChannelModel{
+	mapping := ChannelModel{Protocols: []Protocol{ProtocolOpenAIChat},
 		EntityMeta:        validEntityMeta("123e4567-e89b-42d3-a456-426614174019"),
 		ChannelID:         testChannelID,
 		ModelID:           testModelID,
@@ -270,7 +270,7 @@ func TestCredentialReferenceOnlyKeepsFourSafeSuffixCharacters(t *testing.T) {
 }
 
 func TestChannelModelAndTestCaseValidateTheirOwnedIdentity(t *testing.T) {
-	mapping := ChannelModel{
+	mapping := ChannelModel{Protocols: []Protocol{ProtocolOpenAIChat},
 		EntityMeta: validEntityMeta("123e4567-e89b-42d3-a456-426614174023"),
 		ChannelID:  testChannelID, ModelID: testModelID, UpstreamModelName: "model-upstream",
 	}

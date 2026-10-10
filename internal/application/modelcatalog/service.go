@@ -156,7 +156,7 @@ func (service *Service) load(ctx context.Context) ([]domain.Model, error) {
 	decoder.DisallowUnknownFields()
 	var models []domain.Model
 	if err := decoder.Decode(&models); err != nil {
-		return nil, fmt.Errorf("%w: decode models: %v", ErrCorrupt, err)
+		return nil, fmt.Errorf("%w: decode models: %v; update models.json to use protocols arrays", ErrCorrupt, err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: models.json must contain one array", ErrCorrupt)
@@ -201,6 +201,7 @@ func cloneModels(models []domain.Model) []domain.Model {
 }
 
 func cloneModel(model domain.Model) domain.Model {
+	model.Protocols = append([]domain.Protocol{}, model.Protocols...)
 	model.Capabilities = append([]string(nil), model.Capabilities...)
 	return model
 }

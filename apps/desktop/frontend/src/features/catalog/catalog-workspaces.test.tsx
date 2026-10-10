@@ -16,15 +16,13 @@ describe("ModelChannelWorkspace", () => {
           id: "123e4567-e89b-42d3-a456-426614174001",
           revision: 1,
           name: "GPT-4o",
-          protocol: "openai-chat",
-          capabilities: ["chat"],
+          protocols: ["openai-chat"], capabilities: ["chat"],
         },
         {
           id: "123e4567-e89b-42d3-a456-426614174002",
           revision: 1,
           name: "Kimi K3",
-          protocol: "openai-chat",
-          capabilities: ["chat"],
+          protocols: ["openai-chat"], capabilities: ["chat"],
         },
       ],
       channels: [
@@ -55,7 +53,7 @@ describe("ModelChannelWorkspace", () => {
           revision: 1,
           channel_id: "123e4567-e89b-42d3-a456-426614174011",
           model_id: "123e4567-e89b-42d3-a456-426614174001",
-          upstream_model_name: "gpt-4o-2024-11-20",
+          upstream_model_name: "gpt-4o-2024-11-20", protocols: ["openai-chat"],
         },
       ],
     }
@@ -117,7 +115,7 @@ describe("ModelChannelWorkspace", () => {
     await user.type(upstream, "gpt-4o-updated")
     await user.click(within(editDialog).getByRole("button", { name: "保存映射" }))
     expect(updateChannelModel).toHaveBeenCalledWith({
-      id: catalog.channel_models[0].id, expected_revision: 1, upstream_model_name: "gpt-4o-updated",
+      id: catalog.channel_models[0].id, expected_revision: 1, upstream_model_name: "gpt-4o-updated", protocols: ["openai-chat"],
     })
     expect(configured).toHaveFocus()
 
@@ -130,7 +128,7 @@ describe("ModelChannelWorkspace", () => {
     await user.type(within(createDialog).getByRole("textbox", { name: /上游模型/ }), "kimi-k3")
     await user.click(within(createDialog).getByRole("button", { name: "保存映射" }))
     expect(createChannelModel).toHaveBeenCalledWith({
-      channel_id: catalog.channels[1].id, model_id: catalog.models[1].id, upstream_model_name: "kimi-k3",
+      channel_id: catalog.channels[1].id, model_id: catalog.models[1].id, upstream_model_name: "kimi-k3", protocols: ["openai-chat"],
     })
     expect(createButton).toHaveFocus()
   })

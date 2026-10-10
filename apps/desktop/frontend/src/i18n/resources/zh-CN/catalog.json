@@ -211,7 +211,9 @@
       "timeoutMs": "单请求超时毫秒",
       "slaJson": "SLA 阈值 JSON",
       "sla": "SLA 阈值",
-      "targetPair": "模型和渠道限制必须同时留空或同时配置"
+      "targetPair": "模型和渠道限制必须同时留空或同时配置",
+      "modelProtocolsHint": "至少选择一个协议；已被映射使用的协议需先修改映射后才能移除。",
+      "mappingProtocolHint": "选择该渠道上的模型实际支持的协议，决定可运行的测试和接口路径。"
     },
     "options": {
       "normal": "普通",

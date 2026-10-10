@@ -68,7 +68,7 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
     [catalog.models],
   )
   const modelSearch = useCatalogSearch(catalog.models, (model) => [
-    model.id, model.name, model.protocol, PROTOCOL_LABELS[model.protocol], ...model.capabilities,
+    model.id, model.name, ...model.protocols, ...model.protocols.map(value => PROTOCOL_LABELS[value]), ...model.capabilities,
   ])
   const channelSearch = useCatalogSearch(catalog.channels, (channel) => [
     channel.id, channel.name, channel.protocol, PROTOCOL_LABELS[channel.protocol], channel.base_url,
@@ -89,7 +89,7 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
   }, [catalog.channel_models, channelNames])
   // Search matrix rows; keep all channel columns so configuration stays comparable.
   const matrixSearch = useCatalogSearch(catalog.models, (model) => [
-    model.name, model.protocol, PROTOCOL_LABELS[model.protocol], ...(matrixValues.get(model.id) ?? []),
+    model.name, ...model.protocols, ...model.protocols.map(value => PROTOCOL_LABELS[value]), ...(matrixValues.get(model.id) ?? []),
   ])
   const matrixModelIDs = new Set(matrixSearch.rows.map((model) => model.id))
   const visibleMappings = tab === "matrix"
@@ -262,7 +262,7 @@ function ModelChannelMatrix({
                   {model.name}
                 </div>
                 <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
-                  {PROTOCOL_LABELS[model.protocol]}
+                  {model.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")}
                 </div>
               </TableHead>
               {catalog.channels.map((channel) => {
@@ -277,7 +277,7 @@ function ModelChannelMatrix({
                     >
                       <CatalogEditor kind="mapping" catalog={catalog} actions={actions} mutate={mutate} pending={pending}
                         initialMapping={{ model_id: model.id, channel_id: channel.id }}
-                        trigger={<Button type="button" variant="ghost" disabled={pending || model.protocol !== channel.protocol}
+                        trigger={<Button type="button" variant="ghost" disabled={pending}
                           aria-label={tx("desktop:catalog_value_is_not_configured_on_value", { value1: model.name, value2: channel.name })}
                           onFocus={() => setFocused({ modelID: model.id, channelID: channel.id })}
                           className="h-full min-h-16 w-full rounded-md px-3 py-2 text-[11px] font-normal text-muted-foreground hover:bg-transparent">
@@ -305,6 +305,9 @@ function ModelChannelMatrix({
                     >
                       <Badge variant="outline" className="h-4 border-success/25 bg-success-soft px-1.5 text-[10px] text-success-strong">
                          {tx("desktop:catalog_configured")} </Badge>
+                      <span className="w-full text-[10px] font-normal text-muted-foreground [overflow-wrap:anywhere] whitespace-normal">
+                        {mapping.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")}
+                      </span>
                       <span className="flex w-full min-w-0 items-center gap-1">
                         <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{tx("desktop:catalog_model")}</span>
                         <span className="text-xs font-medium [overflow-wrap:anywhere]">{model.name}</span>
@@ -330,12 +333,12 @@ function ModelChannelMatrix({
 function MappingTable({ mappings, selectedID, onSelect, channelNames, modelNames }: { mappings: CatalogChannelModel[]; selectedID: string; onSelect: (id: string) => void; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
   const { t } = useTranslation("catalog")
   if (!mappings.length) return <CatalogEmpty title={t("models.mappingEmpty")} description={t("models.mappingEmptyDescription")} />
-  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.channel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.logicalModel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.upstreamName")}</TableHead><TableHead className="h-8 text-[11px]">{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow className="h-11" aria-selected={mapping.id === selectedID} key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="py-1 pl-2 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="py-1 text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="py-1 font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="py-1 text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
+  return <ScrollArea className="min-h-0 flex-1 px-4"><Table aria-label={t("models.mappingAria")} className="table-fixed"><TableHeader><TableRow><TableHead className="h-8 pl-2 text-[11px]">{t("common.channel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.logicalModel")}</TableHead><TableHead className="h-8 text-[11px]">{t("models.upstreamName")}</TableHead><TableHead className="h-8 text-[11px]">{t("common.protocol")}</TableHead><TableHead className="h-8 text-[11px]">{t("common.version")}</TableHead></TableRow></TableHeader><TableBody>{mappings.map(mapping => <TableRow className="h-11" aria-selected={mapping.id === selectedID} key={mapping.id} data-state={mapping.id === selectedID ? "selected" : undefined} onClick={() => onSelect(mapping.id)}><TableCell className="py-1 pl-2 text-xs">{channelNames.get(mapping.channel_id)}</TableCell><TableCell className="py-1 text-xs">{modelNames.get(mapping.model_id)}</TableCell><TableCell className="py-1 font-mono text-xs">{mapping.upstream_model_name}</TableCell><TableCell className="py-1 text-xs">{mapping.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")}</TableCell><TableCell className="py-1 text-xs">r{mapping.revision}</TableCell></TableRow>)}</TableBody></Table></ScrollArea>
 }
 
 function MappingInspector({ mapping, channelNames, modelNames }: { mapping: CatalogChannelModel; channelNames: Map<string,string>; modelNames: Map<string,string> }) {
   const { t } = useTranslation("catalog")
-  return <><InspectorHeader title={mapping.upstream_model_name} subtitle={mapping.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label={t("common.version")} value={`r${mapping.revision}`} /><InspectorRow label={t("common.channel")} value={channelNames.get(mapping.channel_id) ?? t("common.unknownChannel")} /><InspectorRow label={t("models.logicalModel")} value={modelNames.get(mapping.model_id) ?? t("common.unknownModel")} /></dl></>
+  return <><InspectorHeader title={mapping.upstream_model_name} subtitle={mapping.id} /><Separator /><dl className="space-y-1 px-4 py-2"><InspectorRow label={t("common.version")} value={`r${mapping.revision}`} /><InspectorRow label={t("common.protocol")} value={mapping.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")} /><InspectorRow label={t("common.channel")} value={channelNames.get(mapping.channel_id) ?? t("common.unknownChannel")} /><InspectorRow label={t("models.logicalModel")} value={modelNames.get(mapping.model_id) ?? t("common.unknownModel")} /></dl></>
 }
 
 function ModelTable({
@@ -381,7 +384,7 @@ function ModelTable({
                   {model.name}
                 </Button>
               </TableCell>
-              <TableCell className="py-1 text-xs">{PROTOCOL_LABELS[model.protocol]}</TableCell>
+              <TableCell className="py-1 text-xs">{model.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")}</TableCell>
               <TableCell className="py-1 text-[11px] text-muted-foreground">
                 {model.capabilities.join(" · ") || t("common.notSpecified")}
               </TableCell>
@@ -483,7 +486,7 @@ function ModelInspector({
       <Separator />
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={t("common.version")} value={`r${model.revision}`} />
-        <InspectorRow label={t("common.protocol")} value={PROTOCOL_LABELS[model.protocol]} />
+        <InspectorRow label={t("common.protocol")} value={model.protocols.map(value => PROTOCOL_LABELS[value]).join(" · ")} />
         <InspectorRow label={t("common.capabilities")} value={model.capabilities.join(" · ") || t("common.notSpecified")} />
         <InspectorRow label={t("models.channelMappings")} value={t("common.countMappings", { count: mappings.length })} />
         <InspectorRow

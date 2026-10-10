@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -62,9 +63,9 @@ func (ref CaseRevisionRef) Validate() error {
 
 type Model struct {
 	EntityMeta
-	Name         string   `json:"name"`
-	Protocol     Protocol `json:"protocol"`
-	Capabilities []string `json:"capabilities,omitempty"`
+	Name         string     `json:"name"`
+	Protocols    []Protocol `json:"protocols"`
+	Capabilities []string   `json:"capabilities,omitempty"`
 }
 
 func (model Model) Validate() error {
@@ -74,7 +75,28 @@ func (model Model) Validate() error {
 	if strings.TrimSpace(model.Name) == "" {
 		return errors.New("model name must not be empty")
 	}
-	return model.Protocol.Validate()
+	return validateProtocols(model.Protocols)
+}
+
+func validateProtocols(values []Protocol) error {
+	if len(values) == 0 {
+		return errors.New("protocols must contain at least one protocol; update to the current protocols array format")
+	}
+	seen := make(map[Protocol]struct{}, len(values))
+	for _, value := range values {
+		if err := value.Validate(); err != nil {
+			return err
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return fmt.Errorf("duplicate protocol %q", value)
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
+}
+
+func (model Model) SupportsProtocol(value Protocol) bool {
+	return slices.Contains(model.Protocols, value)
 }
 
 type Channel struct {
@@ -107,9 +129,10 @@ func (channel Channel) Validate() error {
 
 type ChannelModel struct {
 	EntityMeta
-	ChannelID         string `json:"channel_id"`
-	ModelID           string `json:"model_id"`
-	UpstreamModelName string `json:"upstream_model_name"`
+	Protocols         []Protocol `json:"protocols"`
+	ChannelID         string     `json:"channel_id"`
+	ModelID           string     `json:"model_id"`
+	UpstreamModelName string     `json:"upstream_model_name"`
 }
 
 func (mapping ChannelModel) Validate() error {
@@ -122,7 +145,14 @@ func (mapping ChannelModel) Validate() error {
 	if strings.TrimSpace(mapping.UpstreamModelName) == "" {
 		return errors.New("channel model upstream name must not be empty")
 	}
+	if err := validateProtocols(mapping.Protocols); err != nil {
+		return fmt.Errorf("channel model requires supported protocols; update channels.json mapping protocols: %w", err)
+	}
 	return nil
+}
+
+func (mapping ChannelModel) SupportsProtocol(value Protocol) bool {
+	return slices.Contains(mapping.Protocols, value)
 }
 
 type CredentialPurpose string

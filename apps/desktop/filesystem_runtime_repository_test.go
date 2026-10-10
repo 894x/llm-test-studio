@@ -56,14 +56,14 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 	}
 	model := domain.Model{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000001"),
-		Name:       "file model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"},
+		Name:       "file model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"},
 	}
 	channel := domain.Channel{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000002"),
 		Name:       "file channel", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
 		Enabled: true, CredentialID: "41000000-0000-4000-8000-000000000003",
 	}
-	mapping := domain.ChannelModel{
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: meta("41000000-0000-4000-8000-000000000004"),
 		ChannelID:  channel.ID, ModelID: model.ID, UpstreamModelName: "upstream-model",
 	}
@@ -253,7 +253,7 @@ func TestFilesystemRuntimeRepositoryDistinguishesUnmappedAndDisabledTargets(t *t
 	}
 	model := domain.Model{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000011"),
-		Name:       "selection model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"},
+		Name:       "selection model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"},
 	}
 	mapped := domain.Channel{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000012"),
@@ -278,13 +278,13 @@ func TestFilesystemRuntimeRepositoryDistinguishesUnmappedAndDisabledTargets(t *t
 			t.Fatal(err)
 		}
 	}
-	if err := channels.CreateMapping(ctx, domain.ChannelModel{
+	if err := channels.CreateMapping(ctx, domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: meta("41000000-0000-4000-8000-000000000018"),
 		ChannelID:  mapped.ID, ModelID: model.ID, UpstreamModelName: "upstream-mapped",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := channels.CreateMapping(ctx, domain.ChannelModel{
+	if err := channels.CreateMapping(ctx, domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: meta("41000000-0000-4000-8000-000000000019"),
 		ChannelID:  disabled.ID, ModelID: model.ID, UpstreamModelName: "upstream-disabled",
 	}); err != nil {

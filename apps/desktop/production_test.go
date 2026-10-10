@@ -471,7 +471,7 @@ func TestProductionModelWithoutCapabilitiesReturnsJSONArray(t *testing.T) {
 	app.onStartup(context.Background())
 	defer app.shutdown()
 	snapshot, err := app.CreateModel(catalog.CreateModelCommand{
-		Name: "Optional capabilities", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{},
+		Name: "Optional capabilities", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -509,7 +509,7 @@ func TestProductionModelAndPlanCreateWriteFilesWithoutDatabaseCatalogRows(t *tes
 	defer dependencies.close()
 
 	createdModel, err := dependencies.catalogCommands.CreateModel(context.Background(), catalog.CreateModelCommand{
-		Name: "file-backed model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"},
+		Name: "file-backed model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"},
 	})
 	if err != nil {
 		t.Fatalf("CreateModel() error = %v", err)
@@ -578,7 +578,7 @@ func TestProductionChannelCreateWritesOnlyMetadataToFileAndSecretToKeyring(t *te
 	defer dependencies.close()
 
 	model, err := dependencies.catalogCommands.CreateModel(context.Background(), catalog.CreateModelCommand{
-		Name: "channel model", Protocol: domain.ProtocolOpenAIChat, Capabilities: []string{"chat"},
+		Name: "channel model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"},
 	})
 	if err != nil {
 		t.Fatalf("CreateModel() error = %v", err)
@@ -591,7 +591,7 @@ func TestProductionChannelCreateWritesOnlyMetadataToFileAndSecretToKeyring(t *te
 	if err != nil {
 		t.Fatalf("CreateChannel() error = %v", err)
 	}
-	mapping, err := dependencies.catalogCommands.CreateChannelModel(context.Background(), catalog.CreateChannelModelCommand{
+	mapping, err := dependencies.catalogCommands.CreateChannelModel(context.Background(), catalog.CreateChannelModelCommand{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		ChannelID: channel.ID, ModelID: model.ID, UpstreamModelName: "upstream-file-model",
 	})
 	if err != nil {

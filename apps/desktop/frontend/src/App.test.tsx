@@ -204,7 +204,7 @@ describe("desktop run workspace", () => {
 		secondChannel.model_count += 1
 		catalog.channel_models.push({
 			id: "77777777-7777-4777-8777-777777777799", revision: 1,
-			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name,
+			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name, protocols: ["openai-chat"],
 		})
 		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
 
@@ -229,7 +229,7 @@ describe("desktop run workspace", () => {
 		secondChannel.model_count += 1
 		catalog.channel_models.push({
 			id: "77777777-7777-4777-8777-777777777798", revision: 1,
-			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name,
+			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name, protocols: ["openai-chat"],
 		})
 		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
 		vi.mocked(client.startComparison).mockRejectedValueOnce(
@@ -390,8 +390,7 @@ describe("desktop run workspace", () => {
       id: "22222222-2222-4222-8222-222222222299",
       revision: 1,
       name: "seedance-video-model",
-      protocol: "seedance",
-      capabilities: ["video"],
+      protocols: ["seedance"], capabilities: ["video"],
     })
     vi.mocked(client.getCatalog).mockResolvedValue(catalog)
 
@@ -488,8 +487,7 @@ describe("desktop run workspace", () => {
 
     expect(client.createModel).toHaveBeenCalledWith({
       name: "gpt-next",
-      protocol: "openai-chat",
-      capabilities: ["chat", "tools"],
+      protocols: ["openai-chat"], capabilities: ["chat", "tools"],
     })
 
     await user.click(screen.getByRole("button", { name: "编辑模型" }))

@@ -864,14 +864,14 @@ address_mode: "base_url", url: "https://api.example.test/v1",
 	const deletion = (id: string, expected_revision: number) => ({ id, expected_revision })
 
 	const commands = [
-		["CreateModel", "createModel", { name: "new model", protocol: "openai-chat", capabilities: ["chat"] }],
-		["UpdateModel", "updateModel", { id: model.id, expected_revision: model.revision, name: model.name, protocol: model.protocol, capabilities: model.capabilities }],
+		["CreateModel", "createModel", { name: "new model", protocols: ["openai-chat"], capabilities: ["chat"] }],
+		["UpdateModel", "updateModel", { id: model.id, expected_revision: model.revision, name: model.name, protocols: model.protocols, capabilities: model.capabilities }],
 		["DeleteModel", "deleteModel", deletion(model.id, model.revision)],
 		["CreateChannel", "createChannel", { name: "new channel", base_url: "https://example.test/v1", api_key: "test-key-1234", protocol: "openai-chat", enabled: true }],
 		["UpdateChannel", "updateChannel", { id: channel.id, expected_revision: channel.revision, name: channel.name, base_url: channel.base_url, api_key: "test-key-5678", protocol: channel.protocol, enabled: channel.enabled }],
 		["DeleteChannel", "deleteChannel", deletion(channel.id, channel.revision)],
-		["CreateChannelModel", "createChannelModel", { channel_id: mapping.channel_id, model_id: mapping.model_id, upstream_model_name: "new-upstream" }],
-		["UpdateChannelModel", "updateChannelModel", { id: mapping.id, expected_revision: mapping.revision, upstream_model_name: mapping.upstream_model_name }],
+		["CreateChannelModel", "createChannelModel", { channel_id: mapping.channel_id, model_id: mapping.model_id, upstream_model_name: "new-upstream", protocols: ["openai-chat"], }],
+		["UpdateChannelModel", "updateChannelModel", { id: mapping.id, expected_revision: mapping.revision, upstream_model_name: mapping.upstream_model_name, protocols: ["openai-chat"], }],
 		["DeleteChannelModel", "deleteChannelModel", deletion(mapping.id, mapping.revision)],
 		["CreateTestCase", "createTestCase", withoutIdentity(testCase)],
 		["UpdateTestCase", "updateTestCase", { ...withoutIdentity(testCase), id: testCase.id, expected_revision: testCase.revision }],

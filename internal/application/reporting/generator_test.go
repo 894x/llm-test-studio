@@ -265,7 +265,7 @@ func generatorRun(t *testing.T, now time.Time) domain.Run {
 		EntityMeta: generatorMeta(suiteID, now), Key: "quick-report", Name: "Quick report",
 		Protocol: domain.ProtocolOpenAIChat, Cases: []domain.CaseRef{{CaseID: caseID}}, Inputs: []domain.SuiteInput{},
 	}
-	mapping := domain.ChannelModel{
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: generatorMeta("40000000-0000-4000-8000-000000000010", now),
 		ModelID:    modelID, ChannelID: channelID, UpstreamModelName: "upstream",
 	}

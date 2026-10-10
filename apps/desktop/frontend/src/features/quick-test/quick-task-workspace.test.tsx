@@ -42,6 +42,7 @@ function setup(
   initial = createTaskDraft(task),
   refresh = vi.fn(async () => {}),
   workspace = FIXTURE_WORKSPACE,
+  catalog = FIXTURE_CATALOG,
 ) {
   const actions = {
     startQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
@@ -57,8 +58,8 @@ function setup(
     return (
       <QuickTaskWorkspace
         catalog={{
-          ...FIXTURE_CATALOG,
-          suites: [task, FIXTURE_CATALOG.suites[1]],
+          ...catalog,
+          suites: [task, catalog.suites[1]],
         }}
         workspace={workspace}
         reports={FIXTURE_REPORTS}
@@ -83,6 +84,52 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("rejects a protocol excluded by the saved model mapping", async () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.models[0].protocols = ["openai-chat", "openai-responses"]
+    const mapping = catalog.channel_models[0]
+    mapping.protocols = ["openai-responses"]
+    const actions = setup({ ...createTaskDraft(catalog.suites[1]),
+      channel_id: mapping.channel_id, model: mapping.upstream_model_name }, undefined, undefined, catalog)
+    await userEvent.setup().click(screen.getByRole("button", { name: "开始测试" }))
+    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(screen.getByRole("combobox", { name: "模型 ID" })).toHaveAttribute("aria-invalid", "true")
+  })
+
+  it("accepts a mapped protocol supported by another alias despite the channel default", async () => {
+    const catalog = structuredClone(FIXTURE_CATALOG)
+    catalog.models[0].protocols = ["openai-chat", "openai-responses"]
+    const mapping = catalog.channel_models[0]
+    mapping.protocols = ["openai-responses"]
+    const alias = catalog.channel_models.find(value => value.channel_id === mapping.channel_id && value.id !== mapping.id)!
+    alias.upstream_model_name = mapping.upstream_model_name
+    alias.protocols = ["openai-chat"]
+    catalog.channels.find(value => value.id === mapping.channel_id)!.protocol = "openai-responses"
+    const actions = setup({ ...createTaskDraft(catalog.suites[1]),
+      channel_id: mapping.channel_id, model: mapping.upstream_model_name }, undefined, undefined, catalog)
+    await userEvent.setup().click(screen.getByRole("button", { name: "开始测试" }))
+    expect(actions.startQuickTask).toHaveBeenCalledWith(expect.objectContaining({
+      channel_id: mapping.channel_id, model: mapping.upstream_model_name,
+    }))
+  })
+
+  it("switches protocols before selecting tasks and updates the endpoint preview", async () => {
+    const user = userEvent.setup()
+    setup({ ...createTaskDraft(task), base_url: "https://api.example.test", model: "custom-model", api_key: "temporary-key" })
+    await user.click(screen.getByRole("combobox", { name: "协议" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI Chat" }))
+    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(FIXTURE_CATALOG.suites[1].name)
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("custom-model")
+    expect(screen.getByLabelText("API Key")).toHaveValue("temporary-key")
+    expect(document.querySelector('[data-slot="connection-url-suffix"]')).toHaveTextContent("/v1/chat/completions")
+    await user.click(screen.getByRole("combobox", { name: "协议" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI Responses" }))
+    expect(screen.getByText("暂无快速测试任务")).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "协议" })).toHaveValue("OpenAI Responses")
+    await user.click(screen.getByRole("combobox", { name: "协议" }))
+    await user.click(screen.getByRole("option", { name: "Seedance" }))
+    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(task.name)
+  })
   it("keeps the gray completion outside the editable value and submits a full endpoint intact", async () => {
     const user = userEvent.setup()
     const actions = setup()

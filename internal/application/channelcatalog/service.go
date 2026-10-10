@@ -294,7 +294,7 @@ func (service *Service) load(ctx context.Context) ([]document, error) {
 	decoder.DisallowUnknownFields()
 	var documents []document
 	if err := decoder.Decode(&documents); err != nil {
-		return nil, fmt.Errorf("%w: decode channels: %v", ErrCorrupt, err)
+		return nil, fmt.Errorf("%w: decode channels: %v; update channels.json mapping protocols arrays", ErrCorrupt, err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: channels.json must contain one array", ErrCorrupt)
@@ -312,7 +312,10 @@ func (service *Service) load(ctx context.Context) ([]document, error) {
 		}
 		channels[value.ID] = struct{}{}
 		for _, mapping := range value.ModelMappings {
-			if mapping.Validate() != nil || mapping.ChannelID != value.ID {
+			if err := mapping.Validate(); err != nil {
+				return nil, fmt.Errorf("%w: invalid channel mapping %q: %v", ErrCorrupt, mapping.ID, err)
+			}
+			if mapping.ChannelID != value.ID {
 				return nil, fmt.Errorf("%w: invalid channel mapping %q", ErrCorrupt, mapping.ID)
 			}
 			if _, duplicate := mappings[mapping.ID]; duplicate {

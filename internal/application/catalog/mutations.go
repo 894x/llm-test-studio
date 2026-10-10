@@ -22,7 +22,11 @@ func (service *Service) CreateModel(ctx context.Context, command CreateModelComm
 	if err != nil {
 		return MutationResult{}, err
 	}
-	model := domain.Model{EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Capabilities: append([]string(nil), command.Capabilities...)}
+	model := domain.Model{
+		EntityMeta: meta, Name: command.Name,
+		Protocols:    append([]domain.Protocol{}, command.Protocols...),
+		Capabilities: append([]string{}, command.Capabilities...),
+	}
 	if err := model.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
@@ -50,16 +54,31 @@ func (service *Service) UpdateModel(ctx context.Context, command UpdateModelComm
 	if err := current.Validate(); err != nil || current.ID != command.ID {
 		return MutationResult{}, ErrCorrupt
 	}
-	if command.Protocol != current.Protocol {
-		return MutationResult{}, ErrInvalid
-	}
 	meta, err := service.nextMeta(ctx, current.EntityMeta, command.ExpectedRevision)
 	if err != nil {
 		return MutationResult{}, err
 	}
-	model := domain.Model{EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Capabilities: append([]string(nil), command.Capabilities...)}
+	model := domain.Model{
+		EntityMeta: meta, Name: command.Name,
+		Protocols:    append([]domain.Protocol{}, command.Protocols...),
+		Capabilities: append([]string{}, command.Capabilities...),
+	}
 	if err := model.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
+	}
+	mappings, err := service.repository.ListChannelModels(ctx)
+	if err != nil {
+		return MutationResult{}, service.portError(ctx, err)
+	}
+	for _, mapping := range mappings {
+		if mapping.ModelID != model.ID {
+			continue
+		}
+		for _, value := range mapping.Protocols {
+			if !model.SupportsProtocol(value) {
+				return MutationResult{}, ErrConflict
+			}
+		}
 	}
 	if err := service.repository.UpdateModel(ctx, command.ExpectedRevision, model); err != nil {
 		return MutationResult{}, service.portError(ctx, err)
@@ -130,11 +149,15 @@ func (service *Service) CreateChannelModel(ctx context.Context, command CreateCh
 	if err != nil {
 		return MutationResult{}, err
 	}
-	mapping := domain.ChannelModel{EntityMeta: meta, ChannelID: command.ChannelID, ModelID: command.ModelID, UpstreamModelName: command.UpstreamModelName}
+	mapping := domain.ChannelModel{
+		EntityMeta: meta, ChannelID: command.ChannelID, ModelID: command.ModelID,
+		Protocols:         append([]domain.Protocol{}, command.Protocols...),
+		UpstreamModelName: command.UpstreamModelName,
+	}
 	if err := mapping.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
-	if err := service.validateBinding(ctx, mapping.ChannelID, mapping.ModelID); err != nil {
+	if err := service.validateBinding(ctx, mapping); err != nil {
 		return MutationResult{}, err
 	}
 	if err := service.repository.CreateChannelModel(ctx, mapping); err != nil {
@@ -165,11 +188,15 @@ func (service *Service) UpdateChannelModel(ctx context.Context, command UpdateCh
 	if err != nil {
 		return MutationResult{}, err
 	}
-	mapping := domain.ChannelModel{EntityMeta: meta, ChannelID: current.ChannelID, ModelID: current.ModelID, UpstreamModelName: command.UpstreamModelName}
+	mapping := domain.ChannelModel{
+		EntityMeta: meta, ChannelID: current.ChannelID, ModelID: current.ModelID,
+		Protocols:         append([]domain.Protocol{}, command.Protocols...),
+		UpstreamModelName: command.UpstreamModelName,
+	}
 	if err := mapping.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
-	if err := service.validateBinding(ctx, mapping.ChannelID, mapping.ModelID); err != nil {
+	if err := service.validateBinding(ctx, mapping); err != nil {
 		return MutationResult{}, err
 	}
 	if err := service.repository.UpdateChannelModel(ctx, command.ExpectedRevision, mapping); err != nil {
@@ -492,29 +519,31 @@ func (service *Service) completedMutation(ctx context.Context, meta domain.Entit
 	return MutationResult{ID: meta.ID, Revision: meta.Revision}, nil
 }
 
-func (service *Service) validateBinding(ctx context.Context, channelID, modelID string) error {
-	channel, err := service.repository.GetChannel(ctx, channelID)
+func (service *Service) validateBinding(ctx context.Context, mapping domain.ChannelModel) error {
+	channel, err := service.repository.GetChannel(ctx, mapping.ChannelID)
 	if err != nil {
 		return service.portError(ctx, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	model, err := service.repository.GetModel(ctx, modelID)
+	model, err := service.repository.GetModel(ctx, mapping.ModelID)
 	if err != nil {
 		return service.portError(ctx, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := channel.Validate(); err != nil || channel.ID != channelID {
+	if err := channel.Validate(); err != nil || channel.ID != mapping.ChannelID {
 		return ErrCorrupt
 	}
-	if err := model.Validate(); err != nil || model.ID != modelID {
+	if err := model.Validate(); err != nil || model.ID != mapping.ModelID {
 		return ErrCorrupt
 	}
-	if channel.Protocol != model.Protocol {
-		return ErrInvalid
+	for _, value := range mapping.Protocols {
+		if !model.SupportsProtocol(value) {
+			return ErrInvalid
+		}
 	}
 	return nil
 }

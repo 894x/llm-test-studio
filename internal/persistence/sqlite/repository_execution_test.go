@@ -193,7 +193,7 @@ func runWithCompleteSnapshot(t *testing.T) domain.Run {
 			Parameters: map[string]json.RawMessage{}, Load: load, SLA: sla,
 		}},
 	}
-	mapping := domain.ChannelModel{
+	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta:        entityMeta(mappingID, 1),
 		ChannelID:         channelID,
 		ModelID:           modelID,

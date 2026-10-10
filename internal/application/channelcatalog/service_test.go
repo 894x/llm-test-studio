@@ -3,6 +3,7 @@ package channelcatalog
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,6 +15,50 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
+
+func TestChannelCatalogRejectsMappingWithoutProtocolsWithoutModifyingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "channels.json")
+	now := time.Now().UTC()
+	channel := validChannel("10000000-0000-4000-8000-000000000001", now)
+	mapping := validMapping(
+		"20000000-0000-4000-8000-000000000001",
+		channel.ID,
+		"30000000-0000-4000-8000-000000000001",
+		now,
+	)
+	raw, err := json.Marshal([]document{{Channel: channel, ModelMappings: []domain.ChannelModel{mapping}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var records []map[string]any
+	if err := json.Unmarshal(raw, &records); err != nil {
+		t.Fatal(err)
+	}
+	delete(records[0]["model_mappings"].([]any)[0].(map[string]any), "protocols")
+	raw, err = json.Marshal(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ListMappings(context.Background()); !errors.Is(err, ErrCorrupt) ||
+		!strings.Contains(err.Error(), "mapping protocols") {
+		t.Fatalf("old mapping must produce an actionable error: %v", err)
+	}
+	if err := service.CreateChannel(context.Background(),
+		validChannel("10000000-0000-4000-8000-000000000002", now)); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("old file must block writes: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(raw, after) {
+		t.Fatal("rejected old file was changed")
+	}
+}
 
 func TestChannelCatalogRoundTripsMappingWithoutPersistingSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "channels.json")
@@ -331,7 +376,7 @@ func validChannel(id string, now time.Time) domain.Channel {
 }
 
 func validMapping(id, channelID, modelID string, now time.Time) domain.ChannelModel {
-	return domain.ChannelModel{
+	return domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta:        domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
 		ChannelID:         channelID,
 		ModelID:           modelID,

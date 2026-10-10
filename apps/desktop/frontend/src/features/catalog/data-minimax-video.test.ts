@@ -10,7 +10,7 @@ describe("MiniMax video catalog protocol", () => {
         id: "11111111-1111-4111-8111-111111111111",
         revision: 1,
         name: "MiniMax-H3",
-        protocol: "minimax-video",
+        protocols: ["minimax-video"],
         capabilities: ["video"],
       }],
       channels: [],
@@ -20,6 +20,6 @@ describe("MiniMax video catalog protocol", () => {
       plans: [],
     })
 
-    expect(parsed.models[0]?.protocol).toBe("minimax-video")
+    expect(parsed.models[0]?.protocols).toEqual(["minimax-video"])
   })
 })

@@ -14,13 +14,25 @@ function setup(item?: CatalogModel) {
 }
 
 describe("model capability selection", () => {
+
+  it("creates a model with multiple protocols and keeps at least one selected", async () => {
+    const { user, save } = setup()
+    await user.click(screen.getByRole("button", { name: "新增模型" }))
+    const chat = screen.getByRole("checkbox", { name: "OpenAI Chat" })
+    expect(chat).toBeDisabled()
+    await user.click(screen.getByRole("checkbox", { name: "OpenAI Responses" }))
+    expect(chat).toBeEnabled()
+    await user.type(screen.getByLabelText("模型名称"), "Multi API model")
+    await user.click(screen.getByRole("button", { name: "保存模型" }))
+    expect(save).toHaveBeenCalledWith({ name: "Multi API model", protocols: ["openai-chat", "openai-responses"], capabilities: [] })
+  })
   it("saves a model with optional capabilities left empty", async () => {
     const { user, save } = setup()
     await user.click(screen.getByRole("button", { name: "新增模型" }))
     await user.type(screen.getByLabelText("模型名称"), "First model")
     expect(screen.getByRole("combobox", { name: "模型能力（选填）" })).toHaveAccessibleDescription(/留空也可保存/)
     await user.click(screen.getByRole("button", { name: "保存模型" }))
-    expect(save).toHaveBeenCalledWith({ name: "First model", protocol: "openai-chat", capabilities: [] })
+    expect(save).toHaveBeenCalledWith({ name: "First model", protocols: ["openai-chat"], capabilities: [] })
   })
 
   it("searches labels and keys, adds multiple tags with the keyboard, and removes tags", async () => {
@@ -40,15 +52,15 @@ describe("model capability selection", () => {
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "移除能力 tools" }))
     await user.click(screen.getByRole("button", { name: "保存模型" }))
-    expect(save).toHaveBeenCalledWith({ name: "Tagged model", protocol: "openai-chat", capabilities: ["vision", "custom-tag"] })
+    expect(save).toHaveBeenCalledWith({ name: "Tagged model", protocols: ["openai-chat"], capabilities: ["vision", "custom-tag"] })
   })
 
   it("preserves existing custom tags and allows removing every capability", async () => {
-    const item = { id: "123e4567-e89b-42d3-a456-426614174020", revision: 2, name: "Existing", protocol: "openai-chat", capabilities: ["legacy-key"] } satisfies CatalogModel
+    const item = { id: "123e4567-e89b-42d3-a456-426614174020", revision: 2, name: "Existing", protocols: ["openai-chat"], capabilities: ["legacy-key"] } satisfies CatalogModel
     const { user, save } = setup(item)
     await user.click(screen.getByRole("button", { name: "编辑模型" }))
     await user.click(screen.getByRole("button", { name: "移除能力 legacy-key" }))
     await user.click(screen.getByRole("button", { name: "保存模型" }))
-    expect(save).toHaveBeenCalledWith({ id: item.id, name: item.name, protocol: item.protocol, capabilities: [], expected_revision: 2 })
+    expect(save).toHaveBeenCalledWith({ id: item.id, name: item.name, protocols: item.protocols, capabilities: [], expected_revision: 2 })
   })
 })

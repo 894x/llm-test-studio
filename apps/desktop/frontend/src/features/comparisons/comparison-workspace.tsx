@@ -30,7 +30,7 @@ export function NewComparisonSheet({
   const [open, setOpen] = useState(false)
   const [planID, setPlanID] = useState(eligiblePlans[0]?.id ?? "")
   const plan = eligiblePlans.find((item) => item.id === planID) ?? eligiblePlans[0]
-  const models = catalog.models.filter((model) => model.protocol === plan?.protocol)
+  const models = catalog.models.filter((model) => !!plan && model.protocols.includes(plan.protocol))
   const [modelID, setModelID] = useState(models[0]?.id ?? "")
   const effectiveModelID = models.some((model) => model.id === modelID) ? modelID : (models[0]?.id ?? "")
   const channels = catalog.channels.filter((channel) =>
@@ -44,7 +44,7 @@ export function NewComparisonSheet({
   const changePlan = (next: string) => {
     setPlanID(next)
     const nextPlan = eligiblePlans.find((item) => item.id === next)
-    setModelID(catalog.models.find(model => model.protocol === nextPlan?.protocol)?.id ?? "")
+    setModelID(catalog.models.find(model => !!nextPlan && model.protocols.includes(nextPlan.protocol))?.id ?? "")
     setSelected([])
   }
   const changeModel = (next: string) => {

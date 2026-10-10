@@ -247,14 +247,14 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	meta := func(id string) domain.EntityMeta {
 		return domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now}
 	}
-	model := domain.Model{EntityMeta: meta("60000000-0000-4000-8000-000000000001"), Name: "model", Protocol: domain.ProtocolOpenAIChat}
+	model := domain.Model{EntityMeta: meta("60000000-0000-4000-8000-000000000001"), Name: "model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}}
 	channels := []domain.Channel{
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000002"), Name: "a", BaseURL: "https://a.example.test/v1", Protocol: model.Protocol, Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000008"},
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000003"), Name: "b", BaseURL: "https://b.example.test/v1", Protocol: model.Protocol, Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000009"},
+		{EntityMeta: meta("60000000-0000-4000-8000-000000000002"), Name: "a", BaseURL: "https://a.example.test/v1", Protocol: model.Protocols[0], Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000008"},
+		{EntityMeta: meta("60000000-0000-4000-8000-000000000003"), Name: "b", BaseURL: "https://b.example.test/v1", Protocol: model.Protocols[0], Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000009"},
 	}
 	mappings := []domain.ChannelModel{
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000004"), ChannelID: channels[0].ID, ModelID: model.ID, UpstreamModelName: "model-a"},
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000005"), ChannelID: channels[1].ID, ModelID: model.ID, UpstreamModelName: "model-a"},
+		{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta("60000000-0000-4000-8000-000000000004"), ChannelID: channels[0].ID, ModelID: model.ID, UpstreamModelName: "model-a"},
+		{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta("60000000-0000-4000-8000-000000000005"), ChannelID: channels[1].ID, ModelID: model.ID, UpstreamModelName: "model-a"},
 	}
 	caseID := "60000000-0000-4000-8000-000000000006"
 	testCase := domain.TestCase{
@@ -264,7 +264,7 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	caseRef := domain.CaseRevisionRef{CaseID: caseID, Revision: 1}
 	suite := domain.Suite{
 		EntityMeta: meta("60000000-0000-4000-8000-000000000012"), Key: "comparison", Name: "Comparison",
-		Protocol: model.Protocol, Inputs: []domain.SuiteInput{}, Cases: []domain.CaseRef{{CaseID: caseRef.CaseID}},
+		Protocol: model.Protocols[0], Inputs: []domain.SuiteInput{}, Cases: []domain.CaseRef{{CaseID: caseRef.CaseID}},
 	}
 	entry := domain.PlanEntry{
 		EntryID: "60000000-0000-4000-8000-000000000013", TargetKind: domain.PlanTargetSuite, TargetID: suite.ID,
@@ -274,7 +274,7 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	}
 	plan := domain.Plan{
 		EntityMeta: meta("60000000-0000-4000-8000-000000000007"), Name: "compare",
-		Protocol: model.Protocol, Seed: 1,
+		Protocol: model.Protocols[0], Seed: 1,
 		Entries: []domain.PlanEntry{entry},
 	}
 	runIDs := []string{"60000000-0000-4000-8000-000000000010", "60000000-0000-4000-8000-000000000011"}
@@ -285,8 +285,8 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 		snapshot := domain.RunSnapshot{
 			SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 			Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: 1},
-			Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: 1}, Name: model.Name, Protocol: model.Protocol},
-			Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channels[index].ID, Revision: 1}, Name: channels[index].Name, BaseURL: channels[index].BaseURL, Protocol: model.Protocol, UpstreamModelName: mappings[index].UpstreamModelName},
+			Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: 1}, Name: model.Name, Protocol: model.Protocols[0]},
+			Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channels[index].ID, Revision: 1}, Name: channels[index].Name, BaseURL: channels[index].BaseURL, Protocol: model.Protocols[0], UpstreamModelName: mappings[index].UpstreamModelName},
 			Environment:   domain.EnvironmentSnapshot{OS: "windows", Arch: "amd64", Region: "local", NetworkEgress: "direct", AppVersion: "test", EngineVersion: "test"},
 			PlanDocument:  &planDocument, Mapping: &mappingDocument,
 			Entries: []domain.RunEntrySnapshot{{

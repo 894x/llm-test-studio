@@ -157,10 +157,15 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, ErrCorrupt
 		}
 		mappingIDs[mapping.ID] = struct{}{}
-		channel, channelFound := channelByID[mapping.ChannelID]
+		_, channelFound := channelByID[mapping.ChannelID]
 		model, modelFound := modelByID[mapping.ModelID]
-		if !channelFound || !modelFound || channel.Protocol != model.Protocol {
+		if !channelFound || !modelFound {
 			return Snapshot{}, ErrCorrupt
+		}
+		for _, value := range mapping.Protocols {
+			if !model.SupportsProtocol(value) {
+				return Snapshot{}, ErrCorrupt
+			}
 		}
 		binding := mapping.ChannelID + "\x00" + mapping.ModelID
 		if _, duplicate := mappingByBinding[binding]; duplicate {
@@ -213,7 +218,7 @@ func (service *Service) buildSnapshot(
 			return Snapshot{}, err
 		}
 		snapshot.Models = append(snapshot.Models, ModelSummary{
-			ID: model.ID, Revision: model.Revision, Name: model.Name, Protocol: model.Protocol,
+			ID: model.ID, Revision: model.Revision, Name: model.Name, Protocols: append([]domain.Protocol{}, model.Protocols...),
 			Capabilities: append([]string{}, model.Capabilities...),
 		})
 	}
@@ -233,7 +238,8 @@ func (service *Service) buildSnapshot(
 		}
 		snapshot.ChannelModels = append(snapshot.ChannelModels, ChannelModelSummary{
 			ID: mapping.ID, Revision: mapping.Revision, ChannelID: mapping.ChannelID,
-			ModelID: mapping.ModelID, UpstreamModelName: mapping.UpstreamModelName,
+			ModelID: mapping.ModelID, Protocols: append([]domain.Protocol{}, mapping.Protocols...),
+			UpstreamModelName: mapping.UpstreamModelName,
 		})
 	}
 	for _, testCase := range testCases {

@@ -14,8 +14,13 @@ import (
 )
 
 type quickTaskCatalog struct {
-	suite   domain.Suite
-	channel domain.Channel
+	suite    domain.Suite
+	channel  domain.Channel
+	mappings []domain.ChannelModel
+}
+
+func (catalog quickTaskCatalog) ListChannelModels(context.Context) ([]domain.ChannelModel, error) {
+	return catalog.mappings, nil
 }
 
 func (catalog quickTaskCatalog) GetSuite(context.Context, string) (domain.Suite, error) {

@@ -16,6 +16,7 @@ import (
 type QuickTaskCatalog interface {
 	GetSuite(context.Context, string) (domain.Suite, error)
 	GetChannel(context.Context, string) (domain.Channel, error)
+	ListChannelModels(context.Context) ([]domain.ChannelModel, error)
 }
 
 // QuickTaskCommand selects the current task definition and either a saved channel
@@ -111,9 +112,30 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		if err != nil {
 			return "", fmt.Errorf("load quick task channel: %w", err)
 		}
-		if channel.ID != command.ChannelID || !channel.Enabled || channel.Protocol != suite.Protocol || channel.CredentialID == "" || channel.Validate() != nil {
+		usableChannel := channel.ID == command.ChannelID && channel.Enabled && channel.CredentialID != ""
+		if !usableChannel || channel.Validate() != nil {
 			return "", ErrNotRunnable
 		}
+		mappings, err := service.quickTasks.ListChannelModels(ctx)
+		if err != nil {
+			return "", fmt.Errorf("load quick task mappings: %w", err)
+		}
+		knownModel := false
+		supported := false
+		for _, mapping := range mappings {
+			if mapping.ChannelID != channel.ID || mapping.UpstreamModelName != command.Model {
+				continue
+			}
+			if mapping.Validate() != nil {
+				return "", ErrNotRunnable
+			}
+			knownModel = true
+			supported = supported || mapping.SupportsProtocol(suite.Protocol)
+		}
+		if knownModel && !supported {
+			return "", ErrNotRunnable
+		}
+		channel.Protocol = suite.Protocol
 	} else {
 		if len(command.BaseURL) > 4096 || (command.CredentialRunID == "" && !validQuickTaskAPIKey(command.APIKey)) {
 			return "", ErrInvalid
@@ -136,7 +158,10 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		RequestCount: 1, RequestTimeoutMS: timeout,
 	}
 	sla := domain.SLAProfile{Thresholds: map[string]float64{}}
-	mapping := domain.ChannelModel{EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID, UpstreamModelName: command.Model}
+	mapping := domain.ChannelModel{
+		EntityMeta: modelMeta, ModelID: modelMeta.ID, ChannelID: channel.ID,
+		Protocols: []domain.Protocol{suite.Protocol}, UpstreamModelName: command.Model,
+	}
 	entry := domain.RunEntrySnapshot{EntryID: meta.ID, TargetKind: domain.PlanTargetSuite, TargetID: suite.ID, Name: suite.Name, Key: suite.Key, Suite: &suite,
 		Cases: []domain.CaseRevisionRef{}, CaseDefinitions: cases, Parameters: inputs, CaseInputs: caseInputs, Load: load, SLA: sla}
 	for _, testCase := range cases {
