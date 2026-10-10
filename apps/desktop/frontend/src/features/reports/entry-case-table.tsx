@@ -171,8 +171,8 @@ function AssertionTable({ assertions }: { assertions: AssertionResult[] }) {
     <TableHeader><TableRow><TableHead>{t("protocolDesign.rule")}</TableHead><TableHead>{t("protocolDesign.expected")}</TableHead><TableHead>{t("protocolDesign.actual")}</TableHead><TableHead>{t("protocolDesign.verification")}</TableHead></TableRow></TableHeader>
     <TableBody>{assertions.map(assertion => <Fragment key={assertion.id}><TableRow>
       <TableCell className="max-w-60 whitespace-normal text-xs"><div>{assertion.id}</div><div className="break-all font-mono text-[10px] text-muted-foreground">{assertion.source}{assertion.pointer} {assertion.operator}</div></TableCell>
-      <TableCell className="max-w-60 whitespace-normal break-all font-mono text-[11px]">{boundedJSON(assertion.expected, 512)}</TableCell>
-      <TableCell className="max-w-60 whitespace-normal break-all font-mono text-[11px]">{boundedJSON(assertion.actual, 512)}{assertion.reason ? <div className="text-muted-foreground">{assertion.reason}</div> : null}</TableCell>
+      <TableCell className="max-w-60 whitespace-pre-wrap break-all font-mono text-[11px]">{boundedJSON(assertion.expected, 512)}</TableCell>
+      <TableCell className="max-w-60 whitespace-pre-wrap break-all font-mono text-[11px]">{boundedJSON(assertion.actual, 512)}{assertion.reason ? <div className="text-muted-foreground">{assertion.reason}</div> : null}</TableCell>
       <TableCell><VerificationBadge status={assertion.status} /></TableCell>
     </TableRow>{assertion.children?.length ? <TableRow><TableCell colSpan={4} className="pl-4"><AssertionTable assertions={assertion.children} /></TableCell></TableRow> : null}</Fragment>)}</TableBody>
   </Table></div>
