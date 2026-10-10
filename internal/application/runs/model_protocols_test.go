@@ -10,11 +10,11 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-func TestRunUsesMappingProtocolRatherThanChannelDefault(t *testing.T) {
+func TestRunUsesMappingProtocol(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.model.Protocols = []domain.Protocol{domain.ProtocolOpenAIResponses, domain.ProtocolOpenAIChat}
 	fixture.mapping.Protocols = []domain.Protocol{domain.ProtocolOpenAIChat}
-	fixture.channel.Protocol = domain.ProtocolOpenAIResponses
+
 	repository := &fakeRepository{fixture: fixture}
 	store := credentials.NewMemoryStore()
 	ref, _ := credentials.StoreRefFromCredential(fixture.credential)
@@ -37,7 +37,7 @@ func TestRunUsesMappingProtocolRatherThanChannelDefault(t *testing.T) {
 	}
 	snapshot := repository.run.Snapshot()
 	if snapshot.Channel.Protocol != fixture.plan.Protocol || snapshot.Model.Protocol != fixture.plan.Protocol {
-		t.Fatal("run used channel default or the first model protocol")
+		t.Fatal("run did not use the plan protocol")
 	}
 	if err := service.CancelRun(context.Background(), id); err != nil {
 		t.Fatal(err)
@@ -45,10 +45,10 @@ func TestRunUsesMappingProtocolRatherThanChannelDefault(t *testing.T) {
 	waitForStatus(t, repository, domain.RunCancelled)
 }
 
-func TestQuickTaskValidatesMappedProtocolsAndOverridesChannelDefault(t *testing.T) {
+func TestQuickTaskValidatesMappedProtocols(t *testing.T) {
 	for _, supported := range []bool{false, true} {
 		fixture := newRunFixture(t)
-		fixture.channel.Protocol = domain.ProtocolOpenAIResponses
+
 		fixture.mapping.UpstreamModelName = "test-model"
 		fixture.mapping.Protocols = []domain.Protocol{domain.ProtocolOpenAIResponses}
 		if supported {

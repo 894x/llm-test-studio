@@ -586,7 +586,7 @@ func TestProductionChannelCreateWritesOnlyMetadataToFileAndSecretToKeyring(t *te
 	const apiKey = "secret-must-not-enter-json-or-sqlite"
 	channel, err := dependencies.catalogCommands.CreateChannel(context.Background(), catalog.CreateChannelCommand{
 		Name: "file-backed channel", BaseURL: "https://api.example.test/v1", APIKey: apiKey,
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateChannel() error = %v", err)
@@ -664,7 +664,7 @@ func TestProductionCopiedChannelMetadataCannotDeleteAnotherAuthoredRootSecret(t 
 	defer dependenciesA.close()
 	channel, err := dependenciesA.catalogCommands.CreateChannel(ctx, catalog.CreateChannelCommand{
 		Name: "root A channel", BaseURL: "https://api.example.test/v1", APIKey: "root-a-secret",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)

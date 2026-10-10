@@ -94,11 +94,11 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
     { id: MODEL_IDS.mini, revision: 1, name: "gpt-4.1-mini", protocols: ["openai-chat"], capabilities: ["text"] },
   ],
   channels: [
-    { id: CHANNEL_IDS.openai, revision: 2, name: "OpenAI 主渠道", base_url: "https://api.openai.com/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 2 },
-    { id: CHANNEL_IDS.aliyun, revision: 1, name: "阿里云备用渠道", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 1 },
-    { id: CHANNEL_IDS.anthropic, revision: 1, name: "Anthropic 主渠道", base_url: "https://gateway.example.test/anthropic/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 1 },
-    { id: CHANNEL_IDS.vertex, revision: 1, name: "Vertex 测试渠道", base_url: "https://gateway.example.test/vertex/v1", protocol: "openai-chat", enabled: false, credential_configured: false, model_count: 1 },
-    { id: CHANNEL_IDS.compatible, revision: 1, name: "兼容协议渠道", base_url: "https://gateway.example.test/compatible/v1", protocol: "openai-chat", enabled: true, credential_configured: true, model_count: 1 },
+    { id: CHANNEL_IDS.openai, revision: 2, name: "OpenAI 主渠道", base_url: "https://api.openai.com/v1",  enabled: true, credential_configured: true, model_count: 2 },
+    { id: CHANNEL_IDS.aliyun, revision: 1, name: "阿里云备用渠道", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",  enabled: true, credential_configured: true, model_count: 1 },
+    { id: CHANNEL_IDS.anthropic, revision: 1, name: "Anthropic 主渠道", base_url: "https://gateway.example.test/anthropic/v1",  enabled: true, credential_configured: true, model_count: 1 },
+    { id: CHANNEL_IDS.vertex, revision: 1, name: "Vertex 测试渠道", base_url: "https://gateway.example.test/vertex/v1",  enabled: false, credential_configured: false, model_count: 1 },
+    { id: CHANNEL_IDS.compatible, revision: 1, name: "兼容协议渠道", base_url: "https://gateway.example.test/compatible/v1",  enabled: true, credential_configured: true, model_count: 1 },
   ],
   channel_models: [
     { id: "77777777-7777-4777-8777-777777777771", revision: 1, channel_id: CHANNEL_IDS.openai, model_id: MODEL_IDS.openai, upstream_model_name: "gpt-5.2", protocols: ["openai-chat"] },

@@ -95,7 +95,7 @@ func (service *Service) CreateChannel(ctx context.Context, command CreateChannel
 	if err != nil {
 		return MutationResult{}, err
 	}
-	channel := domain.Channel{EntityMeta: meta, Name: command.Name, BaseURL: command.BaseURL, Protocol: command.Protocol, Enabled: command.Enabled, CredentialID: command.CredentialID}
+	channel := domain.Channel{EntityMeta: meta, Name: command.Name, BaseURL: command.BaseURL, Enabled: command.Enabled, CredentialID: command.CredentialID}
 	if err := channel.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}
@@ -127,7 +127,7 @@ func (service *Service) UpdateChannel(ctx context.Context, command UpdateChannel
 	if err != nil {
 		return MutationResult{}, err
 	}
-	channel := domain.Channel{EntityMeta: meta, Name: command.Name, BaseURL: command.BaseURL, Protocol: command.Protocol, Enabled: command.Enabled, CredentialID: current.CredentialID}
+	channel := domain.Channel{EntityMeta: meta, Name: command.Name, BaseURL: command.BaseURL, Enabled: command.Enabled, CredentialID: current.CredentialID}
 	if err := channel.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
 	}

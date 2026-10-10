@@ -49,7 +49,7 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		artifactID   = "10000000-0000-4000-8000-00000000000c"
 	)
 	model := domain.Model{EntityMeta: entityMeta(modelID, 1), Name: "Fixture model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat", "streaming"}}
-	channel := domain.Channel{EntityMeta: entityMeta(channelID, 1), Name: "Fixture channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
+	channel := domain.Channel{EntityMeta: entityMeta(channelID, 1), Name: "Fixture channel", BaseURL: "https://example.test/v1", Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: entityMeta(mappingID, 1), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-fixture"}
 	testCaseSpec := json.RawMessage(`{"assertions":[{"id":"status","operator":"equals","source":"http.status","value":200}],"inputs":{},"request":{"body":{"messages":[{"content":"hello","role":"user"}]}}}`)
 	testCase := domain.TestCase{
@@ -76,7 +76,7 @@ func newRepositoryFixture(t *testing.T) repositoryFixture {
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: planID, Revision: 1},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: modelID, Revision: 1}, Name: model.Name, Protocol: model.Protocols[0], Capabilities: append([]string(nil), model.Capabilities...)},
-		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
+		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: channelID, Revision: 1}, Name: channel.Name, BaseURL: channel.BaseURL, Protocol: mapping.Protocols[0], UpstreamModelName: mapping.UpstreamModelName},
 		Environment:   environment,
 		PlanDocument:  &plan,
 		Mapping:       &mapping,

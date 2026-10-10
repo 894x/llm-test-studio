@@ -60,7 +60,7 @@ func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *
 	}
 	channel := domain.Channel{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000002"),
-		Name:       "file channel", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Name:       "file channel", BaseURL: "https://api.example.test/v1",
 		Enabled: true, CredentialID: "41000000-0000-4000-8000-000000000003",
 	}
 	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
@@ -257,17 +257,17 @@ func TestFilesystemRuntimeRepositoryDistinguishesUnmappedAndDisabledTargets(t *t
 	}
 	mapped := domain.Channel{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000012"),
-		Name:       "mapped channel", BaseURL: "https://mapped.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Name:       "mapped channel", BaseURL: "https://mapped.example.test/v1",
 		Enabled: true, CredentialID: "41000000-0000-4000-8000-000000000013",
 	}
 	unmapped := domain.Channel{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000014"),
-		Name:       "unmapped channel", BaseURL: "https://unmapped.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Name:       "unmapped channel", BaseURL: "https://unmapped.example.test/v1",
 		Enabled: true, CredentialID: "41000000-0000-4000-8000-000000000015",
 	}
 	disabled := domain.Channel{
 		EntityMeta: meta("41000000-0000-4000-8000-000000000016"),
-		Name:       "disabled channel", BaseURL: "https://disabled.example.test/v1", Protocol: domain.ProtocolOpenAIChat,
+		Name:       "disabled channel", BaseURL: "https://disabled.example.test/v1",
 		Enabled: false, CredentialID: "41000000-0000-4000-8000-000000000017",
 	}
 	if err := models.Create(ctx, model); err != nil {

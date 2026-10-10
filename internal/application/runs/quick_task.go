@@ -106,7 +106,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if err != nil {
 		return "", err
 	}
-	channel := domain.Channel{EntityMeta: channelMeta, BaseURL: command.BaseURL, Protocol: suite.Protocol, Enabled: true}
+	channel := domain.Channel{EntityMeta: channelMeta, BaseURL: command.BaseURL, Enabled: true}
 	if command.ChannelID != "" {
 		channel, err = service.quickTasks.GetChannel(ctx, command.ChannelID)
 		if err != nil {
@@ -135,7 +135,6 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		if knownModel && !supported {
 			return "", ErrNotRunnable
 		}
-		channel.Protocol = suite.Protocol
 	} else {
 		if len(command.BaseURL) > 4096 || (command.CredentialRunID == "" && !validQuickTaskAPIKey(command.APIKey)) {
 			return "", ErrInvalid

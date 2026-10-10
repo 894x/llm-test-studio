@@ -18,8 +18,8 @@ All cases set `default=false` and apply only to `glm-5.3`. Generated suites sele
 
 ## Use in Studio
 
-1. Select `openai-chat` as the channel protocol. For the direct standard API, use Base URL `https://open.bigmodel.cn/api/paas/v4` and save credentials through channel configuration.
-2. Map logical model `glm-5.3` to upstream model `glm-5.3`. Cases use `/chat/completions`, which is appended to the Base URL.
+1. For the direct standard API, use Base URL `https://open.bigmodel.cn/api/paas/v4` and save credentials through channel configuration.
+2. Map logical model `glm-5.3` to upstream model `glm-5.3`, with `openai-chat` included in both the model and mapping protocols. Cases use `/chat/completions`, which is appended to the Base URL.
 3. Find the `GLM 5.3` cases and the five suites in the catalog. Start a Plan with connectivity or basic functionality. For ordinary regression, use concurrency 1 and a per-case timeout of at least 120 seconds; history/tool roundtrip cases make two requests.
 4. Keep T3 large-output, context, cache-load, large-tool-array, external-service, and documentation-dependent templates disabled. Complete each template's prerequisites and assertions before enabling and running it separately.
 

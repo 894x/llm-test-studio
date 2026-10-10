@@ -252,7 +252,7 @@ func TestCreateCommandsOwnMetadataAndDoNotAcceptEntityMeta(t *testing.T) {
 
 	modelResult, err := service.CreateModel(ctx, CreateModelCommand{Name: "New model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}})
 	assertMutation(t, modelResult, ids[0], err)
-	channelResult, err := service.CreateChannel(ctx, CreateChannelCommand{Name: "New channel", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true})
+	channelResult, err := service.CreateChannel(ctx, CreateChannelCommand{Name: "New channel", BaseURL: "https://example.com/v1", Enabled: true})
 	assertMutation(t, channelResult, ids[1], err)
 	mappingResult, err := service.CreateChannelModel(ctx, CreateChannelModelCommand{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "upstream"})
 	assertMutation(t, mappingResult, ids[2], err)
@@ -286,12 +286,9 @@ func TestUpdateCommandsPreserveCreatedAtAndAdvanceRevisionAndTime(t *testing.T) 
 	assertUpdate(t, modelResult, modelAID, err, repository.updatedModel.EntityMeta)
 	channelResult, err := service.UpdateChannel(ctx, UpdateChannelCommand{
 		ID: channelID, ExpectedRevision: 1, Name: "Renamed channel",
-		BaseURL: "https://example.com/v2", Protocol: domain.ProtocolOpenAIResponses, Enabled: false,
+		BaseURL: "https://example.com/v2", Enabled: false,
 	})
 	assertUpdate(t, channelResult, channelID, err, repository.updatedChannel.EntityMeta)
-	if repository.updatedChannel.Protocol != domain.ProtocolOpenAIResponses {
-		t.Fatalf("UpdateChannel() protocol = %q, want OpenAI Responses", repository.updatedChannel.Protocol)
-	}
 	if repository.updatedChannel.CredentialID != credentialID {
 		t.Fatalf("UpdateChannel() credential id = %q, want existing binding preserved", repository.updatedChannel.CredentialID)
 	}
@@ -345,10 +342,10 @@ func TestUpdatesRejectStaleRevisionWithoutWriting(t *testing.T) {
 		}
 		_, err := service.UpdateChannel(context.Background(), UpdateChannelCommand{
 			ID: channelID, ExpectedRevision: 1, Name: "channel",
-			BaseURL: "https://example.com/v1", Protocol: domain.Protocol("unsupported"),
+			BaseURL: "invalid-url",
 		})
 		if !errors.Is(err, ErrInvalid) {
-			t.Fatalf("UpdateChannel(unsupported protocol) error = %v, want ErrInvalid", err)
+			t.Fatalf("UpdateChannel(invalid address) error = %v, want ErrInvalid", err)
 		}
 		command := validUpdateTestCaseCommand(caseID, "case")
 		command.Key = "changed-key"
@@ -376,7 +373,7 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 	}
 
 	_, err = service.CreateChannel(context.Background(), CreateChannelCommand{
-		Name: "unsafe", BaseURL: "https://user:super-secret@example.com", Protocol: domain.ProtocolOpenAIChat,
+		Name: "unsafe", BaseURL: "https://user:super-secret@example.com",
 	})
 	if !errors.Is(err, ErrInvalid) || strings.Contains(err.Error(), "super-secret") {
 		t.Fatalf("CreateChannel() error = %q, want safe ErrInvalid", err)
@@ -809,7 +806,7 @@ func validRepository() *fakeRepository {
 			{EntityMeta: meta(modelAID), Name: "Zulu", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat", "tools"}},
 			{EntityMeta: meta(modelBID), Name: "Alpha", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}},
 		},
-		channels: []domain.Channel{{EntityMeta: meta(channelID), Name: "Primary", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}},
+		channels: []domain.Channel{{EntityMeta: meta(channelID), Name: "Primary", BaseURL: "https://example.com/v1", Enabled: true, CredentialID: credentialID}},
 		mappings: []domain.ChannelModel{
 			{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta(mappingBID), ChannelID: channelID, ModelID: modelBID, UpstreamModelName: "alpha-upstream"},
 			{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta(mappingAID), ChannelID: channelID, ModelID: modelAID, UpstreamModelName: "alpha-upstream"},

@@ -63,11 +63,10 @@ type Service struct {
 }
 
 type CreateCommand struct {
-	Name     string
-	BaseURL  string
-	APIKey   string
-	Protocol domain.Protocol
-	Enabled  bool
+	Name    string
+	BaseURL string
+	APIKey  string
+	Enabled bool
 }
 
 type UpdateCommand struct {
@@ -76,7 +75,6 @@ type UpdateCommand struct {
 	Name             string
 	BaseURL          string
 	APIKey           string // Empty keeps the current credential.
-	Protocol         domain.Protocol
 	Enabled          bool
 }
 
@@ -121,6 +119,10 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Muta
 }
 
 func (service *Service) create(ctx context.Context, command CreateCommand) (MutationResult, error) {
+	return service.createWith(ctx, command, service.repository.CreateChannel)
+}
+
+func (service *Service) createWith(ctx context.Context, command CreateCommand, persist func(context.Context, domain.Channel) error) (MutationResult, error) {
 	if service == nil || ctx == nil || command.APIKey == "" {
 		return MutationResult{}, ErrInvalid
 	}
@@ -140,7 +142,7 @@ func (service *Service) create(ctx context.Context, command CreateCommand) (Muta
 	}
 	channel := domain.Channel{
 		EntityMeta: channelMeta, Name: command.Name, BaseURL: command.BaseURL,
-		Protocol: command.Protocol, Enabled: command.Enabled, CredentialID: credentialMeta.ID,
+		Enabled: command.Enabled, CredentialID: credentialMeta.ID,
 	}
 	if err := channel.Validate(); err != nil {
 		return MutationResult{}, ErrInvalid
@@ -154,7 +156,7 @@ func (service *Service) create(ctx context.Context, command CreateCommand) (Muta
 			service.cleanupScheduledCredential(context.WithoutCancel(ctx), credentialMeta.ID),
 		)
 	}
-	if err := service.repository.CreateChannel(ctx, channel); err != nil {
+	if err := persist(ctx, channel); err != nil {
 		cleanupCtx := context.WithoutCancel(ctx)
 		committed, readErr := service.repository.GetChannel(cleanupCtx, channel.ID)
 		if readErr == nil && reflect.DeepEqual(committed, channel) {
@@ -208,7 +210,7 @@ func (service *Service) update(ctx context.Context, command UpdateCommand) (Muta
 	}
 	updatedChannel := domain.Channel{
 		EntityMeta: channelMeta, Name: command.Name, BaseURL: command.BaseURL,
-		Protocol: command.Protocol, Enabled: command.Enabled, CredentialID: current.CredentialID,
+		Enabled: command.Enabled, CredentialID: current.CredentialID,
 	}
 	if command.APIKey == "" {
 		if current.CredentialID == "" || updatedChannel.Validate() != nil {

@@ -45,9 +45,6 @@ func TestModelAndMappingProtocolSetsCanBeEdited(t *testing.T) {
 			repository.mappings[index] = repository.updatedMapping
 		}
 	}
-	if repository.channels[0].Protocol != domain.ProtocolOpenAIChat {
-		t.Fatal("mapping changed channel default protocol")
-	}
 	_, err = service.UpdateModel(ctx, UpdateModelCommand{
 		ID: modelAID, ExpectedRevision: 2, Name: "Multi-protocol",
 		Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},

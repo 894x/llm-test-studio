@@ -10,6 +10,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
+	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -97,11 +98,41 @@ type serializedCatalogService struct {
 	gate     *productionServiceGate
 	query    CatalogQuery
 	commands CatalogCommands
-	channels interface {
+	targets  interface {
+		SaveTarget(context.Context, catalog.SaveQuickTestTargetCommand) (channelconfig.MutationResult, error)
+	}
+	targetCredential func(context.Context, string, string, domain.Protocol) (*credentials.Lease, error)
+	channels         interface {
 		Create(context.Context, channelconfig.CreateCommand) (channelconfig.MutationResult, error)
 		Update(context.Context, channelconfig.UpdateCommand) (channelconfig.MutationResult, error)
 		Delete(context.Context, string, uint64) error
 	}
+}
+
+func (service serializedCatalogService) SaveQuickTestTarget(ctx context.Context, command catalog.SaveQuickTestTargetCommand) (catalog.MutationResult, error) {
+	release := service.gate.enter()
+	defer release()
+	if service.targets == nil {
+		return catalog.MutationResult{}, ErrCatalogUnavailable
+	}
+	if command.CredentialRunID != "" {
+		if command.APIKey != "" || service.targetCredential == nil {
+			return catalog.MutationResult{}, catalog.ErrInvalid
+		}
+		lease, err := service.targetCredential(ctx, command.CredentialRunID, command.BaseURL, command.Protocol)
+		if err != nil {
+			return catalog.MutationResult{}, err
+		}
+		defer lease.Close()
+		secret, err := lease.Bytes()
+		if err != nil {
+			return catalog.MutationResult{}, err
+		}
+		defer clear(secret)
+		command.APIKey = string(secret)
+	}
+	result, err := service.targets.SaveTarget(ctx, command)
+	return catalog.MutationResult{ID: result.ChannelID, Revision: result.ChannelRevision}, err
 }
 
 func (service serializedCatalogService) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
@@ -134,7 +165,7 @@ func (service serializedCatalogService) CreateChannel(ctx context.Context, comma
 	if service.channels != nil {
 		result, err := service.channels.Create(ctx, channelconfig.CreateCommand{
 			Name: command.Name, BaseURL: command.BaseURL, APIKey: command.APIKey,
-			Protocol: command.Protocol, Enabled: command.Enabled,
+			Enabled: command.Enabled,
 		})
 		return catalog.MutationResult{ID: result.ChannelID, Revision: result.ChannelRevision}, err
 	}
@@ -148,7 +179,7 @@ func (service serializedCatalogService) UpdateChannel(ctx context.Context, comma
 		result, err := service.channels.Update(ctx, channelconfig.UpdateCommand{
 			ID: command.ID, ExpectedRevision: command.ExpectedRevision,
 			Name: command.Name, BaseURL: command.BaseURL, APIKey: command.APIKey,
-			Protocol: command.Protocol, Enabled: command.Enabled,
+			Enabled: command.Enabled,
 		})
 		return catalog.MutationResult{ID: result.ChannelID, Revision: result.ChannelRevision}, err
 	}

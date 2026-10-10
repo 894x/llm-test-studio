@@ -89,7 +89,7 @@ func TestFilesystemCatalogRepositoryDefersPlanTargetValidation(t *testing.T) {
 		cases: cases, suites: suites, plans: plans,
 	}
 	channel, mapping, plan := filesystemCatalogMappingFixtures(false)
-	if err := repository.CreateModel(ctx, filesystemCatalogModelFixture(mapping.ModelID, channel.Protocol)); err != nil {
+	if err := repository.CreateModel(ctx, filesystemCatalogModelFixture(mapping.ModelID, mapping.Protocols[0])); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.CreateChannel(ctx, channel); err != nil {
@@ -241,7 +241,7 @@ func TestFilesystemCredentialMutationLockPreventsStartupRetryFromDeletingAProvis
 	go func() {
 		_, err := creator.Create(ctx, channelconfig.CreateCommand{
 			Name: "concurrent", BaseURL: "https://api.example.test/v1", APIKey: "plain-provisional-secret",
-			Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+			Enabled: true,
 		})
 		createDone <- err
 	}()
@@ -296,7 +296,7 @@ func TestFilesystemCredentialMutationLockDoesNotSwallowCancellationBeforeAction(
 	}
 	result, err := service.Create(ctx, channelconfig.CreateCommand{
 		Name: "cancelled", BaseURL: "https://api.example.test/v1", APIKey: "plain-cancelled-secret",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Create(cancelled) = %#v, %v; want context cancellation", result, err)
@@ -347,7 +347,7 @@ func TestFilesystemCredentialRegistryCleansKeyAfterDirectChannelFileEdit(t *test
 	}
 	created, err := service.Create(ctx, channelconfig.CreateCommand{
 		Name: "direct-edit", BaseURL: "https://api.example.test/v1", APIKey: "plain-direct-edit-secret",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -883,7 +883,7 @@ func TestFilesystemCatalogRepositoryRereadsDesiredStateAfterAmbiguousCommittedWr
 	}
 
 	channel, mapping, plan := filesystemCatalogMappingFixtures(false)
-	model := filesystemCatalogModelFixture(mapping.ModelID, channel.Protocol)
+	model := filesystemCatalogModelFixture(mapping.ModelID, mapping.Protocols[0])
 	if err := repository.CreateModel(ctx, model); err != nil {
 		t.Fatalf("CreateModel() reported an already committed write as failed: %v", err)
 	}
@@ -1070,7 +1070,7 @@ func TestFilesystemCatalogRepositorySerializesModelDeleteAgainstMappingCreate(t 
 		t.Fatal(err)
 	}
 	channel, mapping, _ := filesystemCatalogMappingFixtures(false)
-	model := filesystemCatalogModelFixture(mapping.ModelID, channel.Protocol)
+	model := filesystemCatalogModelFixture(mapping.ModelID, mapping.Protocols[0])
 	if err := firstModels.Create(ctx, model); err != nil {
 		t.Fatal(err)
 	}
@@ -1359,7 +1359,7 @@ func filesystemCatalogMappingFixtures(targetless bool) (domain.Channel, domain.C
 	}
 	channel := domain.Channel{
 		EntityMeta: meta("62000000-0000-4000-8000-000000000001"),
-		Name:       "channel", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "channel", BaseURL: "https://api.example.test/v1", Enabled: true,
 	}
 	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat},
 		EntityMeta: meta("62000000-0000-4000-8000-000000000002"),

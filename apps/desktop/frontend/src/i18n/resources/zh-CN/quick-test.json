@@ -136,5 +136,13 @@
     "requestTimeout": "Case 超时（ms）",
     "unsupportedModelProtocol": "该模型在所选渠道不支持此协议"
   },
-  "protocol": "协议"
+  "protocol": "协议",
+  "saveChannel": {
+    "title": "保存为渠道",
+    "hint": "同时保存模型、所选协议和渠道模型映射；同名模型会自动复用并补充协议。",
+    "name": "渠道名称",
+    "cancel": "取消",
+    "saving": "保存中…",
+    "failed": "保存渠道失败，请检查连接信息。"
+  }
 }

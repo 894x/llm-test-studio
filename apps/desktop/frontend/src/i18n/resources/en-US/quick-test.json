@@ -136,5 +136,13 @@
     "requestTimeout": "Case timeout (ms)",
     "unsupportedModelProtocol": "This model does not support the selected protocol on this channel."
   },
-  "protocol": "Protocol"
+  "protocol": "Protocol",
+  "saveChannel": {
+    "title": "Save as channel",
+    "hint": "Save the model, selected protocol and channel mapping together. Existing models with the same name are reused and extended with the protocol.",
+    "name": "Channel name",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "failed": "Could not save the channel. Check the connection details."
+  }
 }

@@ -101,11 +101,10 @@ func (model Model) SupportsProtocol(value Protocol) bool {
 
 type Channel struct {
 	EntityMeta
-	Name         string   `json:"name"`
-	BaseURL      string   `json:"base_url"`
-	Protocol     Protocol `json:"protocol"`
-	Enabled      bool     `json:"enabled"`
-	CredentialID string   `json:"credential_id,omitempty"`
+	Name         string `json:"name"`
+	BaseURL      string `json:"base_url"`
+	Enabled      bool   `json:"enabled"`
+	CredentialID string `json:"credential_id,omitempty"`
 }
 
 func (channel Channel) Validate() error {
@@ -114,9 +113,6 @@ func (channel Channel) Validate() error {
 	}
 	if strings.TrimSpace(channel.Name) == "" {
 		return errors.New("channel name must not be empty")
-	}
-	if err := channel.Protocol.Validate(); err != nil {
-		return err
 	}
 	if err := validateServiceBaseURL(channel.BaseURL); err != nil {
 		return fmt.Errorf("invalid channel base URL: %w", err)

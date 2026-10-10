@@ -228,7 +228,7 @@ func (service *Service) buildSnapshot(
 		}
 		snapshot.Channels = append(snapshot.Channels, ChannelSummary{
 			ID: channel.ID, Revision: channel.Revision, Name: channel.Name, BaseURL: channel.BaseURL,
-			Protocol: channel.Protocol, Enabled: channel.Enabled, CredentialConfigured: channel.CredentialID != "",
+			Enabled: channel.Enabled, CredentialConfigured: channel.CredentialID != "",
 			ModelCount: modelCountByChannel[channel.ID],
 		})
 	}

@@ -218,7 +218,7 @@ export function PlanPerformanceRunSheet({
     {channel && effectiveModel ? <QuickPerformanceSheet
       open={performanceOpen}
       onOpenChange={setPerformanceOpen}
-      connection={{ protocol: channel.protocol, address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
+      connection={{ protocol: catalog.plans.find(plan => plan.id === planID)!.protocol, address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
       initialProfile={profile}
       run={run}
       onArchived={onArchived}

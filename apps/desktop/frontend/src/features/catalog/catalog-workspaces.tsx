@@ -71,7 +71,7 @@ export function ModelChannelWorkspace({ catalog, actions, mutate, mutationPendin
     model.id, model.name, ...model.protocols, ...model.protocols.map(value => PROTOCOL_LABELS[value]), ...model.capabilities,
   ])
   const channelSearch = useCatalogSearch(catalog.channels, (channel) => [
-    channel.id, channel.name, channel.protocol, PROTOCOL_LABELS[channel.protocol], channel.base_url,
+    channel.id, channel.name, channel.base_url,
     t(channel.enabled ? "common.enabled" : "common.disabled"),
   ])
   const mappingValues = (mapping: CatalogChannelModel) => [
@@ -244,7 +244,7 @@ function ModelChannelMatrix({
                   {channel.name}
                 </div>
                 <div className="mt-0.5 text-[10px] font-normal text-muted-foreground">
-                  {channel.enabled ? tx("desktop:catalog_enabled_133") : tx("desktop:catalog_disabled")} · {PROTOCOL_LABELS[channel.protocol]}
+                  {channel.enabled ? tx("desktop:catalog_enabled_133") : tx("desktop:catalog_disabled")}
                 </div>
               </TableHead>
             ))}
@@ -448,7 +448,7 @@ function ChannelTable({
                   {channel.name}
                 </Button>
                 <div className="mt-0.5 text-[10px] text-muted-foreground">
-                  {PROTOCOL_LABELS[channel.protocol]} · r{channel.revision}
+                  r{channel.revision}
                 </div>
               </TableCell>
               <TableCell className="py-1">
@@ -518,7 +518,7 @@ function ChannelInspector({
       <InspectorHeader title={channel.name} subtitle={channel.id} trailing={<StateBadge enabled={channel.enabled} />} />
       <Separator />
       <dl className="space-y-1 px-4 py-2">
-        <InspectorRow label={t("models.versionProtocol")} value={`r${channel.revision} · ${PROTOCOL_LABELS[channel.protocol]}`} />
+        <InspectorRow label={t("common.version")} value={`r${channel.revision}`} />
         <InspectorRow label="Base URL" value={channel.base_url} />
         <InspectorRow label={t("models.credential")} value={t(channel.credential_configured ? "models.credentialConfigured" : "models.credentialNotConfigured")} />
         <InspectorRow label={t("models.modelMappings")} value={t("common.countMappings", { count: mappings.length })} />

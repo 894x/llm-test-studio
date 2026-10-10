@@ -72,6 +72,7 @@ function setup(
         onWorkspaceUpdated={vi.fn()}
         onOpenReport={vi.fn()}
         onPerformanceArchived={vi.fn()}
+        onSaveChannel={vi.fn(async () => ({ catalog, channel_id: catalog.channels[0].id }))}
       />
     )
   }
@@ -96,7 +97,7 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByRole("combobox", { name: "模型 ID" })).toHaveAttribute("aria-invalid", "true")
   })
 
-  it("accepts a mapped protocol supported by another alias despite the channel default", async () => {
+  it("accepts a mapped protocol supported by another alias for the selected protocol", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     catalog.models[0].protocols = ["openai-chat", "openai-responses"]
     const mapping = catalog.channel_models[0]
@@ -104,7 +105,7 @@ describe("Suite quick task workspace", () => {
     const alias = catalog.channel_models.find(value => value.channel_id === mapping.channel_id && value.id !== mapping.id)!
     alias.upstream_model_name = mapping.upstream_model_name
     alias.protocols = ["openai-chat"]
-    catalog.channels.find(value => value.id === mapping.channel_id)!.protocol = "openai-responses"
+
     const actions = setup({ ...createTaskDraft(catalog.suites[1]),
       channel_id: mapping.channel_id, model: mapping.upstream_model_name }, undefined, undefined, catalog)
     await userEvent.setup().click(screen.getByRole("button", { name: "开始测试" }))
@@ -268,7 +269,7 @@ describe("Suite quick task workspace", () => {
     const user = userEvent.setup()
     const selected = FIXTURE_CATALOG.suites[1]
     const channel = FIXTURE_CATALOG.channels.find(
-      (channel) => channel.protocol === selected.protocol && channel.credential_configured,
+      (channel) => channel.credential_configured && FIXTURE_CATALOG.channel_models.some(mapping => mapping.channel_id === channel.id && mapping.protocols.includes(selected.protocol)),
     )!
     const actions = setup({
       ...createTaskDraft(selected),

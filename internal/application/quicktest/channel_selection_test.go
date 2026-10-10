@@ -92,7 +92,7 @@ func TestStoredChannelConnectionResolverReadsTheBoundCredentialStore(t *testing.
 	repository := storedChannelRepository{
 		channel: domain.Channel{
 			EntityMeta: domain.EntityMeta{ID: channelID, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-			Name:       "OpenAI 主渠道", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIResponses,
+			Name:       "OpenAI 主渠道", BaseURL: "https://api.example.test/v1",
 			Enabled: true, CredentialID: credentialID,
 		},
 		mappings: []domain.ChannelModel{{

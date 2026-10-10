@@ -4,7 +4,7 @@ import { parseCatalogSnapshot } from "./data"
 
 describe("reference-only protocol catalog", () => {
 
-  it("accepts per-channel protocol subsets independent of the channel default", () => {
+  it("accepts mapping protocol subsets", () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     catalog.models[0].protocols = ["openai-chat", "openai-responses"]
     catalog.channel_models[0].protocols = ["openai-responses"]

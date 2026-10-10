@@ -1001,7 +1001,7 @@ func (fixture runFixture) snapshot() domain.RunSnapshot {
 		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
 		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
 		Model:         domain.ModelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.model.ID, Revision: fixture.model.Revision}, Name: fixture.model.Name, Protocol: fixture.model.Protocols[0], Capabilities: append([]string(nil), fixture.model.Capabilities...)},
-		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.channel.ID, Revision: fixture.channel.Revision}, Name: fixture.channel.Name, BaseURL: fixture.channel.BaseURL, Protocol: fixture.channel.Protocol, UpstreamModelName: mapping.UpstreamModelName},
+		Channel:       domain.ChannelSnapshot{EntityRevisionRef: domain.EntityRevisionRef{ID: fixture.channel.ID, Revision: fixture.channel.Revision}, Name: fixture.channel.Name, BaseURL: fixture.channel.BaseURL, Protocol: fixture.plan.Protocol, UpstreamModelName: mapping.UpstreamModelName},
 		Environment:   fixture.environment,
 		PlanDocument:  &plan,
 		Mapping:       &mapping,
@@ -1030,7 +1030,7 @@ func newRunFixture(t *testing.T) runFixture {
 	model := domain.Model{EntityMeta: meta(modelID), Name: "test-model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}}
 	digest := sha256.Sum256([]byte("test fingerprint"))
 	credential := domain.CredentialRef{EntityMeta: meta(credentialID), StoreRef: "llm-test-studio/v1/channel_api_key/" + credentialID, Purpose: domain.CredentialChannelAPIKey, MaskedSuffix: "key1", Fingerprint: "sha256:" + hex.EncodeToString(digest[:])}
-	channel := domain.Channel{EntityMeta: meta(channelID), Name: "test-channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, CredentialID: credentialID}
+	channel := domain.Channel{EntityMeta: meta(channelID), Name: "test-channel", BaseURL: "https://example.test/v1", Enabled: true, CredentialID: credentialID}
 	mapping := domain.ChannelModel{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta(mappingID), ChannelID: channelID, ModelID: modelID, UpstreamModelName: "upstream-model"}
 	testCase := domain.TestCase{
 		EntityMeta: meta(caseID), Key: "T001", Name: "basic", Dimension: "compatibility",

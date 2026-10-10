@@ -540,6 +540,22 @@ func (app *DesktopApp) UpdateChannel(command catalog.UpdateChannelCommand) (cata
 	})
 }
 
+func (app *DesktopApp) SaveQuickTestTarget(command catalog.SaveQuickTestTargetCommand) (catalog.SavedQuickTestTarget, error) {
+	var channelID string
+	snapshot, err := app.executeCatalogCommand("save quick test target", func(ctx context.Context, commands CatalogCommands) error {
+		targets, ok := commands.(interface {
+			SaveQuickTestTarget(context.Context, catalog.SaveQuickTestTargetCommand) (catalog.MutationResult, error)
+		})
+		if !ok {
+			return ErrCatalogUnavailable
+		}
+		result, err := targets.SaveQuickTestTarget(ctx, command)
+		channelID = result.ID
+		return err
+	})
+	return catalog.SavedQuickTestTarget{Catalog: snapshot, ChannelID: channelID}, err
+}
+
 func (app *DesktopApp) DeleteChannel(command catalog.DeleteCommand) (catalog.Snapshot, error) {
 	return app.executeCatalogCommand("delete channel", func(ctx context.Context, commands CatalogCommands) error {
 		return commands.DeleteChannel(ctx, command)

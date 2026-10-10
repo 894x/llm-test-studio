@@ -35,7 +35,7 @@
 
 示例中的空断言表示仅观察。实际内置配置包含 HTTP、原生终态、usage、文本或工具调用断言。模型、URL、认证由 Run 绑定；Case 不保存这些字段。
 
-Suite、Plan、Channel、Model 和一次 Run 各选择一个协议。执行时读取 `definitions[protocol]`，缺少定义会在准备阶段报错。快照独立复制每份定义；报告标明实际运行协议。Case 的显式 ID 不随增加协议或更换文件夹变化。
+Suite、Plan 和一次 Run 各选择一个协议。Model 和渠道模型映射声明支持的协议列表，Channel 不保存协议。执行时读取 `definitions[protocol]`，缺少定义会在准备阶段报错。快照独立复制每份定义；报告标明实际运行协议。Case 的显式 ID 不随增加协议或更换文件夹变化。
 
 新增原生协议：
 

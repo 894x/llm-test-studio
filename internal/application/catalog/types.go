@@ -33,14 +33,13 @@ type ModelSummary struct {
 }
 
 type ChannelSummary struct {
-	ID                   string          `json:"id"`
-	Revision             uint64          `json:"revision"`
-	Name                 string          `json:"name"`
-	BaseURL              string          `json:"base_url"`
-	Protocol             domain.Protocol `json:"protocol"`
-	Enabled              bool            `json:"enabled"`
-	CredentialConfigured bool            `json:"credential_configured"`
-	ModelCount           int             `json:"model_count"`
+	ID                   string `json:"id"`
+	Revision             uint64 `json:"revision"`
+	Name                 string `json:"name"`
+	BaseURL              string `json:"base_url"`
+	Enabled              bool   `json:"enabled"`
+	CredentialConfigured bool   `json:"credential_configured"`
+	ModelCount           int    `json:"model_count"`
 }
 
 type ChannelModelSummary struct {
@@ -137,22 +136,35 @@ type UpdateModelCommand struct {
 }
 
 type CreateChannelCommand struct {
-	Name         string          `json:"name"`
-	BaseURL      string          `json:"base_url"`
-	APIKey       string          `json:"api_key"`
-	Protocol     domain.Protocol `json:"protocol"`
-	Enabled      bool            `json:"enabled"`
-	CredentialID string          `json:"credential_id,omitempty"`
+	Name         string `json:"name"`
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	Enabled      bool   `json:"enabled"`
+	CredentialID string `json:"credential_id,omitempty"`
 }
 
 type UpdateChannelCommand struct {
-	ID               string          `json:"id"`
-	ExpectedRevision uint64          `json:"expected_revision"`
-	Name             string          `json:"name"`
-	BaseURL          string          `json:"base_url"`
-	APIKey           string          `json:"api_key"` // Empty keeps the current credential.
-	Protocol         domain.Protocol `json:"protocol"`
-	Enabled          bool            `json:"enabled"`
+	ID               string `json:"id"`
+	ExpectedRevision uint64 `json:"expected_revision"`
+	Name             string `json:"name"`
+	BaseURL          string `json:"base_url"`
+	APIKey           string `json:"api_key"` // Empty keeps the current credential.
+	Enabled          bool   `json:"enabled"`
+}
+
+// SaveQuickTestTargetCommand persists the connection and its model mapping.
+type SaveQuickTestTargetCommand struct {
+	Name            string          `json:"name"`
+	BaseURL         string          `json:"base_url"`
+	APIKey          string          `json:"api_key"`
+	CredentialRunID string          `json:"credential_run_id,omitempty"`
+	ModelName       string          `json:"model_name"`
+	Protocol        domain.Protocol `json:"protocol"`
+}
+
+type SavedQuickTestTarget struct {
+	Catalog   Snapshot `json:"catalog"`
+	ChannelID string   `json:"channel_id"`
 }
 
 type CreateChannelModelCommand struct {

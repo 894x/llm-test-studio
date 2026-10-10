@@ -43,6 +43,7 @@ type filesystemCatalogRepository struct {
 		GetChannel(context.Context, string) (domain.Channel, error)
 		GetMapping(context.Context, string) (domain.ChannelModel, error)
 		CreateChannel(context.Context, domain.Channel) error
+		CreateChannelWithMappings(context.Context, domain.Channel, []domain.ChannelModel) error
 		UpdateChannel(context.Context, uint64, domain.Channel) error
 		DeleteChannel(context.Context, string, uint64) error
 		CreateMapping(context.Context, domain.ChannelModel) error
@@ -245,6 +246,40 @@ func (repository filesystemCatalogRepository) CreateChannel(ctx context.Context,
 	}, func(verifyCtx context.Context) (bool, error) {
 		got, err := repository.GetChannel(verifyCtx, channel.ID)
 		return catalogDesiredStateEqual(got, channel, err)
+	})
+}
+
+func (repository filesystemCatalogRepository) CreateChannelWithMappings(ctx context.Context, channel domain.Channel, mappings []domain.ChannelModel) error {
+	return repository.withMutationLock(ctx, func(state *filesystemCatalogMutationState) error {
+		for _, mapping := range mappings {
+			if mapping.ChannelID != channel.ID || mapping.Validate() != nil {
+				return catalog.ErrInvalid
+			}
+			model, err := repository.GetModel(ctx, mapping.ModelID)
+			if err != nil {
+				return err
+			}
+			for _, protocol := range mapping.Protocols {
+				if !model.SupportsProtocol(protocol) {
+					return catalog.ErrInvalid
+				}
+			}
+		}
+		return state.write(func() error {
+			return mapFileCatalogError(repository.channels.CreateChannelWithMappings(ctx, channel, mappings))
+		})
+	}, func(verifyCtx context.Context) (bool, error) {
+		got, err := repository.GetChannel(verifyCtx, channel.ID)
+		if equal, err := catalogDesiredStateEqual(got, channel, err); !equal || err != nil {
+			return equal, err
+		}
+		for _, mapping := range mappings {
+			got, err := repository.GetChannelModel(verifyCtx, mapping.ID)
+			if equal, err := catalogDesiredStateEqual(got, mapping, err); !equal || err != nil {
+				return equal, err
+			}
+		}
+		return true, nil
 	})
 }
 

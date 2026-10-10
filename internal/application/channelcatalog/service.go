@@ -118,6 +118,10 @@ func (service *Service) GetMapping(ctx context.Context, id string) (domain.Chann
 }
 
 func (service *Service) CreateChannel(ctx context.Context, channel domain.Channel) error {
+	return service.CreateChannelWithMappings(ctx, channel, []domain.ChannelModel{})
+}
+
+func (service *Service) CreateChannelWithMappings(ctx context.Context, channel domain.Channel, mappings []domain.ChannelModel) error {
 	if service == nil || ctx == nil || channel.Validate() != nil || channel.Revision != 1 {
 		return ErrInvalid
 	}
@@ -133,7 +137,24 @@ func (service *Service) CreateChannel(ctx context.Context, channel domain.Channe
 				return ErrConflict
 			}
 		}
-		documents = append(documents, document{Channel: channel, ModelMappings: []domain.ChannelModel{}})
+		mappingIDs := make(map[string]bool)
+		modelIDs := make(map[string]bool)
+		for _, current := range documents {
+			for _, mapping := range current.ModelMappings {
+				mappingIDs[mapping.ID] = true
+			}
+		}
+		for _, mapping := range mappings {
+			if mapping.Validate() != nil || mapping.ChannelID != channel.ID || mapping.Revision != 1 {
+				return ErrInvalid
+			}
+			if mappingIDs[mapping.ID] || modelIDs[mapping.ModelID] {
+				return ErrConflict
+			}
+			mappingIDs[mapping.ID] = true
+			modelIDs[mapping.ModelID] = true
+		}
+		documents = append(documents, document{Channel: channel, ModelMappings: mappings})
 		return service.save(ctx, documents)
 	})
 }
@@ -294,7 +315,7 @@ func (service *Service) load(ctx context.Context) ([]document, error) {
 	decoder.DisallowUnknownFields()
 	var documents []document
 	if err := decoder.Decode(&documents); err != nil {
-		return nil, fmt.Errorf("%w: decode channels: %v; update channels.json mapping protocols arrays", ErrCorrupt, err)
+		return nil, fmt.Errorf("%w: decode channels: %v; convert channels.json to the current format: remove channel protocol and retain mapping protocols arrays", ErrCorrupt, err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("%w: channels.json must contain one array", ErrCorrupt)

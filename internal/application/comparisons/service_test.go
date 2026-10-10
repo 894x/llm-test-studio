@@ -249,8 +249,8 @@ func newComparisonFixture(t *testing.T) comparisonFixture {
 	}
 	model := domain.Model{EntityMeta: meta("60000000-0000-4000-8000-000000000001"), Name: "model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}}
 	channels := []domain.Channel{
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000002"), Name: "a", BaseURL: "https://a.example.test/v1", Protocol: model.Protocols[0], Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000008"},
-		{EntityMeta: meta("60000000-0000-4000-8000-000000000003"), Name: "b", BaseURL: "https://b.example.test/v1", Protocol: model.Protocols[0], Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000009"},
+		{EntityMeta: meta("60000000-0000-4000-8000-000000000002"), Name: "a", BaseURL: "https://a.example.test/v1", Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000008"},
+		{EntityMeta: meta("60000000-0000-4000-8000-000000000003"), Name: "b", BaseURL: "https://b.example.test/v1", Enabled: true, CredentialID: "60000000-0000-4000-8000-000000000009"},
 	}
 	mappings := []domain.ChannelModel{
 		{Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, EntityMeta: meta("60000000-0000-4000-8000-000000000004"), ChannelID: channels[0].ID, ModelID: model.ID, UpstreamModelName: "model-a"},

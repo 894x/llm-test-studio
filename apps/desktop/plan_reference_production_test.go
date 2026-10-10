@@ -28,7 +28,7 @@ func TestProductionPlanSaveOnlyStoresReferencesWithoutMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = deps.catalogCommands.CreateChannel(ctx, catalog.CreateChannelCommand{Name: "unmapped channel", BaseURL: "https://example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true, APIKey: "test-only-key"})
+	_, err = deps.catalogCommands.CreateChannel(ctx, catalog.CreateChannelCommand{Name: "unmapped channel", BaseURL: "https://example.test/v1", Enabled: true, APIKey: "test-only-key"})
 	if err != nil {
 		t.Fatal(err)
 	}

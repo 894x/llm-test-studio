@@ -30,7 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
-import type { CatalogProtocol, CatalogSnapshot, CatalogSuite } from "@/features/catalog/data"
+import type { CatalogProtocol, CatalogSnapshot, CatalogSuite, SaveQuickTestTargetCommand, SavedQuickTestTarget } from "@/features/catalog/data"
 import { DEFAULT_CASE_CONCURRENCY, isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
 import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
 import type { ReportSnapshot } from "@/features/reports/data"
@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils"
 import { taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
+import { SaveChannelSheet } from "./save-channel-sheet"
 
 type Actions = Pick<
   DesktopClient,
@@ -64,6 +65,7 @@ export function QuickTaskWorkspace({
   onWorkspaceUpdated,
   onOpenReport,
   onPerformanceArchived,
+  onSaveChannel,
 }: {
   catalog: CatalogSnapshot
   workspace: WorkspaceSnapshot
@@ -77,11 +79,12 @@ export function QuickTaskWorkspace({
   onWorkspaceUpdated: (snapshot: WorkspaceSnapshot) => void
   onOpenReport: (id: string) => void | Promise<void>
   onPerformanceArchived: (id: string) => void | Promise<void>
+  onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
 }) {
   const { t } = useTranslation("quickTest")
   const { i18n } = useTranslation()
   const [pending, setPending] = useState<
-    "start" | "history" | "cancel" | "remember" | "forget" | null
+    "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
   const inFlight = useRef(false)
   const performanceTrigger = useRef<HTMLButtonElement>(null)
@@ -93,6 +96,7 @@ export function QuickTaskWorkspace({
     null,
   )
   const [performanceOpen, setPerformanceOpen] = useState(false)
+  const [saveChannelOpen, setSaveChannelOpen] = useState(false)
   const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(draft.task?.protocol ?? "openai-chat")
   const protocol = draft.task?.protocol ?? selectedProtocol
   const currentTasks = catalog.suites.filter(item => item.protocol === protocol)
@@ -491,6 +495,11 @@ export function QuickTaskWorkspace({
                         </Button>
                       ) : null)}
                   </TaskField>
+                  {!form.channel_id && <Button
+                    type="button" size="sm" variant="outline"
+                    disabled={!!pending || !form.model.trim() || !connectionURLs.length || (!form.api_key.trim() && !form.credential_run_id)}
+                    onClick={() => setSaveChannelOpen(true)}
+                  >{t("saveChannel.title")}</Button>}
                   <fieldset disabled={!!pending} className="@container/quick-task-parameters min-w-0 space-y-3">
                     <legend className="mb-3 text-sm font-semibold">{t("task.parameters")}</legend>
                     <div className="grid min-w-0 grid-cols-1 items-start gap-3 @xs/quick-task-parameters:grid-cols-2 @md/quick-task-parameters:grid-cols-3">
@@ -732,6 +741,19 @@ export function QuickTaskWorkspace({
           </section>
         </ScrollArea>
       </div>
+      {saveChannelOpen && <SaveChannelSheet
+        open={saveChannelOpen}
+        onOpenChange={setSaveChannelOpen}
+        connection={{ base_url: form.base_url, api_key: form.api_key.trim(), credential_run_id: form.credential_run_id, model_name: form.model.trim(), protocol }}
+        onSave={async command => {
+          if (inFlight.current) throw new Error(t("saveChannel.failed"))
+          inFlight.current = true
+          setPending("save")
+          try { return await onSaveChannel(command) }
+          finally { inFlight.current = false; setPending(null) }
+        }}
+        onSaved={saved => update({ ...form, channel_id: saved.channel_id, api_key: "", credential_run_id: undefined })}
+      />}
       {performanceCommand ? (
         <QuickPerformanceSheet
           open={performanceOpen}

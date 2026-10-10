@@ -89,7 +89,7 @@ function catalogMutationMocks() {
   const reply = async () => structuredClone(FIXTURE_CATALOG)
   return {
     createModel: vi.fn(reply), updateModel: vi.fn(reply), deleteModel: vi.fn(reply),
-    createChannel: vi.fn(reply), updateChannel: vi.fn(reply), deleteChannel: vi.fn(reply),
+    saveQuickTestTarget: vi.fn(async () => ({ catalog: await reply(), channel_id: FIXTURE_CATALOG.channels[0].id })), createChannel: vi.fn(reply), updateChannel: vi.fn(reply), deleteChannel: vi.fn(reply),
     createChannelModel: vi.fn(reply), updateChannelModel: vi.fn(reply), deleteChannelModel: vi.fn(reply),
     createTestCase: vi.fn(reply), updateTestCase: vi.fn(reply), deleteTestCase: vi.fn(reply),
     createSuite: vi.fn(reply), updateSuite: vi.fn(reply), deleteSuite: vi.fn(reply),

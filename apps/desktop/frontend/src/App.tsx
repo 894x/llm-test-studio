@@ -6,6 +6,7 @@ import FolderOpenIcon from "lucide-react/dist/esm/icons/folder-open.mjs"
 import {
   createDesktopClient,
   isCatalogSavedRefreshFailure,
+  DesktopClientError,
   publicDesktopErrorMessage,
   publicDesktopOperationErrorMessage,
   singleFlightRead,
@@ -24,7 +25,7 @@ import {
   ModelChannelWorkspace,
   PlansWorkspace,
 } from "@/features/catalog/catalog-workspaces"
-import type { CatalogSnapshot } from "@/features/catalog/data"
+import type { CatalogSnapshot, SavedQuickTestTarget } from "@/features/catalog/data"
 import { OverviewWorkspace } from "@/features/overview/overview-workspace"
 import { QuickTaskWorkspace } from "@/features/quick-test/quick-task-workspace"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY, type TaskDraft } from "@/features/quick-test/task-draft"
@@ -536,6 +537,12 @@ function AppWorkspace({
           actions={client}
           refresh={refreshQuickTask}
           onWorkspaceUpdated={updateWorkspace}
+          onSaveChannel={async command => {
+            let saved: SavedQuickTestTarget | undefined
+            await mutateCatalog(async () => { saved = await client.saveQuickTestTarget(command); return saved.catalog }, t("quickTest:saveChannel.title"))
+            if (!saved) throw new DesktopClientError("catalog_saved_refresh_failed")
+            return saved
+          }}
           onPerformanceArchived={refreshArchivedPerformanceReport}
           onOpenReport={openReport}
         />

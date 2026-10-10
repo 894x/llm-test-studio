@@ -9,11 +9,11 @@
 _Avoid_: Provider Model、Upstream Model
 
 **Channel（渠道）**:
-一条可调用的 LLM 服务通道，描述服务位置、协议、启用状态和凭据引用。
+一条可调用的 LLM 服务通道，描述服务位置、启用状态和凭据引用。
 _Avoid_: Endpoint、Provider Account
 
 **Channel Model（渠道模型映射）**:
-逻辑模型在特定渠道中对应的上游模型名称。
+逻辑模型在特定渠道中对应的上游模型名称及可用协议。
 _Avoid_: Model Alias
 
 **Credential（凭据）**:

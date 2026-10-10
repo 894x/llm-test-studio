@@ -166,17 +166,15 @@ function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: For
   const { t } = useTranslation("catalog")
   const [name, setName] = useState(item?.name ?? "")
   const [baseURL, setBaseURL] = useState(item?.base_url ?? "https://")
-  const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [enabled, setEnabled] = useState(item?.enabled ?? true)
   const [apiKey, setAPIKey] = useState("")
   return <FormShell pending={pending} label={tx("desktop:catalog_save_channel")} formTitle={formTitle} onSubmit={async () => {
-    const command = { name: required(name, tx("desktop:catalog_channel_name")), base_url: serviceURL(baseURL), api_key: item ? apiKey.trim() : required(apiKey, "API Key"), protocol, enabled }
+    const command = { name: required(name, tx("desktop:catalog_channel_name")), base_url: serviceURL(baseURL), api_key: item ? apiKey.trim() : required(apiKey, "API Key"), enabled }
     await mutate(() => item ? actions.updateChannel({ ...command, id: item.id, expected_revision: item.revision }) : actions.createChannel(command), tx("desktop:catalog_save_value", { value1: formTitle })); onSaved()
   }}>
     <TextField label={t("editor.fields.channelName")} value={name} onChange={setName} />
     <TextField label={t("editor.fields.serviceUrl")} value={baseURL} onChange={setBaseURL} />
     <TextField label={t("editor.fields.apiKey")} type="password" value={apiKey} onChange={setAPIKey} description={t(item ? "editor.fields.apiKeyEditHint" : "editor.fields.apiKeyNewHint")} />
-    <SelectField label={t("common.protocol")} value={protocol} disabled={pending} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
     <CheckField label={t("editor.fields.enabledChannel")} checked={enabled} onChange={setEnabled} />
     <FieldDescription>{t("editor.fields.channelSaveHint")}</FieldDescription>
   </FormShell>

@@ -36,7 +36,6 @@ export interface CatalogChannel {
   revision: number
   name: string
   base_url: string
-  protocol: CatalogProtocol
   enabled: boolean
   credential_configured: boolean
   model_count: number
@@ -100,7 +99,7 @@ export interface CatalogPlan {
 
 export type CreateModelCommand = Pick<CatalogModel, "name" | "protocols" | "capabilities">
 export type UpdateModelCommand = CreateModelCommand & { id: string; expected_revision: number }
-export type CreateChannelCommand = Pick<CatalogChannel, "name" | "base_url" | "protocol" | "enabled"> & { api_key: string }
+export type CreateChannelCommand = Pick<CatalogChannel, "name" | "base_url" | "enabled"> & { api_key: string }
 export type UpdateChannelCommand = CreateChannelCommand & { id: string; expected_revision: number }
 export type CreateChannelModelCommand = Pick<CatalogChannelModel, "channel_id" | "model_id" | "upstream_model_name" | "protocols">
 export type UpdateChannelModelCommand = Pick<CatalogChannelModel, "upstream_model_name" | "protocols"> & { id: string; expected_revision: number }
@@ -119,7 +118,12 @@ export type CreatePlanCommand = Pick<CatalogPlan, "name" | "protocol" | "seed"> 
 export type UpdatePlanCommand = CreatePlanCommand & { id: string; expected_revision: number }
 export interface DeleteCommand { id: string; expected_revision: number }
 
+export type SaveQuickTestTargetCommand = { name: string; base_url: string; api_key: string; credential_run_id?: string; model_name: string; protocol: CatalogProtocol }
+
+export interface SavedQuickTestTarget { catalog: CatalogSnapshot; channel_id: string }
+
 export interface CatalogActions {
+  saveQuickTestTarget(command: SaveQuickTestTargetCommand): Promise<SavedQuickTestTarget>
   createModel(command: CreateModelCommand): Promise<CatalogSnapshot>
   updateModel(command: UpdateModelCommand): Promise<CatalogSnapshot>
   deleteModel(command: DeleteCommand): Promise<CatalogSnapshot>
@@ -266,7 +270,7 @@ function parseChannel(value: unknown): CatalogChannel {
     !isPositiveInteger(value.revision) ||
     !isNonBlank(value.name) ||
     !isSafeServiceURL(value.base_url) ||
-    !isProtocol(value.protocol) ||
+    "protocol" in value ||
     typeof value.enabled !== "boolean" ||
     typeof value.credential_configured !== "boolean" ||
     !isNonNegativeInteger(value.model_count)
@@ -278,7 +282,6 @@ function parseChannel(value: unknown): CatalogChannel {
     revision: value.revision,
     name: value.name,
     base_url: value.base_url,
-    protocol: value.protocol,
     enabled: value.enabled,
     credential_configured: value.credential_configured,
     model_count: value.model_count,

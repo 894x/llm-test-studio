@@ -16,6 +16,7 @@ import {
   type CatalogActions,
   type CatalogSnapshot,
   type CreateChannelCommand,
+  type SaveQuickTestTargetCommand,
   type CreateChannelModelCommand,
   type CreateModelCommand,
   type CreatePlanCommand,
@@ -192,6 +193,7 @@ type WailsDesktopBinding = {
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
   DeleteModel(command: DeleteCommand): Promise<unknown>
+  SaveQuickTestTarget(command: SaveQuickTestTargetCommand): Promise<unknown>
   CreateChannel(command: CreateChannelCommand): Promise<unknown>
   UpdateChannel(command: UpdateChannelCommand): Promise<unknown>
   DeleteChannel(command: DeleteCommand): Promise<unknown>
@@ -222,7 +224,7 @@ const REQUIRED_WAILS_BINDING_METHODS = [
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "StopSending", "CancelRun", "StartComparison", "RunQuickPerformanceTest",
-  "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel",
+  "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
   "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
   "UpdateSuite", "DeleteSuite", "CreatePlan", "UpdatePlan", "DeletePlan",
@@ -333,7 +335,7 @@ export function createFixtureClient(
       const suite = catalogState.suites.find((item) => item.id === command.suite_id)
       if (!suite) throw new DesktopClientError("run_not_runnable")
       const channel = catalogState.channels.find((item) => item.id === command.channel_id)
-      if (command.channel_id && (!channel?.enabled || channel.protocol !== suite.protocol || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")
+      if (command.channel_id && (!channel?.enabled || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")
       if (!command.model || (!channel && (!command.base_url || (!command.api_key && !command.credential_run_id))) || (channel && (command.base_url || command.api_key))) throw new DesktopClientError("run_invalid")
       if (command.credential_run_id) {
         const source = quickTasks.get(command.credential_run_id)
@@ -419,8 +421,24 @@ export function createFixtureClient(
       catalogState.models = removeByID(catalogState.models, command.id)
       return structuredClone(catalogState)
     },
+    async saveQuickTestTarget(command) {
+      const matches = catalogState.models.filter(model => model.name === command.model_name)
+      if (matches.length > 1) throw new DesktopClientError("catalog_revision_conflict")
+      let model = matches[0]
+      if (!model) {
+        model = { id: nextID(), revision: 1, name: command.model_name, protocols: [command.protocol], capabilities: [] }
+        catalogState.models.push(model)
+      } else if (!model.protocols.includes(command.protocol)) {
+        model.protocols.push(command.protocol)
+        model.revision += 1
+      }
+      const channelID = nextID()
+      catalogState.channels.push({ id: channelID, revision: 1, name: command.name, base_url: command.base_url, enabled: true, credential_configured: true, model_count: 1 })
+      catalogState.channel_models.push({ id: nextID(), revision: 1, channel_id: channelID, model_id: model.id, upstream_model_name: command.model_name, protocols: [command.protocol] })
+      return { catalog: structuredClone(catalogState), channel_id: channelID }
+    },
     async createChannel(command) {
-      catalogState.channels.push({ id: nextID(), revision: 1, ...structuredClone(command), credential_configured: true, model_count: 0 })
+      catalogState.channels.push({ id: nextID(), revision: 1, name: command.name, base_url: command.base_url, enabled: command.enabled, credential_configured: true, model_count: 0 })
       return structuredClone(catalogState)
     },
     async updateChannel(command) {
@@ -431,7 +449,6 @@ export function createFixtureClient(
         revision: command.expected_revision + 1,
         name: command.name,
         base_url: command.base_url,
-        protocol: command.protocol,
         enabled: command.enabled,
         credential_configured: true,
         model_count: current.model_count,
@@ -551,6 +568,7 @@ function createLazyFixtureClient(): DesktopClient {
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
     deleteModel: async (command) => (await client).deleteModel(command),
+    saveQuickTestTarget: async (command) => (await client).saveQuickTestTarget(command),
     createChannel: async (command) => (await client).createChannel(command),
     updateChannel: async (command) => (await client).updateChannel(command),
     deleteChannel: async (command) => (await client).deleteChannel(command),
@@ -678,6 +696,18 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     createModel: async (command) => callCatalogMutation(binding, () => binding.CreateModel(command)),
     updateModel: async (command) => callCatalogMutation(binding, () => binding.UpdateModel(command)),
     deleteModel: async (command) => callCatalogMutation(binding, () => binding.DeleteModel(command)),
+    saveQuickTestTarget: async (command) => {
+      const payload = await callBinding(() => binding.SaveQuickTestTarget(command), value => value)
+      try {
+        if (!isRecord(payload) || typeof payload.channel_id !== "string") throw new Error("invalid saved channel")
+        const catalog = parseCatalogSnapshot(payload.catalog)
+        if (!catalog.channels.some(channel => channel.id === payload.channel_id)) throw new Error("saved channel missing")
+        return { catalog, channel_id: payload.channel_id }
+      } catch (error) {
+        await reportFrontendFailure(binding, "load_catalog")(error)
+        throw new DesktopClientError("catalog_saved_refresh_failed")
+      }
+    },
     createChannel: async (command) => callCatalogMutation(binding, () => binding.CreateChannel(command)),
     updateChannel: async (command) => callCatalogMutation(binding, () => binding.UpdateChannel(command)),
     deleteChannel: async (command) => callCatalogMutation(binding, () => binding.DeleteChannel(command)),

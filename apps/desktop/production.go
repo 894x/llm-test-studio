@@ -266,6 +266,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		catalogCommands := catalogQuery
 		serializedCatalog := serializedCatalogService{
 			gate: gate, query: catalogQuery, commands: catalogCommands, channels: channelService,
+			targets: channelService, targetCredential: runService.LeaseQuickTaskCredential,
 		}
 		return desktopDependencies{
 			query:            serializedWorkspaceQuery{gate: gate, query: workspaceQuery},

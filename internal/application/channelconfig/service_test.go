@@ -31,7 +31,7 @@ func TestCreateChannelStoresBaseURLAndKeyAsOneBoundConfiguration(t *testing.T) {
 	}
 	result, err := service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "primary", BaseURL: "https://api.example.test/v1", APIKey: "sk-test-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -73,7 +73,7 @@ func TestCreateChannelRetainsCredentialWhenCatalogCommitCannotBeDetermined(t *te
 	}
 	if _, err := service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "ambiguous", BaseURL: "https://api.example.test/v1", APIKey: "sk-retain-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	}); !errors.Is(err, writeFailure) || !errors.Is(err, readFailure) {
 		t.Fatalf("Create() error = %v, want ambiguous write and verification causes", err)
 	}
@@ -107,7 +107,7 @@ func TestCreateChannelCleansCredentialWhenKeyringSetMayHaveCommitted(t *testing.
 
 	_, err = service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "uncertain", BaseURL: "https://api.example.test/v1", APIKey: "sk-uncertain-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if !errors.Is(err, setFailure) {
 		t.Fatalf("Create() error = %v, want uncertain keyring cause", err)
@@ -124,7 +124,7 @@ func TestCreateChannelCleansCredentialWhenKeyringSetMayHaveCommitted(t *testing.
 	}
 }
 
-func TestUpdateChannelReplacesBaseURLProtocolAndKeyInOneRevision(t *testing.T) {
+func TestUpdateChannelReplacesBaseURLAndKeyInOneRevision(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 30, 0, 0, time.UTC)
 	repository := &channelRepository{}
 	store := credentials.NewMemoryStore()
@@ -142,7 +142,7 @@ func TestUpdateChannelReplacesBaseURLProtocolAndKeyInOneRevision(t *testing.T) {
 	}
 	created, err := service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "primary", BaseURL: "https://old.example.test/v1", APIKey: "sk-old-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -155,16 +155,13 @@ func TestUpdateChannelReplacesBaseURLProtocolAndKeyInOneRevision(t *testing.T) {
 	updated, err := service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: created.ChannelID, ExpectedRevision: created.ChannelRevision,
 		Name: "primary updated", BaseURL: "https://new.example.test/v1", APIKey: "sk-new-9876",
-		Protocol: domain.ProtocolOpenAIResponses, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
 	if updated.ChannelRevision != 2 || updated.CredentialRevision != 1 || updated.CredentialID == oldCredentialID || repository.channel.BaseURL != "https://new.example.test/v1" {
 		t.Fatalf("updated result = %#v channel = %#v", updated, repository.channel)
-	}
-	if repository.channel.Protocol != domain.ProtocolOpenAIResponses {
-		t.Fatalf("updated protocol = %q, want OpenAI Responses", repository.channel.Protocol)
 	}
 	ref, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, updated.CredentialID)
 	if err != nil {
@@ -192,7 +189,7 @@ func TestUpdateChannelCanBindCredentialToLegacyChannel(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 45, 0, 0, time.UTC)
 	repository := &channelRepository{channel: domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000021", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-		Name:       "legacy", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "legacy", BaseURL: "https://old.example.test/v1", Enabled: true,
 	}}
 	store := credentials.NewMemoryStore()
 	service, err := channelconfig.New(channelconfig.Dependencies{
@@ -206,7 +203,7 @@ func TestUpdateChannelCanBindCredentialToLegacyChannel(t *testing.T) {
 	}
 	result, err := service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: 1, Name: "legacy", BaseURL: "https://new.example.test/v1",
-		APIKey: "sk-bound-1234", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		APIKey: "sk-bound-1234", Enabled: true,
 	})
 	if err != nil || result.CredentialID == "" || repository.channel.CredentialID != result.CredentialID {
 		t.Fatalf("Update(legacy channel) = %#v, %v; channel=%#v", result, err, repository.channel)
@@ -220,7 +217,7 @@ func TestUpdateChannelCleansReplacementCredentialWhenKeyringSetMayHaveCommitted(
 	newCredentialID := "70000000-0000-4000-8000-000000000027"
 	repository := &channelRepository{channel: domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000028", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-		Name:       "primary", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "primary", BaseURL: "https://old.example.test/v1", Enabled: true,
 		CredentialID: oldCredentialID,
 	}}
 	baseStore := credentials.NewMemoryStore()
@@ -245,7 +242,7 @@ func TestUpdateChannelCleansReplacementCredentialWhenKeyringSetMayHaveCommitted(
 	_, err = service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: repository.channel.Revision,
 		Name: "primary", BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if !errors.Is(err, setFailure) {
 		t.Fatalf("Update() error = %v, want uncertain keyring cause", err)
@@ -288,7 +285,7 @@ func TestCreateChannelReturnsUncertainSetAndCleanupFailures(t *testing.T) {
 
 	_, err = service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "uncertain", BaseURL: "https://api.example.test/v1", APIKey: "sk-uncertain-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if !errors.Is(err, setFailure) || !errors.Is(err, cleanupFailure) {
 		t.Fatalf("Create() error = %v, want set and cleanup causes", err)
@@ -301,7 +298,7 @@ func TestUpdateChannelPreservesRepositoryReadFailure(t *testing.T) {
 	repository := &channelRepository{
 		channel: domain.Channel{
 			EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000041", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-			Name:       "primary", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+			Name:       "primary", BaseURL: "https://old.example.test/v1", Enabled: true,
 			CredentialID: "70000000-0000-4000-8000-000000000042",
 		},
 		getErr: readFailure,
@@ -316,7 +313,7 @@ func TestUpdateChannelPreservesRepositoryReadFailure(t *testing.T) {
 	_, err = service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: 1, Name: "primary",
 		BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if !errors.Is(err, readFailure) {
 		t.Fatalf("Update() error = %v, want wrapped repository read failure", err)
@@ -327,7 +324,7 @@ func TestUpdateChannelMapsStaleRevisionToCatalogConflict(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 48, 0, 0, time.UTC)
 	repository := &channelRepository{channel: domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000043", SchemaVersion: 1, Revision: 2, CreatedAt: now, UpdatedAt: now},
-		Name:       "primary", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "primary", BaseURL: "https://old.example.test/v1", Enabled: true,
 		CredentialID: "70000000-0000-4000-8000-000000000044",
 	}}
 	service, err := channelconfig.New(channelconfig.Dependencies{
@@ -340,18 +337,18 @@ func TestUpdateChannelMapsStaleRevisionToCatalogConflict(t *testing.T) {
 	_, err = service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: 1, Name: "primary",
 		BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if !errors.Is(err, catalog.ErrConflict) {
 		t.Fatalf("Update() error = %v, want %v", err, catalog.ErrConflict)
 	}
 }
 
-func TestUpdateChannelMapsUnsupportedProtocolToCatalogInvalid(t *testing.T) {
+func TestUpdateChannelMapsInvalidAddressToCatalogInvalid(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 48, 30, 0, time.UTC)
 	repository := &channelRepository{channel: domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000054", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-		Name:       "primary", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "primary", BaseURL: "https://old.example.test/v1", Enabled: true,
 		CredentialID: "70000000-0000-4000-8000-000000000055",
 	}}
 	service, err := channelconfig.New(channelconfig.Dependencies{
@@ -363,8 +360,8 @@ func TestUpdateChannelMapsUnsupportedProtocolToCatalogInvalid(t *testing.T) {
 
 	_, err = service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: 1, Name: "primary",
-		BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.Protocol("unsupported"), Enabled: true,
+		BaseURL: "invalid-url", APIKey: "sk-new-1234",
+		Enabled: true,
 	})
 	if !errors.Is(err, catalog.ErrInvalid) {
 		t.Fatalf("Update() error = %v, want %v", err, catalog.ErrInvalid)
@@ -377,7 +374,7 @@ func TestDeleteChannelPreservesRepositoryReadFailure(t *testing.T) {
 	repository := &channelRepository{
 		channel: domain.Channel{
 			EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000045", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-			Name:       "primary", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+			Name:       "primary", BaseURL: "https://old.example.test/v1", Enabled: true,
 			CredentialID: "70000000-0000-4000-8000-000000000046",
 		},
 		getErr: readFailure,
@@ -399,7 +396,7 @@ func TestDeleteChannelMapsMissingAndStaleChannelsToCatalogErrors(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 50, 0, 0, time.UTC)
 	channel := domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000047", SchemaVersion: 1, Revision: 2, CreatedAt: now, UpdatedAt: now},
-		Name:       "primary", BaseURL: "https://old.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "primary", BaseURL: "https://old.example.test/v1", Enabled: true,
 		CredentialID: "70000000-0000-4000-8000-000000000048",
 	}
 	tests := []struct {
@@ -448,7 +445,7 @@ func TestUpdateChannelRetainsOldCredentialWhilePlanBindingReferencesIt(t *testin
 	}
 	created, err := service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "pinned", BaseURL: "https://old.example.test/v1", APIKey: "sk-old-pinned",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -460,7 +457,7 @@ func TestUpdateChannelRetainsOldCredentialWhilePlanBindingReferencesIt(t *testin
 	if _, err := service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: created.ChannelID, ExpectedRevision: created.ChannelRevision,
 		Name: "pinned", BaseURL: "https://new.example.test/v1", APIKey: "sk-new-current",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +500,7 @@ func TestUpdateReportsObsoleteCredentialCleanupFailureAfterCommit(t *testing.T) 
 	}
 	created, err := service.Create(context.Background(), channelconfig.CreateCommand{
 		Name: "primary", BaseURL: "https://old.example.test/v1", APIKey: "sk-old-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -513,7 +510,7 @@ func TestUpdateReportsObsoleteCredentialCleanupFailureAfterCommit(t *testing.T) 
 	updated, err := service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: created.ChannelID, ExpectedRevision: created.ChannelRevision,
 		Name: "primary", BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v; committed cleanup failure must be diagnostic-only", err)
@@ -542,7 +539,7 @@ func TestCleanupCredentialIfUnreferencedRemovesObsoleteKeyringEntry(t *testing.T
 	obsoleteCredentialID := "70000000-0000-4000-8000-000000000051"
 	repository := &channelRepository{channel: domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000052", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
-		Name:       "current", BaseURL: "https://api.example.test/v1", Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Name:       "current", BaseURL: "https://api.example.test/v1", Enabled: true,
 		CredentialID: "70000000-0000-4000-8000-000000000053",
 	}}
 	store := credentials.NewMemoryStore()

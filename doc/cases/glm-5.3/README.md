@@ -18,8 +18,8 @@
 
 ## 在 Studio 中使用
 
-1. 渠道协议选择 `openai-chat`，直连普通 API 的 Base URL 填 `https://open.bigmodel.cn/api/paas/v4`，凭据通过渠道配置保存。
-2. 将逻辑模型 `glm-5.3` 映射到上游 `glm-5.3`。case 的路径是 `/chat/completions`，与 Base URL 拼接后得到完整接口地址。
+1. 直连普通 API 的 Base URL 填 `https://open.bigmodel.cn/api/paas/v4`，凭据通过渠道配置保存。
+2. 将逻辑模型 `glm-5.3` 映射到上游 `glm-5.3`，模型与映射协议包含 `openai-chat`。case 的路径是 `/chat/completions`，与 Base URL 拼接后得到完整接口地址。
 3. 在测试目录查看 `GLM 5.3` 命名的 case 和上述五个 suite，创建 Plan 时先选择连通性或基本功能套件。普通回归建议并发 1，单 case 超时至少 120 秒；历史/工具回传 case 包含两次请求。
 4. T3 大输出、上下文、缓存负载、大工具数组，以及外部服务或文档不明确的模板保持禁用。补齐各模板的前置条件和断言后，再单独启用和执行。
 

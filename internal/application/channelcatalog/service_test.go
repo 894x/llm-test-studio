@@ -370,8 +370,8 @@ func validChannel(id string, now time.Time) domain.Channel {
 		EntityMeta: domain.EntityMeta{ID: id, SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
 		Name:       "Channel " + id,
 		BaseURL:    "https://example.test/v1",
-		Protocol:   domain.ProtocolOpenAIChat,
-		Enabled:    true,
+
+		Enabled: true,
 	}
 }
 

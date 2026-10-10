@@ -9,6 +9,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { eligibleRuntimeChannels, eligibleRuntimeModels } from "@/features/runs/run-targets"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
 import type { ComparisonSnapshot, StartComparisonCommand } from "./data"
@@ -24,19 +25,16 @@ export function NewComparisonSheet({
 }) {
   const { t } = useTranslation("comparisons")
   const eligiblePlans = useMemo(
-    () => catalog.plans.filter((plan) => catalog.channels.filter(channel => channel.protocol === plan.protocol && channel.enabled && channel.credential_configured).length >= 2),
-    [catalog.plans, catalog.channels],
+    () => catalog.plans.filter((plan) => eligibleRuntimeModels(catalog, plan.id).some(model => eligibleRuntimeChannels(catalog, plan.id, model.id).length >= 2)),
+    [catalog],
   )
   const [open, setOpen] = useState(false)
   const [planID, setPlanID] = useState(eligiblePlans[0]?.id ?? "")
   const plan = eligiblePlans.find((item) => item.id === planID) ?? eligiblePlans[0]
-  const models = catalog.models.filter((model) => !!plan && model.protocols.includes(plan.protocol))
+  const models = eligibleRuntimeModels(catalog, plan?.id ?? "").filter(model => eligibleRuntimeChannels(catalog, plan?.id ?? "", model.id).length >= 2)
   const [modelID, setModelID] = useState(models[0]?.id ?? "")
   const effectiveModelID = models.some((model) => model.id === modelID) ? modelID : (models[0]?.id ?? "")
-  const channels = catalog.channels.filter((channel) =>
-    channel.protocol === plan?.protocol && channel.enabled && channel.credential_configured &&
-    catalog.channel_models.some((mapping) => mapping.channel_id === channel.id && mapping.model_id === effectiveModelID),
-  )
+  const channels = eligibleRuntimeChannels(catalog, plan?.id ?? "", effectiveModelID)
   const [selected, setSelected] = useState<string[]>([])
   const effectiveSelected = selected.filter((id) => channels.some((channel) => channel.id === id))
   const [error, setError] = useState("")

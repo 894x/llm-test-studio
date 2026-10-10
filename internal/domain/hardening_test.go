@@ -207,7 +207,7 @@ func TestEntityMetaAcceptsZeroOffsetTimezoneAndUUIDRejectsNilValue(t *testing.T)
 func TestChannelValidationRejectsCredentialBearingBaseURL(t *testing.T) {
 	base := Channel{
 		EntityMeta: validEntityMeta(testChannelID), Name: "primary",
-		BaseURL: "https://api.example.test/v1", Protocol: ProtocolOpenAIChat, Enabled: true,
+		BaseURL: "https://api.example.test/v1", Enabled: true,
 	}
 	if err := base.Validate(); err != nil {
 		t.Fatalf("safe channel Validate() error = %v", err)

@@ -31,7 +31,7 @@ describe("ModelChannelWorkspace", () => {
           revision: 1,
           name: "OpenAI 主渠道",
           base_url: "https://api.openai.example/v1",
-          protocol: "openai-chat",
+
           enabled: true,
           credential_configured: true,
           model_count: 1,
@@ -41,7 +41,7 @@ describe("ModelChannelWorkspace", () => {
           revision: 1,
           name: "Kimi 备用渠道",
           base_url: "https://api.kimi.example/v1",
-          protocol: "openai-chat",
+
           enabled: true,
           credential_configured: true,
           model_count: 0,

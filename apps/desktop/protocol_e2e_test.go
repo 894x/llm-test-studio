@@ -110,13 +110,13 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 					modelID = item.ID
 				}
 			}
-			channels, err := app.CreateChannel(catalog.CreateChannelCommand{Name: "Local HTTPS " + string(protocol), BaseURL: server.URL, APIKey: "desktop-e2e-secret", Protocol: protocol, Enabled: true})
+			channels, err := app.CreateChannel(catalog.CreateChannelCommand{Name: "Local HTTPS " + string(protocol), BaseURL: server.URL, APIKey: "desktop-e2e-secret", Enabled: true})
 			if err != nil {
 				t.Fatal(err)
 			}
 			var channelID string
 			for _, item := range channels.Channels {
-				if item.Protocol == protocol {
+				if item.Name == "Local HTTPS "+string(protocol) {
 					channelID = item.ID
 				}
 			}
