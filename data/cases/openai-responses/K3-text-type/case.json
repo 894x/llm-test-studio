@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "id": "610e2f18-3580-4023-bdfd-770076d5c4eb",
+  "key": "k3.responses.text_type",
+  "name": "K3 Responses · text.format 边界：text-type",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只输出 JSON 对象，code 值为 READY。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "text": []
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

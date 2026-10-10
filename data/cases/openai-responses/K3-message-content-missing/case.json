@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "id": "2de7fd51-cdd8-435c-a03c-2d46a18a29c9",
+  "key": "k3.responses.message_content_missing",
+  "name": "K3 Responses · 消息 content missing",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

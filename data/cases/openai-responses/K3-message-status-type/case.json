@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "id": "119065b9-9a17-4edf-aaf1-ea6c1847d144",
+  "key": "k3.responses.message_status_type",
+  "name": "K3 Responses · 消息 status type",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答 READY，不要解释。",
+              "status": 7
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

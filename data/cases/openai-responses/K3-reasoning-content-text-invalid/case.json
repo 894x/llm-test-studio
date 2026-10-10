@@ -1,0 +1,74 @@
+{
+  "schema_version": 2,
+  "id": "98550a08-edcb-4169-995f-7f4c10e7185a",
+  "key": "k3.responses.reasoning_content_text_invalid",
+  "name": "K3 Responses · reasoning.content text 边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "reasoning",
+              "summary": [
+                {
+                  "type": "summary_text",
+                  "text": "返回代码 READY。"
+                }
+              ],
+              "content": [
+                {
+                  "type": "reasoning_text",
+                  "text": 7
+                }
+              ],
+              "status": "completed"
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答 READY，不要解释。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

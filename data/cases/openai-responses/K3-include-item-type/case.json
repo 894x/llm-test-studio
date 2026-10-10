@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "id": "53847665-43af-43cb-9955-5b542c938d4c",
+  "key": "k3.responses.include_item_type",
+  "name": "K3 Responses · include 非法元素",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "include": [
+            7
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

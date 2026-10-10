@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "id": "bd1c32b1-11b3-4359-b47e-69c97e4eda10",
+  "key": "k3.responses.namespace_tools_type",
+  "name": "K3 Responses · namespace tools 边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "必须调用 math_tools 内的 get_number。只调用工具。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "namespace",
+              "name": "math_tools",
+              "description": "数值工具",
+              "tools": {}
+            }
+          ],
+          "tool_choice": "auto"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

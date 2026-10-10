@@ -1,0 +1,175 @@
+{
+  "schema_version": 2,
+  "id": "ef6027d5-ef25-4edd-9219-cdb5c2c0baa5",
+  "key": "k3.responses.search_domains_101",
+  "name": "K3 Responses · 搜索参数边界：domains-101",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "请联网搜索 Kimi 官方平台，并返回来源。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "web_search",
+              "filters": {
+                "allowed_domains": [
+                  "site0.example.com",
+                  "site1.example.com",
+                  "site2.example.com",
+                  "site3.example.com",
+                  "site4.example.com",
+                  "site5.example.com",
+                  "site6.example.com",
+                  "site7.example.com",
+                  "site8.example.com",
+                  "site9.example.com",
+                  "site10.example.com",
+                  "site11.example.com",
+                  "site12.example.com",
+                  "site13.example.com",
+                  "site14.example.com",
+                  "site15.example.com",
+                  "site16.example.com",
+                  "site17.example.com",
+                  "site18.example.com",
+                  "site19.example.com",
+                  "site20.example.com",
+                  "site21.example.com",
+                  "site22.example.com",
+                  "site23.example.com",
+                  "site24.example.com",
+                  "site25.example.com",
+                  "site26.example.com",
+                  "site27.example.com",
+                  "site28.example.com",
+                  "site29.example.com",
+                  "site30.example.com",
+                  "site31.example.com",
+                  "site32.example.com",
+                  "site33.example.com",
+                  "site34.example.com",
+                  "site35.example.com",
+                  "site36.example.com",
+                  "site37.example.com",
+                  "site38.example.com",
+                  "site39.example.com",
+                  "site40.example.com",
+                  "site41.example.com",
+                  "site42.example.com",
+                  "site43.example.com",
+                  "site44.example.com",
+                  "site45.example.com",
+                  "site46.example.com",
+                  "site47.example.com",
+                  "site48.example.com",
+                  "site49.example.com",
+                  "site50.example.com",
+                  "site51.example.com",
+                  "site52.example.com",
+                  "site53.example.com",
+                  "site54.example.com",
+                  "site55.example.com",
+                  "site56.example.com",
+                  "site57.example.com",
+                  "site58.example.com",
+                  "site59.example.com",
+                  "site60.example.com",
+                  "site61.example.com",
+                  "site62.example.com",
+                  "site63.example.com",
+                  "site64.example.com",
+                  "site65.example.com",
+                  "site66.example.com",
+                  "site67.example.com",
+                  "site68.example.com",
+                  "site69.example.com",
+                  "site70.example.com",
+                  "site71.example.com",
+                  "site72.example.com",
+                  "site73.example.com",
+                  "site74.example.com",
+                  "site75.example.com",
+                  "site76.example.com",
+                  "site77.example.com",
+                  "site78.example.com",
+                  "site79.example.com",
+                  "site80.example.com",
+                  "site81.example.com",
+                  "site82.example.com",
+                  "site83.example.com",
+                  "site84.example.com",
+                  "site85.example.com",
+                  "site86.example.com",
+                  "site87.example.com",
+                  "site88.example.com",
+                  "site89.example.com",
+                  "site90.example.com",
+                  "site91.example.com",
+                  "site92.example.com",
+                  "site93.example.com",
+                  "site94.example.com",
+                  "site95.example.com",
+                  "site96.example.com",
+                  "site97.example.com",
+                  "site98.example.com",
+                  "site99.example.com",
+                  "site100.example.com"
+                ]
+              },
+              "search_content_types": [
+                "text",
+                "image"
+              ],
+              "image_settings": {
+                "max_results": 3,
+                "caption": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "include": [
+            "web_search_call.action.sources",
+            "web_search_call.results"
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

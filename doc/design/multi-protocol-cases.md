@@ -46,7 +46,7 @@ Suite、Plan、Channel、Model 和一次 Run 各选择一个协议。执行时�
 
 全部 717 个 `data/cases/**/case.json` 已由单协议文件转换为当前格式，ID 按转换前的规则保存，已有 Suite 引用保持原值。5 个通用文本 Case 增加两个协议的定义；4 个新 Suite 复用这些 Case：每个协议各有 connectivity 和 text-contract。其他 Case 保留适用的协议，Case 数量没有增加。
 
-K3 后续按官方 Responses 文档为现有 84 个 Case 中的 39 个配置原生定义，并新增连通性、39 项基础与 16 项参数拒绝 Suite；当前目录为 717 个 Case、51 个 Suite。协议差异、剩余 45 个 Chat 场景与原生契约缺口见 [K3 Responses 覆盖矩阵](../../data/cases/kimi-k3/responses-coverage-matrix.md)。
+K3 按官方原生 Responses 文档复用既有 Chat Case 的 ID 和协议定义：原有 84 项中的 45 项支持 Responses，另补 208 项原生参数场景，39 项继续仅适用于 Chat。Responses 连通性、基础、预期成功、拒绝与默认禁用扩展套件分别为 3、230、61、169、23 项；当前目录为 925 个 Case、53 个 Suite。预期成功套件复用基础套件中启用且预期 HTTP200 的正向能力与合法参数边界，保留输出预算耗尽时合法 incomplete 的断言，排除拒绝项与禁用项。视频 Case 在 Chat 下验证能力，在 Responses 下验证未支持内容类型的 HTTP400 拒绝。覆盖范围、成本分层、原有官方实测冲突和待补的生命周期场景见 [K3 Responses 覆盖矩阵](../../data/cases/kimi-k3/responses-coverage-matrix.md)。
 
 这是项目内部契约的替换。旧的 protocol/definition 包装和旧性能报告格式不被运行时读取。历史数据升级使用单独调用的临时脚本，先备份、生成候选、用当前代码校验，再替换；启动不执行迁移。
 

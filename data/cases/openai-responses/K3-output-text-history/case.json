@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "id": "61017d9d-8378-40ea-85ba-5fadf4be7e59",
+  "key": "k3.responses.output_text_history",
+  "name": "K3 Responses · output_text 历史回放",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "记住代码 READY。"
+            },
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "READY"
+                }
+              ]
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只重复上一条助手回答。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

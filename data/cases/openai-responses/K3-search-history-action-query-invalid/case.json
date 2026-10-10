@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "id": "6f0f609b-1c74-46c9-a9d8-e95aa2cf9772",
+  "key": "k3.responses.search_history_action_query_invalid",
+  "name": "K3 Responses · search history action-query 边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "web_search_call",
+              "status": "completed",
+              "action": {
+                "type": "search",
+                "query": 7
+              }
+            },
+            {
+              "type": "message",
+              "role": "assistant",
+              "content": "代码是 READY。"
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答上文代码。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

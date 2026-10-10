@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "id": "137f5c81-0174-43c2-9fe9-e1135dbadc61",
+  "key": "k3.responses.history_custom_tool_mismatched_id",
+  "name": "K3 Responses · custom-tool 调用结果 call_id 不匹配",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "执行工具获取代码。"
+            },
+            {
+              "type": "custom_tool_call",
+              "call_id": "client-call-1",
+              "name": "apply_patch",
+              "input": "*** Begin Patch\n*** Add File: hello.txt\n+hello\n*** End Patch"
+            },
+            {
+              "type": "custom_tool_call_output",
+              "call_id": "client-call-2",
+              "output": "READY"
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答工具结果中的代码。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "custom",
+              "name": "apply_patch",
+              "description": "生成补丁创建 hello.txt，内容为 hello。",
+              "format": {
+                "type": "grammar",
+                "syntax": "lark",
+                "definition": "start: \"*** Begin Patch\\n*** Add File: hello.txt\\n+hello\\n*** End Patch\""
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

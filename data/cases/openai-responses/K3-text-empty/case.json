@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "id": "d51f8257-1574-48bc-8749-3c6f34ecf543",
+  "key": "k3.responses.text_empty",
+  "name": "K3 Responses · text 空对象",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "text": {}
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

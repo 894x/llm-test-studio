@@ -1,0 +1,80 @@
+{
+  "schema_version": 2,
+  "id": "4685e7de-4525-44df-b22c-8826477f693d",
+  "key": "k3.responses.cache_options_omitted",
+  "name": "K3 Responses · 缓存选项省略默认 5m",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        },
+        {
+          "id": "cache_mode",
+          "source": "response",
+          "operator": "equals",
+          "value": "implicit",
+          "pointer": "/prompt_cache_options/mode"
+        },
+        {
+          "id": "cache_ttl",
+          "source": "response",
+          "operator": "equals",
+          "value": "5m",
+          "pointer": "/prompt_cache_options/ttl"
+        }
+      ]
+    }
+  }
+}

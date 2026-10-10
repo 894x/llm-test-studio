@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "id": "844b327d-0a65-450a-ad2c-63c85c3a0ee1",
+  "key": "k3.responses.dynamic_id_invalid",
+  "name": "K3 Responses · additional_tools id 边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "additional_tools",
+              "role": "developer",
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "get_number",
+                  "description": "返回约定的代码。",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                  }
+                }
+              ],
+              "id": 7
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答 READY，不要解释。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

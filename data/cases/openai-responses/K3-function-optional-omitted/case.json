@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "id": "9d9ab1ca-3fce-4d02-82a3-4af3ab6e194b",
+  "key": "k3.responses.function_optional_omitted",
+  "name": "K3 Responses · 函数 description/parameters/strict 省略",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不调用工具。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "name": "get_number"
+            }
+          ],
+          "tool_choice": "auto"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

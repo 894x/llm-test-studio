@@ -1,0 +1,114 @@
+{
+  "schema_version": 2,
+  "id": "5db07ada-898b-463d-9705-6b66df30bad0",
+  "key": "k3.responses.custom_apply_patch",
+  "name": "K3 Responses · custom apply_patch 调用",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "请使用 apply_patch 创建 hello.txt，内容为 hello。只调用工具。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "custom",
+              "name": "apply_patch",
+              "description": "生成补丁创建 hello.txt，内容为 hello。",
+              "format": {
+                "type": "grammar",
+                "syntax": "lark",
+                "definition": "start: \"*** Begin Patch\\n*** Add File: hello.txt\\n+hello\\n*** End Patch\""
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "custom_call",
+          "source": "response",
+          "pointer": "/output",
+          "each_mode": "any",
+          "each": [
+            {
+              "id": "custom_type",
+              "source": "item",
+              "operator": "equals",
+              "value": "custom_tool_call",
+              "pointer": "/type"
+            },
+            {
+              "id": "custom_name",
+              "source": "item",
+              "operator": "equals",
+              "value": "apply_patch",
+              "pointer": "/name"
+            },
+            {
+              "id": "custom_id",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/call_id"
+            },
+            {
+              "id": "custom_input",
+              "source": "item",
+              "operator": "contains",
+              "value": "*** Begin Patch",
+              "pointer": "/input"
+            },
+            {
+              "id": "custom_file",
+              "source": "item",
+              "operator": "contains",
+              "value": "hello.txt",
+              "pointer": "/input"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "key": "openai-responses.kimi-k3.extended-contract",
+  "name": "Kimi K3 Responses 扩展能力（按需启用）",
+  "protocol": "openai-responses",
+  "description": "23 个图片 detail、联网搜索、原样回放与既有禁用 allowed_tools 场景；Case 默认禁用，启用前确认资产与额度。",
+  "cases": [
+    {
+      "case_id": "8e47eb42-de53-574f-803f-b16238289bb6"
+    },
+    {
+      "case_id": "6816bf84-7dce-4cd8-a0cf-56ef6dec003a"
+    },
+    {
+      "case_id": "a979781f-b102-4300-ae7f-000a4507b4ab"
+    },
+    {
+      "case_id": "5bcd6d73-5bed-49eb-97b7-f7dd8fbe9554"
+    },
+    {
+      "case_id": "57a72665-6119-4d63-8f76-a39bcd9bbbcf"
+    },
+    {
+      "case_id": "0e0ab778-de82-4566-9e07-ab97f2de1479"
+    },
+    {
+      "case_id": "ad2273fe-263a-4859-8356-58280c4a86c4"
+    },
+    {
+      "case_id": "01399bc7-583c-45c9-83e1-f18799b6cb4f"
+    },
+    {
+      "case_id": "bd0b2a9b-19a5-4748-a80d-405a528bc437"
+    },
+    {
+      "case_id": "40746f7e-7cc5-479d-961d-64ccbf866ab4"
+    },
+    {
+      "case_id": "e08d9fc9-2c83-4397-bf1a-bcf8c2a09634"
+    },
+    {
+      "case_id": "c69b5f69-e53e-4b2a-95f8-d17e37fffca0"
+    },
+    {
+      "case_id": "2aa555c1-d7e4-4c0f-96ca-11028fe69905"
+    },
+    {
+      "case_id": "97620e94-6234-4160-b0c8-dc390505845b"
+    },
+    {
+      "case_id": "3941ffb6-bb4d-4111-a845-cf630c8a1248"
+    },
+    {
+      "case_id": "c88c169b-150b-4120-8abf-212c88897440"
+    },
+    {
+      "case_id": "33869d94-c769-4a5d-94ad-2eee95b5f6bd"
+    },
+    {
+      "case_id": "82f6f297-a15b-4b64-b53c-5710d9894e6a"
+    },
+    {
+      "case_id": "31daedf8-31ed-449a-bf3b-e72f036039d2"
+    },
+    {
+      "case_id": "2bb1e2f2-f7d4-4385-a52e-57f0238b9abb"
+    },
+    {
+      "case_id": "8a71cc27-1df0-4ed7-8815-c30120c95461"
+    },
+    {
+      "case_id": "4e1c5a18-6460-4ab4-b09c-cc30677bcc86"
+    },
+    {
+      "case_id": "9791b92f-822e-4366-a915-9d5577419c4f"
+    }
+  ],
+  "inputs": []
+}

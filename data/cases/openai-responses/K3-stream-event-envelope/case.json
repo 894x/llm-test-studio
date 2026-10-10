@@ -1,0 +1,99 @@
+{
+  "schema_version": 2,
+  "id": "2ca7f1b0-09fd-4c83-a465-60f02b508710",
+  "key": "k3.responses.stream_event_envelope",
+  "name": "K3 Responses · SSE sequence_number 与终态",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "stream": true
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        },
+        {
+          "id": "stream_terminal",
+          "source": "stream.completed",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "id": "events_present",
+          "source": "requests",
+          "operator": "non_empty",
+          "pointer": "/0/events"
+        },
+        {
+          "id": "event_shape",
+          "source": "requests",
+          "pointer": "/0/events",
+          "each": [
+            {
+              "id": "event_type",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/type"
+            },
+            {
+              "id": "sequence_number",
+              "source": "item",
+              "operator": "type",
+              "value": "integer",
+              "pointer": "/sequence_number"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

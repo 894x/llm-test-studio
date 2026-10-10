@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "id": "3730adbf-eac6-479c-bd16-0b4579bcd9e7",
+  "key": "k3.responses.cache_options_mode_default_ttl",
+  "name": "K3 Responses · 缓存选项 mode-default-ttl",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "prompt_cache_options": {
+            "mode": "implicit"
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        },
+        {
+          "id": "cache_mode",
+          "source": "response",
+          "operator": "equals",
+          "value": "implicit",
+          "pointer": "/prompt_cache_options/mode"
+        },
+        {
+          "id": "cache_ttl",
+          "source": "response",
+          "operator": "equals",
+          "value": "5m",
+          "pointer": "/prompt_cache_options/ttl"
+        }
+      ]
+    }
+  }
+}

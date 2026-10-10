@@ -1,0 +1,103 @@
+{
+  "schema_version": 2,
+  "id": "fd142658-0f83-43b3-9468-2a649160c3e1",
+  "key": "k3.responses.history_custom_tool_completed",
+  "name": "K3 Responses · custom-tool 历史与结果 status=completed",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "执行工具获取代码。"
+            },
+            {
+              "type": "custom_tool_call",
+              "call_id": "client-call-1",
+              "name": "apply_patch",
+              "input": "*** Begin Patch\n*** Add File: hello.txt\n+hello\n*** End Patch",
+              "id": "client-history-item",
+              "status": "completed"
+            },
+            {
+              "type": "custom_tool_call_output",
+              "call_id": "client-call-1",
+              "output": "READY",
+              "status": "completed"
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答工具结果中的代码。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "custom",
+              "name": "apply_patch",
+              "description": "生成补丁创建 hello.txt，内容为 hello。",
+              "format": {
+                "type": "grammar",
+                "syntax": "lark",
+                "definition": "start: \"*** Begin Patch\\n*** Add File: hello.txt\\n+hello\\n*** End Patch\""
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

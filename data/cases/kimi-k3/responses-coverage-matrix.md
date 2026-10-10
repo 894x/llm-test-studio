@@ -2,7 +2,7 @@
 
 Retrieved: 2026-10-10. Provider: Kimi China; model: `kimi-k3`; endpoint: `POST /v1/responses`.
 
-Scope: audit and correct the existing 39 native `openai-responses` definitions in the K3 foundation against the official Responses request/response contract. Keep the 717 logical Cases, stable IDs and Chat definitions. This remains a foundation adaptation, not complete Responses boundary coverage. Responses definitions now follow the native endpoint; Chat request values are not substituted for its documented enums.
+Scope: the documented native Kimi K3 `POST /v1/responses` request, nested input/tool parameters, synchronous and SSE responses, and replay/cache/search lifecycle. Reuse existing logical Chat Cases and IDs wherever the claim has a native counterpart; add new Cases only for missing native claims. Preserve existing Chat definitions. This expansion defines local fixtures and executable requests, without authorizing new paid provider calls. Documentation retrieved 2026-10-10.
 
 Sources, retrieved 2026-10-10: [Responses API](https://platform.kimi.com/docs/api/responses), [OpenAPI](https://platform.kimi.com/docs/openapi.json), [errors](https://platform.kimi.com/docs/api/errors). `ResponsesToolChoice` lists only `auto`; `ResponsesRequest.reasoning.effort` lists `low`, `high`, `max`; the output-budget description sets 1048576 as the maximum and explicitly separates output budget from total input plus output. Reaching the output budget produces `incomplete` with reason `max_output_tokens`.
 
@@ -21,7 +21,7 @@ Run `a222cb13-40ca-406b-937d-84108383e142`, 2026-10-10 22:15-22:17 Asia/Shanghai
 | Output budget 1048577, same schema | Keep rejection above the documented maximum. | **Documentation conflict:** official request returned HTTP 200. Provider rejection enforcement is not established. |
 | HTTP error envelope, `ErrorResponse` | Validate an error object/message for HTTP errors without requiring successful `output`. Keep malformed success/error bodies as protocol issues. | Original rejected inputs passed assertions but were incorrectly marked `invalid_response_shape`; fixed in the decoder. |
 
-The native foundation remains 39 members; admission is 16 members after adding the two unsupported-choice cases and removing the accepted 1048576-budget case. Live evidence above belongs to the original requests. Local checks and fixture replay are reported separately and do not establish a new 39-request provider pass.
+Before the parameter expansion below, the native foundation had 39 members and admission had 16 members after adding the two unsupported-choice cases and removing the accepted 1048576-budget case. Live evidence above belongs to the original requests. Local checks and fixture replay are reported separately and do not establish a new 39-request provider pass.
 
 Offline replay on 2026-10-10 used the saved official exchanges with the current decoder and assertions. JSON request comparison (excluding only the runtime-bound model) found 35 unchanged requests: 32 passed, and the three documented conflicts above failed. Four requests changed from `required` to `auto` and were excluded from replay conclusions; only their local request/assertion fixtures were verified. Temporary replay code was removed after verification.
 
@@ -90,14 +90,14 @@ Offline replay on 2026-10-10 used the saved official exchanges with the current 
 | `21aa488a-faca-55b0-b3ea-bb38e7cbfb15` / `top_p_below_fixed` | No documented Responses counterpart for this Chat claim; not sent or silently dropped. | not applicable; excluded from this native run |
 | `81dbf546-625f-5fd7-ae9d-b21db4c233d6` / `must.image_url_object` | HTTP 400; native assertions | T2; original request in official run above |
 | `b007bcfc-612e-5b82-afd2-8b79cff874b0` / `must.image_url_string` | HTTP 200; native assertions | T3; original request in official run above |
-| `40d1a659-1525-562b-a081-904e14c598ab` / `must.video_url_object` | Responses input content supports input_text, input_image and output_text; this video claim has no counterpart. | not applicable; excluded from this native run |
-| `35a12d23-7847-5393-80e0-14f3cb5fe1a6` / `must.video_url_string` | Responses input content supports input_text, input_image and output_text; this video claim has no counterpart. | not applicable; excluded from this native run |
+| `40d1a659-1525-562b-a081-904e14c598ab` / `must.video_url_object` | Native HTTP400 rejection definition added in this expansion; see added-case index. | T2; newly defined, not provider-executed |
+| `35a12d23-7847-5393-80e0-14f3cb5fe1a6` / `must.video_url_string` | Native HTTP400 rejection definition added in this expansion; see added-case index. | T2; newly defined, not provider-executed |
 | `e9202e63-c05b-5392-b353-148f20859064` / `must.multimodal_type_required` | HTTP 400; native assertions | T2; original request in official run above |
 | `48ae6055-0345-5c82-af8f-203dc1f41cc0` / `must.multimodal_text_required` | HTTP 400; native assertions | T2; original request in official run above |
 | `2f43514d-ac8d-5878-9ccb-e36ab3a93ea2` / `must.multimodal_image_url_required` | HTTP 400; native assertions | T2; original request in official run above |
-| `9534cda3-dc0c-58a3-ad0e-2d724480bda1` / `must.multimodal_video_url_required` | Responses input content supports input_text, input_image and output_text; this video claim has no counterpart. | not applicable; excluded from this native run |
-| `b0b3e328-1b42-5b50-ab68-c578a5181889` / `must.image_url_object_url_required` | Responses image_url is a string; the nested object.url requirement is specific to Chat. | not applicable; excluded from this native run |
-| `3acc5571-9386-532d-859a-8f3a411c39b1` / `must.video_url_object_url_required` | Responses input content supports input_text, input_image and output_text; this video claim has no counterpart. | not applicable; excluded from this native run |
+| `9534cda3-dc0c-58a3-ad0e-2d724480bda1` / `must.multimodal_video_url_required` | Native HTTP400 rejection definition added in this expansion; see added-case index. | T2; newly defined, not provider-executed |
+| `b0b3e328-1b42-5b50-ab68-c578a5181889` / `must.image_url_object_url_required` | Native HTTP400 rejection definition added in this expansion; see added-case index. | T2; newly defined, not provider-executed |
+| `3acc5571-9386-532d-859a-8f3a411c39b1` / `must.video_url_object_url_required` | Native HTTP400 rejection definition added in this expansion; see added-case index. | T2; newly defined, not provider-executed |
 | `37836b34-b6de-5046-a8d3-8d0808ead040` / `enable_thinking_true_active` | No documented Responses counterpart for this Chat claim; not sent or silently dropped. | not applicable; excluded from this native run |
 | `cdefc202-0d6f-57cf-94bf-ee62fb809268` / `enable_thinking_false_effective` | No documented Responses counterpart for this Chat claim; not sent or silently dropped. | not applicable; excluded from this native run |
 | `1e211369-72e6-54ec-bd51-7effd6dafc21` / `thinking_type_disabled_effective` | No documented Responses counterpart for this Chat claim; not sent or silently dropped. | not applicable; excluded from this native run |
@@ -116,31 +116,33 @@ Offline replay on 2026-10-10 used the saved official exchanges with the current 
 
 ## Behavioral inventory and remaining gaps
 
-| Contract | Mandatory scenarios / expected result | Existing implementation / state |
+| Contract | Mandatory scenarios / expected result | Current implementation / state |
 |---|---|---|
-| Method, Content-Type, Bearer authentication | POST/native route/JSON; missing or invalid credentials → 401 | Runner binding and mocks; invalid provider credentials are not Case-owned: blocked |
-| Signature nonce and returned signature headers | absent; valid single nonempty nonce; malformed/multiple values omit signature | Case-defined headers unavailable: blocked; no fabricated signature evidence |
-| model | bound kimi-k3; missing/null/wrong/unknown model | Current Run owns model; unsupported binding mutations blocked at Case boundary |
-| input | string; message array; omitted → 400; null/wrong type; empty array/content | omission and message/content probes adapted; empty rejection undocumented; wrong/null shapes remain partial |
-| message type/role/content/status | type omitted/message; user/assistant/developer; strings/content arrays; invalid role/type; required role/content | user/developer and text/image shapes adapted; assistant replay/status and malformed roles missing |
-| instructions | omitted/string/wrong type; first instruction precedence | developer system prefix reused; top-level instructions scenarios missing |
-| stream and SSE lifecycle | omitted/false/true; JSON vs typed events; start/deltas/final; HTTP200 incomplete/failed; sequence monotonicity | native stream completion + text/usage assertions; parser mocks cover failures; sequence-number assertion missing |
-| max_output_tokens | omitted default131072; representative1; upper1048576 acceptance;1048577 rejection; budget terminal reason and usage | three existing budget boundaries adapted; native upper budget accepted independently of input; usage-at-1 and above-max enforcement conflict with official observation; omitted/near-1M input deferred T3 |
-| reasoning.effort | omitted=max; low/high/max; medium/wrong type →400 | three enum cases and reasoning item; max permits documented budget terminal; medium rejection conflicts with official observation; wrong type missing: partial |
-| text.format | json_schema; type/schema required; name omitted=output; strict true/false; null/nonobject/unknown type | positive schema, omitted name success, missing schema, nonobject, json_object/yaml rejection adapted; strict false/type failures missing: partial |
-| function tools | flat type/name/description/parameters/strict; name regex1..128,129/leading digit rejection; optional parameters/description | native flattening, call_id and JSON arguments, name boundaries adapted; optional/strict wrong-type scenarios missing: partial |
-| tool_choice | omitted/auto model selection; required/none →400; specified function →400; wrong type | native-only positive and negative definitions; required/none rejection observed officially; wrong-type branch missing: partial |
-| additional_tools | type=additional_tools, role=developer, tools required; applies from position onward; coexistence | declarations moved before requesting message; native dynamic call asserted; wrong-role/missing-tools/scope-before tests missing: partial |
-| namespace/custom apply_patch tools | required fields; function/custom children; grammar+lark+definition; unsupported custom names/formats →400 | no existing equivalent Case: missing; no runtime translation from Chat tools |
-| input function/custom calls and output replay | original output items replayed; matching call_id required; arguments/input strings; outputs string/content arrays; malformed pairing | no existing equivalent Case: missing; generic response references do not flatten output arrays into input |
-| reasoning replay / web_search replay | content over summary; exact original reasoning; web search history ignored during conversion | no existing equivalent Case: missing; no artificial response IDs |
-| image content | input_image/image_url data URL string; no public HTTP URL; detail auto/low/high/original; missing/type-invalid fields →400 | PNG7 string success, object rejection and required-field probes; URL rejection and detail sweep missing: partial T3 |
-| web_search | max1 tool; allowed_domains0/1/100/101; content_types text/image; image max_results1/10,0/11; caption; forbidden vs ignored options | no existing equivalent Case: missing; provider search costs not authorized |
-| include | omitted; two allowed source/result values; unknown/wrong type; only effective with web_search and image option | no existing equivalent Case: missing |
-| cache key / cache options | omitted implicit5m; explicit5m/1h; invalid mode/ttl/type; cached/read/write disjoint; org isolation; TTL refresh/expiry; breakpoint→400 | existing key uses explicit1h echo; repeat-prefix workflow5m validates positive hit bounded by input; other scenarios missing/deferred T3 |
-| safety_identifier | omitted; hashed string; wrong type | hashed-string acceptance adapted; wrong type missing: partial |
-| response envelope / usage | response object/id/model/timestamps; native output variants; completed/incomplete/failed; usage sum; cached/write/reasoning details; fixed store/background=false, previous/conversation=null | common native object/terminal/output and usage sum; cache workflow checks write field; unsupported output variants/fixed fields/timestamps not exhaustively asserted: partial |
-| Errors / limits / safety | invalid_request_error400; auth401; permission403; overload/quota/rate429; transport/server terminal failures | adapted admission cases assert type+message, no brittle message match; auth/rate/safety are operator-bound: blocked/deferred |
+| Method, Content-Type, Bearer authentication | POST/native route/JSON; missing or invalid credentials →401 | Native route and local mocks; provider credential mutations are Run-owned: blocked |
+| Signature nonce and returned signature headers | absent/valid nonce and malformed/multiple nonce behavior | Case-defined headers unavailable: blocked |
+| model | bound kimi-k3; missing/null/wrong/unknown model | Run-owned model; Case boundary cannot override it: blocked |
+| input | string/array; missing/null/wrong outer/item types →400 | Existing omission plus K3 input/message Cases: covered for documented union; empty rejection unpublished |
+| message type/role/content/status | type omitted/message; user/assistant/developer; string/parts; required fields, wrong enum/type | Message Cases and output_text history: covered for selected documented partitions |
+| instructions | omitted/string/non-string; top-level instruction used for sentinel answer | K3 instructions and instructions-type: covered; no invented precedence against contradictory same-priority instructions |
+| stream and SSE lifecycle | false/true/default; start/delta/final; sequence integer and monotonic order; budget/failed terminals | Existing streaming/usage plus K3 stream-event-envelope; sequence presence/type covered; monotonicity and custom/search intermediate-event assertions remain partial |
+| max_output_tokens | default131072, interior,1,1048576,1048577, integer types; budget usage | Existing limits plus default/fraction/string Cases: implemented; official conflicts at 1 and 1048577 retained; exact near-1M input deferred |
+| reasoning.effort | default=max; low/high/max; wrong enum/type →400 | Existing enums plus empty-default/wrong-type Cases: implemented; official medium acceptance conflict retained |
+| text.format | required type/schema; name omitted/explicit; strict false/true; wrong object/field types; exact JSON values | Existing format Cases plus K3 schema/text/format Cases: covered for documented fields; schema internals are free-form |
+| function tools | flat fields; valid name lengths/pattern,129/empty/bad characters; optional fields/strict; native call | Existing tool name limits plus K3 function Cases: covered for selected request partitions and native call evidence |
+| tool_choice | omitted/auto; required/none/specified/allowed_tools/unknown/wrong type →400 | Existing choices plus K3 unknown/type: covered; reused allowed_tools keeps its prior disabled metadata in optional profile |
+| additional_tools | developer/tools required, optional id, declaration position/coexistence | Existing dynamic call plus K3 malformed declaration Cases; exact before/after-position replay remains partial |
+| namespace/custom apply_patch | namespace required fields/child union; custom apply_patch grammar+lark; native call and namespace | K3 namespace/custom Cases: covered for selected field and child partitions; no Chat conversion |
+| function/custom call and output replay | client-authored matching IDs, optional completed status, string/parts results; missing/type/mismatched IDs/invalid argument JSON →400 | K3 history Cases: covered for authored input contract; dynamically executing arbitrary provider tool calls remains deferred |
+| reasoning replay | original provider output preserved; content over summary | Malformed nested Cases plus disabled K3 reasoning-provider-replay; exact output reference fixture verified; summary/content precedence and optional positive shapes remain partial/T3 |
+| web_search history | retained history ignored by conversion; optional action/id/status malformed | K3 search-history Cases: covered for history shape and sentinel answer |
+| image content | data URL string, required fields, HTTP URL rejection, four detail values/type | Existing PNG7 and required/object Cases plus K3 image URL/detail Cases; explicit detail success Cases implemented disabled T3 |
+| video content | Chat video_url string/object, missing fields; native input_video outside documented closed union | F023/F024/F029/F031 reused native HTTP400; new K3 input-video-unsupported; covered as rejection, never native video capability |
+| web_search | at most1, domains0/1/100/101, content text/image, max_results0/1/5/10/11, default3, caption and ignored/forbidden fields | K3 search rejection Cases enabled T2; retrieval/result-cap Cases implemented disabled T3; filtering correctness/ignored-field equivalence remain partial |
+| include | two allowed values, both/omitted, unknown/wrong types, no-search ineffectiveness | K3 include/type/no-search plus three independent search include Cases; positive search assertions disabled T3 |
+| cache key/options | implicit5m default,5m/1h, invalid mode/ttl/types; hit/write, expiry/refresh/org isolation | Existing hit workflow plus K3 options/default/type Cases; cache TTL/refresh/isolation remain deferred T3 without timed executable scenarios |
+| safety_identifier | omitted/hashed string/non-string | Existing hashed string plus K3 wrong type: covered |
+| response envelope/usage | id/object/model/timestamps, native output variants, usage arithmetic, fixed fields | Existing usage and new envelope/call/search Cases; full optional-output/timestamp/accounting invariants remain partial |
+| Errors/limits/safety | invalid_request_error400,401/403/429, overload/server/content filter | Parameter rejection and local protocol fixtures; authenticated quota/rate/safety failure environments blocked/deferred |
 
 Unknown empty-input rules, integer lower limit, tool-count and input-array cardinality are not invented from the generic OpenAI contract.
 
@@ -509,10 +511,14 @@ Every official Responses request/response/SSE field is listed below and maps to 
 | `SSE.type` | `string` | required | `{"enum": ["response.created", "response.in_progress", "response.output_item.added", "response.output_item.done", "response.content_part.added", "response.content_part.done", "response.output_text.delta", "response.output_text.done", "response.reasoning_summary_part.added", "response.reasoning_summary_part.done", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done", "response.function_call_arguments.delta", "response.function_call_arguments.done", "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done", "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed", "response.completed", "response.incomplete", "response.failed", "error"]}` |
 | `SSE.sequence_number` | `integer` | required | `not specified` |
 
-## Execution profiles
+## Execution profiles and verification
 
-- Connectivity: 3 HTTP/SSE/usage Cases. Foundation: 39 existing Case IDs. Admission: 16 expected HTTP400 Cases.
-- Foundation includes the image fixture and cache workflow (T3); select it explicitly. The user supplied the official run above. No new paid provider request was made while adjusting these definitions.
-- Positive requests use native `auto`; dedicated required/none rejection Cases retain those values. The user confirmed this distinction on 2026-10-10. Local tests reject an HTTP200 reply for unsupported choice Cases.
-- Current Case/Suite loading, request rendering and assertion fixtures are T0/local evidence. Historical response replay cannot validate requests whose body changed, and cannot establish new model quality or cache availability.
-- The Run must select `openai-responses` on a model/channel that supports that protocol; native Case definitions and assertions are selected together.
+- Connectivity: 3 Cases. Foundation: **230** Cases. Expected success: **61** enabled automatic HTTP200 Cases. Admission: **169** HTTP400 Cases. Optional extended: **23** disabled Cases (22 T3 and the previously disabled allowed_tools Case).
+- The expected-success profile preserves foundation order and contains its positive capabilities and valid parameter boundaries, including the image fixture/cache workflow. It excludes admission and disabled Cases; documented output-budget truncation may correctly end in `incomplete` with `max_output_tokens`. Existing semantic, terminal and usage assertions are unchanged. Expected success is an authored expectation, not a claim that a new provider run passed.
+- This expansion adds **214 native definitions**: 6 existing Chat IDs reused, plus 208 new native-only Cases for missing claims. There are now 253 K3 native Cases; 39 of the original 84 K3 Chat Cases remain Chat-only because their claim has no documented native counterpart.
+- Reviewed pre-generation selection: [responses-boundary-plan.md](responses-boundary-plan.md). Every added definition, primary delta, source schema, stable ID, expectation, tier and enabled status is listed in [responses-added-case-index.md](responses-added-case-index.md).
+- Foundation preserves its existing image fixture/cache workflow. New paid retrieval/image-detail/provider-replay Cases are disabled and excluded from foundation/admission. Adding Cases does not execute provider requests.
+- T0 checks validate every current Case/Suite, native error requests without normalization, HTTP200 rejection failures, exact semantic JSON/text, namespace/custom call evidence, result-count boundaries, sequence-number presence, and unchanged provider-output replay. This is local fixture evidence, not a new provider run.
+- The six reused Cases preserve their ID, global metadata and complete Chat request/assertions. Existing positive native requests continue to use auto; required/none rejection Cases remain intact.
+- The Run selects openai-responses on a supporting model/channel. No authored Case owns the model, credential or URL. No internal schema version or compatibility path changed; historical reports remain unchanged.
+- Full lifecycle coverage is still incomplete: nonce/auth/model mutation requires runner/environment support; exact tokenizer context boundaries, rate/content-filter conditions, cache expiry/refresh/isolation require controlled execution; stream ordering/custom/search intermediate events, dynamic declaration scope, reasoning content precedence and complete optional response invariants remain partial as detailed above. No undocumented bounds or historical live results are presented as new coverage.

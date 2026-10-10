@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "id": "7ade974d-61a4-4aa7-a429-ff4f91184e96",
+  "key": "k3.responses.schema_strict_false",
+  "name": "K3 Responses · text.format.strict=false",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只输出 JSON 对象，code 值为 READY。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "code",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "additionalProperties": false
+              },
+              "strict": false
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "json_code",
+          "source": "text",
+          "operator": "equals",
+          "value": {
+            "code": "READY"
+          },
+          "transform": "json"
+        }
+      ]
+    }
+  }
+}

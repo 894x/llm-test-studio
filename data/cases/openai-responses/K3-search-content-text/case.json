@@ -1,0 +1,127 @@
+{
+  "schema_version": 2,
+  "id": "40746f7e-7cc5-479d-961d-64ccbf866ab4",
+  "key": "k3.responses.search_content_text",
+  "name": "K3 Responses · 搜索类型 text",
+  "dimension": "parameters",
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "请联网搜索 Kimi 官方平台，并返回来源。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "web_search",
+              "filters": {
+                "allowed_domains": [
+                  "platform.kimi.com"
+                ]
+              },
+              "search_content_types": [
+                "text"
+              ],
+              "image_settings": {
+                "max_results": 3,
+                "caption": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "include": [
+            "web_search_call.action.sources",
+            "web_search_call.results"
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "visible_answer",
+          "source": "text",
+          "operator": "non_empty"
+        },
+        {
+          "id": "search_result",
+          "source": "response",
+          "pointer": "/output",
+          "each_mode": "any",
+          "each": [
+            {
+              "id": "search_type",
+              "source": "item",
+              "operator": "equals",
+              "value": "web_search_call",
+              "pointer": "/type"
+            },
+            {
+              "id": "search_status",
+              "source": "item",
+              "operator": "equals",
+              "value": "completed",
+              "pointer": "/status"
+            },
+            {
+              "id": "sources",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/action/sources"
+            },
+            {
+              "id": "source_urls",
+              "source": "item",
+              "pointer": "/action/sources",
+              "each": [
+                {
+                  "id": "source_url",
+                  "source": "item",
+                  "operator": "http_url",
+                  "pointer": "/url"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

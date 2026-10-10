@@ -1,0 +1,40 @@
+# Kimi K3 native Responses parameter plan
+
+Provider: Kimi China. Model: `kimi-k3`. Endpoint: `POST /v1/responses`.
+Scope: every documented request field and input/tool variant, plus response and stream envelopes and the documented replay/cache/search lifecycle. Sources retrieved 2026-10-10: [official OpenAPI](https://platform.kimi.com/docs/openapi.json), [Responses API](https://platform.kimi.com/docs/api/responses), [errors](https://platform.kimi.com/docs/api/errors).
+
+This plan is written before adding the boundary Cases. The structural inventory is in [responses-coverage-matrix.md](responses-coverage-matrix.md). The generated membership manifest is authoritative for executable Suite references. All Cases are non-default. T0 is local evidence, T1 short positive calls, T2 admission rejection, T3 expensive or asset-dependent work. No new provider execution is authorized here.
+
+| Parameter / source schema | Valid partitions and primary assertion | Invalid partitions / HTTP outcome | Method / tier |
+|---|---|---|---|
+| `input`, `ResponsesRequest` | string and message array; sentinel answer | missing (existing), null, number, object, invalid array item: 400 | union / T1,T2 |
+| message `type/role/content/status`, `ResponsesMessageItem` | omitted type, user/assistant/developer; string and text-part array; history retains sentinel | unknown type/role/status, missing role/content, wrong types: 400 | enum + required / T1,T2 |
+| text part `type/text`, `ResponsesInputContentPart` | input_text, assistant output_text; sentinel answer | unknown type, wrong text type; missing type/text reused: 400 | union / T1,T2 |
+| video shapes, same closed content union | reuse Chat F023/F024/F029/F031 IDs with native rejection definitions | video_url string/object and missing fields: 400; native input_video also rejected | unsupported union / T2 |
+| image `image_url/detail`, same content union | repository-owned digit-7 data URL; omitted detail and auto/low/high/original; digit answer | HTTP URL, wrong URL type, invalid/wrong detail; missing URL and object shape reused: 400 | format + enum / T2,T3 |
+| `instructions`, `ResponsesRequest` | explicit top-level instruction changes answer to sentinel | non-string: 400 | optional / T1,T2 |
+| `stream`, same schema | omitted/false JSON and true SSE; sentinel and terminal assertions | non-boolean/null: 400 | boolean / T1,T2 |
+| `max_output_tokens`, same schema | omitted default 131072, interior 2048, existing 1 and 1048576 | existing 1048577, non-integer/string: 400 | max + type / T1,T2; no published minimum |
+| `reasoning.effort`, same schema | omitted/empty object defaults max; low/high/max existing | unknown enum existing, wrong outer/effort type: 400 | enum / T1,T2 |
+| `text.format`, same schema | omitted/empty text; json_schema with name omitted/explicit and strict false/true; exact JSON values and types | wrong text/format/name/strict/type; missing type/schema; non-object schema existing: 400 | required + boolean / T1,T2 |
+| `tools`, `ResponsesTool` | omitted, one function; no invented collection maximum | wrong array/item type, missing/unknown discriminator: 400 | union / T1,T2 |
+| function `name/description/parameters/strict`, `ResponsesFunctionTool` | existing 1/128 names, interior and allowed underscore/hyphen; strict omitted/false/true; exact function call | empty/129 name, invalid first character, invalid character, wrong field types, missing name: 400 | name BVA + pattern + optional / T1,T2 |
+| `tool_choice`, `ResponsesToolChoice` | omitted/auto existing | required/none/specified/allowed_tools existing; unknown string/non-string: 400 | enum / T1,T2 |
+| namespace `name/description/tools`, `ResponsesNamespaceTool` | function and custom children; native call includes namespace | missing required fields, wrong types, nested namespace/web_search child: 400 | required + child union / T1,T2 |
+| custom `name/description/format`, `ResponsesCustomTool` | apply_patch, grammar+lark; custom call input | missing required fields, wrong name/description/format, missing/wrong type/syntax/definition: 400 | enum + required / T1,T2 |
+| dynamic `role/tools/id`, `ResponsesAdditionalToolsItem` | developer plus valid tools existing; explicit scope declaration | missing role/tools, non-developer, wrong id/tools: 400 | required + enum / T2; scope replay requires workflow |
+| function/custom call and output items, input union | client-authored conversation histories with matching call IDs; answer from tool output; string and text-part output | missing call ID/name/arguments/input/output, wrong optional id/namespace/status and required field types: 400 | replay + required / T1,T2 |
+| reasoning input `summary/content/id/status`, `ResponsesReasoningItem` | provider-returned reasoning replay using response references, no fabricated provider IDs | wrong outer/item/text types, missing nested type/text, unknown nested type/status: 400 | replay + required / T2,T3 |
+| web search history `id/status/action`, `ResponsesWebSearchCallItem` | history replay with action ignored as documented; sentinel reply | wrong id/status/action/type/query: 400 | replay + optional / T1,T2 |
+| web search cardinality/filters, `ResponsesWebSearchTool` | omitted/1 tool, allowed_domains 1/100; returned search item and sources | 2 tools, 101 domains, wrong filters/domains/item types: 400 | cardinality / T2,T3 |
+| search `search_content_types/image_settings`, same schema | text/image/text+image; max_results omitted(default3),1,5,10; caption omitted/false/true; returned image count <= cap | unknown enum/type, max_results 0/11/fraction/string, wrong caption/settings: 400 | range + dependency / T2,T3 |
+| search forbidden/ignored fields, same schema description | user_location/external_web_access/indexed_web_access accepted as ignored | search_context_size, blocked_domains, filters.blocked_domains: 400 | explicit behavioral partitions / T2,T3 |
+| `include`, `ResponsesRequest` | both valid values and combined; only effective with web_search; sources/images returned | non-array, unknown enum, non-string item: 400 | enum + dependency / T1,T2,T3 |
+| `prompt_cache_key/options.mode/options.ttl`, same schema | omitted/empty options; implicit; 5m/1h, response echoes selected TTL; existing two-call hit | wrong outer/key/mode/ttl type, unknown mode/ttl: 400 | default + enum / T1,T2; expiry/isolation T3 deferred |
+| `safety_identifier`, same schema | existing hashed string, omitted baseline | non-string: 400 | optional / T2 |
+| response / SSE schemas | envelope, fixed store/background/previous_response_id/conversation, usage arithmetic; each SSE event type/sequence_number, terminal and text | malformed fixtures must fail local assertions | T0,T1; sequence ordering gap disclosed |
+| headers/model/token-window/rate limit/content filter | Run-owned credential/model; exact tokenizer/cost/time and controlled failure environment needed | no invented provider quota/size bounds or successful credential override | blocked/deferred; see coverage matrix |
+
+Native sampling, logprobs, stop, Partial Mode and Predicted Output have no documented request counterpart. Their existing Chat Cases stay Chat-only; undocumented extra-field handling is not assumed to reject. Empty message/input sizes and lower token bounds are not published and are not assigned invented 400 assertions.
+
+T3 search/image/reasoning replay Cases will be authored disabled and kept in a separate optional profile. Existing image/cache foundation members retain their previous operator-selected behavior. New boundary assertions will require native error type/message for 400, and semantic output or tool-call evidence for capability claims. Loading and fixtures do not prove live provider conformance.

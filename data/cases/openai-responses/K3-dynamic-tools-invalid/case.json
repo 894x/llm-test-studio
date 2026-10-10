@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "id": "68c0b681-1753-4fa6-ac4d-23c8dfe1a5a3",
+  "key": "k3.responses.dynamic_tools_invalid",
+  "name": "K3 Responses · additional_tools tools 边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "additional_tools",
+              "role": "developer",
+              "tools": {}
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答 READY，不要解释。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "schema_version": 2,
+  "id": "c4416b29-a6fd-46b6-aaf9-755236d54368",
+  "key": "k3.responses.history_function_completed",
+  "name": "K3 Responses · function 历史与结果 status=completed",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "执行工具获取代码。"
+            },
+            {
+              "type": "function_call",
+              "call_id": "client-call-1",
+              "name": "get_number",
+              "arguments": "{}",
+              "id": "client-history-item",
+              "status": "completed"
+            },
+            {
+              "type": "function_call_output",
+              "call_id": "client-call-1",
+              "output": "READY",
+              "status": "completed"
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答工具结果中的代码。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "name": "get_number",
+              "description": "返回约定的代码。",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        }
+      ]
+    }
+  }
+}

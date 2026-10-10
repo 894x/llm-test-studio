@@ -1,0 +1,108 @@
+{
+  "schema_version": 2,
+  "id": "6816bf84-7dce-4cd8-a0cf-56ef6dec003a",
+  "key": "k3.responses.reasoning_provider_replay",
+  "name": "K3 Responses · 原样回放 provider output",
+  "dimension": "parameters",
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        },
+        {
+          "id": "two_requests",
+          "source": "requests",
+          "operator": "length_equals",
+          "value": 2
+        },
+        {
+          "id": "initial_reasoning",
+          "source": "requests",
+          "pointer": "/0/response/output",
+          "each_mode": "any",
+          "each": [
+            {
+              "id": "initial_reasoning_type",
+              "source": "item",
+              "pointer": "/type",
+              "operator": "equals",
+              "value": "reasoning"
+            }
+          ]
+        }
+      ],
+      "workflow": {
+        "mode": "sequence",
+        "steps": [
+          {
+            "id": "replay",
+            "request": {
+              "body": {
+                "input": {
+                  "$response": "initial",
+                  "pointer": "/output"
+                },
+                "reasoning": {
+                  "effort": "low"
+                },
+                "max_output_tokens": 2048,
+                "instructions": "只重复上一条助手回答 READY。"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

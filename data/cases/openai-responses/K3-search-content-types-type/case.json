@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "id": "156cef28-25e4-44a8-8dd2-3b0725d88ffe",
+  "key": "k3.responses.search_content_types_type",
+  "name": "K3 Responses · 搜索参数边界：content-types-type",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "请联网搜索 Kimi 官方平台，并返回来源。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "web_search",
+              "filters": {
+                "allowed_domains": [
+                  "platform.kimi.com"
+                ]
+              },
+              "search_content_types": "text",
+              "image_settings": {
+                "max_results": 3,
+                "caption": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "include": [
+            "web_search_call.action.sources",
+            "web_search_call.results"
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

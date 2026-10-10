@@ -1,0 +1,113 @@
+{
+  "schema_version": 2,
+  "id": "af2342f4-e23b-4197-9452-d7de783d86f5",
+  "key": "k3.responses.response_envelope",
+  "name": "K3 Responses · 原生响应固定字段",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "answer",
+          "source": "text",
+          "operator": "equals",
+          "value": "READY",
+          "transform": "trim"
+        },
+        {
+          "id": "response_id",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/id"
+        },
+        {
+          "id": "created_at",
+          "source": "response",
+          "operator": "type",
+          "value": "integer",
+          "pointer": "/created_at"
+        },
+        {
+          "id": "model",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/model"
+        },
+        {
+          "id": "store",
+          "source": "response",
+          "operator": "equals",
+          "value": false,
+          "pointer": "/store"
+        },
+        {
+          "id": "background",
+          "source": "response",
+          "operator": "equals",
+          "value": false,
+          "pointer": "/background"
+        },
+        {
+          "id": "previous_response",
+          "source": "response",
+          "operator": "equals",
+          "value": null,
+          "pointer": "/previous_response_id"
+        },
+        {
+          "id": "conversation",
+          "source": "response",
+          "operator": "equals",
+          "value": null,
+          "pointer": "/conversation"
+        }
+      ]
+    }
+  }
+}

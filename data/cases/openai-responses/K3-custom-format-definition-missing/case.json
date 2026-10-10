@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "id": "daf671fe-8129-4e0a-a33e-b2883386b161",
+  "key": "k3.responses.custom_format_definition_missing",
+  "name": "K3 Responses · custom.format 缺少 definition",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "请使用 apply_patch 创建 hello.txt，内容为 hello。只调用工具。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "custom",
+              "name": "apply_patch",
+              "description": "生成补丁创建 hello.txt，内容为 hello。",
+              "format": {
+                "type": "grammar",
+                "syntax": "lark"
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

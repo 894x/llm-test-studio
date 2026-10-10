@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "id": "a3d5fbd7-0712-40cd-93c3-7d77e6f1be33",
+  "key": "k3.responses.history_function_output_output_type",
+  "name": "K3 Responses · function 结果 output 错误类型",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "执行工具获取代码。"
+            },
+            {
+              "type": "function_call",
+              "call_id": "client-call-1",
+              "name": "get_number",
+              "arguments": "{}"
+            },
+            {
+              "type": "function_call_output",
+              "call_id": "client-call-1",
+              "output": 7
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答工具结果中的代码。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "name": "get_number",
+              "description": "返回约定的代码。",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}

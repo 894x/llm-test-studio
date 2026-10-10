@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "key": "openai-responses.kimi-k3.expected-success",
+  "name": "Kimi K3 Responses 预期成功套件",
+  "protocol": "openai-responses",
+  "description": "Kimi K3 原生 Responses 61 个预期 HTTP200 的正向能力与合法参数边界 Case，包含文本、流式、工具、结构化输出、图片与缓存；保留输出预算耗尽的合法 incomplete 终态断言。",
+  "cases": [
+    {
+      "case_id": "8e41672a-ffa2-5461-998f-96d7cd660dea"
+    },
+    {
+      "case_id": "a67358ec-7ecc-5399-8660-dc4cd3d259e9"
+    },
+    {
+      "case_id": "28d60522-c7f4-5e42-b954-c743322c88e1"
+    },
+    {
+      "case_id": "b5e3ea2a-68e4-54b9-9e5f-2d69565d029f"
+    },
+    {
+      "case_id": "510151ef-a1fc-53e3-8d15-f0b28842a33e"
+    },
+    {
+      "case_id": "57d07366-b7bf-57cc-a36e-886febee83ea"
+    },
+    {
+      "case_id": "7df57c19-7d18-566a-998e-86342b7cee32"
+    },
+    {
+      "case_id": "68273e8a-309a-5f7c-9250-f44c5f4541ef"
+    },
+    {
+      "case_id": "bd551b6e-481a-5f33-8b2e-c9b9a7eb7595"
+    },
+    {
+      "case_id": "1d52525c-bf36-57ab-a73e-995f3f8c7809"
+    },
+    {
+      "case_id": "75e1aa9b-4e08-5eff-8095-147ad690daac"
+    },
+    {
+      "case_id": "0edb2efc-f185-51e7-bf4e-7dcfeef33c96"
+    },
+    {
+      "case_id": "c6b97ab0-a95c-53f9-ab6e-c949d5454b90"
+    },
+    {
+      "case_id": "2d2995c3-9766-52e4-be29-72a137d9b55d"
+    },
+    {
+      "case_id": "06d41641-33ad-57e3-a2a0-bd02889371c4"
+    },
+    {
+      "case_id": "4d87e691-dbe0-54be-b81b-c7c9669b4745"
+    },
+    {
+      "case_id": "e7958fd9-7c92-527d-a1d4-4010ccd9e89c"
+    },
+    {
+      "case_id": "34e241fa-9d4d-55d0-b3c2-49413480e8e9"
+    },
+    {
+      "case_id": "ea56b579-8797-527d-8fb7-bd4771ab3a02"
+    },
+    {
+      "case_id": "138f994f-01a2-575a-ad34-48d66074caa8"
+    },
+    {
+      "case_id": "12a02b6c-8cbb-5fc3-8e69-4f8c578b2aa8"
+    },
+    {
+      "case_id": "b007bcfc-612e-5b82-afd2-8b79cff874b0"
+    },
+    {
+      "case_id": "4f9e20a8-1f28-5c13-903e-8a3959f5904a"
+    },
+    {
+      "case_id": "bc670eff-958d-4fb3-b851-1fb5087017ea"
+    },
+    {
+      "case_id": "1a90d24b-93a0-4971-bf1b-5dc04cc27990"
+    },
+    {
+      "case_id": "d18197a1-c895-4f38-a6b6-96da0b3242ec"
+    },
+    {
+      "case_id": "2e6fae18-081a-4074-82ef-94effc0533b2"
+    },
+    {
+      "case_id": "408d7726-759e-4396-9b0e-c3e5d83e3679"
+    },
+    {
+      "case_id": "ffce8d07-99b3-47d1-884c-5aaaeee99bc2"
+    },
+    {
+      "case_id": "61017d9d-8378-40ea-85ba-5fadf4be7e59"
+    },
+    {
+      "case_id": "dd384f19-1bc5-487b-968b-c4b95cf88670"
+    },
+    {
+      "case_id": "0f46ae67-4577-477a-a6dc-1552402b31c9"
+    },
+    {
+      "case_id": "5d5e75ac-9c36-45cd-88f6-1b1bb610b15f"
+    },
+    {
+      "case_id": "aa2842db-7cb4-4856-91cc-3921f7259a20"
+    },
+    {
+      "case_id": "bb929103-2dc9-4549-a874-3ee3fa621d08"
+    },
+    {
+      "case_id": "7ade974d-61a4-4aa7-a429-ff4f91184e96"
+    },
+    {
+      "case_id": "51efc2bd-9239-481c-b92c-c7983a72f118"
+    },
+    {
+      "case_id": "d51f8257-1574-48bc-8749-3c6f34ecf543"
+    },
+    {
+      "case_id": "80acf8d2-d18e-4efa-b800-9f03ea2a4755"
+    },
+    {
+      "case_id": "84b139e0-c903-4e2f-89ee-8a7e6712e00d"
+    },
+    {
+      "case_id": "57de471b-a51d-41db-8cce-f8547b08c585"
+    },
+    {
+      "case_id": "679e0fed-90df-4835-b5ec-d629cfff5c2d"
+    },
+    {
+      "case_id": "5db07ada-898b-463d-9705-6b66df30bad0"
+    },
+    {
+      "case_id": "9c0399a4-02e9-493b-b962-3941b15e8fa1"
+    },
+    {
+      "case_id": "742d8c65-0f49-4828-9b2f-038733c8b171"
+    },
+    {
+      "case_id": "253c5beb-b5a4-4789-97fc-4852382d7c66"
+    },
+    {
+      "case_id": "c9b60bec-0f01-44af-b6f6-5ac9277f5cb3"
+    },
+    {
+      "case_id": "47044095-4f71-4e10-9c53-f9595f94efdd"
+    },
+    {
+      "case_id": "23deee8f-2531-4e0f-bb80-6dad5cd8a319"
+    },
+    {
+      "case_id": "3f787b88-b85b-465e-b6cc-41d7d7e2f231"
+    },
+    {
+      "case_id": "22d2df37-cdf4-4585-b381-a9cbabe5d019"
+    },
+    {
+      "case_id": "3730adbf-eac6-479c-bd16-0b4579bcd9e7"
+    },
+    {
+      "case_id": "e384033d-b04f-46f9-962e-d2062e3a4c4d"
+    },
+    {
+      "case_id": "b82df9cb-b8a8-4b85-8d65-d52be327da20"
+    },
+    {
+      "case_id": "4685e7de-4525-44df-b22c-8826477f693d"
+    },
+    {
+      "case_id": "af2342f4-e23b-4197-9452-d7de783d86f5"
+    },
+    {
+      "case_id": "2ca7f1b0-09fd-4c83-a465-60f02b508710"
+    },
+    {
+      "case_id": "9d9ab1ca-3fce-4d02-82a3-4af3ab6e194b"
+    },
+    {
+      "case_id": "9d1f6d96-b026-42de-97fb-01155b6c6f32"
+    },
+    {
+      "case_id": "c4416b29-a6fd-46b6-aaf9-755236d54368"
+    },
+    {
+      "case_id": "fd142658-0f83-43b3-9468-2a649160c3e1"
+    }
+  ],
+  "inputs": []
+}

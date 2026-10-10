@@ -1,0 +1,118 @@
+{
+  "schema_version": 2,
+  "id": "01399bc7-583c-45c9-83e1-f18799b6cb4f",
+  "key": "k3.responses.search_domains_1",
+  "name": "K3 Responses · allowed_domains=1",
+  "dimension": "parameters",
+  "enabled": false,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "请联网搜索 Kimi 官方平台，并返回来源。",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "web_search",
+              "filters": {
+                "allowed_domains": [
+                  "platform.kimi.com"
+                ]
+              }
+            }
+          ],
+          "include": [
+            "web_search_call.action.sources"
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "value": "completed",
+          "pointer": "/status"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "visible_answer",
+          "source": "text",
+          "operator": "non_empty"
+        },
+        {
+          "id": "search_result",
+          "source": "response",
+          "pointer": "/output",
+          "each_mode": "any",
+          "each": [
+            {
+              "id": "search_type",
+              "source": "item",
+              "operator": "equals",
+              "value": "web_search_call",
+              "pointer": "/type"
+            },
+            {
+              "id": "search_status",
+              "source": "item",
+              "operator": "equals",
+              "value": "completed",
+              "pointer": "/status"
+            },
+            {
+              "id": "sources",
+              "source": "item",
+              "operator": "non_empty",
+              "pointer": "/action/sources"
+            },
+            {
+              "id": "source_urls",
+              "source": "item",
+              "pointer": "/action/sources",
+              "each": [
+                {
+                  "id": "source_url",
+                  "source": "item",
+                  "operator": "http_url",
+                  "pointer": "/url"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

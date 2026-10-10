@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "id": "aa2842db-7cb4-4856-91cc-3921f7259a20",
+  "key": "k3.responses.reasoning_empty_default",
+  "name": "K3 Responses · reasoning 空对象采用 max",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": "只回答 READY，不要解释。",
+          "reasoning": {},
+          "max_output_tokens": 2048
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 200
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
+          "source": "response",
+          "operator": "equals",
+          "value": "response",
+          "pointer": "/object"
+        },
+        {
+          "id": "output",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/output"
+        },
+        {
+          "id": "default_effort",
+          "source": "response",
+          "operator": "equals",
+          "value": "max",
+          "pointer": "/reasoning/effort"
+        },
+        {
+          "id": "documented_terminal",
+          "any": [
+            {
+              "id": "completed_answer",
+              "all": [
+                {
+                  "id": "terminal",
+                  "source": "response",
+                  "operator": "equals",
+                  "value": "completed",
+                  "pointer": "/status"
+                },
+                {
+                  "id": "answer",
+                  "source": "text",
+                  "operator": "equals",
+                  "value": "READY",
+                  "transform": "trim"
+                }
+              ]
+            },
+            {
+              "id": "budget_terminal",
+              "all": [
+                {
+                  "id": "incomplete",
+                  "source": "response",
+                  "pointer": "/status",
+                  "operator": "equals",
+                  "value": "incomplete"
+                },
+                {
+                  "id": "budget_reason",
+                  "source": "response",
+                  "pointer": "/incomplete_details/reason",
+                  "operator": "equals",
+                  "value": "max_output_tokens"
+                },
+                {
+                  "id": "bounded_usage",
+                  "source": "usage",
+                  "pointer": "/output_tokens",
+                  "operator": "lte",
+                  "value": 2048
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "id": "78453153-96cb-4e69-abc1-838a72239f1c",
+  "key": "k3.responses.history_function_status_invalid",
+  "name": "K3 Responses · function status 边界",
+  "dimension": "parameters",
+  "enabled": true,
+  "default": false,
+  "severity": "normal",
+  "execution_mode": "automatic",
+  "definitions": {
+    "openai-responses": {
+      "inputs": {},
+      "request": {
+        "body": {
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": "执行工具获取代码。"
+            },
+            {
+              "type": "function_call",
+              "call_id": "client-call-1",
+              "name": "get_number",
+              "arguments": "{}",
+              "status": "in_progress"
+            },
+            {
+              "type": "function_call_output",
+              "call_id": "client-call-1",
+              "output": "READY"
+            },
+            {
+              "type": "message",
+              "role": "user",
+              "content": "只回答工具结果中的代码。"
+            }
+          ],
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 2048,
+          "tools": [
+            {
+              "type": "function",
+              "name": "get_number",
+              "description": "返回约定的代码。",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ]
+        }
+      },
+      "assertions": [
+        {
+          "id": "http",
+          "source": "http.status",
+          "operator": "equals",
+          "value": 400
+        },
+        {
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "error_type",
+          "source": "response",
+          "operator": "equals",
+          "value": "invalid_request_error",
+          "pointer": "/error/type"
+        },
+        {
+          "id": "error_message",
+          "source": "response",
+          "operator": "non_empty",
+          "pointer": "/error/message"
+        }
+      ]
+    }
+  }
+}
