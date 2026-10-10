@@ -104,7 +104,7 @@ func TestCLILoadsAllCurrentProtocolsAndRejectsOldDataWithoutWriting(t *testing.T
 			}
 		}
 	}
-	if total != 762 {
+	if total != 976 {
 		t.Fatalf("catalog count = %d", total)
 	}
 	root := t.TempDir()
