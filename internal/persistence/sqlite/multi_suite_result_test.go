@@ -65,8 +65,8 @@ func TestRepositoryStoresSameCaseSummaryForDifferentSuiteEntries(t *testing.T) {
 			RunID:      running.Meta().ID, EntryID: entry.EntryID, CaseID: caseRef.CaseID,
 			ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
 		}
-		if err := repository.AppendResult(ctx, result); err != nil {
-			t.Fatalf("AppendResult(entry %d) error = %v", index, err)
+		if err := repository.AppendResults(ctx, result); err != nil {
+			t.Fatalf("AppendResults(entry %d) error = %v", index, err)
 		}
 	}
 	results, err := repository.ListResults(ctx, running.Meta().ID)
@@ -78,17 +78,17 @@ func TestRepositoryStoresSameCaseSummaryForDifferentSuiteEntries(t *testing.T) {
 		RunID:      running.Meta().ID, EntryID: entries[0].EntryID,
 		EntryStatus: domain.EntryExecutionCompleted,
 	}
-	if err := repository.AppendResult(ctx, marker); err != nil {
-		t.Fatalf("AppendResult(marker) error = %v", err)
+	if err := repository.AppendResults(ctx, marker); err != nil {
+		t.Fatalf("AppendResults(marker) error = %v", err)
 	}
 	marker.EntityMeta = entityMeta("86000000-0000-4000-8000-000000000007", 1)
-	if err := repository.AppendResult(ctx, marker); !errors.Is(err, persistence.ErrConflict) {
-		t.Fatalf("AppendResult(duplicate marker) error = %v, want ErrConflict", err)
+	if err := repository.AppendResults(ctx, marker); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("AppendResults(duplicate marker) error = %v, want ErrConflict", err)
 	}
 	marker.EntityMeta = entityMeta("86000000-0000-4000-8000-000000000008", 1)
 	marker.EntryID = entries[1].EntryID
-	if err := repository.AppendResult(ctx, marker); err != nil {
-		t.Fatalf("AppendResult(second marker) error = %v", err)
+	if err := repository.AppendResults(ctx, marker); err != nil {
+		t.Fatalf("AppendResults(second marker) error = %v", err)
 	}
 	completed, err := running.Transition(domain.RunCompleted, repositoryEpoch.Add(3*time.Minute))
 	if err != nil {

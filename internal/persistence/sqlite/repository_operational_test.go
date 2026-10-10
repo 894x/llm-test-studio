@@ -166,8 +166,8 @@ func createRunningOutputs(t *testing.T, repository *persistence.Repository, fixt
 	if err := repository.CreateEvidence(context.Background(), fixture.evidence); err != nil {
 		t.Fatalf("CreateEvidence() error = %v", err)
 	}
-	if err := repository.AppendResult(context.Background(), fixture.result); err != nil {
-		t.Fatalf("AppendResult() error = %v", err)
+	if err := repository.AppendResults(context.Background(), fixture.result); err != nil {
+		t.Fatalf("AppendResults() error = %v", err)
 	}
 	return run
 }

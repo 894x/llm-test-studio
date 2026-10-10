@@ -172,8 +172,8 @@ func TestRepositoryRejectsResultAndEvidenceOutsideExecutionStates(t *testing.T) 
 	if err := repository.CreateEvidence(ctx, fixture.evidence); !errors.Is(err, persistence.ErrConflict) {
 		t.Fatalf("CreateEvidence(queued) error = %v, want ErrConflict", err)
 	}
-	if err := repository.AppendResult(ctx, result); !errors.Is(err, persistence.ErrConflict) {
-		t.Fatalf("AppendResult(queued) error = %v, want ErrConflict", err)
+	if err := repository.AppendResults(ctx, result); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("AppendResults(queued) error = %v, want ErrConflict", err)
 	}
 
 	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning, domain.RunCompleted)
@@ -183,8 +183,8 @@ func TestRepositoryRejectsResultAndEvidenceOutsideExecutionStates(t *testing.T) 
 	if err := repository.CreateEvidence(ctx, evidence); !errors.Is(err, persistence.ErrConflict) {
 		t.Fatalf("CreateEvidence(%s) error = %v, want ErrConflict", run.Status(), err)
 	}
-	if err := repository.AppendResult(ctx, result); !errors.Is(err, persistence.ErrConflict) {
-		t.Fatalf("AppendResult(%s) error = %v, want ErrConflict", run.Status(), err)
+	if err := repository.AppendResults(ctx, result); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("AppendResults(%s) error = %v, want ErrConflict", run.Status(), err)
 	}
 }
 
@@ -200,8 +200,8 @@ func TestRepositoryReportSealsFinalResultAndEvidenceCollections(t *testing.T) {
 	if err := repository.CreateEvidence(ctx, fixture.evidence); err != nil {
 		t.Fatalf("CreateEvidence(running) error = %v", err)
 	}
-	if err := repository.AppendResult(ctx, fixture.result); err != nil {
-		t.Fatalf("AppendResult(running) error = %v", err)
+	if err := repository.AppendResults(ctx, fixture.result); err != nil {
+		t.Fatalf("AppendResults(running) error = %v", err)
 	}
 	run = transitionRun(t, repository, run, domain.RunCompleted)
 	report := fixture.report
@@ -244,8 +244,8 @@ func TestRepositoryReportSealsFinalResultAndEvidenceCollections(t *testing.T) {
 	if err := repository.CreateEvidence(ctx, extraEvidence); !errors.Is(err, persistence.ErrConflict) {
 		t.Fatalf("CreateEvidence(after report) error = %v, want ErrConflict", err)
 	}
-	if err := repository.AppendResult(ctx, extraResult); !errors.Is(err, persistence.ErrConflict) {
-		t.Fatalf("AppendResult(after report) error = %v, want ErrConflict", err)
+	if err := repository.AppendResults(ctx, extraResult); !errors.Is(err, persistence.ErrConflict) {
+		t.Fatalf("AppendResults(after report) error = %v, want ErrConflict", err)
 	}
 }
 
@@ -261,14 +261,14 @@ func TestRepositoryReportSealsRequestRowsBesideFinalCaseSummaries(t *testing.T) 
 	if err := repository.CreateEvidence(ctx, fixture.evidence); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.AppendResult(ctx, fixture.result); err != nil {
+	if err := repository.AppendResults(ctx, fixture.result); err != nil {
 		t.Fatal(err)
 	}
 	requestResult := fixture.result
 	requestResult.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000035", 1)
 	requestResult.RequestID = "request-1"
 	requestResult.EvidenceIDs = nil
-	if err := repository.AppendResult(ctx, requestResult); err != nil {
+	if err := repository.AppendResults(ctx, requestResult); err != nil {
 		t.Fatal(err)
 	}
 	run = transitionRun(t, repository, run, domain.RunCompleted)
@@ -301,7 +301,7 @@ func TestRepositoryReportMatchesCanonicalEmptyResultCollections(t *testing.T) {
 	result := fixture.result
 	result.Metrics = map[string]float64{}
 	result.EvidenceIDs = []string{}
-	if err := repository.AppendResult(ctx, result); err != nil {
+	if err := repository.AppendResults(ctx, result); err != nil {
 		t.Fatal(err)
 	}
 	run = transitionRun(t, repository, run, domain.RunCompleted)
@@ -432,7 +432,7 @@ func TestRepositoryReportWriteFailureRollsBackSealAndAttachments(t *testing.T) {
 	if err := repository.CreateEvidence(ctx, fixture.evidence); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.AppendResult(ctx, fixture.result); err != nil {
+	if err := repository.AppendResults(ctx, fixture.result); err != nil {
 		t.Fatal(err)
 	}
 	run = transitionRun(t, repository, run, domain.RunCompleted)

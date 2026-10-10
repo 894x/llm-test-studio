@@ -446,7 +446,7 @@ func (repository *Repository) CreateEvidence(ctx context.Context, evidence domai
 		return fmt.Errorf("begin evidence create: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := writableRun(ctx, tx, evidence.RunID); err != nil {
+	if err := requireWritableRun(ctx, tx, evidence.RunID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -582,35 +582,86 @@ func decodeEvidenceDocument(document []byte) (domain.Evidence, error) {
 	return evidence, nil
 }
 
-func (repository *Repository) AppendResult(ctx context.Context, result domain.Result) error {
-	if err := result.Validate(); err != nil {
-		return fmt.Errorf("validate result: %w", err)
+// AppendResults writes a batch atomically. Callers resolve suite and case identities
+// from the validated run snapshot before writing; appends do not reload run documents.
+func (repository *Repository) AppendResults(ctx context.Context, results ...domain.Result) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if result.Revision != 1 {
-		return errors.New("new result revision must be 1")
+	if len(results) == 0 {
+		return nil
 	}
-	document, err := marshalCanonical(result)
-	if err != nil {
-		return fmt.Errorf("encode result: %w", err)
-	}
-	if len(document) > MaxReportProjectionItemBytes {
-		return fmt.Errorf("result exceeds %d-byte storage budget", MaxReportProjectionItemBytes)
+	documents := make([][]byte, len(results))
+	for index, result := range results {
+		if err := result.Validate(); err != nil {
+			return fmt.Errorf("validate result: %w", err)
+		}
+		if result.EntryID == "" {
+			return errors.New("stored result requires a suite entry id")
+		}
+		if result.EntryStatus == "" && result.CaseID == "" {
+			return errors.New("stored request or summary result requires a case id")
+		}
+		if result.EntryStatus != "" && result.RequestID != "" {
+			return errors.New("stored suite marker must not identify a request")
+		}
+		if result.Revision != 1 {
+			return errors.New("new result revision must be 1")
+		}
+		document, err := marshalCanonical(result)
+		if err != nil {
+			return fmt.Errorf("encode result: %w", err)
+		}
+		if len(document) > MaxReportProjectionItemBytes {
+			return fmt.Errorf("result exceeds %d-byte storage budget", MaxReportProjectionItemBytes)
+		}
+		documents[index] = document
 	}
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin result append: %w", err)
 	}
 	defer tx.Rollback()
-	run, err := writableRun(ctx, tx, result.RunID)
+	statement, err := tx.PrepareContext(ctx, `
+		INSERT INTO case_results(
+			id, schema_version, revision, created_at, updated_at,
+			run_id, entry_id, case_id, request_id, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare result append: %w", err)
 	}
-	if !resultBelongsToSnapshot(run.Snapshot(), result) {
-		return errors.New("result suite or case is outside the run snapshot")
+	defer statement.Close()
+	writableRuns := make(map[string]bool)
+	for index, result := range results {
+		if !writableRuns[result.RunID] {
+			if err := requireWritableRun(ctx, tx, result.RunID); err != nil {
+				return err
+			}
+			writableRuns[result.RunID] = true
+		}
+		if err := validateResultEvidence(ctx, tx, result); err != nil {
+			return err
+		}
+		if err := insertResult(
+			ctx,
+			statement,
+			result,
+			documents[index],
+		); err != nil {
+			return err
+		}
 	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit result", err)
+	}
+	return nil
+}
+
+func validateResultEvidence(ctx context.Context, queryer rowQueryer, result domain.Result) error {
 	for _, evidenceID := range result.EvidenceIDs {
 		var evidenceRow storedEvidenceRow
-		err := evidenceRow.scan(tx.QueryRowContext(ctx, `
+		err := evidenceRow.scan(queryer.QueryRowContext(ctx, `
 			SELECT id, schema_version, revision, created_at, updated_at, run_id, document_json
 			FROM evidence WHERE id = ?
 		`, evidenceID))
@@ -628,6 +679,10 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 			return errors.New("result evidence belongs to another run")
 		}
 	}
+	return nil
+}
+
+func insertResult(ctx context.Context, statement *sql.Stmt, result domain.Result, document []byte) error {
 	var caseID any
 	if result.CaseID != "" {
 		caseID = result.CaseID
@@ -636,20 +691,20 @@ func (repository *Repository) AppendResult(ctx context.Context, result domain.Re
 	if result.RequestID != "" {
 		requestID = result.RequestID
 	}
-	var entryID any
-	if result.EntryID != "" {
-		entryID = result.EntryID
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO case_results(
-			id, schema_version, revision, created_at, updated_at,
-			run_id, entry_id, case_id, request_id, document_json
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, result.ID, result.SchemaVersion, result.Revision, formatTime(result.CreatedAt), formatTime(result.UpdatedAt), result.RunID, entryID, caseID, requestID, document); err != nil {
+	if _, err := statement.ExecContext(
+		ctx,
+		result.ID,
+		result.SchemaVersion,
+		result.Revision,
+		formatTime(result.CreatedAt),
+		formatTime(result.UpdatedAt),
+		result.RunID,
+		result.EntryID,
+		caseID,
+		requestID,
+		document,
+	); err != nil {
 		return classifyWriteError("append result", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return classifyWriteError("commit result", err)
 	}
 	return nil
 }
@@ -1085,32 +1140,39 @@ func matchReportEvidence(ctx context.Context, tx *sql.Tx, report domain.Report) 
 	return validateReportEvidence(ctx, tx, report)
 }
 
-func writableRun(ctx context.Context, queryer relationQueryer, id string) (domain.Run, error) {
-	run, err := queryCurrentRun(ctx, queryer, id)
+func requireWritableRun(ctx context.Context, queryer rowQueryer, id string) error {
+	// Run revisions are validated when created or read. Their scalar columns are
+	// sufficient to guard output writes inside the same transaction.
+	var sealed, reportExists int
+	var revision, schemaVersion sql.NullInt64
+	var status sql.NullString
+	err := queryer.QueryRowContext(ctx, `
+		SELECT root.sealed, revision.revision, revision.schema_version, revision.status,
+		       EXISTS(SELECT 1 FROM reports WHERE run_id = root.id)
+		FROM execution_runs AS root
+		LEFT JOIN execution_run_revisions AS revision
+		  ON revision.run_id = root.id AND revision.revision = root.current_revision
+		WHERE root.id = ?
+	`, id).Scan(&sealed, &revision, &schemaVersion, &status, &reportExists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: run", ErrNotFound)
+	}
 	if err != nil {
-		return domain.Run{}, err
+		return fmt.Errorf("inspect run output state: %w", err)
 	}
-	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
-		return domain.Run{}, err
+	if !revision.Valid {
+		return fmt.Errorf("%w: run current revision pointer", ErrCorrupt)
 	}
-	if run.Status() != domain.RunRunning && run.Status() != domain.RunDraining {
-		return domain.Run{}, fmt.Errorf("%w: run is not accepting execution output", ErrConflict)
+	if !schemaVersion.Valid || schemaVersion.Int64 != int64(domain.CurrentEntitySchemaVersion) {
+		return fmt.Errorf("%w: run schema version", ErrCorrupt)
 	}
-	var sealed int
-	if err := queryer.QueryRowContext(ctx, `SELECT sealed FROM execution_runs WHERE id = ?`, id).Scan(&sealed); err != nil {
-		return domain.Run{}, fmt.Errorf("inspect run output seal: %w", err)
+	if sealed != 0 || reportExists != 0 {
+		return fmt.Errorf("%w: run output is sealed", ErrConflict)
 	}
-	if sealed != 0 {
-		return domain.Run{}, fmt.Errorf("%w: run output is sealed", ErrConflict)
+	if status.String != string(domain.RunRunning) && status.String != string(domain.RunDraining) {
+		return fmt.Errorf("%w: run is not accepting execution output", ErrConflict)
 	}
-	var reportCount int
-	if err := queryer.QueryRowContext(ctx, `SELECT COUNT(*) FROM reports WHERE run_id = ?`, id).Scan(&reportCount); err != nil {
-		return domain.Run{}, fmt.Errorf("inspect run report seal: %w", err)
-	}
-	if reportCount != 0 {
-		return domain.Run{}, fmt.Errorf("%w: run output is sealed", ErrConflict)
-	}
-	return run, nil
+	return nil
 }
 
 func containsString(values []string, target string) bool {

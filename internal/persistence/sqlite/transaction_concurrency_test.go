@@ -42,7 +42,7 @@ func TestRepositoryConcurrentProjectionsAndResultWrites(t *testing.T) {
 			result := fixture.result
 			result.ID = fmt.Sprintf("20000000-0000-4000-8000-%012d", i+1)
 			result.RequestID, result.EvidenceIDs = fmt.Sprintf("request-%d", i+1), nil
-			errors <- repository.AppendResult(ctx, result)
+			errors <- repository.AppendResults(ctx, result)
 		}
 	}()
 	close(start)

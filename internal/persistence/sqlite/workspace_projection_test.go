@@ -25,8 +25,8 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	if err := repository.CreateEvidence(ctx, fixture.evidence); err != nil {
 		t.Fatalf("CreateEvidence(first) error = %v", err)
 	}
-	if err := repository.AppendResult(ctx, fixture.result); err != nil {
-		t.Fatalf("AppendResult(first) error = %v", err)
+	if err := repository.AppendResults(ctx, fixture.result); err != nil {
+		t.Fatalf("AppendResults(first) error = %v", err)
 	}
 	firstRun = transitionRun(t, repository, firstRun, domain.RunCompleted)
 	report := fixture.report
@@ -60,8 +60,8 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	passing.RunID = secondRun.Meta().ID
 	passing.RequestID = "request-pass"
 	passing.EvidenceIDs = []string{secondEvidence.ID}
-	if err := repository.AppendResult(ctx, passing); err != nil {
-		t.Fatalf("AppendResult(second pass) error = %v", err)
+	if err := repository.AppendResults(ctx, passing); err != nil {
+		t.Fatalf("AppendResults(second pass) error = %v", err)
 	}
 	failing := domain.Result{
 		EntityMeta: entityMeta("10000000-0000-4000-8000-000000000044", 1),
@@ -70,16 +70,16 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictFailed, Assertions: []testspec.AssertionResult{}},
 		Failure: domain.FailureSemantic, ErrorCode: domain.ErrorCode("semantic_mismatch"),
 	}
-	if err := repository.AppendResult(ctx, failing); err != nil {
-		t.Fatalf("AppendResult(second fail) error = %v", err)
+	if err := repository.AppendResults(ctx, failing); err != nil {
+		t.Fatalf("AppendResults(second fail) error = %v", err)
 	}
 	// Case summaries and request observations are separate views of the same
 	// execution. Counting both doubles progress and failure totals.
 	summary := failing
 	summary.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000045", 1)
 	summary.RequestID = ""
-	if err := repository.AppendResult(ctx, summary); err != nil {
-		t.Fatalf("AppendResult(second summary) error = %v", err)
+	if err := repository.AppendResults(ctx, summary); err != nil {
+		t.Fatalf("AppendResults(second summary) error = %v", err)
 	}
 
 	projections, err := repository.ListRunProjections(ctx)
@@ -118,7 +118,7 @@ func TestWorkspaceRunProjectionsStillValidateUncountedSummaries(t *testing.T) {
 	observation := fixture.result
 	observation.EntityMeta = entityMeta("10000000-0000-4000-8000-000000000046", 1)
 	observation.RequestID = "request-observation"
-	if err := repository.AppendResult(context.Background(), observation); err != nil {
+	if err := repository.AppendResults(context.Background(), observation); err != nil {
 		t.Fatal(err)
 	}
 	closeForTamper(t, repository)

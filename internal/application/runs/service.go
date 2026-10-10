@@ -33,7 +33,9 @@ type Repository interface {
 	CreateRun(context.Context, domain.Run) error
 	GetRun(context.Context, string) (domain.Run, error)
 	UpdateRun(context.Context, uint64, domain.Run) error
-	AppendResult(context.Context, domain.Result) error
+	// AppendResults atomically writes outputs whose suite and case identities
+	// have been resolved against the prepared run snapshot by the caller.
+	AppendResults(context.Context, ...domain.Result) error
 }
 
 type StartCommand struct {
@@ -617,7 +619,7 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 			if err := result.Validate(); err != nil {
 				return fmt.Errorf("invalid execution result: %w", err)
 			}
-			if err := service.repository.AppendResult(ctx, result); err != nil {
+			if err := service.repository.AppendResults(ctx, result); err != nil {
 				storageErr = err
 				return err
 			}
@@ -691,6 +693,7 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 }
 
 func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *runControl, prepared preparedRunEntry) error {
+	summaries := make([]domain.Result, 0, len(prepared.cases))
 	for _, testCase := range prepared.cases {
 		drafts := control.drafts[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]
 		if len(drafts) == 0 {
@@ -704,10 +707,16 @@ func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *
 		if err := summary.Validate(); err != nil {
 			return err
 		}
-		if err := service.repository.AppendResult(ctx, summary); err != nil {
-			return err
-		}
-		delete(control.drafts, suiteCaseKey(prepared.snapshot.EntryID, testCase.ID))
+		summaries = append(summaries, summary)
+	}
+	if len(summaries) == 0 {
+		return nil
+	}
+	if err := service.repository.AppendResults(ctx, summaries...); err != nil {
+		return err
+	}
+	for _, summary := range summaries {
+		delete(control.drafts, suiteCaseKey(summary.EntryID, summary.CaseID))
 	}
 	return nil
 }
@@ -726,7 +735,7 @@ func (service *Service) appendSuiteMarker(ctx context.Context, control *runContr
 	if err := marker.Validate(); err != nil {
 		return false, err
 	}
-	return false, service.repository.AppendResult(ctx, marker)
+	return false, service.repository.AppendResults(ctx, marker)
 }
 
 func (service *Service) finishRun(control *runControl, terminal domain.RunStatus, failure domain.RunFailure) {

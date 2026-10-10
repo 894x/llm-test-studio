@@ -88,7 +88,7 @@ func TestReportProjectionsExcludeRequestObservationsFromCaseCount(t *testing.T) 
 		requestResult := fixture.result
 		requestResult.EntityMeta = entityMeta("20000000-0000-4000-8000-000000000001", 1)
 		requestResult.RequestID = "20000000-0000-4000-8000-000000000002"
-		if err := repository.AppendResult(context.Background(), requestResult); err != nil {
+		if err := repository.AppendResults(context.Background(), requestResult); err != nil {
 			t.Fatalf("append request observation: %v", err)
 		}
 		transitionRun(t, repository, run, domain.RunCompleted)
@@ -753,7 +753,7 @@ func TestProjectionDocumentByteBudgetsRejectWrites(t *testing.T) {
 				result := fixture.result
 				result.EvidenceIDs = nil
 				result.Metrics = map[string]float64{strings.Repeat("x", itemBudget+1): 1}
-				return repository.AppendResult(context.Background(), result)
+				return repository.AppendResults(context.Background(), result)
 			},
 		},
 		{

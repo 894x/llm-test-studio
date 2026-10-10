@@ -955,13 +955,16 @@ func (repository *fakeRepository) UpdateRun(_ context.Context, expected uint64, 
 	return nil
 }
 
-func (repository *fakeRepository) AppendResult(_ context.Context, result domain.Result) error {
+func (repository *fakeRepository) AppendResults(_ context.Context, results ...domain.Result) error {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
-	if result.CaseID != "" && result.RequestID == "" && result.EntryStatus == "" && repository.failSummaryAppend != nil {
-		return repository.failSummaryAppend
+	for _, result := range results {
+		isSummary := result.CaseID != "" && result.RequestID == "" && result.EntryStatus == ""
+		if isSummary && repository.failSummaryAppend != nil {
+			return repository.failSummaryAppend
+		}
 	}
-	repository.results = append(repository.results, result)
+	repository.results = append(repository.results, results...)
 	return nil
 }
 
