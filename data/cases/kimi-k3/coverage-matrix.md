@@ -4,7 +4,7 @@ Last verified against the first-party Kimi documentation on 2026-09-30.
 
 This matrix distinguishes runnable contract cases from deferred cost-heavy or runner-limited work. A case being present means the request and assertion are defined; it does not mean the paid provider call has been executed.
 
-This document describes the Chat Completions contract. The native K3 Responses adaptation is recorded separately in [responses-coverage-matrix.md](responses-coverage-matrix.md): 39 existing Case IDs are reused, 15 have rejection expectations, and 45 remain Chat-only. Responses tool-choice expectations follow Chat at the user's request as of 2026-10-10; the narrower published Responses enum and lack of live verification are recorded there. Optional Responses Schema `name` retains its native success expectation.
+This document describes the Chat Completions contract. The native K3 Responses adaptation is recorded separately in [responses-coverage-matrix.md](responses-coverage-matrix.md): 39 existing Case IDs are reused, 16 have native rejection expectations, and 45 remain Chat-only. Responses choices now follow the official native enum (`auto`), with `required`/`none` rejection confirmed by the official run on 2026-10-10. Native output maximum and budget truncation are separate from Chat expectations; the remaining three documentation conflicts are recorded there. Optional Responses Schema `name` retains its native success expectation.
 
 ## Coverage summary
 

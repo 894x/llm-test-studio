@@ -71,10 +71,54 @@
         },
         {
           "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/status",
-          "value": "completed"
+          "any": [
+            {
+              "id": "completed_output",
+              "all": [
+                {
+                  "id": "completed",
+                  "source": "response",
+                  "operator": "equals",
+                  "pointer": "/status",
+                  "value": "completed"
+                },
+                {
+                  "id": "visible_text",
+                  "source": "text",
+                  "operator": "non_empty"
+                }
+              ]
+            },
+            {
+              "id": "budget_truncation",
+              "all": [
+                {
+                  "id": "incomplete",
+                  "source": "response",
+                  "operator": "equals",
+                  "pointer": "/status",
+                  "value": "incomplete"
+                },
+                {
+                  "id": "limit_reason",
+                  "source": "response",
+                  "operator": "equals",
+                  "pointer": "/incomplete_details/reason",
+                  "value": "max_output_tokens"
+                },
+                {
+                  "id": "bounded_output",
+                  "source": "usage",
+                  "operator": "lte",
+                  "pointer": "/output_tokens",
+                  "expected_from": {
+                    "source": "request",
+                    "pointer": "/max_output_tokens"
+                  }
+                }
+              ]
+            }
+          ]
         },
         {
           "id": "output",

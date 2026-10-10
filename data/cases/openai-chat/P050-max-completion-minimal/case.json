@@ -87,17 +87,10 @@
           "value": 1
         },
         {
-          "id": "expected_issue_count",
+          "id": "protocol",
           "source": "issues",
           "operator": "length_equals",
-          "value": 1
-        },
-        {
-          "id": "expected_issue",
-          "source": "issues",
-          "operator": "equals",
-          "pointer": "/0/code",
-          "value": "provider_incomplete"
+          "value": 0
         }
       ]
     }

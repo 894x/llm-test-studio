@@ -144,8 +144,8 @@ func TestKimiResponsesFunctionCallAssertionsSearchAllOutputItems(t *testing.T) {
 			if err := json.Unmarshal(observation.Exchanges[0].RequestBody, &body); err != nil {
 				t.Fatal(err)
 			}
-			if body["tool_choice"] != "required" {
-				t.Fatal("tool-call case did not retain the Chat required choice")
+			if body["tool_choice"] != "auto" {
+				t.Fatal("tool-call case did not use the native auto choice")
 			}
 			verdict := testspec.Evaluate(spec.Assertions, observation)
 			if (verdict.Status == testspec.VerdictPassed) != test.passed {
@@ -155,7 +155,7 @@ func TestKimiResponsesFunctionCallAssertionsSearchAllOutputItems(t *testing.T) {
 	}
 }
 
-func TestKimiResponsesToolChoiceUsesChatExpectationsWithNativeAssertions(t *testing.T) {
+func TestKimiResponsesToolChoiceRejectsUnsupportedNativeValues(t *testing.T) {
 	for _, test := range []struct {
 		name, directory, choice, text string
 		status                        int
@@ -163,18 +163,19 @@ func TestKimiResponsesToolChoiceUsesChatExpectationsWithNativeAssertions(t *test
 	}{
 		{
 			name: "required calls a tool", directory: "F009-tool-choice-required", choice: "required",
-			status: 200, withTool: true, passed: true,
+			status: 200, withTool: true,
 		},
 		{
 			name: "required only replies with text", directory: "F009-tool-choice-required", choice: "required",
 			text: "你好", status: 200,
 		},
 		{
-			name: "required is rejected", directory: "F009-tool-choice-required", choice: "required", status: 400,
+			name: "required is rejected", directory: "F009-tool-choice-required", choice: "required",
+			status: 400, passed: true,
 		},
 		{
 			name: "none replies with text", directory: "F010-tool-choice-none", choice: "none",
-			text: "你好", status: 200, passed: true,
+			text: "你好", status: 200,
 		},
 		{
 			name: "none calls a tool", directory: "F010-tool-choice-none", choice: "none",
@@ -182,6 +183,10 @@ func TestKimiResponsesToolChoiceUsesChatExpectationsWithNativeAssertions(t *test
 		},
 		{
 			name: "none has no text", directory: "F010-tool-choice-none", choice: "none", status: 200,
+		},
+		{
+			name: "none is rejected", directory: "F010-tool-choice-none", choice: "none",
+			status: 400, passed: true,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -195,7 +200,7 @@ func TestKimiResponsesToolChoiceUsesChatExpectationsWithNativeAssertions(t *test
 			}
 			if test.status == 400 {
 				root = map[string]any{"error": map[string]any{
-					"type": "invalid_request_error", "message": "unsupported value",
+					"type": "invalid_request_error", "message": "unsupported tool_choice value",
 				}}
 			}
 			fixture := &kimiResponsesFixture{status: test.status, root: root}
@@ -255,11 +260,70 @@ func TestKimiResponsesMinimalOutputAssertsNativeIncompleteReason(t *testing.T) {
 	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status != testspec.VerdictPassed {
 		t.Fatalf("expected output limit = %+v", verdict)
 	}
+	if len(observation.Issues) != 0 {
+		t.Fatalf("documented output truncation created a protocol issue: %+v", observation.Issues)
+	}
+	usage["output_tokens"] = 4
+	usage["total_tokens"] = 516
+	observation = openairesponses.New().Execute(context.Background(), runtime.Execution{
+		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+	})
+	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status == testspec.VerdictPassed {
+		t.Fatal("usage above the documented output budget passed")
+	}
+	usage["output_tokens"] = 1
+	usage["total_tokens"] = 513
 	root["incomplete_details"] = map[string]any{"reason": "content_filter"}
 	observation = openairesponses.New().Execute(context.Background(), runtime.Execution{
 		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
 	})
 	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status == testspec.VerdictPassed {
 		t.Fatal("content filtering passed an output-budget assertion")
+	}
+}
+
+func TestKimiResponsesMaxReasoningAcceptsOnlyDocumentedTerminalOutcomes(t *testing.T) {
+	spec := kimiResponsesSpec(t, "R003-reasoning-effort-max")
+	for _, test := range []struct {
+		name, status, reason string
+		outputTokens         int
+		passed               bool
+	}{
+		{name: "completed", status: "completed", outputTokens: 3, passed: true},
+		{name: "budget reached", status: "incomplete", reason: "max_output_tokens", outputTokens: 2048, passed: true},
+		{name: "budget exceeded", status: "incomplete", reason: "max_output_tokens", outputTokens: 2049},
+		{name: "filtered", status: "incomplete", reason: "content_filter", outputTokens: 3},
+		{name: "missing reason", status: "incomplete", outputTokens: 3},
+		{name: "provider failed", status: "failed", outputTokens: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := kimiResponse("2")
+			root["status"] = test.status
+			if test.reason != "" {
+				root["incomplete_details"] = map[string]any{"reason": test.reason}
+			}
+			usage := root["usage"].(map[string]any)
+			usage["output_tokens"] = test.outputTokens
+			usage["total_tokens"] = 512 + test.outputTokens
+			fixture := &kimiResponsesFixture{status: 200, root: root}
+			observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
+				Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+			})
+			verdict := testspec.Evaluate(spec.Assertions, observation)
+			if (verdict.Status == testspec.VerdictPassed) != test.passed {
+				t.Fatalf("max reasoning verdict = %+v", verdict)
+			}
+		})
+	}
+}
+
+func TestKimiResponsesOutputMaximumDoesNotAssertCombinedContextOverflow(t *testing.T) {
+	spec := kimiResponsesSpec(t, "P051-max-completion-context-overflow")
+	fixture := &kimiResponsesFixture{status: 200, root: kimiResponse("你好")}
+	observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
+		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+	})
+	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status != testspec.VerdictPassed {
+		t.Fatalf("documented output maximum was rejected: %+v", verdict)
 	}
 }

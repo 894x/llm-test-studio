@@ -95,7 +95,7 @@
               }
             }
           ],
-          "tool_choice": "required"
+          "tool_choice": "auto"
         }
       },
       "assertions": [
@@ -130,47 +130,6 @@
           "source": "response",
           "operator": "non_empty",
           "pointer": "/output"
-        },
-        {
-          "id": "tool_count",
-          "source": "metrics",
-          "operator": "gte",
-          "pointer": "/tool_call_count",
-          "value": 1
-        },
-        {
-          "id": "function_call",
-          "source": "response",
-          "pointer": "/output",
-          "each_mode": "any",
-          "each": [
-            {
-              "id": "function_type",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/type",
-              "value": "function_call"
-            },
-            {
-              "id": "function_name",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/name",
-              "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-            },
-            {
-              "id": "call_id",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/call_id"
-            },
-            {
-              "id": "arguments",
-              "source": "item",
-              "operator": "json_valid",
-              "pointer": "/arguments"
-            }
-          ]
         }
       ]
     }

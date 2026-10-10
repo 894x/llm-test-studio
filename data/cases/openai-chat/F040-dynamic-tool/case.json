@@ -116,7 +116,7 @@
               "content": "必须使用 calculate 工具计算 23*47。"
             }
           ],
-          "tool_choice": "required"
+          "tool_choice": "auto"
         }
       },
       "assertions": [

@@ -30,6 +30,13 @@ type decoder struct {
 }
 
 func (state *decoder) JSON(root map[string]any, observation *testspec.Observation) {
+	if observation.HTTPStatus != nil && *observation.HTTPStatus >= 400 {
+		textapi.Observe(root, "", observation)
+		if textapi.String(textapi.Object(root["error"])["message"]) == "" {
+			runtime.AddIssue(observation, "response", "invalid_response_shape")
+		}
+		return
+	}
 	var text strings.Builder
 	var toolCalls float64
 	items, validOutput := root["output"].([]any)
@@ -66,7 +73,9 @@ func (state *decoder) JSON(root map[string]any, observation *testspec.Observatio
 		case "failed":
 			runtime.AddIssue(observation, "response", "provider_error")
 		case "incomplete":
-			runtime.AddIssue(observation, "response", "provider_incomplete")
+			if textapi.String(textapi.Object(root["incomplete_details"])["reason"]) != "max_output_tokens" {
+				runtime.AddIssue(observation, "response", "provider_incomplete")
+			}
 		default:
 			runtime.AddIssue(observation, "response", "response_not_terminal")
 		}

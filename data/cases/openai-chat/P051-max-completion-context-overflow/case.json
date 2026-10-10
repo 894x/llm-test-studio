@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "b5e3ea2a-68e4-54b9-9e5f-2d69565d029f",
   "key": "max_completion_context_overflow",
-  "name": "输出长度 · 1M 输出预算加输入超过上下文应拒绝",
+  "name": "输出长度 · 最大输出预算 1048576",
   "dimension": "parameters",
   "enabled": true,
   "default": false,
@@ -57,21 +57,50 @@
           "id": "http",
           "source": "http.status",
           "operator": "equals",
-          "value": 400
+          "value": 200
         },
         {
-          "id": "error_type",
+          "id": "protocol",
+          "source": "issues",
+          "operator": "length_equals",
+          "value": 0
+        },
+        {
+          "id": "object",
           "source": "response",
           "operator": "equals",
-          "pointer": "/error/type",
-          "value": "invalid_request_error"
+          "pointer": "/object",
+          "value": "response"
         },
         {
-          "id": "error_message",
+          "id": "terminal",
+          "source": "response",
+          "operator": "equals",
+          "pointer": "/status",
+          "value": "completed"
+        },
+        {
+          "id": "output",
           "source": "response",
           "operator": "non_empty",
-          "pointer": "/error/message",
-          "transform": "trim"
+          "pointer": "/output"
+        },
+        {
+          "id": "visible_text",
+          "source": "text",
+          "operator": "non_empty"
+        },
+        {
+          "id": "usage_arithmetic",
+          "source": "usage",
+          "operator": "sum_equals",
+          "value": {
+            "total": "/total_tokens",
+            "parts": [
+              "/input_tokens",
+              "/output_tokens"
+            ]
+          }
         }
       ]
     }

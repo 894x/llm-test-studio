@@ -156,16 +156,13 @@
       "key": "openai-responses.kimi-k3.admission-boundary",
       "name": "Kimi K3 Responses 参数拒绝",
       "protocol": "openai-responses",
-      "description": "Kimi K3 Responses 参数拒绝场景，预期 HTTP 400。",
+      "description": "Kimi K3 Responses 16 个参数拒绝场景，包含 required/none；文档与官方实测冲突项保留严格断言。",
       "cases": [
         {
           "case_id": "50361472-cfbb-58a4-8f73-9bb3138a8ca0"
         },
         {
           "case_id": "014dee74-a1f7-5539-abff-18522d477ca4"
-        },
-        {
-          "case_id": "b5e3ea2a-68e4-54b9-9e5f-2d69565d029f"
         },
         {
           "case_id": "7a9bf03b-d94b-5ffd-ba80-af3b626c611d"
@@ -202,6 +199,12 @@
         },
         {
           "case_id": "2f43514d-ac8d-5878-9ccb-e36ab3a93ea2"
+        },
+        {
+          "case_id": "e5280550-a6ca-5d9d-bb65-efce43c73a7b"
+        },
+        {
+          "case_id": "634b8cc2-8dc6-538d-9d29-c18eb8620ad8"
         }
       ],
       "inputs": []
