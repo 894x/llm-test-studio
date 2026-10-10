@@ -8,8 +8,6 @@ import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { CatalogSearch, CatalogSearchEmpty } from "@/features/catalog/catalog-search"
 import { useCatalogSearch } from "@/features/catalog/use-catalog-search"
@@ -29,11 +27,18 @@ import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-
 import { EntryCaseTable, ExecutionDetails, VerificationCounts, VerificationBadge } from "./entry-case-table"
 import { CaseOutcomeNavigator, type ReportCaseTarget } from "./case-outcome-navigator"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
+import { EMPTY_COMPARISONS, type ComparisonSnapshot } from "@/features/comparisons/data"
+import { useComparisonReport } from "./use-comparison-report"
+import { ComparisonReportInspector } from "./comparison-report-inspector"
+import { ReportExportControls } from "./report-export-controls"
+import { channelVerdict, reportListItems } from "./report-list-items"
+import { blobToBase64 } from "./report-export-encoding"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
-export function ReportWorkspace({ snapshot, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
+export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
+  comparisons?: ComparisonSnapshot
   preferredReportID?: string
   getDetail: (reportId: string) => Promise<ReportDetail>
   exportReport: (reportId: string, format: ReportExportFormat, watermark: string, locale: string) => Promise<ExportedReport>
@@ -57,17 +62,25 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
   const exportDocumentReadyRef = useRef<((element: HTMLElement) => void) | null>(null)
   const detailCache = useRef<{ reportID: string; reader: typeof getDetail; detail: ReportDetail } | null>(null)
   const detailRequest = useRef<{ reportID: string; reader: typeof getDetail; promise: Promise<ReportDetail> } | null>(null)
-  const search = useCatalogSearch(snapshot.reports, (report) => [
-    report.id, report.run_id ?? "", displayReportVerdict(report, t), displayReportPlan(report, t),
-    report.model_name, report.channel_name,
-  ])
-  const selectableReports = viewingReportID ? snapshot.reports : search.rows
-  const selected = selectableReports.find((report) => report.id === selectedID) ?? selectableReports[0]
+  const items = useMemo(() => reportListItems(snapshot.reports, comparisons.comparisons), [snapshot.reports, comparisons.comparisons])
+  const reportsByRun = useMemo(() => new Map(snapshot.reports.flatMap(report => report.run_id ? [[report.run_id, report] as const] : [])), [snapshot.reports])
+  const search = useCatalogSearch(items, (item) => item.kind === "comparison" ? [
+    item.id, t("comparison.title"), item.comparison.plan_name, item.comparison.model_name,
+    ...item.comparison.channels.flatMap(channel => [channel.channel_name, channelVerdict(channel, t, reportsByRun.get(channel.run_id))]),
+  ] : [item.report.id, item.report.run_id ?? "", displayReportVerdict(item.report, t), displayReportPlan(item.report, t),
+    item.report.model_name, item.report.channel_name])
+  // A run shortcut can still open its individual report after the list groups it.
+  const selectableItems = viewingReportID ? [...items, ...snapshot.reports.map(report => ({ id: report.id, kind: "report" as const, report }))] : search.rows
+  const selectedItem = selectableItems.find(item => item.id === selectedID) ?? selectableItems[0]
+  const selected = selectedItem?.kind === "report" ? selectedItem.report : undefined
+  const selectedComparison = selectedItem?.kind === "comparison" ? selectedItem.comparison : undefined
   const selectedReportID = selected?.id ?? ""
   const detail = detailState.reportID === selectedReportID ? detailState.detail ?? null : null
   const detailError = detailState.reportID === selectedReportID && detailState.error ? t("detailError") : ""
-  const isViewingReport = viewingReportID !== "" && viewingReportID === selectedReportID
-  const selectedVerdict = selected ? displayReportVerdict(selected, t) : t("generic")
+  const isViewingReport = viewingReportID !== "" && viewingReportID === selectedItem?.id
+  const selectedVerdict = selectedComparison ? t("comparison.title") : selected ? displayReportVerdict(selected, t) : t("generic")
+  const comparisonReport = useComparisonReport({ comparison: selectedComparison, snapshot, getDetail,
+    saveReportExport, copyReportPNG, exportVisualReport, active: isViewingReport })
 
   const loadDetail = useCallback((reportID: string): Promise<ReportDetail> => {
     const cached = detailCache.current
@@ -189,20 +202,22 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
       title={t(isViewingReport ? "detailTitle" : "title")}
       description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
       actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : (
-        <CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: snapshot.reports.length })} />
+        <CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} />
       )}
-      inspector={selected ? (
+      inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={snapshot}
+        onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} /> : selected ? (
         <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
     >
-      {search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={search.clear} /> : snapshot.reports.length === 0 ? (
+      {search.empty && !isViewingReport ? <CatalogSearchEmpty onClear={search.clear} /> : items.length === 0 ? (
         <ScrollArea className="min-h-0 flex-1 border-t">
           <Empty><EmptyTitle>{t("empty")}</EmptyTitle><EmptyDescription>{t("emptyHint")}</EmptyDescription></Empty>
         </ScrollArea>
       ) : isViewingReport ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <ReportContent key={selectedReportID} detail={detail} error={detailError} />
+          {selectedComparison ? comparisonReport.content :
+            <ReportContent key={selectedReportID} detail={detail} error={detailError} />}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -211,7 +226,25 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
               <TableHeader className="sticky top-0 z-10 bg-background"><TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 w-[88px] pl-2 text-[11px]">{t("columns.verdict")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.reportPlan")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.target")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.cases")}</TableHead><TableHead className="h-8 text-[11px]">{t("columns.generated")}</TableHead><TableHead className="h-8 w-[96px] pr-2 text-right text-[11px]">{t("columns.view")}</TableHead>
               </TableRow></TableHeader>
-              <TableBody>{search.rows.map((report) => (
+              <TableBody>{search.rows.map((item) => {
+                if (item.kind === "comparison") {
+                  const comparison = item.comparison
+                  return <TableRow key={item.id} data-state={item.id === selectedItem?.id ? "selected" : undefined} aria-selected={item.id === selectedItem?.id}
+                    className="h-11" onClick={() => setSelectedID(item.id)}>
+                    <TableCell className="py-1 pl-2 text-xs">{t(`common:status.${comparison.status}`)}</TableCell>
+                    <TableCell className="py-1 text-xs"><div className="font-medium">{t("comparison.title")}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.plan_name}</div></TableCell>
+                    <TableCell className="py-1 text-xs"><div>{comparison.model_name}</div><div className="mt-0.5 text-[10px] text-muted-foreground">{comparison.channels.map(channel => channel.channel_name).join(" / ")}</div></TableCell>
+                    <TableCell className="py-1 text-[11px] tabular-nums">{comparison.channels.map(channel => {
+                      const report = reportsByRun.get(channel.run_id)
+                      return <div key={channel.channel_id}>{channel.channel_name} · {channelVerdict(channel, t, report)}{report ? ` · ${report.passed_case_count}/${report.verified_case_count}` : ""}</div>
+                    })}</TableCell>
+                    <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(comparison.created_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
+                    <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("comparison.viewAria", { model: comparison.model_name })}
+                      onClick={event => { event.stopPropagation(); setSelectedID(item.id); setViewingReportID(item.id) }}>{t("comparison.view")}</Button></TableCell>
+                  </TableRow>
+                }
+                const report = item.report
+                return (
                 <TableRow key={report.id} data-state={report.id === selected?.id ? "selected" : undefined} aria-selected={report.id === selected?.id} onClick={() => setSelectedID(report.id)} className="h-11">
                   <TableCell className="py-1 pl-2"><ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} /></TableCell>
                   <TableCell className="py-1"><div className="max-w-[240px] truncate text-xs font-medium">{displayReportVerdict(report, t)}</div><div className="mt-0.5 truncate text-[10px] text-muted-foreground">{displayReportPlan(report, t)}</div></TableCell>
@@ -220,12 +253,14 @@ export function ReportWorkspace({ snapshot, preferredReportID, getDetail, export
                   <TableCell className="py-1 text-xs tabular-nums">{formatTimestamp(report.generated_at, i18n.resolvedLanguage ?? i18n.language)}</TableCell>
                   <TableCell className="py-1 pr-2 text-right"><Button variant="outline" size="xs" aria-label={t("viewAria", { name: displayReportVerdict(report, t) })} onClick={(event) => { event.stopPropagation(); setSelectedID(report.id); setViewingReportID(report.id) }}>{t("view")}</Button></TableCell>
                 </TableRow>
-              ))}</TableBody>
+                )
+              })}</TableBody>
             </Table>
           </ScrollArea>
         </div>
       )}
     </PageFrame>
+    {comparisonReport.exportSurface}
     {exportDocument ? (
       <ReportExportSurface
         ref={attachExportDocument}
@@ -661,15 +696,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
       <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.passed_case_count, total: report.verified_case_count, failed: report.failed_case_count, observed: report.observed_case_count, indeterminate: report.indeterminate_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
     </dl>
     <Separator />
-    <div className="grid grid-cols-2 gap-2 px-4 py-3" aria-label={t("inspector.exportAria")}>
-      <Field className="col-span-2 block space-y-1">
-        <FieldLabel htmlFor="report-watermark">{t("inspector.watermark")}</FieldLabel>
-        <Input id="report-watermark" value={watermark} maxLength={64} disabled={Boolean(exporting)} onChange={(event) => onWatermarkChange(event.target.value)} placeholder="rhzs" />
-      </Field>
-      {(["json", "html", "png", "pdf"] as const).map((format) => <Button key={format} variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onExport(format)}>{exporting === format ? t("inspector.generating") : format.toUpperCase()}</Button>)}
-      <Button className="col-span-2" variant="outline" size="sm" disabled={Boolean(exporting)} onClick={() => void onCopyPNG()}>{t(exporting === "copy" ? "inspector.copying" : "inspector.copyPng")}</Button>
-    </div>
-    {exportError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{exportError}</div> : null}
+    <ReportExportControls watermark={watermark} onWatermarkChange={onWatermarkChange} exporting={exporting} error={exportError} onExport={onExport} onCopyPNG={onCopyPNG} />
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
     {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} /><InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
   </>
@@ -682,26 +709,6 @@ function ConclusionBadge({ passed, status, verdict }: { passed: boolean; status?
     return <Badge variant="outline" className="border-warning/25 bg-warning-soft text-warning-strong">{t("system.cancelled")}</Badge>
   }
   return <Badge variant="outline" className={passed ? "border-success/25 bg-success-soft text-success-strong" : "border-destructive/25 bg-destructive-soft text-destructive"}>{t(passed ? "conclusion.passed" : "conclusion.failed")}</Badge>
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(reader.error ?? new Error("report export encoding failed"))
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("report export encoding failed"))
-        return
-      }
-      const separator = reader.result.indexOf(",")
-      if (separator < 0) {
-        reject(new Error("report export encoding failed"))
-        return
-      }
-      resolve(reader.result.slice(separator + 1))
-    }
-    reader.readAsDataURL(blob)
-  })
 }
 
 function formatMetric(value: number, locale: string = desktopLocale()): string { return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value) }

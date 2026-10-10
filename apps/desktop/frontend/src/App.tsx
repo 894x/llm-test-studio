@@ -567,6 +567,7 @@ function AppWorkspace({
       ) : page === "reports" ? (
         <ReportWorkspace
           snapshot={reports}
+          comparisons={comparisons}
           preferredReportID={preferredReportID}
           getDetail={client.getReportDetail}
           exportReport={client.exportReport}

@@ -251,6 +251,15 @@ describe("desktop run workspace", () => {
   it("opens every primary workspace from the main navigation", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
+    // Navigation reads are independent of the active-run polling interval.
+    vi.mocked(client.getWorkspace).mockResolvedValue({
+      ...FIXTURE_WORKSPACE,
+      active_run_id: undefined,
+      runs: FIXTURE_WORKSPACE.runs.map(run => ({
+        ...run,
+        status: ["starting", "queued", "running", "draining"].includes(run.status) ? "cancelled" : run.status,
+      })),
+    })
     render(<App client={client} />)
 
     await screen.findByRole("heading", { name: "运行工作区" })
