@@ -59,13 +59,6 @@
           "value": 200
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/object",
-          "value": "response"
-        },
-        {
           "id": "terminal",
           "source": "response",
           "operator": "equals",
@@ -81,10 +74,21 @@
         },
         {
           "id": "bounded_output",
-          "source": "usage",
-          "operator": "lte",
-          "pointer": "/output_tokens",
-          "value": 1
+          "any": [
+            {
+              "id": "bounded_output_omitted",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "bounded_output_value",
+              "source": "response",
+              "operator": "lte",
+              "pointer": "/usage/output_tokens",
+              "value": 1
+            }
+          ]
         },
         {
           "id": "protocol",

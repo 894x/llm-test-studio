@@ -241,7 +241,7 @@ func TestKimiResponsesSSEEnvelopeRejectsMissingSequenceNumbers(t *testing.T) {
 	}
 }
 
-func TestKimiResponsesSearchImageLimitsRequireResultsWithinRequestedCap(t *testing.T) {
+func TestKimiResponsesSearchImageLimitsCheckReturnedResultsWithinRequestedCap(t *testing.T) {
 	for _, directory := range []string{"search-image-max-1", "search-image-max-5", "search-image-max-10"} {
 		t.Run(directory, func(t *testing.T) {
 			item := kimiNativeCase(t, directory)
@@ -273,7 +273,7 @@ func TestKimiResponsesSearchImageLimitsRequireResultsWithinRequestedCap(t *testi
 				})
 				observation := kimiBoundaryObservation(spec, root, 200)
 				passed := testspec.Evaluate(spec.Assertions, observation).Status == testspec.VerdictPassed
-				if passed != (count == maximum) {
+				if passed != (count <= maximum) {
 					t.Fatalf("results=%d maximum=%d passed=%v", count, maximum, passed)
 				}
 			}

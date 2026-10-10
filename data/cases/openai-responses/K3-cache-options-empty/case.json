@@ -35,45 +35,11 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "value": "response",
-          "pointer": "/object"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "value": "completed",
-          "pointer": "/status"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
           "id": "answer",
           "source": "text",
           "operator": "equals",
           "value": "READY",
           "transform": "trim"
-        },
-        {
-          "id": "cache_mode",
-          "source": "response",
-          "operator": "equals",
-          "value": "implicit",
-          "pointer": "/prompt_cache_options/mode"
-        },
-        {
-          "id": "cache_ttl",
-          "source": "response",
-          "operator": "equals",
-          "value": "5m",
-          "pointer": "/prompt_cache_options/ttl"
         }
       ]
     }

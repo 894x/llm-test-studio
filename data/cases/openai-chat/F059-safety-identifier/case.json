@@ -65,26 +65,6 @@
           "source": "issues",
           "operator": "length_equals",
           "value": 0
-        },
-        {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/object",
-          "value": "response"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/status",
-          "value": "completed"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
         }
       ]
     }

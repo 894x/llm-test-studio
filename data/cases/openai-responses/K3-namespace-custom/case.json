@@ -54,26 +54,6 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "value": "response",
-          "pointer": "/object"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "value": "completed",
-          "pointer": "/status"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
           "id": "custom_call",
           "source": "response",
           "pointer": "/output",

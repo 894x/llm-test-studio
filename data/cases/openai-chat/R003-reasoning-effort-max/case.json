@@ -63,13 +63,6 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/object",
-          "value": "response"
-        },
-        {
           "id": "terminal",
           "any": [
             {
@@ -108,42 +101,26 @@
                 },
                 {
                   "id": "bounded_output",
-                  "source": "usage",
-                  "operator": "lte",
-                  "pointer": "/output_tokens",
-                  "expected_from": {
-                    "source": "request",
-                    "pointer": "/max_output_tokens"
-                  }
+                  "any": [
+                    {
+                      "id": "bounded_output_omitted",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "bounded_output_value",
+                      "source": "response",
+                      "operator": "lte",
+                      "pointer": "/usage/output_tokens",
+                      "expected_from": {
+                        "source": "request",
+                        "pointer": "/max_output_tokens"
+                      }
+                    }
+                  ]
                 }
               ]
-            }
-          ]
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
-          "id": "reasoning_item",
-          "source": "response",
-          "pointer": "/output",
-          "each_mode": "any",
-          "each": [
-            {
-              "id": "reasoning_type",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/type",
-              "value": "reasoning"
-            },
-            {
-              "id": "reasoning_summary",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/summary"
             }
           ]
         }

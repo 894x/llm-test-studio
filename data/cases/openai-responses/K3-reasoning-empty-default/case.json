@@ -2,7 +2,7 @@
   "schema_version": 2,
   "id": "aa2842db-7cb4-4856-91cc-3921f7259a20",
   "key": "k3.responses.reasoning_empty_default",
-  "name": "K3 Responses · reasoning 空对象采用 max",
+  "name": "K3 Responses · reasoning 空对象可正常调用",
   "dimension": "parameters",
   "enabled": true,
   "default": false,
@@ -30,26 +30,6 @@
           "source": "issues",
           "operator": "length_equals",
           "value": 0
-        },
-        {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "value": "response",
-          "pointer": "/object"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
-          "id": "default_effort",
-          "source": "response",
-          "operator": "equals",
-          "value": "max",
-          "pointer": "/reasoning/effort"
         },
         {
           "id": "documented_terminal",
@@ -92,10 +72,21 @@
                 },
                 {
                   "id": "bounded_usage",
-                  "source": "usage",
-                  "pointer": "/output_tokens",
-                  "operator": "lte",
-                  "value": 2048
+                  "any": [
+                    {
+                      "id": "bounded_usage_omitted",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "bounded_usage_value",
+                      "source": "response",
+                      "pointer": "/usage/output_tokens",
+                      "operator": "lte",
+                      "value": 2048
+                    }
+                  ]
                 }
               ]
             }

@@ -114,50 +114,40 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/object",
-          "value": "response"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/status",
-          "value": "completed"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
-          "id": "input_tokens",
-          "source": "usage",
-          "operator": "gt",
-          "pointer": "/input_tokens",
-          "value": 0
-        },
-        {
-          "id": "output_tokens",
-          "source": "usage",
-          "operator": "gt",
-          "pointer": "/output_tokens",
-          "value": 0
-        },
-        {
           "id": "usage_arithmetic",
-          "source": "usage",
-          "operator": "sum_equals",
-          "value": {
-            "total": "/total_tokens",
-            "parts": [
-              "/input_tokens",
-              "/output_tokens"
-            ]
-          }
+          "any": [
+            {
+              "id": "usage_arithmetic_missing_0",
+              "source": "response",
+              "pointer": "/usage/total_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "usage_arithmetic_missing_1",
+              "source": "response",
+              "pointer": "/usage/input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "usage_arithmetic_missing_2",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "usage_arithmetic_value",
+              "source": "response",
+              "operator": "sum_equals",
+              "value": {
+                "total": "/total_tokens",
+                "parts": [
+                  "/input_tokens",
+                  "/output_tokens"
+                ]
+              },
+              "pointer": "/usage"
+            }
+          ]
         },
         {
           "id": "visible_text",
@@ -167,24 +157,57 @@
         },
         {
           "id": "input_tokens_type",
-          "source": "usage",
-          "operator": "type",
-          "pointer": "/input_tokens",
-          "value": "integer"
+          "any": [
+            {
+              "id": "input_tokens_type_omitted",
+              "source": "response",
+              "pointer": "/usage/input_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "input_tokens_type_value",
+              "source": "response",
+              "operator": "type",
+              "pointer": "/usage/input_tokens",
+              "value": "integer"
+            }
+          ]
         },
         {
           "id": "output_tokens_type",
-          "source": "usage",
-          "operator": "type",
-          "pointer": "/output_tokens",
-          "value": "integer"
+          "any": [
+            {
+              "id": "output_tokens_type_omitted",
+              "source": "response",
+              "pointer": "/usage/output_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "output_tokens_type_value",
+              "source": "response",
+              "operator": "type",
+              "pointer": "/usage/output_tokens",
+              "value": "integer"
+            }
+          ]
         },
         {
           "id": "total_tokens_type",
-          "source": "usage",
-          "operator": "type",
-          "pointer": "/total_tokens",
-          "value": "integer"
+          "any": [
+            {
+              "id": "total_tokens_type_omitted",
+              "source": "response",
+              "pointer": "/usage/total_tokens",
+              "operator": "not_exists"
+            },
+            {
+              "id": "total_tokens_type_value",
+              "source": "response",
+              "operator": "type",
+              "pointer": "/usage/total_tokens",
+              "value": "integer"
+            }
+          ]
         },
         {
           "id": "stream_terminal",

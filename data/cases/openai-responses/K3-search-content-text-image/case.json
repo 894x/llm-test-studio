@@ -57,99 +57,71 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "value": "response",
-          "pointer": "/object"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "value": "completed",
-          "pointer": "/status"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
           "id": "visible_answer",
           "source": "text",
           "operator": "non_empty"
         },
         {
           "id": "search_result",
-          "source": "response",
-          "pointer": "/output",
-          "each_mode": "any",
-          "each": [
+          "any": [
             {
-              "id": "search_type",
-              "source": "item",
-              "operator": "equals",
-              "value": "web_search_call",
-              "pointer": "/type"
+              "id": "search_result_omitted",
+              "source": "response",
+              "pointer": "/output",
+              "operator": "not_exists"
             },
             {
-              "id": "search_status",
-              "source": "item",
-              "operator": "equals",
-              "value": "completed",
-              "pointer": "/status"
-            },
-            {
-              "id": "sources",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/action/sources"
-            },
-            {
-              "id": "source_urls",
-              "source": "item",
-              "pointer": "/action/sources",
+              "id": "search_result_value",
+              "source": "response",
+              "pointer": "/output",
               "each": [
                 {
-                  "id": "source_url",
-                  "source": "item",
-                  "operator": "http_url",
-                  "pointer": "/url"
-                }
-              ]
-            },
-            {
-              "id": "images",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/results"
-            },
-            {
-              "id": "image_count",
-              "source": "item",
-              "operator": "length_lte",
-              "value": 3,
-              "pointer": "/results"
-            },
-            {
-              "id": "image_urls",
-              "source": "item",
-              "pointer": "/results",
-              "each": [
-                {
-                  "id": "image_type",
-                  "source": "item",
-                  "operator": "equals",
-                  "value": "image_result",
-                  "pointer": "/type"
-                },
-                {
-                  "id": "image_url",
-                  "source": "item",
-                  "operator": "http_url",
-                  "pointer": "/image_url"
+                  "id": "search_item",
+                  "any": [
+                    {
+                      "id": "type_omitted",
+                      "source": "item",
+                      "pointer": "/type",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "other_item",
+                      "source": "item",
+                      "pointer": "/type",
+                      "operator": "not_equals",
+                      "value": "web_search_call"
+                    },
+                    {
+                      "id": "returned_search",
+                      "all": [
+                        {
+                          "id": "search_type",
+                          "source": "item",
+                          "pointer": "/type",
+                          "operator": "equals",
+                          "value": "web_search_call"
+                        },
+                        {
+                          "id": "image_count",
+                          "any": [
+                            {
+                              "id": "image_count_omitted",
+                              "source": "item",
+                              "pointer": "/results",
+                              "operator": "not_exists"
+                            },
+                            {
+                              "id": "image_count_value",
+                              "source": "item",
+                              "operator": "length_lte",
+                              "value": 3,
+                              "pointer": "/results"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }

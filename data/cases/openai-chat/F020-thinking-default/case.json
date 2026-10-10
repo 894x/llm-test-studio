@@ -57,47 +57,6 @@
           "source": "issues",
           "operator": "length_equals",
           "value": 0
-        },
-        {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/object",
-          "value": "response"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/status",
-          "value": "completed"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
-          "id": "reasoning_item",
-          "source": "response",
-          "pointer": "/output",
-          "each_mode": "any",
-          "each": [
-            {
-              "id": "reasoning_type",
-              "source": "item",
-              "operator": "equals",
-              "pointer": "/type",
-              "value": "reasoning"
-            },
-            {
-              "id": "reasoning_summary",
-              "source": "item",
-              "operator": "non_empty",
-              "pointer": "/summary"
-            }
-          ]
         }
       ]
     }

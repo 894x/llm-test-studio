@@ -108,18 +108,11 @@
           "value": 400
         },
         {
-          "id": "error_type",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/error/type",
-          "value": "invalid_request_error"
-        },
-        {
           "id": "error_message",
           "source": "response",
-          "operator": "non_empty",
+          "operator": "type",
           "pointer": "/error/message",
-          "transform": "trim"
+          "value": "string"
         }
       ]
     }

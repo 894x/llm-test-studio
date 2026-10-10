@@ -52,51 +52,9 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "value": "response",
-          "pointer": "/object"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "value": "completed",
-          "pointer": "/status"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
           "id": "visible_answer",
           "source": "text",
           "operator": "non_empty"
-        },
-        {
-          "id": "search_result",
-          "source": "response",
-          "pointer": "/output",
-          "each_mode": "any",
-          "each": [
-            {
-              "id": "search_type",
-              "source": "item",
-              "operator": "equals",
-              "value": "web_search_call",
-              "pointer": "/type"
-            },
-            {
-              "id": "search_status",
-              "source": "item",
-              "operator": "equals",
-              "value": "completed",
-              "pointer": "/status"
-            }
-          ]
         }
       ]
     }

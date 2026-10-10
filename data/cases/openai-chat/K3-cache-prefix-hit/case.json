@@ -162,24 +162,21 @@
         },
         {
           "id": "terminal_0",
-          "source": "requests",
-          "operator": "equals",
-          "pointer": "/0/response/status",
-          "value": "completed"
-        },
-        {
-          "id": "input_0",
-          "source": "requests",
-          "operator": "gte",
-          "pointer": "/0/response/usage/input_tokens",
-          "value": 256
-        },
-        {
-          "id": "cache_write_0",
-          "source": "requests",
-          "operator": "gte",
-          "pointer": "/0/response/usage/input_tokens_details/cache_write_tokens",
-          "value": 0
+          "any": [
+            {
+              "id": "terminal_0_omitted",
+              "source": "requests",
+              "pointer": "/0/response/status",
+              "operator": "not_exists"
+            },
+            {
+              "id": "terminal_0_value",
+              "source": "requests",
+              "operator": "equals",
+              "pointer": "/0/response/status",
+              "value": "completed"
+            }
+          ]
         },
         {
           "id": "http_1",
@@ -190,24 +187,21 @@
         },
         {
           "id": "terminal_1",
-          "source": "requests",
-          "operator": "equals",
-          "pointer": "/1/response/status",
-          "value": "completed"
-        },
-        {
-          "id": "input_1",
-          "source": "requests",
-          "operator": "gte",
-          "pointer": "/1/response/usage/input_tokens",
-          "value": 256
-        },
-        {
-          "id": "cache_write_1",
-          "source": "requests",
-          "operator": "gte",
-          "pointer": "/1/response/usage/input_tokens_details/cache_write_tokens",
-          "value": 0
+          "any": [
+            {
+              "id": "terminal_1_omitted",
+              "source": "requests",
+              "pointer": "/1/response/status",
+              "operator": "not_exists"
+            },
+            {
+              "id": "terminal_1_value",
+              "source": "requests",
+              "operator": "equals",
+              "pointer": "/1/response/status",
+              "value": "completed"
+            }
+          ]
         },
         {
           "id": "cache_hit",

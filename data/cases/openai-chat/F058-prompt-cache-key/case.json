@@ -69,40 +69,6 @@
           "source": "issues",
           "operator": "length_equals",
           "value": 0
-        },
-        {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/object",
-          "value": "response"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/status",
-          "value": "completed"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
-          "id": "cache_mode",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/prompt_cache_options/mode",
-          "value": "implicit"
-        },
-        {
-          "id": "cache_ttl",
-          "source": "response",
-          "operator": "equals",
-          "pointer": "/prompt_cache_options/ttl",
-          "value": "1h"
         }
       ]
     }

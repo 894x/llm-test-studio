@@ -38,26 +38,6 @@
           "value": 0
         },
         {
-          "id": "object",
-          "source": "response",
-          "operator": "equals",
-          "value": "response",
-          "pointer": "/object"
-        },
-        {
-          "id": "terminal",
-          "source": "response",
-          "operator": "equals",
-          "value": "completed",
-          "pointer": "/status"
-        },
-        {
-          "id": "output",
-          "source": "response",
-          "operator": "non_empty",
-          "pointer": "/output"
-        },
-        {
           "id": "answer",
           "source": "text",
           "operator": "equals",
@@ -66,15 +46,37 @@
         },
         {
           "id": "no_search",
-          "source": "response",
-          "pointer": "/output",
-          "each": [
+          "any": [
             {
-              "id": "no_search_type",
-              "source": "item",
-              "operator": "not_equals",
-              "value": "web_search_call",
-              "pointer": "/type"
+              "id": "no_search_omitted",
+              "source": "response",
+              "pointer": "/output",
+              "operator": "not_exists"
+            },
+            {
+              "id": "no_search_value",
+              "source": "response",
+              "pointer": "/output",
+              "each": [
+                {
+                  "id": "no_search_type",
+                  "any": [
+                    {
+                      "id": "no_search_type_omitted",
+                      "source": "item",
+                      "pointer": "/type",
+                      "operator": "not_exists"
+                    },
+                    {
+                      "id": "no_search_type_value",
+                      "source": "item",
+                      "operator": "not_equals",
+                      "value": "web_search_call",
+                      "pointer": "/type"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }

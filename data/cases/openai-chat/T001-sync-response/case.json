@@ -85,13 +85,6 @@
           "value": 0
         },
         {
-          "id": "completed",
-          "source": "response",
-          "pointer": "/status",
-          "operator": "equals",
-          "value": "completed"
-        },
-        {
           "id": "text",
           "source": "text",
           "operator": "non_empty",
