@@ -2,6 +2,23 @@
   "title": "运行工作区",
   "description": "比较固定版本、追踪执行状态并检查可复现证据",
   "count": "{{count}} 次运行",
+  "shortcuts": {
+    "title": "快捷运行",
+    "rerun": "重跑一次",
+    "starting": "正在启动…",
+    "viewReport": "查看报告",
+    "viewNewReport": "查看新报告",
+    "hint": "使用当前用例定义重跑，报告生成后自动打开。",
+    "waiting": "重跑已启动，报告生成后将自动打开。",
+    "failed": "无法重跑，请检查渠道配置或本地日志。",
+    "reportFailed": "新运行的报告生成失败，请查看本地日志。",
+    "missingSuite": "当前套件已删除或协议已变更，请在快速测试中重新选择。",
+    "missingPlan": "当前计划已删除或不可运行，请重新选择计划。",
+    "changedInputs": "当前套件的参数已变更，请在快速测试中重新填写后运行。",
+    "keyLabel": "API Key",
+    "keyHint": "此连接未保留密钥，请补填本次运行的 API Key。密钥不会写入本地存储。",
+    "invalidKey": "请填写有效的 API Key。"
+  },
   "caseConcurrency": {
     "label": "Case 并发数",
     "serial": "1 · 串行",

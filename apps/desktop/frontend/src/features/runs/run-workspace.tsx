@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import CircleStopIcon from "lucide-react/dist/esm/icons/circle-stop.mjs"
 import CircleXIcon from "lucide-react/dist/esm/icons/circle-x.mjs"
 import PanelLeftIcon from "lucide-react/dist/esm/icons/panel-left.mjs"
@@ -43,6 +43,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import type { RunShortcutRenderer } from "./use-run-shortcuts"
 import { ComparisonPanel } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot } from "@/features/comparisons/data"
 import type { CatalogSnapshot } from "@/features/catalog/data"
@@ -312,7 +313,7 @@ function DefinitionRow({
   )
 }
 
-function RunInspectorContent({ run }: { run: RunRecord }) {
+function RunInspectorContent({ run, shortcuts }: { run: RunRecord; shortcuts?: ReactNode }) {
   const { t } = useTranslation("runs")
   const durationOnly = run.total === 0 && run.targetDurationMS > 0
   const targetDetail = run.quickTask ? t("presentation.quickSuite") : durationOnly
@@ -408,6 +409,7 @@ function RunInspectorContent({ run }: { run: RunRecord }) {
             : t("inspector.noArtifacts")}
         </TabsContent>
       </Tabs>
+      {shortcuts}
     </div>
   )
 }
@@ -609,7 +611,7 @@ function MobilePlanSheet({
   )
 }
 
-function MobileInspectorSheet({ run }: { run: RunRecord }) {
+function MobileInspectorSheet({ run, shortcuts }: { run: RunRecord; shortcuts?: ReactNode }) {
   const { t } = useTranslation("runs")
 
   return (
@@ -630,7 +632,7 @@ function MobileInspectorSheet({ run }: { run: RunRecord }) {
             {t("inspector.description", { title: run.title })}
           </SheetDescription>
         </SheetHeader>
-        <RunInspectorContent run={run} />
+        <RunInspectorContent run={run} shortcuts={shortcuts} />
       </SheetContent>
     </Sheet>
   )
@@ -726,6 +728,8 @@ export function RunWorkspace({
   commandError,
   onStopSending,
   onCancelRun,
+  preferredRunID,
+  renderRunShortcuts,
 }: {
   snapshot: WorkspaceSnapshot
   comparisons: ComparisonSnapshot
@@ -733,10 +737,18 @@ export function RunWorkspace({
   commandError: string
   onStopSending: (runId: string) => Promise<void>
   onCancelRun: (runId: string) => Promise<void>
+  preferredRunID?: string
+  renderRunShortcuts?: RunShortcutRenderer
 }) {
   const { t, i18n } = useTranslation("runs")
   const [activePlanId, setActivePlanId] = useState("all")
-  const [selectedRunId, setSelectedRunId] = useState("")
+  const [selectedRunId, setSelectedRunId] = useState(preferredRunID ?? "")
+  const [lastPreferredRunID, setLastPreferredRunID] = useState(preferredRunID)
+  if (lastPreferredRunID !== preferredRunID) {
+    setLastPreferredRunID(preferredRunID)
+    setActivePlanId("all")
+    setSelectedRunId(preferredRunID ?? "")
+  }
 
   const presentation = useMemo(
     () => presentWorkspace(snapshot, {
@@ -802,7 +814,7 @@ export function RunWorkspace({
                 totalRuns={runs.length}
                 onSelect={selectPlan}
               />
-              {selectedRun ? <MobileInspectorSheet run={selectedRun} /> : null}
+              {selectedRun ? <MobileInspectorSheet run={selectedRun} shortcuts={renderRunShortcuts?.(selectedRun.id)} /> : null}
               <span className="hidden text-[11px] text-muted-foreground sm:inline">
                 {t("count", { count: visibleRuns.length })}
               </span>
@@ -845,7 +857,7 @@ export function RunWorkspace({
           className="hidden min-h-0 min-w-0 w-[320px] shrink-0 border-l border-divider bg-background min-[1180px]:flex"
         >
           {selectedRun ? (
-            <RunInspectorContent run={selectedRun} />
+            <RunInspectorContent run={selectedRun} shortcuts={renderRunShortcuts?.(selectedRun.id)} />
           ) : (
             <div className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</div>
           )}

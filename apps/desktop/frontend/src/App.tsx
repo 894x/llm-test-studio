@@ -40,6 +40,7 @@ import {
   NewRunSheet,
   RunWorkspace,
 } from "@/features/runs/run-workspace"
+import { useRunShortcuts } from "@/features/runs/use-run-shortcuts"
 import {
   DesktopShell,
 } from "@/features/shell/desktop-shell"
@@ -76,6 +77,8 @@ function AppWorkspace({
   const [reportGeneration, setReportGeneration] = useState<Record<string, ReportGenerationProgress>>({})
   const reportReadGeneration = useRef(0)
   const [preferredReportID, setPreferredReportID] = useState("")
+  const [reportOpenSequence, setReportOpenSequence] = useState(0)
+  const [preferredRunID, setPreferredRunID] = useState("")
   const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [openingLogs, setOpeningLogs] = useState(false)
@@ -338,6 +341,7 @@ function AppWorkspace({
 
   const openReport = useCallback(async (reportID: string): Promise<void> => {
     setPreferredReportID(reportID)
+    setReportOpenSequence(sequence => sequence + 1)
     navigate("reports")
     try {
       await refreshReports()
@@ -345,6 +349,19 @@ function AppWorkspace({
       // Keep the reports workspace open with the last authoritative snapshot.
     }
   }, [refreshReports, navigate])
+
+  const rerunStarted = useCallback((runID: string) => {
+    invalidateWorkspace()
+    setStartingRunID(runID)
+    setPreferredRunID(runID)
+    navigate("runs")
+  }, [invalidateWorkspace, navigate])
+
+  const renderRunShortcuts = useRunShortcuts({
+    client, workspace: snapshot, catalog, reports, generation: reportGeneration,
+    draft: quickDraft, commandPending, onStarted: rerunStarted,
+    onOpenReport: openReport, refreshReports,
+  })
 
   const runCommand = useCallback(
     async (operation: () => Promise<WorkspaceSnapshot>): Promise<void> => {
@@ -569,10 +586,12 @@ function AppWorkspace({
           snapshot={reports}
           comparisons={comparisons}
           preferredReportID={preferredReportID}
+          reportOpenSequence={reportOpenSequence}
           getDetail={client.getReportDetail}
           exportReport={client.exportReport}
           saveReportExport={client.saveReportExport}
           copyReportPNG={client.copyReportPNG}
+          renderRunShortcuts={renderRunShortcuts}
         />
       ) : (
         <RunWorkspace
@@ -580,6 +599,8 @@ function AppWorkspace({
           comparisons={comparisons}
           commandPending={commandPending}
           commandError={commandError}
+          preferredRunID={preferredRunID}
+          renderRunShortcuts={renderRunShortcuts}
           onStopSending={(runId) =>
             runCommand(() => client.stopSending(runId))
           }

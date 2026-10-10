@@ -1,6 +1,6 @@
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { desktopLocale, translateDesktop as tx, translateExecutionError } from "@/i18n/runtime"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
 import { useTranslation } from "react-i18next"
 
@@ -27,6 +27,7 @@ import { PerformanceStreamingTimingTable } from "./performance-streaming-timing-
 import { EntryCaseTable, ExecutionDetails, VerificationCounts, VerificationBadge } from "./entry-case-table"
 import { CaseOutcomeNavigator, type ReportCaseTarget } from "./case-outcome-navigator"
 import { exportVisualReport as createVisualReportExport } from "./visual-report-export"
+import type { RunShortcutRenderer } from "@/features/runs/use-run-shortcuts"
 import { EMPTY_COMPARISONS, type ComparisonSnapshot } from "@/features/comparisons/data"
 import { useComparisonReport } from "./use-comparison-report"
 import { ComparisonReportInspector } from "./comparison-report-inspector"
@@ -36,19 +37,30 @@ import { blobToBase64 } from "./report-export-encoding"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
-export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, preferredReportID, getDetail, exportReport, saveReportExport, copyReportPNG, exportVisualReport = createVisualReportExport }: {
+export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport }: {
   snapshot: ReportSnapshot
   comparisons?: ComparisonSnapshot
   preferredReportID?: string
+  reportOpenSequence?: number
   getDetail: (reportId: string) => Promise<ReportDetail>
   exportReport: (reportId: string, format: ReportExportFormat, watermark: string, locale: string) => Promise<ExportedReport>
   saveReportExport: (filename: string, mediaType: string, dataBase64: string, locale: string) => Promise<boolean>
   copyReportPNG: (dataBase64: string) => Promise<void>
+  renderRunShortcuts?: RunShortcutRenderer
   exportVisualReport?: typeof createVisualReportExport
 }) {
   const { t, i18n } = useTranslation("reports")
   const [selectedID, setSelectedID] = useState(preferredReportID ?? "")
   const [viewingReportID, setViewingReportID] = useState(preferredReportID ?? "")
+  const reportRequest = `${reportOpenSequence}:${preferredReportID ?? ""}`
+  const [lastReportRequest, setLastReportRequest] = useState(reportRequest)
+  if (lastReportRequest !== reportRequest) {
+    setLastReportRequest(reportRequest)
+    if (preferredReportID) {
+      setSelectedID(preferredReportID)
+      setViewingReportID(preferredReportID)
+    }
+  }
   const [detailState, setDetailState] = useState<{ reportID: string; detail?: ReportDetail; error?: boolean }>({ reportID: "" })
   const [exporting, setExporting] = useState<ReportExportFormat | "copy" | "">("")
   const [exportError, setExportError] = useState("")
@@ -206,7 +218,8 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
       )}
       inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={snapshot}
         onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} /> : selected ? (
-        <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG} />
+        <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG}
+          shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
     >
@@ -673,7 +686,7 @@ function ContextValue({ label, value, mono = false }: { label: string; value: st
   return <div className="min-w-0"><dt className="text-[10px] text-muted-foreground">{label}</dt><dd className={`mt-0.5 truncate font-medium ${mono ? "font-mono text-[11px]" : "tabular-nums"}`} title={value}>{value}</dd></div>
 }
 
-function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG }: {
+function ReportInspector({ report, detail, detailError, exporting, exportError, watermark, onWatermarkChange, onExport, onCopyPNG, shortcuts }: {
   report: ReportSummary
   detail: ReportDetail | null
   detailError: string
@@ -683,6 +696,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   onWatermarkChange: (value: string) => void
   onExport: (format: ReportExportFormat) => Promise<void>
   onCopyPNG: () => Promise<void>
+  shortcuts?: ReactNode
 }) {
   const { t: tx } = useTranslation()
   const { t, i18n } = useTranslation("reports")
@@ -691,6 +705,7 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
   const quick = detail?.source === "quick_performance" ? detail.performance : null
   return <>
     <InspectorHeader title={displayReportVerdict(report, t)} subtitle={report.id} trailing={<ConclusionBadge passed={report.passed} verdict={report.verdict} status={report.run_status} />} />
+    {shortcuts}
     <Separator />
     <dl className="space-y-1 px-4 py-2">
       <InspectorRow label={t("inspector.source")} value={t(report.source === "quick_performance" ? "inspector.quickPerformance" : "inspector.planExecution")} />{report.run_id ? <InspectorRow label={t("inspector.run")} value={`${t(`common:status.${report.run_status}`)} · ${report.run_id}`} /> : null}<InspectorRow label={t("inspector.plan")} value={displayReportPlan(report, t)} /><InspectorRow label={t("inspector.modelChannel")} value={`${report.model_name} · ${report.channel_name}`} /><InspectorRow label={t(report.source === "quick_performance" ? "inspector.requestConclusion" : "inspector.caseConclusion")} value={t("inspector.conclusionValue", { passed: report.passed_case_count, total: report.verified_case_count, failed: report.failed_case_count, observed: report.observed_case_count, indeterminate: report.indeterminate_case_count })} /><InspectorRow label={t("inspector.issues")} value={t("inspector.items", { count: report.issue_count })} /><InspectorRow label={t("inspector.generated")} value={formatTimestamp(report.generated_at, locale)} />
