@@ -284,8 +284,14 @@ func TestUpdateCommandsPreserveCreatedAtAndAdvanceRevisionAndTime(t *testing.T) 
 
 	modelResult, err := service.UpdateModel(ctx, UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "Renamed model", Protocols: []domain.Protocol{domain.ProtocolOpenAIChat}, Capabilities: []string{"chat"}})
 	assertUpdate(t, modelResult, modelAID, err, repository.updatedModel.EntityMeta)
-	channelResult, err := service.UpdateChannel(ctx, UpdateChannelCommand{ID: channelID, ExpectedRevision: 1, Name: "Renamed channel", BaseURL: "https://example.com/v2", Protocol: domain.ProtocolOpenAIChat, Enabled: false})
+	channelResult, err := service.UpdateChannel(ctx, UpdateChannelCommand{
+		ID: channelID, ExpectedRevision: 1, Name: "Renamed channel",
+		BaseURL: "https://example.com/v2", Protocol: domain.ProtocolOpenAIResponses, Enabled: false,
+	})
 	assertUpdate(t, channelResult, channelID, err, repository.updatedChannel.EntityMeta)
+	if repository.updatedChannel.Protocol != domain.ProtocolOpenAIResponses {
+		t.Fatalf("UpdateChannel() protocol = %q, want OpenAI Responses", repository.updatedChannel.Protocol)
+	}
 	if repository.updatedChannel.CredentialID != credentialID {
 		t.Fatalf("UpdateChannel() credential id = %q, want existing binding preserved", repository.updatedChannel.CredentialID)
 	}
@@ -337,8 +343,12 @@ func TestUpdatesRejectStaleRevisionWithoutWriting(t *testing.T) {
 		if _, err := service.UpdateModel(context.Background(), UpdateModelCommand{ID: modelAID, ExpectedRevision: 1, Name: "model", Protocols: []domain.Protocol{domain.ProtocolSeedance}}); !errors.Is(err, ErrConflict) {
 			t.Fatalf("UpdateModel(protocol change) error = %v, want ErrConflict", err)
 		}
-		if _, err := service.UpdateChannel(context.Background(), UpdateChannelCommand{ID: channelID, ExpectedRevision: 1, Name: "channel", BaseURL: "https://example.com/v1", Protocol: domain.ProtocolSeedance}); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("UpdateChannel(protocol change) error = %v, want ErrInvalid", err)
+		_, err := service.UpdateChannel(context.Background(), UpdateChannelCommand{
+			ID: channelID, ExpectedRevision: 1, Name: "channel",
+			BaseURL: "https://example.com/v1", Protocol: domain.Protocol("unsupported"),
+		})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("UpdateChannel(unsupported protocol) error = %v, want ErrInvalid", err)
 		}
 		command := validUpdateTestCaseCommand(caseID, "case")
 		command.Key = "changed-key"

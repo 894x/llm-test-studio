@@ -124,7 +124,7 @@ func TestCreateChannelCleansCredentialWhenKeyringSetMayHaveCommitted(t *testing.
 	}
 }
 
-func TestUpdateChannelReplacesBaseURLAndKeyInOneRevision(t *testing.T) {
+func TestUpdateChannelReplacesBaseURLProtocolAndKeyInOneRevision(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 30, 0, 0, time.UTC)
 	repository := &channelRepository{}
 	store := credentials.NewMemoryStore()
@@ -155,13 +155,16 @@ func TestUpdateChannelReplacesBaseURLAndKeyInOneRevision(t *testing.T) {
 	updated, err := service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: created.ChannelID, ExpectedRevision: created.ChannelRevision,
 		Name: "primary updated", BaseURL: "https://new.example.test/v1", APIKey: "sk-new-9876",
-		Protocol: domain.ProtocolOpenAIChat, Enabled: true,
+		Protocol: domain.ProtocolOpenAIResponses, Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
 	if updated.ChannelRevision != 2 || updated.CredentialRevision != 1 || updated.CredentialID == oldCredentialID || repository.channel.BaseURL != "https://new.example.test/v1" {
 		t.Fatalf("updated result = %#v channel = %#v", updated, repository.channel)
+	}
+	if repository.channel.Protocol != domain.ProtocolOpenAIResponses {
+		t.Fatalf("updated protocol = %q, want OpenAI Responses", repository.channel.Protocol)
 	}
 	ref, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, updated.CredentialID)
 	if err != nil {
@@ -344,7 +347,7 @@ func TestUpdateChannelMapsStaleRevisionToCatalogConflict(t *testing.T) {
 	}
 }
 
-func TestUpdateChannelMapsProtocolChangeToCatalogInvalid(t *testing.T) {
+func TestUpdateChannelMapsUnsupportedProtocolToCatalogInvalid(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 48, 30, 0, time.UTC)
 	repository := &channelRepository{channel: domain.Channel{
 		EntityMeta: domain.EntityMeta{ID: "70000000-0000-4000-8000-000000000054", SchemaVersion: 1, Revision: 1, CreatedAt: now, UpdatedAt: now},
@@ -361,7 +364,7 @@ func TestUpdateChannelMapsProtocolChangeToCatalogInvalid(t *testing.T) {
 	_, err = service.Update(context.Background(), channelconfig.UpdateCommand{
 		ID: repository.channel.ID, ExpectedRevision: 1, Name: "primary",
 		BaseURL: "https://new.example.test/v1", APIKey: "sk-new-1234",
-		Protocol: domain.ProtocolSeedance, Enabled: true,
+		Protocol: domain.Protocol("unsupported"), Enabled: true,
 	})
 	if !errors.Is(err, catalog.ErrInvalid) {
 		t.Fatalf("Update() error = %v, want %v", err, catalog.ErrInvalid)

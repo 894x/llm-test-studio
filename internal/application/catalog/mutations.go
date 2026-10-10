@@ -123,9 +123,6 @@ func (service *Service) UpdateChannel(ctx context.Context, command UpdateChannel
 	if err := current.Validate(); err != nil || current.ID != command.ID {
 		return MutationResult{}, ErrCorrupt
 	}
-	if command.Protocol != current.Protocol {
-		return MutationResult{}, ErrInvalid
-	}
 	meta, err := service.nextMeta(ctx, current.EntityMeta, command.ExpectedRevision)
 	if err != nil {
 		return MutationResult{}, err

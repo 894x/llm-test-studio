@@ -176,7 +176,7 @@ function ChannelForm({ item, actions, mutate, pending, formTitle, onSaved }: For
     <TextField label={t("editor.fields.channelName")} value={name} onChange={setName} />
     <TextField label={t("editor.fields.serviceUrl")} value={baseURL} onChange={setBaseURL} />
     <TextField label={t("editor.fields.apiKey")} type="password" value={apiKey} onChange={setAPIKey} description={t(item ? "editor.fields.apiKeyEditHint" : "editor.fields.apiKeyNewHint")} />
-    <SelectField label={t("common.protocol")} value={protocol} disabled={!!item} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
+    <SelectField label={t("common.protocol")} value={protocol} disabled={pending} options={protocolOptions} onChange={(value) => setProtocol(value as CatalogProtocol)} />
     <CheckField label={t("editor.fields.enabledChannel")} checked={enabled} onChange={setEnabled} />
     <FieldDescription>{t("editor.fields.channelSaveHint")}</FieldDescription>
   </FormShell>

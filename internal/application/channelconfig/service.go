@@ -199,9 +199,6 @@ func (service *Service) update(ctx context.Context, command UpdateCommand) (Muta
 	if current.Revision != command.ExpectedRevision {
 		return MutationResult{}, catalog.ErrConflict
 	}
-	if current.Protocol != command.Protocol {
-		return MutationResult{}, ErrInvalid
-	}
 	secret := []byte(command.APIKey)
 	defer clear(secret)
 	credentialMeta, err := service.metaFactory(service.clock.Now())
