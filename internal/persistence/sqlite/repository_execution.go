@@ -15,9 +15,6 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 	if err := run.Validate(); err != nil {
 		return fmt.Errorf("validate run: %w", err)
 	}
-	if err := validateWritableRunSnapshot(run.Snapshot()); err != nil {
-		return err
-	}
 	meta := run.Meta()
 	if meta.Revision != 1 || run.Status() != domain.RunQueued {
 		return errors.New("new run must be queued at revision 1")
@@ -35,7 +32,7 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 		return fmt.Errorf("begin run create: %w", err)
 	}
 	defer tx.Rollback()
-	if err := validateRunReferences(ctx, tx, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -62,9 +59,6 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision uint64, run domain.Run) error {
 	if err := run.Validate(); err != nil {
 		return fmt.Errorf("validate run: %w", err)
-	}
-	if err := validateWritableRunSnapshot(run.Snapshot()); err != nil {
-		return err
 	}
 	meta := run.Meta()
 	if err := validateNextRevision(expectedRevision, meta); err != nil {
@@ -94,7 +88,7 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	if err != nil {
 		return err
 	}
-	if err := validateStoredRunReferences(ctx, tx, current); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	var want domain.Run
@@ -154,7 +148,7 @@ func (repository *Repository) GetRun(ctx context.Context, id string) (domain.Run
 	if err != nil {
 		return domain.Run{}, err
 	}
-	if err := validateStoredRunReferences(ctx, repository.db, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return domain.Run{}, err
 	}
 	return run, nil
@@ -173,7 +167,7 @@ func (repository *Repository) GetRunRevision(ctx context.Context, id string, rev
 	if err != nil {
 		return domain.Run{}, err
 	}
-	if err := validateStoredRunReferences(ctx, tx, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return domain.Run{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -236,7 +230,7 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 		if err != nil {
 			return nil, err
 		}
-		if err := validateStoredRunReferences(ctx, tx, run); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		runs = append(runs, run)
@@ -386,45 +380,10 @@ func queryRunRevision(ctx context.Context, queryer rowQueryer, id string, revisi
 
 func decodeRunDocument(document []byte) (domain.Run, error) {
 	var run domain.Run
-	if err := decodeCanonical(document, &run, func() error { return run.Validate() }); err != nil {
+	if err := decodeCanonical(document, &run, nil); err != nil {
 		return domain.Run{}, fmt.Errorf("%w: run document", ErrCorrupt)
 	}
 	return run, nil
-}
-
-func validateRunReferences(ctx context.Context, _ relationQueryer, run domain.Run) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := run.Validate(); err != nil {
-		return fmt.Errorf("validate run snapshot: %w", err)
-	}
-	return nil
-}
-
-func validateWritableRunSnapshot(snapshot domain.RunSnapshot) error {
-	writeable := snapshot.SchemaVersion == domain.CurrentRunSnapshotSchemaVersion
-	if !writeable {
-		return fmt.Errorf(
-			"%w: writable run snapshot schema version %d",
-			ErrCorrupt,
-			snapshot.SchemaVersion,
-		)
-	}
-	if err := snapshot.Validate(); err != nil {
-		return fmt.Errorf("validate writable run snapshot: %w", err)
-	}
-	return nil
-}
-
-func validateStoredRunReferences(ctx context.Context, queryer relationQueryer, run domain.Run) error {
-	if err := validateRunReferences(ctx, queryer, run); err != nil {
-		if contextErr := ctx.Err(); contextErr != nil {
-			return contextErr
-		}
-		return fmt.Errorf("%w: run pinned references", ErrCorrupt)
-	}
-	return nil
 }
 
 func (repository *Repository) CreateEvidence(ctx context.Context, evidence domain.Evidence) error {
@@ -512,16 +471,15 @@ func (repository *Repository) ListEvidence(ctx context.Context, runID string) ([
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close evidence: %w", err)
 	}
-	var owner domain.Run
 	if len(stored) != 0 {
-		owner, err = queryCurrentRun(ctx, repository.db, runID)
+		_, err = queryCurrentRun(ctx, repository.db, runID)
 		if err != nil {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
 			}
 			return nil, fmt.Errorf("%w: evidence owner", ErrCorrupt)
 		}
-		if err := validateStoredRunReferences(ctx, repository.db, owner); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 	}
@@ -561,14 +519,14 @@ func (row storedEvidenceRow) decode(expectedRunID string) (domain.Evidence, erro
 }
 
 func validateStoredEvidenceReferences(ctx context.Context, queryer relationQueryer, evidence domain.Evidence) error {
-	run, err := queryCurrentRun(ctx, queryer, evidence.RunID)
+	_, err := queryCurrentRun(ctx, queryer, evidence.RunID)
 	if err != nil {
 		if contextErr := ctx.Err(); contextErr != nil {
 			return contextErr
 		}
 		return fmt.Errorf("%w: evidence owner", ErrCorrupt)
 	}
-	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return nil
@@ -769,7 +727,7 @@ func (repository *Repository) ListResults(ctx context.Context, runID string) ([]
 			}
 			return nil, fmt.Errorf("%w: result owner", ErrCorrupt)
 		}
-		if err := validateStoredRunReferences(ctx, repository.db, owner); err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 	}
@@ -834,7 +792,7 @@ func validateStoredResultReferences(ctx context.Context, queryer relationQueryer
 		}
 		return fmt.Errorf("%w: result owner", ErrCorrupt)
 	}
-	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return validateStoredResultAgainstSnapshot(
@@ -914,9 +872,6 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if err := report.Validate(); err != nil {
 		return fmt.Errorf("validate report: %w", err)
 	}
-	if err := validateWritableRunSnapshot(report.PlanSnapshot); err != nil {
-		return err
-	}
 	if err := checkReportProjectionItemBudgets(report); err != nil {
 		return fmt.Errorf("validate report byte budget: %w", err)
 	}
@@ -936,7 +891,7 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if err != nil {
 		return err
 	}
-	if err := validateStoredRunReferences(ctx, tx, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {

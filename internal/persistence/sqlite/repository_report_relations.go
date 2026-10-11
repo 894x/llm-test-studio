@@ -24,7 +24,7 @@ func validateReportStorage(ctx context.Context, queryer relationQueryer, report 
 	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {
 		return storageCorrupt("report run relation")
 	}
-	if err := validateStoredRunReferences(ctx, queryer, run); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	var sealed int

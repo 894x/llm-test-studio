@@ -171,8 +171,10 @@ func decodeCanonical(document []byte, destination any, validate func() error) er
 	if err := json.Unmarshal(document, destination); err != nil {
 		return err
 	}
-	if err := validate(); err != nil {
-		return err
+	if validate != nil {
+		if err := validate(); err != nil {
+			return err
+		}
 	}
 	canonical, err := marshalCanonical(destination)
 	if err != nil {

@@ -3,9 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -69,7 +67,7 @@ func (repository *Repository) ListRunProjections(ctx context.Context) ([]workspa
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		projection, err := row.decode(ctx, tx)
+		projection, err := row.decode()
 		if err != nil {
 			if contextErr := ctx.Err(); contextErr != nil {
 				return nil, contextErr
@@ -131,7 +129,7 @@ func (row *storedWorkspaceProjection) scan(scanner rowScanner) error {
 	)
 }
 
-func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQueryer) (workspace.RunProjection, error) {
+func (row storedWorkspaceProjection) decode() (workspace.RunProjection, error) {
 	for _, value := range []int64{
 		row.completed, row.passed, row.failed, row.observed, row.indeterminate, row.artifactCount,
 		row.resultCorrupt, row.evidenceCorrupt, row.artifactCorrupt, row.reportCorrupt,
@@ -151,13 +149,7 @@ func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQuer
 	if err != nil {
 		return workspace.RunProjection{}, err
 	}
-	pinnedPlan, err := workspacePinnedPlan(ctx, queryer, run)
-	if err != nil {
-		return workspace.RunProjection{}, err
-	}
-	if err := validateWorkspacePinnedPlan(run, pinnedPlan); err != nil {
-		return workspace.RunProjection{}, fmt.Errorf("%w: workspace pinned plan", ErrCorrupt)
-	}
+	pinnedPlan := *run.Snapshot().PlanDocument
 
 	conclusion := workspace.ConclusionNone
 	switch row.conclusionPassed {
@@ -195,32 +187,6 @@ func (row storedWorkspaceProjection) decode(ctx context.Context, queryer rowQuer
 		Completed: uint64(row.completed), Passed: uint64(row.passed), Failed: uint64(row.failed), Observed: uint64(row.observed), Indeterminate: uint64(row.indeterminate),
 		ArtifactCount: uint64(row.artifactCount), Conclusion: conclusion,
 	}, nil
-}
-
-func workspacePinnedPlan(_ context.Context, _ rowQueryer, run domain.Run) (domain.Plan, error) {
-	snapshot := run.Snapshot()
-	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil {
-		return domain.Plan{}, fmt.Errorf("%w: workspace plan document", ErrCorrupt)
-	}
-	return *snapshot.PlanDocument, nil
-}
-
-func validateWorkspacePinnedPlan(run domain.Run, plan domain.Plan) error {
-	if err := run.Validate(); err != nil {
-		return err
-	}
-	snapshot := run.Snapshot()
-	if err := plan.Validate(); err != nil {
-		return err
-	}
-	if plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision {
-		return errors.New("run plan reference differs from pinned plan")
-	}
-	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
-		!reflect.DeepEqual(plan, *snapshot.PlanDocument) {
-		return errors.New("run snapshot differs from pinned plan")
-	}
-	return nil
 }
 
 const workspaceProjectionQuery = `

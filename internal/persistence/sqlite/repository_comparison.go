@@ -221,7 +221,7 @@ func queryCurrentComparison(ctx context.Context, queryer relationQueryer, id str
 		return domain.Comparison{}, fmt.Errorf("%w: comparison metadata", ErrCorrupt)
 	}
 	var comparison domain.Comparison
-	if err := decodeCanonical(document, &comparison, func() error { return comparison.Validate() }); err != nil {
+	if err := decodeCanonical(document, &comparison, nil); err != nil {
 		return domain.Comparison{}, fmt.Errorf("%w: comparison document", ErrCorrupt)
 	}
 	if comparison.Plan() != (domain.EntityRevisionRef{ID: planID, Revision: uint64(planRevision)}) ||
