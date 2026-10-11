@@ -160,7 +160,7 @@ func (service *Service) SaveSuite(ctx context.Context, group, directory string, 
 	}
 	raw, err := json.MarshalIndent(document{
 		SchemaVersion: CurrentSchemaVersion, Key: suite.Key, Name: suite.Name, Protocol: suite.Protocol,
-		Description: suite.Description, Cases: append([]domain.CaseRef{}, suite.Cases...), Inputs: domain.CloneSuiteInputs(suite.Inputs),
+		Description: suite.Description, Cases: suite.Cases, Inputs: suite.Inputs,
 	}, "", "  ")
 	if err != nil {
 		return ErrInvalid
