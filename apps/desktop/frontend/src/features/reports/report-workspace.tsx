@@ -71,7 +71,6 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
     detail: ReportDetail
     watermark: string
   } | null>(null)
-  const exportDocumentRef = useRef<HTMLElement>(null)
   const exportDocumentReadyRef = useRef<((element: HTMLElement) => void) | null>(null)
   const detailCache = useRef<{ reportID: string; reader: typeof getDetail; detail: ReportDetail } | null>(null)
   const detailRequest = useRef<{ reportID: string; reader: typeof getDetail; promise: Promise<ReportDetail> } | null>(null)
@@ -138,7 +137,6 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
   }, [isViewingReport, loadDetail, selectedReportID])
 
   const attachExportDocument = useCallback((element: HTMLElement | null) => {
-    exportDocumentRef.current = element
     if (!element || !exportDocumentReadyRef.current) return
     exportDocumentReadyRef.current(element)
     exportDocumentReadyRef.current = null
@@ -157,49 +155,34 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
     setExportDocument(null)
   }
 
-  const handleExport = async (format: ReportExportFormat) => {
+  const handleExport = async (operation: ReportExportFormat | "copy") => {
     if (!selected) return
-    setExporting(format)
+    const copying = operation === "copy"
+    setExporting(operation)
     setExportError("")
     try {
-      if (format === "json") {
-        const exported = await exportReport(selected.id, format, watermark, i18n.resolvedLanguage ?? i18n.language)
+      if (operation === "json") {
+        const exported = await exportReport(selected.id, operation, watermark, i18n.resolvedLanguage ?? i18n.language)
         await saveReportExport(exported.filename, exported.media_type, exported.data_base64, i18n.resolvedLanguage ?? i18n.language)
       } else {
         const reportDetail = detail ?? await loadDetail(selected.id)
         const element = await mountExportDocument(selected, reportDetail)
-        const exported = await exportVisualReport(element, format, selected.id)
-        await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob), i18n.resolvedLanguage ?? i18n.language)
+        const exported = await exportVisualReport(element, copying ? "png" : operation, selected.id)
+        if (copying) {
+          await copyReportPNGToClipboard(exported.blob, copyReportPNG)
+        } else {
+          await saveReportExport(exported.filename, exported.mediaType, await blobToBase64(exported.blob), i18n.resolvedLanguage ?? i18n.language)
+        }
       }
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
         error,
-        t("export.operation", { format: format.toUpperCase(), name: selectedVerdict }),
-        t("export.error"),
+        copying ? t("export.copyOperation", { name: selectedVerdict }) :
+          t("export.operation", { format: operation.toUpperCase(), name: selectedVerdict }),
+        t(copying ? "export.copyError" : "export.error"),
       ))
     } finally {
-      if (format !== "json") unmountExportDocument()
-      setExporting("")
-    }
-  }
-
-  const copyPNG = async () => {
-    if (!selected) return
-    setExporting("copy")
-    setExportError("")
-    try {
-      const reportDetail = detail ?? await loadDetail(selected.id)
-      const element = await mountExportDocument(selected, reportDetail)
-      const exported = await exportVisualReport(element, "png", selected.id)
-      await copyReportPNGToClipboard(exported.blob, copyReportPNG)
-    } catch (error) {
-      setExportError(publicDesktopOperationErrorMessage(
-        error,
-        t("export.copyOperation", { name: selectedVerdict }),
-        t("export.copyError"),
-      ))
-    } finally {
-      unmountExportDocument()
+      if (operation !== "json") unmountExportDocument()
       setExporting("")
     }
   }
@@ -213,7 +196,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
       )}
       inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={snapshot}
         onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} /> : selected ? (
-        <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={copyPNG}
+        <ReportInspector report={selected} detail={detail} detailError={detailError} exporting={exporting} exportError={exportError} watermark={watermark} onWatermarkChange={setWatermark} onExport={handleExport} onCopyPNG={() => handleExport("copy")}
           shortcuts={selected.source === "run" && selected.run_id ? renderRunShortcuts?.(selected.run_id, !isViewingReport) : null} />
       ) : <EmptyInspector label={t("noneSelected")} />}
       inspectorLabel={t("detailTitle")}
