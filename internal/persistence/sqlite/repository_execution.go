@@ -945,10 +945,10 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if report.GeneratedAt.Before(run.Meta().UpdatedAt) {
 		return errors.New("report generation timestamp precedes the terminal run update")
 	}
-	if err := matchReportResults(ctx, tx, report); err != nil {
+	if err := validateReportResults(ctx, tx, report); err != nil {
 		return err
 	}
-	if err := matchReportEvidence(ctx, tx, report); err != nil {
+	if err := validateReportEvidence(ctx, tx, report); err != nil {
 		return err
 	}
 	seal, err := tx.ExecContext(ctx, `
@@ -1043,18 +1043,7 @@ func (repository *Repository) ListReports(ctx context.Context) ([]domain.Report,
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close reports: %w", err)
 	}
-	result := make([]domain.Report, 0, len(stored))
-	for _, row := range stored {
-		report, err := row.decode()
-		if err != nil {
-			return nil, err
-		}
-		if err := validateReportStorage(ctx, repository.db, report); err != nil {
-			return nil, err
-		}
-		result = append(result, report)
-	}
-	return result, nil
+	return repository.decodeStoredReports(ctx, stored)
 }
 
 func (repository *Repository) ListReportsForRuns(ctx context.Context, runIDs []string) ([]domain.Report, error) {
@@ -1089,6 +1078,10 @@ func (repository *Repository) ListReportsForRuns(ctx context.Context, runIDs []s
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate reports for runs: %w", err)
 	}
+	return repository.decodeStoredReports(ctx, stored)
+}
+
+func (repository *Repository) decodeStoredReports(ctx context.Context, stored []storedReportRow) ([]domain.Report, error) {
 	result := make([]domain.Report, 0, len(stored))
 	for _, row := range stored {
 		report, err := row.decode()
@@ -1130,14 +1123,6 @@ func decodeReportDocument(document []byte) (domain.Report, error) {
 		return domain.Report{}, fmt.Errorf("%w: report document", ErrCorrupt)
 	}
 	return report, nil
-}
-
-func matchReportResults(ctx context.Context, tx *sql.Tx, report domain.Report) error {
-	return validateReportResults(ctx, tx, report)
-}
-
-func matchReportEvidence(ctx context.Context, tx *sql.Tx, report domain.Report) error {
-	return validateReportEvidence(ctx, tx, report)
 }
 
 func requireWritableRun(ctx context.Context, queryer rowQueryer, id string) error {
