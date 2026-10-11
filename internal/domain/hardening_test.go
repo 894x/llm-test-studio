@@ -106,6 +106,72 @@ func validProtocolDefinitions() ProtocolDefinitions {
 	return ProtocolDefinitions{Protocol(CaseType("openai-chat")): json.RawMessage(`{"inputs":{},"request":{"body":{"messages":[{"role":"user","content":"hello"}]}},"assertions":[{"id":"status","source":"http.status","operator":"equals","value":200}]}`)}
 }
 
+func TestTestCaseJSONRejectsInvalidFieldsWithoutReplacingValue(t *testing.T) {
+	valid := validRunSnapshot().Entries[0].CaseDefinitions[0]
+	encoded, err := json.Marshal(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := valid.Definitions[ProtocolOpenAIChat]
+	for _, test := range []struct {
+		name, want string
+		mutate     func(map[string]json.RawMessage)
+	}{
+		{name: "missing definitions", want: "case definitions must contain at least one protocol",
+			mutate: func(fields map[string]json.RawMessage) { delete(fields, "definitions") }},
+		{name: "null definitions", want: "case definitions must be a protocol-keyed object",
+			mutate: func(fields map[string]json.RawMessage) { fields["definitions"] = json.RawMessage(`null`) }},
+		{name: "empty definitions", want: "case definitions must contain at least one protocol",
+			mutate: func(fields map[string]json.RawMessage) { fields["definitions"] = json.RawMessage(`{}`) }},
+		{name: "duplicate protocol", want: "duplicate case protocol",
+			mutate: func(fields map[string]json.RawMessage) {
+				fields["definitions"] = json.RawMessage(fmt.Sprintf(
+					`{"openai-chat":%s,"openai-chat":%s}`, definition, definition,
+				))
+			}},
+		{name: "invalid severity", want: "unsupported test case severity",
+			mutate: func(fields map[string]json.RawMessage) { fields["severity"] = json.RawMessage(`"unknown"`) }},
+		{name: "metadata precedes missing definitions", want: "invalid test case metadata",
+			mutate: func(fields map[string]json.RawMessage) {
+				fields["id"] = json.RawMessage(`"invalid"`)
+				delete(fields, "definitions")
+			}},
+		{name: "nested definitions precede metadata", want: "case definitions must be a protocol-keyed object",
+			mutate: func(fields map[string]json.RawMessage) {
+				fields["id"] = json.RawMessage(`"invalid"`)
+				fields["definitions"] = json.RawMessage(`null`)
+			}},
+		{name: "superseded field", want: "explicitly upgrade to protocol-keyed definitions",
+			mutate: func(fields map[string]json.RawMessage) { fields["spec"] = json.RawMessage(`{}`) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fields := map[string]json.RawMessage{}
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(fields)
+			raw, err := json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate := valid
+			if err := json.Unmarshal(raw, &candidate); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Unmarshal error = %v, want %q", err, test.want)
+			}
+			after, err := json.Marshal(candidate)
+			if err != nil || string(after) != string(encoded) {
+				t.Fatalf("rejected JSON changed destination: %s, error = %v", after, err)
+			}
+		})
+	}
+	valid.Definitions = ProtocolDefinitions{
+		ProtocolOpenAIChat: json.RawMessage(`{"inputs":{},"request":{"body":{}},"assertions":null}`),
+	}
+	if err := valid.Validate(); err == nil {
+		t.Fatal("direct TestCase validation accepted invalid definitions")
+	}
+}
+
 func validEvidence() Evidence {
 	return Evidence{
 		EntityMeta:   validEntityMeta(testEvidenceID),

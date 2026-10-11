@@ -258,6 +258,13 @@ func (mode CaseExecutionMode) Validate() error {
 }
 
 func (testCase TestCase) Validate() error {
+	if err := testCase.validateFields(); err != nil {
+		return err
+	}
+	return testCase.Definitions.Validate()
+}
+
+func (testCase TestCase) validateFields() error {
 	if err := testCase.EntityMeta.Validate(); err != nil {
 		return fmt.Errorf("invalid test case metadata: %w", err)
 	}
@@ -279,10 +286,6 @@ func (testCase TestCase) Validate() error {
 	if err := testCase.ExecutionMode.Validate(); err != nil {
 		return err
 	}
-	if err := testCase.Definitions.Validate(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -319,10 +322,14 @@ func (testCase *TestCase) UnmarshalJSON(data []byte) error {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return errors.New("Case JSON must contain exactly one value")
 	}
-	if err := TestCase(candidate).Validate(); err != nil {
+	value := TestCase(candidate)
+	if err := value.validateFields(); err != nil {
 		return err
 	}
-	*testCase = TestCase(candidate)
+	if len(value.Definitions) == 0 {
+		return value.Definitions.Validate()
+	}
+	*testCase = value
 	return nil
 }
 
