@@ -198,6 +198,10 @@ func New(dependencies Dependencies) (*Service, error) {
 	if caseTypes == nil {
 		caseTypes = casetypes.MustBuiltinRegistry()
 	}
+	reporter := dependencies.Reporter
+	if isNil(reporter) {
+		reporter = nil
+	}
 	recoveryContext, stopRecovery := context.WithCancel(context.Background())
 	return &Service{
 		repository: dependencies.Repository, credentials: dependencies.Credentials,
@@ -205,7 +209,7 @@ func New(dependencies Dependencies) (*Service, error) {
 		quickTaskCredentials: dependencies.QuickTaskCredentials,
 		executor:             dependencies.Executor, clock: dependencies.Clock,
 		metaFactory: factory, environment: dependencies.Environment,
-		reporter: dependencies.Reporter, reportError: dependencies.ReportError,
+		reporter: reporter, reportError: dependencies.ReportError,
 		diagnostics:     newDiagnosticDispatcher(dependencies.ReportDiagnostic),
 		recoveryContext: recoveryContext, stopRecovery: stopRecovery,
 		active: make(map[string]*runControl),
@@ -808,7 +812,7 @@ func (service *Service) finishRun(control *runControl, terminal domain.RunStatus
 }
 
 func (service *Service) generateTerminalReport(control *runControl) {
-	if service == nil || control == nil || isNil(service.reporter) {
+	if service.reporter == nil {
 		return
 	}
 	control.mu.Lock()
@@ -832,9 +836,6 @@ func (service *Service) generateTerminalReport(control *runControl) {
 }
 
 func (service *Service) report(diagnostic Diagnostic) {
-	if service == nil {
-		return
-	}
 	service.diagnostics.submit(diagnostic)
 }
 

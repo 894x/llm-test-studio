@@ -115,6 +115,41 @@ func (reporter *recordingReporter) Generate(_ context.Context, runID string) err
 	return reporter.err
 }
 
+func TestTypedNilReporterAllowsQueuedRunCancellation(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &fakeRepository{fixture: fixture}
+	store := credentials.NewMemoryStore()
+	storeRef, err := credentials.StoreRefFromCredential(fixture.credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set(context.Background(), storeRef, []byte("test-secret")); err != nil {
+		t.Fatal(err)
+	}
+	var reporter *recordingReporter
+	service, err := runs.New(runs.Dependencies{
+		Repository: repository, Credentials: store, Executor: &recordingExecutor{},
+		Clock: &stepClock{next: fixture.now}, Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+		Reporter: reporter,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	runID, err := service.PrepareTarget(context.Background(), runs.StartCommand{
+		PlanID: fixture.plan.ID, ModelID: fixture.model.ID, ChannelID: fixture.channel.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.CancelRun(context.Background(), runID); err != nil {
+		t.Fatal(err)
+	}
+	if repository.run.Status() != domain.RunCancelled {
+		t.Fatalf("run status = %s, want cancelled", repository.run.Status())
+	}
+}
+
 func TestReportGenerationFailureReportsCorrelatedRunDiagnostic(t *testing.T) {
 	fixture := newRunFixture(t)
 	repository := &fakeRepository{fixture: fixture}
