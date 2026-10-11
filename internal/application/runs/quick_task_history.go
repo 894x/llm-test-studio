@@ -95,7 +95,7 @@ func (service *Service) quickTaskSnapshot(ctx context.Context, runID string) (do
 		return domain.RunSnapshot{}, err
 	}
 	snapshot := run.Snapshot()
-	if run.Meta().ID != runID || snapshot.QuickTask == nil || snapshot.Validate() != nil {
+	if run.Meta().ID != runID || snapshot.QuickTask == nil {
 		return domain.RunSnapshot{}, ErrNotRunnable
 	}
 	return snapshot, nil

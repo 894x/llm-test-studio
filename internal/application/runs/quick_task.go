@@ -144,9 +144,9 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 			return "", ErrInvalid
 		}
 		channel.Name = endpoint.Host
-	}
-	if channel.Validate() != nil {
-		return "", ErrNotRunnable
+		if channel.Validate() != nil {
+			return "", ErrNotRunnable
+		}
 	}
 	timeout := command.RequestTimeoutMS
 	if timeout == 0 {
