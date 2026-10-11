@@ -304,13 +304,6 @@ func productionStoragePaths(configurationRoot string) (directory string, databas
 	}
 	directory = filepath.Join(root, "llm-test-studio")
 	database = filepath.Join(directory, "llm-test-studio.db")
-	relative, err := filepath.Rel(root, database)
-	if err != nil {
-		return "", "", fmt.Errorf("validate desktop database path: %w", err)
-	}
-	if relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", "", errors.New("desktop database path escapes user configuration directory")
-	}
 	return directory, database, nil
 }
 
