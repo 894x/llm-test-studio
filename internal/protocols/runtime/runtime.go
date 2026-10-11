@@ -82,12 +82,13 @@ func Read(response Response) ([]byte, error) {
 }
 
 func Exchange(step string, request Request, response Response) testspec.Exchange {
+	body := request.Body
+	if len(response.RequestBody) > 0 {
+		body = response.RequestBody
+	}
 	entry := testspec.Exchange{
 		Step: step, Method: request.Method, Path: request.Path,
-		RequestBody: append(json.RawMessage{}, request.Body...),
-	}
-	if len(response.RequestBody) > 0 {
-		entry.RequestBody = append(json.RawMessage{}, response.RequestBody...)
+		RequestBody: append(json.RawMessage{}, body...),
 	}
 	if response.HTTP != nil {
 		status := response.HTTP.StatusCode
