@@ -68,7 +68,7 @@ type document struct {
 type discovered struct {
 	group, directory string
 	source           Source
-	document         document
+	suite            domain.Suite
 }
 
 func New(options Options) (*Service, error) {
@@ -114,7 +114,7 @@ func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 	discoveredEntries := make([]discovered, 0, len(builtin))
 	identities := make(map[string]string, len(builtin))
 	for path, entry := range builtin {
-		identity := string(entry.document.Protocol) + "/" + entry.document.Key
+		identity := string(entry.suite.Protocol) + "/" + entry.suite.Key
 		if previous, duplicate := identities[identity]; duplicate {
 			return nil, fmt.Errorf("%w: %s and %s", ErrCollision, previous, path)
 		}
@@ -130,13 +130,9 @@ func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
 
 	entries := make([]Entry, len(discoveredEntries))
 	for index, candidate := range discoveredEntries {
-		suite, materializeErr := materialize(candidate.document)
-		if materializeErr != nil {
-			return nil, fmt.Errorf("resolve suite %s/%s: %w", candidate.group, candidate.directory, materializeErr)
-		}
 		entries[index] = Entry{
 			Group: candidate.group, Directory: candidate.directory, Source: candidate.source,
-			Suite: suite,
+			Suite: candidate.suite,
 		}
 	}
 	return entries, nil
@@ -179,12 +175,8 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	doc, err := decodeDocument(raw)
-	if err != nil || string(doc.Protocol) != group {
-		return ErrInvalid
-	}
-	suite, err := materialize(doc)
-	if err != nil {
+	suite, err := decodeDocument(raw)
+	if err != nil || string(suite.Protocol) != group {
 		return ErrInvalid
 	}
 	current, findErr := service.Find(ctx, suite.ID)
@@ -253,12 +245,12 @@ func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]
 		if err != nil {
 			return err
 		}
-		doc, err := decodeDocument(raw)
-		if err != nil || string(doc.Protocol) != parts[0] {
+		suite, err := decodeDocument(raw)
+		if err != nil || string(suite.Protocol) != parts[0] {
 			return fmt.Errorf("invalid suite file %q", path)
 		}
 		key := parts[0] + "/" + parts[1]
-		result[key] = discovered{group: parts[0], directory: parts[1], source: source, document: doc}
+		result[key] = discovered{group: parts[0], directory: parts[1], source: source, suite: suite}
 		return nil
 	})
 	if err != nil {
@@ -267,26 +259,23 @@ func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]
 	return result, nil
 }
 
-func decodeDocument(raw []byte) (document, error) {
+func decodeDocument(raw []byte) (domain.Suite, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var doc document
 	if err := decoder.Decode(&doc); err != nil {
-		return document{}, err
+		return domain.Suite{}, err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		if err == nil {
-			return document{}, errors.New("suite JSON must contain exactly one value")
+			return domain.Suite{}, errors.New("suite JSON must contain exactly one value")
 		}
-		return document{}, err
+		return domain.Suite{}, err
 	}
 	if doc.SchemaVersion != CurrentSchemaVersion {
-		return document{}, fmt.Errorf("unsupported suite schema version %d; explicitly upgrade to %d", doc.SchemaVersion, CurrentSchemaVersion)
+		return domain.Suite{}, fmt.Errorf("unsupported suite schema version %d; explicitly upgrade to %d", doc.SchemaVersion, CurrentSchemaVersion)
 	}
-	if _, err := materialize(doc); err != nil {
-		return document{}, err
-	}
-	return doc, nil
+	return materialize(doc)
 }
 
 func materialize(doc document) (domain.Suite, error) {
