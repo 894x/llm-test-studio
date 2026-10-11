@@ -445,7 +445,7 @@ func (service *Service) delete(ctx context.Context, command DeleteCommand, opera
 }
 
 func (service *Service) ready(ctx context.Context) (context.Context, error) {
-	if service == nil || isNilInterface(service.repository) || isNilInterface(service.clock) || service.metaFactory == nil {
+	if service == nil || service.metaFactory == nil {
 		return nil, ErrUnavailable
 	}
 	if ctx == nil {
