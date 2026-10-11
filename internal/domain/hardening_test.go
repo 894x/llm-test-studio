@@ -441,6 +441,26 @@ func TestRunMarshalRejectsInvalidInternalState(t *testing.T) {
 	}
 }
 
+func TestRunExecutionAccessorsOwnFrozenValues(t *testing.T) {
+	snapshot := validRunSnapshot()
+	snapshot.PlanDocument.Seed = 123
+	expectedChannel := snapshot.Channel
+	run, err := NewRun(validEntityMeta(testRunID), testPlanID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Channel.Name = "changed source"
+	snapshot.PlanDocument.Seed = 456
+	if run.Channel() != expectedChannel || run.Seed() != 123 {
+		t.Fatal("execution accessors retained caller aliases")
+	}
+	channel := run.Channel()
+	channel.Name = "changed output"
+	if run.Channel() != expectedChannel {
+		t.Fatal("channel accessor exposed mutable internal data")
+	}
+}
+
 func TestRunJSONRoundTripRestoresValidatedPrivateSnapshot(t *testing.T) {
 	run, err := NewRun(validEntityMeta(testRunID), testPlanID, validRunSnapshot())
 	if err != nil {

@@ -147,6 +147,15 @@ func (run Run) Snapshot() RunSnapshot {
 	return run.planSnapshot.clone()
 }
 
+func (run Run) Channel() ChannelSnapshot {
+	return run.planSnapshot.Channel
+}
+
+// Seed returns the frozen plan seed of a successfully constructed or decoded Run.
+func (run Run) Seed() uint64 {
+	return run.planSnapshot.PlanDocument.Seed
+}
+
 func (run Run) Failure() *RunFailure {
 	if run.failure == nil {
 		return nil

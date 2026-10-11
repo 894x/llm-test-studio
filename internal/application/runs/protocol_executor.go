@@ -60,22 +60,22 @@ func (executor *ProtocolExecutor) executePhase(
 	if invalid || emit == nil || len(request.Cases) == 0 {
 		return ErrInvalid
 	}
-	snapshot := request.Run.Snapshot()
-	client, err := protocols.NewClient(executor.registry, request.Credential, snapshot.Channel, executor.transport)
+	channel := request.Run.Channel()
+	client, err := protocols.NewClient(executor.registry, request.Credential, channel, executor.transport)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 	specs := make([]testspec.Spec, len(request.Cases))
 	for index, testCase := range request.Cases {
-		if !testCase.Enabled || !testCase.SupportsProtocol(snapshot.Channel.Protocol) {
+		if !testCase.Enabled || !testCase.SupportsProtocol(channel.Protocol) {
 			return ErrNotRunnable
 		}
-		spec, err := testCase.SpecFor(snapshot.Channel.Protocol)
+		spec, err := testCase.SpecFor(channel.Protocol)
 		if err != nil {
 			return err
 		}
-		if err := executor.registry.Validate(string(snapshot.Channel.Protocol), spec); err != nil {
+		if err := executor.registry.Validate(string(channel.Protocol), spec); err != nil {
 			return err
 		}
 		if _, err := testspec.ValidateInputs(spec.Inputs, request.Entry.CaseInputs[testCase.ID]); err != nil {
@@ -93,10 +93,7 @@ func (executor *ProtocolExecutor) executePhase(
 	if phase == "warmup" {
 		randomItemID += ":warmup"
 	}
-	seed := uint64(0)
-	if snapshot.PlanDocument != nil {
-		seed = snapshot.PlanDocument.Seed
-	}
+	seed := request.Run.Seed()
 	composite := func(executionContext context.Context, scheduled load.Request) load.Observation {
 		index := int(scheduled.Index % uint64(len(specs)))
 		testCase := request.Cases[index]
