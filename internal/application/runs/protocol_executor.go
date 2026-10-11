@@ -71,11 +71,8 @@ func (executor *ProtocolExecutor) executePhase(
 		if !testCase.Enabled || !testCase.SupportsProtocol(channel.Protocol) {
 			return ErrNotRunnable
 		}
-		spec, err := testCase.SpecFor(channel.Protocol)
+		spec, err := executor.registry.DecodeSpec(string(channel.Protocol), testCase.Definitions[channel.Protocol])
 		if err != nil {
-			return err
-		}
-		if err := executor.registry.Validate(string(channel.Protocol), spec); err != nil {
 			return err
 		}
 		if _, err := testspec.ValidateInputs(spec.Inputs, request.Entry.CaseInputs[testCase.ID]); err != nil {

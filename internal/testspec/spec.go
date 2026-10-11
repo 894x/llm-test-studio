@@ -182,13 +182,16 @@ func validateInputValue(input Input, raw json.RawMessage, checkEnum bool) error 
 }
 
 func decodeValue(raw json.RawMessage) (any, error) {
-	if len(raw) == 0 || len(raw) > MaxDocumentBytes || !json.Valid(raw) {
+	if len(raw) == 0 || len(raw) > MaxDocumentBytes {
 		return nil, errors.New("invalid JSON value")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
+		return nil, errors.New("invalid JSON value")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return nil, errors.New("invalid JSON value")
 	}
 	return value, nil

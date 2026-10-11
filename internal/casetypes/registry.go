@@ -86,11 +86,8 @@ func (registry *Registry) Validate(protocol domain.Protocol, raw json.RawMessage
 	if registry == nil {
 		return errors.New("case type registry is unavailable")
 	}
-	spec, err := testspec.Decode(raw)
-	if err != nil {
-		return err
-	}
-	return registry.protocols.Validate(string(protocol), spec)
+	_, err := registry.protocols.DecodeSpec(string(protocol), raw)
+	return err
 }
 
 func (registry *Registry) ValidateDefinitions(definitions domain.ProtocolDefinitions) error {

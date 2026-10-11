@@ -48,10 +48,7 @@ func (protocol TaskProtocol) Descriptor() Descriptor {
 	}
 }
 
-func (protocol TaskProtocol) Validate(spec testspec.Spec) error {
-	if err := spec.Validate(); err != nil {
-		return err
-	}
+func (protocol TaskProtocol) ValidateProtocol(spec testspec.Spec) error {
 	if spec.Operation != "" {
 		return errors.New("task protocol has no named request operations")
 	}
@@ -156,14 +153,15 @@ func taskRequest(
 		AddIssue(observation, step, readErr.Error())
 		return nil, false
 	}
-	if !json.Valid(body) {
+	var root map[string]any
+	decodeErr := json.Unmarshal(body, &root)
+	if decodeErr != nil && !json.Valid(body) {
 		AddIssue(observation, step, "invalid_json")
 		return nil, false
 	}
 	observation.Response = append(json.RawMessage{}, body...)
 	exchange.Response = append(json.RawMessage{}, body...)
-	var root map[string]any
-	if json.Unmarshal(body, &root) != nil || root == nil {
+	if decodeErr != nil || root == nil {
 		AddIssue(observation, step, "response_not_object")
 		return nil, false
 	}

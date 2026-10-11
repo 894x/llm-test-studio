@@ -6,6 +6,26 @@ import (
 	"testing"
 )
 
+func TestDecodeValueRequiresOneCompleteJSONValue(t *testing.T) {
+	for _, raw := range []string{"", " ", `1 2`, `{} []`, `true trailing`, `{"x":`, `1 /* comment */`} {
+		if _, err := decodeValue(json.RawMessage(raw)); err == nil || err.Error() != "invalid JSON value" {
+			t.Errorf("decodeValue(%q) error = %v", raw, err)
+		}
+	}
+	for _, raw := range []string{`null`, `true`, `"text"`, `[]`, `{}`, `9007199254740993`, " 1 \n\t"} {
+		value, err := decodeValue(json.RawMessage(raw))
+		if err != nil {
+			t.Fatalf("decodeValue(%q) error = %v", raw, err)
+		}
+		if raw == `9007199254740993` && value != json.Number(raw) {
+			t.Fatalf("number precision lost: %#v", value)
+		}
+	}
+	if _, err := decodeValue(json.RawMessage(strings.Repeat(" ", MaxDocumentBytes+1))); err == nil {
+		t.Fatal("oversized JSON accepted")
+	}
+}
+
 func TestFixedNegativeRequestIsValidAndAssertionsAreOptional(t *testing.T) {
 	spec, err := Decode(json.RawMessage(`{"inputs":{},"request":{"body":{"temperature":"invalid","messages":null}},"assertions":[]}`))
 	if err != nil {

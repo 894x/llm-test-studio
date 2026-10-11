@@ -49,10 +49,7 @@ func (module *Module) Descriptor() runtime.Descriptor {
 	}
 }
 
-func (module *Module) Validate(spec testspec.Spec) error {
-	if err := spec.Validate(); err != nil {
-		return err
-	}
+func (module *Module) ValidateProtocol(spec testspec.Spec) error {
 	if spec.Operation != "" {
 		return errors.New("text protocol supports only the create operation")
 	}

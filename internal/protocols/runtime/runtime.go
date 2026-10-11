@@ -51,7 +51,8 @@ type Descriptor struct {
 
 type Module interface {
 	Descriptor() Descriptor
-	Validate(testspec.Spec) error
+	// ValidateProtocol checks native operation and workflow rules after Spec.Validate.
+	ValidateProtocol(testspec.Spec) error
 	Execute(context.Context, Execution) testspec.Observation
 }
 

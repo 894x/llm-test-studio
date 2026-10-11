@@ -177,6 +177,82 @@ func TestPartialJSONObservationStillAllowsStatusAssertion(t *testing.T) {
 	}
 }
 
+func TestJSONResponseErrorsPreserveStatusAndRawResponse(t *testing.T) {
+	for _, selectedProtocol := range []domain.Protocol{domain.ProtocolOpenAIChat, domain.ProtocolSeedance} {
+		for _, test := range []struct {
+			name, body, issue string
+		}{
+			{name: "malformed", body: `{"broken":`, issue: "invalid_json"},
+			{name: "trailing value", body: `{} {}`, issue: "invalid_json"},
+			{name: "null", body: `null`, issue: "response_not_object"},
+			{name: "array", body: `[]`, issue: "response_not_object"},
+			{name: "scalar", body: `true`, issue: "response_not_object"},
+			{name: "string", body: `"ok"`, issue: "response_not_object"},
+			{name: "object", body: `{}`},
+			{name: "large number", body: `{"number":1e999}`},
+		} {
+			t.Run(string(selectedProtocol)+"/"+test.name, func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = io.WriteString(w, test.body)
+				}))
+				defer server.Close()
+				client := testClient(t, server, selectedProtocol)
+				spec := decodeSpec(t, `{
+					"inputs":{},"request":{"body":{}},
+					"assertions":[{"id":"status","source":"http.status","operator":"equals","value":400}]
+				}`)
+				result, err := client.Execute(context.Background(), protocols.Execution{Spec: spec})
+				if err != nil || result.Verdict.Status != testspec.VerdictPassed {
+					t.Fatalf("status assertion = %+v, error = %v", result.Verdict, err)
+				}
+				wantIssue := test.issue
+				if selectedProtocol == domain.ProtocolSeedance && test.name == "large number" {
+					wantIssue = "response_not_object"
+				}
+				observation := result.Observation
+				if wantIssue == "" {
+					if len(observation.Issues) != 0 {
+						t.Fatalf("unexpected issues: %+v", observation.Issues)
+					}
+				} else if len(observation.Issues) != 1 || observation.Issues[0].Code != wantIssue {
+					t.Fatalf("issues = %+v, want %s", observation.Issues, wantIssue)
+				}
+				wantRaw := test.body
+				switch {
+				case test.issue == "invalid_json":
+					wantRaw = ""
+				case test.name == "large number":
+					wantRaw = `{"_evidence":"unparsed"}`
+				}
+				if len(observation.Exchanges) != 1 {
+					t.Fatalf("exchanges = %+v", observation.Exchanges)
+				}
+				if string(observation.Response) != wantRaw || string(observation.Exchanges[0].Response) != wantRaw {
+					t.Fatalf("raw response lost: %+v", observation)
+				}
+			})
+		}
+	}
+}
+
+func TestClientRejectsDirectInvalidSpecBeforeSending(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer server.Close()
+	client := testClient(t, server, domain.ProtocolOpenAIChat)
+	_, err := client.Execute(context.Background(), protocols.Execution{Spec: testspec.Spec{}})
+	if err != protocols.ErrInvalidExecution {
+		t.Fatalf("invalid spec error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatal("invalid execution reached transport")
+	}
+}
+
 func TestEmptyAssertionsDoNotCreateImplicitResponseChecks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503); io.WriteString(w, `{}`) }))
 	defer server.Close()

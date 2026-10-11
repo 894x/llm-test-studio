@@ -26,7 +26,7 @@ type Client struct{ state *clientState }
 
 type clientState struct {
 	mu        sync.Mutex
-	registry  *Registry
+	module    runtime.Module
 	channel   domain.ChannelSnapshot
 	secret    []byte
 	http      *http.Client
@@ -52,10 +52,11 @@ func NewClient(
 	if registry == nil || lease == nil || channel.Validate() != nil {
 		return nil, ErrInvalidBinding
 	}
-	if _, exists := registry.lookup(string(channel.Protocol)); !exists {
+	module, exists := registry.lookup(string(channel.Protocol))
+	if !exists {
 		return nil, ErrInvalidBinding
 	}
-	client := &Client{state: &clientState{registry: registry, channel: channel}}
+	client := &Client{state: &clientState{module: module, channel: channel}}
 	secret, err := lease.Bytes()
 	if err != nil || len(secret) == 0 {
 		clear(secret)
@@ -91,8 +92,8 @@ func (client *Client) Execute(ctx context.Context, execution Execution) (testspe
 	state.active.Add(1)
 	state.mu.Unlock()
 	defer state.active.Done()
-	module, exists := state.registry.lookup(string(state.channel.Protocol))
-	if !exists || module.Validate(execution.Spec) != nil || execution.Settings.Validate() != nil {
+	invalidSpec := execution.Spec.Validate() != nil || state.module.ValidateProtocol(execution.Spec) != nil
+	if invalidSpec || execution.Settings.Validate() != nil {
 		return testspec.Result{}, ErrInvalidExecution
 	}
 	inputs, err := testspec.ValidateInputs(execution.Spec.Inputs, execution.Inputs)
@@ -106,7 +107,7 @@ func (client *Client) Execute(ctx context.Context, execution Execution) (testspe
 	runContext, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
 	stop := context.AfterFunc(state.lifecycle, cancel)
 	defer func() { stop(); cancel() }()
-	observation := module.Execute(runContext, runtime.Execution{
+	observation := state.module.Execute(runContext, runtime.Execution{
 		Spec: execution.Spec, Inputs: inputs, Random: execution.Random,
 		Settings: execution.Settings, Transport: client,
 	})

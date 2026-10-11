@@ -35,10 +35,7 @@ func (*Module) Descriptor() runtime.Descriptor {
 	}
 }
 
-func (*Module) Validate(spec testspec.Spec) error {
-	if err := spec.Validate(); err != nil {
-		return err
-	}
+func (*Module) ValidateProtocol(spec testspec.Spec) error {
 	if spec.Operation != "" && spec.Operation != "models.list" {
 		return errors.New("unsupported openai-chat operation")
 	}
@@ -113,13 +110,14 @@ func parseJSON(response runtime.Response, observation *testspec.Observation) {
 		runtime.AddIssue(observation, "response", err.Error())
 		return
 	}
-	if !json.Valid(body) {
+	var root map[string]json.RawMessage
+	decodeErr := json.Unmarshal(body, &root)
+	if decodeErr != nil && !json.Valid(body) {
 		runtime.AddIssue(observation, "response", "invalid_json")
 		return
 	}
 	observation.Response = append(json.RawMessage{}, body...)
-	var root map[string]json.RawMessage
-	if json.Unmarshal(body, &root) != nil || root == nil {
+	if decodeErr != nil || root == nil {
 		runtime.AddIssue(observation, "response", "response_not_object")
 		return
 	}

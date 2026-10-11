@@ -2,6 +2,7 @@
 package protocols
 
 import (
+	"encoding/json"
 	"errors"
 	"sort"
 
@@ -40,7 +41,11 @@ func (registry *Registry) Register(module runtime.Module) error {
 	if _, exists := registry.modules[id]; exists {
 		return errors.New("protocol is already registered")
 	}
-	if err := module.Validate(module.Descriptor().DefaultSpec); err != nil {
+	spec := module.Descriptor().DefaultSpec
+	if err := spec.Validate(); err != nil {
+		return err
+	}
+	if err := module.ValidateProtocol(spec); err != nil {
 		return err
 	}
 	registry.modules[id] = module
@@ -64,7 +69,23 @@ func (registry *Registry) Validate(protocol string, spec testspec.Spec) error {
 	if !ok {
 		return errors.New("protocol is not registered")
 	}
-	return module.Validate(spec)
+	if err := spec.Validate(); err != nil {
+		return err
+	}
+	return module.ValidateProtocol(spec)
+}
+
+// DecodeSpec validates raw authoring input once, then applies native protocol rules.
+func (registry *Registry) DecodeSpec(protocol string, raw json.RawMessage) (testspec.Spec, error) {
+	spec, err := testspec.Decode(raw)
+	if err != nil {
+		return spec, err
+	}
+	module, ok := registry.lookup(protocol)
+	if !ok {
+		return spec, errors.New("protocol is not registered")
+	}
+	return spec, module.ValidateProtocol(spec)
 }
 
 func (registry *Registry) lookup(protocol string) (runtime.Module, bool) {

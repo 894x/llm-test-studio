@@ -20,6 +20,44 @@ func (roundTrip protocolRoundTrip) RoundTrip(request *http.Request) (*http.Respo
 	return roundTrip(request)
 }
 
+func TestProtocolExecutorValidatesAllCasesBeforeSending(t *testing.T) {
+	fixture := newRunFixture(t)
+	snapshot := fixture.snapshot()
+	run, err := domain.NewRun(fixture.plan.EntityMeta, fixture.plan.ID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := credentials.NewTemporaryLease([]byte("protocol-executor-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	invalidCase := fixture.testCase
+	invalidCase.Definitions = domain.ProtocolDefinitions{domain.ProtocolOpenAIChat: json.RawMessage(
+		`{"operation":"unknown","inputs":{},"request":{"body":{}},"assertions":[]}`,
+	)}
+	request := runs.ExecutionRequest{
+		Run: run, Entry: snapshot.Entries[0], Cases: []domain.TestCase{fixture.testCase, invalidCase}, Credential: lease,
+	}
+	var calls int
+	executor := runs.NewProtocolExecutor(protocolRoundTrip(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("unexpected transport call")
+	}))
+	var emitted int
+	err = executor.Execute(context.Background(), request, func(runs.ResultDraft) error {
+		emitted++
+		return nil
+	})
+	rejected := err != nil && err.Error() == "unsupported openai-chat operation"
+	if !rejected {
+		t.Fatalf("preparation error = %v", err)
+	}
+	if calls != 0 || emitted != 0 {
+		t.Fatalf("preparation: error = %v, transport calls = %d, results = %d", err, calls, emitted)
+	}
+}
+
 func TestProtocolWarmupPreservesMeasuredSeedAndStopsBeforeMeasurement(t *testing.T) {
 	fixture := newRunFixture(t)
 	fixture.testCase.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{"inputs":{"prompt":{"type":"string","default":"hello"}},"request":{"body":{"messages":[{"role":"user","content":{"$generate":"random_text","length":16,"alphabet":"abcXYZ012"}}]}},"assertions":[{"id":"http","source":"http.status","operator":"equals","value":200}]}`)
