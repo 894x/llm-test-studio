@@ -598,23 +598,15 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 			if draft.RequestID == "" || !preparedContainsCase(prepared, draft.CaseID) {
 				return errors.New("invalid request observation identity")
 			}
-			meta, err := service.metaFactory(service.clock.Now())
+			result, err := service.newRequestObservation(
+				control.run.Meta().ID,
+				prepared.snapshot.EntryID,
+				draft,
+				suiteOffsetMS,
+			)
 			if err != nil {
 				storageErr = err
 				return err
-			}
-			metrics := cloneMetrics(draft.Metrics)
-			for _, key := range []string{"scheduled_offset_ms", "started_offset_ms", "finished_offset_ms"} {
-				if value, exists := metrics[key]; exists {
-					metrics[key] = value + suiteOffsetMS
-				}
-			}
-			requestID := prepared.snapshot.EntryID + ":" + draft.RequestID
-			result := domain.Result{
-				EntityMeta: meta, RunID: control.run.Meta().ID, EntryID: prepared.snapshot.EntryID,
-				CaseID: draft.CaseID, RequestID: requestID,
-				ExecutionStatus: draft.ExecutionStatus, Verification: draft.Verification, Observation: draft.Observation, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,
-				Dimensions: cloneDimensions(draft.Dimensions), Metrics: metrics, EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
 			}
 			if err := result.Validate(); err != nil {
 				return fmt.Errorf("invalid execution result: %w", err)
@@ -649,8 +641,12 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 		}
 		if storageErr != nil {
 			control.mu.Unlock()
-			service.report(Diagnostic{RunID: runID, Operation: "persist_suite_result", ErrorCode: "result_persistence_failed", Err: storageErr})
-			service.finishRun(control, domain.RunFailed, domain.RunFailure{Phase: "persist_suite_result", ErrorCode: "result_persistence_failed"})
+			service.failResultPersistence(
+				control,
+				runID,
+				"persist_suite_result",
+				storageErr,
+			)
 			return
 		}
 		if executionErr == nil && prepared.snapshot.Load.Mode == domain.LoadSingle {
@@ -664,8 +660,12 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 		summaryErr := service.persistSuiteCaseSummaries(context.Background(), control, prepared)
 		control.mu.Unlock()
 		if summaryErr != nil {
-			service.report(Diagnostic{RunID: runID, Operation: "persist_case_summaries", ErrorCode: "result_persistence_failed", Err: summaryErr})
-			service.finishRun(control, domain.RunFailed, domain.RunFailure{Phase: "persist_case_summaries", ErrorCode: "result_persistence_failed"})
+			service.failResultPersistence(
+				control,
+				runID,
+				"persist_case_summaries",
+				summaryErr,
+			)
 			return
 		}
 
@@ -680,8 +680,12 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 			return
 		}
 		if err != nil {
-			service.report(Diagnostic{RunID: runID, Operation: "persist_suite_marker", ErrorCode: "result_persistence_failed", Err: err})
-			service.finishRun(control, domain.RunFailed, domain.RunFailure{Phase: "persist_suite_marker", ErrorCode: "result_persistence_failed"})
+			service.failResultPersistence(
+				control,
+				runID,
+				"persist_suite_marker",
+				err,
+			)
 			return
 		}
 	}
@@ -690,6 +694,38 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 		return
 	}
 	service.finishRun(control, domain.RunCompleted, domain.RunFailure{})
+}
+
+func (service *Service) newRequestObservation(
+	runID string,
+	entryID string,
+	draft ResultDraft,
+	suiteOffsetMS float64,
+) (domain.Result, error) {
+	meta, err := service.metaFactory(service.clock.Now())
+	if err != nil {
+		return domain.Result{}, err
+	}
+	metrics := cloneMetrics(draft.Metrics)
+	for _, key := range []string{"scheduled_offset_ms", "started_offset_ms", "finished_offset_ms"} {
+		if value, exists := metrics[key]; exists {
+			metrics[key] = value + suiteOffsetMS
+		}
+	}
+	return domain.Result{
+		EntityMeta: meta, RunID: runID, EntryID: entryID,
+		CaseID: draft.CaseID, RequestID: entryID + ":" + draft.RequestID,
+		ExecutionStatus: draft.ExecutionStatus, Verification: draft.Verification,
+		Observation: draft.Observation, Failure: draft.Failure, ErrorCode: draft.ErrorCode, Detail: draft.Detail,
+		Dimensions:  cloneDimensions(draft.Dimensions),
+		Metrics:     metrics,
+		EvidenceIDs: append([]string(nil), draft.EvidenceIDs...),
+	}, nil
+}
+
+func (service *Service) failResultPersistence(control *runControl, runID string, phase domain.ErrorCode, err error) {
+	service.report(Diagnostic{RunID: runID, Operation: string(phase), ErrorCode: "result_persistence_failed", Err: err})
+	service.finishRun(control, domain.RunFailed, domain.RunFailure{Phase: phase, ErrorCode: "result_persistence_failed"})
 }
 
 func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *runControl, prepared preparedRunEntry) error {
