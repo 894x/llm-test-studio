@@ -13,6 +13,30 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
+func TestChannelMutationsRejectNilReceiver(t *testing.T) {
+	var service *channelconfig.Service
+	for _, test := range []struct {
+		name string
+		call func() error
+	}{
+		{name: "create", call: func() error {
+			_, err := service.Create(context.Background(), channelconfig.CreateCommand{})
+			return err
+		}},
+		{name: "update", call: func() error {
+			_, err := service.Update(context.Background(), channelconfig.UpdateCommand{})
+			return err
+		}},
+		{name: "delete", call: func() error { return service.Delete(context.Background(), "", 0) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); !errors.Is(err, channelconfig.ErrInvalid) {
+				t.Fatalf("nil receiver error = %v", err)
+			}
+		})
+	}
+}
+
 func TestCreateChannelStoresBaseURLAndKeyAsOneBoundConfiguration(t *testing.T) {
 	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 	repository := &channelRepository{}

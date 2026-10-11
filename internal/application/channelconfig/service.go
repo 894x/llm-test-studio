@@ -106,9 +106,6 @@ func New(dependencies Dependencies) (*Service, error) {
 }
 
 func (service *Service) Create(ctx context.Context, command CreateCommand) (MutationResult, error) {
-	if service == nil {
-		return MutationResult{}, ErrInvalid
-	}
 	var result MutationResult
 	err := service.withCredentialMutation(ctx, func(lockedCtx context.Context) error {
 		var err error
@@ -123,7 +120,7 @@ func (service *Service) create(ctx context.Context, command CreateCommand) (Muta
 }
 
 func (service *Service) createWith(ctx context.Context, command CreateCommand, persist func(context.Context, domain.Channel) error) (MutationResult, error) {
-	if service == nil || ctx == nil || command.APIKey == "" {
+	if ctx == nil || command.APIKey == "" {
 		return MutationResult{}, ErrInvalid
 	}
 	secret := []byte(command.APIKey)
@@ -175,9 +172,6 @@ func (service *Service) createWith(ctx context.Context, command CreateCommand, p
 }
 
 func (service *Service) Update(ctx context.Context, command UpdateCommand) (MutationResult, error) {
-	if service == nil {
-		return MutationResult{}, ErrInvalid
-	}
 	var result MutationResult
 	err := service.withCredentialMutation(ctx, func(lockedCtx context.Context) error {
 		var err error
@@ -188,7 +182,7 @@ func (service *Service) Update(ctx context.Context, command UpdateCommand) (Muta
 }
 
 func (service *Service) update(ctx context.Context, command UpdateCommand) (MutationResult, error) {
-	if service == nil || ctx == nil {
+	if ctx == nil {
 		return MutationResult{}, ErrInvalid
 	}
 	if !domain.IsUUID(command.ID) || command.ExpectedRevision == 0 {
@@ -284,16 +278,16 @@ func (service *Service) update(ctx context.Context, command UpdateCommand) (Muta
 }
 
 func (service *Service) Delete(ctx context.Context, id string, expectedRevision uint64) error {
-	if service == nil {
-		return ErrInvalid
-	}
 	return service.withCredentialMutation(ctx, func(lockedCtx context.Context) error {
 		return service.delete(lockedCtx, id, expectedRevision)
 	})
 }
 
 func (service *Service) delete(ctx context.Context, id string, expectedRevision uint64) error {
-	if service == nil || ctx == nil || !domain.IsUUID(id) || expectedRevision == 0 {
+	if ctx == nil {
+		return ErrInvalid
+	}
+	if !domain.IsUUID(id) || expectedRevision == 0 {
 		return ErrInvalid
 	}
 	current, err := service.repository.GetChannel(ctx, id)
@@ -391,9 +385,6 @@ func (service *Service) RetryPendingCredentialCleanup(ctx context.Context) error
 func (service *Service) cleanupScheduledCredential(ctx context.Context, id string) error {
 	if id == "" {
 		return nil
-	}
-	if !domain.IsUUID(id) {
-		return ErrInvalid
 	}
 	storeRef, err := credentials.NewStoreRef(domain.CredentialChannelAPIKey, id)
 	if err != nil {
