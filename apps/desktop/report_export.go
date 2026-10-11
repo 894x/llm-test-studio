@@ -31,7 +31,7 @@ type reportExportSpec struct {
 }
 
 type reportExportSaver func(context.Context, reportExportFile) (bool, error)
-type reportPNGClipboardWriter func([]byte) error
+type reportPNGClipboardWriter func(context.Context, []byte) error
 
 var reportExportSpecs = map[string]reportExportSpec{
 	"application/json":         {extension: ".json", displayNames: map[string]string{"zh-CN": "JSON 报告 (*.json)", "en-US": "JSON report (*.json)"}, pattern: "*.json"},
@@ -81,7 +81,7 @@ func (app *DesktopApp) CopyReportPNG(dataBase64 string) error {
 	if copyPNG == nil {
 		return app.safeBindingError(errors.New("PNG clipboard writer is unavailable"))
 	}
-	if err := copyPNG(exported.data); err != nil {
+	if err := copyPNG(lease.ctx, exported.data); err != nil {
 		return app.safeBindingError(fmt.Errorf("copy desktop report PNG: %w", err))
 	}
 	return nil

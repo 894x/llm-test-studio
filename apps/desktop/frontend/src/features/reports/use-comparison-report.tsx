@@ -9,6 +9,7 @@ import type { FormalReportDetail, ReportDetail, ReportSnapshot } from "./data"
 import { ComparisonReportBody, type ChannelReports } from "./comparison-report"
 import { exportVisualReport as defaultVisualExport, type VisualReportFormat } from "./visual-report-export"
 import { blobToBase64 } from "./report-export-encoding"
+import { copyReportPNGToClipboard } from "./report-clipboard"
 import { ReportExportControls } from "./report-export-controls"
 import { publicDesktopOperationErrorMessage } from "@/app/desktop-client"
 
@@ -126,15 +127,11 @@ export function useComparisonReport({ comparison, snapshot, getDetail, saveRepor
         filename = result.filename
         mediaType = result.mediaType
       }
-      const data = await blobToBase64(blob)
       if (format === "copy") {
-        try { await copyReportPNG(data) } catch (nativeError) {
-          const ClipboardItemType = window.ClipboardItem
-          if (!navigator.clipboard?.write || !ClipboardItemType) throw nativeError
-          await navigator.clipboard.write([new ClipboardItemType({ [mediaType]: blob })])
-        }
+        await copyReportPNGToClipboard(blob, copyReportPNG)
+      } else {
+        await saveReportExport(filename, mediaType, await blobToBase64(blob), i18n.resolvedLanguage ?? i18n.language)
       }
-      else await saveReportExport(filename, mediaType, data, i18n.resolvedLanguage ?? i18n.language)
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(error,
         format === "copy" ? t("export.copyOperation", { name: t("comparison.title") }) :

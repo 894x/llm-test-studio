@@ -159,6 +159,26 @@ describe("channel comparison reports", () => {
     expect(data.getDetail).toHaveBeenCalledExactlyOnceWith(data.left.report.id)
   })
 
+  it.each(["ordinary", "comparison"])("copies PNG bytes from the %s report and cleans up its export surface", async kind => {
+    const data = fixture(); const user = userEvent.setup()
+    const copy = vi.fn(async () => undefined)
+    const save = vi.fn(async () => true)
+    const visualExport = vi.fn(async () => ({ filename: "report.png", mediaType: "image/png",
+      blob: new Blob(["png"], { type: "image/png" }) }))
+    mount(data, { copyReportPNG: copy, saveReportExport: save, exportVisualReport: visualExport,
+      ...(kind === "ordinary" ? { preferredReportID: data.left.report.id } : {}) })
+
+    await user.click(screen.getByRole("button", { name: "复制 PNG" }))
+
+    await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith("cG5n"))
+    expect(visualExport).toHaveBeenCalledWith(expect.any(HTMLElement), "png",
+      kind === "ordinary" ? data.left.report.id : data.comparisons.comparisons[0].id)
+    expect(save).not.toHaveBeenCalled()
+    await waitFor(() => expect(document.querySelector("[data-report-export-document]")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "复制 PNG" })).toBeEnabled()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
   it("exports from the list inspector on demand and shares the ordinary report controls", async () => {
     const data = fixture(); const user = userEvent.setup()
     let finishRight!: (value: typeof data.right) => void

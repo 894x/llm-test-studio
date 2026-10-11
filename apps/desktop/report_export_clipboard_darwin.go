@@ -9,11 +9,15 @@ int llm_test_studio_copy_png_to_clipboard(const void *bytes, long length);
 import "C"
 
 import (
+	"context"
 	"errors"
 	"unsafe"
 )
 
-func writePNGToClipboard(data []byte) error {
+func writePNGToClipboard(ctx context.Context, data []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if len(data) == 0 {
 		return errors.New("PNG clipboard payload is empty")
 	}

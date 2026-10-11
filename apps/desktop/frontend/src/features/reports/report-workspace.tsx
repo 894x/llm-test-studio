@@ -34,6 +34,7 @@ import { ComparisonReportInspector } from "./comparison-report-inspector"
 import { ReportExportControls } from "./report-export-controls"
 import { channelVerdict, reportListItems } from "./report-list-items"
 import { blobToBase64 } from "./report-export-encoding"
+import { copyReportPNGToClipboard } from "./report-clipboard"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
@@ -190,13 +191,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
       const reportDetail = detail ?? await loadDetail(selected.id)
       const element = await mountExportDocument(selected, reportDetail)
       const exported = await exportVisualReport(element, "png", selected.id)
-      try {
-        await copyReportPNG(await blobToBase64(exported.blob))
-      } catch (nativeError) {
-        const ClipboardItemType = window.ClipboardItem
-        if (!navigator.clipboard?.write || !ClipboardItemType) throw nativeError
-        await navigator.clipboard.write([new ClipboardItemType({ [exported.mediaType]: exported.blob })])
-      }
+      await copyReportPNGToClipboard(exported.blob, copyReportPNG)
     } catch (error) {
       setExportError(publicDesktopOperationErrorMessage(
         error,

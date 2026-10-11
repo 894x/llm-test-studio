@@ -24,7 +24,10 @@ func TestDesktopAppSavesAndCopiesRenderedReportExports(t *testing.T) {
 		return true, nil
 	}
 	var copiedPNG []byte
-	app.copyReportPNG = func(data []byte) error {
+	app.copyReportPNG = func(ctx context.Context, data []byte) error {
+		if ctx.Value(contextKey{}) != "desktop" {
+			t.Fatal("copy did not receive the desktop lifecycle context")
+		}
 		copiedPNG = append([]byte(nil), data...)
 		return nil
 	}
@@ -105,7 +108,7 @@ func TestDesktopAppReportsNativeExportFailures(t *testing.T) {
 	app.saveReportExport = func(context.Context, reportExportFile) (bool, error) {
 		return false, errors.New("save failed")
 	}
-	app.copyReportPNG = func([]byte) error { return errors.New("copy failed") }
+	app.copyReportPNG = func(context.Context, []byte) error { return errors.New("copy failed") }
 
 	if _, err := app.SaveReportExport("report.png", "image/png", validPNGBase64(), "zh-CN"); !errors.As(err, new(DesktopBindingError)) {
 		t.Fatalf("SaveReportExport() error = %v; want DesktopBindingError", err)

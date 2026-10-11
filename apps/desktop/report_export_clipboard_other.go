@@ -1,9 +1,12 @@
-//go:build !darwin
+//go:build !darwin && !windows
 
 package main
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
-func writePNGToClipboard([]byte) error {
+func writePNGToClipboard(context.Context, []byte) error {
 	return errors.New("native PNG clipboard is not supported on this platform")
 }
