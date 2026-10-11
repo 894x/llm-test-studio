@@ -122,7 +122,7 @@ func (service *Service) ListDocuments(ctx context.Context) ([]Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cloneDocuments(documents), nil
+	return documents, nil
 }
 
 // Get returns only the Plan projection for existing catalog.Repository callers.
@@ -144,7 +144,7 @@ func (service *Service) GetDocument(ctx context.Context, id string) (Document, e
 	if err != nil {
 		return Document{}, err
 	}
-	return cloneDocument(document), nil
+	return document, nil
 }
 
 func (service *Service) GetRevision(ctx context.Context, id string, revision uint64) (domain.Plan, error) {
@@ -329,14 +329,6 @@ func (service *Service) save(ctx context.Context, document Document) error {
 
 func (service *Service) path(id string) string {
 	return filepath.Join(service.root, id+".json")
-}
-
-func cloneDocuments(documents []Document) []Document {
-	result := make([]Document, len(documents))
-	for index, document := range documents {
-		result[index] = cloneDocument(document)
-	}
-	return result
 }
 
 func cloneDocument(document Document) Document {
