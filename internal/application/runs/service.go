@@ -5,7 +5,6 @@ package runs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -160,13 +159,23 @@ type runControl struct {
 	reportOnce    sync.Once
 	stopRequested bool
 	cancel        context.CancelFunc
-	drafts        map[string][]ResultDraft
+	summaryInputs map[string][]caseSummaryInput
 	entries       []preparedRunEntry
 }
 
 type preparedRunEntry struct {
 	snapshot domain.RunEntrySnapshot
 	cases    []domain.TestCase
+}
+
+type caseSummaryInput struct {
+	phase              string
+	executionStatus    domain.ExecutionStatus
+	verificationStatus testspec.VerdictStatus
+	failure            domain.FailureKind
+	errorCode          domain.ErrorCode
+	metrics            map[string]float64
+	evidenceIDs        []string
 }
 
 func suiteCaseKey(entryID, caseID string) string {
@@ -369,7 +378,7 @@ func (service *Service) prepareRun(ctx context.Context, meta domain.EntityMeta, 
 	}
 	control := &runControl{
 		run: run, lease: lease,
-		stop: make(chan struct{}), cancel: func() {}, drafts: make(map[string][]ResultDraft),
+		stop: make(chan struct{}), cancel: func() {}, summaryInputs: make(map[string][]caseSummaryInput),
 	}
 	if len(snapshot.Entries) > 0 {
 		control.entries = make([]preparedRunEntry, len(snapshot.Entries))
@@ -616,11 +625,7 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 				return err
 			}
 			key := suiteCaseKey(prepared.snapshot.EntryID, draft.CaseID)
-			// Full evidence is persisted above; summaries retain only verdict and metric inputs.
-			summaryDraft := draft
-			summaryDraft.Observation = nil
-			summaryDraft.Verification.Assertions = nil
-			control.drafts[key] = append(control.drafts[key], cloneDraft(summaryDraft))
+			control.summaryInputs[key] = append(control.summaryInputs[key], summaryInput(draft))
 			if result.Verification.Status == testspec.VerdictFailed || result.Verification.Status == testspec.VerdictIndeterminate {
 				service.report(Diagnostic{
 					RunID: result.RunID, RequestID: result.RequestID,
@@ -651,7 +656,7 @@ func (service *Service) executeEntries(ctx context.Context, control *runControl)
 		}
 		if executionErr == nil && prepared.snapshot.Load.Mode == domain.LoadSingle {
 			for _, testCase := range prepared.cases {
-				if len(control.drafts[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]) == 0 {
+				if len(control.summaryInputs[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]) == 0 {
 					executionErr = errors.New("entry did not execute every scheduled case")
 					break
 				}
@@ -731,15 +736,21 @@ func (service *Service) failResultPersistence(control *runControl, runID string,
 func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *runControl, prepared preparedRunEntry) error {
 	summaries := make([]domain.Result, 0, len(prepared.cases))
 	for _, testCase := range prepared.cases {
-		drafts := control.drafts[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]
-		if len(drafts) == 0 {
+		inputs := control.summaryInputs[suiteCaseKey(prepared.snapshot.EntryID, testCase.ID)]
+		if len(inputs) == 0 {
 			continue
 		}
 		meta, err := service.metaFactory(service.clock.Now())
 		if err != nil {
 			return err
 		}
-		summary := aggregateCaseResult(meta, control.run.Meta().ID, prepared.snapshot.EntryID, testCase.ID, drafts)
+		summary := aggregateCaseResult(
+			meta,
+			control.run.Meta().ID,
+			prepared.snapshot.EntryID,
+			testCase.ID,
+			inputs,
+		)
 		if err := summary.Validate(); err != nil {
 			return err
 		}
@@ -752,7 +763,7 @@ func (service *Service) persistSuiteCaseSummaries(ctx context.Context, control *
 		return err
 	}
 	for _, summary := range summaries {
-		delete(control.drafts, suiteCaseKey(summary.EntryID, summary.CaseID))
+		delete(control.summaryInputs, suiteCaseKey(summary.EntryID, summary.CaseID))
 	}
 	return nil
 }
@@ -827,32 +838,38 @@ func (service *Service) report(diagnostic Diagnostic) {
 	service.diagnostics.submit(diagnostic)
 }
 
-func aggregateCaseResult(meta domain.EntityMeta, runID, entryID, caseID string, drafts []ResultDraft) domain.Result {
-	measured := make([]ResultDraft, 0, len(drafts))
-	for _, draft := range drafts {
-		if draft.Dimensions["phase"] != "warmup" {
-			measured = append(measured, draft)
+func aggregateCaseResult(
+	meta domain.EntityMeta,
+	runID string,
+	entryID string,
+	caseID string,
+	inputs []caseSummaryInput,
+) domain.Result {
+	measured := make([]caseSummaryInput, 0, len(inputs))
+	for _, input := range inputs {
+		if input.phase != "warmup" {
+			measured = append(measured, input)
 		}
 	}
-	drafts = measured
+	inputs = measured
 	result := domain.Result{EntityMeta: meta, RunID: runID, EntryID: entryID, CaseID: caseID,
 		ExecutionStatus: domain.ExecutionCompleted, Verification: testspec.Verdict{Status: testspec.VerdictNotApplicable, Assertions: []testspec.AssertionResult{}},
 		Metrics: map[string]float64{}, EvidenceIDs: []string{}}
 	metricCounts := map[string]int{}
 	observations := []domain.Result{}
 	evidence := map[string]bool{}
-	for _, draft := range drafts {
-		observations = append(observations, domain.Result{Verification: draft.Verification})
-		if draft.ExecutionStatus != domain.ExecutionCompleted {
-			result.ExecutionStatus = draft.ExecutionStatus
-			result.Failure = draft.Failure
-			result.ErrorCode = draft.ErrorCode
+	for _, input := range inputs {
+		observations = append(observations, domain.Result{Verification: testspec.Verdict{Status: input.verificationStatus}})
+		if input.executionStatus != domain.ExecutionCompleted {
+			result.ExecutionStatus = input.executionStatus
+			result.Failure = input.failure
+			result.ErrorCode = input.errorCode
 		}
-		for name, value := range draft.Metrics {
+		for name, value := range input.metrics {
 			result.Metrics[name] += value
 			metricCounts[name]++
 		}
-		for _, id := range draft.EvidenceIDs {
+		for _, id := range input.evidenceIDs {
 			if !evidence[id] {
 				evidence[id] = true
 				result.EvidenceIDs = append(result.EvidenceIDs, id)
@@ -864,7 +881,7 @@ func aggregateCaseResult(meta domain.EntityMeta, runID, entryID, caseID string, 
 	}
 	summary := domain.SummarizeVerification(observations)
 	result.Verification.Status = summary.Status
-	result.Metrics["execution_count"] = float64(len(drafts))
+	result.Metrics["execution_count"] = float64(len(inputs))
 	result.Metrics["verification_passed"] = float64(summary.Passed)
 	result.Metrics["verification_failed"] = float64(summary.Failed)
 	result.Metrics["verification_observed"] = float64(summary.Observed)
@@ -893,22 +910,12 @@ func sameCaseRevisionRefs(left, right []domain.CaseRevisionRef) bool {
 	return true
 }
 
-func cloneDraft(draft ResultDraft) ResultDraft {
-	draft.Dimensions = cloneDimensions(draft.Dimensions)
-	draft.Metrics = cloneMetrics(draft.Metrics)
-	draft.EvidenceIDs = append([]string(nil), draft.EvidenceIDs...)
-	encoded, _ := json.Marshal(struct {
-		Verification testspec.Verdict
-		Observation  *testspec.Observation
-	}{draft.Verification, draft.Observation})
-	var copy struct {
-		Verification testspec.Verdict
-		Observation  *testspec.Observation
+func summaryInput(draft ResultDraft) caseSummaryInput {
+	return caseSummaryInput{
+		phase: draft.Dimensions["phase"], executionStatus: draft.ExecutionStatus,
+		verificationStatus: draft.Verification.Status, failure: draft.Failure, errorCode: draft.ErrorCode,
+		metrics: cloneMetrics(draft.Metrics), evidenceIDs: append([]string(nil), draft.EvidenceIDs...),
 	}
-	_ = json.Unmarshal(encoded, &copy)
-	draft.Verification = copy.Verification
-	draft.Observation = copy.Observation
-	return draft
 }
 
 func cloneDimensions(values map[string]string) map[string]string {
