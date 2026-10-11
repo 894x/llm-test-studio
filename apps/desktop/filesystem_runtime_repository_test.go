@@ -23,6 +23,31 @@ import (
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
+func TestNormalizeRuntimeTestCasePreservesPrecisionAndOwnsCanonicalDefinitions(t *testing.T) {
+	protocol := domain.Protocol("openai-chat")
+	original := `{ "request": { "body": { "n": 9007199254740993, "a": 1 } } }`
+	input := domain.TestCase{Definitions: domain.ProtocolDefinitions{protocol: json.RawMessage(original)}}
+	normalized, err := normalizeRuntimeTestCase(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"request":{"body":{"a":1,"n":9007199254740993}}}`
+	if string(normalized.Definitions[protocol]) != want {
+		t.Fatalf("canonical definition = %s, want %s", normalized.Definitions[protocol], want)
+	}
+	if string(input.Definitions[protocol]) != original {
+		t.Fatal("normalization changed the source definition")
+	}
+	normalized.Definitions[protocol][0] = '!'
+	if string(input.Definitions[protocol]) != original {
+		t.Fatal("canonical bytes alias the source definition")
+	}
+	normalized.Definitions[protocol] = json.RawMessage(`{}`)
+	if string(input.Definitions[protocol]) != original {
+		t.Fatal("canonical definitions map aliases the source map")
+	}
+}
+
 func TestFilesystemRuntimeRepositoryResolvesCurrentTargetsAndCasesAtRunStart(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
