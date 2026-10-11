@@ -41,10 +41,6 @@ type readRepository interface {
 	ListReportsForRuns(context.Context, []string) ([]domain.Report, error)
 }
 
-type legacyPlanRevisionReader interface {
-	GetPlanRevision(context.Context, string, uint64) (domain.Plan, error)
-}
-
 type Clock interface{ Now() time.Time }
 type MetaFactory func(time.Time) (domain.EntityMeta, error)
 
@@ -305,15 +301,21 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 				return Snapshot{}, err
 			}
 			runSnapshot := run.Snapshot()
-			if runSnapshot.PlanDocument != nil {
-				if runSnapshot.PlanDocument.ID != comparison.Plan().ID || runSnapshot.PlanDocument.Revision != comparison.Plan().Revision {
-					return Snapshot{}, ErrNotReady
-				}
-				if summary.PlanName == "" {
-					summary.PlanName = runSnapshot.PlanDocument.Name
-				} else if summary.PlanName != runSnapshot.PlanDocument.Name {
-					return Snapshot{}, ErrNotReady
-				}
+			plan := runSnapshot.PlanDocument
+			if plan == nil {
+				return Snapshot{}, fmt.Errorf(
+					"%w: run %s is missing its frozen plan document; start a new comparison using current definitions",
+					ErrNotReady,
+					item.RunID,
+				)
+			}
+			if plan.ID != comparison.Plan().ID || plan.Revision != comparison.Plan().Revision {
+				return Snapshot{}, ErrNotReady
+			}
+			if summary.PlanName == "" {
+				summary.PlanName = plan.Name
+			} else if summary.PlanName != plan.Name {
+				return Snapshot{}, ErrNotReady
 			}
 			if summary.ModelName == "" {
 				summary.ModelName = runSnapshot.Model.Name
@@ -329,17 +331,6 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 				result.Metrics = report.Metrics
 			}
 			summary.Channels = append(summary.Channels, result)
-		}
-		if summary.PlanName == "" {
-			legacy, ok := service.repository.(legacyPlanRevisionReader)
-			if !ok {
-				return Snapshot{}, ErrNotReady
-			}
-			plan, err := legacy.GetPlanRevision(ctx, comparison.Plan().ID, comparison.Plan().Revision)
-			if err != nil {
-				return Snapshot{}, ErrNotReady
-			}
-			summary.PlanName = plan.Name
 		}
 		summaries = append(summaries, summary)
 	}

@@ -565,17 +565,33 @@ func TestRunUnmarshalStillRejectsInvalidSnapshotWithoutChangingValidatedRun(t *t
 	if err := json.Unmarshal(original, &document); err != nil {
 		t.Fatal(err)
 	}
-	document["plan_snapshot"] = json.RawMessage(`{"schema_version":0}`)
-	invalid, err := json.Marshal(document)
+	incomplete := validRunSnapshot()
+	incomplete.PlanDocument = nil
+	incompleteRaw, err := json.Marshal(incomplete)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(invalid, &run); err == nil {
-		t.Fatal("a previously validated Run accepted an invalid replacement snapshot")
-	}
-	actual, err := json.Marshal(run)
-	if err != nil || string(actual) != string(original) {
-		t.Fatal("rejected snapshot changed the existing Run")
+	for _, test := range []struct {
+		name string
+		raw  json.RawMessage
+	}{
+		{name: "unsupported schema", raw: json.RawMessage(`{"schema_version":0}`)},
+		{name: "missing plan document", raw: incompleteRaw},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			document["plan_snapshot"] = test.raw
+			invalid, err := json.Marshal(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(invalid, &run); err == nil {
+				t.Fatal("a previously validated Run accepted an invalid replacement snapshot")
+			}
+			actual, err := json.Marshal(run)
+			if err != nil || string(actual) != string(original) {
+				t.Fatal("rejected snapshot changed the existing Run")
+			}
+		})
 	}
 }
 

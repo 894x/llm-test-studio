@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -57,6 +58,68 @@ func TestStartCreatesOnePinnedRunPerChannelAndRefreshCompletesTheComparison(t *t
 	}
 	if len(snapshot.Comparisons) != 1 || snapshot.Comparisons[0].PlanName != fixture.plan.Name || snapshot.Comparisons[0].ModelName != fixture.model.Name || len(snapshot.Comparisons[0].Channels) != 2 {
 		t.Fatalf("snapshot = %#v", snapshot)
+	}
+}
+
+func TestSnapshotRejectsMissingOrInconsistentFrozenPlans(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		tweak func(*domain.RunSnapshot)
+	}{
+		{name: "missing plan document", tweak: func(snapshot *domain.RunSnapshot) { snapshot.PlanDocument = nil }},
+		{name: "plan identity mismatch", tweak: func(snapshot *domain.RunSnapshot) {
+			snapshot.Plan.ID = "60000000-0000-4000-8000-000000000099"
+			snapshot.PlanDocument.ID = snapshot.Plan.ID
+		}},
+		{name: "plan revision mismatch", tweak: func(snapshot *domain.RunSnapshot) {
+			snapshot.Plan.Revision++
+			snapshot.PlanDocument.Revision = snapshot.Plan.Revision
+		}},
+		{name: "plan name mismatch", tweak: func(snapshot *domain.RunSnapshot) {
+			snapshot.PlanDocument.Name = "different plan"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newComparisonFixture(t)
+			repository := &comparisonRepository{fixture: fixture}
+			runner := &comparisonRunner{fixture: fixture, repository: repository}
+			service, err := comparisons.New(comparisons.Dependencies{
+				Repository: repository, Runner: runner, Clock: &comparisonClock{now: fixture.now},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			comparisonID, err := service.Start(context.Background(), comparisons.StartCommand{
+				PlanID: fixture.plan.ID, ModelID: fixture.model.ID,
+				ChannelIDs: []string{fixture.channels[0].ID, fixture.channels[1].ID},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			comparison, err := service.Refresh(context.Background(), comparisonID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			original := fixture.completedRuns[0]
+			snapshot := original.Snapshot()
+			test.tweak(&snapshot)
+			var replacement domain.Run
+			if snapshot.PlanDocument != nil {
+				replacement, err = domain.NewRun(original.Meta(), snapshot.Plan.ID, snapshot)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			runner.runOverrides = map[string]domain.Run{original.Meta().ID: replacement}
+			if _, err := service.Snapshot(context.Background()); !errors.Is(err, comparisons.ErrNotReady) {
+				t.Fatalf("Snapshot() error = %v, want ErrNotReady", err)
+			} else if snapshot.PlanDocument == nil && !strings.Contains(err.Error(), "start a new comparison") {
+				t.Fatalf("missing plan error is not actionable: %v", err)
+			}
+			if repository.comparison.Meta() != comparison.Meta() {
+				t.Fatal("rejected run changed the stored comparison")
+			}
+		})
 	}
 }
 
@@ -146,9 +209,6 @@ func (repository *comparisonRepository) GetPlan(context.Context, string) (domain
 	}
 	return repository.fixture.plan, nil
 }
-func (repository *comparisonRepository) GetPlanRevision(context.Context, string, uint64) (domain.Plan, error) {
-	return domain.Plan{}, context.Canceled
-}
 func (repository *comparisonRepository) ResolvePlanTargetSelection(_ context.Context, _ domain.Plan, _ string, channelID string) (domain.Model, domain.Channel, domain.ChannelModel, error) {
 	if _, missing := repository.missing[channelID]; missing {
 		return domain.Model{}, domain.Channel{}, domain.ChannelModel{}, catalog.ErrNotFound
@@ -194,10 +254,11 @@ func (repository *comparisonRepository) ListReportsForRuns(context.Context, []st
 }
 
 type comparisonRunner struct {
-	fixture    comparisonFixture
-	repository *comparisonRepository
-	commands   []runs.StartCommand
-	activated  []string
+	fixture      comparisonFixture
+	repository   *comparisonRepository
+	commands     []runs.StartCommand
+	activated    []string
+	runOverrides map[string]domain.Run
 }
 
 func (runner *comparisonRunner) PrepareTarget(_ context.Context, command runs.StartCommand) (string, error) {
@@ -215,6 +276,9 @@ func (runner *comparisonRunner) ActivateRun(_ context.Context, runID string) err
 	return nil
 }
 func (runner *comparisonRunner) GetRun(_ context.Context, runID string) (domain.Run, error) {
+	if run, found := runner.runOverrides[runID]; found {
+		return run, nil
+	}
 	for _, run := range runner.fixture.completedRuns {
 		if run.Meta().ID == runID {
 			return run, nil
