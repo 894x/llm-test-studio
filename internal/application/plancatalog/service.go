@@ -344,14 +344,6 @@ func cloneDocument(document Document) Document {
 	return document
 }
 
-func clonePlans(plans []domain.Plan) []domain.Plan {
-	result := make([]domain.Plan, len(plans))
-	for index, plan := range plans {
-		result[index] = clonePlan(plan)
-	}
-	return result
-}
-
 func clonePlan(plan domain.Plan) domain.Plan {
 	if plan.Entries != nil {
 		entries := make([]domain.PlanEntry, len(plan.Entries))

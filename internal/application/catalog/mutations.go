@@ -602,15 +602,6 @@ func generatedPlanEntryID(planID string, revision uint64, index int, targetID st
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", digest[0:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16])
 }
 
-func sliceContains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
 func (service *Service) portError(ctx context.Context, err error) error {
 	if contextErr := ctx.Err(); contextErr != nil {
 		return contextErr
@@ -693,18 +684,6 @@ func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMess
 		result[key] = append(json.RawMessage(nil), value...)
 	}
 	return result
-}
-
-func sameCaseRefs(left, right []domain.CaseRef) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }
 
 func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanEntry) domain.Plan {
