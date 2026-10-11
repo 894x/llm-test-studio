@@ -485,6 +485,7 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 
 	caseCommand := validCreateTestCaseCommand("copy case")
 	planCommand := validCreatePlanCommand("copy plan")
+	planCommand.Entries[0].Parameters["prompt"] = json.RawMessage(`"original"`)
 	if _, err := service.CreateTestCase(context.Background(), caseCommand); err != nil {
 		t.Fatalf("CreateTestCase() error = %v", err)
 	}
@@ -494,11 +495,19 @@ func TestMutableCommandDataIsDeepCopiedAndFactoryFailuresFailClosed(t *testing.T
 	caseCommand.Definitions[domain.ProtocolOpenAIChat][2] = 'X'
 	planCommand.Entries[0].TargetID = modelAID
 	planCommand.Entries[0].SLAThresholds["p95_ms"] = 9999
+	planCommand.Entries[0].Parameters["prompt"][1] = 'X'
+	planCommand.Entries[0].Parameters["prompt"] = json.RawMessage(`"replaced"`)
 	if string(repository.createdTestCase.Definitions[domain.ProtocolOpenAIChat]) != string(validRequestSingleSpec()) {
 		t.Fatalf("CreateTestCase() retained caller aliases: %#v", repository.createdTestCase)
 	}
-	if len(repository.createdPlan.Entries) != 1 ||
-		repository.createdPlan.Entries[0].TargetID != suiteID || repository.createdPlan.Entries[0].SLA.Thresholds["p95_ms"] != 1500 {
+	if len(repository.createdPlan.Entries) != 1 {
+		t.Fatalf("CreatePlan() entries = %#v", repository.createdPlan.Entries)
+	}
+	entry := repository.createdPlan.Entries[0]
+	if entry.TargetID != suiteID || entry.SLA.Thresholds["p95_ms"] != 1500 {
+		t.Fatalf("CreatePlan() retained caller aliases: %#v", repository.createdPlan)
+	}
+	if string(entry.Parameters["prompt"]) != `"original"` {
 		t.Fatalf("CreatePlan() retained caller aliases: %#v", repository.createdPlan)
 	}
 

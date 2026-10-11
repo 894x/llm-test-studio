@@ -689,14 +689,14 @@ func cloneRawMessages(values map[string]json.RawMessage) map[string]json.RawMess
 func planFromCreate(meta domain.EntityMeta, command CreatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
-		Entries: clonePlanEntries(entries), Performance: clonePerformancePlanProfile(command.Performance),
+		Entries: entries, Performance: clonePerformancePlanProfile(command.Performance),
 	}
 }
 
 func planFromUpdate(meta domain.EntityMeta, command UpdatePlanCommand, entries []domain.PlanEntry) domain.Plan {
 	return domain.Plan{
 		EntityMeta: meta, Name: command.Name, Protocol: command.Protocol, Seed: command.Seed,
-		Entries: clonePlanEntries(entries), Performance: clonePerformancePlanProfile(command.Performance),
+		Entries: entries, Performance: clonePerformancePlanProfile(command.Performance),
 	}
 }
 
@@ -706,14 +706,4 @@ func clonePerformancePlanProfile(profile *domain.PerformancePlanProfile) *domain
 	}
 	clone := *profile
 	return &clone
-}
-
-func clonePlanEntries(entries []domain.PlanEntry) []domain.PlanEntry {
-	result := make([]domain.PlanEntry, len(entries))
-	for index, entry := range entries {
-		result[index] = entry
-		result[index].Parameters = cloneRawMessages(entry.Parameters)
-		result[index].SLA = domain.SLAProfile{Thresholds: cloneThresholds(entry.SLA.Thresholds)}
-	}
-	return result
 }
