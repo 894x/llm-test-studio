@@ -38,8 +38,10 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	arrival := normalizedArrivalPattern(report.Profile.ArrivalPattern)
 	workloadMode := normalizedWorkloadMode(report.Profile.WorkloadMode)
 	effectiveProfile := performanceReportEffectiveProfile(report)
-	if !validArchivedPerformanceProfile(report.Profile) || report.Progress.Offered != report.Progress.Launched+report.Progress.Rejected ||
-		report.Progress.Completed != report.Progress.Offered {
+	expectedBudget, _, err := preparePerformanceProfile(report.Profile)
+	consistentProgress := report.Progress.Offered == report.Progress.Launched+report.Progress.Rejected &&
+		report.Progress.Completed == report.Progress.Offered
+	if err != nil || !consistentProgress {
 		return time.Time{}, errors.New("quick performance report load profile is invalid")
 	}
 	if !finiteNonNegative(report.Progress.SendDurationMS) || !finiteNonNegative(report.Progress.DrainDurationMS) ||
@@ -194,7 +196,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	if err := validatePerformanceCapacity(report); err != nil {
 		return time.Time{}, err
 	}
-	if err := validatePerformancePhaseThree(report); err != nil {
+	if err := validatePerformancePhaseThree(report, expectedBudget); err != nil {
 		return time.Time{}, err
 	}
 	if err := validatePerformanceFineMetrics(report.Metrics, report.Samples); err != nil {
@@ -203,11 +205,7 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	return generatedAt, nil
 }
 
-func validatePerformancePhaseThree(report PerformanceReport) error {
-	expectedBudget, _, err := buildPerformanceRequestBudget(report.Profile)
-	if err != nil {
-		return errors.New("quick performance report request budget is invalid")
-	}
+func validatePerformancePhaseThree(report PerformanceReport, expectedBudget *PerformanceRequestBudget) error {
 	configured := phaseThreeConfigured(report.Profile)
 	if !configured {
 		if report.RequestBudget != nil || report.Warmup != nil || report.Ramp != nil || report.TimeSlices != nil {
@@ -651,10 +649,6 @@ func equalLegacyPerformanceLatencySlice(left, right PerformanceLatencySlice) boo
 func equalPerformanceCountSlice(left, right PerformanceCountSlice) bool {
 	return left.Count == right.Count && approximatelyEqual(left.P50, right.P50) && approximatelyEqual(left.P95, right.P95) &&
 		approximatelyEqual(left.P99, right.P99) && approximatelyEqual(left.Average, right.Average)
-}
-
-func validArchivedPerformanceProfile(profile PerformanceProfile) bool {
-	return validPerformanceProfileValues(profile)
 }
 
 func validatePerformanceResponseEvidence(evidence PerformanceResponseEvidence) error {

@@ -86,38 +86,10 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		AddressMode:   command.AddressMode,
 		ModelID:       command.ModelID,
 		ArchiveStatus: PerformanceArchiveNotAttempted,
-		Profile: PerformanceProfile{
-			LoadMode:           command.LoadMode,
-			ArrivalPattern:     command.ArrivalPattern,
-			WorkloadMode:       command.WorkloadMode,
-			RandomInput:        command.RandomInput,
-			RandomSeed:         command.RandomSeed,
-			RequestCount:       command.RequestCount,
-			DurationMS:         command.DurationMS,
-			Concurrency:        command.Concurrency,
-			RatePerSecond:      command.RatePerSecond,
-			MaxInFlight:        command.MaxInFlight,
-			TimeoutMS:          command.TimeoutMS,
-			InputTokens:        command.InputTokens,
-			OutputTokens:       command.OutputTokens,
-			InputTokensStdDev:  command.InputTokensStdDev,
-			OutputTokensStdDev: command.OutputTokensStdDev,
-			SharedPrefixTokens: command.SharedPrefixTokens,
-			WarmupRequests:     command.WarmupRequests,
-			RampDurationMS:     command.RampDurationMS,
-			RampRequestCap:     command.RampRequestCap,
-			SliceDurationMS:    command.SliceDurationMS,
-			SLOTTFTMS:          command.SLOTTFTMS,
-			SLOTPOTMS:          command.SLOTPOTMS,
-			SLOE2EMS:           command.SLOE2EMS,
-			SLOTargetPercent:   command.SLOTargetPercent,
-			CapacityEnabled:    command.CapacityEnabled,
-			CapacityStart:      command.CapacityStart,
-			CapacityStep:       command.CapacityStep,
-		},
-		Failures: []PerformanceFailure{},
-		Samples:  []PerformanceSample{},
-		Progress: PerformanceProgress{Phase: PerformancePhaseNotStarted},
+		Profile:       performanceProfile(command),
+		Failures:      []PerformanceFailure{},
+		Samples:       []PerformanceSample{},
+		Progress:      PerformanceProgress{Phase: PerformancePhaseNotStarted},
 	}
 	if ctx == nil || !SupportsPerformance(command.Protocol) {
 		report.ErrorCode = ErrorInvalidRequest
@@ -177,12 +149,14 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 		report.ErrorCode = ErrorCredentialRequired
 		return report, nil
 	}
-	if command.APIKey != strings.TrimSpace(command.APIKey) || strings.TrimSpace(command.ModelID) == "" || command.ModelID != strings.TrimSpace(command.ModelID) || !validPerformanceProfile(command) {
+	validAPIKey := command.APIKey == strings.TrimSpace(command.APIKey)
+	validModelID := strings.TrimSpace(command.ModelID) != "" && command.ModelID == strings.TrimSpace(command.ModelID)
+	if !validAPIKey || !validModelID {
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
 	}
 
-	requestBudget, measuredCap, budgetErr := buildPerformanceRequestBudget(report.Profile)
+	requestBudget, measuredCap, budgetErr := preparePerformanceProfile(report.Profile)
 	if budgetErr != nil {
 		report.ErrorCode = ErrorInvalidRequest
 		return report, nil
@@ -691,21 +665,46 @@ func (service *Service) archivePerformanceReport(ctx context.Context, report *Pe
 	}
 }
 
-func validPerformanceProfile(command PerformanceCommand) bool {
-	return validPerformanceProfileValues(PerformanceProfile{
-		LoadMode: command.LoadMode, ArrivalPattern: command.ArrivalPattern, WorkloadMode: command.WorkloadMode, RandomInput: command.RandomInput, RandomSeed: command.RandomSeed,
-		RequestCount: command.RequestCount, DurationMS: command.DurationMS,
-		Concurrency: command.Concurrency, RatePerSecond: command.RatePerSecond, MaxInFlight: command.MaxInFlight,
-		TimeoutMS: command.TimeoutMS, InputTokens: command.InputTokens, OutputTokens: command.OutputTokens,
-		InputTokensStdDev: command.InputTokensStdDev, OutputTokensStdDev: command.OutputTokensStdDev,
-		SharedPrefixTokens: command.SharedPrefixTokens, WarmupRequests: command.WarmupRequests,
-		RampDurationMS: command.RampDurationMS, RampRequestCap: command.RampRequestCap, SliceDurationMS: command.SliceDurationMS,
-		SLOTTFTMS: command.SLOTTFTMS, SLOTPOTMS: command.SLOTPOTMS, SLOE2EMS: command.SLOE2EMS, SLOTargetPercent: command.SLOTargetPercent,
-		CapacityEnabled: command.CapacityEnabled, CapacityStart: command.CapacityStart, CapacityStep: command.CapacityStep,
-	})
+func performanceProfile(command PerformanceCommand) PerformanceProfile {
+	return PerformanceProfile{
+		LoadMode:           command.LoadMode,
+		ArrivalPattern:     command.ArrivalPattern,
+		WorkloadMode:       command.WorkloadMode,
+		RandomInput:        command.RandomInput,
+		RandomSeed:         command.RandomSeed,
+		RequestCount:       command.RequestCount,
+		DurationMS:         command.DurationMS,
+		Concurrency:        command.Concurrency,
+		RatePerSecond:      command.RatePerSecond,
+		MaxInFlight:        command.MaxInFlight,
+		TimeoutMS:          command.TimeoutMS,
+		InputTokens:        command.InputTokens,
+		OutputTokens:       command.OutputTokens,
+		InputTokensStdDev:  command.InputTokensStdDev,
+		OutputTokensStdDev: command.OutputTokensStdDev,
+		SharedPrefixTokens: command.SharedPrefixTokens,
+		WarmupRequests:     command.WarmupRequests,
+		RampDurationMS:     command.RampDurationMS,
+		RampRequestCap:     command.RampRequestCap,
+		SliceDurationMS:    command.SliceDurationMS,
+		SLOTTFTMS:          command.SLOTTFTMS,
+		SLOTPOTMS:          command.SLOTPOTMS,
+		SLOE2EMS:           command.SLOE2EMS,
+		SLOTargetPercent:   command.SLOTargetPercent,
+		CapacityEnabled:    command.CapacityEnabled,
+		CapacityStart:      command.CapacityStart,
+		CapacityStep:       command.CapacityStep,
+	}
 }
 
-func validPerformanceProfileValues(profile PerformanceProfile) bool {
+func preparePerformanceProfile(profile PerformanceProfile) (*PerformanceRequestBudget, uint64, error) {
+	if !validPerformanceProfileFields(profile) {
+		return nil, 0, errors.New("invalid performance profile")
+	}
+	return buildPerformanceRequestBudget(profile)
+}
+
+func validPerformanceProfileFields(profile PerformanceProfile) bool {
 	arrival := normalizedArrivalPattern(profile.ArrivalPattern)
 	workload := normalizedWorkloadMode(profile.WorkloadMode)
 	if !((profile.RequestCount > 0 || profile.DurationMS > 0) &&
@@ -749,12 +748,7 @@ func validPerformanceProfileValues(profile PerformanceProfile) bool {
 			profile.RatePerSecond < MinPerformanceRatePerSecond || profile.RatePerSecond > MaxPerformanceRatePerSecond {
 			return false
 		}
-		if profile.RequestCount > 0 {
-			validLoad = true
-			break
-		}
-		_, err := estimateOpenLoopRequestCap(profile.RatePerSecond, profile.DurationMS, arrival)
-		validLoad = err == nil
+		validLoad = true
 	default:
 		return false
 	}
@@ -764,8 +758,7 @@ func validPerformanceProfileValues(profile PerformanceProfile) bool {
 	if !validPerformanceSLOConfiguration(profile) || !validPerformanceCapacityConfiguration(profile) {
 		return false
 	}
-	_, _, err := buildPerformanceRequestBudget(profile)
-	return err == nil
+	return true
 }
 
 type performanceExecutionConfig struct {

@@ -125,7 +125,7 @@ func TestValidPerformanceProfileRejectsInvalidPhaseThreeRelationships(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			command := base
 			test.mutate(&command)
-			if validPerformanceProfile(command) {
+			if _, _, err := preparePerformanceProfile(performanceProfile(command)); err == nil {
 				t.Fatalf("invalid phase-three profile accepted: %#v", command)
 			}
 		})

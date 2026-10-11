@@ -769,8 +769,9 @@ func TestPerformanceSLOProfileValidation(t *testing.T) {
 			if test.apply != nil {
 				test.apply(&profile)
 			}
-			if got := validPerformanceProfileValues(profile); got != test.valid {
-				t.Fatalf("validPerformanceProfileValues() = %v, want %v; profile = %#v", got, test.valid, profile)
+			_, _, err := preparePerformanceProfile(profile)
+			if got := err == nil; got != test.valid {
+				t.Fatalf("preparePerformanceProfile() valid = %v, want %v; profile = %#v", got, test.valid, profile)
 			}
 		})
 	}
@@ -817,7 +818,7 @@ func TestPerformanceCapacityValidationAndGlobalBudget(t *testing.T) {
 	if budget == nil || budget.WarmupCap != 10 || budget.MeasuredCap != 9_990 || budget.TotalCap != 10_000 || perLadderCap != 9_990 {
 		t.Fatalf("budget = %#v, measured cap = %d", budget, perLadderCap)
 	}
-	if !validPerformanceProfileValues(valid) {
+	if _, _, err := preparePerformanceProfile(valid); err != nil {
 		t.Fatalf("valid capacity profile rejected: %#v", valid)
 	}
 
@@ -836,7 +837,7 @@ func TestPerformanceCapacityValidationAndGlobalBudget(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			profile := valid
 			test.mutate(&profile)
-			if validPerformanceProfileValues(profile) {
+			if _, _, err := preparePerformanceProfile(profile); err == nil {
 				t.Fatalf("invalid capacity profile accepted: %#v", profile)
 			}
 		})

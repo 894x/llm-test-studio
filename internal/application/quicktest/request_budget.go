@@ -108,11 +108,7 @@ func estimateOpenLoopRequestCap(rate float64, durationMS uint64, arrival load.Ar
 	if math.IsNaN(intensity) || math.IsInf(intensity, 0) || intensity < 0 {
 		return 0, errors.New("performance request estimate overflow")
 	}
-	if arrival == load.ArrivalPoisson {
-		intensity = math.Ceil(intensity*2) + 1
-	} else {
-		intensity = math.Ceil(intensity)
-	}
+	intensity = math.Ceil(intensity*2) + 1
 	if math.IsNaN(intensity) || math.IsInf(intensity, 0) || intensity >= math.Ldexp(1, 64) {
 		return 0, errors.New("performance request estimate overflow")
 	}

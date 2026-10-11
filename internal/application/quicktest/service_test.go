@@ -533,7 +533,7 @@ func TestValidPerformanceProfileAcceptsNormalStddevAtMeanBoundary(t *testing.T) 
 		InputTokens: 10, InputTokensStdDev: 10,
 		OutputTokens: 4, OutputTokensStdDev: 4,
 	}
-	if !validPerformanceProfile(command) {
+	if _, _, err := preparePerformanceProfile(performanceProfile(command)); err != nil {
 		t.Fatalf("boundary profile rejected: %#v", command)
 	}
 }
