@@ -105,6 +105,24 @@ type PerformanceNumberFieldName = Exclude<
 >
 type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
 
+const PERFORMANCE_BUDGET_FIELDS: readonly PerformanceNumberFieldName[] = [
+  "requestCount",
+  "durationSeconds",
+  "concurrency",
+  "ratePerSecond",
+  "warmupRequests",
+  "rampDurationSeconds",
+  "rampRequestCap",
+  "sloTTFTMS",
+  "sloTPOTMS",
+  "sloE2EMS",
+  "sloTargetPercent",
+  "fixedCapacityStart",
+  "fixedCapacityStep",
+  "openCapacityStart",
+  "openCapacityStep",
+]
+
 function performanceTargetErrors() {
   return {
     requestCount: tx("desktop:quick-test_enter_a_request_count_greater_than_0_or_set_a"),
@@ -291,42 +309,8 @@ export function QuickPerformanceSheet({
     setForm((current) => ({ ...current, [key]: value }))
     setFieldErrors((current) => {
       let next = omitFieldError(current, key)
-      if (
-        [
-          "requestCount",
-          "durationSeconds",
-          "concurrency",
-          "ratePerSecond",
-          "warmupRequests",
-          "rampDurationSeconds",
-          "rampRequestCap",
-          "sloTTFTMS",
-          "sloTPOTMS",
-          "sloE2EMS",
-          "sloTargetPercent",
-          "fixedCapacityStart",
-          "fixedCapacityStep",
-          "openCapacityStart",
-          "openCapacityStep",
-        ].includes(key)
-      ) {
-        for (const field of [
-          "requestCount",
-          "durationSeconds",
-          "concurrency",
-          "ratePerSecond",
-          "warmupRequests",
-          "rampDurationSeconds",
-          "rampRequestCap",
-          "sloTTFTMS",
-          "sloTPOTMS",
-          "sloE2EMS",
-          "sloTargetPercent",
-          "fixedCapacityStart",
-          "fixedCapacityStep",
-          "openCapacityStart",
-          "openCapacityStep",
-        ] as const) {
+      if (PERFORMANCE_BUDGET_FIELDS.includes(key)) {
+        for (const field of PERFORMANCE_BUDGET_FIELDS) {
           next = omitFieldError(next, field)
         }
       }
@@ -408,58 +392,7 @@ export function QuickPerformanceSheet({
     setOperationError("")
     const generation = ++requestGeneration.current.value
     void run(
-      {
-        protocol: connection.protocol,
-        address_mode: connection.address_mode,
-        ...(connection.task ? { task: connection.task } : {}),
-        url: connection.url,
-        api_key: connection.api_key,
-        ...(connection.channel_id ? { channel_id: connection.channel_id } : {}),
-        ...(connection.credential_run_id
-          ? { credential_run_id: connection.credential_run_id }
-          : {}),
-        model_id: connection.model_id,
-        load_mode: form.loadMode,
-        request_count: form.requestCount,
-        duration_ms: form.durationSeconds * 1_000,
-        concurrency: form.loadMode === "fixed_concurrency" ? form.concurrency : 0,
-        rate_per_second: form.loadMode === "open_loop" ? form.ratePerSecond : 0,
-        max_in_flight: form.loadMode === "open_loop" ? form.maxInFlight : 0,
-        arrival_pattern: form.loadMode === "open_loop" ? form.arrivalPattern : "constant",
-        workload_mode: form.workloadMode,
-        random_input: form.randomInput,
-        random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
-        input_tokens_stddev: form.workloadMode === "normal" ? form.inputTokensStdDev : 0,
-        output_tokens_stddev: form.workloadMode === "normal" ? form.outputTokensStdDev : 0,
-        shared_prefix_tokens: form.workloadMode === "normal" ? form.sharedPrefixTokens : 0,
-        warmup_requests: form.warmupRequests,
-        ramp_duration_ms: form.capacityEnabled ? 0 : form.rampDurationSeconds * 1_000,
-        ramp_request_cap:
-          !form.capacityEnabled &&
-          form.loadMode === "fixed_concurrency" &&
-          form.rampDurationSeconds > 0
-            ? form.rampRequestCap
-            : 0,
-        slice_duration_ms: form.sliceDurationSeconds * 1_000,
-        slo_ttft_ms: form.sloTTFTMS,
-        slo_tpot_ms: form.sloTPOTMS,
-        slo_e2e_ms: form.sloE2EMS,
-        slo_target_percent: form.sloTargetPercent,
-        capacity_enabled: form.capacityEnabled,
-        capacity_start: form.capacityEnabled
-          ? form.loadMode === "fixed_concurrency"
-            ? form.fixedCapacityStart
-            : form.openCapacityStart
-          : 0,
-        capacity_step: form.capacityEnabled
-          ? form.loadMode === "fixed_concurrency"
-            ? form.fixedCapacityStep
-            : form.openCapacityStep
-          : 0,
-        timeout_ms: form.timeoutSeconds * 1_000,
-        input_tokens: form.inputTokens,
-        output_tokens: form.outputTokens,
-      },
+      performanceCommand(connection, form),
       (nextProgress) => {
         if (requestGeneration.current.value === generation) setProgress(nextProgress)
       },
@@ -1527,6 +1460,57 @@ function MetricSection({ title, children }: { title: string; children: React.Rea
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">{children}</dl>
     </div>
   )
+}
+
+function performanceCommand(
+  connection: QuickPerformanceConnection,
+  form: PerformanceForm,
+): QuickPerformanceCommand {
+  const fixedConcurrency = form.loadMode === "fixed_concurrency"
+  const openLoop = form.loadMode === "open_loop"
+  const normalWorkload = form.workloadMode === "normal"
+  const capacityStart = fixedConcurrency ? form.fixedCapacityStart : form.openCapacityStart
+  const capacityStep = fixedConcurrency ? form.fixedCapacityStep : form.openCapacityStep
+  return {
+    protocol: connection.protocol,
+    address_mode: connection.address_mode,
+    ...(connection.task ? { task: connection.task } : {}),
+    url: connection.url,
+    api_key: connection.api_key,
+    ...(connection.channel_id ? { channel_id: connection.channel_id } : {}),
+    ...(connection.credential_run_id ? { credential_run_id: connection.credential_run_id } : {}),
+    model_id: connection.model_id,
+    load_mode: form.loadMode,
+    request_count: form.requestCount,
+    duration_ms: form.durationSeconds * 1_000,
+    concurrency: fixedConcurrency ? form.concurrency : 0,
+    rate_per_second: openLoop ? form.ratePerSecond : 0,
+    max_in_flight: openLoop ? form.maxInFlight : 0,
+    arrival_pattern: openLoop ? form.arrivalPattern : "constant",
+    workload_mode: form.workloadMode,
+    random_input: form.randomInput,
+    random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
+    input_tokens_stddev: normalWorkload ? form.inputTokensStdDev : 0,
+    output_tokens_stddev: normalWorkload ? form.outputTokensStdDev : 0,
+    shared_prefix_tokens: normalWorkload ? form.sharedPrefixTokens : 0,
+    warmup_requests: form.warmupRequests,
+    ramp_duration_ms: form.capacityEnabled ? 0 : form.rampDurationSeconds * 1_000,
+    ramp_request_cap:
+      !form.capacityEnabled && fixedConcurrency && form.rampDurationSeconds > 0
+        ? form.rampRequestCap
+        : 0,
+    slice_duration_ms: form.sliceDurationSeconds * 1_000,
+    slo_ttft_ms: form.sloTTFTMS,
+    slo_tpot_ms: form.sloTPOTMS,
+    slo_e2e_ms: form.sloE2EMS,
+    slo_target_percent: form.sloTargetPercent,
+    capacity_enabled: form.capacityEnabled,
+    capacity_start: form.capacityEnabled ? capacityStart : 0,
+    capacity_step: form.capacityEnabled ? capacityStep : 0,
+    timeout_ms: form.timeoutSeconds * 1_000,
+    input_tokens: form.inputTokens,
+    output_tokens: form.outputTokens,
+  }
 }
 
 function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors {
