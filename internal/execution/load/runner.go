@@ -339,7 +339,7 @@ func Run(ctx context.Context, profile domain.LoadProfile, executor Executor, opt
 	emitProgress(options.OnProgress, state.progress)
 	outcome := Outcome{
 		Progress: state.progress,
-		Results:  append([]Observation(nil), state.results...),
+		Results:  state.results,
 		Metrics:  ComputeMetricsWithArrival(state.results, state.progress, profile, state.arrival),
 	}
 	if state.cancelled {
