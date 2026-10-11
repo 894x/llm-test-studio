@@ -107,7 +107,7 @@ func (service *Service) List(ctx context.Context) ([]domain.Plan, error) {
 	}
 	plans := make([]domain.Plan, len(documents))
 	for index, document := range documents {
-		plans[index] = clonePlan(document.Plan)
+		plans[index] = document.Plan
 	}
 	return plans, nil
 }
@@ -131,7 +131,7 @@ func (service *Service) Get(ctx context.Context, id string) (domain.Plan, error)
 	if err != nil {
 		return domain.Plan{}, err
 	}
-	return clonePlan(document.Plan), nil
+	return document.Plan, nil
 }
 
 func (service *Service) GetDocument(ctx context.Context, id string) (Document, error) {

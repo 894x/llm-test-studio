@@ -24,6 +24,7 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 	}
 	now := time.Date(2026, time.September, 4, 8, 0, 0, 0, time.UTC)
 	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", now)
+	document.Entries[0].Parameters["prompt"] = json.RawMessage(`"original"`)
 	if err := service.CreateDocument(context.Background(), document); err != nil {
 		t.Fatal(err)
 	}
@@ -49,10 +50,21 @@ func TestPlanCatalogRoundTripsTargetedDocument(t *testing.T) {
 	if len(listed) != 1 || !reflect.DeepEqual(listed[0], document) {
 		t.Fatalf("ListDocuments() = %#v, want document", listed)
 	}
+	plans, err := service.List(context.Background())
+	if err != nil || len(plans) != 1 || !reflect.DeepEqual(plans[0], document.Plan) {
+		t.Fatalf("List() = %#v, %v; want plan projection", plans, err)
+	}
 
 	// Public reads must not expose any of the mutable data held by the catalog.
 	got.Entries[0].TargetID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 	got.Entries[0].SLA.Thresholds["e2e_p95_ms"] = 1
+	plan.Entries[0].Parameters["prompt"][1] = 'X'
+	plans[0].Entries[0].TargetID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	plans[0].Entries[0].Parameters["prompt"][1] = 'Y'
+	plans[0].Entries[0].SLA.Thresholds["e2e_p95_ms"] = 2
+	if !reflect.DeepEqual(listed[0], document) || plan.Entries[0].Parameters["prompt"][1] != 'X' {
+		t.Fatal("public reads share mutable plan data")
+	}
 	again, err := service.GetDocument(context.Background(), document.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +105,19 @@ func TestPlanCatalogRoundTripsPerformanceProfileWithoutBinding(t *testing.T) {
 		t.Fatalf("performance document round trip = %#v, %v", got, err)
 	}
 	got.Performance.RequestCount = 1
+	plan, err := service.Get(context.Background(), document.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := service.List(context.Background())
+	if err != nil || len(plans) != 1 {
+		t.Fatalf("List() = %#v, %v", plans, err)
+	}
+	plan.Performance.RequestCount = 2
+	plans[0].Performance.RequestCount = 3
+	if got.Performance.RequestCount != 1 || plan.Performance.RequestCount != 2 {
+		t.Fatal("public reads share a performance profile")
+	}
 	again, err := service.GetDocument(context.Background(), document.ID)
 	if err != nil || again.Performance.RequestCount != 100 {
 		t.Fatalf("performance profile was not independently copied: %#v, %v", again, err)
