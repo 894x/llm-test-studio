@@ -33,7 +33,8 @@
             }
           ],
           "tool_choice": "required",
-          "max_completion_tokens": 64
+          "reasoning_effort": "low",
+          "max_completion_tokens": 4096
         }
       },
       "assertions": [
