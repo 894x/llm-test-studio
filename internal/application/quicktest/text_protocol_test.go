@@ -77,7 +77,10 @@ func TestPerformanceUsesNativeTextProtocolAndClassifiesDisconnectedStreams(t *te
 					w.Header().Set("Content-Type", "text/event-stream")
 					events := []string{}
 					if selected == domain.ProtocolOpenAIResponses {
-						if body["max_output_tokens"] != float64(3) || body["input"] != "test test" || body["messages"] != nil {
+						prompt, _ := body["input"].(string)
+						validInput := len(strings.Fields(prompt)) == 2
+						validFields := body["max_output_tokens"] == float64(3) && body["messages"] == nil
+						if !validInput || !validFields {
 							t.Errorf("Responses body = %+v", body)
 						}
 						events = []string{

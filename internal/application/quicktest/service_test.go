@@ -64,6 +64,8 @@ func TestPerformanceRejectsInvalidOrUnsafeConnectionsBeforeTransport(t *testing.
 
 func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testing.T) {
 	var calls atomic.Int64
+	var promptMu sync.Mutex
+	prompts := make(map[string]bool)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
 		if request.URL.Path != "/v1/chat/completions" {
@@ -89,9 +91,9 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 		if words := len(strings.Fields(body.Messages[0].Content)); words != 20 {
 			t.Errorf("generated prompt words = %d, want 20", words)
 		}
-		if body.Messages[0].Content != strings.TrimSpace(strings.Repeat("test ", 20)) {
-			t.Errorf("fixed prompt changed with random input disabled: %q", body.Messages[0].Content)
-		}
+		promptMu.Lock()
+		prompts[body.Messages[0].Content] = true
+		promptMu.Unlock()
 		writer.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
 		fmt.Fprint(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":32,\"prompt_tokens_details\":{\"cached_tokens\":5}}}\n\n")
@@ -114,6 +116,12 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 	}
 	if calls.Load() != 4 || !report.Success || report.SchemaVersion != PerformanceSchemaVersion {
 		t.Fatalf("report = %#v, calls = %d", report, calls.Load())
+	}
+	promptMu.Lock()
+	promptCount := len(prompts)
+	promptMu.Unlock()
+	if promptCount != 1 {
+		t.Fatalf("fixed input generated %d distinct prompts in one run", promptCount)
 	}
 	if report.BaseURL != server.URL+"/v1" || report.Endpoint != server.URL+"/v1/chat/completions" {
 		t.Fatalf("report address = %#v", report)
@@ -139,6 +147,101 @@ func TestRunPerformanceUsesTheTestedConnectionAndReturnsABoundedReport(t *testin
 		if strings.Contains(string(encoded), forbidden) {
 			t.Fatalf("performance report leaked %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+func TestRunPerformanceFixedInputIsSharedWithinEachRunAndChangesAcrossRuns(t *testing.T) {
+	tests := []struct {
+		name        string
+		inputTokens uint32
+		capacity    bool
+	}{
+		{name: "single word", inputTokens: 1},
+		{name: "20 words", inputTokens: 20},
+		{name: "long input", inputTokens: 10_000},
+		{name: "capacity ladder", inputTokens: 20, capacity: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var mu sync.Mutex
+			prompts := make(map[string]int)
+			transport := roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				var body struct {
+					Messages []struct {
+						Content string `json:"content"`
+					} `json:"messages"`
+				}
+				if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+					return nil, err
+				}
+				if len(body.Messages) != 1 {
+					return nil, fmt.Errorf("message count = %d, want 1", len(body.Messages))
+				}
+				prompt := body.Messages[0].Content
+				if words := len(strings.Fields(prompt)); words != int(test.inputTokens) {
+					t.Errorf("prompt word count = %d, want %d", words, test.inputTokens)
+				}
+				mu.Lock()
+				prompts[prompt]++
+				mu.Unlock()
+				return successfulStreamResponse(), nil
+			})
+			archive := &capturingPerformanceArchive{}
+			service := New(Dependencies{Transport: transport, Archive: archive})
+			command := PerformanceCommand{
+				Protocol: domain.ProtocolOpenAIChat, AddressMode: AddressModeBaseURL,
+				URL: "https://example.com/v1", APIKey: "secret", ModelID: "model",
+				WorkloadMode: PerformanceWorkloadFixed,
+				InputTokens:  test.inputTokens, OutputTokens: 4,
+				RequestCount: 2, Concurrency: 2, TimeoutMS: 2_000,
+				WarmupRequests: 1, RampDurationMS: 1_000, RampRequestCap: 1,
+			}
+			wantRequests := 4
+			if test.capacity {
+				command.RampDurationMS, command.RampRequestCap = 0, 0
+				command.CapacityEnabled = true
+				command.CapacityStart, command.CapacityStep = 1, 1
+				command.SLOE2EMS, command.SLOTargetPercent = 10_000, 100
+				wantRequests = 5
+			}
+			var previousPrompt string
+			for run := range 2 {
+				prompts = make(map[string]int)
+				report, err := service.RunPerformance(context.Background(), command)
+				if err != nil || !report.Success {
+					t.Fatalf(
+						"run %d report = %#v, error = %v",
+						run,
+						report,
+						err,
+					)
+				}
+				validCapacity := report.CapacityResult != nil && len(report.CapacityResult.Rungs) == 2
+				if test.capacity && !validCapacity {
+					t.Fatalf("run %d capacity = %#v", run, report.CapacityResult)
+				}
+				if _, err := ValidateArchivedPerformanceReport(report); err != nil {
+					t.Fatalf("run %d archive validation: %v", run, err)
+				}
+				if len(prompts) != 1 {
+					t.Fatalf("run %d has %d distinct prompts, want 1", run, len(prompts))
+				}
+				for prompt, count := range prompts {
+					if count != wantRequests {
+						t.Fatalf(
+							"run %d sent %d requests, want %d across all phases",
+							run,
+							count,
+							wantRequests,
+						)
+					}
+					if prompt == previousPrompt {
+						t.Fatalf("run %d reused the previous run's fixed input", run)
+					}
+					previousPrompt = prompt
+				}
+			}
+		})
 	}
 }
 

@@ -183,7 +183,11 @@ func (service *Service) runPerformance(ctx context.Context, command PerformanceC
 			return report, nil
 		}
 	} else {
-		prompt := strings.TrimSpace(strings.Repeat("test ", int(command.InputTokens)))
+		prompt, promptErr := newFixedPerformancePrompt(command.InputTokens)
+		if promptErr != nil {
+			report.ErrorCode = load.ErrorRequestFailed
+			return report, nil
+		}
 		body, err = performanceBody(command.Protocol, prompt, command.OutputTokens)
 		if err != nil {
 			report.ErrorCode = load.ErrorRequestFailed

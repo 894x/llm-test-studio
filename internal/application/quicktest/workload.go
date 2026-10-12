@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"math"
@@ -48,6 +49,18 @@ func normalizedArrivalPattern(pattern load.ArrivalPattern) load.ArrivalPattern {
 		return load.ArrivalConstant
 	}
 	return pattern
+}
+
+func newFixedPerformancePrompt(inputTokens uint32) (string, error) {
+	if inputTokens == 0 || inputTokens > MaxPerformanceInputTokens {
+		return "", errors.New("invalid fixed performance input size")
+	}
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", err
+	}
+	prefix := "r" + hex.EncodeToString(nonce[:])
+	return prefix + strings.Repeat(" test", int(inputTokens)-1), nil
 }
 
 func newPerformanceWorkload(profile PerformanceProfile) (*performanceWorkload, error) {
