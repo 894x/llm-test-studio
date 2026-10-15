@@ -246,15 +246,26 @@ func (repository *Repository) ActiveJobs(ctx context.Context) ([]jobcontract.Sna
 }
 
 func (repository *Repository) ChangeJob(ctx context.Context, change jobhost.Change) (jobcontract.Snapshot, error) {
-	validIdentity := domain.IsUUID(change.JobID) && change.ExpectedRevision > 0
-	if !validIdentity || change.ExpectedRevision >= math.MaxInt64 {
-		return jobcontract.Snapshot{}, jobhost.ErrInvalid
-	}
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return jobcontract.Snapshot{}, fmt.Errorf("begin job state change: %w", err)
 	}
 	defer tx.Rollback()
+	next, err := changeJobTx(ctx, tx, change)
+	if err != nil {
+		return jobcontract.Snapshot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return jobcontract.Snapshot{}, classifyJobWriteError("commit job state", err)
+	}
+	return next, nil
+}
+
+func changeJobTx(ctx context.Context, tx *sql.Tx, change jobhost.Change) (jobcontract.Snapshot, error) {
+	validIdentity := domain.IsUUID(change.JobID) && change.ExpectedRevision > 0
+	if !validIdentity || change.ExpectedRevision >= math.MaxInt64 {
+		return jobcontract.Snapshot{}, jobhost.ErrInvalid
+	}
 	row, err := queryJobRow(ctx, tx, change.JobID)
 	if err != nil {
 		return jobcontract.Snapshot{}, err
@@ -293,9 +304,6 @@ func (repository *Repository) ChangeJob(ctx context.Context, change jobhost.Chan
 	}
 	if err := insertJobEventTx(ctx, tx, event); err != nil {
 		return jobcontract.Snapshot{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return jobcontract.Snapshot{}, classifyJobWriteError("commit job state", err)
 	}
 	return next, nil
 }

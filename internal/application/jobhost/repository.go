@@ -42,6 +42,8 @@ type Repository interface {
 	GetJob(context.Context, string) (jobcontract.Snapshot, error)
 	GetJobSpec(context.Context, string) (jobcontract.JobSpec, error)
 	ChangeJob(context.Context, Change) (jobcontract.Snapshot, error)
+	ApplyJobCommand(context.Context, jobcontract.Command, time.Time) (jobcontract.CommandConfirmation, bool, error)
+	GetJobCommand(context.Context, string) (jobcontract.CommandConfirmation, error)
 	JobEvents(context.Context, string, uint64, uint32) (EventPage, error)
 	ActiveJobs(context.Context) ([]jobcontract.Snapshot, error)
 }

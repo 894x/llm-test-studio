@@ -24,14 +24,15 @@ const (
 	scopeTarget
 	scopePerformance
 	scopeRun
+	scopeCommand
 )
 
 // Scan collection counts before decoding typed slices. A bounded byte body can
 // otherwise expand into millions of large zero-value structs before rejection.
-func checkCollectionBounds(raw []byte) error {
+func checkCollectionBounds(raw []byte, scope documentScope) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	if err := scanValue(decoder, scopeRoot); err != nil {
+	if err := scanValue(decoder, scope); err != nil {
 		return err
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
@@ -143,6 +144,8 @@ func elementScope(parent documentScope) documentScope {
 
 func envelopeFields(scope documentScope) []string {
 	switch scope {
+	case scopeCommand:
+		return []string{"contract", "command_id", "job_id", "kind", "expected_revision"}
 	case scopeRoot:
 		// Both a complete Submission and a standalone JobSpec use this scanner.
 		// Secret's string-only decoder also uses the same strict decode helper.

@@ -334,7 +334,7 @@ func DecodeSubmission(reader io.Reader) (Submission, error) {
 }
 
 func decode(raw []byte, destination any) error {
-	if err := checkCollectionBounds(raw); err != nil {
+	if err := checkCollectionBounds(raw, scopeRoot); err != nil {
 		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))

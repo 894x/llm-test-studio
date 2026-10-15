@@ -37,7 +37,7 @@ func TestDecoderRejectsOversizedCollectionsBeforeParsingTheirRemainingElements(t
 func TestCollectionScannerDoesNotConstrainNativeRequestArrayNames(t *testing.T) {
 	raw := `{"spec":{"run":{"snapshot":{"entries":[{"parameters":{"runs":[` +
 		strings.Repeat(`{},`, MaxSecrets) + `{}` + `]}}]}}}}`
-	if err := checkCollectionBounds([]byte(raw)); err != nil {
+	if err := checkCollectionBounds([]byte(raw), scopeRoot); err != nil {
 		t.Fatalf("scanner treated native JSON as a job-owned collection: %v", err)
 	}
 }

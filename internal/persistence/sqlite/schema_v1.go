@@ -1,6 +1,15 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "execution_job_commands", table: "execution_job_commands", ddl: `CREATE TABLE execution_job_commands (
+		id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		kind TEXT NOT NULL CHECK(kind IN ('stop_sending', 'cancel')),
+		expected_revision INTEGER NOT NULL CHECK(expected_revision > 0),
+		accepted_at TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
 	{kind: "table", name: "execution_jobs", table: "execution_jobs", ddl: `CREATE TABLE execution_jobs (
 		accepted_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
 		id TEXT NOT NULL UNIQUE,

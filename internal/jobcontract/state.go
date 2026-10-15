@@ -47,6 +47,7 @@ const (
 	EventReport     EventKind = "report"
 	EventComparison EventKind = "comparison"
 	EventProgress   EventKind = "progress"
+	EventCommand    EventKind = "command"
 )
 
 type Event struct {
@@ -211,7 +212,8 @@ func (event Event) Validate() error {
 		return invalid("event")
 	}
 	switch event.Kind {
-	case EventAccepted, EventState, EventRun, EventResults, EventEvidence, EventReport, EventComparison, EventProgress:
+	case EventAccepted, EventState, EventRun, EventResults, EventEvidence, EventReport, EventComparison,
+		EventProgress, EventCommand:
 	default:
 		return invalid("event.kind")
 	}
