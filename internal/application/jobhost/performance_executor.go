@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
-	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -252,23 +251,9 @@ func (core *PerformanceExecutor) ensurePerformanceArchive(
 	ctx context.Context,
 	result jobcontract.PerformanceResult,
 ) error {
-	var expected quicktest.PerformanceReport
-	eligible := false
-	if result.Observation != nil {
-		checkpoint := result.Observation.Checkpoint
-		expected = checkpoint.Report
-		measured := checkpoint.Stage == quicktest.PerformanceStageMeasured &&
-			checkpoint.Boundary != quicktest.PerformanceBoundaryEntered
-		capacity := checkpoint.Stage == quicktest.PerformanceStageCapacity && expected.CapacityResult != nil &&
-			expected.CapacityResult.Status != quicktest.PerformanceSLONotEvaluated
-		eligible = (measured || capacity) && expected.Progress.Launched > 0 && len(expected.Samples) > 0
-		if eligible {
-			expected.GeneratedAt = result.SealedAt.UTC().Format(time.RFC3339Nano)
-			expected.Archived, expected.ArchiveStatus = true, quicktest.PerformanceArchiveArchived
-			if _, err := quicktest.ValidateArchivedPerformanceReport(expected); err != nil {
-				return err
-			}
-		}
+	expected, eligible, err := result.StatisticalArchive()
+	if err != nil {
+		return err
 	}
 	stored, readErr := core.repository.GetQuickPerformanceReport(ctx, result.ReportID)
 	if readErr == nil {

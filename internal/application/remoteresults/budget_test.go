@@ -1,7 +1,9 @@
 package remoteresults
 
 import (
+	"encoding/json"
 	"errors"
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,6 +30,47 @@ func TestOwnedCollectionsRejectBeforeReadingOversizedInvalidTail(t *testing.T) {
 				t.Fatalf("early count check: %v", err)
 			}
 		})
+	}
+}
+
+func TestPerformanceBudgetAllowsMaximumSamplesAndSparseTimeSlices(t *testing.T) {
+	// Exercise the actual DTO width, independently of measurement semantics.
+	// A sample may occupy separate schedule/start/finish buckets. This valid
+	// JSON shape uses 10000 samples and 20000 slices below the 32 MiB byte cap.
+	sample, err := json.Marshal(quicktest.PerformanceSample{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slice, err := json.Marshal(quicktest.PerformanceTimeSlice{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	body.WriteString(`{"samples":[`)
+	for index := range quicktest.MaxPerformanceRequests {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.Write(sample)
+	}
+	body.WriteString(`],"time_slices":[`)
+	for index := range 2 * quicktest.MaxPerformanceRequests {
+		if index > 0 {
+			body.WriteByte(',')
+		}
+		body.Write(slice)
+	}
+	body.WriteString(`]}`)
+	raw := []byte(body.String())
+	if len(raw) >= 32<<20 {
+		t.Fatalf("DTO shape no longer fits the archive byte cap: %d", len(raw))
+	}
+	if err := CheckPerformanceBudget(raw); err != nil {
+		t.Fatalf("legal sparse DTO widths rejected: %v", err)
+	}
+	oversized := []byte(`{"samples":[` + strings.Repeat(`{},`, MaxReportCollectionItems) + `!`)
+	if err := CheckPerformanceBudget(oversized); !errors.Is(err, ErrCollectionBudget) {
+		t.Fatalf("sparse allocation cap bypassed: %v", err)
 	}
 }
 

@@ -39,26 +39,14 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 	if err := requireLocalPerformanceReport(ctx, tx, report.ReportID); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(
+	if err := insertQuickPerformanceReportTx(
 		ctx,
-		`
-		INSERT INTO quick_performance_reports(
-			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		report.ReportID,
-		report.GeneratedAt,
-		generatedAt.UnixNano(),
-		report.Success,
-		report.ModelID,
-		report.BaseURL,
-		report.Progress.Phase,
-		report.Metrics.Completed,
-		report.Metrics.Failed,
+		tx,
+		report,
+		generatedAt,
 		document,
-	)
-	if err != nil {
-		return classifyWriteError("save quick performance report", err)
+	); err != nil {
+		return err
 	}
 	var jobID string
 	err = tx.QueryRowContext(ctx, `
@@ -83,6 +71,37 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 	}
 	if err := tx.Commit(); err != nil {
 		return classifyWriteError("commit quick performance archive", err)
+	}
+	return nil
+}
+
+func insertQuickPerformanceReportTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	report quicktest.PerformanceReport,
+	generatedAt time.Time,
+	document []byte,
+) error {
+	_, err := tx.ExecContext(
+		ctx,
+		`
+		INSERT INTO quick_performance_reports(
+			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		report.ReportID,
+		report.GeneratedAt,
+		generatedAt.UnixNano(),
+		report.Success,
+		report.ModelID,
+		report.BaseURL,
+		report.Progress.Phase,
+		report.Metrics.Completed,
+		report.Metrics.Failed,
+		document,
+	)
+	if err != nil {
+		return classifyWriteError("save quick performance report", err)
 	}
 	return nil
 }

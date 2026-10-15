@@ -23,6 +23,13 @@ type PerformanceResultDocument struct {
 	Document  []byte
 }
 
+// Statistical archive bytes are distinct from the complete execution result.
+type PerformanceArchiveDocument struct {
+	Report    quicktest.PerformanceReport
+	Reference jobcontract.ReportReference
+	Document  []byte
+}
+
 type PerformanceRepository interface {
 	RecordPerformanceObservation(context.Context, PerformanceObservationWrite) (jobcontract.PerformanceObservation, error)
 	GetPerformanceObservation(context.Context, string) (jobcontract.PerformanceObservation, error)

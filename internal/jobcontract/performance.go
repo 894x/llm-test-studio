@@ -60,6 +60,34 @@ type PerformanceResultReference struct {
 	Size     int64  `json:"size"`
 }
 
+// StatisticalArchive selects the already measured report and stamps its
+// stable archive identity. It does not recompute measurements or infer them
+// from a completed job. Interrupted jobs may still contain valid measurements.
+func (result PerformanceResult) StatisticalArchive() (quicktest.PerformanceReport, bool, error) {
+	if err := result.Validate(); err != nil {
+		return quicktest.PerformanceReport{}, false, err
+	}
+	if result.Observation == nil {
+		return quicktest.PerformanceReport{}, false, nil
+	}
+	checkpoint := result.Observation.Checkpoint
+	report := checkpoint.Report
+	measured := checkpoint.Stage == quicktest.PerformanceStageMeasured &&
+		checkpoint.Boundary != quicktest.PerformanceBoundaryEntered
+	capacity := checkpoint.Stage == quicktest.PerformanceStageCapacity && report.CapacityResult != nil &&
+		report.CapacityResult.Status != quicktest.PerformanceSLONotEvaluated
+	eligible := (measured || capacity) && report.Progress.Launched > 0 && len(report.Samples) > 0
+	if !eligible {
+		return quicktest.PerformanceReport{}, false, nil
+	}
+	report.GeneratedAt = result.SealedAt.UTC().Format(time.RFC3339Nano)
+	report.Archived, report.ArchiveStatus = true, quicktest.PerformanceArchiveArchived
+	if _, err := quicktest.ValidateArchivedPerformanceReport(report); err != nil {
+		return quicktest.PerformanceReport{}, false, err
+	}
+	return report, true, nil
+}
+
 func validPerformanceTime(at time.Time) bool {
 	_, offset := at.Zone()
 	return !at.IsZero() && offset == 0

@@ -1,6 +1,12 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "remote_performance_results", table: "remote_performance_results", ddl: `CREATE TABLE remote_performance_results (
+		job_id TEXT PRIMARY KEY,
+		report_id TEXT NOT NULL UNIQUE,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
 	{kind: "table", name: "remote_job_mirrors", table: "remote_job_mirrors", ddl: `CREATE TABLE remote_job_mirrors (
 		job_id TEXT PRIMARY KEY,
 		configuration_id TEXT NOT NULL,

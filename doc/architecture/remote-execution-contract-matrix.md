@@ -95,7 +95,16 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | H10 | Run/Comparison 子报告必须属于同一 Job；唯一当前格式，原始字节最多 32 MiB；同事务校验冻结输入、存储事实、seal 与唯一报告日志 | 完整下载字节和摘要匹配事件；其他实际 Job 拒绝；报告日志损坏明确失败且不修复；不再次执行上游请求 | partial：TestHTTPRunAndComparisonReportsMatchJournalAndOriginalStoredBytes、TestOwnedRunFactsAndReportsCannotCommitWithoutTheirJournal；完整 Run/Comparison 报告与跨实际 Run Job 拒绝、损坏摘要保留通过；Run 专项 Range/中断续传及大报告上限仍待补齐 |
 | H11 | POST /runner/maintenance 为当前 contract、UUID operation_id 和 pause/resume；4 KiB 上限；暂停与接收使用同一 Host 门，已接收重试仍能确认；仅同一当前操作可恢复 | 当前动作、非法形状/未知字段/大小写/重复键/错误版本/UUID、精确上限与超限；不同操作争用；接收竞争、取消后报告收尾；持久性不明时隔离 | partial：MaintenanceCommandCurrentFieldsAndByteLimits、MaintenanceOwnerAndLostConfirmationDoNotRepeatWrites、MaintenancePauseIncludesAnAdmissionAlreadyHoldingTheHostGate、MaintenancePendingIncludesCancelledQueueSettlement、VisibleMaintenanceWriteWithoutDurabilityIsNotAcknowledged、HTTPMaintenanceBlocksNewWorkAndAllowsAlreadyAcceptedWorkToFinish 通过；真实安装器持锁升级与历史操作日志仍待 C/R15 |
 
-完整任务投影、媒体文件与回收接口仍按实施方案保留待实现，不能用以上基础路由代替完整管理接口验收。
+### 性能文档传输与镜像边界
+
+| 行 | 当前规则与分区 | 验证与剩余边界 |
+| --- | --- | --- |
+| H12 | `GET /jobs/{job_id}/archives/{report_id}` 仅返回对应 Performance 的统计归档原字节；无查询参数，UUID 与节点归属必须成立；未启动、仅预热/爬坡无统计归档时返回 404；`/reports/{report_id}` 对 Performance 继续返回独立的完整执行结果，二者不互相回退 | 正常测量、预热/爬坡后测量与原字节 Range 续传由 TestRemotePerformanceDocumentsDownloadImportAndReadOffline 验证；queued 取消由 TestQueuedPerformanceResultHasNoStatisticalArchive 验证；跨两个实际任务、错误身份/UUID/query、文档/摘要/类型/模型错配由 TestHTTPPerformanceArchiveRejectsWrongOwnerQueriesAndCorruption 验证；尚无物理 SSH 全链路 |
+| H13 | 统计归档资格复用唯一 `PerformanceResult.StatisticalArchive`，必须有有效 measured 或 capacity 样本；允许失败/取消的有效测量，不能以 completed 代替已测量证明；只使用封存时刻和归档标记，不重算指标 | 真实 Core 的基本测量、预热/爬坡和 queued 取消经管理 HTTP 验证；既有 JobHost 中断、取消、容量与收尾故障回归继续验证共同投影，实机提供商待 R16 |
+| H14 | 完整结果与归档采用独立引用和导入标记。先校验持久引用的原始摘要/大小，再解码当前格式；完整结果绑定真实 starting 事实、紧邻结果事件的前序快照、封存时间和最后 checkpoint；归档必须等于该结果的统计投影 | 结构合法且摘要同步改写的启动/封存时间/checkpoint 伪造仍拒绝；报告标记写入故障回滚归档与列表；重复导入、修改字节、关闭 HTTP 后重新打开第二个数据库离线读取通过；未启动不生成空归档 |
+| H15 | 大型性能文档在 typed 解码前限制 4194304 个自有集合成员、每数组 131072 项和 128 层自有嵌套，继续应用 32 MiB 统计归档及完整结果字节预算；provider RawMessage 内容保持 opaque | 实际 DTO 宽度的 10000 samples 与 20000 sparse time_slices JSON 在 32 MiB 内通过扫描，超大稀疏数组在损坏尾部前拒绝；该压力用例验证资源预算，不声称它是完整有效的性能测量报告 |
+
+生产 runner 声明 `performance_archives` 能力。客户端连接仍不比较构建号或自动覆盖 runner；后续 Coordinator 对需要该能力的性能闭环在提交前核对能力，不用缺失的统计归档替代完整结果。完整任务自动同步、媒体文件与回收接口仍按实施方案保留待实现，不能用以上基础路由代替完整管理接口验收。
 
 执行记录：2026-10-16，本地 `go test -p 1 ./internal/adapters/runnerhttp ./internal/persistence/sqlite ./internal/jobcontract ./internal/application/jobhost ./apps/desktop` 及管理接口、SQLite、契约、宿主的 `go vet` 通过。管理接口 `TestHTTP` 同时通过 Ubuntu 24.04 WSL 的 Linux 测试二进制验证。接口测试使用真实 JobHost、Core、临时 SQLite 和本地 Mock HTTP，不消耗提供商额度；还没有生产 listener、SSH 隧道或 systemd 进程。
 

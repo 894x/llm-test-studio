@@ -57,7 +57,8 @@ func capabilities() jobcontract.RunnerCapabilities {
 		JobKinds:  []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindPerformance, jobcontract.KindComparison},
 		Protocols: []string{"openai-chat", "openai-responses", "anthropic-messages"},
 		Features: []string{
-			"warmup", "ramp", "capacity", "open_loop", "time_slices", "normal_workload", "random_input",
+			jobcontract.FeaturePerformanceArchives, "warmup", "ramp", "capacity", "open_loop",
+			"time_slices", "normal_workload", "random_input",
 		},
 	}
 }

@@ -23,9 +23,35 @@ func (client *Client) DownloadReport(
 	reference jobcontract.ReportReference,
 	file io.ReadWriteSeeker,
 ) error {
+	return client.downloadReport(ctx, reportRequest{JobID: jobID, Reference: reference, File: file, Route: "reports"})
+}
+
+// DownloadPerformanceArchive retrieves the statistical archive referenced by an
+// EventReport. Full execution results use DownloadReport with their own digest.
+func (client *Client) DownloadPerformanceArchive(
+	ctx context.Context,
+	jobID string,
+	reference jobcontract.ReportReference,
+	file io.ReadWriteSeeker,
+) error {
+	if reference.Kind != jobcontract.KindPerformance || reference.RunID != "" {
+		return ErrInvalid
+	}
+	return client.downloadReport(ctx, reportRequest{JobID: jobID, Reference: reference, File: file, Route: "archives"})
+}
+
+type reportRequest struct {
+	JobID     string
+	Reference jobcontract.ReportReference
+	File      io.ReadWriteSeeker
+	Route     string
+}
+
+func (client *Client) downloadReport(ctx context.Context, download reportRequest) error {
+	jobID, reference, file := download.JobID, download.Reference, download.File
 	validIdentity := ctx != nil && domain.IsUUID(jobID) && domain.IsUUID(reference.ID) && file != nil
 	limit := int64(jobcontract.MaxRunReportBytes)
-	if reference.Kind == jobcontract.KindPerformance {
+	if reference.Kind == jobcontract.KindPerformance && download.Route == "reports" {
 		limit = jobcontract.MaxPerformanceResultBytes
 	}
 	validKind := reference.Kind == jobcontract.KindRun || reference.Kind == jobcontract.KindPerformance
@@ -43,7 +69,7 @@ func (client *Client) DownloadReport(
 	if offset == reference.Size {
 		return verifyDownload(file, reference)
 	}
-	input := remotessh.Request{Method: http.MethodGet, Route: "/jobs/" + jobID + "/reports/" + reference.ID}
+	input := remotessh.Request{Method: http.MethodGet, Route: "/jobs/" + jobID + "/" + download.Route + "/" + reference.ID}
 	if offset > 0 {
 		input.RangeStart = &offset
 	}

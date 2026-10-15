@@ -10,7 +10,10 @@ import (
 const (
 	MaxEventCollectionItems  = 32_768
 	MaxReportCollectionItems = 131_072
-	maxDocumentDepth         = 128
+	// 10000 samples may contribute up to 30000 sparse time slices. Preserve
+	// their complete DTOs within the independent 32 MiB archive byte budget.
+	MaxPerformanceCollectionItems = 4_194_304
+	maxDocumentDepth              = 128
 )
 
 type scanMode uint8
@@ -28,6 +31,10 @@ var ErrCollectionBudget = errors.New("remote result exceeds collection budget")
 func CheckEventBudget(raw []byte) error { return checkDocumentBudget(raw, MaxEventCollectionItems) }
 func CheckRunReportBudget(raw []byte) error {
 	return checkDocumentBudget(raw, MaxReportCollectionItems)
+}
+
+func CheckPerformanceBudget(raw []byte) error {
+	return checkDocumentBudget(raw, MaxPerformanceCollectionItems)
 }
 
 func checkDocumentBudget(raw []byte, limit int) error {
@@ -59,7 +66,14 @@ func scanDocument(decoder *json.Decoder, remaining *int, depth int, mode scanMod
 	if token != json.Delim('{') && token != json.Delim('[') {
 		return nil
 	}
+	arrayItems := 0
 	for decoder.More() {
+		if token == json.Delim('[') {
+			if arrayItems >= MaxReportCollectionItems {
+				return ErrCollectionBudget
+			}
+			arrayItems++
+		}
 		if *remaining == 0 {
 			return ErrCollectionBudget
 		}

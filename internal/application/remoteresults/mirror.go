@@ -72,10 +72,29 @@ type Repository interface {
 	GetRemoteMirror(context.Context, string) (Mirror, error)
 	ImportRemoteRunReport(context.Context, RunReportImport) error
 	RemoteRunReportImported(context.Context, string, string) (bool, error)
+	ImportRemotePerformanceDocument(context.Context, PerformanceDocumentImport) error
+	ReadRemotePerformanceResult(context.Context, string) (jobcontract.PerformanceResult, error)
+	ListRemoteDocuments(context.Context, string) ([]DocumentReference, error)
 }
 
 type RunReportImport struct {
 	Origin   Origin
 	JobID    string
 	Document []byte
+}
+
+type PerformanceDocumentImport struct {
+	Origin   Origin
+	JobID    string
+	Kind     jobcontract.EventKind
+	Document []byte
+}
+
+// Kind distinguishes the complete PerformanceResult from its optional archive.
+// Reference always identifies the original bytes; Imported does not imply that
+// separate evidence or attachment files have been downloaded.
+type DocumentReference struct {
+	Kind      jobcontract.EventKind       `json:"kind"`
+	Reference jobcontract.ReportReference `json:"reference"`
+	Imported  bool                        `json:"imported"`
 }
