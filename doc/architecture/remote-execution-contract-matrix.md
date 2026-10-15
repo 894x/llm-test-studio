@@ -4,13 +4,13 @@
 
 结构清单：Submission 只有 job 与 secrets；job 包含 contract、job_id、node_installation_id、engine_build_id、target、kind、spec、assets；target 包含 kind、node_id；spec 恰有 run、performance、comparison 之一。秘密条目只有 slot 与 value，value 为 JSON base64 字节。asset 条目只有 ref、sha256、size、media_type。run 与 performance 直接复用 A1 至 A3 的准备值；comparison 包含 meta、plan、model、runs，复用 A4a 的整组准备值。
 
-新字段没有历史默认或旧格式回退。assets 必须为数组，没有文件时显式传 []。本地和远程都携带安装身份与精确构建；本地 target 禁止 node_id，remote target 必须携带配置节点 UUID。资产 ref 是 1 至 80 字节的小写字母数字及点、下划线、连字符，首字符须是字母数字；禁止任意文件路径。media_type 是无参数的规范小写 MIME 类型，最多 127 字节。
+新字段没有历史默认或旧格式回退。assets 必须为数组，没有文件时显式传 []。本地和远程都携带执行宿主的安装身份与实际构建；不要求客户端自身构建与 runner 相同。本地 target 禁止 node_id，remote target 必须携带节点回读的共享 UUID。资产 ref 是 1 至 80 字节的小写字母数字及点、下划线、连字符，首字符须是字母数字；禁止任意文件路径。media_type 是无参数的规范小写 MIME 类型，最多 127 字节。
 
 | 行 | 字段 / 类型 / 存在性 | 默认、有效与无效分区 | 必需场景与边界 | 依赖与结果 | 设计 / 当前执行 |
 | --- | --- | --- | --- | --- | --- |
 | C01 | job.contract / int / 必填 | 只接受当前 1；缺失、0、2、字符串拒绝 | 缺失、1、非当前、类型错误 | admission 拒绝 unsupported_contract；不解析历史版本 | 已设计 / 见下方证据 |
 | C02 | job_id、node_installation_id / string / 必填 | 规范小写 UUID；空、错误长度、非十六进制、大小写变体拒绝 | 每字段有效、缺失、错误 UUID | admission 拒绝 invalid_spec | 已设计 / 见下方证据 |
-| C03 | engine_build_id / string / 必填 | 64 字节小写 SHA-256；空、63、64、65、非十六进制、大小写变体 | 长度和字符边界；实际构建相等在宿主核验 | admission 拒绝 invalid_spec 或 build_mismatch | 已设计 / 见下方证据 |
+| C03 | engine_build_id / string / 必填 | 探测到的 runner 实际构建，64 字节小写 SHA-256；空、63、64、65、非十六进制、大小写变体 | 长度和字符边界；核对提交期间 runner 未被替换，不比较客户端构建 | admission 拒绝 invalid_spec 或 build_mismatch | 已设计 / 见下方证据 |
 | C04 | target.kind / enum / 必填 | local、remote；缺失、未知拒绝 | local 无节点、remote 有节点；其余组合拒绝 | node_id 的交叉约束；未知配置节点由 Coordinator 拒绝 | 已设计 / 见下方证据 |
 | C05 | target.node_id / string / 条件必填 | remote 规范 UUID；local 必须为空 | 缺失、有效、错误、交叉组合 | admission 拒绝 invalid_target | 已设计 / 见下方证据 |
 | C06 | kind、spec / enum 与联合 / 必填 | run、performance、comparison 各对应恰一 payload | 0、1、2、3 payload；类型不符；未知 kind | admission 拒绝 invalid_spec | 已设计 / 见下方证据 |
@@ -66,13 +66,13 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | C19 | TestSnapshotStateValidationBoundaries；SQLite repository_jobs_test.go 的 CAS、终态和事务故障测试 | partial：当前状态、计数、时间、子身份及事务边界已验证；HTTP 控制与竞争调度待宿主 |
 | C20 | TestEventPayloadAndCompleteEnvelopeByteBoundaries；SQLite TestJobEvent* | partial：完整序列化字节、转义、条数、权威序号、字节续页与损坏拒绝通过；HTTP 传输与桌面投影待实现 |
 | C21 | TestCommandValidationBoundaries、TestCommandDecoderStrictFieldsAndByteLimits；SQLite 命令重传和内容冲突断言 | partial：主要身份、枚举、计数、JSON 与字节边界通过；HTTP body/path 身份核对及完整字段类型矩阵待补齐 |
-| C22 | TestCommandConfirmationStateDecisionTable、TestJobCommandStateDecisionTableAndStableConfirmations、TestJobCommandRollsBackStateEventsAndConfirmationTogether、TestCancelCommandAndCompletionHaveOneDurableWinner；jobhost 控制与 RunExecutor Stop/Cancel 测试 | partial：存储决策、原确认、回滚、两个连接竞争及 Run/Comparison 真实 Core 的 Mock HTTP 控制通过；Performance Core、管理 HTTP 和离线待送达尚待实现 |
+| C22 | TestCommandConfirmationStateDecisionTable、TestJobCommandStateDecisionTableAndStableConfirmations、TestJobCommandRollsBackStateEventsAndConfirmationTogether、TestCancelCommandAndCompletionHaveOneDurableWinner；jobhost 控制、RunExecutor 与 PerformanceExecutor Stop/Cancel 测试 | partial：存储决策、原确认、回滚、两个连接竞争及三类真实 Core 的 Mock HTTP 控制通过，Performance 包含四流量阶段和 queued 取消；管理 HTTP 和离线待送达尚待实现 |
 | C23 | TestPolicyExplicitResourceBoundaries、TestConcurrencyBudgetUsesCorePhasePeaksAndWholeComparison、TestSharedConcurrencyBudgetQueuesAcrossActiveJobSlots、TestHostQueueCapacityExpiryAndRetryDoNotSendExtraRequests | partial：策略边界、各类型峰值和队列实测通过；真实 Core/Guard 集成与完整类型组合仍待验证 |
-| C24 | jobhost/host_test.go、fault_test.go、run_executor_test.go、run_executor_settlement_test.go、run_executor_fault_test.go；runs/host_lifecycle_test.go；SQLite TestRecoveryJobs*、TestLookupJob*、TestProgressEvent* | partial：真实 SQLite 与 Mock HTTP 验证 Run/Comparison 的请求、结果、报告、提前停止、可靠故障通知、启动存储阻塞下的有界退出、确认丢失及仅补缺失报告的无请求恢复；Performance Core、asset/disk Guard、独立进程与真实节点仍待完成 |
+| C24 | jobhost/host_test.go、fault_test.go、run_executor_test.go、run_executor_settlement_test.go、run_executor_fault_test.go、performance_executor_test.go、performance_executor_fault_test.go；runs/host_lifecycle_test.go；SQLite TestRecoveryJobs*、TestLookupJob*、TestProgressEvent* | partial：真实 SQLite 与 Mock HTTP 验证三类 Core 的请求、结果、报告、提前停止、可靠故障通知、存储阻塞下隔离、确认丢失及无请求恢复；asset/disk Guard、独立进程与真实节点闭环仍待完成 |
 | C25 | quicktest/checkpoint_test.go、checkpoint_validation_test.go 与 TestPerformanceHostStopSendingDoesNotAdvanceToLaterPhases | partial：阶段和容量边界顺序、回调失败后的 HTTP 计数、快照隔离、32 MiB 与超限、身份/阶段/配置/阶梯索引及取消后存储时限已通过；完整事实校验覆盖四种流量阶段的停止/取消、零请求/在途观察、open-loop 归档、失败容量阶梯的最高通过投影及篡改拒绝；全部阶段的持久闭环仍见 C26 |
-| C26 | SQLite repository_performance_jobs_test.go；quicktest/checkpoint_transition_test.go | partial：真实 Core 的阶段观察经过 SQLite 保存、CAS、小型事件、两仓库重复/冲突、六组写入/事件故障回滚、原始结果字节摘要、重启后只读封口、迟到观察及封口后拒绝均通过；完整 JobHost Performance 适配、爬坡和部分容量的 SQLite 恢复及 HTTP/桌面下载待完成 |
+| C26 | SQLite repository_performance_jobs_test.go；quicktest/checkpoint_transition_test.go；jobhost/performance_executor_test.go、performance_executor_fault_test.go | partial：真实 Core 的阶段观察经过 SQLite 保存、CAS、小型事件、两仓库重复/冲突、六组写入/事件故障回滚、原始结果字节摘要、迟到观察及封口后拒绝均通过；完整 JobHost Performance 全阶段、爬坡和部分容量故障恢复及无重发已验证；HTTP/桌面下载待完成 |
 | C27 | TestPerformanceObservationMetadataAndFrozenOwnerBoundaries、TestPerformanceObservationsPersistRealCoreFactsWithIdempotentCAS、TestPerformanceObservationCorruptTimeIsRejectedWithoutMutationOnEveryPath；quicktest transition tests | partial：当前 metadata 与主要身份/计数/时间分区、冻结输入、完整快照拷贝和阶段事实不可改写通过；最大完整 wrapper 的实际字节测试与 HTTP decoder 待补齐 |
-| C28 | TestPerformanceResultObservationStateAndTerminalBoundaries、TestPerformanceResultRecoveryPreservesActualObservationAndDoesNotExecute、TestPerformanceLateObservationRespectsTerminalWinnerAndResultSeal、TestPerformanceResultDoesNotClaimUnstartedWhenStartJournalIsMissing | partial：无启动、开始后无观察、准备/测量中断、已完成未返回和最终返回、权威取消、重复封口、错误组合及丢失开始日志已通过；真实 Performance Core/进程退出验收待完成 |
+| C28 | TestPerformanceResultObservationStateAndTerminalBoundaries、TestPerformanceResultRecoveryPreservesActualObservationAndDoesNotExecute、TestPerformanceLateObservationRespectsTerminalWinnerAndResultSeal、TestPerformanceResultDoesNotClaimUnstartedWhenStartJournalIsMissing；PerformanceExecutor control/fault tests | partial：无启动、开始后无观察、四阶段中断、已完成未返回和最终返回、权威取消、重复封口、错误组合及丢失开始日志已通过；实际 Core 的 owner Close 与 deadline 保留权威原因；独立进程 kill/重启待验收 |
 | C29 | TestPerformanceResultReferenceByteAndIdentityBounds、TestPerformanceObservationAndResultReadsRejectCorruption、SQLite recovery tests | partial：reference 尺寸边界、错误摘要/身份、原始 canonical bytes 与 SHA 一致、同 ID 重试不改时间或事件已通过；最大完整结果实体、传输中断与客户端校验待完成 |
 
 自有 envelope 字段采用精确大小写并拒绝重复字段，避免 Go 默认大小写不敏感匹配绕过集合限制。领域快照及原生请求 JSON 继续使用其当前 decoder；不能据此声称 R11/R12 的所有边界已经验收。
