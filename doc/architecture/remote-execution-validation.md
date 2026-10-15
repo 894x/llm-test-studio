@@ -169,6 +169,12 @@ Windows desktop、remotenodes 与 fileconfig 测试及相关 vet 通过，生产
 
 这一提交没有公开 Remote binding/UI 或改变启动任务契约，也未验证原生 Wails、实际 OS Store 或真实 provider；节点删除使用检查继续缺省拒绝，待任务 Coordinator 装配。SQLite schema 和报告格式不变，实际用户配置与数据库未打开、未转换。当前 Wails 模块和用于版本核验的 CLI 均为 v2.15.0，没有执行绑定生成或更改依赖。
 
+## 2026-10-16：K3 静态测试契约复核
+
+再次读取 [Kimi 官方 OpenAPI](https://platform.kimi.com/docs/openapi.json)，确认 Responses 的 HTTP 400 使用 ErrorResponse，要求 error.message 字符串；type/code 可选且没有枚举。此前全仓失败来自测试仍要求固定 type，与既有 Case 审计后的当前断言矛盾。现仅同步测试：允许省略或其他字符串 type，仍拒绝 HTTP 200、缺失/非字符串 message 和 401/429/500/502；继续比较发往 /v1/responses 的 JSON 内容，未增加固定错误类型断言。没有改变 Case 请求、断言、Suite、稳定身份或历史结果，也不把错误 envelope 当成指定参数被拒绝的独立证明。
+
+Windows `go test ./...` 已完整通过，包含 data/cases、data/suites、桌面、JobHost、管理 HTTP、SQLite 与 SSH。这是静态和 fixture 回归，解决前述已记录的测试基线失败；没有调用付费渠道，最终远程 K3 与最小性能验收仍未执行。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

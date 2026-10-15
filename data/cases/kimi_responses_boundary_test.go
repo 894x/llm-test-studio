@@ -98,10 +98,32 @@ func TestKimiResponsesBoundaryRejectionsReachProviderUnchanged(t *testing.T) {
 			if verdict := testspec.Evaluate(spec.Assertions, accepted); verdict.Status == testspec.VerdictPassed {
 				t.Fatal("unsupported request accepted with HTTP200 passed")
 			}
-			errorRoot["error"].(map[string]any)["type"] = "server_error"
-			wrongError := kimiBoundaryObservation(spec, errorRoot, 400)
-			if verdict := testspec.Evaluate(spec.Assertions, wrongError); verdict.Status == testspec.VerdictPassed {
-				t.Fatal("unrelated HTTP400 error passed a parameter rejection")
+			// ErrorResponse requires error.message; type/code are optional strings
+			// without an enum. They cannot distinguish a parameter by themselves.
+			for _, root := range []map[string]any{
+				{"error": map[string]any{"message": "invalid native request"}},
+				{"error": map[string]any{"type": "server_error", "message": "invalid native request"}},
+			} {
+				validError := kimiBoundaryObservation(spec, root, 400)
+				if verdict := testspec.Evaluate(spec.Assertions, validError); verdict.Status != testspec.VerdictPassed {
+					t.Fatal("optional error type imposed an undocumented enum")
+				}
+			}
+			for _, root := range []map[string]any{
+				{},
+				{"error": map[string]any{}},
+				{"error": map[string]any{"message": 7}},
+			} {
+				invalidError := kimiBoundaryObservation(spec, root, 400)
+				if verdict := testspec.Evaluate(spec.Assertions, invalidError); verdict.Status == testspec.VerdictPassed {
+					t.Fatal("HTTP400 without the documented string message passed")
+				}
+			}
+			for _, status := range []int{401, 429, 500, 502} {
+				wrongStatus := kimiBoundaryObservation(spec, errorRoot, status)
+				if verdict := testspec.Evaluate(spec.Assertions, wrongStatus); verdict.Status == testspec.VerdictPassed {
+					t.Fatal("unrelated HTTP failure passed a parameter rejection")
+				}
 			}
 		})
 	}
