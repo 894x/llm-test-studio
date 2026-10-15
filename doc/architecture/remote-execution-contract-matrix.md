@@ -122,6 +122,7 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | H32 | 自动确认扫描只查询有持久发送意图的 pending；prepared 仍推进 keyset 但保持原记录；每页最多四项、读取 5 秒、查询 30 秒，失败继续后页并在尾部回绕；关闭等待全部查询结束 | TestConfirmationWatcherReachesLaterPendingJobsAfterAnUnavailablePage 使用真实 SQLite 的首项 prepared、七项 pending 和首个不可达页面，后页实际 GET 404，未发送原准备；TestConfirmationWatcherBoundsQueriesAndJoinsCanceledCalls 验证四项上限、重复 Run 拒绝和取消 join；无效分页先于连接拒绝 |
 | H33 | 生产提交和同步使用同一个保存绑定连接器；禁用仅阻止 SubmissionAccess，ObservationAccess 仍可读；不读取新的服务器配对、不配置升级或回退本地；退出先结束确认和同步，再关闭节点及数据库 | 生产装配测试验证 disabled 节点仍观察、新提交无 SSH、保存授权重开、连接错误不调用 local、当前 404/升级错误映射、自动确认启动和幂等关闭；连接器端口验证不替代真实 SSH、OS 安全存储与 Wails 进程验收 |
 | H34 | LocalBackend 借用应用 Host；Close 关闭管理 handle，不关闭已接收工作；Probe 报告实际本机平台与注入预算，提交与远程使用同一 Core 能力源；查询核对原 target/install/spec，保留原构建，拒绝远程身份和不支持格式 | TestLocalBackendCoordinatesAllKindsAndConnectionCloseKeepsAcceptedWork 使用 Coordinator、实际三类 Core、SQLite 与 Mock 渠道完成原任务和报告；TestLocalBackendUsesTheInjectedConcurrentJobPolicy 验证双活动槽；原确认跨 owner/build 变化重查不再执行，foreign target、closed handle 与不支持 contract 拒绝并清理秘密；尚未替换桌面公开入口 |
+| H35 | 桌面数据库访问前必须取得进程生命周期锁；初始化失败和退出均先结束 Host/Core，再关闭数据库、释放锁；本地身份只创建一次，已有任务或提交记录旁身份缺失、损坏均拒绝，不能重建；旧 unmanaged 恢复排除两类 Job 所属 Run，NULL owner 不影响其他 Run | 生产测试通过实际工厂、Core、SQLite 与 Mock 渠道验证第二 owner 在恢复前拒绝、关闭收尾和重开身份稳定、失败后锁可重取；SQLite 测试验证八个初始化调用、重开、类型/大小/UUID/密钥损坏原样保留、取消传播与 NULL owner 回归；生命周期锁和 Linux 实际构建读取通过 WSL，不代表原生 Wails 进程或真实服务器验收 |
 
 生产 runner 声明 `performance_archives` 能力。客户端连接仍不比较构建号或自动覆盖 runner；后续 Coordinator 对需要该能力的性能闭环在提交前核对能力，不用缺失的统计归档替代完整结果。完整任务自动同步、媒体文件与回收接口仍按实施方案保留待实现，不能用以上基础路由代替完整管理接口验收。
 

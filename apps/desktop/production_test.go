@@ -650,9 +650,11 @@ func TestProductionCopiedChannelMetadataCannotDeleteAnotherAuthoredRootSecret(t 
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 	baseStore := credentials.NewMemoryStore()
+	configurationRoots := map[string]string{rootA: filepath.Join(configurationRoot, "a"),
+		rootB: filepath.Join(configurationRoot, "b")}
 	optionsForRoot := func(root string) productionOptions {
 		return productionOptions{
-			userConfigDir:   func() (string, error) { return configurationRoot, nil },
+			userConfigDir:   func() (string, error) { return configurationRoots[root], nil },
 			appVersion:      "desktop-test",
 			caseBundle:      fstest.MapFS{},
 			suiteBundle:     fstest.MapFS{},

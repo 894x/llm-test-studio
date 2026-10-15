@@ -21,6 +21,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/enginebuild"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
 	"github.com/894x/llm-test-studio/internal/runnerprocess"
@@ -287,7 +288,7 @@ func TestIndependentRunnerPublishesActualBuildAndLoopbackMetadata(t *testing.T) 
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil || info.Validate() != nil {
 		t.Fatalf("metadata invalid: %v", err)
 	}
-	buildID, err := runnerprocess.BuildID()
+	buildID, err := enginebuild.Current()
 	validIdentity := err == nil && buildID == info.EngineBuildID && info.RunnerVersion == "process-test" && info.Ready
 	if !validIdentity {
 		t.Fatal("process did not report its actual executable and readiness")

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/894x/llm-test-studio/internal/enginebuild"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
@@ -58,7 +59,7 @@ func run(ctx context.Context, arguments []string, streams streams) int {
 		return 0
 	}
 	if len(arguments) == 1 && arguments[0] == "version" {
-		buildID, err := runnerprocess.BuildID()
+		buildID, err := enginebuild.Current()
 		if err != nil {
 			return fail(streams.errors, err)
 		}

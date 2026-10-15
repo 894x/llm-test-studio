@@ -278,7 +278,11 @@ func (repository *Repository) listRuns(ctx context.Context, localOnly bool) ([]d
 	defer tx.Rollback()
 	ownerFilter := ""
 	if localOnly {
-		ownerFilter = " WHERE root.id NOT IN (SELECT run_id FROM remote_job_runs)"
+		ownerFilter = ` WHERE NOT EXISTS (
+			SELECT 1 FROM remote_job_runs AS remote_owner WHERE remote_owner.run_id = root.id
+		) AND NOT EXISTS (
+			SELECT 1 FROM execution_job_runs AS job_owner WHERE job_owner.run_id = root.id
+		)`
 	}
 	rows, err := tx.QueryContext(ctx, `
 		SELECT root.id, root.current_revision, root.created_at, root.sealed,

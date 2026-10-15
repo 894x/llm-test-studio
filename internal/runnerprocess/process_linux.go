@@ -4,7 +4,6 @@ package runnerprocess
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -20,6 +18,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/adapters/runnerhttp"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/enginebuild"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
@@ -62,21 +61,6 @@ func Initialize(path string, config runnerconfig.Config) error {
 	}
 	defer clear(document)
 	return state.WriteNew(ConfigName, document)
-}
-
-func BuildID() (string, error) {
-	// The proc descriptor still identifies the running inode if its on-disk
-	// pathname is replaced by an installer.
-	file, err := os.Open("/proc/self/exe")
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	digest := sha256.New()
-	if _, err := io.Copy(digest, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
 func Run(ctx context.Context, options Options) (runErr error) {
@@ -128,7 +112,7 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		return err
 	}
 	defer func() { runErr = errors.Join(runErr, core.Close()) }()
-	buildID, err := BuildID()
+	buildID, err := enginebuild.Current()
 	if err != nil {
 		return err
 	}

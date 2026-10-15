@@ -1,6 +1,12 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "local_executor_identity", table: "local_executor_identity", ddl: `CREATE TABLE local_executor_identity (
+		singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+		node_id TEXT NOT NULL CHECK(length(CAST(node_id AS BLOB)) = 36),
+		installation_id TEXT NOT NULL CHECK(length(CAST(installation_id AS BLOB)) = 36),
+		commitment_key BLOB NOT NULL CHECK(typeof(commitment_key) = 'blob' AND length(commitment_key) = 32)
+	)`},
 	{kind: "table", name: "job_submissions", table: "job_submissions", ddl: `CREATE TABLE job_submissions (
 		job_id TEXT PRIMARY KEY,
 		configuration_id TEXT NOT NULL,

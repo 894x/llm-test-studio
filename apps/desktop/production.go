@@ -72,7 +72,7 @@ func defaultProductionOptions() productionOptions {
 }
 
 func newProductionInitializer(options productionOptions) desktopInitializer {
-	return func(ctx context.Context) (desktopDependencies, error) {
+	return func(ctx context.Context) (result desktopDependencies, initializeError error) {
 		if ctx == nil {
 			ctx = context.Background()
 		}
@@ -93,6 +93,15 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err := fileconfig.EnsurePrivateDirectory(ctx, directory); err != nil {
 			return desktopDependencies{}, fmt.Errorf("prepare desktop data directory: %w", err)
 		}
+		ownership, err := fileconfig.TryAcquireExclusiveLock(ctx, filepath.Join(directory, "desktop-executor.lock"))
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("desktop execution data is already owned or unavailable: %w", err)
+		}
+		defer func() {
+			if initializeError != nil {
+				initializeError = errors.Join(initializeError, ownership.Close())
+			}
+		}()
 		if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
 			AppVersion: options.appVersion,
 		}); err != nil {
@@ -183,8 +192,20 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("open desktop repository: %w", err)
 		}
+		var localExecutor *productionLocalExecutor
+		defer func() {
+			if initializeError != nil {
+				if localExecutor != nil {
+					initializeError = errors.Join(initializeError, localExecutor.Close())
+				}
+				initializeError = errors.Join(initializeError, repository.Close())
+			}
+		}()
+		localExecutor, err = newProductionLocalExecutor(ctx, repository, options)
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("create local job host: %w", err)
+		}
 		if err := runs.RecoverInterrupted(ctx, repository, productionClock{}); err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("recover interrupted desktop runs: %w", err)
 		}
 		caseTypes := casetypes.MustBuiltinRegistry()
@@ -201,7 +222,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create desktop catalog service: %w", err)
 		}
 		reportingQuery := reporting.New(repository)
@@ -218,7 +238,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create report generator: %w", err)
 		}
 		channelService, err := channelconfig.New(channelconfig.Dependencies{
@@ -230,7 +249,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create channel configuration service: %w", err)
 		}
 		if err := channelService.RetryPendingCredentialCleanup(ctx); err != nil && options.reportCredentialCleanup != nil {
@@ -254,7 +272,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create run application service: %w", err)
 		}
 		comparisonService, err := comparisons.New(comparisons.Dependencies{
@@ -262,7 +279,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		})
 		if err != nil {
 			_ = runService.Close()
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create comparison application service: %w", err)
 		}
 		remoteNodes, closeRemoteNodes, err := newProductionRemoteNodes(
@@ -273,7 +289,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		)
 		if err != nil {
 			_ = runService.Close()
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create remote node manager: %w", err)
 		}
 		remoteSync, closeRemoteSync, err := newProductionRemoteSynchronization(ctx, remoteSyncDependencies{
@@ -283,17 +298,15 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			_ = closeRemoteNodes()
 			_ = runService.Close()
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create remote synchronization: %w", err)
 		}
 		jobCoordinator, confirmations, closeJobs, err := newProductionJobs(ctx, repository, productionJobBackends{
-			configuration: remoteNodes.configuration, connect: options.runnerConnector,
+			configuration: remoteNodes.configuration, connect: options.runnerConnector, local: localExecutor.Connect,
 		})
 		if err != nil {
 			_ = closeRemoteSync()
 			_ = closeRemoteNodes()
 			_ = runService.Close()
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create job submission coordinator: %w", err)
 		}
 		gate := &productionServiceGate{}
@@ -332,7 +345,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 					closeRemoteSync(),
 					closeRemoteNodes(),
 					runService.Close(),
+					localExecutor.Close(),
 					repository.Close(),
+					ownership.Close(),
 				)
 			},
 		}, nil
