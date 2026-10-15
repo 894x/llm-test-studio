@@ -22,7 +22,6 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
-	"github.com/894x/llm-test-studio/internal/protocols"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
 	"github.com/894x/llm-test-studio/internal/runnerstate"
 )
@@ -223,18 +222,9 @@ func Run(ctx context.Context, options Options) (runErr error) {
 }
 
 func capabilities() jobcontract.RunnerCapabilities {
-	protocolIDs := []string{}
-	for _, descriptor := range protocols.NewRegistry().Descriptors() {
-		protocolIDs = append(protocolIDs, descriptor.ID)
-	}
-	return jobcontract.RunnerCapabilities{
-		JobKinds:  []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindPerformance, jobcontract.KindComparison},
-		Protocols: protocolIDs,
-		Features: []string{
-			jobcontract.FeaturePerformanceArchives, "warmup", "ramp", "capacity", "open_loop",
-			"time_slices", "normal_workload", "random_input", "maintenance",
-		},
-	}
+	capabilities := jobhost.CoreCapabilities()
+	capabilities.Features = append(capabilities.Features, "maintenance")
+	return capabilities
 }
 
 func monitor(
