@@ -68,7 +68,7 @@ flowchart LR
 | 模块 | 职责 |
 | --- | --- |
 | `runs.Preparer` 与性能准备组件 | 从现有准备函数提取目录解析、协议校验、输入绑定、连接解析和快照冻结；以只读端口工作，返回准备值与单独的秘密 lease，避免为移动目录新增相互依赖 |
-| `internal/jobcontract` | 单一当前 JobSpec、事件和错误的传输契约；依赖领域值，不导入 SSH、Wails 或数据库 |
+| `internal/jobcontract` | 单一当前 JobSpec、事件和错误的传输契约；复用 runs、quicktest 和 comparisons 的当前准备值，不导入 SSH、Wails 或数据库 |
 | `internal/application/jobs` | 选择 Backend、持久化提交记录、提交或重查同一 job_id、路由操作；不调度请求 |
 | `internal/application/jobhost` | 接收完整任务、排队、资源预算、调用已有 Core、持有取消上下文、结果日志和恢复 |
 | `internal/application/nodes` | 节点配置、状态查询、安装操作编排与构建核对 |
@@ -345,7 +345,8 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | A2 只读运行准备 | 已实现 | runs.Preparer 使用只读 PreparationRepository；Plan 和 Suite 均可只冻结输入而不创建 Run；本地 Service 组合 Preparer 与 Host，不保留第二份准备或执行逻辑 |
 | A3 性能执行宿主 | 已实现 | BuildPerformance 只解析输入与凭据；PreparedPerformance 冻结非秘密输入及报告 ID；Host 独立执行，全部负载阶段共用原有计算与停止语义 |
 | A4a 对比组准备 | 已实现 | comparisons.Preparer 一次冻结整组 PreparedRun 和独立凭据，检查 Plan、Model 与完整条目定义相同；本地入口也通过该准备路径接收后激活 |
-| A4b Job 契约与本地 Backend | 待实施 | 建立完整 Job 契约与本地 Backend，统一完整任务提交 |
+| A4b 当前提交契约 | 已实现 | JobSpec 复用三类完整输入；显式执行位置、安装身份与构建；有界 JSON、秘密与资产集合；稳定规范化摘要；未接 HTTP 或持久化 |
+| A4c 本地 Backend | 待实施 | 建立统一 JobHost 与本地 Backend，连接完整任务提交；现有桌面入口仍待后续 Coordinator 接入 |
 | B 至 E | 待实施 | 独立 runner、持久日志、节点管理与部署、桌面闭环、独立升级与完整验收 |
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
@@ -355,5 +356,7 @@ A2 验证 Plan 与临时 Suite 准备不写运行数据或 keyring，准备结�
 A3 验证 Performance 输入经 JSON 传输后无需桌面连接解析器，准备时不发送请求，准备上下文结束不影响宿主独立执行。报告身份在归档前固定，未归档或提前停止也保留该身份；停止发送覆盖预热、爬坡、测量和容量阶梯，等待在途完成后不进入后续阶段。成功、拒收与停止均释放内存凭据。该提交尚不提供常驻 runner 或远程通信，也未改变持久化报告格式。
 
 A4a 验证对比组准备不写执行仓库、不激活子 Run，准备值可通过 JSON 传输。某个渠道准备失败或冻结定义不一致时，所有已取得凭据均释放；其中专门验证相同 Plan/Model 下发生的 Case revision 与请求体变化不会混入同一对比组。整组的事务接收与独立调度仍属于后续 JobHost 工作，不把当前本地 facade 的逐项接收当成已完成的远程原子接收。
+
+A4b 建立唯一当前提交格式，没有旧格式解码或默认本地路径。T0 测试验证身份与联合类型、资产数量和字节预算、秘密 slot 与字节长度、JSON 字节上限、超长集合在 typed 解码前拒绝，以及 RawMessage 对象键顺序与大整数的摘要语义。新增[契约矩阵](remote-execution-contract-matrix.md)分别列出已执行与待完成边界；当前尚未证明节点身份回读、HTTP 接收、实际资产完整性和嵌套领域对象的全部资源边界。这一新增传输格式尚未写入现有数据库，不需要在本提交升级历史数据。
 
 功能完成、真实服务器部署、保活、历史数据升级和提供商实测以各阶段实际验收为准，不因方案或某个基础提交完成而视为全部完成。
