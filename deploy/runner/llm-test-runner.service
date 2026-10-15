@@ -1,3 +1,4 @@
+# Managed by LLM Test Studio runner installer.
 [Unit]
 Description=LLM Test Studio shared execution runner
 After=network-online.target

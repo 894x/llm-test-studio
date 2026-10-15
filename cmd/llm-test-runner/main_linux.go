@@ -13,6 +13,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
+	"github.com/894x/llm-test-studio/internal/runnerinstall"
 	"github.com/894x/llm-test-studio/internal/runnerprocess"
 	"github.com/894x/llm-test-studio/internal/runnerstate"
 	"golang.org/x/sys/unix"
@@ -34,6 +35,28 @@ func main() {
 }
 
 func run(ctx context.Context, arguments []string, streams streams) int {
+	if len(arguments) == 1 && arguments[0] == "provision" {
+		request, err := runnerinstall.DecodeRequest(streams.input)
+		if err != nil {
+			_, _ = io.WriteString(streams.errors, runnerinstall.ErrorCode(err)+"\n")
+			return 1
+		}
+		result, err := runnerinstall.Provision(ctx, request, func(progress runnerinstall.Progress) {
+			_ = json.NewEncoder(streams.output).Encode(struct {
+				Progress runnerinstall.Progress `json:"progress"`
+			}{Progress: progress})
+		})
+		if err != nil {
+			_, _ = io.WriteString(streams.errors, runnerinstall.ErrorCode(err)+"\n")
+			return 1
+		}
+		if err := json.NewEncoder(streams.output).Encode(struct {
+			Result runnerinstall.Result `json:"result"`
+		}{Result: result}); err != nil {
+			return 1
+		}
+		return 0
+	}
 	if len(arguments) == 1 && arguments[0] == "version" {
 		buildID, err := runnerprocess.BuildID()
 		if err != nil {

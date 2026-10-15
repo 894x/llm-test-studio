@@ -9,9 +9,52 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
+	"github.com/894x/llm-test-studio/internal/runnerinstall"
 	"github.com/894x/llm-test-studio/internal/runnerprocess"
 )
+
+func TestProvisionRejectsInvalidAndUnsupportedRequestsBeforeInstallation(t *testing.T) {
+	request := runnerinstall.Request{
+		Contract:       jobcontract.CurrentContract + 1,
+		OperationID:    "d9b48d9a-977c-4dd8-8c6b-3bdeba3b37d7",
+		ArtifactSHA256: strings.Repeat("a", 64), ListenPort: 44917,
+	}
+	unsupported, _ := json.Marshal(request)
+	cases := []struct {
+		name  string
+		input string
+		code  string
+	}{
+		{name: "invalid", input: `{}`, code: "invalid_installation_request"},
+		{name: "unsupported", input: string(unsupported), code: "runner_upgrade_required"},
+	}
+	if os.Geteuid() != 0 {
+		request.Contract = jobcontract.CurrentContract
+		document, _ := json.Marshal(request)
+		cases = append(cases, struct{ name, input, code string }{
+			name: "nonroot", input: string(document), code: "installation_root_required",
+		})
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			var output, diagnostic bytes.Buffer
+			code := run(t.Context(), []string{"provision"}, streams{
+				input: strings.NewReader(test.input), output: &output, errors: &diagnostic,
+			})
+			valid := code == 1 && output.Len() == 0 && diagnostic.String() == test.code+"\n"
+			if !valid {
+				t.Fatalf(
+					"code=%d output=%q diagnostic=%q",
+					code,
+					output.String(),
+					diagnostic.String(),
+				)
+			}
+		})
+	}
+}
 
 func TestInitUsesStdinAndPreservesExistingIdentityOnRepeatedCommand(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state")
