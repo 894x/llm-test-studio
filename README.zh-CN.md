@@ -21,10 +21,10 @@
 ## 产品实证
 
 <p align="center">
-  <img src="./doc/images/llm-test-studio-cases.png" width="100%" alt="真实运行的 LLM Test Studio Windows 桌面应用，展示 89 个可复用测试 Case 与支持修订追踪的 Case 详情">
+  <img src="./doc/images/llm-test-studio-cases.png" width="100%" alt="真实运行的 LLM Test Studio Windows 桌面应用，展示可复用测试 Case 与支持修订追踪的 Case 详情">
 </p>
 
-<p align="center"><sub>真实 Windows 桌面构建 · 89 个内置 Case · 不是概念稿或生成式 UI</sub></p>
+<p align="center"><sub>真实 Windows 桌面构建 · 支持修订追踪的 Case 目录 · 不是概念稿或生成式 UI</sub></p>
 
 Case 目录是产品的中心，而不是藏在一次运行背后的配置页面。Case 是可检查、可修订的长期资产，可以组合为 Suite 和 Plan，在不同服务商或网关 Endpoint 上执行，并一路追溯到最终报告。
 
@@ -102,7 +102,7 @@ go build -o llm-test-studio ./cmd/llm-test-studio
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` 只接受所选 Case 声明的输入；省略 `--inputs` 时使用已声明默认值。`--all-cases` 选择已启用的自动 Case，手动或停用项会明确报错。`--dry-run` 仅准备请求，不联网，也不声称断言已通过。等待行为由 `workflow.mode` 定义，替代 `--no-wait`。
 
-仓库包含 717 个当前格式 Case、51 个 Suite 和 5 个性能 Plan。K3 Responses 套件通过原生定义复用 39 个现有 Case ID；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。此前修改模型或认证的 16 个 Case 已停用，因为这些字段属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
+内置目录包含 925 个 Case、53 个 Suite 和 18 个性能 Plan。K3 Responses 基础套件包含 230 个已启用自动 Case；适用范围和覆盖缺口见 [Kimi 目录](data/cases/kimi-k3/README.zh-CN.md)。模型和凭据属于 Run 绑定。空断言仅产生观察结果，不计入断言通过率。格式变化和历史数据影响见[多协议 Case 与原生文本接口](doc/design/multi-protocol-cases.md)。
 
 <details>
 <summary><strong>CLI 示例</strong></summary>
@@ -155,7 +155,7 @@ go run ./cmd/llm-test-studio load run \
 - 创建和维护内置或用户自定义测试 Case。
 - 将准确的 Case 修订组合成可复用的 Suite 和 Plan。
 - 使用单次请求、固定并发或开放环负载运行测试，并配置请求超时与 SLA 阈值。
-- 通过原生 Go 执行引擎运行 OpenAI Chat、Kimi K3 和 Seedance 兼容性 Case。
+- 通过原生 Go 执行引擎运行 OpenAI Chat、OpenAI Responses、Anthropic Messages、Kimi、GLM、Seedance、Wan 和 MiniMax 兼容性 Case。
 - 对同一个逻辑模型选择两个或更多渠道进行比较。
 - 查看运行历史、请求级结果、延迟与 Token 指标、失败维度、SLA 结论和环境快照。
 - 将同一份报告导出为 JSON、独立 HTML、PNG 或 PDF。
@@ -163,15 +163,20 @@ go run ./cmd/llm-test-studio load run \
 
 ## 内置 Case 库
 
-仓库目前包含 89 个可移植 Case：
+仓库目前包含 925 个可移植 Case，按编写目录和唯一 Case ID 统计：
 
-| Case 分组   | 数量 | 重点                                                  |
-| ----------- | ---: | ----------------------------------------------------- |
-| OpenAI Chat |   43 | Chat 兼容性、流式响应、工具调用、推理、安全和用量行为 |
-| Kimi K3     |   40 | Kimi 专属兼容性与能力覆盖                             |
-| Seedance    |    6 | 文本、图片、视频和混合参考视频请求                    |
+| Case 目录 | 数量 | 重点 |
+| --- | ---: | --- |
+| `openai-chat` | 349 | Chat 兼容性、Kimi 和 GLM 契约、流式响应、工具调用、推理、多模态输入和用量 |
+| `openai-responses` | 208 | K3 原生 Responses 参数、工具、推理、结构化输出、缓存和拒绝边界 |
+| `seedance` | 6 | 文本、图片、视频和混合参考视频请求 |
+| `wan-video` | 213 | Wan 视频创建、任务轮询、各模型参数边界和媒体素材模板 |
+| `minimax-video` | 149 | MiniMax H3 创建、轮询、参数拒绝和依赖媒体的场景 |
+| **合计** | **925** | **610 个已启用自动 Case、107 个已启用手动 Case、208 个已停用 Case** |
 
-内置 Case 是测试起点，不代表每个 Case 都适用于每个模型。Plan 执行前会验证协议兼容性。
+Kimi Chat Case 已计入 `openai-chat`。该目录中的部分 Case 还在相同 ID 下定义了原生 `openai-responses` 或 `anthropic-messages` 行为，这些协议定义不重复计数。53 个 Suite 覆盖全部六种运行时协议。18 个内置性能 Plan 为三种文本协议（`openai-chat`、`openai-responses`、`anthropic-messages`）各提供六种预设：快速检查、基准测试、持续负载、容量阶梯、无缓存输入和缓存后缀。
+
+内置 Case 是测试起点，不代表每个 Case 都适用于每个模型。统计包含手动场景和停用模板；自动执行仅允许选择已启用的自动 Case。Plan 执行前会验证协议兼容性。
 
 用户 Case 以 `data/cases/<group>/<case>/case.json` 形式保存在桌面可执行文件旁，可以在不携带 API Key 的情况下复制、审查、版本管理和分享。合并两个来源时，相同身份的用户 Case 会覆盖内置 Case。
 
@@ -184,9 +189,10 @@ go run ./cmd/llm-test-studio load run \
 | 模型说明 fixture（仅源码） | `data/definitions/models/*.json` |
 | 用户模型 | `data/models.json` |
 | 渠道及模型映射 | `data/channels.json` |
-| 计划 | `data/plans/<id>.json` |
+| 内置性能计划（源码，嵌入程序） | `data/performanceplans/*.json` |
+| 用户计划 | `data/plans/<id>.json` |
 
-内置 Case 和 Suite 从 `data/` 嵌入可执行文件，全新发行包无需另行复制目录。桌面编辑的数据和目录锁文件写入可执行文件旁的 `data/`。CLI 的 `--cases-root` 默认为相对于工作目录的 `data/cases`，从其他位置启动时请显式指定路径。
+内置 Case、Suite 和性能 Plan 从 `data/` 嵌入可执行文件，全新发行包无需另行复制目录。桌面编辑的数据和目录锁文件写入可执行文件旁的 `data/`。CLI 的 `--cases-root` 默认为相对于工作目录的 `data/cases`，从其他位置启动时请显式指定路径。
 
 已有安装请先关闭应用，再将原先位于可执行文件旁的 `cases/`、`suites/`、`plans/`、`models.json`、`channels.json` 连同修订文件和锁文件一起移动到 `data/`。保持可执行文件的安装目录不变，即可继续使用现有密钥环凭据。应用只读取新路径。SQLite 运行历史、报告和日志继续使用原有用户配置目录。
 

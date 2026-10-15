@@ -21,10 +21,10 @@
 ## Product proof
 
 <p align="center">
-  <img src="./doc/images/llm-test-studio-cases.png" width="100%" alt="The real LLM Test Studio Windows desktop application showing 89 reusable test cases and revision-aware case details">
+  <img src="./doc/images/llm-test-studio-cases.png" width="100%" alt="The real LLM Test Studio Windows desktop application showing reusable test cases and revision-aware case details">
 </p>
 
-<p align="center"><sub>Real Windows desktop build · 89 built-in cases · no concept mockup or generated UI</sub></p>
+<p align="center"><sub>Real Windows desktop build · revision-aware case catalog · no concept mockup or generated UI</sub></p>
 
 The case catalog is the center of the product, not a setup screen hidden behind a run. Cases remain inspectable, revisioned assets that can be assembled into suites and plans, executed against different provider or gateway endpoints, and traced into reports.
 
@@ -102,7 +102,7 @@ Desktop and CLI audit execution share the protocol runtime for `openai-chat`, `o
 
 CLI `audit run --seed 42 --inputs '{"prompt":"Hello"}'` accepts only inputs declared by selected Cases. Omit `--inputs` to use their declared defaults. `--all-cases` selects enabled automatic Cases; manual/disabled selections fail explicitly. `--dry-run` prepares requests without network calls or verification claims. Waiting is authored as `workflow.mode`, replacing `--no-wait`.
 
-The repository contains 717 current Cases, 51 Suites and 5 performance Plans. K3 Responses Suites reuse 39 existing Case IDs with native definitions; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Sixteen previous model/authentication mutation Cases are disabled because those fields belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
+The built-in catalog contains 925 Cases, 53 Suites and 18 performance Plans. The K3 Responses foundation Suite contains 230 enabled automatic Cases; see the [Kimi catalog](data/cases/kimi-k3/README.md) for applicability and coverage gaps. Models and credentials belong to Run binding. Empty assertions produce observation-only results and do not inflate verification pass rates. See [multi-protocol Cases and native text APIs](doc/design/multi-protocol-cases.md) for format changes and historical-data impact.
 
 <details>
 <summary><strong>CLI examples</strong></summary>
@@ -155,7 +155,7 @@ Avoid passing credentials directly as command arguments because shells may retai
 - Create and maintain built-in or user-authored test cases.
 - Group exact case revisions into reusable suites and plans.
 - Run single-request, fixed-concurrency, or open-loop tests with request timeouts and SLA thresholds.
-- Exercise OpenAI Chat, Kimi K3, and Seedance compatibility cases with native Go execution engines.
+- Exercise OpenAI Chat, OpenAI Responses, Anthropic Messages, Kimi, GLM, Seedance, Wan, and MiniMax compatibility cases with native Go execution engines.
 - Compare one logical model across two or more configured channels.
 - Inspect run history, request-level results, latency and token metrics, failure dimensions, SLA conclusions, and environment snapshots.
 - Export the same report as JSON, standalone HTML, PNG, or PDF.
@@ -163,15 +163,20 @@ Avoid passing credentials directly as command arguments because shells may retai
 
 ## Built-in case library
 
-The repository currently includes 89 portable cases:
+The repository currently includes 925 portable Cases, counted by authoring directory and unique Case ID:
 
-| Case group  | Cases | Focus                                                                       |
-| ----------- | ----: | --------------------------------------------------------------------------- |
-| OpenAI Chat |    43 | Chat compatibility, streaming, tools, reasoning, safety, and usage behavior |
-| Kimi K3     |    40 | Kimi-specific compatibility and capability coverage                         |
-| Seedance    |     6 | Text, image, video, and mixed-reference video requests                      |
+| Case directory | Cases | Focus |
+| --- | ---: | --- |
+| `openai-chat` | 349 | Chat compatibility, Kimi and GLM contracts, streaming, tools, reasoning, multimodal inputs, and usage |
+| `openai-responses` | 208 | K3 native Responses parameters, tools, reasoning, structured output, caching, and rejection boundaries |
+| `seedance` | 6 | Text, image, video, and mixed-reference video requests |
+| `wan-video` | 213 | Wan video creation, task polling, model-specific boundaries, and media fixture templates |
+| `minimax-video` | 149 | MiniMax H3 creation, polling, parameter rejection, and media-dependent scenarios |
+| **Total** | **925** | **610 enabled automatic Cases, 107 enabled manual Cases, and 208 disabled Cases** |
 
-Built-in cases are starting points, not a claim that every case applies to every model. Protocol compatibility is validated before a plan can run.
+Kimi Chat Cases are included in `openai-chat`. Some Cases in that directory also define native `openai-responses` or `anthropic-messages` behavior under the same ID; these definitions are not counted again. The 53 Suites cover all six runtime protocols. The 18 built-in performance Plans provide six presets for each text protocol (`openai-chat`, `openai-responses`, and `anthropic-messages`): quick check, baseline, sustained load, capacity steps, uncached input, and cached suffix.
+
+Built-in Cases are starting points, not a claim that every Case applies to every model. Counts include manual scenarios and disabled templates; only enabled automatic Cases can be selected for automated execution. Protocol compatibility is validated before a Plan can run.
 
 User cases are stored as `data/cases/<group>/<case>/case.json` beside the desktop executable. They can be copied, reviewed, versioned, and shared without including API keys. A user case overrides a built-in case with the same identity when the two sources are merged.
 
@@ -184,9 +189,10 @@ Authored data uses the following layout. Source paths are relative to the reposi
 | Model profile fixtures (source only) | `data/definitions/models/*.json` |
 | User models | `data/models.json` |
 | Channels and model mappings | `data/channels.json` |
-| Plans | `data/plans/<id>.json` |
+| Built-in performance Plans (source, embedded) | `data/performanceplans/*.json` |
+| User Plans | `data/plans/<id>.json` |
 
-Built-in Cases and Suites are embedded from `data/` into the executable; a fresh release needs no external catalog copy. Desktop edits and catalog lock files are written under the executable's `data/` directory. CLI commands default `--cases-root` to `data/cases` relative to the working directory; use an explicit path when launching elsewhere.
+Built-in Cases, Suites and performance Plans are embedded from `data/` into the executable; a fresh release needs no external catalog copy. Desktop edits and catalog lock files are written under the executable's `data/` directory. CLI commands default `--cases-root` to `data/cases` relative to the working directory; use an explicit path when launching elsewhere.
 
 For an existing installation, close the app and move its adjacent `cases/`, `suites/`, `plans/`, `models.json`, and `channels.json` into `data/`, including revision files and lock sidecars. Keep the executable in the same installation directory so existing keyring credentials remain accessible. The app reads only the new paths. SQLite run history, reports, and logs retain their existing user-configuration locations.
 
