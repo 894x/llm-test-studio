@@ -171,7 +171,11 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	})
 	app.onStartup(ctx)
 	defer app.shutdown()
-	id, err := app.StartQuickTask(runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
+	id, err := app.StartQuickTask(runs.QuickTaskCommand{
+		SuiteID: suite.ID, Seed: 1, RequestTimeoutSeconds: 1,
+		Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key",
+		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +274,11 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	if strings.Contains(string(historyJSON), "test-temporary-key") || strings.Contains(string(historyJSON), "case_definitions") {
 		t.Fatal("native history leaked private data")
 	}
-	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{SuiteID: history.Suite.ID, Seed: history.Seed, CaseConcurrency: history.CaseConcurrency, RequestTimeoutMS: history.RequestTimeoutMS, SourceRunID: id, Model: history.Model, BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs})
+	replayID, err := replayService.PrepareQuickTask(ctx, runs.QuickTaskCommand{
+		SuiteID: history.Suite.ID, Seed: history.Seed, CaseConcurrency: history.CaseConcurrency,
+		RequestTimeoutSeconds: history.RequestTimeoutSeconds, SourceRunID: id, Model: history.Model,
+		BaseURL: history.BaseURL, CredentialRunID: history.CredentialRunID, Inputs: history.Inputs,
+	})
 	if err != nil || replayID == id {
 		t.Fatalf("replay after restart: %s, %v", replayID, err)
 	}

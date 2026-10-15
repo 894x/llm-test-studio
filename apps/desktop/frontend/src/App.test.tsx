@@ -413,6 +413,31 @@ describe("desktop run workspace", () => {
     expect(within(options).queryByRole("option", { name: "seedance-video-model" })).not.toBeInTheDocument()
   })
 
+  it("opens the matching report detail directly from recent quick tests", async () => {
+    window.history.replaceState(null, "", "#quick-test")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const summary = FIXTURE_REPORTS.reports[1]
+    client.workspace.active_run_id = undefined
+    client.workspace.runs = [{
+      ...client.workspace.runs[0], id: summary.run_id!, source: "quick_task", status: "completed", plan_name: "Past quick test",
+    }]
+    const detail = protocolReportFixture()
+    detail.report.id = summary.id
+    detail.report.run_id = summary.run_id!
+    detail.report.conclusion.verdict = summary.verdict
+    vi.mocked(client.getReportDetail).mockResolvedValue(detail)
+
+    render(<App client={client} />)
+    await user.click(await screen.findByRole("button", { name: "打开报告 Past quick test" }))
+
+    await waitFor(() => expect(window.location.hash).toBe("#reports"))
+    expect(await screen.findByRole("table", { name: "执行项用例结果" })).toHaveTextContent("Reject invalid parameter")
+    expect(client.getReportDetail).toHaveBeenCalledExactlyOnceWith(summary.id)
+    expect(client.getQuickTask).not.toHaveBeenCalled()
+    expect(client.startQuickTask).not.toHaveBeenCalled()
+  })
+
 	it("shows request-level report detail and all Go export actions", async () => {
 		window.history.replaceState(null, "", "#reports")
 		const client = desktopClient()
@@ -593,7 +618,7 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     const dialog = screen.getByRole("dialog", { name: "新增计划" })
     await user.type(within(dialog).getByLabelText("计划"), "Protocol plan")
-    await user.click(within(dialog).getByRole("combobox", { name: "Case 或 Suite" }))
+    await user.click(within(dialog).getByRole("combobox", { name: "用例或套件" }))
     await user.click(screen.getByRole("option", { name: "用例 · 基础对话" }))
     await user.click(within(dialog).getByRole("button", { name: "添加执行项" }))
     await user.click(within(dialog).getByRole("button", { name: "保存计划" }))
@@ -1310,7 +1335,7 @@ describe("desktop run workspace", () => {
     const client = desktopClient()
     const rendered = render(<App client={client} />)
     await user.click(await screen.findByRole("combobox", { name: "测试任务" }))
-    await user.click(screen.getByRole("option", { name: "OpenAI Chat 连通性测试 · 1 个 Case" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI Chat 连通性测试 · 1 个用例" }))
     await user.type(await screen.findByLabelText("接口地址"), "https://example.test")
     await user.type(screen.getByLabelText("API Key"), "test-private-key")
     await user.type(screen.getByLabelText("模型 ID"), "draft-model")

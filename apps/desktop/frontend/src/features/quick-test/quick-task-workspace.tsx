@@ -8,9 +8,11 @@ import {
   type SetStateAction,
 } from "react"
 import { useTranslation } from "react-i18next"
+import FileChartColumnIcon from "lucide-react/dist/esm/icons/file-chart-column.mjs"
 import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
+import SquarePenIcon from "lucide-react/dist/esm/icons/square-pen.mjs"
 import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -137,7 +139,10 @@ export function QuickTaskWorkspace({
     ]),
   ]
   const selectedRun = workspace.runs.find((run) => run.id === runID)
-  const recent = workspace.runs.filter((run) => run.source === "quick_task").slice(0, 12)
+  const recent = workspace.runs.filter((run) => run.source === "quick_task").slice(0, 12).map((run) => ({
+    run,
+    report: reports.reports.find((item) => item.run_id === run.id),
+  }))
   const selectedReport = reports.reports.find((report) => report.run_id === runID)
 
   const update = (next: TaskDraft) => {
@@ -379,7 +384,7 @@ export function QuickTaskWorkspace({
                     />
                   </TaskField>
                   <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,3fr)] items-start gap-x-4 gap-y-2">
-                    <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid gap-2 space-y-0">
+                    <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid">
                       <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={!!pending} onValueChange={(value) => {
                         const selected = channels.find((item) => item.id === value)
                         update({
@@ -393,7 +398,7 @@ export function QuickTaskWorkspace({
                             ({value: item.id, label: item.name})
                           ))]} />
                     </TaskField>
-                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="row-span-2 grid grid-rows-subgrid gap-2 space-y-0"
+                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="row-span-2 grid grid-rows-subgrid"
                       labelHint={<p id="quick-task-base_url-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.endpointHint")}</p>}
                     >
                       <ConnectionURLInput
@@ -560,15 +565,16 @@ export function QuickTaskWorkspace({
                           onChange={(event) => update({ ...form, seed: Number(event.target.value) })}
                         />
                       </TaskField>
-                      <TaskField id="request_timeout_ms" label={t("task.requestTimeout")} error={errors.request_timeout_ms}>
+                      <TaskField id="request_timeout_seconds" label={t("task.requestTimeout")} error={errors.request_timeout_seconds}>
                         <Input
-                          id="quick-task-request_timeout_ms"
+                          id="quick-task-request_timeout_seconds"
                           type="number"
-                          min={1}
-                          value={form.request_timeout_ms}
-                          aria-invalid={!!errors.request_timeout_ms || undefined}
-                          aria-describedby={errors.request_timeout_ms ? "quick-task-request_timeout_ms-error" : undefined}
-                          onChange={(event) => update({ ...form, request_timeout_ms: Number(event.target.value) })}
+                          min={0.001}
+                          step={0.001}
+                          value={form.request_timeout_seconds}
+                          aria-invalid={!!errors.request_timeout_seconds || undefined}
+                          aria-describedby={errors.request_timeout_seconds ? "quick-task-request_timeout_seconds-error" : undefined}
+                          onChange={(event) => update({ ...form, request_timeout_seconds: Number(event.target.value) })}
                         />
                       </TaskField>
                       {task.inputs.map((input) => (
@@ -742,7 +748,7 @@ export function QuickTaskWorkspace({
                 <p className="text-xs text-muted-foreground">{t("task.noHistory")}</p>
               ) : (
                 <ol className="space-y-0.5">
-                  {recent.map((run) => (
+                  {recent.map(({ run, report }) => (
                     <li key={run.id} data-selected={run.id === runID} className="min-w-0 space-y-1 rounded-md p-3 transition-colors hover:bg-surface-hover focus-within:bg-surface-hover data-[selected=true]:bg-surface-active">
                       <div className="flex items-start justify-between gap-2">
                         <p className="min-w-0 text-xs font-medium [overflow-wrap:anywhere]" title={run.plan_name}>
@@ -767,15 +773,41 @@ export function QuickTaskWorkspace({
                         >
                           {new Date(run.started_at).toLocaleString(i18n.language)}
                         </time>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={!!pending}
-                          onClick={() => void restore(run.id)}
-                          aria-label={`${t("task.restore")} ${run.plan_name}`}
-                        >
-                          {t("task.restore")}
-                        </Button>
+                        <TooltipProvider delayDuration={250}>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {report ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    size="icon-sm"
+                                    variant="ghost"
+                                    onClick={() => void onOpenReport(report.id)}
+                                    aria-label={`${t("task.report")} ${run.plan_name}`}
+                                  >
+                                    <FileChartColumnIcon aria-hidden="true" className="size-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("task.report")}</TooltipContent>
+                              </Tooltip>
+                            ) : null}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  disabled={!!pending}
+                                  onClick={() => void restore(run.id)}
+                                  aria-label={`${t("task.restore")} ${run.plan_name}`}
+                                >
+                                  <SquarePenIcon aria-hidden="true" className="size-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>{t("task.restore")}</TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TooltipProvider>
                       </div>
                     </li>
                   ))}
@@ -840,7 +872,7 @@ function TaskField({
   className?: string
 }) {
   return (
-    <Field className={cn("block min-w-0 space-y-2", className)} data-invalid={!!error || undefined}>
+    <Field className={cn("min-w-0 flex-col items-stretch gap-2", className)} data-invalid={!!error || undefined}>
       <div className="flex min-w-0 items-baseline gap-2">
         <FieldLabel htmlFor={`quick-task-${id}`} className="shrink-0 [overflow-wrap:anywhere]">{label}</FieldLabel>
         {labelHint || error ? (

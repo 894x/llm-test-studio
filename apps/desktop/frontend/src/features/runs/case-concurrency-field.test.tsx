@@ -11,7 +11,7 @@ it("offers serial and bounded concurrency presets with keyboard dismissal", asyn
     return <CaseConcurrencyField value={value} onChange={setValue} />
   }
   render(<Harness />)
-  const control = screen.getByRole("combobox", { name: "Case 并发数" })
+  const control = screen.getByRole("combobox", { name: "用例并发数" })
   expect(control).toHaveValue("4 个并发")
   for (const label of ["1 · 串行", "2 个并发", "4 个并发", "8 个并发"]) {
     await user.click(control)
@@ -28,7 +28,7 @@ it("offers serial and bounded concurrency presets with keyboard dismissal", asyn
 it("shows a restored effective limit and disables edits while pending", async () => {
   const user = userEvent.setup()
   const view = render(<CaseConcurrencyField value={3} onChange={() => {}} />)
-  const control = screen.getByRole("combobox", { name: "Case 并发数" })
+  const control = screen.getByRole("combobox", { name: "用例并发数" })
   expect(control).toHaveValue("3 个并发")
   await user.click(control)
   expect(screen.getByRole("option", { name: "3 个并发" })).toHaveAttribute("aria-selected", "true")
@@ -39,6 +39,6 @@ it("shows a restored effective limit and disables edits while pending", async ()
 
 it("associates a concise label hint instead of the full description", () => {
   render(<CaseConcurrencyField value={4} onChange={() => {}} labelHint="默认 4" />)
-  expect(screen.getByRole("combobox", { name: "Case 并发数" })).toHaveAccessibleDescription("默认 4")
-  expect(screen.queryByText(/套件内同时执行的 Case 数量/)).not.toBeInTheDocument()
+  expect(screen.getByRole("combobox", { name: "用例并发数" })).toHaveAccessibleDescription("默认 4")
+  expect(screen.queryByText(/套件内同时执行的用例数量/)).not.toBeInTheDocument()
 })

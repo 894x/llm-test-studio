@@ -119,7 +119,7 @@ describe("Wails desktop client", () => {
     binding.GetWorkspace.mockRejectedValueOnce(new Error("refresh failed"))
     const command = {
       protocol: "openai-chat" as const,
-suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000,
+suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_seconds: 60,
       model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key",
       inputs: { prompt: "hello", duration: 4, audio: false },
     }
@@ -131,14 +131,14 @@ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 6
   it.each(["", "not-a-run", null, { run_id: "private-test-key" }])("rejects malformed quick task acceptance %j", async (payload) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding.StartQuickTask.mockResolvedValueOnce(payload as never)
-    await expect(createDesktopClient().startQuickTask({ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000, model: "model", inputs: {} })).rejects.toBeInstanceOf(DesktopDataError)
+    await expect(createDesktopClient().startQuickTask({ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_seconds: 60, model: "model", inputs: {} })).rejects.toBeInstanceOf(DesktopDataError)
     expect(binding.StartQuickTask).toHaveBeenCalledTimes(1)
   })
 
   it("loads only safe task history and rejects a different Run identity", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const runID = FIXTURE_WORKSPACE.runs[0].id
-    const detail = { schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 4, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
+    const detail = { schema_version: 1, seed: 1, request_timeout_seconds: 60, case_concurrency: 4, run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test", inputs: { prompt: "edited" } }
     binding.GetQuickTask.mockResolvedValueOnce({ ...detail, api_key: "private-key", case_definitions: [{ raw: "hidden" }] })
     await expect(createDesktopClient().getQuickTask(runID)).resolves.toEqual(detail)
     expect(binding.GetQuickTask).toHaveBeenCalledExactlyOnceWith(runID)
@@ -228,7 +228,7 @@ address_mode: "base_url" as const,
     suite.inputs = []
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
     const command = { protocol: "openai-chat" as const,
-suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+suite_id: suite.id, seed: 1, request_timeout_seconds: 60, model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
     const firstID = await client.startQuickTask(command)
     const secondID = await client.startQuickTask(command)
     expect(firstID).not.toBe(secondID)
@@ -298,7 +298,7 @@ suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model"
     const suite = catalog.suites[1]
     const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
     const command = { protocol: "openai-chat" as const,
-suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
+suite_id: suite.id, seed: 1, request_timeout_seconds: 60, model: "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
     const runID = await client.startQuickTask(command)
     expect((await client.getQuickTask(runID)).credential_run_id).toBeUndefined()
     await client.rememberQuickTaskCredential({ run_id: runID, base_url: command.base_url, protocol: suite.protocol, api_key: command.api_key })

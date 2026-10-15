@@ -82,13 +82,13 @@ describe("current protocol catalog editors", () => {
 
     await user.click(screen.getByRole("button", { name: "新增计划" }))
     await user.type(screen.getByLabelText("计划"), "缺少执行项的计划")
-    await user.click(screen.getByRole("combobox", { name: "Case 或 Suite" }))
+    await user.click(screen.getByRole("combobox", { name: "用例或套件" }))
     await user.click(screen.getByRole("option", { name: "用例 · 基础对话" }))
     await user.click(screen.getByRole("button", { name: "保存计划" }))
 
-    const target = screen.getByRole("combobox", { name: "Case 或 Suite" })
+    const target = screen.getByRole("combobox", { name: "用例或套件" })
     expect(target).toHaveAttribute("aria-invalid", "true")
-    expect(target).toHaveAccessibleDescription("请选择一个 Case 或 Suite，然后点击“添加执行项”。")
+    expect(target).toHaveAccessibleDescription("请选择一个用例或套件，然后点击“添加执行项”。")
     expect(target).toHaveFocus()
     expect(mutate).not.toHaveBeenCalled()
     expect(createPlan).not.toHaveBeenCalled()

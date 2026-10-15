@@ -26,10 +26,10 @@ export function SearchableSelect({ value, onValueChange, options, disabled, id, 
     <Combobox.Root items={options.map(option => option.value)} value={selected} disabled={disabled} openOnInputClick
       itemToStringLabel={(id) => options.find(option => option.value === id)?.label ?? ""}
       onValueChange={(next) => { if (next !== null && options.some(option => option.value === next && !option.disabled)) onValueChange(next) }}>
-      <Combobox.InputGroup className="flex h-8 min-w-0 items-center rounded-md border border-input bg-surface-control focus-within:border-ring focus-within:ring-0 focus-within:ring-ring/50 has-[input:disabled]:opacity-50 has-[input[aria-invalid=true]]:border-destructive">
+      <Combobox.InputGroup className="flex h-8 min-w-0 items-center rounded-md border border-input bg-surface-control transition-colors focus-within:border-ring focus-within:ring-0 focus-within:ring-ring/50 has-[input:disabled]:bg-input/50 has-[input:disabled]:text-text-disabled has-[input[aria-invalid=true]]:border-destructive">
         {selectedOption?.icon && <span aria-hidden="true" className="ml-2.5 flex shrink-0 items-center">{selectedOption.icon}</span>}
         <Combobox.Input id={id} {...aria} placeholder={placeholder ?? t("select.search")}
-          className={cn("h-full min-w-0 flex-1 bg-transparent px-2.5 text-xs outline-none disabled:cursor-not-allowed", selectedOption?.icon && "pl-2")} />
+          className={cn("h-full min-w-0 flex-1 bg-transparent px-2.5 text-xs outline-none disabled:cursor-not-allowed disabled:text-text-disabled disabled:placeholder:text-text-disabled", selectedOption?.icon && "pl-2")} />
         <Combobox.Trigger aria-label={t("actions.showOptions")} className="mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none">
           <ChevronDownIcon className="size-4" />
         </Combobox.Trigger>

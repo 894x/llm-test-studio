@@ -43,6 +43,7 @@ function setup(
   refresh = vi.fn(async () => {}),
   workspace = FIXTURE_WORKSPACE,
   catalog = FIXTURE_CATALOG,
+  reports = FIXTURE_REPORTS,
 ) {
   const actions = {
     startQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
@@ -53,6 +54,7 @@ function setup(
     runQuickPerformanceTest: vi.fn(),
   }
   const onSaveChannel = vi.fn(async () => ({ catalog, channel_id: catalog.channels[0].id }))
+  const onOpenReport = vi.fn()
   function Harness() {
     const [draft, setDraft] = useState<TaskDraft>(initial)
     const [runID, setRunID] = useState("")
@@ -63,7 +65,7 @@ function setup(
           suites: [task, catalog.suites[1]],
         }}
         workspace={workspace}
-        reports={FIXTURE_REPORTS}
+        reports={reports}
         draft={draft}
         onDraftChange={setDraft}
         runID={runID}
@@ -71,7 +73,7 @@ function setup(
         actions={actions}
         refresh={refresh}
         onWorkspaceUpdated={vi.fn()}
-        onOpenReport={vi.fn()}
+        onOpenReport={onOpenReport}
         onPerformanceArchived={vi.fn()}
         onSaveChannel={onSaveChannel}
       />
@@ -82,10 +84,40 @@ function setup(
       <Harness />
     </I18nextProvider>,
   )
-  return { ...actions, onSaveChannel }
+  return { ...actions, onSaveChannel, onOpenReport }
 }
 
 describe("Suite quick task workspace", () => {
+  it.each(["completed", "failed", "cancelled"] as const)(
+    "opens the matching archived report from %s history without restoring the draft",
+    async (status) => {
+      const user = userEvent.setup()
+      const report = FIXTURE_REPORTS.reports[1]
+      const run = { ...FIXTURE_WORKSPACE.runs[0], id: report.run_id!, source: "quick_task" as const, status, plan_name: "Past quick test" }
+      const actions = setup(undefined, undefined, { ...FIXTURE_WORKSPACE, runs: [run] })
+
+      const open = screen.getByRole("button", { name: "打开报告 Past quick test" })
+      open.focus()
+      await user.keyboard("{Enter}")
+
+      expect(actions.onOpenReport).toHaveBeenCalledExactlyOnceWith(report.id)
+      expect(actions.getQuickTask).not.toHaveBeenCalled()
+      expect(actions.startQuickTask).not.toHaveBeenCalled()
+      expect(screen.getByRole("button", { name: "填入并编辑 Past quick test" })).toBeEnabled()
+    },
+  )
+
+  it.each(["running", "completed"] as const)(
+    "keeps %s history editable without offering an unavailable report",
+    (status) => {
+      const run = { ...FIXTURE_WORKSPACE.runs[0], source: "quick_task" as const, status, plan_name: "Unarchived quick test" }
+      setup(undefined, undefined, { ...FIXTURE_WORKSPACE, runs: [run] }, undefined, { schema_version: 1, reports: [] })
+
+      expect(screen.queryByRole("button", { name: "打开报告 Unarchived quick test" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "填入并编辑 Unarchived quick test" })).toBeEnabled()
+    },
+  )
+
   it("rejects a protocol excluded by the saved model mapping", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     catalog.models[0].protocols = ["openai-chat", "openai-responses"]
@@ -120,7 +152,7 @@ describe("Suite quick task workspace", () => {
     setup({ ...createTaskDraft(task), base_url: "https://api.example.test", model: "custom-model", api_key: "temporary-key" })
     await user.click(screen.getByRole("combobox", { name: "协议" }))
     await user.click(screen.getByRole("option", { name: "OpenAI Chat" }))
-    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${FIXTURE_CATALOG.suites[1].name} · ${FIXTURE_CATALOG.suites[1].case_count} 个 Case`)
+    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${FIXTURE_CATALOG.suites[1].name} · ${FIXTURE_CATALOG.suites[1].case_count} 个用例`)
     expect(screen.getByLabelText("模型 ID")).toHaveValue("custom-model")
     expect(screen.getByLabelText("API Key")).toHaveValue("temporary-key")
     expect(document.querySelector('[data-slot="connection-url-suffix"]')).toHaveTextContent("/v1/chat/completions")
@@ -130,7 +162,7 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByRole("combobox", { name: "协议" })).toHaveValue("OpenAI Responses")
     await user.click(screen.getByRole("combobox", { name: "协议" }))
     await user.click(screen.getByRole("option", { name: "Seedance" }))
-    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个 Case`)
+    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个用例`)
   })
   it("keeps the gray completion outside the editable value and submits a full endpoint intact", async () => {
     const user = userEvent.setup()
@@ -158,7 +190,7 @@ describe("Suite quick task workspace", () => {
 
   it("validates the connection on save and opens the channel sheet without starting a test", async () => {
     const user = userEvent.setup()
-    const actions = setup({ ...createTaskDraft(task), seed: -1, request_timeout_ms: 0 })
+    const actions = setup({ ...createTaskDraft(task), seed: -1, request_timeout_seconds: 0 })
     const save = screen.getByRole("button", { name: "保存为渠道" })
     expect(save).toBeEnabled()
 
@@ -189,9 +221,9 @@ describe("Suite quick task workspace", () => {
 
   it("groups short parameters and associates the concise concurrency hint", () => {
     setup()
-    const concurrency = screen.getByRole("combobox", { name: "Case 并发数" })
+    const concurrency = screen.getByRole("combobox", { name: "用例并发数" })
     const grid = concurrency.closest('[data-slot="field"]')!.parentElement!
-    for (const control of [screen.getByLabelText("根随机种子"), screen.getByLabelText("Case 超时（ms）"), screen.getByLabelText("时长"), screen.getByRole("checkbox", { name: "音频" })]) {
+    for (const control of [screen.getByLabelText("根随机种子"), screen.getByLabelText("用例超时（s）"), screen.getByLabelText("时长"), screen.getByRole("checkbox", { name: "音频" })]) {
       expect(control.closest('[data-slot="field"]')!.parentElement).toBe(grid)
     }
     expect(screen.getByLabelText("视频提示词").closest('[data-slot="field"]')).toHaveClass("col-span-full")
@@ -217,7 +249,7 @@ describe("Suite quick task workspace", () => {
     await waitFor(() =>
       expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
         suite_id: task.id,
-        seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
+        seed: 1, request_timeout_seconds: 60, case_concurrency: 4,
         model: "video-model",
         base_url: "https://example.test",
         api_key: "private-key",
@@ -272,7 +304,7 @@ describe("Suite quick task workspace", () => {
       )
       const historicalTask = { ...task, revision: 7 }
       actions.getQuickTask.mockResolvedValue({
-        schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 2,
+        schema_version: 1, seed: 1, request_timeout_seconds: 60, case_concurrency: 2,
         run_id: run.id,
         suite: historicalTask,
         model: "past-model",
@@ -281,14 +313,14 @@ describe("Suite quick task workspace", () => {
       })
       await user.click(screen.getByRole("button", { name: "填入并编辑 Past video task" }))
       await waitFor(() => expect(screen.getByLabelText("时长")).toHaveValue(8))
-      expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个 Case`)
+      expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个用例`)
       expect(screen.getByLabelText("时长")).toHaveValue(8)
       expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
       await user.type(screen.getByLabelText("视频提示词"), " edited")
       await user.click(screen.getByRole("button", { name: "开始测试" }))
       expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
-          seed: 1, request_timeout_ms: 60000, case_concurrency: 2,
+          seed: 1, request_timeout_seconds: 60, case_concurrency: 2,
           source_run_id: run.id,
           inputs: { prompt: "past prompt edited", duration: 8, audio: true },
         }),
@@ -312,7 +344,7 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
       suite_id: selected.id,
-      seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
+      seed: 1, request_timeout_seconds: 60, case_concurrency: 4,
       channel_id: channel.id,
       model: "upstream",
       inputs: { prompt: "hello" },

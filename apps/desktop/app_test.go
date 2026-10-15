@@ -184,7 +184,11 @@ func TestDesktopQuickTaskReturnsRunIdentityWithoutARefreshMutation(t *testing.T)
 	if !ok {
 		t.Fatal("native desktop binding does not expose Suite quick tasks")
 	}
-	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", Model: "temporary-model", BaseURL: "https://example.test", APIKey: "private-test-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"hello"`)}}
+	command := runs.QuickTaskCommand{
+		SuiteID: "11111111-1111-4111-8111-111111111111", RequestTimeoutSeconds: 60,
+		Model: "temporary-model", BaseURL: "https://example.test", APIKey: "private-test-key",
+		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"hello"`)},
+	}
 	id, err := starter.StartQuickTask(command)
 	if err != nil || id != "44444444-4444-4444-8444-444444444444" || len(commands.quickTasks) != 1 || !reflect.DeepEqual(commands.quickTasks[0], command) {
 		t.Fatalf("quick task command did not return its Run: id=%q err=%v calls=%d", id, err, len(commands.quickTasks))
@@ -201,7 +205,9 @@ func TestDesktopQuickTaskReturnsRunIdentityWithoutARefreshMutation(t *testing.T)
 }
 
 func TestDesktopQuickTaskUsesSafeRunErrorsAndLifecycle(t *testing.T) {
-	command := runs.QuickTaskCommand{SuiteID: "11111111-1111-4111-8111-111111111111", Model: "model"}
+	command := runs.QuickTaskCommand{
+		SuiteID: "11111111-1111-4111-8111-111111111111", RequestTimeoutSeconds: 60, Model: "model",
+	}
 	for _, scenario := range []struct {
 		err  error
 		code string

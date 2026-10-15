@@ -72,7 +72,7 @@ func TestQuickTaskValidatesMappedProtocols(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = service.Close() })
 		id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{
-			SuiteID: suite.ID, Model: "test-model", ChannelID: fixture.channel.ID,
+			SuiteID: suite.ID, Model: "test-model", ChannelID: fixture.channel.ID, RequestTimeoutSeconds: 60,
 		})
 		if !supported {
 			if !errors.Is(err, runs.ErrNotRunnable) || id != "" {

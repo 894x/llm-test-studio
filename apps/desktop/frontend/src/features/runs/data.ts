@@ -31,7 +31,7 @@ export interface StartQuickTaskCommand {
   credential_run_id?: string
   suite_id: string
   seed: number
-  request_timeout_ms: number
+  request_timeout_seconds: number
   case_concurrency?: number
   model: string
   channel_id?: string

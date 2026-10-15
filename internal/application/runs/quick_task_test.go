@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -35,6 +36,72 @@ func quickTaskSuite(fixture runFixture) domain.Suite {
 		Inputs: []domain.SuiteInput{{Key: "prompt", Label: "Message", Input: testspec.Input{Type: "string", Default: json.RawMessage(`"default"`)}, Bindings: []domain.SuiteInputBinding{{CaseID: fixture.testCase.ID, Input: "prompt"}}}}}
 }
 
+func TestQuickTaskTimeoutSecondsConvertInCoreAndRestorePrecisely(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		seconds float64
+		wantMS  uint64
+	}{
+		{name: "default form value", seconds: 60, wantMS: 60000},
+		{name: "fractional seconds", seconds: 1.25, wantMS: 1250},
+		{name: "one millisecond", seconds: 0.001, wantMS: 1},
+		{name: "missing seconds", seconds: 0},
+		{name: "negative", seconds: -1},
+		{name: "below precision", seconds: 0.0001},
+		{name: "not finite", seconds: math.NaN()},
+		{name: "infinite", seconds: math.Inf(1)},
+		{name: "duration overflow", seconds: 1e20},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			fixture := newRunFixture(t)
+			repository := &fakeRepository{fixture: fixture}
+			suite := quickTaskSuite(fixture)
+			service, err := runs.New(runs.Dependencies{
+				Repository: repository, QuickTasks: quickTaskCatalog{suite: suite},
+				Credentials: credentials.NewMemoryStore(), Executor: &controlledExecutor{},
+				Clock:       &stepClock{next: fixture.now},
+				Environment: func() domain.EnvironmentSnapshot { return fixture.environment },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = service.Close() })
+			command := runs.QuickTaskCommand{
+				SuiteID: suite.ID, Model: "model", RequestTimeoutSeconds: scenario.seconds,
+				BaseURL: "https://example.test", APIKey: "test-key",
+			}
+			if scenario.name == "missing seconds" {
+				payload := `{"request_timeout_ms":60000}`
+				if err := json.Unmarshal([]byte(payload), &command); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id, err := service.PrepareQuickTask(context.Background(), command)
+			if scenario.wantMS == 0 {
+				rejected := errors.Is(err, runs.ErrInvalid) && id == ""
+				unchanged := len(repository.statuses) == 0
+				if !rejected || !unchanged {
+					t.Fatalf("invalid timeout created state: id=%q err=%v", id, err)
+				}
+				if !strings.Contains(err.Error(), "request_timeout_seconds") {
+					t.Fatalf("timeout error does not identify the current unit: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := repository.run.Snapshot().Entries[0].Load.RequestTimeoutMS; got != scenario.wantMS {
+				t.Fatalf("Core timeout = %d ms, want %d", got, scenario.wantMS)
+			}
+			history, err := service.QuickTask(context.Background(), id)
+			if err != nil || history.RequestTimeoutSeconds != scenario.seconds {
+				t.Fatalf("restored timeout = %v s, err=%v", history.RequestTimeoutSeconds, err)
+			}
+		})
+	}
+}
+
 func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T) {
 	fixture := newRunFixture(t)
 	repository := &fakeRepository{fixture: fixture}
@@ -46,7 +113,8 @@ func TestQuickTaskUsesSharedLifecycleAndKeepsAuthoredSourceSeparate(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000,
+	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{
+		SuiteID: suite.ID, Seed: 1, RequestTimeoutSeconds: 1,
 		Model: "temporary-model", BaseURL: "http://example.test/v1", APIKey: "temporary-secret",
 		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
 	if err != nil {
@@ -107,7 +175,10 @@ func TestQuickTaskSavedChannelResolvesItsCredentialWithoutAuthoredModel(t *testi
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "temporary-model", ChannelID: fixture.channel.ID})
+	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{
+		SuiteID: suite.ID, Seed: 1, RequestTimeoutSeconds: 1,
+		Model: "temporary-model", ChannelID: fixture.channel.ID,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +212,11 @@ func TestQuickTaskHistoryUsesCurrentDefinitionsAfterCatalogChanges(t *testing.T)
 		t.Fatal(err)
 	}
 	defer service.Close()
-	command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"last input"`)}}
+	command := runs.QuickTaskCommand{
+		SuiteID: suite.ID, Seed: 1, RequestTimeoutSeconds: 1,
+		Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "temporary-secret",
+		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"last input"`)},
+	}
 	id, err := service.PrepareQuickTask(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +311,10 @@ func TestQuickTaskRejectsInvalidSelectionBeforeDurableState(t *testing.T) {
 			fixture := newRunFixture(t)
 			repository := &fakeRepository{fixture: fixture}
 			suite := quickTaskSuite(fixture)
-			command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "secret-never-in-errors"}
+			command := runs.QuickTaskCommand{
+				SuiteID: suite.ID, Seed: 1, RequestTimeoutSeconds: 1,
+				Model: "temporary-model", BaseURL: "https://example.test/v1", APIKey: "secret-never-in-errors",
+			}
 			switch scenario {
 			case "unknown input":
 				command.Inputs = map[string]json.RawMessage{"missing": json.RawMessage(`"value"`)}
@@ -290,7 +368,10 @@ func TestQuickTaskPreparesVideoSelectionsWithoutAnExtraConfirmation(t *testing.T
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = service.Close() })
-			command := runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "upstream-model", BaseURL: "https://example.test", APIKey: "temporary-key"}
+			command := runs.QuickTaskCommand{
+				SuiteID: suite.ID, Seed: 1, RequestTimeoutSeconds: 1,
+				Model: "upstream-model", BaseURL: "https://example.test", APIKey: "temporary-key",
+			}
 			id, err := service.PrepareQuickTask(context.Background(), command)
 			if err != nil {
 				t.Fatal(err)
@@ -318,7 +399,11 @@ func TestQuickTaskSelectsProtocolDefinitionWithoutChangingCaseIdentity(t *testin
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = service.Close() })
-			command := runs.QuickTaskCommand{SuiteID: suite.ID, Model: "k3", BaseURL: "https://example.test", APIKey: "temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}}
+			command := runs.QuickTaskCommand{
+				SuiteID: suite.ID, RequestTimeoutSeconds: 60, Model: "k3",
+				BaseURL: "https://example.test", APIKey: "temporary-key",
+				Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)},
+			}
 			id, err := service.PrepareQuickTask(context.Background(), command)
 			if err != nil {
 				t.Fatal(err)
@@ -349,7 +434,10 @@ func TestQuickTaskMissingProtocolFailsBeforeCreatingRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer service.Close()
-	_, err = service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{SuiteID: suite.ID, Model: "k3", BaseURL: "https://example.test", APIKey: "temporary-key"})
+	_, err = service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{
+		SuiteID: suite.ID, RequestTimeoutSeconds: 60, Model: "k3",
+		BaseURL: "https://example.test", APIKey: "temporary-key",
+	})
 	if !errors.Is(err, runs.ErrNotRunnable) || !strings.Contains(err.Error(), "openai-responses") || len(repository.statuses) != 0 {
 		t.Fatalf("missing definition = %v", err)
 	}

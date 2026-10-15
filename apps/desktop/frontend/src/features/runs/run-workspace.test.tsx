@@ -19,9 +19,9 @@ it("shows separate Suite bars and aggregate Case progress", () => {
   ]
   snapshot.runs = [run]
   render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
-  expect(screen.getByRole("progressbar", { name: "第一套件：3 / 4 个 Case 已有结果" })).toHaveAttribute("aria-valuenow", "75")
-  expect(screen.getByRole("progressbar", { name: "第二套件：0 / 4 个 Case 已有结果" })).toHaveAttribute("aria-valuenow", "0")
-  expect(screen.getByRole("progressbar", { name: "Case 进度：3 / 8" })).toHaveAttribute("aria-valuenow", "38")
+  expect(screen.getByRole("progressbar", { name: "第一套件：3 / 4 个用例已有结果" })).toHaveAttribute("aria-valuenow", "75")
+  expect(screen.getByRole("progressbar", { name: "第二套件：0 / 4 个用例已有结果" })).toHaveAttribute("aria-valuenow", "0")
+  expect(screen.getByRole("progressbar", { name: "用例进度：3 / 8" })).toHaveAttribute("aria-valuenow", "38")
 })
 
 it("shows task observations without a fictitious request total or timed target", () => {
@@ -31,8 +31,8 @@ it("shows task observations without a fictitious request total or timed target",
   Object.assign(snapshot.runs[0], { source: "quick_task", status: "running", planned: 0, duration_ms: 0, completed: 6, passed: 6, failed: 0 })
   snapshot.active_run_id = snapshot.runs[0].id
   render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
-  expect(screen.getAllByText("Case 已有结果 2 / 4").length).toBeGreaterThan(0)
-  expect(screen.getByRole("progressbar", { name: "Case 进度：2 / 4" })).toHaveAttribute("aria-valuenow", "50")
+  expect(screen.getAllByText("用例已有结果 2 / 4").length).toBeGreaterThan(0)
+  expect(screen.getByRole("progressbar", { name: "用例进度：2 / 4" })).toHaveAttribute("aria-valuenow", "50")
   expect(screen.getAllByText(/6 个请求已完成/).length).toBeGreaterThan(0)
   expect(screen.queryByText(/6\/0|目标时长 0|定时运行/)).not.toBeInTheDocument()
 })
@@ -71,7 +71,7 @@ describe("NewRunSheet video execution", () => {
 	await user.click(within(dialog).getByRole("combobox", { name: "执行渠道" }))
 	await user.click(screen.getByRole("option", { name: "第二渠道" }))
 	expect(within(dialog).getByRole("button", { name: "开始运行" })).toBeEnabled()
-	await user.click(within(dialog).getByRole("combobox", { name: "Case 并发数" }))
+	await user.click(within(dialog).getByRole("combobox", { name: "用例并发数" }))
 	await user.click(screen.getByRole("option", { name: "8 个并发" }))
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
 
@@ -93,5 +93,5 @@ it("does not expose a Case override for load-only Plans", async () => {
     onStartRun={vi.fn(async () => undefined)}
   />)
   await user.click(screen.getByRole("button", { name: "新建运行" }))
-  expect(within(screen.getByRole("dialog")).queryByRole("combobox", { name: "Case 并发数" })).not.toBeInTheDocument()
+  expect(within(screen.getByRole("dialog")).queryByRole("combobox", { name: "用例并发数" })).not.toBeInTheDocument()
 })

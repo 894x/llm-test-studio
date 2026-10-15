@@ -354,7 +354,7 @@ export function createFixtureClient(
         artifact_count: 0, started_at: now, updated_at: now,
       })
       workspace.active_run_id = id
-      quickTasks.set(id, { schema_version: 1, seed:command.seed,request_timeout_ms:command.request_timeout_ms, case_concurrency: Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, suite.case_count), run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
+      quickTasks.set(id, { schema_version: 1, seed:command.seed,request_timeout_seconds:command.request_timeout_seconds, case_concurrency: Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, suite.case_count), run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
       return id
     },
     async getQuickTask(runId) {

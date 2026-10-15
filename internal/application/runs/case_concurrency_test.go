@@ -72,7 +72,7 @@ func TestCaseConcurrencyPreparationFreezesLimitsWithoutChangingCatalog(t *testin
 				var id string
 				if quick {
 					id, err = service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{
-						SuiteID: fixture.suite.ID, CaseConcurrency: requested,
+						SuiteID: fixture.suite.ID, CaseConcurrency: requested, RequestTimeoutSeconds: 60,
 						Model: "model", BaseURL: "https://example.test", APIKey: "test-secret",
 					})
 				} else {
@@ -336,7 +336,7 @@ func concurrentExecutionRequest(
 	}
 	t.Cleanup(func() { _ = service.Close() })
 	id, err := service.PrepareQuickTask(context.Background(), runs.QuickTaskCommand{
-		SuiteID: fixture.suite.ID, CaseConcurrency: limit,
+		SuiteID: fixture.suite.ID, CaseConcurrency: limit, RequestTimeoutSeconds: 60,
 		Model: "model", BaseURL: "https://example.test", APIKey: "test-secret",
 	})
 	if err != nil {

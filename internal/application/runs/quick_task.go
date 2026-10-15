@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/894x/llm-test-studio/internal/credentials"
@@ -22,17 +24,17 @@ type QuickTaskCatalog interface {
 // QuickTaskCommand selects the current task definition and either a saved channel
 // or a temporary connection. Model is the upstream identifier, not a catalog ID.
 type QuickTaskCommand struct {
-	SuiteID          string                     `json:"suite_id"`
-	Seed             uint64                     `json:"seed"`
-	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
-	CaseConcurrency  uint32                     `json:"case_concurrency,omitempty"`
-	Model            string                     `json:"model"`
-	ChannelID        string                     `json:"channel_id,omitempty"`
-	BaseURL          string                     `json:"base_url,omitempty"`
-	APIKey           string                     `json:"api_key,omitempty"`
-	Inputs           map[string]json.RawMessage `json:"inputs"`
-	SourceRunID      string                     `json:"source_run_id,omitempty"`
-	CredentialRunID  string                     `json:"credential_run_id,omitempty"`
+	SuiteID               string                     `json:"suite_id"`
+	Seed                  uint64                     `json:"seed"`
+	RequestTimeoutSeconds float64                    `json:"request_timeout_seconds"`
+	CaseConcurrency       uint32                     `json:"case_concurrency,omitempty"`
+	Model                 string                     `json:"model"`
+	ChannelID             string                     `json:"channel_id,omitempty"`
+	BaseURL               string                     `json:"base_url,omitempty"`
+	APIKey                string                     `json:"api_key,omitempty"`
+	Inputs                map[string]json.RawMessage `json:"inputs"`
+	SourceRunID           string                     `json:"source_run_id,omitempty"`
+	CredentialRunID       string                     `json:"credential_run_id,omitempty"`
 }
 
 func (service *Service) StartQuickTask(ctx context.Context, command QuickTaskCommand) (string, error) {
@@ -46,6 +48,10 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		return "", ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	timeout, err := quickTaskTimeoutMS(command.RequestTimeoutSeconds)
+	if err != nil {
 		return "", err
 	}
 	caseConcurrency, err := resolveCaseConcurrency(command.CaseConcurrency)
@@ -148,10 +154,6 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 			return "", ErrNotRunnable
 		}
 	}
-	timeout := command.RequestTimeoutMS
-	if timeout == 0 {
-		timeout = 60000
-	}
 	load := domain.LoadProfile{
 		Mode: domain.LoadSingle, Concurrency: min(caseConcurrency, uint32(len(cases))),
 		RequestCount: 1, RequestTimeoutMS: timeout,
@@ -196,6 +198,19 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 		return "", fmt.Errorf("lease quick task credential: %w", err)
 	}
 	return service.prepareRun(ctx, meta, meta.ID, snapshot, lease)
+}
+
+func quickTaskTimeoutMS(seconds float64) (uint64, error) {
+	maxMilliseconds := float64(math.MaxInt64 / int64(time.Millisecond))
+	milliseconds := math.Round(seconds * 1000)
+	finite := !math.IsNaN(seconds) && !math.IsInf(seconds, 0)
+	if !finite || seconds < 0.001 {
+		return 0, fmt.Errorf("%w: request_timeout_seconds must be at least 0.001", ErrInvalid)
+	}
+	if milliseconds > maxMilliseconds {
+		return 0, fmt.Errorf("%w: request_timeout_seconds exceeds the supported duration", ErrInvalid)
+	}
+	return uint64(milliseconds), nil
 }
 
 func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickTaskCommand) (domain.Suite, []domain.TestCase, error) {

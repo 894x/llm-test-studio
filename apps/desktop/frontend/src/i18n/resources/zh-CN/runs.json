@@ -20,11 +20,11 @@
     "invalidKey": "请填写有效的 API Key。"
   },
   "caseConcurrency": {
-    "label": "Case 并发数",
+    "label": "用例并发数",
     "serial": "1 · 串行",
     "option": "{{count}} 个并发",
-    "hint": "套件内同时执行的 Case 数量。默认 4 个；排查问题或需要顺序执行时可选 1。仅用于每个 Case 执行一次的套件。",
-    "invalid": "Case 并发数必须是 1 到 8 的整数。"
+    "hint": "套件内同时执行的用例数量。默认 4 个；排查问题或需要顺序执行时可选 1。仅用于每个用例执行一次的套件。",
+    "invalid": "用例并发数必须是 1 到 8 的整数。"
   },
   "plans": {
     "aria": "测试计划",
@@ -109,7 +109,7 @@
     "details": "详情"
   },
   "presentation": {
-    "caseConcurrency": "每个 Case 一次 · {{concurrency}} 个并发",
+    "caseConcurrency": "每个用例一次 · {{concurrency}} 个并发",
     "quickSuite": "按 Suite 执行",
     "failedRequests": "{{count}} 个请求未通过完整成功判定。",
     "failedConclusion": "运行结论未通过，请检查报告中的 SLA 与汇总。",
@@ -121,10 +121,10 @@
     "fixedTotal": "固定总量 · {{concurrency}} 并发"
   },
   "caseProgress": {
-    "count": "Case 已有结果 {{completed}} / {{total}}",
-    "suites": "套件 Case 进度",
-    "suiteAria": "{{name}}：{{completed}} / {{total}} 个 Case 已有结果",
-    "totalAria": "Case 进度：{{completed}} / {{total}}",
+    "count": "用例已有结果 {{completed}} / {{total}}",
+    "suites": "套件用例进度",
+    "suiteAria": "{{name}}：{{completed}} / {{total}} 个用例已有结果",
+    "totalAria": "用例进度：{{completed}} / {{total}}",
     "status": {
       "not_started": "未开始",
       "queued": "排队中",

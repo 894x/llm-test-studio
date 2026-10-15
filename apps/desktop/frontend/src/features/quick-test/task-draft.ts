@@ -12,7 +12,7 @@ export type TaskDraft = {
   channel_id: string
   api_key: string
   seed: number
-  request_timeout_ms: number
+  request_timeout_seconds: number
   inputs: Record<string, string | boolean>
   source_run_id?: string
   credential_run_id?: string
@@ -27,7 +27,7 @@ export type QuickTaskDetail = {
   channel_id?: string
   credential_run_id?: string
   seed: number
-  request_timeout_ms: number
+  request_timeout_seconds: number
   case_concurrency: number
   inputs: StartQuickTaskCommand["inputs"]
 }
@@ -42,7 +42,7 @@ export type RememberQuickTaskCredentialCommand = {
 export function createTaskDraft(task: CatalogSuite | null): TaskDraft {
   return {
     task,
-    model: "", seed: 1, request_timeout_ms: 60000,
+    model: "", seed: 1, request_timeout_seconds: 60,
     base_url: "",
     channel_id: "",
     api_key: "",
@@ -77,7 +77,7 @@ export function quickTaskCommand(draft: TaskDraft, caseConcurrency = DEFAULT_CAS
     errors.model = tx("desktop:quick-test_enter_a_model_id")
   const inputs: StartQuickTaskCommand["inputs"] = {}
   if (!Number.isSafeInteger(draft.seed) || draft.seed < 0) errors.seed = tx("quickTest:task.seedInvalid")
-  if (!Number.isSafeInteger(draft.request_timeout_ms) || draft.request_timeout_ms < 1) errors.request_timeout_ms = tx("quickTest:task.timeoutInvalid")
+  if (!validTimeoutSeconds(draft.request_timeout_seconds)) errors.request_timeout_seconds = tx("quickTest:task.timeoutInvalid")
   for (const input of task?.inputs ?? []) {
     const value = draft.inputs[input.key]
     if (value === "" || value === undefined) {
@@ -99,7 +99,7 @@ export function quickTaskCommand(draft: TaskDraft, caseConcurrency = DEFAULT_CAS
     errors,
     command: {
       suite_id: task.id,
-      seed: draft.seed, request_timeout_ms: draft.request_timeout_ms,
+      seed: draft.seed, request_timeout_seconds: draft.request_timeout_seconds,
       case_concurrency: caseConcurrency,
       model: draft.model.trim(),
       inputs,
@@ -125,7 +125,8 @@ export function encodeTaskDraft(draft: TaskDraft): string {
     model: draft.model,
     base_url: baseURL,
     channel_id: draft.channel_id,
-    inputs: draft.inputs, seed: draft.seed, request_timeout_ms: draft.request_timeout_ms,
+    // Draft storage uses milliseconds, like persisted run snapshots.
+    inputs: draft.inputs, seed: draft.seed, request_timeout_ms: Math.round(draft.request_timeout_seconds * 1000),
     ...(draft.credential_run_id && baseURL ? { credential_run_id: draft.credential_run_id } : {}),
     ...(draft.source_run_id ? { source_run_id: draft.source_run_id } : {}),
   })
@@ -165,7 +166,7 @@ export function decodeTaskDraft(raw: string | null): TaskDraft | null {
       model: value.model,
       base_url: value.base_url,
       channel_id: value.channel_id,
-      api_key: "", seed: value.seed as number, request_timeout_ms: value.request_timeout_ms as number,
+      api_key: "", seed: value.seed as number, request_timeout_seconds: (value.request_timeout_ms as number) / 1000,
       inputs,
       ...(typeof value.source_run_id === "string" ? { source_run_id: value.source_run_id } : {}),
       ...(typeof value.credential_run_id === "string"
@@ -195,7 +196,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
   )
     throw invalid()
   const suite = parseSuite(value.suite)
-  if (!Number.isSafeInteger(value.seed) || (value.seed as number) < 0 || !Number.isSafeInteger(value.request_timeout_ms) || (value.request_timeout_ms as number) < 1) throw invalid()
+  if (!Number.isSafeInteger(value.seed) || (value.seed as number) < 0 || !validTimeoutSeconds(value.request_timeout_seconds)) throw invalid()
   const inputs: QuickTaskDetail["inputs"] = {}
   for (const [key, item] of Object.entries(value.inputs)) {
     const definition = suite.inputs.find(input => input.key === key)
@@ -210,7 +211,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
     schema_version: 1,
     run_id: value.run_id,
     suite,
-    model: value.model, seed: value.seed as number, request_timeout_ms: value.request_timeout_ms as number,
+    model: value.model, seed: value.seed as number, request_timeout_seconds: value.request_timeout_seconds,
     case_concurrency: value.case_concurrency,
     base_url: value.base_url,
     inputs,
@@ -224,7 +225,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
 export function restoreTaskDraft(detail: QuickTaskDetail, previous: TaskDraft): TaskDraft {
   return {
     task: detail.suite,
-    model: detail.model, seed: detail.seed, request_timeout_ms: detail.request_timeout_ms,
+    model: detail.model, seed: detail.seed, request_timeout_seconds: detail.request_timeout_seconds,
     base_url: detail.base_url,
     channel_id: detail.channel_id ?? "",
     source_run_id: detail.run_id,
@@ -247,4 +248,9 @@ export function restoreTaskDraft(detail: QuickTaskDetail, previous: TaskDraft): 
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function validTimeoutSeconds(value: unknown): value is number {
+  // Go time.Duration's maximum, expressed in seconds at millisecond precision.
+  return typeof value === "number" && Number.isFinite(value) && value >= 0.001 && value <= 9_223_372_036.854
 }

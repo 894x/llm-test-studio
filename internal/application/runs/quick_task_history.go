@@ -12,17 +12,17 @@ import (
 // QuickTaskDetail exposes only fields needed to restore a task form. Credentials,
 // request definitions, response bodies, and environment details stay in Core.
 type QuickTaskDetail struct {
-	Seed             uint64                     `json:"seed"`
-	RequestTimeoutMS uint64                     `json:"request_timeout_ms"`
-	CaseConcurrency  uint32                     `json:"case_concurrency"`
-	SchemaVersion    int                        `json:"schema_version"`
-	RunID            string                     `json:"run_id"`
-	Suite            QuickTaskSuite             `json:"suite"`
-	Model            string                     `json:"model"`
-	BaseURL          string                     `json:"base_url"`
-	ChannelID        string                     `json:"channel_id,omitempty"`
-	CredentialRunID  string                     `json:"credential_run_id,omitempty"`
-	Inputs           map[string]json.RawMessage `json:"inputs"`
+	Seed                  uint64                     `json:"seed"`
+	RequestTimeoutSeconds float64                    `json:"request_timeout_seconds"`
+	CaseConcurrency       uint32                     `json:"case_concurrency"`
+	SchemaVersion         int                        `json:"schema_version"`
+	RunID                 string                     `json:"run_id"`
+	Suite                 QuickTaskSuite             `json:"suite"`
+	Model                 string                     `json:"model"`
+	BaseURL               string                     `json:"base_url"`
+	ChannelID             string                     `json:"channel_id,omitempty"`
+	CredentialRunID       string                     `json:"credential_run_id,omitempty"`
+	Inputs                map[string]json.RawMessage `json:"inputs"`
 }
 
 // QuickTaskPerformancePath resolves the native create endpoint from the selected
@@ -75,8 +75,8 @@ func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskD
 		BaseURL: snapshot.Channel.BaseURL, ChannelID: task.SavedChannelID,
 		CredentialRunID: service.rememberedQuickTaskCredential(ctx, runID, snapshot),
 		Inputs:          entry.Parameters, Seed: snapshot.PlanDocument.Seed,
-		RequestTimeoutMS: entry.Load.RequestTimeoutMS,
-		CaseConcurrency:  entry.Load.Concurrency,
+		RequestTimeoutSeconds: float64(entry.Load.RequestTimeoutMS) / 1000,
+		CaseConcurrency:       entry.Load.Concurrency,
 	}, nil
 }
 

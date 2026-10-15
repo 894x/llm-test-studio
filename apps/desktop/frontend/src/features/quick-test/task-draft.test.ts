@@ -38,6 +38,22 @@ const task = {
 }
 
 describe("quick task drafts", () => {
+  it("sends seconds while preserving the single millisecond draft storage format", () => {
+    const draft = { ...createTaskDraft(task), base_url: "https://example.test", api_key: "test-key", model: "model" }
+    expect(draft.request_timeout_seconds).toBe(60)
+    for (const seconds of [0.001, 1.25, 60]) {
+      const current = { ...draft, request_timeout_seconds: seconds }
+      expect(quickTaskCommand(current).command).toMatchObject({ request_timeout_seconds: seconds })
+      expect(quickTaskCommand(current).command).not.toHaveProperty("request_timeout_ms")
+      const stored = encodeTaskDraft(current)
+      expect(JSON.parse(stored).request_timeout_ms).toBe(Math.round(seconds * 1000))
+      expect(decodeTaskDraft(stored)?.request_timeout_seconds).toBe(seconds)
+    }
+    for (const seconds of [0, -1, 0.0001, Number.NaN, Infinity, 1e20]) {
+      expect(quickTaskCommand({ ...draft, request_timeout_seconds: seconds }).errors).toHaveProperty("request_timeout_seconds")
+    }
+  })
+
   it("preserves editable fields and root random context while never persisting a key", () => {
     const draft = {
       ...createTaskDraft(task),
@@ -61,7 +77,7 @@ describe("quick task drafts", () => {
 
   it("restores safe history metadata and rejects inconsistent fields", () => {
     const payload = {
-      schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
+      schema_version: 1, seed: 1, request_timeout_seconds: 60, case_concurrency: 4,
       run_id: "11111111-1111-4111-8111-111111111111",
       suite: task,
       model: "model",
@@ -79,6 +95,7 @@ describe("quick task drafts", () => {
       { ...payload, case_concurrency: 9 },
       { ...payload, case_concurrency: 1.5 },
       { ...payload, case_concurrency: "4" },
+      { ...payload, request_timeout_seconds: undefined, request_timeout_ms: 60000 },
     ]) {
       expect(() => parseQuickTaskDetail(invalid)).toThrow(DesktopDataError)
     }
