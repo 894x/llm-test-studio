@@ -39,15 +39,17 @@ type Snapshot struct {
 type EventKind string
 
 const (
-	EventAccepted   EventKind = "accepted"
-	EventState      EventKind = "state"
-	EventRun        EventKind = "run"
-	EventResults    EventKind = "results"
-	EventEvidence   EventKind = "evidence"
-	EventReport     EventKind = "report"
-	EventComparison EventKind = "comparison"
-	EventProgress   EventKind = "progress"
-	EventCommand    EventKind = "command"
+	EventAccepted              EventKind = "accepted"
+	EventState                 EventKind = "state"
+	EventRun                   EventKind = "run"
+	EventResults               EventKind = "results"
+	EventEvidence              EventKind = "evidence"
+	EventReport                EventKind = "report"
+	EventComparison            EventKind = "comparison"
+	EventProgress              EventKind = "progress"
+	EventCommand               EventKind = "command"
+	EventPerformanceCheckpoint EventKind = "performance_checkpoint"
+	EventPerformanceResult     EventKind = "performance_result"
 )
 
 type Event struct {
@@ -213,7 +215,7 @@ func (event Event) Validate() error {
 	}
 	switch event.Kind {
 	case EventAccepted, EventState, EventRun, EventResults, EventEvidence, EventReport, EventComparison,
-		EventProgress, EventCommand:
+		EventProgress, EventCommand, EventPerformanceCheckpoint, EventPerformanceResult:
 	default:
 		return invalid("event.kind")
 	}

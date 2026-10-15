@@ -150,9 +150,13 @@ func (repository *Repository) GetJobSpec(ctx context.Context, id string) (jobcon
 	if !domain.IsUUID(id) {
 		return jobcontract.JobSpec{}, jobhost.ErrInvalid
 	}
+	return queryJobSpec(ctx, repository.db, id)
+}
+
+func queryJobSpec(ctx context.Context, queryer rowQueryer, id string) (jobcontract.JobSpec, error) {
 	var document []byte
 	var installation, build, kind, digest string
-	err := repository.db.QueryRowContext(ctx, `
+	err := queryer.QueryRowContext(ctx, `
 		SELECT installation_id, engine_build_id, kind, spec_sha256, spec_json
 		FROM execution_jobs WHERE id = ?
 	`, id).Scan(&installation, &build, &kind, &digest, &document)

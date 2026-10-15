@@ -49,6 +49,8 @@ func TestMigrateFreshDatabaseCreatesOperationalSchemaCurrent(t *testing.T) {
 		"execution_job_runs",
 		"execution_job_events",
 		"execution_job_commands",
+		"execution_performance_observations",
+		"execution_performance_results",
 	} {
 		if !tableExists(t, db, table) {
 			t.Fatalf("fresh operational schema is missing table %q", table)

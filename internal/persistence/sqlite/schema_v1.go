@@ -1,6 +1,26 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "execution_performance_observations", table: "execution_performance_observations",
+		ddl: `CREATE TABLE execution_performance_observations (
+		job_id TEXT PRIMARY KEY,
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		recorded_at TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
+	{kind: "table", name: "execution_performance_results", table: "execution_performance_results",
+		ddl: `CREATE TABLE execution_performance_results (
+		job_id TEXT PRIMARY KEY,
+		report_id TEXT NOT NULL UNIQUE,
+		job_revision INTEGER NOT NULL CHECK(job_revision > 0),
+		status TEXT NOT NULL CHECK(status IN ('completed', 'failed', 'cancelled')),
+		sealed_at TEXT NOT NULL,
+		sha256 TEXT NOT NULL,
+		byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
 	{kind: "table", name: "execution_job_commands", table: "execution_job_commands", ddl: `CREATE TABLE execution_job_commands (
 		id TEXT PRIMARY KEY,
 		job_id TEXT NOT NULL,

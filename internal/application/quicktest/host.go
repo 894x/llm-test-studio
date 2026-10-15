@@ -466,6 +466,9 @@ func (service *Host) runPerformanceCapacity(
 		report.ErrorCode = load.ErrorRequestFailed
 		return report, nil
 	}
+	if ctx.Err() != nil {
+		capacity.Status = PerformanceSLONotEvaluated
+	}
 	applyPerformanceCapacityProjection(
 		ctx,
 		&report,
