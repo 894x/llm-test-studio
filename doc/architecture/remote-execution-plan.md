@@ -99,7 +99,9 @@ Plan 启动、Suite 快速任务、Quick Performance 和对比入口均增加必
 
 Quick Performance 的长时间同步 binding 改为启动并返回 JobReceipt，界面通过统一任务事件取得进度与最终报告。同步更新 `apps/desktop/quick_performance.go`、`app.go`、生产装配、`desktop-client.ts`、DTO 解析器、调用组件、测试和生成 bindings，移除受影响的旧入口。Wails 固定保持 v2.15.0；生成命令先核对 CLI，不手改生成文件。
 
-新建运行表单默认显示“本地”，但提交的当前 DTO 必须显式包含选择。既有 CLI 本地命令的语义保持当前产品契约；若调用受影响类型，命令适配层显式构造 local。远程 CLI 命令可直接消费同一 Backend，首轮不以重构全部 CLI 输出为前置工作。
+用户指定在运行页顶部“渠道对比 / 新建运行”旁增加 Remote 按钮，集中配置和管理节点，并支持切换执行位置、将某个远程节点设为默认。默认位置由 Go Core 保存，重开应用后保留，作为 Plan、Suite、Performance 和 Comparison 新启动任务的初始选择；每次提交仍显式携带 ExecutionTarget。首次未配置时为本地，之后尊重已保存的默认位置。默认节点离线、禁用或构建不匹配时保留选择并说明不可用原因、阻止启动，不自动改成本地。已接收任务的执行位置不随默认设置变化。
+
+既有 CLI 本地命令的语义保持当前产品契约；若调用受影响类型，命令适配层显式构造 local。远程 CLI 命令可直接消费同一 Backend，首轮不以重构全部 CLI 输出为前置工作。
 
 ## 节点配置与连接
 
@@ -180,6 +182,8 @@ Run payload 复用完整 RunSnapshot 与预分配 Run ID；Performance payload �
 ### 任务预算
 
 节点默认同时执行 1 个 Job、等待队列最多 16 个 Job、队列等待上限 15 分钟、单 Job 执行含 drain 上限 60 分钟。运行时限允许节点显式配置到最多 24 小时；节点还限制总并发、磁盘预算和存储保留量。Comparison 的子 Run 合计占用一个 Job 的总并发预算。
+
+当前默认总在途预算为 2000，来自 Core 的 open-loop 安全上限。预算计算使用 Run 内顺序 Entry 的最大阶段峰值，包含 warmup；Comparison 则累加各子 Run 峰值。Run open-loop 的实际默认上限并非 authored concurrency，不能用后者低估资源。Performance 使用自己的固定并发或显式 MaxInFlight。策略必须显式有效：活动槽 1 至 128、排队槽 0 至 1024、总并发 1 至 65536、两个超时大于 0 且最多 24 小时；节点默认值不代表本地装配策略。
 
 这些是远程节点的默认预算；本地 JobHost 注入既有本地执行策略，不因复用宿主而把当前本地任务统一串行为单 Job。
 
@@ -348,7 +352,8 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | A4b 当前提交契约 | 已实现 | JobSpec 复用三类完整输入；显式执行位置、安装身份与构建；有界 JSON、秘密与资产集合；稳定规范化摘要；未接 HTTP 或持久化 |
 | A4c 本地 Backend | 进行中 | 事务准备、完整任务原子接收存储与 Host 接管已有 Run 已实现；统一 JobHost、本地 Backend 与桌面 Coordinator 接入仍待实施 |
 | B1 任务存储与事件 | 已实现 | 原子整组接收、秘密承诺幂等、状态 CAS、事实与有界事件页；控制命令持久确认与状态共事务；尚未连接调度和 HTTP |
-| B2 至 E | 待实施 | 执行调度与独立 runner、节点管理与部署、桌面闭环、独立升级与完整验收 |
+| B2a 共享任务宿主 | 进行中 | 已实现独立上下文、内存秘密、HMAC、队列与总预算、时限、控制信号、故障隔离和收尾恢复；使用可控 Executor/Guard 与真实 SQLite 验证，真实 Core、asset/disk Guard 与生产装配尚未接入 |
+| B2b 至 E | 待实施 | 独立 runner、节点管理与部署、桌面闭环、独立升级与完整验收 |
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 
@@ -369,5 +374,11 @@ B1 在上述准备基础上实现任务存储：整组接收中的后续子 Run 
 A4c 后续将 Host 的创建职责移到接收方：Host 只有 `AdoptQueued`，其仓库端口没有 CreateRun，接管时只接受身份一致、revision=1、queued 的持久 Run；缺失、已启动或终态数据都拒绝且释放新 lease。当前本地 Service 的单 Run 创建与注册持有同一 Host 生命周期锁，测试验证与 Close 并发时不会留下无人持有凭据的 queued Run。原 Host 接收入口已删除，没有冲突后回读成功或重复创建路径；本地 Plan、Suite 与 Comparison 回归通过，完整 Job 调度仍待接入。
 
 B1 的控制记录已实现 installation 范围唯一 command_id，固定 kind、job_id 和 expected_revision；相同命令重传返回原确认，后续状态变化不重做操作。queued 停止转 cancelled，starting/running 停止转 draining，draining 再停止只记确认事件；所有活动状态可取消，终态拒绝新命令。确认、状态和日志共事务，三个注入失败位置均全体回滚；两个仓库连接下完成与取消只保留一个终态。确认只证明命令与决策已持久化，实际执行信号仍待 B2 宿主接入，不能据此宣称远程停止或取消已可使用。
+
+B2a 的 Host 先只读核对规范 spec 与按 slot 排序、带长度编码的 HMAC，再预留资源和临时 lease；接收事务确认后移交所有权。存储确认丢失时只读回查同一身份，不再次创建；客户端上下文结束不取消已接收执行。队列和总并发独立受限，超时任务释放 lease 与 reservation；progress 每秒最多落盘一次。控制命令确认丢失也会回查原命令并根据当前权威状态送达信号。
+
+已知存储错误以原子标记立即阻止新调度，然后取消和收尾；锁内获知错误时在解锁前隔离，避免多活动槽中的启动窗口。测试覆盖 starting/completed 写失败时阻塞收尾仍拒收、progress 写失败、接收拒绝且 reservation 释放失败、共享并发、确认丢失与提交取消。退出时本地仍为取消，远程保存 runner_interrupted；重启只对本 owner 调用无网络 Settle，不调用 Execute。
+
+新增 settled 持久标记，只有 Core 收尾与 reservation 释放成功后才写入；Job 终态但尚未收尾时仍进入恢复，包含没有 Run 子对象的 Performance。当前 schema checksum 再次改变，旧格式拒绝和实际数据升级边界同上。这里验证的是宿主与端口契约，测试中的可控执行器不构成真实 Core 报告修复或真实服务器验收证据；必须继续完成 Core 适配器、Guard、runner 及 UI 装配。用户新增的 Remote 顶部按钮与持久默认远程选择已纳入桌面入口要求，尚未改动产品 UI。
 
 功能完成、真实服务器部署、保活、历史数据升级和提供商实测以各阶段实际验收为准，不因方案或某个基础提交完成而视为全部完成。

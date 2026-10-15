@@ -23,7 +23,8 @@ var currentSchemaObjects = []schemaObject{
 		secret_commitment TEXT NOT NULL,
 		spec_json TEXT NOT NULL CHECK(json_valid(spec_json)),
 		snapshot_json TEXT NOT NULL CHECK(json_valid(snapshot_json)),
-		last_sequence INTEGER NOT NULL CHECK(last_sequence >= revision)
+		last_sequence INTEGER NOT NULL CHECK(last_sequence >= revision),
+		settled INTEGER NOT NULL DEFAULT 0 CHECK(settled IN (0, 1))
 	)`},
 	{kind: "index", name: "idx_execution_jobs_active", table: "execution_jobs",
 		ddl: `CREATE INDEX idx_execution_jobs_active ON execution_jobs(status, accepted_sequence)`},

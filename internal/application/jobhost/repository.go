@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
@@ -39,6 +40,7 @@ type EventPage struct {
 
 type Repository interface {
 	AcceptJob(context.Context, Acceptance) (jobcontract.Snapshot, bool, error)
+	LookupJob(context.Context, Acceptance) (jobcontract.Snapshot, error)
 	GetJob(context.Context, string) (jobcontract.Snapshot, error)
 	GetJobSpec(context.Context, string) (jobcontract.JobSpec, error)
 	ChangeJob(context.Context, Change) (jobcontract.Snapshot, error)
@@ -46,4 +48,7 @@ type Repository interface {
 	GetJobCommand(context.Context, string) (jobcontract.CommandConfirmation, error)
 	JobEvents(context.Context, string, uint64, uint32) (EventPage, error)
 	ActiveJobs(context.Context) ([]jobcontract.Snapshot, error)
+	RecoveryJobs(context.Context) ([]jobcontract.Snapshot, error)
+	RecordJobProgress(context.Context, string, quicktest.PerformanceProgress, time.Time) error
+	MarkJobSettled(context.Context, string) error
 }
