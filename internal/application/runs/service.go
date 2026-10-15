@@ -5,7 +5,6 @@ package runs
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -24,12 +23,7 @@ var (
 
 type Repository interface {
 	ExecutionRepository
-	GetPlan(context.Context, string) (domain.Plan, error)
-	ResolvePlanTargetSelection(
-		context.Context, domain.Plan, string, string,
-	) (domain.Model, domain.Channel, domain.ChannelModel, error)
-	ListTestCases(context.Context) ([]domain.TestCase, error)
-	ListSuites(context.Context) ([]domain.Suite, error)
+	PreparationRepository
 }
 
 type StartCommand struct {
@@ -124,23 +118,18 @@ type Dependencies struct {
 
 type Service struct {
 	*Host
-	repository           Repository
-	quickTasks           QuickTaskCatalog
-	caseTypes            *casetypes.Registry
-	credentials          CredentialStore
-	quickTaskCredentials credentials.Store
-	clock                Clock
-	metaFactory          MetaFactory
-	environment          EnvironmentProvider
+	*Preparer
 }
 
 func New(dependencies Dependencies) (*Service, error) {
-	invalidPreparation := isNil(dependencies.Credentials) || dependencies.Environment == nil
-	if invalidPreparation || isNil(dependencies.Repository) {
-		return nil, ErrInvalid
-	}
-	if err := dependencies.Environment().Validate(); err != nil {
-		return nil, fmt.Errorf("%w: environment: %v", ErrInvalid, err)
+	preparer, err := NewPreparer(PreparationDependencies{
+		Repository: dependencies.Repository, QuickTasks: dependencies.QuickTasks,
+		CaseTypes: dependencies.CaseTypes, Credentials: dependencies.Credentials,
+		QuickTaskCredentials: dependencies.QuickTaskCredentials, Clock: dependencies.Clock,
+		MetaFactory: dependencies.MetaFactory, Environment: dependencies.Environment,
+	})
+	if err != nil {
+		return nil, err
 	}
 	host, err := NewHost(HostDependencies{
 		Repository: dependencies.Repository, Executor: dependencies.Executor,
@@ -151,16 +140,16 @@ func New(dependencies Dependencies) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	caseTypes := dependencies.CaseTypes
-	if caseTypes == nil {
-		caseTypes = casetypes.MustBuiltinRegistry()
+	preparer.reportDiagnostic = host.report
+	return &Service{Host: host, Preparer: preparer}, nil
+}
+
+func (service *Service) Close() error {
+	if service == nil {
+		return nil
 	}
-	return &Service{
-		Host: host, repository: dependencies.Repository, quickTasks: dependencies.QuickTasks,
-		caseTypes: caseTypes, credentials: dependencies.Credentials,
-		quickTaskCredentials: dependencies.QuickTaskCredentials,
-		clock:                dependencies.Clock, metaFactory: host.metaFactory, environment: dependencies.Environment,
-	}, nil
+	service.Preparer.Close()
+	return service.Host.Close()
 }
 
 func (service *Service) StartTarget(ctx context.Context, command StartCommand) (string, error) {
@@ -194,120 +183,18 @@ func (service *Service) activatePrepared(ctx context.Context, runID string, err 
 // network work. Comparison orchestration uses this to durably link every target
 // before any goroutine can complete independently.
 func (service *Service) PrepareTarget(ctx context.Context, command StartCommand) (string, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(command.PlanID) {
+	if service == nil {
 		return "", ErrInvalid
 	}
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	caseConcurrency, err := resolveCaseConcurrency(command.CaseConcurrency)
+	prepared, lease, err := service.Preparer.BuildTarget(ctx, command)
 	if err != nil {
 		return "", err
 	}
-	service.mu.Lock()
-	if service.closed {
-		service.mu.Unlock()
-		return "", ErrClosed
-	}
-	service.mu.Unlock()
-
-	timings := make([]startPhaseTiming, 0, 5)
-	phaseStartedAt := time.Now()
-	plan, err := service.repository.GetPlan(ctx, command.PlanID)
-	if err != nil {
-		return "", fmt.Errorf("load plan: %w", err)
-	}
-	if err := plan.Validate(); err != nil {
-		return "", fmt.Errorf("invalid plan: %w", err)
-	}
-	if plan.Performance != nil {
-		return "", ErrNotRunnable
-	}
-	timings = append(timings, startPhaseTiming{operation: "start_run_load_plan", duration: time.Since(phaseStartedAt)})
-	if !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
-		return "", ErrNotRunnable
-	}
-	phaseStartedAt = time.Now()
-	model, channel, mapping, err := service.repository.ResolvePlanTargetSelection(
-		ctx,
-		plan,
-		command.ModelID,
-		command.ChannelID,
-	)
-	if err != nil {
-		return "", fmt.Errorf("resolve run binding: %w", err)
-	}
-	protocolSupported := model.SupportsProtocol(plan.Protocol) && mapping.SupportsProtocol(plan.Protocol)
-	bindingMatches := mapping.ModelID == model.ID && mapping.ChannelID == channel.ID
-	if !channel.Enabled || !bindingMatches || !protocolSupported {
-		return "", ErrNotRunnable
-	}
-	timings = append(timings, startPhaseTiming{
-		operation: "start_run_resolve_binding", duration: time.Since(phaseStartedAt),
-	})
-	phaseStartedAt = time.Now()
-	entries, err := service.resolveEntries(ctx, plan)
+	started := time.Now()
+	id, err := service.Host.AcceptPrepared(ctx, prepared, lease)
 	if err != nil {
 		return "", err
 	}
-	// The frozen plan captures run-time overrides without changing the catalog.
-	plan.Entries = append([]domain.PlanEntry{}, plan.Entries...)
-	for index := range entries {
-		if entries[index].Load.Mode == domain.LoadSingle {
-			concurrency := min(caseConcurrency, uint32(len(entries[index].Cases)))
-			entries[index].Load.Concurrency = concurrency
-			plan.Entries[index].Load.Concurrency = concurrency
-		}
-	}
-	timings = append(timings, startPhaseTiming{
-		operation: "start_run_resolve_entries", duration: time.Since(phaseStartedAt),
-	})
-	if channel.CredentialID == "" || channel.Validate() != nil {
-		return "", ErrNotRunnable
-	}
-	phaseStartedAt = time.Now()
-	storeRef, refErr := credentials.NewStoreRef(domain.CredentialChannelAPIKey, channel.CredentialID)
-	if refErr != nil {
-		return "", ErrNotRunnable
-	}
-	lease, leaseErr := service.credentials.Get(ctx, storeRef)
-	if leaseErr != nil {
-		return "", fmt.Errorf("lease channel credential: %w", leaseErr)
-	}
-	timings = append(timings, startPhaseTiming{
-		operation: "start_run_lease_credential", duration: time.Since(phaseStartedAt),
-	})
-	phaseStartedAt = time.Now()
-	meta, metaErr := service.metaFactory(service.clock.Now())
-	if metaErr != nil {
-		_ = lease.Close()
-		return "", fmt.Errorf("create run identity: %w", metaErr)
-	}
-	planDocument := plan
-	mappingDocument := mapping
-	snapshot := domain.RunSnapshot{
-		SchemaVersion: domain.CurrentRunSnapshotSchemaVersion,
-		Plan:          domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
-		Model: domain.ModelSnapshot{
-			EntityRevisionRef: domain.EntityRevisionRef{ID: model.ID, Revision: model.Revision},
-			Name:              model.Name, Protocol: plan.Protocol, Capabilities: append([]string{}, model.Capabilities...),
-		},
-		Channel: domain.ChannelSnapshot{
-			EntityRevisionRef: domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision},
-			Name:              channel.Name, BaseURL: channel.BaseURL, Protocol: plan.Protocol,
-			UpstreamModelName: mapping.UpstreamModelName,
-		},
-		Environment: service.environment(), PlanDocument: &planDocument, Mapping: &mappingDocument, Entries: entries,
-	}
-	runID, err := service.AcceptPrepared(ctx, PreparedRun{Meta: meta, PlanID: plan.ID, Snapshot: snapshot}, lease)
-	if err != nil {
-		return "", err
-	}
-	timings = append(timings, startPhaseTiming{
-		operation: "start_run_persist_queued", duration: time.Since(phaseStartedAt),
-	})
-	for _, timing := range timings {
-		service.reportStartTiming(runID, timing.operation, timing.duration)
-	}
-	return runID, nil
+	service.Host.reportStartTiming(id, "start_run_persist_queued", time.Since(started))
+	return id, nil
 }

@@ -67,7 +67,7 @@ flowchart LR
 
 | 模块 | 职责 |
 | --- | --- |
-| `internal/application/preparation` | 从现有准备函数提取目录解析、协议校验、输入绑定、连接解析和快照冻结；返回 PreparedJob 与单独的秘密 lease |
+| `runs.Preparer` 与性能准备组件 | 从现有准备函数提取目录解析、协议校验、输入绑定、连接解析和快照冻结；以只读端口工作，返回准备值与单独的秘密 lease，避免为移动目录新增相互依赖 |
 | `internal/jobcontract` | 单一当前 JobSpec、事件和错误的传输契约；依赖领域值，不导入 SSH、Wails 或数据库 |
 | `internal/application/jobs` | 选择 Backend、持久化提交记录、提交或重查同一 job_id、路由操作；不调度请求 |
 | `internal/application/jobhost` | 接收完整任务、排队、资源预算、调用已有 Core、持有取消上下文、结果日志和恢复 |
@@ -342,9 +342,12 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | 子阶段 | 状态 | 已落实的边界与剩余工作 |
 | --- | --- | --- |
 | A1 运行执行宿主 | 已实现 | 提取不依赖目录或 OS Store 的 runs.Host；PreparedRun 可传输，Host 独立校验、复制并接收快照；本地 Service 组合该宿主，执行与结果判定共用同一路径 |
-| A2 任务准备与性能宿主 | 待实施 | 提取无落盘副作用的 Preparation，拆分 Performance 的准备与执行，建立完整 Job 契约和本地 Backend |
+| A2 只读运行准备 | 已实现 | runs.Preparer 使用只读 PreparationRepository；Plan 和 Suite 均可只冻结输入而不创建 Run；本地 Service 组合 Preparer 与 Host，不保留第二份准备或执行逻辑 |
+| A3 性能宿主与 Job 契约 | 待实施 | 拆分 Performance 的准备与执行，建立完整 Job 契约和本地 Backend |
 | B 至 E | 待实施 | 独立 runner、持久日志、节点管理与部署、桌面闭环、独立升级与完整验收 |
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
+
+A2 验证 Plan 与临时 Suite 准备不写运行数据或 keyring，准备结果不携带秘密，目录原生请求字节被修改后冻结值仍不变。桌面、runs、comparisons 测试及 runs 的 go vet 通过；持久化格式未改变，不需要在这一提交升级历史数据。
 
 功能完成、真实服务器部署、保活、历史数据升级和提供商实测以各阶段实际验收为准，不因方案或某个基础提交完成而视为全部完成。

@@ -11,7 +11,7 @@ import (
 
 // resolveEntries reads each current reference once and freezes those same values.
 // No provider request or credential access occurs during resolution.
-func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([]domain.RunEntrySnapshot, error) {
+func (service *Preparer) resolveEntries(ctx context.Context, plan domain.Plan) ([]domain.RunEntrySnapshot, error) {
 	testCases, err := service.repository.ListTestCases(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load Case catalog: %w", err)
