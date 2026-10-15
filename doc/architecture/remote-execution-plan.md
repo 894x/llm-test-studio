@@ -109,14 +109,14 @@ Quick Performance 的长时间同步 binding 改为启动并返回 JobReceipt，
 
 - 显示名称、SSH host、port、user、启用状态和用户填写的地区说明。
 - SSH 认证方式及 CredentialRef，支持密码或私钥与口令；私钥通过 Go 文件选择与安全存储处理。
-- 已核验的 SSH 主机公钥指纹、配对后的 runner installation_id、runner 管理凭据引用。
+- 已核验的 SSH 主机公钥指纹及 key type、配对后的 runner installation_id、runner 管理凭据引用。固定 key type 后只协商对应的安全签名算法，避免同一服务器的其他公钥被误报为已确认密钥变化；RSA 只使用 SHA-2 签名。
 - 节点资源策略；探测到的架构、runner 版本、实际构建、当前契约、能力、出口和最后检查时间作为运行观察信息。连接动作不覆盖节点策略。
 
 同一用户配置内 installation_id 唯一；不同主机别名连接到同一安装时提示已有节点，不能把同一执行宿主计为两台服务器。
 
 新增 SSH 认证与 runner 管理专用 CredentialPurpose，复用当前 scoped OS Store；不借用 Channel API Key 用途。读取 DTO 仅返回认证方式、是否已设置和指纹等脱敏信息。首次连接需要用户核对主机指纹，后续指纹变化直接阻止连接；不得使用跳过主机验证的实现。
 
-通信采用 SSH 隧道到节点的 loopback HTTP 服务，runner 不监听公网。SSH 建连、SFTP 与请求有独立超时；隧道断开后释放客户端资源，不向任务发送取消。runner HTTP 使用节点级 token，多个熟人客户端共用同一节点授权，不增加客户端注册、独立身份或逐客户端授权表。各桌面将共享 token 保存于 OS Store，节点仅保存其校验摘要；令牌不进入 URL、参数列表或日志。接入已有节点不轮换 token，持有该节点授权的客户端可查询和控制节点任务。
+通信采用 SSH direct-tcpip 到节点的 loopback HTTP 服务，客户端无需开放本地监听端口，runner 不监听公网。SSH 建连、SFTP 与请求有独立超时；隧道断开后释放客户端资源，不向任务发送取消。runner HTTP 使用节点级 token，多个熟人客户端共用同一节点授权，不增加客户端注册、独立身份或逐客户端授权表。各桌面将共享 token 保存于 OS Store，runner 配置仅保存校验摘要。安装器在 `/var/lib/llm-test-runner-install/node-token` 保存 root 专有的配对授权，供已获 SSH 管理权的其他客户端读取并存入各自 OS Store；该目录为 0700、文件为 0600，不归 runner 用户读取。令牌不进入 URL、参数列表或日志。接入已有节点不轮换 token；配对文件缺失时明确要求修复授权，不覆盖已有 runner。持有节点授权的客户端可查询和控制节点任务。
 
 保存节点即触发检查；未安装时自动部署，已安装且契约和能力满足时直接复用。协议或能力不满足时提示需要升级，不因客户端连接而替换 runner。配置存在、连接可达、部署成功、契约与能力满足、容量可用分别记录，Go Core 据此返回是否可选与不可选原因。离线节点保留历史记录；移除配置不等于卸载 runner。存在活动任务、未确认提交或未下载结果时阻止移除配置，用户可先禁用新任务。
 
@@ -153,7 +153,7 @@ Quick Performance 的长时间同步 binding 改为启动并返回 JobReceipt，
 5. **验证**：核对 systemd 服务身份、实际进程构建、installation_id、鉴权、数据库可写和控制接口；不以进程存在或端口监听作为部署成功。
 6. **回读**：保存已确认身份和安装结果，节点进入可选状态；失败保留阶段与脱敏诊断，允许重试同一安装操作。
 
-程序位于 `/opt/llm-test-studio-runner/releases/<build_id>/`，配置位于 `/etc/llm-test-studio-runner/`，状态与证据位于 `/var/lib/llm-test-studio-runner/`。安装器只操作这些核验后的自有路径；用户输入不直接拼接成 shell 命令。修改账户、unit 和 current 使用固定安装模板与受限参数。
+程序位于 `/opt/llm-test-runner/releases/<build_id>/`，`current` 原子选择发布；运行配置为 `/var/lib/llm-test-runner/runner.json`，状态与证据同在该专用用户的 0700 状态目录内。安装操作日志与配对授权位于 root 专有的 `/var/lib/llm-test-runner-install/`。这与当前 systemd unit 的路径一致，替换方案早先的 studio-runner 路径，不保留路径回退。安装器只操作这些核验后的自有路径；用户输入不直接拼接成 shell 命令。修改账户、unit 和 current 使用固定安装模板与受限参数。
 
 服务使用 `Type=notify`、`Restart=on-failure`、`RestartSec=5s`、`WatchdogSec=30s`，并设置 300 秒内最多 5 次启动的限速。runner 在状态存储和接收恢复完成后发送 READY，watchdog 反映调度和存储控制面的健康；阻塞的上游请求由各自超时管理。服务使用专用用户、私有状态目录、`NoNewPrivileges`、`LimitCORE=0`、只读程序目录，并配置资源上限。systemd 的重启与 watchdog 行为依据[官方 service 文档](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.service.xml)，持久目录与权限依据[官方 exec 文档](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.exec.xml)，查阅日期为 2026-10-15。
 
@@ -375,7 +375,8 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | B2d 管理 HTTP | 进行中 | 节点级鉴权、当前契约、能力检查、提交/根状态/事件/控制、稳定任务分页、Run/Comparison 报告与 Performance 完整结果下载已有真实 Core 和 SQLite 的 Mock 验证；完整投影、assets、证据与回收待补齐 |
 | B2e 独立 runner | 进行中 | Linux 私有目录与运行锁、唯一当前配置、stdin 初始化授权摘要、真实 Core/SQLite/loopback HTTP 装配、写权限/磁盘探针及 systemd 通知已接通；WSL 独立进程中断恢复已验证；asset Guard、物理节点 unit 部署和保活仍待完成 |
 | B2f 维护接收门 | 已实现 | 当前 operation 的持久 pause/resume、接收互斥、Pending 报告收尾、写确认丢失后的同步确认与故障隔离、重启保留暂停和暂停时 watchdog 已通过本地及 WSL 进程验证；安装锁和完整升级编排仍待 C |
-| C 至 E | 待实施 | 节点管理与 SSH 自动部署、安装升级锁、桌面闭环、独立升级与完整验收 |
+| C1a SSH 传输 | 已实现 | 主机指纹与 key type 固定、密码/私钥内存认证、保活、受限 loopback HTTP、超时回收、SFTP 摘要/回读/拒绝覆盖和私有配对读取；真实 amd64 节点仅完成临时文件与只读探测验证，未安装服务 |
+| C1b 至 E | 待实施 | 节点管理与专用 OS 凭据、SSH 自动部署、安装升级锁、桌面闭环、独立升级与完整验收 |
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 

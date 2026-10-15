@@ -111,3 +111,15 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | P06 | 私有维护记录必须显式包含 paused，绑定当前安装；同步文件及目录后才确认；正常重启保留暂停；暂停不降低 Healthy，不停止 watchdog；未知格式先于数据库访问拒绝 | partial：TestMaintenancePersistsAcrossRunnerRestartAndKeepsWatchdogHealthy、TestUnsupportedMaintenanceFormatIsRejectedBeforeDatabaseAccess、TestMutablePrivateControlReplacementRejectsLinksAndRetainsRejectedData 通过 WSL；真实物理节点 unit 升级仍待 C/R15 |
 
 `deploy/runner/llm-test-runner.service` 提供专用用户、私有状态目录、只读程序区域、30 秒 watchdog、重启限速与资源上限的模板。模板存在不表示已在真实服务器安装、启用或验证保活。
+
+## SSH 传输边界
+
+| 行 | 当前规则 | 执行证据与剩余边界 |
+| --- | --- | --- |
+| S01 | 首次观察公钥返回 key type 与 SHA-256，认证前停止；已固定的密钥类型和指纹必须一致，不跳过校验；RSA 只协商 SHA-2 签名 | partial：TestHostPinIsConfirmedBeforeAnyAuthenticationAndChangesAreBlocked、TestSSHEndpointRejectsURLsCommandsAndMalformedPins 通过；真实节点固定 Ed25519 指纹连接通过；桌面首次确认与配置持久化仍待 C/D |
+| S02 | 密码、未加密或加密私钥来自内存 Lease，格式化脱敏且拒绝 JSON 序列化；握手结束后不依赖请求 context 或 lease | partial：TestSSHAuthenticationIsRedactedAndWrongSecretsFailSafely、TestSSHPrivateKeyAuthenticationSupportsPlainAndEncryptedKeys 通过；专用 CredentialPurpose 与 OS Store 节点管理接入待 C |
+| S03 | HTTP 仅通过 SSH 到指定 127.0.0.1 端口，无代理、不跟随 redirect；请求、握手和通道建立有界；悬挂通道建立取消时关闭并回收父连接 | partial：TestSSHTunnelUsesOnlyRunnerLoopbackAndDoesNotFollowRedirects、TestSSHContextCancelsStalledHandshakeAndCommand、TestRunnerChannelOpenCancellationClosesAnOtherwiseResponsiveSSHPeer 通过；已验证 keepalive 仍响应但 channel-open 不回应的取消；runner 实际任务与桌面隧道断线恢复待 R3/R7 |
+| S04 | 每 15 秒 keepalive，5 秒无确认关闭连接；SSH failure reply 仍表明连接存活；固定只读 probe 的输出最多 64 KiB | partial：TestSSHKeepaliveAcceptsFailureRepliesAndClosesAnUnresponsivePeer、TestFixedCommandOutputCannotBypassItsByteBudgetThroughIOCopy 通过；测试用短 ticker 执行同一 owner；真实长时间网络故障与桌面状态更新待 C/D |
+| S05 | SFTP 上传最多 256 MiB，在私有临时目录中只创建新目标；核对长度、本地摘要、文件 fsync 及独立回读摘要；拒绝覆盖、symlink 父路径和非私有配对文件 | partial：Linux 的 TestSSHPrivateReadRejectsPublicFilesAndMissingFsyncFailsExplicitly、真实节点 TestLiveSSHProbeAndVerifiedSFTPTransfer 通过；物理节点验证 184320 字节、错摘要拒绝、不覆盖与回读，精确测试路径已清理；发布目录持久化、安装锁、操作日志和 current 激活由后续 installer 完成 |
+
+SFTP API 依据 [pkg/sftp v1.13.11 文档](https://pkg.go.dev/github.com/pkg/sftp@v1.13.11)，SSH 通道实现核对当前引入的 x/crypto v0.54.0 源码，查阅日期 2026-10-16。以上是传输模块验证，不表示自动部署、systemd 或真实提供商 e2e 已验收。
