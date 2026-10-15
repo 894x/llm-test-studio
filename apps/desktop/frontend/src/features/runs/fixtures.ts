@@ -1,3 +1,4 @@
+import { FIXTURE_PERFORMANCE_PLANS } from "@/features/catalog/builtin-performance-plans.fixture"
 import type {
   CoreRunStatus,
   WorkspacePlan,
@@ -123,6 +124,7 @@ export const FIXTURE_CATALOG: CatalogSnapshot = {
     { id: PLAN_IDS.json, revision: 1, name: "JSON 模式回归", protocol: "openai-chat", seed: 1, entry_count: 1, case_count: 4, entries: [fixturePlanEntry(PLAN_IDS.json, "fixed_concurrency", 2, 24, 0, 2500)] },
     { id: PLAN_IDS.tools, revision: 1, name: "工具调用兼容性", protocol: "openai-chat", seed: 1, entry_count: 1, case_count: 4, entries: [fixturePlanEntry(PLAN_IDS.tools, "fixed_concurrency", 8, 72, 0, 3000)] },
     { id: PLAN_IDS.stream, revision: 1, name: "流式性能门禁", protocol: "openai-chat", seed: 1, entry_count: 1, case_count: 4, entries: [fixturePlanEntry(PLAN_IDS.stream, "open_loop", 1, 180, 12, 1800)] },
+    ...FIXTURE_PERFORMANCE_PLANS,
   ],
 }
 

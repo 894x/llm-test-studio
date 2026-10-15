@@ -174,7 +174,7 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 		t.Fatalf("query initialized catalog: %v", err)
 	}
 	emptyBindings := len(catalogSnapshot.Models)+len(catalogSnapshot.Channels)+
-		len(catalogSnapshot.ChannelModels)+len(catalogSnapshot.Plans) == 0
+		len(catalogSnapshot.ChannelModels) == 0 && len(catalogSnapshot.Plans) == 18
 	validCatalogCounts := len(catalogSnapshot.TestCases) == 925 && len(catalogSnapshot.Suites) == 53
 	if catalogSnapshot.SchemaVersion != catalog.CurrentSnapshotSchemaVersion || !emptyBindings || !validCatalogCounts {
 		t.Fatalf(
@@ -276,11 +276,11 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 		t.Fatalf("case counts across restart = %d/%d, want 925/925", len(firstSnapshot.TestCases), len(secondSnapshot.TestCases))
 	}
 	validSuiteCounts := len(firstSnapshot.Suites) == 53 && len(secondSnapshot.Suites) == 53
-	noPlans := len(firstSnapshot.Plans) == 0 && len(secondSnapshot.Plans) == 0
-	if !validSuiteCounts || !noPlans {
+	builtinPlans := len(firstSnapshot.Plans) == 18 && len(secondSnapshot.Plans) == 18
+	if !validSuiteCounts || !builtinPlans {
 		t.Fatalf(
 			"suite/plan counts across restart = %d/%d suites, %d/%d plans, "+
-				"want 53 scenario suites and no plans",
+				"want 53 scenario suites and 18 built-in performance plans",
 			len(firstSnapshot.Suites),
 			len(secondSnapshot.Suites),
 			len(firstSnapshot.Plans),
@@ -791,8 +791,14 @@ func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *tes
 		t.Fatalf("CreatePlan() with filesystem suite error = %v", err)
 	}
 	updated, err := dependencies.catalog.Snapshot(context.Background())
-	if err != nil || len(updated.Plans) != 1 || len(updated.Plans[0].Entries) != 1 ||
-		updated.Plans[0].Entries[0].TargetID != suite.ID {
+	customPlans := []catalog.PlanSummary{}
+	for _, plan := range updated.Plans {
+		if !plan.Builtin {
+			customPlans = append(customPlans, plan)
+		}
+	}
+	if err != nil || len(customPlans) != 1 || len(customPlans[0].Entries) != 1 ||
+		customPlans[0].Entries[0].TargetID != suite.ID {
 		t.Fatalf("plan referencing filesystem suite = %#v, %v", updated.Plans, err)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	casebundle "github.com/894x/llm-test-studio/data/cases"
+	"github.com/894x/llm-test-studio/data/performanceplans"
 	suitebundle "github.com/894x/llm-test-studio/data/suites"
 	"github.com/894x/llm-test-studio/internal/application/casecatalog"
 	"github.com/894x/llm-test-studio/internal/application/catalog"
@@ -116,7 +117,10 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create filesystem channel catalog: %w", err)
 		}
-		planFiles, err := plancatalog.New(filepath.Join(dataDirectory, "plans"))
+		planFiles, err := plancatalog.New(
+			filepath.Join(dataDirectory, "plans"),
+			plancatalog.WithBuiltin(performanceplans.Bundle),
+		)
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create filesystem plan catalog: %w", err)
 		}

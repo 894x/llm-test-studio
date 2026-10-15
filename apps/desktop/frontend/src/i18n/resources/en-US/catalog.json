@@ -227,7 +227,7 @@
   },
   "plans": {
     "title": "Test Plans",
-    "description": "Run ordered suites with independent parameters, load, and SLA settings",
+    "description": "Compose functional test entries or save reusable performance settings",
     "count": "{{count}} plans",
     "details": "Plan details",
     "noneSelected": "No plan selected",
@@ -252,8 +252,12 @@
     "loadFixed": "Fixed concurrency",
     "loadOpen": "Open loop",
     "protocolPlan": "Protocol plan",
-    "performancePlan": "Quick performance plan",
-    "performancePreset": "Performance preset"
+    "performancePlan": "Quick performance test",
+    "category": "Category",
+    "builtin": "Built-in",
+    "saveAs": "Save as plan",
+    "parameters": "Performance parameters",
+    "configuration": "Configuration / entry order"
   },
   "protocolDesign": {
     "inputs": "Input definitions (JSON)",

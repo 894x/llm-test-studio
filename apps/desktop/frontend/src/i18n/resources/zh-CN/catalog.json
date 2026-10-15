@@ -227,7 +227,7 @@
   },
   "plans": {
     "title": "测试计划",
-    "description": "按顺序运行套件，每个套件独立配置参数、负载与 SLA",
+    "description": "编排功能测试执行项，或保存可复用的性能测试参数",
     "count": "{{count}} 个计划",
     "details": "计划详情",
     "noneSelected": "尚未选择计划",
@@ -252,8 +252,12 @@
     "loadFixed": "固定并发",
     "loadOpen": "开放环",
     "protocolPlan": "协议测试计划",
-    "performancePlan": "快速性能计划",
-    "performancePreset": "性能预设"
+    "performancePlan": "快速性能测试",
+    "category": "类别",
+    "builtin": "内置",
+    "saveAs": "另存为计划",
+    "parameters": "性能参数",
+    "configuration": "配置 / 执行项顺序"
   },
   "protocolDesign": {
     "inputs": "输入定义（JSON）",

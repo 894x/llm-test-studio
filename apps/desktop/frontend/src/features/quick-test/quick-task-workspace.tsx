@@ -1,3 +1,4 @@
+import { performanceProfilesEqual } from "./performance-profile"
 import { isQuickPerformanceProtocol, type QuickPerformanceCommand, type QuickPerformanceProfile, type QuickPerformanceReport } from "./data"
 import {
   useRef,
@@ -38,7 +39,8 @@ import type { ReportSnapshot } from "@/features/reports/data"
 import { QuickPerformancePanel, type QuickPerformanceConnection } from "./quick-performance-sheet"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
 import { cn } from "@/lib/utils"
-import { taskConnectionURLs } from "./connection-url"
+import { PROTOCOLS } from "@/features/catalog/protocols"
+import { resolveConnectionURL, taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
@@ -114,12 +116,14 @@ export function QuickTaskWorkspace({
   const [performanceHistory, setPerformanceHistory] = useState<QuickTestHistoryItem[]>([])
   const [performanceSettings, setPerformanceSettings] = useState<Record<string, PerformanceHistorySettings>>({})
   const [restoredPerformanceProfile, setRestoredPerformanceProfile] = useState<QuickPerformanceProfile>()
+  const [selectedPerformancePlanID, setSelectedPerformancePlanID] = useState("")
   const [performanceFormRevision, setPerformanceFormRevision] = useState(0)
   const [selectedHistoryID, setSelectedHistoryID] = useState("")
   const busy = !!pending || performancePending
   const [saveChannelOpen, setSaveChannelOpen] = useState(false)
   const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(draft.task?.protocol ?? "openai-chat")
-  const protocol = draft.task?.protocol ?? selectedProtocol
+  const protocol = mode === "performance" ? selectedProtocol : draft.task?.protocol ?? selectedProtocol
+  const performancePlans = catalog.plans.filter(plan => plan.performance && plan.protocol === protocol)
   const currentTasks = catalog.suites.filter(item => item.protocol === protocol)
   const task = currentTasks.find((item) => item.id === draft.task?.id) ?? draft.task ?? currentTasks[0]
   const form =
@@ -141,7 +145,9 @@ export function QuickTaskWorkspace({
   )
   const channel = channels.find((item) => item.id === form.channel_id)
   const missingChannel = !!form.channel_id && !channel
-  const connectionURLs = taskConnectionURLs(channel?.base_url ?? form.base_url, task, catalog)
+  const performanceDescriptor = PROTOCOLS.find(item => item.id === protocol)!
+  const performanceURL = resolveConnectionURL(channel?.base_url ?? form.base_url, performanceDescriptor.request_paths[0].path, performanceDescriptor.request_paths)
+  const connectionURLs = mode === "performance" ? (performanceURL ? [performanceURL] : []) : taskConnectionURLs(channel?.base_url ?? form.base_url, task, catalog)
   const models = [
     ...new Set([
       ...catalog.channel_models
@@ -154,7 +160,6 @@ export function QuickTaskWorkspace({
   ]
   const performanceConnection: QuickPerformanceConnection = {
     protocol,
-    ...(task ? { task: { suite_id: task.id, suite_revision: task.revision, ...(form.source_run_id ? { source_run_id: form.source_run_id } : {}) } } : {}),
     address_mode: "base_url",
     url: channel?.base_url ?? form.base_url.trim(),
     api_key: form.channel_id || form.credential_run_id ? "" : form.api_key.trim(),
@@ -186,7 +191,7 @@ export function QuickTaskWorkspace({
   const runPerformance: Actions["runQuickPerformanceTest"] = async (command, onProgress) => {
     const id = crypto.randomUUID()
     const item: QuickTestHistoryItem = {
-      id, mode: "performance", title: task?.name ?? t("performance.title"),
+      id, mode: "performance", title: catalog.plans.find(plan => plan.id === selectedPerformancePlanID)?.name ?? t("performance.title"),
       model: command.model_id, channel: channel?.name ?? command.url,
       timestamp: new Date().toISOString(), active: true, status: "queued", phase: "not_started",
     }
@@ -236,11 +241,18 @@ export function QuickTaskWorkspace({
         credential_run_id: form.credential_run_id,
         model: form.model,
       })
+    setSelectedProtocol(selected.protocol)
     update(next)
   }
   const changeProtocol = (value: string) => {
     const nextProtocol = value as CatalogProtocol
     setSelectedProtocol(nextProtocol)
+    if (mode === "performance") {
+      setSelectedPerformancePlanID(""); setRestoredPerformanceProfile(undefined)
+      setPerformanceFormRevision(current => current + 1)
+      setErrors({}); setError("")
+      return
+    }
     const next = createTaskDraft(catalog.suites.find(item => item.protocol === nextProtocol) ?? null)
     update({ ...next, base_url: form.base_url, channel_id: form.channel_id, api_key: form.api_key, model: form.model })
   }
@@ -268,6 +280,17 @@ export function QuickTaskWorkspace({
       return undefined
     }
     return checked.command
+  }
+  const validPerformanceConnection = () => {
+    const connectionFields = ["base_url", "api_key", "model", "channel_id"]
+    const nextErrors = Object.fromEntries(Object.entries(quickTaskCommand(form).errors).filter(([field]) => connectionFields.includes(field)))
+    if (missingChannel) nextErrors.channel_id = t("task.missingChannel")
+    const mappings = catalog.channel_models.filter(mapping => mapping.channel_id === form.channel_id && mapping.upstream_model_name === form.model.trim())
+    if (mappings.length && !mappings.some(mapping => mapping.protocols.includes(protocol))) nextErrors.model = t("task.unsupportedModelProtocol")
+    setErrors(nextErrors)
+    const first = Object.keys(nextErrors)[0]
+    if (first) { document.getElementById(`quick-task-${first}`)?.focus(); return undefined }
+    return performanceConnection
   }
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -334,17 +357,18 @@ export function QuickTaskWorkspace({
         ? catalog.suites.find(entry => entry.id === settings.suite_id && entry.protocol === settings.protocol)
         : catalog.suites.find(entry => entry.id === form.task?.id && entry.protocol === settings.protocol)
           ?? catalog.suites.find(entry => entry.protocol === settings.protocol)
-      if (!suite) throw new Error(t("task.choose"))
       const url = settings.address_mode === "full_url" ? settings.endpoint : settings.base_url
       const sameConnection = protocol === settings.protocol && performanceConnection.url === url
       const channelID = settings.channel_id ?? (sameConnection ? form.channel_id : "")
       const credentialRunID = settings.credential_run_id ?? (sameConnection ? form.credential_run_id : undefined)
       update({
-        ...createTaskDraft(suite), model: settings.model_id, base_url: url,
+        ...createTaskDraft(suite ?? null), model: settings.model_id, base_url: url,
         channel_id: channelID, credential_run_id: credentialRunID,
         api_key: sameConnection && !channelID && !credentialRunID ? form.api_key : "",
       })
       setSelectedProtocol(settings.protocol)
+      const matchingPlan = catalog.plans.find(plan => plan.protocol === settings.protocol && plan.performance && performanceProfilesEqual(plan.performance, settings.profile))
+      setSelectedPerformancePlanID(matchingPlan?.id ?? "")
       setRestoredPerformanceProfile(settings.profile)
       setPerformanceFormRevision(current => current + 1)
       setMode("performance")
@@ -379,7 +403,7 @@ export function QuickTaskWorkspace({
       await actions.rememberQuickTaskCredential({
         run_id: form.source_run_id,
         base_url: form.base_url.trim(),
-        protocol: task.protocol,
+        protocol,
         api_key: form.api_key.trim(),
       })
       onDraftChange((current) =>
@@ -469,7 +493,7 @@ export function QuickTaskWorkspace({
             <h2 className="mb-4 text-sm font-semibold">{mode === "performance" ? t("performance.title") : t("workspace.functional")}</h2>
             {error ? <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
             {refreshError ? <Alert className="mb-4"><AlertDescription>{t("task.refreshFailed")}</AlertDescription><Button size="sm" variant="outline" onClick={() => void refreshProgress()}>{t("task.refresh")}</Button></Alert> : null}
-            {!task ? (
+            {!task && mode === "functional" ? (
               <>
                 <div className="mb-4">{protocolField}</div>
                 <Empty>
@@ -481,18 +505,25 @@ export function QuickTaskWorkspace({
               <div>
                 <FieldGroup>
                   <TaskField id="task" label={t("task.label")} error={errors.task}
-                    labelHint={<p id="quick-task-draft-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.draftNote")}</p>}
+                    labelHint={<p id="quick-task-draft-hint" className="text-[11px] font-normal text-muted-foreground">{t(mode === "performance" ? "performance.planHint" : "task.draftNote")}</p>}
                   >
                     <SearchableSelect
-                      value={taskKey(task)}
-                      onValueChange={changeTask}
+                      value={mode === "performance" ? selectedPerformancePlanID : task ? taskKey(task) : ""}
+                      onValueChange={value => {
+                        if (mode === "functional") { changeTask(value); return }
+                        const plan = performancePlans.find(item => item.id === value)
+                        if (!plan?.performance) return
+                        setSelectedPerformancePlanID(value); setRestoredPerformanceProfile(undefined)
+                        setPerformanceFormRevision(current => current + 1)
+                      }}
                       disabled={busy}
                       id="quick-task-task"
                       aria-label={t("task.label")}
                       aria-invalid={!!errors.task || undefined}
                       aria-describedby={["quick-task-draft-hint", ...(errors.task ? ["quick-task-task-error"] : [])].join(" ")}
                       className="w-full"
-                      options={tasks.map((item) => ({
+                      placeholder={mode === "performance" ? t("performance.choosePlan") : t("task.choose")}
+                      options={mode === "performance" ? performancePlans.map(plan => ({ value: plan.id, label: plan.name })) : tasks.map((item) => ({
                         value: taskKey(item),
                         label: `${item.name} · ${t("task.caseCount", { count: item.case_count })}`,
                       }))}
@@ -693,7 +724,7 @@ export function QuickTaskWorkspace({
                           onChange={(event) => update({ ...form, request_timeout_seconds: Number(event.target.value) })}
                         />
                       </TaskField>
-                      {task.inputs.map((input) => (
+                      {(task?.inputs ?? []).map((input) => (
                         <TaskField
                           key={input.key}
                           id={`input.${input.key}`}
@@ -760,10 +791,11 @@ export function QuickTaskWorkspace({
                   </div>
                   </form>
                   <div hidden={mode !== "performance"}>
-                    {isQuickPerformanceProtocol(task.protocol) ? <QuickPerformancePanel
-                      key={performanceFormRevision} initialProfile={restoredPerformanceProfile}
-                      embedded blocked={!!pending} connection={performanceConnection}
-                      resolveConnection={() => validCommand() ? performanceConnection : undefined}
+                    {isQuickPerformanceProtocol(protocol) ? <QuickPerformancePanel
+                      key={performanceFormRevision} plans={catalog.plans}
+                      initialProfile={restoredPerformanceProfile} initialPlanID={selectedPerformancePlanID} onPlanChange={setSelectedPerformancePlanID}
+                      embedded showPlanSelector={false} blocked={!!pending} connection={performanceConnection}
+                      resolveConnection={validPerformanceConnection}
                       run={runPerformance} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
                     /> : <p className="text-xs text-muted-foreground">{t("task.performanceUnavailable")}</p>}
                   </div>

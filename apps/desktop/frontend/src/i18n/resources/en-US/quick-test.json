@@ -1,6 +1,6 @@
 {
   "title": "Quick Test",
-  "description": "Choose a task and enter its connection and inputs. No model, channel, or Plan setup is required.",
+  "description": "Choose a task and connection for functional tests, or load and adjust a performance plan.",
   "connection": "Connection",
   "fillChannel": "Fill from channel",
   "manual": "Enter address and API Key manually",
@@ -15,15 +15,6 @@
   "performance": {
     "title": "Quick performance test",
     "description": "Run a streaming workload with the current connection. Reports are archived after requests are executed.",
-    "preset": "Preset",
-    "presets": {
-      "smoke": "Smoke check · 10 requests",
-      "baseline": "Baseline · 100 requests / concurrency 4",
-      "uncached": "Uncached · 500 requests / concurrency 40",
-      "cached_suffix": "Cached suffix · 500 requests / concurrency 40",
-      "sustained": "Sustained · 60 seconds / 2 RPS",
-      "capacity": "Capacity ladder · SLO 95%"
-    },
     "selectBinding": "Run performance plan",
     "selectBindingHint": "Choose the model and channel for this run. The saved performance profile stays unchanged.",
     "model": "Model",
@@ -69,7 +60,22 @@
     "progressAria": "Performance test progress",
     "durationMode": "Duration mode",
     "requestProgress": "Request completion progress",
-    "inFlight": "In flight"
+    "inFlight": "In flight",
+    "plan": "Performance plan",
+    "choosePlan": "Choose a performance plan",
+    "planHint": "Load parameters from a plan; adjustments apply only to this test.",
+    "noPlans": "Configure this test directly, or save reusable performance settings in Plans.",
+    "concurrencySummary": "Concurrency {{count}}",
+    "requestsSummary": "{{count}} requests",
+    "load": "Load target",
+    "tokenTargets": "Input / output tokens",
+    "phases": "Preparation",
+    "phasesSummary": "{{warmup}} warmup requests · {{ramp}} s ramp",
+    "workload": "Input generation",
+    "randomWorkload": "Random input",
+    "sharedWorkload": "Generated from plan",
+    "capacity": "Capacity ladder",
+    "configuration": "Plan parameters"
   },
   "completion": {
     "duration": "Completed (duration mode)",

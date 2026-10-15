@@ -1,6 +1,6 @@
 {
   "title": "快速测试",
-  "description": "选择一个测试任务，填写连接与参数即可运行；无需预先创建模型、渠道或计划。",
+  "description": "功能测试选择任务并填写连接；性能测试可选择计划填入参数，再按需调整。",
   "connection": "连接信息",
   "fillChannel": "从渠道填充",
   "manual": "手动输入地址与 API Key",
@@ -15,15 +15,6 @@
   "performance": {
     "title": "快速性能测试",
     "description": "使用当前连接运行流式负载；实际发起请求后会自动封存报告。",
-    "preset": "预设配置",
-    "presets": {
-      "smoke": "快速检查 · 10 次请求",
-      "baseline": "基准测试 · 100 次请求 / 并发 4",
-      "uncached": "无缓存 · 500 次请求 / 并发 40",
-      "cached_suffix": "缓存后缀 · 500 次请求 / 并发 40",
-      "sustained": "持续负载 · 60 秒 / 2 RPS",
-      "capacity": "容量阶梯 · SLO 95%"
-    },
     "selectBinding": "运行性能计划",
     "selectBindingHint": "为本次运行选择模型和渠道；已保存的性能配置不会改变。",
     "model": "模型",
@@ -69,7 +60,22 @@
     "progressAria": "性能测试进度",
     "durationMode": "持续时间模式",
     "requestProgress": "请求完成进度",
-    "inFlight": "在途"
+    "inFlight": "在途",
+    "plan": "性能计划",
+    "choosePlan": "请选择性能计划",
+    "planHint": "选择计划填入参数；临时调整仅用于本次测试。",
+    "noPlans": "可直接配置参数运行，也可在「计划」菜单保存可复用的性能配置。",
+    "concurrencySummary": "并发 {{count}}",
+    "requestsSummary": "{{count}} 次请求",
+    "load": "负载目标",
+    "tokenTargets": "输入 / 输出 Token",
+    "phases": "准备阶段",
+    "phasesSummary": "热身 {{warmup}} 次 · 爬坡 {{ramp}} s",
+    "workload": "输入方式",
+    "randomWorkload": "随机输入",
+    "sharedWorkload": "按计划生成输入",
+    "capacity": "容量阶梯",
+    "configuration": "计划参数"
   },
   "completion": {
     "duration": "完成（持续时间模式）",

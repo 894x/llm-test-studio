@@ -193,7 +193,7 @@ func (service *Service) buildSnapshot(
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		if err := plan.Validate(); err != nil || len(plan.Entries) == 0 {
+		if err := plan.Validate(); err != nil {
 			return Snapshot{}, ErrCorrupt
 		}
 		if _, duplicate := planIDs[plan.ID]; duplicate {
@@ -292,7 +292,8 @@ func (service *Service) buildSnapshot(
 			entrySummaries = append(entrySummaries, summary)
 		}
 		snapshot.Plans = append(snapshot.Plans, PlanSummary{
-			ID: plan.ID, Revision: plan.Revision, Name: plan.Name, Protocol: plan.Protocol, Seed: plan.Seed,
+			Builtin: plan.Builtin,
+			ID:      plan.ID, Revision: plan.Revision, Name: plan.Name, Protocol: plan.Protocol, Seed: plan.Seed,
 			EntryCount: len(plan.Entries), CaseCount: caseCount, Entries: entrySummaries,
 			Performance: clonePerformancePlanProfile(plan.Performance),
 		})

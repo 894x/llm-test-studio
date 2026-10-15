@@ -60,7 +60,13 @@ func TestProductionPlanSaveOnlyStoresReferencesWithoutMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(refreshed.Plans) != 1 || refreshed.Plans[0].ID != result.ID || len(refreshed.Plans[0].Entries) != 2 {
+	customPlans := []catalog.PlanSummary{}
+	for _, plan := range refreshed.Plans {
+		if !plan.Builtin {
+			customPlans = append(customPlans, plan)
+		}
+	}
+	if len(customPlans) != 1 || customPlans[0].ID != result.ID || len(customPlans[0].Entries) != 2 {
 		t.Fatalf("saved Plan missing from refresh: %#v", refreshed.Plans)
 	}
 	if _, err := deps.query.Snapshot(ctx); err != nil {

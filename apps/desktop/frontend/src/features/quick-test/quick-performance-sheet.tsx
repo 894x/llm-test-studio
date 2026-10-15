@@ -9,7 +9,6 @@ import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Field,
   FieldContent,
@@ -18,7 +17,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -40,23 +38,10 @@ import { PerformanceStreamingTimingTable } from "@/features/reports/performance-
 import type { CatalogSnapshot } from "@/features/catalog/data"
 import { eligibleRuntimeChannels, eligibleRuntimeModels } from "@/features/runs/run-targets"
 
-import {
-  estimateQuickPerformanceOpenLoopRampRequestCap,
-  estimateQuickPerformanceOpenLoopRequestCap,
-  type QuickPerformanceArrivalPattern,
-  type QuickPerformanceCommand,
-  type QuickPerformanceLoadMode,
-  type QuickPerformanceProgress,
-  type QuickPerformanceProfile,
-  type QuickPerformanceReport,
-  type QuickPerformanceWorkloadMode,
-} from "./data"
-import {
-  QUICK_PERFORMANCE_PRESET_IDS,
-  quickPerformancePresetFromProfile,
-  quickPerformanceProfileForPreset,
-  type QuickPerformancePresetID,
-} from "./performance-presets"
+import type { QuickPerformanceLoadMode, QuickPerformanceCommand, QuickPerformanceProgress, QuickPerformanceReport, QuickPerformanceProfile } from "./data"
+import { performanceFormFromProfile } from "./performance-profile"
+import { PerformanceProfileFields } from "./performance-profile-fields"
+import { usePerformanceProfileEditor } from "./use-performance-profile-editor"
 import {
   performanceCapacitySummary,
   performanceCompletion,
@@ -64,106 +49,6 @@ import {
   performanceSLOStatusLabel,
 } from "./performance-summary"
 import { QuickPerformanceRequestAnalysis } from "./quick-performance-request-analysis"
-
-const MAX_PERFORMANCE_REQUESTS = 10_000
-
-interface PerformanceForm {
-  loadMode: QuickPerformanceLoadMode
-  arrivalPattern: QuickPerformanceArrivalPattern
-  workloadMode: QuickPerformanceWorkloadMode
-  randomInput: boolean
-  requestCount: number
-  durationSeconds: number
-  concurrency: number
-  ratePerSecond: number
-  maxInFlight: number
-  timeoutSeconds: number
-  inputTokens: number
-  outputTokens: number
-  inputTokensStdDev: number
-  outputTokensStdDev: number
-  sharedPrefixTokens: number
-  randomSeed: number
-  warmupRequests: number
-  rampDurationSeconds: number
-  rampRequestCap: number
-  sliceDurationSeconds: number
-  sloTTFTMS: number
-  sloTPOTMS: number
-  sloE2EMS: number
-  sloTargetPercent: number
-  capacityEnabled: boolean
-  fixedCapacityStart: number
-  fixedCapacityStep: number
-  openCapacityStart: number
-  openCapacityStep: number
-}
-
-type PerformanceNumberFieldName = Exclude<
-  keyof PerformanceForm,
-  "loadMode" | "arrivalPattern" | "workloadMode" | "randomInput" | "capacityEnabled"
->
-type PerformanceFieldErrors = Partial<Record<PerformanceNumberFieldName, string>>
-
-const PERFORMANCE_BUDGET_FIELDS: readonly PerformanceNumberFieldName[] = [
-  "requestCount",
-  "durationSeconds",
-  "concurrency",
-  "ratePerSecond",
-  "warmupRequests",
-  "rampDurationSeconds",
-  "rampRequestCap",
-  "sloTTFTMS",
-  "sloTPOTMS",
-  "sloE2EMS",
-  "sloTargetPercent",
-  "fixedCapacityStart",
-  "fixedCapacityStep",
-  "openCapacityStart",
-  "openCapacityStep",
-]
-
-function performanceTargetErrors() {
-  return {
-    requestCount: tx("desktop:quick-test_enter_a_request_count_greater_than_0_or_set_a"),
-    durationSeconds: tx("desktop:quick-test_enter_a_duration_greater_than_0_or_set_a_request"),
-  } as const
-}
-
-function performanceFormFromProfile(profile?: QuickPerformanceProfile): PerformanceForm {
-  const source = profile ?? quickPerformanceProfileForPreset("smoke")
-  return {
-    loadMode: source.load_mode ?? "fixed_concurrency",
-    arrivalPattern: source.arrival_pattern ?? "constant",
-    workloadMode: source.workload_mode ?? "fixed",
-    randomInput: source.random_input ?? false,
-    requestCount: source.request_count,
-    durationSeconds: source.duration_ms / 1_000,
-    concurrency: source.concurrency,
-    ratePerSecond: source.rate_per_second ?? 1,
-    maxInFlight: source.max_in_flight ?? 256,
-    timeoutSeconds: source.timeout_ms / 1_000,
-    inputTokens: source.input_tokens,
-    outputTokens: source.output_tokens,
-    inputTokensStdDev: source.input_tokens_stddev ?? 0,
-    outputTokensStdDev: source.output_tokens_stddev ?? 0,
-    sharedPrefixTokens: source.shared_prefix_tokens ?? 0,
-    randomSeed: source.random_seed ?? 1,
-    warmupRequests: source.warmup_requests ?? 0,
-    rampDurationSeconds: (source.ramp_duration_ms ?? 0) / 1_000,
-    rampRequestCap: source.ramp_request_cap ?? 1_000,
-    sliceDurationSeconds: (source.slice_duration_ms ?? 0) / 1_000,
-    sloTTFTMS: source.slo_ttft_ms ?? 0,
-    sloTPOTMS: source.slo_tpot_ms ?? 0,
-    sloE2EMS: source.slo_e2e_ms ?? 0,
-    sloTargetPercent: source.slo_target_percent ?? 0,
-    capacityEnabled: source.capacity_enabled ?? false,
-    fixedCapacityStart: source.load_mode === "fixed_concurrency" ? source.capacity_start ?? 1 : 1,
-    fixedCapacityStep: source.load_mode === "fixed_concurrency" ? source.capacity_step ?? 1 : 1,
-    openCapacityStart: source.load_mode === "open_loop" ? source.capacity_start ?? 1 : 1,
-    openCapacityStep: source.load_mode === "open_loop" ? source.capacity_step ?? 1 : 1,
-  }
-}
 
 export type QuickPerformanceConnection = Pick<
   QuickPerformanceCommand,
@@ -173,7 +58,6 @@ export type QuickPerformanceConnection = Pick<
 export function PlanPerformanceRunSheet({
   planID,
   catalog,
-  profile,
   run,
   onArchived,
   onOpenReport,
@@ -181,7 +65,6 @@ export function PlanPerformanceRunSheet({
 }: {
   planID: string
   catalog: CatalogSnapshot
-  profile: QuickPerformanceProfile
   run: (
     command: QuickPerformanceCommand,
     onProgress?: (progress: QuickPerformanceProgress) => void,
@@ -237,7 +120,8 @@ export function PlanPerformanceRunSheet({
       open={performanceOpen}
       onOpenChange={setPerformanceOpen}
       connection={{ protocol: catalog.plans.find(plan => plan.id === planID)!.protocol, address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
-      initialProfile={profile}
+      plans={catalog.plans}
+      initialPlanID={planID}
       run={run}
       onArchived={onArchived}
       onOpenReport={onOpenReport}
@@ -247,7 +131,11 @@ export function PlanPerformanceRunSheet({
 
 type QuickPerformancePanelProps = {
   connection: QuickPerformanceConnection
+  showPlanSelector?: boolean
+  plans: CatalogSnapshot["plans"]
+  initialPlanID?: string
   initialProfile?: QuickPerformanceProfile
+  onPlanChange?: (id: string) => void
   run: (
     command: QuickPerformanceCommand,
     onProgress?: (progress: QuickPerformanceProgress) => void,
@@ -282,22 +170,22 @@ export function QuickPerformanceSheet({
 }
 
 export function QuickPerformancePanel({
-  connection, initialProfile, run, onArchived, onOpenReport, resolveConnection, embedded = false, blocked = false,
+  connection, plans, initialPlanID, initialProfile, onPlanChange, showPlanSelector = true, run, onArchived, onOpenReport, resolveConnection, embedded = false, blocked = false,
 }: QuickPerformancePanelProps & { embedded?: boolean; blocked?: boolean }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("quickTest")
-  const [form, setForm] = useState<PerformanceForm>(() => performanceFormFromProfile(initialProfile))
-  const [preset, setPreset] = useState<QuickPerformancePresetID>(() =>
-    initialProfile ? quickPerformancePresetFromProfile(initialProfile) : "smoke",
-  )
+  const [planID, setPlanID] = useState(initialPlanID ?? "")
+  const availablePlans = plans.filter(plan => plan.performance && plan.protocol === connection.protocol)
+  const plan = availablePlans.find(plan => plan.id === planID)
+  const editor = usePerformanceProfileEditor(initialProfile ?? plan?.performance)
+  const { form } = editor
   const [pending, setPending] = useState(false)
   const [report, setReport] = useState<QuickPerformanceReport | null>(null)
   const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<PerformanceFieldErrors>({})
   const [operationError, setOperationError] = useState("")
   const requestGeneration = useRef({ value: 0 })
   // This identity stays in memory only, including the temporary credential.
-  const connectionIdentity = JSON.stringify(connection)
+  const connectionIdentity = JSON.stringify([connection, form])
   const [outputIdentity, setOutputIdentity] = useState(connectionIdentity)
   if (outputIdentity !== connectionIdentity) {
     setOutputIdentity(connectionIdentity)
@@ -313,105 +201,27 @@ export function QuickPerformancePanel({
       generation.value++
     }
   }, [connectionIdentity])
-  const budgetPreview = performanceRequestBudget(form)
-  const capacityTargets = performanceCapacityTargets(form)
-
-  const resetOutput = () => {
-    setReport(null)
-    setProgress(null)
-    setOperationError("")
-  }
-
-  const update = (key: PerformanceNumberFieldName, value: number) => {
-    setForm((current) => ({ ...current, [key]: value }))
-    setFieldErrors((current) => {
-      let next = omitFieldError(current, key)
-      if (PERFORMANCE_BUDGET_FIELDS.includes(key)) {
-        for (const field of PERFORMANCE_BUDGET_FIELDS) {
-          next = omitFieldError(next, field)
-        }
-      }
-      return next
-    })
-    resetOutput()
-  }
-
-  const updateCapacityEnabled = (capacityEnabled: boolean) => {
-    setForm((current) => ({ ...current, capacityEnabled }))
-    setFieldErrors({})
-    resetOutput()
-  }
-
-  const updateRandomInput = (randomInput: boolean) => {
-    setForm((current) => ({ ...current, randomInput }))
-    resetOutput()
-  }
-
-  const updateLoadMode = (loadMode: QuickPerformanceLoadMode) => {
-    setForm((current) => ({ ...current, loadMode }))
-    setFieldErrors((current) => {
-      const next =
-        loadMode === "fixed_concurrency"
-          ? omitFieldError(omitFieldError(current, "ratePerSecond"), "maxInFlight")
-          : omitFieldError(omitFieldError(current, "concurrency"), "rampRequestCap")
-      const withoutBudgetErrors = omitFieldError(
-        omitFieldError(next, "requestCount"),
-        "warmupRequests",
-      )
-      return loadMode === "fixed_concurrency" && form.workloadMode === "fixed"
-        ? omitFieldError(withoutBudgetErrors, "randomSeed")
-        : withoutBudgetErrors
-    })
-    resetOutput()
-  }
-
-  const updateArrivalPattern = (arrivalPattern: QuickPerformanceArrivalPattern) => {
-    setForm((current) => ({ ...current, arrivalPattern }))
-    setFieldErrors((current) => {
-      const next = omitFieldError(current, "ratePerSecond")
-      return arrivalPattern === "constant" && form.workloadMode === "fixed"
-        ? omitFieldError(next, "randomSeed")
-        : next
-    })
-    resetOutput()
-  }
-
-  const updateWorkloadMode = (workloadMode: QuickPerformanceWorkloadMode) => {
-    setForm((current) => ({ ...current, workloadMode }))
-    if (workloadMode === "fixed") {
-      setFieldErrors((current) => {
-        let next = omitFieldError(
-          omitFieldError(omitFieldError(current, "inputTokensStdDev"), "outputTokensStdDev"),
-          "sharedPrefixTokens",
-        )
-        if (form.loadMode !== "open_loop" || form.arrivalPattern !== "poisson")
-          next = omitFieldError(next, "randomSeed")
-        return next
-      })
-    }
-    resetOutput()
-  }
-
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (pending || blocked) return
     const target = resolveConnection ? resolveConnection() : connection
     if (!target) return
-    const nextFieldErrors = validatePerformanceForm(form)
-    if (Object.keys(nextFieldErrors).length > 0) {
-      setFieldErrors(nextFieldErrors)
-      setOperationError("")
-      focusFormField(event.currentTarget, firstPerformanceErrorField(nextFieldErrors))
-      return
-    }
+    const profile = editor.validate()
+    if (!profile) return
     setPending(true)
     setReport(null)
     setProgress(null)
-    setFieldErrors({})
     setOperationError("")
     const generation = ++requestGeneration.current.value
     void run(
-      performanceCommand(target, form),
+      {
+        protocol: target.protocol, address_mode: target.address_mode,
+        url: target.url, api_key: target.api_key, model_id: target.model_id,
+        ...(target.channel_id ? { channel_id: target.channel_id } : {}),
+        ...(target.credential_run_id ? { credential_run_id: target.credential_run_id } : {}),
+        ...(target.task ? { task: target.task } : {}),
+        ...profile,
+      },
       (nextProgress) => {
         if (requestGeneration.current.value === generation) setProgress(nextProgress)
       },
@@ -440,431 +250,23 @@ export function QuickPerformancePanel({
     <>
           <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4" noValidate>
             <FieldGroup>
-              <Field className="min-w-0 flex-col items-stretch gap-2">
-                <FieldLabel htmlFor="quick-performance-preset">{t("performance.preset")}</FieldLabel>
+              {showPlanSelector ? <Field className="block">
+                <FieldLabel htmlFor="quick-performance-plan">{t("performance.plan")}</FieldLabel>
                 <FieldContent>
-                  <SearchableSelect
-                    value={preset}
-                    disabled={pending}
-                    onValueChange={(value) => {
-                      const nextPreset = value as QuickPerformancePresetID
-                      setPreset(nextPreset)
-                      setForm(performanceFormFromProfile(quickPerformanceProfileForPreset(nextPreset)))
-                      setFieldErrors({})
-                      resetOutput()
-                    }}
-                    id="quick-performance-preset"
-                    aria-label={t("performance.preset")}
-                    className="w-full"
-                    options={QUICK_PERFORMANCE_PRESET_IDS.map((id) => ({
-                      value: id,
-                      label: t(`performance.presets.${id}`),
-                    }))}
-                  />
+                  <SearchableSelect id="quick-performance-plan" aria-label={t("performance.plan")} value={plan?.id ?? ""}
+                    disabled={pending || blocked} className="w-full" placeholder={t("performance.choosePlan")}
+                    options={availablePlans.map(item => ({ value: item.id, label: item.name }))}
+                    onValueChange={id => {
+                      const selected = availablePlans.find(item => item.id === id)
+                      if (!selected?.performance) return
+                      setPlanID(id); onPlanChange?.(id)
+                      editor.setForm(performanceFormFromProfile(selected.performance))
+                      editor.setFieldErrors({})
+                    }} />
+                  <FieldDescription>{t(availablePlans.length ? "performance.planHint" : "performance.noPlans")}</FieldDescription>
                 </FieldContent>
-              </Field>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <FieldLabel htmlFor="quick-performance-loadMode">{tx("desktop:catalog_load_mode")}</FieldLabel>
-                    <FieldDescription id="quick-performance-loadMode-hint" className="mt-0 text-[11px]">{t(form.loadMode === "open_loop" ? "workspace.openLoopHint" : "workspace.concurrencyHint")}</FieldDescription>
-                  </div>
-                  <FieldContent>
-                    <SearchableSelect value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)} id="quick-performance-loadMode" aria-describedby="quick-performance-loadMode-hint" aria-label={tx("desktop:catalog_load_mode")} className="w-full" options={[({value: "fixed_concurrency", label: tx("desktop:catalog_fixed_concurrency")}), ({value: "open_loop", label: tx("desktop:quick-test_open_arrival_rps")})]} />
-                  </FieldContent>
-                </Field>
-                {form.loadMode === "open_loop" ? (
-                  <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
-                    <FieldLabel htmlFor="quick-performance-arrivalPattern">
-                      {tx("desktop:quick-test_arrival_distribution")}
-                    </FieldLabel>
-                    <FieldContent>
-                      <SearchableSelect value={form.arrivalPattern} disabled={pending} onValueChange={(value) =>
-                          updateArrivalPattern(value as QuickPerformanceArrivalPattern)
-                        } id="quick-performance-arrivalPattern" aria-label={tx("desktop:quick-test_arrival_distribution")} className="w-full" options={[({value: "constant", label: tx("desktop:quick-test_constant_interval")}), ({value: "poisson", label: tx("desktop:quick-test_poisson_arrivals")})]} />
-                    </FieldContent>
-                  </Field>
-                ) : null}
-                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
-                  <FieldLabel htmlFor="quick-performance-workloadMode">
-                    {tx("desktop:quick-test_workload")}
-                  </FieldLabel>
-                  <FieldContent>
-                    <SearchableSelect value={form.workloadMode} disabled={pending} onValueChange={(value) =>
-                        updateWorkloadMode(value as QuickPerformanceWorkloadMode)
-                      } id="quick-performance-workloadMode" aria-label={tx("desktop:quick-test_workload")} className="w-full" options={[({value: "fixed", label: tx("desktop:quick-test_fixed_tokens")}), ({value: "normal", label: tx("desktop:quick-test_normal_distribution")})]} />
-                  </FieldContent>
-                </Field>
-                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
-                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <FieldLabel htmlFor="quick-performance-randomInput">{tx("desktop:quick-test_random_input")}</FieldLabel>
-                    <FieldDescription id="quick-performance-randomInput-hint" className="mt-0 text-[11px]">{t("workspace.randomInputHint")}</FieldDescription>
-                  </div>
-                  <FieldLabel htmlFor="quick-performance-randomInput" className="flex h-8 cursor-pointer items-center gap-2 rounded-md border border-input bg-surface-control px-2.5">
-                    <Checkbox id="quick-performance-randomInput" aria-label={tx("desktop:quick-test_random_input")} aria-describedby="quick-performance-randomInput-hint" checked={form.randomInput} disabled={pending} onCheckedChange={checked => updateRandomInput(checked === true)} />
-                    <span aria-hidden="true">{t("workspace.enable")}</span>
-                  </FieldLabel>
-                </Field>
-                <PerformanceNumberField
-                  field="requestCount"
-                  hint={t("workspace.targetHint")}
-                  label={tx("desktop:catalog_request_count")}
-                  value={form.requestCount}
-                  min={0}
-                  max={10_000}
-                  disabled={pending}
-                  error={localizeStoredMessage(fieldErrors.requestCount ?? "", tx)}
-                  onChange={(value) => update("requestCount", value)}
-                />
-                <PerformanceNumberField
-                  field="durationSeconds"
-                  hint={t("workspace.zeroHint")}
-                  label={tx("desktop:quick-test_duration_seconds")}
-                  value={form.durationSeconds}
-                  min={0}
-                  max={3_600}
-                  disabled={pending}
-                  error={localizeStoredMessage(fieldErrors.durationSeconds ?? "", tx)}
-                  onChange={(value) => update("durationSeconds", value)}
-                />
-                {form.loadMode === "fixed_concurrency" ? (
-                  <PerformanceNumberField
-                    field="concurrency"
-                    label={
-                      form.capacityEnabled
-                        ? tx("desktop:quick-test_final_concurrency")
-                        : tx("desktop:catalog_concurrency")
-                    }
-                    value={form.concurrency}
-                    min={1}
-                    max={256}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.concurrency ?? "", tx)}
-                    onChange={(value) => update("concurrency", value)}
-                  />
-                ) : (
-                  <>
-                    <PerformanceNumberField
-                      field="ratePerSecond"
-                      label={
-                        form.capacityEnabled
-                          ? tx("desktop:quick-test_final_rps")
-                          : tx("desktop:quick-test_target_send_rps")
-                      }
-                      value={form.ratePerSecond}
-                      min={0.01}
-                      max={100_000}
-                      step={0.01}
-                      disabled={pending}
-                      error={localizeStoredMessage(fieldErrors.ratePerSecond ?? "", tx)}
-                      onChange={(value) => update("ratePerSecond", value)}
-                    />
-                    <PerformanceNumberField
-                      field="maxInFlight"
-                      label={tx("desktop:quick-test_maximum_in_flight")}
-                      value={form.maxInFlight}
-                      min={1}
-                      max={2_000}
-                      disabled={pending}
-                      error={localizeStoredMessage(fieldErrors.maxInFlight ?? "", tx)}
-                      onChange={(value) => update("maxInFlight", value)}
-                    />
-                  </>
-                )}
-                <PerformanceNumberField
-                  field="timeoutSeconds"
-                  label={tx("desktop:quick-test_request_timeout_seconds")}
-                  value={form.timeoutSeconds}
-                  min={1}
-                  max={600}
-                  disabled={pending}
-                  error={localizeStoredMessage(fieldErrors.timeoutSeconds ?? "", tx)}
-                  onChange={(value) => update("timeoutSeconds", value)}
-                />
-                <PerformanceNumberField
-                  field="inputTokens"
-                  label={
-                    form.workloadMode === "normal"
-                      ? tx("desktop:quick-test_approximate_mean_input_tokens")
-                      : tx("desktop:quick-test_approximate_input_tokens")
-                  }
-                  value={form.inputTokens}
-                  min={1}
-                  max={1_000_000}
-                  disabled={pending}
-                  error={localizeStoredMessage(fieldErrors.inputTokens ?? "", tx)}
-                  onChange={(value) => update("inputTokens", value)}
-                />
-                <PerformanceNumberField
-                  field="outputTokens"
-                  hint={t("workspace.outputHint")}
-                  label={
-                    form.workloadMode === "normal"
-                      ? tx("desktop:quick-test_mean_maximum_output_tokens")
-                      : tx("desktop:quick-test_maximum_output_tokens")
-                  }
-                  value={form.outputTokens}
-                  min={1}
-                  max={65_536}
-                  disabled={pending}
-                  error={localizeStoredMessage(fieldErrors.outputTokens ?? "", tx)}
-                  onChange={(value) => update("outputTokens", value)}
-                />
-                {form.workloadMode === "normal" ? (
-                  <>
-                    <PerformanceNumberField
-                      field="inputTokensStdDev"
-                      label={tx("desktop:quick-test_input_token_standard_deviation")}
-                      value={form.inputTokensStdDev}
-                      min={0}
-                      max={1_000_000}
-                      disabled={pending}
-                      error={localizeStoredMessage(fieldErrors.inputTokensStdDev ?? "", tx)}
-                      onChange={(value) => update("inputTokensStdDev", value)}
-                    />
-                    <PerformanceNumberField
-                      field="outputTokensStdDev"
-                      label={tx("desktop:quick-test_output_token_standard_deviation")}
-                      value={form.outputTokensStdDev}
-                      min={0}
-                      max={65_536}
-                      disabled={pending}
-                      error={localizeStoredMessage(fieldErrors.outputTokensStdDev ?? "", tx)}
-                      onChange={(value) => update("outputTokensStdDev", value)}
-                    />
-                    <PerformanceNumberField
-                      field="sharedPrefixTokens"
-                      label={tx("desktop:quick-test_shared_prefix_tokens")}
-                      value={form.sharedPrefixTokens}
-                      min={0}
-                      max={999_999}
-                      disabled={pending}
-                      error={localizeStoredMessage(fieldErrors.sharedPrefixTokens ?? "", tx)}
-                      onChange={(value) => update("sharedPrefixTokens", value)}
-                    />
-                  </>
-                ) : null}
-                {performanceNeedsSeed(form) ? (
-                  <PerformanceNumberField
-                    field="randomSeed"
-                    label={tx("desktop:quick-test_random_seed")}
-                    value={form.randomSeed}
-                    min={1}
-                    max={4_294_967_295}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.randomSeed ?? "", tx)}
-                    onChange={(value) => update("randomSeed", value)}
-                  />
-                ) : null}
-              </div>
-              <div className="rounded-lg border bg-surface-subtle p-3">
-                <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <h3 className="text-xs font-semibold">
-                    {tx("desktop:quick-test_slo_and_capacity")}
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground">{t("workspace.sloHint")}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <PerformanceNumberField
-                    field="sloTTFTMS"
-                    label="SLO TTFT（ms）"
-                    value={form.sloTTFTMS}
-                    min={0}
-                    max={Number.MAX_VALUE}
-                    step={0.01}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.sloTTFTMS ?? "", tx)}
-                    onChange={(value) => update("sloTTFTMS", value)}
-                  />
-                  <PerformanceNumberField
-                    field="sloTPOTMS"
-                    label="SLO TPOT（ms/token）"
-                    value={form.sloTPOTMS}
-                    min={0}
-                    max={Number.MAX_VALUE}
-                    step={0.01}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.sloTPOTMS ?? "", tx)}
-                    onChange={(value) => update("sloTPOTMS", value)}
-                  />
-                  <PerformanceNumberField
-                    field="sloE2EMS"
-                    label="SLO E2E（ms）"
-                    value={form.sloE2EMS}
-                    min={0}
-                    max={Number.MAX_VALUE}
-                    step={0.01}
-                    disabled={pending}
-                    error={fieldErrors.sloE2EMS}
-                    onChange={(value) => update("sloE2EMS", value)}
-                  />
-                  <PerformanceNumberField
-                    field="sloTargetPercent"
-                    label={tx("desktop:quick-test_slo_target_compliance")}
-                    value={form.sloTargetPercent}
-                    min={0}
-                    max={100}
-                    step={0.01}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.sloTargetPercent ?? "", tx)}
-                    onChange={(value) => update("sloTargetPercent", value)}
-                  />
-                </div>
-                <Field className="mt-3 gap-2">
-                  <FieldLabel
-                    htmlFor="quick-performance-capacityEnabled"
-                    className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5"
-                  >
-                    <Checkbox
-                      id="quick-performance-capacityEnabled"
-                      aria-label={tx("desktop:quick-test_capacity_ladder")}
-                      checked={form.capacityEnabled}
-                      disabled={pending}
-                      onCheckedChange={(checked) => updateCapacityEnabled(checked === true)}
-                    />
-                    <span>{tx("desktop:quick-test_capacity_ladder")}</span>
-                    <span className="ml-auto text-[10px] font-normal text-muted-foreground">
-                      {tx("desktop:quick-test_run_each_step_and_stop_after_the_first_failure")}
-                    </span>
-                  </FieldLabel>
-                </Field>
-                {form.capacityEnabled ? (
-                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2fr]">
-                    {form.loadMode === "fixed_concurrency" ? (
-                      <>
-                        <PerformanceNumberField
-                          field="fixedCapacityStart"
-                          label={tx("desktop:quick-test_starting_concurrency")}
-                          value={form.fixedCapacityStart}
-                          min={1}
-                          max={256}
-                          disabled={pending}
-                          error={localizeStoredMessage(fieldErrors.fixedCapacityStart ?? "", tx)}
-                          onChange={(value) => update("fixedCapacityStart", value)}
-                        />
-                        <PerformanceNumberField
-                          field="fixedCapacityStep"
-                          label={tx("desktop:quick-test_concurrency_step")}
-                          value={form.fixedCapacityStep}
-                          min={1}
-                          max={Number.MAX_SAFE_INTEGER}
-                          disabled={pending}
-                          error={localizeStoredMessage(fieldErrors.fixedCapacityStep ?? "", tx)}
-                          onChange={(value) => update("fixedCapacityStep", value)}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <PerformanceNumberField
-                          field="openCapacityStart"
-                          label={tx("desktop:quick-test_starting_rps")}
-                          value={form.openCapacityStart}
-                          min={0.01}
-                          max={100_000}
-                          step={0.01}
-                          disabled={pending}
-                          error={localizeStoredMessage(fieldErrors.openCapacityStart ?? "", tx)}
-                          onChange={(value) => update("openCapacityStart", value)}
-                        />
-                        <PerformanceNumberField
-                          field="openCapacityStep"
-                          label={tx("desktop:quick-test_rps_step")}
-                          value={form.openCapacityStep}
-                          min={0.01}
-                          max={Number.MAX_VALUE}
-                          step={0.01}
-                          disabled={pending}
-                          error={localizeStoredMessage(fieldErrors.openCapacityStep ?? "", tx)}
-                          onChange={(value) => update("openCapacityStep", value)}
-                        />
-                      </>
-                    )}
-                    <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
-                      <FieldLabel htmlFor="quick-performance-capacityPreview">{t("workspace.capacityPreview")}</FieldLabel>
-                      <Input id="quick-performance-capacityPreview" readOnly value={capacityTargets?.length
-                        ? tx("desktop:quick-test_value_value_steps", { value1: capacityTargets.map(formatCapacityTarget).join(" → "), value2: formatNumber(capacityTargets.length) })
-                        : tx("desktop:quick-test_enter_a_valid_start_step_and_final_target")} />
-                    </Field>
-                  </div>
-                ) : null}
-              </div>
-              <div className="rounded-lg border bg-surface-subtle p-3">
-                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h3 className="text-xs font-semibold">
-                    {tx("desktop:quick-test_phases_and_sampling")}
-                  </h3>
-                  <p className="text-[10px] tabular-nums text-muted-foreground">
-                    {form.capacityEnabled ? (
-                      <>
-                        {tx("desktop:quick-test_budget_warmup")}{" "}
-                        {formatNumber(budgetPreview.warmupCap)} {tx("desktop:quick-test_capacity")}{" "}
-                        {formatNumber(budgetPreview.measuredCap)} {tx("desktop:quick-test_total")}{" "}
-                        {formatNumber(budgetPreview.totalCap)} /{" "}
-                        {formatNumber(MAX_PERFORMANCE_REQUESTS)}
-                      </>
-                    ) : (
-                      <>
-                        {tx("desktop:quick-test_budget_warmup")}{" "}
-                        {formatNumber(budgetPreview.warmupCap)} {tx("desktop:quick-test_ramp")}{" "}
-                        {formatNumber(budgetPreview.rampCap)}{" "}
-                        {tx("desktop:quick-test_steady_state")}{" "}
-                        {formatNumber(budgetPreview.measuredCap)} {tx("desktop:quick-test_total")}{" "}
-                        {formatNumber(budgetPreview.totalCap)} /{" "}
-                        {formatNumber(MAX_PERFORMANCE_REQUESTS)}
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <PerformanceNumberField
-                    field="warmupRequests"
-                  hint={t("workspace.warmupHint")}
-                    label={tx("desktop:quick-test_warmup_request_count")}
-                    value={form.warmupRequests}
-                    min={0}
-                    max={10_000}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.warmupRequests ?? "", tx)}
-                    onChange={(value) => update("warmupRequests", value)}
-                  />
-                  <PerformanceNumberField
-                    field="rampDurationSeconds"
-                  hint={t("workspace.rampHint")}
-                    label={tx("desktop:quick-test_ramp_duration_seconds")}
-                    value={form.rampDurationSeconds}
-                    min={0}
-                    max={3_600}
-                    disabled={pending || form.capacityEnabled}
-                    error={localizeStoredMessage(fieldErrors.rampDurationSeconds ?? "", tx)}
-                    onChange={(value) => update("rampDurationSeconds", value)}
-                  />
-                  {!form.capacityEnabled &&
-                  form.loadMode === "fixed_concurrency" &&
-                  form.rampDurationSeconds > 0 ? (
-                    <PerformanceNumberField
-                      field="rampRequestCap"
-                      label={tx("desktop:quick-test_ramp_request_cap")}
-                      value={form.rampRequestCap}
-                      min={1}
-                      max={10_000}
-                      disabled={pending}
-                      error={localizeStoredMessage(fieldErrors.rampRequestCap ?? "", tx)}
-                      onChange={(value) => update("rampRequestCap", value)}
-                    />
-                  ) : null}
-                  <PerformanceNumberField
-                    field="sliceDurationSeconds"
-                  hint={t("workspace.sliceHint")}
-                    label={tx("desktop:quick-test_time_slice_seconds")}
-                    value={form.sliceDurationSeconds}
-                    min={0}
-                    max={3_600}
-                    disabled={pending}
-                    error={localizeStoredMessage(fieldErrors.sliceDurationSeconds ?? "", tx)}
-                    onChange={(value) => update("sliceDurationSeconds", value)}
-                  />
-                </div>
-              </div>
+              </Field> : null}
+              <PerformanceProfileFields editor={editor} pending={pending} />
               {operationError ? (
                 <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
                   {localizeStoredMessage(operationError, tx)}
@@ -915,58 +317,6 @@ export function QuickPerformancePanel({
       <SheetFooter>{startButton}</SheetFooter>
     </>
 
-  )
-}
-
-function PerformanceNumberField({
-  field,
-  label,
-  hint,
-  value,
-  min,
-  max,
-  step = 1,
-  disabled,
-  error,
-  onChange,
-}: {
-  field: PerformanceNumberFieldName
-  label: string
-  hint?: string
-  value: number
-  min: number
-  max: number
-  step?: number
-  disabled: boolean
-  error?: string
-  onChange: (value: number) => void
-}) {
-  const id = `quick-performance-${field}`
-  const errorID = `${id}-error`
-  return (
-    <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2" data-invalid={error ? true : undefined}>
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        {hint ? <FieldDescription id={`${id}-hint`} className="mt-0 text-[11px]">{hint}</FieldDescription> : null}
-        {error ? <FieldError id={errorID} className="min-w-0 text-[11px] font-normal">{localizeStoredMessage(error, tx)}</FieldError> : null}
-      </div>
-      <FieldContent>
-        <Input
-          id={id}
-          aria-label={label}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={[...(hint ? [`${id}-hint`] : []), ...(error ? [errorID] : [])].join(" ") || undefined}
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onChange(Number(event.target.value))}
-          required
-        />
-      </FieldContent>
-    </Field>
   )
 }
 
@@ -1448,353 +798,6 @@ function MetricSection({ title, children }: { title: string; children: React.Rea
   )
 }
 
-function performanceCommand(
-  connection: QuickPerformanceConnection,
-  form: PerformanceForm,
-): QuickPerformanceCommand {
-  const fixedConcurrency = form.loadMode === "fixed_concurrency"
-  const openLoop = form.loadMode === "open_loop"
-  const normalWorkload = form.workloadMode === "normal"
-  const capacityStart = fixedConcurrency ? form.fixedCapacityStart : form.openCapacityStart
-  const capacityStep = fixedConcurrency ? form.fixedCapacityStep : form.openCapacityStep
-  return {
-    protocol: connection.protocol,
-    address_mode: connection.address_mode,
-    ...(connection.task ? { task: connection.task } : {}),
-    url: connection.url,
-    api_key: connection.api_key,
-    ...(connection.channel_id ? { channel_id: connection.channel_id } : {}),
-    ...(connection.credential_run_id ? { credential_run_id: connection.credential_run_id } : {}),
-    model_id: connection.model_id,
-    load_mode: form.loadMode,
-    request_count: form.requestCount,
-    duration_ms: form.durationSeconds * 1_000,
-    concurrency: fixedConcurrency ? form.concurrency : 0,
-    rate_per_second: openLoop ? form.ratePerSecond : 0,
-    max_in_flight: openLoop ? form.maxInFlight : 0,
-    arrival_pattern: openLoop ? form.arrivalPattern : "constant",
-    workload_mode: form.workloadMode,
-    random_input: form.randomInput,
-    random_seed: performanceNeedsSeed(form) ? form.randomSeed : 0,
-    input_tokens_stddev: normalWorkload ? form.inputTokensStdDev : 0,
-    output_tokens_stddev: normalWorkload ? form.outputTokensStdDev : 0,
-    shared_prefix_tokens: normalWorkload ? form.sharedPrefixTokens : 0,
-    warmup_requests: form.warmupRequests,
-    ramp_duration_ms: form.capacityEnabled ? 0 : form.rampDurationSeconds * 1_000,
-    ramp_request_cap:
-      !form.capacityEnabled && fixedConcurrency && form.rampDurationSeconds > 0
-        ? form.rampRequestCap
-        : 0,
-    slice_duration_ms: form.sliceDurationSeconds * 1_000,
-    slo_ttft_ms: form.sloTTFTMS,
-    slo_tpot_ms: form.sloTPOTMS,
-    slo_e2e_ms: form.sloE2EMS,
-    slo_target_percent: form.sloTargetPercent,
-    capacity_enabled: form.capacityEnabled,
-    capacity_start: form.capacityEnabled ? capacityStart : 0,
-    capacity_step: form.capacityEnabled ? capacityStep : 0,
-    timeout_ms: form.timeoutSeconds * 1_000,
-    input_tokens: form.inputTokens,
-    output_tokens: form.outputTokens,
-  }
-}
-
-function validatePerformanceForm(form: PerformanceForm): PerformanceFieldErrors {
-  const errors: PerformanceFieldErrors = {}
-  if (!integerInRange(form.requestCount, 0, 10_000))
-    errors.requestCount = tx("desktop:quick-test_request_count_must_be_an_integer_from_0_to_10")
-  if (!integerInRange(form.durationSeconds, 0, 3_600))
-    errors.durationSeconds = tx("desktop:quick-test_duration_must_be_an_integer_from_0_to_3_600")
-  if (!integerInRange(form.warmupRequests, 0, 10_000))
-    errors.warmupRequests = tx(
-      "desktop:quick-test_warmup_request_count_must_be_an_integer_from_0_to",
-    )
-  if (!form.capacityEnabled && !integerInRange(form.rampDurationSeconds, 0, 3_600))
-    errors.rampDurationSeconds = tx(
-      "desktop:quick-test_ramp_duration_must_be_an_integer_from_0_to_3",
-    )
-  if (!integerInRange(form.sliceDurationSeconds, 0, 3_600))
-    errors.sliceDurationSeconds = tx("desktop:quick-test_time_slice_must_be_an_integer_from_0_to_3")
-  if (!Number.isFinite(form.sloTTFTMS) || form.sloTTFTMS < 0)
-    errors.sloTTFTMS = tx(
-      "desktop:quick-test_the_slo_ttft_threshold_must_be_a_finite_number_greater",
-    )
-  if (!Number.isFinite(form.sloTPOTMS) || form.sloTPOTMS < 0)
-    errors.sloTPOTMS = tx(
-      "desktop:quick-test_the_slo_tpot_threshold_must_be_a_finite_number_greater",
-    )
-  if (!Number.isFinite(form.sloE2EMS) || form.sloE2EMS < 0)
-    errors.sloE2EMS = tx("desktop:quick-test_the_slo_e2e_threshold_must_be_a_finite_number_greater")
-  if (!finiteInRange(form.sloTargetPercent, 0, 100))
-    errors.sloTargetPercent = tx("desktop:quick-test_slo_target_compliance_must_be_from_0_to_100")
-  const hasSLOThreshold = form.sloTTFTMS > 0 || form.sloTPOTMS > 0 || form.sloE2EMS > 0
-  if (!errors.sloTargetPercent && form.sloTargetPercent > 0 && !hasSLOThreshold) {
-    errors.sloTargetPercent = tx(
-      "desktop:quick-test_enable_at_least_one_latency_threshold_when_setting_target_compliance",
-    )
-  } else if (!errors.sloTargetPercent && hasSLOThreshold && form.sloTargetPercent <= 0) {
-    errors.sloTargetPercent = tx(
-      "desktop:quick-test_target_compliance_must_be_greater_than_0_when_a_latency",
-    )
-  }
-  if (
-    !errors.requestCount &&
-    !errors.durationSeconds &&
-    form.requestCount === 0 &&
-    form.durationSeconds === 0
-  ) {
-    errors.requestCount = performanceTargetErrors().requestCount
-    errors.durationSeconds = performanceTargetErrors().durationSeconds
-  }
-  if (form.loadMode === "fixed_concurrency") {
-    if (!integerInRange(form.concurrency, 1, 256))
-      errors.concurrency = tx("desktop:quick-test_concurrency_must_be_an_integer_from_1_to_256")
-    if (
-      !form.capacityEnabled &&
-      form.rampDurationSeconds > 0 &&
-      !integerInRange(form.rampRequestCap, 1, 10_000)
-    )
-      errors.rampRequestCap = tx("desktop:quick-test_ramp_request_cap_must_be_an_integer_from_1_to")
-  } else {
-    if (!finiteInRange(form.ratePerSecond, 0.01, 100_000))
-      errors.ratePerSecond = tx("desktop:quick-test_target_send_rps_must_be_from_0_01_to_100")
-    if (!integerInRange(form.maxInFlight, 1, 2_000))
-      errors.maxInFlight = tx("desktop:quick-test_maximum_in_flight_must_be_an_integer_from_1_to")
-  }
-  if (!integerInRange(form.timeoutSeconds, 1, 600))
-    errors.timeoutSeconds = tx(
-      "desktop:quick-test_request_timeout_must_be_an_integer_from_1_to_600",
-    )
-  if (!integerInRange(form.inputTokens, 1, 1_000_000))
-    errors.inputTokens = tx(
-      "desktop:quick-test_approximate_input_tokens_must_be_an_integer_from_1_to",
-    )
-  if (!integerInRange(form.outputTokens, 1, 65_536))
-    errors.outputTokens = tx(
-      "desktop:quick-test_maximum_output_tokens_must_be_an_integer_from_1_to",
-    )
-  if (form.workloadMode === "normal") {
-    if (!integerInRange(form.inputTokensStdDev, 0, 1_000_000))
-      errors.inputTokensStdDev = tx(
-        "desktop:quick-test_input_token_standard_deviation_must_be_an_integer_from_0",
-      )
-    else if (!errors.inputTokens && form.inputTokensStdDev > form.inputTokens)
-      errors.inputTokensStdDev = tx(
-        "desktop:quick-test_input_token_standard_deviation_cannot_exceed_the_input_mean",
-      )
-    if (!integerInRange(form.outputTokensStdDev, 0, 65_536))
-      errors.outputTokensStdDev = tx(
-        "desktop:quick-test_output_token_standard_deviation_must_be_an_integer_from_0",
-      )
-    else if (!errors.outputTokens && form.outputTokensStdDev > form.outputTokens)
-      errors.outputTokensStdDev = tx(
-        "desktop:quick-test_output_token_standard_deviation_cannot_exceed_the_output_mean",
-      )
-    if (!integerInRange(form.sharedPrefixTokens, 0, 999_999))
-      errors.sharedPrefixTokens = tx(
-        "desktop:quick-test_shared_prefix_tokens_must_be_an_integer_from_0_to",
-      )
-    else if (!errors.inputTokens && form.sharedPrefixTokens >= form.inputTokens)
-      errors.sharedPrefixTokens = tx(
-        "desktop:quick-test_shared_prefix_tokens_must_be_less_than_the_input_mean",
-      )
-  }
-  if (performanceNeedsSeed(form) && !integerInRange(form.randomSeed, 1, 4_294_967_295)) {
-    errors.randomSeed = tx("desktop:quick-test_random_seed_must_be_an_integer_from_1_to_4")
-  }
-  if (form.capacityEnabled) {
-    if (!hasSLOThreshold || form.sloTargetPercent <= 0) {
-      if (!errors.sloTargetPercent)
-        errors.sloTargetPercent = tx(
-          "desktop:quick-test_configure_a_valid_slo_before_enabling_a_capacity_ladder",
-        )
-    }
-    if (form.requestCount <= 0 && !errors.requestCount)
-      errors.requestCount = tx(
-        "desktop:quick-test_a_capacity_ladder_requires_a_request_count_greater_than_0",
-      )
-    if (form.loadMode === "fixed_concurrency") {
-      if (!integerInRange(form.fixedCapacityStart, 1, form.concurrency))
-        errors.fixedCapacityStart = tx(
-          "desktop:quick-test_starting_concurrency_must_be_a_positive_integer_no_greater_than",
-        )
-      if (!Number.isSafeInteger(form.fixedCapacityStep) || form.fixedCapacityStep <= 0)
-        errors.fixedCapacityStep = tx(
-          "desktop:quick-test_concurrency_step_must_be_a_positive_integer",
-        )
-    } else {
-      if (!finiteInRange(form.openCapacityStart, 0.01, form.ratePerSecond))
-        errors.openCapacityStart = tx(
-          "desktop:quick-test_starting_rps_must_be_from_0_01_to_final_rps",
-        )
-      if (!Number.isFinite(form.openCapacityStep) || form.openCapacityStep <= 0)
-        errors.openCapacityStep = tx(
-          "desktop:quick-test_rps_step_must_be_a_finite_number_greater_than_0",
-        )
-    }
-    const targets = performanceCapacityTargets(form)
-    if (targets && targets.length > 20) {
-      errors[form.loadMode === "fixed_concurrency" ? "fixedCapacityStep" : "openCapacityStep"] = tx(
-        "desktop:quick-test_capacity_ladders_support_at_most_20_steps_increase_the_step",
-      )
-    }
-  }
-  const canCalculateBudget =
-    !errors.requestCount &&
-    !errors.durationSeconds &&
-    !errors.warmupRequests &&
-    (!form.capacityEnabled ||
-      (!errors.fixedCapacityStart &&
-        !errors.fixedCapacityStep &&
-        !errors.openCapacityStart &&
-        !errors.openCapacityStep &&
-        (performanceCapacityTargets(form)?.length ?? 21) <= 20)) &&
-    (form.capacityEnabled || (!errors.rampDurationSeconds && !errors.rampRequestCap)) &&
-    (form.loadMode === "fixed_concurrency" || !errors.ratePerSecond) &&
-    (form.requestCount > 0 || form.durationSeconds > 0)
-  if (canCalculateBudget) {
-    const budget = performanceRequestBudget(form)
-    if (
-      !form.capacityEnabled &&
-      form.loadMode === "fixed_concurrency" &&
-      form.requestCount === 0 &&
-      budget.measuredCap < 1
-    ) {
-      const field = form.rampDurationSeconds > 0 ? "rampRequestCap" : "warmupRequests"
-      errors[field] = tx("desktop:quick-test_warmup_and_ramp_use_the_entire_10_000_request_budget")
-    } else if (budget.totalCap > MAX_PERFORMANCE_REQUESTS) {
-      if (form.capacityEnabled) {
-        errors.requestCount = tx(
-          "desktop:quick-test_warmup_value_capacity_value_value_exceeding_the_total_request_budget",
-          {
-            value1: formatNumber(budget.warmupCap),
-            value2: formatNumber(budget.measuredCap),
-            value3: formatNumber(budget.totalCap),
-          },
-        )
-      } else if (
-        form.loadMode === "open_loop" &&
-        form.requestCount === 0 &&
-        budget.warmupCap === 0 &&
-        budget.rampCap === 0
-      ) {
-        errors.ratePerSecond =
-          form.arrivalPattern === "poisson"
-            ? tx(
-                "desktop:quick-test_poisson_arrivals_require_double_scheduling_headroom_the_estimated_cap_of",
-                { value1: formatNumber(budget.measuredCap) },
-              )
-            : tx(
-                "desktop:quick-test_the_current_duration_and_rps_schedule_an_estimated_value_requests",
-                { value1: formatNumber(budget.measuredCap) },
-              )
-      } else {
-        const message = tx(
-          "desktop:quick-test_warmup_value_ramp_value_steady_state_value_value_exceeding_the",
-          {
-            value1: formatNumber(budget.warmupCap),
-            value2: formatNumber(budget.rampCap),
-            value3: formatNumber(budget.measuredCap),
-            value4: formatNumber(budget.totalCap),
-          },
-        )
-        if (form.requestCount > 0) errors.requestCount = message
-        else if (form.loadMode === "open_loop") errors.ratePerSecond = message
-        else if (form.rampDurationSeconds > 0) errors.rampRequestCap = message
-        else errors.warmupRequests = message
-      }
-    }
-  }
-  return errors
-}
-
-interface PerformanceRequestBudgetPreview {
-  warmupCap: number
-  rampCap: number
-  measuredCap: number
-  totalCap: number
-}
-
-function performanceRequestBudget(form: PerformanceForm): PerformanceRequestBudgetPreview {
-  const warmupCap = nonNegativeFiniteOrZero(form.warmupRequests)
-  const rampDurationSeconds = form.capacityEnabled
-    ? 0
-    : nonNegativeFiniteOrZero(form.rampDurationSeconds)
-  const rampCap =
-    rampDurationSeconds === 0
-      ? 0
-      : form.loadMode === "fixed_concurrency"
-        ? nonNegativeFiniteOrZero(form.rampRequestCap)
-        : estimateQuickPerformanceOpenLoopRampRequestCap(
-            rampDurationSeconds * 1_000,
-            nonNegativeFiniteOrZero(form.ratePerSecond),
-            form.arrivalPattern,
-          )
-  const capacityTargets = performanceCapacityTargets(form)
-  const measuredCap =
-    form.capacityEnabled && capacityTargets
-      ? nonNegativeFiniteOrZero(form.requestCount) * capacityTargets.length
-      : form.requestCount > 0
-        ? nonNegativeFiniteOrZero(form.requestCount)
-        : form.durationSeconds <= 0
-          ? 0
-          : form.loadMode === "fixed_concurrency"
-            ? Math.max(0, MAX_PERFORMANCE_REQUESTS - warmupCap - rampCap)
-            : estimateQuickPerformanceOpenLoopRequestCap(
-                nonNegativeFiniteOrZero(form.durationSeconds) * 1_000,
-                nonNegativeFiniteOrZero(form.ratePerSecond),
-                form.arrivalPattern,
-              )
-  return { warmupCap, rampCap, measuredCap, totalCap: warmupCap + rampCap + measuredCap }
-}
-
-function performanceCapacityTargets(form: PerformanceForm): number[] | undefined {
-  if (!form.capacityEnabled) return undefined
-  const maximum = form.loadMode === "fixed_concurrency" ? form.concurrency : form.ratePerSecond
-  const start =
-    form.loadMode === "fixed_concurrency" ? form.fixedCapacityStart : form.openCapacityStart
-  const step =
-    form.loadMode === "fixed_concurrency" ? form.fixedCapacityStep : form.openCapacityStep
-  if (
-    !Number.isFinite(maximum) ||
-    !Number.isFinite(start) ||
-    !Number.isFinite(step) ||
-    maximum <= 0 ||
-    start <= 0 ||
-    step <= 0 ||
-    start > maximum
-  )
-    return undefined
-  if (
-    form.loadMode === "fixed_concurrency" &&
-    (!Number.isInteger(start) || !Number.isInteger(step))
-  )
-    return undefined
-  if (form.loadMode === "open_loop" && start < 0.01) return undefined
-  const targets: number[] = []
-  for (let index = 0; index <= 20; index += 1) {
-    const candidate = start + index * step
-    if (!Number.isFinite(candidate) || candidate <= 0) return undefined
-    if (candidate >= maximum) {
-      targets.push(maximum)
-      break
-    }
-    if (targets.length > 0 && candidate <= targets[targets.length - 1]) return undefined
-    targets.push(candidate)
-  }
-  if (targets.length === 0 || targets[targets.length - 1] !== maximum) {
-    // Preserve one extra sentinel rung so field validation can distinguish a
-    // valid ladder that exceeds the supported twenty-rung UI/Core contract.
-    if (targets.length === 21) return targets
-    return undefined
-  }
-  return targets
-}
-
-function nonNegativeFiniteOrZero(value: number): number {
-  return Number.isFinite(value) && value > 0 ? value : 0
-}
-
 function ResultValue({
   label,
   value,
@@ -1878,13 +881,6 @@ function formatOptionalRate(value: number | undefined): string {
   return value === undefined ? "—" : `${formatPerformanceInteger(value)} req/s`
 }
 
-function performanceNeedsSeed(form: PerformanceForm): boolean {
-  return (
-    form.workloadMode === "normal" ||
-    (form.loadMode === "open_loop" && form.arrivalPattern === "poisson")
-  )
-}
-
 function performanceArrivalPattern(report: QuickPerformanceReport): string {
   if (report.profile.arrival_pattern === "poisson") return tx("desktop:quick-test_poisson_arrivals")
   return report.profile.arrival_pattern === "constant"
@@ -1942,58 +938,4 @@ function performanceTargetRate(report: QuickPerformanceReport): string {
   return report.profile.load_mode === "open_loop" && target !== undefined
     ? `${formatCapacityTarget(target)} req/s`
     : tx("desktop:quick-test_fixed_concurrency")
-}
-
-function integerInRange(value: number, minimum: number, maximum: number): boolean {
-  return Number.isInteger(value) && value >= minimum && value <= maximum
-}
-
-function finiteInRange(value: number, minimum: number, maximum: number): boolean {
-  return Number.isFinite(value) && value >= minimum && value <= maximum
-}
-
-function firstPerformanceErrorField(
-  errors: PerformanceFieldErrors,
-): PerformanceNumberFieldName | undefined {
-  return (
-    [
-      "requestCount",
-      "durationSeconds",
-      "concurrency",
-      "ratePerSecond",
-      "maxInFlight",
-      "timeoutSeconds",
-      "inputTokens",
-      "outputTokens",
-      "inputTokensStdDev",
-      "outputTokensStdDev",
-      "sharedPrefixTokens",
-      "randomSeed",
-      "sloTTFTMS",
-      "sloTPOTMS",
-      "sloE2EMS",
-      "sloTargetPercent",
-      "fixedCapacityStart",
-      "fixedCapacityStep",
-      "openCapacityStart",
-      "openCapacityStep",
-      "warmupRequests",
-      "rampDurationSeconds",
-      "rampRequestCap",
-      "sliceDurationSeconds",
-    ] as const
-  ).find((field) => errors[field])
-}
-
-function omitFieldError<T extends object>(errors: T, field: PropertyKey): T {
-  if (!(field in errors)) return errors
-  const next = { ...errors }
-  delete (next as Record<PropertyKey, unknown>)[field]
-  return next
-}
-
-function focusFormField(form: Element, field: string | undefined) {
-  if (!field) return
-  const control = document.getElementById(`quick-performance-${field}`)
-  if (control instanceof HTMLElement && form.contains(control)) control.focus()
 }

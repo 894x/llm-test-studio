@@ -180,7 +180,7 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 			}
 			var planID string
 			for _, item := range plans.Plans {
-				if item.Protocol == protocol {
+				if item.Name == "E2E "+string(protocol) {
 					planID = item.ID
 				}
 			}

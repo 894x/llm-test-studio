@@ -93,6 +93,7 @@ export interface CatalogPlanEntry {
   sla_thresholds: Record<string, number>
 }
 export interface CatalogPlan {
+  builtin?: boolean
   id: string; revision: number; name: string; protocol: CatalogProtocol; seed: number
   entry_count: number; case_count: number; entries: CatalogPlanEntry[]; performance?: QuickPerformanceProfile
 }
@@ -411,6 +412,7 @@ export function parseSuiteInput(value: unknown): SuiteInput {
 }
 function parsePlan(value: unknown): CatalogPlan {
   if (!isRecord(value) || !isUUID(value.id) || !isPositiveInteger(value.revision) ||
+    (value.builtin !== undefined && typeof value.builtin !== "boolean") ||
     !isNonBlank(value.name) || !isProtocol(value.protocol) || !isNonNegativeInteger(value.seed) ||
     !isNonNegativeInteger(value.entry_count) || !isNonNegativeInteger(value.case_count) ||
     !Array.isArray(value.entries) || ["suites", "model_ids", "channel_ids"].some(key => key in value)) throw invalidCatalog()
@@ -420,6 +422,7 @@ function parsePlan(value: unknown): CatalogPlan {
   if (performance !== undefined && entries.length !== 0) throw invalidCatalog()
   return { id: value.id, revision: value.revision, name: value.name, protocol: value.protocol,
     seed: value.seed, entry_count: value.entry_count, case_count: value.case_count, entries,
+    ...(value.builtin === undefined ? {} : { builtin: value.builtin }),
     ...(performance === undefined ? {} : { performance }) }
 }
 function parsePlanEntry(value: unknown): CatalogPlanEntry {

@@ -6,8 +6,53 @@ import { describe, expect, it, vi } from "vitest"
 import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { CatalogEditor } from "./catalog-editors"
 import { EMPTY_CATALOG, type CatalogActions } from "./data"
+import { performanceFormFromProfile, performanceProfileFromForm } from "@/features/quick-test/performance-profile"
 
 describe("current protocol catalog editors", () => {
+  it("preserves custom performance parameters when editing a plan", async () => {
+    const user = userEvent.setup()
+    const performance = { ...performanceProfileFromForm(performanceFormFromProfile()), request_count: 742, concurrency: 17, input_tokens: 2048, random_input: true, warmup_requests: 3, slo_e2e_ms: 500, slo_target_percent: 95 }
+    const item = { ...FIXTURE_CATALOG.plans[0], entries: [], entry_count: 0, case_count: 0, performance }
+    const updatePlan = vi.fn(async (_command: Record<string, unknown>) => FIXTURE_CATALOG)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><CatalogEditor kind="plan" item={item} catalog={FIXTURE_CATALOG} actions={{ updatePlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "编辑计划" }))
+    expect(screen.getByLabelText("请求数")).toHaveValue(742)
+    expect(screen.getByLabelText("并发数")).toHaveValue(17)
+    expect(screen.queryByLabelText("性能预设")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+    await waitFor(() => expect(updatePlan).toHaveBeenCalledWith(expect.objectContaining({ performance })))
+  })
+
+  it("creates a performance plan with the full parameter form and rejects an empty target", async () => {
+    const user = userEvent.setup()
+    const createPlan = vi.fn(async (_command: Record<string, unknown>) => FIXTURE_CATALOG)
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><CatalogEditor kind="plan" catalog={FIXTURE_CATALOG} actions={{ createPlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "新增计划" }))
+    fireEvent.change(screen.getByLabelText("计划"), { target: { value: "Custom performance" } })
+    await user.click(screen.getByRole("combobox", { name: "类别" }))
+    await user.click(screen.getByRole("option", { name: "快速性能测试" }))
+    fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "0" } })
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+    expect(screen.getByLabelText("请求数")).toHaveAttribute("aria-invalid", "true")
+    expect(createPlan).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "73" } })
+    fireEvent.change(screen.getByLabelText("并发数"), { target: { value: "11" } })
+    await user.click(screen.getByRole("button", { name: "保存计划" }))
+    await waitFor(() => expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ entries: [], performance: expect.objectContaining({ request_count: 73, concurrency: 11 }) })))
+  })
+
+  it("saves an adjusted built-in plan as a new plan", async () => {
+    const user = userEvent.setup()
+    const item = FIXTURE_CATALOG.plans.find(plan => plan.builtin)!
+    const createPlan = vi.fn(async (_command: Record<string, unknown>) => FIXTURE_CATALOG)
+    const updatePlan = vi.fn()
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><CatalogEditor kind="plan" item={item} catalog={FIXTURE_CATALOG} actions={{ createPlan, updatePlan } as unknown as CatalogActions} pending={false} mutate={async operation => { await operation() }} /></I18nextProvider>)
+    await user.click(screen.getByRole("button", { name: "另存为计划" }))
+    fireEvent.change(screen.getByLabelText("请求数"), { target: { value: "31" } })
+    await user.click(screen.getByRole("button", { name: "另存为计划" }))
+    await waitFor(() => expect(createPlan).toHaveBeenCalledWith(expect.objectContaining({ performance: expect.objectContaining({ request_count: 31 }) })))
+    expect(updatePlan).not.toHaveBeenCalled()
+  })
   it("keeps field errors associated and translates them without resubmitting on a language change", async () => {
     const user = userEvent.setup()
     const instance = createAppI18n("zh-CN")

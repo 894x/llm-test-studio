@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { NewRunSheet } from "@/features/runs/run-workspace"
 import type { StartRunTargetCommand } from "@/features/runs/data"
 import { PlanPerformanceRunSheet } from "@/features/quick-test/quick-performance-sheet"
-import { quickPerformancePresetFromProfile } from "@/features/quick-test/performance-presets"
+import { PerformanceProfileSummary } from "@/features/quick-test/performance-profile-summary"
 import type { DesktopClient } from "@/app/desktop-client"
 import { useTranslation } from "react-i18next"
 
@@ -739,7 +739,7 @@ export function PlansWorkspace({
         )
       }
       inspectorLabel={t("plans.details")}
-      actions={<><CatalogEditor kind="plan" catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`plan-${selected.id}`} kind="plan" item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind="plan" item={selected} action={actions.deletePlan} mutate={mutate} pending={mutationPending} /></>}
+      actions={<><CatalogEditor kind="plan" catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} />{selected ? <CatalogEditor key={`plan-${selected.id}`} kind="plan" item={selected} catalog={catalog} actions={actions} mutate={mutate} pending={mutationPending} /> : null}<DeleteCatalogButton kind="plan" item={selected?.builtin ? undefined : selected} action={actions.deletePlan} mutate={mutate} pending={mutationPending} /></>}
     >
       {mutationError ? <div role="alert" className="border-t px-4 py-2 text-xs text-destructive">{mutationError}</div> : null}
       <div className="flex shrink-0 items-center px-4 py-2">
@@ -754,7 +754,7 @@ export function PlansWorkspace({
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-8 pl-2 text-[11px]">{t("common.plan")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{t("plans.objects")}</TableHead>
-                <TableHead className="h-8 text-[11px]">{t("plans.suiteOrder")}</TableHead>
+                <TableHead className="h-8 text-[11px]">{t("plans.configuration")}</TableHead>
                 <TableHead className="h-8 text-[11px]">{t("plans.executionPolicy")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -769,15 +769,15 @@ export function PlansWorkspace({
                 >
                   <TableCell className="py-1 pl-2">
                     <Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs [overflow-wrap:anywhere] no-underline hover:no-underline" aria-label={t("plans.view", { name: plan.name })}>
-                      {plan.name}
+                      {plan.name}{plan.builtin ? <span className="ml-2 text-[10px] text-muted-foreground">{t("plans.builtin")}</span> : null}
                     </Button>
-                    <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision}</div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">r{plan.revision} · {PROTOCOL_LABELS[plan.protocol]}</div>
                   </TableCell>
                   <TableCell className="py-1 text-[11px] text-muted-foreground">
                     {plan.performance ? t("plans.performancePlan") : t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })}
                   </TableCell>
-                  <TableCell className="py-1 text-xs">{plan.performance ? t(`quickTest:performance.presets.${quickPerformancePresetFromProfile(plan.performance)}`) : plan.entries.map((suite, index) => `${index + 1}. ${suite.target_name}`).join(" → ")}</TableCell>
-                  <TableCell className="py-1 text-[11px] text-muted-foreground">{t("plans.sequentialContinue")}</TableCell>
+                  <TableCell className="py-1 text-xs">{plan.performance ? <PerformanceProfileSummary profile={plan.performance} compact /> : plan.entries.map((suite, index) => `${index + 1}. ${suite.target_name}`).join(" → ")}</TableCell>
+                  <TableCell className="py-1 text-[11px] text-muted-foreground">{t(plan.performance ? plan.performance.load_mode === "open_loop" ? "plans.loadOpen" : "plans.loadFixed" : "plans.sequentialContinue")}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -809,13 +809,13 @@ function PlanInspector({
       <dl className="space-y-1 px-4 py-2">
         <InspectorRow label={t("plans.fixedVersion")} value={`r${plan.revision}`} />
         <InspectorRow label={t("plans.objects")} value={plan.performance ? t("plans.performancePlan") : t("protocolDesign.entryCount", { entries: plan.entry_count, cases: plan.case_count })} />
-        <InspectorRow label={t("plans.executionPolicy")} value={t("plans.sequentialContinue")} />
+        <InspectorRow label={t("plans.executionPolicy")} value={t(plan.performance ? plan.performance.load_mode === "open_loop" ? "plans.loadOpen" : "plans.loadFixed" : "plans.sequentialContinue")} />
       </dl>
       <div className="border-t px-4 py-2">
-        <div className="text-[11px] font-medium text-muted-foreground">{t("plans.suiteOrder")}</div>
+        <div className="text-[11px] font-medium text-muted-foreground">{t(plan.performance ? "plans.parameters" : "plans.suiteOrder")}</div>
         {plan.performance ? (
           <div className="mt-1 text-xs text-muted-foreground">
-            {t("plans.performancePlan")} · {t(`quickTest:performance.presets.${quickPerformancePresetFromProfile(plan.performance)}`)}
+            <PerformanceProfileSummary profile={plan.performance} />
           </div>
         ) : (
           <ol className="mt-1 space-y-2">
@@ -832,7 +832,7 @@ function PlanInspector({
       </div>
       <div className="border-t px-4 py-3">
         {plan.performance && onRunPerformance ? (
-          <PlanPerformanceRunSheet planID={plan.id} catalog={catalog} profile={plan.performance} run={onRunPerformance} triggerLabel={t("plans.run")} />
+          <PlanPerformanceRunSheet planID={plan.id} catalog={catalog} run={onRunPerformance} triggerLabel={t("plans.run")} />
         ) : plan.performance ? null : (
           <NewRunSheet plans={[{ id: plan.id, name: plan.name, description: plan.protocol, caseCount: plan.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
         )}

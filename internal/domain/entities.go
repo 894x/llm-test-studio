@@ -321,6 +321,7 @@ const (
 
 type Plan struct {
 	EntityMeta
+	Builtin     bool                    `json:"-"`
 	Name        string                  `json:"name"`
 	Protocol    Protocol                `json:"protocol"`
 	Seed        uint64                  `json:"seed"`

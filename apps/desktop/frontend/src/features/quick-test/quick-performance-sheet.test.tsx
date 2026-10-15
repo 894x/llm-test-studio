@@ -32,7 +32,7 @@ describe("QuickPerformanceSheet", () => {
   it("sends the random-input setting", async () => {
     const user = userEvent.setup()
     const run = vi.fn(async () => successfulPerformanceReport())
-    render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={run} />)
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={run} />)
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     const randomInput = within(dialog).getByRole("checkbox", { name: "随机输入" })
     expect(randomInput).not.toBeChecked()
@@ -51,7 +51,7 @@ describe("QuickPerformanceSheet", () => {
       cache_rate_percent: 25.25,
     })
     const original = structuredClone(result)
-    render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={async () => result} />)
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={async () => result} />)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const report = await screen.findByRole("region", { name: "性能报告" })
     for (const value of ["11,813,377 TPM", "50,030 TPM", "11,863,407 TPM", "834 token/s", "6 req/s", "25.3%"]) {
@@ -73,13 +73,13 @@ describe("QuickPerformanceSheet", () => {
         }),
     )
     const view = render(
-      <QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={run} />,
+      <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={run} />,
     )
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const next = { ...connection, model_id: "other-model" }
     view.rerender(
       <I18nextProvider i18n={createAppI18n("zh-CN")}>
-        <QuickPerformanceSheet open onOpenChange={vi.fn()} connection={next} run={run} />
+        <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={next} run={run} />
       </I18nextProvider>,
     )
     finishOld(successfulPerformanceReport())
@@ -90,7 +90,7 @@ describe("QuickPerformanceSheet", () => {
     await screen.findByRole("region", { name: "性能报告" })
     view.rerender(
       <I18nextProvider i18n={createAppI18n("zh-CN")}>
-        <QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={run} />
+        <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={run} />
       </I18nextProvider>,
     )
     await waitFor(() =>
@@ -103,7 +103,7 @@ describe("QuickPerformanceSheet", () => {
     const runQuickPerformanceTest = vi.fn()
       .mockRejectedValueOnce(new DesktopClientError("operation_cancelled"))
       .mockRejectedValueOnce(new DesktopClientError("quick_test_unavailable"))
-    render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} run={runQuickPerformanceTest} />)
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={runQuickPerformanceTest} />)
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     expect(await within(dialog).findByText("操作已取消")).toBeInTheDocument()
@@ -120,7 +120,7 @@ describe("QuickPerformanceSheet", () => {
     const onPerformanceArchived = vi.fn(async () => {})
     const onOpenReport = vi.fn()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -224,7 +224,7 @@ describe("QuickPerformanceSheet", () => {
   it("renders the shared streaming timing table for a live schema-v3 report", async () => {
     const user = userEvent.setup()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -248,7 +248,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -321,7 +321,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -367,7 +367,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -426,7 +426,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -468,7 +468,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -506,7 +506,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -586,7 +586,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -635,7 +635,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -674,7 +674,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -718,7 +718,7 @@ describe("QuickPerformanceSheet", () => {
       const user = userEvent.setup()
       const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
       render(
-        <QuickPerformanceSheet
+        <QuickPerformanceSheet plans={[]}
           open
           onOpenChange={vi.fn()}
           connection={connection}
@@ -763,7 +763,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -803,7 +803,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -848,7 +848,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -925,7 +925,7 @@ describe("QuickPerformanceSheet", () => {
       },
     )
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -979,7 +979,7 @@ describe("QuickPerformanceSheet", () => {
       },
     )
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1004,7 +1004,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn(async () => capacityPerformanceReport())
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1031,7 +1031,7 @@ describe("QuickPerformanceSheet", () => {
     selectedReport.profile.rate_per_second = 3
     selectedReport.profile.max_in_flight = 4
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1072,7 +1072,7 @@ describe("QuickPerformanceSheet", () => {
       },
     )
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1120,7 +1120,7 @@ describe("QuickPerformanceSheet", () => {
       },
     )
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1146,7 +1146,7 @@ describe("QuickPerformanceSheet", () => {
     durationReport.progress.planned = 10_000
     const runQuickPerformanceTest = vi.fn(async () => durationReport)
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1166,7 +1166,7 @@ describe("QuickPerformanceSheet", () => {
   it("marks steady-state metrics as primary and summarizes authoritative preparation data", async () => {
     const user = userEvent.setup()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1193,7 +1193,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1232,7 +1232,7 @@ describe("QuickPerformanceSheet", () => {
   it("filters request results and reveals redacted failure response evidence", async () => {
     const user = userEvent.setup()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
@@ -1265,7 +1265,7 @@ describe("QuickPerformanceSheet", () => {
     const user = userEvent.setup()
     const runQuickPerformanceTest = vi.fn()
     render(
-      <QuickPerformanceSheet
+      <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}

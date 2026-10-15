@@ -77,6 +77,7 @@ type SuiteSummary struct {
 }
 
 type PlanSummary struct {
+	Builtin     bool                           `json:"builtin,omitempty"`
 	ID          string                         `json:"id"`
 	Revision    uint64                         `json:"revision"`
 	Name        string                         `json:"name"`

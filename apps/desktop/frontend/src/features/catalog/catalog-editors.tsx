@@ -26,12 +26,8 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Textarea } from "@/components/ui/textarea"
 import { Spinner } from "@/components/ui/spinner"
 import { TagAutocomplete } from "@/components/ui/tag-autocomplete"
-import {
-  QUICK_PERFORMANCE_PRESET_IDS,
-  quickPerformancePresetFromProfile,
-  quickPerformanceProfileForPreset,
-  type QuickPerformancePresetID,
-} from "@/features/quick-test/performance-presets"
+import { PerformanceProfileFields } from "@/features/quick-test/performance-profile-fields"
+import { usePerformanceProfileEditor } from "@/features/quick-test/use-performance-profile-editor"
 
 import type {
   CatalogActions, CatalogChannel, CatalogChannelModel, CatalogLoadMode, CatalogModel,
@@ -61,7 +57,8 @@ export function CatalogEditor({
   const { t } = useTranslation("catalog")
   const [open, setOpen] = useState(false)
   const noun = t(`editor.noun.${kind}`)
-  const title = t(item ? "editor.editTitle" : "editor.newTitle", { noun })
+  const copyBuiltinPlan = kind === "plan" && (item as CatalogPlan | undefined)?.builtin
+  const title = t(copyBuiltinPlan ? "plans.saveAs" : item ? "editor.editTitle" : "editor.newTitle", { noun })
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -315,9 +312,7 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   const [protocol, setProtocol] = useState<CatalogProtocol>(item?.protocol ?? "openai-chat")
   const [seed, setSeed] = useState(item?.seed ?? 1)
   const [planMode, setPlanMode] = useState<"protocol" | "performance">(item?.performance ? "performance" : "protocol")
-  const [performancePreset, setPerformancePreset] = useState<QuickPerformancePresetID>(
-    item?.performance ? quickPerformancePresetFromProfile(item.performance) : "smoke",
-  )
+  const performanceEditor = usePerformanceProfileEditor(item?.performance)
   const [target, setTarget] = useState("")
   const [entries, setEntries] = useState<EntryDraft[]>(() => item?.entries.map(entry => ({ ...entry,
     draftKey: entry.entry_id, parametersJSON: json(entry.parameters), slaJSON: json(entry.sla_thresholds) })) ?? [])
@@ -327,28 +322,28 @@ function PlanForm({ item, catalog, actions, mutate, pending, formTitle, onSaved 
   ]
   const update = (index: number, patch: Partial<EntryDraft>) => setEntries(current => current.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
   const move = (index: number, offset: number) => setEntries(current => { const next = [...current]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next })
-  return <FormShell pending={pending} label={t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
+  return <FormShell pending={pending} label={item?.builtin ? t("plans.saveAs") : t("editor.save", { noun: t("editor.noun.plan") })} formTitle={formTitle} onSubmit={async () => {
     integerField(seed, t("protocolDesign.seed"), 0, Number.MAX_SAFE_INTEGER)
     const planName = required(name, t("common.plan"))
     if (planMode === "protocol" && entries.length === 0) {
       throw new FormValidationError("planEntries", t("protocolDesign.entryRequired"), t("protocolDesign.target"))
     }
+    const performance = planMode === "performance" ? performanceEditor.validate() : undefined
+    if (performance === null) return
     const command = planMode === "performance"
-      ? { name: planName, protocol, seed, entries: [], performance: quickPerformanceProfileForPreset(performancePreset) }
+      ? { name: planName, protocol, seed, entries: [], performance }
       : { name: planName, protocol, seed,
         entries: entries.map(({ draftKey: _key, parametersJSON, slaJSON, ...entry }) => ({ ...entry,
           parameters: recordJSON<CatalogPlanParameterValue>(parametersJSON, t("protocolDesign.parameters")),
           sla_thresholds: nonNegativeNumberRecord(slaJSON, t("protocolDesign.thresholds")) })) }
-    await mutate(() => item ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), formTitle)
+    await mutate(() => item && !item.builtin ? actions.updatePlan({ ...command, id: item.id, expected_revision: item.revision }) : actions.createPlan(command), formTitle)
     onSaved()
   }}>
     <TextField label={t("common.plan")} value={name} onChange={setName} />
-    <SelectField label={t("plans.executionPolicy")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance" && !isQuickPerformanceProtocol(protocol)) setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
+    <SelectField label={t("plans.category")} value={planMode} options={[["protocol", t("plans.protocolPlan")], ["performance", t("plans.performancePlan")]]} onChange={value => { const next = value as "protocol" | "performance"; setPlanMode(next); if (next === "performance" && !isQuickPerformanceProtocol(protocol)) setProtocol("openai-chat"); setEntries([]); setTarget("") }} />
     <SelectField label={t("common.protocol")} value={protocol} options={planMode === "performance" ? protocolOptions.filter(([id]) => isQuickPerformanceProtocol(id)) : protocolOptions} onChange={value => { setProtocol(value as CatalogProtocol); setEntries([]); setTarget("") }} />
     <NumberField label={t("protocolDesign.seed")} value={seed} maximum={Number.MAX_SAFE_INTEGER} onChange={setSeed} />
-    {planMode === "performance" ? <SelectField label={t("plans.performancePreset")} value={performancePreset} options={
-      QUICK_PERFORMANCE_PRESET_IDS.map(id => [id, t(`quickTest:performance.presets.${id}`)] as [string, string])
-    } onChange={value => setPerformancePreset(value as QuickPerformancePresetID)} /> : null}
+    {planMode === "performance" ? <PerformanceProfileFields editor={performanceEditor} pending={pending} /> : null}
     {planMode === "protocol" ? <>
       <FieldDescription>{t("protocolDesign.runBindingHint")}</FieldDescription>
       <PlanEntryTargetField target={target} targets={targets} onTargetChange={setTarget} onAdd={() => {

@@ -85,7 +85,7 @@ function setup(
       <QuickTaskWorkspace
         catalog={{
           ...catalog,
-          suites: [task, catalog.suites[1]],
+          suites: catalog.suites.length ? [task, catalog.suites[1]] : [],
         }}
         workspace={workspace}
         reports={reports}
@@ -111,6 +111,40 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("uses performance plans as tasks and keeps temporary parameter edits local", async () => {
+    const user = userEvent.setup()
+    const plan = FIXTURE_CATALOG.plans.find(item => item.protocol === "openai-chat" && item.performance?.random_input)!
+    const original = structuredClone(plan.performance)
+    const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "temporary-key", model: "model" })
+    actions.runQuickPerformanceTest.mockRejectedValue(new Error("fixture only"))
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    expect(screen.queryByRole("combobox", { name: "性能计划" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("combobox", { name: "测试任务" }))
+    expect(screen.queryByRole("option", { name: /连通性测试/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("option", { name: plan.name }))
+    expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(500)
+    expect(screen.getByLabelText("并发数", { exact: true })).toHaveValue(40)
+    expect(screen.getByLabelText("时间切片（秒）")).toHaveValue(5)
+    expect(screen.getByRole("checkbox", { name: "随机输入" })).toBeChecked()
+    await user.clear(screen.getByLabelText("请求数", { exact: true }))
+    await user.type(screen.getByLabelText("请求数", { exact: true }), "37")
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    expect(actions.runQuickPerformanceTest).toHaveBeenCalledWith(expect.objectContaining({ request_count: 37, concurrency: 40, random_input: true }), expect.any(Function))
+    expect(actions.runQuickPerformanceTest.mock.calls[0][0]).not.toHaveProperty("task")
+    expect(plan.performance).toEqual(original)
+    await screen.findAllByText(/快速性能测试暂不可用/)
+  })
+
+  it("can configure a performance test when no functional suites exist", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(null), base_url: "https://example.test", api_key: "temporary-key", model: "model" }, undefined, undefined, { ...FIXTURE_CATALOG, suites: [] })
+    actions.runQuickPerformanceTest.mockRejectedValue(new Error("fixture only"))
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(10)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    expect(actions.runQuickPerformanceTest).toHaveBeenCalledWith(expect.objectContaining({ protocol: "openai-chat", request_count: 10 }), expect.any(Function))
+    await screen.findAllByText(/快速性能测试暂不可用/)
+  })
   it.each(["completed", "failed", "cancelled"] as const)(
     "opens the matching archived report from %s history without restoring the draft",
     async (status) => {
@@ -410,7 +444,7 @@ describe("Suite quick task workspace", () => {
     await user.type(screen.getByLabelText("请求数", { exact: true }), "5")
     await user.type(screen.getByLabelText("接口地址"), "/other")
     await user.type(screen.getByLabelText("API Key"), "new-private-key")
-    await user.click(screen.getByRole("button", { name: selected.name }))
+    await user.click(screen.getByRole("button", { name: "快速性能测试" }))
     expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(37)
     expect(screen.getByLabelText("接口地址")).toHaveValue("https://local-past.test")
     expect(screen.getByLabelText("API Key")).toHaveValue("")
@@ -441,7 +475,7 @@ describe("Suite quick task workspace", () => {
     })
   })
 
-  it("keeps Suite identity when opening performance testing without a preliminary request", async () => {
+  it("runs performance independently from the functional Suite without a preliminary request", async () => {
     const user = userEvent.setup()
     const selected = FIXTURE_CATALOG.suites[1]
     const actions = setup({
@@ -456,7 +490,6 @@ describe("Suite quick task workspace", () => {
     expect(actions.startQuickTask).not.toHaveBeenCalled()
     expect(actions.runQuickPerformanceTest).toHaveBeenCalledWith(
       expect.objectContaining({
-        task: { suite_id: selected.id, suite_revision: selected.revision },
         url: "https://example.test",
         api_key: "private-key",
       }),
@@ -479,7 +512,7 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const list = screen.getByRole("list", { name: "测试记录" })
-    const row = within(list).getByRole("button", { name: selected.name }).closest("li")!
+    const row = within(list).getByRole("button", { name: "快速性能测试" }).closest("li")!
     expect(row).toHaveTextContent("发送中")
     expect(row).toHaveTextContent("3 / 10")
     expect(row).toHaveTextContent("成功 2 · 失败 1 · 在途 1")
@@ -488,7 +521,7 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByRole("button", { name: "开启功能测试" })).toBeDisabled()
     expect(within(row).getByRole("status")).toBeInTheDocument()
     await act(async () => fail())
-    expect(within(list).getByRole("button", { name: selected.name }).closest("li")).toBe(row)
+    expect(within(list).getByRole("button", { name: "快速性能测试" }).closest("li")).toBe(row)
     expect(row).toHaveTextContent("失败")
     expect(within(row).queryByRole("status")).not.toBeInTheDocument()
     expect(screen.getByLabelText("API Key")).toHaveValue("private-key")

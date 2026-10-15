@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -86,17 +87,56 @@ func (document Document) Validate() error {
 }
 
 type Service struct {
+	builtin  map[string]Document
 	root     string
 	lockPath string
 	mu       sync.Mutex
 }
 
-func New(root string) (*Service, error) {
+type Option func(*Service) error
+
+// WithBuiltin adds immutable authored plans to the same catalog as user plans.
+func WithBuiltin(bundle fs.FS) Option {
+	return func(service *Service) error {
+		if bundle == nil {
+			return ErrInvalid
+		}
+		entries, err := fs.ReadDir(bundle, ".")
+		if err != nil {
+			return fmt.Errorf("read built-in plans: %w", err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+				continue
+			}
+			id := strings.TrimSuffix(entry.Name(), ".json")
+			raw, err := fs.ReadFile(bundle, entry.Name())
+			if err != nil {
+				return fmt.Errorf("read built-in plan %q: %w", id, err)
+			}
+			document, err := decodeDocument(raw, id)
+			if err != nil {
+				return err
+			}
+			document.Builtin = true
+			service.builtin[id] = document
+		}
+		return nil
+	}
+}
+
+func New(root string, options ...Option) (*Service, error) {
 	if strings.TrimSpace(root) == "" || !filepath.IsAbs(root) {
 		return nil, ErrInvalid
 	}
 	root = filepath.Clean(root)
-	return &Service{root: root, lockPath: root + ".lock"}, nil
+	service := &Service{root: root, lockPath: root + ".lock", builtin: map[string]Document{}}
+	for _, option := range options {
+		if err := option(service); err != nil {
+			return nil, err
+		}
+	}
+	return service, nil
 }
 
 // List returns only Plan projections for existing catalog.Repository callers.
@@ -170,6 +210,9 @@ func (service *Service) CreateDocument(ctx context.Context, document Document) e
 	if service == nil || ctx == nil || document.Validate() != nil || document.Revision != 1 {
 		return ErrInvalid
 	}
+	if _, builtin := service.builtin[document.ID]; builtin {
+		return ErrInvalid
+	}
 	document = cloneDocument(document)
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -195,6 +238,9 @@ func (service *Service) UpdateDocument(ctx context.Context, expectedRevision uin
 	if service == nil || ctx == nil || expectedRevision == 0 || document.Validate() != nil || document.Revision != expectedRevision+1 {
 		return ErrInvalid
 	}
+	if _, builtin := service.builtin[document.ID]; builtin {
+		return ErrInvalid
+	}
 	document = cloneDocument(document)
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -212,6 +258,9 @@ func (service *Service) UpdateDocument(ctx context.Context, expectedRevision uin
 
 func (service *Service) Delete(ctx context.Context, id string, expectedRevision uint64) error {
 	if service == nil || ctx == nil || !domain.IsUUID(id) || expectedRevision == 0 {
+		return ErrInvalid
+	}
+	if _, builtin := service.builtin[id]; builtin {
 		return ErrInvalid
 	}
 	service.mu.Lock()
@@ -243,13 +292,18 @@ func (service *Service) loadAll(ctx context.Context) ([]Document, error) {
 	}
 	entries, err := os.ReadDir(service.root)
 	if errors.Is(err, os.ErrNotExist) {
-		return []Document{}, nil
+		entries = []os.DirEntry{}
+		err = nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read plan directory: %w", err)
 	}
 	documents := make([]Document, 0, len(entries))
-	seen := make(map[string]struct{}, len(entries))
+	seen := make(map[string]struct{}, len(entries)+len(service.builtin))
+	for id, document := range service.builtin {
+		documents = append(documents, cloneDocument(document))
+		seen[id] = struct{}{}
+	}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -293,6 +347,12 @@ func (service *Service) loadOne(ctx context.Context, id string) (Document, error
 	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
+	if document, builtin := service.builtin[id]; builtin {
+		if _, err := os.Lstat(service.path(id)); !errors.Is(err, os.ErrNotExist) {
+			return Document{}, fmt.Errorf("%w: built-in plan id %q is reserved", ErrCorrupt, id)
+		}
+		return cloneDocument(document), nil
+	}
 	raw, err := os.ReadFile(service.path(id))
 	if errors.Is(err, os.ErrNotExist) {
 		return Document{}, ErrNotFound
@@ -300,6 +360,10 @@ func (service *Service) loadOne(ctx context.Context, id string) (Document, error
 	if err != nil {
 		return Document{}, fmt.Errorf("read plan file: %w", err)
 	}
+	return decodeDocument(raw, id)
+}
+
+func decodeDocument(raw []byte, id string) (Document, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var document Document
