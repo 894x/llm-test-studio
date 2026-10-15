@@ -6,21 +6,36 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/remoteresults"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 	documentcache "github.com/894x/llm-test-studio/internal/remote/cache"
 	runnerclient "github.com/894x/llm-test-studio/internal/remote/client"
 	remotessh "github.com/894x/llm-test-studio/internal/remote/ssh"
+	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
+
+type runnerConnection interface {
+	remotesync.Connection
+	jobs.Backend
+}
+
+type runnerConnector func(
+	context.Context,
+	*remotenodes.Service,
+	remotesync.Node,
+	jobs.Access,
+) (runnerConnection, error)
 
 type remoteSyncDependencies struct {
 	Directory     string
 	Repository    remoteresults.Repository
 	Configuration *remotenodes.Service
-	Connect       func(context.Context, *remotenodes.Service, remotesync.Node) (remotesync.Connection, error)
+	Connect       runnerConnector
 }
 
 func newProductionRemoteSynchronization(
@@ -57,7 +72,7 @@ func newProductionRemoteSynchronization(
 			nodes := []remotesync.Node{}
 			for _, view := range snapshot.Nodes {
 				paired := view.HostKey != nil && domain.IsUUID(view.RunnerNodeID) && domain.IsUUID(view.InstallationID)
-				observable := view.Enabled && paired && installationResolved(view.Installation)
+				observable := paired && installationResolved(view.Installation)
 				if !observable {
 					continue
 				}
@@ -68,7 +83,12 @@ func newProductionRemoteSynchronization(
 			return nodes, nil
 		},
 		Connect: func(ctx context.Context, node remotesync.Node) (remotesync.Connection, error) {
-			return connect(ctx, dependencies.Configuration, node)
+			return connect(
+				ctx,
+				dependencies.Configuration,
+				node,
+				jobs.ObservationAccess,
+			)
 		},
 	})
 	if err != nil {
@@ -109,14 +129,50 @@ func (connection *productionRunnerConnection) Close() error {
 	return connection.closeError
 }
 
+func (connection *productionRunnerConnection) Probe(ctx context.Context) (jobcontract.RunnerInfo, error) {
+	info, err := connection.Client.Probe(ctx)
+	return info, runnerBackendError(err)
+}
+
+func (connection *productionRunnerConnection) GetJob(ctx context.Context, id string) (jobcontract.Snapshot, error) {
+	snapshot, err := connection.Client.GetJob(ctx, id)
+	return snapshot, runnerBackendError(err)
+}
+
+func (connection *productionRunnerConnection) Submit(
+	ctx context.Context,
+	submission *jobcontract.Submission,
+) (jobcontract.Receipt, error) {
+	receipt, err := connection.Client.Submit(ctx, submission)
+	return receipt, runnerBackendError(err)
+}
+
+func runnerBackendError(err error) error {
+	if errors.Is(err, runnerinstall.ErrUpgradeRequired) || errors.Is(err, jobcontract.ErrUnsupported) {
+		return jobs.ErrUpgradeRequired
+	}
+	var remote *runnerclient.RemoteError
+	if errors.As(err, &remote) {
+		switch remote.Code {
+		case "not_found":
+			return jobs.ErrNotFound
+		case "unsupported_contract", "capability_missing":
+			return jobs.ErrUpgradeRequired
+		}
+	}
+	return err
+}
+
 func openProductionRunner(
 	ctx context.Context,
 	configuration *remotenodes.Service,
 	requested remotesync.Node,
-) (remotesync.Connection, error) {
+	access jobs.Access,
+) (runnerConnection, error) {
 	validRequest := requested.Origin.Validate() == nil && requested.Revision > 0
 	validConfiguration := ctx != nil && configuration != nil
-	if !validConfiguration || !validRequest {
+	validAccess := access == jobs.SubmissionAccess || access == jobs.ObservationAccess
+	if !validConfiguration || !validRequest || !validAccess {
 		return nil, remotenodes.ErrInvalid
 	}
 	connection, err := configuration.AcquireSSH(ctx, requested.Origin.ConfigurationID, requested.Revision)
@@ -125,14 +181,17 @@ func openProductionRunner(
 	}
 	defer connection.Close()
 	node := connection.Node
-	validState := node.Enabled && node.HostKey != nil && node.Binding != nil && installationResolved(node.Installation)
+	validState := node.HostKey != nil && node.Binding != nil && installationResolved(node.Installation)
 	if !validState {
 		return nil, remotenodes.ErrRePairRequired
+	}
+	if access == jobs.SubmissionAccess && !node.Enabled {
+		return nil, jobs.ErrUnavailable
 	}
 	identity := node.Binding.Identity
 	validSource := identity.NodeID == requested.Origin.NodeID && identity.InstallationID == requested.Origin.InstallationID
 	if !validSource {
-		return nil, remotenodes.ErrConflict
+		return nil, jobs.ErrTargetChanged
 	}
 	token, err := configuration.AcquireToken(ctx, node.ID, node.Revision)
 	if err != nil {
@@ -146,7 +205,7 @@ func openProductionRunner(
 	bound, _, err := client.ConnectBoundNode(ctx, identity, token)
 	if err != nil {
 		_ = client.Close()
-		return nil, err
+		return nil, runnerBackendError(err)
 	}
 	management, err := runnerclient.New(runnerclient.Identity{
 		NodeID: identity.NodeID, InstallationID: identity.InstallationID,

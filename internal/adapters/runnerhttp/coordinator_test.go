@@ -137,7 +137,7 @@ func prepareCoordinatedJob(t *testing.T, coordinator *jobs.Coordinator, submissi
 	return record
 }
 
-func TestCoordinatorReconcilesLostHTTPAcceptanceAfterReopenAndImportsOriginalReports(t *testing.T) {
+func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImportsOriginalReports(t *testing.T) {
 	for _, kind := range []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindComparison, jobcontract.KindPerformance} {
 		t.Run(string(kind), func(t *testing.T) {
 			fixture := newHTTPFixture(t, true, capabilities())
@@ -212,9 +212,39 @@ func TestCoordinatorReconcilesLostHTTPAcceptanceAfterReopenAndImportsOriginalRep
 			if err != nil {
 				t.Fatal(err)
 			}
-			confirmed, err := coordinator.Reconcile(t.Context(), submission.Job.JobID)
-			if err != nil || confirmed.State != jobs.SubmissionAccepted || confirmed.Receipt.JobID != submission.Job.JobID {
-				t.Fatalf("original job confirmation was not restored: %v", err)
+			confirmations, err := jobs.NewConfirmationWatcher(t.Context(), jobs.ConfirmationDependencies{
+				Repository: repository, Reconcile: coordinator.Reconcile,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			finished := make(chan error, 1)
+			go func() { finished <- confirmations.Run() }()
+			t.Cleanup(func() { _ = confirmations.Close() })
+			deadline, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			for {
+				confirmed, err := repository.GetSubmission(deadline, submission.Job.JobID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if confirmed.State == jobs.SubmissionAccepted {
+					if confirmed.Receipt.JobID != submission.Job.JobID {
+						t.Fatal("automatic recovery changed the original task")
+					}
+					break
+				}
+				select {
+				case <-deadline.Done():
+					t.Fatal("background query did not restore original acceptance")
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			if err := confirmations.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-finished; !errors.Is(err, context.Canceled) {
+				t.Fatalf("confirmation worker shutdown: %v", err)
 			}
 			if posts.Load() != 1 || fixture.requests.Load() != requests || requests == 0 {
 				t.Fatal("read-only recovery submitted or repeated provider work")
@@ -232,7 +262,7 @@ func TestCoordinatorReconcilesLostHTTPAcceptanceAfterReopenAndImportsOriginalRep
 			}
 			origin := remoteresults.Origin{ConfigurationID: coordinatorLocation.ConfigurationID,
 				NodeID: prepared.Prepared.Runner.NodeID, InstallationID: prepared.Prepared.Runner.NodeInstallationID}
-			deadline, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			deadline, cancel = context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			expectedDocuments := 1
 			if kind == jobcontract.KindComparison || kind == jobcontract.KindPerformance {

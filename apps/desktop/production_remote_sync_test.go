@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/remoteresults"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
@@ -25,7 +26,7 @@ import (
 )
 
 type productionObservation struct {
-	remotesync.Connection
+	runnerConnection
 	origin remoteresults.Origin
 	listed chan struct{}
 	closed chan struct{}
@@ -114,7 +115,7 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 	}
 	t.Cleanup(func() { _ = closeNodes() })
 	node := saveProductionObservedNode(t, services.configuration, true)
-	_ = saveProductionObservedNode(t, services.configuration, false)
+	disabled := saveProductionObservedNode(t, services.configuration, false)
 	path := filepath.Join(root, "observation.db")
 	if err := sqlite.Migrate(t.Context(), path, sqlite.MigrateOptions{AppVersion: "observer-wiring"}); err != nil {
 		t.Fatal(err)
@@ -125,19 +126,28 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 	}
 	defer repository.Close()
 	for pass := range 2 {
-		observation := &productionObservation{listed: make(chan struct{}), closed: make(chan struct{})}
+		observations := map[string]*productionObservation{}
+		for _, configured := range []remotenodes.Node{node, disabled} {
+			observations[configured.ID] = &productionObservation{listed: make(chan struct{}), closed: make(chan struct{})}
+		}
 		watcher, closeSync, err := newProductionRemoteSynchronization(t.Context(), remoteSyncDependencies{
 			Directory: root, Repository: repository, Configuration: services.configuration,
-			Connect: func(ctx context.Context, configuration *remotenodes.Service, requested remotesync.Node) (remotesync.Connection, error) {
-				if requested.Origin.ConfigurationID != node.ID || requested.Revision != node.Revision {
-					return nil, errors.New("source included an unexpected or disabled node")
+			Connect: func(
+				ctx context.Context,
+				configuration *remotenodes.Service,
+				requested remotesync.Node,
+				access jobs.Access,
+			) (runnerConnection, error) {
+				observation := observations[requested.Origin.ConfigurationID]
+				if observation == nil || access != jobs.ObservationAccess {
+					return nil, errors.New("source included an unexpected node or requested intake access")
 				}
-				auth, err := configuration.AcquireSSH(ctx, node.ID, node.Revision)
+				auth, err := configuration.AcquireSSH(ctx, requested.Origin.ConfigurationID, requested.Revision)
 				if err != nil {
 					return nil, err
 				}
 				defer auth.Close()
-				token, err := configuration.AcquireToken(ctx, node.ID, node.Revision)
+				token, err := configuration.AcquireToken(ctx, requested.Origin.ConfigurationID, requested.Revision)
 				if err != nil {
 					return nil, err
 				}
@@ -150,13 +160,15 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = closeSync() })
-		select {
-		case <-observation.listed:
-		case <-time.After(2 * time.Second):
-			t.Fatal("production observer did not read the saved paired node")
+		for _, observation := range observations {
+			select {
+			case <-observation.listed:
+			case <-time.After(2 * time.Second):
+				t.Fatal("production observer did not read both saved paired nodes")
+			}
 		}
-		if len(watcher.Snapshot().Nodes) != 1 {
-			t.Fatal("disabled paired node entered observation")
+		if len(watcher.Snapshot().Nodes) != 2 {
+			t.Fatal("disabling intake stopped an existing paired node's observation")
 		}
 		if err := closeSync(); err != nil {
 			t.Fatal(err)
@@ -164,10 +176,12 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 		if err := closeSync(); err != nil {
 			t.Fatal("production observer closer is not idempotent")
 		}
-		select {
-		case <-observation.closed:
-		default:
-			t.Fatal("production closer returned before its connection closed")
+		for _, observation := range observations {
+			select {
+			case <-observation.closed:
+			default:
+				t.Fatal("production closer returned before its connection closed")
+			}
 		}
 		if _, err := repository.ListQuickPerformanceReportSummaries(t.Context()); err != nil {
 			t.Fatal("observer closed the shared database")
@@ -208,7 +222,12 @@ func TestProductionRunnerOpeningRejectsChangedIdentityBeforeSSH(t *testing.T) {
 		ConfigurationID: node.ID, NodeID: node.Binding.Identity.NodeID, InstallationID: node.Binding.Identity.InstallationID,
 	}}
 	requested.Origin.NodeID = "11111111-1111-4111-8111-111111111111"
-	if _, err := openProductionRunner(t.Context(), services.configuration, requested); !errors.Is(err, remotenodes.ErrConflict) {
+	if _, err := openProductionRunner(
+		t.Context(),
+		services.configuration,
+		requested,
+		jobs.ObservationAccess,
+	); !errors.Is(err, jobs.ErrTargetChanged) {
 		t.Fatalf("changed identity reached SSH: %v", err)
 	}
 }

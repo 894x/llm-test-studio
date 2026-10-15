@@ -143,6 +143,9 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if isNilInterface(dependencies.quickTests) {
 		t.Fatal("production initializer did not wire quick tests")
 	}
+	if dependencies.jobs == nil || dependencies.confirmations == nil {
+		t.Fatal("production initializer did not wire submissions and automatic confirmation recovery")
+	}
 
 	directory := filepath.Join(configurationRoot, "llm-test-studio")
 	database := filepath.Join(directory, "llm-test-studio.db")
