@@ -253,6 +253,22 @@ Windows 全仓 Go 测试、针对性回归与 vet 通过。Ubuntu 24.04 WSL 的�
 
 本阶段新增 job_submissions 及其 pending 索引，替换唯一当前 SQLite schema checksum；旧数据库仍明确拒绝且原样保留，独立升级工具未创建或执行，未打开实际用户数据库、更新物理 runner 或调用真实渠道。Coordinator、发送前 gate 的实际使用、确认丢失重查与全部桌面入口仍待实施。
 
+## 2026-10-16：任务提交与确认重查协调器
+
+新增 Coordinator 的准备、首次提交与只读确认重查。Location 必须明确区分本地与保存的远程配置；没有默认到本地的缺字段行为。每次准备和新提交均 fresh probe 当前管理契约、真实节点/安装/构建、ready 和任务能力。HTTP 与 Coordinator 共用当前能力判定，删除 HTTP 中被替换的私有实现；Performance 的桌面闭环另要求 performance_archives。该判定没有客户端构建或发布号输入，兼容连接不会安装、覆盖或重启 runner。
+
+新提交复制精确 secret slots 并验证传输字节后，只有持久 prepared → pending CAS 明确成功才发出 POST。写失败或数据库提交确认丢失均停止发送；仅凭回查到 pending 不能认为本进程取得发送权。所有传入 lease 和传输副本在成功、拒绝、取消与确认不明时清理。任务一旦接收，管理连接和桌面调用结束不控制执行宿主的生命周期。
+
+Reconcile 仅 GET 原节点上的原 job_id，不使用临时渠道秘密。404、身份变化和不可达仍保留 pending；不支持当前管理契约时明确返回升级要求。Prepare/Submit 明确使用 SubmissionAccess，Reconcile 使用 ObservationAccess，连接端口可分别限制新任务和已有任务观察；关闭新任务入口的测试仍能找回原确认。只读查找允许当前兼容 runner 的构建与 ready 状态变化，但必须核对原节点/安装以及返回确认中的原构建、任务与子 ID。已通过另一路持久确认的记录不会被晚到提交错误改为待确认。
+
+真实 Run/Comparison/Performance Core、管理 HTTP、typed client 与第二 SQLite 的集成验证：服务端已接收后截断响应，桌面保持 pending；关闭桌面数据库后节点继续完成，重开并重新创建 Coordinator，通过 GET 找回同一任务的确认，再由同步器导入全部预期报告文档。每个任务只有一次 POST，重查和同步不增加 Mock 渠道请求。这里关闭的是组件和数据库，不是实际 Wails 进程，HTTP 连接也不等于物理 SSH 验收。
+
+两个协调器和两个仓库同时停在同一 prepared revision 后竞争，只有一个持久 CAS 胜者发出 HTTP 提交；原输入、接收者和原执行构建保持固定。另验证构建/节点/安装变化、归档能力缺失、错/多/已关闭凭据 slot、调用取消，以及发送意图写前失败和提交后确认丢失均不发送。构建变化和维护期间查找原确认的策略使用实际任务与 GET，并经 Probe 端口替换元数据验证，不声称已执行物理节点升级。
+
+Windows 全仓 Go 测试与 vet 通过；最终端口调整后，runnerhttp、jobs、jobcontract 完整包回归和全仓 vet 再次通过。Ubuntu 24.04 WSL 中，最终源码的 Coordinator 与独立协调器竞争测试重复三轮通过。此前同组压力回归在 Windows 重复二十轮、WSL 重复十轮通过。
+
+本阶段没有改变 schema、持久格式或领域报告，没有打开实际用户数据库、更新物理 runner 或调用真实渠道。生产 Backend 装配、启动后的自动待确认重查、本地共享 JobHost、显式同 ID 重交、停止/取消的待送达操作、所有公开入口与 Remote UI 仍待继续实施；最终 K3/最小性能及其余 R1–R16 验收未被这些组件测试替代。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

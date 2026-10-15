@@ -7,13 +7,11 @@ import (
 	"encoding/hex"
 	"net/http"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
-	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
@@ -89,65 +87,6 @@ func (handler *Handler) events(writer http.ResponseWriter, request *http.Request
 func queryNumber(value string, bits int) (uint64, bool) {
 	number, err := strconv.ParseUint(value, 10, bits)
 	return number, err == nil && strconv.FormatUint(number, 10) == value
-}
-
-func supportsJob(capabilities jobcontract.RunnerCapabilities, spec jobcontract.JobSpec) bool {
-	if !slices.Contains(capabilities.JobKinds, spec.Kind) {
-		return false
-	}
-	protocols := []string{}
-	features := []string{}
-	if spec.Kind == jobcontract.KindPerformance {
-		performance := spec.Spec.Performance
-		protocols = append(protocols, string(performance.Protocol))
-		profile := performance.Profile
-		if profile.WarmupRequests > 0 {
-			features = append(features, "warmup")
-		}
-		if profile.RampDurationMS > 0 {
-			features = append(features, "ramp")
-		}
-		if profile.CapacityEnabled {
-			features = append(features, "capacity")
-		}
-		if profile.LoadMode == domain.LoadOpenLoop {
-			features = append(features, "open_loop")
-		}
-		if profile.SliceDurationMS > 0 {
-			features = append(features, "time_slices")
-		}
-		if profile.WorkloadMode == quicktest.PerformanceWorkloadNormal {
-			features = append(features, "normal_workload")
-		}
-		if profile.RandomInput {
-			features = append(features, "random_input")
-		}
-	} else {
-		for _, run := range spec.PreparedRuns() {
-			protocols = append(protocols, string(run.Snapshot.Channel.Protocol))
-			for _, entry := range run.Snapshot.Entries {
-				if entry.WarmupCount > 0 {
-					features = append(features, "warmup")
-				}
-				if entry.Load.Mode == domain.LoadOpenLoop {
-					features = append(features, "open_loop")
-				}
-			}
-		}
-	}
-	if len(spec.Assets) > 0 {
-		features = append(features, "assets")
-	}
-	return containsAll(capabilities.Protocols, protocols) && containsAll(capabilities.Features, features)
-}
-
-func containsAll(supported, required []string) bool {
-	for _, item := range required {
-		if !slices.Contains(supported, item) {
-			return false
-		}
-	}
-	return true
 }
 
 func (handler *Handler) report(writer http.ResponseWriter, request *http.Request) {

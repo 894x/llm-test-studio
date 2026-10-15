@@ -210,7 +210,7 @@ func (handler *Handler) submit(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	defer submission.Clear()
-	if !supportsJob(handler.info.Capabilities, submission.Job) {
+	if !handler.info.Capabilities.SupportsJob(submission.Job) {
 		writeError(
 			writer,
 			http.StatusUnprocessableEntity,

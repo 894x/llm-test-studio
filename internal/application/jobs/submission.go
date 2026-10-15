@@ -15,9 +15,13 @@ import (
 )
 
 var (
-	ErrInvalid  = errors.New("invalid_submission_record")
-	ErrConflict = errors.New("submission_record_conflict")
-	ErrNotFound = errors.New("submission_record_not_found")
+	ErrInvalid         = errors.New("invalid_submission_record")
+	ErrConflict        = errors.New("submission_record_conflict")
+	ErrNotFound        = errors.New("submission_record_not_found")
+	ErrUnavailable     = errors.New("execution_target_unavailable")
+	ErrPending         = errors.New("submission_confirmation_pending")
+	ErrTargetChanged   = errors.New("execution_target_changed")
+	ErrUpgradeRequired = errors.New("runner_upgrade_required")
 )
 
 const (
