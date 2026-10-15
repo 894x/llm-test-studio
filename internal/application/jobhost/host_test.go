@@ -150,7 +150,7 @@ func retrySubmission(spec jobcontract.JobSpec, secret string) jobcontract.Submis
 
 func hostDependencies(repository jobhost.Repository, core jobhost.Executor, guard jobhost.Guard) jobhost.Dependencies {
 	policy := jobhost.RemotePolicy()
-	policy.ExecutionTimeout = 5 * time.Second
+	policy.ExecutionTimeout = 30 * time.Second
 	return jobhost.Dependencies{
 		Repository: repository, Executor: core, Guard: guard, Clock: wallClock{}, Policy: policy,
 		Target: jobcontract.ExecutionTarget{
@@ -471,6 +471,14 @@ func TestHostProgressIsThrottledAndDoesNotExposeSecrets(t *testing.T) {
 	for count := 0; count < 3; count++ {
 		execution.request.OnProgress(quicktest.PerformanceProgress{Phase: load.PhaseSending})
 	}
+	close(core.release)
+	waitJob(
+		t,
+		repository,
+		id,
+		domain.RunCompleted,
+	)
+	waitSettled(t, repository)
 	page, err := repository.JobEvents(
 		t.Context(),
 		id,

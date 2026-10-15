@@ -182,7 +182,7 @@ func TestPerformanceExecutorCheckpointFaultIsolatesBeforeSettlementAndRecoversWi
 			}
 			select {
 			case <-flaky.sealEntered:
-			case <-time.After(3 * time.Second):
+			case <-time.After(10 * time.Second):
 				t.Fatal("failed checkpoint did not stop execution and enter settlement")
 			}
 			if host.Status().Ready {

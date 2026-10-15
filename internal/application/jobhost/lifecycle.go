@@ -6,7 +6,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
@@ -72,11 +71,14 @@ func (host *Host) execute(ctx context.Context, control *jobControl) {
 		host.complete(control, failed("job_storage_unavailable"))
 		return
 	}
+	observe, finishProgress := host.startProgressObserver(control)
+	defer finishProgress()
 	outcome, err := host.executor.Execute(ctx, Execution{
 		Spec: control.spec, Secrets: control.secrets, StopSending: control.stop,
-		OnProgress:           func(progress quicktest.PerformanceProgress) { host.observe(control, progress) },
+		OnProgress:           observe,
 		OnPersistenceFailure: host.storageFailed,
 	})
+	finishProgress()
 	if err != nil || outcome.Validate() != nil {
 		host.storageFailed()
 		outcome = failed("job_execution_unavailable")
