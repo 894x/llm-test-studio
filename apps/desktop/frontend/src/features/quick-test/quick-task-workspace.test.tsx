@@ -7,6 +7,8 @@ import { createAppI18n } from "@/i18n/i18n"
 import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/runs/fixtures"
 import { createTaskDraft, type TaskDraft } from "./task-draft"
 import { QuickTaskWorkspace } from "./quick-task-workspace"
+import { createFixtureClient } from "@/app/desktop-client"
+import type { QuickPerformanceCommand, QuickPerformanceReport } from "./data"
 
 const task = {
   ...FIXTURE_CATALOG.suites[0],
@@ -38,6 +40,26 @@ const task = {
     ],
 }
 
+const archivedPerformanceID = "77777777-7777-4777-8777-777777777771"
+async function archivedPerformance(): Promise<QuickPerformanceReport> {
+  const command: QuickPerformanceCommand = {
+    protocol: "openai-chat", address_mode: "base_url", url: "https://previous.test/v1", api_key: "", model_id: "past-performance-model",
+    load_mode: "fixed_concurrency", arrival_pattern: "constant", workload_mode: "fixed",
+    request_count: 23, duration_ms: 0, concurrency: 3, rate_per_second: 1, max_in_flight: 64,
+    timeout_ms: 9000, input_tokens: 32, output_tokens: 43, random_input: true, random_seed: 5,
+    input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
+    warmup_requests: 2, ramp_duration_ms: 0, ramp_request_cap: 1000, slice_duration_ms: 0,
+    slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
+    capacity_enabled: false, capacity_start: 1, capacity_step: 1,
+  }
+  const report = await createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG).runQuickPerformanceTest(command)
+  return { ...report, archived: true, archive_status: "archived", report_id: archivedPerformanceID }
+}
+const archivedPerformanceSummary = {
+  ...FIXTURE_REPORTS.reports[0], id: archivedPerformanceID, run_id: undefined,
+  source: "quick_performance" as const, plan_name: "Saved performance test",
+}
+
 function setup(
   initial = createTaskDraft(task),
   refresh = vi.fn(async () => {}),
@@ -48,6 +70,7 @@ function setup(
   const actions = {
     startQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
     getQuickTask: vi.fn(),
+    getReportDetail: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined),
     forgetQuickTaskCredential: vi.fn(async () => undefined),
     cancelRun: vi.fn(async () => FIXTURE_WORKSPACE),
@@ -280,9 +303,9 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByLabelText("视频提示词")).toHaveValue("cat")
     expect(document.body).not.toHaveTextContent("private refresh error")
   })
-  it.each(["passed", "failed"] as const)(
-    "restores %s history and uses the current suite with edited inputs",
-    async (conclusion) => {
+  it.each([["passed", "row"], ["failed", "keyboard"], ["passed", "edit"]] as const)(
+    "restores %s history through %s activation and uses the current suite with edited inputs",
+    async (conclusion, activation) => {
       const user = userEvent.setup()
       const run = {
         ...FIXTURE_WORKSPACE.runs[0],
@@ -311,7 +334,10 @@ describe("Suite quick task workspace", () => {
         base_url: "https://example.test",
         inputs: { prompt: "past prompt", duration: 8, audio: true },
       })
-      await user.click(screen.getByRole("button", { name: "填入并编辑 Past video task" }))
+      const row = screen.getByRole("button", { name: "Past video task" })
+      if (activation === "keyboard") { row.focus(); await user.keyboard("{Enter}") }
+      else await user.click(activation === "row" ? row : screen.getByRole("button", { name: "填入并编辑 Past video task" }))
+      expect(actions.getQuickTask).toHaveBeenCalledExactlyOnceWith(run.id)
       await waitFor(() => expect(screen.getByLabelText("时长")).toHaveValue(8))
       expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个用例`)
       expect(screen.getByLabelText("时长")).toHaveValue(8)
@@ -327,6 +353,70 @@ describe("Suite quick task workspace", () => {
       )
     },
   )
+
+  it("restores archived performance connection and load parameters from the row without running a test", async () => {
+    const user = userEvent.setup()
+    const performance = await archivedPerformance()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://other.test", model: "other-model", api_key: "other-private-key" },
+      undefined, undefined, undefined, { schema_version: 1, reports: [archivedPerformanceSummary] })
+    actions.getReportDetail.mockResolvedValue({ schema_version: 1, source: "quick_performance", performance })
+    const row = screen.getByRole("button", { name: "Saved performance test" })
+    await user.click(row)
+    await waitFor(() => expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(23))
+    expect(actions.getReportDetail).toHaveBeenCalledExactlyOnceWith(archivedPerformanceID)
+    expect(screen.getByRole("switch", { name: "切换测试模式" })).toBeChecked()
+    expect(screen.getByLabelText("接口地址")).toHaveValue("https://previous.test/v1")
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("past-performance-model")
+    expect(screen.getByLabelText("API Key")).toHaveValue("")
+    expect(screen.getByLabelText("并发数", { exact: true })).toHaveValue(3)
+    expect(screen.getByLabelText("单请求超时（秒）")).toHaveValue(9)
+    expect(screen.getByRole("checkbox", { name: "随机输入" })).toBeChecked()
+    await user.clear(screen.getByLabelText("请求数", { exact: true }))
+    await user.type(screen.getByLabelText("请求数", { exact: true }), "99")
+    await user.click(row)
+    await waitFor(() => expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(23))
+    await user.click(screen.getByRole("button", { name: "打开报告 Saved performance test" }))
+    expect(actions.onOpenReport).toHaveBeenCalledExactlyOnceWith(archivedPerformanceID)
+    expect(actions.getReportDetail).toHaveBeenCalledTimes(2)
+    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(actions.runQuickPerformanceTest).not.toHaveBeenCalled()
+  })
+
+  it("keeps the current draft when the requested performance report identity does not match", async () => {
+    const user = userEvent.setup()
+    const performance = await archivedPerformance()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://unchanged.test", model: "unchanged-model", api_key: "private-key" },
+      undefined, undefined, undefined, { schema_version: 1, reports: [archivedPerformanceSummary] })
+    actions.getReportDetail.mockResolvedValue({ schema_version: 1, source: "quick_performance", performance: { ...performance, report_id: FIXTURE_REPORTS.reports[0].id } })
+    await user.click(screen.getByRole("button", { name: "Saved performance test" }))
+    expect(await screen.findByText("快速测试历史记录无效，请刷新后重试。")).toBeInTheDocument()
+    expect(screen.getByLabelText("接口地址")).toHaveValue("https://unchanged.test")
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("unchanged-model")
+    expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
+    expect(screen.getByRole("switch", { name: "切换测试模式" })).not.toBeChecked()
+  })
+
+  it("restores a local failed performance attempt without retaining its temporary key", async () => {
+    const user = userEvent.setup()
+    const selected = FIXTURE_CATALOG.suites[1]
+    const actions = setup({ ...createTaskDraft(selected), base_url: "https://local-past.test", api_key: "private-original-key", model: "local-past-model" })
+    actions.runQuickPerformanceTest.mockRejectedValue(new Error("private provider error"))
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await user.clear(screen.getByLabelText("请求数", { exact: true }))
+    await user.type(screen.getByLabelText("请求数", { exact: true }), "37")
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    await screen.findAllByText(/快速性能测试暂不可用/)
+    await user.clear(screen.getByLabelText("请求数", { exact: true }))
+    await user.type(screen.getByLabelText("请求数", { exact: true }), "5")
+    await user.type(screen.getByLabelText("接口地址"), "/other")
+    await user.type(screen.getByLabelText("API Key"), "new-private-key")
+    await user.click(screen.getByRole("button", { name: selected.name }))
+    expect(screen.getByLabelText("请求数", { exact: true })).toHaveValue(37)
+    expect(screen.getByLabelText("接口地址")).toHaveValue("https://local-past.test")
+    expect(screen.getByLabelText("API Key")).toHaveValue("")
+    expect(actions.getReportDetail).not.toHaveBeenCalled()
+    expect(actions.runQuickPerformanceTest).toHaveBeenCalledTimes(1)
+  })
 
   it("uses a saved channel without sending an exposed credential", async () => {
     const user = userEvent.setup()

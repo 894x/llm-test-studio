@@ -265,7 +265,7 @@ describe("desktop run workspace", () => {
     await screen.findByRole("heading", { name: "运行工作区" })
     for (const [label, heading, evidence] of [
       ["总览", "工作台总览", "6 个模型"],
-      ["快速测试", "快速测试", "选择一个测试任务，填写连接与参数即可运行；无需预先创建模型、渠道或计划。"],
+      ["快速测试", "快速功能测试", "测试记录"],
       ["模型与渠道", "模型与渠道", "gpt-5.2"],
       ["用例", "测试用例", "基础对话"],
       ["计划", "测试计划", "营销文案基准"],
@@ -1047,7 +1047,7 @@ describe("desktop run workspace", () => {
     expect(screen.getByRole("table", { name: "Model catalog" })).toBeInTheDocument()
 
     for (const [navigation, heading, table] of [
-      ["Quick Test", "Quick Test", null],
+      ["Quick Test", "Quick functional test", null],
       ["Cases", "Test Cases", "Test case catalog"],
       ["Plans", "Test Plans", "Test plan catalog"],
       ["Reports", "Test Reports", "Test report catalog"],

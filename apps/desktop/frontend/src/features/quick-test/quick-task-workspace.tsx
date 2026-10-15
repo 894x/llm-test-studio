@@ -1,4 +1,4 @@
-import { isQuickPerformanceProtocol } from "./data"
+import { isQuickPerformanceProtocol, type QuickPerformanceCommand, type QuickPerformanceProfile, type QuickPerformanceReport } from "./data"
 import {
   useRef,
   useState,
@@ -50,11 +50,25 @@ type Actions = Pick<
   DesktopClient,
   | "startQuickTask"
   | "getQuickTask"
+  | "getReportDetail"
   | "rememberQuickTaskCredential"
   | "forgetQuickTaskCredential"
   | "cancelRun"
   | "runQuickPerformanceTest"
 >
+
+type PerformanceHistorySettings = Pick<QuickPerformanceReport,
+  "protocol" | "address_mode" | "base_url" | "endpoint" | "model_id" | "profile"
+> & { channel_id?: string; credential_run_id?: string; suite_id?: string }
+
+// Omit connection details and the temporary key from the in-memory parameter snapshot.
+function performanceProfile({
+  protocol: _protocol, address_mode: _addressMode, url: _url, api_key: _apiKey,
+  channel_id: _channelID, credential_run_id: _credentialRunID, model_id: _modelID, task: _task,
+  ...profile
+}: QuickPerformanceCommand): QuickPerformanceProfile {
+  return profile
+}
 
 export function QuickTaskWorkspace({
   catalog,
@@ -98,6 +112,9 @@ export function QuickTaskWorkspace({
   const [mode, setMode] = useState<"functional" | "performance">("functional")
   const [performancePending, setPerformancePending] = useState(false)
   const [performanceHistory, setPerformanceHistory] = useState<QuickTestHistoryItem[]>([])
+  const [performanceSettings, setPerformanceSettings] = useState<Record<string, PerformanceHistorySettings>>({})
+  const [restoredPerformanceProfile, setRestoredPerformanceProfile] = useState<QuickPerformanceProfile>()
+  const [performanceFormRevision, setPerformanceFormRevision] = useState(0)
   const [selectedHistoryID, setSelectedHistoryID] = useState("")
   const busy = !!pending || performancePending
   const [saveChannelOpen, setSaveChannelOpen] = useState(false)
@@ -173,6 +190,12 @@ export function QuickTaskWorkspace({
       model: command.model_id, channel: channel?.name ?? command.url,
       timestamp: new Date().toISOString(), active: true, status: "queued", phase: "not_started",
     }
+    setPerformanceSettings(current => ({ ...current, [id]: {
+      protocol: command.protocol, address_mode: command.address_mode,
+      base_url: command.url, endpoint: command.url, model_id: command.model_id,
+      profile: performanceProfile(command), channel_id: command.channel_id,
+      credential_run_id: command.credential_run_id, suite_id: command.task?.suite_id,
+    } }))
     setPerformancePending(true)
     setSelectedHistoryID(id)
     setPerformanceHistory(current => [item, ...current])
@@ -286,6 +309,53 @@ export function QuickTaskWorkspace({
       setPending(null)
     }
   }
+  const restoreHistory = async (item: QuickTestHistoryItem) => {
+    if (inFlight.current || performancePending) return
+    if (item.runID) {
+      setMode("functional")
+      setSelectedHistoryID(item.id)
+      await restore(item.runID)
+      return
+    }
+    if (item.active) return
+    inFlight.current = true
+    setPending("history")
+    setError("")
+    try {
+      let settings = performanceSettings[item.id]
+      if (!settings) {
+        if (!item.reportID) throw new Error(t("task.invalidHistory"))
+        const detail = await actions.getReportDetail(item.reportID)
+        if (detail.source !== "quick_performance" || detail.performance.report_id !== item.reportID)
+          throw new Error(t("task.invalidHistory"))
+        settings = detail.performance
+      }
+      const suite = settings.suite_id
+        ? catalog.suites.find(entry => entry.id === settings.suite_id && entry.protocol === settings.protocol)
+        : catalog.suites.find(entry => entry.id === form.task?.id && entry.protocol === settings.protocol)
+          ?? catalog.suites.find(entry => entry.protocol === settings.protocol)
+      if (!suite) throw new Error(t("task.choose"))
+      const url = settings.address_mode === "full_url" ? settings.endpoint : settings.base_url
+      const sameConnection = protocol === settings.protocol && performanceConnection.url === url
+      const channelID = settings.channel_id ?? (sameConnection ? form.channel_id : "")
+      const credentialRunID = settings.credential_run_id ?? (sameConnection ? form.credential_run_id : undefined)
+      update({
+        ...createTaskDraft(suite), model: settings.model_id, base_url: url,
+        channel_id: channelID, credential_run_id: credentialRunID,
+        api_key: sameConnection && !channelID && !credentialRunID ? form.api_key : "",
+      })
+      setSelectedProtocol(settings.protocol)
+      setRestoredPerformanceProfile(settings.profile)
+      setPerformanceFormRevision(current => current + 1)
+      setMode("performance")
+      setSelectedHistoryID(item.id)
+    } catch (reason) {
+      setError(publicDesktopErrorMessage(reason, t("task.invalidHistory")))
+    } finally {
+      inFlight.current = false
+      setPending(null)
+    }
+  }
   const cancel = async (id: string) => {
     if (inFlight.current || !id) return
     inFlight.current = true
@@ -383,7 +453,7 @@ export function QuickTaskWorkspace({
           </div>
           <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
             {visibleHistory.length ? <QuickTestHistory items={visibleHistory} selectedID={selectedID} busy={busy}
-              onSelect={item => { setSelectedHistoryID(item.id); setMode(item.mode); if (item.runID) onRunSelected(item.runID) }}
+              onSelect={item => void restoreHistory(item)}
               onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
               onOpenReport={id => void onOpenReport(id)} onCancel={id => void cancel(id)} onRefresh={() => void refreshProgress()} />
               : <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p>}
@@ -691,6 +761,7 @@ export function QuickTaskWorkspace({
                   </form>
                   <div hidden={mode !== "performance"}>
                     {isQuickPerformanceProtocol(task.protocol) ? <QuickPerformancePanel
+                      key={performanceFormRevision} initialProfile={restoredPerformanceProfile}
                       embedded blocked={!!pending} connection={performanceConnection}
                       resolveConnection={() => validCommand() ? performanceConnection : undefined}
                       run={runPerformance} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
