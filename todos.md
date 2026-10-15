@@ -228,6 +228,8 @@ Remote Execution Plane
 
 ### 服务端压测
 
+自有服务器节点模式的具体改造见[多服务器远程执行改造方案](doc/architecture/remote-execution-plan.md)。下列复选项仍代表实施与验收状态。
+
 - [ ] 用户可为同一 Plan 选择本地执行或远程执行。
 - [ ] 远程 Run 状态统一为 queued、starting、running、draining、completed、failed、cancelled。
 - [ ] 客户端关闭后任务继续运行，其他设备可查看进度和结果。
