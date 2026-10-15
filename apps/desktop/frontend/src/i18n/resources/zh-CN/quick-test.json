@@ -170,5 +170,17 @@
     "randomInputHint": "测试无缓存速度",
     "enable": "启用",
     "capacityPreview": "阶梯预览"
+  },
+  "share": {
+    "title": "参数分享",
+    "copy": "拷贝参数",
+    "copied": "参数已拷贝",
+    "imported": "参数已导入，仅用于当前表单",
+    "fixParameters": "请先修正参数错误后再拷贝。",
+    "copyFailed": "无法拷贝参数，请检查剪贴板权限后重试。",
+    "readFailed": "无法读取剪贴板，请检查剪贴板权限后重试。",
+    "invalidParameters": "剪贴板内容不是完整有效的性能参数 JSON，当前参数未更改。",
+    "parametersChanged": "当前参数或运行状态已变化，请重新导入。",
+    "import": "从剪贴板导入参数"
   }
 }

@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import type { QuickPerformanceLoadMode, QuickPerformanceArrivalPattern, QuickPerformanceWorkloadMode } from "./data"
 import type { usePerformanceProfileEditor } from "./use-performance-profile-editor"
+import { PerformanceParameterActions } from "./performance-parameter-actions"
 import { MAX_PERFORMANCE_REQUESTS, PERFORMANCE_BUDGET_FIELDS,
   omitFieldError, performanceRequestBudget, performanceCapacityTargets, performanceNeedsSeed,
   formatNumber, formatCapacityTarget, type PerformanceNumberFieldName } from "./performance-profile"
 
-export function PerformanceProfileFields({ editor, pending }: {
-  editor: ReturnType<typeof usePerformanceProfileEditor>; pending: boolean
+export function PerformanceProfileFields({ editor, pending, actionsContainer }: {
+  editor: ReturnType<typeof usePerformanceProfileEditor>; pending: boolean; actionsContainer?: HTMLElement | null
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("quickTest")
@@ -83,6 +84,7 @@ export function PerformanceProfileFields({ editor, pending }: {
   }
 
   return <div className="min-w-0 space-y-4">
+    <PerformanceParameterActions editor={editor} disabled={pending} container={actionsContainer} />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

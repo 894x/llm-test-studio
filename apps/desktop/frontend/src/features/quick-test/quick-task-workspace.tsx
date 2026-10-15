@@ -118,6 +118,7 @@ export function QuickTaskWorkspace({
   const [restoredPerformanceProfile, setRestoredPerformanceProfile] = useState<QuickPerformanceProfile>()
   const [selectedPerformancePlanID, setSelectedPerformancePlanID] = useState("")
   const [performanceFormRevision, setPerformanceFormRevision] = useState(0)
+  const [performanceActionsContainer, setPerformanceActionsContainer] = useState<HTMLDivElement | null>(null)
   const [selectedHistoryID, setSelectedHistoryID] = useState("")
   const busy = !!pending || performancePending
   const [saveChannelOpen, setSaveChannelOpen] = useState(false)
@@ -490,7 +491,10 @@ export function QuickTaskWorkspace({
             className="mx-auto w-full min-w-0 max-w-[800px] py-2"
             aria-label={t("connection")}
           >
-            <h2 className="mb-4 text-sm font-semibold">{mode === "performance" ? t("performance.title") : t("workspace.functional")}</h2>
+            <div className="mb-4 flex h-7 min-w-0 items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">{mode === "performance" ? t("performance.title") : t("workspace.functional")}</h2>
+              <div ref={setPerformanceActionsContainer} hidden={mode !== "performance"} />
+            </div>
             {error ? <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
             {refreshError ? <Alert className="mb-4"><AlertDescription>{t("task.refreshFailed")}</AlertDescription><Button size="sm" variant="outline" onClick={() => void refreshProgress()}>{t("task.refresh")}</Button></Alert> : null}
             {!task && mode === "functional" ? (
@@ -794,7 +798,7 @@ export function QuickTaskWorkspace({
                     {isQuickPerformanceProtocol(protocol) ? <QuickPerformancePanel
                       key={performanceFormRevision} plans={catalog.plans}
                       initialProfile={restoredPerformanceProfile} initialPlanID={selectedPerformancePlanID} onPlanChange={setSelectedPerformancePlanID}
-                      embedded showPlanSelector={false} blocked={!!pending} connection={performanceConnection}
+                      embedded showPlanSelector={false} blocked={!!pending} connection={performanceConnection} actionsContainer={performanceActionsContainer}
                       resolveConnection={validPerformanceConnection}
                       run={runPerformance} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
                     /> : <p className="text-xs text-muted-foreground">{t("task.performanceUnavailable")}</p>}

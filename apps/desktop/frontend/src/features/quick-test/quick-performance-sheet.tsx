@@ -131,6 +131,7 @@ export function PlanPerformanceRunSheet({
 
 type QuickPerformancePanelProps = {
   connection: QuickPerformanceConnection
+  actionsContainer?: HTMLElement | null
   showPlanSelector?: boolean
   plans: CatalogSnapshot["plans"]
   initialPlanID?: string
@@ -170,7 +171,7 @@ export function QuickPerformanceSheet({
 }
 
 export function QuickPerformancePanel({
-  connection, plans, initialPlanID, initialProfile, onPlanChange, showPlanSelector = true, run, onArchived, onOpenReport, resolveConnection, embedded = false, blocked = false,
+  connection, plans, initialPlanID, initialProfile, onPlanChange, showPlanSelector = true, run, onArchived, onOpenReport, resolveConnection, actionsContainer, embedded = false, blocked = false,
 }: QuickPerformancePanelProps & { embedded?: boolean; blocked?: boolean }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("quickTest")
@@ -266,7 +267,7 @@ export function QuickPerformancePanel({
                   <FieldDescription>{t(availablePlans.length ? "performance.planHint" : "performance.noPlans")}</FieldDescription>
                 </FieldContent>
               </Field> : null}
-              <PerformanceProfileFields editor={editor} pending={pending} />
+              <PerformanceProfileFields editor={editor} pending={pending || blocked} actionsContainer={actionsContainer} />
               {operationError ? (
                 <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
                   {localizeStoredMessage(operationError, tx)}

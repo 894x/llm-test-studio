@@ -170,5 +170,17 @@
     "randomInputHint": "Test uncached speed",
     "enable": "Enable",
     "capacityPreview": "Ladder preview"
+  },
+  "share": {
+    "title": "Share parameters",
+    "copy": "Copy parameters",
+    "copied": "Parameters copied",
+    "imported": "Parameters imported into the current form",
+    "fixParameters": "Correct the parameter errors before copying.",
+    "copyFailed": "Could not copy parameters. Check clipboard access and retry.",
+    "readFailed": "Could not read the clipboard. Check clipboard access and retry.",
+    "invalidParameters": "The clipboard does not contain complete, valid performance parameter JSON. Current parameters were kept.",
+    "parametersChanged": "Parameters or test state changed. Import again.",
+    "import": "Import parameters from clipboard"
   }
 }
