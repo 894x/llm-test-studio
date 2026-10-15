@@ -158,6 +158,7 @@ type desktopDependencies struct {
 	remoteNodes      *remotenodes.Manager
 	remoteSync       *remotesync.Watcher
 	jobs             *jobs.Coordinator
+	launcher         *jobs.Launcher
 	confirmations    *jobs.ConfirmationWatcher
 	close            func() error
 }

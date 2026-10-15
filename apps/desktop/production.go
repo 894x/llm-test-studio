@@ -21,6 +21,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
@@ -316,6 +317,28 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			gate: gate, query: catalogQuery, commands: catalogCommands, channels: channelService,
 			targets: channelService, targetCredential: runService.LeaseQuickTaskCredential,
 		}
+		quickTests := quicktest.New(quicktest.Dependencies{
+			TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
+				return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
+			},
+			TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string, selectedProtocol domain.Protocol) (string, error) {
+				return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model}, selectedProtocol)
+			},
+			Archive:            quickPerformanceArchive,
+			Clock:              productionClock{},
+			ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
+		})
+		launcher, err := jobs.NewLauncher(jobs.LauncherDependencies{
+			Coordinator: jobCoordinator, Runs: runService.Preparer, Comparisons: comparisonService.Preparer,
+			Performance: quickTests, Now: time.Now,
+		})
+		if err != nil {
+			_ = closeJobs()
+			_ = closeRemoteSync()
+			_ = closeRemoteNodes()
+			_ = runService.Close()
+			return desktopDependencies{}, fmt.Errorf("create job launcher: %w", err)
+		}
 		return desktopDependencies{
 			query:            serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
 			catalog:          serializedCatalog,
@@ -327,18 +350,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			remoteNodes:      remoteNodes.manager,
 			remoteSync:       remoteSync,
 			jobs:             jobCoordinator,
+			launcher:         launcher,
 			confirmations:    confirmations,
-			quickTests: quicktest.New(quicktest.Dependencies{
-				TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
-					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
-				},
-				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string, selectedProtocol domain.Protocol) (string, error) {
-					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model}, selectedProtocol)
-				},
-				Archive:            quickPerformanceArchive,
-				Clock:              productionClock{},
-				ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
-			}),
+			quickTests:       quickTests,
 			close: func() error {
 				return errors.Join(
 					closeJobs(),

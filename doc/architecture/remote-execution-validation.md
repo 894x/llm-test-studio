@@ -309,6 +309,14 @@ Windows 全仓 Go 测试及 vet 通过；审查后修复 NULL owner 的最终 SQ
 
 新增唯一当前 local_executor_identity 表，SQLite checksum 改变；旧格式正常打开时明确拒绝且不转换，实际用户数据库未修改，E 阶段转换工具及执行仍未完成。此提交接通生产 local factory，但没有替换旧的桌面公开运行入口、生成绑定或实现 Remote UI；这些仍是下一阶段必要工作。真实 K3 和最小性能 e2e 尚未执行。
 
+## 2026-10-16：四种准备的统一启动组合
+
+新增 Launcher 将 Plan、QuickTask、Performance、Comparison 的现有只读准备端口组合到同一个 Coordinator。命令要求显式 Location、当前种类与唯一对应 payload；Comparison 在准备前限制渠道数量。整体一分钟 context 内先取得独立 JobID，准备完整冻结输入，再持久准备并提交；它不拥有执行 goroutine。所有出口清理准备 lease，性能准备只传递规范错误码，调用取消优先保留。接收确认丢失直接返回原 pending 记录与 ID，由既有只读确认器恢复，不在启动层另行发送。
+
+生产初始化已组合真实 Run/Comparison/Performance Preparer 与本地或远程 Coordinator。四种路由测试使用准备端口 fixture 选择已冻结输入，实际 Core、SQLite 与 Mock 渠道验证全部原报告/结果；另覆盖非法选择、准备失败、部分组凭据、性能代码与取消、不可达远程零回退、确认丢失后一次提交。生产测试则使用真实目录和 Preparer，完整 84-case K3 Chat Suite 经 Mock 执行并封存原报告，最小性能保持并发一、三次测量请求与持久完整结果；用例判定没有弱化，Mock 响应不代表 K3 兼容性结论。
+
+Windows Launcher 回归三轮、jobs/jobhost/desktop 完整包测试及相关 vet 通过；Ubuntu 24.04 WSL 的 Launcher 三轮与生产完整准备/执行两轮通过。源代码复核无阻塞问题。本阶段没有变更持久格式或 schema，没有执行历史转换、部署物理 runner 或调用真实付费渠道。公开启动绑定、执行位置选择、长任务展示与原公开路径删除仍待同一边界切换，不把此内部组合当作桌面远程功能已验收。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。
