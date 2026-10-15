@@ -11,6 +11,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -22,15 +23,15 @@ var (
 )
 
 type Repository interface {
-	GetPlan(context.Context, string) (domain.Plan, error)
-	ResolvePlanTargetSelection(context.Context, domain.Plan, string, string) (domain.Model, domain.Channel, domain.ChannelModel, error)
+	PreparationRepository
 	CreateComparison(context.Context, domain.Comparison) error
 	GetComparison(context.Context, string) (domain.Comparison, error)
 	UpdateComparison(context.Context, uint64, domain.Comparison) error
 }
 
 type Runner interface {
-	PrepareTarget(context.Context, runs.StartCommand) (string, error)
+	TargetPreparer
+	AcceptPrepared(context.Context, runs.PreparedRun, *credentials.Lease) (string, error)
 	ActivateRun(context.Context, string) error
 	GetRun(context.Context, string) (domain.Run, error)
 	CancelRun(context.Context, string) error
@@ -52,10 +53,10 @@ type Dependencies struct {
 }
 
 type Service struct {
-	repository  Repository
-	runner      Runner
-	clock       Clock
-	metaFactory MetaFactory
+	*Preparer
+	repository Repository
+	runner     Runner
+	clock      Clock
 }
 
 type StartCommand struct {
@@ -101,67 +102,42 @@ func New(dependencies Dependencies) (*Service, error) {
 	if factory == nil {
 		factory = domain.NewEntityMeta
 	}
-	return &Service{repository: dependencies.Repository, runner: dependencies.Runner, clock: dependencies.Clock, metaFactory: factory}, nil
+	preparer, err := NewPreparer(PreparationDependencies{
+		Repository: dependencies.Repository, Targets: dependencies.Runner,
+		Clock: dependencies.Clock, MetaFactory: factory,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Service{
+		Preparer: preparer, repository: dependencies.Repository, runner: dependencies.Runner,
+		clock: dependencies.Clock,
+	}, nil
 }
 
 func (service *Service) Start(ctx context.Context, command StartCommand) (string, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || len(command.ChannelIDs) < 2 {
+	if service == nil {
 		return "", ErrInvalid
 	}
-	seen := make(map[string]struct{}, len(command.ChannelIDs))
-	for _, channelID := range command.ChannelIDs {
-		if !domain.IsUUID(channelID) {
-			return "", ErrInvalid
-		}
-		if _, duplicate := seen[channelID]; duplicate {
-			return "", ErrInvalid
-		}
-		seen[channelID] = struct{}{}
-	}
-	plan, err := service.repository.GetPlan(ctx, command.PlanID)
+	prepared, leases, err := service.Build(ctx, command)
 	if err != nil {
 		return "", err
 	}
-	channelRefs := make([]domain.EntityRevisionRef, len(command.ChannelIDs))
-	var modelRevision uint64
-	for index, channelID := range command.ChannelIDs {
-		model, channel, mapping, resolveErr := service.repository.ResolvePlanTargetSelection(ctx, plan, command.ModelID, channelID)
-		if classifyErr := classifyComparisonTarget(command.ModelID, plan, model, channel, mapping, resolveErr); classifyErr != nil {
-			return "", classifyErr
-		}
-		if index == 0 {
-			modelRevision = model.Revision
-		} else if model.Revision != modelRevision {
-			return "", ErrNotReady
-		}
-		channelRefs[index] = domain.EntityRevisionRef{ID: channel.ID, Revision: channel.Revision}
+	defer closePreparedLeases(leases)
+	comparison, err := prepared.Comparison()
+	if err != nil {
+		return "", err
 	}
-
-	started := make([]domain.ComparisonRunRef, 0, len(command.ChannelIDs))
-	for index, channelID := range command.ChannelIDs {
-		runID, startErr := service.runner.PrepareTarget(ctx, runs.StartCommand{PlanID: command.PlanID, ModelID: command.ModelID, ChannelID: channelID})
+	started := make([]domain.ComparisonRunRef, 0, len(prepared.Runs))
+	for _, input := range prepared.Runs {
+		lease := leases[input.Meta.ID]
+		delete(leases, input.Meta.ID)
+		runID, startErr := service.runner.AcceptPrepared(ctx, input, lease)
 		if startErr != nil {
-			for _, item := range started {
-				_ = service.runner.CancelRun(context.Background(), item.RunID)
-			}
-			return "", fmt.Errorf("start comparison channel: %w", startErr)
+			service.cancelStarted(started)
+			return "", fmt.Errorf("accept comparison channel: %w", startErr)
 		}
-		started = append(started, domain.ComparisonRunRef{Channel: channelRefs[index], RunID: runID})
-	}
-	meta, err := service.metaFactory(service.clock.Now())
-	if err != nil {
-		service.cancelStarted(started)
-		return "", err
-	}
-	comparison, err := domain.NewComparison(
-		meta,
-		domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision},
-		domain.EntityRevisionRef{ID: command.ModelID, Revision: modelRevision},
-		started,
-	)
-	if err != nil {
-		service.cancelStarted(started)
-		return "", err
+		started = append(started, domain.ComparisonRunRef{Channel: input.Snapshot.Channel.EntityRevisionRef, RunID: runID})
 	}
 	if err := service.repository.CreateComparison(ctx, comparison); err != nil {
 		service.cancelStarted(started)

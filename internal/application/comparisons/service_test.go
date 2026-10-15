@@ -12,6 +12,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/runs"
+	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
@@ -261,9 +262,24 @@ type comparisonRunner struct {
 	runOverrides map[string]domain.Run
 }
 
-func (runner *comparisonRunner) PrepareTarget(_ context.Context, command runs.StartCommand) (string, error) {
+func (runner *comparisonRunner) BuildTarget(
+	_ context.Context,
+	command runs.StartCommand,
+) (runs.PreparedRun, *credentials.Lease, error) {
 	runner.commands = append(runner.commands, command)
-	return runner.fixture.completedRuns[len(runner.commands)-1].Meta().ID, nil
+	run := runner.fixture.completedRuns[len(runner.commands)-1]
+	meta := run.Meta()
+	meta.Revision = 1
+	lease, err := credentials.NewTemporaryLease([]byte("comparison-test-secret"))
+	return runs.PreparedRun{Meta: meta, PlanID: run.PlanID(), Snapshot: run.Snapshot()}, lease, err
+}
+func (runner *comparisonRunner) AcceptPrepared(
+	_ context.Context,
+	input runs.PreparedRun,
+	lease *credentials.Lease,
+) (string, error) {
+	_ = lease.Close()
+	return input.Meta.ID, nil
 }
 func (runner *comparisonRunner) ActivateRun(_ context.Context, runID string) error {
 	runner.repository.mu.Lock()
