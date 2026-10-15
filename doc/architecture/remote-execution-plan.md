@@ -71,7 +71,7 @@ flowchart LR
 | `internal/jobcontract` | 单一当前 JobSpec、事件和错误的传输契约；复用 runs、quicktest 和 comparisons 的当前准备值，不导入 SSH、Wails 或数据库 |
 | `internal/application/jobs` | 选择 Backend、持久化提交记录、提交或重查同一 job_id、路由操作；不调度请求 |
 | `internal/application/jobhost` | 接收完整任务、排队、资源预算、调用已有 Core、持有取消上下文、结果日志和恢复 |
-| `internal/application/nodes` | 节点配置、状态查询、安装操作编排与构建核对 |
+| `internal/application/remotenodes` | 节点配置、状态查询、安装操作编排与构建核对 |
 | `internal/remote/ssh` | 主机密钥验证、SSH 认证、SFTP、隧道与固定安装命令执行 |
 | `internal/remote/client` | 实现 Remote JobBackend 和游标同步；不包含业务判定 |
 | `internal/adapters/runnerhttp` | 有界 HTTP 解码、鉴权、契约验证和错误映射 |
