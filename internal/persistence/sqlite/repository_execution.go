@@ -177,6 +177,16 @@ func (repository *Repository) GetRunRevision(ctx context.Context, id string, rev
 }
 
 func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error) {
+	return repository.listRuns(ctx, false)
+}
+
+// ListInterruptedRuns reads only current non-terminal runs. Unrelated archived
+// documents are neither loaded nor validated during startup recovery.
+func (repository *Repository) ListInterruptedRuns(ctx context.Context) ([]domain.Run, error) {
+	return repository.listRuns(ctx, true)
+}
+
+func (repository *Repository) listRuns(ctx context.Context, interruptedOnly bool) ([]domain.Run, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -185,7 +195,7 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 		return nil, fmt.Errorf("begin run list: %w", err)
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `
+	query := `
 		SELECT root.id, root.current_revision, root.created_at, root.sealed,
 		       (SELECT COUNT(*) FROM reports WHERE run_id = root.id),
 		       (SELECT COUNT(*) FROM execution_run_revisions AS history WHERE history.run_id = root.id),
@@ -197,8 +207,14 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 		FROM execution_runs AS root
 		JOIN execution_run_revisions AS revision
 		  ON revision.run_id = root.id AND revision.revision = root.current_revision
-		ORDER BY root.created_at, root.id
-	`)
+ `
+	arguments := []any{}
+	if interruptedOnly {
+		query += " WHERE revision.status IN (?, ?, ?, ?)"
+		arguments = append(arguments, domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining)
+	}
+	query += " ORDER BY root.created_at, root.id"
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}
@@ -217,12 +233,14 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close runs: %w", err)
 	}
-	var rootCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
-		return nil, fmt.Errorf("count run roots: %w", err)
-	}
-	if rootCount != len(stored) {
-		return nil, fmt.Errorf("%w: run current revision pointer", ErrCorrupt)
+	if !interruptedOnly {
+		var rootCount int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
+			return nil, fmt.Errorf("count run roots: %w", err)
+		}
+		if rootCount != len(stored) {
+			return nil, fmt.Errorf("%w: run current revision pointer", ErrCorrupt)
+		}
 	}
 	runs := make([]domain.Run, 0, len(stored))
 	for _, row := range stored {
@@ -951,8 +969,13 @@ func (repository *Repository) GetReport(ctx context.Context, id string) (domain.
 	if err := ctx.Err(); err != nil {
 		return domain.Report{}, err
 	}
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.Report{}, err
+	}
+	defer tx.Rollback()
 	var row storedReportRow
-	err := row.scan(repository.db.QueryRowContext(ctx, `
+	err = row.scan(tx.QueryRowContext(ctx, `
 		SELECT id, schema_version, run_id, generated_at, document_json FROM reports WHERE id = ?
 	`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -965,7 +988,10 @@ func (repository *Repository) GetReport(ctx context.Context, id string) (domain.
 	if err != nil {
 		return domain.Report{}, err
 	}
-	if err := validateReportStorage(ctx, repository.db, report); err != nil {
+	if err := validateReportStorage(ctx, tx, report); err != nil {
+		return domain.Report{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return domain.Report{}, err
 	}
 	return report, nil
@@ -1073,6 +1099,9 @@ func (row storedReportRow) decode() (domain.Report, error) {
 }
 
 func decodeReportDocument(document []byte) (domain.Report, error) {
+	if len(document) == 0 || len(document) > MaxReportProjectionDocumentBytes {
+		return domain.Report{}, fmt.Errorf("%w: report document byte budget", ErrCorrupt)
+	}
 	var report domain.Report
 	if err := decodeCanonical(document, &report, func() error { return report.Validate() }); err != nil {
 		return domain.Report{}, fmt.Errorf("%w: report document", ErrCorrupt)

@@ -1,5 +1,5 @@
 import { localizeStoredMessage } from "@/i18n/runtime"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import FolderOpenIcon from "lucide-react/dist/esm/icons/folder-open.mjs"
 
@@ -9,32 +9,25 @@ import {
   DesktopClientError,
   publicDesktopErrorMessage,
   publicDesktopOperationErrorMessage,
-  singleFlightRead,
   type DesktopClient,
 } from "@/app/desktop-client"
+import { createLazyResource, useResource } from "@/app/lazy-resource"
+import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
+import { EMPTY_CATALOG, selectCatalog, type CatalogScope } from "@/features/catalog/data"
 import { ThemeProvider } from "@/app/theme"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { createAppI18n } from "@/i18n/i18n"
 import { LanguageProvider } from "@/i18n/language-context"
 import { loadLanguagePreference, resolveLocale } from "@/i18n/locale"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import {
-  CasesWorkspace,
-  ModelChannelWorkspace,
-  PlansWorkspace,
-} from "@/features/catalog/catalog-workspaces"
 import type { CatalogSnapshot, SavedQuickTestTarget } from "@/features/catalog/data"
-import { OverviewWorkspace } from "@/features/overview/overview-workspace"
-import { QuickTaskWorkspace } from "@/features/quick-test/quick-task-workspace"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY, type TaskDraft } from "@/features/quick-test/task-draft"
-import { ReportWorkspace } from "@/features/reports/report-workspace"
 import type { ReportSnapshot } from "@/features/reports/data"
 import type { ReportGenerationProgress } from "@/features/reports/generation-progress"
 import { ReportGenerationStatus } from "@/features/reports/report-generation-status"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
-import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
+import type { StartComparisonCommand } from "@/features/comparisons/data"
 import { isRunActive, presentPlans, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   NewRunSheet,
@@ -50,8 +43,20 @@ import {
   type DesktopPage,
 } from "@/features/shell/navigation"
 
-const INITIAL_LOAD_STEPS = ["workspace", "catalog", "reports", "comparisons"] as const
-type InitialLoadStep = typeof INITIAL_LOAD_STEPS[number]
+const OverviewWorkspace = lazy(() => import("@/features/overview/overview-workspace").then(module => ({ default: module.OverviewWorkspace })))
+const QuickTaskWorkspace = lazy(() => import("@/features/quick-test/quick-task-workspace").then(module => ({ default: module.QuickTaskWorkspace })))
+const ReportWorkspace = lazy(() => import("@/features/reports/report-workspace").then(module => ({ default: module.ReportWorkspace })))
+const ModelChannelWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.ModelChannelWorkspace })))
+const CasesWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.CasesWorkspace })))
+const PlansWorkspace = lazy(() => import("@/features/catalog/catalog-workspaces").then(module => ({ default: module.PlansWorkspace })))
+
+const PAGE_READS = {
+  overview: ["workspace", "catalog", "reports"],
+  "quick-test": ["workspace", "quickCatalog", "reports"],
+  catalog: ["connections"], cases: ["definitions"], plans: ["catalog"],
+  runs: ["workspace"], reports: ["reports"],
+} as const
+type ResourceKey = "workspace" | "catalog" | "reports" | "comparisons" | "connections" | "definitions" | "quickCatalog"
 
 function persistDraft(draft: TaskDraft): void {
   if (!draft.task && !draft.base_url && !draft.model) return
@@ -64,65 +69,88 @@ function AppWorkspace({
   onRecreateClient,
 }: {
   client: DesktopClient
-  onRecreateClient: () => void
+  onRecreateClient: () => boolean
 }) {
   const { t: tx } = useTranslation()
   const { t, i18n } = useTranslation(["app", "runs"])
   const [page, setPage] = useState<DesktopPage>(() =>
     desktopPageFromHash(window.location.hash),
   )
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null)
-  const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
-  const [reports, setReports] = useState<ReportSnapshot | null>(null)
+  const pageRef = useRef(page)
+  useEffect(() => { pageRef.current = page }, [page])
+  const resources = useMemo(() => {
+    const catalog = createLazyResource(() => client.getCatalog("all"))
+    const scopedCatalog = (scope: CatalogScope) => createLazyResource(() => {
+      const full = catalog.getSnapshot()
+      return full.data && !full.stale ? Promise.resolve(selectCatalog(full.data, scope)) : client.getCatalog(scope)
+    })
+    return {
+      workspace: createLazyResource(() => client.getWorkspace()),
+      catalog, connections: scopedCatalog("connections"), definitions: scopedCatalog("definitions"), quickCatalog: scopedCatalog("quick_test"),
+      reports: createLazyResource(() => client.getReports()),
+      comparisons: createLazyResource(() => client.getComparisons()),
+    }
+  }, [client])
+  const workspaceState = useResource(resources.workspace)
+  const catalogState = useResource(resources.catalog)
+  const connectionState = useResource(resources.connections)
+  const definitionState = useResource(resources.definitions)
+  const quickCatalogState = useResource(resources.quickCatalog)
+  const reportState = useResource(resources.reports)
+  const comparisonState = useResource(resources.comparisons)
+  const snapshot = workspaceState.data
+  const catalog = (page === "catalog" ? connectionState : page === "cases" ? definitionState : page === "quick-test" ? quickCatalogState : catalogState).data
+  const reports = reportState.data
+  const comparisons = comparisonState.data
+  const setSnapshot = resources.workspace.set
+  const setCatalog = useCallback((next: CatalogSnapshot) => {
+    resources.catalog.set(next)
+    resources.connections.set(selectCatalog(next, "connections"))
+    resources.definitions.set(selectCatalog(next, "definitions"))
+    resources.quickCatalog.set(selectCatalog(next, "quick_test"))
+  }, [resources])
+  const setReports = resources.reports.set
+  const setComparisons = resources.comparisons.set
+  const [showComparisons, setShowComparisons] = useState(false)
+  const requiredReads: readonly ResourceKey[] = PAGE_READS[page]
+  const states = { workspace: workspaceState, catalog: catalogState, connections: connectionState, definitions: definitionState, quickCatalog: quickCatalogState, reports: reportState, comparisons: comparisonState }
+  const failedRead = requiredReads.find(key => states[key].error !== null && states[key].data === null)
+  const loadError = failedRead ? states[failedRead].error : null
+  const pageReady = requiredReads.every(key => states[key].data !== null)
   const [reportGeneration, setReportGeneration] = useState<Record<string, ReportGenerationProgress>>({})
   const reportReadGeneration = useRef(0)
   const [preferredReportID, setPreferredReportID] = useState("")
   const [reportOpenSequence, setReportOpenSequence] = useState(0)
   const [preferredRunID, setPreferredRunID] = useState("")
-  const [comparisons, setComparisons] = useState<ComparisonSnapshot | null>(null)
-  const [loadError, setLoadError] = useState<unknown>(null)
   const [openingLogs, setOpeningLogs] = useState(false)
   const [openLogsError, setOpenLogsError] = useState<unknown>(null)
   const [commandError, setCommandError] = useState("")
   const [commandPending, setCommandPending] = useState(false)
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
   const [catalogMutationError, setCatalogMutationError] = useState("")
-  const [loadAttempt, setLoadAttempt] = useState(0)
-  const [initialLoadSteps, setInitialLoadSteps] = useState<Record<InitialLoadStep, boolean>>({
-    workspace: false,
-    catalog: false,
-    reports: false,
-    comparisons: false,
-  })
   const [quickRunID, setQuickRunID] = useState("")
   const [startingRunID, setStartingRunID] = useState("")
   const [quickDraft, setQuickDraft] = useState<TaskDraft>(() => {
     try { return decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY)) ?? createTaskDraft(null) }
     catch { return createTaskDraft(null) }
   })
-  const reads = useMemo(() => ({
-    getWorkspace: singleFlightRead(() => client.getWorkspace()),
-    getCatalog: singleFlightRead(() => client.getCatalog()),
-    getReports: singleFlightRead(() => client.getReports()),
-    getComparisons: singleFlightRead(() => client.getComparisons()),
-  }), [client])
   const latestDraft = useRef(quickDraft)
   const workspaceGeneration = useRef(0)
   const comparisonGeneration = useRef(0)
   const catalogGeneration = useRef(0)
   const invalidateWorkspace = useCallback(() => {
     workspaceGeneration.current += 1
-    reads.getWorkspace.invalidate()
-  }, [reads])
+    resources.workspace.invalidate()
+  }, [resources])
   const refreshWorkspace = useCallback(async () => {
     const generation = workspaceGeneration.current
-    const nextWorkspace = await reads.getWorkspace()
+    const nextWorkspace = await resources.workspace.refresh()
     if (generation === workspaceGeneration.current) setSnapshot(nextWorkspace)
-  }, [reads])
+  }, [resources, setSnapshot])
   const updateWorkspace = useCallback((nextWorkspace: WorkspaceSnapshot) => {
     invalidateWorkspace()
     setSnapshot(nextWorkspace)
-  }, [invalidateWorkspace])
+  }, [invalidateWorkspace, setSnapshot])
 
   useEffect(() => {
     latestDraft.current = quickDraft
@@ -146,44 +174,14 @@ function AppWorkspace({
   }, [])
 
   useEffect(() => {
-    let active = true
-    const reportGenerationAtRead = reportReadGeneration.current
-    const trackLoad = <T,>(step: InitialLoadStep, promise: Promise<T>): Promise<T> => Promise.resolve(promise).then((value) => {
-      if (active) setInitialLoadSteps((completed) => ({ ...completed, [step]: true }))
-      return value
-    })
-    void Promise.all([
-      trackLoad("workspace", reads.getWorkspace()),
-      trackLoad("catalog", reads.getCatalog()),
-      trackLoad("reports", reads.getReports()),
-      trackLoad("comparisons", reads.getComparisons()),
-    ])
-      .then(([nextWorkspace, nextCatalog, nextReports, nextComparisons]) => {
-        if (active) {
-          setLoadError(null)
-          setSnapshot(nextWorkspace)
-          setCatalog(nextCatalog)
-          if (reportGenerationAtRead === reportReadGeneration.current) setReports(nextReports)
-					setComparisons(nextComparisons)
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setLoadError(error)
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [reads, loadAttempt])
+    PAGE_READS[page].forEach(key => { void resources[key].load().catch(() => {}) })
+  }, [page, resources])
 
   const retryInitialLoad = useCallback(() => {
-    setLoadError("")
     setOpenLogsError(null)
-    setInitialLoadSteps({ workspace: false, catalog: false, reports: false, comparisons: false })
-    onRecreateClient()
-    setLoadAttempt((attempt) => attempt + 1)
-  }, [onRecreateClient])
+    if (onRecreateClient()) return
+    PAGE_READS[page].forEach(key => { void resources[key].load().catch(() => {}) })
+  }, [onRecreateClient, page, resources])
 
   const openLogs = async () => {
     setOpeningLogs(true)
@@ -200,7 +198,9 @@ function AppWorkspace({
   const [retryWorkspacePoll, setRetryWorkspacePoll] = useState(false)
   const [retryComparisonPoll, setRetryComparisonPoll] = useState(false)
   const comparisonRunning = !!comparisons?.comparisons.some((comparison) => comparison.status === "running")
-  const shouldPollWorkspace = !!(retryWorkspacePoll || startingRunID || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisonRunning || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
+  const startingRunPending = !!startingRunID && !snapshot?.runs.some(run => run.id === startingRunID)
+  const workspaceVisible = PAGE_READS[page].some(key => key === "workspace")
+  const shouldPollWorkspace = (workspaceVisible || startingRunPending) && !!(retryWorkspacePoll || startingRunPending || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisonRunning || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
   useEffect(() => {
 		if (!shouldPollWorkspace) return
 		let active = true
@@ -208,7 +208,7 @@ function AppWorkspace({
 		const refresh = async () => {
 			const generation = workspaceGeneration.current
 			try {
-				const nextWorkspace = await reads.getWorkspace()
+				const nextWorkspace = await resources.workspace.refresh()
 				if (active && generation === workspaceGeneration.current) {
 					setRetryWorkspacePoll(false)
 					setSnapshot(nextWorkspace)
@@ -220,10 +220,10 @@ function AppWorkspace({
 			}
 		}
 		timer = window.setTimeout(() => void refresh(), 1_000)
-		return () => { active = false; window.clearTimeout(timer) }
-	}, [reads, shouldPollWorkspace])
+		return () => { active = false; window.clearTimeout(timer); invalidateWorkspace() }
+	}, [resources, shouldPollWorkspace, setSnapshot, invalidateWorkspace])
 
-  const shouldPollComparisons = comparisonRunning || retryComparisonPoll
+  const shouldPollComparisons = (page === "runs" || page === "reports") && showComparisons && (comparisonRunning || retryComparisonPoll)
   useEffect(() => {
     if (!shouldPollComparisons) return
     let active = true
@@ -231,7 +231,7 @@ function AppWorkspace({
     const refresh = async () => {
       const generation = comparisonGeneration.current
       try {
-        const nextComparisons = await reads.getComparisons()
+        const nextComparisons = await resources.comparisons.refresh()
         if (active && generation === comparisonGeneration.current) {
           setRetryComparisonPoll(false)
           setComparisons(nextComparisons)
@@ -244,33 +244,27 @@ function AppWorkspace({
     }
     timer = window.setTimeout(() => void refresh(), 1_000)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [reads, shouldPollComparisons])
-
-  useEffect(() => {
-    if (startingRunID && snapshot?.runs.some((run) => run.id === startingRunID)) {
-      setStartingRunID("")
-    }
-  }, [snapshot, startingRunID])
+  }, [resources, shouldPollComparisons, setComparisons])
 
   const [reportRetryUntil, setReportRetryUntil] = useState(0)
   const updateReports = useCallback((nextReports: ReportSnapshot) => {
     setReports(nextReports)
     setReportRetryUntil(0)
-  }, [])
+  }, [setReports])
   const retryReports = useCallback(() => {
     setReportRetryUntil((until) => until || Date.now() + 60_000)
   }, [])
   const refreshReports = useCallback(async () => {
     const generation = reportReadGeneration.current
     try {
-      const nextReports = await reads.getReports()
+      const nextReports = await resources.reports.refresh()
       if (generation === reportReadGeneration.current) updateReports(nextReports)
       return nextReports
     } catch (error) {
       if (generation === reportReadGeneration.current) retryReports()
       throw error
     }
-  }, [reads, updateReports, retryReports])
+  }, [resources, updateReports, retryReports])
 
   useEffect(() => {
     let active = true
@@ -281,8 +275,13 @@ function AppWorkspace({
       setReportGeneration((previous) => ({ ...previous, [progress.run_id]: progress }))
       if (progress.phase === "ready") {
         reportReadGeneration.current += 1
-        reads.getReports.invalidate()
-        void Promise.all([refreshReports(), refreshWorkspace()]).catch(() => {
+        const visibleReads: readonly string[] = PAGE_READS[pageRef.current]
+        resources.reports.invalidate()
+        invalidateWorkspace()
+        void Promise.all([
+          ...(visibleReads.includes("reports") ? [refreshReports()] : []),
+          ...(visibleReads.includes("workspace") ? [refreshWorkspace()] : []),
+        ]).catch(() => {
           // A transient read failure is retried without restarting generation.
         })
       }
@@ -294,14 +293,10 @@ function AppWorkspace({
       if (active) setCommandError(publicDesktopErrorMessage(error, t("app:loadError")))
     })
     return () => { active = false; unsubscribe() }
-  }, [client, reads, refreshReports, refreshWorkspace, t])
+  }, [client, resources, invalidateWorkspace, refreshReports, refreshWorkspace, t])
 
   useEffect(() => {
-    if (page === "reports") void refreshReports().catch(() => {})
-  }, [refreshReports, page])
-
-  useEffect(() => {
-    if (!reportRetryUntil) return
+    if (!reportRetryUntil || !PAGE_READS[page].some(key => key === "reports")) return
     let active = true
     let timer: number | undefined
     const refresh = async () => {
@@ -314,7 +309,7 @@ function AppWorkspace({
     }
     timer = window.setTimeout(() => void refresh(), 2_000)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [refreshReports, reportRetryUntil])
+  }, [refreshReports, reportRetryUntil, page])
 
   const refreshQuickTask = useCallback(async () => {
     await Promise.all([refreshWorkspace(), refreshReports()])
@@ -329,7 +324,7 @@ function AppWorkspace({
   }, [])
 
   const refreshArchivedPerformanceReport = useCallback(async (reportID: string): Promise<void> => {
-    reads.getReports.invalidate()
+    resources.reports.invalidate()
     try {
       await refreshReports()
       setPreferredReportID(reportID)
@@ -337,7 +332,7 @@ function AppWorkspace({
       // The quick-test result remains available in its sheet; the reports
       // workspace can be refreshed again through normal app polling/reload.
     }
-  }, [reads, refreshReports])
+  }, [resources, refreshReports])
 
   const openReport = useCallback(async (reportID: string): Promise<void> => {
     setPreferredReportID(reportID)
@@ -358,9 +353,10 @@ function AppWorkspace({
   }, [invalidateWorkspace, navigate])
 
   const renderRunShortcuts = useRunShortcuts({
-    client, workspace: snapshot, catalog, reports, generation: reportGeneration,
+    client, workspace: snapshot, reports, generation: reportGeneration,
     draft: quickDraft, commandPending, onStarted: rerunStarted,
     onOpenReport: openReport, refreshReports,
+    loadWorkspace: resources.workspace.load, loadCatalog: resources.quickCatalog.load,
   })
 
   const runCommand = useCallback(
@@ -380,7 +376,7 @@ function AppWorkspace({
         setCommandPending(false)
       }
     },
-    [invalidateWorkspace, t],
+    [invalidateWorkspace, setSnapshot, t],
   )
 
   const startRun = useCallback(async (command: StartRunTargetCommand): Promise<void> => {
@@ -406,20 +402,18 @@ function AppWorkspace({
         const nextCatalog = await operation()
         catalogGeneration.current += 1
         setCatalog(nextCatalog)
-        reads.getCatalog.invalidate()
         invalidateWorkspace()
-        void refreshWorkspace().catch(() => {
-          setCatalogMutationError(t("app:catalogRefreshError", { operation: operationLabel }))
-        })
       } catch (error) {
         if (isCatalogSavedRefreshFailure(error)) {
           const generation = ++catalogGeneration.current
-          reads.getCatalog.invalidate()
+          resources.catalog.invalidate()
+          resources.connections.invalidate()
+          resources.definitions.invalidate()
+          resources.quickCatalog.invalidate()
           invalidateWorkspace()
-          void reads.getCatalog().then((nextCatalog) => {
+          void resources.catalog.refresh().then((nextCatalog) => {
             if (generation === catalogGeneration.current) setCatalog(nextCatalog)
           }, () => { /* The mutation is already committed. */ })
-          void refreshWorkspace().catch(() => { /* A later reload can recover the workspace. */ })
           setCatalogMutationError(publicDesktopErrorMessage(error, tx("desktop:app_saved_but_the_catalog_could_not_refresh_refresh_or_reopen")))
           return
         }
@@ -429,7 +423,7 @@ function AppWorkspace({
         setCatalogMutationPending(false)
       }
     },
-    [reads, invalidateWorkspace, refreshWorkspace, t, tx],
+    [resources, setCatalog, invalidateWorkspace, tx],
   )
 
   const startComparison = useCallback(async (command: StartComparisonCommand): Promise<void> => {
@@ -438,8 +432,9 @@ function AppWorkspace({
 		try {
 			const nextComparisons = await client.startComparison(command)
 			comparisonGeneration.current += 1
-			reads.getComparisons.invalidate()
+			resources.comparisons.invalidate()
 			setComparisons(nextComparisons)
+      setShowComparisons(true)
 			invalidateWorkspace()
 			void refreshWorkspace().catch(() => setRetryWorkspacePoll(true))
 		} catch (error) {
@@ -448,20 +443,19 @@ function AppWorkspace({
 		} finally {
 			setCommandPending(false)
 		}
-	}, [client, reads, invalidateWorkspace, refreshWorkspace, t])
+	}, [client, resources, setComparisons, invalidateWorkspace, refreshWorkspace, t])
 
   const workspacePlans = snapshot?.plans
   const plans = useMemo(
     () => (workspacePlans ? presentPlans(workspacePlans, {
       locale: i18n.resolvedLanguage ?? i18n.language,
       t: (key, values) => t(`runs:${key}`, values),
-    }) : []),
-    [i18n.language, i18n.resolvedLanguage, workspacePlans, t],
+    }) : (catalogState.data?.plans.map(plan => ({ id: plan.id, name: plan.name, caseCount: plan.case_count, runCount: 0, description: "" })) ?? [])),
+    [i18n.language, i18n.resolvedLanguage, workspacePlans, catalogState.data, t],
   )
 
-  if (loadError) {
-    return (
-      <div className="flex h-svh min-h-[640px] items-center justify-center bg-background p-6 text-foreground">
+  const pageStatus = loadError ? (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-background p-6 text-foreground">
         <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
           <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
           <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
@@ -481,44 +475,11 @@ function AppWorkspace({
           )}
         </div>
       </div>
-    )
-  }
-  if (!snapshot || !catalog || !reports || !comparisons) {
-    const loadTotal = 4
-    const loadCompleted = INITIAL_LOAD_STEPS.filter((step) => initialLoadSteps[step]).length
-    const loadPercent = Math.round((loadCompleted / loadTotal) * 100)
-    return (
-      <div className="flex h-svh min-h-[640px] items-center justify-center bg-background p-6 text-foreground">
-        <div
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-          className="flex w-full max-w-sm flex-col items-center text-center"
-        >
-          <Spinner className="size-8 text-primary" />
-          <h1 className="mt-4 text-sm font-semibold">{t("app:loadingTitle")}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("app:loadingProgress", { completed: loadCompleted, total: loadTotal })}
-          </p>
-          <Progress
-            value={loadPercent}
-            aria-label={t("app:loadingProgress", { completed: loadCompleted, total: loadTotal })}
-            className="mt-4"
-          />
-          <ul className="mt-4 w-full space-y-2 text-left text-xs text-muted-foreground">
-            {INITIAL_LOAD_STEPS.map((step) => (
-              <li key={step} className={initialLoadSteps[step] ? "text-foreground" : undefined}>
-                <span aria-hidden="true" className="mr-2 inline-block w-3 text-center">
-                  {initialLoadSteps[step] ? "✓" : "·"}
-                </span>
-                {t(`app:loadingSteps.${step}`)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    )
-  }
+  ) : !pageReady ? (
+    <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
+      <Spinner /> {t("app:loadingPage")}
+    </div>
+  ) : null
 
   return (
     <DesktopShell
@@ -527,10 +488,11 @@ function AppWorkspace({
       actions={
 				<div className="flex items-center gap-2">
 					<DiagnosticsSheet client={client} />
-					<NewComparisonSheet catalog={catalog} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
+					<NewComparisonSheet catalog={catalogState.data ?? EMPTY_CATALOG} onOpen={() => resources.catalog.load()} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
 					<NewRunSheet
 						plans={plans}
-						catalog={catalog}
+						catalog={catalogState.data ?? EMPTY_CATALOG}
+            onOpen={() => resources.catalog.load()}
 						commandPending={commandPending}
 						onStartRun={async (command) => {
 							await startRun(command)
@@ -540,13 +502,14 @@ function AppWorkspace({
 				</div>
       }
     >
-      {page === "overview" ? (
-        <OverviewWorkspace workspace={snapshot} catalog={catalog} reports={reports} onOpenReport={openReport} />
+      <Suspense fallback={<div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("app:loadingPage")}</div>}>
+      {pageStatus ?? (page === "overview" ? (
+        <OverviewWorkspace workspace={snapshot!} catalog={catalog!} reports={reports!} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
         <QuickTaskWorkspace
-          catalog={catalog}
-          workspace={snapshot}
-          reports={reports}
+          catalog={catalog!}
+          workspace={snapshot!}
+          reports={reports!}
           draft={quickDraft}
           onDraftChange={setQuickDraft}
           runID={quickRunID}
@@ -564,12 +527,12 @@ function AppWorkspace({
           onOpenReport={openReport}
         />
       ) : page === "catalog" ? (
-        <ModelChannelWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
+        <ModelChannelWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
       ) : page === "cases" ? (
-        <CasesWorkspace catalog={catalog} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
+        <CasesWorkspace catalog={catalog!} actions={client} mutate={mutateCatalog} mutationPending={catalogMutationPending} mutationError={localizeStoredMessage(catalogMutationError, tx)} />
       ) : page === "plans" ? (
         <PlansWorkspace
-          catalog={catalog}
+          catalog={catalog!}
           actions={client}
           mutate={mutateCatalog}
           mutationPending={catalogMutationPending}
@@ -583,8 +546,12 @@ function AppWorkspace({
         />
       ) : page === "reports" ? (
         <ReportWorkspace
-          snapshot={reports}
-          comparisons={comparisons}
+          snapshot={reports!}
+          comparisonControl={!showComparisons || comparisonState.error || (!comparisonState.data && !comparisonState.pending) ? <Button size="sm" variant="ghost" onClick={() => {
+            setShowComparisons(true)
+            void resources.comparisons.refresh().catch(() => {})
+          }}>{t(comparisonState.error ? "runs:comparisons.retry" : "runs:comparisons.load")}</Button> : comparisonState.pending ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.loading")}</span> : comparisons?.comparisons.length === 0 ? <span role="status" className="text-xs text-muted-foreground">{t("runs:comparisons.empty")}</span> : undefined}
+          comparisons={showComparisons ? comparisons ?? EMPTY_COMPARISONS : EMPTY_COMPARISONS}
           preferredReportID={preferredReportID}
           reportOpenSequence={reportOpenSequence}
           getDetail={client.getReportDetail}
@@ -595,8 +562,15 @@ function AppWorkspace({
         />
       ) : (
         <RunWorkspace
-          snapshot={snapshot}
-          comparisons={comparisons}
+          snapshot={snapshot!}
+          comparisons={comparisons ?? EMPTY_COMPARISONS}
+          comparisonState={comparisonState}
+          showComparisons={showComparisons}
+          onShowComparisons={() => {
+            setShowComparisons(true)
+            void resources.comparisons.load().catch(() => {})
+          }}
+          onRetryComparisons={() => { void resources.comparisons.refresh().catch(() => {}) }}
           commandPending={commandPending}
           commandError={commandError}
           preferredRunID={preferredRunID}
@@ -606,10 +580,11 @@ function AppWorkspace({
           }
           onCancelRun={(runId) => runCommand(() => client.cancelRun(runId))}
         />
-      )}
+      ))}
+      </Suspense>
       <ReportGenerationStatus
         progress={Object.values(reportGeneration).filter((progress) =>
-          progress.phase !== "ready" || !reports.reports.some((report) => report.id === progress.report_id),
+          progress.phase !== "ready" || !reports?.reports.some((report) => report.id === progress.report_id),
         )}
         onOpenLogs={() => { void openLogs() }}
       />
@@ -638,7 +613,11 @@ function App({ client }: { client?: DesktopClient }) {
         <TooltipProvider delayDuration={250}>
         <AppWorkspace
           client={desktopClient}
-          onRecreateClient={() => setClientGeneration((generation) => generation + 1)}
+          onRecreateClient={() => {
+            if (client) return false
+            setClientGeneration((generation) => generation + 1)
+            return true
+          }}
         />
         </TooltipProvider>
       </ThemeProvider>

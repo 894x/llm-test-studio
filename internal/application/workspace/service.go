@@ -6,8 +6,8 @@ package workspace
 import (
 	"context"
 	"errors"
-	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -48,12 +48,19 @@ func (conclusion Conclusion) Validate() error {
 	}
 }
 
-// RunProjection is a storage-neutral aggregate. Authored runs retain their
-// pinned Plan so the service can verify historical ownership without issuing
-// per-run lookups. Quick tasks have no authored Plan and leave PinnedPlan zero.
+// RunProjection contains only fields displayed by the workspace. Full Run
+// snapshots and authored Case definitions belong to explicit detail reads.
 type RunProjection struct {
-	Run           domain.Run
-	PinnedPlan    domain.Plan
+	Meta          domain.EntityMeta
+	Plan          domain.EntityRevisionRef
+	PlanName      string
+	Model         TargetProjection
+	Channel       TargetProjection
+	Status        domain.RunStatus
+	Source        string
+	Failure       *domain.RunFailure
+	Entries       []RunEntryProjection
+	ReportID      string
 	Completed     uint64
 	Passed        uint64
 	Failed        uint64
@@ -62,6 +69,18 @@ type RunProjection struct {
 	ArtifactCount uint64
 	Conclusion    Conclusion
 	EntryResults  []EntryResultProjection
+}
+
+type TargetProjection struct {
+	domain.EntityRevisionRef
+	Name string
+}
+
+type RunEntryProjection struct {
+	EntryID   string             `json:"entry_id"`
+	Name      string             `json:"name"`
+	CaseCount uint64             `json:"case_count"`
+	Load      domain.LoadProfile `json:"load"`
 }
 
 // EntryResultProjection counts distinct Cases with persisted results, not requests.
@@ -110,6 +129,7 @@ type PlanSummary struct {
 }
 
 type RunSummary struct {
+	ReportID          string           `json:"report_id,omitempty"`
 	CaseCount         uint64           `json:"case_count"`
 	ObservedCaseCount uint64           `json:"observed_case_count"`
 	EntryProgress     []EntryProgress  `json:"entry_progress"`
@@ -188,15 +208,15 @@ func (service Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		if err := ctx.Err(); err != nil {
 			return Snapshot{}, err
 		}
-		meta := projection.Run.Meta()
+		meta := projection.Meta
 		if _, duplicate := runIDs[meta.ID]; duplicate {
 			return Snapshot{}, ErrInconsistent
 		}
 		runIDs[meta.ID] = struct{}{}
-		if err := validateProjection(projection); err != nil {
+		if err := projection.Validate(); err != nil {
 			return Snapshot{}, ErrInconsistent
 		}
-		runCounts[projection.Run.PlanID()]++
+		runCounts[projection.Plan.ID]++
 		runSummaries = append(runSummaries, summarizeRun(projection))
 	}
 
@@ -268,28 +288,68 @@ func safePortError(ctx context.Context, err error) error {
 	return ErrUnavailable
 }
 
-func validateProjection(projection RunProjection) error {
-	if err := projection.Run.Validate(); err != nil {
+func (projection RunProjection) Validate() error {
+	if err := projection.Meta.Validate(); err != nil {
 		return err
+	}
+	if err := projection.Plan.Validate("plan"); err != nil {
+		return err
+	}
+	for _, target := range []TargetProjection{projection.Model, projection.Channel} {
+		if err := target.EntityRevisionRef.Validate("target"); err != nil {
+			return err
+		}
+		if strings.TrimSpace(target.Name) == "" {
+			return errors.New("missing run target label")
+		}
+	}
+	if strings.TrimSpace(projection.PlanName) == "" || len(projection.Entries) == 0 {
+		return errors.New("missing run list plan or entries")
+	}
+	switch projection.Status {
+	case domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining,
+		domain.RunCompleted, domain.RunFailed, domain.RunCancelled:
+	default:
+		return errors.New("unknown run status")
+	}
+	if projection.Source != "" && projection.Source != "quick_task" {
+		return errors.New("unknown run source")
+	}
+	if projection.Source == "quick_task" && projection.Plan.ID != projection.Meta.ID {
+		return errors.New("quick task plan identity differs from run identity")
+	}
+	if projection.ReportID != "" && !domain.IsUUID(projection.ReportID) {
+		return errors.New("invalid report identity")
+	}
+	if projection.Failure != nil {
+		if projection.Status != domain.RunFailed {
+			return errors.New("failure on non-failed run")
+		}
+		if err := projection.Failure.Validate(); err != nil {
+			return err
+		}
+	}
+	entries := map[string]bool{}
+	for _, entry := range projection.Entries {
+		invalidIdentity := !domain.IsUUID(entry.EntryID) || entries[entry.EntryID]
+		if invalidIdentity || strings.TrimSpace(entry.Name) == "" {
+			return errors.New("invalid run entry identity or label")
+		}
+		entries[entry.EntryID] = true
+		if entry.CaseCount == 0 {
+			return errors.New("missing run entry cases")
+		}
+		if err := entry.Load.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := projection.Conclusion.Validate(); err != nil {
 		return err
 	}
-	run := projection.Run
-	snapshot := run.Snapshot()
-	plan := projection.PinnedPlan
-	if err := plan.Validate(); err != nil {
-		return err
-	}
-	if snapshot.SchemaVersion != domain.CurrentRunSnapshotSchemaVersion || snapshot.PlanDocument == nil ||
-		plan.ID != run.PlanID() || plan.ID != snapshot.Plan.ID || plan.Revision != snapshot.Plan.Revision ||
-		!reflect.DeepEqual(plan, *snapshot.PlanDocument) {
-		return errors.New("run snapshot differs from pinned plan")
-	}
 	if projection.Completed != projection.Passed+projection.Failed+projection.Observed+projection.Indeterminate {
 		return errors.New("run result counts are inconsistent")
 	}
-	budget := snapshotRequestBudget(snapshot)
+	budget := entryRequestBudget(projection.Entries)
 	if budget > 0 && projection.Completed > budget {
 		return errors.New("run completed more requests than planned")
 	}
@@ -298,11 +358,11 @@ func validateProjection(projection RunProjection) error {
 	}
 	switch projection.Conclusion {
 	case ConclusionPassed:
-		if run.Status() != domain.RunCompleted {
+		if projection.Status != domain.RunCompleted {
 			return errors.New("passing conclusion requires a completed run")
 		}
 	case ConclusionFailed:
-		switch run.Status() {
+		switch projection.Status {
 		case domain.RunCompleted, domain.RunFailed, domain.RunCancelled:
 		default:
 			return errors.New("failed conclusion requires a terminal run")
@@ -312,35 +372,31 @@ func validateProjection(projection RunProjection) error {
 }
 
 func summarizeRun(projection RunProjection) RunSummary {
-	run := projection.Run
-	meta := run.Meta()
-	snapshot := run.Snapshot()
-	_, load := summarizeSnapshotLoads(snapshot)
-	planName := projection.PinnedPlan.Name
+	loads := make([]domain.LoadProfile, len(projection.Entries))
+	for index, entry := range projection.Entries {
+		loads[index] = entry.Load
+	}
+	load := aggregateSequentialLoads(loads)
 	summary := RunSummary{
-		ID: meta.ID, Revision: meta.Revision,
-		PlanID: run.PlanID(), PlanRevision: snapshot.Plan.Revision, PlanName: planName,
-		Status: run.Status(), Conclusion: projection.Conclusion,
-		ModelID: snapshot.Model.ID, ModelRevision: snapshot.Model.Revision, ModelName: snapshot.Model.Name,
-		ChannelID: snapshot.Channel.ID, ChannelRevision: snapshot.Channel.Revision, ChannelName: snapshot.Channel.Name,
+		ID: projection.Meta.ID, Revision: projection.Meta.Revision, ReportID: projection.ReportID,
+		PlanID: projection.Plan.ID, PlanRevision: projection.Plan.Revision, PlanName: projection.PlanName,
+		Status: projection.Status, Conclusion: projection.Conclusion, Source: projection.Source,
+		ModelID: projection.Model.ID, ModelRevision: projection.Model.Revision, ModelName: projection.Model.Name,
+		ChannelID: projection.Channel.ID, ChannelRevision: projection.Channel.Revision, ChannelName: projection.Channel.Name,
 		LoadMode: load.Mode, Concurrency: load.Concurrency,
-		RatePerSecond: load.RatePerSecond, Planned: snapshotRequestBudget(snapshot),
-		DurationMS: load.DurationMS,
-		Completed:  projection.Completed, Passed: projection.Passed, Failed: projection.Failed, Observed: projection.Observed, Indeterminate: projection.Indeterminate,
-		ArtifactCount: projection.ArtifactCount,
-		StartedAt:     meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
+		RatePerSecond: load.RatePerSecond, Planned: entryRequestBudget(projection.Entries), DurationMS: load.DurationMS,
+		Completed: projection.Completed, Passed: projection.Passed, Failed: projection.Failed,
+		Observed: projection.Observed, Indeterminate: projection.Indeterminate, ArtifactCount: projection.ArtifactCount,
+		StartedAt: projection.Meta.CreatedAt, UpdatedAt: projection.Meta.UpdatedAt,
 	}
 	summary.EntryProgress = summarizeEntryProgress(projection)
-	for _, suite := range summary.EntryProgress {
-		summary.CaseCount += suite.CaseCount
-		summary.ObservedCaseCount += suite.ObservedCaseCount
+	for _, entry := range summary.EntryProgress {
+		summary.CaseCount += entry.CaseCount
+		summary.ObservedCaseCount += entry.ObservedCaseCount
 	}
-	if failure := run.Failure(); failure != nil {
-		summary.FailurePhase = failure.Phase
-		summary.ErrorCode = failure.ErrorCode
-	}
-	if snapshot.QuickTask != nil {
-		summary.Source = "quick_task"
+	if projection.Failure != nil {
+		summary.FailurePhase = projection.Failure.Phase
+		summary.ErrorCode = projection.Failure.ErrorCode
 	}
 	return summary
 }
@@ -351,16 +407,6 @@ func summarizeEntryLoads(suites []domain.PlanEntry) domain.LoadProfile {
 		loads[index] = suite.Load
 	}
 	return aggregateSequentialLoads(loads)
-}
-
-func summarizeSnapshotLoads(snapshot domain.RunSnapshot) (int, domain.LoadProfile) {
-	loads := make([]domain.LoadProfile, len(snapshot.Entries))
-	caseCount := 0
-	for index, suite := range snapshot.Entries {
-		caseCount += len(suite.Cases)
-		loads[index] = suite.Load
-	}
-	return caseCount, aggregateSequentialLoads(loads)
 }
 
 func aggregateSequentialLoads(loads []domain.LoadProfile) domain.LoadProfile {

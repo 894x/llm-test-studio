@@ -44,7 +44,7 @@ type recordingCatalogQuery struct {
 	ctx      context.Context
 }
 
-func (query *recordingCatalogQuery) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
+func (query *recordingCatalogQuery) Snapshot(ctx context.Context, _ catalog.Scope) (catalog.Snapshot, error) {
 	query.calls++
 	query.ctx = ctx
 	return query.snapshot, query.err
@@ -360,7 +360,7 @@ func TestDesktopAppCatalogAndReportsDelegateWithLifecycleContext(t *testing.T) {
 	startupContext := context.WithValue(context.Background(), contextKey{}, "desktop")
 	app.onStartup(startupContext)
 
-	gotCatalog, err := app.GetCatalog()
+	gotCatalog, err := app.GetCatalog(catalog.ScopeAll)
 	if err != nil {
 		t.Fatalf("GetCatalog() error = %v", err)
 	}
@@ -842,7 +842,7 @@ func TestDesktopAppCatalogAndReportsRejectCallsBeforeStartup(t *testing.T) {
 		return desktopDependencies{catalog: catalogQuery, reports: reportingQuery}, nil
 	})
 
-	_, err := app.GetCatalog()
+	_, err := app.GetCatalog(catalog.ScopeAll)
 	assertBindingErrorCode(t, err, "desktop_not_started")
 	_, err = app.GetReports()
 	assertBindingErrorCode(t, err, "desktop_not_started")
@@ -882,7 +882,7 @@ func TestDesktopAppTreatsTypedNilDependenciesAsUnavailable(t *testing.T) {
 		})
 		app.onStartup(context.Background())
 
-		_, err := app.GetCatalog()
+		_, err := app.GetCatalog(catalog.ScopeAll)
 		assertBindingErrorCode(t, err, "catalog_unavailable")
 	})
 
@@ -954,7 +954,7 @@ type cancelableCatalogQuery struct {
 	returned atomic.Bool
 }
 
-func (query *cancelableCatalogQuery) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
+func (query *cancelableCatalogQuery) Snapshot(ctx context.Context, _ catalog.Scope) (catalog.Snapshot, error) {
 	close(query.started)
 	<-ctx.Done()
 	query.returned.Store(true)
@@ -1050,7 +1050,7 @@ func TestDesktopAppShutdownCancelsAndDrainsCatalogAndReportQueriesBeforeClose(t 
 	catalogResult := make(chan error, 1)
 	reportingResult := make(chan error, 1)
 	go func() {
-		_, err := app.GetCatalog()
+		_, err := app.GetCatalog(catalog.ScopeAll)
 		catalogResult <- err
 	}()
 	go func() {
@@ -1148,7 +1148,7 @@ func TestDesktopAppBindingErrorsAreStableAndDoNotLeakSensitiveDetails(t *testing
 				})
 			},
 			invoke: func(app *DesktopApp) error {
-				_, err := app.GetCatalog()
+				_, err := app.GetCatalog(catalog.ScopeAll)
 				return err
 			},
 		},

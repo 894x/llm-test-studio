@@ -35,7 +35,7 @@ func (service probedWorkspaceService) Snapshot(context.Context) (workspace.Snaps
 
 type probedCatalogService struct{ probe *sharedConnectionProbe }
 
-func (service probedCatalogService) Snapshot(context.Context) (catalog.Snapshot, error) {
+func (service probedCatalogService) Snapshot(context.Context, catalog.Scope) (catalog.Snapshot, error) {
 	release := service.probe.call()
 	defer release()
 	return catalog.Snapshot{}, nil
@@ -68,7 +68,7 @@ func TestProductionServiceGateSerializesCatalogSpanningWorkflows(t *testing.T) {
 	errors := make(chan error, 3)
 	for _, call := range []func() error{
 		func() error { _, err := workspaceQuery.Snapshot(context.Background()); return err },
-		func() error { _, err := catalogQuery.Snapshot(context.Background()); return err },
+		func() error { _, err := catalogQuery.Snapshot(context.Background(), catalog.ScopeAll); return err },
 		func() error {
 			return quickArchive.SaveQuickPerformanceReport(context.Background(), quicktest.PerformanceReport{})
 		},
@@ -113,7 +113,7 @@ type staticCatalogQuery struct {
 	snapshot catalog.Snapshot
 }
 
-func (query staticCatalogQuery) Snapshot(context.Context) (catalog.Snapshot, error) {
+func (query staticCatalogQuery) Snapshot(context.Context, catalog.Scope) (catalog.Snapshot, error) {
 	return query.snapshot, nil
 }
 

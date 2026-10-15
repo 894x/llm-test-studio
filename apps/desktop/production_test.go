@@ -169,7 +169,7 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if _, err := dependencies.query.Snapshot(context.Background()); err != nil {
 		t.Fatalf("query initialized workspace repeatedly: %v", err)
 	}
-	catalogSnapshot, err := dependencies.catalog.Snapshot(context.Background())
+	catalogSnapshot, err := dependencies.catalog.Snapshot(context.Background(), catalog.ScopeAll)
 	if err != nil {
 		t.Fatalf("query initialized catalog: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 	if err != nil {
 		t.Fatalf("first production initialization: %v", err)
 	}
-	firstSnapshot, err := first.catalog.Snapshot(context.Background())
+	firstSnapshot, err := first.catalog.Snapshot(context.Background(), catalog.ScopeAll)
 	if err != nil {
 		_ = first.close()
 		t.Fatalf("first catalog snapshot: %v", err)
@@ -267,7 +267,7 @@ func TestProductionInitializerLoadsBuiltInCasesFromFilesWithoutDatabaseImport(t 
 			t.Errorf("close second production initialization: %v", err)
 		}
 	}()
-	secondSnapshot, err := second.catalog.Snapshot(context.Background())
+	secondSnapshot, err := second.catalog.Snapshot(context.Background(), catalog.ScopeAll)
 	if err != nil {
 		t.Fatalf("second catalog snapshot: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestProductionInitializerMergesExecutableUserCaseOverBuiltInCase(t *testing
 		t.Fatalf("production initialization with user conflict: %v", err)
 	}
 	defer second.close()
-	snapshot, err := second.catalog.Snapshot(context.Background())
+	snapshot, err := second.catalog.Snapshot(context.Background(), catalog.ScopeAll)
 	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Name != "user customization" {
 		t.Fatalf("catalog after conflict = %+v, err=%v", snapshot.TestCases, err)
 	}
@@ -454,7 +454,7 @@ func TestProductionCaseCreateWritesShareableFileBesideExecutable(t *testing.T) {
 	if !errors.Is(err, catalog.ErrInvalid) {
 		t.Fatalf("reserved CreateTestCase() error = %v, want ErrInvalid", err)
 	}
-	snapshot, err := dependencies.catalog.Snapshot(context.Background())
+	snapshot, err := dependencies.catalog.Snapshot(context.Background(), catalog.ScopeAll)
 	if err != nil || len(snapshot.TestCases) != 1 || snapshot.TestCases[0].Key != "T900" || snapshot.TestCases[0].Name != "shareable" {
 		t.Fatalf("filesystem catalog after create = %#v, %v", snapshot.TestCases, err)
 	}
@@ -485,7 +485,7 @@ func TestProductionModelWithoutCapabilitiesReturnsJSONArray(t *testing.T) {
 	}
 	assertEmptyModelCapabilities(snapshot)
 	// Reload the persisted model, whose optional capabilities field is omitted.
-	reloaded, err := app.GetCatalog()
+	reloaded, err := app.GetCatalog(catalog.ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,7 +753,7 @@ func TestProductionSuiteCreateWritesShareableFileBesideExecutableWithoutDatabase
 	if err != nil || !json.Valid(raw) || strings.Contains(string(raw), `"case_keys"`) || !strings.Contains(string(raw), `"case_id"`) {
 		t.Fatalf("shareable suite file = %q, %v", raw, err)
 	}
-	snapshot, err := dependencies.catalog.Snapshot(context.Background())
+	snapshot, err := dependencies.catalog.Snapshot(context.Background(), catalog.ScopeAll)
 	if err != nil || len(snapshot.Suites) != 1 || snapshot.Suites[0].ID != createdSuite.ID || snapshot.Suites[0].Protocol != domain.ProtocolOpenAIChat {
 		t.Fatalf("filesystem suite catalog = %#v, %v", snapshot.Suites, err)
 	}
@@ -774,9 +774,18 @@ func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *tes
 		t.Fatal(err)
 	}
 	defer dependencies.close()
-	snapshot, err := dependencies.catalog.Snapshot(context.Background())
+	snapshot, err := dependencies.catalog.Snapshot(context.Background(), catalog.ScopeQuickTest)
 	if err != nil || len(snapshot.Suites) == 0 {
 		t.Fatalf("filesystem suites = %#v, %v", snapshot.Suites, err)
+	}
+	builtinPerformancePlans := 0
+	for _, plan := range snapshot.Plans {
+		if plan.Builtin && plan.Performance != nil {
+			builtinPerformancePlans++
+		}
+	}
+	if builtinPerformancePlans == 0 {
+		t.Fatal("quick-test catalog is missing built-in performance plans")
 	}
 	suite := snapshot.Suites[0]
 	_, err = dependencies.catalogCommands.CreatePlan(context.Background(), catalog.CreatePlanCommand{
@@ -790,16 +799,21 @@ func TestProductionPlanCanReferenceFilesystemSuiteWithoutDatabaseSuiteRow(t *tes
 	if err != nil {
 		t.Fatalf("CreatePlan() with filesystem suite error = %v", err)
 	}
-	updated, err := dependencies.catalog.Snapshot(context.Background())
+	updated, err := dependencies.catalog.Snapshot(context.Background(), catalog.ScopeQuickTest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	customPlans := []catalog.PlanSummary{}
 	for _, plan := range updated.Plans {
 		if !plan.Builtin {
 			customPlans = append(customPlans, plan)
 		}
 	}
-	if err != nil || len(customPlans) != 1 || len(customPlans[0].Entries) != 1 ||
-		customPlans[0].Entries[0].TargetID != suite.ID {
-		t.Fatalf("plan referencing filesystem suite = %#v, %v", updated.Plans, err)
+	if len(customPlans) != 1 {
+		t.Fatalf("custom plans = %#v", customPlans)
+	}
+	if len(customPlans[0].Entries) != 1 || customPlans[0].Entries[0].TargetID != suite.ID {
+		t.Fatalf("plan referencing filesystem suite = %#v", customPlans[0])
 	}
 }
 

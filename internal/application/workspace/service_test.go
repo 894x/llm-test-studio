@@ -75,12 +75,11 @@ func TestSnapshotBuildsASecretFreeDesktopProjection(t *testing.T) {
 	}
 	catalog := &fakeCatalog{
 		plans: []domain.Plan{plan},
-		projections: []RunProjection{{
-			Run: run, PinnedPlan: plan, Completed: 1, Passed: 1,
+		projections: []RunProjection{projectionFixture(run, plan, RunProjection{Completed: 1, Passed: 1,
 			ArtifactCount: 2, Conclusion: ConclusionPassed,
-		}},
+		})},
 	}
-	if err := validateProjection(catalog.projections[0]); err != nil {
+	if err := catalog.projections[0].Validate(); err != nil {
 		t.Fatalf("valid projection fixture: %v", err)
 	}
 
@@ -167,7 +166,7 @@ func TestSnapshotUsesTwoPortCallsForManyRunsAndPinnedHistoricalLabels(t *testing
 		if index != 0 {
 			run = validRun(t, fmt.Sprintf("55555555-5555-4555-8555-%012d", index), historical, now.Add(time.Duration(index)*time.Second))
 		}
-		projections = append(projections, RunProjection{Run: run, PinnedPlan: historical, Conclusion: ConclusionNone})
+		projections = append(projections, projectionFixture(run, historical, RunProjection{Conclusion: ConclusionNone}))
 	}
 	catalog := &fakeCatalog{plans: []domain.Plan{latest}, projections: projections}
 
@@ -197,7 +196,7 @@ func TestSnapshotKeepsHistoricalV2RunAfterCurrentPlanIsDeleted(t *testing.T) {
 		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
 	})
 	catalog := &fakeCatalog{
-		projections: []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}},
+		projections: []RunProjection{projectionFixture(run, plan, RunProjection{Conclusion: ConclusionNone})},
 	}
 
 	snapshot, err := New(catalog).Snapshot(context.Background())
@@ -224,7 +223,7 @@ func TestSnapshotUsesCurrentEntriesForQuickTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := New(&fakeCatalog{projections: []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}}}).Snapshot(context.Background())
+	got, err := New(&fakeCatalog{projections: []RunProjection{projectionFixture(run, plan, RunProjection{Conclusion: ConclusionNone})}}).Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,10 +250,9 @@ func TestSnapshotAcceptsDurationOnlyRunsWithoutInventingARequestTarget(t *testin
 	})
 	catalog := &fakeCatalog{
 		plans: []domain.Plan{plan},
-		projections: []RunProjection{{
-			Run: run, PinnedPlan: plan, Completed: 175, Passed: 170, Failed: 5,
+		projections: []RunProjection{projectionFixture(run, plan, RunProjection{Completed: 175, Passed: 170, Failed: 5,
 			Conclusion: ConclusionNone,
-		}},
+		})},
 	}
 
 	snapshot, err := New(catalog).Snapshot(context.Background())
@@ -278,10 +276,8 @@ func TestSnapshotExposesStableRunFailureWithoutInternalCause(t *testing.T) {
 		t.Fatal(err)
 	}
 	catalog := &fakeCatalog{
-		plans: []domain.Plan{plan},
-		projections: []RunProjection{{
-			Run: run, PinnedPlan: plan, Conclusion: ConclusionFailed,
-		}},
+		plans:       []domain.Plan{plan},
+		projections: []RunProjection{projectionFixture(run, plan, RunProjection{Conclusion: ConclusionFailed})},
 	}
 
 	snapshot, err := New(catalog).Snapshot(context.Background())
@@ -356,17 +352,17 @@ func TestSnapshotRejectsInvalidConclusionsCountsDuplicatesAndPinnedPlans(t *test
 		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
 	})
 	otherPlan := plan
-	otherPlan.Revision = 2
+	otherPlan.Revision = 0
 	otherPlan.UpdatedAt = now.Add(time.Second)
 
 	for _, test := range []struct {
 		name        string
 		projections []RunProjection
 	}{
-		{"unknown conclusion", []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: Conclusion("maybe")}}},
-		{"inconsistent counts", []RunProjection{{Run: run, PinnedPlan: plan, Completed: 1, Passed: 1, Failed: 1, Conclusion: ConclusionNone}}},
-		{"wrong pinned revision", []RunProjection{{Run: run, PinnedPlan: otherPlan, Conclusion: ConclusionNone}}},
-		{"duplicate run", []RunProjection{{Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}, {Run: run, PinnedPlan: plan, Conclusion: ConclusionNone}}},
+		{"unknown conclusion", []RunProjection{projectionFixture(run, plan, RunProjection{Conclusion: Conclusion("maybe")})}},
+		{"inconsistent counts", []RunProjection{projectionFixture(run, plan, RunProjection{Completed: 1, Passed: 1, Failed: 1, Conclusion: ConclusionNone})}},
+		{"invalid plan revision", []RunProjection{projectionFixture(run, otherPlan, RunProjection{Conclusion: ConclusionNone})}},
+		{"duplicate run", []RunProjection{projectionFixture(run, plan, RunProjection{Conclusion: ConclusionNone}), projectionFixture(run, plan, RunProjection{Conclusion: ConclusionNone})}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := New(&fakeCatalog{plans: []domain.Plan{plan}, projections: test.projections}).Snapshot(context.Background())
@@ -472,4 +468,26 @@ func meta(id string, now time.Time) domain.EntityMeta {
 		ID: id, SchemaVersion: domain.CurrentEntitySchemaVersion, Revision: 1,
 		CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 	}
+}
+
+func projectionFixture(run domain.Run, plan domain.Plan, projection RunProjection) RunProjection {
+	snapshot := run.Snapshot()
+	projection.Meta = run.Meta()
+	projection.Plan = domain.EntityRevisionRef{ID: plan.ID, Revision: plan.Revision}
+	projection.PlanName = plan.Name
+	projection.Model = TargetProjection{EntityRevisionRef: snapshot.Model.EntityRevisionRef, Name: snapshot.Model.Name}
+	projection.Channel = TargetProjection{EntityRevisionRef: snapshot.Channel.EntityRevisionRef, Name: snapshot.Channel.Name}
+	projection.Status = run.Status()
+	projection.Failure = run.Failure()
+	if snapshot.QuickTask != nil {
+		projection.Source = "quick_task"
+	}
+	projection.Entries = []RunEntryProjection{}
+	for _, entry := range snapshot.Entries {
+		projection.Entries = append(projection.Entries, RunEntryProjection{
+			EntryID: entry.EntryID, Name: entry.Name,
+			CaseCount: uint64(len(entry.Cases)), Load: entry.Load,
+		})
+	}
+	return projection
 }

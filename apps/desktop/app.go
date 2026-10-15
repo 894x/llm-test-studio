@@ -71,7 +71,7 @@ type WorkspaceQuery interface {
 // CatalogQuery exposes the secret-free catalog projection used by the
 // desktop presentation layer.
 type CatalogQuery interface {
-	Snapshot(context.Context) (catalog.Snapshot, error)
+	Snapshot(context.Context, catalog.Scope) (catalog.Snapshot, error)
 }
 
 // CatalogCommands mutates the six versioned catalog entity kinds. The
@@ -493,13 +493,13 @@ func (app *DesktopApp) getWorkspace() (workspace.Snapshot, error) {
 	return snapshot, nil
 }
 
-func (app *DesktopApp) GetCatalog() (catalog.Snapshot, error) {
+func (app *DesktopApp) GetCatalog(scope catalog.Scope) (catalog.Snapshot, error) {
 	lease, err := app.acquire(desktopRequirements{catalog: true})
 	if err != nil {
 		return catalog.Snapshot{}, app.safeBindingError(err)
 	}
 	defer lease.release()
-	snapshot, err := lease.catalog.Snapshot(lease.ctx)
+	snapshot, err := lease.catalog.Snapshot(lease.ctx, scope)
 	if err != nil {
 		return catalog.Snapshot{}, app.safeBindingError(fmt.Errorf("query desktop catalog: %w", err))
 	}
@@ -673,7 +673,7 @@ func (app *DesktopApp) executeCatalogCommand(name string, execute func(context.C
 	if err := execute(lease.ctx, lease.catalogCommands); err != nil {
 		return catalog.Snapshot{}, app.safeBindingError(catalogCommandDiagnosticError{operation: name, err: err})
 	}
-	snapshot, err := lease.catalog.Snapshot(lease.ctx)
+	snapshot, err := lease.catalog.Snapshot(lease.ctx, catalog.ScopeAll)
 	if err != nil {
 		return catalog.Snapshot{}, app.safeBindingError(catalogCommandDiagnosticError{
 			operation: name,

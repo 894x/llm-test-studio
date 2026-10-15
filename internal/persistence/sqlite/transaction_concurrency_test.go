@@ -14,6 +14,16 @@ func TestRepositoryConcurrentProjectionsAndResultWrites(t *testing.T) {
 	repository := openRepository(t)
 	defer repository.Close()
 	fixture := newRepositoryFixture(t)
+	snapshot := fixture.run.Snapshot()
+	load := snapshot.Entries[0].Load
+	load.Mode, load.RequestCount = domain.LoadFixedConcurrency, 20
+	snapshot.Entries[0].Load = load
+	snapshot.PlanDocument.Entries[0].Load = load
+	var err error
+	fixture.run, err = domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	createRunGraph(t, repository, fixture)
 	run := transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

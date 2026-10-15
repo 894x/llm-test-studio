@@ -133,5 +133,12 @@
       "failed": "执行失败",
       "cancelled": "已取消"
     }
+  },
+  "comparisons": {
+    "load": "查看渠道对比记录",
+    "loading": "正在读取对比记录…",
+    "error": "无法读取对比记录",
+    "retry": "重试",
+    "empty": "暂无渠道对比记录"
   }
 }

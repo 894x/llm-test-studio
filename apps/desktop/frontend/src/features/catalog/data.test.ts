@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest"
 import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
-import { parseCatalogSnapshot } from "./data"
+import { parseCatalogSnapshot, selectCatalog } from "./data"
 
 describe("reference-only protocol catalog", () => {
+
+  it("keeps saved performance plans available in the quick-test catalog", () => {
+    const catalog = selectCatalog(FIXTURE_CATALOG, "quick_test")
+    expect(catalog.plans).toEqual(FIXTURE_CATALOG.plans)
+    expect(catalog.plans.some(plan => plan.performance)).toBe(true)
+    expect(parseCatalogSnapshot(catalog).plans).toEqual(catalog.plans)
+    expect(selectCatalog(FIXTURE_CATALOG, "connections").plans).toEqual([])
+    expect(selectCatalog(FIXTURE_CATALOG, "definitions").plans).toEqual([])
+  })
 
   it("accepts mapping protocol subsets", () => {
     const catalog = structuredClone(FIXTURE_CATALOG)

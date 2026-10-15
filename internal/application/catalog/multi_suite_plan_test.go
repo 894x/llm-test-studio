@@ -38,7 +38,7 @@ func TestPlanDefersReferencedProtocolAndInputChecksUntilRun(t *testing.T) {
 	if _, err := service.CreatePlan(context.Background(), validCreatePlanCommand("unresolved")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Snapshot(context.Background()); err != nil {
+	if _, err := service.Snapshot(context.Background(), ScopeAll); err != nil {
 		t.Fatalf("catalog cannot display unresolved references: %v", err)
 	}
 }

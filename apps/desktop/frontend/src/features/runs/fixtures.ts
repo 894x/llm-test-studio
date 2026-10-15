@@ -318,6 +318,7 @@ function run(input: {
       observed_case_count: input.status === "completed" ? 4 : input.completed > 0 ? 2 : 0,
       status: input.status === "starting" || input.status === "queued" ? "queued" : input.status === "draining" ? "running" : input.status }],
     id: input.id,
+    ...(FIXTURE_REPORTS.reports.find(report => report.run_id === input.id) ? { report_id: FIXTURE_REPORTS.reports.find(report => report.run_id === input.id)!.id } : {}),
     revision: 1,
     plan_id: input.planId,
     plan_revision: 1,

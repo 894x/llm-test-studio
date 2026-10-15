@@ -9,7 +9,7 @@ import (
 )
 
 type RecoveryRepository interface {
-	ListRuns(context.Context) ([]domain.Run, error)
+	ListInterruptedRuns(context.Context) ([]domain.Run, error)
 	UpdateRun(context.Context, uint64, domain.Run) error
 }
 
@@ -20,7 +20,7 @@ func RecoverInterrupted(ctx context.Context, repository RecoveryRepository, cloc
 	if ctx == nil || isNil(repository) || isNil(clock) {
 		return ErrInvalid
 	}
-	values, err := repository.ListRuns(ctx)
+	values, err := repository.ListInterruptedRuns(ctx)
 	if err != nil {
 		return fmt.Errorf("list interrupted runs: %w", err)
 	}

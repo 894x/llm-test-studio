@@ -9,7 +9,7 @@ import (
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func TestCachedReportProjectionsRevalidateChangedDurableInputs(t *testing.T) {
+func TestReportDetailsRevalidateChangedDurableInputs(t *testing.T) {
 	for _, test := range []struct{ name, statement string }{
 		{name: "report", statement: `UPDATE reports SET schema_version = 0`},
 		{name: "historical revision", statement: `UPDATE execution_run_revisions SET status = 'unknown' WHERE revision = 1`},
@@ -30,20 +30,20 @@ func TestCachedReportProjectionsRevalidateChangedDurableInputs(t *testing.T) {
 			}
 			second, err := repository.ListReportProjections(context.Background())
 			if err != nil || !reflect.DeepEqual(first, second) {
-				t.Fatalf("cache changed projection: %v", err)
+				t.Fatalf("repeat read changed projection: %v", err)
 			}
 			second[0].PlanName = "caller mutation"
 			third, err := repository.ListReportProjections(context.Background())
 			if err != nil || third[0].PlanName != first[0].PlanName {
-				t.Fatal("cache retained caller mutation")
+				t.Fatal("summary read retained caller mutation")
 			}
 			// tamper uses another connection, so this covers external writes too.
 			if test.name == "historical revision" {
 				tamper(t, path, `DROP TRIGGER trg_execution_run_revisions_no_update`)
 			}
 			tamper(t, path, test.statement)
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
-				t.Fatalf("changed input reused cached validation: %v", err)
+			if _, err := repository.GetReport(context.Background(), fixture.report.ID); !errors.Is(err, persistence.ErrCorrupt) {
+				t.Fatalf("detail read accepted changed durable input: %v", err)
 			}
 		})
 	}

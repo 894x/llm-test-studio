@@ -12,7 +12,7 @@ func TestSuiteInputSnapshotsAreIndependent(t *testing.T) {
 	repository := validRepository()
 	repository.suites[0].Inputs = []domain.SuiteInput{{Key: "prompt", Label: "Prompt", Input: testspec.Input{Type: "string", Default: json.RawMessage(`"hello"`)}, Bindings: []domain.SuiteInputBinding{{CaseID: caseID, Input: "message"}}}}
 	service := newTestService(t, repository, fixtureTime())
-	snapshot, err := service.Snapshot(context.Background())
+	snapshot, err := service.Snapshot(context.Background(), ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}

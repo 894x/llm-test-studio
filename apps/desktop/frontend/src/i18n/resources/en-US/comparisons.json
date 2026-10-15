@@ -23,5 +23,7 @@
     "averageTTFT": "Average TTFT",
     "passed": "Passed",
     "failed": "Failed"
-  }
+  },
+  "loading": "Loading catalog…",
+  "retry": "Retry"
 }

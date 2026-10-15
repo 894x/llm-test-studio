@@ -17,6 +17,8 @@ import {
   FIXTURE_WORKSPACE,
 } from "./features/runs/fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
+import { selectCatalog, type CatalogScope } from "./features/catalog/data"
+import type { ReportSnapshot } from "./features/reports/data"
 import type { ReportGenerationProgress } from "./features/reports/generation-progress"
 import { EMPTY_COMPARISONS } from "./features/comparisons/data"
 import type { QuickPerformanceReport } from "./features/quick-test/data"
@@ -39,7 +41,7 @@ function desktopClient(): DesktopClient & {
   const client = {
     workspace: structuredClone(FIXTURE_WORKSPACE),
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
-    getCatalog: vi.fn(async () => structuredClone(FIXTURE_CATALOG)),
+    getCatalog: vi.fn(async (scope: CatalogScope) => structuredClone(selectCatalog(FIXTURE_CATALOG, scope))),
     getReports: vi.fn(async () => structuredClone(FIXTURE_REPORTS)),
     getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
     subscribeReportGeneration: vi.fn((_receive: (progress: ReportGenerationProgress) => void) => () => {}),
@@ -280,7 +282,7 @@ describe("desktop run workspace", () => {
     }
     expect(client.getWorkspace).toHaveBeenCalledTimes(1)
     expect(client.getCatalog).toHaveBeenCalledTimes(1)
-    expect(client.getReports).toHaveBeenCalledTimes(2)
+    expect(client.getReports).toHaveBeenCalledTimes(1)
   })
 
   it("loads a newly generated report when navigating from runs to reports", async () => {
@@ -297,7 +299,7 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "报告" }))
 
     expect((await screen.findAllByText("兼容性门禁通过")).length).toBeGreaterThan(0)
-    expect(client.getReports).toHaveBeenCalledTimes(2)
+    expect(client.getReports).toHaveBeenCalledTimes(1)
   })
 
   it("shows generation phases and refreshes reports on completion without polling the list", async () => {
@@ -544,7 +546,7 @@ describe("desktop run workspace", () => {
       id: FIXTURE_CATALOG.models[0].id,
       expected_revision: FIXTURE_CATALOG.models[0].revision,
     })
-    expect(vi.mocked(client.getWorkspace).mock.calls.length).toBeGreaterThanOrEqual(4)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
   })
 
   it("identifies the catalog form and field when local validation blocks saving", async () => {
@@ -655,9 +657,15 @@ describe("desktop run workspace", () => {
     )
     expect(screen.getAllByText(FIXTURE_CATALOG.models[0].name).length).toBeGreaterThan(0)
     expect(screen.queryByText(/保存未完成/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "用例" }))
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    expect(client.getCatalog).toHaveBeenLastCalledWith("connections")
+    expect(client.getCatalog).toHaveBeenCalledTimes(4)
   })
 
-  it("closes a saved catalog editor while the secondary workspace refresh is still pending", async () => {
+  it("does not read an unvisited run workspace after saving a catalog", async () => {
     window.history.replaceState(null, "", "#catalog")
     const user = userEvent.setup()
     const client = desktopClient()
@@ -670,7 +678,7 @@ describe("desktop run workspace", () => {
     await user.click(screen.getByRole("button", { name: "保存模型" }))
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "新增模型" })).not.toBeInTheDocument())
     expect(client.createModel).toHaveBeenCalledTimes(1)
-    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "新增模型" })).toBeEnabled()
     await act(async () => { backgroundRefresh.resolve(client.workspace) })
   })
@@ -900,7 +908,7 @@ describe("desktop run workspace", () => {
     ).toBeEnabled()
 
     const radios = within(dialog).getAllByRole("radio")
-    expect(radios.filter((radio) => radio.tabIndex === 0)).toHaveLength(1)
+    await waitFor(() => expect(radios.filter((radio) => radio.tabIndex === 0)).toHaveLength(1))
     expect(radios[0]).toBeChecked()
     radios[0].focus()
     fireEvent.keyDown(radios[0], { key: "ArrowDown" })
@@ -943,6 +951,7 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
 
     await screen.findByRole("heading", { name: "测试报告" })
+    expect(within(screen.getByRole("table", { name: "测试报告目录" })).getAllByRole("row")).toHaveLength(FIXTURE_REPORTS.reports.length + 1)
     await user.click(screen.getByRole("button", { name: "JSON" }))
 
     expect(await screen.findByText(
@@ -1161,6 +1170,7 @@ describe("desktop run workspace", () => {
     const opened = deferred<void>()
     vi.mocked(client.getReports).mockRejectedValue(new DesktopClientError("reports_unavailable"))
     vi.mocked(client.openDiagnosticsDirectory).mockReturnValue(opened.promise)
+    window.history.replaceState(null, "", "#reports")
     render(<App client={client} />)
 
     const alert = await screen.findByRole("alert")
@@ -1180,6 +1190,7 @@ describe("desktop run workspace", () => {
     const client = desktopClient()
     vi.mocked(client.getReports).mockRejectedValueOnce(new DesktopClientError("reports_unavailable"))
     vi.mocked(client.openDiagnosticsDirectory).mockRejectedValueOnce(new Error("C:/private/path sk-private-key"))
+    window.history.replaceState(null, "", "#reports")
     render(<App client={client} />)
 
     const alert = await screen.findByRole("alert")
@@ -1189,7 +1200,7 @@ describe("desktop run workspace", () => {
     expect(alert).not.toHaveTextContent("private")
     expect(within(alert).getByRole("button", { name: "打开日志文件夹" })).toBeEnabled()
     await user.click(within(alert).getByRole("button", { name: "重试打开" }))
-    expect(await screen.findByRole("heading", { name: "运行工作区" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "测试报告" })).toBeInTheDocument()
   })
 
   it("retries a failed report query after the last running task reaches its terminal state", async () => {
@@ -1199,8 +1210,9 @@ describe("desktop run workspace", () => {
     const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
     vi.mocked(client.getReports).mockResolvedValueOnce(FIXTURE_REPORTS).mockRejectedValueOnce(new Error("temporary report error")).mockResolvedValue(FIXTURE_REPORTS)
+    window.history.replaceState(null, "", "#overview")
     render(<App client={client} />)
-    await screen.findByRole("heading", { name: "运行工作区" })
+    await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(1))
     act(() => receive({ sequence: 1, run_id: client.workspace.runs[0].id, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: FIXTURE_REPORTS.reports[0].id }))
     await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(3), { timeout: 3500 })
   })
@@ -1212,9 +1224,9 @@ describe("desktop run workspace", () => {
     await act(async () => {})
     await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
     expect(client.getWorkspace).toHaveBeenCalledTimes(4)
-    expect(client.getCatalog).toHaveBeenCalledTimes(1)
-    expect(client.getReports).toHaveBeenCalledTimes(1)
-    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+    expect(client.getCatalog).not.toHaveBeenCalled()
+    expect(client.getReports).not.toHaveBeenCalled()
+    expect(client.getComparisons).not.toHaveBeenCalled()
   })
 
   it("waits for a slow progress read before scheduling another poll", async () => {
@@ -1231,7 +1243,41 @@ describe("desktop run workspace", () => {
     expect(client.getWorkspace).toHaveBeenCalledTimes(3)
   })
 
-  it("refreshes a completed run's generated report from another page and stops after it appears", async () => {
+  it("stops reading active-run progress when its page is no longer visible", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    render(<App client={client} />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      window.location.hash = "catalog"
+      window.dispatchEvent(new HashChangeEvent("hashchange"))
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    expect(client.getCatalog).toHaveBeenCalledExactlyOnceWith("connections")
+  })
+
+  it("refreshes a pending report-list read after a report-ready event", async () => {
+    window.history.replaceState(null, "", "#reports")
+    const client = desktopClient()
+    const initial = deferred<ReportSnapshot>()
+    vi.mocked(client.getReports).mockReturnValueOnce(initial.promise).mockResolvedValue(FIXTURE_REPORTS)
+    let receive!: (progress: ReportGenerationProgress) => void
+    vi.mocked(client.subscribeReportGeneration).mockImplementation(callback => { receive = callback; return () => {} })
+    render(<App client={client} />)
+    await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(1))
+    act(() => receive({ sequence: 1, run_id: client.workspace.runs[0].id, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: FIXTURE_REPORTS.reports[0].id }))
+    expect(client.getReports).toHaveBeenCalledTimes(1)
+    await act(async () => initial.resolve({ schema_version: 1, reports: [] }))
+    await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
+    await screen.findByRole("heading", { name: "测试报告" })
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    expect(client.getComparisons).not.toHaveBeenCalled()
+  })
+
+  it("defers report-ready refreshes until an unvisited report page is opened", async () => {
     vi.useFakeTimers()
     window.history.replaceState(null, "", "#catalog")
     const client = desktopClient()
@@ -1242,18 +1288,20 @@ describe("desktop run workspace", () => {
     const waitingReports = { ...FIXTURE_REPORTS, reports: FIXTURE_REPORTS.reports.filter((report) => report.run_id !== runID) }
     const readyReports = { ...waitingReports, reports: [...waitingReports.reports, ...client.workspace.runs.map((run) => ({ ...FIXTURE_REPORTS.reports[0], run_id: run.id }))] }
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
-    vi.mocked(client.getReports).mockResolvedValueOnce(waitingReports).mockResolvedValue(readyReports)
+    vi.mocked(client.getReports).mockResolvedValue(readyReports)
     render(<App client={client} />)
     await act(async () => {})
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
-    expect(client.getReports).toHaveBeenCalledTimes(1)
+    expect(client.getReports).toHaveBeenCalledTimes(0)
     await act(async () => receive({ sequence: 1, run_id: runID, phase: "ready", processed: 0, total: 0, elapsed_ms: 500, report_id: readyReports.reports[0].id }))
-    expect(client.getReports).toHaveBeenCalledTimes(2)
+    expect(client.getReports).toHaveBeenCalledTimes(0)
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
-    expect(client.getReports).toHaveBeenCalledTimes(2)
+    expect(client.getReports).toHaveBeenCalledTimes(0)
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
-    expect(client.getReports).toHaveBeenCalledTimes(2)
-    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+    expect(client.getReports).toHaveBeenCalledTimes(0)
+    expect(client.getComparisons).toHaveBeenCalledTimes(0)
+    await act(async () => { window.location.hash = "reports"; window.dispatchEvent(new HashChangeEvent("hashchange")) })
+    expect(client.getReports).toHaveBeenCalledTimes(1)
   })
 
   it("does not let an older progress response replace a completed cancel command", async () => {
@@ -1288,7 +1336,7 @@ describe("desktop run workspace", () => {
     act(() => receive({ sequence: 1, run_id: client.workspace.runs[0].id, phase: "persisting", processed: 0, total: 0, elapsed_ms: 200 }))
     await act(async () => { await vi.advanceTimersByTimeAsync(62_000) })
     const reportReads = vi.mocked(client.getReports).mock.calls.length
-    expect(reportReads).toBe(1)
+    expect(reportReads).toBe(0)
     expect(screen.getByText("正在校验并保存报告…")).toBeInTheDocument()
     expect(within(screen.getByText("正在校验并保存报告…").closest('[role="status"]') as HTMLElement).queryByRole("progressbar")).not.toBeInTheDocument()
     act(() => receive({ sequence: 2, run_id: client.workspace.runs[0].id, phase: "failed", processed: 0, total: 0, elapsed_ms: 62_000 }))
@@ -1299,7 +1347,7 @@ describe("desktop run workspace", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
     expect(client.getReports).toHaveBeenCalledTimes(reportReads)
     expect(client.getWorkspace).toHaveBeenCalledTimes(1)
-    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+    expect(client.getComparisons).toHaveBeenCalledTimes(0)
   })
 
   it("debounces draft writes and flushes the current safe draft on pagehide and unmount", async () => {
@@ -1477,4 +1525,51 @@ describe("desktop run workspace", () => {
     expect(indexCss).not.toContain("--foreground: #252a31")
     expect(indexCss).not.toContain("--foreground: #e8eaed")
   })
+  it("opens the shell while runs are pending and can navigate to a different data scope", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.getWorkspace).mockReturnValue(new Promise(() => {}))
+    render(<App client={client} />)
+    expect(screen.getByRole("navigation")).toBeInTheDocument()
+    expect(client.getReports).not.toHaveBeenCalled()
+    expect(client.getComparisons).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    expect(client.getCatalog).toHaveBeenCalledExactlyOnceWith("connections")
+    expect(client.getReports).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "用例" }))
+    await waitFor(() => expect(client.getCatalog).toHaveBeenCalledWith("definitions"))
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    expect(client.getCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not read comparison history until explicitly opened", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    render(<App client={client} />)
+    await screen.findByRole("heading", { name: "运行工作区" })
+    expect(client.getCatalog).not.toHaveBeenCalled()
+    expect(client.getReports).not.toHaveBeenCalled()
+    expect(client.getComparisons).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "查看渠道对比记录" }))
+    await waitFor(() => expect(client.getComparisons).toHaveBeenCalledTimes(1))
+  })
+
+  it("keeps navigation available after a page read fails and retries only that page", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    vi.mocked(client.getReports).mockRejectedValueOnce(new DesktopClientError("reports_unavailable"))
+    window.history.replaceState(null, "", "#reports")
+    render(<App client={client} />)
+    const alert = await screen.findByRole("alert")
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    await user.click(within(alert).getByRole("button", { name: "重试打开" }))
+    await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    expect(client.getComparisons).not.toHaveBeenCalled()
+  })
+
 })

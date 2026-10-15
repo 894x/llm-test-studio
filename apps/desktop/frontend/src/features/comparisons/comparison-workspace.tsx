@@ -18,7 +18,9 @@ export function NewComparisonSheet({
   catalog,
   pending,
   onStart,
+  onOpen,
 }: {
+  onOpen?: () => Promise<unknown>
   catalog: CatalogSnapshot
   pending: boolean
   onStart: (command: StartComparisonCommand) => Promise<void>
@@ -29,6 +31,15 @@ export function NewComparisonSheet({
     [catalog],
   )
   const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState("")
+  const loadCatalog = () => {
+    if (!onOpen) return
+    setLoading(true)
+    setLoadError("")
+    void onOpen().catch(error => setLoadError(publicDesktopOperationErrorMessage(error, t("title"), t("error"))))
+      .finally(() => setLoading(false))
+  }
   const [planID, setPlanID] = useState(eligiblePlans[0]?.id ?? "")
   const plan = eligiblePlans.find((item) => item.id === planID) ?? eligiblePlans[0]
   const models = eligibleRuntimeModels(catalog, plan?.id ?? "").filter(model => eligibleRuntimeChannels(catalog, plan?.id ?? "", model.id).length >= 2)
@@ -65,7 +76,7 @@ export function NewComparisonSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={next => { setOpen(next); if (next) loadCatalog() }}>
       <SheetTrigger asChild>
         <Button size="sm" variant="ghost">
           <GitCompareArrowsIcon data-icon="inline-start" /> {t("trigger")}
@@ -77,7 +88,7 @@ export function NewComparisonSheet({
           <SheetDescription>{t("description")}</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
-          {eligiblePlans.length === 0 ? (
+          {loading ? <p role="status" className="text-xs text-muted-foreground">{t("loading")}</p> : loadError ? <div role="alert" className="space-y-2 text-xs text-destructive">{loadError}<Button variant="outline" size="sm" onClick={loadCatalog}>{t("retry")}</Button></div> : eligiblePlans.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t("noPlan")}</p>
           ) : (
             <>
@@ -108,7 +119,7 @@ export function NewComparisonSheet({
         </div>
         <SheetFooter className="flex-row justify-end border-t">
           <SheetClose asChild><Button variant="outline">{t("cancel")}</Button></SheetClose>
-          <Button disabled={pending || effectiveSelected.length < 2} onClick={() => void start()}>
+          <Button disabled={loading || !!loadError || pending || effectiveSelected.length < 2} onClick={() => void start()}>
             {pending ? t("starting") : t("start", { count: effectiveSelected.length })}
           </Button>
         </SheetFooter>

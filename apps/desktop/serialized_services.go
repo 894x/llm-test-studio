@@ -135,10 +135,10 @@ func (service serializedCatalogService) SaveQuickTestTarget(ctx context.Context,
 	return catalog.MutationResult{ID: result.ChannelID, Revision: result.ChannelRevision}, err
 }
 
-func (service serializedCatalogService) Snapshot(ctx context.Context) (catalog.Snapshot, error) {
+func (service serializedCatalogService) Snapshot(ctx context.Context, scope catalog.Scope) (catalog.Snapshot, error) {
 	release := service.gate.enter()
 	defer release()
-	return service.query.Snapshot(ctx)
+	return service.query.Snapshot(ctx, scope)
 }
 
 func (service serializedCatalogService) CreateModel(ctx context.Context, command catalog.CreateModelCommand) (catalog.MutationResult, error) {
@@ -264,7 +264,7 @@ func (service serializedCatalogService) canonicalCaseMutationResult(
 	key string,
 	fallback catalog.MutationResult,
 ) (catalog.MutationResult, error) {
-	snapshot, err := service.query.Snapshot(ctx)
+	snapshot, err := service.query.Snapshot(ctx, catalog.ScopeDefinitions)
 	if err != nil {
 		return fallback, nil
 	}
@@ -282,7 +282,7 @@ func (service serializedCatalogService) canonicalSuiteMutationResult(
 	key string,
 	fallback catalog.MutationResult,
 ) (catalog.MutationResult, error) {
-	snapshot, err := service.query.Snapshot(ctx)
+	snapshot, err := service.query.Snapshot(ctx, catalog.ScopeDefinitions)
 	if err != nil {
 		return fallback, nil
 	}

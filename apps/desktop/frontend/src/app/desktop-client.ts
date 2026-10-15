@@ -13,6 +13,8 @@ import {
 import {
   EMPTY_CATALOG,
   parseCatalogSnapshot,
+  selectCatalog,
+  type CatalogScope,
   type CatalogActions,
   type CatalogSnapshot,
   type CreateChannelCommand,
@@ -138,7 +140,7 @@ export interface DesktopClient extends CatalogActions {
   getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
   openDiagnosticsDirectory(): Promise<void>
   getWorkspace(): Promise<WorkspaceSnapshot>
-  getCatalog(): Promise<CatalogSnapshot>
+  getCatalog(scope: CatalogScope): Promise<CatalogSnapshot>
   getReports(): Promise<ReportSnapshot>
   getReportGeneration(): Promise<ReportGenerationSnapshot>
   subscribeReportGeneration(onProgress: (progress: ReportGenerationProgress) => void): () => void
@@ -173,7 +175,7 @@ type WailsDesktopBinding = {
   OpenDiagnosticsDirectory(): Promise<unknown>
   ReportFrontendDiagnostic(diagnostic: FrontendDiagnostic): Promise<unknown>
   GetWorkspace(): Promise<unknown>
-  GetCatalog(): Promise<unknown>
+  GetCatalog(scope: CatalogScope): Promise<unknown>
   GetReports(): Promise<unknown>
   GetReportGeneration(): Promise<unknown>
   GetReportDetail(reportId: string): Promise<unknown>
@@ -279,8 +281,8 @@ export function createFixtureClient(
     async getWorkspace() {
       return cloneSnapshot(workspace)
     },
-    async getCatalog() {
-      return structuredClone(catalogState)
+    async getCatalog(scope) {
+      return structuredClone(selectCatalog(catalogState, scope))
     },
     async getReports() {
       return structuredClone(reports)
@@ -540,7 +542,7 @@ function createLazyFixtureClient(): DesktopClient {
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getWorkspace: async () => (await client).getWorkspace(),
-    getCatalog: async () => (await client).getCatalog(),
+    getCatalog: async (scope) => (await client).getCatalog(scope),
     getReports: async () => (await client).getReports(),
     getReportGeneration: async () => (await client).getReportGeneration(),
     subscribeReportGeneration: (onProgress) => {
@@ -608,6 +610,14 @@ export function singleFlightRead<T>(read: () => Promise<T>): (() => Promise<T>) 
 }
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
+  const catalogRead = (scope: CatalogScope) => singleFlightRead(() => callBinding(
+    () => binding.GetCatalog(scope), parseCatalogSnapshot,
+    reportFrontendFailure(binding, "load_catalog"), "catalog_unavailable",
+  ))
+  const catalogReads = {
+    all: catalogRead("all"), connections: catalogRead("connections"),
+    definitions: catalogRead("definitions"), quick_test: catalogRead("quick_test"),
+  }
   return {
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
     subscribeReportGeneration: (onProgress) => {
@@ -630,13 +640,10 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
         reportFrontendFailure(binding, "load_workspace"),
         "workspace_unavailable",
       )),
-    getCatalog: singleFlightRead(() =>
-      callBinding(
-        () => binding.GetCatalog(),
-        parseCatalogSnapshot,
-        reportFrontendFailure(binding, "load_catalog"),
-        "catalog_unavailable",
-      )),
+    getCatalog: scope => {
+      if (!Object.hasOwn(catalogReads, scope)) return Promise.reject(new DesktopClientError("catalog_invalid"))
+      return catalogReads[scope]()
+    },
     getReports: singleFlightRead(() =>
       callBinding(
         () => binding.GetReports(),
@@ -1615,6 +1622,7 @@ function isWorkspaceRun(value: unknown): boolean {
     (value.failure_phase !== undefined || value.error_code !== undefined)
   return (
     isRecord(value) &&
+    (value.report_id === undefined || isUUID(value.report_id)) &&
     isCaseProgress(value) &&
     isUUID(value.id) &&
     isPositiveSafeInteger(value.revision) &&
@@ -1667,6 +1675,7 @@ function parseRun(value: unknown) {
     })),
     ...(record.source === "quick_task" ? { source: "quick_task" as const } : {}),
     id: record.id as string,
+    ...(record.report_id === undefined ? {} : { report_id: record.report_id as string }),
     revision: record.revision as number,
     plan_id: record.plan_id as string,
     plan_revision: record.plan_revision as number,
