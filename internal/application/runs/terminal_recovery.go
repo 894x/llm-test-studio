@@ -9,7 +9,12 @@ import (
 
 // saveTerminal requires control.mu. Read after a failed write to reconcile an
 // ambiguous commit or a cancellation before retrying the revision-aware update.
-func (service *Host) saveTerminal(ctx context.Context, control *runControl, terminal domain.RunStatus, failure domain.RunFailure) error {
+func (service *Host) saveTerminal(
+	ctx context.Context,
+	control *runControl,
+	terminal domain.RunStatus,
+	failure domain.RunFailure,
+) error {
 	if isTerminal(control.run.Status()) {
 		return nil
 	}
@@ -23,7 +28,8 @@ func (service *Host) saveTerminal(ctx context.Context, control *runControl, term
 		return nil
 	}
 	stored, readErr := service.repository.GetRun(ctx, control.run.Meta().ID)
-	if readErr == nil && stored.Meta().ID == control.run.Meta().ID && stored.Meta().Revision >= control.run.Meta().Revision {
+	validStoredRun := readErr == nil && stored.Meta().ID == control.run.Meta().ID
+	if validStoredRun && stored.Meta().Revision >= control.run.Meta().Revision {
 		control.run = stored
 		if isTerminal(stored.Status()) {
 			return nil
@@ -40,14 +46,24 @@ func (service *Host) recoverTerminal(control *runControl, terminal domain.RunSta
 	for {
 		timer := time.NewTimer(delay)
 		select {
-		case <-service.recoveryContext.Done():
+		case <-control.recoveryContext.Done():
 			timer.Stop()
-			return service.recoveryContext.Err()
+			return control.recoveryContext.Err()
 		case <-timer.C:
 		}
-		ctx, cancel := context.WithTimeout(service.recoveryContext, 5*time.Second)
+		ctx, cancel := context.WithTimeout(control.recoveryContext, 5*time.Second)
 		control.mu.Lock()
-		err := service.saveTerminal(ctx, control, terminal, failure)
+		if control.terminating {
+			control.mu.Unlock()
+			cancel()
+			return context.Canceled
+		}
+		err := service.saveTerminal(
+			ctx,
+			control,
+			terminal,
+			failure,
+		)
 		control.mu.Unlock()
 		cancel()
 		if err == nil {

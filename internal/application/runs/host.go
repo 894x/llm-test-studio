@@ -44,24 +44,31 @@ type Host struct {
 	recoveryContext context.Context
 	stopRecovery    context.CancelFunc
 
-	mu     sync.Mutex
-	active map[string]*runControl
-	closed bool
-	wg     sync.WaitGroup
+	mu        sync.Mutex
+	active    map[string]*runControl
+	closed    bool
+	closeDone chan struct{}
+	closeErr  error
+	wg        sync.WaitGroup
 }
 
 type runControl struct {
-	mu            sync.Mutex
-	run           domain.Run
-	cases         []domain.TestCase
-	lease         *credentials.Lease
-	stop          chan struct{}
-	stopOnce      sync.Once
-	reportOnce    sync.Once
-	stopRequested bool
-	cancel        context.CancelFunc
-	summaryInputs map[string][]caseSummaryInput
-	entries       []preparedRunEntry
+	mu              sync.Mutex
+	run             domain.Run
+	cases           []domain.TestCase
+	lease           *credentials.Lease
+	stop            chan struct{}
+	stopOnce        sync.Once
+	reportOnce      sync.Once
+	finishOnce      sync.Once
+	finished        chan struct{}
+	recoveryContext context.Context
+	stopRecovery    context.CancelFunc
+	stopRequested   bool
+	terminating     bool
+	cancel          context.CancelFunc
+	summaryInputs   map[string][]caseSummaryInput
+	entries         []preparedRunEntry
 }
 
 type preparedRunEntry struct {
@@ -103,7 +110,7 @@ func NewHost(dependencies HostDependencies) (*Host, error) {
 		reportError:     dependencies.ReportError,
 		diagnostics:     newDiagnosticDispatcher(dependencies.ReportDiagnostic),
 		recoveryContext: recoveryContext, stopRecovery: stopRecovery,
-		active: make(map[string]*runControl),
+		active: make(map[string]*runControl), closeDone: make(chan struct{}),
 	}, nil
 }
 
@@ -161,8 +168,10 @@ func (service *Host) AdoptQueued(
 // The caller holds service.mu and has validated and persisted the initial Run.
 func (service *Host) registerQueued(run domain.Run, lease *credentials.Lease) {
 	snapshot := run.Snapshot()
+	recoveryContext, stopRecovery := context.WithCancel(service.recoveryContext)
 	control := &runControl{
-		run: run, lease: lease, stop: make(chan struct{}), cancel: func() {},
+		run: run, lease: lease, stop: make(chan struct{}), cancel: stopRecovery,
+		finished: make(chan struct{}), recoveryContext: recoveryContext, stopRecovery: stopRecovery,
 		summaryInputs: make(map[string][]caseSummaryInput),
 		entries:       make([]preparedRunEntry, len(snapshot.Entries)),
 	}
@@ -194,7 +203,7 @@ func (service *Host) ActivateRun(ctx context.Context, runID string) error {
 	service.wg.Add(1)
 	service.mu.Unlock()
 	control.mu.Lock()
-	if control.run.Status() != domain.RunQueued {
+	if control.run.Status() != domain.RunQueued || control.terminating {
 		control.mu.Unlock()
 		service.wg.Done()
 		return ErrNotActive
@@ -225,6 +234,9 @@ func (service *Host) StopSending(ctx context.Context, runID string) error {
 	}
 	control.mu.Lock()
 	defer control.mu.Unlock()
+	if control.terminating {
+		return ErrNotActive
+	}
 	control.stopRequested = true
 	control.stopOnce.Do(func() { close(control.stop) })
 	if control.run.Status() == domain.RunRunning {
@@ -237,6 +249,34 @@ func (service *Host) StopSending(ctx context.Context, runID string) error {
 }
 
 func (service *Host) CancelRun(ctx context.Context, runID string) error {
+	return service.terminateRun(
+		ctx,
+		runID,
+		domain.RunCancelled,
+		domain.RunFailure{},
+	)
+}
+
+// FailRun records an explicit owner failure before stopping active requests.
+// It also stops this Run's terminal retry loop when storage is unavailable.
+func (service *Host) FailRun(ctx context.Context, runID string, failure domain.RunFailure) error {
+	if err := failure.Validate(); err != nil {
+		return ErrInvalid
+	}
+	return service.terminateRun(
+		ctx,
+		runID,
+		domain.RunFailed,
+		failure,
+	)
+}
+
+func (service *Host) terminateRun(
+	ctx context.Context,
+	runID string,
+	terminal domain.RunStatus,
+	failure domain.RunFailure,
+) error {
 	if service == nil || ctx == nil || !domain.IsUUID(runID) {
 		return ErrInvalid
 	}
@@ -246,26 +286,51 @@ func (service *Host) CancelRun(ctx context.Context, runID string) error {
 	}
 	control.mu.Lock()
 	status := control.run.Status()
-	canCancel := status == domain.RunQueued || status == domain.RunStarting ||
-		status == domain.RunRunning || status == domain.RunDraining
-	if !canCancel {
+	if isTerminal(status) || control.terminating {
 		control.mu.Unlock()
 		return ErrNotActive
 	}
-	if err := service.transition(ctx, control, domain.RunCancelled); err != nil {
-		control.mu.Unlock()
-		return err
-	}
+	control.terminating = true
+	control.stopRecovery()
+	err = service.saveTerminal(
+		ctx,
+		control,
+		terminal,
+		failure,
+	)
 	control.cancel()
 	control.mu.Unlock()
 	if status == domain.RunQueued {
-		_ = control.lease.Close()
-		service.mu.Lock()
-		delete(service.active, runID)
-		service.mu.Unlock()
-		service.generateTerminalReport(control)
+		service.completeControl(control)
 	}
-	return nil
+	return err
+}
+
+// WaitRun observes completion without owning or cancelling execution. A
+// terminal status alone is insufficient: all workers and report callbacks must
+// finish before the owner can release resources or settle a complete Job.
+func (service *Host) WaitRun(ctx context.Context, runID string) (domain.Run, error) {
+	if service == nil || ctx == nil || !domain.IsUUID(runID) {
+		return domain.Run{}, ErrInvalid
+	}
+	service.mu.Lock()
+	control := service.active[runID]
+	service.mu.Unlock()
+	if control != nil {
+		select {
+		case <-control.finished:
+		case <-ctx.Done():
+			return domain.Run{}, ctx.Err()
+		}
+	}
+	run, err := service.repository.GetRun(ctx, runID)
+	if err != nil {
+		return domain.Run{}, err
+	}
+	if !isTerminal(run.Status()) {
+		return domain.Run{}, ErrNotActive
+	}
+	return run, nil
 }
 
 func (service *Host) GetRun(ctx context.Context, runID string) (domain.Run, error) {
@@ -281,8 +346,10 @@ func (service *Host) Close() error {
 	}
 	service.mu.Lock()
 	if service.closed {
+		done := service.closeDone
 		service.mu.Unlock()
-		return nil
+		<-done
+		return service.closeErr
 	}
 	service.closed = true
 	service.stopRecovery()
@@ -295,38 +362,50 @@ func (service *Host) Close() error {
 	for _, control := range controls {
 		control.mu.Lock()
 		wasQueued := control.run.Status() == domain.RunQueued
+		control.terminating = true
 		switch control.run.Status() {
 		case domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining:
-			if err := service.transition(context.Background(), control, domain.RunCancelled); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := service.saveTerminal(
+				ctx,
+				control,
+				domain.RunCancelled,
+				domain.RunFailure{},
+			)
+			cancel()
+			if err != nil {
 				closeErrors = append(closeErrors, err)
 			}
 		}
 		control.cancel()
 		control.mu.Unlock()
 		if wasQueued {
-			_ = control.lease.Close()
-			service.generateTerminalReport(control)
+			service.completeControl(control)
 		}
 	}
 	service.wg.Wait()
+	for _, control := range controls {
+		<-control.finished
+	}
 	if err := service.diagnostics.close(); err != nil {
 		closeErrors = append(closeErrors, err)
 	}
-	return errors.Join(closeErrors...)
+	service.mu.Lock()
+	service.closeErr = errors.Join(closeErrors...)
+	close(service.closeDone)
+	service.mu.Unlock()
+	return service.closeErr
 }
 
 func (service *Host) execute(ctx context.Context, control *runControl) {
 	defer service.wg.Done()
-	defer control.cancel()
-	defer control.lease.Close()
-	defer service.generateTerminalReport(control)
-	defer func() {
-		service.mu.Lock()
-		delete(service.active, control.run.Meta().ID)
-		service.mu.Unlock()
-	}()
+	defer service.completeControl(control)
 
 	control.mu.Lock()
+	if control.terminating {
+		control.mu.Unlock()
+		return
+	}
 	if err := service.transition(context.Background(), control, domain.RunRunning); err != nil {
 		runID := control.run.Meta().ID
 		control.mu.Unlock()
@@ -357,13 +436,25 @@ func (service *Host) execute(ctx context.Context, control *runControl) {
 	service.executeEntries(ctx, control)
 }
 
+func (service *Host) completeControl(control *runControl) {
+	control.finishOnce.Do(func() {
+		control.cancel()
+		_ = control.lease.Close()
+		service.generateTerminalReport(control)
+		service.mu.Lock()
+		delete(service.active, control.run.Meta().ID)
+		close(control.finished)
+		service.mu.Unlock()
+	})
+}
+
 func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 	runID := control.run.Meta().ID
 	started := time.Now()
 	anyFailed := false
 	for _, prepared := range control.entries {
 		control.mu.Lock()
-		if control.run.Status() == domain.RunCancelled {
+		if isTerminal(control.run.Status()) || control.terminating {
 			control.mu.Unlock()
 			return
 		}
@@ -377,6 +468,9 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 		emit := func(draft ResultDraft) error {
 			control.mu.Lock()
 			defer control.mu.Unlock()
+			if control.terminating {
+				return context.Canceled
+			}
 			if control.run.Status() != domain.RunRunning && control.run.Status() != domain.RunDraining {
 				return context.Canceled
 			}
@@ -415,7 +509,7 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 		executionErr := service.executor.Execute(ctx, request, emit)
 
 		control.mu.Lock()
-		if control.run.Status() == domain.RunCancelled {
+		if isTerminal(control.run.Status()) || control.terminating {
 			control.mu.Unlock()
 			return
 		}
@@ -460,7 +554,12 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 				RunID: runID, Operation: "execute_suite", ErrorCode: "suite_execution_failed", Err: executionErr,
 			})
 		}
-		cancelled, err := service.appendSuiteMarker(context.Background(), control, prepared.snapshot.EntryID, status)
+		cancelled, err := service.appendSuiteMarker(
+			context.Background(),
+			control,
+			prepared.snapshot.EntryID,
+			status,
+		)
 		if cancelled {
 			return
 		}
@@ -562,7 +661,7 @@ func (service *Host) appendSuiteMarker(
 ) (bool, error) {
 	control.mu.Lock()
 	defer control.mu.Unlock()
-	if control.run.Status() == domain.RunCancelled {
+	if isTerminal(control.run.Status()) || control.terminating {
 		return true, nil
 	}
 	meta, err := service.metaFactory(service.clock.Now())
@@ -581,8 +680,17 @@ func (service *Host) finishRun(control *runControl, terminal domain.RunStatus, f
 	// Release it before storage recovery, just as after normal execution.
 	_ = control.lease.Close()
 	control.mu.Lock()
+	if control.terminating {
+		control.mu.Unlock()
+		return
+	}
 	transitionContext, cancelTransition := context.WithTimeout(context.Background(), 5*time.Second)
-	transitionErr := service.saveTerminal(transitionContext, control, terminal, failure)
+	transitionErr := service.saveTerminal(
+		transitionContext,
+		control,
+		terminal,
+		failure,
+	)
 	cancelTransition()
 	runID := control.run.Meta().ID
 	control.mu.Unlock()
