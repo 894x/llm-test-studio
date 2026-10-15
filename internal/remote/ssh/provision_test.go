@@ -78,7 +78,7 @@ func TestProvisionOutputHandlesFragmentsAndRejectsUntrustedControlData(t *testin
 		}
 	}
 	for _, suffix := range []string{"../other", "abcdefghij;id", "abcdefghij\n", "abcdefghij/child", ""} {
-		if validBootstrapDirectory(bootstrapPrefix + suffix) {
+		if ValidBootstrapDirectory(bootstrapPrefix + suffix) {
 			t.Fatal("untrusted staging directory entered a shell command")
 		}
 	}

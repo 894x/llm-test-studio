@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
@@ -46,12 +47,17 @@ func TestSharedNodePairingValidatesFreshIdentityAndReleasesPools(t *testing.T) {
 		Contract: jobcontract.CurrentContract, NodeID: info.NodeID, InstallationID: info.NodeInstallationID,
 		ListenPort: uint16(port), TokenSHA256: hex.EncodeToString(digest[:]),
 	}
-	_, _, err := client.connectPairing(t.Context(), identity, []byte(strings.Repeat("x", 64)))
+	storedToken, err := credentials.NewTemporaryLease(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer storedToken.Close()
+	_, _, err = client.connectPairing(t.Context(), identity, []byte(strings.Repeat("x", 64)))
 	if !errors.Is(err, runnerinstall.ErrPairingRequired) || peer.forwards.Load() != 0 {
 		t.Fatal("unverified pairing reached the management plane")
 	}
 	for range 8 {
-		node, observed, err := client.connectPairing(t.Context(), identity, token)
+		node, observed, err := client.ConnectBoundNode(t.Context(), identity, storedToken)
 		if err != nil || observed.RunnerVersion != "another-client-build" {
 			t.Fatal("current-contract runner was coupled to a client build or retained stale pools")
 		}
@@ -71,17 +77,31 @@ func TestSharedNodePairingValidatesFreshIdentityAndReleasesPools(t *testing.T) {
 				t.Fatal("node accepted an external or malformed destination")
 			}
 		}
+		pairing, err := node.PairingLease()
+		if err != nil {
+			t.Fatal(err)
+		}
 		_ = node.Close()
+		copied, err := pairing.Bytes()
+		if err != nil || string(copied) != string(token) {
+			t.Fatal("node close revoked independent pairing lease")
+		}
+		clear(copied)
+		_ = pairing.Close()
 		_ = node.Close()
 		if _, err := node.Info(t.Context()); !errors.Is(err, ErrConnection) {
 			t.Fatal("closed node still used its token")
 		}
 	}
 	identityChanged.Store(true)
-	if _, _, err := client.connectPairing(t.Context(), identity, token); !errors.Is(err, ErrIntegrity) {
+	if _, _, err := client.ConnectBoundNode(t.Context(), identity, storedToken); !errors.Is(err, ErrIntegrity) {
 		t.Fatal("node silently re-paired a replaced installation")
 	}
 	if len(client.transports) != 0 {
 		t.Fatal("failed live identity verification retained a connection pool")
+	}
+	_ = storedToken.Close()
+	if _, _, err := client.ConnectBoundNode(t.Context(), identity, storedToken); !errors.Is(err, runnerinstall.ErrPairingRequired) {
+		t.Fatal("closed stored credential was accepted")
 	}
 }

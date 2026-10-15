@@ -55,6 +55,21 @@ func (client *Client) ConnectNode(ctx context.Context) (*Node, jobcontract.Runne
 	return client.connectPairing(ctx, identity, token)
 }
 
+// ConnectBoundNode uses the desktop's saved node-level authorization and exact
+// installation identity. It never reads or silently replaces server pairing.
+func (client *Client) ConnectBoundNode(
+	ctx context.Context,
+	identity runnerinstall.Identity,
+	token *credentials.Lease,
+) (*Node, jobcontract.RunnerInfo, error) {
+	value, err := token.Bytes()
+	if err != nil {
+		return nil, jobcontract.RunnerInfo{}, runnerinstall.ErrPairingRequired
+	}
+	defer clear(value)
+	return client.connectPairing(ctx, identity, value)
+}
+
 func (client *Client) connectPairing(
 	ctx context.Context,
 	identity runnerinstall.Identity,
@@ -91,6 +106,20 @@ func (client *Client) connectPairing(
 }
 
 func (node *Node) Identity() runnerinstall.Identity { return node.identity }
+
+// PairingLease copies the shared credential for the local OS Store. The caller
+// owns this short-lived lease; closing either lease does not close the other.
+func (node *Node) PairingLease() (*credentials.Lease, error) {
+	if node == nil {
+		return nil, runnerinstall.ErrPairingRequired
+	}
+	value, err := node.token.Bytes()
+	if err != nil {
+		return nil, runnerinstall.ErrPairingRequired
+	}
+	defer clear(value)
+	return credentials.NewTemporaryLease(value)
+}
 
 // Do sends only relative management routes through this node's pinned tunnel.
 // Callers own request-body secret cleanup and response-body limits and Close.

@@ -35,6 +35,7 @@ type NodeView struct {
 	Observation        *Observation       `json:"observation"`
 	Status             string             `json:"status"`
 	Eligible           bool               `json:"eligible"`
+	Checking           bool               `json:"checking"`
 }
 
 func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {

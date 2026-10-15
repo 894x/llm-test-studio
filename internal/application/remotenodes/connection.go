@@ -128,13 +128,16 @@ func (service *Service) Bind(ctx context.Context, command BindCommand) (Node, er
 		return Node{}, ErrInvalid
 	}
 	var result Node
-	err = service.store.withConfiguration(ctx, func(config *Configuration) error {
+	err = service.store.withNodeConfiguration(ctx, id, func(config *Configuration) error {
 		node, err := requireNode(*config, id, expected)
 		if err != nil {
 			return err
 		}
 		if node.HostKey == nil {
 			return ErrRePairRequired
+		}
+		if unresolvedInstallation(node.Installation) {
+			return ErrReferenced
 		}
 		if node.Binding != nil && node.Binding.Identity != identity {
 			return ErrRePairRequired

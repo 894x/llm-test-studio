@@ -239,6 +239,8 @@ func TestConcurrentServicesRejectStaleEdit(t *testing.T) {
 			success++
 		case errors.Is(err, ErrConflict):
 			conflict++
+		case errors.Is(err, ErrBusy):
+			conflict++
 		default:
 			t.Fatal(err)
 		}
@@ -249,6 +251,9 @@ func TestConcurrentServicesRejectStaleEdit(t *testing.T) {
 	config, err := fixture.store.Read(context.Background())
 	if err != nil || config.Nodes[0].Revision != node.Revision+1 {
 		t.Fatalf("winner not durably retained: %v", err)
+	}
+	if _, err := other.Save(context.Background(), editCommand(node)); !errors.Is(err, ErrConflict) {
+		t.Fatal("stale retry was not rejected after the operation lock became available")
 	}
 }
 

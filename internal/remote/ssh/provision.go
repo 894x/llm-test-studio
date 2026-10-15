@@ -92,7 +92,7 @@ func (client *Client) Provision(
 	}
 	directory := strings.TrimSuffix(string(document), "\n")
 	clear(document)
-	if !validBootstrapDirectory(directory) {
+	if !ValidBootstrapDirectory(directory) {
 		return result, ErrIntegrity
 	}
 	defer func() {
@@ -161,7 +161,7 @@ func (client *Client) Provision(
 	return *output.result, nil
 }
 
-func validBootstrapDirectory(name string) bool {
+func ValidBootstrapDirectory(name string) bool {
 	if !strings.HasPrefix(name, bootstrapPrefix) || len(name) != len(bootstrapPrefix)+10 {
 		return false
 	}
@@ -179,7 +179,7 @@ func validBootstrapDirectory(name string) bool {
 // loss may leave a partial upload; validate its entire bounded namespace before
 // removing anything. The canonical installation and operation journal are kept.
 func (client *Client) CleanupBootstrap(ctx context.Context, directory string) error {
-	if !validBootstrapDirectory(directory) {
+	if !ValidBootstrapDirectory(directory) {
 		return ErrInvalid
 	}
 	return client.withSFTP(ctx, func(remote *sftp.Client) error {

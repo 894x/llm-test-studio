@@ -77,7 +77,7 @@ func (service *Service) Save(ctx context.Context, command SaveCommand) (Node, er
 		return Node{}, ErrInvalid
 	}
 	var result Node
-	err := service.store.withConfiguration(ctx, func(config *Configuration) error {
+	err := service.store.withNodeConfiguration(ctx, command.ID, func(config *Configuration) error {
 		index := nodeIndex(*config, command.ID)
 		current := Node{}
 		if index >= 0 {
@@ -110,7 +110,8 @@ func (service *Service) Save(ctx context.Context, command SaveCommand) (Node, er
 			return ErrRePairRequired
 		}
 		connectionChanged := current.Host != command.Host || current.Port != command.Port || current.User != command.User
-		if current.Binding != nil && connectionChanged {
+		connectionBound := current.Binding != nil || current.Installation != nil
+		if connectionBound && connectionChanged {
 			return ErrRePairRequired
 		}
 		node.Name, node.Region, node.Host = command.Name, command.Region, command.Host
@@ -159,7 +160,7 @@ func (service *Service) Remove(ctx context.Context, id string, expected uint64) 
 	if !domain.IsUUID(id) || expected == 0 {
 		return ErrInvalid
 	}
-	return service.store.withConfiguration(ctx, func(config *Configuration) error {
+	return service.store.withNodeConfiguration(ctx, id, func(config *Configuration) error {
 		index := nodeIndex(*config, id)
 		if index < 0 {
 			return ErrNotFound
@@ -169,6 +170,9 @@ func (service *Service) Remove(ctx context.Context, id string, expected uint64) 
 			return ErrConflict
 		}
 		if config.Default.Kind == jobcontract.TargetRemote && config.Default.NodeID == id {
+			return ErrReferenced
+		}
+		if unresolvedInstallation(node.Installation) {
 			return ErrReferenced
 		}
 		if service.canRemove == nil {

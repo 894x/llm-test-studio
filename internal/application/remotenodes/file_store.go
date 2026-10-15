@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/fileconfig"
 )
 
@@ -19,6 +20,35 @@ type FileStore struct {
 	path      string
 	rootInfo  os.FileInfo
 	writeFile func(context.Context, string, []byte) error
+}
+
+// The operation lock is independent of the short nodes.json mutation lock.
+// Holding it across provisioning protects cleanup ownership from other desktop
+// processes without blocking health or configuration work on different nodes.
+func (store *FileStore) withNodeOperation(ctx context.Context, id string, action func() error) error {
+	validOperation := domain.IsUUID(id) && ctx != nil && action != nil
+	if !validOperation {
+		return ErrInvalid
+	}
+	root, err := directoryIdentity(filepath.Dir(store.path))
+	if err != nil || !os.SameFile(root, store.rootInfo) {
+		return ErrConflict
+	}
+	err = fileconfig.TryWithExclusiveLock(ctx, store.path+".node-"+id+".lock", func() error {
+		root, err := directoryIdentity(filepath.Dir(store.path))
+		if err != nil || !os.SameFile(root, store.rootInfo) {
+			return ErrConflict
+		}
+		return action()
+	})
+	if errors.Is(err, fileconfig.ErrLockBusy) {
+		return ErrBusy
+	}
+	return err
+}
+
+func (store *FileStore) withNodeConfiguration(ctx context.Context, id string, action func(*Configuration) error) error {
+	return store.withNodeOperation(ctx, id, func() error { return store.withConfiguration(ctx, action) })
 }
 
 func NewFileStore(path string) (*FileStore, error) {

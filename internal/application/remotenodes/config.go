@@ -16,6 +16,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	remotessh "github.com/894x/llm-test-studio/internal/remote/ssh"
+	"github.com/894x/llm-test-studio/internal/runnerartifacts"
 	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
 
@@ -37,6 +38,7 @@ var (
 	ErrUsageUnknown      = errors.New("remote_node_usage_unavailable")
 	ErrCommitUnconfirmed = errors.New("remote_node_configuration_commit_unconfirmed")
 	ErrCredential        = errors.New("remote_node_credential_unavailable")
+	ErrBusy              = errors.New("remote_node_checks_busy")
 )
 
 type AuthenticationKind string
@@ -64,11 +66,13 @@ type Binding struct {
 }
 
 type Installation struct {
-	Request   runnerinstall.Request `json:"request"`
-	Release   string                `json:"release"`
-	Arch      string                `json:"arch"`
-	Stage     string                `json:"stage"`
-	ErrorCode string                `json:"error_code"`
+	Request            runnerinstall.Request `json:"request"`
+	Release            string                `json:"release"`
+	Arch               string                `json:"arch"`
+	Stage              string                `json:"stage"`
+	ErrorCode          string                `json:"error_code"`
+	TemporaryDirectory string                `json:"temporary_directory"`
+	CleanupPending     bool                  `json:"cleanup_pending"`
 }
 
 type Observation struct {
@@ -184,12 +188,15 @@ func (node Node) Validate() error {
 		}
 	}
 	if attempt := node.Installation; attempt != nil {
-		validArtifact := safeLabel(attempt.Release, 128, false) && (attempt.Arch == "amd64" || attempt.Arch == "arm64")
+		validArtifact := runnerartifacts.ValidRelease(attempt.Release) && (attempt.Arch == "amd64" || attempt.Arch == "arm64")
 		validStage := attempt.Stage == "uploading" ||
 			(runnerinstall.Progress{OperationID: attempt.Request.OperationID, Stage: attempt.Stage}).Validate() == nil
-		validError := attempt.ErrorCode == "" ||
-			attempt.ErrorCode == runnerinstall.ErrorCode(runnerinstall.ErrorFromCode(attempt.ErrorCode))
-		validAttempt := validArtifact && validStage && validError
+		validError := attempt.ErrorCode == "" || attempt.ErrorCode == installationCode(installationCause(attempt.ErrorCode))
+		validCleanup := attempt.TemporaryDirectory == "" && !attempt.CleanupPending
+		if attempt.TemporaryDirectory != "" {
+			validCleanup = remotessh.ValidBootstrapDirectory(attempt.TemporaryDirectory)
+		}
+		validAttempt := validArtifact && validStage && validError && validCleanup
 		if !validAttempt || attempt.Request.Validate() != nil {
 			return ErrInvalid
 		}
@@ -214,6 +221,9 @@ func (node Node) Validate() error {
 			}
 		}
 		if observation.Status == "ready" {
+			if unresolvedInstallation(node.Installation) {
+				return ErrInvalid
+			}
 			ready := node.Binding != nil && observation.Runner != nil && observation.Runner.Ready
 			if !ready {
 				return ErrInvalid
@@ -229,6 +239,10 @@ func (node Node) Validate() error {
 		}
 	}
 	return nil
+}
+
+func unresolvedInstallation(attempt *Installation) bool {
+	return attempt != nil && (attempt.Stage != "completed" || attempt.ErrorCode != "" || attempt.CleanupPending)
 }
 
 func (config Configuration) Validate() error {
