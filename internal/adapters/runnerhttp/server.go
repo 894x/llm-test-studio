@@ -31,6 +31,8 @@ type ReadRepository interface {
 	GetJobSpec(context.Context, string) (jobcontract.JobSpec, error)
 	JobEvents(context.Context, string, uint64, uint32) (jobhost.EventPage, error)
 	ReadPerformanceResult(context.Context, string) (jobhost.PerformanceResultDocument, error)
+	ListJobs(context.Context, jobhost.JobListQuery) (jobhost.JobPage, error)
+	ReadRunReport(context.Context, string, string) (jobhost.RunReportDocument, error)
 }
 
 type Dependencies struct {
@@ -92,11 +94,12 @@ func New(dependencies Dependencies) (*Handler, error) {
 	}
 	handler.mux.HandleFunc("GET /runner", handler.runner)
 	handler.mux.HandleFunc("POST /jobs", handler.submit)
+	handler.mux.HandleFunc("GET /jobs", handler.jobs)
 	handler.mux.HandleFunc("GET /jobs/{job_id}", handler.job)
 	handler.mux.HandleFunc("GET /jobs/{job_id}/events", handler.events)
 	handler.mux.HandleFunc("POST /jobs/{job_id}/stop-sending", handler.command(jobcontract.CommandStopSending))
 	handler.mux.HandleFunc("POST /jobs/{job_id}/cancel", handler.command(jobcontract.CommandCancel))
-	handler.mux.HandleFunc("GET /jobs/{job_id}/reports/{report_id}", handler.performanceResult)
+	handler.mux.HandleFunc("GET /jobs/{job_id}/reports/{report_id}", handler.report)
 	handler.mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		writeError(
 			writer,

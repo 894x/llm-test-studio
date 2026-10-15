@@ -44,6 +44,14 @@ TestPerformanceExecutor|TestSlowProgress|TestCoreShares
 
 这是共享核心在真实 Linux 上的验证；测试二进制没有常驻管理接口，不能当作独立 runner、systemd 保活、SSH 自动安装或真实 Wails 验收。客户端版本差异、共享授权和安装互斥也仍需 R15 的独立进程验证。
 
+## 2026-10-16：管理接口本地与 Linux 验证
+
+节点级 token、当前协议头与能力检查已通过真实 JobHost、Core、临时 SQLite 和 Mock HTTP 验证。两个独立 HTTP transport 使用不同客户端构建和相同节点授权，共用同一队列；接收后连接结束和响应写失败都不撤销执行，同一提交重传不重复发请求。控制命令重传返回原确认；非法 path/body 与超限请求不写命令记录。
+
+任务清单按稳定接收序列分页，不受相同接收时间或其他 owner 的序列空洞影响；末页后新增仍可找到。Run、Comparison 子报告与 Performance 完整结果下载核对原始字节、摘要及所属任务。Run 报告还在同一读事务核对冻结输入、实际存储事实和唯一日志引用；损坏摘要会明确拒绝，读取不修复数据。
+
+相关 Go package 测试与 go vet 通过；管理接口 TestHTTP 另由 Ubuntu 24.04 WSL 执行 Linux 测试二进制通过。这一步没有改变 SQLite schema 或既有报告格式，没有升级实际用户数据。WSL 与本地 Mock 验证不证明物理服务器出口、独立常驻进程、systemd、SSH 安装或 Wails 交互；真实渠道最终验收仍待 R16。
+
 ## 待验收
 
 独立 runner 管理接口、SSH 自动安装、systemd 保活、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、历史数据升级，以及第二台节点、arm64 和多客户端共享的验证仍按实施方案 R1–R16 执行。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

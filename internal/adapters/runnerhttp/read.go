@@ -150,7 +150,7 @@ func containsAll(supported, required []string) bool {
 	return true
 }
 
-func (handler *Handler) performanceResult(writer http.ResponseWriter, request *http.Request) {
+func (handler *Handler) report(writer http.ResponseWriter, request *http.Request) {
 	if !validQuery(request) || !domain.IsUUID(request.PathValue("report_id")) {
 		writeError(
 			writer,
@@ -167,7 +167,11 @@ func (handler *Handler) performanceResult(writer http.ResponseWriter, request *h
 		writeOperationError(writer, err)
 		return
 	}
-	if spec.Kind != jobcontract.KindPerformance || spec.Spec.Performance.ReportID != request.PathValue("report_id") {
+	if spec.Kind != jobcontract.KindPerformance {
+		handler.runReport(writer, request, spec)
+		return
+	}
+	if spec.Spec.Performance.ReportID != request.PathValue("report_id") {
 		writeOperationError(writer, jobhost.ErrNotFound)
 		return
 	}
@@ -197,8 +201,22 @@ func (handler *Handler) performanceResult(writer http.ResponseWriter, request *h
 		writeOperationError(writer, jobhost.ErrUnavailable)
 		return
 	}
-	if !validRange(request, reference.Size) {
-		writer.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(reference.Size, 10))
+	serveReport(writer, request, reportDownload{
+		Document: sealed.Document, SHA256: reference.SHA256, Kind: jobcontract.KindPerformance, ModifiedAt: result.SealedAt,
+	})
+}
+
+type reportDownload struct {
+	Document   []byte
+	SHA256     string
+	Kind       jobcontract.Kind
+	ModifiedAt time.Time
+}
+
+func serveReport(writer http.ResponseWriter, request *http.Request, report reportDownload) {
+	size := int64(len(report.Document))
+	if !validRange(request, size) {
+		writer.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(size, 10))
 		writeError(
 			writer,
 			http.StatusRequestedRangeNotSatisfiable,
@@ -208,15 +226,15 @@ func (handler *Handler) performanceResult(writer http.ResponseWriter, request *h
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("ETag", `"`+reference.SHA256+`"`)
-	writer.Header().Set("X-Content-SHA256", reference.SHA256)
-	writer.Header().Set("X-LLM-Test-Report-Kind", string(jobcontract.KindPerformance))
+	writer.Header().Set("ETag", `"`+report.SHA256+`"`)
+	writer.Header().Set("X-Content-SHA256", report.SHA256)
+	writer.Header().Set("X-LLM-Test-Report-Kind", string(report.Kind))
 	http.ServeContent(
 		writer,
 		request,
-		"performance.json",
-		result.SealedAt,
-		bytes.NewReader(sealed.Document),
+		string(report.Kind)+".json",
+		report.ModifiedAt,
+		bytes.NewReader(report.Document),
 	)
 }
 

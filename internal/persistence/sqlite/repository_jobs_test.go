@@ -1,6 +1,7 @@
 package sqlite_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -318,6 +319,53 @@ func TestOwnedRunFactsAndReportsCannotCommitWithoutTheirJournal(t *testing.T) {
 	}
 	if reference.SHA256 != hex.EncodeToString(digest[:]) {
 		t.Fatal("report reference does not hash the downloadable bytes")
+	}
+	owned, err := repository.ReadRunReport(t.Context(), spec.JobID, fixture.report.ID)
+	if err != nil || string(owned.Document) != string(reportDocument) || owned.Reference != reference {
+		t.Fatalf("owned report read changed the original bytes or journal reference: %v", err)
+	}
+	if _, err := repository.ReadRunReport(t.Context(), "75000000-0000-4000-8000-000000000001", fixture.report.ID); !errors.Is(err, jobhost.ErrNotFound) {
+		t.Fatalf("unrelated job read report: %v", err)
+	}
+	var savedEvent []byte
+	if err := db.QueryRowContext(t.Context(), `SELECT document_json FROM execution_job_events
+		WHERE job_id = ? AND kind = 'report'`, spec.JobID).Scan(&savedEvent); err != nil {
+		t.Fatal(err)
+	}
+	badReference := reference
+	badReference.SHA256 = strings.Repeat("f", 64)
+	badPayload, _ := json.Marshal(badReference)
+	badEvent := page.Events[6]
+	badEvent.Payload = badPayload
+	badJSON, _ := json.Marshal(badEvent)
+	badDecoder := json.NewDecoder(bytes.NewReader(badJSON))
+	badDecoder.UseNumber()
+	var badValue any
+	if err := badDecoder.Decode(&badValue); err != nil {
+		t.Fatal(err)
+	}
+	badDocument, _ := json.Marshal(badValue)
+	if _, err := db.ExecContext(t.Context(), `UPDATE execution_job_events SET document_json = ?
+		WHERE job_id = ? AND kind = 'report'`, badDocument, spec.JobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ReadRunReport(t.Context(), spec.JobID, fixture.report.ID); !errors.Is(err, persistence.ErrCorrupt) {
+		t.Fatalf("changed report reference was accepted: %v", err)
+	}
+	var retainedEvent []byte
+	if err := db.QueryRowContext(t.Context(), `SELECT document_json FROM execution_job_events
+		WHERE job_id = ? AND kind = 'report'`, spec.JobID).Scan(&retainedEvent); err != nil {
+		t.Fatal(err)
+	}
+	if string(retainedEvent) != string(badDocument) {
+		t.Fatal("report read silently repaired a corrupt journal")
+	}
+	if _, err := db.ExecContext(t.Context(), `UPDATE execution_job_events SET document_json = ?
+		WHERE job_id = ? AND kind = 'report'`, savedEvent, spec.JobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ReadRunReport(t.Context(), spec.JobID, fixture.report.ID); err != nil {
+		t.Fatalf("restored journal remained unreadable: %v", err)
 	}
 }
 
