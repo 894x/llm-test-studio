@@ -1310,7 +1310,7 @@ describe("desktop run workspace", () => {
     const client = desktopClient()
     const rendered = render(<App client={client} />)
     await user.click(await screen.findByRole("combobox", { name: "测试任务" }))
-    await user.click(screen.getByRole("option", { name: "OpenAI Chat 连通性测试" }))
+    await user.click(screen.getByRole("option", { name: "OpenAI Chat 连通性测试 · 1 个 Case" }))
     await user.type(await screen.findByLabelText("接口地址"), "https://example.test")
     await user.type(screen.getByLabelText("API Key"), "test-private-key")
     await user.type(screen.getByLabelText("模型 ID"), "draft-model")

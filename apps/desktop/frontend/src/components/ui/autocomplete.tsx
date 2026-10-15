@@ -1,4 +1,5 @@
 import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete"
+import type { ReactNode } from "react"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import { useTranslation } from "react-i18next"
 
@@ -12,10 +13,12 @@ function AutocompleteInput({
   className,
   triggerLabel,
   triggerDisabled = false,
+  leading,
   ...props
 }: AutocompletePrimitive.Input.Props & {
   triggerLabel?: string
   triggerDisabled?: boolean
+  leading?: ReactNode
 }) {
   const { t } = useTranslation("common")
 
@@ -27,11 +30,12 @@ function AutocompleteInput({
         className,
       )}
     >
+      {leading && <span aria-hidden="true" className="ml-2.5 flex shrink-0 items-center">{leading}</span>}
       <AutocompletePrimitive.Input
         data-slot="autocomplete-input"
         render={<Input />}
         autoComplete="off"
-        className="flex-1 rounded-none border-0 bg-transparent pr-1 shadow-none focus-visible:border-transparent focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0"
+        className={cn("flex-1 rounded-none border-0 bg-transparent pr-1 shadow-none focus-visible:border-transparent focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0", leading && "pl-2")}
         {...props}
       />
       <AutocompletePrimitive.Trigger

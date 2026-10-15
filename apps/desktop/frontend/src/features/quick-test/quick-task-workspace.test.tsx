@@ -52,6 +52,7 @@ function setup(
     cancelRun: vi.fn(async () => FIXTURE_WORKSPACE),
     runQuickPerformanceTest: vi.fn(),
   }
+  const onSaveChannel = vi.fn(async () => ({ catalog, channel_id: catalog.channels[0].id }))
   function Harness() {
     const [draft, setDraft] = useState<TaskDraft>(initial)
     const [runID, setRunID] = useState("")
@@ -72,7 +73,7 @@ function setup(
         onWorkspaceUpdated={vi.fn()}
         onOpenReport={vi.fn()}
         onPerformanceArchived={vi.fn()}
-        onSaveChannel={vi.fn(async () => ({ catalog, channel_id: catalog.channels[0].id }))}
+        onSaveChannel={onSaveChannel}
       />
     )
   }
@@ -81,7 +82,7 @@ function setup(
       <Harness />
     </I18nextProvider>,
   )
-  return actions
+  return { ...actions, onSaveChannel }
 }
 
 describe("Suite quick task workspace", () => {
@@ -119,7 +120,7 @@ describe("Suite quick task workspace", () => {
     setup({ ...createTaskDraft(task), base_url: "https://api.example.test", model: "custom-model", api_key: "temporary-key" })
     await user.click(screen.getByRole("combobox", { name: "协议" }))
     await user.click(screen.getByRole("option", { name: "OpenAI Chat" }))
-    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(FIXTURE_CATALOG.suites[1].name)
+    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${FIXTURE_CATALOG.suites[1].name} · ${FIXTURE_CATALOG.suites[1].case_count} 个 Case`)
     expect(screen.getByLabelText("模型 ID")).toHaveValue("custom-model")
     expect(screen.getByLabelText("API Key")).toHaveValue("temporary-key")
     expect(document.querySelector('[data-slot="connection-url-suffix"]')).toHaveTextContent("/v1/chat/completions")
@@ -129,7 +130,7 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByRole("combobox", { name: "协议" })).toHaveValue("OpenAI Responses")
     await user.click(screen.getByRole("combobox", { name: "协议" }))
     await user.click(screen.getByRole("option", { name: "Seedance" }))
-    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(task.name)
+    expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个 Case`)
   })
   it("keeps the gray completion outside the editable value and submits a full endpoint intact", async () => {
     const user = userEvent.setup()
@@ -140,7 +141,7 @@ describe("Suite quick task workspace", () => {
     expect(address).toHaveValue("https://example.test/api/v3/")
     expect(suffix).toHaveTextContent("contents/generations/tasks")
     expect(suffix.closest('[aria-hidden="true"]')).not.toBeNull()
-    expect(address).toHaveAccessibleDescription(expect.stringContaining("https://example.test/api/v3/contents/generations/tasks"))
+    expect(address).toHaveAccessibleDescription(expect.stringContaining("灰色路径自动补全"))
     await user.keyboard("{End}{ArrowRight}{Delete}")
     expect(address).toHaveValue("https://example.test/api/v3/")
     expect(suffix).toHaveTextContent("contents/generations/tasks")
@@ -155,7 +156,38 @@ describe("Suite quick task workspace", () => {
     }))
   })
 
-  it("groups short parameters while keeping long inputs and the shared hint full width", () => {
+  it("validates the connection on save and opens the channel sheet without starting a test", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(task), seed: -1, request_timeout_ms: 0 })
+    const save = screen.getByRole("button", { name: "保存为渠道" })
+    expect(save).toBeEnabled()
+
+    await user.click(save)
+    expect(screen.getByLabelText("接口地址")).toHaveFocus()
+    expect(screen.getByLabelText("接口地址")).toHaveAttribute("aria-invalid", "true")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText("接口地址"), "https://example.test")
+    await user.click(save)
+    expect(screen.getByLabelText("API Key")).toHaveFocus()
+    expect(screen.getByLabelText("API Key")).toHaveAttribute("aria-invalid", "true")
+
+    await user.type(screen.getByLabelText("API Key"), "temporary-key")
+    await user.click(save)
+    expect(screen.getByLabelText("模型 ID")).toHaveFocus()
+
+    await user.type(screen.getByLabelText("模型 ID"), "custom-model")
+    await user.keyboard("{Escape}")
+    await user.click(save)
+    expect(await screen.findByRole("dialog", { name: "保存为渠道" })).toBeInTheDocument()
+    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(actions.onSaveChannel).not.toHaveBeenCalled()
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(save).toHaveFocus()
+  })
+
+  it("groups short parameters and associates the concise concurrency hint", () => {
     setup()
     const concurrency = screen.getByRole("combobox", { name: "Case 并发数" })
     const grid = concurrency.closest('[data-slot="field"]')!.parentElement!
@@ -164,8 +196,7 @@ describe("Suite quick task workspace", () => {
     }
     expect(screen.getByLabelText("视频提示词").closest('[data-slot="field"]')).toHaveClass("col-span-full")
     const hint = document.getElementById(concurrency.getAttribute("aria-describedby")!)!
-    expect(hint).toHaveClass("col-span-full")
-    expect(hint.parentElement).toBe(grid)
+    expect(hint).toHaveTextContent("默认 4")
     expect(concurrency).toHaveAccessibleDescription(hint.textContent!)
   })
 
@@ -249,8 +280,8 @@ describe("Suite quick task workspace", () => {
         inputs: { prompt: "past prompt", duration: 8, audio: true },
       })
       await user.click(screen.getByRole("button", { name: "填入并编辑 Past video task" }))
-      expect(await screen.findByText(/重新测试使用当前套件定义/)).toBeInTheDocument()
-      expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(task.name)
+      await waitFor(() => expect(screen.getByLabelText("时长")).toHaveValue(8))
+      expect(screen.getByRole("combobox", { name: "测试任务" })).toHaveValue(`${task.name} · ${task.case_count} 个 Case`)
       expect(screen.getByLabelText("时长")).toHaveValue(8)
       expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
       await user.type(screen.getByLabelText("视频提示词"), " edited")

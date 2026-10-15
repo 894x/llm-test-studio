@@ -10,6 +10,7 @@ import {
 import { useTranslation } from "react-i18next"
 import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
+import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
 import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -26,10 +27,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CatalogProtocol, CatalogSnapshot, CatalogSuite, SaveQuickTestTargetCommand, SavedQuickTestTarget } from "@/features/catalog/data"
 import { DEFAULT_CASE_CONCURRENCY, isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
 import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
@@ -41,6 +44,7 @@ import { taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
+import { ModelIcon, ProtocolIcon } from "./model-icon"
 
 type Actions = Pick<
   DesktopClient,
@@ -88,6 +92,7 @@ export function QuickTaskWorkspace({
   >(null)
   const inFlight = useRef(false)
   const performanceTrigger = useRef<HTMLButtonElement>(null)
+  const saveChannelTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState("")
   const [caseConcurrency, setCaseConcurrency] = useState(DEFAULT_CASE_CONCURRENCY)
@@ -300,6 +305,21 @@ export function QuickTaskWorkspace({
     })
     setPerformanceOpen(true)
   }
+  const openSaveChannel = () => {
+    const connectionErrors = Object.fromEntries(
+      Object.entries(quickTaskCommand(form).errors).filter(([field]) =>
+        ["base_url", "api_key", "model"].includes(field),
+      ),
+    )
+    setErrors(connectionErrors)
+    setError("")
+    const firstError = Object.keys(connectionErrors)[0]
+    if (firstError) {
+      document.getElementById(`quick-task-${firstError}`)?.focus()
+      return
+    }
+    setSaveChannelOpen(true)
+  }
 
   const protocolField = (
     <TaskField id="protocol" label={t("protocol")}>
@@ -310,7 +330,7 @@ export function QuickTaskWorkspace({
         disabled={!!pending}
         onValueChange={changeProtocol}
         className="w-full"
-        options={protocolOptions.map(([value, label]) => ({ value, label }))}
+        options={protocolOptions.map(([value, label]) => ({ value, label, icon: <ProtocolIcon protocol={value} /> }))}
       />
     </TaskField>
   )
@@ -340,23 +360,27 @@ export function QuickTaskWorkspace({
             ) : (
               <form onSubmit={(event) => void submit(event)} noValidate>
                 <FieldGroup>
-                  <TaskField id="task" label={t("task.label")} error={errors.task}>
-                    <SearchableSelect value={taskKey(task)} onValueChange={changeTask} disabled={!!pending} id="quick-task-task" aria-label={t("task.label")} className="w-full" options={[...tasks.map((item) => (
-                            ({value: taskKey(item), label: item.name})
-                          ))]} />
-                    <p className="text-[11px] text-muted-foreground">
-                      {task.description}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {t("task.version", { revision: task.revision, count: task.case_count })} ·{" "}
-                      {t("task.timeout", { seconds: form.request_timeout_ms / 1000 })}
-                    </p>
+                  <TaskField id="task" label={t("task.label")} error={errors.task}
+                    labelHint={<p id="quick-task-draft-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.draftNote")}</p>}
+                  >
+                    <SearchableSelect
+                      value={taskKey(task)}
+                      onValueChange={changeTask}
+                      disabled={!!pending}
+                      id="quick-task-task"
+                      aria-label={t("task.label")}
+                      aria-invalid={!!errors.task || undefined}
+                      aria-describedby={["quick-task-draft-hint", ...(errors.task ? ["quick-task-task-error"] : [])].join(" ")}
+                      className="w-full"
+                      options={tasks.map((item) => ({
+                        value: taskKey(item),
+                        label: `${item.name} · ${t("task.caseCount", { count: item.case_count })}`,
+                      }))}
+                    />
                   </TaskField>
-                  {form.source_run_id ? (
-                    <p className="text-xs text-muted-foreground">{t("task.historyVersion")}</p>
-                  ) : null}
-                  <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id}>
-                    <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={!!pending} onValueChange={(value) => {
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,3fr)] items-start gap-x-4 gap-y-2">
+                    <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid gap-2 space-y-0">
+                      <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={!!pending} onValueChange={(value) => {
                         const selected = channels.find((item) => item.id === value)
                         update({
                           ...form,
@@ -365,12 +389,13 @@ export function QuickTaskWorkspace({
                           api_key: "",
                           credential_run_id: undefined,
                         })
-                      }} id="quick-task-channel_id" aria-label={t("fillChannel")} className="w-full" options={[({value: "manual", label: t("manual")}), ...(missingChannel ? [({value: "missing", label: t("task.missingChannel"), disabled: true})] : []), ...channels.map((item) => (
+                      }} id="quick-task-channel_id" aria-label={t("fillChannel")} aria-invalid={!!errors.channel_id || undefined} aria-describedby={errors.channel_id ? "quick-task-channel_id-error" : undefined} className="w-full" options={[({value: "manual", label: t("manual")}), ...(missingChannel ? [({value: "missing", label: t("task.missingChannel"), disabled: true})] : []), ...channels.map((item) => (
                             ({value: item.id, label: item.name})
                           ))]} />
-                  </TaskField>
-                  <div className="grid min-w-0 grid-cols-2 items-start gap-4">
-                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="col-span-full">
+                    </TaskField>
+                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="row-span-2 grid grid-rows-subgrid gap-2 space-y-0"
+                      labelHint={<p id="quick-task-base_url-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.endpointHint")}</p>}
+                    >
                       <ConnectionURLInput
                         id="quick-task-base_url"
                         value={channel?.base_url ?? form.base_url}
@@ -379,7 +404,6 @@ export function QuickTaskWorkspace({
                         aria-invalid={!!errors.base_url || undefined}
                         aria-describedby={[
                           "quick-task-base_url-hint",
-                          ...(connectionURLs.length ? ["quick-task-base_url-preview"] : []),
                           ...(errors.base_url ? ["quick-task-base_url-error"] : []),
                         ].join(" ")}
                         onChange={(event) =>
@@ -392,15 +416,9 @@ export function QuickTaskWorkspace({
                         }
                         placeholder="https://api.example.com"
                       />
-                      <p id="quick-task-base_url-hint" className="text-[11px] text-muted-foreground">{t("task.endpointHint")}</p>
-                      {connectionURLs.length > 0 && (
-                        <div id="quick-task-base_url-preview" className="space-y-1 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
-                          {connectionURLs.map(({ endpoint }) => (
-                            <p key={endpoint}>{t("task.endpointPreview", { endpoint })}</p>
-                          ))}
-                        </div>
-                      )}
                     </TaskField>
+                  </div>
+                  <div className="grid min-w-0 grid-cols-2 items-start gap-4">
                     <TaskField id="model" label={t("model.label")} error={errors.model}>
                       <Autocomplete
                         modal={false}
@@ -410,6 +428,7 @@ export function QuickTaskWorkspace({
                         onValueChange={(value) => update({ ...form, model: value ?? "" })}
                       >
                         <AutocompleteInput
+                          leading={<ModelIcon model={form.model} />}
                           id="quick-task-model"
                           aria-label={t("model.label")}
                           value={form.model}
@@ -423,8 +442,9 @@ export function QuickTaskWorkspace({
                           <AutocompleteEmpty>{t("model.empty")}</AutocompleteEmpty>
                           <AutocompleteList>
                             {(value) => (
-                              <AutocompleteItem key={value} value={value}>
-                                {value}
+                              <AutocompleteItem key={value} value={value} className="gap-2">
+                                <ModelIcon model={value} />
+                                <span className="min-w-0 [overflow-wrap:anywhere]">{value}</span>
                               </AutocompleteItem>
                             )}
                           </AutocompleteList>
@@ -433,30 +453,54 @@ export function QuickTaskWorkspace({
                     </TaskField>
                     {protocolField}
                   </div>
-                  <TaskField id="api_key" label="API Key" error={errors.api_key}>
-                    <Input
-                      id="quick-task-api_key"
-                      type="password"
-                      autoComplete="off"
-                      value={form.api_key}
-                      disabled={!!pending || !!form.channel_id || !!form.credential_run_id}
-                      aria-invalid={!!errors.api_key || undefined}
-                      aria-describedby={errors.api_key ? "quick-task-api_key-error" : undefined}
-                      placeholder={
-                        channel
-                          ? t("savedCredential", { name: channel.name })
-                          : form.credential_run_id
-                            ? t("task.rememberedKey")
-                            : ""
-                      }
-                      onChange={(event) => update({ ...form, api_key: event.target.value })}
-                    />
+                  <TaskField id="api_key" label="API Key" error={errors.api_key}
+                    labelHint={form.credential_run_id ? <p id="quick-task-key-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.rememberedKey")}</p> : undefined}
+                  >
+                    <InputGroup className="has-[input[aria-invalid=true]]:border-destructive">
+                      <InputGroupInput
+                        id="quick-task-api_key"
+                        type="password"
+                        autoComplete="off"
+                        value={form.api_key}
+                        disabled={!!pending || !!form.channel_id || !!form.credential_run_id}
+                        aria-invalid={!!errors.api_key || undefined}
+                        aria-describedby={[
+                          ...(form.credential_run_id ? ["quick-task-key-hint"] : []),
+                          ...(errors.api_key ? ["quick-task-api_key-error"] : []),
+                        ].join(" ") || undefined}
+                        placeholder={
+                          channel
+                            ? t("savedCredential", { name: channel.name })
+                            : form.credential_run_id
+                              ? t("task.rememberedKey")
+                              : ""
+                        }
+                        onChange={(event) => update({ ...form, api_key: event.target.value })}
+                      />
+                      {!form.channel_id && (
+                        <InputGroupAddon>
+                          <TooltipProvider delayDuration={250}><Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                ref={saveChannelTrigger}
+                                type="button"
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={t("saveChannel.title")}
+                                disabled={!!pending}
+                                onClick={openSaveChannel}
+                              >
+                                <SaveIcon aria-hidden="true" className="size-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{t("saveChannel.title")}</TooltipContent>
+                          </Tooltip></TooltipProvider>
+                        </InputGroupAddon>
+                      )}
+                    </InputGroup>
                     {!form.channel_id &&
                       (form.credential_run_id ? (
                         <div className="space-y-2">
-                          <p className="text-[11px] text-muted-foreground">
-                            {t("task.rememberedKey")}
-                          </p>
                           <div className="flex flex-wrap gap-2">
                             <Button
                               size="sm"
@@ -495,11 +539,6 @@ export function QuickTaskWorkspace({
                         </Button>
                       ) : null)}
                   </TaskField>
-                  {!form.channel_id && <Button
-                    type="button" size="sm" variant="outline"
-                    disabled={!!pending || !form.model.trim() || !connectionURLs.length || (!form.api_key.trim() && !form.credential_run_id)}
-                    onClick={() => setSaveChannelOpen(true)}
-                  >{t("saveChannel.title")}</Button>}
                   <fieldset disabled={!!pending} className="@container/quick-task-parameters min-w-0 space-y-3">
                     <legend className="mb-3 text-sm font-semibold">{t("task.parameters")}</legend>
                     <div className="grid min-w-0 grid-cols-1 items-start gap-3 @xs/quick-task-parameters:grid-cols-2 @md/quick-task-parameters:grid-cols-3">
@@ -507,7 +546,7 @@ export function QuickTaskWorkspace({
                         value={caseConcurrency}
                         onChange={setCaseConcurrency}
                         disabled={!!pending}
-                        externalDescriptionId="quick-task-case-concurrency-hint"
+                        labelHint={t("task.caseConcurrencyHint")}
                       />
                       <TaskField id="seed" label={t("task.seed")} error={errors.seed}>
                         <Input
@@ -516,6 +555,8 @@ export function QuickTaskWorkspace({
                           min={0}
                           max={Number.MAX_SAFE_INTEGER}
                           value={form.seed}
+                          aria-invalid={!!errors.seed || undefined}
+                          aria-describedby={errors.seed ? "quick-task-seed-error" : undefined}
                           onChange={(event) => update({ ...form, seed: Number(event.target.value) })}
                         />
                       </TaskField>
@@ -525,12 +566,11 @@ export function QuickTaskWorkspace({
                           type="number"
                           min={1}
                           value={form.request_timeout_ms}
+                          aria-invalid={!!errors.request_timeout_ms || undefined}
+                          aria-describedby={errors.request_timeout_ms ? "quick-task-request_timeout_ms-error" : undefined}
                           onChange={(event) => update({ ...form, request_timeout_ms: Number(event.target.value) })}
                         />
                       </TaskField>
-                      <p id="quick-task-case-concurrency-hint" className="col-span-full text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
-                        {t("runs:caseConcurrency.hint")}
-                      </p>
                       {task.inputs.map((input) => (
                         <TaskField
                           key={input.key}
@@ -543,6 +583,8 @@ export function QuickTaskWorkspace({
                             <Checkbox
                               id={`quick-task-input.${input.key}`}
                               checked={form.inputs[input.key] === true}
+                              aria-invalid={!!errors[`input.${input.key}`] || undefined}
+                              aria-describedby={errors[`input.${input.key}`] ? `quick-task-input.${input.key}-error` : undefined}
                               onCheckedChange={(checked) =>
                                 update({
                                   ...form,
@@ -557,6 +599,7 @@ export function QuickTaskWorkspace({
                               step="any"
                               value={String(form.inputs[input.key] ?? "")}
                               aria-invalid={!!errors[`input.${input.key}`] || undefined}
+                              aria-describedby={errors[`input.${input.key}`] ? `quick-task-input.${input.key}-error` : undefined}
                               onChange={(event) =>
                                 update({
                                   ...form,
@@ -569,6 +612,8 @@ export function QuickTaskWorkspace({
                               id={`quick-task-input.${input.key}`}
                               value={String(form.inputs[input.key] ?? "")}
                               className="min-h-24"
+                              aria-invalid={!!errors[`input.${input.key}`] || undefined}
+                              aria-describedby={errors[`input.${input.key}`] ? `quick-task-input.${input.key}-error` : undefined}
                               onChange={(event) =>
                                 update({
                                   ...form,
@@ -581,7 +626,6 @@ export function QuickTaskWorkspace({
                       ))}
                     </div>
                   </fieldset>
-                  <p className="text-[11px] text-muted-foreground">{t("task.draftNote")}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={!!pending}>
                       {pending === "start" ? (
@@ -744,6 +788,11 @@ export function QuickTaskWorkspace({
       {saveChannelOpen && <SaveChannelSheet
         open={saveChannelOpen}
         onOpenChange={setSaveChannelOpen}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          const trigger = saveChannelTrigger.current ?? document.getElementById("quick-task-channel_id")
+          trigger?.focus()
+        }}
         connection={{ base_url: form.base_url, api_key: form.api_key.trim(), credential_run_id: form.credential_run_id, model_name: form.model.trim(), protocol }}
         onSave={async command => {
           if (inFlight.current) throw new Error(t("saveChannel.failed"))
@@ -778,21 +827,30 @@ function taskKey(task: CatalogSuite) {
 function TaskField({
   id,
   label,
+  labelHint,
   error,
   children,
   className,
 }: {
   id: string
   label: string
+  labelHint?: ReactNode
   error?: string
   children: ReactNode
   className?: string
 }) {
   return (
     <Field className={cn("block min-w-0 space-y-2", className)} data-invalid={!!error || undefined}>
-      <FieldLabel htmlFor={`quick-task-${id}`} className="[overflow-wrap:anywhere]">{label}</FieldLabel>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <FieldLabel htmlFor={`quick-task-${id}`} className="shrink-0 [overflow-wrap:anywhere]">{label}</FieldLabel>
+        {labelHint || error ? (
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 [overflow-wrap:anywhere]">
+            {labelHint}
+            {error ? <FieldError id={`quick-task-${id}-error`} className="min-w-0 text-[11px] font-normal">{error}</FieldError> : null}
+          </div>
+        ) : null}
+      </div>
       {children}
-      {error ? <FieldError id={`quick-task-${id}-error`}>{error}</FieldError> : null}
     </Field>
   )
 }

@@ -407,7 +407,7 @@
   "quick-test_0_tokens_legacy_report": "0 Token（旧报告）",
   "quick-test_fixed_concurrency": "—（固定并发）",
   "quick-test_enter_an_endpoint": "请输入接口地址。",
-  "quick-test_enter_an_api_key_or_select_a_channel_with_saved": "请输入 API Key，或选择已保存凭据的渠道。",
+  "quick-test_enter_an_api_key_or_select_a_channel_with_saved": "填写 API Key 或选择已保存渠道。",
   "quick-test_enter_a_model_id": "请输入模型 ID。",
   "quick-test_enter_a_test_message": "请输入测试消息。",
   "quick-test_timeout_must_be_an_integer_from_1_000_to_120": "超时需为 1,000–120,000 毫秒的整数。",

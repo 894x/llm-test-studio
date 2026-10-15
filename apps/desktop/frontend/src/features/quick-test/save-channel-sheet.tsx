@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ComponentProps } from "react"
 import { useTranslation } from "react-i18next"
 import { isCatalogSavedRefreshFailure, publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Button } from "@/components/ui/button"
@@ -8,9 +8,10 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import type { SavedQuickTestTarget, SaveQuickTestTargetCommand } from "@/features/catalog/data"
 import { PROTOCOL_LABELS } from "@/features/catalog/protocols"
 
-export function SaveChannelSheet({ open, onOpenChange, connection, onSave, onSaved }: {
+export function SaveChannelSheet({ open, onOpenChange, onCloseAutoFocus, connection, onSave, onSaved }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCloseAutoFocus?: ComponentProps<typeof SheetContent>["onCloseAutoFocus"]
   connection: Omit<SaveQuickTestTargetCommand, "name">
   onSave: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
   onSaved: (saved: SavedQuickTestTarget) => void
@@ -41,7 +42,7 @@ export function SaveChannelSheet({ open, onOpenChange, connection, onSave, onSav
     if (value) { setError(""); setCommitted(false) }
     onOpenChange(value)
   }}>
-    <SheetContent className="sm:max-w-[420px]">
+    <SheetContent className="sm:max-w-[420px]" onCloseAutoFocus={onCloseAutoFocus}>
       <SheetHeader>
         <SheetTitle>{t("saveChannel.title")}</SheetTitle>
         <SheetDescription>{t("saveChannel.hint")}</SheetDescription>

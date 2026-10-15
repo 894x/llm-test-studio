@@ -1,0 +1,20 @@
+{
+  "package": "@lobehub/icons-static-svg",
+  "version": "1.95.1",
+  "source": "https://github.com/lobehub/lobe-icons",
+  "license": "MIT",
+  "icons": [
+    "openai",
+    "anthropic",
+    "claude",
+    "kimi",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "zhipu",
+    "minimax",
+    "doubao",
+    "bytedance",
+    "alibabacloud"
+  ]
+}

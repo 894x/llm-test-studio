@@ -37,11 +37,8 @@ it("shows a restored effective limit and disables edits while pending", async ()
   expect(control).toBeDisabled()
 })
 
-it("can associate a full-row hint without duplicating it inside the field", () => {
-  render(<>
-    <CaseConcurrencyField value={4} onChange={() => {}} externalDescriptionId="shared-hint" />
-    <p id="shared-hint">全行并发说明</p>
-  </>)
-  expect(screen.getByRole("combobox", { name: "Case 并发数" })).toHaveAccessibleDescription("全行并发说明")
+it("associates a concise label hint instead of the full description", () => {
+  render(<CaseConcurrencyField value={4} onChange={() => {}} labelHint="默认 4" />)
+  expect(screen.getByRole("combobox", { name: "Case 并发数" })).toHaveAccessibleDescription("默认 4")
   expect(screen.queryByText(/套件内同时执行的 Case 数量/)).not.toBeInTheDocument()
 })

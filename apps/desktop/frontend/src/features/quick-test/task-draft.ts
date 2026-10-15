@@ -76,8 +76,8 @@ export function quickTaskCommand(draft: TaskDraft, caseConcurrency = DEFAULT_CAS
   if (!draft.model.trim() || draft.model.trim().length > 256 || /\p{Cc}/u.test(draft.model))
     errors.model = tx("desktop:quick-test_enter_a_model_id")
   const inputs: StartQuickTaskCommand["inputs"] = {}
-  if (!Number.isSafeInteger(draft.seed) || draft.seed < 0) errors.seed = tx("quickTest:task.numberRequired")
-  if (!Number.isSafeInteger(draft.request_timeout_ms) || draft.request_timeout_ms < 1) errors.request_timeout_ms = tx("quickTest:task.numberRequired")
+  if (!Number.isSafeInteger(draft.seed) || draft.seed < 0) errors.seed = tx("quickTest:task.seedInvalid")
+  if (!Number.isSafeInteger(draft.request_timeout_ms) || draft.request_timeout_ms < 1) errors.request_timeout_ms = tx("quickTest:task.timeoutInvalid")
   for (const input of task?.inputs ?? []) {
     const value = draft.inputs[input.key]
     if (value === "" || value === undefined) {

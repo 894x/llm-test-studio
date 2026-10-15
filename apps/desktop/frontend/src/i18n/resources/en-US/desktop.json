@@ -407,7 +407,7 @@
   "quick-test_0_tokens_legacy_report": "0 tokens (legacy report)",
   "quick-test_fixed_concurrency": "— (fixed concurrency)",
   "quick-test_enter_an_endpoint": "Enter an endpoint.",
-  "quick-test_enter_an_api_key_or_select_a_channel_with_saved": "Enter an API key or select a channel with saved credentials.",
+  "quick-test_enter_an_api_key_or_select_a_channel_with_saved": "Enter an API key or use a saved channel.",
   "quick-test_enter_a_model_id": "Enter a model ID.",
   "quick-test_enter_a_test_message": "Enter a test message.",
   "quick-test_timeout_must_be_an_integer_from_1_000_to_120": "Timeout must be an integer from 1,000 to 120,000 milliseconds.",
