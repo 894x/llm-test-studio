@@ -237,6 +237,22 @@ Windows 全仓 go test ./... 与 go vet ./... 通过。Ubuntu 24.04 WSL 的同�
 
 本阶段没有改变 schema、持久配置或报告格式，没有打开实际用户数据库、替换物理节点 runner 或调用真实渠道。Coordinator/outbox、公开 bindings、全部启动入口和 Remote UI、证据附件与最终 manifest/release、显式升级、历史数据独立转换及最终真实 K3/最小性能验收仍待完成。
 
+## 2026-10-16：提交 outbox 与固定确认记录
+
+新增桌面提交记录，冻结完整 JobSpec、规范摘要、所选配置身份及实际 runner 元数据，不接收或持久化 Submission.Secrets。该记录与 execution_jobs、远端已接受镜像分开；写入 outbox 不创建执行事实。prepared 只表示尚未发送，pending 表示发送意图已持久化但接收仍待确认，accepted 保存与原任务、子 ID、实际构建和安装匹配的确认。接收后不能回退或更换原准备值。
+
+pending 的 unreachable、not_found、identity_changed 和 rejected 只是有限观察，不改变权威执行状态，也不使记录重新可发送。特别是 GET 暂时 not_found 无法排除原请求仍在服务端完成接收；该观察不会生成新 ID 或把目标改为本地。相同准备的重复登记返回原记录；不同目标或 runner 信息冲突，两个仓库竞争相同 revision 的发送意图只有一个胜者。
+
+待确认列表使用 job_id keyset，数量最多 25、记录文档合计最多 16 MiB，保留尚未返回的尾项。SQL CASE 在 Get/List 的 driver Scan 之前限制单个文档大小。解码精确检查必填外层及 Prepared 字段、重复、大小写与 null，先分别验证有界 Spec/Runner/Receipt，再由这些值构造记录，避免未检查的重复值提前分配 typed 集合；行中独立身份和摘要必须匹配文档。损坏数据明确拒绝，读取不修改原字节。
+
+原结果集合扫描器提取为一个当前 owned JSON 扫描实现，继续保留事件、Run 报告与 Performance 的各自预算和错误分类。Spec、Submission 及 Freeze 在 typed 解码前也使用它，限制 32768 个 owned 集合成员和 128 层，原有 assets/secrets/comparison.runs 上限继续适用，native RawMessage body 保持 opaque。超限嵌套 entries、case_definitions、authored assertions 与 case_inputs 的损坏尾部在 typed 分配前拒绝，合法的原生大数组通过。
+
+验证覆盖三类记录保存与数据库重开、跨两个仓库的幂等和 CAS、错误确认、固定准备值变化、UPDATE 故障不推进记录，以及六份含 3 MiB 原生 body 的有效记录按字节分页。另覆盖重复/别名/null、9 MiB 文档、独立 owner 列损坏及拒绝字节不变；这些是应用契约与真实 SQLite 验证，不代表 Backend 提交、SSH 或提供商执行。
+
+Windows 全仓 Go 测试、针对性回归与 vet 通过。Ubuntu 24.04 WSL 的提交记录、字节分页、损坏解码和旧 schema 原字节保留测试通过，当前 jobcontract 全包与原结果资源预算全包也通过。审查发现的重复 envelope 绕过预算、SQL Scan 先分配大文档及嵌套领域集合无总预算三项均已修正并复核；原精确 envelope 集合限制的固定字段错误分类继续保留，所有当前检查均须成功才能 typed 解码。
+
+本阶段新增 job_submissions 及其 pending 索引，替换唯一当前 SQLite schema checksum；旧数据库仍明确拒绝且原样保留，独立升级工具未创建或执行，未打开实际用户数据库、更新物理 runner 或调用真实渠道。Coordinator、发送前 gate 的实际使用、确认丢失重查与全部桌面入口仍待实施。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

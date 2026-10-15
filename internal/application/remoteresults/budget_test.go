@@ -3,10 +3,12 @@ package remoteresults
 import (
 	"encoding/json"
 	"errors"
-	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/jsonbudget"
 )
 
 func TestOwnedCollectionsRejectBeforeReadingOversizedInvalidTail(t *testing.T) {
@@ -113,7 +115,10 @@ func TestCaseInputContainersAreCountedBeforeOpaqueProviderValues(t *testing.T) {
 }
 
 func TestDocumentBudgetsRejectDeepMalformedAndTrailingValues(t *testing.T) {
-	for _, raw := range []string{`{`, `{} {}`, `{"items":[1}`, strings.Repeat(`[`, maxDocumentDepth+2) + `0` + strings.Repeat(`]`, maxDocumentDepth+2)} {
+	for _, raw := range []string{
+		`{`, `{} {}`, `{"items":[1}`,
+		strings.Repeat(`[`, jsonbudget.MaxDepth+2) + `0` + strings.Repeat(`]`, jsonbudget.MaxDepth+2),
+	} {
 		if err := CheckEventBudget([]byte(raw)); err == nil {
 			t.Fatal("invalid/deep JSON accepted")
 		}

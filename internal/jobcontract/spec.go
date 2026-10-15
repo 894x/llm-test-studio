@@ -18,6 +18,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jsonbudget"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 	MaxAssets          = 128
 	MaxAssetBytes      = int64(1 << 30)
 	MaxJobAssetBytes   = int64(4 << 30)
+	MaxOwnedItems      = 32_768
 )
 
 var (
@@ -309,6 +311,26 @@ func (spec JobSpec) Digest() (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
+// DecodeSpec reads the single current non-secret job format with the same
+// byte and collection budgets used by complete submissions.
+func DecodeSpec(reader io.Reader) (JobSpec, error) {
+	if reader == nil {
+		return JobSpec{}, invalid("body")
+	}
+	raw, err := io.ReadAll(io.LimitReader(reader, MaxSubmissionBytes+1))
+	if err != nil {
+		return JobSpec{}, err
+	}
+	if len(raw) > MaxSubmissionBytes {
+		return JobSpec{}, ErrTooLarge
+	}
+	var spec JobSpec
+	if err := decode(raw, &spec); err != nil {
+		return JobSpec{}, err
+	}
+	return spec, spec.Validate()
+}
+
 func DecodeSubmission(reader io.Reader) (Submission, error) {
 	if reader == nil {
 		return Submission{}, invalid("body")
@@ -334,8 +356,17 @@ func DecodeSubmission(reader io.Reader) (Submission, error) {
 }
 
 func decode(raw []byte, destination any) error {
+	budgetErr := jsonbudget.Check(raw, MaxOwnedItems)
+	if errors.Is(budgetErr, jsonbudget.ErrExceeded) {
+		return ErrTooLarge
+	}
+	// Both current checks must pass. Preserve the precise fixed envelope field
+	// error when a malformed tail also follows an overfull bounded collection.
 	if err := checkCollectionBounds(raw, scopeRoot); err != nil {
 		return err
+	}
+	if budgetErr != nil {
+		return invalid("body")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()

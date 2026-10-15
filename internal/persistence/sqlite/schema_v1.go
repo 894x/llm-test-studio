@@ -1,6 +1,19 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "job_submissions", table: "job_submissions", ddl: `CREATE TABLE job_submissions (
+		job_id TEXT PRIMARY KEY,
+		configuration_id TEXT NOT NULL,
+		node_id TEXT NOT NULL,
+		installation_id TEXT NOT NULL,
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		state TEXT NOT NULL CHECK(state IN ('prepared', 'pending', 'accepted')),
+		spec_sha256 TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json))
+	)`},
+	{kind: "index", name: "idx_job_submissions_pending", table: "job_submissions",
+		ddl: `CREATE INDEX idx_job_submissions_pending ON job_submissions(job_id)
+		WHERE state IN ('prepared', 'pending')`},
 	{kind: "table", name: "remote_performance_results", table: "remote_performance_results", ddl: `CREATE TABLE remote_performance_results (
 		job_id TEXT PRIMARY KEY,
 		report_id TEXT NOT NULL UNIQUE,
