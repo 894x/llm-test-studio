@@ -13,6 +13,8 @@ import (
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
+const runStorageTimeout = 5 * time.Second
+
 // ExecutionRepository contains only execution facts, never authored catalogs.
 type ExecutionRepository interface {
 	GetRun(context.Context, string) (domain.Run, error)
@@ -30,19 +32,23 @@ type HostDependencies struct {
 	Reporter         ReportGenerator
 	ReportError      func(error)
 	ReportDiagnostic func(Diagnostic)
+	// PersistenceFailure is a synchronous owner signal, separate from lossy
+	// diagnostics. It must return promptly and must not call back into this Host.
+	PersistenceFailure func(string)
 }
 
 // Host executes complete frozen runs independently of the preparing client.
 type Host struct {
-	repository      ExecutionRepository
-	executor        Executor
-	clock           Clock
-	metaFactory     MetaFactory
-	reporter        ReportGenerator
-	reportError     func(error)
-	diagnostics     *diagnosticDispatcher
-	recoveryContext context.Context
-	stopRecovery    context.CancelFunc
+	repository         ExecutionRepository
+	executor           Executor
+	clock              Clock
+	metaFactory        MetaFactory
+	reporter           ReportGenerator
+	reportError        func(error)
+	diagnostics        *diagnosticDispatcher
+	persistenceFailure func(string)
+	recoveryContext    context.Context
+	stopRecovery       context.CancelFunc
 
 	mu        sync.Mutex
 	active    map[string]*runControl
@@ -107,9 +113,10 @@ func NewHost(dependencies HostDependencies) (*Host, error) {
 	return &Host{
 		repository: dependencies.Repository, executor: dependencies.Executor,
 		clock: dependencies.Clock, metaFactory: factory, reporter: reporter,
-		reportError:     dependencies.ReportError,
-		diagnostics:     newDiagnosticDispatcher(dependencies.ReportDiagnostic),
-		recoveryContext: recoveryContext, stopRecovery: stopRecovery,
+		reportError:        dependencies.ReportError,
+		diagnostics:        newDiagnosticDispatcher(dependencies.ReportDiagnostic),
+		persistenceFailure: dependencies.PersistenceFailure,
+		recoveryContext:    recoveryContext, stopRecovery: stopRecovery,
 		active: make(map[string]*runControl), closeDone: make(chan struct{}),
 	}, nil
 }
@@ -148,7 +155,7 @@ func (service *Host) AdoptQueued(
 	if _, exists := service.active[runID]; exists {
 		return ErrAlreadyAccepted
 	}
-	stored, err := service.repository.GetRun(ctx, runID)
+	stored, err := service.GetRun(ctx, runID)
 	if err != nil {
 		return fmt.Errorf("read admitted run: %w", err)
 	}
@@ -323,7 +330,7 @@ func (service *Host) WaitRun(ctx context.Context, runID string) (domain.Run, err
 			return domain.Run{}, ctx.Err()
 		}
 	}
-	run, err := service.repository.GetRun(ctx, runID)
+	run, err := service.GetRun(ctx, runID)
 	if err != nil {
 		return domain.Run{}, err
 	}
@@ -337,7 +344,9 @@ func (service *Host) GetRun(ctx context.Context, runID string) (domain.Run, erro
 	if service == nil || ctx == nil || !domain.IsUUID(runID) {
 		return domain.Run{}, ErrInvalid
 	}
-	return service.repository.GetRun(ctx, runID)
+	storeContext, cancel := context.WithTimeout(ctx, runStorageTimeout)
+	defer cancel()
+	return service.repository.GetRun(storeContext, runID)
 }
 
 func (service *Host) Close() error {
@@ -409,6 +418,7 @@ func (service *Host) execute(ctx context.Context, control *runControl) {
 	if err := service.transition(context.Background(), control, domain.RunRunning); err != nil {
 		runID := control.run.Meta().ID
 		control.mu.Unlock()
+		service.notifyPersistenceFailure(runID)
 		service.report(Diagnostic{
 			RunID: runID, Operation: "transition_running",
 			ErrorCode: "run_state_transition_failed", Err: err,
@@ -422,6 +432,7 @@ func (service *Host) execute(ctx context.Context, control *runControl) {
 		if err := service.transition(context.Background(), control, domain.RunDraining); err != nil {
 			runID := control.run.Meta().ID
 			control.mu.Unlock()
+			service.notifyPersistenceFailure(runID)
 			service.report(Diagnostic{
 				RunID: runID, Operation: "transition_draining",
 				ErrorCode: "run_state_transition_failed", Err: err,
@@ -490,7 +501,7 @@ func (service *Host) executeEntries(ctx context.Context, control *runControl) {
 			if err := result.Validate(); err != nil {
 				return fmt.Errorf("invalid execution result: %w", err)
 			}
-			if err := service.repository.AppendResults(ctx, result); err != nil {
+			if err := service.appendResults(ctx, result); err != nil {
 				storageErr = err
 				return err
 			}
@@ -610,6 +621,7 @@ func (service *Host) newRequestObservation(
 }
 
 func (service *Host) failResultPersistence(control *runControl, runID string, phase domain.ErrorCode, err error) {
+	service.notifyPersistenceFailure(runID)
 	service.report(Diagnostic{RunID: runID, Operation: string(phase), ErrorCode: "result_persistence_failed", Err: err})
 	service.finishRun(control, domain.RunFailed, domain.RunFailure{Phase: phase, ErrorCode: "result_persistence_failed"})
 }
@@ -644,7 +656,7 @@ func (service *Host) persistSuiteCaseSummaries(
 	if len(summaries) == 0 {
 		return nil
 	}
-	if err := service.repository.AppendResults(ctx, summaries...); err != nil {
+	if err := service.appendResults(ctx, summaries...); err != nil {
 		return err
 	}
 	for _, summary := range summaries {
@@ -672,7 +684,7 @@ func (service *Host) appendSuiteMarker(
 	if err := marker.Validate(); err != nil {
 		return false, err
 	}
-	return false, service.repository.AppendResults(ctx, marker)
+	return false, service.appendResults(ctx, marker)
 }
 
 func (service *Host) finishRun(control *runControl, terminal domain.RunStatus, failure domain.RunFailure) {
@@ -695,6 +707,7 @@ func (service *Host) finishRun(control *runControl, terminal domain.RunStatus, f
 	runID := control.run.Meta().ID
 	control.mu.Unlock()
 	if transitionErr != nil {
+		service.notifyPersistenceFailure(runID)
 		service.report(Diagnostic{
 			RunID: runID, Operation: "transition_" + string(terminal),
 			ErrorCode: "run_state_transition_failed", Err: transitionErr,
@@ -732,6 +745,12 @@ func (service *Host) generateTerminalReport(control *runControl) {
 
 func (service *Host) report(diagnostic Diagnostic) {
 	service.diagnostics.submit(diagnostic)
+}
+
+func (service *Host) notifyPersistenceFailure(runID string) {
+	if service.persistenceFailure != nil {
+		service.persistenceFailure(runID)
+	}
 }
 
 func aggregateCaseResult(
@@ -829,12 +848,14 @@ func cloneDimensions(values map[string]string) map[string]string {
 }
 
 func (service *Host) transition(ctx context.Context, control *runControl, status domain.RunStatus) error {
+	storeContext, cancel := context.WithTimeout(ctx, runStorageTimeout)
+	defer cancel()
 	current := control.run
 	next, err := current.Transition(status, service.clock.Now())
 	if err != nil {
 		return err
 	}
-	if err := service.repository.UpdateRun(ctx, current.Meta().Revision, next); err != nil {
+	if err := service.repository.UpdateRun(storeContext, current.Meta().Revision, next); err != nil {
 		return err
 	}
 	control.run = next
@@ -842,16 +863,24 @@ func (service *Host) transition(ctx context.Context, control *runControl, status
 }
 
 func (service *Host) fail(ctx context.Context, control *runControl, failure domain.RunFailure) error {
+	storeContext, cancel := context.WithTimeout(ctx, runStorageTimeout)
+	defer cancel()
 	current := control.run
 	next, err := current.Fail(failure, service.clock.Now())
 	if err != nil {
 		return err
 	}
-	if err := service.repository.UpdateRun(ctx, current.Meta().Revision, next); err != nil {
+	if err := service.repository.UpdateRun(storeContext, current.Meta().Revision, next); err != nil {
 		return err
 	}
 	control.run = next
 	return nil
+}
+
+func (service *Host) appendResults(ctx context.Context, results ...domain.Result) error {
+	storeContext, cancel := context.WithTimeout(ctx, runStorageTimeout)
+	defer cancel()
+	return service.repository.AppendResults(storeContext, results...)
 }
 
 func (service *Host) activeControl(runID string) (*runControl, error) {

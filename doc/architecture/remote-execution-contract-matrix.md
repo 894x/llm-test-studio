@@ -61,8 +61,8 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | C19 | TestSnapshotStateValidationBoundaries；SQLite repository_jobs_test.go 的 CAS、终态和事务故障测试 | partial：当前状态、计数、时间、子身份及事务边界已验证；HTTP 控制与竞争调度待宿主 |
 | C20 | TestEventPayloadAndCompleteEnvelopeByteBoundaries；SQLite TestJobEvent* | partial：完整序列化字节、转义、条数、权威序号、字节续页与损坏拒绝通过；HTTP 传输与桌面投影待实现 |
 | C21 | TestCommandValidationBoundaries、TestCommandDecoderStrictFieldsAndByteLimits；SQLite 命令重传和内容冲突断言 | partial：主要身份、枚举、计数、JSON 与字节边界通过；HTTP body/path 身份核对及完整字段类型矩阵待补齐 |
-| C22 | TestCommandConfirmationStateDecisionTable、TestJobCommandStateDecisionTableAndStableConfirmations、TestJobCommandRollsBackStateEventsAndConfirmationTogether、TestCancelCommandAndCompletionHaveOneDurableWinner；jobhost 停止/取消及丢确认测试 | partial：存储决策、原确认、回滚、两个仓库连接竞争及可控执行器信号通过；真实 Core 控制、HTTP 和离线待送达尚待实现 |
+| C22 | TestCommandConfirmationStateDecisionTable、TestJobCommandStateDecisionTableAndStableConfirmations、TestJobCommandRollsBackStateEventsAndConfirmationTogether、TestCancelCommandAndCompletionHaveOneDurableWinner；jobhost 控制与 RunExecutor Stop/Cancel 测试 | partial：存储决策、原确认、回滚、两个连接竞争及 Run/Comparison 真实 Core 的 Mock HTTP 控制通过；Performance Core、管理 HTTP 和离线待送达尚待实现 |
 | C23 | TestPolicyExplicitResourceBoundaries、TestConcurrencyBudgetUsesCorePhasePeaksAndWholeComparison、TestSharedConcurrencyBudgetQueuesAcrossActiveJobSlots、TestHostQueueCapacityExpiryAndRetryDoNotSendExtraRequests | partial：策略边界、各类型峰值和队列实测通过；真实 Core/Guard 集成与完整类型组合仍待验证 |
-| C24 | jobhost/host_test.go、fault_test.go；SQLite TestRecoveryJobs*、TestLookupJob*、TestProgressEvent* | partial：真实 SQLite 加可控 Executor/Guard 验证所属上下文、lease、预算、故障隔离与收尾恢复；真实请求、asset/disk Guard、报告生成和节点重启仍待完成 |
+| C24 | jobhost/host_test.go、fault_test.go、run_executor_test.go、run_executor_settlement_test.go、run_executor_fault_test.go；runs/host_lifecycle_test.go；SQLite TestRecoveryJobs*、TestLookupJob*、TestProgressEvent* | partial：真实 SQLite 与 Mock HTTP 验证 Run/Comparison 的请求、结果、报告、提前停止、可靠故障通知、启动存储阻塞下的有界退出、确认丢失及仅补缺失报告的无请求恢复；Performance Core、asset/disk Guard、独立进程与真实节点仍待完成 |
 
 自有 envelope 字段采用精确大小写并拒绝重复字段，避免 Go 默认大小写不敏感匹配绕过集合限制。领域快照及原生请求 JSON 继续使用其当前 decoder；不能据此声称 R11/R12 的所有边界已经验收。

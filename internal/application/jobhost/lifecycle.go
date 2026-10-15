@@ -74,7 +74,8 @@ func (host *Host) execute(ctx context.Context, control *jobControl) {
 	}
 	outcome, err := host.executor.Execute(ctx, Execution{
 		Spec: control.spec, Secrets: control.secrets, StopSending: control.stop,
-		OnProgress: func(progress quicktest.PerformanceProgress) { host.observe(control, progress) },
+		OnProgress:           func(progress quicktest.PerformanceProgress) { host.observe(control, progress) },
+		OnPersistenceFailure: host.storageFailed,
 	})
 	if err != nil || outcome.Validate() != nil {
 		host.storageFailed()

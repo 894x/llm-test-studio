@@ -15,19 +15,21 @@ func (service *Host) saveTerminal(
 	terminal domain.RunStatus,
 	failure domain.RunFailure,
 ) error {
+	storeContext, cancel := context.WithTimeout(ctx, runStorageTimeout)
+	defer cancel()
 	if isTerminal(control.run.Status()) {
 		return nil
 	}
 	var err error
 	if terminal == domain.RunFailed {
-		err = service.fail(ctx, control, failure)
+		err = service.fail(storeContext, control, failure)
 	} else {
-		err = service.transition(ctx, control, terminal)
+		err = service.transition(storeContext, control, terminal)
 	}
 	if err == nil {
 		return nil
 	}
-	stored, readErr := service.repository.GetRun(ctx, control.run.Meta().ID)
+	stored, readErr := service.repository.GetRun(storeContext, control.run.Meta().ID)
 	validStoredRun := readErr == nil && stored.Meta().ID == control.run.Meta().ID
 	if validStoredRun && stored.Meta().Revision >= control.run.Meta().Revision {
 		control.run = stored

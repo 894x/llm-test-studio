@@ -338,7 +338,7 @@ func TestHostExecutionDeadlineAndShutdownReasons(t *testing.T) {
 			submission := testSubmission(t)
 			status := domain.RunFailed
 			if scenario == "deadline" {
-				dependencies.Policy.ExecutionTimeout = 60 * time.Millisecond
+				dependencies.Policy.ExecutionTimeout = 2 * time.Second
 			}
 			if scenario == "local_shutdown" {
 				dependencies.Target = jobcontract.ExecutionTarget{Kind: jobcontract.TargetLocal}

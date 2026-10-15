@@ -25,6 +25,9 @@ type Execution struct {
 	Secrets     map[string]*credentials.Lease
 	StopSending <-chan struct{}
 	OnProgress  func(quicktest.PerformanceProgress)
+	// A known storage fault must make the owner unavailable before Core joins
+	// its workers. This callback must not wait for execution to finish.
+	OnPersistenceFailure func()
 }
 
 type Outcome struct {

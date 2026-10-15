@@ -3,6 +3,7 @@ package runs_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -260,5 +261,90 @@ func TestConcurrentCloseJoinsQueuedCancellationReport(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("close or cancellation did not join the finished report")
 		}
+	}
+}
+
+func TestOwnerPersistenceFailureIsDeliveredWhenDiagnosticsAreFull(t *testing.T) {
+	fixture := newRunFixture(t)
+	repository := &terminalRecoveryRepository{
+		fakeRepository: &fakeRepository{fixture: fixture}, unavailable: true, allTerminal: true,
+	}
+	diagnosticEntered, diagnosticRelease := make(chan struct{}), make(chan struct{})
+	releaseDiagnostic := sync.OnceFunc(func() { close(diagnosticRelease) })
+	defer releaseDiagnostic()
+	diagnosticOnce := sync.OnceFunc(func() { close(diagnosticEntered) })
+	ownerFailed := make(chan string, 1)
+	executor := hostExecutorFunc(func(
+		_ context.Context,
+		request runs.ExecutionRequest,
+		emit func(runs.ResultDraft) error,
+	) error {
+		for index := range 600 {
+			if err := emit(runs.ResultDraft{
+				CaseID: request.Cases[0].ID, RequestID: fmt.Sprintf("failed-%d", index),
+				ExecutionStatus: domain.ExecutionCompleted, Verification: failedVerification(),
+				Failure: domain.FailureRateLimit, ErrorCode: "rate_limited",
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	host, err := runs.NewHost(runs.HostDependencies{
+		Repository: repository, Executor: executor, Clock: &stepClock{next: fixture.now},
+		ReportDiagnostic: func(runs.Diagnostic) {
+			diagnosticOnce()
+			<-diagnosticRelease
+		},
+		PersistenceFailure: func(id string) {
+			select {
+			case ownerFailed <- id:
+			default:
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = host.Close() })
+	prepared := preparedFixture(t, fixture)
+	run, err := domain.NewRun(prepared.Meta, prepared.PlanID, prepared.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CreateRun(t.Context(), run); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := credentials.NewTemporaryLease([]byte("owned-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := host.AdoptQueued(t.Context(), prepared.Meta.ID, lease); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ActivateRun(context.Background(), prepared.Meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-diagnosticEntered:
+	case <-time.After(time.Second):
+		t.Fatal("diagnostic consumer did not block")
+	}
+	select {
+	case id := <-ownerFailed:
+		if id != prepared.Meta.ID {
+			t.Fatal("owner received a different Run identity")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("saturated diagnostics swallowed the owner failure signal")
+	}
+	failure := domain.RunFailure{Phase: "runner", ErrorCode: "job_storage_unavailable"}
+	if err := host.FailRun(t.Context(), prepared.Meta.ID, failure); err == nil {
+		t.Fatal("storage outage was hidden")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if _, err := host.WaitRun(ctx, prepared.Meta.ID); !errors.Is(err, runs.ErrNotActive) {
+		t.Fatalf("owner could not stop terminal recovery: %v", err)
 	}
 }
