@@ -36,12 +36,16 @@ type Host struct {
 type ExecutionOptions struct {
 	OnProgress  func(PerformanceProgress)
 	StopSending <-chan struct{}
+	// OnCheckpoint is synchronous, owns its snapshot and must honor its storage
+	// context. Failure stops execution before another phase can send requests.
+	OnCheckpoint func(context.Context, PerformanceCheckpoint) error
 }
 
 type performanceControl struct {
-	reportID   string
-	stop       <-chan struct{}
-	onProgress func(PerformanceProgress)
+	reportID    string
+	stop        <-chan struct{}
+	onProgress  func(PerformanceProgress)
+	checkpoints *performanceCheckpointObserver
 }
 
 func NewHost(dependencies HostDependencies) *Host {
@@ -60,7 +64,7 @@ func (service *Host) ExecutePrepared(
 	prepared PreparedPerformance,
 	lease *credentials.Lease,
 	options ExecutionOptions,
-) (PerformanceReport, error) {
+) (report PerformanceReport, executionErr error) {
 	defer lease.Close()
 	if service == nil {
 		return PerformanceReport{}, ErrServiceUnavailable
@@ -69,10 +73,28 @@ func (service *Host) ExecutePrepared(
 	if invalid || prepared.Validate() != nil {
 		return PerformanceReport{}, ErrInvalidPreparedPerformance
 	}
-	report := prepared.report()
+	report = prepared.report()
+	checkpoints := &performanceCheckpointObserver{
+		callback: options.OnCheckpoint, stage: PerformanceStagePreparing,
+	}
+	defer func() {
+		if executionErr == nil {
+			executionErr = checkpoints.emit(ctx, PerformanceCheckpoint{
+				Stage: checkpoints.stage, Boundary: PerformanceBoundaryReturned,
+				RungIndex: checkpoints.rung, Report: report,
+			})
+		}
+	}()
+	if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+		Stage: PerformanceStagePreparing, Boundary: PerformanceBoundaryEntered, Report: report,
+	}); err != nil {
+		return report, err
+	}
 	address := normalizedAddress{baseURL: prepared.BaseURL, endpoint: prepared.Endpoint}
 	onProgress := options.OnProgress
-	control := performanceControl{reportID: prepared.ReportID, stop: options.StopSending, onProgress: onProgress}
+	control := performanceControl{
+		reportID: prepared.ReportID, stop: options.StopSending, onProgress: onProgress, checkpoints: checkpoints,
+	}
 	requestBudget, measuredCap, budgetErr := preparePerformanceProfile(report.Profile)
 	if budgetErr != nil {
 		report.ErrorCode = ErrorInvalidRequest
@@ -123,8 +145,18 @@ func (service *Host) ExecutePrepared(
 	}
 	defer cleanup()
 	executor = streamingPerformanceExecutor(executor)
+	if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+		Stage: PerformanceStagePreparing, Boundary: PerformanceBoundaryCompleted, Report: report,
+	}); err != nil {
+		return report, err
+	}
 
 	if prepared.Profile.WarmupRequests > 0 {
+		if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+			Stage: PerformanceStageWarmup, Boundary: PerformanceBoundaryEntered, Report: report,
+		}); err != nil {
+			return report, err
+		}
 		warmupProfile := performanceWarmupProfile(report.Profile)
 		warmupOutcome, warmupErr := load.Run(
 			ctx,
@@ -137,12 +169,28 @@ func (service *Host) ExecutePrepared(
 			},
 		)
 		report.Warmup = performanceTrafficSummary(prepared.Profile.WarmupRequests, warmupOutcome)
-		if preparationRunFailed(ctx, warmupOutcome, warmupErr, &report) {
+		finished := preparationRunFailed(
+			ctx,
+			warmupOutcome,
+			warmupErr,
+			&report,
+		)
+		if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+			Stage: PerformanceStageWarmup, Boundary: PerformanceBoundaryCompleted, Report: report,
+		}); err != nil {
+			return report, err
+		}
+		if finished {
 			return report, nil
 		}
 	}
 
 	if prepared.Profile.RampDurationMS > 0 {
+		if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+			Stage: PerformanceStageRamp, Boundary: PerformanceBoundaryEntered, Report: report,
+		}); err != nil {
+			return report, err
+		}
 		rampProfile := performanceRampProfile(report.Profile, requestBudget.RampCap)
 		rampOptions := load.Options{
 			Ramp:                 true,
@@ -174,7 +222,18 @@ func (service *Host) ExecutePrepared(
 		} else {
 			report.Ramp.TargetRatePerSecond = prepared.Profile.RatePerSecond
 		}
-		if preparationRunFailed(ctx, rampOutcome, rampErr, &report) {
+		finished := preparationRunFailed(
+			ctx,
+			rampOutcome,
+			rampErr,
+			&report,
+		)
+		if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+			Stage: PerformanceStageRamp, Boundary: PerformanceBoundaryCompleted, Report: report,
+		}); err != nil {
+			return report, err
+		}
+		if finished {
 			return report, nil
 		}
 	}
@@ -190,10 +249,20 @@ func (service *Host) ExecutePrepared(
 		)
 	}
 
+	if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+		Stage: PerformanceStageMeasured, Boundary: PerformanceBoundaryEntered, Report: report,
+	}); err != nil {
+		return report, err
+	}
 	evidenceRecorder.enableFresh()
 	loadOptions := performanceLoadOptions(report.Profile, measuredCap, onProgress)
 	loadOptions.StopSending = options.StopSending
-	outcome, runErr := load.Run(ctx, profile, executor, loadOptions)
+	outcome, runErr := load.Run(
+		ctx,
+		profile,
+		executor,
+		loadOptions,
+	)
 	outcome.Progress = performanceMeasuredProgress(report.Profile, measuredCap, outcome.Progress)
 	report.Progress = performanceProgress(outcome.Progress)
 	report.Metrics = outcome.Metrics
@@ -214,6 +283,11 @@ func (service *Host) ExecutePrepared(
 		} else {
 			report.ErrorCode = load.ErrorRequestFailed
 		}
+	}
+	if err := checkpoints.emit(ctx, PerformanceCheckpoint{
+		Stage: PerformanceStageMeasured, Boundary: PerformanceBoundaryCompleted, Report: report,
+	}); err != nil {
+		return report, err
 	}
 	if outcome.Progress.Launched > 0 {
 		service.archivePerformanceReport(ctx, &report, prepared.ReportID)
@@ -265,14 +339,26 @@ func (service *Host) runPerformanceCapacity(
 		Status: PerformanceSLONotEvaluated,
 		Rungs:  make([]PerformanceCapacityRung, 0, len(targets)),
 	}
+	report.CapacityResult = capacity
 	var selected *performanceCapacityProjection
 	var selectedIndex uint32
 
 	for targetIndex, target := range targets {
 		rungIndex := uint32(targetIndex)
+		if err := control.checkpoints.emit(ctx, PerformanceCheckpoint{
+			Stage: PerformanceStageCapacity, Boundary: PerformanceBoundaryEntered,
+			RungIndex: &rungIndex, Report: report,
+		}); err != nil {
+			return report, err
+		}
 		effectiveProfile := performanceCapacityProfile(report.Profile, target)
 		evidenceRecorder.enableFresh()
-		progressCallback := capacityProgressCallback(onProgress, rungIndex, uint32(len(targets)), target)
+		progressCallback := capacityProgressCallback(
+			onProgress,
+			rungIndex,
+			uint32(len(targets)),
+			target,
+		)
 		options := performanceLoadOptions(effectiveProfile, effectiveProfile.RequestCount, progressCallback)
 		options.StopSending = control.stop
 		if workload != nil && workload.profile.RandomInput {
@@ -286,7 +372,12 @@ func (service *Host) runPerformanceCapacity(
 		)
 		outcome.Progress = performanceMeasuredProgress(effectiveProfile, effectiveProfile.RequestCount, outcome.Progress)
 		progress := performanceProgress(outcome.Progress)
-		decorateCapacityProgress(&progress, rungIndex, uint32(len(targets)), target)
+		decorateCapacityProgress(
+			&progress,
+			rungIndex,
+			uint32(len(targets)),
+			target,
+		)
 		failures := performanceFailures(outcome.Results)
 		samples := performanceSamples(outcome.Results, evidenceRecorder.snapshot(), workload)
 		assessment := buildPerformanceSLOAssessment(report.Profile, samples, progress)
@@ -343,9 +434,20 @@ func (service *Host) runPerformanceCapacity(
 		}
 		if ctx.Err() != nil {
 			capacity.Status = PerformanceSLONotEvaluated
-			break
 		}
-		if assessment.Status != PerformanceSLOPassed {
+		applyPerformanceCapacityProjection(
+			ctx,
+			&report,
+			selected,
+			selectedIndex,
+		)
+		if err := control.checkpoints.emit(ctx, PerformanceCheckpoint{
+			Stage: PerformanceStageCapacity, Boundary: PerformanceBoundaryCompleted,
+			RungIndex: &rungIndex, Report: report,
+		}); err != nil {
+			return report, err
+		}
+		if ctx.Err() != nil || assessment.Status != PerformanceSLOPassed {
 			break
 		}
 	}
@@ -354,9 +456,31 @@ func (service *Host) runPerformanceCapacity(
 		report.ErrorCode = load.ErrorRequestFailed
 		return report, nil
 	}
-	selectedCopy := selectedIndex
-	capacity.SelectedRungIndex = &selectedCopy
-	report.CapacityResult = capacity
+	applyPerformanceCapacityProjection(
+		ctx,
+		&report,
+		selected,
+		selectedIndex,
+	)
+	if capacity.Status == PerformanceSLONotEvaluated || ctx.Err() != nil {
+		return report, nil
+	}
+	if report.Progress.Launched > 0 {
+		service.archivePerformanceReport(ctx, &report, control.reportID)
+	}
+	return report, nil
+}
+
+func applyPerformanceCapacityProjection(
+	ctx context.Context,
+	report *PerformanceReport,
+	selected *performanceCapacityProjection,
+	selectedIndex uint32,
+) {
+	if selected == nil {
+		return
+	}
+	report.CapacityResult.SelectedRungIndex = &selectedIndex
 	report.Success = selected.success
 	report.Progress = selected.progress
 	report.Metrics = selected.metrics
@@ -366,16 +490,11 @@ func (service *Host) runPerformanceCapacity(
 	report.SLOAssessment = selected.sloAssessment
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		report.ErrorCode = classifyContext(ctxErr)
-	} else if selected.runErr != nil {
+		return
+	}
+	if selected.runErr != nil {
 		report.ErrorCode = load.ErrorRequestFailed
 	}
-	if capacity.Status == PerformanceSLONotEvaluated || ctx.Err() != nil {
-		return report, nil
-	}
-	if report.Progress.Launched > 0 {
-		service.archivePerformanceReport(ctx, &report, control.reportID)
-	}
-	return report, nil
 }
 
 func capacityProgressCallback(
@@ -387,7 +506,12 @@ func capacityProgressCallback(
 		return nil
 	}
 	return func(progress PerformanceProgress) {
-		decorateCapacityProgress(&progress, rungIndex, rungCount, target)
+		decorateCapacityProgress(
+			&progress,
+			rungIndex,
+			rungCount,
+			target,
+		)
 		onProgress(progress)
 	}
 }
@@ -694,7 +818,12 @@ func (service *Host) performanceExecutor(ctx context.Context, config performance
 		Name:              "quick-performance-test", BaseURL: address.baseURL,
 		Protocol: domain.ProtocolOpenAIChat, UpstreamModelName: modelID,
 	}
-	client, err := openai.NewClient(channel, lease, service.transport, options...)
+	client, err := openai.NewClient(
+		channel,
+		lease,
+		service.transport,
+		options...,
+	)
 	_ = lease.Close()
 	if err != nil {
 		return nil, func() {}, classifyConstruction(err)

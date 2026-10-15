@@ -32,6 +32,8 @@
 | C22 | command confirmation / 状态决策 | queued stop→cancelled；starting/running stop→draining；draining stop 不改 revision；活动 cancel→cancelled；终态拒绝新操作 | 7 状态×2 操作；确认丢失后重传；完成与取消竞争；状态/事件/确认写故障 | 确认保存原决策快照，不把旧确认当作当前状态；重传不再转换 | 已设计 / 见下方证据 |
 | C23 | host policy / 显式资源 | 活动槽 1..128；排队槽 0..1024；总并发 1..65536；排队与执行时限 >0 且 <=24h | 缺失、下限、上限、超限；顺序 Entry 峰值、warmup、open-loop 实际 cap、Comparison 求和 | 超预算接收前拒绝，不削减工作量；排队超时不调用执行器 | 已设计 / 见下方证据 |
 | C24 | host ownership / 生命周期 | 接收后拥有上下文、秘密和 reservation；同 ID 不重启；存储故障停止新调度；终态收尾有持久确认 | 接收/命令确认丢失、请求取消、队列与执行超时、退出、重启、慢收尾、释放失败 | 重启仅 Settle、不得 Execute；foreign owner 保留；progress 限频且共事务 | 已设计 / 见下方证据 |
+| C25 | Performance checkpoint / 阶段事实 | stage=preparing/warmup/ramp/measured/capacity；boundary=entered/completed/returned；capacity 有合法 rung_index，其余禁止；完整 checkpoint 最多 32 MiB | 全阶段顺序；0/1/N 容量阶梯；回调修改隔离；阶段开始/结束/返回写失败；取消后独立存储时限；提前停止不进入下一阶段 | 阶段进入先观察再发请求；阶段完成先观察再推进；回调失败停止并释放秘密，不重试上游；returned 不能把未知阶段流量解释为零 | 已设计 / 见下方证据 |
+| C26 | Performance observation/result / 持久收尾 | 最新 checkpoint 使用 CAS 与小型事件共事务；结果明确 not_started/available/interrupted；只允许唯一终态与封口引用，报告身份不变 | 写入/事件回滚；确认丢失；重复与冲突；已终态未封口恢复；无观察记录和阶段中崩溃；部分容量观察保留 | 统计归档仍采用当前 measured 验证规则；完整 Job 结果另存真实阶段观察；Settle 与恢复零上游请求 | 已设计 / 待实现和执行 |
 
 RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当前领域 validator 及对应已有测试为规则来源。本矩阵不据此宣称这些既有合同已穷尽所有组合。每行只有全部必需场景有断言和执行记录后才可标为 covered；有缺项保持 partial。
 
@@ -64,5 +66,6 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | C22 | TestCommandConfirmationStateDecisionTable、TestJobCommandStateDecisionTableAndStableConfirmations、TestJobCommandRollsBackStateEventsAndConfirmationTogether、TestCancelCommandAndCompletionHaveOneDurableWinner；jobhost 控制与 RunExecutor Stop/Cancel 测试 | partial：存储决策、原确认、回滚、两个连接竞争及 Run/Comparison 真实 Core 的 Mock HTTP 控制通过；Performance Core、管理 HTTP 和离线待送达尚待实现 |
 | C23 | TestPolicyExplicitResourceBoundaries、TestConcurrencyBudgetUsesCorePhasePeaksAndWholeComparison、TestSharedConcurrencyBudgetQueuesAcrossActiveJobSlots、TestHostQueueCapacityExpiryAndRetryDoNotSendExtraRequests | partial：策略边界、各类型峰值和队列实测通过；真实 Core/Guard 集成与完整类型组合仍待验证 |
 | C24 | jobhost/host_test.go、fault_test.go、run_executor_test.go、run_executor_settlement_test.go、run_executor_fault_test.go；runs/host_lifecycle_test.go；SQLite TestRecoveryJobs*、TestLookupJob*、TestProgressEvent* | partial：真实 SQLite 与 Mock HTTP 验证 Run/Comparison 的请求、结果、报告、提前停止、可靠故障通知、启动存储阻塞下的有界退出、确认丢失及仅补缺失报告的无请求恢复；Performance Core、asset/disk Guard、独立进程与真实节点仍待完成 |
+| C25 | quicktest/checkpoint_test.go 与 TestPerformanceHostStopSendingDoesNotAdvanceToLaterPhases | partial：全阶段与三个容量阶梯的边界顺序、各边界回调失败后不增加 HTTP 请求、完整快照与指针隔离、32 MiB 与超限、非法阶段/边界/配置/身份/阶梯索引、取消后的独立 5 秒存储上下文和最后观察已通过；当前只校验 envelope，完整事实校验及 SQLite 持久回读尚待 C26 |
 
 自有 envelope 字段采用精确大小写并拒绝重复字段，避免 Go 默认大小写不敏感匹配绕过集合限制。领域快照及原生请求 JSON 继续使用其当前 decoder；不能据此声称 R11/R12 的所有边界已经验收。

@@ -83,9 +83,19 @@ func TestPerformanceHostUsesTransportedInputWithoutDesktopResolvers(t *testing.T
 	cancel()
 	archive := &capturingPerformanceArchive{}
 	host := NewHost(HostDependencies{Transport: server.Client().Transport, Archive: archive})
-	report, err := host.ExecutePrepared(context.Background(), transported, lease, ExecutionOptions{})
+	report, err := host.ExecutePrepared(
+		context.Background(),
+		transported,
+		lease,
+		ExecutionOptions{},
+	)
 	if err != nil || !report.Success || requests.Load() != 2 {
-		t.Fatalf("host result: success=%v requests=%d error=%v", report.Success, requests.Load(), err)
+		t.Fatalf(
+			"host result: success=%v requests=%d error=%v",
+			report.Success,
+			requests.Load(),
+			err,
+		)
 	}
 	if report.ReportID != prepared.ReportID || len(archive.saved) != 1 {
 		t.Fatal("host replaced the report identity assigned before submission")
@@ -197,8 +207,20 @@ func TestPerformanceHostStopSendingDoesNotAdvanceToLaterPhases(t *testing.T) {
 			host := NewHost(HostDependencies{Transport: transport, Archive: archive})
 			stop := make(chan struct{})
 			done := make(chan PerformanceReport, 1)
+			checkpoints := []string{}
 			go func() {
-				report, _ := host.ExecutePrepared(ctx, prepared, lease, ExecutionOptions{StopSending: stop})
+				report, _ := host.ExecutePrepared(
+					ctx,
+					prepared,
+					lease,
+					ExecutionOptions{
+						StopSending: stop,
+						OnCheckpoint: func(ctx context.Context, checkpoint PerformanceCheckpoint) error {
+							checkpoints = append(checkpoints, checkpointLabel(checkpoint))
+							return nil
+						},
+					},
+				)
 				done <- report
 			}()
 			select {
@@ -216,6 +238,13 @@ func TestPerformanceHostStopSendingDoesNotAdvanceToLaterPhases(t *testing.T) {
 			}
 			if !report.Progress.Stopped || requests.Load() != stopAtRequest {
 				t.Fatalf("host advanced after stop: progress=%+v requests=%d", report.Progress, requests.Load())
+			}
+			lastBoundary := phase + "/returned"
+			if phase == "capacity" {
+				lastBoundary += "/0"
+			}
+			if len(checkpoints) == 0 || checkpoints[len(checkpoints)-1] != lastBoundary {
+				t.Fatalf("stop checkpoint advanced to another phase: %v", checkpoints)
 			}
 			if report.ReportID != prepared.ReportID || report.Archived || len(archive.saved) != 0 {
 				t.Fatal("stopped phase lost its identity or archived an incomplete measurement")
@@ -278,9 +307,19 @@ func TestPerformanceHostRejectsTamperedPreparedInputAndClosesLease(t *testing.T)
 		requests.Add(1)
 		return nil, fmt.Errorf("should not be called")
 	})})
-	report, err := host.ExecutePrepared(context.Background(), prepared, lease, ExecutionOptions{})
+	report, err := host.ExecutePrepared(
+		context.Background(),
+		prepared,
+		lease,
+		ExecutionOptions{},
+	)
 	if !errors.Is(err, ErrInvalidPreparedPerformance) || requests.Load() != 0 {
-		t.Fatalf("tampered input: code=%s requests=%d error=%v", report.ErrorCode, requests.Load(), err)
+		t.Fatalf(
+			"tampered input: code=%s requests=%d error=%v",
+			report.ErrorCode,
+			requests.Load(),
+			err,
+		)
 	}
 	if _, err := lease.Bytes(); err == nil {
 		t.Fatal("rejected input retained its lease")
