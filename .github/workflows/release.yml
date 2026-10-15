@@ -168,9 +168,54 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  runner:
+    name: Build Linux runners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: Build both Linux architectures and describe exact artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo 'Release tag must use semantic versioning' >&2
+            exit 1
+          fi
+          test -z "$(git status --porcelain)"
+          source_commit="$(git rev-parse HEAD)"
+          artifact_directory="$RUNNER_TEMP/runner-release"
+          mkdir -p "$artifact_directory"
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o "$artifact_directory/llm-test-runner-linux-${arch}" \
+              ./cmd/llm-test-runner
+          done
+          go run ./cmd/runner-manifest \
+            -directory "$artifact_directory" \
+            -release "$GITHUB_REF_NAME" \
+            -commit "$source_commit" > "$artifact_directory/runner-manifest.json"
+
+      - name: Upload runner release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: llm-test-studio-runner
+          path: ${{ runner.temp }}/runner-release/*
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, runner]
     runs-on: ubuntu-latest
     permissions:
       contents: write
