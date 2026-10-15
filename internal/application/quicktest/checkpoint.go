@@ -100,7 +100,7 @@ func (observer *performanceCheckpointObserver) emit(
 	if observer.callback == nil {
 		return nil
 	}
-	if err := checkpoint.ValidateEnvelope(); err != nil {
+	if err := checkpoint.Validate(); err != nil {
 		return err
 	}
 	document, err := json.Marshal(checkpoint)

@@ -169,7 +169,7 @@ func (service *Host) ExecutePrepared(
 			},
 		)
 		report.Warmup = performanceTrafficSummary(prepared.Profile.WarmupRequests, warmupOutcome)
-		finished := preparationRunFailed(
+		finished := control.preparationRunFailed(
 			ctx,
 			warmupOutcome,
 			warmupErr,
@@ -180,7 +180,12 @@ func (service *Host) ExecutePrepared(
 		}); err != nil {
 			return report, err
 		}
-		if finished {
+		if finished || control.preparationRunFailed(
+			ctx,
+			warmupOutcome,
+			warmupErr,
+			&report,
+		) {
 			return report, nil
 		}
 	}
@@ -222,7 +227,7 @@ func (service *Host) ExecutePrepared(
 		} else {
 			report.Ramp.TargetRatePerSecond = prepared.Profile.RatePerSecond
 		}
-		finished := preparationRunFailed(
+		finished := control.preparationRunFailed(
 			ctx,
 			rampOutcome,
 			rampErr,
@@ -233,7 +238,12 @@ func (service *Host) ExecutePrepared(
 		}); err != nil {
 			return report, err
 		}
-		if finished {
+		if finished || control.preparationRunFailed(
+			ctx,
+			rampOutcome,
+			rampErr,
+			&report,
+		) {
 			return report, nil
 		}
 	}
@@ -447,7 +457,7 @@ func (service *Host) runPerformanceCapacity(
 		}); err != nil {
 			return report, err
 		}
-		if ctx.Err() != nil || assessment.Status != PerformanceSLOPassed {
+		if ctx.Err() != nil || assessment.Status != PerformanceSLOPassed || performanceStopRequested(control.stop) {
 			break
 		}
 	}
@@ -628,23 +638,37 @@ func namespacedPerformanceExecutor(executor load.Executor, base uint64) load.Exe
 	}
 }
 
-func preparationRunFailed(ctx context.Context, outcome load.Outcome, runErr error, report *PerformanceReport) bool {
-	if outcome.Progress.Stopped && ctx.Err() == nil {
+func (control performanceControl) preparationRunFailed(
+	ctx context.Context,
+	outcome load.Outcome,
+	runErr error,
+	report *PerformanceReport,
+) bool {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		report.Progress = PerformanceProgress{Phase: load.PhaseCancelled, Stopped: true}
+		report.ErrorCode = classifyContext(ctxErr)
+		return true
+	}
+	if outcome.Progress.Stopped || performanceStopRequested(control.stop) {
 		report.Progress = performanceProgress(outcome.Progress)
+		report.Progress.Stopped = true
 		return true
 	}
 	if runErr == nil && outcome.Progress.Phase != load.PhaseCancelled {
 		return false
 	}
 	report.Progress = PerformanceProgress{Phase: outcome.Progress.Phase, Stopped: outcome.Progress.Stopped}
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		report.Progress.Phase = load.PhaseCancelled
-		report.Progress.Stopped = true
-		report.ErrorCode = classifyContext(ctxErr)
-	} else {
-		report.ErrorCode = load.ErrorRequestFailed
-	}
+	report.ErrorCode = load.ErrorRequestFailed
 	return true
+}
+
+func performanceStopRequested(stop <-chan struct{}) bool {
+	select {
+	case <-stop:
+		return true
+	default:
+		return false
+	}
 }
 
 func performanceTrafficSummary(requestCap uint64, outcome load.Outcome) *PerformanceTrafficSummary {

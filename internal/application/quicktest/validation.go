@@ -32,46 +32,63 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	if !validArchivedBaseURL(report.BaseURL) || strings.TrimRight(report.BaseURL, "/")+strings.TrimPrefix(performancePath(report.Protocol), "/v1") != report.Endpoint {
 		return time.Time{}, errors.New("quick performance report address is invalid")
 	}
+	if err := validatePerformanceMeasurements(report); err != nil {
+		return time.Time{}, err
+	}
+	if err := validatePerformanceCapacity(report); err != nil {
+		return time.Time{}, err
+	}
+	expectedBudget, _, err := preparePerformanceProfile(report.Profile)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err := validatePerformancePhaseThree(report, expectedBudget); err != nil {
+		return time.Time{}, err
+	}
+	return generatedAt, nil
+}
+
+func validatePerformanceMeasurements(report PerformanceReport) error {
 	if len(report.Samples) > int(MaxPerformanceRequests) {
-		return time.Time{}, errors.New("quick performance report exceeds the sample limit")
+		return errors.New("quick performance report exceeds the sample limit")
 	}
 	arrival := normalizedArrivalPattern(report.Profile.ArrivalPattern)
 	workloadMode := normalizedWorkloadMode(report.Profile.WorkloadMode)
 	effectiveProfile := performanceReportEffectiveProfile(report)
-	expectedBudget, _, err := preparePerformanceProfile(report.Profile)
+	_, _, err := preparePerformanceProfile(report.Profile)
 	consistentProgress := report.Progress.Offered == report.Progress.Launched+report.Progress.Rejected &&
 		report.Progress.Completed == report.Progress.Offered
 	if err != nil || !consistentProgress {
-		return time.Time{}, errors.New("quick performance report load profile is invalid")
+		return errors.New("quick performance report load profile is invalid")
 	}
 	if !finiteNonNegative(report.Progress.SendDurationMS) || !finiteNonNegative(report.Progress.DrainDurationMS) ||
 		!approximatelyEqual(report.Progress.TotalDurationMS, report.Progress.SendDurationMS+report.Progress.DrainDurationMS) ||
 		report.Progress.TotalDurationMS < durationMilliseconds(time.Nanosecond) ||
 		(report.Progress.SendDurationMS > 0 && report.Progress.SendDurationMS < durationMilliseconds(time.Nanosecond)) {
-		return time.Time{}, errors.New("quick performance report timing windows are invalid")
+		return errors.New("quick performance report timing windows are invalid")
 	}
 	if !finiteNonNegative(report.Metrics.OfferedQPS) || !finiteNonNegative(report.Metrics.LaunchedQPS) ||
 		!finiteNonNegative(report.Metrics.CompletedQPS) || !finiteNonNegative(report.Metrics.SuccessfulRequestQPS) ||
 		report.Progress.TotalDurationMS <= 0 || report.Metrics.CompletedQPS <= 0 || report.Metrics.LaunchedQPS > report.Metrics.OfferedQPS ||
 		report.Metrics.SuccessfulRequestQPS > report.Metrics.CompletedQPS {
-		return time.Time{}, errors.New("quick performance report throughput is invalid")
+		return errors.New("quick performance report throughput is invalid")
 	}
 	seconds := report.Progress.TotalDurationMS / 1_000
 	if !approximatelyEqual(report.Metrics.CompletedQPS, float64(report.Progress.Launched)/seconds) ||
 		!approximatelyEqual(report.Metrics.SuccessfulRequestQPS, float64(report.Progress.Succeeded)/seconds) ||
 		!approximatelyEqual(report.Metrics.RequestQPS, float64(report.Progress.Completed)/seconds) ||
 		!approximatelyEqual(report.Metrics.RPM, report.Metrics.RequestQPS*60) {
-		return time.Time{}, errors.New("quick performance report throughput is inconsistent")
+		return errors.New("quick performance report throughput is inconsistent")
 	}
 	if report.Progress.SendDurationMS == 0 {
 		if effectiveProfile.LoadMode != domain.LoadFixedConcurrency || report.Metrics.OfferedQPS != 0 || report.Metrics.LaunchedQPS != 0 {
-			return time.Time{}, errors.New("quick performance report zero send window is inconsistent")
+			return errors.New("quick performance report zero send window is inconsistent")
 		}
 	} else if effectiveProfile.LoadMode == domain.LoadFixedConcurrency {
 		sendSeconds := report.Progress.SendDurationMS / 1_000
 		if !approximatelyEqual(report.Metrics.OfferedQPS, float64(report.Progress.Offered)/sendSeconds) ||
 			!approximatelyEqual(report.Metrics.LaunchedQPS, report.Metrics.OfferedQPS) {
-			return time.Time{}, errors.New("quick performance report fixed-concurrency throughput is inconsistent")
+			return errors.New("quick performance report fixed-concurrency throughput is inconsistent")
 		}
 	} else {
 		rateWindowSeconds := report.Progress.SendDurationMS / 1_000
@@ -85,32 +102,32 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 		}
 		if !approximatelyEqual(report.Metrics.OfferedQPS, float64(report.Progress.Offered)/rateWindowSeconds) ||
 			!approximatelyEqual(report.Metrics.LaunchedQPS, float64(report.Progress.Launched)/rateWindowSeconds) {
-			return time.Time{}, errors.New("quick performance report open-loop throughput is inconsistent")
+			return errors.New("quick performance report open-loop throughput is inconsistent")
 		}
 	}
 	if report.Progress.SendDurationMS > 0 &&
 		!approximatelyEqual(report.Metrics.LaunchedQPS/report.Metrics.OfferedQPS, float64(report.Progress.Launched)/float64(report.Progress.Offered)) {
-		return time.Time{}, errors.New("quick performance report load rate ratio is inconsistent")
+		return errors.New("quick performance report load rate ratio is inconsistent")
 	}
 	if report.Progress.Launched == 0 || report.Progress.Completed != uint64(len(report.Samples)) || report.Metrics.Completed != report.Progress.Completed ||
 		report.Progress.Succeeded+report.Progress.Failed != report.Progress.Completed || report.Metrics.Succeeded != report.Progress.Succeeded || report.Metrics.Failed != report.Progress.Failed {
-		return time.Time{}, errors.New("quick performance report counts are inconsistent")
+		return errors.New("quick performance report counts are inconsistent")
 	}
 	if report.Success != (report.Progress.Phase == "completed" && report.Metrics.Completed > 0 && report.Metrics.Failed == 0) {
-		return time.Time{}, errors.New("quick performance report success is inconsistent")
+		return errors.New("quick performance report success is inconsistent")
 	}
 	if !finiteNonNegative(report.Progress.TotalDurationMS) || !finiteNonNegative(report.Metrics.SuccessRatePercent) || report.Metrics.SuccessRatePercent > 100 {
-		return time.Time{}, errors.New("quick performance report aggregate is invalid")
+		return errors.New("quick performance report aggregate is invalid")
 	}
 	if report.ErrorCode != "" && !safePerformanceErrorCode(report.ErrorCode) {
-		return time.Time{}, errors.New("quick performance report error code is unsafe")
+		return errors.New("quick performance report error code is unsafe")
 	}
 	seen := make(map[uint64]struct{}, len(report.Samples))
 	var workload *performanceWorkload
 	if workloadMode == PerformanceWorkloadNormal {
 		workload, err = newPerformanceWorkload(report.Profile)
 		if err != nil {
-			return time.Time{}, errors.New("quick performance report workload is invalid")
+			return errors.New("quick performance report workload is invalid")
 		}
 	}
 	var succeeded, failed, timedOut, promptTokens, completionTokens, cachedTokens uint64
@@ -118,30 +135,30 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	failureCounts := make(map[domain.ErrorCode]uint64)
 	for _, sample := range report.Samples {
 		if _, duplicate := seen[sample.RequestIndex]; duplicate {
-			return time.Time{}, errors.New("quick performance report sample index is duplicated")
+			return errors.New("quick performance report sample index is duplicated")
 		}
 		seen[sample.RequestIndex] = struct{}{}
 		if workload == nil {
 			if sample.TargetInputTokens != 0 || sample.TargetOutputTokens != 0 {
-				return time.Time{}, errors.New("fixed quick performance sample has workload targets")
+				return errors.New("fixed quick performance sample has workload targets")
 			}
 		} else {
 			target := workload.target(sample.RequestIndex)
 			if sample.TargetInputTokens != target.InputTokens || sample.TargetOutputTokens != target.OutputTokens {
-				return time.Time{}, errors.New("quick performance sample workload target is inconsistent")
+				return errors.New("quick performance sample workload target is inconsistent")
 			}
 		}
 		if sample.HTTPStatus < 0 || sample.HTTPStatus > 999 || !finiteNonNegative(sample.ScheduledOffsetMS) || !finiteNonNegative(sample.StartedOffsetMS) ||
 			!finiteNonNegative(sample.FinishedOffsetMS) || !finiteNonNegative(sample.ScheduleLagMS) || !finiteNonNegative(sample.E2EMS) ||
 			!finiteNonNegative(sample.TTFTMS) || !finiteNonNegative(sample.TPOTMS) || sample.FinishedOffsetMS < sample.StartedOffsetMS {
-			return time.Time{}, errors.New("quick performance report sample measurement is invalid")
+			return errors.New("quick performance report sample measurement is invalid")
 		}
 		if !validPerformanceFineSample(sample) {
-			return time.Time{}, errors.New("quick performance report fine streaming sample is invalid")
+			return errors.New("quick performance report fine streaming sample is invalid")
 		}
 		if sample.Success {
 			if sample.ErrorCode != "" || sample.ResponseEvidence != nil {
-				return time.Time{}, errors.New("successful quick performance sample has an error code")
+				return errors.New("successful quick performance sample has an error code")
 			}
 			succeeded++
 			promptTokens += sample.PromptTokens
@@ -149,17 +166,17 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 			cachedTokens += sample.CachedTokens
 		} else {
 			if strings.TrimSpace(string(sample.ErrorCode)) == "" || !safePerformanceErrorCode(sample.ErrorCode) {
-				return time.Time{}, errors.New("failed quick performance sample lacks an error code")
+				return errors.New("failed quick performance sample lacks an error code")
 			}
 			failed++
 			failureCounts[sample.ErrorCode]++
 			if sample.ResponseEvidence != nil {
 				if err := validatePerformanceResponseEvidence(*sample.ResponseEvidence); err != nil {
-					return time.Time{}, err
+					return err
 				}
 				evidenceBytes += len(sample.ResponseEvidence.Body)
 				if evidenceBytes > MaxPerformanceEvidenceTotalBytes {
-					return time.Time{}, errors.New("quick performance response evidence exceeds the total limit")
+					return errors.New("quick performance response evidence exceeds the total limit")
 				}
 			}
 		}
@@ -169,40 +186,34 @@ func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, err
 	}
 	if succeeded != report.Metrics.Succeeded || failed != report.Metrics.Failed || timedOut != report.Metrics.TimedOut ||
 		promptTokens != report.Metrics.PromptTokens || completionTokens != report.Metrics.CompletionTokens || cachedTokens != report.Metrics.CachedTokens {
-		return time.Time{}, errors.New("quick performance report sample totals are inconsistent")
+		return errors.New("quick performance report sample totals are inconsistent")
 	}
 	if !validPerformanceMetricScalars(report.Metrics) {
-		return time.Time{}, errors.New("quick performance report metrics are invalid")
+		return errors.New("quick performance report metrics are invalid")
 	}
 	expectedMetrics := rebuildPerformanceMetrics(report.Samples, report.Progress, effectiveProfile, arrival)
 	if !equalPerformanceMetrics(report.Metrics, expectedMetrics, true) {
-		return time.Time{}, errors.New("quick performance report metrics are inconsistent with its samples")
+		return errors.New("quick performance report metrics are inconsistent with its samples")
 	}
 	if !sort.SliceIsSorted(report.Failures, func(left, right int) bool { return report.Failures[left].ErrorCode < report.Failures[right].ErrorCode }) {
-		return time.Time{}, errors.New("quick performance report failures are not stable")
+		return errors.New("quick performance report failures are not stable")
 	}
 	for _, failure := range report.Failures {
 		if failure.Count == 0 || !safePerformanceErrorCode(failure.ErrorCode) || failureCounts[failure.ErrorCode] != failure.Count {
-			return time.Time{}, errors.New("quick performance report failures are inconsistent")
+			return errors.New("quick performance report failures are inconsistent")
 		}
 		delete(failureCounts, failure.ErrorCode)
 	}
 	if len(failureCounts) != 0 {
-		return time.Time{}, errors.New("quick performance report failures are incomplete")
+		return errors.New("quick performance report failures are incomplete")
 	}
 	if err := validatePerformanceSLO(report); err != nil {
-		return time.Time{}, err
-	}
-	if err := validatePerformanceCapacity(report); err != nil {
-		return time.Time{}, err
-	}
-	if err := validatePerformancePhaseThree(report, expectedBudget); err != nil {
-		return time.Time{}, err
+		return err
 	}
 	if err := validatePerformanceFineMetrics(report.Metrics, report.Samples); err != nil {
-		return time.Time{}, err
+		return err
 	}
-	return generatedAt, nil
+	return nil
 }
 
 func validatePerformancePhaseThree(report PerformanceReport, expectedBudget *PerformanceRequestBudget) error {
@@ -322,7 +333,7 @@ func validatePerformancePhaseThree(report PerformanceReport, expectedBudget *Per
 		report.Progress.TotalDurationMS,
 		float64(report.Profile.SliceDurationMS),
 	)
-	if len(expectedSlices) == 0 || len(report.TimeSlices) != len(expectedSlices) {
+	if len(report.TimeSlices) != len(expectedSlices) {
 		return errors.New("quick performance report time slices are incomplete")
 	}
 	for index := range expectedSlices {
