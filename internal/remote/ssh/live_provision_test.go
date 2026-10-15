@@ -320,12 +320,9 @@ func sendLiveMaintenance(
 	if err != nil {
 		return ErrInvalid
 	}
-	response, err := node.Do(
-		ctx,
-		http.MethodPost,
-		"/runner/maintenance",
-		strings.NewReader(string(document)),
-	)
+	response, err := node.Do(ctx, Request{
+		Method: http.MethodPost, Route: "/runner/maintenance", Body: strings.NewReader(string(document)),
+	})
 	if err != nil {
 		return err
 	}

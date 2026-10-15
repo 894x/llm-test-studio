@@ -356,7 +356,7 @@ func (client *Client) RunnerHTTP(port uint16) (*http.Client, error) {
 	}
 	client.transports = append(client.transports, transport)
 	return &http.Client{
-		Transport: runnerTransport{transport: transport}, Timeout: operationTimeout,
+		Transport: runnerTransport{transport: transport}, Timeout: 2 * time.Minute,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}, nil
 }

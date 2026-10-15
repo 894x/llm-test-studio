@@ -135,13 +135,11 @@ func (snapshot Snapshot) Validate(spec JobSpec) error {
 	return nil
 }
 
-func (snapshot Snapshot) ValidateState() error {
-	receipt := snapshot.Receipt
+func (receipt Receipt) Validate() error {
 	validIdentity := receipt.Contract == CurrentContract && domain.IsUUID(receipt.JobID)
 	validEngine := domain.IsUUID(receipt.NodeInstallationID) && IsSHA256(receipt.EngineBuildID)
 	validRevision := receipt.Revision > 0 && receipt.Revision <= math.MaxInt64
-	validSequence := snapshot.LatestSequence >= receipt.Revision && snapshot.LatestSequence <= math.MaxInt64
-	if !validIdentity || !validEngine || !validRevision || !validSequence {
+	if !validIdentity || !validEngine || !validRevision {
 		return invalid("receipt")
 	}
 	initial := receipt.Status == domain.RunQueued && receipt.Revision == 1
@@ -150,9 +148,7 @@ func (snapshot Snapshot) ValidateState() error {
 		return invalid("receipt.revision")
 	}
 	_, acceptedOffset := receipt.AcceptedAt.Zone()
-	_, updatedOffset := snapshot.UpdatedAt.Zone()
-	validTimes := !receipt.AcceptedAt.IsZero() && !snapshot.UpdatedAt.Before(receipt.AcceptedAt)
-	if !validTimes || acceptedOffset != 0 || updatedOffset != 0 {
+	if receipt.AcceptedAt.IsZero() || acceptedOffset != 0 {
 		return invalid("receipt.time")
 	}
 	if receipt.RunIDs == nil || receipt.ReportIDs == nil {
@@ -186,16 +182,35 @@ func (snapshot Snapshot) ValidateState() error {
 		return invalid("receipt.kind")
 	}
 	switch receipt.Status {
-	case domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining, domain.RunCompleted, domain.RunCancelled:
-		if snapshot.Failure != nil {
-			return invalid("failure")
-		}
-	case domain.RunFailed:
+	case domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining,
+		domain.RunCompleted, domain.RunCancelled, domain.RunFailed:
+	default:
+		return invalid("status")
+	}
+	return nil
+}
+
+func (snapshot Snapshot) ValidateState() error {
+	if err := snapshot.Receipt.Validate(); err != nil {
+		return err
+	}
+	receipt := snapshot.Receipt
+	validSequence := snapshot.LatestSequence >= receipt.Revision && snapshot.LatestSequence <= math.MaxInt64
+	if !validSequence {
+		return invalid("receipt")
+	}
+	_, offset := snapshot.UpdatedAt.Zone()
+	if snapshot.UpdatedAt.Before(receipt.AcceptedAt) || offset != 0 {
+		return invalid("receipt.time")
+	}
+	if receipt.Status == domain.RunFailed {
 		if snapshot.Failure == nil || snapshot.Failure.Validate() != nil {
 			return invalid("failure")
 		}
-	default:
-		return invalid("status")
+		return nil
+	}
+	if snapshot.Failure != nil {
+		return invalid("failure")
 	}
 	return nil
 }

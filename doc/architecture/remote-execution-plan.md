@@ -375,6 +375,7 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | B2d 管理 HTTP | 进行中 | 节点级鉴权、当前契约、能力检查、提交/根状态/事件/控制、稳定任务分页、Run/Comparison 报告与 Performance 完整结果下载已有真实 Core 和 SQLite 的 Mock 验证；完整投影、assets、证据与回收待补齐 |
 | B2e 独立 runner | 进行中 | Linux 私有目录与运行锁、唯一当前配置、stdin 初始化授权摘要、真实 Core/SQLite/loopback HTTP 装配、写权限/磁盘探针及 systemd 通知已接通；WSL 独立进程中断恢复已验证；asset Guard、物理节点 unit 部署和保活仍待完成 |
 | B2f 维护接收门 | 已实现 | 当前 operation 的持久 pause/resume、接收互斥、Pending 报告收尾、写确认丢失后的同步确认与故障隔离、重启保留暂停和暂停时 watchdog 已通过本地及 WSL 进程验证；安装锁和完整升级编排仍待 C |
+| B2g 管理客户端 | 已实现 | 当前任务提交/查询/分页/事件/控制的严格 typed HTTP 客户端、不可变报告摘要与断点续传；三类实际 Core 经 HTTP 和 SQLite 集成通过，SSH 慢响应验证通过；桌面 Coordinator、完整投影和 assets 待后续接入 |
 | C1a SSH 传输 | 已实现 | 主机指纹与 key type 固定、密码/私钥内存认证、保活、受限 loopback HTTP、超时回收、SFTP 摘要/回读/拒绝覆盖和私有配对读取；首轮真实 amd64 验证覆盖临时文件和只读探测，后续服务安装见 C1b/C1c |
 | C1b 服务端首次安装 | 已实现 | runner 内置 provision，独立共享安装锁与持久操作日志、专用用户、程序摘要及原子 current、节点配对和身份、systemd 启用与实际进程验证；已在用户 amd64 节点安装并验证失败保留与重试 |
 | C1c SSH 部署与共享连接 | 已实现 | 有界并发上传、固定 provision 调用、进度/确认校验、操作重查、暂存目录清理、共享配对及实时健康；真实双连接不替换程序、不重启进程，强杀自动恢复及 watchdog 通过 |

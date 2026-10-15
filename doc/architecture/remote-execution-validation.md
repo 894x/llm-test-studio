@@ -175,6 +175,20 @@ Windows desktop、remotenodes 与 fileconfig 测试及相关 vet 通过，生产
 
 Windows `go test ./...` 已完整通过，包含 data/cases、data/suites、桌面、JobHost、管理 HTTP、SQLite 与 SSH。这是静态和 fixture 回归，解决前述已记录的测试基线失败；没有调用付费渠道，最终远程 K3 与最小性能验收仍未执行。
 
+## 2026-10-16：任务管理客户端与报告续传
+
+新增远程 typed client，通过受限 SSH Request 调用当前 runner 的 Probe、Submit、GetJob、ListJobs、ReadEvents 和 Command。提交响应核对任务、安装、实际构建及全部子对象身份；查询与分页核对安装归属，事件必须是请求游标之后的连续同任务序列。JSON 状态、回执、事件及命令确认只接受唯一当前字段，缺失、null、大小写变体、重复及未知字段拒绝；分页数组在 typed 解码前限制条数和字节，空页保留 keyset 游标。错误只保留固定公共码与重试提示，不把服务端 message、凭据或 response body 写入错误。
+
+客户端不自动重新提交、不生成新任务身份，也不拥有原 Submission 的凭据或已接收任务。序列化提交副本的读取与清零通过互斥保护，HTTP 提前拒绝或仍在关闭请求体时不会并发改写正在读取的字节。调用方取消在建连及读取响应体阶段保留原语义，不被解释为远程任务取消。
+
+报告下载只使用明确的不可变 ID、类型、大小和摘要引用。私有 partial file 从准确偏移续传，先核对单值 ETag、SHA、类型、Content-Length 与 Content-Range，再追加剩余字节；完成后重算整个文件摘要。损坏前缀、超长文件或异常响应明确拒绝，不重置用户数据。完整已校验文件可直接复用，不访问服务器；下载时间不改写报告指标。调用方仍须在成功后执行私有文件同步与原子发布，本客户端尚未装配桌面缓存或离线报告。
+
+实际 JobHost、三类 Core、SQLite 和 runner HTTP 的集成测试通过 Run、Comparison、Performance 提交、同身份重传、观察者取消后继续、另一个 client 查询同任务、任务/事件分页、queued 停止、活动取消与命令确认重放；全部子 Run 报告及 Performance 完整结果均经 Range 续传并逐字节对比服务端原存储文档。上游仍是本地 Mock HTTP，没有调用用户渠道。客户端故障测试另覆盖错误身份、字段和契约、游标缺口、重复 Job、集合超限、错误摘要/头部/Range、断流后续传、损坏前缀、完整缓存与提交正文清零。
+
+SSH Node.Do 的当前 Go API 替换为 Request 值，所有仓库调用方同步更新；Range 只允许无 body 的 GET 且偏移非负，不保留旧包装。底层 HTTP 总预算改为 2 分钟，普通 typed 请求为 30 秒，Node.Info 单独保持 30 秒。显式 31 秒慢响应测试经过真实 SSH testPeer/direct-tcpip 和 loopback HTTP，在首字节后继续读取完整报告，避免原 30 秒总预算提前截断；这是本地隧道验证，不能冒充物理远程服务器验收。
+
+Windows `go test ./...` 全部通过，相关 vet 通过；客户端负向测试、三类型 HTTP 集成、当前状态解码及 SSH Range/31 秒慢响应在 Ubuntu 24.04 WSL 验证通过。没有新增格式版本、历史解析器或 schema 变化，没有接触实际用户数据库，也没有修改当前物理节点 runner。完整远程投影、assets/证据、Coordinator、桌面 Remote 面板和最终 K3 e2e 仍待接通。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

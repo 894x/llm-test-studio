@@ -121,9 +121,17 @@ func (node *Node) PairingLease() (*credentials.Lease, error) {
 	return credentials.NewTemporaryLease(value)
 }
 
+type Request struct {
+	Method     string
+	Route      string
+	Body       io.Reader
+	RangeStart *int64
+}
+
 // Do sends only relative management routes through this node's pinned tunnel.
 // Callers own request-body secret cleanup and response-body limits and Close.
-func (node *Node) Do(ctx context.Context, method, route string, body io.Reader) (*http.Response, error) {
+func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error) {
+	method, route, body := input.Method, input.Route, input.Body
 	invalidRequest := node == nil || ctx == nil || len(route) > 4096
 	if invalidRequest {
 		return nil, ErrInvalid
@@ -133,6 +141,12 @@ func (node *Node) Do(ctx context.Context, method, route string, body io.Reader) 
 	localRoute := validRoute && !parsed.IsAbs() && parsed.Host == ""
 	if !localRoute {
 		return nil, ErrInvalid
+	}
+	if start := input.RangeStart; start != nil {
+		validRange := method == http.MethodGet && body == nil && *start >= 0
+		if !validRange {
+			return nil, ErrInvalid
+		}
 	}
 	token, err := node.token.Bytes()
 	if err != nil {
@@ -150,6 +164,10 @@ func (node *Node) Do(ctx context.Context, method, route string, body io.Reader) 
 	}
 	request.Header.Set("Authorization", "Bearer "+string(token))
 	request.Header.Set(jobcontract.ContractHeader, strconv.Itoa(jobcontract.CurrentContract))
+	request.Header.Set("Accept-Encoding", "identity")
+	if input.RangeStart != nil {
+		request.Header.Set("Range", "bytes="+strconv.FormatInt(*input.RangeStart, 10)+"-")
+	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -157,12 +175,12 @@ func (node *Node) Do(ctx context.Context, method, route string, body io.Reader) 
 }
 
 func (node *Node) Info(ctx context.Context) (jobcontract.RunnerInfo, error) {
-	response, err := node.Do(
-		ctx,
-		http.MethodGet,
-		"/runner",
-		nil,
-	)
+	if ctx == nil {
+		return jobcontract.RunnerInfo{}, ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+	defer cancel()
+	response, err := node.Do(ctx, Request{Method: http.MethodGet, Route: "/runner"})
 	if err != nil {
 		return jobcontract.RunnerInfo{}, err
 	}

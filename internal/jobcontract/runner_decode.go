@@ -22,19 +22,21 @@ func DecodeRunnerInfo(reader io.Reader) (RunnerInfo, error) {
 	if len(document) > MaxRunnerInfoBytes {
 		return RunnerInfo{}, invalid("runner")
 	}
-	fields, err := runnerObjectFields(document, []string{
+	fields, err := objectFields(document, []string{
 		"contract", "node_id", "node_installation_id", "engine_build_id", "runner_version", "os", "arch",
 		"capabilities", "budget", "ready", "healthy", "active", "queued", "pending", "maintenance_operation_id",
-	})
+	}, []string{})
 	if err != nil {
 		return RunnerInfo{}, err
 	}
-	if _, err := runnerObjectFields(fields["capabilities"], []string{"job_kinds", "protocols", "features"}); err != nil {
+	if _, err := objectFields(fields["capabilities"], []string{
+		"job_kinds", "protocols", "features",
+	}, []string{}); err != nil {
 		return RunnerInfo{}, err
 	}
-	if _, err := runnerObjectFields(fields["budget"], []string{
+	if _, err := objectFields(fields["budget"], []string{
 		"max_active_jobs", "max_queued_jobs", "max_concurrency", "queue_timeout_ns", "execution_timeout_ns",
-	}); err != nil {
+	}, []string{}); err != nil {
 		return RunnerInfo{}, err
 	}
 	var info RunnerInfo
@@ -44,7 +46,7 @@ func DecodeRunnerInfo(reader io.Reader) (RunnerInfo, error) {
 	return info, info.Validate()
 }
 
-func runnerObjectFields(document []byte, allowed []string) (map[string]json.RawMessage, error) {
+func objectFields(document []byte, required, optional []string) (map[string]json.RawMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
 		return nil, invalid("runner")
@@ -53,7 +55,8 @@ func runnerObjectFields(document []byte, allowed []string) (map[string]json.RawM
 	for decoder.More() {
 		token, err := decoder.Token()
 		name, ok := token.(string)
-		valid := err == nil && ok && slices.Contains(allowed, name) && fields[name] == nil
+		allowed := slices.Contains(required, name) || slices.Contains(optional, name)
+		valid := err == nil && ok && allowed && fields[name] == nil
 		if !valid {
 			return nil, invalid("runner")
 		}
@@ -66,8 +69,13 @@ func runnerObjectFields(document []byte, allowed []string) (map[string]json.RawM
 	if token, err := decoder.Token(); err != nil || token != json.Delim('}') {
 		return nil, invalid("runner")
 	}
-	if decoder.Decode(new(any)) != io.EOF || len(fields) != len(allowed) {
+	if decoder.Decode(new(any)) != io.EOF {
 		return nil, invalid("runner")
+	}
+	for _, name := range required {
+		if fields[name] == nil {
+			return nil, invalid("body")
+		}
 	}
 	return fields, nil
 }
