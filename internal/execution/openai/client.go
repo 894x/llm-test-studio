@@ -506,8 +506,13 @@ func (client *Client) execute(ctx context.Context, scheduled load.Request, prepa
 		request.Header.Set("Content-Type", "application/json")
 	}
 	request.Header.Set("Authorization", "Bearer "+string(state.secret))
-	clear(state.secret)
-	state.secret = nil
+	if state.failureEvidenceSink == nil {
+		clear(state.secret)
+		state.secret = nil
+	}
+	// Opt-in failure capture needs the request-owned credential to redact an
+	// upstream echo even when Close has already cleared the client credential.
+	// finish always clears this copy after evidence publication and on panics.
 	defer request.Header.Del("Authorization")
 
 	response, err := state.httpClient.Do(request)
