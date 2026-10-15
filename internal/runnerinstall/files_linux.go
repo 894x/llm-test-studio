@@ -364,7 +364,8 @@ func (paths layout) checkUnit() (bool, error) {
 	expected := map[string]string{
 		"Type": "notify", "User": "llm-test-runner", "Group": "llm-test-runner",
 		"StateDirectory": "llm-test-runner", "WorkingDirectory": paths.state,
-		"ExecStart": paths.program + "/current/llm-test-runner serve --state " + paths.state,
+		"ExecStart":   paths.program + "/current/llm-test-runner serve --state " + paths.state,
+		"WatchdogSec": "30s",
 	}
 	seen := map[string]bool{}
 	section := ""

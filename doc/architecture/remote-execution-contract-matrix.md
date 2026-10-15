@@ -85,7 +85,7 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | --- | --- | --- | --- |
 | H01 | 每请求一个 Authorization: Bearer 节点 token；先鉴权再解码；不接受 query token | 缺失、错误、重复、错 scheme、超长拒绝 401；正确 token 允许多个客户端；拒绝不得触发执行或泄露输入 | partial：TestHTTPNodeAuthorizationAndContractAreCheckedBeforeSubmission、TestHTTPClientsWithDifferentBuildsShareOneNodeQueueAndAuthorization；两客户端使用独立 HTTP transport，共享授权与资源；独立进程验收待 R15 |
 | H02 | X-LLM-Test-Contract 必填且恰为当前 1；客户端发布版本和构建不参与匹配 | 缺失、重复、非当前、非规范值返回 426；同契约不同客户端版本可访问；不探测历史 decoder | covered：上述鉴权测试与 TestHTTPSharedNodeMetadataDoesNotRequireMatchingClientVersions；只校验唯一当前合同 |
-| H03 | GET /runner 返回安装/节点身份、实际构建、runner 版本、平台、当前能力、预算与状态 | 身份来自宿主，不能由客户端覆盖；元数据副本隔离；缺任务能力拒收；重连不修改版本、token 或策略 | partial：TestRunnerInfoValidatesIdentityCapabilitiesAndExactBudgetBoundaries、TestHTTPSharedNodeMetadataDoesNotRequireMatchingClientVersions、TestHTTPRejectsMissingTaskCapabilitiesBeforeAdmission；全部元数据字段类型和各 Run 能力组合仍待补齐 |
+| H03 | GET /runner 返回安装/节点身份、实际构建、runner 版本、平台、当前能力、预算与状态 | 身份来自宿主，不能由客户端覆盖；元数据副本隔离；缺任务能力拒收；重连不修改版本、token 或策略 | partial：TestRunnerInfoValidatesIdentityCapabilitiesAndExactBudgetBoundaries、TestHTTPSharedNodeMetadataDoesNotRequireMatchingClientVersions、TestHTTPRejectsMissingTaskCapabilitiesBeforeAdmission、TestRunnerInfoDecodeRequiresEveryCurrentFieldWithoutDefaults；已遍历必填字段及嵌套对象的缺失/null/大小写，重复/未知/字节边界亦拒绝；全部字段类型和各 Run 能力组合仍待补齐 |
 | H04 | POST /jobs 使用当前 Submission，Content-Type 为 application/json，可带 charset=utf-8 | 有效首次 202、同内容 200；错类型 415；坏 JSON/组合拒绝；超过 8 MiB 返回 413；客户端退出不撤销已接收 Job | partial：TestHTTPSubmissionContentAndByteBoundariesDoNotExecuteRejectedRequests、TestHTTPSubmitIsIdempotentAndIndependentOfSubmissionConnection、TestHTTPFailedReceiptWriteDoesNotAbandonOrDuplicateAcceptedExecution；精确上限、响应写失败、秘密冲突均验证；三类任务全部 HTTP 输入分区仍待补齐 |
 | H05 | GET /jobs/{id} 只读取当前节点 installation 与共享 node_id 的事实 | 有效、未知、错误 UUID、其他 owner；节点升级后的同当前格式历史构建仍可读，不以当前 build 拒绝旧执行事实 | partial：TestHTTPOwnerChecksAllowPreviousRunnerBuildButExcludeOtherInstallations；当前只返回根状态，完整进度、子事实与报告引用投影仍待实现 |
 | H06 | events 必填 after_sequence 与 limit，limit 1..200，wait_ms 可省略为 0，范围 0..20000 | 0/1/200/201、负数、重复/未知参数、未来序号；空页长轮询到期仍 200，取消只停止观察，不取消执行 | partial：TestHTTPEventsRejectInvalidQueriesAndAllowEmptyLongPoll、TestHTTPEventObservationCancellationDoesNotChangeSettledJob；上限等待和活动任务观察中断尚待验证 |
@@ -110,7 +110,7 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | P05 | 默认状态预算 20 GiB，保留 512 MiB 可用空间，每接收 Job 预留 128 MiB；配置允许显式调整；计入既有文件和其他 reservation，结束只释放一次 | partial：TestDiskAdmissionReservesHeadroomAndReleasesExactlyOnce 验证大小、并行预留、重复释放、超预算与取消；这是接收与周期检查，不是文件系统硬配额。assets 能力尚未声明，文件输入验证与绑定仍待补齐 |
 | P06 | 私有维护记录必须显式包含 paused，绑定当前安装；同步文件及目录后才确认；正常重启保留暂停；暂停不降低 Healthy，不停止 watchdog；未知格式先于数据库访问拒绝 | partial：TestMaintenancePersistsAcrossRunnerRestartAndKeepsWatchdogHealthy、TestUnsupportedMaintenanceFormatIsRejectedBeforeDatabaseAccess、TestMutablePrivateControlReplacementRejectsLinksAndRetainsRejectedData 通过 WSL；真实物理节点 unit 升级仍待 C/R15 |
 
-`deploy/runner/llm-test-runner.service` 提供专用用户、私有状态目录、只读程序区域、30 秒 watchdog、重启限速与资源上限的模板。模板存在不表示已在真实服务器安装、启用或验证保活。
+`deploy/runner/llm-test-runner.service` 提供专用用户、私有状态目录、只读程序区域、30 秒 watchdog、重启限速与资源上限。2026-10-16 已在用户 amd64 节点通过产品 installer 安装并启用，验证专用身份、实际执行摘要、双客户端不重启复用，以及 SIGKILL 后自动恢复和 watchdog 推进；完整 R2/R15 的 arm64、第二节点、并发安装与显式升级仍未完成。
 
 ## SSH 传输边界
 
@@ -121,5 +121,8 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | S03 | HTTP 仅通过 SSH 到指定 127.0.0.1 端口，无代理、不跟随 redirect；请求、握手和通道建立有界；悬挂通道建立取消时关闭并回收父连接 | partial：TestSSHTunnelUsesOnlyRunnerLoopbackAndDoesNotFollowRedirects、TestSSHContextCancelsStalledHandshakeAndCommand、TestRunnerChannelOpenCancellationClosesAnOtherwiseResponsiveSSHPeer 通过；已验证 keepalive 仍响应但 channel-open 不回应的取消；runner 实际任务与桌面隧道断线恢复待 R3/R7 |
 | S04 | 每 15 秒 keepalive，5 秒无确认关闭连接；SSH failure reply 仍表明连接存活；固定只读 probe 的输出最多 64 KiB | partial：TestSSHKeepaliveAcceptsFailureRepliesAndClosesAnUnresponsivePeer、TestFixedCommandOutputCannotBypassItsByteBudgetThroughIOCopy 通过；测试用短 ticker 执行同一 owner；真实长时间网络故障与桌面状态更新待 C/D |
 | S05 | SFTP 上传最多 256 MiB，在私有临时目录中只创建新目标；核对长度、本地摘要、文件 fsync 及独立回读摘要；拒绝覆盖、symlink 父路径和非私有配对文件 | partial：Linux 的 TestSSHPrivateReadRejectsPublicFilesAndMissingFsyncFailsExplicitly、真实节点 TestLiveSSHProbeAndVerifiedSFTPTransfer 通过；物理节点验证 184320 字节、错摘要拒绝、不覆盖与回读，精确测试路径已清理；发布目录持久化、安装锁、操作日志和 current 激活由后续 installer 完成 |
+| S06 | SSH provision 仅接受已核验平台的产物，固定命令及 stdin 请求；输出有界并校验操作身份；网络确认不明可重查操作记录 | partial：TestProvisionOutputHandlesFragmentsAndRejectsUntrustedControlData、TestProvisionStopsBeforeExecutionWhenSFTPLacksDurableUpload、真实 TestLiveProvisionSharedRunner 通过；19.5 MB 产物经 512 KiB 缓冲和 16 请求上限上传与回读，实例安装确认可重查；物理节点安装期间断网后的全流程重连仍待验证 |
+| S07 | 配对只读 root 私有身份/令牌并核对摘要；实时元数据必须匹配已配对安装；Close 释放 lease 与连接池，不取消已接收任务 | partial：TestSharedNodePairingValidatesFreshIdentityAndReleasesPools 连续 8 次连接/关闭、换身份、秘密格式化与外部目的地拒绝通过；物理双连接共用节点、兼容产物不覆盖且不重启通过；桌面 OS Store 尚待接入 |
+| S08 | 断网后暂存目录只按已报告的严格路径和 root 私有已知内容清理；未知文件和权限异常原样保留 | partial：root WSL 的 TestBootstrapCleanupPreservesUnknownContentsAndRejectsPublicFiles 通过；真实首次上传超时目录已核验并清理，无递归删除 |
 
 SFTP API 依据 [pkg/sftp v1.13.11 文档](https://pkg.go.dev/github.com/pkg/sftp@v1.13.11)，SSH 通道实现核对当前引入的 x/crypto v0.54.0 源码，查阅日期 2026-10-16。以上是传输模块验证，不表示自动部署、systemd 或真实提供商 e2e 已验收。

@@ -45,6 +45,10 @@ func (system localSystem) Preflight(ctx context.Context) error {
 	if _, err := exec.LookPath("runuser"); err != nil {
 		return ErrUnsupported
 	}
+	watchdogs, err := command(ctx, "systemctl", "service-watchdogs")
+	if err != nil || strings.TrimSpace(string(watchdogs)) != "yes" {
+		return ErrUnsupported
+	}
 	return nil
 }
 
@@ -52,7 +56,7 @@ func (system localSystem) Account(ctx context.Context) (account, error) {
 	entry, err := user.Lookup(serviceUser)
 	var missing user.UnknownUserError
 	if errors.As(err, &missing) {
-		_, err := command(
+		_, createErr := command(
 			ctx,
 			"useradd",
 			"--system",
@@ -64,7 +68,7 @@ func (system localSystem) Account(ctx context.Context) (account, error) {
 			"/usr/sbin/nologin",
 			serviceUser,
 		)
-		if err != nil {
+		if createErr != nil {
 			return account{}, ErrUnownedPath
 		}
 		entry, err = user.Lookup(serviceUser)
@@ -149,12 +153,12 @@ func (system localSystem) Start(ctx context.Context) error {
 		ServiceName,
 	)
 	if active == nil && enabled == nil {
-		return system.verifyPolicy(ctx)
+		return system.verifyPolicy(ctx, true)
 	}
 	if _, err := command(ctx, "systemctl", "daemon-reload"); err != nil {
 		return ErrService
 	}
-	if err := system.verifyPolicy(ctx); err != nil {
+	if err := system.verifyPolicy(ctx, active == nil); err != nil {
 		return err
 	}
 	if _, err := command(
@@ -170,7 +174,7 @@ func (system localSystem) Start(ctx context.Context) error {
 }
 
 func (system localSystem) Verify(ctx context.Context, input verificationInput) error {
-	if err := system.verifyPolicy(ctx); err != nil {
+	if err := system.verifyPolicy(ctx, true); err != nil {
 		return err
 	}
 	document, err := command(
@@ -233,14 +237,14 @@ func (system localSystem) Verify(ctx context.Context, input verificationInput) e
 	return nil
 }
 
-func (system localSystem) verifyPolicy(ctx context.Context) error {
+func (system localSystem) verifyPolicy(ctx context.Context, running bool) error {
 	document, err := command(
 		ctx,
 		"systemctl",
 		"show",
 		ServiceName,
 		"--property=Type,Restart,WatchdogUSec,RestartUSec,StartLimitIntervalUSec,"+
-			"StartLimitBurst,NeedDaemonReload,User,Group,WorkingDirectory,LimitCORE",
+			"StartLimitBurst,NeedDaemonReload,User,Group,WorkingDirectory,LimitCORE,DropInPaths",
 	)
 	if err != nil {
 		return ErrService
@@ -253,21 +257,30 @@ func (system localSystem) verifyPolicy(ctx context.Context) error {
 		}
 		fields[key] = value
 	}
-	return verifyPolicy(fields, system.layout)
+	return verifyPolicy(fields, system.layout, running)
 }
 
-func verifyPolicy(fields map[string]string, paths layout) error {
+func verifyPolicy(fields map[string]string, paths layout, running bool) error {
 	expected := map[string]string{
 		"Type": "notify", "Restart": "on-failure", "StartLimitBurst": "5", "NeedDaemonReload": "no",
 		"User": serviceUser, "Group": serviceUser, "WorkingDirectory": paths.state, "LimitCORE": "0",
+		"DropInPaths": "",
 	}
 	for key, value := range expected {
-		if fields[key] != value {
+		actual, present := fields[key]
+		if !present || actual != value {
 			return ErrService
 		}
 	}
 	durations := map[string]time.Duration{
-		"WatchdogUSec": 30 * time.Second, "RestartUSec": 5 * time.Second, "StartLimitIntervalUSec": 5 * time.Minute,
+		"RestartUSec": 5 * time.Second, "StartLimitIntervalUSec": 5 * time.Minute,
+	}
+	// systemd exposes the effective timeout of the last started invocation.
+	// Before its first start it is infinity, even with WatchdogSec=30s loaded.
+	// checkUnit validates the configured value; active verification stays strict.
+	unstartedWatchdog := !running && fields["WatchdogUSec"] == "infinity"
+	if !unstartedWatchdog {
+		durations["WatchdogUSec"] = 30 * time.Second
 	}
 	for key, duration := range durations {
 		value := strings.ReplaceAll(strings.Join(strings.Fields(fields[key]), ""), "min", "m")

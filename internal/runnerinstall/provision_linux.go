@@ -411,20 +411,15 @@ func probeRunner(ctx context.Context, config runnerconfig.Config, token []byte) 
 	default:
 		return jobcontract.RunnerInfo{}, ErrService
 	}
-	document, err := io.ReadAll(io.LimitReader(response.Body, MaxRecordBytes+1))
-	if err != nil || len(document) > MaxRecordBytes {
-		return jobcontract.RunnerInfo{}, ErrIntegrity
-	}
-	var info jobcontract.RunnerInfo
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&info); err != nil {
-		return jobcontract.RunnerInfo{}, ErrUpgradeRequired
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		return jobcontract.RunnerInfo{}, ErrUpgradeRequired
-	}
-	if err := info.Validate(); err != nil {
+	info, err := jobcontract.DecodeRunnerInfo(response.Body)
+	if err != nil {
+		if ctx.Err() != nil {
+			return jobcontract.RunnerInfo{}, ctx.Err()
+		}
+		invalidContract := errors.Is(err, jobcontract.ErrInvalid) || errors.Is(err, jobcontract.ErrUnsupported)
+		if !invalidContract {
+			return jobcontract.RunnerInfo{}, ErrService
+		}
 		return jobcontract.RunnerInfo{}, ErrUpgradeRequired
 	}
 	if info.NodeID != config.NodeID || info.NodeInstallationID != config.InstallationID {

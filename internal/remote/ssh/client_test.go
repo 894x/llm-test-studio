@@ -43,6 +43,7 @@ type testPeer struct {
 	stallForward   atomic.Bool
 	stallKeepalive atomic.Bool
 	userKey        []byte
+	execute        func(string, cryptossh.Channel)
 	stop           chan struct{}
 	wg             sync.WaitGroup
 }
@@ -161,6 +162,11 @@ func (peer *testPeer) channel(open cryptossh.NewChannel) {
 				defer server.Close()
 				_ = server.Serve()
 			}
+			return
+		}
+		if request.Type == "exec" && peer.execute != nil {
+			_ = request.Reply(true, nil)
+			peer.execute(payload.Value, channel)
 			return
 		}
 		if request.Type != "exec" || payload.Value != "/bin/sh -s" {
@@ -405,6 +411,18 @@ func TestSSHPrivateReadRejectsPublicFilesAndMissingFsyncFailsExplicitly(t *testi
 		t.Fatalf("private read failed: %v", err)
 	}
 	clear(document)
+	if err := os.Chmod(directory, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ReadPrivate(t.Context(), name, uint32(os.Getuid())); !errors.Is(err, ErrInvalid) {
+		t.Fatal("pairing file in a public parent directory was accepted")
+	}
+	if err := os.Chmod(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ReadPrivate(t.Context(), name, uint32(os.Getuid())+1); !errors.Is(err, ErrInvalid) {
+		t.Fatal("pairing file with an unexpected parent owner was accepted")
+	}
 	if err := os.Chmod(name, 0644); err != nil {
 		t.Fatal(err)
 	}

@@ -24,7 +24,10 @@ type Upload struct {
 	Source io.Reader
 }
 
-const maxUploadBytes = 256 << 20
+const (
+	maxUploadBytes      = 256 << 20
+	transferBufferBytes = 512 << 10
+)
 
 // UploadNew validates both the transmitted bytes and a separate SFTP readback.
 // It never overwrites a destination. The installer owns directory creation,
@@ -64,7 +67,13 @@ func (client *Client) UploadNew(ctx context.Context, upload Upload) error {
 			return ErrTransfer
 		}
 		digest := sha256.New()
-		written, err := io.Copy(io.MultiWriter(file, digest), io.LimitReader(upload.Source, upload.Size+1))
+		// A larger bounded buffer lets SFTP overlap packet round trips. Each
+		// write completes before hashing; failures never publish the temporary file.
+		written, err := io.CopyBuffer(
+			io.MultiWriter(file, digest),
+			io.LimitReader(upload.Source, upload.Size+1),
+			make([]byte, transferBufferBytes),
+		)
 		if err != nil {
 			return ErrTransfer
 		}
@@ -94,7 +103,11 @@ func verifyUpload(remote *sftp.Client, temporary string, upload Upload) error {
 	}
 	defer file.Close()
 	digest := sha256.New()
-	read, err := io.Copy(digest, io.LimitReader(file, upload.Size+1))
+	read, err := io.CopyBuffer(
+		digest,
+		io.LimitReader(file, upload.Size+1),
+		make([]byte, transferBufferBytes),
+	)
 	if err != nil {
 		return ErrTransfer
 	}
@@ -114,6 +127,18 @@ func (client *Client) ReadPrivate(ctx context.Context, name string, owner uint32
 	err := client.withSFTP(ctx, func(remote *sftp.Client) error {
 		if err := verifyParents(remote, name); err != nil {
 			return err
+		}
+		parent, err := remote.Lstat(path.Dir(name))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return os.ErrNotExist
+			}
+			return ErrTransfer
+		}
+		parentStat, ok := parent.Sys().(*sftp.FileStat)
+		privateParent := ok && parentStat.UID == owner && parent.Mode().Perm()&0077 == 0
+		if !privateParent {
+			return ErrInvalid
 		}
 		info, err := remote.Lstat(name)
 		if errors.Is(err, os.ErrNotExist) {
@@ -167,6 +192,9 @@ func verifyParents(remote *sftp.Client, name string) error {
 	for parent := path.Dir(name); ; parent = path.Dir(parent) {
 		info, err := remote.Lstat(parent)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return os.ErrNotExist
+			}
 			return ErrTransfer
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -188,7 +216,11 @@ func (client *Client) withSFTP(ctx context.Context, operation func(*sftp.Client)
 	// channel creation and file I/O; accepted runner tasks remain independent.
 	stop := context.AfterFunc(ctx, func() { _ = client.connection.Close() })
 	defer stop()
-	remote, err := sftp.NewClient(client.connection)
+	remote, err := sftp.NewClient(
+		client.connection,
+		sftp.UseConcurrentWrites(true),
+		sftp.MaxConcurrentRequestsPerFile(16),
+	)
 	if err != nil {
 		return connectionError(ctx, err)
 	}

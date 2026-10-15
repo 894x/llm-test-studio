@@ -109,6 +109,22 @@ Windows 当前安装输入与操作记录测试、Linux installer/CLI go vet、L
 
 本阶段没有改变 SQLite schema 或报告格式，没有执行实际用户数据升级，没有在用户服务器安装服务或调用付费渠道。
 
+## 2026-10-16：SSH 自动部署与真实共享节点
+
+SSH 客户端现可上传 Linux 产物并调用固定 provision 子命令；请求仅通过 stdin 传入，进度和完成确认均核对操作 ID 与当前字段。连接已有节点只读取 root 专有配对与身份文件并实时 GET /runner，不要求客户端构建等于 runner。连接关闭释放配对 lease 和 HTTP 池，重复连接不会耗尽池额度。当前 RunnerInfo 的所有字段和嵌套字段都必须显式存在，拒绝 null、大小写变体、重复及未知字段；这不增加历史元数据解码路径。
+
+用户 amd64 服务器已从无安装状态配置为专用 uid/gid 998 的 systemd 服务。实机发现并修复：首次创建账户时局部 err 遮蔽了成功的再次查询；systemd 249 在从未启动前的有效 WatchdogUSec 为 infinity，必须先核验已加载 unit 的 WatchdogSec，启动后再核验有效 30s。活动服务无论是否 enable 都执行严格运行时检查；拒绝 drop-in 覆盖，并只读确认全局 service-watchdogs 已启用，不改变全局设置。
+
+第一次 19570550 字节上传因串行包往返超过 2 分钟，尚未执行安装器；改为 512 KiB 缓冲、每文件最多 16 个请求后完整产物上传/独立回读通过。超时留下的准确暂存目录已重新连接核验所有者、权限和全部内容后清理。后续失败保留专用账户、程序与配置，以新操作记录继续，未重置数据。未把这些重试描述为修复后的全新机器一次成功安装；第二台干净机器与 arm64 仍待验证。
+
+最终 TestLiveProvisionSharedRunner 通过，耗时 82.94 秒。两个独立 SSH 客户端回读同一 node_id `55e50d9b-b900-4b5e-9fb6-c4fee2bc17be` 和 installation_id `2ec0bac4-20bc-4765-b256-cad839f1c5a1`。另一产物摘要 `2f02df586dd69801b68d94e80b08ed154b843821a01956444223436e1fb94f3c` 通过 installer 兼容复用，连接前后 MainPID 和 NRestarts 不变。实际保留的 runner 为验证构建 `remote-install-3fdc7b4-fixed`，执行 inode SHA-256 为 `9f59901c370b279208269d3a4ec14e3efca528d1feddb992ba4f046aba44ce38`；不以最新上传产物或客户端构建冒充实际执行构建。
+
+维护 pause 确认且 Pending=0 后，仅对产品主进程发送 SIGKILL。systemd 自动恢复为新 PID 173242，NRestarts=1；installation、配对和暂停 owner 保留，WATCHDOG 时间戳继续推进、有效时限为 30s。原维护操作恢复后 Ready=true、Healthy=true、Pending=0。该试验没有重启服务器，没有验证宿主重启后的自启动。最初强杀验证用了该 systemd 不支持的参数，恢复接收后改为其支持的 --kill-who 再执行上述完整成功验证。
+
+Windows jobcontract、SSH、installer、credentials 测试及相关 vet 通过；完整 SSH 测试和 installer 测试在 WSL 通过。root WSL 的 BootstrapCleanup 用例验证未知文件保留、公开权限文件拒绝，以及全部校验后才清理准确私有路径。Linux arm64 交叉构建通过，尚无 arm64 实机验证。全仓 Go 的既有 K3 负向 Case 判定问题仍按上一节记录，未用这些定向通过结果宣称全仓通过。
+
+本阶段没有改变 SQLite schema 或报告格式，也未升级桌面实际用户数据库；服务器运行时创建新的当前格式 runner 数据库。SSH 密码只经隐藏输入和进程 stdin，未保存于文件、参数或日志。未使用用户渠道 key、未发起提供商请求；桌面节点配置、默认远程、全部入口与离线报告、显式升级和最终 R16 仍待接通。
+
 ## 待验收
 
-独立 runner 管理接口、SSH 自动安装、systemd 保活、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、历史数据升级，以及第二台节点、arm64 和多客户端共享的验证仍按实施方案 R1–R16 执行。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。
+完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

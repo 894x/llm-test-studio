@@ -68,6 +68,14 @@ type Progress struct {
 	Stage       string `json:"stage"`
 }
 
+func (progress Progress) Validate() error {
+	stages := []string{"checking", "account", "program", "configuration", "service", "verifying", "completed"}
+	if !domain.IsUUID(progress.OperationID) || !slices.Contains(stages, progress.Stage) {
+		return ErrInvalid
+	}
+	return nil
+}
+
 type Identity struct {
 	Contract       int    `json:"contract"`
 	NodeID         string `json:"node_id"`
