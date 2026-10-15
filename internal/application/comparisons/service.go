@@ -24,9 +24,8 @@ var (
 
 type Repository interface {
 	PreparationRepository
+	ExecutionRepository
 	CreateComparison(context.Context, domain.Comparison) error
-	GetComparison(context.Context, string) (domain.Comparison, error)
-	UpdateComparison(context.Context, uint64, domain.Comparison) error
 }
 
 type Runner interface {
@@ -54,9 +53,9 @@ type Dependencies struct {
 
 type Service struct {
 	*Preparer
+	*Refresher
 	repository Repository
 	runner     Runner
-	clock      Clock
 }
 
 type StartCommand struct {
@@ -109,9 +108,15 @@ func New(dependencies Dependencies) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	refresher, err := NewRefresher(RefresherDependencies{
+		Repository: dependencies.Repository, Runs: dependencies.Runner, Clock: dependencies.Clock,
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &Service{
 		Preparer: preparer, repository: dependencies.Repository, runner: dependencies.Runner,
-		clock: dependencies.Clock,
+		Refresher: refresher,
 	}, nil
 }
 
@@ -180,54 +185,6 @@ func (service *Service) cancelStarted(started []domain.ComparisonRunRef) {
 	for _, item := range started {
 		_ = service.runner.CancelRun(context.Background(), item.RunID)
 	}
-}
-
-func (service *Service) Refresh(ctx context.Context, comparisonID string) (domain.Comparison, error) {
-	if service == nil || ctx == nil || !domain.IsUUID(comparisonID) {
-		return domain.Comparison{}, ErrInvalid
-	}
-	comparison, err := service.repository.GetComparison(ctx, comparisonID)
-	if err != nil || comparison.Status() != domain.ComparisonRunning {
-		return comparison, err
-	}
-	terminal := domain.ComparisonCompleted
-	for _, item := range comparison.Runs() {
-		run, runErr := service.runner.GetRun(ctx, item.RunID)
-		if runErr != nil {
-			return domain.Comparison{}, runErr
-		}
-		snapshot := run.Snapshot()
-		if snapshot.Plan != comparison.Plan() || snapshot.Model.EntityRevisionRef != comparison.Model() || snapshot.Channel.EntityRevisionRef != item.Channel {
-			return domain.Comparison{}, ErrNotReady
-		}
-		switch run.Status() {
-		case domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining:
-			return comparison, nil
-		case domain.RunFailed:
-			terminal = domain.ComparisonFailed
-		case domain.RunCancelled:
-			if terminal != domain.ComparisonFailed {
-				terminal = domain.ComparisonCancelled
-			}
-		case domain.RunCompleted:
-		default:
-			return domain.Comparison{}, ErrNotReady
-		}
-	}
-	updated, err := comparison.Transition(terminal, service.clock.Now())
-	if err != nil {
-		return domain.Comparison{}, err
-	}
-	if err := service.repository.UpdateComparison(ctx, comparison.Meta().Revision, updated); err != nil {
-		// Snapshot polling may race with another refresher. If that caller already
-		// committed the terminal transition, return the durable winner.
-		current, reloadErr := service.repository.GetComparison(ctx, comparisonID)
-		if reloadErr == nil && current.Status() != domain.ComparisonRunning {
-			return current, nil
-		}
-		return domain.Comparison{}, err
-	}
-	return updated, nil
 }
 
 func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
