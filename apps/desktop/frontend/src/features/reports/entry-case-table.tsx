@@ -2,13 +2,17 @@ import { Fragment, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
+import CopyIcon from "lucide-react/dist/esm/icons/copy.mjs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { protocolPresentation } from "@/features/protocols/registry"
 import type { ProtocolObservation, AssertionResult, ProtocolColumn, VerificationStatus, VerificationSummary } from "@/features/protocols/types"
 import { desktopLocale } from "@/i18n/runtime"
 import type { ReportCaseDetail, ReportEntryDetail, ReportResult } from "./data"
+import { copyReportTextToClipboard } from "./report-clipboard"
 
 const PAGE_SIZE = 50
 const DETAIL_PAGE_SIZE = 20
@@ -132,7 +136,7 @@ export function ExecutionDetails({ results, paginate = true }: { results: Report
         {result.observation ? <>
           <ObservationDetails observation={result.observation} />
           {result.observation.exchanges.map((exchange, i) => <details key={i} className="min-w-0"><summary className="cursor-pointer rounded-sm py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">{exchange.step} · {exchange.method} · {exchange.http_status ?? "—"} · {number(exchange.elapsed_ms)} ms</summary>
-            <div className="mt-2 grid min-w-0 gap-3 lg:grid-cols-2"><JSONEvidence label={t("protocolDesign.request")} value={exchange.request_body} /><JSONEvidence label={t("protocolDesign.response")} value={exchange.response} /></div>
+            <div className="mt-2 grid min-w-0 gap-3 lg:grid-cols-2"><JSONEvidence label={t("protocolDesign.request")} value={exchange.request_body} copyable /><JSONEvidence label={t("protocolDesign.response")} value={exchange.response} copyable /></div>
           </details>)}
           <JSONEvidence label={t("protocolDesign.observation")} value={{ ...result.observation, exchanges: undefined }} />
         </> : null}
@@ -177,9 +181,40 @@ function AssertionTable({ assertions }: { assertions: AssertionResult[] }) {
     </TableRow>{assertion.children?.length ? <TableRow><TableCell colSpan={4} className="pl-4"><AssertionTable assertions={assertion.children} /></TableCell></TableRow> : null}</Fragment>)}</TableBody>
   </Table></div>
 }
-function JSONEvidence({ label, value }: { label: string; value: unknown }) {
+function JSONEvidence({ label, value, copyable = false }: { label: string; value: unknown; copyable?: boolean }) {
+  const { t } = useTranslation("reports")
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle")
   if (value === undefined) return null
-  return <details className="min-w-0"><summary className="cursor-pointer rounded-sm text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">{label}</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-[11px]">{boundedJSON(value, 16000)}</pre></details>
+
+  async function copyBody() {
+    setCopyState("copying")
+    try {
+      await copyReportTextToClipboard(JSON.stringify(value, null, 2))
+      setCopyState("copied")
+    } catch {
+      setCopyState("error")
+    }
+  }
+
+  const copyLabel = t("protocolDesign.copyBody", { label })
+  return <details className="min-w-0">
+    <summary className="cursor-pointer rounded-sm text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">{label}</summary>
+    <div className="mt-2 rounded bg-muted/40">
+      {copyable ? <div className="flex min-h-8 items-center justify-end gap-2 px-1 pt-1">
+        <span role="status" className={`text-[11px] ${copyState === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+          {copyState === "idle" ? "" : t(`protocolDesign.copyState.${copyState}`)}
+        </span>
+        <TooltipProvider delayDuration={250}><Tooltip>
+          <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label={copyLabel}
+            disabled={copyState === "copying"} onClick={() => void copyBody()}>
+            {copyState === "copying" ? <Spinner /> : <CopyIcon />}
+          </Button></TooltipTrigger>
+          <TooltipContent>{copyLabel}</TooltipContent>
+        </Tooltip></TooltipProvider>
+      </div> : null}
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all p-2 font-mono text-[11px]">{boundedJSON(value, 16000)}</pre>
+    </div>
+  </details>
 }
 function ResultPagination({ page, count, size, onPage }: { page: number; count: number; size: number; onPage: (page: number) => void }) {
   const { t } = useTranslation("reports")

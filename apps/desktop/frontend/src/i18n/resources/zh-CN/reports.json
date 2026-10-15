@@ -214,6 +214,12 @@
     "artifacts": "产物",
     "request": "请求体",
     "response": "响应",
+    "copyBody": "复制{{label}}",
+    "copyState": {
+      "copying": "正在复制…",
+      "copied": "已复制",
+      "error": "复制失败，请重试"
+    },
     "observation": "协议观测数据",
     "noExecutions": "暂无执行记录。",
     "assertions": "逐条断言结果",

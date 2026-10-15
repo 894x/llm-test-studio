@@ -1,12 +1,71 @@
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { I18nextProvider } from "react-i18next"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { createAppI18n } from "@/i18n/i18n"
 import { openAIChatPresentation } from "@/features/protocols/openai-chat"
 import { EntryCaseTable, ExecutionDetails } from "./entry-case-table"
 import type { ReportEntryDetail, ReportResult } from "./data"
 
+afterEach(() => vi.unstubAllGlobals())
+
+function renderBodyEvidence(requestBody: string) {
+  const result: ReportResult = {
+    id: "request-body", execution_status: "completed", metrics: {},
+    verification: { status: "not_applicable", assertions: [] },
+    observation: {
+      protocol: "openai-chat", metrics: {}, artifacts: [], issues: [],
+      exchanges: [{ step: "chat", method: "POST", path: "/chat/completions", elapsed_ms: 10,
+        request_body: { content: requestBody }, response: { choices: [{ message: { content: "你好" } }] } }],
+    },
+  }
+  render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ExecutionDetails results={[result]} /></I18nextProvider>)
+  fireEvent.click(screen.getByText(/chat · POST/))
+  fireEvent.click(screen.getByText("请求体"))
+  fireEvent.click(screen.getByText("响应"))
+  return result.observation!.exchanges[0]
+}
+
 describe("protocol execution details", () => {
+  it("copies complete request and response bodies while keeping details open", async () => {
+    const writeText = vi.fn(async () => undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const exchange = renderBodyEvidence(`${"长".repeat(17000)}结尾`)
+    const requestPanel = screen.getByText("请求体").closest("details")!
+    expect(requestPanel.querySelector("pre")).not.toHaveTextContent("结尾")
+
+    fireEvent.click(screen.getByRole("button", { name: "复制请求体" }))
+    await waitFor(() => expect(within(requestPanel).getByRole("status")).toHaveTextContent("已复制"))
+    expect(writeText).toHaveBeenLastCalledWith(JSON.stringify(exchange.request_body, null, 2))
+    expect(requestPanel).toHaveAttribute("open")
+
+    fireEvent.click(screen.getByRole("button", { name: "复制响应" }))
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(JSON.stringify(exchange.response, null, 2)))
+    expect(screen.getByText("响应").closest("details")).toHaveAttribute("open")
+    expect(screen.getAllByRole("button", { name: /^复制/ })).toHaveLength(2)
+  })
+
+  it("prevents duplicate writes and lets a failed copy be retried", async () => {
+    let rejectWrite!: (reason: Error) => void
+    const writeText = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectWrite = reject }))
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    renderBodyEvidence("test")
+    const button = screen.getByRole("button", { name: "复制请求体" })
+    const requestPanel = button.closest("details")!
+
+    fireEvent.click(button)
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(writeText).toHaveBeenCalledOnce()
+    rejectWrite(new Error("permission denied"))
+    await waitFor(() => expect(within(requestPanel).getByRole("status")).toHaveTextContent("复制失败，请重试"))
+    expect(button).toBeEnabled()
+    expect(requestPanel).not.toHaveTextContent("permission denied")
+
+    writeText.mockResolvedValueOnce()
+    fireEvent.click(button)
+    await waitFor(() => expect(within(requestPanel).getByRole("status")).toHaveTextContent("已复制"))
+  })
+
   it("preserves latency, token and warmup evidence without inventing missing metrics", () => {
     const result: ReportResult = {
       id: "request-one", request_id: "warmup-1", execution_status: "completed",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { copyReportPNGToClipboard } from "./report-clipboard"
+import { copyReportPNGToClipboard, copyReportTextToClipboard } from "./report-clipboard"
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -13,6 +13,49 @@ function browserClipboard() {
   vi.stubGlobal("navigator", { clipboard: { write } })
   return write
 }
+
+describe("report text clipboard", () => {
+  it("uses the Wails clipboard when available", async () => {
+    const ClipboardSetText = vi.fn(async () => true)
+    const writeText = vi.fn()
+    vi.stubGlobal("runtime", { ClipboardSetText })
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+
+    await copyReportTextToClipboard("完整请求体\n{\"model\":\"test\"}")
+
+    expect(ClipboardSetText).toHaveBeenCalledExactlyOnceWith("完整请求体\n{\"model\":\"test\"}")
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it("uses the browser clipboard in browser preview", async () => {
+    const writeText = vi.fn(async () => undefined)
+    vi.stubGlobal("runtime", undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+
+    await copyReportTextToClipboard("response")
+
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("response")
+  })
+
+  it.each([false, "rejected"])("reports a native write failure (%s)", async result => {
+    const ClipboardSetText = vi.fn(async () => {
+      if (result === "rejected") throw new Error("clipboard_denied")
+      return false
+    })
+    vi.stubGlobal("runtime", { ClipboardSetText })
+
+    await expect(copyReportTextToClipboard("response")).rejects.toThrow()
+  })
+
+  it("reports an unavailable or denied browser clipboard", async () => {
+    vi.stubGlobal("runtime", undefined)
+    vi.stubGlobal("navigator", {})
+    await expect(copyReportTextToClipboard("response")).rejects.toThrow("clipboard_unavailable")
+
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(async () => { throw new Error("clipboard_denied") }) } })
+    await expect(copyReportTextToClipboard("response")).rejects.toThrow("clipboard_denied")
+  })
+})
 
 describe("report PNG clipboard", () => {
   it("copies the encoded PNG natively without also writing through the browser", async () => {

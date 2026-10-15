@@ -214,6 +214,12 @@
     "artifacts": "Artifacts",
     "request": "Request body",
     "response": "Response",
+    "copyBody": "Copy {{label}}",
+    "copyState": {
+      "copying": "Copying…",
+      "copied": "Copied",
+      "error": "Copy failed. Try again."
+    },
     "observation": "Protocol observations",
     "noExecutions": "No execution records.",
     "assertions": "Assertion results",
