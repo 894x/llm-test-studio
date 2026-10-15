@@ -159,6 +159,16 @@ Windows 与 Ubuntu 24.04 WSL 的 remotenodes 共 27 项普通测试通过，实�
 
 nodes.json 的当前 Installation 增加必填 temporary_directory 与 cleanup_pending；所有当前生产者、校验器和测试同步更新，缺字段旧格式仍明确拒绝且不修改数据，不新增历史读取路径。此前未创建实际用户 nodes.json，本阶段只使用临时配置，没有历史数据转换，没有改变 SQLite 或报告格式。桌面 bootstrap 的持久目录、OS Store 装配、UI、任务入口和结果同步仍待实现；进程强杀期间尚未回传的上传暂存目录追踪和显式升级继续后续验证，不能把本阶段视为最终远程 K3 e2e。
 
+## 2026-10-16：桌面节点服务生产装配
+
+生产 initializer 已装配 Manager、`remote-nodes/nodes.json`、按该根目录计算的独立 scoped Store，以及 `runner-releases` 校验缓存。发布默认为桌面 appVersion 对应的明确 GitHub release，测试和开发装配可显式注入来源与发布；创建服务不会下载产物。启动先验证当前节点配置，再清理孤立凭据和启动监测；未知格式在任何凭据清理前拒绝且保留原字节。退出关闭并等待所有检查与监测循环，Closer 可重复调用；关闭先于 Run goroutine 调度时返回正常取消，重复启动监测仍拒绝。
+
+新增私有目录准备，避免在凭据 intent 写入前隐式建立未确认目录链。新目录先在父目录内暂存，再按平台发布；Unix 确认目标及全部祖先目录，即使前次失败留下可见目录，重试也不跳过祖先同步。Windows 使用现有 MoveFileEx WRITE_THROUGH 发布原语，不声称支持目录 fsync。已有祖先权限不修改，目标目录保持私有；文件与最终 symlink 拒绝，已有数据保留。
+
+Windows desktop、remotenodes 与 fileconfig 测试及相关 vet 通过，生产重开/立即关闭相关用例重复 10 次通过。目录用例在 Ubuntu 24.04 WSL 通过，包含并发创建、保留已有内容、取消、symlink 拒绝，以及发布父目录后注入同步失败、重试重新确认祖先。Windows symlink 子项因系统权限不可用跳过。生产装配测试使用临时用户根、内存凭据与拒绝连接的 stub，验证保存的远程默认在离线重开后保留、凭据只能通过正确 scope 取得且不进入 nodes.json、没有产物下载。
+
+这一提交没有公开 Remote binding/UI 或改变启动任务契约，也未验证原生 Wails、实际 OS Store 或真实 provider；节点删除使用检查继续缺省拒绝，待任务 Coordinator 装配。SQLite schema 和报告格式不变，实际用户配置与数据库未打开、未转换。当前 Wails 模块和用于版本核验的 CLI 均为 v2.15.0，没有执行绑定生成或更改依赖。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

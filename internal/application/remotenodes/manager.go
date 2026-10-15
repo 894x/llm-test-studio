@@ -171,7 +171,11 @@ func (manager *Manager) checkWorker(id string, task *checkTask) {
 // node never blocks checks of another node. Call Close and join Run at shutdown.
 func (manager *Manager) Run() error {
 	manager.mu.Lock()
-	if manager.closed || manager.monitoring {
+	if manager.closed {
+		manager.mu.Unlock()
+		return context.Canceled
+	}
+	if manager.monitoring {
 		manager.mu.Unlock()
 		return ErrConflict
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
@@ -31,7 +32,9 @@ import (
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/fileconfig"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/runnerartifacts"
 )
 
 var desktopApplicationVersion = "dev"
@@ -46,6 +49,9 @@ type productionOptions struct {
 	reportRunDiagnostic     func(runs.Diagnostic)
 	reportCredentialCleanup func(error)
 	credentialStore         credentials.Store
+	runnerSource            runnerartifacts.Source
+	runnerRelease           string
+	remoteConnector         remotenodes.Connector
 }
 
 type productionClock struct{}
@@ -83,11 +89,8 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, err
 		}
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return desktopDependencies{}, fmt.Errorf("create desktop data directory: %w", err)
-		}
-		if err := os.Chmod(directory, 0o700); err != nil {
-			return desktopDependencies{}, fmt.Errorf("secure desktop data directory: %w", err)
+		if err := fileconfig.EnsurePrivateDirectory(ctx, directory); err != nil {
+			return desktopDependencies{}, fmt.Errorf("prepare desktop data directory: %w", err)
 		}
 		if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
 			AppVersion: options.appVersion,
@@ -261,6 +264,17 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create comparison application service: %w", err)
 		}
+		remoteNodes, closeRemoteNodes, err := newProductionRemoteNodes(
+			ctx,
+			directory,
+			baseCredentialStore,
+			options,
+		)
+		if err != nil {
+			_ = runService.Close()
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create remote node manager: %w", err)
+		}
 		gate := &productionServiceGate{}
 		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
 		catalogCommands := catalogQuery
@@ -276,6 +290,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			reportGeneration: reportGenerator,
 			commands:         runService,
 			comparisons:      comparisonService,
+			remoteNodes:      remoteNodes,
 			quickTests: quicktest.New(quicktest.Dependencies{
 				TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
 					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
@@ -288,7 +303,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 				ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
 			}),
 			close: func() error {
-				return errors.Join(runService.Close(), repository.Close())
+				return errors.Join(closeRemoteNodes(), runService.Close(), repository.Close())
 			},
 		}, nil
 	}

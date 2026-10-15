@@ -423,3 +423,14 @@ func TestManagerMonitorStartsChecksAndCloseJoinsItsLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestManagerMonitorClosedBeforeScheduledRunReturnsCancellation(t *testing.T) {
+	fixture := newNodeFixture(t)
+	manager := managerFixture(t, fixture, &remoteFixture{})
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Run(); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
