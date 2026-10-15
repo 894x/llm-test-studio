@@ -11,6 +11,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
 const maxQuickPerformanceReportBytes = 32 << 20
@@ -30,7 +31,12 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 	if len(document) > maxQuickPerformanceReportBytes {
 		return errors.New("quick performance report exceeds storage byte limit")
 	}
-	_, err = repository.db.ExecContext(ctx, `
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin quick performance archive: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO quick_performance_reports(
 			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -38,6 +44,25 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 		report.Progress.Phase, report.Metrics.Completed, report.Metrics.Failed, document)
 	if err != nil {
 		return classifyWriteError("save quick performance report", err)
+	}
+	var jobID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM execution_jobs WHERE kind = 'performance'
+		AND json_extract(spec_json, '$.spec.performance.report_id') = ?
+	`, report.ReportID).Scan(&jobID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read quick performance job owner: %w", err)
+	}
+	if err == nil {
+		if err := journalJobEventTx(ctx, tx, jobEventWrite{
+			JobID: jobID, Kind: jobcontract.EventReport, At: generatedAt,
+			Payload: reportReference(report.ReportID, jobcontract.KindPerformance, "", document),
+		}); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit quick performance archive", err)
 	}
 	return nil
 }

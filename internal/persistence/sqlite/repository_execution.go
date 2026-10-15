@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
 func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) error {
@@ -156,6 +157,11 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	}
 	if rows != 1 {
 		return fmt.Errorf("%w: run", ErrConflict)
+	}
+	if err := journalRunEventTx(ctx, tx, meta.ID, jobEventWrite{
+		Kind: jobcontract.EventRun, At: meta.UpdatedAt, Payload: run,
+	}); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return classifyWriteError("commit run update", err)
@@ -437,6 +443,11 @@ func (repository *Repository) CreateEvidence(ctx context.Context, evidence domai
 	`, evidence.ID, evidence.SchemaVersion, evidence.Revision, formatTime(evidence.CreatedAt), formatTime(evidence.UpdatedAt), evidence.RunID, document); err != nil {
 		return classifyWriteError("create evidence", err)
 	}
+	if err := journalRunEventTx(ctx, tx, evidence.RunID, jobEventWrite{
+		Kind: jobcontract.EventEvidence, At: evidence.UpdatedAt, Payload: evidence,
+	}); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return classifyWriteError("commit evidence", err)
 	}
@@ -630,6 +641,11 @@ func (repository *Repository) AppendResults(ctx context.Context, results ...doma
 			result,
 			documents[index],
 		); err != nil {
+			return err
+		}
+		if err := journalRunEventTx(ctx, tx, result.RunID, jobEventWrite{
+			Kind: jobcontract.EventResults, At: result.UpdatedAt, Payload: result,
+		}); err != nil {
 			return err
 		}
 	}
@@ -963,6 +979,12 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 		if _, err := tx.ExecContext(ctx, `INSERT INTO report_attachments(report_id, artifact_id, position) VALUES(?, ?, ?)`, report.ID, attachment.ArtifactID, position); err != nil {
 			return classifyWriteError("link report attachment", err)
 		}
+	}
+	if err := journalRunEventTx(ctx, tx, report.RunID, jobEventWrite{
+		Kind: jobcontract.EventReport, At: report.GeneratedAt,
+		Payload: reportReference(report.ID, jobcontract.KindRun, report.RunID, document),
+	}); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return classifyWriteError("commit report", err)

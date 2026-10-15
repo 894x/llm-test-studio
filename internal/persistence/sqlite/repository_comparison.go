@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
 func (repository *Repository) CreateComparison(ctx context.Context, comparison domain.Comparison) error {
@@ -120,6 +121,19 @@ func (repository *Repository) UpdateComparison(ctx context.Context, expectedRevi
 	}
 	if rows != 1 {
 		return fmt.Errorf("%w: comparison", ErrConflict)
+	}
+	var jobID string
+	err = tx.QueryRowContext(ctx, `SELECT id FROM execution_jobs WHERE kind = 'comparison'
+		AND json_extract(spec_json, '$.spec.comparison.meta.id') = ?`, meta.ID).Scan(&jobID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read comparison job owner: %w", err)
+	}
+	if err == nil {
+		if err := journalJobEventTx(ctx, tx, jobEventWrite{
+			JobID: jobID, Kind: jobcontract.EventComparison, At: meta.UpdatedAt, Payload: comparison,
+		}); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return classifyWriteError("commit comparison update", err)

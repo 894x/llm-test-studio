@@ -1,6 +1,46 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "execution_jobs", table: "execution_jobs", ddl: `CREATE TABLE execution_jobs (
+		accepted_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+		id TEXT NOT NULL UNIQUE,
+		installation_id TEXT NOT NULL,
+		engine_build_id TEXT NOT NULL,
+		kind TEXT NOT NULL CHECK(kind IN ('run', 'performance', 'comparison')),
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		status TEXT NOT NULL CHECK(status IN ('queued', 'starting', 'running', 'draining', 'completed', 'failed', 'cancelled')),
+		accepted_at TEXT NOT NULL,
+		spec_sha256 TEXT NOT NULL,
+		secret_commitment TEXT NOT NULL,
+		spec_json TEXT NOT NULL CHECK(json_valid(spec_json)),
+		snapshot_json TEXT NOT NULL CHECK(json_valid(snapshot_json)),
+		last_sequence INTEGER NOT NULL CHECK(last_sequence >= revision)
+	)`},
+	{kind: "index", name: "idx_execution_jobs_active", table: "execution_jobs",
+		ddl: `CREATE INDEX idx_execution_jobs_active ON execution_jobs(status, accepted_sequence)`},
+	{kind: "index", name: "idx_execution_jobs_performance_report", table: "execution_jobs",
+		ddl: `CREATE UNIQUE INDEX idx_execution_jobs_performance_report
+		ON execution_jobs(json_extract(spec_json, '$.spec.performance.report_id')) WHERE kind = 'performance'`},
+	{kind: "index", name: "idx_execution_jobs_comparison", table: "execution_jobs",
+		ddl: `CREATE UNIQUE INDEX idx_execution_jobs_comparison
+		ON execution_jobs(json_extract(spec_json, '$.spec.comparison.meta.id')) WHERE kind = 'comparison'`},
+	{kind: "table", name: "execution_job_runs", table: "execution_job_runs", ddl: `CREATE TABLE execution_job_runs (
+		run_id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		position INTEGER NOT NULL CHECK(position >= 0),
+		UNIQUE(job_id, position),
+		FOREIGN KEY(run_id) REFERENCES execution_runs(id),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
+	{kind: "table", name: "execution_job_events", table: "execution_job_events", ddl: `CREATE TABLE execution_job_events (
+		job_id TEXT NOT NULL,
+		sequence INTEGER NOT NULL CHECK(sequence > 0),
+		kind TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		PRIMARY KEY(job_id, sequence),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
 	{kind: "table", name: "schema_migrations", table: "schema_migrations", ddl: `CREATE TABLE schema_migrations (
 		version INTEGER PRIMARY KEY,
 		name TEXT NOT NULL UNIQUE,
