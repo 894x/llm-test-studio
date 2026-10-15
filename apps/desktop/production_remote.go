@@ -12,12 +12,17 @@ import (
 	"github.com/894x/llm-test-studio/internal/runnerartifacts"
 )
 
+type productionRemoteNodes struct {
+	manager       *remotenodes.Manager
+	configuration *remotenodes.Service
+}
+
 func newProductionRemoteNodes(
 	ctx context.Context,
 	applicationDirectory string,
 	base credentials.Store,
 	options productionOptions,
-) (*remotenodes.Manager, func() error, error) {
+) (*productionRemoteNodes, func() error, error) {
 	directory := filepath.Join(applicationDirectory, "remote-nodes")
 	if err := fileconfig.EnsurePrivateDirectory(ctx, directory); err != nil {
 		return nil, nil, err
@@ -73,7 +78,7 @@ func newProductionRemoteNodes(
 	go func() { finished <- manager.Run() }()
 	var closeOnce sync.Once
 	var closeErr error
-	return manager, func() error {
+	return &productionRemoteNodes{manager: manager, configuration: configuration}, func() error {
 		closeOnce.Do(func() {
 			closeErr = manager.Close()
 			if err := <-finished; !errors.Is(err, context.Canceled) {

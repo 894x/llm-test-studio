@@ -12,6 +12,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
+	"github.com/894x/llm-test-studio/internal/application/remotesync"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
@@ -154,6 +155,7 @@ type desktopDependencies struct {
 	comparisons      ComparisonService
 	quickTests       QuickPerformanceRunner
 	remoteNodes      *remotenodes.Manager
+	remoteSync       *remotesync.Watcher
 	close            func() error
 }
 
@@ -183,6 +185,7 @@ type DesktopApp struct {
 	comparisons              ComparisonService
 	quickTests               QuickPerformanceRunner
 	remoteNodes              *remotenodes.Manager
+	remoteSync               *remotesync.Watcher
 	close                    func() error
 	startupErr               error
 	shutdownErr              error
@@ -442,6 +445,7 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.comparisons = dependencies.comparisons
 	app.quickTests = dependencies.quickTests
 	app.remoteNodes = dependencies.remoteNodes
+	app.remoteSync = dependencies.remoteSync
 	app.close = dependencies.close
 	if dependencies.reportGeneration != nil {
 		unsubscribe := dependencies.reportGeneration.SubscribeProgress(func(progress reporting.GenerationProgress) {

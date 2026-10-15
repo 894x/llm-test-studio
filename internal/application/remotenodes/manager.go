@@ -33,6 +33,7 @@ type Manager struct {
 	workers       sync.WaitGroup
 	closed        bool
 	monitoring    bool
+	monitorEvery  time.Duration
 }
 
 type checkTask struct {
@@ -64,7 +65,7 @@ func NewManager(ctx context.Context, dependencies ManagerDependencies) (*Manager
 	return &Manager{
 		configuration: dependencies.Configuration, artifacts: dependencies.Artifacts,
 		release: dependencies.Release, connect: connect, ctx: lifetime, cancel: cancel,
-		checks: map[string]*checkTask{},
+		checks: map[string]*checkTask{}, monitorEvery: 15 * time.Second,
 	}, nil
 }
 
@@ -183,21 +184,23 @@ func (manager *Manager) Run() error {
 	manager.workers.Add(1)
 	manager.mu.Unlock()
 	defer manager.workers.Done()
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(manager.monitorEvery)
 	defer ticker.Stop()
 	for {
 		config, err := manager.configuration.store.Read(manager.ctx)
-		if err != nil {
-			return err
-		}
-		for _, node := range config.Nodes {
-			if !node.Enabled {
-				continue
-			}
-			_, err := manager.schedule(manager.ctx, checkRequest{id: node.ID, revision: node.Revision})
-			transient := errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrBusy)
-			if err != nil && !transient {
-				return err
+		// Snapshot exposes a rejected current configuration to callers. Keep
+		// the monitor alive without scheduling from an unreadable snapshot;
+		// restoring valid configuration must resume checks without restarting.
+		if err == nil {
+			for _, node := range config.Nodes {
+				if !node.Enabled {
+					continue
+				}
+				_, err := manager.schedule(manager.ctx, checkRequest{id: node.ID, revision: node.Revision})
+				transient := errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrBusy)
+				if err != nil && !transient {
+					break
+				}
 			}
 		}
 		select {

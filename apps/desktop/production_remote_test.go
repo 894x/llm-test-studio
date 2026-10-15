@@ -36,7 +36,7 @@ func TestProductionRemoteNodesPersistDefaultAndScopeCredentialsAcrossRestart(t *
 		remoteConnector: func(context.Context, remotessh.Endpoint, remotessh.Authentication) (remotenodes.RemoteSession, error) {
 			return nil, remotessh.ErrConnection
 		}}
-	manager, closeManager, err := newProductionRemoteNodes(
+	services, closeManager, err := newProductionRemoteNodes(
 		ctx,
 		root,
 		base,
@@ -45,6 +45,7 @@ func TestProductionRemoteNodesPersistDefaultAndScopeCredentialsAcrossRestart(t *
 	if err != nil {
 		t.Fatal(err)
 	}
+	manager := services.manager
 	t.Cleanup(func() { _ = closeManager() })
 	meta, err := domain.NewEntityMeta(time.Now().UTC())
 	if err != nil {
@@ -82,7 +83,7 @@ func TestProductionRemoteNodesPersistDefaultAndScopeCredentialsAcrossRestart(t *
 	if err := closeManager(); err != nil {
 		t.Fatal("production node closer is not idempotent")
 	}
-	manager, closeReopened, err := newProductionRemoteNodes(
+	services, closeReopened, err := newProductionRemoteNodes(
 		ctx,
 		root,
 		base,
@@ -91,6 +92,7 @@ func TestProductionRemoteNodesPersistDefaultAndScopeCredentialsAcrossRestart(t *
 	if err != nil {
 		t.Fatal(err)
 	}
+	manager = services.manager
 	t.Cleanup(func() { _ = closeReopened() })
 	snapshot, err = manager.Snapshot(ctx)
 	if err != nil {

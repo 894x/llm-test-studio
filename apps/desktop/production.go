@@ -25,6 +25,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
+	"github.com/894x/llm-test-studio/internal/application/remotesync"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
@@ -52,6 +53,7 @@ type productionOptions struct {
 	runnerSource            runnerartifacts.Source
 	runnerRelease           string
 	remoteConnector         remotenodes.Connector
+	remoteSyncConnector     func(context.Context, *remotenodes.Service, remotesync.Node) (remotesync.Connection, error)
 }
 
 type productionClock struct{}
@@ -275,6 +277,16 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create remote node manager: %w", err)
 		}
+		remoteSync, closeRemoteSync, err := newProductionRemoteSynchronization(ctx, remoteSyncDependencies{
+			Directory: directory, Repository: repository, Configuration: remoteNodes.configuration,
+			Connect: options.remoteSyncConnector,
+		})
+		if err != nil {
+			_ = closeRemoteNodes()
+			_ = runService.Close()
+			_ = repository.Close()
+			return desktopDependencies{}, fmt.Errorf("create remote synchronization: %w", err)
+		}
 		gate := &productionServiceGate{}
 		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
 		catalogCommands := catalogQuery
@@ -290,7 +302,8 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			reportGeneration: reportGenerator,
 			commands:         runService,
 			comparisons:      comparisonService,
-			remoteNodes:      remoteNodes,
+			remoteNodes:      remoteNodes.manager,
+			remoteSync:       remoteSync,
 			quickTests: quicktest.New(quicktest.Dependencies{
 				TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
 					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
@@ -303,7 +316,12 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 				ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
 			}),
 			close: func() error {
-				return errors.Join(closeRemoteNodes(), runService.Close(), repository.Close())
+				return errors.Join(
+					closeRemoteSync(),
+					closeRemoteNodes(),
+					runService.Close(),
+					repository.Close(),
+				)
 			},
 		}, nil
 	}
