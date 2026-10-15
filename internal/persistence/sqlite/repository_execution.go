@@ -12,26 +12,52 @@ import (
 )
 
 func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) error {
-	if err := run.Validate(); err != nil {
-		return fmt.Errorf("validate run: %w", err)
-	}
-	meta := run.Meta()
-	if meta.Revision != 1 || run.Status() != domain.RunQueued {
-		return errors.New("new run must be queued at revision 1")
-	}
-	document, err := marshalCanonical(run)
+	prepared, err := prepareRunCreate(run)
 	if err != nil {
-		return fmt.Errorf("encode run: %w", err)
-	}
-	snapshotDocument, err := marshalCanonical(run.Snapshot())
-	if err != nil {
-		return fmt.Errorf("encode run snapshot: %w", err)
+		return err
 	}
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin run create: %w", err)
 	}
 	defer tx.Rollback()
+	if err := createRunTx(ctx, tx, prepared); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit run", err)
+	}
+	return nil
+}
+
+type preparedRunCreate struct {
+	run      domain.Run
+	document []byte
+	snapshot []byte
+}
+
+func prepareRunCreate(run domain.Run) (preparedRunCreate, error) {
+	if err := run.Validate(); err != nil {
+		return preparedRunCreate{}, fmt.Errorf("validate run: %w", err)
+	}
+	meta := run.Meta()
+	if meta.Revision != 1 || run.Status() != domain.RunQueued {
+		return preparedRunCreate{}, errors.New("new run must be queued at revision 1")
+	}
+	document, err := marshalCanonical(run)
+	if err != nil {
+		return preparedRunCreate{}, fmt.Errorf("encode run: %w", err)
+	}
+	snapshotDocument, err := marshalCanonical(run.Snapshot())
+	if err != nil {
+		return preparedRunCreate{}, fmt.Errorf("encode run snapshot: %w", err)
+	}
+	return preparedRunCreate{run: run, document: document, snapshot: snapshotDocument}, nil
+}
+
+func createRunTx(ctx context.Context, tx *sql.Tx, prepared preparedRunCreate) error {
+	run := prepared.run
+	meta := run.Meta()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -47,11 +73,8 @@ func (repository *Repository) CreateRun(ctx context.Context, run domain.Run) err
 			plan_id, plan_revision, status, snapshot_json, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, meta.ID, meta.SchemaVersion, meta.Revision, formatTime(meta.CreatedAt), formatTime(meta.UpdatedAt),
-		run.PlanID(), run.Snapshot().Plan.Revision, run.Status(), snapshotDocument, document); err != nil {
+		run.PlanID(), run.Snapshot().Plan.Revision, run.Status(), prepared.snapshot, prepared.document); err != nil {
 		return classifyWriteError("create run revision", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return classifyWriteError("commit run", err)
 	}
 	return nil
 }

@@ -11,22 +11,47 @@ import (
 )
 
 func (repository *Repository) CreateComparison(ctx context.Context, comparison domain.Comparison) error {
-	if err := comparison.Validate(); err != nil {
-		return fmt.Errorf("validate comparison: %w", err)
-	}
-	meta := comparison.Meta()
-	if meta.Revision != 1 || comparison.Status() != domain.ComparisonRunning {
-		return errors.New("new comparison must be running at revision 1")
-	}
-	document, err := marshalCanonical(comparison)
+	prepared, err := prepareComparisonCreate(comparison)
 	if err != nil {
-		return fmt.Errorf("encode comparison: %w", err)
+		return err
 	}
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin comparison create: %w", err)
 	}
 	defer tx.Rollback()
+	if err := createComparisonTx(ctx, tx, prepared); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit comparison", err)
+	}
+	return nil
+}
+
+type preparedComparisonCreate struct {
+	comparison domain.Comparison
+	document   []byte
+}
+
+func prepareComparisonCreate(comparison domain.Comparison) (preparedComparisonCreate, error) {
+	if err := comparison.Validate(); err != nil {
+		return preparedComparisonCreate{}, fmt.Errorf("validate comparison: %w", err)
+	}
+	meta := comparison.Meta()
+	if meta.Revision != 1 || comparison.Status() != domain.ComparisonRunning {
+		return preparedComparisonCreate{}, errors.New("new comparison must be running at revision 1")
+	}
+	document, err := marshalCanonical(comparison)
+	if err != nil {
+		return preparedComparisonCreate{}, fmt.Errorf("encode comparison: %w", err)
+	}
+	return preparedComparisonCreate{comparison: comparison, document: document}, nil
+}
+
+func createComparisonTx(ctx context.Context, tx *sql.Tx, prepared preparedComparisonCreate) error {
+	comparison := prepared.comparison
+	meta := comparison.Meta()
 	if err := validateComparisonReferences(ctx, tx, comparison); err != nil {
 		return err
 	}
@@ -36,11 +61,8 @@ func (repository *Repository) CreateComparison(ctx context.Context, comparison d
 	`, meta.ID, meta.Revision, formatTime(meta.CreatedAt)); err != nil {
 		return classifyWriteError("create comparison root", err)
 	}
-	if err := insertComparisonRevision(ctx, tx, comparison, document); err != nil {
+	if err := insertComparisonRevision(ctx, tx, comparison, prepared.document); err != nil {
 		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return classifyWriteError("commit comparison", err)
 	}
 	return nil
 }
