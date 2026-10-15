@@ -2,15 +2,114 @@ package sqlite_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/894x/llm-test-studio/internal/testspec"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/domain"
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
+
+func TestWorkspaceListDefersFullCaseDefinitionValidationToRunDetail(t *testing.T) {
+	path, repository, fixture := openHardeningRepository(t)
+	createRunGraph(t, repository, fixture)
+	closeForTamper(t, repository)
+	tamper(t, path, `DROP TRIGGER trg_execution_run_revisions_no_update`)
+	tamper(t, path, `UPDATE execution_run_revisions
+		SET snapshot_json = json_set(snapshot_json, '$.entries[0].case_definitions[0].schema_version', 0),
+		    document_json = json_set(document_json, '$.plan_snapshot.entries[0].case_definitions[0].schema_version', 0)
+		WHERE run_id = ?`, fixture.run.Meta().ID)
+	restoreRunRevisionUpdateTrigger(t, path)
+	repository = reopenHardeningRepository(t, path)
+	defer repository.Close()
+	projections, err := repository.ListRunProjections(context.Background())
+	if err != nil || len(projections) != 1 {
+		t.Fatalf("unrequested Case definition blocked the list: %v", err)
+	}
+	encoded, err := json.Marshal(projections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"case_definitions", "definitions", "base_url", "credential"} {
+		if strings.Contains(strings.ToLower(string(encoded)), forbidden) {
+			t.Fatalf("list projection contains detail field %q", forbidden)
+		}
+	}
+	db := openDatabase(t, path)
+	defer db.Close()
+	readDocument := func() string {
+		t.Helper()
+		var document string
+		if err := db.QueryRowContext(
+			context.Background(),
+			`SELECT document_json FROM execution_run_revisions WHERE run_id = ?`,
+			fixture.run.Meta().ID,
+		).Scan(&document); err != nil {
+			t.Fatal(err)
+		}
+		return document
+	}
+	before := readDocument()
+	if _, err := repository.GetRun(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
+		t.Fatalf("unsupported Case format accepted by GetRun: %v", err)
+	}
+	if readDocument() != before {
+		t.Fatal("rejected detail read changed stored data")
+	}
+}
+
+func TestWorkspaceRequestCountsSelectObservationsAcrossAllEntries(t *testing.T) {
+	repository := openRepository(t)
+	defer repository.Close()
+	fixture := newRepositoryFixture(t)
+	snapshot := fixture.run.Snapshot()
+	second := snapshot.Entries[0]
+	second.EntryID = "10000000-0000-4000-8000-000000000091"
+	snapshot.Entries = append(snapshot.Entries, second)
+	secondPlanEntry := snapshot.PlanDocument.Entries[0]
+	secondPlanEntry.EntryID = second.EntryID
+	snapshot.PlanDocument.Entries = append(snapshot.PlanDocument.Entries, secondPlanEntry)
+	var err error
+	fixture.run, err = domain.NewRun(fixture.run.Meta(), fixture.plan.ID, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createRunGraph(t, repository, fixture)
+	transitionRun(t, repository, fixture.run, domain.RunStarting, domain.RunRunning)
+	request := fixture.result
+	request.RequestID, request.EvidenceIDs = "measured-request", []string{}
+	warmup := request
+	warmup.ID, warmup.RequestID = "10000000-0000-4000-8000-000000000093", "warmup-request"
+	warmup.Dimensions = map[string]string{"phase": "warmup"}
+	if err := repository.AppendResults(context.Background(), warmup); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.AppendResults(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	summary := request
+	summary.ID = "10000000-0000-4000-8000-000000000092"
+	summary.EntryID, summary.RequestID = second.EntryID, ""
+	if err := repository.AppendResults(context.Background(), summary); err != nil {
+		t.Fatal(err)
+	}
+	projections, err := repository.ListRunProjections(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projections) != 1 || projections[0].Completed != 1 || len(projections[0].EntryResults) != 2 {
+		t.Fatalf("case summary was counted again as a request: %+v", projections)
+	}
+	for _, entry := range projections[0].EntryResults {
+		if entry.ObservedCases != 1 {
+			t.Fatalf("entry Case progress = %+v", entry)
+		}
+	}
+}
 
 func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testing.T) {
 	t.Parallel()
@@ -35,10 +134,15 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 		t.Fatalf("CreateReport(first) error = %v", err)
 	}
 
+	secondSnapshot := fixture.run.Snapshot()
+	secondLoad := secondSnapshot.Entries[0].Load
+	secondLoad.Mode, secondLoad.RequestCount = domain.LoadFixedConcurrency, 2
+	secondSnapshot.Entries[0].Load = secondLoad
+	secondSnapshot.PlanDocument.Entries[0].Load = secondLoad
 	secondRun, err := domain.NewRun(
 		entityMeta("10000000-0000-4000-8000-000000000041", 1),
 		fixture.plan.ID,
-		fixture.run.Snapshot(),
+		secondSnapshot,
 	)
 	if err != nil {
 		t.Fatalf("NewRun(second) error = %v", err)
@@ -91,9 +195,9 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	}
 	byID := make(map[string]workspace.RunProjection, len(projections))
 	for _, projection := range projections {
-		byID[projection.Run.Meta().ID] = projection
-		if projection.PinnedPlan.Name != fixture.plan.Name || projection.PinnedPlan.Revision != fixture.plan.Revision {
-			t.Fatalf("pinned plan = %#v, want original revision and label", projection.PinnedPlan)
+		byID[projection.Meta.ID] = projection
+		if projection.PlanName != fixture.plan.Name || projection.Plan.Revision != fixture.plan.Revision {
+			t.Fatalf("pinned plan = %#v, want original revision and label", projection.Plan)
 		}
 	}
 	first := byID[firstRun.Meta().ID]
@@ -107,7 +211,7 @@ func TestWorkspaceRunProjectionsAggregateManyRunsWithoutLoadingDetails(t *testin
 	if second.Completed != 2 || second.Passed != 1 || second.Failed != 1 || second.ArtifactCount != 1 || second.Conclusion != workspace.ConclusionNone {
 		t.Fatalf("second projection = %#v", second)
 	}
-	if !reflect.DeepEqual(first.Run, firstRun) || !reflect.DeepEqual(second.Run, secondRun) {
+	if !reflect.DeepEqual(first.Meta, firstRun.Meta()) || !reflect.DeepEqual(second.Meta, secondRun.Meta()) {
 		t.Fatalf("projected runs do not match authoritative current runs")
 	}
 }
@@ -147,8 +251,8 @@ func TestWorkspaceRunProjectionsUseV2SnapshotAfterCatalogPlanRowIsDeleted(t *tes
 	if len(projections) != 1 {
 		t.Fatalf("ListRunProjections() count = %d, want 1", len(projections))
 	}
-	if !reflect.DeepEqual(projections[0].PinnedPlan, fixture.plan) {
-		t.Fatalf("PinnedPlan = %#v, want snapshot plan %#v", projections[0].PinnedPlan, fixture.plan)
+	if projections[0].PlanName != fixture.plan.Name || projections[0].Plan.ID != fixture.plan.ID || projections[0].Plan.Revision != fixture.plan.Revision {
+		t.Fatalf("PinnedPlan = %#v, want snapshot plan %#v", projections[0].Plan, fixture.plan)
 	}
 }
 
@@ -172,7 +276,7 @@ func TestWorkspaceRunProjectionsUseCurrentSnapshotForQuickTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(projections) != 1 || !reflect.DeepEqual(projections[0].PinnedPlan, fixture.plan) {
+	if len(projections) != 1 || projections[0].PlanName != fixture.plan.Name || projections[0].Plan.ID != fixture.plan.ID || projections[0].Plan.Revision != fixture.plan.Revision {
 		t.Fatalf("quick projection %#v", projections)
 	}
 }
@@ -242,6 +346,15 @@ func TestWorkspaceRunProjectionsRejectSummaryCriticalCorruption(t *testing.T) {
 			repository = reopenHardeningRepository(t, path)
 			defer repository.Close()
 
+			if test.name == "evidence owner document" {
+				if _, err := repository.ListRunProjections(context.Background()); err != nil {
+					t.Fatalf("unrequested evidence blocked run summaries: %v", err)
+				}
+				if _, err := repository.ListEvidence(context.Background(), fixture.run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
+					t.Fatalf("evidence read error = %v, want ErrCorrupt", err)
+				}
+				return
+			}
 			if _, err := repository.ListRunProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatalf("ListRunProjections() error = %v, want ErrCorrupt", err)
 			}

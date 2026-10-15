@@ -144,6 +144,20 @@ export interface CatalogActions {
   deletePlan(command: DeleteCommand): Promise<CatalogSnapshot>
 }
 
+export type CatalogScope = "all" | "connections" | "definitions" | "quick_test"
+
+export function selectCatalog(catalog: CatalogSnapshot, scope: CatalogScope): CatalogSnapshot {
+  return {
+    ...catalog,
+    models: scope === "definitions" ? [] : catalog.models,
+    channels: scope === "definitions" ? [] : catalog.channels,
+    channel_models: scope === "definitions" ? [] : catalog.channel_models,
+    test_cases: scope === "connections" ? [] : catalog.test_cases,
+    suites: scope === "connections" ? [] : catalog.suites,
+    plans: scope === "all" ? catalog.plans : [],
+  }
+}
+
 export interface CatalogSnapshot {
   schema_version: 1
   case_types: CatalogCaseTypeDescriptor[]

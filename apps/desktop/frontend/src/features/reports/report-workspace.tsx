@@ -38,7 +38,8 @@ import { copyReportPNGToClipboard } from "./report-clipboard"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
-export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport }: {
+export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, comparisonControl, preferredReportID, reportOpenSequence = 0, getDetail, exportReport, saveReportExport, copyReportPNG, renderRunShortcuts, exportVisualReport = createVisualReportExport }: {
+  comparisonControl?: ReactNode
   snapshot: ReportSnapshot
   comparisons?: ComparisonSnapshot
   preferredReportID?: string
@@ -192,7 +193,7 @@ export function ReportWorkspace({ snapshot, comparisons = EMPTY_COMPARISONS, pre
       title={t(isViewingReport ? "detailTitle" : "title")}
       description={isViewingReport ? t("detailDescription", { name: selectedVerdict }) : t("description")}
       actions={isViewingReport ? <Button variant="outline" size="sm" onClick={() => setViewingReportID("")}><ArrowLeftIcon />{t("back")}</Button> : (
-        <CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} />
+        <div className="flex items-center gap-2">{comparisonControl}<CatalogSearch search={search} label={t("search.label")} placeholder={t("search.placeholder")} totalLabel={t("count", { count: items.length })} /></div>
       )}
       inspector={selectedComparison ? <ComparisonReportInspector comparison={selectedComparison} snapshot={snapshot}
         onOpen={!isViewingReport ? () => setViewingReportID(selectedComparison.id) : undefined} exportControls={comparisonReport.controls} /> : selected ? (

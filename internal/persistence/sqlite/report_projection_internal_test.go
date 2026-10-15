@@ -44,7 +44,7 @@ func TestReportProjectionQuerySortsBeforeLoadingWideDocuments(t *testing.T) {
 		context.Background(),
 		"EXPLAIN QUERY PLAN "+reportProjectionQuery,
 		reporting.MaxSnapshotReports,
-		MaxReportProjectionDocumentBytes,
+		1,
 	)
 	if err != nil {
 		t.Fatalf("EXPLAIN QUERY PLAN error = %v", err)

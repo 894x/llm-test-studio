@@ -1,19 +1,11 @@
 {
   "loadError": "Unable to read the local workspace",
   "commandError": "Desktop operation failed; check local logs",
-  "catalogRefreshError": "{{operation}} completed, but the run-plan list could not be refreshed. Reopen the app.",
   "catalogError": "Catalog operation failed; check whether the object is still referenced",
   "comparisonError": "Unable to start the channel comparison; check local logs",
   "openErrorTitle": "Unable to open the local workspace",
   "openLogs": "Open log folder",
   "openingLogs": "Opening…",
   "loading": "Reading the local workspace…",
-  "loadingTitle": "Opening the local workspace",
-  "loadingProgress": "{{completed}} of {{total}} reads complete",
-  "loadingSteps": {
-    "workspace": "Run workspace",
-    "catalog": "Model, channel, and case catalog",
-    "reports": "Test report catalog",
-    "comparisons": "Channel comparison records"
-  }
+  "loadingPage": "Loading this page…"
 }

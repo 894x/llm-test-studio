@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import CircleStopIcon from "lucide-react/dist/esm/icons/circle-stop.mjs"
 import CircleXIcon from "lucide-react/dist/esm/icons/circle-x.mjs"
 import PanelLeftIcon from "lucide-react/dist/esm/icons/panel-left.mjs"
@@ -420,16 +420,33 @@ export function NewRunSheet({
   commandPending,
   onStartRun,
   triggerLabel,
+  onOpen,
 }: {
   plans: TestPlan[]
 	catalog: CatalogSnapshot
   commandPending: boolean
   onStartRun: (command: StartRunTargetCommand) => Promise<void>
   triggerLabel?: string
+  onOpen?: () => Promise<unknown>
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("runs")
   const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState("")
+  const planGroup = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open && !loading && !loadError) {
+      planGroup.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')?.focus()
+    }
+  }, [open, loading, loadError])
+  const loadCatalog = () => {
+    if (!onOpen) return
+    setLoading(true)
+    setLoadError("")
+    void onOpen().catch(error => setLoadError(publicDesktopOperationErrorMessage(error, t("newRun.title"), t("newRun.error"))))
+      .finally(() => setLoading(false))
+  }
   const [selectedPlan, setSelectedPlan] = useState(plans[0]?.id ?? "")
 	const [selectedModel, setSelectedModel] = useState("")
 	const [selectedChannel, setSelectedChannel] = useState("")
@@ -472,7 +489,7 @@ export function NewRunSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={next => { setOpen(next); if (next) loadCatalog() }}>
       <SheetTrigger asChild>
         <Button size="sm" className="ml-1" disabled={commandPending}>
           <PlusIcon data-icon="inline-start" />
@@ -487,8 +504,10 @@ export function NewRunSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+          {loading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner />{tx("app:loadingPage")}</p> : loadError ? <div role="alert" className="space-y-2 text-xs text-destructive">{loadError}<Button variant="outline" size="sm" onClick={loadCatalog}>{tx("desktop:app_retry_opening")}</Button></div> : <>
           <div className="text-xs font-semibold">{t("newRun.selectPlan")}</div>
           <RadioGroup
+            ref={planGroup}
             aria-label={t("plans.aria")}
             value={effectiveSelectedPlan}
             onValueChange={(value) => { setSelectedPlan(value); setSelectedModel(""); setSelectedChannel("") }}
@@ -544,13 +563,14 @@ export function NewRunSheet({
               {startError}
             </p>
           ) : null}
+          </>}
         </div>
         <SheetFooter className="flex-row justify-end border-t">
           <SheetClose asChild>
             <Button variant="outline">{t("newRun.cancel")}</Button>
           </SheetClose>
           <Button
-            disabled={!effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending}
+            disabled={loading || !!loadError || !effectiveSelectedPlan || !effectiveSelectedModel || !effectiveSelectedChannel || commandPending}
             onClick={() => void start()}
           >
             {commandPending ? tx("desktop:runs_creating") : tx("desktop:runs_start_run")}
@@ -730,7 +750,12 @@ export function RunWorkspace({
   onCancelRun,
   preferredRunID,
   renderRunShortcuts,
+  comparisonState, showComparisons = true, onShowComparisons, onRetryComparisons,
 }: {
+  comparisonState?: { pending: boolean; error: unknown; data: ComparisonSnapshot | null }
+  showComparisons?: boolean
+  onShowComparisons?: () => void
+  onRetryComparisons?: () => void
   snapshot: WorkspaceSnapshot
   comparisons: ComparisonSnapshot
   commandPending: boolean
@@ -821,7 +846,10 @@ export function RunWorkspace({
             </div>
           </div>
 
-          <ComparisonPanel snapshot={comparisons} />
+          {!showComparisons || (comparisonState && !comparisonState.data && !comparisonState.pending && !comparisonState.error) ? <div className="pb-2"><Button size="sm" variant="ghost" onClick={onShowComparisons}>{t("comparisons.load")}</Button></div>
+            : comparisonState?.pending && !comparisonState.data ? <p role="status" className="pb-2 text-xs text-muted-foreground">{t("comparisons.loading")}</p>
+            : comparisonState?.error ? <div role="alert" className="pb-2 text-xs text-destructive">{t("comparisons.error")}<Button size="sm" variant="ghost" onClick={onRetryComparisons}>{t("comparisons.retry")}</Button></div>
+            : comparisons.comparisons.length === 0 ? <p role="status" className="pb-2 text-xs text-muted-foreground">{t("comparisons.empty")}</p> : <ComparisonPanel snapshot={comparisons} />}
 
           <RunTable
             runs={visibleRuns}

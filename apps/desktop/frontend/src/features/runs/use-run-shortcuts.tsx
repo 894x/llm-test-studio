@@ -13,10 +13,9 @@ export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean) =
 
 type RerunAttempt = { sourceID: string; runID?: string; waiting: boolean; error?: string }
 
-export function useRunShortcuts({ client, workspace, catalog, reports, generation, draft, commandPending, onStarted, onOpenReport, refreshReports }: {
+export function useRunShortcuts({ client, workspace, reports, generation, draft, commandPending, onStarted, onOpenReport, refreshReports, loadWorkspace, loadCatalog }: {
   client: DesktopClient
   workspace: WorkspaceSnapshot | null
-  catalog: CatalogSnapshot | null
   reports: ReportSnapshot | null
   generation: Record<string, ReportGenerationProgress>
   draft: TaskDraft
@@ -24,6 +23,8 @@ export function useRunShortcuts({ client, workspace, catalog, reports, generatio
   onStarted: (runID: string) => void
   onOpenReport: (reportID: string) => Promise<void>
   refreshReports: () => Promise<ReportSnapshot>
+  loadWorkspace: () => Promise<WorkspaceSnapshot>
+  loadCatalog: () => Promise<CatalogSnapshot>
 }): RunShortcutRenderer {
   const { t } = useTranslation("runs")
   const [pendingID, setPendingID] = useState("")
@@ -67,16 +68,17 @@ export function useRunShortcuts({ client, workspace, catalog, reports, generatio
 
   const rerun = async (sourceID: string) => {
     if (inFlight.current || commandPending || waiting) return
-    const run = workspace?.runs.find(item => item.id === sourceID)
-    if (!run || isRunActive(run.status)) return
     inFlight.current = true
     setPendingID(sourceID)
     setCredential(null)
     setAttempt({ sourceID, waiting: false })
     try {
+      const currentWorkspace = await loadWorkspace()
+      const run = currentWorkspace.runs.find(item => item.id === sourceID)
+      if (!run || isRunActive(run.status)) return
       if (run.source === "quick_task") {
         const detail = await client.getQuickTask(sourceID)
-        const suite = catalog?.suites.find(item => item.id === detail.suite.id && item.protocol === detail.suite.protocol)
+        const suite = (await loadCatalog()).suites.find(item => item.id === detail.suite.id && item.protocol === detail.suite.protocol)
         if (!suite) {
           setAttempt({ sourceID, waiting: false, error: t("shortcuts.missingSuite") })
           return
@@ -93,7 +95,7 @@ export function useRunShortcuts({ client, workspace, catalog, reports, generatio
         }
         await startQuick(sourceID, checked.command)
       } else {
-        if (!workspace?.plans.some(plan => plan.id === run.plan_id)) {
+        if (!currentWorkspace.plans.some(plan => plan.id === run.plan_id)) {
           setAttempt({ sourceID, waiting: false, error: t("shortcuts.missingPlan") })
           return
         }
@@ -140,11 +142,11 @@ export function useRunShortcuts({ client, workspace, catalog, reports, generatio
     const report = related && newReport ? newReport : showCurrentReport ? reports?.reports.find(item => item.source === "run" && item.run_id === runID) : undefined
     return <RunShortcutActions
       key={runID}
-      disabled={!run || isRunActive(run.status) || commandPending || !!pendingID || waiting}
+      disabled={!!run && isRunActive(run.status) || commandPending || !!pendingID || waiting}
       pending={pendingID === runID}
       waiting={!!related && waiting}
       error={related ? generationFailed ? t("shortcuts.reportFailed") : attempt?.error : undefined}
-      reportID={report?.id}
+      reportID={report?.id ?? (showCurrentReport ? run?.report_id : undefined)}
       newReport={!!related && !!newReport}
       credential={credential?.sourceID === runID ? credential : null}
       onRerun={() => void rerun(runID)}

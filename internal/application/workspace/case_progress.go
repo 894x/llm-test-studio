@@ -7,12 +7,12 @@ import (
 )
 
 // A result represents one complete Case execution, including its protocol workflow.
-func snapshotRequestBudget(snapshot domain.RunSnapshot) uint64 {
+func entryRequestBudget(entries []RunEntryProjection) uint64 {
 	var total uint64
-	for _, entry := range snapshot.Entries {
+	for _, entry := range entries {
 		// Workspace result counters describe measured executions only.
 		if entry.Load.Mode == domain.LoadSingle {
-			total += uint64(len(entry.Cases))
+			total += entry.CaseCount
 			continue
 		}
 		if entry.Load.RequestCount == 0 {
@@ -25,8 +25,8 @@ func snapshotRequestBudget(snapshot domain.RunSnapshot) uint64 {
 
 func validateEntryResults(projection RunProjection) error {
 	planned := map[string]uint64{}
-	for _, suite := range projection.Run.Snapshot().Entries {
-		planned[suite.EntryID] = uint64(len(suite.Cases))
+	for _, suite := range projection.Entries {
+		planned[suite.EntryID] = suite.CaseCount
 	}
 	seen := map[string]bool{}
 	for _, result := range projection.EntryResults {
@@ -47,7 +47,7 @@ func summarizeEntryProgress(projection RunProjection) []EntryProgress {
 	for _, result := range projection.EntryResults {
 		results[result.EntryID] = result
 	}
-	suites := projection.Run.Snapshot().Entries
+	suites := projection.Entries
 	progress := make([]EntryProgress, 0, len(suites))
 	currentAssigned := false
 	for _, suite := range suites {
@@ -56,10 +56,10 @@ func summarizeEntryProgress(projection RunProjection) []EntryProgress {
 		switch {
 		case result.Status != "":
 			status = string(result.Status)
-		case projection.Run.Status() == domain.RunCompleted:
+		case projection.Status == domain.RunCompleted:
 			status = "completed"
 		case !currentAssigned:
-			switch projection.Run.Status() {
+			switch projection.Status {
 			case domain.RunQueued, domain.RunStarting:
 				status = "queued"
 			case domain.RunRunning, domain.RunDraining:
@@ -73,7 +73,7 @@ func summarizeEntryProgress(projection RunProjection) []EntryProgress {
 		}
 		progress = append(progress, EntryProgress{
 			EntryID: suite.EntryID, Name: suite.Name,
-			CaseCount: uint64(len(suite.Cases)), ObservedCaseCount: result.ObservedCases, Status: status,
+			CaseCount: suite.CaseCount, ObservedCaseCount: result.ObservedCases, Status: status,
 		})
 	}
 	return progress

@@ -112,9 +112,6 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if err := validateAppliedSchema(ctx, conn); err != nil {
 		return err
 	}
-	if err := validateIntegrity(ctx, conn); err != nil {
-		return err
-	}
 	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return fmt.Errorf("commit sqlite migration: %w", err)
 	}

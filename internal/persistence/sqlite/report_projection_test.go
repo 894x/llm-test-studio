@@ -105,7 +105,7 @@ func TestReportProjectionsExcludeRequestObservationsFromCaseCount(t *testing.T) 
 		tamper(t, path, `UPDATE reports SET document_json = json_set(document_json,
 					'$.case_results[0]', json((SELECT document_json FROM case_results WHERE id = ?))) WHERE id = ?`,
 			requestResult.ID, fixture.report.ID)
-		if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+		if _, err := repository.GetReport(context.Background(), fixture.report.ID); !errors.Is(err, persistence.ErrCorrupt) {
 			t.Fatalf("request observation substituted for case result: %v, want ErrCorrupt", err)
 		}
 	})
@@ -140,7 +140,7 @@ func TestReportProjectionsPreserveContextTermination(t *testing.T) {
 	}
 }
 
-func TestReportProjectionsRejectReportScalarAndAggregateCorruption(t *testing.T) {
+func TestReportDetailsRejectReportScalarAndAggregateCorruption(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		statement string
@@ -197,14 +197,14 @@ func TestReportProjectionsRejectReportScalarAndAggregateCorruption(t *testing.T)
 			closeForTamper(t, repository)
 			tamper(t, path, test.statement, test.args(fixture)...)
 			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-				_, err := repository.ListReportProjections(context.Background())
+				_, err := repository.GetReport(context.Background(), fixture.report.ID)
 				return err
 			})
 		})
 	}
 }
 
-func TestReportProjectionsRejectOwnerPlanAndAttachmentCorruption(t *testing.T) {
+func TestReportDetailsRejectOwnerPlanAndAttachmentCorruption(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		statement string
@@ -243,14 +243,14 @@ func TestReportProjectionsRejectOwnerPlanAndAttachmentCorruption(t *testing.T) {
 				tamper(t, path, test.statement, test.args(fixture)...)
 			}
 			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-				_, err := repository.ListReportProjections(context.Background())
+				_, err := repository.GetReport(context.Background(), fixture.report.ID)
 				return err
 			})
 		})
 	}
 }
 
-func TestReportProjectionsRejectInvalidUUIDAtTheStorageBoundary(t *testing.T) {
+func TestReportDetailsRejectInvalidUUIDAtTheStorageBoundary(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	fixture.report.Attachments = []domain.ReportAttachment{}
 	storeFixtureReport(t, repository, fixture)
@@ -264,24 +264,24 @@ func TestReportProjectionsRejectInvalidUUIDAtTheStorageBoundary(t *testing.T) {
 		fixture.report.ID,
 	)
 	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-		_, err := repository.ListReportProjections(context.Background())
+		_, err := repository.GetReport(context.Background(), "not-a-uuid")
 		return err
 	})
 }
 
-func TestReportProjectionsRejectJointReportAndResultShapeCorruption(t *testing.T) {
+func TestReportDetailsRejectJointReportAndResultShapeCorruption(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
 	closeForTamper(t, repository)
 	tamper(t, path, `UPDATE case_results SET document_json = json_remove(document_json, '$.verification') WHERE id = ?`, fixture.result.ID)
 	tamper(t, path, `UPDATE reports SET document_json = json_remove(document_json, '$.case_results[0].verification') WHERE id = ?`, fixture.report.ID)
 	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-		_, err := repository.ListReportProjections(context.Background())
+		_, err := repository.GetReport(context.Background(), fixture.report.ID)
 		return err
 	})
 }
 
-func TestReportProjectionsRejectJointlyMissingNestedRequiredFields(t *testing.T) {
+func TestReportDetailsRejectJointlyMissingNestedRequiredFields(t *testing.T) {
 	for _, test := range []struct {
 		name            string
 		storedStatement string
@@ -314,14 +314,14 @@ func TestReportProjectionsRejectJointlyMissingNestedRequiredFields(t *testing.T)
 			tamper(t, path, test.storedStatement, test.storedID(fixture))
 			tamper(t, path, test.reportStatement, fixture.report.ID)
 			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-				_, err := repository.ListReportProjections(context.Background())
+				_, err := repository.GetReport(context.Background(), fixture.report.ID)
 				return err
 			})
 		})
 	}
 }
 
-func TestReportProjectionsRejectInvalidIntermediateRunTransition(t *testing.T) {
+func TestReportDetailsRejectInvalidIntermediateRunTransition(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
 	closeForTamper(t, repository)
@@ -335,12 +335,12 @@ func TestReportProjectionsRejectInvalidIntermediateRunTransition(t *testing.T) {
 	repository = reopenHardeningRepository(t, path)
 	defer repository.Close()
 
-	if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+	if _, err := repository.GetReport(context.Background(), fixture.report.ID); !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
 	}
 }
 
-func TestReportProjectionsRejectSemanticallyEquivalentNonCanonicalJSON(t *testing.T) {
+func TestReportDetailsRejectSemanticallyEquivalentNonCanonicalJSON(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		tamper func(*testing.T, string, repositoryFixture)
@@ -385,14 +385,14 @@ func TestReportProjectionsRejectSemanticallyEquivalentNonCanonicalJSON(t *testin
 			closeForTamper(t, repository)
 			test.tamper(t, path, fixture)
 			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-				_, err := repository.ListReportProjections(context.Background())
+				_, err := repository.GetReport(context.Background(), fixture.report.ID)
 				return err
 			})
 		})
 	}
 }
 
-func TestReportProjectionsRejectNonCanonicalScalarEscape(t *testing.T) {
+func TestReportDetailsRejectNonCanonicalScalarEscape(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
 	closeForTamper(t, repository)
@@ -406,7 +406,7 @@ func TestReportProjectionsRejectNonCanonicalScalarEscape(t *testing.T) {
 		WHERE id = ? AND instr(document_json, '"run_status":"completed"') > 0
 	`, fixture.report.ID)
 	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-		_, err := repository.ListReportProjections(context.Background())
+		_, err := repository.GetReport(context.Background(), fixture.report.ID)
 		return err
 	})
 }
@@ -503,7 +503,7 @@ func TestListReportsUsesLosslessNanosecondOrderAndIDTieBreak(t *testing.T) {
 	}
 }
 
-func TestReportProjectionsRejectNonCanonicalTimestampOutsideLatestWindow(t *testing.T) {
+func TestReportDetailsRejectNonCanonicalTimestampOutsideLatestWindow(t *testing.T) {
 	const totalReports = reporting.MaxSnapshotReports + 1
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
@@ -512,12 +512,12 @@ func TestReportProjectionsRejectNonCanonicalTimestampOutsideLatestWindow(t *test
 	tamper(t, path, `UPDATE reports SET generated_at = '0001-01-01T00:00:00.0Z' WHERE id = ?`, fixture.report.ID)
 
 	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-		_, err := repository.ListReportProjections(context.Background())
+		_, err := repository.GetReport(context.Background(), fixture.report.ID)
 		return err
 	})
 }
 
-func TestReportProjectionOrderingPreflightRejectsHiddenDocumentIdentityCorruption(t *testing.T) {
+func TestReportSummariesDeferHiddenDocumentValidationUntilOpened(t *testing.T) {
 	const totalReports = reporting.MaxSnapshotReports + 1
 	latestReportID := fixtureUUID("b", totalReports)
 	for _, test := range []struct {
@@ -584,15 +584,25 @@ func TestReportProjectionOrderingPreflightRejectsHiddenDocumentIdentityCorruptio
 			cloneFixtureReports(t, path, fixture, totalReports)
 			test.tamper(t, path, fixture)
 
+			targetID := fixture.report.ID
+			if test.name == "canonical timestamp column document mismatch" {
+				targetID = latestReportID
+			}
+			if test.name == "canonical id column document mismatch" {
+				targetID = "00000000-0000-4000-8000-000000000001"
+			}
 			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-				_, err := repository.ListReportProjections(context.Background())
+				if _, err := repository.ListReportProjections(context.Background()); err != nil {
+					t.Fatalf("unrequested report blocked summaries: %v", err)
+				}
+				_, err := repository.GetReport(context.Background(), targetID)
 				return err
 			})
 		})
 	}
 }
 
-func TestReportProjectionsRejectMissingOwnersInsideTheExactLatestWindow(t *testing.T) {
+func TestReportDetailsRejectMissingOwnersInsideTheExactLatestWindow(t *testing.T) {
 	const totalReports = reporting.MaxSnapshotReports + 1
 	latestRunID := fixtureUUID("8", totalReports)
 	missingPlanID := fixtureUUID("d", totalReports)
@@ -631,14 +641,14 @@ func TestReportProjectionsRejectMissingOwnersInsideTheExactLatestWindow(t *testi
 				restoreRunRevisionUpdateTrigger(t, path)
 			}
 			assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-				_, err := repository.ListReportProjections(context.Background())
+				_, err := repository.GetReport(context.Background(), fixtureUUID("b", totalReports))
 				return err
 			})
 		})
 	}
 }
 
-func TestReportProjectionsRejectDocumentsAboveByteBudgets(t *testing.T) {
+func TestReportDetailsRejectDocumentsAboveByteBudgets(t *testing.T) {
 	const (
 		itemBudget = 8 << 20
 	)
@@ -700,14 +710,14 @@ func TestReportProjectionsRejectDocumentsAboveByteBudgets(t *testing.T) {
 			repository = reopenHardeningRepository(t, path)
 			defer repository.Close()
 
-			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+			if _, err := repository.GetReport(context.Background(), fixture.report.ID); !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
 			}
 		})
 	}
 }
 
-func TestReportProjectionsClassifyMalformedJSONAsCorrupt(t *testing.T) {
+func TestReportDetailsClassifyMalformedJSONAsCorrupt(t *testing.T) {
 	path, repository, fixture := openHardeningRepository(t)
 	storeFixtureReport(t, repository, fixture)
 	closeForTamper(t, repository)
@@ -722,7 +732,7 @@ func TestReportProjectionsClassifyMalformedJSONAsCorrupt(t *testing.T) {
 		t.Fatalf("close malformed JSON tamper database: %v", err)
 	}
 	assertCorruptOnLegacyReopenOrOperation(t, path, func(repository *persistence.Repository) error {
-		_, err := repository.ListReportProjections(context.Background())
+		_, err := repository.GetReport(context.Background(), fixture.report.ID)
 		return err
 	})
 }

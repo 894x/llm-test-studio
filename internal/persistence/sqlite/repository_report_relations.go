@@ -3,6 +3,7 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -21,8 +22,29 @@ func validateReportStorage(ctx context.Context, queryer relationQueryer, report 
 	if err != nil {
 		return relationStorageError(ctx, "report run relation", err)
 	}
+	if err := checkReportProjectionItemBudgets(report); err != nil {
+		return storageCorrupt(err.Error())
+	}
+	document, err := marshalCanonical(run)
+	if err != nil {
+		return err
+	}
+	snapshot, err := marshalCanonical(run.Snapshot())
+	if err != nil {
+		return err
+	}
+	expected := reportRunExpectation{
+		id: run.Meta().ID, createdAt: formatTime(run.Meta().CreatedAt), revision: run.Meta().Revision,
+		documentDigest: sha256.Sum256(document), snapshotDigest: sha256.Sum256(snapshot),
+	}
+	if err := validateReportRunHistories(ctx, queryer, map[string]reportRunExpectation{report.RunID: expected}); err != nil {
+		return err
+	}
 	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {
 		return storageCorrupt("report run relation")
+	}
+	if report.GeneratedAt.Before(run.Meta().UpdatedAt) {
+		return storageCorrupt("report generated before run termination")
 	}
 	if err := ctx.Err(); err != nil {
 		return err

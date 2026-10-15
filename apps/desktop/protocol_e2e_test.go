@@ -295,7 +295,7 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 	if _, err := reloaded.GetWorkspace(); err != nil {
 		t.Fatalf("reopened workspace: %v", err)
 	}
-	if _, err := reloaded.GetCatalog(); err != nil {
+	if _, err := reloaded.GetCatalog(catalog.ScopeAll); err != nil {
 		t.Fatalf("reopened catalog: %v", err)
 	}
 	if _, err := reloaded.GetReports(); err != nil {

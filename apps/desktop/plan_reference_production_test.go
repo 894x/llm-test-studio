@@ -32,7 +32,7 @@ func TestProductionPlanSaveOnlyStoresReferencesWithoutMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := deps.catalog.Snapshot(ctx)
+	snapshot, err := deps.catalog.Snapshot(ctx, catalog.ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestProductionPlanSaveOnlyStoresReferencesWithoutMappings(t *testing.T) {
 	}
 	t.Logf("save two Suite references: %s", time.Since(start))
 	start = time.Now()
-	refreshed, err := deps.catalog.Snapshot(ctx)
+	refreshed, err := deps.catalog.Snapshot(ctx, catalog.ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}

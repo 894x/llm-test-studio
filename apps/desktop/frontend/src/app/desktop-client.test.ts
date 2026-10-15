@@ -9,7 +9,7 @@ import {
 import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
 import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
-import { createDesktopClient, createFixtureClient, singleFlightRead } from "./desktop-client"
+import { createDesktopClient, createFixtureClient, DesktopClientError, singleFlightRead } from "./desktop-client"
 import { DesktopDataError } from "./data-error"
 
 describe("Wails desktop client", () => {
@@ -18,6 +18,13 @@ describe("Wails desktop client", () => {
 		Reflect.deleteProperty(window, "runtime")
 		vi.unstubAllEnvs()
 		vi.useRealTimers()
+  })
+
+  it("rejects an unknown catalogue scope before invoking the desktop binding", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    await expect(client.getCatalog("unknown" as never)).rejects.toBeInstanceOf(DesktopClientError)
+    expect(binding.GetCatalog).not.toHaveBeenCalled()
   })
 
   it("classifies malformed English payloads by type instead of translated text", async () => {
@@ -67,14 +74,14 @@ describe("Wails desktop client", () => {
     let resolveRead!: (value: unknown) => void
     binding[bindingMethod].mockReturnValueOnce(new Promise((resolve) => { resolveRead = resolve }) as never)
     const client = createDesktopClient()
-    const first = client[method]()
-    const second = client[method]()
+    const first = (method === "getCatalog" ? client.getCatalog("all") : client[method]())
+    const second = (method === "getCatalog" ? client.getCatalog("all") : client[method]())
     expect(binding[bindingMethod]).toHaveBeenCalledTimes(1)
     expect(first).toBe(second)
     resolveRead(payload)
     await expect(first).resolves.toEqual(payload)
     await expect(second).resolves.toEqual(payload)
-    await client[method]()
+    await (method === "getCatalog" ? client.getCatalog("all") : client[method]())
     expect(binding[bindingMethod]).toHaveBeenCalledTimes(2)
   })
 
@@ -104,12 +111,12 @@ describe("Wails desktop client", () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce(new Error("temporary read failure"))
     const client = createDesktopClient()
-    const first = client[method]()
-    const second = client[method]()
+    const first = (method === "getCatalog" ? client.getCatalog("all") : client[method]())
+    const second = (method === "getCatalog" ? client.getCatalog("all") : client[method]())
     const results = await Promise.allSettled([first, second])
     expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"])
     expect(binding[bindingMethod]).toHaveBeenCalledTimes(1)
-    await expect(client[method]()).resolves.toEqual(payload)
+    await expect((method === "getCatalog" ? client.getCatalog("all") : client[method]())).resolves.toEqual(payload)
     expect(binding[bindingMethod]).toHaveBeenCalledTimes(2)
     expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledTimes(1)
   })
@@ -151,7 +158,7 @@ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 6
     const client = createDesktopClient()
 
     await expect(client.getWorkspace()).resolves.toEqual(FIXTURE_WORKSPACE)
-    await expect(client.getCatalog()).resolves.toEqual(FIXTURE_CATALOG)
+    await expect(client.getCatalog("all")).resolves.toEqual(FIXTURE_CATALOG)
     await expect(client.getReports()).resolves.toEqual(FIXTURE_REPORTS)
 		const targetCommand = {
 			plan_id: FIXTURE_WORKSPACE.plans[0].id,
@@ -235,7 +242,7 @@ suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model"
     const snapshot = await client.getWorkspace()
     expect(snapshot.runs.find((run) => run.id === firstID)).toMatchObject({ source: "quick_task", status: "queued", plan_id: firstID, planned: suite.case_count })
     expect(JSON.stringify(snapshot)).not.toContain("private-test-key")
-    expect(await client.getCatalog()).toEqual(catalog)
+    expect(await client.getCatalog("all")).toEqual(catalog)
     expect((await client.cancelRun(secondID)).runs.find((run) => run.id === secondID)?.status).toBe("cancelled")
   })
 
@@ -1090,7 +1097,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
 
     const client = createDesktopClient()
     const encoded = JSON.stringify([
-      await client.getCatalog(),
+      await client.getCatalog("all"),
       await client.getReports(),
     ])
 
@@ -1116,7 +1123,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
     })
     installBinding(FIXTURE_WORKSPACE, catalog)
 
-    const snapshot = await createDesktopClient().getCatalog()
+    const snapshot = await createDesktopClient().getCatalog("all")
     expect(snapshot.test_cases[0]).toMatchObject({
       key: "T001",
       dimension: "must",
@@ -1141,7 +1148,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
     })
     installBinding(FIXTURE_WORKSPACE, catalog)
 
-    const snapshot = await createDesktopClient().getCatalog()
+    const snapshot = await createDesktopClient().getCatalog("all")
     expect(snapshot.test_cases[0]).toMatchObject({
       key: longKey,
       dimension: longDimension,
@@ -1168,7 +1175,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce(new Error(code))
 
-    await expect((createDesktopClient()[clientMethod] as (command?: never) => Promise<unknown>)()).rejects.toThrow(message)
+    await expect((clientMethod === "getCatalog" ? createDesktopClient().getCatalog("all") : (createDesktopClient()[clientMethod] as (command?: never) => Promise<unknown>)())).rejects.toThrow(message)
   })
 
   it.each([
@@ -1183,7 +1190,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
       binding[bindingMethod].mockRejectedValueOnce(new Error("operation_failed"))
 
       await expect(
-        (createDesktopClient()[clientMethod] as () => Promise<unknown>)(),
+        (clientMethod === "getCatalog" ? createDesktopClient().getCatalog("all") : (createDesktopClient()[clientMethod] as () => Promise<unknown>)()),
       ).rejects.toThrow(message)
       expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith(
         expect.objectContaining({ operation }),
@@ -1200,7 +1207,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
     installBinding(FIXTURE_WORKSPACE, catalog, reports)
 
     const client = createDesktopClient()
-    await expect(client.getCatalog()).rejects.toThrow("模型映射引用")
+    await expect(client.getCatalog("all")).rejects.toThrow("模型映射引用")
     await expect(client.getReports()).rejects.toThrow("报告摘要")
   })
 
@@ -1211,7 +1218,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
 		catalog.test_cases[0].protocol = "unknown"
 		const binding = installBinding(FIXTURE_WORKSPACE, catalog)
 
-		await expect(createDesktopClient().getCatalog()).rejects.toThrow("桌面目录测试用例数据无效")
+		await expect(createDesktopClient().getCatalog("all")).rejects.toThrow("桌面目录测试用例数据无效")
 		expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledWith({
 			operation: "load_catalog",
 			error_code: "frontend_data_invalid",
@@ -1232,7 +1239,7 @@ address_mode: "base_url", url: "https://api.example.test/v1",
 			value: { LogError: logError },
 		})
 
-		await expect(createDesktopClient().getCatalog()).rejects.toThrow("桌面目录测试用例数据无效")
+		await expect(createDesktopClient().getCatalog("all")).rejects.toThrow("桌面目录测试用例数据无效")
 		expect(logError).toHaveBeenCalledOnce()
 		expect(logError).toHaveBeenCalledWith(expect.stringContaining("load_catalog"))
 		expect(logError).toHaveBeenCalledWith(expect.stringContaining("frontend_data_invalid"))

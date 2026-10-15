@@ -53,7 +53,7 @@ func TestSnapshotIsStableSecretFreeAndReadsEachCollectionOnce(t *testing.T) {
 	repository.models[0], repository.models[1] = repository.models[1], repository.models[0]
 	service := newTestService(t, repository, fixtureTime())
 
-	snapshot, err := service.Snapshot(context.Background())
+	snapshot, err := service.Snapshot(context.Background(), ScopeAll)
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
@@ -98,7 +98,7 @@ func TestSnapshotIsStableSecretFreeAndReadsEachCollectionOnce(t *testing.T) {
 func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 	repository := validRepository()
 	service := newTestService(t, repository, fixtureTime())
-	snapshot, err := service.Snapshot(context.Background())
+	snapshot, err := service.Snapshot(context.Background(), ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestSnapshotIncludesIndependentEditorPayloads(t *testing.T) {
 	snapshot.TestCases[0].Definitions[domain.ProtocolOpenAIChat][0] = '['
 	snapshot.Suites[0].Cases[0].CaseID = modelAID
 	snapshot.Plans[0].Entries[0].SLAThresholds["p95_ms"] = 1
-	fresh, err := service.Snapshot(context.Background())
+	fresh, err := service.Snapshot(context.Background(), ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestSnapshotFailsClosedOnDuplicateBadReferenceAndProtocolMismatch(t *testin
 			repository := validRepository()
 			test.mutate(repository)
 			service := newTestService(t, repository, fixtureTime())
-			if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrCorrupt) {
+			if _, err := service.Snapshot(context.Background(), ScopeAll); !errors.Is(err, ErrCorrupt) {
 				t.Fatalf("Snapshot() error = %v, want ErrCorrupt", err)
 			}
 		})
@@ -394,14 +394,14 @@ func TestValidationAndRepositoryErrorsAreStableAndSecretFree(t *testing.T) {
 		{portError: errors.New("driver unavailable secret-material"), want: ErrUnavailable},
 	} {
 		repository.listModelsErr = test.portError
-		_, err := service.Snapshot(context.Background())
+		_, err := service.Snapshot(context.Background(), ScopeAll)
 		if !errors.Is(err, test.want) || strings.Contains(err.Error(), "secret-material") {
 			t.Fatalf("Snapshot() error = %q, want safe %v", err, test.want)
 		}
 	}
 
 	repository.listModelsErr = safePortDiagnosticError{detail: "write models.json: access denied"}
-	_, err = service.Snapshot(context.Background())
+	_, err = service.Snapshot(context.Background(), ScopeAll)
 	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "write models.json: access denied") {
 		t.Fatalf("Snapshot() diagnostic error = %q, want safe cause joined to ErrUnavailable", err)
 	}
@@ -445,7 +445,7 @@ func TestContextCancellationWinsBeforeAndAfterRepositoryCalls(t *testing.T) {
 
 	afterCall, cancelAfterCall := context.WithCancel(context.Background())
 	repository.afterListModels = cancelAfterCall
-	_, err = service.Snapshot(afterCall)
+	_, err = service.Snapshot(afterCall, ScopeAll)
 	if !errors.Is(err, context.Canceled) || repository.listCalls["channels"] != 0 {
 		t.Fatalf("Snapshot(cancel after first read) error/calls = (%v, %#v), want cancellation before second read", err, repository.listCalls)
 	}
@@ -453,7 +453,7 @@ func TestContextCancellationWinsBeforeAndAfterRepositoryCalls(t *testing.T) {
 	repository = validRepository()
 	service = newTestService(t, repository, fixtureTime())
 	cancelDuringProjection := &cancelAfterErrChecks{cancelAt: 8}
-	if _, err := service.Snapshot(cancelDuringProjection); !errors.Is(err, context.Canceled) {
+	if _, err := service.Snapshot(cancelDuringProjection, ScopeAll); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Snapshot(cancel during projection) error = %v, want context.Canceled", err)
 	}
 

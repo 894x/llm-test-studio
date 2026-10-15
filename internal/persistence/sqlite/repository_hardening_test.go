@@ -112,6 +112,9 @@ func TestRepositoryDetectsRunRevisionHistoryGaps(t *testing.T) {
 	if _, err := repository.ListRuns(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("ListRuns() with history gap error = %v, want ErrCorrupt", err)
 	}
+	if projections, err := repository.ListRunProjections(context.Background()); err != nil || len(projections) != 1 {
+		t.Fatalf("list summary eagerly checked unrequested revision history: %v", err)
+	}
 }
 
 func TestRepositoryConcurrentRunCASReturnsStableConflict(t *testing.T) {

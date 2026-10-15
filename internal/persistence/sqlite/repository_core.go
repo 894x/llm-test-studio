@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -30,9 +29,7 @@ type RepositoryOptions struct {
 // Repository uses a one-connection pool. database/sql reserves that connection
 // for each complete transaction and queues other operations with their context.
 type Repository struct {
-	db                 *sql.DB
-	reportProjectionMu sync.Mutex
-	reportProjections  map[string]cachedReportProjection
+	db *sql.DB
 }
 
 type rowQueryer interface {
@@ -84,13 +81,6 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 	if version != CurrentSchemaVersion {
 		cleanup()
 		return nil, fmt.Errorf("%w: operational repository requires schema version %d", ErrCorrupt, CurrentSchemaVersion)
-	}
-	if err := validateIntegrity(ctx, conn); err != nil {
-		cleanup()
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: validate operational repository integrity: %v", ErrCorrupt, err)
 	}
 	// Return the configured connection to the pool; keeping a shared *sql.Conn
 	// bypasses transaction reservation and permits overlapping BEGIN statements.
@@ -228,4 +218,15 @@ func classifyWriteError(operation string, err error) error {
 		return fmt.Errorf("%w: %s", ErrConflict, operation)
 	}
 	return fmt.Errorf("%s: %w", operation, err)
+}
+
+// CheckIntegrity explicitly audits the whole database. Normal startup and
+// object reads validate their own schema and data without scanning all history.
+func (repository *Repository) CheckIntegrity(ctx context.Context) error {
+	conn, err := repository.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return validateIntegrity(ctx, conn)
 }

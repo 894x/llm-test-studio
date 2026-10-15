@@ -8,54 +8,80 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
+// Scope names the authored data needed by one product surface.
+type Scope string
+
+const (
+	ScopeAll         Scope = "all"
+	ScopeConnections Scope = "connections"
+	ScopeDefinitions Scope = "definitions"
+	ScopeQuickTest   Scope = "quick_test"
+)
+
+func (service *Service) Snapshot(ctx context.Context, scope Scope) (Snapshot, error) {
 	ctx, err := service.ready(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	models, err := service.repository.ListModels(ctx)
-	if err != nil {
-		return Snapshot{}, service.portError(ctx, err)
+	switch scope {
+	case ScopeAll, ScopeConnections, ScopeDefinitions, ScopeQuickTest:
+	default:
+		return Snapshot{}, ErrInvalid
 	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
+	models := []domain.Model{}
+	channels := []domain.Channel{}
+	mappings := []domain.ChannelModel{}
+	testCases := []domain.TestCase{}
+	suites := []domain.Suite{}
+	plans := []domain.Plan{}
+	if scope != ScopeDefinitions {
+		models, err = service.repository.ListModels(ctx)
+		if err != nil {
+			return Snapshot{}, service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		channels, err = service.repository.ListChannels(ctx)
+		if err != nil {
+			return Snapshot{}, service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		mappings, err = service.repository.ListChannelModels(ctx)
+		if err != nil {
+			return Snapshot{}, service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
 	}
-	channels, err := service.repository.ListChannels(ctx)
-	if err != nil {
-		return Snapshot{}, service.portError(ctx, err)
+	if scope != ScopeConnections {
+		testCases, err = service.repository.ListTestCases(ctx)
+		if err != nil {
+			return Snapshot{}, service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
+		suites, err = service.repository.ListSuites(ctx)
+		if err != nil {
+			return Snapshot{}, service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
 	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
+	if scope == ScopeAll {
+		plans, err = service.repository.ListPlans(ctx)
+		if err != nil {
+			return Snapshot{}, service.portError(ctx, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return Snapshot{}, err
+		}
 	}
-	mappings, err := service.repository.ListChannelModels(ctx)
-	if err != nil {
-		return Snapshot{}, service.portError(ctx, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	testCases, err := service.repository.ListTestCases(ctx)
-	if err != nil {
-		return Snapshot{}, service.portError(ctx, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	suites, err := service.repository.ListSuites(ctx)
-	if err != nil {
-		return Snapshot{}, service.portError(ctx, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	plans, err := service.repository.ListPlans(ctx)
-	if err != nil {
-		return Snapshot{}, service.portError(ctx, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-
 	snapshot, err := service.buildSnapshot(ctx, models, channels, mappings, testCases, suites, plans)
 	if err != nil {
 		return Snapshot{}, err
@@ -65,32 +91,32 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (service *Service) ListModels(ctx context.Context) ([]ModelSummary, error) {
-	snapshot, err := service.Snapshot(ctx)
+	snapshot, err := service.Snapshot(ctx, ScopeConnections)
 	return snapshot.Models, err
 }
 
 func (service *Service) ListChannels(ctx context.Context) ([]ChannelSummary, error) {
-	snapshot, err := service.Snapshot(ctx)
+	snapshot, err := service.Snapshot(ctx, ScopeConnections)
 	return snapshot.Channels, err
 }
 
 func (service *Service) ListChannelModels(ctx context.Context) ([]ChannelModelSummary, error) {
-	snapshot, err := service.Snapshot(ctx)
+	snapshot, err := service.Snapshot(ctx, ScopeConnections)
 	return snapshot.ChannelModels, err
 }
 
 func (service *Service) ListTestCases(ctx context.Context) ([]TestCaseSummary, error) {
-	snapshot, err := service.Snapshot(ctx)
+	snapshot, err := service.Snapshot(ctx, ScopeDefinitions)
 	return snapshot.TestCases, err
 }
 
 func (service *Service) ListSuites(ctx context.Context) ([]SuiteSummary, error) {
-	snapshot, err := service.Snapshot(ctx)
+	snapshot, err := service.Snapshot(ctx, ScopeDefinitions)
 	return snapshot.Suites, err
 }
 
 func (service *Service) ListPlans(ctx context.Context) ([]PlanSummary, error) {
-	snapshot, err := service.Snapshot(ctx)
+	snapshot, err := service.Snapshot(ctx, ScopeAll)
 	return snapshot.Plans, err
 }
 

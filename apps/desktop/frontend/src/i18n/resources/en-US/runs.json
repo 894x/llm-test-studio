@@ -133,5 +133,12 @@
       "failed": "Failed",
       "cancelled": "Cancelled"
     }
+  },
+  "comparisons": {
+    "load": "Load channel comparisons",
+    "loading": "Loading comparisons…",
+    "error": "Unable to load comparisons",
+    "retry": "Retry",
+    "empty": "No channel comparisons yet"
   }
 }

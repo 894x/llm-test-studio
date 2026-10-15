@@ -64,6 +64,7 @@ export type EntryProgress = {
 }
 
 export type WorkspaceRun = {
+  report_id?: string
   case_count: number
   observed_case_count: number
   entry_progress: EntryProgress[]

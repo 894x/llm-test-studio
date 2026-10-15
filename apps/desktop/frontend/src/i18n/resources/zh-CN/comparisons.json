@@ -23,5 +23,7 @@
     "averageTTFT": "平均 TTFT",
     "passed": "通过",
     "failed": "未通过"
-  }
+  },
+  "loading": "正在读取目录…",
+  "retry": "重试"
 }
