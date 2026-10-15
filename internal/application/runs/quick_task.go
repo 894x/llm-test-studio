@@ -195,7 +195,7 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if err != nil {
 		return "", fmt.Errorf("lease quick task credential: %w", err)
 	}
-	return service.prepareRun(ctx, meta, meta.ID, snapshot, lease)
+	return service.AcceptPrepared(ctx, PreparedRun{Meta: meta, PlanID: meta.ID, Snapshot: snapshot}, lease)
 }
 
 func (service *Service) quickTaskDefinitions(ctx context.Context, command QuickTaskCommand) (domain.Suite, []domain.TestCase, error) {

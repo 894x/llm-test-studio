@@ -9,7 +9,7 @@ import (
 
 // saveTerminal requires control.mu. Read after a failed write to reconcile an
 // ambiguous commit or a cancellation before retrying the revision-aware update.
-func (service *Service) saveTerminal(ctx context.Context, control *runControl, terminal domain.RunStatus, failure domain.RunFailure) error {
+func (service *Host) saveTerminal(ctx context.Context, control *runControl, terminal domain.RunStatus, failure domain.RunFailure) error {
 	if isTerminal(control.run.Status()) {
 		return nil
 	}
@@ -35,7 +35,7 @@ func (service *Service) saveTerminal(ctx context.Context, control *runControl, t
 // Retain ownership of this finished execution until its terminal state is
 // durable. Waits release control.mu so cancellation and shutdown stay usable.
 // Shutdown leaves any outstanding write for startup's RecoverInterrupted.
-func (service *Service) recoverTerminal(control *runControl, terminal domain.RunStatus, failure domain.RunFailure) error {
+func (service *Host) recoverTerminal(control *runControl, terminal domain.RunStatus, failure domain.RunFailure) error {
 	delay := 25 * time.Millisecond
 	for {
 		timer := time.NewTimer(delay)
