@@ -76,3 +76,22 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | C29 | TestPerformanceResultReferenceByteAndIdentityBounds、TestPerformanceObservationAndResultReadsRejectCorruption、SQLite recovery tests | partial：reference 尺寸边界、错误摘要/身份、原始 canonical bytes 与 SHA 一致、同 ID 重试不改时间或事件已通过；最大完整结果实体、传输中断与客户端校验待完成 |
 
 自有 envelope 字段采用精确大小写并拒绝重复字段，避免 Go 默认大小写不敏感匹配绕过集合限制。领域快照及原生请求 JSON 继续使用其当前 decoder；不能据此声称 R11/R12 的所有边界已经验收。
+
+## HTTP 管理边界实施清单
+
+规则来源为本仓库当前实施方案，2026-10-16 定义；这是项目自有管理接口，不是提供商 API。以下行在对应实现和断言完成前保持 missing 或 partial，Mock HTTP 执行不代替真实独立进程验收。
+
+| 行 | 结构、默认与约束 | 必需分区及状态断言 | 当前证据 |
+| --- | --- | --- | --- |
+| H01 | 每请求一个 Authorization: Bearer 节点 token；先鉴权再解码；不接受 query token | 缺失、错误、重复、错 scheme、超长拒绝 401；正确 token 允许多个客户端；拒绝不得触发执行或泄露输入 | partial：TestHTTPNodeAuthorizationAndContractAreCheckedBeforeSubmission、TestHTTPClientsWithDifferentBuildsShareOneNodeQueueAndAuthorization；两客户端使用独立 HTTP transport，共享授权与资源；独立进程验收待 R15 |
+| H02 | X-LLM-Test-Contract 必填且恰为当前 1；客户端发布版本和构建不参与匹配 | 缺失、重复、非当前、非规范值返回 426；同契约不同客户端版本可访问；不探测历史 decoder | covered：上述鉴权测试与 TestHTTPSharedNodeMetadataDoesNotRequireMatchingClientVersions；只校验唯一当前合同 |
+| H03 | GET /runner 返回安装/节点身份、实际构建、runner 版本、平台、当前能力、预算与状态 | 身份来自宿主，不能由客户端覆盖；元数据副本隔离；缺任务能力拒收；重连不修改版本、token 或策略 | partial：TestRunnerInfoValidatesIdentityCapabilitiesAndExactBudgetBoundaries、TestHTTPSharedNodeMetadataDoesNotRequireMatchingClientVersions、TestHTTPRejectsMissingTaskCapabilitiesBeforeAdmission；全部元数据字段类型和各 Run 能力组合仍待补齐 |
+| H04 | POST /jobs 使用当前 Submission，Content-Type 为 application/json，可带 charset=utf-8 | 有效首次 202、同内容 200；错类型 415；坏 JSON/组合拒绝；超过 8 MiB 返回 413；客户端退出不撤销已接收 Job | partial：TestHTTPSubmissionContentAndByteBoundariesDoNotExecuteRejectedRequests、TestHTTPSubmitIsIdempotentAndIndependentOfSubmissionConnection、TestHTTPFailedReceiptWriteDoesNotAbandonOrDuplicateAcceptedExecution；精确上限、响应写失败、秘密冲突均验证；三类任务全部 HTTP 输入分区仍待补齐 |
+| H05 | GET /jobs/{id} 只读取当前节点 installation 与共享 node_id 的事实 | 有效、未知、错误 UUID、其他 owner；节点升级后的同当前格式历史构建仍可读，不以当前 build 拒绝旧执行事实 | partial：TestHTTPOwnerChecksAllowPreviousRunnerBuildButExcludeOtherInstallations；当前只返回根状态，完整进度、子事实与报告引用投影仍待实现 |
+| H06 | events 必填 after_sequence 与 limit，limit 1..200，wait_ms 可省略为 0，范围 0..20000 | 0/1/200/201、负数、重复/未知参数、未来序号；空页长轮询到期仍 200，取消只停止观察，不取消执行 | partial：TestHTTPEventsRejectInvalidQueriesAndAllowEmptyLongPoll、TestHTTPEventObservationCancellationDoesNotChangeSettledJob；上限等待和活动任务观察中断尚待验证 |
+| H07 | stop-sending/cancel 的 body 为当前 Command，path job_id 与 kind 必须对应 | path/body 不符不写命令；4 KiB 边界；首次确认与原命令重传；终态、revision 竞争仍由同一 Host 决策 | partial：TestHTTPControlsConfirmDurableCommandsAndDoNotRepeatRequests、TestHTTPCommandPathAndByteRejectionsLeaveJobAndJournalUnchanged；不匹配与 4 KiB+1 不改状态/命令记录，精确 4 KiB 接受；HTTP 并发 revision 竞争仍待补齐 |
+| H08 | Performance 完整结果下载使用存储的 canonical bytes，报告 ID 必须属于该 Job | 404 未就绪/未知，跨 Job 不泄露；SHA/size 与事件引用一致；支持完整和 Range 下载；不重编码或重跑请求 | partial：TestHTTPPerformanceDownloadUsesOriginalCanonicalBytesAndRanges、TestHTTPRejectsCorruptReportBytesWithoutRepairOrProviderTraffic；原始字节、摘要、四类合法/非法 Range 与损坏拒绝通过；跨两个实际 Job、未就绪与传输中断续传仍待补齐 |
+
+分页任务清单、Run 报告、媒体文件与回收接口仍按实施方案保留待实现，不能用以上基础路由代替完整管理接口验收。
+
+执行记录：2026-10-16，本地 `go test -p 1 ./internal/adapters/runnerhttp ./internal/jobcontract ./internal/application/jobhost ./apps/desktop` 及管理接口、契约、宿主的 `go vet` 通过。接口测试使用真实 JobHost、Core、临时 SQLite 和本地 Mock HTTP，不消耗提供商额度；还没有生产 listener、SSH 隧道或 systemd 进程。
