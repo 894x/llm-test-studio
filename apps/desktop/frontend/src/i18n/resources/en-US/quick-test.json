@@ -96,7 +96,7 @@
     "caseCount": "Cases: {{count}}",
     "empty": "No quick test tasks",
     "emptyHint": "Add quick_test metadata to a Suite to make it available here.",
-    "start": "Start test",
+    "start": "Start functional test",
     "starting": "Starting…",
     "history": "Recent tests",
     "noHistory": "Successful and failed tests will appear here.",
@@ -144,5 +144,25 @@
     "cancel": "Cancel",
     "saving": "Saving…",
     "failed": "Could not save the channel. Check the connection details."
+  },
+  "workspace": {
+    "functional": "Quick functional test",
+    "mode": "Switch test mode",
+    "history": "Test history",
+    "active": "{{count}} running",
+    "completed": "{{count}} requests completed",
+    "performanceCounts": "Succeeded {{succeeded}} · Failed {{failed}} · In flight {{in_flight}}",
+    "targetHint": "Stop at either target",
+    "zeroHint": "0 disables",
+    "outputHint": "Upper limit",
+    "warmupHint": "0 skips",
+    "rampHint": "0 skips",
+    "sloHint": "0 disables thresholds; validated requests only",
+    "openLoopHint": "Send at target RPS",
+    "concurrencyHint": "Replace completed requests",
+    "sliceHint": "0 disables",
+    "randomInputHint": "Test uncached speed",
+    "enable": "Enable",
+    "capacityPreview": "Ladder preview"
   }
 }

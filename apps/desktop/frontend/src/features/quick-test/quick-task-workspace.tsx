@@ -8,11 +8,8 @@ import {
   type SetStateAction,
 } from "react"
 import { useTranslation } from "react-i18next"
-import FileChartColumnIcon from "lucide-react/dist/esm/icons/file-chart-column.mjs"
-import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
-import SquarePenIcon from "lucide-react/dist/esm/icons/square-pen.mjs"
 import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -23,7 +20,6 @@ import {
   AutocompleteItem,
   AutocompleteList,
 } from "@/components/ui/autocomplete"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
@@ -39,13 +35,15 @@ import type { CatalogProtocol, CatalogSnapshot, CatalogSuite, SaveQuickTestTarge
 import { DEFAULT_CASE_CONCURRENCY, isRunActive, type WorkspaceSnapshot } from "@/features/runs/data"
 import { CaseConcurrencyField } from "@/features/runs/case-concurrency-field"
 import type { ReportSnapshot } from "@/features/reports/data"
-import { QuickPerformanceSheet, type QuickPerformanceConnection } from "./quick-performance-sheet"
+import { QuickPerformancePanel, type QuickPerformanceConnection } from "./quick-performance-sheet"
 import { createTaskDraft, quickTaskCommand, restoreTaskDraft, type TaskDraft } from "./task-draft"
 import { cn } from "@/lib/utils"
 import { taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
+import { QuickTestModeSwitch } from "./quick-test-mode-switch"
+import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { ModelIcon, ProtocolIcon } from "./model-icon"
 
 type Actions = Pick<
@@ -88,21 +86,20 @@ export function QuickTaskWorkspace({
   onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
 }) {
   const { t } = useTranslation("quickTest")
-  const { i18n } = useTranslation()
   const [pending, setPending] = useState<
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
   const inFlight = useRef(false)
-  const performanceTrigger = useRef<HTMLButtonElement>(null)
   const saveChannelTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState("")
   const [caseConcurrency, setCaseConcurrency] = useState(DEFAULT_CASE_CONCURRENCY)
   const [refreshError, setRefreshError] = useState(false)
-  const [performanceCommand, setPerformanceCommand] = useState<QuickPerformanceConnection | null>(
-    null,
-  )
-  const [performanceOpen, setPerformanceOpen] = useState(false)
+  const [mode, setMode] = useState<"functional" | "performance">("functional")
+  const [performancePending, setPerformancePending] = useState(false)
+  const [performanceHistory, setPerformanceHistory] = useState<QuickTestHistoryItem[]>([])
+  const [selectedHistoryID, setSelectedHistoryID] = useState("")
+  const busy = !!pending || performancePending
   const [saveChannelOpen, setSaveChannelOpen] = useState(false)
   const [selectedProtocol, setSelectedProtocol] = useState<CatalogProtocol>(draft.task?.protocol ?? "openai-chat")
   const protocol = draft.task?.protocol ?? selectedProtocol
@@ -138,12 +135,66 @@ export function QuickTaskWorkspace({
         .map((model) => model.name),
     ]),
   ]
-  const selectedRun = workspace.runs.find((run) => run.id === runID)
-  const recent = workspace.runs.filter((run) => run.source === "quick_task").slice(0, 12).map((run) => ({
-    run,
-    report: reports.reports.find((item) => item.run_id === run.id),
-  }))
-  const selectedReport = reports.reports.find((report) => report.run_id === runID)
+  const performanceConnection: QuickPerformanceConnection = {
+    protocol,
+    ...(task ? { task: { suite_id: task.id, suite_revision: task.revision, ...(form.source_run_id ? { source_run_id: form.source_run_id } : {}) } } : {}),
+    address_mode: "base_url",
+    url: channel?.base_url ?? form.base_url.trim(),
+    api_key: form.channel_id || form.credential_run_id ? "" : form.api_key.trim(),
+    ...(form.credential_run_id ? { credential_run_id: form.credential_run_id } : {}),
+    model_id: form.model.trim(),
+    ...(form.channel_id ? { channel_id: form.channel_id } : {}),
+  }
+  const history: QuickTestHistoryItem[] = [
+    ...workspace.runs.filter(run => run.source === "quick_task").map(run => ({
+      id: run.id, runID: run.id, mode: "functional" as const,
+      title: run.plan_name, model: run.model_name, channel: run.channel_name,
+      timestamp: run.started_at,
+      status: run.conclusion === "none" ? (run.status === "starting" ? "queued" : run.status) : run.conclusion,
+      active: isRunActive(run.status), completed: run.completed, planned: run.planned,
+      detail: t("task.observed", run),
+      error: run.error_code ? t(`common:errorCode.${run.error_code}`, { defaultValue: run.error_code }) : undefined,
+      reportID: reports.reports.find(report => report.run_id === run.id)?.id,
+    })),
+    ...reports.reports.filter(report => report.source === "quick_performance" && !performanceHistory.some(item => item.reportID === report.id)).map(report => ({
+      id: report.id, reportID: report.id, mode: "performance" as const,
+      title: report.plan_name, model: report.model_name, channel: report.channel_name,
+      timestamp: report.generated_at, active: false,
+      status: report.run_status === "cancelled" ? "cancelled" : report.passed ? "passed" : "failed",
+    })),
+    ...performanceHistory,
+  ].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+  const visibleHistory = history.filter((item, index) => item.active || index < 50)
+  const selectedID = selectedHistoryID || runID
+  const runPerformance: Actions["runQuickPerformanceTest"] = async (command, onProgress) => {
+    const id = crypto.randomUUID()
+    const item: QuickTestHistoryItem = {
+      id, mode: "performance", title: task?.name ?? t("performance.title"),
+      model: command.model_id, channel: channel?.name ?? command.url,
+      timestamp: new Date().toISOString(), active: true, status: "queued", phase: "not_started",
+    }
+    setPerformancePending(true)
+    setSelectedHistoryID(id)
+    setPerformanceHistory(current => [item, ...current])
+    const updateItem = (patch: Partial<QuickTestHistoryItem>) => setPerformanceHistory(current => current.map(entry => entry.id === id ? { ...entry, ...patch } : entry))
+    try {
+      const report = await actions.runQuickPerformanceTest(command, progress => {
+        updateItem({
+          phase: progress.phase, completed: progress.completed,
+          planned: command.request_count > 0 || progress.phase === "warming_up" || progress.phase === "ramping" ? progress.planned : undefined,
+          detail: t("workspace.performanceCounts", { ...progress }),
+        })
+        onProgress?.(progress)
+      })
+      updateItem({ active: false, reportID: report.report_id, phase: undefined, status: report.progress.phase === "cancelled" ? "cancelled" : report.success ? "passed" : "failed" })
+      return report
+    } catch (reason) {
+      updateItem({ active: false, phase: undefined, status: "failed", error: publicDesktopErrorMessage(reason, t("performance.error")) })
+      throw reason
+    } finally {
+      setPerformancePending(false)
+    }
+  }
 
   const update = (next: TaskDraft) => {
     onDraftChange(next)
@@ -178,7 +229,7 @@ export function QuickTaskWorkspace({
       setRefreshError(true)
     }
   }
-  const validCommand = (element: Element) => {
+  const validCommand = () => {
     const checked = quickTaskCommand(
       { ...form, task: currentTasks.find((item) => item.id === task?.id) ?? null },
       caseConcurrency,
@@ -190,7 +241,7 @@ export function QuickTaskWorkspace({
     if (Object.keys(checked.errors).length) {
       const field = Object.keys(checked.errors)[0]
       const control = document.getElementById(`quick-task-${field}`)
-      if (control instanceof HTMLElement && element.contains(control)) control.focus()
+      if (control instanceof HTMLElement) control.focus()
       return undefined
     }
     return checked.command
@@ -198,7 +249,7 @@ export function QuickTaskWorkspace({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (inFlight.current) return
-    const command = validCommand(event.currentTarget)
+    const command = validCommand()
     if (!command) return
     inFlight.current = true
     setPending("start")
@@ -208,6 +259,7 @@ export function QuickTaskWorkspace({
     try {
       const id = await actions.startQuickTask(command)
       onRunSelected(id)
+      setSelectedHistoryID(id)
       onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
       await refreshProgress()
     } catch (reason) {
@@ -234,13 +286,13 @@ export function QuickTaskWorkspace({
       setPending(null)
     }
   }
-  const cancel = async () => {
-    if (inFlight.current || !runID) return
+  const cancel = async (id: string) => {
+    if (inFlight.current || !id) return
     inFlight.current = true
     setPending("cancel")
     setError("")
     try {
-      onWorkspaceUpdated(await actions.cancelRun(runID))
+      onWorkspaceUpdated(await actions.cancelRun(id))
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
     } finally {
@@ -291,25 +343,6 @@ export function QuickTaskWorkspace({
       setPending(null)
     }
   }
-  const openPerformance = (element: HTMLElement) => {
-    const formElement = element.closest("form")
-    if (!formElement || !validCommand(formElement)) return
-    setPerformanceCommand({
-      protocol: task!.protocol,
-      task: {
-        suite_id: task!.id,
-        suite_revision: task!.revision,
-        ...(form.source_run_id ? { source_run_id: form.source_run_id } : {}),
-      },
-      address_mode: "base_url",
-      url: channel?.base_url ?? form.base_url.trim(),
-      api_key: form.channel_id || form.credential_run_id ? "" : form.api_key.trim(),
-      ...(form.credential_run_id ? { credential_run_id: form.credential_run_id } : {}),
-      model_id: form.model.trim(),
-      ...(form.channel_id ? { channel_id: form.channel_id } : {}),
-    })
-    setPerformanceOpen(true)
-  }
   const openSaveChannel = () => {
     const connectionErrors = Object.fromEntries(
       Object.entries(quickTaskCommand(form).errors).filter(([field]) =>
@@ -332,7 +365,7 @@ export function QuickTaskWorkspace({
         id="quick-task-protocol"
         aria-label={t("protocol")}
         value={protocol}
-        disabled={!!pending}
+        disabled={busy}
         onValueChange={changeProtocol}
         className="w-full"
         options={protocolOptions.map(([value, label]) => ({ value, label, icon: <ProtocolIcon protocol={value} /> }))}
@@ -341,19 +374,31 @@ export function QuickTaskWorkspace({
   )
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-labelledby="quick-test-heading">
-      <header className="shrink-0 px-4 py-3">
-        <h1 id="quick-test-heading" className="text-lg font-semibold tracking-tight">
-          {t("title")}
-        </h1>
-        <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p>
-      </header>
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)] overflow-hidden">
-        <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0">
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("title")}>
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 p-4 xl:grid-cols-[256px_minmax(0,1fr)] overflow-hidden">
+        <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("workspace.history")}>
+          <div className="shrink-0 space-y-4 pb-4 pt-2">
+            <QuickTestModeSwitch performance={mode === "performance"} onChange={checked => setMode(checked ? "performance" : "functional")} />
+            <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">{t("workspace.history")}</h2><span className="text-[11px] text-muted-foreground">{t("workspace.active", { count: history.filter(item => item.active).length })}</span></div>
+          </div>
+          <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
+            {visibleHistory.length ? <QuickTestHistory items={visibleHistory} selectedID={selectedID} busy={busy}
+              onSelect={item => { setSelectedHistoryID(item.id); setMode(item.mode); if (item.runID) onRunSelected(item.runID) }}
+              onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
+              onOpenReport={id => void onOpenReport(id)} onCancel={id => void cancel(id)} onRefresh={() => void refreshProgress()} />
+              : <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p>}
+            {runID && !history.some(item => item.runID === runID) ? <p role="status" className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Spinner />{t("task.waiting")}</p> : null}
+          </ScrollArea>
+        </aside>
+        <div className="flex min-h-0 min-w-0 flex-col">
+        <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1">
           <section
-            className="min-w-0 p-4"
+            className="mx-auto w-full min-w-0 max-w-[800px] py-2"
             aria-label={t("connection")}
           >
+            <h2 className="mb-4 text-sm font-semibold">{mode === "performance" ? t("performance.title") : t("workspace.functional")}</h2>
+            {error ? <Alert variant="destructive" className="mb-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
+            {refreshError ? <Alert className="mb-4"><AlertDescription>{t("task.refreshFailed")}</AlertDescription><Button size="sm" variant="outline" onClick={() => void refreshProgress()}>{t("task.refresh")}</Button></Alert> : null}
             {!task ? (
               <>
                 <div className="mb-4">{protocolField}</div>
@@ -363,7 +408,7 @@ export function QuickTaskWorkspace({
                 </Empty>
               </>
             ) : (
-              <form onSubmit={(event) => void submit(event)} noValidate>
+              <div>
                 <FieldGroup>
                   <TaskField id="task" label={t("task.label")} error={errors.task}
                     labelHint={<p id="quick-task-draft-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.draftNote")}</p>}
@@ -371,7 +416,7 @@ export function QuickTaskWorkspace({
                     <SearchableSelect
                       value={taskKey(task)}
                       onValueChange={changeTask}
-                      disabled={!!pending}
+                      disabled={busy}
                       id="quick-task-task"
                       aria-label={t("task.label")}
                       aria-invalid={!!errors.task || undefined}
@@ -383,9 +428,9 @@ export function QuickTaskWorkspace({
                       }))}
                     />
                   </TaskField>
-                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,3fr)] items-start gap-x-4 gap-y-2">
+                  <div className="grid min-w-0 grid-cols-4 items-start gap-x-4 gap-y-2">
                     <TaskField id="channel_id" label={t("fillChannel")} error={errors.channel_id} className="row-span-2 grid grid-rows-subgrid">
-                      <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={!!pending} onValueChange={(value) => {
+                      <SearchableSelect value={missingChannel ? "missing" : form.channel_id || "manual"} disabled={busy} onValueChange={(value) => {
                         const selected = channels.find((item) => item.id === value)
                         update({
                           ...form,
@@ -398,14 +443,14 @@ export function QuickTaskWorkspace({
                             ({value: item.id, label: item.name})
                           ))]} />
                     </TaskField>
-                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="row-span-2 grid grid-rows-subgrid"
+                    <TaskField id="base_url" label={t("address")} error={errors.base_url} className="col-span-3 row-span-2 grid grid-rows-subgrid"
                       labelHint={<p id="quick-task-base_url-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.endpointHint")}</p>}
                     >
                       <ConnectionURLInput
                         id="quick-task-base_url"
                         value={channel?.base_url ?? form.base_url}
                         suffix={connectionURLs[0]?.suffix ?? ""}
-                        disabled={!!pending || !!form.channel_id}
+                        disabled={busy || !!form.channel_id}
                         aria-invalid={!!errors.base_url || undefined}
                         aria-describedby={[
                           "quick-task-base_url-hint",
@@ -423,7 +468,7 @@ export function QuickTaskWorkspace({
                       />
                     </TaskField>
                   </div>
-                  <div className="grid min-w-0 grid-cols-2 items-start gap-4">
+                  <div className="grid min-w-0 grid-cols-4 items-start gap-4">
                     <TaskField id="model" label={t("model.label")} error={errors.model}>
                       <Autocomplete
                         modal={false}
@@ -438,7 +483,7 @@ export function QuickTaskWorkspace({
                           aria-label={t("model.label")}
                           value={form.model}
                           onChange={(event) => update({ ...form, model: event.target.value })}
-                          disabled={!!pending}
+                          disabled={busy}
                           aria-invalid={!!errors.model || undefined}
                           aria-describedby={errors.model ? "quick-task-model-error" : undefined}
                           placeholder={t("model.placeholder")}
@@ -457,8 +502,7 @@ export function QuickTaskWorkspace({
                       </Autocomplete>
                     </TaskField>
                     {protocolField}
-                  </div>
-                  <TaskField id="api_key" label="API Key" error={errors.api_key}
+                  <TaskField id="api_key" label="API Key" error={errors.api_key} className="col-span-2"
                     labelHint={form.credential_run_id ? <p id="quick-task-key-hint" className="text-[11px] font-normal text-muted-foreground">{t("task.rememberedKey")}</p> : undefined}
                   >
                     <InputGroup className="has-[input[aria-invalid=true]]:border-destructive">
@@ -467,7 +511,7 @@ export function QuickTaskWorkspace({
                         type="password"
                         autoComplete="off"
                         value={form.api_key}
-                        disabled={!!pending || !!form.channel_id || !!form.credential_run_id}
+                        disabled={busy || !!form.channel_id || !!form.credential_run_id}
                         aria-invalid={!!errors.api_key || undefined}
                         aria-describedby={[
                           ...(form.credential_run_id ? ["quick-task-key-hint"] : []),
@@ -492,7 +536,7 @@ export function QuickTaskWorkspace({
                                 size="icon-sm"
                                 variant="ghost"
                                 aria-label={t("saveChannel.title")}
-                                disabled={!!pending}
+                                disabled={busy}
                                 onClick={openSaveChannel}
                               >
                                 <SaveIcon aria-hidden="true" className="size-4" />
@@ -511,7 +555,7 @@ export function QuickTaskWorkspace({
                               size="sm"
                               type="button"
                               variant="outline"
-                              disabled={!!pending}
+                              disabled={busy}
                               onClick={() => {
                                 update({ ...form, credential_run_id: undefined, api_key: "" })
                                 requestAnimationFrame(() =>
@@ -525,7 +569,7 @@ export function QuickTaskWorkspace({
                               size="sm"
                               type="button"
                               variant="ghost"
-                              disabled={!!pending}
+                              disabled={busy}
                               onClick={() => void forgetCredential()}
                             >
                               {pending === "forget" ? t("task.forgetting") : t("task.forgetKey")}
@@ -537,20 +581,22 @@ export function QuickTaskWorkspace({
                           size="sm"
                           type="button"
                           variant="outline"
-                          disabled={!!pending}
+                          disabled={busy}
                           onClick={() => void rememberCredential()}
                         >
                           {pending === "remember" ? t("task.remembering") : t("task.rememberKey")}
                         </Button>
                       ) : null)}
                   </TaskField>
-                  <fieldset disabled={!!pending} className="@container/quick-task-parameters min-w-0 space-y-3">
-                    <legend className="mb-3 text-sm font-semibold">{t("task.parameters")}</legend>
+                  </div>
+                  <form hidden={mode !== "functional"} onSubmit={(event) => void submit(event)} noValidate className="space-y-4">
+                  <fieldset disabled={busy} className="@container/quick-task-parameters min-w-0 space-y-3">
+                    <legend className="mb-3 text-xs font-medium">{t("task.parameters")}</legend>
                     <div className="grid min-w-0 grid-cols-1 items-start gap-3 @xs/quick-task-parameters:grid-cols-2 @md/quick-task-parameters:grid-cols-3">
                       <CaseConcurrencyField
                         value={caseConcurrency}
                         onChange={setCaseConcurrency}
-                        disabled={!!pending}
+                        disabled={busy}
                         labelHint={t("task.caseConcurrencyHint")}
                       />
                       <TaskField id="seed" label={t("task.seed")} error={errors.seed}>
@@ -632,8 +678,8 @@ export function QuickTaskWorkspace({
                       ))}
                     </div>
                   </fieldset>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="submit" disabled={!!pending}>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button type="submit" disabled={busy}>
                       {pending === "start" ? (
                         <Spinner data-icon="inline-start" />
                       ) : (
@@ -641,181 +687,21 @@ export function QuickTaskWorkspace({
                       )}
                       {pending === "start" ? t("task.starting") : t("task.start")}
                     </Button>
-                    {isQuickPerformanceProtocol(task.protocol) ? (
-                      <Button
-                        ref={performanceTrigger}
-                        type="button"
-                        variant="outline"
-                        disabled={!!pending}
-                        onClick={(event) => openPerformance(event.currentTarget)}
-                      >
-                        <GaugeIcon data-icon="inline-start" />
-                        {t("task.performance")}
-                      </Button>
-                    ) : null}
+                  </div>
+                  </form>
+                  <div hidden={mode !== "performance"}>
+                    {isQuickPerformanceProtocol(task.protocol) ? <QuickPerformancePanel
+                      embedded blocked={!!pending} connection={performanceConnection}
+                      resolveConnection={() => validCommand() ? performanceConnection : undefined}
+                      run={runPerformance} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
+                    /> : <p className="text-xs text-muted-foreground">{t("task.performanceUnavailable")}</p>}
                   </div>
                 </FieldGroup>
-              </form>
+              </div>
             )}
           </section>
         </ScrollArea>
-        <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0">
-          <section className="min-w-0 space-y-5 p-4" aria-label={t("task.progress")}>
-            {error ? (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-            {refreshError ? (
-              <Alert>
-                <AlertDescription>{t("task.refreshFailed")}</AlertDescription>
-              </Alert>
-            ) : null}
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold">{t("task.progress")}</h2>
-              {!runID ? (
-                <p className="text-xs text-muted-foreground">{t("task.notStarted")}</p>
-              ) : (
-                <>
-                  <p className="truncate font-mono text-[11px] text-muted-foreground" title={runID}>
-                    {t("task.runID")}: {runID}
-                  </p>
-                  {selectedRun ? (
-                    <>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant={
-                            selectedRun.conclusion === "failed" || selectedRun.status === "failed"
-                              ? "destructive"
-                              : "outline"
-                          }
-                        >
-                          {t(
-                            `common:status.${selectedRun.conclusion === "none" ? (selectedRun.status === "starting" ? "queued" : selectedRun.status) : selectedRun.conclusion}`,
-                          )}
-                        </Badge>
-                        <span className="min-w-0 truncate text-xs">{selectedRun.plan_name}</span>
-                      </div>
-                      <p className="text-xs tabular-nums">{t("task.observed", selectedRun)}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {t("task.localTime")}:{" "}
-                        {new Date(selectedRun.started_at).toLocaleString(i18n.language)}
-                      </p>
-                      {selectedRun.error_code ? (
-                        <p className="text-xs text-destructive">
-                          {t(`common:errorCode.${selectedRun.error_code}`, {
-                            defaultValue: selectedRun.error_code,
-                          })}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="flex items-center gap-2 text-xs">
-                      <Spinner />
-                      {t("task.waiting")}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => void refreshProgress()}>
-                      {t("task.refresh")}
-                    </Button>
-                    {!selectedRun || isRunActive(selectedRun.status) ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!!pending}
-                        onClick={() => void cancel()}
-                      >
-                        {pending === "cancel" ? t("task.stopping") : t("task.cancel")}
-                      </Button>
-                    ) : null}
-                    {selectedReport ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void onOpenReport(selectedReport.id)}
-                      >
-                        {t("task.report")}
-                      </Button>
-                    ) : null}
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="pt-4">
-              <h2 className="mb-3 text-sm font-semibold">{t("task.history")}</h2>
-              {!recent.length ? (
-                <p className="text-xs text-muted-foreground">{t("task.noHistory")}</p>
-              ) : (
-                <ol className="space-y-0.5">
-                  {recent.map(({ run, report }) => (
-                    <li key={run.id} data-selected={run.id === runID} className="min-w-0 space-y-1 rounded-md p-3 transition-colors hover:bg-surface-hover focus-within:bg-surface-hover data-[selected=true]:bg-surface-active">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 text-xs font-medium [overflow-wrap:anywhere]" title={run.plan_name}>
-                          {run.plan_name}
-                        </p>
-                        <Badge variant="outline">
-                          {t(
-                            `common:status.${run.conclusion === "none" ? (run.status === "starting" ? "queued" : run.status) : run.conclusion}`,
-                          )}
-                        </Badge>
-                      </div>
-                      <p
-                        className="text-[11px] text-muted-foreground [overflow-wrap:anywhere]"
-                        title={`${run.model_name} · ${run.channel_name}`}
-                      >
-                        {run.model_name} · {run.channel_name}
-                      </p>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <time
-                          className="text-[11px] text-muted-foreground"
-                          dateTime={run.started_at}
-                        >
-                          {new Date(run.started_at).toLocaleString(i18n.language)}
-                        </time>
-                        <TooltipProvider delayDuration={250}>
-                          <div className="flex flex-wrap items-center gap-1">
-                            {report ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    size="icon-sm"
-                                    variant="ghost"
-                                    onClick={() => void onOpenReport(report.id)}
-                                    aria-label={`${t("task.report")} ${run.plan_name}`}
-                                  >
-                                    <FileChartColumnIcon aria-hidden="true" className="size-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>{t("task.report")}</TooltipContent>
-                              </Tooltip>
-                            ) : null}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  type="button"
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  disabled={!!pending}
-                                  onClick={() => void restore(run.id)}
-                                  aria-label={`${t("task.restore")} ${run.plan_name}`}
-                                >
-                                  <SquarePenIcon aria-hidden="true" className="size-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{t("task.restore")}</TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </TooltipProvider>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </section>
-        </ScrollArea>
+        </div>
       </div>
       {saveChannelOpen && <SaveChannelSheet
         open={saveChannelOpen}
@@ -835,20 +721,6 @@ export function QuickTaskWorkspace({
         }}
         onSaved={saved => update({ ...form, channel_id: saved.channel_id, api_key: "", credential_run_id: undefined })}
       />}
-      {performanceCommand ? (
-        <QuickPerformanceSheet
-          open={performanceOpen}
-          onOpenChange={setPerformanceOpen}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault()
-            performanceTrigger.current?.focus()
-          }}
-          connection={performanceCommand}
-          run={actions.runQuickPerformanceTest}
-          onArchived={onPerformanceArchived}
-          onOpenReport={onOpenReport}
-        />
-      ) : null}
     </main>
   )
 }

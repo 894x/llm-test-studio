@@ -48,7 +48,7 @@ Prioritize Header content in this order:
 - Size editing sheets for their content separately from detail inspectors. Current case/suite editors use a 768 px maximum capped by the viewport; this is not the default for every editor. Reuse the relevant editor's composition and adjust it only when the task needs different space.
 - In adjacent open workspace columns, the parent Flex/Grid owns the 16 px gap. Do not add another horizontal inset on both sides of that gap; keep navigation items' 8 px internal padding separate from panel spacing.
 
-- Quick Test keeps two columns across supported desktop sizes (960 px and above): inputs on the left and progress/history on the right, each with its own bounded ScrollArea below the fixed page header.
+- Quick Test keeps two columns across supported desktop sizes (960 px and above): a 240 px history sidebar on the left (256 px at wide desktop sizes) and a centered configuration region capped at 800 px on the right. The sidebar spans the full height below the app menu; the full-width mode switch stays above the history ScrollArea; running and completed tests share one list. The configuration region owns a separate ScrollArea below the app menu and starts with the active test mode heading; omit the repeated page title and introduction.
 
 ## Scroll ownership
 

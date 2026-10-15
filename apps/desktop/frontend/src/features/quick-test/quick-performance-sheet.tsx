@@ -245,19 +245,7 @@ export function PlanPerformanceRunSheet({
   </>
 }
 
-export function QuickPerformanceSheet({
-  open,
-  onOpenChange,
-  onCloseAutoFocus,
-  connection,
-  initialProfile,
-  run,
-  onArchived,
-  onOpenReport,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onCloseAutoFocus?: (event: Event) => void
+type QuickPerformancePanelProps = {
   connection: QuickPerformanceConnection
   initialProfile?: QuickPerformanceProfile
   run: (
@@ -266,7 +254,36 @@ export function QuickPerformanceSheet({
   ) => Promise<QuickPerformanceReport>
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
+  resolveConnection?: () => QuickPerformanceConnection | undefined
+}
+
+export function QuickPerformanceSheet({
+  open, onOpenChange, onCloseAutoFocus, ...props
+}: QuickPerformancePanelProps & {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCloseAutoFocus?: (event: Event) => void
 }) {
+  const { t } = useTranslation("quickTest")
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent onCloseAutoFocus={onCloseAutoFocus} className="data-[side=right]:w-full data-[side=right]:sm:max-w-5xl">
+        <SheetHeader>
+          <SheetTitle>{t("performance.title")}</SheetTitle>
+          <SheetDescription>
+            {t("performance.description")}
+            <span className="mt-1 block break-all">{props.connection.model_id} · {props.connection.url}</span>
+          </SheetDescription>
+        </SheetHeader>
+        <QuickPerformancePanel {...props} />
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+export function QuickPerformancePanel({
+  connection, initialProfile, run, onArchived, onOpenReport, resolveConnection, embedded = false, blocked = false,
+}: QuickPerformancePanelProps & { embedded?: boolean; blocked?: boolean }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("quickTest")
   const [form, setForm] = useState<PerformanceForm>(() => performanceFormFromProfile(initialProfile))
@@ -377,7 +394,9 @@ export function QuickPerformanceSheet({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (pending) return
+    if (pending || blocked) return
+    const target = resolveConnection ? resolveConnection() : connection
+    if (!target) return
     const nextFieldErrors = validatePerformanceForm(form)
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors)
@@ -392,7 +411,7 @@ export function QuickPerformanceSheet({
     setOperationError("")
     const generation = ++requestGeneration.current.value
     void run(
-      performanceCommand(connection, form),
+      performanceCommand(target, form),
       (nextProgress) => {
         if (requestGeneration.current.value === generation) setProgress(nextProgress)
       },
@@ -417,25 +436,11 @@ export function QuickPerformanceSheet({
       })
   }
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        onCloseAutoFocus={onCloseAutoFocus}
-        className="data-[side=right]:w-full data-[side=right]:sm:max-w-5xl"
-      >
-        <SheetHeader>
-          <SheetTitle>{t("performance.title")}</SheetTitle>
-          <SheetDescription>
-            {t("performance.description")}
-            <span className="mt-1 block break-all">
-              {connection.model_id} · {connection.url}
-            </span>
-          </SheetDescription>
-        </SheetHeader>
-        <ScrollArea className="min-h-0 flex-1 px-4">
+  const content = (
+    <>
           <form id="quick-performance-form" onSubmit={submit} className="space-y-4 pb-4" noValidate>
             <FieldGroup>
-              <Field className="block min-w-0">
+              <Field className="min-w-0 flex-col items-stretch gap-2">
                 <FieldLabel htmlFor="quick-performance-preset">{t("performance.preset")}</FieldLabel>
                 <FieldContent>
                   <SearchableSelect
@@ -459,16 +464,17 @@ export function QuickPerformanceSheet({
                 </FieldContent>
               </Field>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <Field className="block min-w-0">
-                  <FieldLabel htmlFor="quick-performance-loadMode">
-                    {tx("desktop:catalog_load_mode")}
-                  </FieldLabel>
+                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <FieldLabel htmlFor="quick-performance-loadMode">{tx("desktop:catalog_load_mode")}</FieldLabel>
+                    <FieldDescription id="quick-performance-loadMode-hint" className="mt-0 text-[11px]">{t(form.loadMode === "open_loop" ? "workspace.openLoopHint" : "workspace.concurrencyHint")}</FieldDescription>
+                  </div>
                   <FieldContent>
-                    <SearchableSelect value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)} id="quick-performance-loadMode" aria-label={tx("desktop:catalog_load_mode")} className="w-full" options={[({value: "fixed_concurrency", label: tx("desktop:catalog_fixed_concurrency")}), ({value: "open_loop", label: tx("desktop:quick-test_open_arrival_rps")})]} />
+                    <SearchableSelect value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)} id="quick-performance-loadMode" aria-describedby="quick-performance-loadMode-hint" aria-label={tx("desktop:catalog_load_mode")} className="w-full" options={[({value: "fixed_concurrency", label: tx("desktop:catalog_fixed_concurrency")}), ({value: "open_loop", label: tx("desktop:quick-test_open_arrival_rps")})]} />
                   </FieldContent>
                 </Field>
                 {form.loadMode === "open_loop" ? (
-                  <Field className="block min-w-0">
+                  <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
                     <FieldLabel htmlFor="quick-performance-arrivalPattern">
                       {tx("desktop:quick-test_arrival_distribution")}
                     </FieldLabel>
@@ -479,7 +485,7 @@ export function QuickPerformanceSheet({
                     </FieldContent>
                   </Field>
                 ) : null}
-                <Field className="block min-w-0">
+                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
                   <FieldLabel htmlFor="quick-performance-workloadMode">
                     {tx("desktop:quick-test_workload")}
                   </FieldLabel>
@@ -489,20 +495,19 @@ export function QuickPerformanceSheet({
                       } id="quick-performance-workloadMode" aria-label={tx("desktop:quick-test_workload")} className="w-full" options={[({value: "fixed", label: tx("desktop:quick-test_fixed_tokens")}), ({value: "normal", label: tx("desktop:quick-test_normal_distribution")})]} />
                   </FieldContent>
                 </Field>
-                <Field className="block min-w-0">
-                  <FieldLabel htmlFor="quick-performance-randomInput" className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-1.5">
-                    <Checkbox
-                      id="quick-performance-randomInput"
-                      checked={form.randomInput}
-                      disabled={pending}
-                      onCheckedChange={(checked) => updateRandomInput(checked === true)}
-                    />
-                    <span>{tx("desktop:quick-test_random_input")}</span>
+                <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <FieldLabel htmlFor="quick-performance-randomInput">{tx("desktop:quick-test_random_input")}</FieldLabel>
+                    <FieldDescription id="quick-performance-randomInput-hint" className="mt-0 text-[11px]">{t("workspace.randomInputHint")}</FieldDescription>
+                  </div>
+                  <FieldLabel htmlFor="quick-performance-randomInput" className="flex h-8 cursor-pointer items-center gap-2 rounded-md border border-input bg-surface-control px-2.5">
+                    <Checkbox id="quick-performance-randomInput" aria-label={tx("desktop:quick-test_random_input")} aria-describedby="quick-performance-randomInput-hint" checked={form.randomInput} disabled={pending} onCheckedChange={checked => updateRandomInput(checked === true)} />
+                    <span aria-hidden="true">{t("workspace.enable")}</span>
                   </FieldLabel>
-                  <FieldDescription>{tx("desktop:quick-test_random_input_hint")}</FieldDescription>
                 </Field>
                 <PerformanceNumberField
                   field="requestCount"
+                  hint={t("workspace.targetHint")}
                   label={tx("desktop:catalog_request_count")}
                   value={form.requestCount}
                   min={0}
@@ -513,6 +518,7 @@ export function QuickPerformanceSheet({
                 />
                 <PerformanceNumberField
                   field="durationSeconds"
+                  hint={t("workspace.zeroHint")}
                   label={tx("desktop:quick-test_duration_seconds")}
                   value={form.durationSeconds}
                   min={0}
@@ -591,6 +597,7 @@ export function QuickPerformanceSheet({
                 />
                 <PerformanceNumberField
                   field="outputTokens"
+                  hint={t("workspace.outputHint")}
                   label={
                     form.workloadMode === "normal"
                       ? tx("desktop:quick-test_mean_maximum_output_tokens")
@@ -651,15 +658,11 @@ export function QuickPerformanceSheet({
                 ) : null}
               </div>
               <div className="rounded-lg border bg-surface-subtle p-3">
-                <div className="mb-3">
+                <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <h3 className="text-xs font-semibold">
                     {tx("desktop:quick-test_slo_and_capacity")}
                   </h3>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {tx(
-                      "desktop:quick-test_0_disables_a_threshold_good_requests_must_pass_transport_validation",
-                    )}
-                  </p>
+                  <p className="text-[11px] text-muted-foreground">{t("workspace.sloHint")}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <PerformanceNumberField
@@ -776,16 +779,12 @@ export function QuickPerformanceSheet({
                         />
                       </>
                     )}
-                    <div className="col-span-2 flex min-h-8 min-w-0 items-center rounded-md border bg-background px-3 text-[11px] tabular-nums text-muted-foreground sm:col-span-1">
-                      <span className="truncate">
-                        {capacityTargets?.length
-                          ? tx("desktop:quick-test_value_value_steps", {
-                              value1: capacityTargets.map(formatCapacityTarget).join(" → "),
-                              value2: formatNumber(capacityTargets.length),
-                            })
-                          : tx("desktop:quick-test_enter_a_valid_start_step_and_final_target")}
-                      </span>
-                    </div>
+                    <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2">
+                      <FieldLabel htmlFor="quick-performance-capacityPreview">{t("workspace.capacityPreview")}</FieldLabel>
+                      <Input id="quick-performance-capacityPreview" readOnly value={capacityTargets?.length
+                        ? tx("desktop:quick-test_value_value_steps", { value1: capacityTargets.map(formatCapacityTarget).join(" → "), value2: formatNumber(capacityTargets.length) })
+                        : tx("desktop:quick-test_enter_a_valid_start_step_and_final_target")} />
+                    </Field>
                   </div>
                 ) : null}
               </div>
@@ -816,9 +815,10 @@ export function QuickPerformanceSheet({
                     )}
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <PerformanceNumberField
                     field="warmupRequests"
+                  hint={t("workspace.warmupHint")}
                     label={tx("desktop:quick-test_warmup_request_count")}
                     value={form.warmupRequests}
                     min={0}
@@ -829,6 +829,7 @@ export function QuickPerformanceSheet({
                   />
                   <PerformanceNumberField
                     field="rampDurationSeconds"
+                  hint={t("workspace.rampHint")}
                     label={tx("desktop:quick-test_ramp_duration_seconds")}
                     value={form.rampDurationSeconds}
                     min={0}
@@ -853,6 +854,7 @@ export function QuickPerformanceSheet({
                   ) : null}
                   <PerformanceNumberField
                     field="sliceDurationSeconds"
+                  hint={t("workspace.sliceHint")}
                     label={tx("desktop:quick-test_time_slice_seconds")}
                     value={form.sliceDurationSeconds}
                     min={0}
@@ -862,38 +864,7 @@ export function QuickPerformanceSheet({
                     onChange={(value) => update("sliceDurationSeconds", value)}
                   />
                 </div>
-                <p className="mt-2 text-[10px] text-muted-foreground">
-                  {tx("desktop:quick-test_0_skips_a_phase_or_disables_time_slices")}
-                  {form.capacityEnabled
-                    ? tx(
-                        "desktop:quick-test_capacity_mode_skips_ramping_and_measures_each_step_independently",
-                      )
-                    : tx(
-                        "desktop:quick-test_ramping_uses_10_linear_steps_steady_state_metrics_exclude_warmup",
-                      )}
-                </p>
               </div>
-              <FieldDescription>
-                {form.loadMode === "open_loop"
-                  ? form.arrivalPattern === "poisson"
-                    ? tx(
-                        "desktop:quick-test_requests_follow_a_reproducible_poisson_arrival_process_reaching_the_in",
-                      )
-                    : tx(
-                        "desktop:quick-test_requests_are_scheduled_independently_at_constant_intervals_for_the_target",
-                      )
-                  : tx(
-                      "desktop:quick-test_fixed_concurrency_starts_a_replacement_when_a_request_completes_to",
-                    )}
-                {form.workloadMode === "normal"
-                  ? tx(
-                      "desktop:quick-test_a_normal_workload_uses_the_seed_to_reproduce_each_request",
-                    )
-                  : ""}
-                {tx(
-                  "desktop:quick-test_when_both_request_count_and_duration_are_set_sending_stops",
-                )}{" "}
-              </FieldDescription>
               {operationError ? (
                 <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
                   {localizeStoredMessage(operationError, tx)}
@@ -901,13 +872,13 @@ export function QuickPerformanceSheet({
               ) : null}
             </FieldGroup>
           </form>
-          {pending && progress ? (
+          {!embedded && pending && progress ? (
             <QuickPerformanceProgressPanel
               progress={progress}
               requestCount={form.requestCount}
               loadMode={form.loadMode}
             />
-          ) : pending ? (
+          ) : !embedded && pending ? (
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Spinner className="size-5" />
               <p className="mt-3 text-sm font-medium">{t("performance.running")}</p>
@@ -916,9 +887,10 @@ export function QuickPerformanceSheet({
           ) : report ? (
             <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} />
           ) : null}
-        </ScrollArea>
-        <SheetFooter>
-          <Button type="submit" form="quick-performance-form" disabled={pending}>
+    </>
+  )
+  const startButton = (
+          <Button type="submit" form="quick-performance-form" disabled={pending || blocked}>
             {pending ? (
               <>
                 <Spinner data-icon="inline-start" />
@@ -931,15 +903,25 @@ export function QuickPerformanceSheet({
               </>
             )}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+  )
+  return embedded ? (
+    <section aria-label={t("performance.title")} className="min-w-0 space-y-4">
+      {content}
+      <div className="flex justify-end">{startButton}</div>
+    </section>
+  ) : (
+    <>
+      <ScrollArea className="min-h-0 flex-1 px-4">{content}</ScrollArea>
+      <SheetFooter>{startButton}</SheetFooter>
+    </>
+
   )
 }
 
 function PerformanceNumberField({
   field,
   label,
+  hint,
   value,
   min,
   max,
@@ -950,6 +932,7 @@ function PerformanceNumberField({
 }: {
   field: PerformanceNumberFieldName
   label: string
+  hint?: string
   value: number
   min: number
   max: number
@@ -961,14 +944,18 @@ function PerformanceNumberField({
   const id = `quick-performance-${field}`
   const errorID = `${id}-error`
   return (
-    <Field className="block min-w-0" data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <Field className="row-span-2 grid min-w-0 grid-rows-subgrid gap-2" data-invalid={error ? true : undefined}>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {hint ? <FieldDescription id={`${id}-hint`} className="mt-0 text-[11px]">{hint}</FieldDescription> : null}
+        {error ? <FieldError id={errorID} className="min-w-0 text-[11px] font-normal">{localizeStoredMessage(error, tx)}</FieldError> : null}
+      </div>
       <FieldContent>
         <Input
           id={id}
           aria-label={label}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorID : undefined}
+          aria-describedby={[...(hint ? [`${id}-hint`] : []), ...(error ? [errorID] : [])].join(" ") || undefined}
           type="number"
           min={min}
           max={max}
@@ -978,7 +965,6 @@ function PerformanceNumberField({
           onChange={(event) => onChange(Number(event.target.value))}
           required
         />
-        {error ? <FieldError id={errorID}>{localizeStoredMessage(error, tx)}</FieldError> : null}
       </FieldContent>
     </Field>
   )

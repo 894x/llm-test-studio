@@ -387,14 +387,14 @@ describe("QuickPerformanceSheet", () => {
     await replaceNumber(user, within(dialog).getByLabelText("终止并发"), "4")
     await replaceNumber(user, within(dialog).getByLabelText("起始并发"), "2")
     await replaceNumber(user, within(dialog).getByLabelText("并发步长"), "1")
-    expect(within(dialog).getByText("2 → 3 → 4 · 3 档")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText("阶梯预览")).toHaveValue("2 → 3 → 4 · 3 档")
 
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
     await user.click(screen.getByRole("option", { name: "开放到达（RPS）" }))
     await replaceNumber(user, within(dialog).getByLabelText("终止 RPS"), "3.5")
     await replaceNumber(user, within(dialog).getByLabelText("起始 RPS"), "0.01")
     await replaceNumber(user, within(dialog).getByLabelText("RPS 步长"), "1")
-    expect(within(dialog).getByText("0.01 → 1.01 → 2.01 → 3.01 → 3.5 · 5 档")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText("阶梯预览")).toHaveValue("0.01 → 1.01 → 2.01 → 3.01 → 3.5 · 5 档")
 
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
     await user.click(screen.getByRole("option", { name: "固定并发" }))
@@ -485,7 +485,7 @@ describe("QuickPerformanceSheet", () => {
     await replaceNumber(user, within(dialog).getByLabelText("起始 RPS"), "1.9999999999")
     await replaceNumber(user, within(dialog).getByLabelText("RPS 步长"), "3")
 
-    expect(within(dialog).getByText("1.9999999999 → 2 · 2 档")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText("阶梯预览")).toHaveValue("1.9999999999 → 2 · 2 档")
     expect(within(dialog).getByText(/容量 20 · 合计 20 \/ 10,000/)).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>

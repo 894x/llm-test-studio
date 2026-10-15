@@ -96,7 +96,7 @@
     "caseCount": "{{count}} 个用例",
     "empty": "暂无快速测试任务",
     "emptyHint": "在 Suite 定义中配置 quick_test 后即可在这里选择。",
-    "start": "开始测试",
+    "start": "开启功能测试",
     "starting": "正在启动…",
     "history": "最近测试",
     "noHistory": "测试后会在这里保留成功与失败记录。",
@@ -144,5 +144,25 @@
     "cancel": "取消",
     "saving": "保存中…",
     "failed": "保存渠道失败，请检查连接信息。"
+  },
+  "workspace": {
+    "functional": "快速功能测试",
+    "mode": "切换测试模式",
+    "history": "测试记录",
+    "active": "{{count}} 项运行中",
+    "completed": "已完成 {{count}} 次请求",
+    "performanceCounts": "成功 {{succeeded}} · 失败 {{failed}} · 在途 {{in_flight}}",
+    "targetHint": "任一目标先到即停止",
+    "zeroHint": "0 不限制",
+    "outputHint": "上限值",
+    "warmupHint": "0 跳过",
+    "rampHint": "0 跳过",
+    "sloHint": "0 关闭阈值；仅统计校验通过的请求",
+    "openLoopHint": "按目标 RPS 发送",
+    "concurrencyHint": "完成后自动补位",
+    "sliceHint": "0 关闭",
+    "randomInputHint": "测试无缓存速度",
+    "enable": "启用",
+    "capacityPreview": "阶梯预览"
   }
 }
