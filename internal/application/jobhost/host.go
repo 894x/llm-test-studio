@@ -28,6 +28,7 @@ var (
 	ErrLocalShutdown  = errors.New("local_shutdown")
 	ErrInterrupted    = errors.New("runner_interrupted")
 	ErrExecutionLimit = errors.New("job_execution_timeout")
+	ErrMaintenance    = errors.New("runner_maintenance")
 )
 
 const storageTimeout = 5 * time.Second
@@ -60,6 +61,7 @@ type Host struct {
 	active         uint32
 	concurrency    uint64
 	closed         bool
+	maintenanceID  string
 	failureHandled bool
 	unhealthy      atomic.Bool
 	wg             sync.WaitGroup
@@ -90,9 +92,12 @@ type jobControl struct {
 }
 
 type Status struct {
-	Ready  bool   `json:"ready"`
-	Active uint32 `json:"active"`
-	Queued uint32 `json:"queued"`
+	Ready                  bool   `json:"ready"`
+	Healthy                bool   `json:"healthy"`
+	Active                 uint32 `json:"active"`
+	Queued                 uint32 `json:"queued"`
+	Pending                uint32 `json:"pending"`
+	MaintenanceOperationID string `json:"maintenance_operation_id"`
 }
 
 func (*Host) String() string   { return "jobhost.Host{redacted}" }
@@ -170,6 +175,9 @@ func (host *Host) Submit(ctx context.Context, submission *jobcontract.Submission
 	if !errors.Is(err, ErrNotFound) {
 		fatalStorage = storageError(err)
 		return jobcontract.Snapshot{}, false, err
+	}
+	if host.maintenanceID != "" {
+		return jobcontract.Snapshot{}, false, ErrMaintenance
 	}
 	units := jobConcurrency(spec)
 	immediate := len(host.queue) == 0 && host.active < host.policy.MaxActiveJobs
@@ -288,7 +296,16 @@ func (host *Host) Status() Status {
 	}
 	host.mu.Lock()
 	defer host.mu.Unlock()
-	return Status{Ready: host.available() == nil, Active: host.active, Queued: uint32(len(host.queue))}
+	return host.statusLocked()
+}
+
+func (host *Host) statusLocked() Status {
+	healthy := host.available() == nil
+	return Status{
+		Ready: healthy && host.maintenanceID == "", Healthy: healthy,
+		Active: host.active, Queued: uint32(len(host.queue)), Pending: uint32(len(host.controls)),
+		MaintenanceOperationID: host.maintenanceID,
+	}
 }
 
 func (host *Host) observe(control *jobControl, progress quicktest.PerformanceProgress) {

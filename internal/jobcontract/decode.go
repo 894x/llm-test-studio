@@ -25,6 +25,8 @@ const (
 	scopePerformance
 	scopeRun
 	scopeCommand
+	scopeMaintenanceCommand
+	scopeMaintenanceRecord
 )
 
 // Scan collection counts before decoding typed slices. A bounded byte body can
@@ -146,6 +148,10 @@ func envelopeFields(scope documentScope) []string {
 	switch scope {
 	case scopeCommand:
 		return []string{"contract", "command_id", "job_id", "kind", "expected_revision"}
+	case scopeMaintenanceCommand:
+		return []string{"contract", "operation_id", "action"}
+	case scopeMaintenanceRecord:
+		return []string{"contract", "node_installation_id", "operation_id", "paused", "changed_at"}
 	case scopeRoot:
 		// Both a complete Submission and a standalone JobSpec use this scanner.
 		// Secret's string-only decoder also uses the same strict decode helper.

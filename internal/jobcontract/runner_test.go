@@ -73,6 +73,7 @@ func TestRunnerInfoValidatesIdentityCapabilitiesAndExactBudgetBoundaries(t *test
 				info.Budget.MaxConcurrency = concurrency
 				info.Budget.QueueTimeoutNS, info.Budget.ExecutionTimeoutNS = int64(timeout), int64(timeout)
 				info.Active, info.Queued = jobs, 1024
+				info.Pending = jobs + 1024
 				if err := info.Validate(); err != nil {
 					t.Fatalf("valid exact resource boundary rejected: %v", err)
 				}

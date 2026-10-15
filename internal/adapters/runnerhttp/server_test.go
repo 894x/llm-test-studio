@@ -42,13 +42,14 @@ func (testGuard) Reserve(context.Context, jobcontract.JobSpec) (io.Closer, error
 }
 
 type httpFixture struct {
-	repository *sqlite.Repository
-	host       *jobhost.Host
-	api        *httptest.Server
-	upstream   *httptest.Server
-	requests   atomic.Int64
-	entered    chan struct{}
-	release    func()
+	repository  *sqlite.Repository
+	host        *jobhost.Host
+	maintenance *jobhost.Maintenance
+	api         *httptest.Server
+	upstream    *httptest.Server
+	requests    atomic.Int64
+	entered     chan struct{}
+	release     func()
 }
 
 func capabilities() jobcontract.RunnerCapabilities {
@@ -118,8 +119,13 @@ func newHTTPFixture(t *testing.T, blocked bool, caps jobcontract.RunnerCapabilit
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = fixture.host.Close() })
+	fixture.maintenance, err = jobhost.NewMaintenance(t.Context(), fixture.host, &memoryMaintenanceStore{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
-		Host: fixture.host, Repository: repository, TokenSHA256: sha256.Sum256([]byte(nodeToken)),
+		Host: fixture.host, Maintenance: fixture.maintenance,
+		Repository: repository, TokenSHA256: sha256.Sum256([]byte(nodeToken)),
 		Version: "runner-test-1", Capabilities: caps,
 	})
 	if err != nil {

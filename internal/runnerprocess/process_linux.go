@@ -99,6 +99,11 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		return err
 	}
 	defer config.Clear()
+	controlStore := maintenanceStore{state: state, installationID: config.InstallationID}
+	// Validate the current control format before any database or recovery write.
+	if _, err := controlStore.Read(ctx); err != nil {
+		return err
+	}
 	guard := &diskGuard{state: state, config: config}
 	if err := guard.Check(ctx); err != nil {
 		return err
@@ -140,9 +145,13 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	if err := repository.CheckWritable(startup); err != nil {
 		return err
 	}
+	maintenance, err := jobhost.NewMaintenance(startup, host, controlStore)
+	if err != nil {
+		return err
+	}
 	hash, _ := hex.DecodeString(config.TokenSHA256)
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
-		Host: host, Repository: repository, TokenSHA256: [32]byte(hash),
+		Host: host, Maintenance: maintenance, Repository: repository, TokenSHA256: [32]byte(hash),
 		Version: options.Version, Capabilities: capabilities(),
 	})
 	clear(hash)
@@ -221,7 +230,9 @@ func capabilities() jobcontract.RunnerCapabilities {
 	return jobcontract.RunnerCapabilities{
 		JobKinds:  []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindPerformance, jobcontract.KindComparison},
 		Protocols: protocolIDs,
-		Features:  []string{"warmup", "ramp", "capacity", "open_loop", "time_slices", "normal_workload", "random_input"},
+		Features: []string{
+			"warmup", "ramp", "capacity", "open_loop", "time_slices", "normal_workload", "random_input", "maintenance",
+		},
 	}
 }
 
@@ -251,7 +262,7 @@ func monitor(
 		if errors.Is(err, context.DeadlineExceeded) {
 			continue
 		}
-		if err != nil || !host.Status().Ready {
+		if err != nil || !host.Status().Healthy {
 			host.MarkUnavailable()
 			return jobhost.ErrUnavailable
 		}

@@ -27,18 +27,21 @@ type RunnerCapabilities struct {
 }
 
 type RunnerInfo struct {
-	Contract           int                `json:"contract"`
-	NodeID             string             `json:"node_id"`
-	NodeInstallationID string             `json:"node_installation_id"`
-	EngineBuildID      string             `json:"engine_build_id"`
-	RunnerVersion      string             `json:"runner_version"`
-	OS                 string             `json:"os"`
-	Arch               string             `json:"arch"`
-	Capabilities       RunnerCapabilities `json:"capabilities"`
-	Budget             RunnerBudget       `json:"budget"`
-	Ready              bool               `json:"ready"`
-	Active             uint32             `json:"active"`
-	Queued             uint32             `json:"queued"`
+	Contract               int                `json:"contract"`
+	NodeID                 string             `json:"node_id"`
+	NodeInstallationID     string             `json:"node_installation_id"`
+	EngineBuildID          string             `json:"engine_build_id"`
+	RunnerVersion          string             `json:"runner_version"`
+	OS                     string             `json:"os"`
+	Arch                   string             `json:"arch"`
+	Capabilities           RunnerCapabilities `json:"capabilities"`
+	Budget                 RunnerBudget       `json:"budget"`
+	Ready                  bool               `json:"ready"`
+	Healthy                bool               `json:"healthy"`
+	Active                 uint32             `json:"active"`
+	Queued                 uint32             `json:"queued"`
+	Pending                uint32             `json:"pending"`
+	MaintenanceOperationID string             `json:"maintenance_operation_id"`
 }
 
 func (info RunnerInfo) Validate() error {
@@ -59,6 +62,12 @@ func (info RunnerInfo) Validate() error {
 		return invalid("runner.budget")
 	}
 	if info.Active > budget.MaxActiveJobs || info.Queued > budget.MaxQueuedJobs {
+		return invalid("runner.state")
+	}
+	validMaintenance := info.MaintenanceOperationID == "" || domain.IsUUID(info.MaintenanceOperationID)
+	validReady := info.Ready == (info.Healthy && info.MaintenanceOperationID == "")
+	validPending := uint64(info.Pending) >= uint64(info.Active)+uint64(info.Queued)
+	if !validMaintenance || !validReady || !validPending {
 		return invalid("runner.state")
 	}
 	capabilities := info.Capabilities

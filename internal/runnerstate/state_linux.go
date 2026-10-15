@@ -148,6 +148,47 @@ func (state *State) ReadPrivate(name string, limit int64) ([]byte, error) {
 
 // WriteNew commits one private file without replacing an existing identity.
 func (state *State) WriteNew(name string, document []byte) error {
+	return state.write(name, document, false)
+}
+
+// ReplacePrivate atomically replaces a mutable private control document. The
+// runtime lock and its owning controller serialize writers; identities use WriteNew.
+func (state *State) ReplacePrivate(name string, document []byte) error {
+	if _, err := state.ReadPrivate(name, 1<<20); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return state.write(name, document, true)
+}
+
+// SyncPrivate confirms both file content and its directory entry are durable.
+func (state *State) SyncPrivate(name string) error {
+	if !validName(name) {
+		return ErrInvalid
+	}
+	file, err := openPrivate(state.root, name, os.O_RDONLY)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !privateOwned(info) || !info.Mode().IsRegular() {
+		return ErrInvalid
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	directory, err := state.root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
+}
+
+func (state *State) write(name string, document []byte, replace bool) error {
 	validInput := validName(name) && len(document) > 0 && len(document) <= 1<<20
 	if !validInput {
 		return ErrInvalid
@@ -169,11 +210,17 @@ func (state *State) WriteNew(name string, document []byte) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	if err := state.root.Link(temporary, name); err != nil {
-		return err
-	}
-	if err := state.root.Remove(temporary); err != nil {
-		return err
+	if replace {
+		if err := state.root.Rename(temporary, name); err != nil {
+			return err
+		}
+	} else {
+		if err := state.root.Link(temporary, name); err != nil {
+			return err
+		}
+		if err := state.root.Remove(temporary); err != nil {
+			return err
+		}
 	}
 	directory, err := state.root.Open(".")
 	if err != nil {

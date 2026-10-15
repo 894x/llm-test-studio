@@ -37,6 +37,7 @@ type ReadRepository interface {
 
 type Dependencies struct {
 	Host         *jobhost.Host
+	Maintenance  *jobhost.Maintenance
 	Repository   ReadRepository
 	TokenSHA256  [32]byte
 	Version      string
@@ -44,11 +45,12 @@ type Dependencies struct {
 }
 
 type Handler struct {
-	host       *jobhost.Host
-	repository ReadRepository
-	tokenHash  [32]byte
-	info       jobcontract.RunnerInfo
-	mux        *http.ServeMux
+	host        *jobhost.Host
+	maintenance *jobhost.Maintenance
+	repository  ReadRepository
+	tokenHash   [32]byte
+	info        jobcontract.RunnerInfo
+	mux         *http.ServeMux
 }
 
 type ErrorResponse struct {
@@ -66,7 +68,7 @@ func New(dependencies Dependencies) (*Handler, error) {
 		missingRepository = value.Kind() == reflect.Pointer && value.IsNil()
 	}
 	invalid := dependencies.Host == nil || missingRepository || dependencies.TokenSHA256 == [32]byte{}
-	if invalid {
+	if invalid || !dependencies.Maintenance.Owns(dependencies.Host) {
 		return nil, ErrInvalid
 	}
 	identity := dependencies.Host.Identity()
@@ -90,9 +92,11 @@ func New(dependencies Dependencies) (*Handler, error) {
 	}
 	handler := &Handler{
 		host: dependencies.Host, repository: dependencies.Repository, tokenHash: dependencies.TokenSHA256,
-		info: info.Clone(), mux: http.NewServeMux(),
+		maintenance: dependencies.Maintenance,
+		info:        info.Clone(), mux: http.NewServeMux(),
 	}
 	handler.mux.HandleFunc("GET /runner", handler.runner)
+	handler.mux.HandleFunc("POST /runner/maintenance", handler.maintain)
 	handler.mux.HandleFunc("POST /jobs", handler.submit)
 	handler.mux.HandleFunc("GET /jobs", handler.jobs)
 	handler.mux.HandleFunc("GET /jobs/{job_id}", handler.job)
@@ -174,6 +178,8 @@ func (handler *Handler) runner(writer http.ResponseWriter, request *http.Request
 	}
 	info, status := handler.info.Clone(), handler.host.Status()
 	info.Ready, info.Active, info.Queued = status.Ready, status.Active, status.Queued
+	info.Healthy, info.Pending = status.Healthy, status.Pending
+	info.MaintenanceOperationID = status.MaintenanceOperationID
 	writeJSON(writer, http.StatusOK, info)
 }
 
@@ -412,6 +418,13 @@ func writeOperationError(writer http.ResponseWriter, err error) {
 			http.StatusTooManyRequests,
 			"capacity_exceeded",
 			"The node queue or resource budget is full.",
+		)
+	case errors.Is(err, jobhost.ErrMaintenance):
+		writeError(
+			writer,
+			http.StatusLocked,
+			"runner_maintenance",
+			"The node is paused for maintenance. Existing tasks continue.",
 		)
 	default:
 		writeError(

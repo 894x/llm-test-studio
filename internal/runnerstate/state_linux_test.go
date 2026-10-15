@@ -185,3 +185,39 @@ func TestStateRejectsPublicDirectoriesAndSymlinkAncestorsBeforeCreatingChildren(
 		t.Fatal("rejected state path created files through the symlink")
 	}
 }
+
+func TestMutablePrivateControlReplacementRejectsLinksAndRetainsRejectedData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state")
+	state, err := runnerstate.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	first, second := []byte(`{"paused":true}`), []byte(`{"paused":false}`)
+	if err := state.ReplacePrivate("control.json", first); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ReplacePrivate("control.json", second); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.SyncPrivate("control.json"); err != nil {
+		t.Fatal(err)
+	}
+	read, err := state.ReadPrivate("control.json", 100)
+	if err != nil || !bytes.Equal(read, second) {
+		t.Fatal("mutable control did not replace its complete document")
+	}
+	if err := os.Symlink("control.json", filepath.Join(path, "alias.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ReplacePrivate("alias.json", first); err == nil {
+		t.Fatal("mutable replacement accepted a private-file symlink")
+	}
+	if err := state.SyncPrivate("alias.json"); err == nil {
+		t.Fatal("durability confirmation accepted a private-file symlink")
+	}
+	read, err = state.ReadPrivate("control.json", 100)
+	if err != nil || !bytes.Equal(read, second) {
+		t.Fatal("rejected replacement changed the link target")
+	}
+}
