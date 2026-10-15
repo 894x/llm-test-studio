@@ -316,7 +316,7 @@ func (repository *Repository) SealPerformanceResult(
 	if result.Validate() != nil {
 		return jobhost.PerformanceResultDocument{}, jobhost.ErrInvalid
 	}
-	document, err := marshalCanonical(result)
+	document, err := jobcontract.EncodePerformanceResult(result)
 	if err != nil || len(document) > jobcontract.MaxPerformanceResultBytes {
 		return jobhost.PerformanceResultDocument{}, jobhost.ErrInvalid
 	}

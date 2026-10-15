@@ -1,6 +1,7 @@
 package jobcontract
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"reflect"
@@ -148,4 +149,23 @@ func (reference PerformanceResultReference) Validate() error {
 		return invalid("performance_result.reference")
 	}
 	return nil
+}
+
+// EncodePerformanceResult returns the current canonical bytes shared by result
+// persistence, transfer and integrity verification.
+func EncodePerformanceResult(result PerformanceResult) ([]byte, error) {
+	if err := result.Validate(); err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(result)
+	if err != nil || len(raw) > MaxPerformanceResultBytes {
+		return nil, invalid("performance_result.bytes")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, invalid("performance_result.bytes")
+	}
+	return json.Marshal(value)
 }
