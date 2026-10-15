@@ -370,7 +370,8 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | B2b Run 与对比 Core | 已实现 | RunExecutor 复用协议执行、结果汇总和报告生成；节点主动推进 Comparison；有界可靠故障信号、等待执行退出、幂等补报告与无请求恢复；验证使用 Mock HTTP 和临时 SQLite |
 | B2c Performance Core | 已实现 | 实际 JobHost 复用 Quick Performance Host 执行全部负载阶段，观察故障隔离、取消与超时、完整结果及统计归档收尾、确认丢失和无请求恢复通过 Mock HTTP 与 SQLite 验证；独立进程及桌面接入待后续阶段 |
 | B2d 管理 HTTP | 进行中 | 节点级鉴权、当前契约、能力检查、提交/根状态/事件/控制、稳定任务分页、Run/Comparison 报告与 Performance 完整结果下载已有真实 Core 和 SQLite 的 Mock 验证；完整投影、assets、证据与回收待补齐 |
-| B2e 至 E | 待实施 | Guard、独立 runner、节点管理与部署、桌面闭环、独立升级与完整验收 |
+| B2e 独立 runner | 进行中 | Linux 私有目录与运行锁、唯一当前配置、stdin 初始化授权摘要、真实 Core/SQLite/loopback HTTP 装配、写权限/磁盘探针及 systemd 通知已接通；WSL 独立进程中断恢复已验证；asset Guard、物理节点 unit 部署和保活仍待完成 |
+| C 至 E | 待实施 | 节点管理与 SSH 自动部署、安装升级锁与维护接收门、桌面闭环、独立升级与完整验收 |
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 

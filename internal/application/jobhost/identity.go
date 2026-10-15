@@ -19,3 +19,10 @@ func (host *Host) Identity() Identity {
 		EngineBuildID: host.buildID, Policy: host.policy,
 	}
 }
+
+// MarkUnavailable isolates dispatch after the process detects a storage fault.
+func (host *Host) MarkUnavailable() {
+	if host != nil {
+		host.storageFailed()
+	}
+}

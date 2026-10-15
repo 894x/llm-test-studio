@@ -97,3 +97,15 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 完整任务投影、媒体文件与回收接口仍按实施方案保留待实现，不能用以上基础路由代替完整管理接口验收。
 
 执行记录：2026-10-16，本地 `go test -p 1 ./internal/adapters/runnerhttp ./internal/persistence/sqlite ./internal/jobcontract ./internal/application/jobhost ./apps/desktop` 及管理接口、SQLite、契约、宿主的 `go vet` 通过。管理接口 `TestHTTP` 同时通过 Ubuntu 24.04 WSL 的 Linux 测试二进制验证。接口测试使用真实 JobHost、Core、临时 SQLite 和本地 Mock HTTP，不消耗提供商额度；还没有生产 listener、SSH 隧道或 systemd 进程。
+
+## 独立 Linux 进程边界
+
+| 行 | 当前规则 | 执行证据与剩余边界 |
+| --- | --- | --- |
+| P01 | 状态目录必须为绝对规范路径、当前用户所有且其他用户不可读写；私有文件不跟随符号链接；运行锁为独立 flock，退出后保留 inode | partial：runnerstate 的两个进程互斥、强杀释放、stale 文件复用、身份不覆盖、权限和 symlink 拒绝通过 Linux 测试；服务器安装锁和安装目录身份仍待 C 阶段 |
+| P02 | runner.json 只接受当前 contract、全部必填且精确大小写的字段、唯一键、规范 base64 承诺密钥和 16 KiB 上限；保存节点级 token 的 SHA-256，不保存渠道凭据 | partial：runnerconfig 的当前格式、身份/策略/存储边界、未知/缺失/重复/null/超限与不支持 contract 拒绝；CLI stdin 初始化重试不改原身份，不支持配置不创建数据库；真实节点凭据接入与共享配对仍待实施 |
+| P03 | 独立进程从自己的配置与 SQLite 装配实际 Core、Host、HTTP；只监听 127.0.0.1，报告实际运行 inode 的 SHA-256，发布版本不参与客户端匹配 | partial：TestIndependentRunnerPublishesActualBuildAndLoopbackMetadata、TestIndependentRunnerRecoversKilledOwnerWithoutRepeatingPaidWork；强杀后同身份重启只收尾，保留部分观察与 runner_interrupted，Mock 上游请求仍为 1；尚未部署物理节点 |
+| P04 | READY 在配置、存储、恢复和 listener 就绪后发送；每 5 秒验证磁盘和 SQLite writer 再发 WATCHDOG；4 秒探针超时跳过本轮，明确错误隔离 Host 并退出失败 | partial：TestNotifyReadinessWatchdogAndDiskBudgetFailure 使用实际子进程与 Unix datagram，验证 READY/WATCHDOG 和超预算退出；TestRunnerWriteProbeRejectsReadonlyStorageWithoutChangingTasks 验证只读失败且事实不变；零行写探针不证明脏页落盘，实际 systemd 重启和 watchdog 超时仍待 R4 |
+| P05 | 默认状态预算 20 GiB，保留 512 MiB 可用空间，每接收 Job 预留 128 MiB；配置允许显式调整；计入既有文件和其他 reservation，结束只释放一次 | partial：TestDiskAdmissionReservesHeadroomAndReleasesExactlyOnce 验证大小、并行预留、重复释放、超预算与取消；这是接收与周期检查，不是文件系统硬配额。assets 能力尚未声明，文件输入验证与绑定仍待补齐 |
+
+`deploy/runner/llm-test-runner.service` 提供专用用户、私有状态目录、只读程序区域、30 秒 watchdog、重启限速与资源上限的模板。模板存在不表示已在真实服务器安装、启用或验证保活。
