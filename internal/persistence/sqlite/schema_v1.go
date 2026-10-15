@@ -1,6 +1,46 @@
 package sqlite
 
 var currentSchemaObjects = []schemaObject{
+	{kind: "table", name: "remote_job_mirrors", table: "remote_job_mirrors", ddl: `CREATE TABLE remote_job_mirrors (
+		job_id TEXT PRIMARY KEY,
+		configuration_id TEXT NOT NULL,
+		node_id TEXT NOT NULL,
+		installation_id TEXT NOT NULL,
+		spec_sha256 TEXT NOT NULL,
+		spec_json TEXT NOT NULL CHECK(json_valid(spec_json)),
+		snapshot_json TEXT NOT NULL CHECK(json_valid(snapshot_json)),
+		applied_sequence INTEGER NOT NULL CHECK(applied_sequence > 0),
+		comparison_id TEXT UNIQUE,
+		performance_report_id TEXT UNIQUE
+	)`},
+	{kind: "index", name: "idx_remote_job_mirrors_node", table: "remote_job_mirrors",
+		ddl: `CREATE INDEX idx_remote_job_mirrors_node ON remote_job_mirrors(configuration_id, installation_id, job_id)`},
+	{kind: "table", name: "remote_job_runs", table: "remote_job_runs", ddl: `CREATE TABLE remote_job_runs (
+		run_id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		position INTEGER NOT NULL CHECK(position >= 0),
+		UNIQUE(job_id, position),
+		FOREIGN KEY(run_id) REFERENCES execution_runs(id),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "remote_job_events", table: "remote_job_events", ddl: `CREATE TABLE remote_job_events (
+		job_id TEXT NOT NULL,
+		sequence INTEGER NOT NULL CHECK(sequence > 0),
+		kind TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		PRIMARY KEY(job_id, sequence),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "remote_job_report_refs", table: "remote_job_report_refs", ddl: `CREATE TABLE remote_job_report_refs (
+		job_id TEXT NOT NULL,
+		reference_type TEXT NOT NULL CHECK(reference_type IN ('report', 'performance_result')),
+		report_id TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		imported INTEGER NOT NULL DEFAULT 0 CHECK(imported IN (0, 1)),
+		PRIMARY KEY(job_id, reference_type, report_id),
+		UNIQUE(reference_type, report_id),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
 	{kind: "table", name: "execution_performance_observations", table: "execution_performance_observations",
 		ddl: `CREATE TABLE execution_performance_observations (
 		job_id TEXT PRIMARY KEY,

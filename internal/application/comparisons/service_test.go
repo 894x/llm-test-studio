@@ -204,6 +204,10 @@ type comparisonRepository struct {
 	revisions  map[string]uint64
 }
 
+func (repository *comparisonRepository) IsLocalComparison(context.Context, string) (bool, error) {
+	return true, nil
+}
+
 func (repository *comparisonRepository) GetPlan(context.Context, string) (domain.Plan, error) {
 	if repository.latestPlan != nil {
 		return *repository.latestPlan, nil

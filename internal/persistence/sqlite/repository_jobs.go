@@ -79,6 +79,19 @@ func (repository *Repository) AcceptJob(
 		return jobcontract.Snapshot{}, false, fmt.Errorf("begin job admission: %w", err)
 	}
 	defer tx.Rollback()
+	var remoteOwner bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_job_mirrors WHERE job_id = ?)`, spec.JobID).Scan(&remoteOwner); err != nil {
+		return jobcontract.Snapshot{}, false, fmt.Errorf("read remote job owner: %w", err)
+	}
+	if remoteOwner {
+		return jobcontract.Snapshot{}, false, jobhost.ErrConflict
+	}
+	if spec.Kind == jobcontract.KindPerformance {
+		if err := requireLocalPerformanceReport(ctx, tx, spec.Spec.Performance.ReportID); err != nil {
+			return jobcontract.Snapshot{}, false, err
+		}
+	}
+
 	stored, err := queryJobRow(ctx, tx, spec.JobID)
 	if err == nil {
 		sameSpec := stored.specSHA256 == digest
@@ -102,22 +115,39 @@ func (repository *Repository) AcceptJob(
 			return jobcontract.Snapshot{}, false, jobhost.ErrConflict
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(
+		ctx,
+		`
 		INSERT INTO execution_jobs(
 			id, installation_id, engine_build_id, kind, revision, status, accepted_at,
 			spec_sha256, secret_commitment, spec_json, snapshot_json, last_sequence
 		) VALUES(?, ?, ?, ?, 1, 'queued', ?, ?, ?, ?, ?, 1)
-	`, spec.JobID, spec.NodeInstallationID, spec.EngineBuildID, spec.Kind, formatTime(input.AcceptedAt),
-		digest, input.SecretCommitment, specDocument, snapshotDocument); err != nil {
+	`,
+		spec.JobID,
+		spec.NodeInstallationID,
+		spec.EngineBuildID,
+		spec.Kind,
+		formatTime(input.AcceptedAt),
+		digest,
+		input.SecretCommitment,
+		specDocument,
+		snapshotDocument,
+	); err != nil {
 		return jobcontract.Snapshot{}, false, classifyJobWriteError("create job", err)
 	}
 	for index, prepared := range preparedRuns {
 		if err := createRunTx(ctx, tx, prepared); err != nil {
 			return jobcontract.Snapshot{}, false, classifyJobWriteError("create job run", err)
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(
+			ctx,
+			`
 			INSERT INTO execution_job_runs(run_id, job_id, position) VALUES(?, ?, ?)
-		`, prepared.run.Meta().ID, spec.JobID, index); err != nil {
+		`,
+			prepared.run.Meta().ID,
+			spec.JobID,
+			index,
+		); err != nil {
 			return jobcontract.Snapshot{}, false, classifyJobWriteError("link job run", err)
 		}
 	}

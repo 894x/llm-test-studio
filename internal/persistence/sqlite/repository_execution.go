@@ -93,6 +93,44 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 		return fmt.Errorf("begin run update: %w", err)
 	}
 	defer tx.Rollback()
+	if err := requireLocalRun(ctx, tx, meta.ID); err != nil {
+		return err
+	}
+	if err := updateRunTx(
+		ctx,
+		tx,
+		expectedRevision,
+		run,
+	); err != nil {
+		return err
+	}
+	if err := journalRunEventTx(
+		ctx,
+		tx,
+		meta.ID,
+		jobEventWrite{
+			Kind: jobcontract.EventRun, At: meta.UpdatedAt, Payload: run,
+		},
+	); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit run update", err)
+	}
+	return nil
+}
+
+// updateRunTx enforces the one current transition contract for both local
+// execution and ordered remote import. Ownership and journaling belong to callers.
+func updateRunTx(ctx context.Context, tx *sql.Tx, expectedRevision uint64, run domain.Run) error {
+	if err := run.Validate(); err != nil {
+		return err
+	}
+	meta := run.Meta()
+	if err := validateNextRevision(expectedRevision, meta); err != nil {
+		return err
+	}
+	var err error
 	var currentRevision int64
 	var sealed int
 	err = tx.QueryRowContext(ctx, `SELECT current_revision, sealed FROM execution_runs WHERE id = ?`, meta.ID).Scan(&currentRevision, &sealed)
@@ -108,7 +146,13 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	if sealed != 0 || uint64(currentRevision) != expectedRevision {
 		return fmt.Errorf("%w: run", ErrConflict)
 	}
-	current, err := queryRunRevision(ctx, tx, meta.ID, expectedRevision, false)
+	current, err := queryRunRevision(
+		ctx,
+		tx,
+		meta.ID,
+		expectedRevision,
+		false,
+	)
 	if err != nil {
 		return err
 	}
@@ -135,19 +179,37 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	if err != nil {
 		return fmt.Errorf("encode run snapshot: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(
+		ctx,
+		`
 		INSERT INTO execution_run_revisions(
 			run_id, schema_version, revision, created_at, updated_at,
 			plan_id, plan_revision, status, snapshot_json, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, meta.ID, meta.SchemaVersion, meta.Revision, formatTime(meta.CreatedAt), formatTime(meta.UpdatedAt),
-		run.PlanID(), run.Snapshot().Plan.Revision, run.Status(), snapshotDocument, document); err != nil {
+	`,
+		meta.ID,
+		meta.SchemaVersion,
+		meta.Revision,
+		formatTime(meta.CreatedAt),
+		formatTime(meta.UpdatedAt),
+		run.PlanID(),
+		run.Snapshot().Plan.Revision,
+		run.Status(),
+		snapshotDocument,
+		document,
+	); err != nil {
 		return classifyWriteError("append run revision", err)
 	}
-	result, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(
+		ctx,
+		`
 		UPDATE execution_runs SET current_revision = ?
 		WHERE id = ? AND current_revision = ? AND sealed = 0
-	`, meta.Revision, meta.ID, expectedRevision)
+	`,
+		meta.Revision,
+		meta.ID,
+		expectedRevision,
+	)
 	if err != nil {
 		return classifyWriteError("update run", err)
 	}
@@ -157,14 +219,6 @@ func (repository *Repository) UpdateRun(ctx context.Context, expectedRevision ui
 	}
 	if rows != 1 {
 		return fmt.Errorf("%w: run", ErrConflict)
-	}
-	if err := journalRunEventTx(ctx, tx, meta.ID, jobEventWrite{
-		Kind: jobcontract.EventRun, At: meta.UpdatedAt, Payload: run,
-	}); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return classifyWriteError("commit run update", err)
 	}
 	return nil
 }
@@ -206,6 +260,14 @@ func (repository *Repository) GetRunRevision(ctx context.Context, id string, rev
 }
 
 func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error) {
+	return repository.listRuns(ctx, false)
+}
+
+func (repository *Repository) ListRecoveryRuns(ctx context.Context) ([]domain.Run, error) {
+	return repository.listRuns(ctx, true)
+}
+
+func (repository *Repository) listRuns(ctx context.Context, localOnly bool) ([]domain.Run, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -214,6 +276,10 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 		return nil, fmt.Errorf("begin run list: %w", err)
 	}
 	defer tx.Rollback()
+	ownerFilter := ""
+	if localOnly {
+		ownerFilter = " WHERE root.id NOT IN (SELECT run_id FROM remote_job_runs)"
+	}
 	rows, err := tx.QueryContext(ctx, `
 		SELECT root.id, root.current_revision, root.created_at, root.sealed,
 		       (SELECT COUNT(*) FROM reports WHERE run_id = root.id),
@@ -226,8 +292,7 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 		FROM execution_runs AS root
 		JOIN execution_run_revisions AS revision
 		  ON revision.run_id = root.id AND revision.revision = root.current_revision
-		ORDER BY root.created_at, root.id
-	`)
+	`+ownerFilter+` ORDER BY root.created_at, root.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}
@@ -247,7 +312,7 @@ func (repository *Repository) ListRuns(ctx context.Context) ([]domain.Run, error
 		return nil, fmt.Errorf("close runs: %w", err)
 	}
 	var rootCount int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs`).Scan(&rootCount); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM execution_runs AS root`+ownerFilter).Scan(&rootCount); err != nil {
 		return nil, fmt.Errorf("count run roots: %w", err)
 	}
 	if rootCount != len(stored) {
@@ -284,10 +349,23 @@ type rowScanner interface {
 
 func (row *storedRunRow) scan(scanner rowScanner) error {
 	return scanner.Scan(
-		&row.id, &row.rootCurrent, &row.rootCreated, &row.sealed, &row.reportCount,
-		&row.historyCount, &row.historyMin, &row.historyMax,
-		&row.schemaVersion, &row.revision, &row.revisionCreated, &row.revisionUpdated,
-		&row.planID, &row.planRevision, &row.status, &row.snapshotDocument, &row.document,
+		&row.id,
+		&row.rootCurrent,
+		&row.rootCreated,
+		&row.sealed,
+		&row.reportCount,
+		&row.historyCount,
+		&row.historyMin,
+		&row.historyMax,
+		&row.schemaVersion,
+		&row.revision,
+		&row.revisionCreated,
+		&row.revisionUpdated,
+		&row.planID,
+		&row.planRevision,
+		&row.status,
+		&row.snapshotDocument,
+		&row.document,
 	)
 }
 
@@ -535,11 +613,26 @@ type storedEvidenceRow struct {
 }
 
 func (row *storedEvidenceRow) scan(scanner rowScanner) error {
-	return scanner.Scan(&row.id, &row.schemaVersion, &row.revision, &row.createdAt, &row.updatedAt, &row.runID, &row.document)
+	return scanner.Scan(
+		&row.id,
+		&row.schemaVersion,
+		&row.revision,
+		&row.createdAt,
+		&row.updatedAt,
+		&row.runID,
+		&row.document,
+	)
 }
 
 func (row storedEvidenceRow) decode(expectedRunID string) (domain.Evidence, error) {
-	if err := verifyEntityRow(row.document, row.id, row.schemaVersion, row.revision, row.createdAt, row.updatedAt); err != nil {
+	if err := verifyEntityRow(
+		row.document,
+		row.id,
+		row.schemaVersion,
+		row.revision,
+		row.createdAt,
+		row.updatedAt,
+	); err != nil {
 		return domain.Evidence{}, fmt.Errorf("%w: evidence row does not match document", ErrCorrupt)
 	}
 	evidence, err := decodeEvidenceDocument(row.document)
@@ -614,12 +707,7 @@ func (repository *Repository) AppendResults(ctx context.Context, results ...doma
 		return fmt.Errorf("begin result append: %w", err)
 	}
 	defer tx.Rollback()
-	statement, err := tx.PrepareContext(ctx, `
-		INSERT INTO case_results(
-			id, schema_version, revision, created_at, updated_at,
-			run_id, entry_id, case_id, request_id, document_json
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
+	statement, err := tx.PrepareContext(ctx, insertResultSQL)
 	if err != nil {
 		return fmt.Errorf("prepare result append: %w", err)
 	}
@@ -643,9 +731,14 @@ func (repository *Repository) AppendResults(ctx context.Context, results ...doma
 		); err != nil {
 			return err
 		}
-		if err := journalRunEventTx(ctx, tx, result.RunID, jobEventWrite{
-			Kind: jobcontract.EventResults, At: result.UpdatedAt, Payload: result,
-		}); err != nil {
+		if err := journalRunEventTx(
+			ctx,
+			tx,
+			result.RunID,
+			jobEventWrite{
+				Kind: jobcontract.EventResults, At: result.UpdatedAt, Payload: result,
+			},
+		); err != nil {
 			return err
 		}
 	}
@@ -678,6 +771,13 @@ func validateResultEvidence(ctx context.Context, queryer rowQueryer, result doma
 	}
 	return nil
 }
+
+const insertResultSQL = `
+		INSERT INTO case_results(
+			id, schema_version, revision, created_at, updated_at,
+			run_id, entry_id, case_id, request_id, document_json
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
 
 func insertResult(ctx context.Context, statement *sql.Stmt, result domain.Result, document []byte) error {
 	var caseID any
@@ -801,13 +901,28 @@ type storedResultRow struct {
 
 func (row *storedResultRow) scan(scanner rowScanner) error {
 	return scanner.Scan(
-		&row.id, &row.schemaVersion, &row.revision, &row.createdAt, &row.updatedAt,
-		&row.runID, &row.entryID, &row.caseID, &row.requestID, &row.document,
+		&row.id,
+		&row.schemaVersion,
+		&row.revision,
+		&row.createdAt,
+		&row.updatedAt,
+		&row.runID,
+		&row.entryID,
+		&row.caseID,
+		&row.requestID,
+		&row.document,
 	)
 }
 
 func (row storedResultRow) decode(expectedRunID string) (domain.Result, error) {
-	if err := verifyEntityRow(row.document, row.id, row.schemaVersion, row.revision, row.createdAt, row.updatedAt); err != nil {
+	if err := verifyEntityRow(
+		row.document,
+		row.id,
+		row.schemaVersion,
+		row.revision,
+		row.createdAt,
+		row.updatedAt,
+	); err != nil {
 		return domain.Result{}, fmt.Errorf("%w: result row does not match document", ErrCorrupt)
 	}
 	result, err := decodeResultDocument(row.document)
@@ -926,6 +1041,40 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 		return fmt.Errorf("begin report create: %w", err)
 	}
 	defer tx.Rollback()
+	if err := requireLocalRun(ctx, tx, report.RunID); err != nil {
+		return err
+	}
+	if err := createReportTx(
+		ctx,
+		tx,
+		report,
+		document,
+	); err != nil {
+		return err
+	}
+	if err := journalRunEventTx(
+		ctx,
+		tx,
+		report.RunID,
+		jobEventWrite{
+			Kind: jobcontract.EventReport, At: report.GeneratedAt,
+			Payload: reportReference(
+				report.ID,
+				jobcontract.KindRun,
+				report.RunID,
+				document,
+			),
+		},
+	); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit report", err)
+	}
+	return nil
+}
+
+func createReportTx(ctx context.Context, tx *sql.Tx, report domain.Report, document []byte) error {
 	run, err := queryCurrentRun(ctx, tx, report.RunID)
 	if err != nil {
 		return err
@@ -945,10 +1094,15 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if err := validateReportEvidence(ctx, tx, report); err != nil {
 		return err
 	}
-	seal, err := tx.ExecContext(ctx, `
+	seal, err := tx.ExecContext(
+		ctx,
+		`
 		UPDATE execution_runs SET sealed = 1
 		WHERE id = ? AND current_revision = ? AND sealed = 0
-	`, report.RunID, run.Meta().Revision)
+	`,
+		report.RunID,
+		run.Meta().Revision,
+	)
 	if err != nil {
 		return classifyWriteError("seal run report output", err)
 	}
@@ -959,10 +1113,18 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 	if sealedRows != 1 {
 		return fmt.Errorf("%w: run output is already sealed", ErrConflict)
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(
+		ctx,
+		`
 		INSERT INTO reports(id, schema_version, run_id, generated_at, document_json)
 		VALUES(?, ?, ?, ?, ?)
-	`, report.ID, report.SchemaVersion, report.RunID, formatTime(report.GeneratedAt), document); err != nil {
+	`,
+		report.ID,
+		report.SchemaVersion,
+		report.RunID,
+		formatTime(report.GeneratedAt),
+		document,
+	); err != nil {
 		return classifyWriteError("create report", err)
 	}
 	for position, attachment := range report.Attachments {
@@ -970,24 +1132,32 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 		if err != nil {
 			return fmt.Errorf("encode report attachment: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, err := tx.ExecContext(
+			ctx,
+			`
 			INSERT INTO artifacts(id, run_id, name, relative_path, sha256, media_type, redacted, document_json)
 			VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-		`, attachment.ArtifactID, attachment.RunID, attachment.Name, attachment.RelativePath, attachment.SHA256, attachment.MediaType, boolInt(attachment.Redacted), attachmentDocument); err != nil {
+		`,
+			attachment.ArtifactID,
+			attachment.RunID,
+			attachment.Name,
+			attachment.RelativePath,
+			attachment.SHA256,
+			attachment.MediaType,
+			boolInt(attachment.Redacted),
+			attachmentDocument,
+		); err != nil {
 			return classifyWriteError("create report artifact", err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO report_attachments(report_id, artifact_id, position) VALUES(?, ?, ?)`, report.ID, attachment.ArtifactID, position); err != nil {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO report_attachments(report_id, artifact_id, position) VALUES(?, ?, ?)`,
+			report.ID,
+			attachment.ArtifactID,
+			position,
+		); err != nil {
 			return classifyWriteError("link report attachment", err)
 		}
-	}
-	if err := journalRunEventTx(ctx, tx, report.RunID, jobEventWrite{
-		Kind: jobcontract.EventReport, At: report.GeneratedAt,
-		Payload: reportReference(report.ID, jobcontract.KindRun, report.RunID, document),
-	}); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return classifyWriteError("commit report", err)
 	}
 	return nil
 }
@@ -1126,6 +1296,9 @@ func decodeReportDocument(document []byte) (domain.Report, error) {
 }
 
 func requireWritableRun(ctx context.Context, queryer rowQueryer, id string) error {
+	if err := requireLocalRun(ctx, queryer, id); err != nil {
+		return err
+	}
 	// Run revisions are validated when created or read. Their scalar columns are
 	// sufficient to guard output writes inside the same transaction.
 	var sealed, reportExists int
@@ -1138,7 +1311,13 @@ func requireWritableRun(ctx context.Context, queryer rowQueryer, id string) erro
 		LEFT JOIN execution_run_revisions AS revision
 		  ON revision.run_id = root.id AND revision.revision = root.current_revision
 		WHERE root.id = ?
-	`, id).Scan(&sealed, &revision, &schemaVersion, &status, &reportExists)
+	`, id).Scan(
+		&sealed,
+		&revision,
+		&schemaVersion,
+		&status,
+		&reportExists,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: run", ErrNotFound)
 	}

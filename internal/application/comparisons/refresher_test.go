@@ -16,6 +16,10 @@ type comparisonFacts struct {
 	writes     int
 }
 
+func (facts *comparisonFacts) IsLocalComparison(context.Context, string) (bool, error) {
+	return true, nil
+}
+
 func (facts *comparisonFacts) GetComparison(context.Context, string) (domain.Comparison, error) {
 	return facts.comparison, nil
 }

@@ -30,7 +30,7 @@ func TestRecoverInterruptedCancelsDurableNonTerminalRuns(t *testing.T) {
 
 type recoveryRepository struct{ runs []domain.Run }
 
-func (repository *recoveryRepository) ListRuns(context.Context) ([]domain.Run, error) {
+func (repository *recoveryRepository) ListRecoveryRuns(context.Context) ([]domain.Run, error) {
 	return append([]domain.Run(nil), repository.runs...), nil
 }
 func (repository *recoveryRepository) UpdateRun(_ context.Context, expected uint64, updated domain.Run) error {

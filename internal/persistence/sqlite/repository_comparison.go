@@ -21,6 +21,11 @@ func (repository *Repository) CreateComparison(ctx context.Context, comparison d
 		return fmt.Errorf("begin comparison create: %w", err)
 	}
 	defer tx.Rollback()
+	for _, child := range comparison.Runs() {
+		if err := requireLocalRun(ctx, tx, child.RunID); err != nil {
+			return err
+		}
+	}
 	if err := createComparisonTx(ctx, tx, prepared); err != nil {
 		return err
 	}
@@ -88,6 +93,45 @@ func (repository *Repository) UpdateComparison(ctx context.Context, expectedRevi
 		return fmt.Errorf("begin comparison update: %w", err)
 	}
 	defer tx.Rollback()
+	if err := requireLocalComparison(ctx, tx, meta.ID); err != nil {
+		return err
+	}
+	if err := updateComparisonTx(
+		ctx,
+		tx,
+		expectedRevision,
+		comparison,
+		document,
+	); err != nil {
+		return err
+	}
+	var jobID string
+	err = tx.QueryRowContext(ctx, `SELECT id FROM execution_jobs WHERE kind = 'comparison'
+		AND json_extract(spec_json, '$.spec.comparison.meta.id') = ?`, meta.ID).Scan(&jobID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read comparison job owner: %w", err)
+	}
+	if err == nil {
+		if err := journalJobEventTx(ctx, tx, jobEventWrite{
+			JobID: jobID, Kind: jobcontract.EventComparison, At: meta.UpdatedAt, Payload: comparison,
+		}); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit comparison update", err)
+	}
+	return nil
+}
+
+func updateComparisonTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	expectedRevision uint64,
+	comparison domain.Comparison,
+	document []byte,
+) error {
+	meta := comparison.Meta()
 	current, err := queryCurrentComparison(ctx, tx, meta.ID)
 	if err != nil {
 		return err
@@ -105,13 +149,24 @@ func (repository *Repository) UpdateComparison(ctx context.Context, expectedRevi
 	if err := validateComparisonReferences(ctx, tx, comparison); err != nil {
 		return err
 	}
-	if err := insertComparisonRevision(ctx, tx, comparison, document); err != nil {
+	if err := insertComparisonRevision(
+		ctx,
+		tx,
+		comparison,
+		document,
+	); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(
+		ctx,
+		`
 		UPDATE comparisons SET current_revision = ?, sealed = 1
 		WHERE id = ? AND current_revision = ? AND sealed = 0
-	`, meta.Revision, meta.ID, expectedRevision)
+	`,
+		meta.Revision,
+		meta.ID,
+		expectedRevision,
+	)
 	if err != nil {
 		return classifyWriteError("update comparison", err)
 	}
@@ -121,22 +176,6 @@ func (repository *Repository) UpdateComparison(ctx context.Context, expectedRevi
 	}
 	if rows != 1 {
 		return fmt.Errorf("%w: comparison", ErrConflict)
-	}
-	var jobID string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM execution_jobs WHERE kind = 'comparison'
-		AND json_extract(spec_json, '$.spec.comparison.meta.id') = ?`, meta.ID).Scan(&jobID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("read comparison job owner: %w", err)
-	}
-	if err == nil {
-		if err := journalJobEventTx(ctx, tx, jobEventWrite{
-			JobID: jobID, Kind: jobcontract.EventComparison, At: meta.UpdatedAt, Payload: comparison,
-		}); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return classifyWriteError("commit comparison update", err)
 	}
 	return nil
 }

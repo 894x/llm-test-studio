@@ -36,12 +36,27 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 		return fmt.Errorf("begin quick performance archive: %w", err)
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `
+	if err := requireLocalPerformanceReport(ctx, tx, report.ReportID); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(
+		ctx,
+		`
 		INSERT INTO quick_performance_reports(
 			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, report.ReportID, report.GeneratedAt, generatedAt.UnixNano(), report.Success, report.ModelID, report.BaseURL,
-		report.Progress.Phase, report.Metrics.Completed, report.Metrics.Failed, document)
+	`,
+		report.ReportID,
+		report.GeneratedAt,
+		generatedAt.UnixNano(),
+		report.Success,
+		report.ModelID,
+		report.BaseURL,
+		report.Progress.Phase,
+		report.Metrics.Completed,
+		report.Metrics.Failed,
+		document,
+	)
 	if err != nil {
 		return classifyWriteError("save quick performance report", err)
 	}
@@ -56,7 +71,12 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 	if err == nil {
 		if err := journalJobEventTx(ctx, tx, jobEventWrite{
 			JobID: jobID, Kind: jobcontract.EventReport, At: generatedAt,
-			Payload: reportReference(report.ReportID, jobcontract.KindPerformance, "", document),
+			Payload: reportReference(
+				report.ReportID,
+				jobcontract.KindPerformance,
+				"",
+				document,
+			),
 		}); err != nil {
 			return err
 		}

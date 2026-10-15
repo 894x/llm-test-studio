@@ -189,6 +189,20 @@ SSH Node.Do 的当前 Go API 替换为 Request 值，所有仓库调用方同步
 
 Windows `go test ./...` 全部通过，相关 vet 通过；客户端负向测试、三类型 HTTP 集成、当前状态解码及 SSH Range/31 秒慢响应在 Ubuntu 24.04 WSL 验证通过。没有新增格式版本、历史解析器或 schema 变化，没有接触实际用户数据库，也没有修改当前物理节点 runner。完整远程投影、assets/证据、Coordinator、桌面 Remote 面板和最终 K3 e2e 仍待接通。
 
+## 2026-10-16：原子结果镜像与 Run 报告导入
+
+新增独立 remoteresults 导入端口。镜像固定本地节点配置 ID、实际 node_id、installation_id、job_id 与规范摘要，按节点当前日志逐页保存完整 Run revision、Result、Evidence 索引、Comparison、任务状态和报告引用；领域事实、原日志与已应用游标在同一 SQLite 事务内提交。相同页或重叠页必须内容完全一致，来源变化、缺口、改变的不可变对象和本地 ID 碰撞明确拒绝；终态决定之后到达的已提交结果仍可同步。镜像不进入 execution_jobs，不成为本地执行或恢复对象。
+
+本地 UpdateRun、输出写入、CreateReport、Comparison 更新及性能归档都检查来源。启动恢复改用明确的 ListRecoveryRuns，普通列表仍包含镜像。Comparison Refresher 只推进本地对象；远程子 Run 终态页与 Comparison 终态页之间保留节点已同步状态，避免桌面读列表时错误聚合或因写保护使列表不可读。Run、Comparison 的合法状态变化与报告写入复用唯一的事务内实现，没有第二套状态机或历史格式路径。
+
+Run 报告先保留 pending 引用，再校验下载文档的当前格式、所属运行、原始大小和 SHA-256；报告、附件索引、运行封口和 imported 标记原子提交。重复导入核对相同文档和完整关系。该标记只代表报告 JSON 已校验导入，不声称证据及附件文件已经下载；私有文件同步、原子发布、同步循环和桌面消费仍待后续装配。Performance 统计归档与完整 PerformanceResult 使用独立引用类型，即使 report_id 相同也不会混淆原始字节；本阶段二者仍 pending，未实现性能文档导入或重算指标。
+
+远程文档在 typed 解码前扫描项目自有集合，限制每事件 32768 个、每 Run 报告 131072 个集合成员及 128 层嵌套；超限明确拒绝，不前移游标。case_inputs 两层 map 计数，inputs 等数据键不当作 DTO 字段；definitions 内部当前 TestSpec 继续扫描，原生 request.body、response、断言值等真正 RawMessage 叶子保持 opaque。测试用超限元素后的损坏 JSON 尾部验证提前拒绝，另验证 provider 大数组仍按原语义保留。
+
+Windows 全仓 Go 回归与相关 vet 通过。八项镜像集成测试和文档预算测试在 Windows、Ubuntu 24.04 WSL 通过，覆盖重新打开后重叠页续传、重复事实、终态后结果补齐、八个并发调用经两套独立仓库只写一份日志、日志写入故障的整页回滚、报告标记失败回滚封口与附件、来源/摘要/当前格式拒绝、恢复隔离和对比页面间隔。Performance 使用真实 Quick Host 的 Mock HTTP 测量数据，并单独验证预热、爬坡回调经节点日志进入镜像；没有使用真实渠道。审查发现并关闭了合法预热/爬坡 phase 遗漏及集合提前分配问题。
+
+新增镜像表改变唯一当前 SQLite schema checksum；此前数据库由现有版本校验明确拒绝并保留，正常启动不转换。没有打开或转换实际用户数据，没有修改物理节点 runner；E 阶段独立转换工具及执行验证仍待完成。没有改变领域报告格式或添加版本协商。本阶段不是最终远程闭环验收，Remote UI、Coordinator、文件证据、性能文档和用户指定的 K3 e2e/最小性能测试仍待完成。
+
 ## 待验收
 
 完整管理接口、发布产物分发、全部桌面入口与默认远程节点、桌面退出后任务持续、结果补齐、显式升级与历史数据升级，以及第二台节点、arm64 和多客户端并发竞争的验证仍按实施方案 R1–R16 执行。单个 amd64 节点的 SSH 安装、共享复用与 systemd 自动恢复已按上节验证。用户追加要求：最终使用先前提供的真实服务器和渠道，执行 kimi-k3 兼容性 e2e 与最小性能测试；这项付费渠道验收单独记录实际用量，不复用前置 Python 冒烟作为完成证据。

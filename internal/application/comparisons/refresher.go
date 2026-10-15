@@ -8,6 +8,7 @@ import (
 
 type ExecutionRepository interface {
 	GetComparison(context.Context, string) (domain.Comparison, error)
+	IsLocalComparison(context.Context, string) (bool, error)
 	UpdateComparison(context.Context, uint64, domain.Comparison) error
 }
 
@@ -23,6 +24,7 @@ type RefresherDependencies struct {
 
 // Refresher advances a complete group's state from execution facts alone.
 // Both the node owner and desktop queries use this single aggregation rule.
+// Mirrors return the node's committed state, including between journal pages.
 type Refresher struct {
 	repository ExecutionRepository
 	runs       RunReader
@@ -45,6 +47,10 @@ func (service *Refresher) Refresh(ctx context.Context, comparisonID string) (dom
 	}
 	comparison, err := service.repository.GetComparison(ctx, comparisonID)
 	if err != nil || comparison.Status() != domain.ComparisonRunning {
+		return comparison, err
+	}
+	local, err := service.repository.IsLocalComparison(ctx, comparisonID)
+	if err != nil || !local {
 		return comparison, err
 	}
 	terminal := domain.ComparisonCompleted
