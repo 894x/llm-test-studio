@@ -84,7 +84,7 @@ flowchart LR
 
 1. 把 `PrepareTarget`、`PrepareQuickTask` 的解析规则移入 Preparation，原调用方改为 Coordinator；不保留只为旧调用方服务的包装入口。
 2. 准备阶段生成稳定 job_id、run_id、comparison_id、report_id，解析所有子任务；输出中不保留“执行时去桌面查询”的引用。
-3. `runs.Service` 新入口接收已经校验的 PreparedRun，创建宿主拥有的 queued Run，再复用 `executeEntries`、ProtocolExecutor、summary 与 report generator。其执行仓库端口不再承担目录准备查询。
+3. Job 仓库在接收事务中创建 queued Run；`runs.Host.AdoptQueued` 只接管已经持久化的初始 Run，再复用 `executeEntries`、ProtocolExecutor、summary 与 report generator。其执行仓库端口不承担创建或目录查询。本地单 Run 的准备 facade 在接入 Coordinator 前负责创建与注册，共用宿主的生命周期锁。
 4. Quick Performance 抽出地址、渠道、任务来源和预算准备，执行阶段接收 PreparedPerformance 与 lease。保留当前工作负载生成、随机种子、SLO、容量探索和报告模型，不强行转换成 Case Run。
 5. 对比任务先冻结所有子 Run；节点在一次接收事务中保存完整组，再按现有激活策略执行。子任务结束后，宿主调用现有汇总规则推进 Comparison，不依赖桌面刷新。
 6. 所有输入与边界校验在准备和节点接收处执行；同一业务规则复用同一函数，不在 HTTP adapter 另写一份。
@@ -341,12 +341,12 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 
 | 子阶段 | 状态 | 已落实的边界与剩余工作 |
 | --- | --- | --- |
-| A1 运行执行宿主 | 已实现 | 提取不依赖目录或 OS Store 的 runs.Host；PreparedRun 可传输，Host 独立校验、复制并接收快照；本地 Service 组合该宿主，执行与结果判定共用同一路径 |
+| A1 运行执行宿主 | 已实现 | 提取不依赖目录或 OS Store 的 runs.Host；PreparedRun 可传输，接收存储后 Host 独立校验、复制并接管初始 Run；本地 Service 组合该宿主，执行与结果判定共用同一路径 |
 | A2 只读运行准备 | 已实现 | runs.Preparer 使用只读 PreparationRepository；Plan 和 Suite 均可只冻结输入而不创建 Run；本地 Service 组合 Preparer 与 Host，不保留第二份准备或执行逻辑 |
 | A3 性能执行宿主 | 已实现 | BuildPerformance 只解析输入与凭据；PreparedPerformance 冻结非秘密输入及报告 ID；Host 独立执行，全部负载阶段共用原有计算与停止语义 |
 | A4a 对比组准备 | 已实现 | comparisons.Preparer 一次冻结整组 PreparedRun 和独立凭据，检查 Plan、Model 与完整条目定义相同；本地入口也通过该准备路径接收后激活 |
 | A4b 当前提交契约 | 已实现 | JobSpec 复用三类完整输入；显式执行位置、安装身份与构建；有界 JSON、秘密与资产集合；稳定规范化摘要；未接 HTTP 或持久化 |
-| A4c 本地 Backend | 进行中 | 事务准备和完整任务原子接收存储已实现；统一 JobHost、本地 Backend 与桌面 Coordinator 接入仍待实施 |
+| A4c 本地 Backend | 进行中 | 事务准备、完整任务原子接收存储与 Host 接管已有 Run 已实现；统一 JobHost、本地 Backend 与桌面 Coordinator 接入仍待实施 |
 | B1 任务存储与事件 | 已实现 | 接收事务包含 Job、全部 Run、Comparison 与首条事件；相同内容和秘密承诺幂等；状态 CAS、事实与事件共事务、有界连续事件页；尚未连接调度和 HTTP |
 | B2 至 E | 待实施 | 执行调度与独立 runner、节点管理与部署、桌面闭环、独立升级与完整验收 |
 
@@ -365,5 +365,7 @@ A4c 的事务准备已将 Run 和 Comparison 的校验、canonical 编码保留�
 B1 在上述准备基础上实现任务存储：整组接收中的后续子 Run 冲突会回滚全部新增行；并发重复提交只写入一次；同身份但输入或秘密承诺不同会明确拒绝。Run 状态、结果、证据、报告及 Comparison 更新与所属任务事件共事务，写入失败不会留下已前进的游标。Performance 接收同时排除已经存在的归档 ID。事件读取限制条数、完整事件及完整页面字节，拒绝缺页、越过权威序号与损坏文档；页面到达字节上限后从最后返回序号继续。
 
 本次新增任务表与索引改变唯一当前 SQLite schema 的 checksum；旧 checksum 由正常打开、版本检查和 Migrate 明确拒绝。测试验证拒绝后数据库及 sidecar 文件名和内容摘要完全不变。没有接触或转换实际用户数据库，独立升级工具仍待 E 阶段实施、执行和验证；本次测试使用新建临时数据库。任务存储不等于共享执行宿主或常驻 runner 已完成，桌面仍待接入。
+
+A4c 后续将 Host 的创建职责移到接收方：Host 只有 `AdoptQueued`，其仓库端口没有 CreateRun，接管时只接受身份一致、revision=1、queued 的持久 Run；缺失、已启动或终态数据都拒绝且释放新 lease。当前本地 Service 的单 Run 创建与注册持有同一 Host 生命周期锁，测试验证与 Close 并发时不会留下无人持有凭据的 queued Run。原 Host 接收入口已删除，没有冲突后回读成功或重复创建路径；本地 Plan、Suite 与 Comparison 回归通过，完整 Job 调度仍待接入。
 
 功能完成、真实服务器部署、保活、历史数据升级和提供商实测以各阶段实际验收为准，不因方案或某个基础提交完成而视为全部完成。

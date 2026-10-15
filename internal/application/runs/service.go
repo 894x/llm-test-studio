@@ -5,6 +5,7 @@ package runs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/casetypes"
@@ -24,6 +25,7 @@ var (
 type Repository interface {
 	ExecutionRepository
 	PreparationRepository
+	CreateRun(context.Context, domain.Run) error
 }
 
 type StartCommand struct {
@@ -119,6 +121,7 @@ type Dependencies struct {
 type Service struct {
 	*Host
 	*Preparer
+	repository Repository
 }
 
 func New(dependencies Dependencies) (*Service, error) {
@@ -141,7 +144,7 @@ func New(dependencies Dependencies) (*Service, error) {
 		return nil, err
 	}
 	preparer.reportDiagnostic = host.report
-	return &Service{Host: host, Preparer: preparer}, nil
+	return &Service{Host: host, Preparer: preparer, repository: dependencies.Repository}, nil
 }
 
 func (service *Service) Close() error {
@@ -191,10 +194,49 @@ func (service *Service) PrepareTarget(ctx context.Context, command StartCommand)
 		return "", err
 	}
 	started := time.Now()
-	id, err := service.Host.AcceptPrepared(ctx, prepared, lease)
+	id, err := service.AcceptPrepared(ctx, prepared, lease)
 	if err != nil {
 		return "", err
 	}
 	service.Host.reportStartTiming(id, "start_run_persist_queued", time.Since(started))
 	return id, nil
+}
+
+// AcceptPrepared is the local admission facade. The shared execution Host only
+// adopts existing rows; a Job repository can create a whole group atomically.
+func (service *Service) AcceptPrepared(
+	ctx context.Context,
+	prepared PreparedRun,
+	lease *credentials.Lease,
+) (string, error) {
+	owned := true
+	defer func() {
+		if owned {
+			_ = lease.Close()
+		}
+	}()
+	if service == nil || ctx == nil || lease == nil || prepared.Meta.Revision != 1 {
+		return "", ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	run, err := domain.NewRun(prepared.Meta, prepared.PlanID, prepared.Snapshot)
+	if err != nil {
+		return "", fmt.Errorf("build prepared run: %w", err)
+	}
+	service.Host.mu.Lock()
+	defer service.Host.mu.Unlock()
+	if service.Host.closed {
+		return "", ErrClosed
+	}
+	if _, exists := service.Host.active[prepared.Meta.ID]; exists {
+		return "", ErrAlreadyAccepted
+	}
+	if err := service.repository.CreateRun(ctx, run); err != nil {
+		return "", fmt.Errorf("persist queued run: %w", err)
+	}
+	service.Host.registerQueued(run, lease)
+	owned = false
+	return prepared.Meta.ID, nil
 }

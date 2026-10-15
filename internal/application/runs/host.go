@@ -15,7 +15,6 @@ import (
 
 // ExecutionRepository contains only execution facts, never authored catalogs.
 type ExecutionRepository interface {
-	CreateRun(context.Context, domain.Run) error
 	GetRun(context.Context, string) (domain.Run, error)
 	UpdateRun(context.Context, uint64, domain.Run) error
 	// AppendResults atomically writes outputs whose suite and case identities
@@ -114,41 +113,53 @@ func (service *Host) reportStartTiming(runID, operation string, duration time.Du
 	})
 }
 
-// AcceptPrepared takes ownership of lease on every path. It validates and copies
-// the complete snapshot before persisting it; no catalog or keyring is read.
-func (service *Host) AcceptPrepared(
+// AdoptQueued takes ownership of lease on every path. Admission must already
+// have persisted the complete Run; adoption never creates execution facts.
+func (service *Host) AdoptQueued(
 	ctx context.Context,
-	prepared PreparedRun,
+	runID string,
 	lease *credentials.Lease,
-) (string, error) {
+) error {
 	owned := true
 	defer func() {
 		if owned {
 			_ = lease.Close()
 		}
 	}()
-	invalid := service == nil || ctx == nil || lease == nil
+	invalid := service == nil || ctx == nil || lease == nil || !domain.IsUUID(runID)
 	if invalid {
-		return "", ErrInvalid
+		return ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	run, err := domain.NewRun(prepared.Meta, prepared.PlanID, prepared.Snapshot)
-	if err != nil {
-		return "", fmt.Errorf("build prepared run: %w", err)
+		return err
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.closed {
-		return "", ErrClosed
+		return ErrClosed
 	}
-	if _, exists := service.active[prepared.Meta.ID]; exists {
-		return "", ErrAlreadyAccepted
+	if _, exists := service.active[runID]; exists {
+		return ErrAlreadyAccepted
 	}
-	if err := service.repository.CreateRun(ctx, run); err != nil {
-		return "", fmt.Errorf("persist queued run: %w", err)
+	stored, err := service.repository.GetRun(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("read admitted run: %w", err)
 	}
+	initial := stored.Meta().ID == runID && stored.Meta().Revision == 1 && stored.Status() == domain.RunQueued
+	if !initial {
+		return ErrNotActive
+	}
+	run, err := domain.NewRun(stored.Meta(), stored.PlanID(), stored.Snapshot())
+	if err != nil {
+		return fmt.Errorf("validate admitted run: %w", err)
+	}
+	service.registerQueued(run, lease)
+	owned = false
+	return nil
+}
+
+// The caller holds service.mu and has validated and persisted the initial Run.
+func (service *Host) registerQueued(run domain.Run, lease *credentials.Lease) {
 	snapshot := run.Snapshot()
 	control := &runControl{
 		run: run, lease: lease, stop: make(chan struct{}), cancel: func() {},
@@ -160,9 +171,7 @@ func (service *Host) AcceptPrepared(
 			snapshot: entry, cases: append([]domain.TestCase{}, entry.CaseDefinitions...),
 		}
 	}
-	service.active[prepared.Meta.ID] = control
-	owned = false
-	return prepared.Meta.ID, nil
+	service.active[run.Meta().ID] = control
 }
 
 func (service *Host) ActivateRun(ctx context.Context, runID string) error {

@@ -42,5 +42,5 @@ func (service *Service) PrepareQuickTask(ctx context.Context, command QuickTaskC
 	if err != nil {
 		return "", err
 	}
-	return service.Host.AcceptPrepared(ctx, prepared, lease)
+	return service.AcceptPrepared(ctx, prepared, lease)
 }
