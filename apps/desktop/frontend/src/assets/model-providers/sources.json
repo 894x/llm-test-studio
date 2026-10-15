@@ -3,6 +3,23 @@
   "version": "1.95.1",
   "source": "https://github.com/lobehub/lobe-icons",
   "license": "MIT",
+  "variants": {
+    "openai": "openai.svg",
+    "anthropic": "anthropic.svg",
+    "claude": "claude-color.svg",
+    "kimi": "kimi-color.svg",
+    "gemini": "gemini-color.svg",
+    "deepseek": "deepseek-color.svg",
+    "qwen": "qwen-color.svg",
+    "zhipu": "zhipu-color.svg",
+    "minimax": "minimax-color.svg",
+    "doubao": "doubao-color.svg",
+    "bytedance": "bytedance-color.svg",
+    "alibabacloud": "alibabacloud-color.svg"
+  },
+  "adaptations": {
+    "kimi": "Use currentColor for the monochrome letter to support both themes; preserve the blue accent."
+  },
   "icons": [
     "openai",
     "anthropic",
