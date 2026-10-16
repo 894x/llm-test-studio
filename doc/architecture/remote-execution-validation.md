@@ -922,3 +922,13 @@ PreparedWire是runtime.Response内部json:-字段，只描述准备结果，不�
 退出后父级独立只读复核：13个镜像与冻结服务端序号全集相等、21/21文档imported、partial0、own submissions0、全部镜像仍属于原配置/物理节点/installation，quick_check通过、FK违规0且只读前后SHA不变。最终客户端库105381888字节，SHA `3afa3ffec9b9ac1e0af111b93c70a44d2b9148084a4900a4297919cbfb39fbd7`；原400秒工作区库仍为 `68cec4feece5486d804a7c7dc636c16faae75f580a5d56960d532a06f183c825`。`parent-final-resume.safe.json` SHA `7910e6e92d60698eee4e457d0588463cf59b83b80aca732d683823760bf5dc10`。历史Job状态为12completed/1failed；这里通过的是全部事实与文档的同步，没有重跑或将原失败Job改为成功。Launch/control/provider均0，没有部署或升级runner。
 
 本轮完成原13项历史的checkpoint续传闭环；原各次400秒冷同步失败、首段600秒未完成及两个配置初始化失败记录均保留。第二段295.75秒从已保留游标/缓存开始，不是空库全量冷同步耗时，也不证明400秒内能在原慢路径导完。第二节点实际安装/共享执行结果保持；native/OS Store、真实APPDATA切换、arm64实跑、整机/在途故障、完整恢复、共享控制/积压公平性和CI等既有待验范围仍不由本次续传替代，文件扩展继续暂缓。
+
+## 2026-10-17：R8 共享取消重开与真实 Windows OSStore 验收通过
+
+固定client源码8e8040f的三个独立OS进程均实际exit0：A43220仅Launch1，B53124在没有本地submission的情况下仅Cancel1；确认B实际退出后，query60108重新打开B原workspace。Job `b929561c-a676-4608-83e6-e6317695b9fe` 最终cancelled，唯一command `86ff1288-d722-4c48-b389-607b275ef01c`、镜像控制锚点与已归档report `697436d3-5d30-4b21-b61e-29d184362db1` 在重开后身份一致，没有重复提交或取消。
+
+免费Mock请求1、最大并发1、Provider0；R8 runner前后均为PID2728603/start804746624/NRestarts1，exe SHA `67f210053e1c62d6e965cc90069abe097cad4b1f2c16de2d8d89ad95a366fc77`，本轮没有升级或重启。证据 `%TEMP%/llm-shared-r8-8e8040f-843e8472-5369-4ff8-ab66-adfa97d06b93/run-u3uhjrog/parent-final-verification.safe.json` SHA `0508101ed306757ac8be7748bc66843f6d0e2259607527904449462aa13bce98`；同目录acceptance SHA `bc386c549a530335b4f90d5772037fc783736ab0e9ef9cf5be7d2602ca8b0bd9`。
+
+父级另行执行基于8e8040f的真实Windows OSStore工具，exe SHA `867a70d328fa696621cf1868be15625eef1249856b71f37a93f956bae83fd360`。父进程28552、替换子进程17548、清理子进程57624均实际exit0；preflightNotFound、initialStored、childCompared、childReplaced、parentCompared、cleanupNotFound六组事实均为[true,true]，cleanup_complete及children_joined为true、unresolved为空、stderr为空。只使用两项新生成的合成凭据，未枚举或更改旧凭据，没有秘密落盘。
+
+真实回执 `%TEMP%/osstore-windows-8e8040f-942d135b3ed14da388a2c7589993a0fa/parent-real-9f37c67bd0844e0aa5e955b4858da7b8.safe.jsonl` SHA `b2d9c653a2cb73d18de0b145966b2c8afde34eac2e62081a484926ebe0d65a0c`。它补齐真实Windows backend的跨进程读取、替换和清理证明，不代表原生UI、不同client编译或跨进程CAS通过；ARM64 VM仍在准备，未实跑。原400/600秒失败、付费K3失败、积压公平性、真实APPDATA切换/恢复及其他未完成项均保留，文件扩展继续暂缓。
