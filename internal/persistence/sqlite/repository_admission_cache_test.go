@@ -119,9 +119,37 @@ func TestAdmissionValidationCacheHasBoundedEntriesAndReceiptBytes(t *testing.T) 
 	if _, exists := cache.entries[oversizedKey]; exists {
 		t.Fatal("cache retained more than MaxStateBytes of receipt data")
 	}
+	oversizedRun := cloneAdmission(entry)
+	oversizedRun.runs = []validatedAdmissionRun{{runID: strings.Repeat("r", jobcontract.MaxStateBytes)}}
+	oversizedRunKey := sha256.Sum256([]byte("oversized-run-admission"))
+	cache.remember(oversizedRunKey, oversizedRun)
+	if _, exists := cache.entries[oversizedRunKey]; exists {
+		t.Fatal("cache retained more than MaxStateBytes across receipt and run identities")
+	}
 	again, err := cache.resolve(document)
 	if err != nil || !reflect.DeepEqual(again, entry) || len(cache.entries) > maxValidatedAdmissions {
 		t.Fatal("evicted document could not be fully revalidated within the cache bound")
+	}
+}
+
+func TestAdmissionValidationCacheClonesFrozenRunIdentities(t *testing.T) {
+	document, _ := admissionCacheFixture(t)
+	entry, err := validateAdmissionDocument(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.runs = []validatedAdmissionRun{{runID: "frozen-run", planID: "frozen-plan"}}
+	var cache admissionValidationCache
+	cache.remember(sha256.Sum256(document), entry)
+	entry.runs[0].runID = "outside-mutation"
+	first, err := cache.resolve(document)
+	if err != nil || first.runs[0].runID != "frozen-run" {
+		t.Fatal("stored run identity shared its input slice")
+	}
+	first.runs[0].planID = "caller-mutation"
+	second, err := cache.resolve(document)
+	if err != nil || second.runs[0].planID != "frozen-plan" {
+		t.Fatal("returned run identity shared the cached slice")
 	}
 }
 

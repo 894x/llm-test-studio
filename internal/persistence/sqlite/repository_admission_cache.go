@@ -14,13 +14,20 @@ type validatedAdmission struct {
 	receipt            jobcontract.Receipt
 	specSHA256         string
 	specDocumentSHA256 [sha256.Size]byte
+	runs               []validatedAdmissionRun
+}
+
+type validatedAdmissionRun struct {
+	runID, planID  string
+	snapshotSHA256 [sha256.Size]byte
 }
 
 // This caches a pure validation result by the complete durable document's
 // content, never by a Job or database identity. Every read still hashes the
 // original bytes and checks the current row against the frozen receipt. Each
-// entry retains at most MaxStateBytes of receipt data; large Specs and event
-// documents are never retained. FIFO eviction bounds the cache to 128 entries.
+// entry retains at most MaxStateBytes of receipt and frozen run identity data;
+// large Specs and event documents are never retained. FIFO eviction bounds the
+// cache to 128 entries.
 var admissionDocuments = admissionValidationCache{}
 
 type admissionValidationCache struct {
@@ -51,7 +58,11 @@ func (cache *admissionValidationCache) resolve(document []byte) (validatedAdmiss
 
 func (cache *admissionValidationCache) remember(key [sha256.Size]byte, entry validatedAdmission) {
 	receiptDocument, err := marshalCanonical(entry.receipt)
-	if err != nil || len(receiptDocument) > jobcontract.MaxStateBytes {
+	retainedBytes := len(receiptDocument) + len(entry.specSHA256) + sha256.Size
+	for _, run := range entry.runs {
+		retainedBytes += len(run.runID) + len(run.planID) + sha256.Size
+	}
+	if err != nil || retainedBytes > jobcontract.MaxStateBytes {
 		return
 	}
 	cache.mu.Lock()
@@ -73,6 +84,7 @@ func (cache *admissionValidationCache) remember(key [sha256.Size]byte, entry val
 func cloneAdmission(entry validatedAdmission) validatedAdmission {
 	entry.receipt.RunIDs = slices.Clone(entry.receipt.RunIDs)
 	entry.receipt.ReportIDs = slices.Clone(entry.receipt.ReportIDs)
+	entry.runs = slices.Clone(entry.runs)
 	return entry
 }
 
@@ -98,7 +110,19 @@ func validateAdmissionDocument(document []byte) (validatedAdmission, error) {
 	if err != nil {
 		return validatedAdmission{}, storageCorrupt("accepted job spec document")
 	}
+	inputs := accepted.Spec.PreparedRuns()
+	runs := make([]validatedAdmissionRun, 0, len(inputs))
+	for _, input := range inputs {
+		snapshotDocument, err := marshalCanonical(input.Snapshot)
+		if err != nil {
+			return validatedAdmission{}, storageCorrupt("accepted run snapshot document")
+		}
+		runs = append(runs, validatedAdmissionRun{
+			runID: input.Meta.ID, planID: input.PlanID, snapshotSHA256: sha256.Sum256(snapshotDocument),
+		})
+	}
 	return validatedAdmission{
 		receipt: initial.Receipt, specSHA256: digest, specDocumentSHA256: sha256.Sum256(specDocument),
+		runs: runs,
 	}, nil
 }

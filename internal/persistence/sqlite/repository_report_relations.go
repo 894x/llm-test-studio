@@ -17,12 +17,12 @@ type relationQueryer interface {
 }
 
 func validateReportStorage(ctx context.Context, queryer relationQueryer, report domain.Report) error {
-	if err := validateRunReportOrigin(ctx, queryer, report.RunID, report.ExecutionOrigin); err != nil {
-		return err
-	}
-	run, err := queryCurrentRun(ctx, queryer, report.RunID)
+	run, err := queryBoundedCurrentRun(ctx, queryer, report.RunID)
 	if err != nil {
 		return relationStorageError(ctx, "report run relation", err)
+	}
+	if err := validateReportOriginForRun(ctx, queryer, run, report.ExecutionOrigin); err != nil {
+		return err
 	}
 	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {
 		return storageCorrupt("report run relation")

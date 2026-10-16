@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -162,6 +163,121 @@ func TestWarmAcceptedOriginCacheRejectsSameLengthJournalChangesAcrossReopen(t *t
 	got, err := reopened.GetJob(t.Context(), fixture.spec.JobID)
 	if err != nil || got.Receipt.Origin != fixture.snapshot.Receipt.Origin {
 		t.Fatalf("independent reopened repository changed the durable source: %v", err)
+	}
+}
+
+func TestWarmRunOriginCacheStillValidatesSpecSnapshotAndPosition(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		for _, target := range []string{"spec", "snapshot", "position"} {
+			name := map[bool]string{false: "owned", true: "mirror"}[remote] + "/" + target
+			t.Run(name, func(t *testing.T) {
+				fixture := newSubmittedReadFixture(t, remote)
+				runID := fixture.spec.Spec.Run.Meta.ID
+				if _, err := fixture.repository.RunExecutionOrigin(t.Context(), runID); err != nil {
+					t.Fatal(err)
+				}
+				originalName := fixture.spec.Spec.Run.Snapshot.Entries[0].CaseDefinitions[0].Name
+				changedName := "X" + originalName[1:]
+				switch target {
+				case "spec":
+					query := `UPDATE execution_jobs SET spec_json = json_set(spec_json,
+						'$.spec.run.snapshot.entries[0].case_definitions[0].name', ?) WHERE id = ?`
+					if remote {
+						query = `UPDATE remote_job_mirrors SET spec_json = json_set(spec_json,
+							'$.spec.run.snapshot.entries[0].case_definitions[0].name', ?) WHERE job_id = ?`
+					}
+					if _, err := fixture.db.ExecContext(t.Context(), query, changedName, fixture.spec.JobID); err != nil {
+						t.Fatal(err)
+					}
+				case "snapshot":
+					if _, err := fixture.db.ExecContext(t.Context(), `DROP TRIGGER trg_execution_run_revisions_no_update`); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := fixture.db.ExecContext(t.Context(), `UPDATE execution_run_revisions
+						SET snapshot_json = json_set(snapshot_json, '$.entries[0].case_definitions[0].name', ?),
+						document_json = json_set(document_json, '$.plan_snapshot.entries[0].case_definitions[0].name', ?)
+						WHERE run_id = ? AND revision = 1`, changedName, changedName, runID); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := fixture.repository.GetRun(t.Context(), runID); err != nil {
+						t.Fatalf("tamper fixture must remain a valid current run: %v", err)
+					}
+				case "position":
+					query := `UPDATE execution_job_runs SET position = 1 WHERE run_id = ?`
+					if remote {
+						query = `UPDATE remote_job_runs SET position = 1 WHERE run_id = ?`
+					}
+					if _, err := fixture.db.ExecContext(t.Context(), query, runID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for range 2 {
+					if _, err := fixture.repository.RunExecutionOrigin(t.Context(), runID); !errors.Is(err, persistence.ErrCorrupt) {
+						t.Fatalf("warm cache bypassed changed %s: %v", target, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestRunOriginSnapshotBindingPreservesNativeObjectKeysAndLargeIntegers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "native-origin.db")
+	if err := persistence.Migrate(t.Context(), path, persistence.MigrateOptions{AppVersion: "origin-test"}); err != nil {
+		t.Fatal(err)
+	}
+	repository := reopenHardeningRepository(t, path)
+	defer repository.Close()
+	db := openDatabase(t, path)
+	defer db.Close()
+	run := runWithCompleteSnapshot(t)
+	snapshot := run.Snapshot()
+	definition := &snapshot.Entries[0].CaseDefinitions[0]
+	definition.Definitions[domain.ProtocolOpenAIChat] = json.RawMessage(`{
+		"request":{"body":{"seed":9007199254740993,"messages":[{"role":"user","content":"hello"}]}},
+		"inputs":{},"assertions":[{"value":200,"source":"http.status","operator":"equals","id":"status"}]}`)
+	run, err := domain.NewRun(run.Meta(), run.PlanID(), snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := jobAcceptance(jobSpecForRun(t, run))
+	if _, _, err := repository.AcceptJob(t.Context(), input); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		origin, err := repository.RunExecutionOrigin(t.Context(), run.Meta().ID)
+		if err != nil || origin == nil || *origin != input.Origin {
+			t.Fatalf("canonical snapshot binding changed native JSON semantics: %v", err)
+		}
+	}
+	if _, err := db.ExecContext(t.Context(), `DROP TRIGGER trg_execution_run_revisions_no_update`); err != nil {
+		t.Fatal(err)
+	}
+	const exactInteger, roundedInteger = "9007199254740993", "9007199254740992"
+	var containsExact bool
+	if err := db.QueryRowContext(t.Context(), `SELECT instr(snapshot_json, ?) > 0
+		FROM execution_run_revisions WHERE run_id = ? AND revision = 1`, exactInteger, run.Meta().ID).Scan(&containsExact); err != nil || !containsExact {
+		t.Fatal("native JSON fixture lost its exact integer before tampering")
+	}
+	if _, err := db.ExecContext(
+		t.Context(),
+		`UPDATE execution_run_revisions SET snapshot_json = replace(snapshot_json, ?, ?),
+		document_json = replace(document_json, ?, ?) WHERE run_id = ? AND revision = 1`,
+		exactInteger,
+		roundedInteger,
+		exactInteger,
+		roundedInteger,
+		run.Meta().ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.GetRun(t.Context(), run.Meta().ID); err != nil {
+		t.Fatalf("modified integer must remain a valid current run: %v", err)
+	}
+	for range 2 {
+		if _, err := repository.RunExecutionOrigin(t.Context(), run.Meta().ID); !errors.Is(err, persistence.ErrCorrupt) {
+			t.Fatalf("warm snapshot digest rounded away an integer change: %v", err)
+		}
 	}
 }
 

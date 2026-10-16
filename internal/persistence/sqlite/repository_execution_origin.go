@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -33,6 +34,14 @@ func (repository *Repository) RunExecutionOrigin(ctx context.Context, runID stri
 }
 
 func queryRunExecutionOrigin(ctx context.Context, queryer relationQueryer, runID string) (*domain.ExecutionOrigin, error) {
+	run, err := queryBoundedCurrentRun(ctx, queryer, runID)
+	if err != nil {
+		return nil, err
+	}
+	return queryValidatedRunExecutionOrigin(ctx, queryer, run)
+}
+
+func queryBoundedCurrentRun(ctx context.Context, queryer rowQueryer, runID string) (domain.Run, error) {
 	var bounded bool
 	err := queryer.QueryRowContext(ctx, `SELECT
 		length(CAST(revision.document_json AS BLOB)) BETWEEN 1 AND ? AND
@@ -41,15 +50,18 @@ func queryRunExecutionOrigin(ctx context.Context, queryer relationQueryer, runID
 		ON revision.run_id = root.id AND revision.revision = root.current_revision WHERE root.id = ?`,
 		MaxReportProjectionDocumentBytes, MaxReportProjectionDocumentBytes, runID).Scan(&bounded)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("inspect run origin document budget: %w", err)
+		return domain.Run{}, fmt.Errorf("inspect run origin document budget: %w", err)
 	}
 	if err == nil && !bounded {
-		return nil, storageCorrupt("run execution origin document budget")
+		return domain.Run{}, storageCorrupt("run execution origin document budget")
 	}
-	run, err := queryCurrentRun(ctx, queryer, runID)
-	if err != nil {
-		return nil, err
-	}
+	return queryCurrentRun(ctx, queryer, runID)
+}
+
+// The caller has already validated the current durable Run in this read or
+// write operation. Reuse it while still checking every current owner document.
+func queryValidatedRunExecutionOrigin(ctx context.Context, queryer relationQueryer, run domain.Run) (*domain.ExecutionOrigin, error) {
+	runID := run.Meta().ID
 	rows, err := queryer.QueryContext(ctx, `SELECT 'owned', job_id, position FROM execution_job_runs WHERE run_id = ?
 		UNION ALL SELECT 'mirror', job_id, position FROM remote_job_runs WHERE run_id = ? LIMIT 3`, runID, runID)
 	if err != nil {
@@ -81,20 +93,12 @@ func queryRunExecutionOrigin(ctx context.Context, queryer relationQueryer, runID
 		return nil, storageCorrupt("duplicate run execution namespace")
 	}
 	owned := owners[0]
-	var spec jobcontract.JobSpec
+	var admission validatedAdmission
 	var snapshot jobcontract.Snapshot
 	if owned.namespace == "owned" {
-		spec, err = queryJobSpec(ctx, queryer, owned.jobID)
-		if err == nil {
-			var row storedJobRow
-			row, err = queryJobRow(ctx, queryer, owned.jobID)
-			if err == nil {
-				snapshot, err = row.decode()
-			}
-		}
+		admission, snapshot, err = queryOwnedRunAdmission(ctx, queryer, owned.jobID)
 	} else {
-		mirror, readErr := queryRemoteMirror(ctx, queryer, owned.jobID)
-		err, spec, snapshot = readErr, mirror.Spec, mirror.Snapshot
+		admission, snapshot, err = queryMirroredRunAdmission(ctx, queryer, owned.jobID)
 	}
 	if err != nil {
 		return nil, relationStorageError(ctx, "run execution owner", err)
@@ -105,21 +109,95 @@ func queryRunExecutionOrigin(ctx context.Context, queryer relationQueryer, runID
 		EXISTS(SELECT 1 FROM remote_job_mirrors WHERE job_id = ?)`, owned.jobID, owned.jobID).Scan(&duplicate); err != nil {
 		return nil, fmt.Errorf("inspect run execution namespace: %w", err)
 	}
-	inputs := spec.PreparedRuns()
-	validPosition := owned.position >= 0 && owned.position < len(inputs)
-	if duplicate || !validPosition || snapshot.Validate(spec) != nil {
+	validPosition := owned.position >= 0 && owned.position < len(admission.runs)
+	if duplicate || !validPosition {
 		return nil, storageCorrupt("run execution ownership")
 	}
-	input := inputs[owned.position]
-	if input.Meta.ID != runID || input.PlanID != run.PlanID() || !equalCanonicalDocuments(input.Snapshot, run.Snapshot()) {
+	input := admission.runs[owned.position]
+	snapshotDocument, err := marshalCanonical(run.Snapshot())
+	if err != nil {
+		return nil, storageCorrupt("run execution current snapshot")
+	}
+	validIdentity := input.runID == runID && input.planID == run.PlanID()
+	if !validIdentity || input.snapshotSHA256 != sha256.Sum256(snapshotDocument) {
 		return nil, storageCorrupt("run execution frozen input")
 	}
 	origin := snapshot.Receipt.Origin
 	return &origin, nil
 }
 
+func queryOwnedRunAdmission(ctx context.Context, queryer rowQueryer, jobID string) (validatedAdmission, jobcontract.Snapshot, error) {
+	row, err := queryJobRow(ctx, queryer, jobID)
+	if err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, err
+	}
+	snapshot, err := row.decode()
+	if err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, err
+	}
+	admission, err := decodeAcceptedOrigin(row.acceptedDocument, snapshot)
+	if err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, err
+	}
+	var specDocument []byte
+	err = queryer.QueryRowContext(ctx, `SELECT
+		CASE WHEN length(CAST(spec_json AS BLOB)) <= ? THEN spec_json ELSE '' END
+		FROM execution_jobs WHERE id = ?`, jobcontract.MaxSubmissionBytes, jobID).Scan(&specDocument)
+	if err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, fmt.Errorf("read run execution frozen spec: %w", err)
+	}
+	if admission.specDocumentSHA256 != sha256.Sum256(specDocument) {
+		return validatedAdmission{}, jobcontract.Snapshot{}, storageCorrupt("run execution frozen spec bytes")
+	}
+	return admission, snapshot, nil
+}
+
+func queryMirroredRunAdmission(ctx context.Context, queryer rowQueryer, jobID string) (validatedAdmission, jobcontract.Snapshot, error) {
+	var configurationID, nodeID, installationID, digest string
+	var sequence uint64
+	var specDocument, snapshotDocument, acceptedDocument []byte
+	err := queryer.QueryRowContext(ctx, `SELECT configuration_id, node_id, installation_id, spec_sha256,
+		CASE WHEN length(CAST(spec_json AS BLOB)) <= ? THEN spec_json ELSE '' END,
+		CASE WHEN length(CAST(snapshot_json AS BLOB)) <= ? THEN snapshot_json ELSE '' END, applied_sequence,
+		(SELECT CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
+		 FROM remote_job_events WHERE job_id = remote_job_mirrors.job_id AND sequence = 1)
+		FROM remote_job_mirrors WHERE job_id = ?`,
+		jobcontract.MaxSubmissionBytes, jobcontract.MaxStateBytes, jobcontract.MaxEventBytes, jobID).Scan(
+		&configurationID, &nodeID, &installationID, &digest,
+		&specDocument, &snapshotDocument, &sequence, &acceptedDocument,
+	)
+	if err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, fmt.Errorf("read mirrored run execution source: %w", err)
+	}
+	var snapshot jobcontract.Snapshot
+	if err := decodeCanonical(snapshotDocument, &snapshot, func() error { return snapshot.ValidateState() }); err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, storageCorrupt("mirrored run execution snapshot")
+	}
+	admission, err := decodeAcceptedOrigin(acceptedDocument, snapshot)
+	if err != nil {
+		return validatedAdmission{}, jobcontract.Snapshot{}, err
+	}
+	origin := snapshot.Receipt.Origin
+	validConfiguration := domain.IsUUID(configurationID) && origin.Kind == "remote"
+	matchingOrigin := origin.NodeID == nodeID && origin.InstallationID == installationID
+	matchingIdentity := snapshot.Receipt.JobID == jobID && snapshot.LatestSequence == sequence
+	matchingSpec := admission.specSHA256 == digest && admission.specDocumentSHA256 == sha256.Sum256(specDocument)
+	if !validConfiguration || !matchingOrigin || !matchingIdentity || !matchingSpec {
+		return validatedAdmission{}, jobcontract.Snapshot{}, storageCorrupt("mirrored run execution source identity")
+	}
+	return admission, snapshot, nil
+}
+
 func validateRunReportOrigin(ctx context.Context, queryer relationQueryer, runID string, actual *domain.ExecutionOrigin) error {
 	expected, err := queryRunExecutionOrigin(ctx, queryer, runID)
+	if err != nil {
+		return err
+	}
+	return validateStoredOrigin(expected, actual)
+}
+
+func validateReportOriginForRun(ctx context.Context, queryer relationQueryer, run domain.Run, actual *domain.ExecutionOrigin) error {
+	expected, err := queryValidatedRunExecutionOrigin(ctx, queryer, run)
 	if err != nil {
 		return err
 	}
