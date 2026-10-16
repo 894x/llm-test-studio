@@ -426,7 +426,17 @@ R3 settlement 会话 `89151` 仅接收一次 Job `f24d35f8-2370-4578-ac45-0fc288
 
 原 f24 的后续事实表明 child 从 queued revision=1 到 failed revision=2，phase=runner、code=job_storage_unavailable，仅 6 个事件、零请求结果/summary/marker；root 已生成原失败报告。源节点 probe `62506` 的业务读取成功但末尾可选文件 allow-list 检查错误、exit 1，不能记为完整 probe 通过。available bytes 虽为 191221383168，UsedBytes 未量，20 GiB 状态配额仍不能据此排除。具体失败端口尚未证明，Adopt 后 starting UpdateRun 未提交或监控取消只是候选解释。
 
-原 ID 的 query-only 会话 `68469` 自然 exit 1：receipt 2586ms、terminal failed mirror 118566ms，报告阶段到 600666ms 仍未通过 GetReports/Detail；本地 imported 引用与 1483134 字节报告文档存在不能替代公开 API 验证。Launch/blocked writes/提供商调用均为 0，original outcome=failed 保持。两个失败 safe 文件与摘要见[验证记录](remote-execution-validation.md)；当前仅在私有服务器 clone 做三端口并发 profile、本地 clone 做单次公开报告读取诊断，不发新真实 Job、不覆盖旧证据，也不宣称故障已修复。
+原 ID 的 query-only 会话 `68469` 自然 exit 1：receipt 2586ms、terminal failed mirror 118566ms，报告阶段到 600666ms 仍未通过 GetReports/Detail；本地 imported 引用与 1483134 字节报告文档存在不能替代公开 API 验证。Launch/blocked writes/提供商调用均为 0，original outcome=failed 保持。两个失败 safe 文件与摘要见[验证记录](remote-execution-validation.md)；该阶段制定三端口 profile 和本地 clone 公开报告读取诊断计划，当时没有节点 profile 结果，后续扩展的 16 端口实测单独记录，不发新真实 Job、不覆盖旧证据。
+
+后续本地提交 `76258fb` 修正写探针 Commit 精确返回 sql.ErrTxDone 且同一次 ctx 已取消时的错误分类竞态，尚未部署，也未证明它是 f24 的唯一根因。报告列表投影中合法带 Failure 的 run.Fail 历史被 Transition 重放而误报 Corrupt 的独立错误已按当前契约修正；投影修复的独立 review、两个相关包完整测试与 vet 通过，并已本地提交为 `f0f43c5`，仅包含 report_projection.go 及对应测试，仍未部署。随后全仓 Go 测试通过（desktop 59.848s、jobhost 24.606s、SQLite 96.028s），全仓 vet 通过；不由这些本地检查改写原实机失败和其他未验收边界。
+
+原数据库一致性 clone 上单次 GetReports 6962ms 返回 8 份报告、目标失败报告存在，单次 GetReportDetail 509ms 返回 failed/0 results，源 SHA 前后不变；安全证据与摘要见[验证记录](remote-execution-validation.md)。这不改写 K3 付费结果、R3 原 failed 或 600s query-only 原失败记录。该次记录时 16 端口 profiler 尚在 reader barrier/pin 准备、没有 SSH，后续实际执行另记，不将准备状态当作执行证据。
+
+后续弱节点隔离会话 `83277` 已真实完成，223945ms、return 0、18 records/16 ports；原库 typed business SHA、PID 212013/start tick 23384984/NRestarts=1/原 R3 exe SHA 前后保持，Activate/Execute/提供商调用均为 0。八条四 reader 样本均为 queued=3、in-use=1、reader_errors=0。Starting Update 在无 reader 时 1817ms，四 reader/5s 时 5021ms deadline（BeginTx 4424ms），60s control 为 8478ms 成功（BeginTx 6532ms）；GetRun 对应 620ms、5000ms timeout、7450ms 成功。AdoptQueued 四 reader/5s 在 4428ms 险过，外层 60s 时仍受内部 GetRun 的独立 5s deadline 限制；CheckWritable 四 reader/4s 为 3013ms、60s 为 4526ms，均成功且未复现 TxDone。
+
+profile 证明大历史读占用全局 max-connection=1 会使执行关键读写超时，尚未唯一证明 f24 根因；60s 仅诊断 control，不改生产预算。modernc SQLite v1.35.0 ReadOnly Tx 实际为 plain BEGIN/deferred，不能因 DSN immediate 误称实际读事务 immediate。HTTP 独立只读 view 与 WAL 下的读写连接隔离正在实现，尚未提交、部署或通过实机验收。原始 JSONL 仅含 inner clone/ports，外层 parent_observed 源库/进程摘要与之区分保存，路径及 SHA 见[验证记录](remote-execution-validation.md)；所有原失败和整体待验收范围保持。
+
+整体仍需执行稳定性和关闭恢复验证、产品内正式升级编排及干净产物交付、共享 foreign Job 全视图与控制、文件资源/附件/回收、最终 native、第二节点和 arm64 实机验收；单节点升级、clone 查询或独立竞态修复均不替代这些交付条件。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 

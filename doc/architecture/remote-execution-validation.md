@@ -487,4 +487,35 @@ R3 的收尾期限源码修复与隔离 clone 根因验证仍成立，但执行�
 
 query-only 恢复会话 `68469` 自然退出 1。原 receipt 在 2586ms 可读，服务器仍为 failed、sequence=6、revision=4、healthy=true、Pending=0；本地 mirror 在 118566ms 到达 terminal failed。报告阶段到 600666ms 仍未通过 `GetReports`/`GetReportDetail`，尽管引用和文档已存在。该阶段 Launch、blocked writes 和提供商调用计数均为 0，original outcome=failed，不把这次恢复转为通过。安全证据 `%TEMP%/llm-remote-f24-query-recovery-20261016.safe.json` 的 SHA-256 为 `5f787836313b11eb0c0a27fc9591771cef45d77c128d0038cd63da6253ff05bd`。
 
-具体失败存储端口仍未证明。现有顺序最符合 Adopt 之后 starting 的 `UpdateRun` 未提交，或监控取消这两条候选路径，不能据此选定根因。当前仅在服务器私有 clone 上进行三个端口的并发读取 profile，并在本地 clone 单次调用公开报告 API 诊断显示失败；没有新建真实 Job，最终修复与验收结果待后续证据。
+具体失败存储端口当时仍未证明。现有顺序最符合 Adopt 之后 starting 的 `UpdateRun` 未提交，或监控取消这两条候选路径，不能据此选定根因。该阶段制定了服务器私有 clone 的三个端口并发读取 profile 和本地 clone 单次公开报告 API 诊断计划，当时尚无节点 profile 执行证据；后续 16 端口的实际结果单独记录如下，没有新建真实 Job。
+
+## 2026-10-16：报告查询修复与写探针取消竞态的独立证据
+
+本地提交 `76258fb` 修正 `CheckWritable` 的取消竞态：只有 Commit 返回精确的 `sql.ErrTxDone`，且同一次调用的 `ctx.Err()!=nil` 时，保留 context 取消分类。这是已经证明的独立竞态，尚未证明它是原 f24 失败的唯一根因；该提交尚未部署到节点，不能把本地修复写成实机问题已解决。
+
+报告列表投影发现另一项独立错误：合法、带 Failure 的 `run.Fail` 历史被用 `Transition` 重放，导致错误返回 Corrupt。`report_projection.go` 与对应测试已按唯一当前契约修正，未改变 DDL 或持久格式；独立 review、两个相关 Go 包完整测试和 vet 均通过。本次投影修复已本地提交为 `f0f43c5`（`fix(sqlite): validate failed run histories in report projections`），仅包含这两个 Go 文件，仍未部署。随后全仓 `go test ./...` 通过，desktop 59.848s、jobhost 24.606s、SQLite 96.028s；全仓 `go vet ./...` 通过。这些本地检查不补认原实机失败验收。
+
+在原数据库的一致性 clone 上，单次 `GetReports` 用时 6962ms，返回 8 份报告，目标失败报告存在且保留 failed；单次 `GetReportDetail` 用时 509ms，仍为 failed、0 results。源库 SHA-256 `7c5be8f7a5d7c656c537e4471f91eadcc96dce8d393c60ba25cb3f593aacc8c9` 前后保持。安全证据为 `%TEMP%/llm-report-query-diagnostic-_9c1flu7/projection-fix-api-proof.safe.json`，SHA-256 `f96dbfb3a0b71d2df08de34b51e415a62bc0609eb598ef9e24b3a3b9ba416f8f`。这证明当前修复后的公开查询能读取 clone 中原失败报告，不改变该任务的失败事实。
+
+截至该次投影修复记录时，弱节点 16 端口 profiler 尚在 reader barrier 校准和重建 pin 的准备阶段，没有建立 SSH；这一历史准备状态不构成已执行的 profile。后续真实执行结果见下一节，仍不将诊断机制写成原 f24 启动失败的唯一根因。
+
+原 K3 付费判定、R3 原 failed 以及 600s query-only 失败结果和证据全部保留，不覆盖或改成通过。整体仍有执行稳定性、关闭观察与恢复、产品内正式升级编排和干净产物交付、共享 foreign Job 全视图与控制、文件资源及附件/回收、最终原生窗口验收、第二节点与 arm64 实机等工作；已有单节点升级和 clone 查询证据不缩减这些范围。
+
+## 2026-10-16：弱节点隔离诊断完成，单连接竞争机制成立
+
+会话 `83277` 在真实弱节点的私有 clone 完成 16 个端口场景，223945ms、返回 0，生成 18 条记录。原库 typed business SHA `4844878864421964db5126084b11aa83cd6286348b9c52d2d6368660206d0632` 前后相同；PID 212013、start tick 23384984、NRestarts=1、原 R3 可执行文件 SHA `7cc292b7f2c9ffb6728d0035d68deb8d72fc58243b3905566d558b6b06e9d25a` 保持。Activate、Execute 与提供商调用均为 0，诊断没有创建或重提真实任务。
+
+全部 8 条四 reader 样本实际记录 queued=3、in-use=1、reader_errors=0，证明 reader 并发已建立且共享全局 max-connection=1 的连接池；诊断程序返回 0 表示场景执行完整，不表示所有端口操作都在其期限内成功。
+
+| 端口 | 无并发 reader | 四 reader、常规预算 | 四 reader、60s 外层诊断对照 |
+| --- | --- | --- | --- |
+| Starting Update | 1817ms | 5s 预算下共 5021ms，BeginTx 4424ms，deadline | 8478ms，BeginTx 6532ms，成功 |
+| GetRun | 620ms | 5s 预算下 5000ms timeout | 7450ms，成功 |
+| AdoptQueued | 798ms | 5s 预算下 4428ms 成功，接近预算 | 内部 GetRun 仍因其独立 5s deadline 失败，外层延长不能解决 |
+| CheckWritable | 0ms | 4s 预算下 3013ms 成功 | 4526ms 成功，未复现 TxDone |
+
+该 profile 证明大历史读取持有单连接，会让执行关键读写在等待连接或执行期间超时；尚未唯一证明它就是原 f24 的失败根因。60s 只是诊断 control，没有更改生产预算。写探针未复现 TxDone 不否定先前独立竞态测试，也不能把两项证据合成唯一因果链。
+
+远端 stage 为 `/var/tmp/llm-test-settle-diagnostic-5ff093e197f9f0a5b4c0c58407e02ad5/`。原始内层日志经会话 `20577` 成功取回到 `%TEMP%/runports-4b21bce229d0febdb96974b4.safe.jsonl`，12107 字节、SHA-256 `cbce692a38e5fddb9af1f53b4be5853b7e7e47e8237c65c2f9b5903f3a22e5b4`。外层独立观察摘要为 `%TEMP%/llm-remote-run-ports-baseline-20261016.safe.json`，SHA-256 `4a67d25e155018a75fe5fbf7a56e0004042bb97709aa3fe04a46aa3153f382f5`。后者是 `parent_observed` 摘要，不是原始 raw JSON；raw JSONL 只包含 inner clone 和端口记录，不能混称原始日志已经含全部源库与进程观察。
+
+已安装 modernc SQLite v1.35.0 的 ReadOnly transaction 使用 plain BEGIN/deferred；不能仅凭 DSN 的 immediate 选项把实际只读事务描述成 immediate。本轮明确瓶颈是全局 max-connection=1。HTTP 独立只读 view 与 WAL 下的读写连接隔离正在实现，尚未提交、部署或通过实机验收；执行稳定性和最终实机验收仍未完成，原 K3/R3/query 失败历史及整体剩余范围保持。
