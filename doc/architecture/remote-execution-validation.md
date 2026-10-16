@@ -1059,3 +1059,43 @@ HTTP 非长等待定向通过（3.185 秒），最大等待专项通过（21.493
 Core 仅提交本地 Job `f6b5d750-937a-4345-9486-a49dc8689e61`，完成 1/1，Report `a771ec9e-4d29-4394-a3cf-55f602008146`，归档 Origin 匹配。随后实际 peer IP 不匹配 Python 本地预检，工具明确以 capture_source_ip_mismatch 失败，在 fast/slow Launch 前停止。全局 launch_calls 未得到最终 child 汇总而保持 unknown，观察到 1 次 Launch 和唯一上述 Job；不将 unknown 写为零。实际 child exit1/EOF、3 control＋1 task 共 4 条 capture；目标 DELETE204/后续 GET404，cleanup_confirmed=true，耗时 26.739 秒。没有调用用户付费提供商。
 
 安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-b98nhqjm/egress-webhook.safe.json` 及独立 workspace 均保留；旧失败未覆盖。当前只证明三路受控 HTTPS 可达和单本地任务执行，尚不证明相同业务输入由三个出口执行。请求路径/代理差异待诊断，不放宽 IP 匹配来改判通过。
+
+## 2026-10-17：真实 watchdog 与 AMD64 卸载闭环
+
+自建 WSL Ubuntu-24.04 的 runner 安装命名空间初始为空，系统本身并非全新 OS。当前 artifact SHA `b2a8804157ada2df232c28aa8406c70aff1295813e5616d241d3530d3e316354` 对应已审产品 r2。唯一一次经身份核验的原 pidfd SIGSTOP 后，systemd manager 在 27.701 秒记录本 unit 的 `Failed with result 'watchdog'.`，PID 1072→1517、NRestarts 0→1。原 node/install/build 保持、恢复后 healthy/ready/Pending0，18 张相关业务表 typed hash 保持。原观察器因 journal 分类过窄 exit1 原样保留，之后只读 verifier 实际 exit0 并经独立证据审查确认。安全补证 `C:/Users/894/AppData/Local/Temp/llm-c-watchdog-g07-verification.safe.json`，SHA `da265442ec92bb1928c0b42c30a11cca93d4393ef5099f4da8dc6db26ada79ab`。这是自建 WSL unit 的实际 watchdog 证明，不外推物理节点。
+
+卸载验收早期 TEMP Mock 误写 `/chat/completions`，当前 BaseURL 解析实际为 `/v1/chat/completions`。原 Job `4e9035f2-275e-4814-b9b9-4e644187bee7` 已 completed/sealed/settled，报告单样本 HTTP409、Success=false；工具等 started 空转，被父级仅按精确 exe/UID/starttick/cmdline 与 pidfd 停止，actual exit15/EOF、176.151 秒。产品服务未被此操作终止。之后两次 TEMP 前置错误分别为只接受新素材201而拒绝合法去重200，以及将 Job 缺失的 `jobhost.ErrNotFound` 错认成 `sqlite.ErrNotFound`；失败全部保留，不计 PASS。实际新建 current SQLite 的只读 API fixture 独立确认了两种真实缺失 sentinel 后，仅修正 TEMP 工具，产品代码未变。
+
+修正后的明确同安装续办保持原 node `9493675d-4825-44c4-a76b-36bb6b094293`、install `e7e7f7c8-6904-4dbe-b687-cd933d06175e` 及卸载 op `94e23923-27d7-4895-89c3-4caeb22db646`；新 Job `2f1d83dc-8c7d-45ae-a0d2-1f1cd9435036` / Report `03ce53c9-2afe-4b33-8b6e-c1174cc53ff5` 只在实际 repository 证明不存在后提交一次。1 个 loopback Mock 请求、Provision0/Upgrade0，忙拒绝时原 PID 和请求保持，随后 completed/sealed/settled，未知 sentinel 在删除前拒绝并保留，仅移除已核自建 sentinel 后沿同 op 完成卸载及幂等重放。数据/typed 文档、原失败报告完整 SHA、r2 ledger 全部文件事实、身份/配对/内容/账号/两锁均保留；没有重置或迁移数据库。
+
+实际父/child exit0、EOF、1.233 秒（Go 测试1.17秒）；所有业务、保留、unit_removed、tcp_closed、idempotent 断言为 true，父级额外 systemctl 确认 MainPID0/not-found/inactive。工具根 `E:/TEMP/llm-stage-c-uninstall-amd64-r3-b291ee1f02ee4c7ea7e54e2a2f856e5e/`：helper SHA `ae804c2cc8cbeb28124748fcb2714763ef886476e63059d8b9405bac2d31f1cc`，输入 SHA `a5758c3c6e890577dfe71a6e18ed39a829b405b86b8bd7053b4717cca19c4abd`，`amd64-r4-controller.safe.json` SHA `095088c809a8e74852030ce19132c3d6ab486d6ae10d4b723b051775e6e290e1`，stdout SHA `b778c14d5d468fdefa6fbf9056ba63d8ab0ad26d7dd7c134c3daab23ab7cad6b`、stderr 空。ARM64 对应实际卸载此时仍待执行，旧工具、卡、错误日志和 retained data 均保留。
+
+## 2026-10-17：R4 两出口已证与原节点未确认
+
+Python control 为直连，原 Go Core 继承本机 HTTP/HTTPS 环境代理，导致第一轮本地 peer 不同；只在新的验收子进程中移除代理变量后，本地 peer 匹配，父进程/系统/生产代码未改。第二轮随后拒绝跨 Job 的原始 body SHA；当前及 R8 源码的 `newFixedPerformancePrompt` 逐字相同，按既定设计每 Job 生成独立 `r`＋32hex 前缀，再拼固定31个 ` test`。旧已删除 capture 无法回溯，第二轮不被追认为仅 nonce 差异或成功。
+
+v3 coordinator SHA `edb3e064d51a19b5404a93f7a0f82ee845f2e6588aa044069c45ec6881430436`，EXE 保持 `d4d232aecc7dd8e18a0753db1627c215203fc3e9b0636301b69a8013cdd6041b`；严格拒绝重复/额外字段和其它业务差异，只规范化上述唯一32hex。各 role 分列 raw/business SHA、nonce_rule_matched 和实际 wire 是否相同。实际 local Job `e4f360d8-009e-4f76-8153-fe341b685de0` / Report `519ef3fd-24cd-4609-ba99-e5393a84bea2`，新节点 Job `8a6027c8-815f-42c7-877b-5ca2c1bc8259` / Report `2fd30939-03de-47f6-8275-4d56dae76f04` 均完成1/1，原归档来源及peer分别匹配本地与新节点预检。两份 business SHA 同为 `cf710e45b401b2896c6ee83ceb812e886aedd16bc4cdc5e6f13a4d38859272b3`，raw SHA 不同，明确不要求 wire 原字节相同。
+
+原节点 Job `7e83fe38-7ec1-43ac-ba61-320955caaa88` 在原120秒测量预算未完成；实际3次Launch、总143.017秒、child exit1/EOF，capture仅5条（3 control＋local/新节点），目标DELETE204/GET404清理确认。安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-_fygnh9w/egress-webhook.safe.json` SHA `ce14e574708ccf5509d9bc27079b8b30b2082f64d98f025d48b5f6e8db594614` 保持false。关闭的本地 workspace 显示原 slow Submission pending/revision17、末次 observation=not_found、receipt=null，无该ID的本地镜像/执行行和控制记录；revision17不是Submit次数，末次404不证明请求从未或以后不能被接收。App关闭后没有自动重提，后续仅原ID只读核查，尚未取消或新增任务。此轮没有访问用户付费渠道。
+
+后续仅一次原 ID 审计已经执行：wrapper SHA `304c39d5c559572e81020229538e5ddb25431c6b8c0394297722be6f161120cc`，EXE SHA `ff174e0341996a5246438cbca853a79b473c46220c96e95876dd0238bf4da2a7`，actual exit0/EOF，Go 观察耗时2.483秒。原节点身份校验通过，healthy/ready、active/queued/pending 均0，原 Job 当前 not_found；received_unknown=true、R4_pass=false。只读本地源 hash 不变，无 App/Manager/worker、Submit/Command/provider，token reader 与管理连接均关闭。显式 Probe1/GetJob1 不包含建连本身的 Info GET，不能称线上仅2个请求。父级据工具实际输出保存的安全投影为 `C:/Users/894/AppData/Local/Temp/llm-r4-egress-fixture-abd6821d/original-slow-audit-observed-20261017-548d.safe.json`，并非另造原始日志。没有取消、删除或重提该任务，也不由当前404证明从未发送；原R4失败保持。
+
+## 2026-10-17：当前 CLI 的 ARM64 卸载与受控 VM 收尾
+
+本次独立 fresh ARM64 TCG VM，Ubuntu/systemd，boot `e5e1020e-ea62-4b6c-a619-9fbeb598d043`。先前只读控制器将 SSH session/系统检查异常折叠成 booting；两次失败诊断分别保留。最终只读实证 session 建立32.001秒、cloud-init CLI 21.648秒（exit0/done），原4/15秒及3/15秒预算确实不足；sudo/systemctl各exit0约0.4秒。扩大仅验收工具的预算后，实际 fresh facts 通过，形成独立真实 ready 证据；临时诊断门均明确 ready=false、按原inode/hash移除，未将其冒充ready。未修改产品超时、运行中的控制器源码或共享服务器。
+
+现 runner artifact SHA `17298d870b861b2718ef390eb7f501cf823a9d798d65e8be10405f47c95bb213`，native helper SHA `8bbf0d176e29594660ca804500847d920397eb431f8c46e7c522693a4968e782`，输入 SHA `89506d12c11d2794f29e436d66c957fe332e38c1edc7355ed4689d3dee592332`。所有文件先核root所有、mode、nlink1、SHA/size及精确三文件清单才执行一次。实际 Node `ae20c2d0-b4f5-4430-ad5c-df83d98e17e3`、Installation `a0ed3b35-3770-46fd-b83e-d5340728ad7d`，Provision op `524ae8e5-2fda-4a22-8ecd-a811f2da1399`、uninstall op `0a87830e-9ed9-420c-b858-03ff7e286092`，Job `c0151398-cd50-4c03-b1f3-a3d385685622`。Report `ede5c96f-a908-43fb-aa7d-5c8aea8c1cfd` 来自冻结输入的prepared.ReportID及typed结果/归属验证，stdout直接记录的是JobID，未声称stdout单独记录ReportID。
+
+唯一 Provision1、loopback Mock1、外部付费0：busy拒绝时原PID与held请求保持，随后completed/sealed/settled、未知sentinel删除前拒绝，沿同op卸载成功，业务/typed文档/配对/内容/账户/两锁保留，unit removed/TCP closed以及幂等均true。fresh无旧失败结果，continuation/original_result_retained=false是该范围不适用，不能与AMD64续办要求混淆。Go Windows41732/Python30444/native ARM1702实际全部exit0，SSH及两个OS管道EOF完整、资源closed。bridge153.892秒、native101.85秒；控制器终态里的累计elapsed为该控制器生命周期，不是这次bridge执行时长。
+
+证据根 `E:/TEMP/llm-c-arm64-once-bridge-ae3258b28c06492c9aaf41c7d923ddae/`：`C-ARM64-evidence.safe.json` SHA `47a562fc964373931d0e3ccc377f62028ae4c61b57d331cb58d253e567414ea5`；`final-execution-receipt.safe.json` SHA `2771290d09d00391c3f3891a96bd5920023d12187f056a55898bd1c476171a7d`；bridge receipt SHA `ee574aad660b4c3d1f959072e442c4bd86619734f9c75e17c15d6efd4c5fac9f`；native stdout SHA `83c50ed76fb81fe178587dde7bdf9b968328c836ddf2eaeb8aee04349e517b57`，stderr空。
+
+卸载通过后才停止本次受控VM。Linux QEMU691/start704及Windows controller57288/launcher60600/Go41732/Python30444均gone，launcher exit0，cleanup_confirmed=true，原只读backing SHA不变；`vm-stop-control.safe.json` SHA `ab0afc38c7fd76a55ecb2ce844980a6dd48bc199b83026601e16c6e9ef32bd29`。overlay136970240字节、vars/seed及全部失败/成功证据保留。这是完整虚拟ARM64系统中的当前CLI实跑，既非物理ARM64，也非仅以QEMU关机代替卸载；没有重跑旧Job或改变原失败结论。
+
+## 2026-10-17：当前提交 Windows 交付包
+
+当前代码 commit `02b60cccfd5518c04a6882658c9fa0aab675e6f1` 重新生成 Windows production 包，Wails CLI 与模块均2.15.0，AppVersion配置为 `remote-execution-02b60cc`；实际构建 exit0、21.014秒，frontend tsc/Vite 与 Go/Wails 完成。构建前后2021个tracked文件逐项SHA，仅父级正在整理的4docs发生预期变化，其余代码/依赖0漂移，6个生成binding字节相同，go.mod/sum保持。没有因CLI生命周期改动重复已通过的758项FE测试；新EXE未启动GUI，旧原生观察不移记到新包。
+
+产物根 `E:/TEMP/llm-native-final-02b60cc-a697f018883d49c197e32f9ea1c7664d/`：EXE27106816字节、SHA `94fcf1d3f85d54cd71f174b2572781f56388b82d9503573b15824d2a168ca6a3`；exe-only ZIP9538456字节、SHA `98a257d472dea8ed2810c6f2ecdc40b67e40cfac31280408e2173db50e805410`，唯一entry的stream SHA核对为同一EXE。`final-native-package.safe.json` SHA `1b8c4ae97fa5eb0145e8b1b9fc0374d38ea5adc4b4c0d9f1b062b098e81fc11b`。
+
+`Launch-verified-test-profile.cmd` SHA `dbdbbc7493b4bf0c45c9b9355f79d72958b23d648a1d5113df0f8d135db827c4`，只引用原 `b03e350` 已验证隔离profile的两个绝对路径，启动目标为本新EXE。准备期间没有读取或复制数据库/凭据，脚本没有执行。真正用户APPDATA保持原格式，仍需显式升级后才能作为默认路径使用；当前源码未增加runtime迁移或历史格式fallback。新包没有公开发布，原生已配置节点点击/三尺寸/主题以及此前G07未实测范围仍明确保留。

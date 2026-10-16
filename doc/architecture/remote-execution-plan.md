@@ -624,3 +624,7 @@ R13实际APPDATA路径的临时切换、当前DesktopApp Core读取和原文件�
 ### 2026-10-17 阶段 C 管理员卸载实现
 
 当前 `uninstall` / `recover-uninstall` 使用单一严格合同，以 operation、节点、安装和实际 build 绑定操作；同 operation 可续办，删除开始前可显式恢复，删除开始后仅能继续。实现保留业务状态、身份、配对、内容、备份、账户与原锁 inode，仅逐项移除冻结清单内程序及受管 unit；成功 tombstone 阻止 Provision/Upgrade 自动复活。未知 loaded-service/drop-in/文件、不可确认的初始 API 或未 settled 数据均拒绝。Win/Linux 包测试、vet、故障 fixtures 和独立审查通过；此时尚未执行双架构真实 systemd 卸载，不将实现或桌面配置删除写作实机验收通过。
+
+随后自建 WSL amd64 的真实 watchdog 和实际卸载均已完成：一次 SIGSTOP 后由 systemd watchdog 自动重启，原身份及业务表保持；同安装续办以一个 loopback 请求证明 busy 拒绝、settled 后卸载、未知 sentinel 保护、业务/旧报告/账户/锁保留及 same-op 幂等，实际 exit0/EOF。TEMP Mock 路径、资产去重状态和错误 sentinel 的失败均保留，产品代码没有为工具错误放宽。
+
+R4 已取得本地和新节点的同业务配置、归档与实际出口证明；原节点的唯一原 Job 在120秒内未完成，后续只读核查仍 not_found，接收未确认且节点空闲健康，不重提或改判整个三方验收通过。随后新建完整ARM64 VM也完成当前CLI的单次Provision、单Mock busy/settled/卸载/保留/幂等，实际exit0/EOF；153.892秒bridge、101.85秒native，之后安全停VM并留盘。原生配置点击及其余已有验收边界继续按当前状态列出，文件/媒体/native_case仍暂缓。

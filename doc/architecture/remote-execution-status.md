@@ -7,8 +7,8 @@
 | 验证范围 | 结果 |
 | --- | --- |
 | 两台实际 amd64 节点 | 安装或复用、默认位置切换、共享任务执行通过；新节点 SSH 吞吐实测约 8–11 MiB/s。 |
-| ARM64 | 完整 ARM64 系统模拟环境中的安装、启动与任务执行通过；不属于物理 ARM64 机器验收。 |
-| 保活与故障 | 启动失败限速及恢复通过；在途强杀后原任务封存为 `runner_interrupted`，请求数保持 1→1。 |
+| ARM64 | 完整 ARM64 系统模拟环境中的安装、启动与任务执行通过；当前 CLI 的忙拒绝、卸载、保留及幂等也已实跑通过。不属于物理 ARM64 机器验收。 |
+| 保活与故障 | 启动失败限速及恢复通过；在途强杀后原任务封存为 `runner_interrupted`，请求数保持 1→1；自建 WSL 节点的真实 watchdog 超时及自动恢复已由只读补证确认。 |
 | 全入口 | 两 Suite 的 Plan、Comparison、预热＋爬坡、预热＋容量阶梯在客户端实际退出后继续；报告由独立进程和重开客户端读回。 |
 | 共享与重连 | 两个实际客户端构建双向提交通过；离线原命令持久化，恢复后由原 worker 投递一次并确认。 |
 | 历史与凭据 | 原 13 个任务已完整续传；原生窗口显示 63 条历史运行；真实 Windows OSStore 跨进程保存、读取及测试凭据清理通过。 |
@@ -28,8 +28,8 @@
 
 ## 保留的验收边界
 
-- R4 的同一冻结输入与三方 source IP 对照尚未通过。原临时公网端口的三路 TCP 超时记录保留，不能定位具体拦截位置。后续受控 HTTPS 目标的本地、两节点预检均成功且观察到不同出口；本地 Core 单请求任务成功，但其实际出口与 Python 预检不一致，工具在提交两远程任务前拒绝继续。原 Job 已完成，目标资源已删除确认，仍需查明请求路径差异后完成三任务对照。
-- 阶段 C 的管理员 CLI `uninstall` / `recover-uninstall` 已实现并通过 Win/Linux 合同、故障及 SQLite 测试和独立审查；两架构实际 systemd 卸载验收尚待执行。卸载保留业务数据、身份、配对、内容、备份及服务账户，只删除明确归属的受管程序和 unit；桌面移除配置不代替该操作。
+- R4 已证明本地与新节点的同一冻结业务配置、实际归档及不同出口；原节点的任务在 120 秒预算内未完成。随后唯一原 ID 只读核查显示节点 healthy/ready、active/queued/pending 均 0，原 Job 仍 not_found、接收未确认，整体三方对照未通过。测试仅规范化当前设计要求的每 Job 随机 prompt 前缀，其余业务字段严格一致，不声称 wire 原字节相同。原 TCP、代理路径和错误原始字节比较造成的工具失败全部保留，受控 HTTPS 目标均已删除确认。
+- 阶段 C 的管理员 CLI `uninstall` / `recover-uninstall` 已实现并通过 Win/Linux 合同、故障及 SQLite 测试和独立审查。自建 WSL amd64 与新建 ARM64 完整 VM 的实际 busy 拒绝、settled 后卸载、数据保留及幂等均通过；ARM64 单 Provision1/Mock1、实际 exit0/EOF，VM 已安全停止并保留证据。卸载保留业务数据、身份、配对、内容、备份及服务账户，只删除明确归属的受管程序和 unit；桌面移除配置不代替该操作。
 - R11 本轮选定的未知节点、字段类型、任务能力、观察生命周期及文档边界已补齐 T0 验证；文件声明随既定文件范围暂缓。最大文档的有效实体、预留预算的损坏拒绝和 HTTP 编码层证据分别记录，平台与运维实跑仍保留在矩阵 G07，详见[契约矩阵](remote-execution-contract-matrix.md)。
 - 用户 Esc 停止界面自动化后，已配置节点的原生点击切换、三种窗口尺寸及主题未继续补验；已有组件和空节点面板验证不代替这些交互。
 - 云端 CI 和发布工作流未运行，未推送或发布。
@@ -37,12 +37,12 @@
 
 ## 本地测试产物
 
-Wails CLI/模块固定 2.15.0。EXE：`E:/TEMP/llm-native-b03e350-cdf42c78e4af456ea8157b98be64080a/llm-test-studio.exe`，SHA-256 `25e4ef6410fcccf9fb65b9f0989a41898472ce9b60165188c6d9e2afdfdcef19`。
+当前代码 `02b60cc` 的 Windows 正式构建已通过，Wails CLI/模块固定 2.15.0。EXE：`E:/TEMP/llm-native-final-02b60cc-a697f018883d49c197e32f9ea1c7664d/llm-test-studio.exe`，SHA-256 `94fcf1d3f85d54cd71f174b2572781f56388b82d9503573b15824d2a168ca6a3`。新包只完成构建，没有启动 GUI；此前63条历史的原生观察仍对应旧 `b03e350` 包。
 
-同目录 ZIP：`llm-test-studio-b03e350-windows-amd64.zip`，SHA-256 `354ddbe353c3c5635c983a676ed652e3fe01c37f2ee50f529ac28da330dea5f4`。历史原生验收使用独立 APPDATA 字节副本；该 EXE-only ZIP 不包含用户数据库或凭据。
+同目录 ZIP：`llm-test-studio-02b60cc-windows-amd64.zip`，SHA-256 `98a257d472dea8ed2810c6f2ecdc40b67e40cfac31280408e2173db50e805410`；唯一 entry 的流式 SHA 与新 EXE 相同。EXE-only ZIP 不包含数据库或凭据，也未推送或发布。
 
-已验证的隔离历史 profile 保留在同目录 `appdata`，对应的 `LOCALAPPDATA` 为同目录 `localappdata`；原生验收只对子进程设置这两个环境目录。直接使用默认用户目录启动仍会遇到已明确列出的旧格式限制，测试包不代表用户库已永久升级。
+已验证的隔离历史 profile 仍保留在旧目录 `E:/TEMP/llm-native-b03e350-cdf42c78e4af456ea8157b98be64080a/` 的 `appdata` 与 `localappdata`。直接使用默认用户目录启动仍会遇到已明确列出的旧格式限制，测试包不代表用户库已永久升级。
 
-同目录另备 `Launch-test-profile.cmd`，仅为启动的子进程设置上述两个隔离目录，便于本机打开已验证的历史副本。脚本已准备，本轮未执行；EXE 与 ZIP 内容不变。
+新包目录另备 `Launch-verified-test-profile.cmd`，仅为新 EXE 的子进程设置上述旧目录中的两个隔离路径，便于本机打开已验证的历史副本；没有复制 profile 或凭据。脚本只准备、未执行，不能当作新包原生验收。
 
 完整证据、转换工具保留位置和早期失败记录见[验证记录](remote-execution-validation.md)，原验收矩阵见[实施计划](remote-execution-plan.md)。
