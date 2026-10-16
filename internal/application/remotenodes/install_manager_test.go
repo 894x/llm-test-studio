@@ -29,7 +29,7 @@ func TestManagerResolvesLostInstallAcknowledgmentBeforeBinding(t *testing.T) {
 		},
 		operation: func(context.Context, string) (runnerinstall.Operation, error) { return receipt, nil },
 		cleanup: func(ctx context.Context, directory string) error {
-			if directory != "/var/tmp/llm-test-runner-bootstrap.ABCDE12345" {
+			if directory != remotessh.BootstrapDirectory(receipt.Request.OperationID) {
 				return remotessh.ErrIntegrity
 			}
 			cleaned = true
@@ -46,7 +46,7 @@ func TestManagerResolvesLostInstallAcknowledgmentBeforeBinding(t *testing.T) {
 			Runner: fixturePairing(t, node, identity).Runner, ListenPort: identity.ListenPort, ObservedAt: fixture.now}
 		receipt = runnerinstall.Operation{Request: request, Stage: "completed", ChangedAt: fixture.now, Result: &result}
 		return runnerinstall.Result{}, &remotessh.ProvisionError{OperationID: request.OperationID,
-			TemporaryDirectory: "/var/tmp/llm-test-runner-bootstrap.ABCDE12345", CleanupPending: true,
+			TemporaryDirectory: remotessh.BootstrapDirectory(request.OperationID), CleanupPending: true,
 			Cause: remotessh.ErrConnection}
 	}
 	if err := manager.Check(context.Background(), node.ID, node.Revision); !errors.Is(err, remotessh.ErrConnection) {
@@ -91,6 +91,7 @@ func TestManagerRetryQueuesAnotherCheckWhileOldSessionIsClosing(t *testing.T) {
 	if err := fixture.service.RecordInstallation(context.Background(), InstallationCommand{
 		ID: node.ID, ExpectedRevision: node.Revision, Installation: Installation{
 			Request: request, Release: "v-fixture", Arch: "amd64", Stage: "service", ErrorCode: "runner_installation_failed",
+			TemporaryDirectory: remotessh.BootstrapDirectory(request.OperationID),
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -160,7 +161,7 @@ func TestManagerRetriesPartialInstallationWithExistingIdentityAndSameRequest(t *
 	request.ArtifactSHA256 = artifact.Entry.SHA256
 	_ = artifact.Close()
 	attempt := Installation{Request: request, Release: "v-fixture", Arch: "amd64", Stage: "service",
-		ErrorCode: "runner_installation_failed"}
+		ErrorCode: "runner_installation_failed", TemporaryDirectory: remotessh.BootstrapDirectory(request.OperationID)}
 	if err := fixture.service.RecordInstallation(context.Background(), InstallationCommand{
 		ID: node.ID, ExpectedRevision: node.Revision, Installation: attempt,
 	}); err != nil {
@@ -216,7 +217,7 @@ func TestManagerDoesNotBindHealthyDaemonUntilOwnFailedInstallIsResolved(t *testi
 	if err := fixture.service.RecordInstallation(context.Background(), InstallationCommand{
 		ID: node.ID, ExpectedRevision: node.Revision,
 		Installation: Installation{Request: request, Release: "v-fixture", Arch: "amd64", Stage: "verifying",
-			ErrorCode: "runner_installation_failed"},
+			ErrorCode: "runner_installation_failed", TemporaryDirectory: remotessh.BootstrapDirectory(request.OperationID)},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +256,7 @@ func TestManagerKeepsInstallCleanupFactsByRejectingConcurrentEdit(t *testing.T) 
 		case <-ctx.Done():
 		}
 		return runnerinstall.Result{}, &remotessh.ProvisionError{OperationID: request.OperationID,
-			TemporaryDirectory: "/var/tmp/llm-test-runner-bootstrap.ABCDE12345", CleanupPending: true,
+			TemporaryDirectory: remotessh.BootstrapDirectory(request.OperationID), CleanupPending: true,
 			Cause: remotessh.ErrConnection}
 	}}
 	manager := managerFixture(t, fixture, remote)
@@ -328,10 +329,9 @@ func TestManagerSerializesRecoveryWithOtherManagerRetryAndRefreshesCleanupFacts(
 	request := runnerinstall.Request{Contract: jobcontract.CurrentContract, OperationID: fixtureID(t),
 		ArtifactSHA256: artifact.Entry.SHA256, ListenPort: 44917}
 	_ = artifact.Close()
-	oldDirectory := "/var/tmp/llm-test-runner-bootstrap.ABCDE12345"
-	newDirectory := "/var/tmp/llm-test-runner-bootstrap.FGHIJ67890"
+	directory := remotessh.BootstrapDirectory(request.OperationID)
 	attempt := Installation{Request: request, Release: "v-fixture", Arch: "amd64", Stage: "verifying",
-		ErrorCode: "runner_installation_failed", TemporaryDirectory: oldDirectory, CleanupPending: true}
+		ErrorCode: "runner_installation_failed", TemporaryDirectory: directory, CleanupPending: true}
 	if err := fixture.service.RecordInstallation(context.Background(), InstallationCommand{
 		ID: node.ID, ExpectedRevision: node.Revision, Installation: attempt,
 	}); err != nil {
@@ -377,7 +377,7 @@ func TestManagerSerializesRecoveryWithOtherManagerRetryAndRefreshesCleanupFacts(
 	) (runnerinstall.Result, error) {
 		provisions.Add(1)
 		return runnerinstall.Result{}, &remotessh.ProvisionError{OperationID: request.OperationID,
-			TemporaryDirectory: newDirectory, CleanupPending: true, Cause: remotessh.ErrConnection}
+			TemporaryDirectory: directory, CleanupPending: true, Cause: remotessh.ErrConnection}
 	}}
 	otherManager, err := NewManager(context.Background(), ManagerDependencies{
 		Configuration: otherService, Artifacts: source, Release: "v-fixture",
@@ -395,8 +395,8 @@ func TestManagerSerializesRecoveryWithOtherManagerRetryAndRefreshesCleanupFacts(
 		recovered <- err
 	}()
 	select {
-	case directory := <-entered:
-		if directory != oldDirectory {
+	case recoveredDirectory := <-entered:
+		if recoveredDirectory != directory {
 			t.Fatal("recovery did not start with its persisted directory")
 		}
 	case <-ctx.Done():
@@ -421,7 +421,7 @@ func TestManagerSerializesRecoveryWithOtherManagerRetryAndRefreshesCleanupFacts(
 		t.Fatal(err)
 	}
 	current := config.Nodes[0].Installation
-	newCleanupRetained := current.CleanupPending && current.TemporaryDirectory == newDirectory &&
+	newCleanupRetained := current.CleanupPending && current.TemporaryDirectory == directory &&
 		current.ErrorCode == "remote_connection_failed"
 	if provisions.Load() != 1 || !newCleanupRetained {
 		t.Fatal("retry lost its new cleanup facts")
@@ -429,7 +429,7 @@ func TestManagerSerializesRecoveryWithOtherManagerRetryAndRefreshesCleanupFacts(
 	if _, err := manager.resolveInstallation(ctx, staleNode, recovery); err != nil {
 		t.Fatal(err)
 	}
-	if directory := <-entered; directory != newDirectory {
-		t.Fatal("recovery reused a stale directory instead of reading the locked node")
+	if recoveredDirectory := <-entered; recoveredDirectory != directory {
+		t.Fatal("recovery did not retain the operation's original bootstrap directory")
 	}
 }

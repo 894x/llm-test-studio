@@ -13,6 +13,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
+	remotessh "github.com/894x/llm-test-studio/internal/remote/ssh"
 	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
 
@@ -158,6 +159,7 @@ func TestInstallationRetryCannotChangeRequestUnderSameOperationID(t *testing.T) 
 		Contract: jobcontract.CurrentContract, OperationID: fixtureID(t),
 		ArtifactSHA256: strings.Repeat("c", 64), ListenPort: 44917,
 	}, Release: "fixture", Arch: "amd64", Stage: "uploading"}
+	attempt.TemporaryDirectory = remotessh.BootstrapDirectory(attempt.Request.OperationID)
 	command := InstallationCommand{ID: node.ID, ExpectedRevision: node.Revision, Installation: attempt}
 	if err := fixture.service.RecordInstallation(ctx, command); err != nil {
 		t.Fatal(err)
@@ -170,5 +172,46 @@ func TestInstallationRetryCannotChangeRequestUnderSameOperationID(t *testing.T) 
 	command.Installation.Request.ArtifactSHA256 = strings.Repeat("d", 64)
 	if err := fixture.service.RecordInstallation(ctx, command); !errors.Is(err, ErrConflict) {
 		t.Fatal("uncertain retry accepted a different artifact")
+	}
+	for _, mutate := range []func(*Installation){
+		func(value *Installation) { value.TemporaryDirectory = "" },
+		func(value *Installation) { value.TemporaryDirectory = remotessh.BootstrapDirectory(fixtureID(t)) },
+		func(value *Installation) { value.Request.OperationID = fixtureID(t) },
+	} {
+		command.Installation = attempt
+		mutate(&command.Installation)
+		if err := fixture.service.RecordInstallation(ctx, command); !errors.Is(err, ErrConflict) {
+			t.Fatal("installation retry replaced its original operation or bootstrap path")
+		}
+	}
+}
+
+func TestConfigurationRejectsSupersededOrMismatchedBootstrapPathsWithoutMutation(t *testing.T) {
+	fixture := newNodeFixture(t)
+	fixture.save(t, passwordCommand(t))
+	config, err := fixture.store.Read(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := runnerinstall.Request{Contract: jobcontract.CurrentContract, OperationID: fixtureID(t),
+		ArtifactSHA256: strings.Repeat("c", 64), ListenPort: 44917}
+	for _, directory := range []string{"", "/var/tmp/llm-test-runner-bootstrap.ABCDE12345",
+		remotessh.BootstrapDirectory(fixtureID(t))} {
+		config.Nodes[0].Installation = &Installation{Request: request, Release: "fixture", Arch: "amd64",
+			Stage: "uploading", TemporaryDirectory: directory, CleanupPending: true}
+		document, err := json.Marshal(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fixture.store.path, document, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fixture.store.Read(t.Context()); !errors.Is(err, ErrInvalid) {
+			t.Fatal("configuration accepted a missing, superseded or mismatched operation path")
+		}
+		after, err := os.ReadFile(fixture.store.path)
+		if err != nil || string(after) != string(document) {
+			t.Fatal("rejected historical data was changed during configuration read")
+		}
 	}
 }

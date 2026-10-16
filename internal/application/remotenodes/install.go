@@ -36,7 +36,7 @@ func (manager *Manager) resolveInstallationLocked(ctx context.Context, node Node
 		if err := session.CleanupBootstrap(ctx, attempt.TemporaryDirectory); err != nil {
 			return node, err
 		}
-		attempt.TemporaryDirectory, attempt.CleanupPending, changed = "", false, true
+		attempt.CleanupPending, changed = false, true
 	}
 	if attempt.Stage != "completed" || attempt.ErrorCode != "" {
 		operation, err := session.Operation(ctx, attempt.Request.OperationID)
@@ -139,6 +139,10 @@ func (manager *Manager) installLocked(
 	if !validArtifact {
 		return runnerartifacts.ErrIntegrity
 	}
+	// This intent must be durable even if the process dies before mkdir returns.
+	// Every retry retains the operation and its one exact bootstrap path.
+	attempt.TemporaryDirectory = remotessh.BootstrapDirectory(attempt.Request.OperationID)
+	attempt.CleanupPending = true
 	if err := manager.recordInstallation(ctx, node, attempt); err != nil {
 		return err
 	}
@@ -186,7 +190,7 @@ func (manager *Manager) installLocked(
 	}
 	if provisionErr == nil {
 		attempt.Stage, attempt.ErrorCode = "completed", ""
-		attempt.TemporaryDirectory, attempt.CleanupPending = "", false
+		attempt.CleanupPending = false
 		return manager.recordInstallation(ctx, node, attempt)
 	}
 	attempt.ErrorCode = installationCode(provisionErr)
@@ -197,7 +201,14 @@ func (manager *Manager) installLocked(
 	}
 	var provision *remotessh.ProvisionError
 	if errors.As(provisionErr, &provision) {
-		attempt.TemporaryDirectory, attempt.CleanupPending = provision.TemporaryDirectory, provision.CleanupPending
+		validOwnership := provision.OperationID == attempt.Request.OperationID &&
+			provision.TemporaryDirectory == attempt.TemporaryDirectory
+		if validOwnership {
+			attempt.CleanupPending = provision.CleanupPending
+		} else {
+			provisionErr = errors.Join(provisionErr, remotessh.ErrIntegrity)
+			attempt.ErrorCode = installationCode(remotessh.ErrIntegrity)
+		}
 	}
 	confirm, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()

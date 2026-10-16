@@ -157,7 +157,7 @@ Windows 与 Ubuntu 24.04 WSL 的 remotenodes 共 27 项普通测试通过，实�
 
 显式 TestLiveNodeManagerPairsIndependentClientsAndReusesSavedBinding 在用户 amd64 节点通过，耗时 21.75 秒。两套独立临时配置与内存凭据分别完成共享配对、保存远程默认和使用保存授权重连；均回读 node_id `55e50d9b-b900-4b5e-9fb6-c4fee2bc17be`、installation_id `2ec0bac4-20bc-4765-b256-cad839f1c5a1`、版本 `remote-install-3fdc7b4-fixed` 与实际构建 `9f59901c370b279208269d3a4ec14e3efca528d1feddb992ba4f046aba44ce38`。该测试没有产物来源，未安装、升级或调用提供商，也未验证实际 OS Store 和桌面 UI。
 
-nodes.json 的当前 Installation 增加必填 temporary_directory 与 cleanup_pending；所有当前生产者、校验器和测试同步更新，缺字段旧格式仍明确拒绝且不修改数据，不新增历史读取路径。此前未创建实际用户 nodes.json，本阶段只使用临时配置，没有历史数据转换，没有改变 SQLite 或报告格式。桌面 bootstrap 的持久目录、OS Store 装配、UI、任务入口和结果同步仍待实现；进程强杀期间尚未回传的上传暂存目录追踪和显式升级继续后续验证，不能把本阶段视为最终远程 K3 e2e。
+nodes.json 的当前 Installation 增加必填 temporary_directory 与 cleanup_pending；所有当前生产者、校验器和测试同步更新，缺字段旧格式仍明确拒绝且不修改数据，不新增历史读取路径。此前未创建实际用户 nodes.json，本阶段只使用临时配置，没有历史数据转换，没有改变 SQLite 或报告格式。后续已补齐进程强杀前的暂存目录追踪，见下方独立记录；显式升级与最终远程 K3 e2e 仍需分别验证。
 
 ## 2026-10-16：桌面节点服务生产装配
 
@@ -352,3 +352,11 @@ SQLite Create 同 ID 同内容返回原 confirmed/rejected，改变命令或终�
 Windows 全仓 go test ./...、go vet ./... 通过，最终相关五包控制回归与 vet 通过。Ubuntu 24.04 WSL 对控制存储/旧格式保留、三种实际 Core 的 HTTP 控制、后台调度、本地 Backend 和生产关闭各重复三轮通过；新增两个 HTTP 客户端、两个 SQLite 连接同时重传的测试在 Windows/Linux 各三轮通过，只有一个节点决策。三种任务分别验证离线保存、两次重开、控制 ACK 截断、节点完成后同 ID 重传，不增加 Mock 渠道请求。维护为实际 Host 暂停，构建变化仍通过 Probe 端口模拟，不能当作物理升级证据。两项只读复核无阻塞项。
 
 新增当前表与索引改变共享 SQLite schema checksum，桌面和 runner 的历史数据库都需显式转换；正常打开拒绝旧格式且不修改拒绝文件。实际用户数据库、物理节点未变更，历史转换工具未创建或执行；真实 K3 兼容性与最小性能 e2e 尚未执行。
+
+## 2026-10-16：安装暂存目录在远端创建前持久化
+
+安装暂存目录改为唯一当前的 `/var/tmp/llm-test-runner-bootstrap.<operation_id>`。Manager 在创建远端目录或上传前持久化原操作、确切路径及待清理责任；确认丢失和进程强杀后，重开配置先恢复同一路径，再查询原安装日志。成功清理保留路径事实并清除待清理标记。重试不能更换请求或路径，已有目录不能直接复用上传。
+
+恢复仅清理已记录的确切私有命名空间，先校验 root 所有权、0700 目录、普通私有文件、文件数量及大小，未知内容、符号链接和特殊权限明确拒绝。旧十位临时目录、缺少路径及路径与操作不符的配置均拒绝且保留原字节；没有双格式读取或自动转换。
+
+Windows SSH/remotenodes 两包完整测试通过；交叉编译后 Ubuntu 24.04 WSL root 两包完整测试通过。新增验证使用真实子进程 Process.Kill、重开 FileStore、丢失 mkdir 回执、实际 SFTP partial 写入后断开 SSH、重连清理和同操作重试，持久化失败时没有远端 Provision。测试 SFTP fixture 仅在中断场景广告 fsync 能力以进入写入阶段，没有执行或声称 fsync 成功。未使用物理服务器或用户凭据，未改变 SQLite schema，实际节点升级与最终渠道测试另行记录。

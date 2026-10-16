@@ -192,10 +192,7 @@ func (node Node) Validate() error {
 		validStage := attempt.Stage == "uploading" ||
 			(runnerinstall.Progress{OperationID: attempt.Request.OperationID, Stage: attempt.Stage}).Validate() == nil
 		validError := attempt.ErrorCode == "" || attempt.ErrorCode == installationCode(installationCause(attempt.ErrorCode))
-		validCleanup := attempt.TemporaryDirectory == "" && !attempt.CleanupPending
-		if attempt.TemporaryDirectory != "" {
-			validCleanup = remotessh.ValidBootstrapDirectory(attempt.TemporaryDirectory)
-		}
+		validCleanup := attempt.TemporaryDirectory == remotessh.BootstrapDirectory(attempt.Request.OperationID)
 		validAttempt := validArtifact && validStage && validError && validCleanup
 		if !validAttempt || attempt.Request.Validate() != nil {
 			return ErrInvalid

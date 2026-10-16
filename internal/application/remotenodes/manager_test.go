@@ -300,6 +300,11 @@ func TestManagerInstallsOnceWithDurableStableOperationAndRecordsActualRunner(t *
 			t.Error("installation request changed after persistence")
 			return runnerinstall.Result{}, ErrInvalid
 		}
+		intent := config.Nodes[0].Installation
+		if intent.TemporaryDirectory != remotessh.BootstrapDirectory(request.OperationID) || !intent.CleanupPending {
+			t.Error("remote mutation preceded durable ownership of the exact bootstrap path")
+			return runnerinstall.Result{}, ErrInvalid
+		}
 		progress(runnerinstall.Progress{OperationID: request.OperationID, Stage: "checking"})
 		config, err = fixture.store.Read(ctx)
 		if err != nil || config.Nodes[0].Installation.Stage != "checking" {

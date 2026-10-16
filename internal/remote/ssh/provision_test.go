@@ -14,12 +14,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerinstall"
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
 const provisionOperationID = "55555555-5555-4555-8555-555555555555"
+
+func testBootstrapDirectory(t *testing.T) string {
+	t.Helper()
+	meta, err := domain.NewEntityMeta(time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return BootstrapDirectory(meta.ID)
+}
 
 func runnerMetadata() jobcontract.RunnerInfo {
 	return jobcontract.RunnerInfo{
@@ -89,10 +99,7 @@ func TestProvisionStopsBeforeExecutionWhenSFTPLacksDurableUpload(t *testing.T) {
 		t.Skip("private Unix staging modes")
 	}
 	peer := newTestPeer(t)
-	directory := bootstrapPrefix + rand.Text()[:10]
-	if err := os.Mkdir(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
+	directory := BootstrapDirectory(provisionOperationID)
 	t.Cleanup(func() { _ = os.Remove(directory + "/llm-test-runner"); _ = os.Remove(directory) })
 	program := []byte("non executable fixture for the network installation boundary")
 	digest := sha256.Sum256(program)
@@ -118,12 +125,14 @@ func TestProvisionStopsBeforeExecutionWhenSFTPLacksDurableUpload(t *testing.T) {
 				_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\n")
 				return
 			}
-			expected := "set -eu\numask 077\nmktemp -d " + bootstrapPrefix + "XXXXXXXXXX\n"
+			expected := "set -eu\numask 077\nmkdir -m 0700 -- " + directory + "\n"
 			if string(input) != expected {
 				status = 1
 				return
 			}
-			_, _ = io.WriteString(channel, directory+"\n")
+			if err := os.Mkdir(directory, 0700); err != nil {
+				status = 1
+			}
 		default:
 			status = 1
 		}
@@ -156,7 +165,7 @@ func TestBootstrapCleanupPreservesUnknownContentsAndRejectsPublicFiles(t *testin
 	}
 	peer := newTestPeer(t)
 	client := dialPeer(t, peer)
-	directory := bootstrapPrefix + rand.Text()[:10]
+	directory := testBootstrapDirectory(t)
 	if err := os.Mkdir(directory, 0700); err != nil {
 		t.Fatal(err)
 	}

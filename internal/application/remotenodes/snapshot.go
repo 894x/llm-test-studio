@@ -119,9 +119,12 @@ func (service *Service) RecordInstallation(ctx context.Context, command Installa
 		if operationID != command.ExpectedOperationID {
 			return ErrConflict
 		}
-		sameOperation := node.Installation != nil && operationID == command.Installation.Request.OperationID
-		if sameOperation && node.Installation.Request != command.Installation.Request {
-			return ErrConflict
+		if node.Installation != nil {
+			sameRequest := node.Installation.Request == command.Installation.Request
+			sameDirectory := node.Installation.TemporaryDirectory == command.Installation.TemporaryDirectory
+			if !sameRequest || !sameDirectory {
+				return ErrConflict
+			}
 		}
 		node.Installation = &command.Installation
 		config.Nodes[nodeIndex(*config, command.ID)] = node

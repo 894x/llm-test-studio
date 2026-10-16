@@ -86,28 +86,29 @@ func (client *Client) Provision(
 	if !supported || system.Arch != artifact.Arch {
 		return result, runnerinstall.ErrUnsupported
 	}
-	document, err := client.runScript(ctx, "set -eu\numask 077\nmktemp -d "+bootstrapPrefix+"XXXXXXXXXX\n")
-	if err != nil {
-		return result, err
-	}
-	directory := strings.TrimSuffix(string(document), "\n")
-	clear(document)
-	if !ValidBootstrapDirectory(directory) {
-		return result, ErrIntegrity
+	directory := BootstrapDirectory(request.OperationID)
+	// The caller persists this exact operation-derived path before provisioning.
+	// An existing directory must be recovered explicitly, never reused for upload.
+	if err := client.withSFTP(ctx, func(remote *sftp.Client) error {
+		if err := verifyParents(remote, directory); err != nil {
+			return err
+		}
+		if _, err := remote.Lstat(directory); !errors.Is(err, os.ErrNotExist) {
+			if err == nil {
+				return ErrExists
+			}
+			return ErrTransfer
+		}
+		return nil
+	}); err != nil {
+		return result, &ProvisionError{
+			OperationID: request.OperationID, TemporaryDirectory: directory, Cause: err,
+		}
 	}
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
-		err := client.withSFTP(cleanup, func(remote *sftp.Client) error {
-			// Only the generated program and its exact private directory are removed.
-			if err := remote.Remove(directory + "/llm-test-runner"); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return ErrTransfer
-			}
-			if err := remote.RemoveDirectory(directory); err != nil {
-				return ErrTransfer
-			}
-			return nil
-		})
+		err := client.CleanupBootstrap(cleanup, directory)
 		if runErr == nil && err != nil {
 			runErr = err
 		}
@@ -118,6 +119,11 @@ func (client *Client) Provision(
 			}
 		}
 	}()
+	document, err := client.runScript(ctx, "set -eu\numask 077\nmkdir -m 0700 -- "+directory+"\n")
+	clear(document)
+	if err != nil {
+		return result, err
+	}
 	if err := client.UploadNew(ctx, Upload{
 		Path: directory + "/llm-test-runner", Mode: 0700, Size: artifact.Size,
 		SHA256: artifact.SHA256, Source: artifact.Source,
@@ -161,18 +167,17 @@ func (client *Client) Provision(
 	return *output.result, nil
 }
 
+// BootstrapDirectory identifies the only staging path owned by an installation
+// operation. Persist it before any remote mutation, including directory creation.
+func BootstrapDirectory(operationID string) string {
+	if !domain.IsUUID(operationID) {
+		return ""
+	}
+	return bootstrapPrefix + operationID
+}
+
 func ValidBootstrapDirectory(name string) bool {
-	if !strings.HasPrefix(name, bootstrapPrefix) || len(name) != len(bootstrapPrefix)+10 {
-		return false
-	}
-	for _, character := range strings.TrimPrefix(name, bootstrapPrefix) {
-		letter := character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z'
-		digit := character >= '0' && character <= '9'
-		if !letter && !digit {
-			return false
-		}
-	}
-	return true
+	return strings.HasPrefix(name, bootstrapPrefix) && domain.IsUUID(strings.TrimPrefix(name, bootstrapPrefix))
 }
 
 // CleanupBootstrap removes only a reported installer staging directory. An SSH
@@ -194,7 +199,8 @@ func (client *Client) CleanupBootstrap(ctx context.Context, directory string) er
 			return ErrTransfer
 		}
 		stat, ok := info.Sys().(*sftp.FileStat)
-		private := ok && stat.UID == 0 && info.Mode().Perm() == 0700
+		permissions := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+		private := ok && stat.UID == 0 && permissions == 0700
 		if !private || !info.IsDir() {
 			return ErrInvalid
 		}

@@ -44,6 +44,7 @@ type testPeer struct {
 	stallKeepalive atomic.Bool
 	userKey        []byte
 	execute        func(string, cryptossh.Channel)
+	sftpSession    func(cryptossh.Channel)
 	stop           chan struct{}
 	wg             sync.WaitGroup
 }
@@ -157,6 +158,10 @@ func (peer *testPeer) channel(open cryptossh.NewChannel) {
 		}
 		if request.Type == "subsystem" && payload.Value == "sftp" {
 			_ = request.Reply(true, nil)
+			if peer.sftpSession != nil {
+				peer.sftpSession(channel)
+				return
+			}
 			server, err := sftp.NewServer(channel)
 			if err == nil {
 				defer server.Close()
