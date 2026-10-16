@@ -797,4 +797,22 @@ P2a独立1467e19f的49个Git blobs及source-freeze.git_blob已逐项核对并整
 
 主树核对Wails CLI v2.15.0后generate成功，生成上述两个绑定；完整FE49个test files/757 tests、测试tsc、lint与build均exit0。lint仍有既有2条set-state-in-effect warnings，build仍有大chunk提示，不写成无warnings。父级全仓 `go test ./... -count=1 -timeout=15m` 与 `go vet ./...` 在session23680真实exit0，总213.2087342s，HEAD/status前后保持clean cbef。630个Go/module加15个当前embed共645输入前后清单SHA同为 `3808c8ca5d6fffe71ace33de660e3ab5a956b335b07cac57e7311e45f7df870b`。
 
-完整证据根 `%TEMP%/llm-p2a-main-integration-cbef518-efc40a0bc2844165ab0210afda77b58e/`，integration-verification.safe.json SHA `b0ee6cf359d61640685ad8433e332e7bebfafd2f17520eaac12422614cb890c3`，frontend-verification.safe.json及wails/test/tsc/lint/build原日志保留。没有schema、actualDB或转换变更，也未验证native窗口/chooser、browser、物理节点或provider；fileLaunch仍在持久化/调用provider前拒绝。Stage、执行encoding/capture/wire metadata、KindPerformance.native_case、P3真实admission/pins/resolver与P4 manifest/release未实现；P3首片types/ports和16表SQL基础在别树实施，尚不能写为完成或给出current checksum。原r5仍false，全部历史失败和既有切换/恢复边界保持。
+完整证据根 `%TEMP%/llm-p2a-main-integration-cbef518-efc40a0bc2844165ab0210afda77b58e/`，integration-verification.safe.json SHA `b0ee6cf359d61640685ad8433e332e7bebfafd2f17520eaac12422614cb890c3`，frontend-verification.safe.json及wails/test/tsc/lint/build原日志保留。P2a没有schema、actualDB或转换变更，也未验证native窗口/chooser、browser、物理节点或provider；fileLaunch仍在持久化/调用provider前拒绝。Stage、执行encoding/capture/wire metadata、KindPerformance.native_case、P3真实admission/pins/resolver与P4 manifest/release未实现；P2a记录时P3首片types/ports和16表基础尚在别树，后续主整合见下节。原r5仍false，全部历史失败和既有切换/恢复边界保持。
+
+## 2026-10-16：P3 foundation 与冷查询已主整合，最终全仓验证通过
+
+foundation secondary `40b296eba383d839085453c5307f5b2d6adc1548` 已整合main `00b180269fdfe677f835c3c371eb896f04530095`；冷查询secondary `2193d753dc8ca6d6948268be088e30ceff8e5a5a` 已整合main `94f1b39f0f8e481a5047d37f406260628f0d0fef`。父级仅窄改snapshot测试import及两处Acceptance.ContentClaims=[]，定向1.707s PASS，review确认P3 AcceptJob和read helpers均保留。integration-provenance.safe.json核31个P3 blobs/9个cold纯文件0漂移，并复核repository_jobs.go与repository_job_page_snapshot_test.go两merge文件。
+
+P3的31文件包含严格FinalManifest/holding/release当前types、Ledger ports、空内容接收和16表/8显式索引基础。Acceptance.ContentClaims必显式非nil，当前仅[]可接受，非空claims/assets仍拒绝，不从metadata伪造physical pin。SQLite唯一current由ADC/56替换为 `1db91d4ba40e06d3b5d3a8a7730d5f57702d63f3c39cb3e4d3a80b678c64fa68`/80声明对象，version1/name0001_protocol_runtime不变；旧checksum正常运行时拒绝且保留数据，无历史decoder/自动迁移。Manager A、真实pins/permit、P2b另树开始，assets/fileLaunch、manifest/release执行与physicalManager仍false，无真实库切换或部署。
+
+`%TEMP%/llm-content-foundation-proof-a159c9face4242b0b1ffeed2030f2743/final-manifest.safe.json` SHA `2b0f8bc0c8b7eb1820f5b1e71df61126e350b38631e90be598f2422dc3a0fd18`明确：首轮SQLite全包203.386s对应source.before；随后repository_jobs.go/repository_content_test.go两文件将AcceptJob纯准备移回BeginTx外，仅做定向2.360s、JobHost1.529s、runnerhttp1.959s/vet及独立窄审，其余29文件不变。该旧full不冒称修订后full，修订后的完整证据由最终主树检查提供。
+
+冷查询11文件在同一只读TX捕获有界raw，关闭游标并归还pool1连接后才纯投影；确定性RED复现writer1秒timeout，GREEN在channel暂停投影期间writer成功，并核同快照revision及坏数据拒绝。它不放宽完整校验、期限或预算，也不能唯一归因原冷失败。父级最终session69680真实exit0，clean94f1全仓 `go test -p 2 ./... -count=1 -timeout=15m` 与 `go vet -p 2 ./...` 均0，总297.2803183s；665个Go/module与embed输入前后清单SHA同为 `ceae567bc57f1c773e1c3ca2d005af8a4cc7f3ec95091f21aa262d0c98e95c4c`，HEAD/status全程保持clean94f1。证据根 `%TEMP%/llm-shared-content-main-94f1b39-20261016/`，verification.safe.json SHA `de7a8dea46f10493f50a8132ff268e6134a0567295b29697f058549fc80bb9c8`，go-test.raw.log SHA `d8ac2d729f69b82bebfdbfa12a68ea49c86c4f517b4cebc1dad57103bf082a41`，vet日志为空；无FE/bindings、现管理协议或预算变化。
+
+固定ADC→1db临时工具根 `%TEMP%/llm-content-adc-converter-59ce60cd9273430885996414b1fcbc68/`，入口run-converter.ps1、overlay.json与usage.txt保留至实际升级验证完成。final-manifest.safe.json SHA `adda104b881329eada7ad3322e79b884054e8c84626b8fb2132debea69352710`的13个artifact pins实核0漂移；仅已登记私有fixtures的13子例、root边界、显式转换与marker所有权负例通过，源原字节/旧业务投影保持，只初始化空inventory，没有捏造manifest/holding/release。真实用户或服务器DB未转换/切换；工具拒绝766/7afb/c2d及未知源，旧直达ADC工具不是当前1db入口，不得串联成运行时或历史迁移链。实际其他旧源仍需另行固定source→current的显式转换与验证，不能写升级完成。
+
+## 2026-10-16：原三Job固定GET观察通过，r5仍失败
+
+父级实际运行 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/fixed-get-r5-three-jobs/observation-u1r76jmp/`，observation.safe.json SHA `8b0319d7952290707570c634154861a5a7083d962d7fc76ea9f2401c437ab8a7`。原d62994b6-f054-4a7d-a14e-0e167dc1023e、e00123b8-ad42-4753-9a1f-ac5e50e442a2、b2856f8f-fb78-43f7-9109-ee56fde233b0各GET一次，依次1.620821/1.583541/1.559442s，均completed/rev4/seq469，Snapshot与Origin校验通过；实际Close、reader EOF、进程exit0，mutation/provider均0。
+
+该轮只含Snapshot，refmetadata_available=false，未取event页、报告引用清单或文档，未启动watcher/Pass或重投。它不代表r5客户端已补齐镜像、报告导入完成、冷基线PASS或唯一根因已定；r6仅TEMP准备、尚未实跑，预算原样，无新Job/paid，原r3/r4/r5 false与其他既有待验边界保留。

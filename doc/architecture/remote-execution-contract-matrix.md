@@ -184,7 +184,7 @@ TestJSONGzipPreservesCurrentTypedStateAndFixedErrors、TestReadJSONRejectsInvali
 
 ## 共享任务当前存储与执行边界（2026-10-16）
 
-当前 SQLite 仍为 version1/name `0001_protocol_runtime`，checksum 已从 `7afb439aaccf28d19e7e7381e2ef5611e013f062676e3706d44b3313d52c0708` 原地替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新增 per-command `job_control_targets`及 outbox 复合 FK；schemaObjects 按不含 migration metadata 的口径 55→56。desktop 与 runner 共用该 schema；旧 checksum 正常运行时明确拒绝、数据保留，不双读、自动迁移或按缺字段降级。626ccdd clean 源的独立 TEMP 工具已通过三类 7afb fixture 和更早 766 历史源一致性私有副本的直接转换验收；9 controls、104 份归档和历史业务关系均经当前 typed/getter/FK/quick_check 验证。原用户库未写入，真实切换与恢复仍 pending；工具不是运行时兼容机制，详见[验证记录](remote-execution-validation.md)。
+当前主树94f1的SQLite唯一checksum为 `1db91d4ba40e06d3b5d3a8a7730d5f57702d63f3c39cb3e4d3a80b678c64fa68`，version1/name `0001_protocol_runtime`不变，声明对象80；P3基础的历史影响见下方新节。此前626ccdd的shared/foreign阶段由7afb替换为ADC，新增per-command job_control_targets及outbox复合FK，声明对象55→56；当时TEMP三类7afb fixture及766历史源私有副本完成的是直接到ADC的转换，9 controls、104份归档与关系按当时ADC校验，不是本次1db验收。正常runtime只接受唯一current、拒绝旧checksum并保留数据，无双读、自动迁移或缺字段降级；原用户库未写入，真实切换/恢复仍pending，旧工具不能串联充当当前历史升级入口，详见[验证记录](remote-execution-validation.md)。
 
 本轮 51 源码文件在 78581 全仓 Go 测试及 vet 前后摘要相同，均 exit0。上面新共享契约的本地 Core/SQLite/Mock、typed FE 及浏览器 fixture 通过；后续 r2/source519 实机 4278 exit1，A 一次 Launch 已接收，B 未发现该新 foreign Job，未进入控制及 C 查询。75284 纯 GET 仅验证原 Job 已 completed、sealed 结果及原身份一致，未启动 B watcher、导入或查询 live controls，不能把 diagnostic_complete 当 r2 PASS。native=false，原 R7/c2 进程证据仍不能替代新 shared 控制验收。
 
@@ -220,4 +220,12 @@ P2a的49文件已由独立1467e19f整合main cbef518。当前 `Input.type=file` 
 
 `testspec.ValidateInputs` 的Go返回值已替换为 `ResolvedInputs{JSONValues,Files}`，受影响调用者已更新，无旧map包装或兼容路径。两个当前Wails绑定为 `CreateLocalFileSelection(document)`、`ReleaseLocalFileSelection(selectionID)`；只接严格data_base64/media_type DTO，不接路径。selection单份1..1 MiB、最多8份/合计8 MiB、DTO最多1400000字节，PNG/JPEG配置维度各不超过4096、像素不超过16777216；会话owner管理独立borrow reader及释放，临时selection不进入draft或Launch。
 
-主树Wails 2.15.0生成、FE757测试/tsc/lint/build和全仓Go/vet已通过；详细输入锁定、既有warnings及证据只列于[验证记录](remote-execution-validation.md)。这不包含文件Job执行、Stage/请求编码/capture/wire metadata或KindPerformance.native_case；无admitted resolver时仍拒绝fileLaunch，assets=false。P3真实admission/pins/resolver与P4 manifest/release未交付；别树P3 types/ports和16表SQL基础正在实施，尚无完成或current checksum结论。P2a无schema/actualDB/转换变更，也无native/browser/physical/provider验收。
+主树Wails 2.15.0生成、FE757测试/tsc/lint/build和全仓Go/vet已通过；详细输入锁定、既有warnings及证据只列于[验证记录](remote-execution-validation.md)。这不包含文件Job执行、Stage/请求编码/capture/wire metadata或KindPerformance.native_case；无admitted resolver时仍拒绝fileLaunch，assets=false。P3真实admission/pins/resolver与P4 manifest/release未交付；P2a记录时P3 types/ports和16表基础尚在别树，后续主整合见下一节。P2a本身无schema/actualDB/转换变更，也无native/browser/physical/provider验收。
+
+## P3 foundation 与冷查询已主整合（94f1，执行能力仍关闭）
+
+P3首片31文件由secondary40b296e整合main00b1802，冷查询11文件由secondary2193d75整合main94f1。当前仅严格manifest/holding/release types、Ledger ports、空内容接收及16表/8索引基础；Acceptance.ContentClaims必显式非nil，当前只接受[]，非空claims/assets仍拒绝，metadata不构成physical pin。Manager A、真实pins/permit、Core resolver与P2b仍在别树开始，assets/fileLaunch及manifest/release/physicalManager均未开放。
+
+冷查询在同一只读TX捕获有界raw，关闭游标、归还pool1连接后再纯投影，保留同快照revision及完整坏数据拒绝；确定性writer1秒timeout RED与暂停投影writer成功GREEN已通过，预算不变。最终clean94f1全仓Go/vet通过，31个P3 blobs与9个冷查询纯文件无漂移、两merge文件复核；无FE/bindings或现管理协议变化。父级原d629/e001/b285各一次GET只证明completed/rev4/seq469 Snapshot读取和Close/EOF成功，不等于冷同步/报告导入通过；原r5 false不变，r6仅TEMP准备。
+
+唯一current schema替换为1db/80，仅P3改变schema；旧ADC正常打开将拒绝且不改数据。固定ADC→1db的TEMP工具仅验证已登记私有fixtures，尚未转换/切换真实用户或服务器DB，也不支持766/7afb等其他历史入口；工具位置与当前证据集中见[验证记录](remote-execution-validation.md)。

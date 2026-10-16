@@ -114,7 +114,7 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 
 本轮 sample1/success1、Launch1、paid0、daemon 进程不变；nativefalse 且使用 scoped MemoryStore，未验证 OS keyring 或真实点击关窗。完整大任务/多 client 公平性、foreign 视图/控制、文件资源、完整还原/故障回滚、native、历史库、重启、第二节点/arm64 与 CI 发布仍待交付；不从单样本推算与旧恢复耗时的提升倍数。精确证据及所有原失败见[验证记录](remote-execution-validation.md)。仅接受当前格式，未转换或删除/reset 用户数据。
 
-本轮 shared/foreign 已提交 626ccdd，增加 per-command job_control_targets 及 outbox 复合 FK，schema version1/name0001_protocol_runtime 不变，current checksum 已由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新 runtime 拒绝旧 DB 且保留原数据；现有 R7/3ca 仍运行旧 schema，尚未重建/部署。独立 TEMP 工具已通过三类 7afb fixture 及实际历史 766d1aa…一致性私有副本的直接转换验收；原用户库只读不变，真实 desktop/runner 切换与恢复仍 pending，不能写数据升级完成。工具保留至实际升级/切换/恢复验证完成，证据和验证边界见[验证记录](remote-execution-validation.md)。
+626ccdd的shared/foreign阶段增加per-command job_control_targets及outbox复合FK，schema version1/name0001_protocol_runtime不变，当时current checksum由7afb439a…0708替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`；后续P3主树1db替换另列本文末尾。runtime拒绝旧DB且保留原数据；现有R7/3ca仍运行旧schema，尚未重建/部署。独立TEMP工具通过三类7afb fixture及历史766d1aa…一致性私有副本的直接转换，目标只是当时ADC；原用户库只读不变，真实desktop/runner切换与恢复仍pending，不能写最新数据升级完成。工具按未完成的实际升级/切换/恢复边界保留，证据见[验证记录](remote-execution-validation.md)。
 
 新 JobView 必填 nullable submission，foreign 只从 actual execution/receipt 取来源；ControlTarget 冻结真实 node/install/spec 与已知 acceptance，历史 executor R4 与 daemon R7 合法，不比较 build 相等。GetJobControls 仅本 client 持久投递记录，foreign pending 控制通过真实 mirror anchor 保留并阻止节点移除。当前四项升级 API、Get 纯 local 和显式 Check 语义未改变；七个 Job Wails 绑定名称不变，新 Job DTO 和共用 schema 是 breaking 变更，不能用旧 reader 或自动迁移绕过。
 
@@ -136,4 +136,10 @@ r4保留副本13个镜像齐全，但d1cce52e两条文档仍pending、d629停在
 
 r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时，未进入A/Mock/新Job/control；B34176父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true，BDB56012800字节。初始13个ID存在于cold_import事件，summary空数组只因未到baseline_ready；原r5 false保留，不预判其pending/getter原因，也不能由EOF修复追认全部cold/seq400已解决或共享/升级验收通过。r5终态记录时P2a仅独立提交1467e19f，后续主整合见下段。assetsfalse、native/keyring、真实用户库切换/恢复与其他待验边界保持，全部原始失败记录不覆盖。
 
-P2a的49文件现已整合main cbef518，完成严格当前Input/SuiteInput/FileBinding及Clone、Go ValidateInputs改返回ResolvedInputs、会话有界selection和CreateLocalFileSelection/ReleaseLocalFileSelection两个绑定。主Wails CLI2.15.0核验/generate、FE757测试/tsc/lint/build与clean主树全仓Go/vet通过，既有warnings保留；完整输入与证据只列于[验证记录](remote-execution-validation.md)。这不改变schema/actualDB/转换或原R7部署，也无native/browser/physical/provider证明；fileLaunch仍禁，Stage/执行编码/capture/wire metadata/KindPerformance.native_case、P3真实admission/pins/resolver与P4 manifest/release均未交付。P3 types/ports与16表SQL基础正在别树实施，不声明新current checksum或升级已完成；原r5 false及旧升级、数据切换/恢复边界不变。
+P2a的49文件现已整合main cbef518，完成严格当前Input/SuiteInput/FileBinding及Clone、Go ValidateInputs改返回ResolvedInputs、会话有界selection和CreateLocalFileSelection/ReleaseLocalFileSelection两个绑定。主Wails CLI2.15.0核验/generate、FE757测试/tsc/lint/build与clean主树全仓Go/vet通过，既有warnings保留；完整输入与证据只列于[验证记录](remote-execution-validation.md)。P2a本身不改变schema/actualDB/转换或原R7部署，也无native/browser/physical/provider证明；fileLaunch仍禁，Stage/执行编码/capture/wire metadata/KindPerformance.native_case、P3真实admission/pins/resolver与P4 manifest/release均未交付。P2a记录时P3基础尚在别树，后续主整合见下段；原r5 false及旧升级、数据切换/恢复边界不变。
+
+P3 foundation31文件现由secondary40b296e整合main00b1802，冷查询由secondary2193d75整合main94f1；最终clean主树全仓Go/vet通过，旧冻结点203.386s与最后两文件AcceptJob事务准备改进的证据分别保留。无FE/bindings、现管理协议或预算变化；新增仅types/ports与SQL基础，Manager A/真实pins/permit及P2b另树开始，assets/fileLaunch和manifest/release/physicalManager仍false，不是物理文件或升级验收。
+
+唯一current schema已由ADC/56替换为1db91…fa68/80声明对象，当前runtime拒绝旧checksum并保留数据；这影响后续程序升级前的数据前置条件，正常upgrade不能代替转换。临时固定ADC→1db工具在 `%TEMP%/llm-content-adc-converter-59ce60cd9273430885996414b1fcbc68/`（run-converter.ps1/overlay.json/usage.txt），13 pins无漂移且仅私有fixture成功；不支持其他历史源，也未转换/切换实际用户或服务器DB。旧766/7afb→ADC工具只属当时目标，不可串联为当前入口；实际旧源的直接current转换和恢复验收仍pending，工具按该未完成边界保留。
+
+父级对原d629/e001/b285各一次GET均取得completed/rev4/seq469 Snapshot并完成Close/EOF/exit0，mutation/provider0；不含event/document同步或升级动作，原r5 false不改。r6只在TEMP准备、尚未实跑、预算原样，无新Job/paid；完整主树、fixture及固定GET证据集中见[验证记录](remote-execution-validation.md)。

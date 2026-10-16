@@ -329,7 +329,7 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 
 现有本地历史数据通过临时、独立调用的升级工具转换：先记录源标记与 checksum，创建一致性 SQLite 备份并复制证据清单；核对已知源的所有权，保留 ID、时间、指标、verdict 和原始证据引用；本轮历史reports/perf缺execution_origin时仅在独立转换工具中补合法unmanaged显式null，不依据当前机器伪造历史Origin；再按目标当前 validator、行数、关联、报告摘要、foreign key 与 quick_check 验证。未知来源或格式停止，不猜测。
 
-临时工具仅在独立工作目录中按已知源创建并明确执行，本轮 `%TEMP%/llm-shared-jobs-offline-conversion-20261016/` 中的 7afb→adc 与 766→adc 副本转换验证已通过；不放入启动、构建、正常读取或远程任务接收。实际升级、切换与恢复验证完成前保留临时工具，完成后删除工具；备份保留。节点格式升级同样在无活动任务、备份完成后单独执行，不能靠重新安装清空历史数据。测试 amd64 节点曾对已知空业务源结构执行一次独立转换，该工具明确拒绝非空业务数据，不代表本地历史用户数据库已升级；后续 R1 → R2 在同一当前 checksum 下只升级程序，完整业务数据和备份保留、没有数据转换。本轮实际历史用户库只读不变，一致性私有副本已完成固定 766→adc 直接转换和当前契约验证，真实切换与恢复验证仍待完成。
+临时工具仅在独立工作目录中按已知源创建并明确执行；626阶段 `%TEMP%/llm-shared-jobs-offline-conversion-20261016/` 中的7afb→adc与766→adc副本验证已通过，目标仅为当时ADC，不是后续1db入口；不放入启动、构建、正常读取或远程任务接收。实际升级、切换与恢复验证完成前保留临时工具，完成后删除工具；备份保留。节点格式升级同样在无活动任务、备份完成后单独执行，不能靠重新安装清空历史数据。测试amd64节点曾对已知空业务源结构执行一次独立转换，该工具明确拒绝非空业务数据，不代表本地历史用户数据库已升级；后续R1→R2在同一当时checksum下只升级程序，完整业务数据和备份保留、没有数据转换。实际历史用户库只读不变，一致性私有副本完成的是固定766→ADC及当时契约验证；实际旧源直接到最新current的转换、切换与恢复仍待完成。
 
 ## 实施顺序与验收
 
@@ -494,7 +494,7 @@ r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时�
 
 P2a已整合main cbef518：严格当前Input/SuiteInput/FileBinding及深Clone，文件声明只允许image_data_url、PNG/JPEG和1..1 MiB；`testspec.ValidateInputs`已改为返回分离JSONValues/Files的ResolvedInputs，所有当前调用者一起替换。两个Wails绑定CreateLocalFileSelection/ReleaseLocalFileSelection拥有会话内有界selection及borrow/release，不接本地路径，不把selection写入draft或Launch；每份至1 MiB、8份/共8 MiB，DTO与图像尺寸另有限额，详见[当前矩阵](remote-execution-contract-matrix.md)。
 
-main cbef518已通过Wails CLI2.15.0核对与生成、完整FE757测试及tsc/lint/build、clean主树全仓Go/vet；原有2条lint warnings与chunk提示保留，完整摘要集中见[验证记录](remote-execution-validation.md)。本阶段没有schema/actualDB/转换变更或native/browser/physical/provider证据，fileLaunch仍禁；Stage、执行编码/capture/wire metadata、KindPerformance.native_case及P3真实admission/pins/resolver、P4 manifest/release未完成。P3首片types/ports与16表SQL基础正在别树实施，不据此声明已交付或确定新checksum；原r5及全部旧失败不改。
+main cbef518已通过Wails CLI2.15.0核对与生成、完整FE757测试及tsc/lint/build、clean主树全仓Go/vet；原有2条lint warnings与chunk提示保留，完整摘要集中见[验证记录](remote-execution-validation.md)。P2a阶段没有schema/actualDB/转换变更或native/browser/physical/provider证据，fileLaunch仍禁；Stage、执行编码/capture/wire metadata、KindPerformance.native_case及P3真实admission/pins/resolver、P4 manifest/release未完成。该阶段P3首片types/ports与16表基础尚在别树，后续主整合另记；原r5及全部旧失败不改。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 
@@ -553,3 +553,11 @@ PerformanceExecutor 已接入共享 JobHost。执行前核对持久冻结输入�
 本次没有改变持久格式，仍未创建或执行历史数据转换。实际节点与渠道的前置检查及后续验收记录见[验证记录](remote-execution-validation.md)，其证据边界与 Mock 验证分开。
 
 功能完成、真实服务器部署、保活、历史数据升级和提供商实测以各阶段实际验收为准，不因方案或某个基础提交完成而视为全部完成。
+
+## P3 foundation 与冷查询主整合后的当前边界
+
+foundation secondary40b296e→main00b1802、cold secondary2193d75→main94f1已完成整合；最终clean94f1全仓Go/vet通过。31文件P3只提供严格types/ports、空内容接收和单当前1db/80对象基础；AcceptJob纯准备已移回BeginTx外，原Job/children/event与空inventory仍同事务。冷查询同一TX捕获有界raw后归还连接再投影，完整校验/快照一致性与原预算保持；两组证明和最终主树测试的版本边界见[验证记录](remote-execution-validation.md)，不把首轮203.386s套到后改源码。
+
+固定ADC→1db的临时fixture工具保留在 `%TEMP%/llm-content-adc-converter-59ce60cd9273430885996414b1fcbc68/`，仅已登记私有fixture验证通过，真实DB未转换/切换；旧766/7afb→ADC证据仅属于旧目标，不支持用工具串联或runtime历史路径进入新current。实际已存旧源须有单独固定source→current的显式工具及验证，仍是待升级事项。
+
+父级原d629/e001/b285各一次固定GET成功，只含completed/rev4/seq469 Snapshot，不含event/document同步；原r5及旧失败保留，r6仅TEMP准备、预算原样，无新Job/paid。Manager A、真实pins/permit与P2b另树开始，尚未交付；assets/fileLaunch和manifest/release/physicalManager仍false，不把types/SQL基础当作媒体执行或删除能力。
