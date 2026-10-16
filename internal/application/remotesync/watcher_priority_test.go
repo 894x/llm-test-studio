@@ -15,12 +15,19 @@ import (
 	runnerclient "github.com/894x/llm-test-studio/internal/remote/client"
 )
 
-func emptyPriorityJobs(_ context.Context, _ remoteresults.Origin, after string, _ uint32) (remoteresults.PriorityPage, error) {
+func emptyPriorityJobs(
+	_ context.Context,
+	_ remoteresults.Origin,
+	after string,
+	_ uint32,
+) (remoteresults.PriorityPage, error) {
 	return remoteresults.PriorityPage{JobIDs: []string{}, NextCursor: after}, nil
 }
 
 func TestWatcherRequiresTheCurrentPrioritySourcePort(t *testing.T) {
-	synchronizer, _ := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
+	synchronizer, _ := New(Dependencies{
+		Repository: missingMirrorRepository{}, Documents: unusedCache{},
+	})
 	_, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
 		Nodes:   func(context.Context) ([]Node, error) { return []Node{}, nil },
 		Connect: func(context.Context, Node) (Connection, error) { return nil, errors.New("unused") },
@@ -30,91 +37,72 @@ func TestWatcherRequiresTheCurrentPrioritySourcePort(t *testing.T) {
 	}
 }
 
-func TestWatcherSlowPriorityJobDoesNotBlockPeersAndIsRevisited(t *testing.T) {
+func TestWatcherSlowPriorityJobDoesNotBlockLaterTicks(t *testing.T) {
 	node := watcherNode(1)
-	owners, roots := []jobcontract.Snapshot{}, []jobcontract.Snapshot{}
-	snapshots := map[string]jobcontract.Snapshot{}
-	for index := range 5 {
-		snapshot := queuedJob(node, 900+index)
-		owners = append(owners, snapshot)
-		snapshots[snapshot.Receipt.JobID] = snapshot
-	}
-	for index := range discoveryPageSize {
-		roots = append(roots, queuedJob(node, index+1))
-	}
-	var mu sync.Mutex
-	seen := map[string]int{}
-	peers := make(chan string, jobsPerAttempt)
+	slow, later := queuedJob(node, 900), queuedJob(node, 901)
+	entered, progressed := make(chan struct{}), make(chan struct{}, 1)
+	var once sync.Once
 	connection := &priorityObservation{watcherConnection: watcherConnection{node: node,
 		list: func(_ context.Context, after uint64, _ uint32) (jobhost.JobPage, error) {
-			return jobhost.JobPage{Contract: jobcontract.CurrentContract, Jobs: roots, NextCursor: "25"}, nil
-		}}, snapshots: snapshots, events: func(ctx context.Context, id string) error {
-		mu.Lock()
-		seen[id]++
-		count := seen[id]
-		mu.Unlock()
-		if id == owners[0].Receipt.JobID && count == 1 {
-			<-ctx.Done()
-			return ctx.Err()
-		}
-		if count == 1 {
+			return emptyJobPage(after), nil
+		}},
+		snapshots: map[string]jobcontract.Snapshot{slow.Receipt.JobID: slow, later.Receipt.JobID: later},
+		events: func(ctx context.Context, id string) error {
+			if id == slow.Receipt.JobID {
+				once.Do(func() { close(entered) })
+				<-ctx.Done()
+				return ctx.Err()
+			}
 			select {
-			case peers <- id:
+			case progressed <- struct{}{}:
 			default:
 			}
-		}
-		return errors.New("deliberate observation failure")
-	}}
+			return errors.New("fixture observation")
+		}}
 	synchronizer, _ := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
+	var pages atomic.Int32
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
 		Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) { return connection, nil },
-		PriorityJobs: func(_ context.Context, _ remoteresults.Origin, after string, limit uint32) (remoteresults.PriorityPage, error) {
-			page := remoteresults.PriorityPage{JobIDs: []string{}, NextCursor: after}
-			for _, snapshot := range owners {
-				id := snapshot.Receipt.JobID
-				if id <= after {
-					continue
-				}
-				if len(page.JobIDs) == int(limit) {
-					page.HasMore = true
-					break
-				}
-				page.JobIDs, page.NextCursor = append(page.JobIDs, id), id
+		PriorityJobs: func(
+			_ context.Context,
+			_ remoteresults.Origin,
+			_ string,
+			_ uint32,
+		) (remoteresults.PriorityPage, error) {
+			id := slow.Receipt.JobID
+			if pages.Add(1) > 1 {
+				id = later.Receipt.JobID
 			}
-			return page, nil
-		},
-	})
+			return remoteresults.PriorityPage{JobIDs: []string{id}, NextCursor: id}, nil
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer watcher.Close()
+	watcher.pollEvery = 5 * time.Millisecond
 	scan := resetDiscovery()
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	finished := make(chan error, 1)
-	go func() { _, err := watcher.attempt(ctx, node, &scan); finished <- err }()
-	for range jobsPerAttempt - 1 {
-		select {
-		case <-peers:
-		case <-time.After(time.Second):
-			t.Fatal("a slow priority job blocked the other priority or shared jobs")
-		}
+	done := make(chan error, 1)
+	go func() {
+		_, err := watcher.attempt(
+			ctx,
+			node,
+			&scan,
+			nil,
+		)
+		done <- err
+	}()
+	defer func() { cancel(); <-done }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("slow priority did not start")
 	}
-	cancel()
-	if err := <-finished; !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled observation: %v", err)
-	}
-	for range 3 {
-		_, _ = watcher.attempt(t.Context(), node, &scan)
-	}
-	for _, owner := range owners {
-		if seen[owner.Receipt.JobID] == 0 {
-			t.Fatal("failed priority job stopped the bounded ID cursor from advancing")
-		}
-	}
-	if seen[owners[0].Receipt.JobID] != 2 {
-		t.Fatal("a canceled job was lost instead of revisited after the priority tail")
+	select {
+	case <-progressed:
+	case <-time.After(time.Second):
+		t.Fatal("slow priority blocked the next tick")
 	}
 }
 
@@ -202,9 +190,17 @@ func TestWatcherRejectsInvalidPriorityHintsAndStillDiscoversSharedJobs(t *testin
 			t.Fatal(err)
 		}
 		scan := resetDiscovery()
-		_, err = watcher.attempt(t.Context(), node, &scan)
+		if _, err := watcher.priorityPage(t.Context(), node, ""); !errors.Is(err, remoteresults.ErrInvalid) {
+			t.Fatal("invalid priority source page was accepted")
+		}
+		_, err = oneObservationTick(
+			t,
+			watcher,
+			node,
+			&scan,
+		)
 		_ = watcher.Close()
-		if !errors.Is(err, remoteresults.ErrInvalid) || shared.Load() != 1 || scan.priorityCursor != "" {
+		if err == nil || shared.Load() != 1 || scan.priority.cursor != "" {
 			t.Fatal("invalid priority page changed its cursor or stalled shared discovery")
 		}
 	}
@@ -225,7 +221,7 @@ func TestWatcherDeduplicatesQueuesAndRejectsForeignPriorityExecution(t *testing.
 			connection := &priorityObservation{watcherConnection: watcherConnection{node: node,
 				list: func(context.Context, uint64, uint32) (jobhost.JobPage, error) {
 					return jobhost.JobPage{Contract: jobcontract.CurrentContract,
-						Jobs: []jobcontract.Snapshot{own, foreign}, NextCursor: "2"}, nil
+						Jobs: []jobcontract.Snapshot{foreign}, NextCursor: "2"}, nil
 				}}, snapshots: map[string]jobcontract.Snapshot{own.Receipt.JobID: observed},
 				events: func(_ context.Context, id string) error {
 					mu.Lock()
@@ -245,7 +241,12 @@ func TestWatcherDeduplicatesQueuesAndRejectsForeignPriorityExecution(t *testing.
 			}
 			defer watcher.Close()
 			scan := resetDiscovery()
-			_, _ = watcher.attempt(t.Context(), node, &scan)
+			_, _ = oneObservationTick(
+				t,
+				watcher,
+				node,
+				&scan,
+			)
 			wantOwn := 1
 			if wrongOwner {
 				wantOwn = 0
@@ -267,63 +268,9 @@ func (connection *priorityObservation) GetJob(_ context.Context, id string) (job
 	return connection.snapshots[id], nil
 }
 
-func (connection *priorityObservation) ReadEvents(ctx context.Context, query runnerclient.EventQuery) (jobhost.EventPage, error) {
+func (connection *priorityObservation) ReadEvents(
+	ctx context.Context,
+	query runnerclient.EventQuery,
+) (jobhost.EventPage, error) {
 	return jobhost.EventPage{}, connection.events(ctx, query.JobID)
-}
-
-func TestWatcherPrioritizesLocalSubmissionsWithoutStarvingSharedDiscovery(t *testing.T) {
-	node := watcherNode(1)
-	roots := []jobcontract.Snapshot{}
-	for index := range discoveryPageSize * 3 {
-		roots = append(roots, queuedJob(node, index+1))
-	}
-	first, second := queuedJob(node, 900), queuedJob(node, 901)
-	var mu sync.Mutex
-	seen := map[string]int{}
-	synchronizer, err := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection := &priorityObservation{
-		watcherConnection: watcherConnection{node: node,
-			list: func(_ context.Context, after uint64, limit uint32) (jobhost.JobPage, error) {
-				end := min(int(after)+int(limit), len(roots))
-				return jobhost.JobPage{Contract: jobcontract.CurrentContract,
-					Jobs: roots[int(after):end], NextCursor: fmt.Sprint(end), HasMore: end < len(roots)}, nil
-			}},
-		snapshots: map[string]jobcontract.Snapshot{first.Receipt.JobID: first, second.Receipt.JobID: second},
-		events: func(_ context.Context, id string) error {
-			mu.Lock()
-			seen[id]++
-			mu.Unlock()
-			return errors.New("failed job must not block later jobs")
-		},
-	}
-	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
-		Connect: func(context.Context, Node) (Connection, error) { return connection, nil },
-		PriorityJobs: func(_ context.Context, origin remoteresults.Origin, after string, limit uint32) (remoteresults.PriorityPage, error) {
-			if origin != node.Origin || after != "" || limit != priorityPerAttempt {
-				t.Error("priority query changed its fixed scope or bounded page")
-			}
-			return remoteresults.PriorityPage{JobIDs: []string{first.Receipt.JobID, second.Receipt.JobID},
-				NextCursor: second.Receipt.JobID}, nil
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer watcher.Close()
-	scan := resetDiscovery()
-	for pass := range 2 {
-		_, _ = watcher.attempt(t.Context(), node, &scan)
-		if seen[first.Receipt.JobID] != pass+1 || seen[second.Receipt.JobID] != pass+1 {
-			t.Fatal("new local submissions waited behind the shared history")
-		}
-		for _, root := range roots[:(pass+1)*(jobsPerAttempt-priorityPerAttempt)] {
-			if seen[root.Receipt.JobID] != 1 {
-				t.Fatal("priority jobs starved or repeated the reserved shared discovery share")
-			}
-		}
-	}
 }

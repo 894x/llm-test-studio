@@ -25,7 +25,7 @@ type productionPriorityRepository struct {
 	jobID  string
 }
 
-func (repository productionPriorityRepository) ListRemoteSubmissionIDs(
+func (repository productionPriorityRepository) ListRemoteSyncPriorityIDs(
 	_ context.Context,
 	origin remoteresults.Origin,
 	after string,

@@ -323,94 +323,77 @@ func queuedJob(node Node, index int) jobcontract.Snapshot {
 		Kind: jobcontract.KindPerformance, AcceptedAt: at,
 		Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: node.Origin.NodeID,
 			InstallationID: node.Origin.InstallationID, EngineBuildID: strings.Repeat("b", 64),
-			RunnerVersion: "watcher-test", OS: "linux", Arch: "amd64"}, Status: domain.RunQueued, Revision: 1, RunIDs: []string{},
+			RunnerVersion: "watcher-test", OS: "linux", Arch: "amd64"},
+		Status: domain.RunQueued, Revision: 1, RunIDs: []string{},
 		ReportIDs: []string{fmt.Sprintf("55555555-5555-4555-8555-%012d", index)},
 	}, LatestSequence: 1, UpdatedAt: at}
 }
 
-func TestWatcherContinuesPendingPageAcrossFailuresAndWrapsAfterTail(t *testing.T) {
+func TestWatcherKeepsTailAcrossSessionsAndFindsNewRoots(t *testing.T) {
 	node := watcherNode(1)
+	var mu sync.Mutex
 	roots := []jobcontract.Snapshot{}
 	for index := range discoveryPageSize + 7 {
 		roots = append(roots, queuedJob(node, index+1))
 	}
-	listed := []uint64{}
-	observed := map[string]int{}
-	var opened, closed, observations int
-	var observedMu sync.Mutex
-	synchronizer, err := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		PriorityJobs: emptyPriorityJobs,
-		Nodes:        func(context.Context) ([]Node, error) { return []Node{node}, nil },
+	seen := map[string]int{}
+	synchronizer, _ := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
+	var opens, closes atomic.Int64
+	watcher, err := NewWatcher(t.Context(), WatcherDependencies{
+		Synchronizer: synchronizer, PriorityJobs: emptyPriorityJobs,
+		Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) {
-			opened++
-			connection := &failingJobObservation{watcherConnection: watcherConnection{node: node,
-				list: func(_ context.Context, after uint64, limit uint32) (jobhost.JobPage, error) {
-					listed = append(listed, after)
+			opens.Add(1)
+			return &sessionClosingConnection{failingJobObservation: &failingJobObservation{
+				watcherConnection: watcherConnection{node: node, list: func(
+					_ context.Context,
+					after uint64,
+					limit uint32,
+				) (jobhost.JobPage, error) {
+					mu.Lock()
+					defer mu.Unlock()
 					end := min(int(after)+int(limit), len(roots))
 					return jobhost.JobPage{Contract: jobcontract.CurrentContract,
-						Jobs: roots[int(after):end], NextCursor: fmt.Sprint(end), HasMore: end < len(roots)}, nil
-				}}, observe: func(id string) {
-				observedMu.Lock()
-				defer observedMu.Unlock()
-				observed[id]++
-				observations++
-			}}
-			return &countedFailingObservation{failingJobObservation: connection, closed: &closed}, nil
+						Jobs:       append([]jobcontract.Snapshot{}, roots[int(after):end]...),
+						NextCursor: fmt.Sprint(end), HasMore: end < len(roots)}, nil
+				}}, observe: func(id string) { mu.Lock(); seen[id]++; mu.Unlock() },
+			}, closed: &closes}, nil
 		}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer watcher.Close()
+	watcher.pollEvery = 2 * time.Millisecond
 	scan := resetDiscovery()
-	// Every job deliberately fails after its own Probe. This fixture checks
-	// discovery fairness, not journal import semantics or recovery of execution.
-	for len(observed) < len(roots) {
-		before := observations
-		if _, err := watcher.attempt(t.Context(), node, &scan); err == nil {
-			t.Fatal("fixture observation failure disappeared")
-		}
-		if observations-before > jobsPerAttempt {
-			t.Fatal("attempt exceeded its per-page work budget")
-		}
-		if opened > 20 {
-			t.Fatal("a failed job stalled subsequent roots")
-		}
+	runObservationUntil(
+		t,
+		watcher,
+		node,
+		&scan,
+		func() bool { mu.Lock(); defer mu.Unlock(); return len(seen) == len(roots) },
+	)
+	if scan.tail.cursor != uint64(len(roots)) {
+		t.Fatal("tail was reset at end of admission list")
 	}
-	if len(listed) != 2 || listed[0] != 0 || listed[1] != discoveryPageSize || scan.cursor != 0 {
-		t.Fatal("pending index did not continue through the second page and tail")
-	}
-	for _, root := range roots {
-		if observed[root.Receipt.JobID] != 1 {
-			t.Fatal("page boundary repeated or omitted a root")
-		}
-	}
+	mu.Lock()
 	later := queuedJob(node, len(roots)+1)
 	roots = append(roots, later)
-	for observed[later.Receipt.JobID] == 0 {
-		before := observations
-		_, _ = watcher.attempt(t.Context(), node, &scan)
-		if observations-before > jobsPerAttempt {
-			t.Fatal("wrapped attempt exceeded its work budget")
-		}
-		if opened > 40 {
-			t.Fatal("scan did not rediscover the new tail job")
-		}
-	}
-	if len(listed) != 4 || listed[2] != 0 || listed[3] != discoveryPageSize || opened != closed {
-		t.Fatal("wrapped scan changed its cursor or retained an old connection")
+	mu.Unlock()
+	runObservationUntil(
+		t,
+		watcher,
+		node,
+		&scan,
+		func() bool { mu.Lock(); defer mu.Unlock(); return seen[later.Receipt.JobID] > 0 },
+	)
+	if opens.Load() != 2 || closes.Load() != 2 {
+		t.Fatal("session reconnect did not preserve scan or close once")
 	}
 }
 
-type countedFailingObservation struct {
+type sessionClosingConnection struct {
 	*failingJobObservation
-	closed *int
+	closed *atomic.Int64
 }
 
-func (connection *countedFailingObservation) Close() error {
-	(*connection.closed)++
-	return nil
-}
+func (connection *sessionClosingConnection) Close() error { connection.closed.Add(1); return nil }

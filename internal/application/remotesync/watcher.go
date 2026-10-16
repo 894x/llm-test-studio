@@ -6,7 +6,6 @@ import (
 	"errors"
 	"reflect"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -20,8 +19,8 @@ const (
 	maxObservedNodes   = 64
 	maxConcurrentSyncs = 4
 	discoveryPageSize  = 25
-	jobsPerAttempt     = 4
-	priorityPerAttempt = 2
+	jobsPerTick        = 4
+	priorityPageSize   = 2
 )
 
 type Node struct {
@@ -85,10 +84,9 @@ type nodeWorker struct {
 }
 
 type discovery struct {
-	cursor         uint64
-	priorityCursor string
-	pending        []jobcontract.Snapshot
-	index          int
+	tail     scanPage
+	history  historyScan
+	priority priorityScan
 }
 
 func NewWatcher(ctx context.Context, dependencies WatcherDependencies) (*Watcher, error) {
@@ -101,14 +99,14 @@ func NewWatcher(ctx context.Context, dependencies WatcherDependencies) (*Watcher
 	return &Watcher{
 		synchronizer: dependencies.Synchronizer, source: dependencies.Nodes, connect: dependencies.Connect,
 		priorityJobs: dependencies.PriorityJobs,
-		ctx:          lifetime, cancel: cancel, workers: map[string]*nodeWorker{}, gate: make(chan struct{}, maxConcurrentSyncs),
+		ctx:          lifetime, cancel: cancel, workers: map[string]*nodeWorker{},
+		gate:         make(chan struct{}, maxConcurrentSyncs),
 		refreshEvery: 10 * time.Second, pollEvery: 5 * time.Second, attemptTimeout: 2 * time.Minute,
 	}, nil
 }
 
-// Run owns bounded per-node observers. A node's page cursor wraps after its
-// current tail, so later commits and jobs from other clients are rediscovered.
-// Reopening starts a new read-only scan; it never resubmits accepted work.
+// Run owns bounded per-node observers. Admission discovery keeps its tail;
+// a separate history scan revisits earlier jobs for late facts and reports.
 func (watcher *Watcher) Run() error {
 	watcher.mu.Lock()
 	if watcher.closed || watcher.ctx.Err() != nil {
@@ -240,7 +238,8 @@ func (watcher *Watcher) observe(id string, worker *nodeWorker) {
 		watcher.mu.Unlock()
 	}()
 	previous := Node{}
-	discovery := discovery{pending: []jobcontract.Snapshot{}}
+	var previousGeneration uint64
+	discovery := resetDiscovery()
 	for {
 		watcher.mu.Lock()
 		if !worker.active || watcher.ctx.Err() != nil {
@@ -248,30 +247,48 @@ func (watcher *Watcher) observe(id string, worker *nodeWorker) {
 			return
 		}
 		node, generation := worker.node, worker.generation
-		if node != previous {
+		if node != previous || generation != previousGeneration {
 			discovery = resetDiscovery()
-			previous = node
+			previous, previousGeneration = node, generation
 		}
 		ctx, cancel := context.WithTimeout(watcher.ctx, watcher.attemptTimeout)
 		worker.cancel = cancel
 		worker.status.State, worker.status.ErrorCode = "syncing", ""
 		watcher.mu.Unlock()
-		applied, err := watcher.attempt(ctx, node, &discovery)
+		report := func(result syncResult) {
+			watcher.mu.Lock()
+			defer watcher.mu.Unlock()
+			if generation != worker.generation || !worker.active || ctx.Err() != nil {
+				return
+			}
+			worker.status.ObservedAt = time.Now().UTC()
+			worker.status.State, worker.status.ErrorCode = "idle", ""
+			if result.applied {
+				worker.status.AppliedAt = worker.status.ObservedAt
+			}
+			if result.err != nil {
+				worker.status.State, worker.status.ErrorCode = "error", "remote_sync_failed"
+			}
+		}
+		_, err := watcher.attempt(
+			ctx,
+			node,
+			&discovery,
+			report,
+		)
+		rotated := errors.Is(ctx.Err(), context.DeadlineExceeded)
 		cancel()
 		watcher.mu.Lock()
 		changed := generation != worker.generation
 		if !changed {
 			worker.status.ObservedAt = time.Now().UTC()
 			worker.status.State = "idle"
-			if applied {
-				worker.status.AppliedAt = worker.status.ObservedAt
-			}
 			if err != nil {
 				worker.status.State, worker.status.ErrorCode = "error", "remote_sync_failed"
 			}
 		}
 		watcher.mu.Unlock()
-		if changed {
+		if changed || rotated {
 			continue
 		}
 		timer := time.NewTimer(watcher.pollEvery)
@@ -284,127 +301,38 @@ func (watcher *Watcher) observe(id string, worker *nodeWorker) {
 	}
 }
 
-func resetDiscovery() discovery { return discovery{pending: []jobcontract.Snapshot{}} }
-
-func (watcher *Watcher) attempt(ctx context.Context, node Node, scan *discovery) (bool, error) {
-	connection, err := watcher.connect(ctx, node)
-	if err != nil {
-		return false, err
-	}
-	defer connection.Close()
-	info, err := connection.Probe(ctx)
-	if err != nil {
-		return false, err
-	}
-	validSource := info.NodeID == node.Origin.NodeID && info.NodeInstallationID == node.Origin.InstallationID
-	if !validSource {
-		return false, remoteresults.ErrConflict
-	}
-	results := make(chan syncResult, jobsPerAttempt)
-	selected := map[string]bool{}
-	var started int
-	start := func(id string, snapshot *jobcontract.Snapshot) {
-		selected[id] = true
-		started++
-		go func() {
-			results <- watcher.syncJob(
-				ctx,
-				node,
-				connection,
-				id,
-				snapshot,
-			)
-		}()
-	}
-	priority, firstError := watcher.priorityPage(ctx, node, scan)
-	for _, id := range priority {
-		start(id, nil)
-	}
-	// Local observations begin before a shared page request can block. Both
-	// queues advance independently, reserving at least half the slots for discovery.
-	pageErr := watcher.discover(ctx, connection, scan)
-	if pageErr != nil && firstError == nil {
-		firstError = pageErr
-	}
-	if pageErr == nil {
-		for started < jobsPerAttempt && scan.index < len(scan.pending) {
-			snapshot := scan.pending[scan.index]
-			scan.index++
-			id := snapshot.Receipt.JobID
-			if !selected[id] {
-				start(id, &snapshot)
-			}
-		}
-	}
-	applied := false
-	for range started {
-		result := <-results
-		applied = applied || result.applied
-		if firstError == nil {
-			firstError = result.err
-		}
-	}
-	return applied, errors.Join(firstError, ctx.Err())
-}
-
-func (watcher *Watcher) priorityPage(ctx context.Context, node Node, scan *discovery) ([]string, error) {
+func (watcher *Watcher) priorityPage(ctx context.Context, node Node, after string) (remoteresults.PriorityPage, error) {
 	select {
 	case watcher.gate <- struct{}{}:
 		defer func() { <-watcher.gate }()
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return remoteresults.PriorityPage{}, ctx.Err()
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	page, err := watcher.priorityJobs(
 		ctx,
 		node.Origin,
-		scan.priorityCursor,
-		priorityPerAttempt,
+		after,
+		priorityPageSize,
 	)
 	if err != nil {
-		return nil, err
+		return remoteresults.PriorityPage{}, err
 	}
-	if len(page.JobIDs) > priorityPerAttempt || page.HasMore && len(page.JobIDs) == 0 {
-		return nil, remoteresults.ErrInvalid
+	if len(page.JobIDs) > priorityPageSize || page.HasMore && len(page.JobIDs) == 0 {
+		return remoteresults.PriorityPage{}, remoteresults.ErrInvalid
 	}
-	previous := scan.priorityCursor
+	previous := after
 	for _, id := range page.JobIDs {
 		if !domain.IsUUID(id) || id <= previous {
-			return nil, remoteresults.ErrInvalid
+			return remoteresults.PriorityPage{}, remoteresults.ErrInvalid
 		}
 		previous = id
 	}
 	if page.NextCursor != previous {
-		return nil, remoteresults.ErrInvalid
+		return remoteresults.PriorityPage{}, remoteresults.ErrInvalid
 	}
-	scan.priorityCursor = page.NextCursor
-	if !page.HasMore {
-		scan.priorityCursor = ""
-	}
-	return page.JobIDs, nil
-}
-
-func (watcher *Watcher) discover(ctx context.Context, connection Connection, scan *discovery) error {
-	if scan.index == len(scan.pending) {
-		page, err := connection.ListJobs(ctx, scan.cursor, discoveryPageSize)
-		if err != nil {
-			return err
-		}
-		cursor, err := strconv.ParseUint(page.NextCursor, 10, 63)
-		validPage := err == nil && strconv.FormatUint(cursor, 10) == page.NextCursor &&
-			page.Contract == jobcontract.CurrentContract && len(page.Jobs) <= discoveryPageSize
-		validCursor := cursor >= scan.cursor && (len(page.Jobs) == 0 || cursor > scan.cursor)
-		validTail := len(page.Jobs) > 0 || (!page.HasMore && cursor == scan.cursor)
-		if !validPage || !validCursor || !validTail {
-			return remoteresults.ErrInvalid
-		}
-		scan.pending, scan.index, scan.cursor = page.Jobs, 0, cursor
-		if !page.HasMore {
-			scan.cursor = 0
-		}
-	}
-	return nil
+	return page, nil
 }
 
 type syncResult struct {

@@ -40,7 +40,7 @@ type remoteSyncDependencies struct {
 
 type remoteSyncRepository interface {
 	remoteresults.Repository
-	ListRemoteSubmissionIDs(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
+	ListRemoteSyncPriorityIDs(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
 }
 
 func newProductionRemoteSynchronization(
@@ -69,7 +69,7 @@ func newProductionRemoteSynchronization(
 	}
 	watcher, err := remotesync.NewWatcher(ctx, remotesync.WatcherDependencies{
 		Synchronizer: synchronizer,
-		PriorityJobs: dependencies.Repository.ListRemoteSubmissionIDs,
+		PriorityJobs: dependencies.Repository.ListRemoteSyncPriorityIDs,
 		Nodes: func(ctx context.Context) ([]remotesync.Node, error) {
 			snapshot, err := dependencies.Configuration.Snapshot(ctx)
 			if err != nil {
