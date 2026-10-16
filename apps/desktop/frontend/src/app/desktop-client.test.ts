@@ -276,16 +276,36 @@ describe("Wails desktop client", () => {
     expect(binding.LaunchJob).toHaveBeenCalledTimes(1)
   })
 
-  it("loads quick task history without an authored plan while retaining formal Run reference checks", async () => {
+  it("loads quick task history without an authored plan", async () => {
     const payload = structuredClone(FIXTURE_WORKSPACE)
     payload.plans = []
     payload.runs = [{ ...payload.runs[0], source: "quick_task", plan_id: payload.runs[0].id, load_mode: "single", planned: payload.runs[0].case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed: 0, indeterminate: 0 }]
     payload.active_run_id = payload.runs[0].id
+    installBinding(payload)
+    await expect(createDesktopClient().getWorkspace()).resolves.toEqual(payload)
+  })
+
+  it("loads snapshot-backed authored Run history after the current plan is deleted", async () => {
+    const payload = structuredClone(FIXTURE_WORKSPACE)
+    payload.plans = []
+    payload.runs = [{ ...payload.runs[0], plan_name: "Deleted authored plan" }]
+    payload.active_run_id = payload.runs[0].id
     const binding = installBinding(payload)
     await expect(createDesktopClient().getWorkspace()).resolves.toEqual(payload)
 
-    const formalRun = { ...payload.runs[0], source: undefined, planned: 1 }
-    binding.GetWorkspace.mockResolvedValueOnce({ ...payload, runs: [formalRun] })
+    binding.GetWorkspace.mockResolvedValueOnce({
+      ...payload,
+      runs: [{ ...payload.runs[0], plan_id: "invalid" }],
+    })
+    await expect(createDesktopClient().getWorkspace()).rejects.toBeInstanceOf(DesktopDataError)
+
+    binding.GetWorkspace.mockResolvedValueOnce({
+      ...payload,
+      runs: [payload.runs[0], payload.runs[0]],
+    })
+    await expect(createDesktopClient().getWorkspace()).rejects.toBeInstanceOf(DesktopDataError)
+
+    binding.GetWorkspace.mockResolvedValueOnce({ ...payload, active_run_id: payload.runs[0].plan_id })
     await expect(createDesktopClient().getWorkspace()).rejects.toBeInstanceOf(DesktopDataError)
   })
 

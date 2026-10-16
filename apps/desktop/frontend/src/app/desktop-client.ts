@@ -962,10 +962,7 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
   const planIDs = new Set(plans.map((plan) => plan.id))
   const runIDs = new Set(runs.map((run) => run.id))
   if (planIDs.size !== plans.length) throw new DesktopDataError(tx("desktop:app_invalid_desktop_test_plan_data"))
-  if (
-    runIDs.size !== runs.length ||
-    runs.some((run) => run.source !== "quick_task" && !planIDs.has(run.plan_id))
-  ) {
+  if (runIDs.size !== runs.length) {
     throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   }
   if (
