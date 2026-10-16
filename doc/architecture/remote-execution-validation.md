@@ -1033,3 +1033,13 @@ R4的两次受控出口工具或预检失败仍未取得三方source配对证明
 R11 收尾仅新增测试，没有改变生产实现、管理契约、存储格式或现有数据。`spec_test.go` 新增 13 个子用例，经实际 Submission validator 拒绝缺必要结构的 Run、冻结 Plan/Model 不一致的 Comparison 与父子非初始 revision；每例先验证合法基准，拒绝后序列化字节不变。Comparison 还单独验证每个子 Run 自身合法，避免错因拒绝。新增用例及完整 `go test ./internal/jobcontract -count=1` 通过（1.343 秒）。
 
 `http_contract_final_test.go` 对 Run、Performance、Comparison 各测 null、数组代替对象和多个 payload，共 9 项 HTTP 400 / invalid_request，逐项验证无 Job、节点列表为空、active/queued 为 0、Mock 请求为 0。另以两个独立 HTTP transport 同时发送同 expected revision 的不同 cancel/stop 命令，验证唯一 200 持久确认、另一个 409 且无确认记录、唯一 command journal、按实际胜者得到 cancelled 或 draining 后 completed；同 ID 重放不改变最终状态或增加请求。新增目标测试、并发用例重复 20 次、相关原有 HTTP admission/control/字节边界回归及该包 vet 均通过；重复并发执行不等于 race detector。限定两份测试的独立功能审查通过，没有发现需修改生产实现的问题。逐字段类型、最大完整实体及剩余长轮询/下载边界仍按矩阵保留，不据代表性负例宣称全部 R11 已验。
+
+## 2026-10-17：R11 输入类型、观察与大文档边界补齐
+
+新增六份测试的改动完成独立审查，没有修改生产行为、当前契约或 schema。`production_unknown_node_test.go` 通过公开 Coordinator.Prepare 和真正的生产后端路由拒绝合法但未配置的 UUID，断言未创建 Submission、无 SSH/远端/本地连接且节点设置不变；最终定向运行通过（1.939 秒）。Command 的 8 个错类型代表项、RunnerInfo 的 25 个错类型代表项及当前任务能力类别拒绝均通过，输入字节不变；Run/Comparison 分别覆盖 warmup 与 open_loop。jobcontract 包通过（1.513 秒）；最后两条 open_loop 补例所在 12 子用例定向通过（1.008 秒），没有重跑已通过的大文档负载。
+
+真实最大合法 32 MiB checkpoint 位于可通过 Freeze 的当前输入中；完整 Observation 为 33,554,586 字节，完整 Result 为 33,555,392 字节，均通过真实 SQLite 读取，Result 由生产 SealPerformanceResult 生成。外层预算 33,558,528 / 42,016,768 包含预留空间；预算及预算 +1 的尾空白文档被明确拒绝，存储 SHA、长度与 total_changes 不变。这些损坏文档不是合法精确最大实体，也不能单独证明 SQL 长度保护的必要性；当前两条读取 SQL 的有界 CASE 已直接核对。SQLite 定向通过（6.699 秒），两相关包 vet 通过。
+
+HTTP 最大 wait_ms=20000 实际等待 20.001 秒后返回空页，原 cursor、任务和单次 Mock 请求保持；活动任务的长轮询取消后继续完成原 Job。两个真实 Performance Job 分别验证未就绪 404、双向报告归属错误 404，以及正常原始字节和 SHA 不变。Run 报告覆盖合法/非法 Range，响应发送 16 字节后真实中断，随后按偏移续传重建相同字节与 SHA。32 MiB 合法 Run 实体通过 domain、canonical encoder 和 HTTP，+1 实体被拒绝；这一大报告只通过 ReadRepository 装饰器验证 HTTP/编码层，没有声称 SQLite 写入了 32 MiB Run Report。
+
+HTTP 非长等待定向通过（3.185 秒），最大等待专项通过（21.493 秒），包 vet 通过。独立审查发现跨 Job 错误响应最初只检查了 owner 文档；修正后同时排除双方文档并严格解析唯一当前 not_found 错误及 EOF，受影响测试通过（1.626 秒）。六份测试最终审查通过，格式和 diff 检查通过；平台运维 G07、R4 真实三任务、卸载实跑及原生界面仍单独保留，未改变其完成状态。

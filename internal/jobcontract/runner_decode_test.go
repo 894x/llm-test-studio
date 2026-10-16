@@ -95,3 +95,73 @@ func TestRunnerInfoDecodeRequiresEveryCurrentFieldWithoutDefaults(t *testing.T) 
 		t.Fatal("oversized metadata was accepted")
 	}
 }
+
+func TestRunnerInfoDecoderRejectsWrongCurrentFieldTypesWithoutMutation(t *testing.T) {
+	document, err := json.Marshal(runnerInfo())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		scope string
+		field string
+		value string
+	}{
+		{field: "contract", value: "true"},
+		{field: "node_id", value: "1"},
+		{field: "node_installation_id", value: "1"},
+		{field: "engine_build_id", value: "1"},
+		{field: "runner_version", value: "1"},
+		{field: "os", value: "1"},
+		{field: "arch", value: "1"},
+		{field: "maintenance_operation_id", value: "1"},
+		{field: "capabilities", value: "[]"},
+		{field: "budget", value: "false"},
+		{field: "ready", value: "0"},
+		{field: "healthy", value: "0"},
+		{field: "active", value: `"0"`},
+		{field: "queued", value: `"0"`},
+		{field: "pending", value: `"0"`},
+		{scope: "capabilities", field: "job_kinds", value: `"run"`},
+		{scope: "capabilities", field: "protocols", value: "{}"},
+		{scope: "capabilities", field: "features", value: "[false]"},
+		{scope: "budget", field: "max_active_jobs", value: `"1"`},
+		{scope: "budget", field: "max_queued_jobs", value: `"1"`},
+		{scope: "budget", field: "max_concurrency", value: `"1"`},
+		{scope: "budget", field: "queue_timeout_ns", value: `"1"`},
+		{scope: "budget", field: "execution_timeout_ns", value: `"1"`},
+		{field: "active", value: "0.5"},
+		{scope: "budget", field: "queue_timeout_ns", value: "0.5"},
+	} {
+		t.Run(test.scope+"."+test.field+"="+test.value, func(t *testing.T) {
+			root := map[string]json.RawMessage{}
+			if err := json.Unmarshal(document, &root); err != nil {
+				t.Fatal(err)
+			}
+			fields := root
+			if test.scope != "" {
+				fields = map[string]json.RawMessage{}
+				if err := json.Unmarshal(root[test.scope], &fields); err != nil {
+					t.Fatal(err)
+				}
+			}
+			fields[test.field] = json.RawMessage(test.value)
+			if test.scope != "" {
+				root[test.scope], err = json.Marshal(fields)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			invalid, err := json.Marshal(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := bytes.Clone(invalid)
+			if _, err := jobcontract.DecodeRunnerInfo(bytes.NewReader(invalid)); !errors.Is(err, jobcontract.ErrInvalid) {
+				t.Fatalf("wrong field type error = %v; want ErrInvalid", err)
+			}
+			if !bytes.Equal(invalid, before) {
+				t.Fatal("rejecting runner metadata changed the input bytes")
+			}
+		})
+	}
+}

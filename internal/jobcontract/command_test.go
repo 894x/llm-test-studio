@@ -84,6 +84,45 @@ func TestCommandDecoderStrictFieldsAndByteLimits(t *testing.T) {
 	}
 }
 
+func TestCommandDecoderRejectsWrongCurrentFieldTypesWithoutMutation(t *testing.T) {
+	document, err := json.Marshal(validCommand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		field string
+		value string
+	}{
+		{field: "contract", value: "true"},
+		{field: "contract", value: "1.5"},
+		{field: "command_id", value: "7"},
+		{field: "job_id", value: "[]"},
+		{field: "kind", value: "{}"},
+		{field: "expected_revision", value: `"1"`},
+		{field: "expected_revision", value: "1.5"},
+		{field: "expected_revision", value: "18446744073709551616"},
+	} {
+		t.Run(test.field+"="+test.value, func(t *testing.T) {
+			fields := map[string]json.RawMessage{}
+			if err := json.Unmarshal(document, &fields); err != nil {
+				t.Fatal(err)
+			}
+			fields[test.field] = json.RawMessage(test.value)
+			invalid, err := json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := bytes.Clone(invalid)
+			if _, err := DecodeCommand(bytes.NewReader(invalid)); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("wrong field type error = %v; want ErrInvalid", err)
+			}
+			if !bytes.Equal(invalid, before) {
+				t.Fatal("rejecting a command changed the input bytes")
+			}
+		})
+	}
+}
+
 func TestCommandConfirmationStateDecisionTable(t *testing.T) {
 	for _, test := range []struct {
 		name     string
