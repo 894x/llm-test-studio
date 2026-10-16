@@ -205,13 +205,13 @@ Run payload 复用完整 RunSnapshot 与预分配 Run ID；Performance payload �
 
 ## 节点控制接口与边界
 
-HTTP 仅通过 SSH 隧道访问。所有请求携带节点级 Authorization；JSON 接口使用当前契约头，解码前核对该契约，接收任务时核对预期 runner 身份与所需能力，不比较客户端构建。以下路径不是历史版本选择器。
+HTTP 仅通过 SSH 隧道访问。所有请求携带节点级 Authorization；管理 JSON 与内容上传均使用当前契约头，读取 body 前核对该契约，接收任务时核对预期 runner 身份与所需能力，不比较客户端构建。以下路径不是历史版本选择器。
 
 | 方法与路径 | 当前语义 | 主要返回 |
 | --- | --- | --- |
 | `GET /runner` | 探测安装身份、构建、平台、能力和预算 | 200 当前元数据；契约不匹配返回 426 |
-| `POST /runner/maintenance` | 当前 operation_id 的 pause/resume；暂停接收，保留执行和报告收尾 | 200 当前维护确认及状态；不同操作争用 409；新任务暂停时 423 |
-| `PUT /assets/{sha256}` | 上传原始字节，校验长度和摘要，原子完成 | 201 新 asset；200 已有同内容；422 摘要不符 |
+| `POST /runner/maintenance` | 当前 operation_id 的 pause/resume；暂停接收，保留执行和报告收尾；与活跃上传在 serviceMu 下原子互斥 | 200 当前维护确认及状态；不同操作或 upload_in_progress 争用 409，后者 retryable 且不写维护状态；暂停赢时新上传/任务 423 |
+| `PUT /assets/{sha256}` | P1 已实现内容上传：规范小写64位 SHA 路径、无 query、identity application/octet-stream、已知 Content-Length 1..1 GiB；完整核验并原子不覆盖发布 | 201 新内容、200 已有同内容，均返回严格 typed receipt；422 输入摘要/长度不符；不表示 Job assets 已接通 |
 | `POST /jobs` | 完整接收并持久化任务 | 202 新 JobReceipt；200 同一提交；409 ID 内容冲突 |
 | `GET /jobs?after=&limit=` | 按稳定接收序列分页，重找已接受但本地未确认的任务 | 200 Job 摘要及 next_cursor |
 | `GET /jobs/{id}` | 权威状态、revision、进度、子运行、最新 sequence、报告引用 | 200；404 未找到 |
@@ -291,11 +291,13 @@ JobReceipt 明确返回 contract、job_id、kind、accepted_at、node_installati
 
 文件系统与 SQLite 不跨资源假装原子：下载文件先写临时路径并校验 SHA-256，再原子重命名，最后事务登记。崩溃后可清理未引用临时文件；未确认完整的文件不能标为已下载。Reference 可先记录为 pending，界面区分“元数据已同步”与“证据可离线读取”。
 
-Linux State 已提供内容寻址文件基础：固定小缓冲流式核验长度与 SHA、原子不覆盖发布及目录持久确认，重复上传仍验证输入，可 seek 读取核对文件和私有目录身份；关闭 State 会释放文件并阻止后续发布。损坏文件与失败 partial 保留。目前仅为内部端口，asset 上传、任务持久引用、媒体解析、证据下载、完整 manifest 与 release 尚待接入，不宣告 assets 能力，不改变 Job 或 SQLite 格式。
+Linux State 已提供内容寻址文件基础，P1 已接通受鉴权的内容 PUT：固定小缓冲流式核验长度与 SHA、原子不覆盖发布及目录持久确认，重复上传仍完整验证输入，严格 receipt 绑定 contract/node/install/hash/size。唯一 `jobcontract.ContentIdentity` 替换原 `runnerstate.ContentIdentity`，无 alias；新增可选 feature `content_upload` 在既有 Features 内，不加必填 RunnerInfo 字段或要求 client/runner 同 build。损坏文件与失败 partial 保留；当前 assets=false，非空 Job assets 仍422/0Execute，尚无 HTTP asset GET、任务绑定/引用 DB、媒体解析、附件、完整 manifest 或 release，P2–P5 未实施，不改变 Job、SQLite、DTO/FE/Wails 格式。
+
+上传与 Job 共用20 GiB/最少512 MiB可用空间 reservation，最多4个上传槽、16384个保留完整文件/partial，活跃 reservation 保守计费，无自动 GC/delete。upload 总期限10分钟、bulk header2分钟，调用方更早取消仍生效；管理 JSON30秒及原 pool25秒/2分钟策略不扩大。SSH 最多4个 endpoint owner，每个固定 management/bulk 两种 role、总 transports≤8，所有出口释放源，关闭取消并 join。serviceMu 内上传与维护竞争：活跃上传使 pause 返回409 upload_in_progress/retryable且不 apply；pause 先赢则新上传423。installer 仅将严格当前 SafeError 的 busy 码映射 ErrBusy，无旧409 fallback。
 
 节点日志初期不自动压缩或删除。显式 release 需要终态与完整 manifest 下载回执，之后保留 job_id、请求摘要和终态墓碑；已释放的 Job 返回其终态及 released 标记，禁止同 ID 再执行。节点磁盘预算不足时拒绝新任务，提示同步与回收，不能删除未下载结果。
 
-当前 Linux runner 的 MaxStorageBytes 与 MinFreeBytes 是接收软配额：启动或运行时超限仅拒绝新提交，仍提供读取与同步，让已接收任务继续执行和归档；空间恢复后无须重启即可接收。监控在超限时仍独立验证数据库可写，实际目录扫描、可用空间查询或持久化故障才隔离服务。当前仍拒绝非空 asset 清单；asset、manifest 和显式 release 接口按后续阶段实现，不因这项软配额调整而视为已交付。
+当前 Linux runner 的 MaxStorageBytes 与 MinFreeBytes 是接收软配额：启动或运行时超限仅拒绝新提交，仍提供读取与同步，让已接收任务继续执行和归档；空间恢复后无须重启即可接收。监控在超限时仍独立验证数据库可写，实际目录扫描、可用空间查询或持久化故障才隔离服务。P1 内容上传纳入同一软配额，输入错误/取消不隔离宿主，真实持久化故障仍隔离；非空 Job asset 清单仍拒绝，任务绑定、manifest 和显式 release 待后续阶段实现。
 
 指标由节点的单调时钟测量，保留现有 E2E、TTFT、TPOT、调度 lag、预热和发送窗口口径。SSH 与结果下载延迟仅是控制面耗时。记录实际执行构建、地区、出口与时间同步状态；报告能识别节点，但不把不同节点结果未经说明合并为一组吞吐。
 
@@ -476,11 +478,13 @@ R5 是 clean `53b8e0ad00ffcf371a0be90ad0670d8519773f83` 的已构建产物，未
 
 本轮 shared/foreign 统一 JobRead、nullable submission、冻结 ControlTarget 和真实 source anchor 已实现，Query 和七个 Wails 绑定消费者同步替换；本 client 控制历史与他人 confirmed remote 事件严格区分，foreign pending 控制阻止节点移除。51 源码 78581 全仓 Go 测试/vet 通过且摘要不变；FE 完整 738 后追加 1 测试、定向 App60 及三尺寸浏览器 fixture 通过，不声明最新全套 739 实跑。后续 r2/source519 实机 4278 exit1：A 仅 Launch 一次并已接收原 Job d1cce52e，B 只完成旧任务 baseline，未观察到新 foreign Job，控制及 C 查询未执行。原 false 保留；75284 纯 GET 诊断只证明同一原 Job 后来 completed、封口与结果身份正确，不代替共享控制通过。后续 scheduler/SQL 已提交 a91f1d8，602 Go/module inputs 全仓 test/vet 前后不变；r3 实机27088已执行，发现新 foreign 后 wrapper 失败，未执行 control/C查询/terminal/reopen，native=false，历史 c2 进程 PASS 不可替代本次新契约实机。
 
-r3 的 B 空 workspace 由产品 watcher 冷导入初始12Job/全部pending文档，冷准备239654ms；两个独立OS进程 A49384/B25004 使用不同配置与 R8 client labels，daemon 仍为原 R7。唯一 Launch1/Submit1/paid0 的新 Job50620b5e 在 Mock 已入站且 gate 未释放时，被 B 在 phase4162382us/父观察4187ms 发现为 running/rev3/seq7、submission:null，真实 GetJobControls 为空。它提供本轮共享发现证据，不是通用25秒 SLA 或提升倍数；随后 commandID 空、cancel/control0，清理未完成、原 after:null，原 false 不改。离线工具相符缺陷尚不能唯一归因，r4 仅TEMP准备；P1仍在 secondary 未整合/部署，assetsfalse，完整证据及其他待办见[验证记录](remote-execution-validation.md)。
+r3 的 B 空 workspace 由产品 watcher 冷导入初始12Job/全部pending文档，冷准备239654ms；两个独立OS进程 A49384/B25004 使用不同配置与 R8 client labels，daemon 仍为原 R7。唯一 Launch1/Submit1/paid0 的新 Job50620b5e 在 Mock 已入站且 gate 未释放时，被 B 在 phase4162382us/父观察4187ms 发现为 running/rev3/seq7、submission:null，真实 GetJobControls 为空。它提供本轮共享发现证据，不是通用25秒 SLA 或提升倍数；随后 commandID 空、cancel/control0，清理未完成、原 after:null，原 false 不改。离线工具相符缺陷尚不能唯一归因，r4 正准备基于4512709 exact archive、尚未实跑；P1 已本地整合4512709、未部署且assetsfalse，完整证据及其他待办见[验证记录](remote-execution-validation.md)。
 
 SQLite 唯一 current 由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`，version1/name0001_protocol_runtime 保持，影响共用 schema 的 desktop/runner；runtime 拒绝旧格式保留数据，无兼容或自动迁移。shared/foreign 已提交 626ccdd；固定 7afb→adc 的三类 fixture 与实际历史 766d1aa…→adc 一致性私有副本已通过当前契约验证，真实切换/恢复仍 pending。副本保全 63runs/252revisions/5482results/4comparisons/8comparison revisions/22comparison runs/61reports/43perf；104 份 reports/perf 仅由离线工具补合法 unmanaged 显式 null。实际 187662336 字节用户源库 SHA 不变，服务器仍原 R7，旧 proof 未改；新 Mock 已增加数据，不把旧 10Job 当当前常数。细节见[当前矩阵](remote-execution-contract-matrix.md)和[验证记录](remote-execution-validation.md)。
 
 历史转换副本另以 clean626 的真实 DesktopApp initializer/startup/getters/shutdown/reopen 完成两轮验证，92.283s 内全部 61 Run 报告、43 性能报告及 4 comparison details 原 ID 可读，104 份归档 body 与母本 typed JSON 等值；公开列表 cap100 正常，最旧 4 份仍可按 ID 读取。只在应用副本新增 local identity，MemoryStore、0 HTTP/SSH/provider，非 native/OS keyring 或实际用户库切换验收。quota 8f7c828 与 content ff657e7 已本地提交，Linux WSL runnerstate/runnerprocess 完整测试及 vet 通过；仅 ErrCapacity 软拒新任务，真实 DB 故障仍隔离，content 仍是内部流式原子存储基础，未提供 HTTP/Job assets/附件/release，assets 能力 false。两项未部署到 R7、未新增 schema；完整证据及限制见[验证记录](remote-execution-validation.md)。
+
+后续 P1 的28文件冻结已由 secondary1204270 整合 main4512709，增加 content_upload，不开放 Job assets。初冻结 Windows 全仓 test/vet 通过，最终两文件 body-close 修复通过完整 client/SSH/vet；Linux nonroot SSH 失败已在旧c962基线复现，最终 root SSH 全包与其余 affected 包/vet通过，未放宽权限。独立 Linux 进程的131072字节TCP上传31.041710264s通过，并验证普通JSON并行、重复/重启、坏body不伤健康、disk fault隔离、SIGTERM join及维护互斥；无实际1 GiB或31秒跨SSH全链、race、native/真实DB/部署证据。主a91+P1全仓 session86996 的 test/vet 均exit0，616 Go/module输入前后逐一不变；P2–P5及既有切换/恢复等交付边界保持。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 

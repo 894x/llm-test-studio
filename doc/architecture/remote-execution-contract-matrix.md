@@ -57,7 +57,7 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | C10 | TestAssetManifestBoundaries、TestDecoderRejectsOversizedCollectionsBeforeParsingTheirRemainingElements | partial：数组存在性、0/1/128/129 与解码前数量限制通过；实际文件存在性待宿主 |
 | C11 | TestAssetManifestBoundaries | partial：长度、路径穿越、重复已验证；控制字符与 Unicode 专项待补齐 |
 | C12 | TestAssetManifestBoundaries、TestIdentityFieldsRequireCanonicalUUIDsAndAssetHashes | covered：合法、长度、字符、大小写与重复 |
-| C13 | TestAssetManifestBoundaries | partial：描述中的单文件及总字节边界通过；上传真实字节核验待实现 |
+| C13 | TestAssetManifestBoundaries；P1 内容上传见 U01–U13 | partial：manifest 单文件及总字节边界通过，P1 独立上传已验证长度/摘要；非空 Job assets 仍422，任务绑定及实际文件接收验证未接通 |
 | C14 | TestAssetManifestBoundaries | covered：空、有效、非法、参数、大小写与长度边界 |
 | C15 | TestSubmissionRequiresExactBoundedSecretSlots、TestRunAndWholeComparisonPayloadValidation、TestDecoderRejectsOversizedCollectionsBeforeParsingTheirRemainingElements | covered：缺失、多余、错误、重复、32 与解码前超限拒绝 |
 | C16 | TestSubmissionRequiresExactBoundedSecretSlots、TestSubmissionDecodeLimitsAndRejectsUnknownFields | covered：0/1/8192/8193、空白、非法 base64；仅接受规范 base64 字符串，拒绝数字数组 |
@@ -187,8 +187,24 @@ TestJSONGzipPreservesCurrentTypedStateAndFixedErrors、TestReadJSONRejectsInvali
 
 本轮 51 源码文件在 78581 全仓 Go 测试及 vet 前后摘要相同，均 exit0。上面新共享契约的本地 Core/SQLite/Mock、typed FE 及浏览器 fixture 通过；后续 r2/source519 实机 4278 exit1，A 一次 Launch 已接收，B 未发现该新 foreign Job，未进入控制及 C 查询。75284 纯 GET 仅验证原 Job 已 completed、sealed 结果及原身份一致，未启动 B watcher、导入或查询 live controls，不能把 diagnostic_complete 当 r2 PASS。native=false，原 R7/c2 进程证据仍不能替代新 shared 控制验收。
 
-clean626 历史转换副本已通过两轮生产 DesktopApp 初始化/查询/关闭/重开，61 Run 报告、43 性能报告及 4 comparison details 原 ID 可读，原用户库和转换母库不变；真实切换/恢复仍 pending。quota/content 已提交并通过 Linux WSL runnerstate/runnerprocess 完整测试与 vet：ErrCapacity 只软拒新提交，真实存储故障仍隔离；content 仅内部流式原子存储，HTTP/Job assets/附件/release 与 assets 能力仍未交付，未新增 schema 或部署到 R7。后续 scheduler/SQL 已提交 a91f1d8，H20/H21 同步当前规则；实机控制、公平性及其他待办保留，证据见[验证记录](remote-execution-validation.md)。
+clean626 历史转换副本已通过两轮生产 DesktopApp 初始化/查询/关闭/重开，61 Run 报告、43 性能报告及 4 comparison details 原 ID 可读，原用户库和转换母库不变；真实切换/恢复仍 pending。quota/content 基础与后续 P1 内容 PUT 已提交；ErrCapacity 只软拒新提交，真实存储故障仍隔离，Job assets/附件/release 与 assets 能力仍未交付，未新增 schema 或部署到 R7。scheduler/SQL 已提交 a91f1d8，H20/H21 保持当前规则；P1 及实际执行证据见下表，实机控制、公平性及其他待办保留。
 
 priority 唯一只读端口为 `ListRemoteSyncPriorityIDs`，替换旧方法且无 alias：纳入 own pending/accepted 且无 mirror、own/foreign 非 terminal 或 known refs 未 imported；排除 own prepared，终态全部 known refs imported 后退出 priority，不称 settled，迟到报告仍靠 history。单 statement 严格校验顶层 UUID 顺序、当前 Snapshot/Receipt、小身份及双源冲突，Go 在 limit+1 个 eligible 后停止；SQL 仍可能 scan/sort 整个节点 scope 的小 header/snapshot，工作非 O(limit)，不宣称全仓 constant memory。完整 spec 不传 Go，实际同步的完整校验不弱化；WAL 双仓库 snapshot 一致性回归与真实 B 私有 clone 零 priority 查询通过，未启动原 B watcher。schema/wire 不变，无新增转换要求，既有 adc 用户库真实切换/恢复仍 pending。
 
 后续 r3/session27088 exit1：两个独立 OS client 一次 Launch/Submit、paid0，实际 daemon 仍 R7；B 空 workspace 的生产 watcher 已完成冷导入和新 Job50620b5e 的 public/typed/SQL foreign 查询。整轮止于 wrapper_operation_failed，commandID 空，control0，未验证终态/封口/重开；清理未完成且原 mock_process_after:null，不能声称优雅关闭或 runner after 状态已证。离线工具复现同 channel status timeout 影响后台 reader 的相符缺陷，但原 raw error 未保存，不能追认为唯一根因；r4 仅 TEMP 准备中，完整证据见[验证记录](remote-execution-validation.md)。
+
+## P1 内容上传当前边界（4512709，非 Job assets）
+
+新增可选 feature `content_upload`，仍使用当前 contract1 和既有 Features，不新增必填 RunnerInfo 字段或要求同 build。`jobcontract.ContentIdentity` 替换原 runnerstate 类型，无 alias。下列为独立内容 PUT 的本地/WSL 证据，不把 U01–U13 的有界 P1 覆盖当成媒体执行完成；细分矩阵 `%TEMP%/llm-content-http-p1-c962-20261016/p1-boundary-matrix.safe.json` SHA `bcd77697dff1ac9725de8d62fec4671251588289ecef2ef889b70b7974bc6344`。
+
+| 行 | 当前规则 | 执行证据与边界 |
+| --- | --- | --- |
+| U01–U02 | PUT /assets/{lowerSHA64}；Bearer+当前契约先于 reservation/body；规范路径、无 query/别名 | TestAssetUploadValidatesAllMetadataBeforeReadingOrCallingStorage、真实 TCP unread-large-request 拒绝验证401/426/400且不读body/调用store |
+| U03–U04 | application/octet-stream、identity，已知 Content-Length 1..1 GiB；拒绝 chunked/未知长度、重复header及错表示 | TestNodeContentUsesExactBinaryWireAndCanonicalRoute、TestAssetRequestSizeBoundaryDoesNotAllocateBody 验证 wire与0/1/max/max+1；没有实际1 GiB传输 |
+| U05–U06 | 固定缓冲核验全部输入长度/SHA，短/长/错摘要422；重复仍核验输入与既有文件，原子不覆盖且持久确认后才201/200 | streaming max+1、并发重复、fsync/close故障和 TestAssetUploadReturnsTypedDurableReceiptsAndVerifiesDuplicateBodies 通过；失败partial保留并计费 |
+| U07–U08 | 输入错误/取消不隔离，实际存储故障503并隔离；容量429软拒。与Job共享20 GiB/minfree512 MiB reservation，upload槽4、保留完整文件/partial上限16384，保守计费，无GC/delete | source/error分类、磁盘损坏隔离、Job/upload并发预算、槽/文件数和reservation exactly-once回归通过 |
+| U09–U10 | upload10分钟、bulk header2分钟，普通JSON30秒与原pool25秒/2分钟不扩大；SSH endpoint owner≤4，每个固定management/bulk两role、transports≤8；关闭取消/join并释放源 | 独立Linux进程131072B TCP31.041710264s、普通JSON并行、阻塞上传SIGTERM join通过；client/SSH完整包及closed-owner Read0/Close1通过，无31秒跨SSH全链或race证据 |
+| U11–U12 | receipt精确绑定contract/node/install/hash/size，JSON≤1024B；2xx坏receipt仍拒绝；丢确认只允许显式同内容完整重传，不新建Job | TestAssetReceiptRequiresEveryCurrentFieldAndNoAliases、TestUploadContentStrictlyBindsReceiptAndRejectsUntrustedResponses、lost-ack完整重传测试通过 |
+| U13 | serviceMu原子互斥：活跃upload令pause409 upload_in_progress/retryable/noApply，pause先赢则upload423；installer仅严格当前SafeError busy码映射ErrBusy | upload/maintenance生命周期竞争与TestUpgradeMaintenanceClassifiesUploadBusyWithoutConfirmingPause通过，无旧409 fallback |
+
+P1 已提交 main4512709、未部署R7，主a91+P1全仓 session86996 已test/vet exit0，616 Go/module输入前后逐一不变；最终proof记录初冻结Windows全仓与最后两文件client/SSH修复的不同边界。Linux nonroot SSH失败在exact c962旧基线同样复现，最终root完整SSH及其余affected包/vet通过，无fixture或生产权限放宽，不称所有Linux环境均通过。assets仍false、非空Job assets仍422/0Execute；HTTP asset GET、Job binding/refDB、附件、manifest、release及P2–P5仍未实施，schema/DTO/FE/Wails无变更，无新增数据升级。详见[验证记录](remote-execution-validation.md)。
