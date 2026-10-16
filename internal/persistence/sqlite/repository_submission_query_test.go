@@ -101,7 +101,7 @@ func TestSubmittedQueryPreservesPendingAndFixedExecutorFacts(t *testing.T) {
 				if view.Execution == nil || view.Execution.Status != domain.RunQueued || view.Execution.Revision != 1 {
 					t.Fatal("actual execution receipt was lost")
 				}
-				if view.Executor.Version != "independent-runner-build" || view.Executor.BuildID != fixture.spec.EngineBuildID {
+				if view.Executor.Version != fixture.snapshot.Receipt.Origin.RunnerVersion || view.Executor.BuildID != fixture.spec.EngineBuildID {
 					t.Fatal("query replaced the frozen executor with the desktop version")
 				}
 				if view.Progress != nil || view.PerformanceResultReady || view.RunIDs == nil || view.ReportIDs == nil {

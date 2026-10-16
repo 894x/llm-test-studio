@@ -1,4 +1,7 @@
 import { isQuickPerformanceProtocol } from "./data"
+import { controlRun, launchAtDefault, type JobClient } from "@/features/jobs/execution"
+import type { JobView } from "@/features/jobs/data"
+import { JobDetails } from "@/features/jobs/job-details"
 import {
   useRef,
   useState,
@@ -42,15 +45,7 @@ import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
 
-type Actions = Pick<
-  DesktopClient,
-  | "startQuickTask"
-  | "getQuickTask"
-  | "rememberQuickTaskCredential"
-  | "forgetQuickTaskCredential"
-  | "cancelRun"
-  | "runQuickPerformanceTest"
->
+type Actions = JobClient & Pick<DesktopClient, "getQuickTask" | "rememberQuickTaskCredential" | "forgetQuickTaskCredential">
 
 export function QuickTaskWorkspace({
   catalog,
@@ -62,7 +57,7 @@ export function QuickTaskWorkspace({
   onRunSelected,
   actions,
   refresh,
-  onWorkspaceUpdated,
+  onJobLaunched,
   onOpenReport,
   onPerformanceArchived,
   onSaveChannel,
@@ -76,7 +71,7 @@ export function QuickTaskWorkspace({
   onRunSelected: (id: string) => void
   actions: Actions
   refresh: () => Promise<void>
-  onWorkspaceUpdated: (snapshot: WorkspaceSnapshot) => void
+  onJobLaunched?: (job: JobView) => void
   onOpenReport: (id: string) => void | Promise<void>
   onPerformanceArchived: (id: string) => void | Promise<void>
   onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
@@ -86,6 +81,7 @@ export function QuickTaskWorkspace({
   const [pending, setPending] = useState<
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
+  const [job, setJob] = useState<JobView | null>(null)
   const inFlight = useRef(false)
   const performanceTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -196,9 +192,14 @@ export function QuickTaskWorkspace({
     setRefreshError(false)
     onDraftChange(form)
     try {
-      const id = await actions.startQuickTask(command)
-      onRunSelected(id)
-      onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
+      const accepted = await launchAtDefault(actions, { kind: "quick_task", quick_task: command, plan: null, performance: null, comparison: null })
+      setJob(accepted)
+      onJobLaunched?.(accepted)
+      const id = accepted.run_ids[0]
+      if (id) {
+        onRunSelected(id)
+        onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
+      }
       await refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
@@ -215,6 +216,7 @@ export function QuickTaskWorkspace({
     try {
       const detail = await actions.getQuickTask(id)
       update(restoreTaskDraft(detail, form))
+      setJob(null)
       setCaseConcurrency(detail.case_concurrency)
       onRunSelected(id)
     } catch (reason) {
@@ -230,7 +232,7 @@ export function QuickTaskWorkspace({
     setPending("cancel")
     setError("")
     try {
-      onWorkspaceUpdated(await actions.cancelRun(runID))
+      setJob(await controlRun(actions, runID, "cancel"))
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
     } finally {
@@ -623,6 +625,7 @@ export function QuickTaskWorkspace({
             ) : null}
             <div className="space-y-3">
               <h2 className="text-sm font-semibold">{t("task.progress")}</h2>
+              {job ? <JobDetails key={job.job_id} client={actions} jobID={job.job_id} initialJob={job} onJobChange={setJob} onOpenReport={onOpenReport} /> : null}
               {!runID ? (
                 <p className="text-xs text-muted-foreground">{t("task.notStarted")}</p>
               ) : (
@@ -669,7 +672,7 @@ export function QuickTaskWorkspace({
                     <Button size="sm" variant="outline" onClick={() => void refreshProgress()}>
                       {t("task.refresh")}
                     </Button>
-                    {!selectedRun || isRunActive(selectedRun.status) ? (
+                    {!job && (!selectedRun || isRunActive(selectedRun.status)) ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -763,7 +766,7 @@ export function QuickTaskWorkspace({
             performanceTrigger.current?.focus()
           }}
           connection={performanceCommand}
-          run={actions.runQuickPerformanceTest}
+          client={actions}
           onArchived={onPerformanceArchived}
           onOpenReport={onOpenReport}
         />

@@ -77,6 +77,9 @@ func (repository *Repository) JobEvents(
 		if !validSequence || !validIdentity || formatTime(event.CreatedAt) != createdAt {
 			return jobhost.EventPage{}, fmt.Errorf("%w: job event identity or gap", ErrCorrupt)
 		}
+		if err := validateEventExecutionOrigin(event, snapshot.Receipt.Origin); err != nil {
+			return jobhost.EventPage{}, err
+		}
 		page.Events = append(page.Events, event)
 		page.LastSequence = event.Sequence
 		bytesRead += len(document)

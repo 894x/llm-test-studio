@@ -239,5 +239,10 @@ func (app *DesktopApp) RemoveRemoteNode(command RemoteNodeAction) error {
 		return app.safeBindingError(err)
 	}
 	defer lease.release()
+	app.executionLocationMu.Lock()
+	defer app.executionLocationMu.Unlock()
+	if err := lease.ctx.Err(); err != nil {
+		return app.safeBindingError(err)
+	}
 	return app.safeBindingError(lease.remoteNodes.Remove(lease.ctx, command.ID, command.ExpectedRevision))
 }

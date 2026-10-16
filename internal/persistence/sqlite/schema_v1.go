@@ -30,6 +30,8 @@ var currentSchemaObjects = []schemaObject{
 	)`},
 	{kind: "index", name: "idx_job_control_outbox_pending", table: "job_control_outbox",
 		ddl: `CREATE INDEX idx_job_control_outbox_pending ON job_control_outbox(command_id) WHERE state = 'pending'`},
+	{kind: "index", name: "idx_job_control_outbox_job", table: "job_control_outbox",
+		ddl: `CREATE INDEX idx_job_control_outbox_job ON job_control_outbox(job_id, command_id)`},
 	{kind: "table", name: "remote_performance_results", table: "remote_performance_results", ddl: `CREATE TABLE remote_performance_results (
 		job_id TEXT PRIMARY KEY,
 		report_id TEXT NOT NULL UNIQUE,

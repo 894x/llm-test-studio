@@ -1,3 +1,4 @@
+import { parseExecutionOrigin, type ExecutionOrigin } from "@/features/reports/execution-origin"
 import type { CatalogProtocol } from "@/features/catalog/data"
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
@@ -384,6 +385,7 @@ export interface QuickPerformanceCapacityResult {
 }
 
 export interface QuickPerformanceReport {
+  execution_origin: ExecutionOrigin | null
   protocol: CatalogProtocol
   schema_version: QuickPerformanceSchemaVersion
   report_id?: string
@@ -445,10 +447,32 @@ function parsePerformanceResponseEvidence(value: unknown): QuickPerformanceRespo
 }
 
 export function parseQuickPerformanceReport(value: unknown): QuickPerformanceReport {
+  return parsePerformanceReport(value, false)
+}
+
+// A sealed Job observation can end during any execution stage. Its report is
+// validated as the current report structure without imposing archive completion.
+export function parseQuickPerformanceObservationReport(value: unknown): QuickPerformanceReport {
+  const result = parsePerformanceReport(value, true)
+  rejectUnknownObservationFields(value, result)
+  return result
+}
+
+function rejectUnknownObservationFields(raw: unknown, parsed: unknown): void {
+  if (Array.isArray(raw) && Array.isArray(parsed)) {
+    raw.forEach((item, index) => rejectUnknownObservationFields(item, parsed[index]))
+  } else if (isRecord(raw) && isRecord(parsed)) {
+    if (Object.keys(raw).some(key => !Object.hasOwn(parsed, key))) throw new DesktopDataError("Unknown performance observation field")
+    for (const key of Object.keys(raw)) rejectUnknownObservationFields(raw[key], parsed[key])
+  }
+}
+
+function parsePerformanceReport(value: unknown, checkpoint: boolean): QuickPerformanceReport {
   if (!isRecord(value) || (value.schema_version !== 2)) {
     throw new DesktopDataError(tx("desktop:quick-test_unsupported_quick_performance_report_protocol_version"))
   }
   const schemaVersion = value.schema_version
+  const executionOrigin = parseExecutionOrigin(value.execution_origin)
   if (!isQuickPerformanceProtocol(value.protocol)) throw new DesktopDataError("Unsupported performance protocol")
   if (
     typeof value.success !== "boolean" ||
@@ -511,7 +535,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     samples.length !== metrics.completed ||
     (!performanceSampleTargetsMatchWorkload(value.profile, samples)) ||
     (!performanceV3MetricsMatchSamples(metrics, samples)) ||
-    (!performancePhaseThreeReportMatches(
+    (!checkpoint && !performancePhaseThreeReportMatches(
       value.profile,
       progress,
       metrics,
@@ -521,7 +545,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
       timeSlices,
       value.error_code !== undefined,
     )) ||
-    (!performancePhaseFourReportMatches(
+    (!checkpoint && !performancePhaseFourReportMatches(
       schemaVersion,
       value.profile,
       value.success,
@@ -536,9 +560,9 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
     new Set(samples.map((sample) => sample.request_index)).size !== samples.length ||
     (value.archived !== (value.archive_status === "archived")) ||
     (value.archived && (value.report_id === undefined || value.generated_at === undefined)) ||
-    (!value.archived && value.archive_status === "not_attempted" && (value.report_id !== undefined || value.generated_at !== undefined)) ||
+    (!checkpoint && !value.archived && value.archive_status === "not_attempted" && (value.report_id !== undefined || value.generated_at !== undefined)) ||
     (value.success && (progress.phase !== "completed" || metrics.completed === 0 || metrics.failed !== 0)) ||
-    (!value.success && value.error_code === undefined && metrics.failed === 0)
+    (!checkpoint && !value.success && value.error_code === undefined && metrics.failed === 0)
   ) {
     throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
@@ -547,6 +571,7 @@ export function parseQuickPerformanceReport(value: unknown): QuickPerformanceRep
   }
   return {
     schema_version: schemaVersion,
+    execution_origin: executionOrigin,
     protocol: value.protocol,
     ...(value.report_id === undefined ? {} : { report_id: value.report_id }),
     ...(value.generated_at === undefined ? {} : { generated_at: value.generated_at }),

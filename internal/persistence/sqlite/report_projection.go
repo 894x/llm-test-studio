@@ -66,6 +66,15 @@ func (repository *Repository) ListReportProjections(ctx context.Context) ([]repo
 	currentRuns := make(map[string]reportRunExpectation, len(stored))
 	nextCache := make(map[string]cachedReportProjection, len(stored))
 	for _, row := range stored {
+		var provenance struct {
+			ExecutionOrigin *domain.ExecutionOrigin `json:"execution_origin"`
+		}
+		if err := json.Unmarshal(row.document, &provenance); err != nil {
+			return nil, reportProjectionCorrupt(ctx, "report execution origin", err)
+		}
+		if err := validateRunReportOrigin(ctx, tx, row.runID, provenance.ExecutionOrigin); err != nil {
+			return nil, err
+		}
 		digest, err := reportProjectionDigest(ctx, tx, row)
 		if err != nil {
 			return nil, err

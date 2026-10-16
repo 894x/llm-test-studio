@@ -12,6 +12,7 @@ import (
 )
 
 // RunSnapshot freezes the resolved current definitions for every execution mode.
+// Environment describes preparation, not the executor that later accepts it.
 type RunSnapshot struct {
 	SchemaVersion int                 `json:"schema_version"`
 	Plan          EntityRevisionRef   `json:"plan"`

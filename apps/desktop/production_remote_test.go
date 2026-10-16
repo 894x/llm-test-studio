@@ -38,9 +38,7 @@ func TestProductionRemoteNodesPersistDefaultAndScopeCredentialsAcrossRestart(t *
 		}}
 	services, closeManager, err := newProductionRemoteNodes(
 		ctx,
-		root,
-		base,
-		options,
+		productionRemoteNodeDependencies{Directory: root, Credentials: base, Usage: unusedRemoteNodeUsage{}, Options: options},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -85,9 +83,7 @@ func TestProductionRemoteNodesPersistDefaultAndScopeCredentialsAcrossRestart(t *
 	}
 	services, closeReopened, err := newProductionRemoteNodes(
 		ctx,
-		root,
-		base,
-		options,
+		productionRemoteNodeDependencies{Directory: root, Credentials: base, Usage: unusedRemoteNodeUsage{}, Options: options},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -151,9 +147,8 @@ func TestProductionRemoteNodesRejectUnsupportedConfigurationWithoutMutation(t *t
 	}
 	_, closeManager, err := newProductionRemoteNodes(
 		context.Background(),
-		root,
-		credentials.NewMemoryStore(),
-		productionOptions{appVersion: "v-test"},
+		productionRemoteNodeDependencies{Directory: root, Credentials: credentials.NewMemoryStore(),
+			Usage: unusedRemoteNodeUsage{}, Options: productionOptions{appVersion: "v-test"}},
 	)
 	if !errors.Is(err, remotenodes.ErrUnsupported) || closeManager != nil {
 		t.Fatal("unsupported node configuration did not stop bootstrap")

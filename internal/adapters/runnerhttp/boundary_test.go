@@ -215,8 +215,8 @@ func TestHTTPRejectsCorruptReportBytesWithoutRepairOrProviderTraffic(t *testing.
 	for _, change := range changes {
 		handler, err := runnerhttp.New(runnerhttp.Dependencies{
 			Host: fixture.host, Maintenance: fixture.maintenance, TokenSHA256: sha256.Sum256([]byte(nodeToken)),
-			Repository: corruptedResultRepository{ReadRepository: fixture.repository, change: change},
-			Version:    "test-corrupt-report", Capabilities: capabilities(),
+			Repository:   corruptedResultRepository{ReadRepository: fixture.repository, change: change},
+			Capabilities: capabilities(),
 		})
 		if err != nil {
 			t.Fatal(err)

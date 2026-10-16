@@ -7,10 +7,14 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
+const FeatureExecutionOrigin = "execution_origin"
+
 // SupportsJob checks only the current task requirements, independent of client
 // release and build. Report-transfer requirements may be stricter for a caller.
 func (capabilities RunnerCapabilities) SupportsJob(spec JobSpec) bool {
-	if spec.Validate() != nil || !slices.Contains(capabilities.JobKinds, spec.Kind) {
+	supportedKind := slices.Contains(capabilities.JobKinds, spec.Kind)
+	supportedOrigin := slices.Contains(capabilities.Features, FeatureExecutionOrigin)
+	if spec.Validate() != nil || !supportedKind || !supportedOrigin {
 		return false
 	}
 	protocols := []string{}

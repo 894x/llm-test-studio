@@ -63,6 +63,7 @@ function report(_schemaVersion: 1): QuickPerformanceReport {
     }),
   }
   return {
+    execution_origin: null,
     schema_version: 2,
     protocol: "openai-chat" as const,
     archived: false,

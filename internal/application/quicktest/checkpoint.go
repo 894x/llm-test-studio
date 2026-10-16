@@ -42,6 +42,9 @@ type PerformanceCheckpoint struct {
 // additionally validates the recorded traffic and measurements before writing.
 func (checkpoint PerformanceCheckpoint) ValidateEnvelope() error {
 	report := checkpoint.Report
+	if report.ExecutionOrigin != nil && report.ExecutionOrigin.Validate() != nil {
+		return ErrPerformanceCheckpoint
+	}
 	if report.SchemaVersion != PerformanceSchemaVersion || preparedPerformance(report, report.ReportID).Validate() != nil {
 		return ErrPerformanceCheckpoint
 	}

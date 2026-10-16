@@ -58,7 +58,8 @@ func TestSnapshotStateValidationBoundaries(t *testing.T) {
 		}, valid: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			state, err := performanceSpec(t).InitialSnapshot(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC))
+			spec := performanceSpec(t)
+			state, err := spec.InitialSnapshot(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC), originFixture(spec))
 			if err != nil {
 				t.Fatal(err)
 			}

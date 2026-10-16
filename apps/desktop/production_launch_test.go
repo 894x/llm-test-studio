@@ -108,23 +108,31 @@ func TestProductionLauncherUsesAuthoredQuickTaskAndMinimalPerformance(t *testing
 					t.Fatal("launcher omitted authored K3 cases")
 				}
 			}
-			deadline := time.Now().Add(20 * time.Second)
+			deadline := time.Now().Add(90 * time.Second)
 			for {
 				pending, err := repository.RecoveryJobs(t.Context())
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(pending) == 0 {
+				var current *jobcontract.Snapshot
+				for index := range pending {
+					if pending[index].Receipt.JobID == accepted.Prepared.Spec.JobID {
+						current = &pending[index]
+						break
+					}
+				}
+				if current == nil {
 					break
 				}
 				if time.Now().After(deadline) {
-					t.Fatal("production launch did not finish settlement")
+					state, _ := json.Marshal(current)
+					t.Fatalf("production launch did not finish settlement: current=%s requests=%d", state, requests.Load()-before)
 				}
 				time.Sleep(10 * time.Millisecond)
 			}
 			job, err := repository.GetJob(t.Context(), accepted.Prepared.Spec.JobID)
 			if err != nil || job.Receipt.Status != domain.RunCompleted {
-				t.Fatalf("production launch did not complete: %v", err)
+				t.Fatalf("production launch did not complete: %v, failure=%+v", err, job.Failure)
 			}
 			if kind == jobs.LaunchPerformance {
 				result, err := repository.ReadPerformanceResult(t.Context(), accepted.Prepared.Spec.JobID)

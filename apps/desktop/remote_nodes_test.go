@@ -24,19 +24,19 @@ func TestDesktopRemoteNodeBindingsKeepPinsAndCredentialsInGo(t *testing.T) {
 	pin := remotenodes.HostKey{Type: "ssh-ed25519", Fingerprint: "SHA256:" + strings.Repeat("A", 43)}
 	services, closeManager, err := newProductionRemoteNodes(
 		t.Context(),
-		root,
-		credentials.NewMemoryStore(),
-		productionOptions{appVersion: "v-test", runnerSource: &unusedRemoteArtifactSource{},
-			remoteConnector: func(
-				_ context.Context,
-				endpoint remotessh.Endpoint,
-				_ remotessh.Authentication,
-			) (remotenodes.RemoteSession, error) {
-				if endpoint.Fingerprint == "" {
-					return nil, &remotessh.HostKeyError{KeyType: pin.Type, Fingerprint: pin.Fingerprint}
-				}
-				return nil, remotessh.ErrConnection
-			}},
+		productionRemoteNodeDependencies{Directory: root, Credentials: credentials.NewMemoryStore(),
+			Usage: unusedRemoteNodeUsage{err: remotenodes.ErrUsageUnknown},
+			Options: productionOptions{appVersion: "v-test", runnerSource: &unusedRemoteArtifactSource{},
+				remoteConnector: func(
+					_ context.Context,
+					endpoint remotessh.Endpoint,
+					_ remotessh.Authentication,
+				) (remotenodes.RemoteSession, error) {
+					if endpoint.Fingerprint == "" {
+						return nil, &remotessh.HostKeyError{KeyType: pin.Type, Fingerprint: pin.Fingerprint}
+					}
+					return nil, remotessh.ErrConnection
+				}}},
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -249,8 +249,10 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 			at := time.Now().UTC()
 			snapshot := jobcontract.Snapshot{Receipt: jobcontract.Receipt{
 				Contract: jobcontract.CurrentContract, JobID: node.Origin.ConfigurationID,
-				Kind: jobcontract.KindPerformance, AcceptedAt: at, NodeInstallationID: node.Origin.InstallationID,
-				EngineBuildID: strings.Repeat("b", 64), Status: domain.RunQueued, Revision: 1,
+				Kind: jobcontract.KindPerformance, AcceptedAt: at,
+				Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: node.Origin.NodeID,
+					InstallationID: node.Origin.InstallationID, EngineBuildID: strings.Repeat("b", 64),
+					RunnerVersion: "watcher-test", OS: "linux", Arch: "amd64"}, Status: domain.RunQueued, Revision: 1,
 				RunIDs: []string{}, ReportIDs: []string{node.Origin.NodeID},
 			}, LatestSequence: 1, UpdatedAt: at}
 			connection := &blockedObservation{watcherConnection: watcherConnection{node: node,
@@ -315,8 +317,10 @@ func queuedJob(node Node, index int) jobcontract.Snapshot {
 	at := time.Now().UTC()
 	return jobcontract.Snapshot{Receipt: jobcontract.Receipt{
 		Contract: jobcontract.CurrentContract, JobID: fmt.Sprintf("44444444-4444-4444-8444-%012d", index),
-		Kind: jobcontract.KindPerformance, AcceptedAt: at, NodeInstallationID: node.Origin.InstallationID,
-		EngineBuildID: strings.Repeat("b", 64), Status: domain.RunQueued, Revision: 1, RunIDs: []string{},
+		Kind: jobcontract.KindPerformance, AcceptedAt: at,
+		Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: node.Origin.NodeID,
+			InstallationID: node.Origin.InstallationID, EngineBuildID: strings.Repeat("b", 64),
+			RunnerVersion: "watcher-test", OS: "linux", Arch: "amd64"}, Status: domain.RunQueued, Revision: 1, RunIDs: []string{},
 		ReportIDs: []string{fmt.Sprintf("55555555-5555-4555-8555-%012d", index)},
 	}, LatestSequence: 1, UpdatedAt: at}
 }

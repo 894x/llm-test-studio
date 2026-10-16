@@ -11,7 +11,8 @@ import (
 )
 
 func TestStateDecodersRequireCurrentExactFields(t *testing.T) {
-	snapshot, err := performanceSpec(t).InitialSnapshot(time.Now().UTC())
+	spec := performanceSpec(t)
+	snapshot, err := spec.InitialSnapshot(time.Now().UTC(), originFixture(spec))
 	if err != nil {
 		t.Fatal(err)
 	}

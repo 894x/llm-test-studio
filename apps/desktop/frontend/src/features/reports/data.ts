@@ -5,6 +5,7 @@ import type { AssertionResult, ProtocolObservation, Verification, VerificationSu
 import { DesktopDataError } from "@/app/data-error"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { parseQuickPerformanceReport, type QuickPerformanceReport } from "@/features/quick-test/data"
+import { parseExecutionOrigin, type ExecutionOrigin } from "./execution-origin"
 
 export type ReportSource = "run" | "quick_performance"
 
@@ -70,6 +71,7 @@ export interface FormalReportDetail {
   report: {
     id: string; run_id: string; protocol: CatalogProtocol; run_status: ReportSummary["run_status"]; generated_at: string
     model: { id: string; name: string }; channel: { id: string; name: string }
+    execution_origin: ExecutionOrigin | null
     environment: { os: string; arch: string; region: string; network_egress: string; app_version: string; engine_version: string }
     conclusion: { passed: boolean; verdict: string; issues: string[] }
     sla: Record<string, ReportMetric>; metrics: Record<string, ReportMetric>
@@ -139,6 +141,7 @@ export function parseReportDetail(value: unknown): ReportDetail {
   if (value.schema_version !== 1 || !isRecord(value.report) || !Array.isArray(value.entries) ||
     !Array.isArray(value.request_results) || !Array.isArray(value.unassigned_request_results) || "suites" in value) throw invalidReport()
   const report = value.report
+  const executionOrigin = parseExecutionOrigin(Object.hasOwn(report, "execution_origin") ? report.execution_origin : undefined)
   if (!isUUID(report.id) || !isUUID(report.run_id) || !isProtocol(report.protocol) || !isRunStatus(report.run_status) ||
     !isUTCTimestamp(report.generated_at) || !isSubject(report.model) || !isSubject(report.channel) ||
     !isEnvironment(report.environment) || !isConclusion(report.conclusion) || !isRecord(report.sla) ||
@@ -157,7 +160,8 @@ export function parseReportDetail(value: unknown): ReportDetail {
   return { schema_version: 1, source: "run", report: {
     id: report.id, run_id: report.run_id, protocol: report.protocol, run_status: report.run_status,
     generated_at: report.generated_at, model: { id: report.model.id, name: report.model.name },
-    channel: { id: report.channel.id, name: report.channel.name }, environment: { ...report.environment },
+    channel: { id: report.channel.id, name: report.channel.name }, execution_origin: executionOrigin,
+    environment: { ...report.environment },
     conclusion: copyConclusion(report.conclusion), sla: parseMetricMap(report.sla), metrics: parseMetricMap(report.metrics),
     distributions: parseRecordArray(report.distributions ?? []), case_results: caseResults,
   }, entries, request_results: requestResults, unassigned_request_results: unassigned }

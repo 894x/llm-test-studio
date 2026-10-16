@@ -1,0 +1,14 @@
+{
+  "title": "实际执行来源",
+  "unrecorded": "未记录执行宿主来源。",
+  "location": "执行位置",
+  "local": "本地 Runner",
+  "remote": "远程 Runner",
+  "runnerVersion": "Runner 版本",
+  "platform": "执行平台",
+  "identity": "执行身份",
+  "nodeID": "节点 ID",
+  "installationID": "安装 ID",
+  "buildID": "引擎构建 ID",
+  "preparationEnvironment": "准备环境"
+}

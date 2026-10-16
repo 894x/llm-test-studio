@@ -37,7 +37,9 @@ func fixtureSnapshot() jobcontract.Snapshot {
 	at := time.Now().UTC()
 	return jobcontract.Snapshot{Receipt: jobcontract.Receipt{
 		Contract: 1, JobID: fixtureJob, Kind: jobcontract.KindPerformance, AcceptedAt: at,
-		NodeInstallationID: fixtureIdentity().InstallationID, EngineBuildID: strings.Repeat("b", 64),
+		Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: fixtureIdentity().NodeID,
+			InstallationID: fixtureIdentity().InstallationID, EngineBuildID: strings.Repeat("b", 64),
+			RunnerVersion: "client-test-1", OS: "linux", Arch: "amd64"},
 		Status: domain.RunQueued, Revision: 1, RunIDs: []string{}, ReportIDs: []string{fixtureReport},
 	}, LatestSequence: 1, UpdatedAt: at}
 }
@@ -48,11 +50,20 @@ func fixtureResponse(status int, raw []byte) *http.Response {
 }
 
 func TestClientRejectsForeignOrMalformedStateAndFixedErrorsDoNotLeakMessages(t *testing.T) {
-	for _, mutation := range []string{"foreign", "wrong_job", "missing", "duplicate", "unknown", "old_contract"} {
+	for _, mutation := range []string{
+		"foreign", "foreign_node", "local_origin", "wrong_job", "missing", "duplicate", "unknown",
+		"old_contract", "old_flat_receipt", "old_flat_with_origin", "missing_origin_version", "duplicate_origin_version",
+	} {
 		t.Run(mutation, func(t *testing.T) {
 			state := fixtureSnapshot()
 			if mutation == "foreign" {
-				state.Receipt.NodeInstallationID = "55555555-5555-4555-8555-555555555555"
+				state.Receipt.Origin.InstallationID = "55555555-5555-4555-8555-555555555555"
+			}
+			if mutation == "foreign_node" {
+				state.Receipt.Origin.NodeID = fixtureReport
+			}
+			if mutation == "local_origin" {
+				state.Receipt.Origin.Kind = "local"
 			}
 			if mutation == "wrong_job" {
 				state.Receipt.JobID = "55555555-5555-4555-8555-555555555555"
@@ -62,6 +73,23 @@ func TestClientRejectsForeignOrMalformedStateAndFixedErrorsDoNotLeakMessages(t *
 			}
 			raw, _ := json.Marshal(state)
 			switch mutation {
+			case "old_flat_receipt", "old_flat_with_origin":
+				var document map[string]json.RawMessage
+				var receipt map[string]json.RawMessage
+				_ = json.Unmarshal(raw, &document)
+				_ = json.Unmarshal(document["receipt"], &receipt)
+				if mutation == "old_flat_receipt" {
+					delete(receipt, "origin")
+				}
+				receipt["node_installation_id"], _ = json.Marshal(state.Receipt.Origin.InstallationID)
+				receipt["engine_build_id"], _ = json.Marshal(state.Receipt.Origin.EngineBuildID)
+				document["receipt"], _ = json.Marshal(receipt)
+				raw, _ = json.Marshal(document)
+			case "missing_origin_version":
+				raw = bytes.Replace(raw, []byte(`"runner_version":"client-test-1",`), nil, 1)
+			case "duplicate_origin_version":
+				raw = bytes.Replace(raw, []byte(`"runner_version":"client-test-1"`),
+					[]byte(`"runner_version":"client-test-1","runner_version":"client-test-1"`), 1)
 			case "missing":
 				raw = bytes.Replace(
 					raw,
@@ -280,7 +308,7 @@ func TestJobListRejectsDuplicateOwnersAndInvalidCursors(t *testing.T) {
 		t.Run(mutation, func(t *testing.T) {
 			state := fixtureSnapshot()
 			if mutation == "foreign" {
-				state.Receipt.NodeInstallationID = fixtureReport
+				state.Receipt.Origin.InstallationID = fixtureReport
 			}
 			jobs := []jobcontract.Snapshot{state}
 			if mutation == "duplicate" {

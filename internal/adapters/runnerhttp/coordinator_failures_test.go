@@ -13,6 +13,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/credentials"
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
@@ -260,5 +261,171 @@ func TestIndependentCoordinatorsSendOnlyAfterWinningDurableIntent(t *testing.T) 
 	stored, err := first.GetSubmission(t.Context(), submission.Job.JobID)
 	if err != nil || stored.State != jobs.SubmissionAccepted {
 		t.Fatal("winning submission was not confirmed")
+	}
+}
+
+type confirmationFaultRepository struct {
+	*sqlite.Repository
+	mode               string
+	failure            error
+	armed              atomic.Bool
+	confirmationWrites atomic.Int64
+}
+
+func (repository *confirmationFaultRepository) GetSubmission(
+	ctx context.Context,
+	id string,
+) (jobs.SubmissionRecord, error) {
+	if repository.armed.Load() && repository.mode == "read failure" {
+		return jobs.SubmissionRecord{}, repository.failure
+	}
+	record, err := repository.Repository.GetSubmission(ctx, id)
+	if err == nil && repository.armed.Load() && repository.mode == "preparation conflict" {
+		record.Prepared.Runner.RunnerVersion = "different-prepared-runner"
+	}
+	return record, err
+}
+
+func (repository *confirmationFaultRepository) UpdateSubmission(
+	ctx context.Context,
+	next jobs.SubmissionRecord,
+	expected uint64,
+) error {
+	if !repository.armed.Load() || next.State != jobs.SubmissionAccepted {
+		return repository.Repository.UpdateSubmission(ctx, next, expected)
+	}
+	repository.confirmationWrites.Add(1)
+	switch repository.mode {
+	case "write failure":
+		return repository.failure
+	case "lost acknowledgement":
+		if err := repository.Repository.UpdateSubmission(ctx, next, expected); err != nil {
+			return err
+		}
+		return repository.failure
+	case "CAS exhaustion":
+		return jobs.ErrConflict
+	default:
+		return repository.Repository.UpdateSubmission(ctx, next, expected)
+	}
+}
+
+func TestCoordinatorPreservesDurablePendingIdentityAfterConfirmationStorageFailure(t *testing.T) {
+	for _, test := range []struct {
+		mode          string
+		writes        int64
+		pending       bool
+		storedConfirm bool
+	}{
+		{mode: "read failure", pending: true},
+		{mode: "write failure", writes: 1, pending: true},
+		{mode: "lost acknowledgement", writes: 1, pending: true, storedConfirm: true},
+		{mode: "CAS exhaustion", writes: 3, pending: true},
+		{mode: "preparation conflict"},
+	} {
+		t.Run(test.mode, func(t *testing.T) {
+			fixture := newHTTPFixture(t, true, capabilities())
+			repository, path := coordinatorRepository(t)
+			failure := errors.New("injected confirmation storage failure")
+			store := &confirmationFaultRepository{Repository: repository, mode: test.mode, failure: failure}
+			var posts, opened, closed atomic.Int64
+			client := coordinatorClient(t, fixture, func(response *http.Response) {
+				posts.Add(1)
+				if response.StatusCode != http.StatusAccepted {
+					t.Error("confirmation fault was not preceded by committed HTTP acceptance")
+				}
+				store.armed.Store(true)
+			})
+			dependencies := jobs.CoordinatorDependencies{Repository: store, Now: time.Now,
+				Open: func(_ context.Context, location jobs.Location, _ jobs.Access) (jobs.Backend, error) {
+					if location != coordinatorLocation {
+						return nil, jobs.ErrTargetChanged
+					}
+					opened.Add(1)
+					return &coordinatorConnection{Client: client, closed: &closed}, nil
+				}}
+			coordinator, err := jobs.NewCoordinator(dependencies)
+			if err != nil {
+				t.Fatal(err)
+			}
+			submission := fixture.runSubmission(t, false)
+			prepared := prepareCoordinatedJob(t, coordinator, submission)
+			leases := coordinatorLeases(t, submission)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			pending, err := coordinator.Submit(ctx, submission.Job.JobID, leases)
+			cause := failure
+			if test.mode == "CAS exhaustion" || test.mode == "preparation conflict" {
+				cause = jobs.ErrConflict
+			}
+			if !errors.Is(err, cause) || errors.Is(err, jobs.ErrPending) != test.pending {
+				t.Fatalf("confirmation error lost pending delivery or its original cause: %v", err)
+			}
+			if pending.Validate() != nil || pending.State != jobs.SubmissionPending || pending.Receipt != nil ||
+				pending.Prepared.Spec.JobID != prepared.Prepared.Spec.JobID || pending.Revision != 2 {
+				t.Fatal("accepted upstream work lost its durable pending identity")
+			}
+			if test.pending && !pending.SamePreparation(prepared) {
+				t.Fatal("confirmation failure changed the original destination or input")
+			}
+			if posts.Load() != 1 || store.confirmationWrites.Load() != test.writes {
+				t.Fatal("confirmation retry posted another job or exceeded its CAS budget")
+			}
+			for _, lease := range leases {
+				if _, err := lease.Bytes(); !errors.Is(err, credentials.ErrClosed) {
+					t.Fatal("confirmation failure retained submission credentials")
+				}
+			}
+			stored, err := repository.GetSubmission(ctx, submission.Job.JobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storedState := jobs.SubmissionPending
+			if test.storedConfirm {
+				storedState = jobs.SubmissionAccepted
+			}
+			if stored.State != storedState || !stored.SamePreparation(prepared) {
+				t.Fatal("storage acknowledgement failure changed the durable instruction")
+			}
+			fixture.release()
+			waitHTTPJob(
+				t,
+				fixture,
+				submission.Job.JobID,
+				domain.RunCompleted,
+			)
+			requests := fixture.requests.Load()
+			if requests == 0 {
+				t.Fatal("confirmation fixture did not execute a real Core request")
+			}
+			if err := repository.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reopened := reopenCoordinatorRepository(t, path)
+			dependencies.Repository = reopened
+			recovery, err := jobs.NewCoordinator(dependencies)
+			if err != nil {
+				t.Fatal(err)
+			}
+			observed, err := recovery.Submit(ctx, submission.Job.JobID, nil)
+			if test.storedConfirm {
+				if err != nil || observed.State != jobs.SubmissionAccepted {
+					t.Fatalf("lost stored acknowledgement was not recovered by a read: %v", err)
+				}
+			} else if !errors.Is(err, jobs.ErrPending) || observed.State != jobs.SubmissionPending {
+				t.Fatalf("reopened pending intent became resubmittable: %v", err)
+			}
+			confirmed, err := recovery.Reconcile(ctx, submission.Job.JobID)
+			if err != nil || confirmed.State != jobs.SubmissionAccepted || confirmed.Receipt == nil ||
+				confirmed.Prepared.Spec.JobID != prepared.Prepared.Spec.JobID {
+				t.Fatalf("read-only reconciliation did not recover the original acceptance: %v", err)
+			}
+			if !test.storedConfirm && confirmed.Receipt.Status != domain.RunCompleted {
+				t.Fatal("reconciliation replaced the actual terminal receipt")
+			}
+			if posts.Load() != 1 || fixture.requests.Load() != requests || opened.Load() != closed.Load() {
+				t.Fatal("confirmation recovery resent work or leaked a management connection")
+			}
+		})
 	}
 }

@@ -60,6 +60,8 @@ func applyRemoteEvents(t *testing.T, repository *persistence.Repository, events 
 func populateRemoteRun(t *testing.T, node *persistence.Repository, fixture repositoryFixture) jobcontract.JobSpec {
 	t.Helper()
 	spec := remoteSpec(jobSpecForRun(t, fixture.run))
+	origin := executionOrigin(spec)
+	fixture.report.ExecutionOrigin = &origin
 	if _, _, err := node.AcceptJob(t.Context(), jobAcceptance(spec)); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +112,8 @@ func TestRemoteMirrorReplaysFactsAndImportsOriginalRunReport(t *testing.T) {
 	defer node.Close()
 	fixture := newRepositoryFixture(t)
 	spec := populateRemoteRun(t, node, fixture)
+	reportOrigin := executionOrigin(spec)
+	fixture.report.ExecutionOrigin = &reportOrigin
 	events := remoteEvents(t, node, spec)
 	path := filepath.Join(t.TempDir(), "mirror.db")
 	if err := persistence.Migrate(t.Context(), path, persistence.MigrateOptions{AppVersion: "mirror-test"}); err != nil {
@@ -233,6 +237,8 @@ func TestRemoteMirrorRejectsInvalidCurrentPayloadsWithoutMutation(t *testing.T) 
 	defer node.Close()
 	fixture := newRepositoryFixture(t)
 	spec := populateRemoteRun(t, node, fixture)
+	reportOrigin := executionOrigin(spec)
+	fixture.report.ExecutionOrigin = &reportOrigin
 	events := remoteEvents(t, node, spec)
 	desktop := openOperationalRepository(t)
 	defer desktop.Close()
@@ -289,6 +295,8 @@ func TestRemoteMirrorFailureRollsBackWholePageAndCursor(t *testing.T) {
 	defer node.Close()
 	fixture := newRepositoryFixture(t)
 	spec := populateRemoteRun(t, node, fixture)
+	reportOrigin := executionOrigin(spec)
+	fixture.report.ExecutionOrigin = &reportOrigin
 	events := remoteEvents(t, node, spec)
 	path := filepath.Join(t.TempDir(), "mirror-rollback.db")
 	if err := persistence.Migrate(t.Context(), path, persistence.MigrateOptions{AppVersion: "mirror-test"}); err != nil {
@@ -355,6 +363,8 @@ func TestRemoteMirrorRejectsOriginGapsChangedEventsAndLocalCollisions(t *testing
 	defer node.Close()
 	fixture := newRepositoryFixture(t)
 	spec := populateRemoteRun(t, node, fixture)
+	reportOrigin := executionOrigin(spec)
+	fixture.report.ExecutionOrigin = &reportOrigin
 	events := remoteEvents(t, node, spec)
 	desktop := openOperationalRepository(t)
 	defer desktop.Close()
@@ -541,6 +551,8 @@ func TestRemoteMirrorPerformanceJournalKeepsArchiveAndResultReferencesSeparate(t
 		}
 	}
 	finalReport := core.checkpoints[len(core.checkpoints)-1].Report
+	archiveOrigin := executionOrigin(spec)
+	finalReport.ExecutionOrigin = &archiveOrigin
 	finalReport.Archived = true
 	finalReport.ArchiveStatus = quicktest.PerformanceArchiveArchived
 	finalReport.GeneratedAt = jobAcceptance(spec).AcceptedAt.Add(time.Minute).Format(time.RFC3339Nano)

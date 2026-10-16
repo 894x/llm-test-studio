@@ -11,6 +11,8 @@ import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
 import { createDesktopClient, createFixtureClient, singleFlightRead } from "./desktop-client"
 import { DesktopDataError } from "./data-error"
+import type { LaunchCommand } from "@/features/jobs/data"
+import { jobFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
 import { EMPTY_REMOTE_NODES } from "@/features/remote-nodes/data"
 
 describe("Wails desktop client", () => {
@@ -25,7 +27,7 @@ describe("Wails desktop client", () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
     await expect(client.getRemoteNodes()).resolves.toEqual(EMPTY_REMOTE_NODES)
-    binding.GetRemoteNodes.mockResolvedValueOnce({ ...EMPTY_REMOTE_NODES, token_ref: "private" })
+    binding.GetRemoteNodes.mockResolvedValueOnce({ ...EMPTY_REMOTE_NODES, token_ref: "private" } as never)
     await expect(client.getRemoteNodes()).rejects.toBeInstanceOf(DesktopDataError)
     const command = { expected_revision: 1, location: { kind: "local" as const, configuration_id: "" } }
     await client.selectDefaultExecution(command)
@@ -128,25 +130,25 @@ describe("Wails desktop client", () => {
     expect(binding.ReportFrontendDiagnostic).toHaveBeenCalledTimes(1)
   })
 
-  it("starts a Suite task once and returns its Run identity without refreshing", async () => {
+  it("returns the accepted Job identity without a query and preserves pending delivery", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
-    binding.GetWorkspace.mockRejectedValueOnce(new Error("refresh failed"))
-    const command = {
-      protocol: "openai-chat" as const,
-suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000,
-      model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key",
-      inputs: { prompt: "hello", duration: 4, audio: false },
-    }
-    await expect(createDesktopClient().startQuickTask(command)).resolves.toBe(FIXTURE_WORKSPACE.runs[0].id)
-    expect(binding.StartQuickTask).toHaveBeenCalledExactlyOnceWith(command)
+    const pending = jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [],
+      delivery: "pending", observation: "unreachable", confirmation: null, execution: null })
+    binding.LaunchJob.mockResolvedValueOnce(pending)
+    binding.GetJob.mockRejectedValueOnce(new Error("read unavailable"))
+    const command = quickTaskCommand()
+    await expect(createDesktopClient().launchJob(command)).resolves.toEqual(pending)
+    expect(binding.LaunchJob).toHaveBeenCalledExactlyOnceWith(command)
+    expect(binding.GetJob).not.toHaveBeenCalled()
     expect(binding.GetWorkspace).not.toHaveBeenCalled()
   })
 
-  it.each(["", "not-a-run", null, { run_id: "private-test-key" }])("rejects malformed quick task acceptance %j", async (payload) => {
+  it.each(["", "not-a-job", null, { job_id: JOB_ID }, { ...jobFixture(), schema_version: 0 }, { ...jobFixture(), location: undefined }])("rejects malformed launch acceptance %j without retrying", async (payload) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
-    binding.StartQuickTask.mockResolvedValueOnce(payload as never)
-    await expect(createDesktopClient().startQuickTask({ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 60000, model: "model", inputs: {} })).rejects.toBeInstanceOf(DesktopDataError)
-    expect(binding.StartQuickTask).toHaveBeenCalledTimes(1)
+    binding.LaunchJob.mockResolvedValueOnce(payload as never)
+    await expect(createDesktopClient().launchJob(quickTaskCommand())).rejects.toBeInstanceOf(DesktopDataError)
+    expect(binding.LaunchJob).toHaveBeenCalledTimes(1)
+    expect(binding.GetJob).not.toHaveBeenCalled()
   })
 
   it("loads only safe task history and rejects a different Run identity", async () => {
@@ -160,66 +162,44 @@ suite_id: "11111111-1111-4111-8111-111111111111", seed: 1, request_timeout_ms: 6
     await expect(createDesktopClient().getQuickTask(runID)).rejects.toBeInstanceOf(DesktopDataError)
   })
 
-  it("uses the typed Wails methods and forwards command identifiers", async () => {
+  it("forwards all seven current Job methods with stable identifiers and revisions", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
+    const command = quickTaskCommand()
+    const control = { job_id: JOB_ID, kind: "stop_sending" as const, expected_revision: 1 }
+    await expect(client.launchJob(command)).resolves.toEqual(jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [], execution: null }))
+    await expect(client.getJobs("", 25)).resolves.toEqual({ schema_version: 1, jobs: [], next_cursor: "", has_more: false })
+    await expect(client.getJob(JOB_ID)).resolves.toEqual(jobFixture())
+    await expect(client.getJobPerformanceResult(JOB_ID)).resolves.toMatchObject({ job_id: JOB_ID, observation_state: "available" })
+    await expect(client.controlJob(control)).resolves.toEqual(controlFixture())
+    await expect(client.getJobControls(JOB_ID, "", 25)).resolves.toEqual({ schema_version: 1, job_id: JOB_ID, commands: [], next_cursor: "", has_more: false })
+    await expect(client.retryJobControl(COMMAND_ID)).resolves.toEqual(controlFixture())
+    expect(binding.LaunchJob).toHaveBeenCalledExactlyOnceWith(command)
+    expect(binding.GetJobs).toHaveBeenCalledExactlyOnceWith("", 25)
+    expect(binding.GetJob).toHaveBeenCalledExactlyOnceWith(JOB_ID)
+    expect(binding.GetJobPerformanceResult).toHaveBeenCalledExactlyOnceWith(JOB_ID)
+    expect(binding.ControlJob).toHaveBeenCalledExactlyOnceWith(control)
+    expect(binding.GetJobControls).toHaveBeenCalledExactlyOnceWith(JOB_ID, "", 25)
+    expect(binding.RetryJobControl).toHaveBeenCalledExactlyOnceWith(COMMAND_ID)
+  })
 
-    await expect(client.getWorkspace()).resolves.toEqual(FIXTURE_WORKSPACE)
-    await expect(client.getCatalog()).resolves.toEqual(FIXTURE_CATALOG)
-    await expect(client.getReports()).resolves.toEqual(FIXTURE_REPORTS)
-		const targetCommand = {
-			plan_id: FIXTURE_WORKSPACE.plans[0].id,
-			model_id: FIXTURE_CATALOG.models[0].id,
-			channel_id: FIXTURE_CATALOG.channels[0].id,
-		}
-		await client.startRunTarget(targetCommand)
-    await client.stopSending(FIXTURE_WORKSPACE.runs[0].id)
-    await client.cancelRun(FIXTURE_WORKSPACE.runs[0].id)
-    const performanceCommand = {
-      protocol: "openai-chat" as const,
-address_mode: "base_url" as const,
-      url: "https://api.example.test/v1",
-      api_key: "sk-private-value",
-      model_id: "gpt-test",
-      load_mode: "fixed_concurrency" as const,
-      request_count: 4,
-      duration_ms: 0,
-      concurrency: 2,
-      rate_per_second: 0,
-      max_in_flight: 0,
-      arrival_pattern: "constant" as const,
-      workload_mode: "fixed" as const,
-      random_input: false,
-      random_seed: 0,
-      input_tokens_stddev: 0,
-      output_tokens_stddev: 0,
-      shared_prefix_tokens: 0,
-      warmup_requests: 0,
-      ramp_duration_ms: 0,
-      ramp_request_cap: 0,
-      slice_duration_ms: 0,
-      slo_ttft_ms: 0,
-      slo_tpot_ms: 0,
-      slo_e2e_ms: 0,
-      slo_target_percent: 0,
-      capacity_enabled: false,
-      capacity_start: 0,
-      capacity_step: 0,
-      timeout_ms: 30_000,
-      input_tokens: 20,
-      output_tokens: 32,
-    }
-    await expect(client.runQuickPerformanceTest(performanceCommand)).resolves.toMatchObject({
-      schema_version: 2,
-      success: true,
-      metrics: { completed: 4, succeeded: 4 },
-    })
-		expect(binding.StartRunTarget).toHaveBeenCalledWith(targetCommand)
-    expect(binding.StopSending).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
-    expect(binding.CancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.runs[0].id)
+  it.each(["local", "remote"] as const)("preserves explicit %s launch routing", async (kind) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const command = { ...quickTaskCommand(), location: { kind, configuration_id: kind === "local" ? "" : RUN_ID } }
+    const result = await createDesktopClient().launchJob(command)
+    expect(result.kind).toBe("run")
+    expect(result.location).toEqual(command.location)
+    expect(binding.LaunchJob).toHaveBeenCalledExactlyOnceWith(command)
+  })
 
-    expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(performanceCommand, "")
-
+  it.each([
+    jobFixture(),
+    jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [], location: { kind: "remote", configuration_id: RUN_ID } }),
+  ])("rejects a launch response for another kind or location without retrying", async (response) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.LaunchJob.mockResolvedValueOnce(response)
+    await expect(createDesktopClient().launchJob(quickTaskCommand())).rejects.toBeInstanceOf(DesktopDataError)
+    expect(binding.LaunchJob).toHaveBeenCalledTimes(1)
   })
 
   it("loads quick task history without an authored plan while retaining formal Run reference checks", async () => {
@@ -235,22 +215,16 @@ address_mode: "base_url" as const,
     await expect(createDesktopClient().getWorkspace()).rejects.toBeInstanceOf(DesktopDataError)
   })
 
-  it("keeps fixture quick Runs separate from authored targets and supports cancellation", async () => {
-    const catalog = structuredClone(FIXTURE_CATALOG)
-    const suite = catalog.suites[0]
-    suite.description = "Connectivity"
-    suite.inputs = []
-    const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-    const command = { protocol: "openai-chat" as const,
-suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
-    const firstID = await client.startQuickTask(command)
-    const secondID = await client.startQuickTask(command)
-    expect(firstID).not.toBe(secondID)
-    const snapshot = await client.getWorkspace()
-    expect(snapshot.runs.find((run) => run.id === firstID)).toMatchObject({ source: "quick_task", status: "queued", plan_id: firstID, planned: suite.case_count })
-    expect(JSON.stringify(snapshot)).not.toContain("private-test-key")
-    expect(await client.getCatalog()).toEqual(catalog)
-    expect((await client.cancelRun(secondID)).runs.find((run) => run.id === secondID)?.status).toBe("cancelled")
+  it("refuses fixture execution mutations instead of simulating a remote connection", async () => {
+    const client = createFixtureClient(FIXTURE_WORKSPACE)
+    const before = await client.getWorkspace()
+    const remote = { ...quickTaskCommand(), location: { kind: "remote" as const, configuration_id: RUN_ID } }
+    for (const command of [quickTaskCommand(), remote]) {
+      await expect(client.launchJob(command)).rejects.toMatchObject({ code: "job_commands_unavailable" })
+    }
+    await expect(client.controlJob({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })).rejects.toMatchObject({ code: "job_commands_unavailable" })
+    await expect(client.retryJobControl(COMMAND_ID)).rejects.toMatchObject({ code: "job_commands_unavailable" })
+    expect(await client.getWorkspace()).toEqual(before)
   })
 
   it("materializes ordered plan suites in the browser fixture with generated entry ids", async () => {
@@ -303,508 +277,241 @@ suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "temporary-model"
     await client.forgetQuickTaskCredential(command.run_id)
     expect(binding.RememberQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(command)
     expect(binding.ForgetQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(command.run_id)
-    expect(binding.StartQuickTask).not.toHaveBeenCalled()
+    expect(binding.LaunchJob).not.toHaveBeenCalled()
     expect(binding.GetWorkspace).not.toHaveBeenCalled()
   })
 
-  it("replays remembered fixture targets without storing secret values and forgets all references", async () => {
-    const catalog = structuredClone(FIXTURE_CATALOG)
-    const suite = catalog.suites[1]
-    const client = createFixtureClient(FIXTURE_WORKSPACE, catalog)
-    const command = { protocol: "openai-chat" as const,
-suite_id: suite.id, seed: 1, request_timeout_ms: 60000, model: "model", base_url: "https://example.test", api_key: "private-test-key", inputs: {} }
-    const runID = await client.startQuickTask(command)
-    expect((await client.getQuickTask(runID)).credential_run_id).toBeUndefined()
-    await client.rememberQuickTaskCredential({ run_id: runID, base_url: command.base_url, protocol: suite.protocol, api_key: command.api_key })
-    const history = await client.getQuickTask(runID)
-    expect(history.credential_run_id).toBe(runID)
-    expect(JSON.stringify(history)).not.toContain(command.api_key)
-    const replay = { ...command, api_key: undefined, credential_run_id: runID }
-    await expect(client.startQuickTask({ ...replay, base_url: "https://different.test" })).rejects.toThrow()
-    const secondID = await client.startQuickTask(replay)
-    expect((await client.getQuickTask(secondID)).credential_run_id).toBe(runID)
+  it("keeps credential history and explicit remember/forget operations independent of launches", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const runID = FIXTURE_WORKSPACE.runs[0].id
+    const detail = { schema_version: 1, seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
+      run_id: runID, suite: FIXTURE_CATALOG.suites[1], model: "model", base_url: "https://example.test",
+      credential_run_id: runID, inputs: { prompt: "hello" } }
+    binding.GetQuickTask.mockResolvedValueOnce({ ...detail, api_key: "synthetic-secret" })
+    const client = createDesktopClient()
+    await expect(client.getQuickTask(runID)).resolves.toEqual(detail)
     await client.forgetQuickTaskCredential(runID)
-    expect((await client.getQuickTask(secondID)).credential_run_id).toBeUndefined()
-    await expect(client.startQuickTask(replay)).rejects.toThrow()
+    expect(binding.ForgetQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(runID)
+    expect(binding.LaunchJob).not.toHaveBeenCalled()
   })
 
-  it("keeps idle fixture windows sparse while retaining an empty final partial slice", async () => {
-    const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
-      protocol: "openai-chat",
-address_mode: "base_url",
-      url: "https://api.example.test/v1",
-      api_key: "sk-private-value",
-      model_id: "gpt-test",
-      load_mode: "fixed_concurrency",
-      request_count: 4,
-      duration_ms: 2_500,
-      concurrency: 2,
-      rate_per_second: 0,
-      max_in_flight: 0,
-      arrival_pattern: "constant",
-      workload_mode: "fixed",
-      random_input: false,
-      random_seed: 0,
-      input_tokens_stddev: 0,
-      output_tokens_stddev: 0,
-      shared_prefix_tokens: 0,
-      warmup_requests: 0,
-      ramp_duration_ms: 0,
-      ramp_request_cap: 0,
-      slice_duration_ms: 1_000,
-      slo_ttft_ms: 0,
-      slo_tpot_ms: 0,
-      slo_e2e_ms: 0,
-      slo_target_percent: 0,
-      capacity_enabled: false,
-      capacity_start: 0,
-      capacity_step: 0,
-      timeout_ms: 30_000,
-      input_tokens: 20,
-      output_tokens: 32,
-    })
-
-    expect(report.schema_version).toBe(2)
-    expect(report.samples[0]).toMatchObject({
-      ttfb_ms: 15, ttft_any_ms: 35, ttft_ms: 35, ttft_visible_ms: 45,
-      ttst_ms: 60, observed_icl_ms: 25, semantic_chunk_count: 2,
-    })
-    expect(report.metrics).toMatchObject({
-      ttft_samples: 4, ttft_any_samples: 4, ttft_p50_ms: 35, ttft_any_p50_ms: 35,
-      ttfb_samples: 4, ttft_visible_samples: 4, ttst_samples: 4,
-      observed_icl_samples: 4, semantic_chunk_count_samples: 4,
-    })
-    expect(report.time_slices?.map((slice) => slice.slice_index)).toEqual([0, 2])
-    expect(report.time_slices?.[0]).toMatchObject({
-      ttfb: { count: 4, average_ms: 15 },
-      ttft_any: { count: 4, average_ms: 35 },
-      ttft: { count: 4, average_ms: 35 },
-      semantic_chunk_count: { count: 4, average: 2 },
-    })
-    expect(parseQuickPerformanceReport(structuredClone(report))).toMatchObject({ schema_version: 2 })
-    expect(report.time_slices?.[1]).toMatchObject({
-      start_ms: 2_000,
-      end_ms: 2_500,
-      partial: true,
-      offered: 0,
-      launched: 0,
-      completed: 0,
-      ttft: { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0 },
-    })
-  })
-
-  it("builds a coherent SLO capacity ladder in the desktop fixture", async () => {
-    const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
-      protocol: "openai-chat",
-address_mode: "base_url",
-      url: "https://api.example.test/v1",
-      api_key: "sk-private-value",
-      model_id: "gpt-test",
-      load_mode: "fixed_concurrency",
-      request_count: 2,
-      duration_ms: 0,
-      concurrency: 3,
-      rate_per_second: 0,
-      max_in_flight: 0,
-      arrival_pattern: "constant",
-      workload_mode: "fixed",
-      random_input: false,
-      random_seed: 0,
-      input_tokens_stddev: 0,
-      output_tokens_stddev: 0,
-      shared_prefix_tokens: 0,
-      warmup_requests: 0,
-      ramp_duration_ms: 0,
-      ramp_request_cap: 0,
-      slice_duration_ms: 0,
-      slo_ttft_ms: 50,
-      slo_tpot_ms: 0,
-      slo_e2e_ms: 0,
-      slo_target_percent: 90,
-      capacity_enabled: true,
-      capacity_start: 1,
-      capacity_step: 1,
-      timeout_ms: 30_000,
-      input_tokens: 20,
-      output_tokens: 32,
-    })
-
-    expect(report.request_budget).toMatchObject({ measured_cap: 6, total_cap: 6 })
-    expect(report.slo_assessment).toMatchObject({ status: "passed", total_requests: 2, good_requests: 2 })
-    expect(report.capacity_result).toMatchObject({
-      status: "passed",
-      selected_rung_index: 2,
-      highest_passing_rung_index: 2,
-      rungs: [
-        { index: 0, target: 1 },
-        { index: 1, target: 2 },
-        { index: 2, target: 3 },
-      ],
-    })
-    expect(report.progress).toMatchObject({ capacity_rung_number: 3, capacity_rung_count: 3, capacity_target: 3 })
-  })
-
-  it("keeps a near-terminal fixture target before the exact open-loop maximum", async () => {
-    const report = await createFixtureClient(FIXTURE_WORKSPACE).runQuickPerformanceTest({
-      protocol: "openai-chat",
-address_mode: "base_url",
-      url: "https://api.example.test/v1",
-      api_key: "sk-private-value",
-      model_id: "gpt-test",
-      load_mode: "open_loop",
-      request_count: 2,
-      duration_ms: 0,
-      concurrency: 0,
-      rate_per_second: 2,
-      max_in_flight: 4,
-      arrival_pattern: "constant",
-      workload_mode: "fixed",
-      random_input: false,
-      random_seed: 0,
-      input_tokens_stddev: 0,
-      output_tokens_stddev: 0,
-      shared_prefix_tokens: 0,
-      warmup_requests: 0,
-      ramp_duration_ms: 0,
-      ramp_request_cap: 0,
-      slice_duration_ms: 0,
-      slo_ttft_ms: 50,
-      slo_tpot_ms: 0,
-      slo_e2e_ms: 0,
-      slo_target_percent: 90,
-      capacity_enabled: true,
-      capacity_start: 1.9999999999,
-      capacity_step: 3,
-      timeout_ms: 30_000,
-      input_tokens: 20,
-      output_tokens: 32,
-    })
-
-    expect(report.capacity_result?.rungs.map((rung) => rung.target)).toEqual([1.9999999999, 2])
-    expect(report.progress).toMatchObject({ capacity_rung_number: 2, capacity_rung_count: 2, capacity_target: 2 })
-  })
-
-  it("rejects malformed quick-performance reports and drops raw provider fields", async () => {
+  it.each([
+    { api_key: "synthetic-secret" }, { run_id: RUN_ID }, { delivery: "failed" },
+    { location: { kind: "local", configuration_id: RUN_ID } },
+    { executor: { ...jobFixture().executor, token: "synthetic-secret" } },
+    { delivery: "pending" }, { confirmation: { ...jobFixture().confirmation, revision: 0 } },
+    { execution: { ...jobFixture().execution, revision: 0 } },
+    { run_ids: [RUN_ID, RUN_ID] }, { report_ids: null }, { prepared_at: "yesterday" },
+    { performance_result_ready: true },
+    { progress: { sequence: 2, recorded_at: "2026-10-16T00:00:00Z", progress: {} } },
+  ])("rejects noncurrent Job data without retaining secrets %j", async (invalid) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
-    binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-      ...performanceReportFixture(),
-      profile: { ...performanceReportFixture().profile, api_key: "sk-nested" },
-      progress: { ...performanceReportFixture().progress, raw_response: "provider progress" },
-      metrics: { ...performanceReportFixture().metrics, provider_detail: "provider metrics" },
-      samples: performanceReportFixture().samples.map((sample) => ({ ...sample, provider_response: "secret sample output" })),
-      raw_results: [{ response: "secret provider output" }],
-      api_key: "sk-secret",
-    } as never)
-    const command = {
-      protocol: "openai-chat" as const,
-address_mode: "base_url" as const, url: "https://api.example.test/v1",
-      api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
-      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
-      arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_input: false, random_seed: 0,
-      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
-      slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-      capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
-      input_tokens: 20, output_tokens: 32,
-    }
-    const report = await createDesktopClient().runQuickPerformanceTest(command)
-    expect(JSON.stringify(report)).not.toContain("secret provider output")
-    expect(JSON.stringify(report)).not.toContain("sk-secret")
-    expect(JSON.stringify(report)).not.toContain("sk-nested")
-    expect(JSON.stringify(report)).not.toContain("provider progress")
-    expect(JSON.stringify(report)).not.toContain("provider metrics")
-    expect(JSON.stringify(report)).not.toContain("secret sample output")
-
-    binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-      ...performanceReportFixture(),
-      success: false,
-      base_url: "",
-      endpoint: "",
-      profile: { load_mode: "fixed_concurrency", request_count: 0, duration_ms: 0, concurrency: 0, timeout_ms: 0, input_tokens: 0, output_tokens: 0 },
-      progress: {
-        phase: "not_started", planned: 0, launched: 0, completed: 0,
-        peak_in_flight: 0, succeeded: 0, failed: 0, rejected: 0,
-        send_duration_ms: 0, drain_duration_ms: 0, total_duration_ms: 0,
-      },
-      metrics: zeroPerformanceMetrics(),
-      samples: [],
-      error_code: "invalid_request",
-    } as never)
-    await expect(createDesktopClient().runQuickPerformanceTest(command)).resolves.toMatchObject({
-      success: false,
-      error_code: "invalid_request",
-    })
-
-    binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-      ...performanceReportFixture(),
-      failures: [{ error_code: "provider_said_sk-secret", count: 1 }],
-    } as never)
-    await expect(createDesktopClient().runQuickPerformanceTest(command)).rejects.toThrow("快速性能报告数据结构无效")
+    binding.GetJob.mockResolvedValueOnce({ ...jobFixture(), ...invalid } as never)
+    await expect(createDesktopClient().getJob(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
   })
 
-  it("accepts only bounded redacted failure response evidence", async () => {
+  it("preserves a receipt ahead of journal synchronization without inventing execution", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
-    const fixture = performanceReportFixture()
-    binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-      ...fixture,
-      success: false,
-      progress: { ...fixture.progress, succeeded: 3, failed: 1 },
-      metrics: {
-        ...fixture.metrics,
-        succeeded: 3,
-        failed: 1,
-        success_rate_percent: 75,
-        ttft_samples: 3,
-        ttfb_samples: 3,
-        ttft_any_samples: 3,
-        ttft_visible_samples: 3,
-        semantic_chunk_count_samples: 3,
-      },
-      failures: [{ error_code: "authentication_failed", count: 1 }],
-      samples: fixture.samples.map((sample, index) => index === 0 ? {
-        ...sample,
-        success: false,
-        http_status: 401,
-        error_code: "authentication_failed",
-        response_evidence: {
-          capture_status: "captured",
-          content_type: "application/json",
-          request_id: "req-safe-123",
-          body: "{\"error\":{\"message\":\"quota exhausted\",\"api_key\":\"[REDACTED]\"}}",
-          body_bytes: 96,
-          truncated: false,
-          redacted: true,
-          provider_secret: "must be dropped",
-        },
-      } : sample),
-    } as never)
-
-    const report = await createDesktopClient().runQuickPerformanceTest({
-      protocol: "openai-chat",
-address_mode: "base_url", url: "https://api.example.test/v1",
-      api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
-      duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
-      arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
-      input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-      warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
-      slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-      capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
-      input_tokens: 20, output_tokens: 32,
-    })
-
-    expect(report.samples[0].response_evidence).toEqual({
-      capture_status: "captured",
-      content_type: "application/json",
-      request_id: "req-safe-123",
-      body: "{\"error\":{\"message\":\"quota exhausted\",\"api_key\":\"[REDACTED]\"}}",
-      body_bytes: 96,
-      truncated: false,
-      redacted: true,
-    })
-    expect(JSON.stringify(report)).not.toContain("must be dropped")
+    const confirmation = jobFixture({ execution: null, progress: null })
+    binding.GetJob.mockResolvedValueOnce(confirmation)
+    await expect(createDesktopClient().getJob(JOB_ID)).resolves.toEqual(confirmation)
   })
 
-	it("publishes only correlated validated quick-performance progress and unsubscribes", async () => {
-		const binding = installBinding(FIXTURE_WORKSPACE)
-		let eventCallback: ((payload: unknown) => void) | undefined
-		const unsubscribe = vi.fn()
-		const eventsOn = vi.fn((_name: string, callback: (payload: unknown) => void) => {
-			eventCallback = callback
-			return unsubscribe
-		})
-		Object.defineProperty(window, "runtime", {
-			configurable: true,
-			value: { EventsOn: eventsOn },
-		})
-		binding.RunQuickPerformanceTest.mockImplementationOnce(async (_command, progressID) => {
-			const progress = {
-				phase: "ramping", planned: 4, launched: 2, completed: 1, capped: true,
-				peak_in_flight: 2, succeeded: 1, failed: 0, rejected: 0,
-				send_duration_ms: 100, drain_duration_ms: 0, total_duration_ms: 100,
-			}
-			eventCallback?.({ progress_id: "99999999-9999-4999-8999-999999999999", progress })
-			eventCallback?.({ progress_id: progressID, progress: { ...progress, api_key: "sk-secret" }, raw_response: "secret" })
-			return performanceReportFixture()
-		})
-		const progress = vi.fn()
-		const command = {
-			protocol: "openai-chat" as const,
-address_mode: "base_url" as const, url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency" as const, request_count: 4,
-			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
-			arrival_pattern: "constant" as const, workload_mode: "fixed" as const, random_input: false, random_seed: 0,
-			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
-			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-			capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
-			input_tokens: 20, output_tokens: 32,
-		}
+  it("observes current Job progress through a query and rejects unexpected progress fields", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const job = jobFixture({ execution: { ...jobFixture().execution!, latest_sequence: 3 },
+      progress: { sequence: 2, recorded_at: JOB_TIME, progress: parseQuickPerformanceReport(performanceReportFixture()).progress } })
+    binding.GetJob.mockResolvedValueOnce(job)
+    await expect(createDesktopClient().getJob(JOB_ID)).resolves.toEqual(job)
+    binding.GetJob.mockResolvedValueOnce({ ...job, progress: { ...job.progress,
+      progress: { ...job.progress!.progress, api_key: "synthetic-secret" } } } as never)
+    await expect(createDesktopClient().getJob(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
+  })
 
-		const report = await createDesktopClient().runQuickPerformanceTest(command, progress)
+  it("forwards the current pagination cursor unchanged", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const page = { schema_version: 1, jobs: [jobFixture()], next_cursor: JOB_ID, has_more: true }
+    binding.GetJobs.mockResolvedValueOnce(page as never)
+    const client = createDesktopClient()
+    await expect(client.getJobs(RUN_ID, 1)).resolves.toEqual(page)
+    expect(binding.GetJobs).toHaveBeenCalledExactlyOnceWith(RUN_ID, 1)
+  })
 
-		expect(eventsOn).toHaveBeenCalledWith("quick-performance-progress", expect.any(Function))
-		expect(binding.RunQuickPerformanceTest).toHaveBeenCalledWith(command, expect.stringMatching(/^[0-9a-f-]{36}$/))
-		expect(progress).toHaveBeenCalledTimes(1)
-		expect(progress).toHaveBeenCalledWith(expect.objectContaining({ phase: "ramping", completed: 1, capped: true }))
-		expect(JSON.stringify(progress.mock.calls)).not.toContain("sk-secret")
-		expect(JSON.stringify(progress.mock.calls)).not.toContain("raw_response")
-		expect(report.metrics.schedule_lag_p90_ms).toBe(2.7)
-		expect(report.metrics.schedule_lag_p99_ms).toBe(2.97)
-		expect(unsubscribe).toHaveBeenCalledTimes(1)
-	})
+  it.each([
+    { jobs: null }, { jobs: [jobFixture(), jobFixture()] }, { jobs: Array(26).fill(jobFixture()) },
+    { jobs: [], has_more: true }, { jobs: [], next_cursor: JOB_ID }, { jobs: [], schema_version: 0 },
+    { jobs: [], raw_payload: "synthetic-secret" },
+  ])("rejects invalid Job pages %j", async (invalid) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.GetJobs.mockResolvedValueOnce(Object.assign({ schema_version: 1, jobs: [], next_cursor: "", has_more: false }, invalid) as never)
+    await expect(createDesktopClient().getJobs("", 25)).rejects.toBeInstanceOf(DesktopDataError)
+  })
 
-	it("accepts archived performance reports created before queue P90 and P99 were recorded", async () => {
-		const binding = installBinding(FIXTURE_WORKSPACE)
-		const fixture = performanceReportFixture()
-		const {
-			schedule_lag_p90_ms: _legacyP90,
-			schedule_lag_p99_ms: _legacyP99,
-			...legacyMetrics
-		} = fixture.metrics
-		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-			...fixture,
-			metrics: legacyMetrics,
-		} as never)
+  it("keeps pending and rejected controls distinct from authoritative Job execution", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const command = { job_id: JOB_ID, kind: "stop_sending" as const, expected_revision: 1 }
+    const client = createDesktopClient()
+    await expect(client.controlJob(command)).resolves.toMatchObject({ state: "pending", execution: null })
+    binding.RetryJobControl.mockResolvedValueOnce(controlFixture({ state: "rejected", observation: "rejected", delivery_revision: 2 }))
+    await expect(client.retryJobControl(COMMAND_ID)).resolves.toMatchObject({ state: "rejected", execution: null })
+    await expect(client.getJob(JOB_ID)).resolves.toMatchObject({ execution: { status: "running", revision: 1 } })
+    expect(binding.ControlJob).toHaveBeenCalledTimes(1)
+    expect(binding.RetryJobControl).toHaveBeenCalledExactlyOnceWith(COMMAND_ID)
+  })
 
-		const report = await createDesktopClient().runQuickPerformanceTest({
-			protocol: "openai-chat",
-address_mode: "base_url", url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency", request_count: 4,
-			duration_ms: 0, concurrency: 2, rate_per_second: 0, max_in_flight: 0,
-			arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
-			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
-			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-			capacity_enabled: false, capacity_start: 0, capacity_step: 0, timeout_ms: 30_000,
-			input_tokens: 20, output_tokens: 32,
-		})
+  it("keeps a confirmed command snapshot separate from the independently observed Job", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const confirmed = controlFixture({ state: "confirmed", delivery_revision: 2, confirmed_at: JOB_TIME,
+      execution: { ...jobFixture().execution!, status: "draining", revision: 2, latest_sequence: 2 } })
+    binding.ControlJob.mockResolvedValueOnce(confirmed)
+    const client = createDesktopClient()
+    await expect(client.controlJob({ job_id: JOB_ID, kind: "stop_sending", expected_revision: 1 })).resolves.toEqual(confirmed)
+    await expect(client.getJob(JOB_ID)).resolves.toEqual(jobFixture())
+    expect(binding.GetJob).toHaveBeenCalledExactlyOnceWith(JOB_ID)
+  })
 
-		expect(report.metrics.schedule_lag_p90_ms).toBe(0)
-		expect(report.metrics.schedule_lag_p99_ms).toBe(0)
-	})
+  it.each([
+    { command_id: RUN_ID }, { job_id: RUN_ID }, { kind: "cancel" }, { expected_revision: 2 },
+    { raw_response: "synthetic-secret" }, { state: "confirmed" }, { state: "rejected" },
+    { confirmed_at: "2026-10-16T00:00:00Z" }, { execution: jobFixture().execution },
+  ])("rejects malformed or miscorrelated controls %j", async (invalid) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.ControlJob.mockResolvedValueOnce({ ...controlFixture(), ...invalid } as never)
+    const client = createDesktopClient()
+    const request = { job_id: JOB_ID, kind: "stop_sending" as const, expected_revision: 1 }
+    if (Object.hasOwn(invalid, "command_id")) {
+      binding.RetryJobControl.mockResolvedValueOnce({ ...controlFixture(), ...invalid } as never)
+      await expect(client.retryJobControl(COMMAND_ID)).rejects.toBeInstanceOf(DesktopDataError)
+    } else await expect(client.controlJob(request)).rejects.toBeInstanceOf(DesktopDataError)
+  })
 
-	it("parses current load semantics without fabricating them for sparse reports", async () => {
-		const binding = installBinding(FIXTURE_WORKSPACE)
-		const fixture = performanceReportFixture()
-		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-			...fixture,
-			schema_version: 2,
-			profile: {
-				...fixture.profile,
-				load_mode: "open_loop",
-				concurrency: 0,
-				rate_per_second: 12.5,
-				max_in_flight: 37,
-				arrival_pattern: "poisson",
-				workload_mode: "normal",
-				random_seed: 424242,
-				input_tokens_stddev: 4,
-				output_tokens_stddev: 8,
-				shared_prefix_tokens: 10,
-				warmup_requests: 1,
-				ramp_duration_ms: 1_000,
-				ramp_request_cap: 0,
-			},
-			progress: { ...fixture.progress, offered: 4, capped: false },
-			metrics: {
-				...fixture.metrics,
-				offered_qps: 15,
-				launched_qps: 12.5,
-				completed_qps: 11,
-				successful_request_qps: 10,
-				request_qps: 10,
-			},
-			samples: fixture.samples.map((sample, index) => ({
-				...sample,
-				target_input_tokens: 18 + index,
-				target_output_tokens: 28 + index,
-				provider_target: "must be dropped",
-			})),
-			request_budget: { limit: 10_000, warmup_cap: 1, ramp_cap: 15, measured_cap: 4, total_cap: 20, provider_internal: "drop" },
-			warmup: phaseThreeTrafficSummary(1, 1),
-			ramp: {
-				shape: "linear_staircase", duration_ms: 1_000, steps: 10, target_rate_per_second: 12.5,
-				completed_window: true,
-				traffic: { ...phaseThreeTrafficSummary(15, 15), send_duration_ms: 1_000, total_duration_ms: 1_020 },
-				provider_internal: "drop",
-			},
-		} as never)
+  it.each([
+    { job_id: RUN_ID }, { commands: null }, { commands: [controlFixture({ job_id: RUN_ID })] },
+    { commands: [controlFixture(), controlFixture()] }, { commands: [], next_cursor: COMMAND_ID },
+    { commands: [], has_more: true }, { commands: [], secret: "synthetic-secret" },
+  ])("rejects malformed control history %j", async (invalid) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.GetJobControls.mockResolvedValueOnce({ schema_version: 1, job_id: JOB_ID, commands: [], next_cursor: "", has_more: false, ...invalid } as never)
+    await expect(createDesktopClient().getJobControls(JOB_ID, "", 25)).rejects.toBeInstanceOf(DesktopDataError)
+  })
 
-		const v2 = await createDesktopClient().runQuickPerformanceTest({
-			protocol: "openai-chat",
-address_mode: "base_url", url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", load_mode: "open_loop",
-			request_count: 4, duration_ms: 0, concurrency: 0, rate_per_second: 12.5,
-			max_in_flight: 37, arrival_pattern: "poisson", workload_mode: "normal", random_input: false, random_seed: 424242,
-			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
-			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0, slice_duration_ms: 1_000,
-			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
-			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
-		})
-		expect(v2.schema_version).toBe(2)
-			expect(v2.profile).toMatchObject({
-			load_mode: "open_loop", rate_per_second: 12.5, max_in_flight: 37,
-			arrival_pattern: "poisson", workload_mode: "normal", random_seed: 424242,
-			input_tokens_stddev: 4, output_tokens_stddev: 8, shared_prefix_tokens: 10,
-			warmup_requests: 1, ramp_duration_ms: 1_000, ramp_request_cap: 0,
-		})
-		expect(v2.progress.offered).toBe(4)
-		expect(v2.progress.capped).toBe(false)
-		expect(v2.request_budget).toEqual({ limit: 10_000, warmup_cap: 1, ramp_cap: 15, measured_cap: 4, total_cap: 20 })
-		expect(v2.ramp).toMatchObject({ shape: "linear_staircase", steps: 10, target_rate_per_second: 12.5 })
-		expect(v2.time_slices).toBeUndefined()
-		expect(v2.metrics).toMatchObject({ offered_qps: 15, launched_qps: 12.5, completed_qps: 11, successful_request_qps: 10 })
-		expect(v2.samples[0]).toMatchObject({ target_input_tokens: 18, target_output_tokens: 28 })
-		expect(JSON.stringify(v2.samples)).not.toContain("must be dropped")
+  it.each(["not_started", "interrupted", "available"] as const)("preserves the sealed %s performance outcome without an archive query", async (state) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    result.observation_state = state
+    if (state === "not_started") { result.execution_started = false; result.observation = null; result.terminal.status = "cancelled" }
+    if (state === "interrupted") { result.terminal.status = "cancelled"; result.observation!.stage = "warmup"; result.observation!.boundary = "entered" }
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(result)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).resolves.toEqual(result)
+    expect(binding.GetReports).not.toHaveBeenCalled()
+    expect(binding.GetReportDetail).not.toHaveBeenCalled()
+  })
 
-		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-			...fixture,
-			schema_version: 2,
-			profile: { ...fixture.profile, load_mode: "fixed_concurrency" },
-			progress: { ...fixture.progress, offered: 4 },
-			metrics: {
-				...fixture.metrics,
-				offered_qps: 13.3,
-				launched_qps: 13.3,
-				completed_qps: 12.5,
-				successful_request_qps: 12.5,
-			},
-		} as never)
-		const phaseOneV2 = await createDesktopClient().runQuickPerformanceTest({
-			protocol: "openai-chat",
-address_mode: "base_url", url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
-			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
-			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
-			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
-			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
-			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
-		} as never)
-		expect(phaseOneV2.profile.arrival_pattern).toBeUndefined()
-		expect(phaseOneV2.profile.workload_mode).toBeUndefined()
-		expect(phaseOneV2.samples[0].target_input_tokens).toBeUndefined()
+  it("preserves an interrupted execution with no actual observation instead of inventing zero metrics", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    result.observation_state = "interrupted"
+    result.terminal.status = "cancelled"
+    result.observation = null
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(result)
+    const actual = await createDesktopClient().getJobPerformanceResult(JOB_ID)
+    expect(actual).toEqual(result)
+    expect(actual.execution_started).toBe(true)
+    expect(actual.observation).toBeNull()
+    expect(binding.GetReports).not.toHaveBeenCalled()
+    expect(binding.GetReportDetail).not.toHaveBeenCalled()
+  })
 
-		const { load_mode: _loadMode, ...sparseProfile } = fixture.profile
-		binding.RunQuickPerformanceTest.mockResolvedValueOnce({
-			...fixture,
-			profile: sparseProfile,
-		} as never)
-		await expect(createDesktopClient().runQuickPerformanceTest({
-			protocol: "openai-chat",
-address_mode: "base_url", url: "https://api.example.test/v1",
-			api_key: "sk-secret", model_id: "gpt-test", load_mode: "fixed_concurrency",
-			request_count: 4, duration_ms: 0, concurrency: 2, rate_per_second: 0,
-			max_in_flight: 0, arrival_pattern: "constant", workload_mode: "fixed", random_input: false, random_seed: 0,
-			input_tokens_stddev: 0, output_tokens_stddev: 0, shared_prefix_tokens: 0,
-			warmup_requests: 0, ramp_duration_ms: 0, ramp_request_cap: 0, slice_duration_ms: 0,
-			slo_ttft_ms: 0, slo_tpot_ms: 0, slo_e2e_ms: 0, slo_target_percent: 0,
-			capacity_enabled: false, capacity_start: 0, capacity_step: 0,
-			timeout_ms: 30_000, input_tokens: 20, output_tokens: 32,
-		})).rejects.toThrow("快速性能报告数据结构无效")
-	})
+  it("keeps the observation sequence independent from the execution revision", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    result.observation!.revision = 75
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(result)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).resolves.toEqual(result)
+  })
+
+  it("preserves an explicitly absent checkpoint execution origin", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    result.observation!.report.execution_origin = null
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(result)
+    const actual = await createDesktopClient().getJobPerformanceResult(JOB_ID)
+    expect(actual.observation!.report.execution_origin).toBeNull()
+    expect(actual.executor).toEqual(result.executor)
+  })
+
+  it.each([
+    { kind: "remote" }, { node_id: RUN_ID }, { installation_id: RUN_ID },
+    { engine_build_id: "b".repeat(64) }, { runner_version: "different-runner" },
+    { os: "linux" }, { arch: "arm64" },
+  ])("rejects checkpoint origin that differs from the receipt executor %j", async (mismatch) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    result.observation!.report.execution_origin = { ...result.observation!.report.execution_origin!, ...mismatch } as never
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(result)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
+  it.each([
+    { boundary: "completed" }, { boundary: "entered" }, { stage: "capacity" },
+    { rung_index: 0 }, { revision: 0 }, { recorded_at: "2026-10-15T23:00:00Z" },
+    { report: { ...parseQuickPerformanceReport(performanceReportFixture()), report_id: RUN_ID } },
+  ])("rejects a mismatched sealed observation without mutating the rejected data %j", async (invalid) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    const payload = { ...result, observation: { ...result.observation, ...invalid } }
+    const before = structuredClone(payload)
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(payload as never)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
+    expect(payload).toEqual(before)
+  })
+
+  it("accepts bounded redacted response evidence in the actual sealed observation", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const report = parseQuickPerformanceReport(performanceReportFixture())
+    report.success = false
+    Object.assign(report.progress, { succeeded: 3, failed: 1 })
+    Object.assign(report.metrics, { succeeded: 3, failed: 1, success_rate_percent: 75,
+      ttft_samples: 3, ttfb_samples: 3, ttft_any_samples: 3, ttft_visible_samples: 3, semantic_chunk_count_samples: 3 })
+    report.failures = [{ error_code: "authentication_failed", count: 1 }]
+    Object.assign(report.samples[0], { success: false, http_status: 401, error_code: "authentication_failed",
+      response_evidence: { capture_status: "captured", content_type: "application/json", request_id: "req-synthetic",
+        body: '{"error":{"api_key":"[REDACTED]"}}', body_bytes: 36, truncated: false, redacted: true } })
+    const result = performanceResultFixture(report)
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(result)
+    const actual = await createDesktopClient().getJobPerformanceResult(JOB_ID)
+    expect(actual.observation!.report.samples[0].response_evidence).toEqual(report.samples[0].response_evidence)
+    const unsafe = structuredClone(result)
+    Object.assign(unsafe.observation!.report.samples[0].response_evidence!, { redacted: false })
+    binding.GetJobPerformanceResult.mockResolvedValueOnce(unsafe)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
+  it.each([
+    { job_id: RUN_ID }, { schema_version: 0 }, { raw_response: "synthetic-secret" },
+    { terminal: jobFixture().execution }, { observation_state: "unknown" }, { observation: null },
+    { execution_started: false }, { location: undefined },
+  ])("rejects malformed sealed performance envelopes %j", async (invalid) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.GetJobPerformanceResult.mockResolvedValueOnce({ ...performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture())), ...invalid } as never)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
+  it("rejects unknown secret fields inside a sealed performance observation", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const result = performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))
+    binding.GetJobPerformanceResult.mockResolvedValueOnce({ ...result, observation: { ...result.observation,
+      report: { ...result.observation!.report, api_key: "synthetic-secret" } } } as never)
+    await expect(createDesktopClient().getJobPerformanceResult(JOB_ID)).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
+  it.each(["job_invalid", "job_not_found", "job_conflict", "job_unavailable", "job_confirmation_pending", "job_commit_unconfirmed", "job_query_unavailable", "job_commands_unavailable", "remote_node_upgrade_required"] as const)("keeps stable %s failures without automatic retry or fallback", async (code) => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    binding.LaunchJob.mockRejectedValueOnce(new Error(code))
+    await expect(createDesktopClient().launchJob({ ...quickTaskCommand(), location: { kind: "remote", configuration_id: RUN_ID } })).rejects.toMatchObject({ code })
+    expect(binding.LaunchJob).toHaveBeenCalledTimes(1)
+    expect(binding.GetJob).not.toHaveBeenCalled()
+  })
 
 	it("reads complete report details and forwards all export formats", async () => {
 		const binding = installBinding(FIXTURE_WORKSPACE)
@@ -1167,17 +874,17 @@ address_mode: "base_url", url: "https://api.example.test/v1",
     ["catalog_unavailable", "无法读取模型、渠道与用例目录", "GetCatalog", "getCatalog"],
     ["reports_unavailable", "无法读取测试报告", "GetReports", "getReports"],
     ["plan_protocol_mismatch", "计划中的用例、模型和渠道协议不一致", "CreatePlan", "createPlan"],
-    ["run_invalid", "测试输入无效", "StartQuickTask", "startQuickTask"],
-    ["run_not_runnable", "所选任务或目标无法执行", "StartQuickTask", "startQuickTask"],
-    ["run_not_active", "当前运行已结束，无法取消或停止发送", "CancelRun", "cancelRun"],
+    ["run_invalid", "测试输入无效", "LaunchJob", "launchJob"],
+    ["run_not_runnable", "所选任务或目标无法执行", "LaunchJob", "launchJob"],
+    ["run_not_active", "当前运行已结束，无法取消或停止发送", "ControlJob", "controlJob"],
     ["catalog_invalid", "目录内容无效", "CreateModel", "createModel"],
     ["catalog_revision_conflict", "对象版本已变化或仍被引用", "UpdateModel", "updateModel"],
     ["catalog_not_found", "对象已删除或不存在", "DeleteModel", "deleteModel"],
     ["catalog_saved_refresh_failed", "已保存，但目录刷新失败", "CreateModel", "createModel"],
-    ["comparison_invalid", "渠道对比请求无效", "StartComparison", "startComparison"],
-    ["comparison_not_ready", "所选渠道无法用同一个模型版本公平对比", "StartComparison", "startComparison"],
-    ["comparison_target_unmapped", "所选模型尚未绑定到其中一个渠道", "StartComparison", "startComparison"],
-    ["comparison_channel_not_ready", "其中一个渠道未启用或未配置密钥", "StartComparison", "startComparison"],
+    ["comparison_invalid", "渠道对比请求无效", "LaunchJob", "launchJob"],
+    ["comparison_not_ready", "所选渠道无法用同一个模型版本公平对比", "LaunchJob", "launchJob"],
+    ["comparison_target_unmapped", "所选模型尚未绑定到其中一个渠道", "LaunchJob", "launchJob"],
+    ["comparison_channel_not_ready", "其中一个渠道未启用或未配置密钥", "LaunchJob", "launchJob"],
   ] as const)("maps the public %s binding error", async (code, message, bindingMethod, clientMethod) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding[bindingMethod].mockRejectedValueOnce(new Error(code))
@@ -1334,14 +1041,26 @@ function installBinding(
 			SaveReportExport: vi.fn(async () => true),
 			CopyReportPNG: vi.fn(async () => undefined),
 			GetComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		StartRunTarget: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
-		StartQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
-		GetQuickTask: vi.fn(),
+    LaunchJob: vi.fn(async (value?: unknown) => {
+      const command = value as LaunchCommand
+      switch (command.kind) {
+        case "plan":
+        case "quick_task":
+          return jobFixture({ kind: "run", location: command.location, run_ids: [RUN_ID], report_ids: [], execution: null })
+        case "performance":
+          return jobFixture({ location: command.location, execution: null })
+        case "comparison":
+          return jobFixture({ kind: "comparison", location: command.location, comparison_id: COMMAND_ID, run_ids: [RUN_ID], report_ids: [], execution: null })
+      }
+    }),
+    GetJobs: vi.fn(async (_after?: string, _limit?: number) => ({ schema_version: 1, jobs: [], next_cursor: "", has_more: false })),
+    GetJob: vi.fn(async (_jobID?: string) => jobFixture()),
+    GetJobPerformanceResult: vi.fn(async (_jobID?: string) => performanceResultFixture(parseQuickPerformanceReport(performanceReportFixture()))),
+    ControlJob: vi.fn(async (_command?: unknown) => controlFixture()),
+    GetJobControls: vi.fn(async (_jobID?: string, _after?: string, _limit?: number) => ({ schema_version: 1, job_id: JOB_ID, commands: [], next_cursor: "", has_more: false })),
+    RetryJobControl: vi.fn(async (_commandID?: string) => controlFixture()),
+    GetQuickTask: vi.fn(),
     RememberQuickTaskCredential: vi.fn(async () => undefined), ForgetQuickTaskCredential: vi.fn(async () => undefined),
-    StopSending: vi.fn(async () => structuredClone(payload)),
-    CancelRun: vi.fn(async () => structuredClone(payload)),
-		StartComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		RunQuickPerformanceTest: vi.fn(async (_command?: unknown, _progressID?: string) => performanceReportFixture()),
 
 	CreateModel: vi.fn(async () => structuredClone(catalog)),
 	UpdateModel: vi.fn(async () => structuredClone(catalog)),
@@ -1386,6 +1105,7 @@ function performanceReportFixture() {
   }
   return {
     schema_version: 2,
+    execution_origin: null,
     protocol: "openai-chat" as const, archived: false, archive_status: "not_attempted", model_id: "gpt-test", success: true, address_mode: "base_url",
     base_url: "https://api.example.test/v1",
     endpoint: "https://api.example.test/v1/chat/completions",
@@ -1422,21 +1142,6 @@ function performanceSample(requestIndex: number, finished: number, e2e: number, 
   }
 }
 
-function phaseThreeTrafficSummary(requestCap: number, completed: number) {
-  return {
-    request_cap: requestCap, offered: completed, launched: completed, completed, succeeded: completed,
-    failed: 0, timed_out: 0, rejected: 0, peak_in_flight: Math.min(2, completed),
-    prompt_tokens: completed * 20, completion_tokens: completed * 32, cached_tokens: completed * 5,
-    send_duration_ms: 100, drain_duration_ms: 20, total_duration_ms: 120,
-    failures: [], stopped: false, capped: false, provider_internal: "drop",
-  }
-}
-
-function zeroPerformanceMetrics() {
-  const report = performanceReportFixture().metrics
-  return Object.fromEntries(Object.keys(report).map((key) => [key, 0]))
-}
-
 function reportDetailFixture(reportID: string) {
   const summary = FIXTURE_REPORTS.reports.find(report => report.id === reportID) ?? FIXTURE_REPORTS.reports[0]
   const detail = protocolReportFixture()
@@ -1447,4 +1152,11 @@ function reportDetailFixture(reportID: string) {
 function withoutIdentity<T extends { id: string; revision: number }>(value: T): Omit<T, "id" | "revision"> {
   const { id: _id, revision: _revision, ...rest } = value
   return rest
+}
+
+function quickTaskCommand(): LaunchCommand {
+  return { location: { kind: "local", configuration_id: "" }, kind: "quick_task", plan: null,
+    quick_task: { suite_id: FIXTURE_CATALOG.suites[1].id, seed: 1,
+      request_timeout_ms: 60000, model: "synthetic-model", base_url: "https://example.test", inputs: {} },
+    performance: null, comparison: null }
 }

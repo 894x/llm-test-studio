@@ -3,6 +3,7 @@ package sqlite
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -154,8 +155,11 @@ func queryRemoteMirror(ctx context.Context, queryer rowQueryer, id string) (remo
 	var specDocument, snapshotDocument []byte
 	var digest string
 	var sequence uint64
-	err := queryer.QueryRowContext(ctx, `SELECT configuration_id, node_id, installation_id,
-		spec_sha256, spec_json, snapshot_json, applied_sequence FROM remote_job_mirrors WHERE job_id = ?`, id).Scan(
+	err := queryer.QueryRowContext(ctx, `SELECT configuration_id, node_id, installation_id, spec_sha256,
+		CASE WHEN length(CAST(spec_json AS BLOB)) <= ? THEN spec_json ELSE '' END,
+		CASE WHEN length(CAST(snapshot_json AS BLOB)) <= ? THEN snapshot_json ELSE '' END,
+		applied_sequence FROM remote_job_mirrors WHERE job_id = ?`,
+		jobcontract.MaxSubmissionBytes, jobcontract.MaxEventBytes, id).Scan(
 		&mirror.Origin.ConfigurationID,
 		&mirror.Origin.NodeID,
 		&mirror.Origin.InstallationID,
@@ -184,6 +188,20 @@ func queryRemoteMirror(ctx context.Context, queryer rowQueryer, id string) (remo
 	if err != nil || actualDigest != digest || !validOrigin || !validState {
 		return remoteresults.Mirror{}, fmt.Errorf("%w: remote mirror identity", ErrCorrupt)
 	}
+	var acceptedDocument []byte
+	if err := queryer.QueryRowContext(ctx, `SELECT
+		CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
+		FROM remote_job_events WHERE job_id = ? AND sequence = 1`, jobcontract.MaxEventBytes, id).Scan(&acceptedDocument); err != nil {
+		return remoteresults.Mirror{}, relationStorageError(ctx, "remote accepted origin", err)
+	}
+	accepted, err := decodeAcceptedOrigin(acceptedDocument, mirror.Snapshot)
+	if err != nil || accepted.specSHA256 != actualDigest || accepted.specDocumentSHA256 != sha256.Sum256(specDocument) {
+		return remoteresults.Mirror{}, storageCorrupt("remote accepted origin")
+	}
+	executor := mirror.Snapshot.Receipt.Origin
+	if executor.Kind != "remote" || executor.NodeID != mirror.Origin.NodeID || executor.InstallationID != mirror.Origin.InstallationID {
+		return remoteresults.Mirror{}, storageCorrupt("remote executor origin")
+	}
 	return mirror, nil
 }
 
@@ -201,7 +219,7 @@ func createRemoteMirrorTx(
 		return remoteresults.Mirror{}, remoteresults.ErrInvalid
 	}
 	spec := accepted.Spec
-	initial, err := spec.InitialSnapshot(event.CreatedAt)
+	initial, err := spec.InitialSnapshot(event.CreatedAt, accepted.Snapshot.Receipt.Origin)
 	validOrigin := spec.Target.Kind == jobcontract.TargetRemote && spec.Target.NodeID == origin.NodeID &&
 		spec.NodeInstallationID == origin.InstallationID && spec.JobID == event.JobID
 	if err != nil || !validOrigin || !equalCanonicalDocuments(initial, accepted.Snapshot) {

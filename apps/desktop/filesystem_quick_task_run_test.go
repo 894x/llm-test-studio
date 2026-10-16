@@ -171,7 +171,11 @@ func testQuickSuitePersistence(t *testing.T, failRequests bool) {
 	})
 	app.onStartup(ctx)
 	defer app.shutdown()
-	id, err := app.StartQuickTask(runs.QuickTaskCommand{SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "arbitrary-model", BaseURL: server.URL, APIKey: "test-temporary-key", Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)}})
+	id, err := service.StartQuickTask(ctx, runs.QuickTaskCommand{
+		SuiteID: suite.ID, Seed: 1, RequestTimeoutMS: 1000, Model: "arbitrary-model",
+		BaseURL: server.URL, APIKey: "test-temporary-key",
+		Inputs: map[string]json.RawMessage{"prompt": json.RawMessage(`"edited"`)},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

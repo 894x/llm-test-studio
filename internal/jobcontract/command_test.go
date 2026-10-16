@@ -118,7 +118,8 @@ func TestCommandConfirmationStateDecisionTable(t *testing.T) {
 				0,
 				time.UTC,
 			)
-			snapshot, err := performanceSpec(t).InitialSnapshot(at)
+			spec := performanceSpec(t)
+			snapshot, err := spec.InitialSnapshot(at, originFixture(spec))
 			if err != nil {
 				t.Fatal(err)
 			}

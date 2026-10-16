@@ -155,5 +155,13 @@ func queryJobCommand(ctx context.Context, queryer rowQueryer, id string) (jobcon
 	if !validIdentity || !validAcceptance {
 		return jobcontract.CommandConfirmation{}, fmt.Errorf("%w: job command identity", ErrCorrupt)
 	}
+	row, err := queryJobRow(ctx, queryer, jobID)
+	if err != nil {
+		return jobcontract.CommandConfirmation{}, relationStorageError(ctx, "job command owner", err)
+	}
+	snapshot, err := row.decode()
+	if err != nil || confirmation.Snapshot.Receipt.Origin != snapshot.Receipt.Origin {
+		return jobcontract.CommandConfirmation{}, storageCorrupt("job command execution origin")
+	}
 	return confirmation, nil
 }

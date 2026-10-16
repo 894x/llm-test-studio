@@ -82,6 +82,9 @@ func insertQuickPerformanceReportTx(
 	generatedAt time.Time,
 	document []byte,
 ) error {
+	if err := validatePerformanceArchiveOrigin(ctx, tx, report); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(
 		ctx,
 		`
@@ -113,10 +116,16 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 	var generatedAt string
 	var generatedAtUnixNano int64
 	var document []byte
-	err := repository.db.QueryRowContext(ctx, `
-		SELECT generated_at, generated_at_unix_nano, document_json
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return quicktest.PerformanceReport{}, fmt.Errorf("begin performance report read: %w", err)
+	}
+	defer tx.Rollback()
+	err = tx.QueryRowContext(ctx, `
+		SELECT generated_at, generated_at_unix_nano,
+		CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
 		FROM quick_performance_reports WHERE id = ?
-	`, reportID).Scan(&generatedAt, &generatedAtUnixNano, &document)
+	`, maxQuickPerformanceReportBytes, reportID).Scan(&generatedAt, &generatedAtUnixNano, &document)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return quicktest.PerformanceReport{}, err
 	}
@@ -129,6 +138,12 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 	report, parsedAt, err := decodeQuickPerformanceReport(document)
 	if err != nil || report.ReportID != reportID || report.GeneratedAt != generatedAt || parsedAt.UnixNano() != generatedAtUnixNano {
 		return quicktest.PerformanceReport{}, fmt.Errorf("%w: quick performance report document", ErrCorrupt)
+	}
+	if err := validatePerformanceArchiveOrigin(ctx, tx, report); err != nil {
+		return quicktest.PerformanceReport{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return quicktest.PerformanceReport{}, fmt.Errorf("commit performance report read: %w", err)
 	}
 	return report, nil
 }

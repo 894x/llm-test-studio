@@ -244,7 +244,7 @@ func (host *Host) recover(ctx context.Context) error {
 		return err
 	}
 	for _, snapshot := range jobs {
-		if snapshot.Receipt.NodeInstallationID != host.installationID {
+		if snapshot.Receipt.Origin.InstallationID != host.installationID {
 			continue
 		}
 		spec, err := host.repository.GetJobSpec(ctx, snapshot.Receipt.JobID)

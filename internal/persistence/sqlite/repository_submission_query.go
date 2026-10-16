@@ -31,6 +31,17 @@ func (repository *Repository) SubmittedJob(ctx context.Context, id string) (jobs
 		return jobs.JobView{}, fmt.Errorf("begin submitted job read: %w", err)
 	}
 	defer tx.Rollback()
+	view, err := querySubmittedJobView(ctx, tx, id)
+	if err != nil {
+		return jobs.JobView{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return jobs.JobView{}, fmt.Errorf("commit submitted job read: %w", err)
+	}
+	return view, nil
+}
+
+func querySubmittedJobView(ctx context.Context, tx *sql.Tx, id string) (jobs.JobView, error) {
 	read, err := querySubmittedExecution(ctx, tx, id)
 	if err != nil {
 		return jobs.JobView{}, err
@@ -54,9 +65,6 @@ func (repository *Repository) SubmittedJob(ctx context.Context, id string) (jobs
 	)
 	if err != nil {
 		return jobs.JobView{}, fmt.Errorf("%w: submitted execution projection", ErrCorrupt)
-	}
-	if err := tx.Commit(); err != nil {
-		return jobs.JobView{}, fmt.Errorf("commit submitted job read: %w", err)
 	}
 	return view, nil
 }

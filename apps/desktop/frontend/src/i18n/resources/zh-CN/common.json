@@ -54,6 +54,14 @@
     "remote_node_credential_unavailable": "节点凭据不可用，请重新输入或检查系统凭据库",
     "remote_node_busy": "节点操作正在进行，请稍候刷新",
     "remote_node_commit_unconfirmed": "保存结果尚未确认，请刷新节点列表后再操作",
+    "job_invalid": "任务输入无效，请检查执行位置和任务参数",
+    "job_not_found": "未在当前查询范围找到关联任务，请从任务历史打开；历史非受管运行不支持任务控制",
+    "job_conflict": "任务版本已变化，执行器拒绝了此命令；请刷新任务后重新操作",
+    "job_unavailable": "指定执行位置不可用，请检查节点后再启动",
+    "job_confirmation_pending": "任务仍等待执行器确认，请查看原任务，勿重复创建",
+    "job_commit_unconfirmed": "命令保存结果尚未确认，请刷新控制记录；不要重复发送新命令",
+    "job_query_unavailable": "暂时无法读取持久任务，请刷新或查看本地日志",
+    "job_commands_unavailable": "任务命令暂不可用，请在桌面应用中重试",
     "remote_node_upgrade_required": "节点配置格式不受支持，需要升级后再使用"
   },
   "errorCode": {

@@ -1,0 +1,93 @@
+{
+  "title": "Jobs",
+  "description": "Durable submissions from this desktop. Tasks continue after closing this window.",
+  "details": "Job details",
+  "jobID": "Job ID",
+  "location": "Fixed execution location",
+  "executor": "Fixed runner",
+  "delivery": "Delivery",
+  "connection": "Last observation",
+  "execution": "Actual execution",
+  "failure": "Failure",
+  "result": "Performance result",
+  "resultReady": "Complete result synchronized",
+  "resultPending": "Result not synchronized",
+  "awaitingConfirmation": "Waiting for executor confirmation",
+  "awaitingSync": "Confirmed: {{status}} (r{{revision}}); waiting for journal synchronization",
+  "progress": "{{completed}} / {{planned}} complete · {{active}} in flight",
+  "stale": "Showing the last confirmed data.",
+  "readFailed": "Unable to refresh jobs. Try again.",
+  "controlFailed": "Unable to confirm the command. Refresh before sending another.",
+  "stop": "Stop sending",
+  "cancel": "Cancel job",
+  "openReport": "Open synchronized report",
+  "controls": "Control confirmations",
+  "retryControl": "Retry the same command",
+  "previous": "Previous",
+  "next": "Next",
+  "refresh": "Refresh",
+  "empty": "No managed jobs have been submitted from this desktop.",
+  "performanceResult": "Actual performance outcome",
+  "noObservation": "Execution never started. There are no measured metrics.",
+  "local": "Local",
+  "remote": "Remote",
+  "deliveryStates": {
+    "prepared": "Prepared, not sent",
+    "pending": "Delivery pending confirmation",
+    "accepted": "Executor confirmed"
+  },
+  "observations": {
+    "unreachable": "Executor unreachable; task state is unknown",
+    "not_found": "Executor has not confirmed this ID",
+    "identity_changed": "Executor identity changed; original target is fixed",
+    "rejected": "Executor explicitly refused the command"
+  },
+  "statuses": {
+    "queued": "Queued",
+    "starting": "Starting",
+    "running": "Running",
+    "draining": "Draining",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "controlStates": {
+    "pending": "Waiting for confirmation",
+    "confirmed": "Confirmed",
+    "rejected": "Refused"
+  },
+  "outcomes": {
+    "not_started": "Execution did not start",
+    "interrupted": "Execution interrupted; showing the last actual observation",
+    "available": "Complete actual execution outcome"
+  },
+  "stages": {
+    "preparing": "Preparing",
+    "warmup": "Warmup",
+    "ramp": "Ramp",
+    "measured": "Measured traffic",
+    "capacity": "Capacity rung"
+  },
+  "boundaries": {
+    "entered": "Stage entered",
+    "completed": "Stage completed",
+    "returned": "Execution returned"
+  },
+  "phases": {
+    "not_started": "Not started",
+    "warming_up": "Warming up",
+    "ramping": "Ramping",
+    "sending": "Sending",
+    "draining": "Draining",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "kinds": {
+    "run": "Run",
+    "performance": "Performance",
+    "comparison": "Comparison"
+  },
+  "noCheckpoint": "Execution started without a recoverable observation. No measured metrics are available.",
+  "noMeasuredTraffic": "The measured phase has not completed. Only recorded preparation data is shown.",
+  "completedTraffic": "{{completed}} / {{planned}} complete"
+}

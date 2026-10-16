@@ -57,7 +57,7 @@ func capabilities() jobcontract.RunnerCapabilities {
 		JobKinds:  []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindPerformance, jobcontract.KindComparison},
 		Protocols: []string{"openai-chat", "openai-responses", "anthropic-messages"},
 		Features: []string{
-			jobcontract.FeaturePerformanceArchives, "warmup", "ramp", "capacity", "open_loop",
+			jobcontract.FeatureExecutionOrigin, jobcontract.FeaturePerformanceArchives, "warmup", "ramp", "capacity", "open_loop",
 			"time_slices", "normal_workload", "random_input",
 		},
 	}
@@ -113,6 +113,7 @@ func newHTTPFixture(t *testing.T, blocked bool, caps jobcontract.RunnerCapabilit
 		Target: jobcontract.ExecutionTarget{
 			Kind: jobcontract.TargetRemote, NodeID: "11111111-1111-4111-8111-111111111111",
 		},
+		NodeID: "11111111-1111-4111-8111-111111111111", RunnerVersion: "runner-test-1",
 		InstallationID: "22222222-2222-4222-8222-222222222222", EngineBuildID: strings.Repeat("b", 64),
 		CommitmentKey: bytes.Repeat([]byte{3}, 32),
 	})
@@ -127,7 +128,7 @@ func newHTTPFixture(t *testing.T, blocked bool, caps jobcontract.RunnerCapabilit
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
 		Host: fixture.host, Maintenance: fixture.maintenance,
 		Repository: repository, TokenSHA256: sha256.Sum256([]byte(nodeToken)),
-		Version: "runner-test-1", Capabilities: caps,
+		Capabilities: caps,
 	})
 	if err != nil {
 		t.Fatal(err)

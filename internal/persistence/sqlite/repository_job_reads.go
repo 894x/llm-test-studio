@@ -61,6 +61,7 @@ func (repository *Repository) ListJobs(ctx context.Context, query jobhost.JobLis
 			&row.commitment,
 			&row.document,
 			&row.sequence,
+			&row.acceptedDocument,
 		); err != nil {
 			return jobhost.JobPage{}, fmt.Errorf("scan job list: %w", err)
 		}

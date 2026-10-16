@@ -142,28 +142,29 @@ func (attachment ReportAttachment) Validate(expectedRunID ...string) error {
 }
 
 type Report struct {
-	SchemaVersion int                    `json:"schema_version"`
-	Protocol      Protocol               `json:"protocol"`
-	Verification  VerificationSummary    `json:"verification"`
-	ID            string                 `json:"id"`
-	RunID         string                 `json:"run_id"`
-	RunStatus     RunStatus              `json:"run_status"`
-	GeneratedAt   time.Time              `json:"generated_at"`
-	PlanSnapshot  RunSnapshot            `json:"plan_snapshot"`
-	Model         ReportSubject          `json:"model"`
-	Channel       ReportSubject          `json:"channel"`
-	Environment   EnvironmentSnapshot    `json:"environment"`
-	Conclusion    ReportConclusion       `json:"conclusion"`
-	SLA           map[string]MetricValue `json:"sla"`
-	Metrics       map[string]MetricValue `json:"metrics"`
-	Timeline      []json.RawMessage      `json:"timeline"`
-	Distributions []json.RawMessage      `json:"distributions"`
-	CaseResults   []Result               `json:"case_results"`
-	EntryReports  []EntryReport          `json:"entry_reports"`
-	ErrorClusters []json.RawMessage      `json:"error_clusters"`
-	Evidence      []Evidence             `json:"evidence"`
-	Baseline      json.RawMessage        `json:"baseline"`
-	Attachments   []ReportAttachment     `json:"attachments"`
+	SchemaVersion   int                    `json:"schema_version"`
+	Protocol        Protocol               `json:"protocol"`
+	Verification    VerificationSummary    `json:"verification"`
+	ID              string                 `json:"id"`
+	RunID           string                 `json:"run_id"`
+	RunStatus       RunStatus              `json:"run_status"`
+	GeneratedAt     time.Time              `json:"generated_at"`
+	PlanSnapshot    RunSnapshot            `json:"plan_snapshot"`
+	Model           ReportSubject          `json:"model"`
+	Channel         ReportSubject          `json:"channel"`
+	Environment     EnvironmentSnapshot    `json:"environment"`
+	ExecutionOrigin *ExecutionOrigin       `json:"execution_origin"`
+	Conclusion      ReportConclusion       `json:"conclusion"`
+	SLA             map[string]MetricValue `json:"sla"`
+	Metrics         map[string]MetricValue `json:"metrics"`
+	Timeline        []json.RawMessage      `json:"timeline"`
+	Distributions   []json.RawMessage      `json:"distributions"`
+	CaseResults     []Result               `json:"case_results"`
+	EntryReports    []EntryReport          `json:"entry_reports"`
+	ErrorClusters   []json.RawMessage      `json:"error_clusters"`
+	Evidence        []Evidence             `json:"evidence"`
+	Baseline        json.RawMessage        `json:"baseline"`
+	Attachments     []ReportAttachment     `json:"attachments"`
 }
 
 func (report Report) Validate() error {
@@ -206,6 +207,11 @@ func (report Report) Validate() error {
 	}
 	if report.Environment != report.PlanSnapshot.Environment {
 		return errors.New("report environment does not match the plan snapshot")
+	}
+	if report.ExecutionOrigin != nil {
+		if err := report.ExecutionOrigin.Validate(); err != nil {
+			return fmt.Errorf("invalid report execution origin: %w", err)
+		}
 	}
 	if err := report.Conclusion.Validate(); err != nil {
 		return err

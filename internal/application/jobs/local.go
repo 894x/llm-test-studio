@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync/atomic"
 
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
@@ -19,8 +18,6 @@ type LocalReadRepository interface {
 type LocalBackendDependencies struct {
 	Host       *jobhost.Host
 	Repository LocalReadRepository
-	NodeID     string
-	Version    string
 }
 
 // LocalBackend is one borrowed connection to the application-owned JobHost.
@@ -44,9 +41,9 @@ func NewLocalBackend(dependencies LocalBackendDependencies) (*LocalBackend, erro
 	}
 	policy := identity.Policy
 	info := jobcontract.RunnerInfo{
-		Contract: jobcontract.CurrentContract, NodeID: dependencies.NodeID,
-		NodeInstallationID: identity.InstallationID, EngineBuildID: identity.EngineBuildID,
-		RunnerVersion: dependencies.Version, OS: runtime.GOOS, Arch: runtime.GOARCH,
+		Contract: jobcontract.CurrentContract, NodeID: identity.Origin.NodeID,
+		NodeInstallationID: identity.Origin.InstallationID, EngineBuildID: identity.Origin.EngineBuildID,
+		RunnerVersion: identity.Origin.RunnerVersion, OS: identity.Origin.OS, Arch: identity.Origin.Arch,
 		Capabilities: jobhost.CoreCapabilities(),
 		Budget: jobcontract.RunnerBudget{
 			MaxActiveJobs: policy.MaxActiveJobs, MaxQueuedJobs: policy.MaxQueuedJobs,
@@ -116,6 +113,9 @@ func (backend *LocalBackend) GetJob(ctx context.Context, id string) (jobcontract
 	}
 	if spec.JobID != id || snapshot.Validate(spec) != nil {
 		return jobcontract.Snapshot{}, ErrInvalid
+	}
+	if snapshot.Receipt.Origin.NodeID != identity.Origin.NodeID {
+		return jobcontract.Snapshot{}, ErrTargetChanged
 	}
 	return snapshot, nil
 }

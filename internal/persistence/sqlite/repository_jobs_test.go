@@ -39,9 +39,19 @@ func jobSpecForRun(t *testing.T, run domain.Run) jobcontract.JobSpec {
 	}
 }
 
+func executionOrigin(spec jobcontract.JobSpec) domain.ExecutionOrigin {
+	nodeID := "72000000-0000-4000-8000-000000000009"
+	if spec.Target.Kind == jobcontract.TargetRemote {
+		nodeID = spec.Target.NodeID
+	}
+	return domain.ExecutionOrigin{Kind: string(spec.Target.Kind), NodeID: nodeID,
+		InstallationID: spec.NodeInstallationID, EngineBuildID: spec.EngineBuildID,
+		RunnerVersion: "test-runner-1", OS: "linux", Arch: "amd64"}
+}
+
 func jobAcceptance(spec jobcontract.JobSpec) jobhost.Acceptance {
 	return jobhost.Acceptance{
-		Spec: spec, SecretCommitment: strings.Repeat("b", 64), AcceptedAt: repositoryEpoch.Add(time.Minute),
+		Spec: spec, Origin: executionOrigin(spec), SecretCommitment: strings.Repeat("b", 64), AcceptedAt: repositoryEpoch.Add(time.Minute),
 	}
 }
 
@@ -222,6 +232,8 @@ func TestOwnedRunFactsAndReportsCannotCommitWithoutTheirJournal(t *testing.T) {
 	defer db.Close()
 	fixture := newRepositoryFixture(t)
 	spec := jobSpecForRun(t, fixture.run)
+	origin := executionOrigin(spec)
+	fixture.report.ExecutionOrigin = &origin
 	if _, _, err := repository.AcceptJob(t.Context(), jobAcceptance(spec)); err != nil {
 		t.Fatal(err)
 	}
@@ -462,10 +474,20 @@ func TestOwnedPerformanceArchiveAndReferenceAreWrittenTogether(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			host := quicktest.NewHost(quicktest.HostDependencies{Transport: server.Client().Transport, Archive: repository})
+			host := quicktest.NewHost(quicktest.HostDependencies{Transport: server.Client().Transport})
 			report, err := host.ExecutePrepared(t.Context(), prepared, lease, quicktest.ExecutionOptions{})
-			if err != nil || !report.Archived {
-				t.Fatalf("owned performance archive failed: status=%s err=%v", report.ArchiveStatus, err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			report.Archived = true
+			report.GeneratedAt = repositoryEpoch.Add(2 * time.Minute).Format(time.RFC3339Nano)
+			report.ArchiveStatus = quicktest.PerformanceArchiveArchived
+			if admitFirst {
+				origin := executionOrigin(spec)
+				report.ExecutionOrigin = &origin
+			}
+			if err := repository.SaveQuickPerformanceReport(t.Context(), report); err != nil {
+				t.Fatalf("owned performance archive failed: %v", err)
 			}
 			if _, err := repository.GetQuickPerformanceReport(t.Context(), prepared.ReportID); err != nil {
 				t.Fatalf("journal reference has no stored performance report: %v", err)

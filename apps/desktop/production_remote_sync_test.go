@@ -106,9 +106,7 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 		}}
 	services, closeNodes, err := newProductionRemoteNodes(
 		t.Context(),
-		root,
-		base,
-		options,
+		productionRemoteNodeDependencies{Directory: root, Credentials: base, Usage: unusedRemoteNodeUsage{}, Options: options},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -192,9 +190,7 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 			}
 			services, closeNodes, err = newProductionRemoteNodes(
 				t.Context(),
-				root,
-				base,
-				options,
+				productionRemoteNodeDependencies{Directory: root, Credentials: base, Usage: repository, Options: options},
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -206,12 +202,11 @@ func TestProductionSynchronizationReopensSavedAuthorizationAndJoinsBeforeDatabas
 func TestProductionRunnerOpeningRejectsChangedIdentityBeforeSSH(t *testing.T) {
 	services, closeNodes, err := newProductionRemoteNodes(
 		t.Context(),
-		t.TempDir(),
-		credentials.NewMemoryStore(),
-		productionOptions{appVersion: "v-test", runnerSource: &unusedRemoteArtifactSource{},
-			remoteConnector: func(context.Context, remotessh.Endpoint, remotessh.Authentication) (remotenodes.RemoteSession, error) {
-				return nil, remotessh.ErrConnection
-			}},
+		productionRemoteNodeDependencies{Directory: t.TempDir(), Credentials: credentials.NewMemoryStore(),
+			Usage: unusedRemoteNodeUsage{}, Options: productionOptions{appVersion: "v-test", runnerSource: &unusedRemoteArtifactSource{},
+				remoteConnector: func(context.Context, remotessh.Endpoint, remotessh.Authentication) (remotenodes.RemoteSession, error) {
+					return nil, remotessh.ErrConnection
+				}}},
 	)
 	if err != nil {
 		t.Fatal(err)

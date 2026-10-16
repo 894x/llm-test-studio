@@ -704,7 +704,7 @@ export function PlansWorkspace({
   mutationError,
   commandPending,
   onStartPlan,
-  onRunPerformance,
+  executionClient,
 }: {
   catalog: CatalogSnapshot
   actions: CatalogActions
@@ -713,7 +713,7 @@ export function PlansWorkspace({
   mutationError: string
   commandPending: boolean
   onStartPlan: (command: StartRunTargetCommand) => Promise<void>
-  onRunPerformance?: DesktopClient["runQuickPerformanceTest"]
+  executionClient?: DesktopClient
 }) {
   const { t } = useTranslation("catalog")
   const [selectedID, setSelectedID] = useState("")
@@ -733,7 +733,7 @@ export function PlansWorkspace({
       count={t("plans.count", { count: catalog.plans.length })}
       inspector={
         selected ? (
-          <PlanInspector key={`${selected.id}:${selected.revision}`} catalog={catalog} plan={selected} commandPending={commandPending} onStartPlan={onStartPlan} onRunPerformance={onRunPerformance} />
+          <PlanInspector key={`${selected.id}:${selected.revision}`} catalog={catalog} plan={selected} commandPending={commandPending} onStartPlan={onStartPlan} executionClient={executionClient} />
         ) : (
           <EmptyInspector label={t("plans.noneSelected")} />
         )
@@ -793,13 +793,13 @@ function PlanInspector({
   catalog,
   commandPending,
   onStartPlan,
-  onRunPerformance,
+  executionClient,
 }: {
   plan: CatalogPlan
   catalog: CatalogSnapshot
   commandPending: boolean
   onStartPlan: (command: StartRunTargetCommand) => Promise<void>
-  onRunPerformance?: DesktopClient["runQuickPerformanceTest"]
+  executionClient?: DesktopClient
 }) {
   const { t } = useTranslation("catalog")
   return (
@@ -831,8 +831,8 @@ function PlanInspector({
         )}
       </div>
       <div className="border-t px-4 py-3">
-        {plan.performance && onRunPerformance ? (
-          <PlanPerformanceRunSheet planID={plan.id} catalog={catalog} profile={plan.performance} run={onRunPerformance} triggerLabel={t("plans.run")} />
+        {plan.performance && executionClient ? (
+          <PlanPerformanceRunSheet planID={plan.id} catalog={catalog} profile={plan.performance} client={executionClient!} triggerLabel={t("plans.run")} />
         ) : plan.performance ? null : (
           <NewRunSheet plans={[{ id: plan.id, name: plan.name, description: plan.protocol, caseCount: plan.case_count, runCount: 0 }]} catalog={catalog} commandPending={commandPending} triggerLabel={t("plans.run")} onStartRun={onStartPlan} />
         )}

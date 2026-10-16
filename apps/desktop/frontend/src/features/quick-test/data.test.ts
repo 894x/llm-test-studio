@@ -673,6 +673,7 @@ function phaseThreeReport() {
     provider_internal: "drop me",
   }
   const raw = {
+    execution_origin: null,
     schema_version: 2 as const,
     protocol: "openai-chat" as const,
     archived: false,

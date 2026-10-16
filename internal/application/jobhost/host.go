@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -42,6 +43,8 @@ type Dependencies struct {
 	Target         jobcontract.ExecutionTarget
 	InstallationID string
 	EngineBuildID  string
+	NodeID         string
+	RunnerVersion  string
 	CommitmentKey  []byte
 }
 
@@ -53,6 +56,7 @@ type Host struct {
 	policy                  Policy
 	target                  jobcontract.ExecutionTarget
 	installationID, buildID string
+	origin                  domain.ExecutionOrigin
 	commitmentKey           []byte
 
 	mu             sync.Mutex
@@ -110,6 +114,15 @@ func New(ctx context.Context, dependencies Dependencies) (*Host, error) {
 	if invalid || len(dependencies.CommitmentKey) != 32 || dependencies.Target.Validate() != nil {
 		return nil, ErrInvalid
 	}
+	origin := domain.ExecutionOrigin{
+		Kind: string(dependencies.Target.Kind), NodeID: dependencies.NodeID,
+		InstallationID: dependencies.InstallationID, EngineBuildID: dependencies.EngineBuildID,
+		RunnerVersion: dependencies.RunnerVersion, OS: runtime.GOOS, Arch: runtime.GOARCH,
+	}
+	matchingNode := dependencies.Target.Kind == jobcontract.TargetLocal || dependencies.Target.NodeID == origin.NodeID
+	if origin.Validate() != nil || !matchingNode {
+		return nil, ErrInvalid
+	}
 	if err := dependencies.Policy.Validate(); err != nil {
 		return nil, err
 	}
@@ -123,6 +136,7 @@ func New(ctx context.Context, dependencies Dependencies) (*Host, error) {
 		repository: dependencies.Repository, executor: dependencies.Executor, guard: dependencies.Guard,
 		clock: dependencies.Clock, policy: dependencies.Policy, target: dependencies.Target,
 		installationID: dependencies.InstallationID, buildID: dependencies.EngineBuildID,
+		origin:        origin,
 		commitmentKey: slices.Clone(dependencies.CommitmentKey),
 		controls:      map[string]*jobControl{}, queue: []*jobControl{}, closeDone: make(chan struct{}),
 	}
@@ -167,7 +181,8 @@ func (host *Host) Submit(ctx context.Context, submission *jobcontract.Submission
 	if err := ctx.Err(); err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
-	input := Acceptance{Spec: spec, SecretCommitment: host.secretCommitment(spec.JobID, submission.Secrets)}
+	input := Acceptance{Spec: spec, Origin: host.origin,
+		SecretCommitment: host.secretCommitment(spec.JobID, submission.Secrets)}
 	existing, err := host.repository.LookupJob(ctx, input)
 	if err == nil {
 		return existing, false, nil

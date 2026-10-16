@@ -17,12 +17,21 @@ type productionRemoteNodes struct {
 	configuration *remotenodes.Service
 }
 
+type productionRemoteNodeDependencies struct {
+	Directory   string
+	Credentials credentials.Store
+	Usage       remoteNodeUsageReader
+	Options     productionOptions
+}
+
 func newProductionRemoteNodes(
 	ctx context.Context,
-	applicationDirectory string,
-	base credentials.Store,
-	options productionOptions,
+	dependencies productionRemoteNodeDependencies,
 ) (*productionRemoteNodes, func() error, error) {
+	if isNilInterface(dependencies.Usage) {
+		return nil, nil, remotenodes.ErrUsageUnknown
+	}
+	applicationDirectory, base, options := dependencies.Directory, dependencies.Credentials, dependencies.Options
 	directory := filepath.Join(applicationDirectory, "remote-nodes")
 	if err := fileconfig.EnsurePrivateDirectory(ctx, directory); err != nil {
 		return nil, nil, err
@@ -39,7 +48,8 @@ func newProductionRemoteNodes(
 	if err != nil {
 		return nil, nil, err
 	}
-	configuration, err := remotenodes.New(remotenodes.Dependencies{Store: store, Credentials: keys})
+	configuration, err := remotenodes.New(remotenodes.Dependencies{Store: store, Credentials: keys,
+		CanRemove: newRemoteNodeRemovalGuard(dependencies.Usage)})
 	if err != nil {
 		return nil, nil, err
 	}

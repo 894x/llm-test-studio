@@ -20,6 +20,9 @@ func ValidatePerformanceCheckpointTransition(previous *PerformanceCheckpoint, ne
 		return ErrPerformanceCheckpoint
 	}
 	before, after := previous.Report, next.Report
+	if !reflect.DeepEqual(before.ExecutionOrigin, after.ExecutionOrigin) {
+		return ErrPerformanceCheckpoint
+	}
 	if !reflect.DeepEqual(preparedPerformance(before, before.ReportID), preparedPerformance(after, after.ReportID)) {
 		return ErrPerformanceCheckpoint
 	}

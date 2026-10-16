@@ -1079,6 +1079,9 @@ func (repository *Repository) CreateReport(ctx context.Context, report domain.Re
 }
 
 func createReportTx(ctx context.Context, tx *sql.Tx, report domain.Report, document []byte) error {
+	if err := validateRunReportOrigin(ctx, tx, report.RunID, report.ExecutionOrigin); err != nil {
+		return err
+	}
 	run, err := queryCurrentRun(ctx, tx, report.RunID)
 	if err != nil {
 		return err

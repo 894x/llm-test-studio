@@ -101,7 +101,7 @@ func (coordinator *Coordinator) Prepare(ctx context.Context, command PrepareComm
 	if err != nil {
 		return SubmissionRecord{}, operationError(ctx, err)
 	}
-	if info.Validate() != nil {
+	if info.Validate() != nil || !slices.Contains(info.Capabilities.Features, jobcontract.FeatureExecutionOrigin) {
 		return SubmissionRecord{}, ErrUpgradeRequired
 	}
 	if !info.Ready {
@@ -169,7 +169,7 @@ func (coordinator *Coordinator) Submit(
 	if err != nil {
 		return record, operationError(ctx, err)
 	}
-	if info.Validate() != nil {
+	if info.Validate() != nil || !slices.Contains(info.Capabilities.Features, jobcontract.FeatureExecutionOrigin) {
 		return record, ErrUpgradeRequired
 	}
 	if !sameInstallation(record, info) || info.EngineBuildID != record.Prepared.Spec.EngineBuildID {
@@ -243,7 +243,8 @@ func (coordinator *Coordinator) Reconcile(ctx context.Context, id string) (Submi
 	defer backend.Close()
 	info, err := backend.Probe(ctx)
 	unsupportedProtocol := errors.Is(operationError(ctx, err), ErrUpgradeRequired)
-	unsupportedMetadata := err == nil && errors.Is(info.Validate(), jobcontract.ErrUnsupported)
+	unsupportedMetadata := err == nil && (errors.Is(info.Validate(), jobcontract.ErrUnsupported) ||
+		!slices.Contains(info.Capabilities.Features, jobcontract.FeatureExecutionOrigin))
 	if unsupportedProtocol || unsupportedMetadata {
 		return coordinator.rejectUnsupportedRunner(ctx, record)
 	}
@@ -290,13 +291,13 @@ func (coordinator *Coordinator) confirm(
 	for range 3 {
 		current, err := coordinator.repository.GetSubmission(ctx, prepared.Prepared.Spec.JobID)
 		if err != nil {
-			return prepared, err
+			return prepared, errors.Join(ErrPending, err)
 		}
 		if !current.SamePreparation(prepared) {
 			return current, ErrConflict
 		}
 		if current.State == SubmissionAccepted {
-			if !current.Receipt.AcceptedAt.Equal(receipt.AcceptedAt) {
+			if !current.Receipt.AcceptedAt.Equal(receipt.AcceptedAt) || current.Receipt.Origin != receipt.Origin {
 				return current, ErrConflict
 			}
 			return current, nil
@@ -313,11 +314,11 @@ func (coordinator *Coordinator) confirm(
 			continue
 		}
 		if err != nil {
-			return prepared, err
+			return prepared, errors.Join(ErrPending, err)
 		}
 		return current, nil
 	}
-	return prepared, ErrConflict
+	return prepared, errors.Join(ErrPending, ErrConflict)
 }
 
 func (coordinator *Coordinator) observe(

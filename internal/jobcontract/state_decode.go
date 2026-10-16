@@ -27,10 +27,16 @@ func DecodeReceipt(reader io.Reader) (Receipt, error) {
 	if err != nil {
 		return Receipt{}, err
 	}
-	if _, err := objectFields(raw, []string{
-		"contract", "job_id", "kind", "accepted_at", "node_installation_id", "engine_build_id",
+	fields, err := objectFields(raw, []string{
+		"contract", "job_id", "kind", "accepted_at", "origin",
 		"status", "revision", "run_ids", "report_ids",
-	}, []string{"comparison_id"}); err != nil {
+	}, []string{"comparison_id"})
+	if err != nil {
+		return Receipt{}, err
+	}
+	if _, err := objectFields(fields["origin"], []string{
+		"kind", "node_id", "installation_id", "engine_build_id", "runner_version", "os", "arch",
+	}, []string{}); err != nil {
 		return Receipt{}, err
 	}
 	var receipt Receipt
@@ -84,7 +90,48 @@ func DecodeEvent(reader io.Reader) (Event, error) {
 	if event.Contract != CurrentContract {
 		return Event{}, ErrUnsupported
 	}
-	return event, event.Validate()
+	if err := event.Validate(); err != nil {
+		return Event{}, err
+	}
+	if err := validateEventReceipt(event); err != nil {
+		return Event{}, err
+	}
+	return event, nil
+}
+
+func validateEventReceipt(event Event) error {
+	var snapshot Snapshot
+	var err error
+	switch event.Kind {
+	case EventAccepted:
+		fields, fieldsErr := objectFields(event.Payload, []string{"spec", "snapshot"}, []string{})
+		if fieldsErr != nil {
+			return fieldsErr
+		}
+		spec, specErr := DecodeSpec(bytes.NewReader(fields["spec"]))
+		if specErr != nil {
+			return specErr
+		}
+		snapshot, err = DecodeSnapshot(bytes.NewReader(fields["snapshot"]))
+		if err == nil {
+			err = snapshot.Validate(spec)
+		}
+	case EventState:
+		snapshot, err = DecodeSnapshot(bytes.NewReader(event.Payload))
+	case EventCommand:
+		var confirmation CommandConfirmation
+		confirmation, err = DecodeCommandConfirmation(bytes.NewReader(event.Payload))
+		snapshot = confirmation.Snapshot
+	default:
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if snapshot.Receipt.JobID != event.JobID {
+		return invalid("event.receipt.owner")
+	}
+	return nil
 }
 
 func DecodeCommandConfirmation(reader io.Reader) (CommandConfirmation, error) {

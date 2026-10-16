@@ -20,6 +20,7 @@ var ErrGenerationInvalid = errors.New("reporting: invalid generation request")
 
 type ReportRepository interface {
 	GetRun(context.Context, string) (domain.Run, error)
+	RunExecutionOrigin(context.Context, string) (*domain.ExecutionOrigin, error)
 	ListResults(context.Context, string) ([]domain.Result, error)
 	ListEvidence(context.Context, string) ([]domain.Evidence, error)
 	CreateReport(context.Context, domain.Report) error
@@ -104,6 +105,17 @@ func (generator *Generator) Generate(ctx context.Context, runID string) (generat
 	default:
 		return ErrGenerationInvalid
 	}
+	origin, err := generator.repository.RunExecutionOrigin(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("load report execution origin: %w", err)
+	}
+	if origin != nil {
+		if err := origin.Validate(); err != nil {
+			return fmt.Errorf("invalid report execution origin: %w", err)
+		}
+		frozen := *origin
+		origin = &frozen
+	}
 	advance("loading_results", 0, 0, "")
 	results, err := generator.repository.ListResults(ctx, runID)
 	if err != nil {
@@ -160,7 +172,8 @@ func (generator *Generator) Generate(ctx context.Context, runID string) (generat
 		conclusion.Verdict = "cancelled"
 	}
 	report := domain.Report{
-		SchemaVersion: domain.CurrentReportSchemaVersion, Protocol: snapshot.Model.Protocol, Verification: verification,
+		ExecutionOrigin: origin,
+		SchemaVersion:   domain.CurrentReportSchemaVersion, Protocol: snapshot.Model.Protocol, Verification: verification,
 		ID: reportID, RunID: runID, RunStatus: run.Status(), GeneratedAt: generatedAt, PlanSnapshot: snapshot,
 		Model: domain.ReportSubject{ID: snapshot.Model.ID, Name: snapshot.Model.Name}, Channel: domain.ReportSubject{ID: snapshot.Channel.ID, Name: snapshot.Channel.Name}, Environment: snapshot.Environment,
 		Conclusion: conclusion, SLA: map[string]domain.MetricValue{}, Metrics: aggregateMetrics(requestResults), Timeline: resultTimeline(requestResults), Distributions: resultDistributions(requestResults),

@@ -16,17 +16,16 @@ const (
 )
 
 type Receipt struct {
-	Contract           int              `json:"contract"`
-	JobID              string           `json:"job_id"`
-	Kind               Kind             `json:"kind"`
-	AcceptedAt         time.Time        `json:"accepted_at"`
-	NodeInstallationID string           `json:"node_installation_id"`
-	EngineBuildID      string           `json:"engine_build_id"`
-	Status             domain.RunStatus `json:"status"`
-	Revision           uint64           `json:"revision"`
-	RunIDs             []string         `json:"run_ids"`
-	ReportIDs          []string         `json:"report_ids"`
-	ComparisonID       string           `json:"comparison_id,omitempty"`
+	Contract     int                    `json:"contract"`
+	JobID        string                 `json:"job_id"`
+	Kind         Kind                   `json:"kind"`
+	AcceptedAt   time.Time              `json:"accepted_at"`
+	Origin       domain.ExecutionOrigin `json:"origin"`
+	Status       domain.RunStatus       `json:"status"`
+	Revision     uint64                 `json:"revision"`
+	RunIDs       []string               `json:"run_ids"`
+	ReportIDs    []string               `json:"report_ids"`
+	ComparisonID string                 `json:"comparison_id,omitempty"`
 }
 
 type Snapshot struct {
@@ -89,9 +88,12 @@ func (spec JobSpec) PreparedRuns() []runs.PreparedRun {
 	return inputs
 }
 
-func (spec JobSpec) InitialSnapshot(at time.Time) (Snapshot, error) {
+func (spec JobSpec) InitialSnapshot(at time.Time, origin domain.ExecutionOrigin) (Snapshot, error) {
 	if err := spec.Validate(); err != nil {
 		return Snapshot{}, err
+	}
+	if !originMatchesSpec(origin, spec) {
+		return Snapshot{}, invalid("execution_origin")
 	}
 	_, offset := at.Zone()
 	if at.IsZero() || offset != 0 {
@@ -99,7 +101,7 @@ func (spec JobSpec) InitialSnapshot(at time.Time) (Snapshot, error) {
 	}
 	receipt := Receipt{
 		Contract: CurrentContract, JobID: spec.JobID, Kind: spec.Kind, AcceptedAt: at,
-		NodeInstallationID: spec.NodeInstallationID, EngineBuildID: spec.EngineBuildID,
+		Origin: origin,
 		Status: domain.RunQueued, Revision: 1, RunIDs: []string{}, ReportIDs: []string{},
 	}
 	for _, input := range spec.PreparedRuns() {
@@ -118,13 +120,13 @@ func (snapshot Snapshot) Validate(spec JobSpec) error {
 	if err := snapshot.ValidateState(); err != nil {
 		return err
 	}
-	expected, err := spec.InitialSnapshot(snapshot.Receipt.AcceptedAt)
+	expected, err := spec.InitialSnapshot(snapshot.Receipt.AcceptedAt, snapshot.Receipt.Origin)
 	if err != nil {
 		return err
 	}
 	got, want := snapshot.Receipt, expected.Receipt
 	sameIdentity := got.Contract == want.Contract && got.JobID == want.JobID && got.Kind == want.Kind
-	sameEngine := got.NodeInstallationID == want.NodeInstallationID && got.EngineBuildID == want.EngineBuildID
+	sameEngine := got.Origin == want.Origin
 	sameChildren := slices.Equal(got.RunIDs, want.RunIDs) && slices.Equal(got.ReportIDs, want.ReportIDs)
 	if !sameIdentity || !sameEngine || !sameChildren {
 		return invalid("receipt.identity")
@@ -137,7 +139,7 @@ func (snapshot Snapshot) Validate(spec JobSpec) error {
 
 func (receipt Receipt) Validate() error {
 	validIdentity := receipt.Contract == CurrentContract && domain.IsUUID(receipt.JobID)
-	validEngine := domain.IsUUID(receipt.NodeInstallationID) && IsSHA256(receipt.EngineBuildID)
+	validEngine := receipt.Origin.Validate() == nil
 	validRevision := receipt.Revision > 0 && receipt.Revision <= math.MaxInt64
 	if !validIdentity || !validEngine || !validRevision {
 		return invalid("receipt")
@@ -188,6 +190,14 @@ func (receipt Receipt) Validate() error {
 		return invalid("status")
 	}
 	return nil
+}
+
+func originMatchesSpec(origin domain.ExecutionOrigin, spec JobSpec) bool {
+	if origin.Validate() != nil || origin.Kind != string(spec.Target.Kind) {
+		return false
+	}
+	sameExecutor := origin.InstallationID == spec.NodeInstallationID && origin.EngineBuildID == spec.EngineBuildID
+	return sameExecutor && (spec.Target.Kind == TargetLocal || origin.NodeID == spec.Target.NodeID)
 }
 
 func (snapshot Snapshot) ValidateState() error {

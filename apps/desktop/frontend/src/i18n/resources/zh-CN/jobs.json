@@ -1,0 +1,93 @@
+{
+  "title": "任务",
+  "description": "本桌面提交的持久任务。关闭窗口后任务仍会继续执行。",
+  "details": "任务详情",
+  "jobID": "任务 ID",
+  "location": "固定执行位置",
+  "executor": "固定执行器",
+  "delivery": "投递状态",
+  "connection": "最近观测",
+  "execution": "实际执行状态",
+  "failure": "失败原因",
+  "result": "性能结果",
+  "resultReady": "完整结果已同步",
+  "resultPending": "结果尚未同步",
+  "awaitingConfirmation": "等待执行器确认",
+  "awaitingSync": "已确认：{{status}}（r{{revision}}），执行日志待同步",
+  "progress": "已完成 {{completed}} / {{planned}} · 在途 {{active}}",
+  "stale": "当前展示最后一次确认的数据。",
+  "readFailed": "任务读取失败，请刷新重试。",
+  "controlFailed": "命令结果尚未确认，请先刷新任务再操作。",
+  "stop": "停止发送",
+  "cancel": "取消任务",
+  "openReport": "打开已同步报告",
+  "controls": "控制命令确认",
+  "retryControl": "重试原命令",
+  "previous": "上一页",
+  "next": "下一页",
+  "refresh": "刷新",
+  "empty": "本桌面还没有提交受管理的任务。",
+  "performanceResult": "真实性能结果",
+  "noObservation": "任务未开始执行，没有可展示的实测指标。",
+  "local": "本地",
+  "remote": "远程",
+  "deliveryStates": {
+    "prepared": "已准备，尚未发送",
+    "pending": "已投递，等待确认",
+    "accepted": "执行器已确认"
+  },
+  "observations": {
+    "unreachable": "执行器暂不可达，任务状态尚不确定",
+    "not_found": "执行器尚未确认此任务 ID",
+    "identity_changed": "执行器身份已变化，任务仍固定原位置",
+    "rejected": "执行器明确拒绝命令"
+  },
+  "statuses": {
+    "queued": "排队中",
+    "starting": "启动中",
+    "running": "运行中",
+    "draining": "排空中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
+  },
+  "controlStates": {
+    "pending": "等待确认",
+    "confirmed": "已确认",
+    "rejected": "已拒绝"
+  },
+  "outcomes": {
+    "not_started": "任务未开始执行",
+    "interrupted": "执行被中断，展示最后一次真实观测",
+    "available": "完整真实执行结果"
+  },
+  "stages": {
+    "preparing": "准备阶段",
+    "warmup": "预热阶段",
+    "ramp": "爬升阶段",
+    "measured": "实测阶段",
+    "capacity": "容量阶梯"
+  },
+  "boundaries": {
+    "entered": "已进入阶段",
+    "completed": "阶段已完成",
+    "returned": "执行已返回"
+  },
+  "phases": {
+    "not_started": "未开始",
+    "warming_up": "预热中",
+    "ramping": "爬升中",
+    "sending": "发送中",
+    "draining": "排空中",
+    "completed": "已完成",
+    "cancelled": "已取消"
+  },
+  "kinds": {
+    "run": "运行",
+    "performance": "性能测试",
+    "comparison": "渠道对比"
+  },
+  "noCheckpoint": "执行已开始，但未留下可恢复的观测；没有可展示的实测指标。",
+  "noMeasuredTraffic": "尚未完成实测阶段，仅展示执行器已记录的准备阶段数据。",
+  "completedTraffic": "已完成 {{completed}} / {{planned}}"
+}

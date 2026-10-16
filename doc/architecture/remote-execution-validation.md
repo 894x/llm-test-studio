@@ -360,3 +360,28 @@ Windows 全仓 go test ./...、go vet ./... 通过，最终相关五包控制回
 恢复仅清理已记录的确切私有命名空间，先校验 root 所有权、0700 目录、普通私有文件、文件数量及大小，未知内容、符号链接和特殊权限明确拒绝。旧十位临时目录、缺少路径及路径与操作不符的配置均拒绝且保留原字节；没有双格式读取或自动转换。
 
 Windows SSH/remotenodes 两包完整测试通过；交叉编译后 Ubuntu 24.04 WSL root 两包完整测试通过。新增验证使用真实子进程 Process.Kill、重开 FileStore、丢失 mkdir 回执、实际 SFTP partial 写入后断开 SSH、重连清理和同操作重试，持久化失败时没有远端 Provision。测试 SFTP fixture 仅在中断场景广告 fsync 能力以进入写入阶段，没有执行或声称 fsync 成功。未使用物理服务器或用户凭据，未改变 SQLite schema，实际节点升级与最终渠道测试另行记录。
+
+## 2026-10-16：桌面异步任务、Remote 面板与实际来源集成
+
+当前七个 Job Wails 方法替换旧六个启动/控制方法和同步性能事件，CLI 固定 v2.15.0 生成绑定。Plan、Suite、Performance 和 Comparison 在每次启动前读取 Go 保存的最新默认位置；缺配置、远程不可用和能力不足明确阻断，不切回本地。任务面板从持久分页恢复原 JobID，投递确认、执行进度、固定控制指令和结果分别展示，关闭观察不取消任务。控制 pending 只能重传原 command_id；尚未导入的统计归档不会因为完整 outcome 已封口而提前开放。
+
+来源由执行 Host 在接受时冻结，包含节点/安装、实际版本/构建及 OS/arch。Receipt、Accepted 日志、镜像、完整性能结果、统计归档和 Run 报告均核对同一来源，准备 Environment 保留原值。CurrentContract 仍为唯一的 1，要求 execution_origin 能力；不兼容节点明确升级，连接不替换程序。managed 报告不接受空来源；当前合法 unmanaged 报告明确序列化 null，缺字段旧文档拒绝且不修改。历史转换未由正常运行路径触发。
+
+全仓首轮集成暴露一项实际性能故障：1,257,285 字节的 accepted 文档在 84 条结果写入中逐条重复解码，AppendResults 5.32s 超过既有 5s 存储期限，导致 Host 隔离。已改为全部文档原字节 SHA256 的有界纯校验缓存，只保存最多 128 份小回执及固定摘要；每次仍核对当前 owner/安装/构建/digest/时间，修改任何字节会重新严格验证。没有改变超时或 DDL。完整 84 Case 后接三请求性能任务两次独立回归通过，约 13s；桌面全包 37.462s、SQLite 全包 71.156s 和相关 vet 通过。另验证确认读/写失败及确认 ACK 丢失保留原 pending ID，不再次 POST；独立复核发现的 Accepted 内层 Spec 绕过预算问题已改为复用 DecodeSpec。
+
+前端最新全量 46 文件、613 测试通过，生产构建与 lint 退出 0，仅两条既有 set-state-in-effect 提示。独立复核的三项 P2 已关闭：pending Comparison 持续观察、QuickTask 控制只走原持久指令、sealed outcome 不冒充统计归档。
+
+独立 APPDATA 下启动真实 Wails dev 进程，核对正确 worktree EXE、LLM Test Studio 窗口标题、34115 端口归属、真实 Wails/Go runtime 和四组工作区读取；没有使用用户数据库。Windows 截图工具与 CUA runtime 均报 failed to write kernel assets，改用系统已安装 Chrome 和现有 Playwright 对真实 Wails 开发服务验证 1440×900 light、1280×800 dark、960×640 dark：Remote 按钮、真实空节点列表/本地默认、添加表单、密码遮蔽、Escape 关闭和任务面板可用，表单无横向溢出。应用代码没有页面运行错误；每次加载会遇到当前 Wails v2.15.0 开发覆盖层 /wails/ipc.js 的 Svelte h.nodes 异常，已核对其库源码，未修改 Wails 或放宽应用解析。原生窗口截图、非空节点交互及真实模型结果另待实机验收。
+# 2026-10-16 当前桌面闭环与节点升级补充
+
+当前阶段的 `go test ./...` 和 `go vet ./...` 均通过；桌面包 30.086 秒、SQLite 包 66.985 秒。前端完整 46 文件、613 测试、生产构建与 lint 通过，lint 保留两项既有警告。节点移除 guard 已装配到生产，提交和新控制意图与移除串行，持久控制的读取及原 ID 重传沿原路径执行。相关并发及持久化回归和独立代码复核通过。
+
+测试服务器 amd64 上已显式执行 operation `620443b3-c7a4-4723-bd6b-31d37237d976`：暂停接收、等待 Pending=0、停止服务并取得运行锁、一致性备份、独立数据转换、原子选择新程序、暂停状态验证、恢复同一 operation。备份和操作日志保留在服务器私有目录 `/var/backups/llm-test-runner/620443b3-c7a4-4723-bd6b-31d37237d976/`。转换仅接受此次验证的空业务表源结构；没有转换用户本地数据库，也没有向运行时增加旧格式读取。
+
+源 schema checksum 为 `59469710be911b477c828d6947e625631a3de9feeb755609efeebd66aa1c7c69`，当前为 `7afb439aaccf28d19e7e7381e2ef5611e013f062676e3706d44b3313d52c0708`。转换工具的六个本地验证场景包括旧 WAL 未清理的源库、一致性源备份，以及错误 marker、未知对象、非空业务数据和 SQL 字面量篡改的拒绝且不修改。
+
+节点实际 `/proc/<MainPID>/exe` SHA-256 为 `89a9db5fb6319c74110c8620a13636193743464e9994eb5f1cf630448dd48eae`，版本 `remote-execution-20261016`，平台 linux/amd64。升级后 node/install 身份保持，systemd active/running，Restart=on-failure、Watchdog=30s，runner healthy/ready，维护 operation 已清空，策略仍为 active=1、queue=16、total concurrency=2000。该产物来自 `cef4288` 基础上的 dirty 工作区，不能称为已发布的干净构建。
+
+首次 operator 尝试因维护确认 envelope 读取错误在转换和切换前停止；同一 operation 恢复接收，原程序与数据库保持。修正为当前 `{record,status}` 契约后执行上面的成功操作。回滚边界经独立审查：恢复接收可能已发生后禁止回滚旧数据库；此前仅恢复已经校验的一致性 SQLite 备份。此次实机没有在转换后注入失败来验证恢复，不把本地恢复验证描述为实机故障注入。
+
+实际 K3 测试已由独立生产装配工作区开始，第一个远程任务为 `07428b56-66a3-4eae-9b16-26abe5c7333a`。计划执行现有 authored Chat 84、Responses 230 及三请求最小性能，另验证观察端关闭后的继续运行与同 ID 重开同步；结果尚未完成，不能据此声称提供商兼容性通过。凭据只经隐藏输入和匿名管道传递，不写入本文、仓库或汇总。

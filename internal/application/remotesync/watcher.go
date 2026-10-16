@@ -344,7 +344,8 @@ func (watcher *Watcher) attempt(ctx context.Context, node Node, scan *discovery)
 func (watcher *Watcher) needsSync(ctx context.Context, node Node, snapshot jobcontract.Snapshot) (bool, error) {
 	receipt := snapshot.Receipt
 	validOwner := snapshot.ValidateState() == nil && domain.IsUUID(receipt.JobID) &&
-		receipt.NodeInstallationID == node.Origin.InstallationID
+		receipt.Origin.Kind == string(jobcontract.TargetRemote) && receipt.Origin.NodeID == node.Origin.NodeID &&
+		receipt.Origin.InstallationID == node.Origin.InstallationID
 	if !validOwner {
 		return false, remoteresults.ErrConflict
 	}

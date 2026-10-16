@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,7 +40,6 @@ type Dependencies struct {
 	Maintenance  *jobhost.Maintenance
 	Repository   ReadRepository
 	TokenSHA256  [32]byte
-	Version      string
 	Capabilities jobcontract.RunnerCapabilities
 }
 
@@ -78,9 +76,9 @@ func New(dependencies Dependencies) (*Handler, error) {
 	}
 	policy := identity.Policy
 	info := jobcontract.RunnerInfo{
-		Contract: jobcontract.CurrentContract, NodeID: identity.Target.NodeID,
-		NodeInstallationID: identity.InstallationID, EngineBuildID: identity.EngineBuildID,
-		RunnerVersion: dependencies.Version, OS: runtime.GOOS, Arch: runtime.GOARCH,
+		Contract: jobcontract.CurrentContract, NodeID: identity.Origin.NodeID,
+		NodeInstallationID: identity.Origin.InstallationID, EngineBuildID: identity.Origin.EngineBuildID,
+		RunnerVersion: identity.Origin.RunnerVersion, OS: identity.Origin.OS, Arch: identity.Origin.Arch,
 		Capabilities: dependencies.Capabilities,
 		Budget: jobcontract.RunnerBudget{
 			MaxActiveJobs: policy.MaxActiveJobs, MaxQueuedJobs: policy.MaxQueuedJobs,

@@ -108,7 +108,10 @@ func TestRemoteJobEnvelopeFitsCompleteAuthoredK3Suites(t *testing.T) {
 				t.Fatalf("full K3 submission cannot cross the management boundary: %v", err)
 			}
 			decoded.Clear()
-			snapshot, err := spec.InitialSnapshot(meta.CreatedAt)
+			snapshot, err := spec.InitialSnapshot(meta.CreatedAt, domain.ExecutionOrigin{
+				Kind: "remote", NodeID: spec.Target.NodeID, InstallationID: spec.NodeInstallationID,
+				EngineBuildID: spec.EngineBuildID, RunnerVersion: "preflight", OS: "linux", Arch: "amd64",
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +128,7 @@ func TestRemoteJobEnvelopeFitsCompleteAuthoredK3Suites(t *testing.T) {
 		})
 	}
 	t.Run("minimum-performance", func(t *testing.T) {
-		service, ok := dependencies.quickTests.(*quicktest.Service)
+		service, ok := dependencies.performancePreparation.(*quicktest.Service)
 		if !ok {
 			t.Fatal("preflight cannot obtain the production performance preparer")
 		}

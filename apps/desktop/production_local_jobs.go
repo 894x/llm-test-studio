@@ -20,8 +20,6 @@ type productionLocalExecutor struct {
 	host       *jobhost.Host
 	core       *jobhost.Core
 	repository *sqlite.Repository
-	nodeID     string
-	version    string
 	transport  *http.Transport
 	once       sync.Once
 	closeError error
@@ -67,6 +65,7 @@ func newProductionLocalExecutor(
 	host, err := jobhost.New(ctx, jobhost.Dependencies{
 		Repository: repository, Executor: core, Guard: localAdmissionGuard{repository: repository}, Clock: productionClock{},
 		Policy: policy, Target: jobcontract.ExecutionTarget{Kind: jobcontract.TargetLocal},
+		NodeID: identity.NodeID, RunnerVersion: options.appVersion,
 		InstallationID: identity.InstallationID, EngineBuildID: buildID, CommitmentKey: identity.CommitmentKey,
 	})
 	if err != nil {
@@ -77,7 +76,7 @@ func newProductionLocalExecutor(
 		return nil, err
 	}
 	return &productionLocalExecutor{host: host, core: core, repository: repository,
-		nodeID: identity.NodeID, version: options.appVersion, transport: ownedTransport}, nil
+		transport: ownedTransport}, nil
 }
 
 func (executor *productionLocalExecutor) Connect(ctx context.Context) (jobs.Backend, error) {
@@ -88,7 +87,7 @@ func (executor *productionLocalExecutor) Connect(ctx context.Context) (jobs.Back
 		return nil, err
 	}
 	return jobs.NewLocalBackend(jobs.LocalBackendDependencies{
-		Host: executor.host, Repository: executor.repository, NodeID: executor.nodeID, Version: executor.version,
+		Host: executor.host, Repository: executor.repository,
 	})
 }
 

@@ -89,7 +89,7 @@ func TestLocalBackendControlsAndReplaysOneCommandWithoutOwningExecution(t *testi
 }
 
 func localBackendDependencies(host *jobhost.Host, repository jobs.LocalReadRepository) jobs.LocalBackendDependencies {
-	return jobs.LocalBackendDependencies{Host: host, Repository: repository, NodeID: localBackendNodeID, Version: "local-test"}
+	return jobs.LocalBackendDependencies{Host: host, Repository: repository}
 }
 
 func TestLocalBackendCoordinatesAllKindsAndConnectionCloseKeepsAcceptedWork(t *testing.T) {
@@ -312,7 +312,7 @@ func TestLocalBackendRecoversOriginalAcceptanceAcrossOwnerBuildChange(t *testing
 	if err != nil || confirmed.State != jobs.SubmissionAccepted {
 		t.Fatalf("local acceptance query across build change: %v", err)
 	}
-	if confirmed.Receipt.EngineBuildID != prepared.Prepared.Spec.EngineBuildID {
+	if confirmed.Receipt.Origin.EngineBuildID != prepared.Prepared.Spec.EngineBuildID {
 		t.Fatal("read-only recovery rewrote the original local executor")
 	}
 	snapshot, err := repository.GetJob(t.Context(), submission.Job.JobID)
@@ -347,7 +347,7 @@ func TestLocalBackendRejectsForeignTargetsClosedHandlesAndUnsupportedContracts(t
 	}
 	foreign := testSubmission(t)
 	defer foreign.Clear()
-	if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{Spec: foreign.Job,
+	if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{Spec: foreign.Job, Origin: acceptedOrigin(foreign.Job),
 		SecretCommitment: strings.Repeat("d", 64), AcceptedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}

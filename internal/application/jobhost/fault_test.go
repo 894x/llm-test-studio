@@ -229,7 +229,8 @@ func TestTerminalJobBeforeSettlementMarkerIsRecoveredWithoutExecution(t *testing
 	repository, core := openHostRepository(t), newControlledCore()
 	submission := testSubmission(t)
 	initial, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
-		Spec: submission.Job, SecretCommitment: submission.Job.EngineBuildID, AcceptedAt: time.Now().UTC(),
+		Spec: submission.Job, Origin: acceptedOrigin(submission.Job),
+		SecretCommitment: submission.Job.EngineBuildID, AcceptedAt: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatal(err)

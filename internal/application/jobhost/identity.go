@@ -1,11 +1,15 @@
 package jobhost
 
-import "github.com/894x/llm-test-studio/internal/jobcontract"
+import (
+	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
+)
 
 type Identity struct {
 	Target         jobcontract.ExecutionTarget
 	InstallationID string
 	EngineBuildID  string
+	Origin         domain.ExecutionOrigin
 	Policy         Policy
 }
 
@@ -16,7 +20,7 @@ func (host *Host) Identity() Identity {
 	}
 	return Identity{
 		Target: host.target, InstallationID: host.installationID,
-		EngineBuildID: host.buildID, Policy: host.policy,
+		EngineBuildID: host.buildID, Origin: host.origin, Policy: host.policy,
 	}
 }
 

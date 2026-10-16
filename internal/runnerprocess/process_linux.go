@@ -118,7 +118,8 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	}
 	host, err := jobhost.New(startup, jobhost.Dependencies{
 		Repository: repository, Executor: core, Guard: guard, Clock: wallClock{}, Policy: config.Policy(),
-		Target:         jobcontract.ExecutionTarget{Kind: jobcontract.TargetRemote, NodeID: config.NodeID},
+		Target: jobcontract.ExecutionTarget{Kind: jobcontract.TargetRemote, NodeID: config.NodeID},
+		NodeID: config.NodeID, RunnerVersion: options.Version,
 		InstallationID: config.InstallationID, EngineBuildID: buildID, CommitmentKey: config.CommitmentKey,
 	})
 	if err != nil {
@@ -135,7 +136,7 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	hash, _ := hex.DecodeString(config.TokenSHA256)
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
 		Host: host, Maintenance: maintenance, Repository: repository, TokenSHA256: [32]byte(hash),
-		Version: options.Version, Capabilities: capabilities(),
+		Capabilities: capabilities(),
 	})
 	clear(hash)
 	if err != nil {
@@ -167,9 +168,10 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		_ = server.Close()
 		<-serveDone
 	}()
+	origin := host.Identity().Origin
 	ready := Ready{
-		Contract: jobcontract.CurrentContract, URL: "http://" + listener.Addr().String(), NodeID: config.NodeID,
-		NodeInstallationID: config.InstallationID, EngineBuildID: buildID, RunnerVersion: options.Version,
+		Contract: jobcontract.CurrentContract, URL: "http://" + listener.Addr().String(), NodeID: origin.NodeID,
+		NodeInstallationID: origin.InstallationID, EngineBuildID: origin.EngineBuildID, RunnerVersion: origin.RunnerVersion,
 	}
 	if options.OnReady != nil {
 		if err := options.OnReady(ready); err != nil {

@@ -20,6 +20,7 @@ var (
 // Acceptance contains a keyed commitment, never task credential bytes.
 type Acceptance struct {
 	Spec             jobcontract.JobSpec
+	Origin           domain.ExecutionOrigin
 	SecretCommitment string
 	AcceptedAt       time.Time
 }

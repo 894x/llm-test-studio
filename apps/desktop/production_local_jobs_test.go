@@ -26,7 +26,7 @@ func productionLocalPerformance(
 	endpoint string,
 ) (jobs.SubmissionRecord, *credentials.Lease) {
 	t.Helper()
-	preparer, ok := dependencies.quickTests.(*quicktest.Service)
+	preparer, ok := dependencies.performancePreparation.(*quicktest.Service)
 	if !ok {
 		t.Fatal("performance preparation is unavailable")
 	}

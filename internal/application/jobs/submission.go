@@ -209,13 +209,13 @@ func receiptMatches(receipt jobcontract.Receipt, spec jobcontract.JobSpec) bool 
 	if receipt.Validate() != nil {
 		return false
 	}
-	expected, err := spec.InitialSnapshot(receipt.AcceptedAt)
+	expected, err := spec.InitialSnapshot(receipt.AcceptedAt, receipt.Origin)
 	if err != nil {
 		return false
 	}
 	want := expected.Receipt
 	identity := receipt.JobID == want.JobID && receipt.Kind == want.Kind && receipt.Contract == want.Contract
-	executor := receipt.NodeInstallationID == want.NodeInstallationID && receipt.EngineBuildID == want.EngineBuildID
+	executor := receipt.Origin == want.Origin
 	children := slices.Equal(receipt.RunIDs, want.RunIDs) && slices.Equal(receipt.ReportIDs, want.ReportIDs) &&
 		receipt.ComparisonID == want.ComparisonID
 	return identity && executor && children

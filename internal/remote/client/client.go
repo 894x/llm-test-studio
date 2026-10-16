@@ -66,6 +66,9 @@ func (client *Client) Probe(ctx context.Context) (jobcontract.RunnerInfo, error)
 	if err != nil {
 		return jobcontract.RunnerInfo{}, responseError(err)
 	}
+	if !slices.Contains(info.Capabilities.Features, jobcontract.FeatureExecutionOrigin) {
+		return jobcontract.RunnerInfo{}, jobcontract.ErrUnsupported
+	}
 	owned := info.NodeID == client.identity.NodeID && info.NodeInstallationID == client.identity.InstallationID
 	if !owned {
 		return jobcontract.RunnerInfo{}, ErrIntegrity
@@ -103,13 +106,13 @@ func (client *Client) Submit(ctx context.Context, submission *jobcontract.Submis
 	if err != nil {
 		return jobcontract.Receipt{}, responseError(err)
 	}
-	expected, err := spec.InitialSnapshot(receipt.AcceptedAt)
+	expected, err := spec.InitialSnapshot(receipt.AcceptedAt, receipt.Origin)
 	if err != nil {
 		return jobcontract.Receipt{}, ErrIntegrity
 	}
 	want := expected.Receipt
 	matching := receipt.JobID == want.JobID && receipt.Kind == want.Kind &&
-		receipt.NodeInstallationID == want.NodeInstallationID && receipt.EngineBuildID == want.EngineBuildID
+		receipt.Origin == want.Origin
 	children := slices.Equal(receipt.RunIDs, want.RunIDs) && slices.Equal(receipt.ReportIDs, want.ReportIDs) &&
 		receipt.ComparisonID == want.ComparisonID
 	if !matching || !children {
@@ -170,7 +173,9 @@ func (client *Client) Command(
 }
 
 func (client *Client) owns(snapshot jobcontract.Snapshot) bool {
-	return snapshot.Receipt.NodeInstallationID == client.identity.InstallationID
+	origin := snapshot.Receipt.Origin
+	return origin.Kind == string(jobcontract.TargetRemote) && origin.NodeID == client.identity.NodeID &&
+		origin.InstallationID == client.identity.InstallationID
 }
 
 func (client *Client) json(ctx context.Context, input remotessh.Request, limit int64) ([]byte, error) {

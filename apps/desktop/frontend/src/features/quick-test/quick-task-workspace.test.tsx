@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createAppI18n } from "@/i18n/i18n"
 import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/runs/fixtures"
 import { createTaskDraft, type TaskDraft } from "./task-draft"
+import { executionClient, jobFixture } from "@/test/jobs-fixture"
 import { QuickTaskWorkspace } from "./quick-task-workspace"
 
 const task = {
@@ -45,13 +46,15 @@ function setup(
   catalog = FIXTURE_CATALOG,
 ) {
   const actions = {
-    startQuickTask: vi.fn(async () => FIXTURE_WORKSPACE.runs[0].id),
+    ...executionClient(),
     getQuickTask: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined),
     forgetQuickTaskCredential: vi.fn(async () => undefined),
-    cancelRun: vi.fn(async () => FIXTURE_WORKSPACE),
-    runQuickPerformanceTest: vi.fn(),
   }
+  const observed = jobFixture({ kind: "run", run_ids: [FIXTURE_WORKSPACE.runs[0].id], report_ids: [] })
+  actions.launchJob.mockResolvedValue({ ...observed, execution: null })
+  actions.getJob.mockResolvedValue(observed)
+
   function Harness() {
     const [draft, setDraft] = useState<TaskDraft>(initial)
     const [runID, setRunID] = useState("")
@@ -69,7 +72,6 @@ function setup(
         onRunSelected={setRunID}
         actions={actions}
         refresh={refresh}
-        onWorkspaceUpdated={vi.fn()}
         onOpenReport={vi.fn()}
         onPerformanceArchived={vi.fn()}
         onSaveChannel={vi.fn(async () => ({ catalog, channel_id: catalog.channels[0].id }))}
@@ -93,7 +95,7 @@ describe("Suite quick task workspace", () => {
     const actions = setup({ ...createTaskDraft(catalog.suites[1]),
       channel_id: mapping.channel_id, model: mapping.upstream_model_name }, undefined, undefined, catalog)
     await userEvent.setup().click(screen.getByRole("button", { name: "开始测试" }))
-    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(actions.launchJob).not.toHaveBeenCalled()
     expect(screen.getByRole("combobox", { name: "模型 ID" })).toHaveAttribute("aria-invalid", "true")
   })
 
@@ -109,9 +111,9 @@ describe("Suite quick task workspace", () => {
     const actions = setup({ ...createTaskDraft(catalog.suites[1]),
       channel_id: mapping.channel_id, model: mapping.upstream_model_name }, undefined, undefined, catalog)
     await userEvent.setup().click(screen.getByRole("button", { name: "开始测试" }))
-    expect(actions.startQuickTask).toHaveBeenCalledWith(expect.objectContaining({
+    expect(actions.launchJob).toHaveBeenCalledWith(quickTaskLaunch(expect.objectContaining({
       channel_id: mapping.channel_id, model: mapping.upstream_model_name,
-    }))
+    })))
   })
 
   it("switches protocols before selecting tasks and updates the endpoint preview", async () => {
@@ -150,9 +152,9 @@ describe("Suite quick task workspace", () => {
     await user.type(screen.getByLabelText("模型 ID"), "model")
     await user.keyboard("{Escape}")
     await user.click(screen.getByRole("button", { name: "开始测试" }))
-    expect(actions.startQuickTask).toHaveBeenCalledWith(expect.objectContaining({
+    expect(actions.launchJob).toHaveBeenCalledWith(quickTaskLaunch(expect.objectContaining({
       base_url: "https://example.test/api/v3/contents/generations/tasks",
-    }))
+    })))
   })
 
   it("groups short parameters while keeping long inputs and the shared hint full width", () => {
@@ -176,7 +178,7 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByRole("checkbox", { name: "音频" })).not.toBeChecked()
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(screen.getByLabelText("接口地址")).toHaveFocus()
-    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(actions.launchJob).not.toHaveBeenCalled()
     await user.type(screen.getByLabelText("接口地址"), "https://example.test")
     await user.type(screen.getByLabelText("API Key"), "private-key")
     await user.type(screen.getByLabelText("模型 ID"), "video-model")
@@ -184,14 +186,14 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("checkbox", { name: "音频" }))
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     await waitFor(() =>
-      expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
+      expect(actions.launchJob).toHaveBeenCalledExactlyOnceWith(quickTaskLaunch({
         suite_id: task.id,
         seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
         model: "video-model",
         base_url: "https://example.test",
         api_key: "private-key",
         inputs: { prompt: "cat", duration: 4, audio: true },
-      }),
+      })),
     )
     expect(screen.queryByRole("button", { name: "快速性能测试" })).not.toBeInTheDocument()
   })
@@ -213,7 +215,7 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(await screen.findByText(/测试已启动，进度暂时无法刷新/)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "刷新进度" }))
-    expect(actions.startQuickTask).toHaveBeenCalledTimes(1)
+    expect(actions.launchJob).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText("视频提示词")).toHaveValue("cat")
     expect(document.body).not.toHaveTextContent("private refresh error")
   })
@@ -255,13 +257,11 @@ describe("Suite quick task workspace", () => {
       expect(screen.getByLabelText("API Key")).toHaveValue("private-key")
       await user.type(screen.getByLabelText("视频提示词"), " edited")
       await user.click(screen.getByRole("button", { name: "开始测试" }))
-      expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
+      expect(actions.launchJob).toHaveBeenCalledExactlyOnceWith(quickTaskLaunch(expect.objectContaining({
           seed: 1, request_timeout_ms: 60000, case_concurrency: 2,
           source_run_id: run.id,
           inputs: { prompt: "past prompt edited", duration: 8, audio: true },
-        }),
-      )
+        })))
     },
   )
 
@@ -279,13 +279,13 @@ describe("Suite quick task workspace", () => {
     })
     expect(screen.getByLabelText("API Key")).toBeDisabled()
     await user.click(screen.getByRole("button", { name: "开始测试" }))
-    expect(actions.startQuickTask).toHaveBeenCalledExactlyOnceWith({
+    expect(actions.launchJob).toHaveBeenCalledExactlyOnceWith(quickTaskLaunch({
       suite_id: selected.id,
       seed: 1, request_timeout_ms: 60000, case_concurrency: 4,
       channel_id: channel.id,
       model: "upstream",
       inputs: { prompt: "hello" },
-    })
+    }))
   })
 
   it("keeps Suite identity when opening performance testing without a preliminary request", async () => {
@@ -297,18 +297,14 @@ describe("Suite quick task workspace", () => {
       api_key: "private-key",
       model: "model",
     })
-    actions.runQuickPerformanceTest.mockRejectedValue(new Error("fixture only"))
+    actions.launchJob.mockRejectedValue(new Error("fixture only"))
     await user.click(screen.getByRole("button", { name: "快速性能测试" }))
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
-    expect(actions.startQuickTask).not.toHaveBeenCalled()
-    expect(actions.runQuickPerformanceTest).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
         task: { suite_id: selected.id, suite_revision: selected.revision },
         url: "https://example.test",
         api_key: "private-key",
-      }),
-      expect.any(Function),
-    )
+      })))
     await screen.findByText(/快速性能测试暂不可用/)
   })
 
@@ -321,7 +317,7 @@ describe("Suite quick task workspace", () => {
     })
     await user.click(screen.getByRole("button", { name: "开始测试" }))
     expect(screen.getByRole("combobox", { name: "从渠道填充" })).toHaveFocus()
-    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(actions.launchJob).not.toHaveBeenCalled()
   })
   it("remembers a tested temporary connection explicitly, reuses its reference, and forgets it", async () => {
     const user = userEvent.setup()
@@ -344,12 +340,8 @@ describe("Suite quick task workspace", () => {
     expect(screen.getByLabelText("API Key")).toHaveValue("")
     expect(screen.getByLabelText("API Key")).toBeDisabled()
     await user.click(screen.getByRole("button", { name: "开始测试" }))
-    expect(actions.startQuickTask).toHaveBeenLastCalledWith(
-      expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id }),
-    )
-    expect(actions.startQuickTask).not.toHaveBeenLastCalledWith(
-      expect.objectContaining({ api_key: expect.any(String) }),
-    )
+    expect(actions.launchJob).toHaveBeenLastCalledWith(quickTaskLaunch(expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id })))
+    expect(actions.launchJob).not.toHaveBeenLastCalledWith(quickTaskLaunch(expect.objectContaining({ api_key: expect.any(String) })))
     await user.click(screen.getByRole("button", { name: "忘记已保存的密钥" }))
     expect(actions.forgetQuickTaskCredential).toHaveBeenCalledExactlyOnceWith(
       FIXTURE_WORKSPACE.runs[0].id,
@@ -370,7 +362,7 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "记住此连接的密钥" }))
     expect(await screen.findByRole("alert")).not.toHaveTextContent("private OS error")
     expect(screen.getByLabelText("API Key")).toHaveValue("temporary-key")
-    expect(actions.startQuickTask).not.toHaveBeenCalled()
+    expect(actions.launchJob).not.toHaveBeenCalled()
   })
 
   it("reuses a remembered key for performance and drops it when the endpoint changes", async () => {
@@ -382,13 +374,10 @@ describe("Suite quick task workspace", () => {
       credential_run_id: FIXTURE_WORKSPACE.runs[0].id,
       model: "model",
     })
-    actions.runQuickPerformanceTest.mockRejectedValue(new Error("fixture only"))
+    actions.launchJob.mockRejectedValue(new Error("fixture only"))
     await user.click(screen.getByRole("button", { name: "快速性能测试" }))
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
-    expect(actions.runQuickPerformanceTest).toHaveBeenCalledWith(
-      expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id, api_key: "" }),
-      expect.any(Function),
-    )
+    expect(actions.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ credential_run_id: FIXTURE_WORKSPACE.runs[0].id, api_key: "" })))
     await screen.findByText(/快速性能测试暂不可用/)
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
@@ -397,3 +386,13 @@ describe("Suite quick task workspace", () => {
     expect(screen.queryByRole("button", { name: "忘记已保存的密钥" })).not.toBeInTheDocument()
   })
 })
+
+function quickTaskLaunch(quick_task: unknown) {
+  return { location: { kind: "local", configuration_id: "" }, kind: "quick_task",
+    plan: null, quick_task, performance: null, comparison: null }
+}
+
+function performanceLaunch(performance: unknown) {
+  return { location: { kind: "local", configuration_id: "" }, kind: "performance",
+    plan: null, quick_task: null, performance, comparison: null }
+}

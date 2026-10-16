@@ -1,3 +1,4 @@
+import { ExecutionOriginDetails } from "@/features/reports/execution-origin-details"
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
 import { useEffect, useRef, useState, type FormEvent } from "react"
@@ -7,6 +8,9 @@ import CircleAlertIcon from "lucide-react/dist/esm/icons/circle-alert.mjs"
 import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
+import { JobDetails } from "@/features/jobs/job-details"
+import { launchAtDefault, type JobClient } from "@/features/jobs/execution"
+import { isJobTerminal, type JobView } from "@/features/jobs/data"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -174,7 +178,7 @@ export function PlanPerformanceRunSheet({
   planID,
   catalog,
   profile,
-  run,
+  client,
   onArchived,
   onOpenReport,
   triggerLabel,
@@ -182,10 +186,7 @@ export function PlanPerformanceRunSheet({
   planID: string
   catalog: CatalogSnapshot
   profile: QuickPerformanceProfile
-  run: (
-    command: QuickPerformanceCommand,
-    onProgress?: (progress: QuickPerformanceProgress) => void,
-  ) => Promise<QuickPerformanceReport>
+  client: JobClient
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
   triggerLabel: string
@@ -238,7 +239,7 @@ export function PlanPerformanceRunSheet({
       onOpenChange={setPerformanceOpen}
       connection={{ protocol: catalog.plans.find(plan => plan.id === planID)!.protocol, address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
       initialProfile={profile}
-      run={run}
+      client={client}
       onArchived={onArchived}
       onOpenReport={onOpenReport}
     /> : null}
@@ -251,7 +252,7 @@ export function QuickPerformanceSheet({
   onCloseAutoFocus,
   connection,
   initialProfile,
-  run,
+  client,
   onArchived,
   onOpenReport,
 }: {
@@ -260,10 +261,7 @@ export function QuickPerformanceSheet({
   onCloseAutoFocus?: (event: Event) => void
   connection: QuickPerformanceConnection
   initialProfile?: QuickPerformanceProfile
-  run: (
-    command: QuickPerformanceCommand,
-    onProgress?: (progress: QuickPerformanceProgress) => void,
-  ) => Promise<QuickPerformanceReport>
+  client: JobClient
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
 }) {
@@ -274,8 +272,8 @@ export function QuickPerformanceSheet({
     initialProfile ? quickPerformancePresetFromProfile(initialProfile) : "smoke",
   )
   const [pending, setPending] = useState(false)
-  const [report, setReport] = useState<QuickPerformanceReport | null>(null)
-  const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
+  const [job, setJob] = useState<JobView | null>(null)
+  const busy = pending || !!job && (!job.execution || !isJobTerminal(job.execution.status))
   const [fieldErrors, setFieldErrors] = useState<PerformanceFieldErrors>({})
   const [operationError, setOperationError] = useState("")
   const requestGeneration = useRef({ value: 0 })
@@ -284,8 +282,7 @@ export function QuickPerformanceSheet({
   const [outputIdentity, setOutputIdentity] = useState(connectionIdentity)
   if (outputIdentity !== connectionIdentity) {
     setOutputIdentity(connectionIdentity)
-    setReport(null)
-    setProgress(null)
+    setJob(null)
     setOperationError("")
     setPending(false)
   }
@@ -300,8 +297,7 @@ export function QuickPerformanceSheet({
   const capacityTargets = performanceCapacityTargets(form)
 
   const resetOutput = () => {
-    setReport(null)
-    setProgress(null)
+    setJob(null)
     setOperationError("")
   }
 
@@ -377,7 +373,7 @@ export function QuickPerformanceSheet({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (pending) return
+    if (busy) return
     const nextFieldErrors = validatePerformanceForm(form)
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors)
@@ -386,20 +382,16 @@ export function QuickPerformanceSheet({
       return
     }
     setPending(true)
-    setReport(null)
-    setProgress(null)
+    setJob(null)
     setFieldErrors({})
     setOperationError("")
     const generation = ++requestGeneration.current.value
-    void run(
-      performanceCommand(connection, form),
-      (nextProgress) => {
-        if (requestGeneration.current.value === generation) setProgress(nextProgress)
-      },
-    )
-      .then((nextReport) => {
-        if (requestGeneration.current.value === generation) setReport(nextReport)
-        if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
+    void launchAtDefault(client, {
+      kind: "performance", plan: null, quick_task: null, comparison: null,
+      performance: performanceCommand(connection, form),
+    })
+      .then((accepted) => {
+        if (requestGeneration.current.value === generation) setJob(accepted)
       })
       .catch((reason: unknown) => {
         if (requestGeneration.current.value === generation)
@@ -440,7 +432,7 @@ export function QuickPerformanceSheet({
                 <FieldContent>
                   <SearchableSelect
                     value={preset}
-                    disabled={pending}
+                    disabled={busy}
                     onValueChange={(value) => {
                       const nextPreset = value as QuickPerformancePresetID
                       setPreset(nextPreset)
@@ -464,7 +456,7 @@ export function QuickPerformanceSheet({
                     {tx("desktop:catalog_load_mode")}
                   </FieldLabel>
                   <FieldContent>
-                    <SearchableSelect value={form.loadMode} disabled={pending} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)} id="quick-performance-loadMode" aria-label={tx("desktop:catalog_load_mode")} className="w-full" options={[({value: "fixed_concurrency", label: tx("desktop:catalog_fixed_concurrency")}), ({value: "open_loop", label: tx("desktop:quick-test_open_arrival_rps")})]} />
+                    <SearchableSelect value={form.loadMode} disabled={busy} onValueChange={(value) => updateLoadMode(value as QuickPerformanceLoadMode)} id="quick-performance-loadMode" aria-label={tx("desktop:catalog_load_mode")} className="w-full" options={[({value: "fixed_concurrency", label: tx("desktop:catalog_fixed_concurrency")}), ({value: "open_loop", label: tx("desktop:quick-test_open_arrival_rps")})]} />
                   </FieldContent>
                 </Field>
                 {form.loadMode === "open_loop" ? (
@@ -473,7 +465,7 @@ export function QuickPerformanceSheet({
                       {tx("desktop:quick-test_arrival_distribution")}
                     </FieldLabel>
                     <FieldContent>
-                      <SearchableSelect value={form.arrivalPattern} disabled={pending} onValueChange={(value) =>
+                      <SearchableSelect value={form.arrivalPattern} disabled={busy} onValueChange={(value) =>
                           updateArrivalPattern(value as QuickPerformanceArrivalPattern)
                         } id="quick-performance-arrivalPattern" aria-label={tx("desktop:quick-test_arrival_distribution")} className="w-full" options={[({value: "constant", label: tx("desktop:quick-test_constant_interval")}), ({value: "poisson", label: tx("desktop:quick-test_poisson_arrivals")})]} />
                     </FieldContent>
@@ -484,7 +476,7 @@ export function QuickPerformanceSheet({
                     {tx("desktop:quick-test_workload")}
                   </FieldLabel>
                   <FieldContent>
-                    <SearchableSelect value={form.workloadMode} disabled={pending} onValueChange={(value) =>
+                    <SearchableSelect value={form.workloadMode} disabled={busy} onValueChange={(value) =>
                         updateWorkloadMode(value as QuickPerformanceWorkloadMode)
                       } id="quick-performance-workloadMode" aria-label={tx("desktop:quick-test_workload")} className="w-full" options={[({value: "fixed", label: tx("desktop:quick-test_fixed_tokens")}), ({value: "normal", label: tx("desktop:quick-test_normal_distribution")})]} />
                   </FieldContent>
@@ -494,7 +486,7 @@ export function QuickPerformanceSheet({
                     <Checkbox
                       id="quick-performance-randomInput"
                       checked={form.randomInput}
-                      disabled={pending}
+                      disabled={busy}
                       onCheckedChange={(checked) => updateRandomInput(checked === true)}
                     />
                     <span>{tx("desktop:quick-test_random_input")}</span>
@@ -507,7 +499,7 @@ export function QuickPerformanceSheet({
                   value={form.requestCount}
                   min={0}
                   max={10_000}
-                  disabled={pending}
+                  disabled={busy}
                   error={localizeStoredMessage(fieldErrors.requestCount ?? "", tx)}
                   onChange={(value) => update("requestCount", value)}
                 />
@@ -517,7 +509,7 @@ export function QuickPerformanceSheet({
                   value={form.durationSeconds}
                   min={0}
                   max={3_600}
-                  disabled={pending}
+                  disabled={busy}
                   error={localizeStoredMessage(fieldErrors.durationSeconds ?? "", tx)}
                   onChange={(value) => update("durationSeconds", value)}
                 />
@@ -532,7 +524,7 @@ export function QuickPerformanceSheet({
                     value={form.concurrency}
                     min={1}
                     max={256}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.concurrency ?? "", tx)}
                     onChange={(value) => update("concurrency", value)}
                   />
@@ -549,7 +541,7 @@ export function QuickPerformanceSheet({
                       min={0.01}
                       max={100_000}
                       step={0.01}
-                      disabled={pending}
+                      disabled={busy}
                       error={localizeStoredMessage(fieldErrors.ratePerSecond ?? "", tx)}
                       onChange={(value) => update("ratePerSecond", value)}
                     />
@@ -559,7 +551,7 @@ export function QuickPerformanceSheet({
                       value={form.maxInFlight}
                       min={1}
                       max={2_000}
-                      disabled={pending}
+                      disabled={busy}
                       error={localizeStoredMessage(fieldErrors.maxInFlight ?? "", tx)}
                       onChange={(value) => update("maxInFlight", value)}
                     />
@@ -571,7 +563,7 @@ export function QuickPerformanceSheet({
                   value={form.timeoutSeconds}
                   min={1}
                   max={600}
-                  disabled={pending}
+                  disabled={busy}
                   error={localizeStoredMessage(fieldErrors.timeoutSeconds ?? "", tx)}
                   onChange={(value) => update("timeoutSeconds", value)}
                 />
@@ -585,7 +577,7 @@ export function QuickPerformanceSheet({
                   value={form.inputTokens}
                   min={1}
                   max={1_000_000}
-                  disabled={pending}
+                  disabled={busy}
                   error={localizeStoredMessage(fieldErrors.inputTokens ?? "", tx)}
                   onChange={(value) => update("inputTokens", value)}
                 />
@@ -599,7 +591,7 @@ export function QuickPerformanceSheet({
                   value={form.outputTokens}
                   min={1}
                   max={65_536}
-                  disabled={pending}
+                  disabled={busy}
                   error={localizeStoredMessage(fieldErrors.outputTokens ?? "", tx)}
                   onChange={(value) => update("outputTokens", value)}
                 />
@@ -611,7 +603,7 @@ export function QuickPerformanceSheet({
                       value={form.inputTokensStdDev}
                       min={0}
                       max={1_000_000}
-                      disabled={pending}
+                      disabled={busy}
                       error={localizeStoredMessage(fieldErrors.inputTokensStdDev ?? "", tx)}
                       onChange={(value) => update("inputTokensStdDev", value)}
                     />
@@ -621,7 +613,7 @@ export function QuickPerformanceSheet({
                       value={form.outputTokensStdDev}
                       min={0}
                       max={65_536}
-                      disabled={pending}
+                      disabled={busy}
                       error={localizeStoredMessage(fieldErrors.outputTokensStdDev ?? "", tx)}
                       onChange={(value) => update("outputTokensStdDev", value)}
                     />
@@ -631,7 +623,7 @@ export function QuickPerformanceSheet({
                       value={form.sharedPrefixTokens}
                       min={0}
                       max={999_999}
-                      disabled={pending}
+                      disabled={busy}
                       error={localizeStoredMessage(fieldErrors.sharedPrefixTokens ?? "", tx)}
                       onChange={(value) => update("sharedPrefixTokens", value)}
                     />
@@ -644,7 +636,7 @@ export function QuickPerformanceSheet({
                     value={form.randomSeed}
                     min={1}
                     max={4_294_967_295}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.randomSeed ?? "", tx)}
                     onChange={(value) => update("randomSeed", value)}
                   />
@@ -669,7 +661,7 @@ export function QuickPerformanceSheet({
                     min={0}
                     max={Number.MAX_VALUE}
                     step={0.01}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.sloTTFTMS ?? "", tx)}
                     onChange={(value) => update("sloTTFTMS", value)}
                   />
@@ -680,7 +672,7 @@ export function QuickPerformanceSheet({
                     min={0}
                     max={Number.MAX_VALUE}
                     step={0.01}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.sloTPOTMS ?? "", tx)}
                     onChange={(value) => update("sloTPOTMS", value)}
                   />
@@ -691,7 +683,7 @@ export function QuickPerformanceSheet({
                     min={0}
                     max={Number.MAX_VALUE}
                     step={0.01}
-                    disabled={pending}
+                    disabled={busy}
                     error={fieldErrors.sloE2EMS}
                     onChange={(value) => update("sloE2EMS", value)}
                   />
@@ -702,7 +694,7 @@ export function QuickPerformanceSheet({
                     min={0}
                     max={100}
                     step={0.01}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.sloTargetPercent ?? "", tx)}
                     onChange={(value) => update("sloTargetPercent", value)}
                   />
@@ -716,7 +708,7 @@ export function QuickPerformanceSheet({
                       id="quick-performance-capacityEnabled"
                       aria-label={tx("desktop:quick-test_capacity_ladder")}
                       checked={form.capacityEnabled}
-                      disabled={pending}
+                      disabled={busy}
                       onCheckedChange={(checked) => updateCapacityEnabled(checked === true)}
                     />
                     <span>{tx("desktop:quick-test_capacity_ladder")}</span>
@@ -735,7 +727,7 @@ export function QuickPerformanceSheet({
                           value={form.fixedCapacityStart}
                           min={1}
                           max={256}
-                          disabled={pending}
+                          disabled={busy}
                           error={localizeStoredMessage(fieldErrors.fixedCapacityStart ?? "", tx)}
                           onChange={(value) => update("fixedCapacityStart", value)}
                         />
@@ -745,7 +737,7 @@ export function QuickPerformanceSheet({
                           value={form.fixedCapacityStep}
                           min={1}
                           max={Number.MAX_SAFE_INTEGER}
-                          disabled={pending}
+                          disabled={busy}
                           error={localizeStoredMessage(fieldErrors.fixedCapacityStep ?? "", tx)}
                           onChange={(value) => update("fixedCapacityStep", value)}
                         />
@@ -759,7 +751,7 @@ export function QuickPerformanceSheet({
                           min={0.01}
                           max={100_000}
                           step={0.01}
-                          disabled={pending}
+                          disabled={busy}
                           error={localizeStoredMessage(fieldErrors.openCapacityStart ?? "", tx)}
                           onChange={(value) => update("openCapacityStart", value)}
                         />
@@ -770,7 +762,7 @@ export function QuickPerformanceSheet({
                           min={0.01}
                           max={Number.MAX_VALUE}
                           step={0.01}
-                          disabled={pending}
+                          disabled={busy}
                           error={localizeStoredMessage(fieldErrors.openCapacityStep ?? "", tx)}
                           onChange={(value) => update("openCapacityStep", value)}
                         />
@@ -823,7 +815,7 @@ export function QuickPerformanceSheet({
                     value={form.warmupRequests}
                     min={0}
                     max={10_000}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.warmupRequests ?? "", tx)}
                     onChange={(value) => update("warmupRequests", value)}
                   />
@@ -846,7 +838,7 @@ export function QuickPerformanceSheet({
                       value={form.rampRequestCap}
                       min={1}
                       max={10_000}
-                      disabled={pending}
+                      disabled={busy}
                       error={localizeStoredMessage(fieldErrors.rampRequestCap ?? "", tx)}
                       onChange={(value) => update("rampRequestCap", value)}
                     />
@@ -857,7 +849,7 @@ export function QuickPerformanceSheet({
                     value={form.sliceDurationSeconds}
                     min={0}
                     max={3_600}
-                    disabled={pending}
+                    disabled={busy}
                     error={localizeStoredMessage(fieldErrors.sliceDurationSeconds ?? "", tx)}
                     onChange={(value) => update("sliceDurationSeconds", value)}
                   />
@@ -901,24 +893,20 @@ export function QuickPerformanceSheet({
               ) : null}
             </FieldGroup>
           </form>
-          {pending && progress ? (
-            <QuickPerformanceProgressPanel
-              progress={progress}
-              requestCount={form.requestCount}
-              loadMode={form.loadMode}
-            />
-          ) : pending ? (
-            <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
-              <Spinner className="size-5" />
-              <p className="mt-3 text-sm font-medium">{t("performance.running")}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t("performance.runningHint")}</p>
-            </div>
-          ) : report ? (
-            <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} />
-          ) : null}
+          {job ? <JobDetails
+            key={job.job_id}
+            client={client}
+            jobID={job.job_id}
+            initialJob={job}
+            onJobChange={setJob}
+            onArchived={onArchived}
+            onOpenReport={onOpenReport}
+            renderProgress={progress => <QuickPerformanceProgressPanel progress={progress} requestCount={form.requestCount} loadMode={form.loadMode} />}
+            renderPerformance={report => <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} />}
+          /> : pending ? <div role="status" className="flex min-h-24 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("performance.running")}</div> : null}
         </ScrollArea>
         <SheetFooter>
-          <Button type="submit" form="quick-performance-form" disabled={pending}>
+          <Button type="submit" form="quick-performance-form" disabled={busy}>
             {pending ? (
               <>
                 <Spinner data-icon="inline-start" />
@@ -984,7 +972,7 @@ function PerformanceNumberField({
   )
 }
 
-function QuickPerformanceReportPanel({
+export function QuickPerformanceReportPanel({
   report,
   onOpenReport,
 }: {
@@ -1065,6 +1053,7 @@ function QuickPerformanceReportPanel({
           </p>
         </div>
       </div>
+      <div className="px-4 pb-4"><ExecutionOriginDetails origin={report.execution_origin} /></div>
       <Separator />
       <div className="space-y-4 p-4">
         <p className="rounded-md border bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">

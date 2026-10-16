@@ -27,7 +27,7 @@ func (repository *Repository) AcceptJob(
 	if err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
-	snapshot, err := spec.InitialSnapshot(input.AcceptedAt)
+	snapshot, err := spec.InitialSnapshot(input.AcceptedAt, input.Origin)
 	if err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
@@ -187,9 +187,10 @@ func queryJobSpec(ctx context.Context, queryer rowQueryer, id string) (jobcontra
 	var document []byte
 	var installation, build, kind, digest string
 	err := queryer.QueryRowContext(ctx, `
-		SELECT installation_id, engine_build_id, kind, spec_sha256, spec_json
+		SELECT installation_id, engine_build_id, kind, spec_sha256,
+		CASE WHEN length(CAST(spec_json AS BLOB)) <= ? THEN spec_json ELSE '' END
 		FROM execution_jobs WHERE id = ?
-	`, id).Scan(&installation, &build, &kind, &digest, &document)
+	`, jobcontract.MaxSubmissionBytes, id).Scan(&installation, &build, &kind, &digest, &document)
 	if errors.Is(err, sql.ErrNoRows) {
 		return jobcontract.JobSpec{}, jobhost.ErrNotFound
 	}
@@ -209,19 +210,24 @@ func queryJobSpec(ctx context.Context, queryer rowQueryer, id string) (jobcontra
 	return spec, nil
 }
 
-const jobColumns = `id, installation_id, engine_build_id, kind, revision, status,
-	accepted_at, spec_sha256, secret_commitment, snapshot_json, last_sequence`
+var jobColumns = fmt.Sprintf(`id, installation_id, engine_build_id, kind, revision, status,
+	accepted_at, spec_sha256, secret_commitment,
+	CASE WHEN length(CAST(snapshot_json AS BLOB)) <= %d THEN snapshot_json ELSE '' END, last_sequence,
+	(SELECT CASE WHEN length(CAST(document_json AS BLOB)) <= %d
+	 THEN document_json ELSE '' END FROM execution_job_events
+	 WHERE job_id = execution_jobs.id AND sequence = 1)`, jobcontract.MaxEventBytes, jobcontract.MaxEventBytes)
 
 type storedJobRow struct {
 	id, installation, build, kind, status, acceptedAt string
 	specSHA256, commitment                            string
 	revision, sequence                                int64
 	document                                          []byte
+	acceptedDocument                                  []byte
 }
 
 func (row *storedJobRow) scan(scanner interface{ Scan(...any) error }) error {
 	return scanner.Scan(&row.id, &row.installation, &row.build, &row.kind, &row.revision, &row.status,
-		&row.acceptedAt, &row.specSHA256, &row.commitment, &row.document, &row.sequence)
+		&row.acceptedAt, &row.specSHA256, &row.commitment, &row.document, &row.sequence, &row.acceptedDocument)
 }
 
 func queryJobRow(ctx context.Context, queryer rowQueryer, id string) (storedJobRow, error) {
@@ -242,13 +248,20 @@ func (row storedJobRow) decode() (jobcontract.Snapshot, error) {
 		return jobcontract.Snapshot{}, fmt.Errorf("%w: job snapshot", ErrCorrupt)
 	}
 	receipt := snapshot.Receipt
-	sameIdentity := receipt.JobID == row.id && receipt.NodeInstallationID == row.installation
-	sameEngine := receipt.EngineBuildID == row.build && string(receipt.Kind) == row.kind
+	sameIdentity := receipt.JobID == row.id && receipt.Origin.InstallationID == row.installation
+	sameEngine := receipt.Origin.EngineBuildID == row.build && string(receipt.Kind) == row.kind
 	sameState := string(receipt.Status) == row.status && int64(receipt.Revision) == row.revision
 	sameJournal := int64(snapshot.LatestSequence) == row.sequence && formatTime(receipt.AcceptedAt) == row.acceptedAt
 	validDigests := jobcontract.IsSHA256(row.specSHA256) && jobcontract.IsSHA256(row.commitment)
 	if !sameIdentity || !sameEngine || !sameState || !sameJournal || !validDigests {
 		return jobcontract.Snapshot{}, fmt.Errorf("%w: job identity", ErrCorrupt)
+	}
+	accepted, err := decodeAcceptedOrigin(row.acceptedDocument, snapshot)
+	if err != nil {
+		return jobcontract.Snapshot{}, err
+	}
+	if accepted.specSHA256 != row.specSHA256 {
+		return jobcontract.Snapshot{}, storageCorrupt("accepted job spec")
 	}
 	return snapshot, nil
 }
@@ -363,6 +376,9 @@ func writeJobSnapshotTx(
 	previous jobcontract.Snapshot,
 	next jobcontract.Snapshot,
 ) error {
+	if previous.Receipt.Origin != next.Receipt.Origin {
+		return storageCorrupt("job execution origin changed")
+	}
 	document, err := marshalCanonical(next)
 	if err != nil {
 		return err

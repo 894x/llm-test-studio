@@ -215,14 +215,19 @@ func TestFineStreamingMetricsRetainObservedFactsRegardlessOfAssertions(t *testin
 }
 
 type fakeReportRepository struct {
-	run      domain.Run
-	results  []domain.Result
-	evidence []domain.Evidence
-	report   domain.Report
+	run       domain.Run
+	origin    *domain.ExecutionOrigin
+	originErr error
+	results   []domain.Result
+	evidence  []domain.Evidence
+	report    domain.Report
 }
 
 func (repository *fakeReportRepository) GetRun(context.Context, string) (domain.Run, error) {
 	return repository.run, nil
+}
+func (repository *fakeReportRepository) RunExecutionOrigin(context.Context, string) (*domain.ExecutionOrigin, error) {
+	return repository.origin, repository.originErr
 }
 func (repository *fakeReportRepository) ListResults(context.Context, string) ([]domain.Result, error) {
 	return append([]domain.Result(nil), repository.results...), nil

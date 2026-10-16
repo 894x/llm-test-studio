@@ -140,11 +140,14 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if isNilInterface(dependencies.comparisons) {
 		t.Fatal("production initializer did not wire channel comparisons")
 	}
-	if isNilInterface(dependencies.quickTests) {
+	if isNilInterface(dependencies.performancePreparation) {
 		t.Fatal("production initializer did not wire quick tests")
 	}
-	if dependencies.jobs == nil || dependencies.confirmations == nil {
-		t.Fatal("production initializer did not wire submissions and automatic confirmation recovery")
+	missingCommands := isNilInterface(dependencies.launcher) || isNilInterface(dependencies.controls)
+	missingQueries := isNilInterface(dependencies.jobQuery) || isNilInterface(dependencies.controlRecords)
+	missingWorkers := dependencies.confirmations == nil || dependencies.controlDelivery == nil
+	if dependencies.jobs == nil || missingCommands || missingQueries || missingWorkers {
+		t.Fatal("production initializer did not wire the current job boundary and its durable workers")
 	}
 
 	directory := filepath.Join(configurationRoot, "llm-test-studio")

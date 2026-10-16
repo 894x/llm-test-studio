@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -271,7 +272,7 @@ func TestControlOutboxRejectsStaleRevisionWithoutReplacingTerminalWinner(t *test
 }
 
 func TestControlOutboxUsesFixedInstallationButAllowsCompatibleBuildChangesAndMaintenance(t *testing.T) {
-	for _, state := range []string{"identity changed", "unsupported", "compatible maintenance"} {
+	for _, state := range []string{"identity changed", "unsupported", "missing origin capability", "compatible maintenance"} {
 		t.Run(state, func(t *testing.T) {
 			fixture := newControlHTTPFixture(t, jobcontract.KindPerformance)
 			if state == "compatible maintenance" {
@@ -288,6 +289,10 @@ func TestControlOutboxUsesFixedInstallationButAllowsCompatibleBuildChangesAndMai
 					info.NodeInstallationID = coordinatorLocation.ConfigurationID
 				case "unsupported":
 					info.Contract++
+				case "missing origin capability":
+					info.Capabilities.Features = slices.DeleteFunc(info.Capabilities.Features, func(feature string) bool {
+						return feature == jobcontract.FeatureExecutionOrigin
+					})
 				case "compatible maintenance":
 					info.EngineBuildID = strings.Repeat("c", 64)
 					info.RunnerVersion = "another-compatible-release"

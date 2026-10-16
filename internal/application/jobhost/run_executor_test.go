@@ -300,7 +300,7 @@ func TestRunExecutorRecoverySealsInterruptedJobsWithoutHTTP(t *testing.T) {
 	repository := openHostRepository(t)
 	spec := coreSubmission(t, server.URL, true).Job
 	if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
-		Spec: spec, SecretCommitment: strings.Repeat("e", 64), AcceptedAt: time.Now().UTC(),
+		Spec: spec, Origin: acceptedOrigin(spec), SecretCommitment: strings.Repeat("e", 64), AcceptedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestRunExecutorHandlesStopBeforeActivationWithoutRequests(t *testing.T) {
 			defer submission.Clear()
 			spec := submission.Job
 			if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
-				Spec: spec, SecretCommitment: strings.Repeat("f", 64), AcceptedAt: time.Now().UTC(),
+				Spec: spec, Origin: acceptedOrigin(spec), SecretCommitment: strings.Repeat("f", 64), AcceptedAt: time.Now().UTC(),
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -438,7 +438,7 @@ func TestRunExecutorSettlementReconcilesCommittedTerminalError(t *testing.T) {
 	repository := openHostRepository(t)
 	spec := coreSubmission(t, "https://must-not-be-requested.example.test", false).Job
 	if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
-		Spec: spec, SecretCommitment: strings.Repeat("d", 64), AcceptedAt: time.Now().UTC(),
+		Spec: spec, Origin: acceptedOrigin(spec), SecretCommitment: strings.Repeat("d", 64), AcceptedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
 	}

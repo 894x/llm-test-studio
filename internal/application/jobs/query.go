@@ -18,7 +18,16 @@ const MaxProgressViewBytes = 64 << 10
 // Implementations cannot connect to a node, submit, reconcile or send commands.
 type Query interface {
 	SubmittedJob(context.Context, string) (JobView, error)
+	SubmittedJobs(context.Context, string, uint32) (JobPage, error)
 	SubmittedPerformanceResult(context.Context, string) (PerformanceResultView, error)
+	SubmittedJobControls(context.Context, string, string, uint32) (ControlPageView, error)
+}
+
+type JobPage struct {
+	SchemaVersion int       `json:"schema_version"`
+	Jobs          []JobView `json:"jobs"`
+	NextCursor    string    `json:"next_cursor"`
+	HasMore       bool      `json:"has_more"`
 }
 
 type ExecutorView struct {
@@ -117,6 +126,7 @@ func ProjectSubmittedJob(
 		PreparedAt: record.CreatedAt.Format(time.RFC3339Nano), DeliveryUpdatedAt: record.UpdatedAt.Format(time.RFC3339Nano),
 		RunIDs: []string{}, ReportIDs: []string{}}
 	if receipt := record.Receipt; receipt != nil {
+		view.Executor = originExecutorView(receipt.Origin)
 		view.Confirmation = &ConfirmationView{Status: receipt.Status, Revision: receipt.Revision,
 			AcceptedAt: receipt.AcceptedAt.Format(time.RFC3339Nano)}
 	}
@@ -152,6 +162,7 @@ func ProjectSubmittedJob(
 			return JobView{}, ErrConflict
 		}
 	}
+	view.Executor = originExecutorView(execution.Receipt.Origin)
 	view.Execution = executionView(*execution)
 	invalidResult := spec.Kind != jobcontract.KindPerformance || !jobcontract.Terminal(execution.Receipt.Status)
 	if resultReady && invalidResult {
@@ -220,7 +231,8 @@ func ProjectSubmittedPerformanceResult(
 		return PerformanceResultView{}, ErrConflict
 	}
 	view := PerformanceResultView{SchemaVersion: 1, JobID: result.JobID, ReportID: result.ReportID,
-		Location: recordLocation(record), Executor: executorView(record.Prepared), Terminal: *executionView(result.Terminal),
+		Location: recordLocation(record), Executor: originExecutorView(result.Terminal.Receipt.Origin),
+		Terminal: *executionView(result.Terminal),
 		SealedAt: result.SealedAt.Format(time.RFC3339Nano), ExecutionStarted: result.ExecutionStarted,
 		ObservationState: result.ObservationState}
 	if observation := result.Observation; observation != nil {
@@ -242,6 +254,11 @@ func executorView(prepared PreparedJob) ExecutorView {
 		Version: runner.RunnerVersion, BuildID: runner.EngineBuildID, OS: runner.OS, Arch: runner.Arch}
 }
 
+func originExecutorView(origin domain.ExecutionOrigin) ExecutorView {
+	return ExecutorView{NodeID: origin.NodeID, InstallationID: origin.InstallationID,
+		Version: origin.RunnerVersion, BuildID: origin.EngineBuildID, OS: origin.OS, Arch: origin.Arch}
+}
+
 func executionView(snapshot jobcontract.Snapshot) *ExecutionView {
 	view := &ExecutionView{Status: snapshot.Receipt.Status, Revision: snapshot.Receipt.Revision,
 		LatestSequence: snapshot.LatestSequence, AcceptedAt: snapshot.Receipt.AcceptedAt.Format(time.RFC3339Nano),
@@ -255,7 +272,7 @@ func executionView(snapshot jobcontract.Snapshot) *ExecutionView {
 
 func confirmedExecutionMatches(first, next jobcontract.Receipt) bool {
 	sameIdentity := first.JobID == next.JobID && first.Kind == next.Kind && first.Contract == next.Contract
-	sameExecutor := first.NodeInstallationID == next.NodeInstallationID && first.EngineBuildID == next.EngineBuildID
+	sameExecutor := first.Origin == next.Origin
 	sameChildren := slices.Equal(first.RunIDs, next.RunIDs) && slices.Equal(first.ReportIDs, next.ReportIDs) &&
 		first.ComparisonID == next.ComparisonID
 	matchingOwner := sameIdentity && sameExecutor && sameChildren && first.AcceptedAt.Equal(next.AcceptedAt)

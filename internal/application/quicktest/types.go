@@ -336,29 +336,30 @@ type PerformanceSample struct {
 // PerformanceReport is an ephemeral, bounded report. It contains no Model,
 // Channel, Case, Plan, credential, prompt, provider payload, or raw error.
 type PerformanceReport struct {
-	Protocol       domain.Protocol            `json:"protocol"`
-	SchemaVersion  int                        `json:"schema_version"`
-	ReportID       string                     `json:"report_id,omitempty"`
-	GeneratedAt    string                     `json:"generated_at,omitempty"`
-	Archived       bool                       `json:"archived"`
-	ArchiveStatus  PerformanceArchiveStatus   `json:"archive_status"`
-	Success        bool                       `json:"success"`
-	AddressMode    AddressMode                `json:"address_mode"`
-	BaseURL        string                     `json:"base_url"`
-	Endpoint       string                     `json:"endpoint"`
-	ModelID        string                     `json:"model_id"`
-	Profile        PerformanceProfile         `json:"profile"`
-	RequestBudget  *PerformanceRequestBudget  `json:"request_budget,omitempty"`
-	Warmup         *PerformanceTrafficSummary `json:"warmup,omitempty"`
-	Ramp           *PerformanceRampSummary    `json:"ramp,omitempty"`
-	TimeSlices     []PerformanceTimeSlice     `json:"time_slices,omitempty"`
-	SLOAssessment  *PerformanceSLOAssessment  `json:"slo_assessment,omitempty"`
-	CapacityResult *PerformanceCapacityResult `json:"capacity_result,omitempty"`
-	Progress       PerformanceProgress        `json:"progress"`
-	Metrics        load.Metrics               `json:"metrics"`
-	Failures       []PerformanceFailure       `json:"failures"`
-	Samples        []PerformanceSample        `json:"samples"`
-	ErrorCode      domain.ErrorCode           `json:"error_code,omitempty"`
+	ExecutionOrigin *domain.ExecutionOrigin    `json:"execution_origin"`
+	Protocol        domain.Protocol            `json:"protocol"`
+	SchemaVersion   int                        `json:"schema_version"`
+	ReportID        string                     `json:"report_id,omitempty"`
+	GeneratedAt     string                     `json:"generated_at,omitempty"`
+	Archived        bool                       `json:"archived"`
+	ArchiveStatus   PerformanceArchiveStatus   `json:"archive_status"`
+	Success         bool                       `json:"success"`
+	AddressMode     AddressMode                `json:"address_mode"`
+	BaseURL         string                     `json:"base_url"`
+	Endpoint        string                     `json:"endpoint"`
+	ModelID         string                     `json:"model_id"`
+	Profile         PerformanceProfile         `json:"profile"`
+	RequestBudget   *PerformanceRequestBudget  `json:"request_budget,omitempty"`
+	Warmup          *PerformanceTrafficSummary `json:"warmup,omitempty"`
+	Ramp            *PerformanceRampSummary    `json:"ramp,omitempty"`
+	TimeSlices      []PerformanceTimeSlice     `json:"time_slices,omitempty"`
+	SLOAssessment   *PerformanceSLOAssessment  `json:"slo_assessment,omitempty"`
+	CapacityResult  *PerformanceCapacityResult `json:"capacity_result,omitempty"`
+	Progress        PerformanceProgress        `json:"progress"`
+	Metrics         load.Metrics               `json:"metrics"`
+	Failures        []PerformanceFailure       `json:"failures"`
+	Samples         []PerformanceSample        `json:"samples"`
+	ErrorCode       domain.ErrorCode           `json:"error_code,omitempty"`
 }
 
 type PerformanceArchive interface {

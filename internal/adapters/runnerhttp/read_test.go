@@ -313,6 +313,9 @@ func TestHTTPOwnerChecksAllowPreviousRunnerBuildButExcludeOtherInstallations(t *
 		}
 		if _, _, err := fixture.repository.AcceptJob(t.Context(), jobhost.Acceptance{
 			Spec: submission.Job, SecretCommitment: strings.Repeat("d", 64), AcceptedAt: time.Now().UTC(),
+			Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: submission.Job.Target.NodeID,
+				InstallationID: submission.Job.NodeInstallationID, EngineBuildID: submission.Job.EngineBuildID,
+				RunnerVersion: "previous-runner", OS: "linux", Arch: "amd64"},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -328,6 +331,13 @@ func TestHTTPOwnerChecksAllowPreviousRunnerBuildButExcludeOtherInstallations(t *
 		}
 		if response.StatusCode != want {
 			t.Fatal("read ownership incorrectly depended on the current runner build or exposed another installation")
+		}
+		if !foreign {
+			snapshot, err := jobcontract.DecodeSnapshot(response.Body)
+			if err != nil || snapshot.Receipt.Origin.RunnerVersion != "previous-runner" ||
+				snapshot.Receipt.Origin.EngineBuildID != strings.Repeat("c", 64) {
+				t.Fatalf("current HTTP runner replaced the historical executor identity: %v", err)
+			}
 		}
 	}
 }

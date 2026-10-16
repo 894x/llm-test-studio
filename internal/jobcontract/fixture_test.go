@@ -2,6 +2,7 @@ package jobcontract
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,26 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
+
+func originFixture(spec JobSpec) domain.ExecutionOrigin {
+	nodeID := "99999999-9999-4999-8999-999999999999"
+	if spec.Target.Kind == TargetRemote {
+		nodeID = spec.Target.NodeID
+	}
+	return domain.ExecutionOrigin{
+		Kind: string(spec.Target.Kind), NodeID: nodeID,
+		InstallationID: spec.NodeInstallationID, EngineBuildID: spec.EngineBuildID,
+		RunnerVersion: "origin-test", OS: "linux", Arch: "amd64",
+	}
+}
+
+func validOriginFixture() domain.ExecutionOrigin {
+	return domain.ExecutionOrigin{
+		Kind: "remote", NodeID: "99999999-9999-4999-8999-999999999999",
+		InstallationID: "77777777-7777-4777-8777-777777777771", EngineBuildID: strings.Repeat("a", 64),
+		RunnerVersion: "origin-test", OS: "linux", Arch: "amd64",
+	}
+}
 
 func testMeta(t *testing.T) domain.EntityMeta {
 	t.Helper()

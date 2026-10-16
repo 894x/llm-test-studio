@@ -284,9 +284,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		}
 		remoteNodes, closeRemoteNodes, err := newProductionRemoteNodes(
 			ctx,
-			directory,
-			baseCredentialStore,
-			options,
+			productionRemoteNodeDependencies{
+				Directory: directory, Credentials: baseCredentialStore, Usage: repository, Options: options,
+			},
 		)
 		if err != nil {
 			_ = runService.Close()
@@ -340,21 +340,23 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("create job launcher: %w", err)
 		}
 		return desktopDependencies{
-			query:            serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
-			catalog:          serializedCatalog,
-			catalogCommands:  serializedCatalog,
-			reports:          serializedReportingQuery{gate: gate, query: reportingQuery},
-			reportGeneration: reportGenerator,
-			commands:         runService,
-			comparisons:      comparisonService,
-			remoteNodes:      remoteNodes.manager,
-			remoteSync:       remoteSync,
-			jobs:             jobServices.coordinator,
-			launcher:         launcher,
-			controls:         jobServices.controller,
-			confirmations:    jobServices.confirmations,
-			controlDelivery:  jobServices.deliveries,
-			quickTests:       quickTests,
+			query:                  serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
+			catalog:                serializedCatalog,
+			catalogCommands:        serializedCatalog,
+			reports:                serializedReportingQuery{gate: gate, query: reportingQuery},
+			reportGeneration:       reportGenerator,
+			commands:               runService,
+			comparisons:            comparisonService,
+			remoteNodes:            remoteNodes.manager,
+			remoteSync:             remoteSync,
+			jobs:                   jobServices.coordinator,
+			launcher:               launcher,
+			controls:               jobServices.controller,
+			confirmations:          jobServices.confirmations,
+			controlDelivery:        jobServices.deliveries,
+			performancePreparation: quickTests,
+			jobQuery:               repository,
+			controlRecords:         repository,
 			close: func() error {
 				return errors.Join(
 					jobServices.close(),

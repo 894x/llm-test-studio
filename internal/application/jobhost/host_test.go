@@ -157,7 +157,20 @@ func hostDependencies(repository jobhost.Repository, core jobhost.Executor, guar
 			Kind: jobcontract.TargetRemote, NodeID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
 		},
 		InstallationID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", EngineBuildID: strings.Repeat("b", 64),
+		NodeID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", RunnerVersion: "host-test",
 		CommitmentKey: bytes.Repeat([]byte{7}, 32),
+	}
+}
+
+func acceptedOrigin(spec jobcontract.JobSpec) domain.ExecutionOrigin {
+	nodeID := localBackendNodeID
+	if spec.Target.Kind == jobcontract.TargetRemote {
+		nodeID = spec.Target.NodeID
+	}
+	return domain.ExecutionOrigin{
+		Kind: string(spec.Target.Kind), NodeID: nodeID,
+		InstallationID: spec.NodeInstallationID, EngineBuildID: spec.EngineBuildID,
+		RunnerVersion: "host-test", OS: "linux", Arch: "amd64",
 	}
 }
 
@@ -430,7 +443,8 @@ func TestHostRecoverySealsOwnedJobsWithoutSendingAndPreservesForeignJobs(t *test
 	foreign.Job.NodeInstallationID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 	for _, submission := range []jobcontract.Submission{owned, foreign} {
 		_, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
-			Spec: submission.Job, SecretCommitment: strings.Repeat("f", 64), AcceptedAt: time.Now().UTC(),
+			Spec: submission.Job, Origin: acceptedOrigin(submission.Job),
+			SecretCommitment: strings.Repeat("f", 64), AcceptedAt: time.Now().UTC(),
 		})
 		if err != nil {
 			t.Fatal(err)

@@ -1,8 +1,12 @@
 package jobcontract
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +14,91 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 )
+
+func TestStatisticalArchiveCopiesTheFrozenTerminalOrigin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":3}}\n\n")
+		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+	input, lease, code := quicktest.New(quicktest.Dependencies{}).BuildPerformance(
+		t.Context(),
+		quicktest.PerformanceCommand{
+			Protocol: domain.ProtocolOpenAIChat, AddressMode: quicktest.AddressModeBaseURL,
+			URL: server.URL, APIKey: "origin-fixture-only", ModelID: "model", RequestCount: 1,
+			Concurrency: 1, TimeoutMS: 3000, InputTokens: 10, OutputTokens: 3,
+		},
+	)
+	if code != "" {
+		t.Fatal(code)
+	}
+	defer lease.Close()
+	input.ReportID = testReportID
+	spec := performanceSpec(t)
+	spec.Spec.Performance = &input
+	acceptedAt := time.Now().UTC()
+	var checkpoint quicktest.PerformanceCheckpoint
+	_, err := quicktest.NewHost(quicktest.HostDependencies{Transport: server.Client().Transport}).ExecutePrepared(
+		t.Context(),
+		input,
+		lease,
+		quicktest.ExecutionOptions{OnCheckpoint: func(_ context.Context, next quicktest.PerformanceCheckpoint) error {
+			checkpoint = next
+			return nil
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := originFixture(spec)
+	terminal, err := spec.InitialSnapshot(acceptedAt, origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal.Receipt.Status, terminal.Receipt.Revision, terminal.LatestSequence = domain.RunCompleted, 4, 8
+	terminal.UpdatedAt = time.Now().UTC()
+	for _, test := range []struct {
+		name       string
+		withOrigin bool
+	}{
+		{name: "unmanaged checkpoint"},
+		{name: "managed checkpoint", withOrigin: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			current := checkpoint
+			if test.withOrigin {
+				originCopy := origin
+				current.Report.ExecutionOrigin = &originCopy
+			}
+			result := PerformanceResult{Contract: CurrentContract, JobID: spec.JobID, ReportID: input.ReportID,
+				Terminal: terminal, SealedAt: terminal.UpdatedAt.Add(time.Second), ExecutionStarted: true,
+				ObservationState: PerformanceAvailable, Observation: &PerformanceObservation{
+					Contract: CurrentContract, JobID: spec.JobID, Revision: 1,
+					RecordedAt: terminal.UpdatedAt, Checkpoint: current,
+				}}
+			archive, eligible, err := result.StatisticalArchive()
+			if err != nil || !eligible || archive.ExecutionOrigin == nil || *archive.ExecutionOrigin != origin {
+				t.Fatalf("archive omitted the terminal owner's origin: %v", err)
+			}
+			result.Terminal.Receipt.Origin.RunnerVersion = "later-owner-release"
+			if archive.ExecutionOrigin.RunnerVersion != origin.RunnerVersion {
+				t.Fatal("archive origin shares mutable state with the terminal receipt")
+			}
+			archive.ExecutionOrigin.RunnerVersion = "changed archive copy"
+			if test.withOrigin && current.Report.ExecutionOrigin.RunnerVersion != origin.RunnerVersion {
+				t.Fatal("archive origin mutation changed its checkpoint's origin")
+			}
+			if !test.withOrigin && current.Report.ExecutionOrigin != nil {
+				t.Fatal("archive generation fabricated a checkpoint origin")
+			}
+			if test.withOrigin && result.Validate() == nil {
+				t.Fatal("a conflicting managed observation origin was silently replaced")
+			}
+		})
+	}
+}
 
 func performanceObservationFixture(t *testing.T) (JobSpec, PerformanceObservation) {
 	t.Helper()
@@ -73,7 +162,7 @@ func TestPerformanceObservationMetadataAndFrozenOwnerBoundaries(t *testing.T) {
 
 func TestPerformanceResultObservationStateAndTerminalBoundaries(t *testing.T) {
 	spec, observation := performanceObservationFixture(t)
-	terminal, err := spec.InitialSnapshot(observation.RecordedAt)
+	terminal, err := spec.InitialSnapshot(observation.RecordedAt, originFixture(spec))
 	if err != nil {
 		t.Fatal(err)
 	}

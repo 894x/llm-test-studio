@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vitest"
 import { protocolReportFixture, reportID } from "@/test/protocol-report-fixture"
 import { parseReportDetail } from "./data"
+import type { ExecutionOrigin } from "./execution-origin"
 
 describe("current protocol report contract", () => {
+  it.each(["local", "remote", null] as const)("preserves the current %s execution origin independently of preparation environment", kind => {
+    const source = protocolReportFixture()
+    const origin: ExecutionOrigin | null = kind === null ? null : { kind, node_id: reportID(20), installation_id: reportID(21),
+      engine_build_id: "b".repeat(64), runner_version: "v-remote", os: "linux", arch: "arm64" }
+    source.report.execution_origin = origin
+    const detail = parseReportDetail(source)
+    if (detail.source !== "run") throw new Error("run expected")
+    expect(detail.report.execution_origin).toEqual(origin)
+    expect(detail.report.environment.os).toBe("windows")
+    if (origin) {
+      expect(detail.report.execution_origin).not.toBe(origin)
+      origin.os = "changed"
+      expect(detail.report.execution_origin?.os).toBe("linux")
+    }
+  })
+  it("rejects missing or mis-cased execution_origin without mutating an old report", () => {
+    const source = protocolReportFixture() as unknown as { report: Record<string, unknown> }
+    delete source.report.execution_origin
+    const before = structuredClone(source)
+    expect(() => parseReportDetail(source)).toThrow(/execution_origin/)
+    expect(source).toEqual(before)
+    source.report.ExecutionOrigin = null
+    expect(() => parseReportDetail(source)).toThrow(/execution_origin/)
+  })
   it("keeps observed execution separate from a pass and preserves snapshot parameters", () => {
     const detail = parseReportDetail(protocolReportFixture("not_applicable"))
     if (detail.source !== "run") throw new Error("run expected")

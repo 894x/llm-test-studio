@@ -98,7 +98,7 @@ func TestCoordinatorQueriesOriginalAcceptanceAcrossBuildAndMaintenanceChanges(t 
 		t.Fatal("query incorrectly required the prepared executor build or ready state")
 	}
 	if confirmed.Prepared.Runner.EngineBuildID != prepared.Prepared.Runner.EngineBuildID ||
-		confirmed.Receipt.EngineBuildID != prepared.Prepared.Runner.EngineBuildID {
+		confirmed.Receipt.Origin.EngineBuildID != prepared.Prepared.Runner.EngineBuildID {
 		t.Fatal("query replaced the original actual executor facts")
 	}
 }

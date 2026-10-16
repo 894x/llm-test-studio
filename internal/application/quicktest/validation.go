@@ -16,6 +16,11 @@ import (
 // ValidateArchivedPerformanceReport protects every persistence and reporting
 // adapter from malformed or unsafe quick-report documents.
 func ValidateArchivedPerformanceReport(report PerformanceReport) (time.Time, error) {
+	if report.ExecutionOrigin != nil {
+		if err := report.ExecutionOrigin.Validate(); err != nil {
+			return time.Time{}, errors.New("quick performance report execution origin is invalid")
+		}
+	}
 	if report.SchemaVersion != PerformanceSchemaVersion || !SupportsPerformance(report.Protocol) || !domain.IsUUID(report.ReportID) {
 		return time.Time{}, errors.New("quick performance report identity is invalid")
 	}

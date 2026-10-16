@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -93,8 +94,11 @@ func (record ControlRecord) ValidateFor(submission SubmissionRecord) error {
 	if snapshot.Validate(submission.Prepared.Spec) != nil {
 		return ErrConflict
 	}
-	if receipt := submission.Receipt; receipt != nil && !receipt.AcceptedAt.Equal(snapshot.Receipt.AcceptedAt) {
-		return ErrConflict
+	if receipt := submission.Receipt; receipt != nil {
+		sameAcceptance := receipt.AcceptedAt.Equal(snapshot.Receipt.AcceptedAt) && receipt.Origin == snapshot.Receipt.Origin
+		if !sameAcceptance {
+			return ErrConflict
+		}
 	}
 	return nil
 }
@@ -227,7 +231,7 @@ func (controller *Controller) Deliver(ctx context.Context, id string) (ControlRe
 			false,
 		)
 	}
-	if info.Validate() != nil {
+	if info.Validate() != nil || !slices.Contains(info.Capabilities.Features, jobcontract.FeatureExecutionOrigin) {
 		return controller.failed(
 			ctx,
 			record,

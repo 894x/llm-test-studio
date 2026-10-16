@@ -81,6 +81,8 @@ func (result PerformanceResult) StatisticalArchive() (quicktest.PerformanceRepor
 		return quicktest.PerformanceReport{}, false, nil
 	}
 	report.GeneratedAt = result.SealedAt.UTC().Format(time.RFC3339Nano)
+	origin := result.Terminal.Receipt.Origin
+	report.ExecutionOrigin = &origin
 	report.Archived, report.ArchiveStatus = true, quicktest.PerformanceArchiveArchived
 	if _, err := quicktest.ValidateArchivedPerformanceReport(report); err != nil {
 		return quicktest.PerformanceReport{}, false, err
@@ -145,6 +147,9 @@ func (result PerformanceResult) Validate() error {
 			!observation.RecordedAt.Before(receipt.AcceptedAt) && !observation.RecordedAt.After(result.SealedAt)
 		if !matching || !result.ExecutionStarted || observation.Validate() != nil {
 			return invalid("performance_result.observation")
+		}
+		if origin := observation.Checkpoint.Report.ExecutionOrigin; origin != nil && *origin != receipt.Origin {
+			return invalid("performance_result.execution_origin")
 		}
 	}
 	returned := result.Observation != nil &&

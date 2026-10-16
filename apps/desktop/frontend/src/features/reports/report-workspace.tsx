@@ -35,6 +35,7 @@ import { ReportExportControls } from "./report-export-controls"
 import { channelVerdict, reportListItems } from "./report-list-items"
 import { blobToBase64 } from "./report-export-encoding"
 import { copyReportPNGToClipboard } from "./report-clipboard"
+import { ExecutionOriginDetails } from "./execution-origin-details"
 
 import { reportPlanTranslationKey, reportVerdictTranslationKey, type ExportedReport, type ReportDetail, type ReportExportFormat, type ReportMetric, type ReportSnapshot, type ReportSummary, type ReportEntryDetail, type ReportEntryStatus } from "./data"
 
@@ -313,6 +314,7 @@ function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDeta
         </div>
         <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
+      <ExecutionOriginDetails origin={detail.report.execution_origin} />
       <CaseOutcomeNavigator
         entries={entries}
         selected={selectedCase}
@@ -468,6 +470,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
   const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
     report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
   return <section aria-label={tx("desktop:reports_archived_performance_report")} className="space-y-4 p-4">
+    <ExecutionOriginDetails origin={report.execution_origin} />
     <div>
       <h4 className="mb-2 text-xs font-semibold">{t("performance.config")}</h4>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
@@ -691,7 +694,8 @@ function ReportInspector({ report, detail, detailError, exporting, exportError, 
     <Separator />
     <ReportExportControls watermark={watermark} onWatermarkChange={onWatermarkChange} exporting={exporting} error={exportError} onExport={onExport} onCopyPNG={onCopyPNG} />
     {detailError ? <div role="alert" className="px-4 pb-3 text-[11px] text-destructive">{detailError}</div> : null}
-    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} /><InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
+    {detail && <><Separator /><div className="min-w-0 px-4 py-3"><ExecutionOriginDetails origin={detail.source === "run" ? detail.report.execution_origin : detail.performance.execution_origin} /></div></>}
+    {detail?.source === "run" ? <><Separator /><div className="px-4 py-3"><div className="text-[11px] font-semibold">{tx("desktop:reports_core_metrics")}</div><dl className="mt-2 space-y-1">{metrics.map(([name, value]) => <InspectorRow key={name} label={`${name} · ${value.samples} samples`} value={`${formatMetric(value.value)} ${value.unit}`} />)}</dl><div className="mt-3 text-[10px] text-muted-foreground">{tx("executionOrigin:preparationEnvironment")}: {detail.report.environment.os}/{detail.report.environment.arch} · {detail.report.environment.app_version} · {detail.report.environment.engine_version}</div></div></> : quick ? <><Separator /><dl className="space-y-1 px-4 py-3"><InspectorRow label={tx("desktop:reports_target")} value={quick.model_id} /><InspectorRow label={tx("desktop:quick-test_actual_send_rate")} value={optionalRequestRate(quick.metrics.launched_qps)} /><InspectorRow label={tx("desktop:quick-test_successful_request_throughput")} value={optionalRequestRate(quick.metrics.successful_request_qps)} /><InspectorRow label="TTFT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.ttft_p50_ms)} / ${formatPerformanceInteger(quick.metrics.ttft_p95_ms)} ms`} /><InspectorRow label="TPOT P50 / P95" value={`${formatPerformanceInteger(quick.metrics.tpot_p50_ms)} / ${formatPerformanceInteger(quick.metrics.tpot_p95_ms)} ms/token`} /><InspectorRow label="E2E P50 / P95" value={`${formatPerformanceInteger(quick.metrics.e2e_p50_ms)} / ${formatPerformanceInteger(quick.metrics.e2e_p95_ms)} ms`} /></dl></> : null}
   </>
 }
 

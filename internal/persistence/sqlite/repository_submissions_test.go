@@ -27,7 +27,7 @@ func submissionFixture(t *testing.T, spec jobcontract.JobSpec) jobs.SubmissionRe
 		RunnerVersion: "independent-runner-build", OS: "linux", Arch: "amd64", Ready: true, Healthy: true,
 		Capabilities: jobcontract.RunnerCapabilities{
 			JobKinds:  []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindPerformance, jobcontract.KindComparison},
-			Protocols: []string{"openai-chat"}, Features: []string{},
+			Protocols: []string{"openai-chat"}, Features: []string{jobcontract.FeatureExecutionOrigin},
 		},
 		Budget: jobcontract.RunnerBudget{MaxActiveJobs: 1, MaxQueuedJobs: 16, MaxConcurrency: 2000,
 			QueueTimeoutNS: int64(15 * time.Minute), ExecutionTimeoutNS: int64(time.Hour)},
@@ -53,7 +53,7 @@ func pendingSubmission(record jobs.SubmissionRecord) jobs.SubmissionRecord {
 
 func acceptedSubmission(t *testing.T, record jobs.SubmissionRecord) jobs.SubmissionRecord {
 	t.Helper()
-	snapshot, err := record.Prepared.Spec.InitialSnapshot(repositoryEpoch.Add(time.Second))
+	snapshot, err := record.Prepared.Spec.InitialSnapshot(repositoryEpoch.Add(time.Second), executionOrigin(record.Prepared.Spec))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,8 +326,8 @@ func TestSubmissionRejectsInvalidChangesAndPreservesRowsOnWriteFailure(t *testin
 		t.Fatal(err)
 	}
 	for _, change := range []func(*jobcontract.Receipt){
-		func(value *jobcontract.Receipt) { value.EngineBuildID = strings.Repeat("f", 64) },
-		func(value *jobcontract.Receipt) { value.NodeInstallationID = remoteOrigin.NodeID },
+		func(value *jobcontract.Receipt) { value.Origin.EngineBuildID = strings.Repeat("f", 64) },
+		func(value *jobcontract.Receipt) { value.Origin.InstallationID = remoteOrigin.NodeID },
 		func(value *jobcontract.Receipt) { value.RunIDs = []string{remoteOrigin.NodeID} },
 	} {
 		next := acceptedSubmission(t, actual)

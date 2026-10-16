@@ -23,12 +23,11 @@ import (
 func TestProductionJobBackendObservesDisabledNodesAndNeverFallsBack(t *testing.T) {
 	services, closeNodes, err := newProductionRemoteNodes(
 		t.Context(),
-		t.TempDir(),
-		credentials.NewMemoryStore(),
-		productionOptions{appVersion: "v-test", runnerSource: &unusedRemoteArtifactSource{},
-			remoteConnector: func(context.Context, remotessh.Endpoint, remotessh.Authentication) (remotenodes.RemoteSession, error) {
-				return nil, remotessh.ErrConnection
-			}},
+		productionRemoteNodeDependencies{Directory: t.TempDir(), Credentials: credentials.NewMemoryStore(),
+			Usage: unusedRemoteNodeUsage{}, Options: productionOptions{appVersion: "v-test", runnerSource: &unusedRemoteArtifactSource{},
+				remoteConnector: func(context.Context, remotessh.Endpoint, remotessh.Authentication) (remotenodes.RemoteSession, error) {
+					return nil, remotessh.ErrConnection
+				}}},
 	)
 	if err != nil {
 		t.Fatal(err)
