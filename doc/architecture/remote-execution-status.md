@@ -13,7 +13,7 @@
 | 共享与重连 | 两个实际客户端构建双向提交通过；离线原命令持久化，恢复后由原 worker 投递一次并确认。 |
 | 历史与凭据 | 原 13 个任务已完整续传；原生窗口显示 63 条历史运行；真实 Windows OSStore 跨进程保存、读取及测试凭据清理通过。 |
 | 数据恢复 | 固定源独立转换、实际 APPDATA 路径临时切换、当前 Core 读取及原文件精确恢复通过。 |
-| 历史积压调度 | c50c538修复冷历史占满全部同步槽的问题；本地真实HTTP/SQLite测试在3个旧下载仍阻塞时，新own报告可完成导入。未知foreign发现和实SSH完整积压公平性仍待。 |
+| 历史积压调度 | 350ddc8分离状态同步与报告下载；真实HTTP/SQLite/cache中旧报告held时，own完整报告与未知foreign跨32历史的running/child/terminal事实均通过。五包回归与vet通过；本期实SSH完整积压公平性仍待。 |
 
 ## 用户指定渠道最终实测
 
@@ -29,7 +29,7 @@
 
 ## 保留的验收边界
 
-- R4 整体三方对照仍未通过。本地与新节点的同一冻结业务配置、实际归档及不同出口已证。原未确认 Job 保持原 ID，不重投；最新独立三任务补验中，原节点明确返回HTTP202并持久保存accepted，随后首次events查询返回404，当时仍剩约106秒，因此这次不是等待超时。三次Prepare/Submit、实际exit1/EOF及目标删除确认均有回执；不能将接收成功当作执行或报告完成。限定随机prompt前缀规范化及此前工具失败均如实保留，详见[验证记录](remote-execution-validation.md)。
+- R4 整体三方对照仍未通过。本地与新节点的冻结业务配置、归档及实际出口已证。原未确认Job不重投；最新新Job明确HTTP202/accepted后，首次events404且剩106秒，因此不是等待超时。只读实查确认任务在真实WAL中已completed、12事件齐全且归属一致，但管理API仍not_found；读取路径异常待定位。没有改库、checkpoint、重启或升级来掩盖异常，原失败与目标清理证据均保留，详见[验证记录](remote-execution-validation.md)。
 - 阶段 C 的管理员 CLI `uninstall` / `recover-uninstall` 已实现并通过 Win/Linux 合同、故障及 SQLite 测试和独立审查。自建 WSL amd64 与新建 ARM64 完整 VM 的实际 busy 拒绝、settled 后卸载、数据保留及幂等均通过；ARM64 单 Provision1/Mock1、实际 exit0/EOF，VM 已安全停止并保留证据。卸载保留业务数据、身份、配对、内容、备份及服务账户，只删除明确归属的受管程序和 unit；桌面移除配置不代替该操作。
 - R11 本轮选定的未知节点、字段类型、任务能力、观察生命周期及文档边界已补齐 T0 验证；文件声明随既定文件范围暂缓。最大文档的有效实体、预留预算的损坏拒绝和 HTTP 编码层证据分别记录，平台与运维实跑仍保留在矩阵 G07，详见[契约矩阵](remote-execution-contract-matrix.md)。
 - 用户 Esc 停止界面自动化后，已配置节点的原生点击切换、三种窗口尺寸及主题未继续补验；已有组件和空节点面板验证不代替这些交互。
@@ -38,9 +38,9 @@
 
 ## 本地测试产物
 
-当前代码 `c50c538` 的 Windows 正式构建已通过，包含历史积压调度修复，Wails CLI/模块固定 2.15.0。EXE：`E:/TEMP/llm-native-final-c50c538-4210d70159224eb4a9d051f6803c526f/llm-test-studio.exe`，SHA-256 `cac5c9363d1dfac5978a9bde042a362f52e4c7f7b9736e653cd788489af52410`。新包只完成构建，没有启动 GUI；此前63条历史的原生观察仍对应旧 `b03e350` 包。
+当前代码 `350ddc8` 的 Windows 正式构建已通过，包含事实/文档分离及未知共享任务积压修复，Wails CLI/模块固定2.15.0。EXE：`E:/TEMP/llm-native-final-350ddc8-79c0ce6c85fb4fc7aca6ddc171a073e8/llm-test-studio.exe`，SHA-256 `422aa562341b15072738505f3cceeb51ba14653f57fa7d3b1e87c04a19571910`。五包回归和vet通过，正式构建17.482秒；新包没有启动GUI，此前63条历史的原生观察仍对应旧b03e350包。
 
-同目录 ZIP：`llm-test-studio-c50c538-windows-amd64.zip`，SHA-256 `ac960b6adbf7f799d341b9cd9f6c15b9e713629de11b0e5c06eccd3d0f42b91f`；唯一 entry 的流式 SHA 与新 EXE 相同。EXE-only ZIP 不包含数据库或凭据，也未推送或发布；原 `02b60cc` 包继续保留。
+同目录ZIP：`llm-test-studio-350ddc8-windows-amd64.zip`，SHA-256 `773d69c6556cb17adc69a4ae3330008f1215fc44b62411e491116e5ff3c098c3`；唯一entry流式SHA与新EXE相同。EXE-only ZIP不包含数据库或凭据，也未推送或发布；原c50c538及02b60cc包继续保留。
 
 已验证的隔离历史 profile 仍保留在旧目录 `E:/TEMP/llm-native-b03e350-cdf42c78e4af456ea8157b98be64080a/` 的 `appdata` 与 `localappdata`。直接使用默认用户目录启动仍会遇到已明确列出的旧格式限制，测试包不代表用户库已永久升级。
 

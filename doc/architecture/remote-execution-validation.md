@@ -1149,3 +1149,31 @@ priority集合还包含持久已知的foreign任务，本次HTTP新任务样本�
 原节点这次 Job `1368e52d-f309-4be6-9b0e-be44c5e94db8` 已明确收到 POST jobs 的HTTP202（370字节、333毫秒），Submit完整实体986字节，协调器保存 accepted/revision3。随后首次 events 查询返回HTTP404（114字节、168毫秒），工具停止观察并保留首错，当时仍剩106.130秒测量预算。因此这次失败不是等待预算耗尽；202也不能代替实际执行、终态或报告证明。没有将这次已确认接收套用于原未确认Job，也没有重提任一旧Job。
 
 捕获共5条（3条control及local/fast实际Core请求），原节点Core出口配对未完成，整体 passed=false。目标创建201、删除204、删除后GET404，cleanup_confirmed=true，后端cleanup_failure=null。原安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-kxqdb_0_/egress-webhook.safe.json`，SHA `cfeb7d11b8100fd5e07581874b8c5fde5eb241d8bb56cff597d254e7636893ef`；隔离工作区 `C:/Users/894/AppData/Local/Temp/llm-r4-egress-workspace-u3xif70k` 保留。该结果属于固定c50c538生产路径的协调器/后端补验，不是新调度代码或原生DesktopApp验收。
+
+随后仅对同一已接收ID执行一次独立只读审计：actual exit0/EOF，父进程8.158秒、Go观察2.524秒、stderr0；Probe/GetJob/ReadEvents各1次，另有必要bound Info GET1。节点healthy/ready、active/queued/pending全0；GetJob和Events均404/not_found、114字节gzip，原始响应SHA相同 `9c0da87c82ee19d82aaafc86e76758ddf04233038c9d8d4d5b68969ea20df375`，body均EOF并关闭。按固定R7源码和Go标准库离线重建，其摘要精确对应task_data_not_found，route_not_found摘要不同；只排除路由未注册，不确定存储原因。源数据库SHA `a862a2d166c58c23dd038ea12a46a08d81ef4238d1f1c920190009f28e31484b` 不变，所有租约/节点/SSH及token-reader资源关闭，Submit/Provider均0。实际安全投影 `C:/Users/894/AppData/Local/Temp/llm-r4-accepted-slow-audit-035c95b5/parent-observed.safe.json`，SHA `99fe75ec903ed664296f1ce55a6eb240da4569473e2e37f89cd4301f70642589`，r4_pass仍false。
+
+再一次固定脚本仅经SSH读取managed unit、真实进程及同ID的数据库事实，没有HTTP、任务或SQL写操作。actual exit0/EOF、3.196秒，远端2.977秒，stderr0；PID244293/start_tick24859722、NRestarts0及原R7执行文件SHA前后一致，两个打开的runner.db FD都指向实际 `/var/lib/llm-test-runner/runner.db` 的同一inode2633454/device64513，无deleted FD。使用真实WAL的mode=ro/query_only/只读authorizer事务，确认Job行1、Spec行1、事件12（序号1–12、accepted事件1）、revision4/completed/settled1、无failure；835字节Spec的摘要及column/spec/snapshot归属均匹配原接收记录。此证据排除该时刻“持久行根本不存在”或取错活动数据库；不能以数据库completed代替缺失的HTTP报告和出口配对证明。实际投影 `C:/Users/894/AppData/Local/Temp/llm-r4-server-storage-audit-8fdc47be/parent-observed.safe.json`，SHA `66fe7a80e54fc20a84e4832d09494fc96c741b7417c46481cc3b2df806dc27cb`。SSH全部资源关闭，本地源未变；读取路径与存储事实的矛盾仍待定位，没有重投、取消、升级或改写原任务。
+
+固定同ID的下一次只读辨识actual exit0/EOF、3.327秒，远端3.129秒，stderr0：真WAL视图读到1行completed/revision4/sequence12，主文件immutable诊断视图0行；两个事务顺序执行且都关闭。managed进程、DB inode及FD前后稳定，DB为RO1/RW1、WAL为RW2、SHM为RW1。只证明该时刻新任务依赖已提交WAL，`api_runtime_dsn_measured=false`，不能据此宣称运行中API用了immutable或已经确定404根因。固定R7源码的只读DSN为mode=ro，静态未见immutable；saved BoundNode与实际listen port均44917。实际安全投影 `C:/Users/894/AppData/Local/Temp/llm-r4-wal-visibility-713caf46/parent-observed.safe.json`，SHA `47e999f70d420dca84ea3635661a57868af775eab15591e8f9c88e795201e86c`。没有HTTP、checkpoint、写SQL、任务或服务操作，SSH全部资源关闭，本地源未变；R4仍false。
+
+## 2026-10-17：350ddc8分离事实与文档，补齐未知共享任务积压回归
+
+旧c50的独立TEMP完整源码与git blob核对一致，真实RED进程exit1/EOF（测试62.19秒、命令63.655秒）：32个历史根、4个可阻塞报告中实际3个held，另一client的新foreign任务在源端running；60秒内本地仍无其running mirror/child，ListJobs只到两次。早期一次编译错误和一次等待器错误均属于工具失败，未算作产品RED。安全投影 `C:/Users/894/AppData/Local/Temp/llm-g07-foreign-red-fdd6bc27c92f4bc9ac5f2a5125374692/foreign-red-observed.safe.json`，SHA `93c8654d8939ad60a1baebfe76ee6938c9dc8537a18b8e0808bea5f72aa2f827`。
+
+提交 `350ddc8e21ef63736c21e2f9796a81ffbb7309b5` 替换合并Pass：Observe只推进原事件游标，ImportDocument每次处理一个真实持久引用；旧Pass和ListRemoteSyncPriorityIDs删除，所有仓库caller/tests改用当前ports，无兼容wrapper。global重工作4分成facts2/documents2，非priority完整Observe1，Focus/History文档各1；metadata含ListJobs和候选查询也取facts/总槽。SSH建连内部Info不据此计为所有wire请求上限。每node完整事实2、背景1，tick五秒/session两分钟、每tick事实turn4不改；文档每class每tick1turn/page2、引用独立两分钟turn，选择后推进三元cursor，失败也轮转。SQL候选保持单语句快照和thin metadata，完整Origin、当前control/outbox绑定及性能依赖校验；terminal文档欠账不再占事实priority。SQL扫描量仍随历史增长，由ctx约束。
+
+独立审查发现History引用在control产生后迁入Focus可能双占槽，已用固定2项activeDocuments跨class去重修复；重复选择继续推进cursor，同页独立后继可运行。该回归使用真实scheduler/Synchronizer与fixture cache/repository端口，证明调度隔离，不冒称真实文件缓存或规范报告解码。跨class完成清理、各class先取quota再取global、取消后join所有metadata/fact/document与gate等待者再关闭连接均经专项测试和复审通过。
+
+最终一次五包完整回归actual session69930、exit0/EOF：remoteresults1.177秒、remotesync1.275秒、desktop75.183秒、SQLite218.090秒、runnerhttp249.826秒；五包vet exit0。最终真实HTTP/SQLite/文件cache中，两个64历史场景旧报告始终held、64项历史仍未导入（含尚未发现），新own完整报告分别9.994063秒和10.2441695秒导入（用例21.59/35.28秒），history下载实际1个、open/close1/1。32历史的未知foreign无本地submission，原queued acceptance/原ID与AcceptedAt匹配，44.9788273秒看到running root/child及cursor5，释放的只有新foreign执行Mock，旧报告保持held；随后terminal/root/child、全部3条原Results及Run原字节与源端相等，cursor11与源一致，观察mutation0，旧报告不导入，Close后全部资源退出。最终未知foreign用例PASS64.78秒。时延均为本地样本，不是SLA或本期实SSH积压验收。
+
+此前新实现两次终态测试失败如实保留：真实root/child已completed、cursor11/11且node无error，但工具硬写结果数1，实际源端和镜像均3；最终改为完整源结果原字节比较后，由上述统一回归实际PASS，未将旧失败翻案。SQLite最终性能候选依赖用例在全包中PASS0.20秒：未导入/仅标记不能解锁，实际sealed结果导入后才可返回archive，损坏owner/ref拒绝。统计归档fixture按真实sealed.StatisticalArchive构造，未放宽生产验证。
+
+三个agent冻结清单及父级逐项复核共31/31源文件无漂移，gofmt、staged diff检查与当前Go旧contract引用扫描通过；生产9文件、SQLite2文件及HTTP7测试均独立review PASS。只包含内部Go API breaking，不改wire、DDL、数据库版本、历史持久格式；没有历史转换脚本或自动迁移。新pkg build与原生界面验收仍分别记录。最终执行安全汇总 `C:/Users/894/AppData/Local/Temp/llm-g07-final-5pkg-e5a5e5f-ef56/final-regression.safe.json`，SHA `40beea3ea3630c7cbeb4041de1fa35a3f0fd99d80ada69d88665f06945e9b9f3`，包含完整Go JSON日志摘要、五包结果及关键场景；本期公平性测试使用免费loopback Mock，没有实SSH或用户付费渠道调用。
+
+## 2026-10-17：350ddc8最终Windows试用包
+
+精确提交 `350ddc8e21ef63736c21e2f9796a81ffbb7309b5` 在上述五包回归后单次production frontend/Go/Wails构建，actual exit0/EOF；Wails17.482秒、精确wrapper17.519秒。CLI和module在命令前核为2.15.0，AppVersion为remote-execution-350ddc8。2031个tracked文件前后raw SHA全部相同，6份bindings相同、go.mod/sum未变，HEAD前后精确一致；父级已有validation文档WIP保持，三个父级docs白名单没有用于忽略任何源码漂移，实际drift0。
+
+目录 `E:/TEMP/llm-native-final-350ddc8-79c0ce6c85fb4fc7aca6ddc171a073e8/`：EXE27154432字节、SHA `422aa562341b15072738505f3cceeb51ba14653f57fa7d3b1e87c04a19571910`；exe-only ZIP9557219字节、SHA `773d69c6556cb17adc69a4ae3330008f1215fc44b62411e491116e5ff3c098c3`，唯一entry流式SHA与EXE相同。`final-native-package.safe.json` SHA `5a0a7383af2f38cdfb334f286f232af44f4d7cd1257272ed5186ecc578b5da0c`，父级独立核EXE/ZIP/launcher/manifest四项摘要均匹配。
+
+`Launch-verified-test-profile.cmd` SHA仍为 `dbdbbc7493b4bf0c45c9b9355f79d72958b23d648a1d5113df0f8d135db827c4`，只给新EXE子进程设置既有隔离profile两条绝对路径；没有执行、复制或读取profile/凭据。旧c50 EXE/ZIP/launcher复核保留，用户APPDATA未切换，未启动新包GUI或推送发布。试用包不等同用户旧格式数据已升级，也不替代暂停中的原生交互验收。
