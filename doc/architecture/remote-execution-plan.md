@@ -289,6 +289,8 @@ JobReceipt 明确返回 contract、job_id、kind、accepted_at、node_installati
 
 节点日志初期不自动压缩或删除。显式 release 需要终态与完整 manifest 下载回执，之后保留 job_id、请求摘要和终态墓碑；已释放的 Job 返回其终态及 released 标记，禁止同 ID 再执行。节点磁盘预算不足时拒绝新任务，提示同步与回收，不能删除未下载结果。
 
+当前 Linux runner 的 MaxStorageBytes 与 MinFreeBytes 是接收软配额：启动或运行时超限仅拒绝新提交，仍提供读取与同步，让已接收任务继续执行和归档；空间恢复后无须重启即可接收。监控在超限时仍独立验证数据库可写，实际目录扫描、可用空间查询或持久化故障才隔离服务。当前仍拒绝非空 asset 清单；asset、manifest 和显式 release 接口按后续阶段实现，不因这项软配额调整而视为已交付。
+
 指标由节点的单调时钟测量，保留现有 E2E、TTFT、TPOT、调度 lag、预热和发送窗口口径。SSH 与结果下载延迟仅是控制面耗时。记录实际执行构建、地区、出口与时间同步状态；报告能识别节点，但不把不同节点结果未经说明合并为一组吞吐。
 
 节点复用现有 generator 生成报告模型与 JSON；HTML、PNG、PDF 继续由桌面现有渲染与导出链路消费同步后的模型。runner 不依赖 Wails、WebView 或浏览器来完成测试和报告归档。

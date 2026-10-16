@@ -88,7 +88,7 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		return err
 	}
 	guard := &diskGuard{state: state, config: config}
-	if err := guard.Check(ctx); err != nil {
+	if err := guard.Check(ctx); err != nil && !errors.Is(err, jobhost.ErrCapacity) {
 		return err
 	}
 	startup, cancelStartup := context.WithTimeout(ctx, 30*time.Second)
@@ -231,10 +231,7 @@ func monitor(
 		case <-ticker.C:
 		}
 		probeCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
-		err := guard.Check(probeCtx)
-		if err == nil {
-			err = repository.CheckWritable(probeCtx)
-		}
+		err := checkStorage(probeCtx, guard, repository.CheckWritable)
 		cancel()
 		if ctx.Err() != nil {
 			return nil
@@ -250,4 +247,14 @@ func monitor(
 			return err
 		}
 	}
+}
+
+func checkStorage(ctx context.Context, guard *diskGuard, checkWritable func(context.Context) error) error {
+	// Capacity only closes admission. Keep checking actual persistence so a full
+	// soft quota cannot hide a database or filesystem fault behind it.
+	err := guard.Check(ctx)
+	if err != nil && !errors.Is(err, jobhost.ErrCapacity) {
+		return err
+	}
+	return checkWritable(ctx)
 }

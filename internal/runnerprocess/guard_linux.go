@@ -8,11 +8,15 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerconfig"
-	"github.com/894x/llm-test-studio/internal/runnerstate"
 )
 
+type diskUsage interface {
+	UsedBytes(context.Context) (uint64, error)
+	AvailableBytes() (uint64, error)
+}
+
 type diskGuard struct {
-	state    *runnerstate.State
+	state    diskUsage
 	config   runnerconfig.Config
 	mu       sync.Mutex
 	reserved uint64

@@ -3,8 +3,10 @@ package runnerprocess
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
@@ -62,4 +64,93 @@ func TestDiskAdmissionReservesHeadroomAndReleasesExactlyOnce(t *testing.T) {
 	if err := guard.Check(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal("disk scan ignored cancellation")
 	}
+}
+
+type fixedDiskUsage struct {
+	used         uint64
+	available    uint64
+	usedErr      error
+	availableErr error
+}
+
+func (usage fixedDiskUsage) UsedBytes(ctx context.Context) (uint64, error) {
+	return usage.used, errors.Join(ctx.Err(), usage.usedErr)
+}
+
+func (usage fixedDiskUsage) AvailableBytes() (uint64, error) {
+	return usage.available, usage.availableErr
+}
+
+func TestStorageProbeChecksPersistenceEvenWhenAdmissionIsFull(t *testing.T) {
+	storageErr := errors.New("test_storage_failure")
+	for _, test := range []struct {
+		name     string
+		usage    fixedDiskUsage
+		writeErr error
+		wantErr  error
+		wantCall bool
+	}{
+		{name: "within_budget", usage: fixedDiskUsage{available: 100}, wantCall: true},
+		{name: "used_limit", usage: fixedDiskUsage{used: 101, available: 100}, wantCall: true},
+		{name: "free_limit", usage: fixedDiskUsage{available: 9}, wantCall: true},
+		{
+			name: "full_and_unwritable", usage: fixedDiskUsage{used: 101, available: 100},
+			writeErr: storageErr, wantErr: storageErr, wantCall: true,
+		},
+		{name: "used_error", usage: fixedDiskUsage{usedErr: storageErr}, wantErr: storageErr},
+		{name: "available_error", usage: fixedDiskUsage{availableErr: storageErr}, wantErr: storageErr},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			guard := &diskGuard{
+				state:  test.usage,
+				config: runnerconfig.Config{MaxStorageBytes: 100, MinFreeBytes: 10},
+			}
+			called := false
+			err := checkStorage(t.Context(), guard, func(ctx context.Context) error {
+				called = true
+				if ctx != t.Context() {
+					t.Fatal("storage probe replaced the caller context")
+				}
+				return test.writeErr
+			})
+			if !errors.Is(err, test.wantErr) || called != test.wantCall {
+				t.Fatalf("probe error=%v, persistence called=%v", err, called)
+			}
+		})
+	}
+}
+
+func TestDiskAdmissionConcurrentReservationsRespectHeadroom(t *testing.T) {
+	guard := &diskGuard{
+		state:  fixedDiskUsage{available: 100},
+		config: runnerconfig.Config{MaxStorageBytes: 100, ReservationBytes: 60},
+	}
+	var workers sync.WaitGroup
+	reservations := make(chan io.Closer, 16)
+	for range 16 {
+		workers.Go(func() {
+			reservation, err := guard.Reserve(t.Context(), jobcontract.JobSpec{})
+			if err == nil {
+				reservations <- reservation
+			} else if !errors.Is(err, jobhost.ErrCapacity) {
+				t.Errorf("unexpected admission error: %v", err)
+			}
+		})
+	}
+	workers.Wait()
+	close(reservations)
+	if len(reservations) != 1 {
+		t.Fatalf("accepted %d reservations, want one", len(reservations))
+	}
+	for reservation := range reservations {
+		for range 16 {
+			workers.Go(func() { _ = reservation.Close() })
+		}
+	}
+	workers.Wait()
+	reservation, err := guard.Reserve(t.Context(), jobcontract.JobSpec{})
+	if err != nil {
+		t.Fatalf("concurrent close did not release exactly one reservation: %v", err)
+	}
+	_ = reservation.Close()
 }
