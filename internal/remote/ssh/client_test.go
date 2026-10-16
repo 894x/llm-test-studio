@@ -45,6 +45,7 @@ type testPeer struct {
 	userKey        []byte
 	execute        func(string, cryptossh.Channel)
 	sftpSession    func(cryptossh.Channel)
+	keepaliveReply func(*cryptossh.Request)
 	stop           chan struct{}
 	wg             sync.WaitGroup
 }
@@ -124,6 +125,10 @@ func (peer *testPeer) serve(raw net.Conn) {
 	peer.wg.Go(func() {
 		for request := range requests {
 			peer.keepalives.Add(1)
+			if peer.keepaliveReply != nil {
+				peer.keepaliveReply(request)
+				continue
+			}
 			if peer.stallKeepalive.Load() {
 				<-peer.stop
 				return

@@ -79,12 +79,39 @@ func (Authentication) MarshalJSON() ([]byte, error) { return nil, ErrInvalid }
 
 type Client struct {
 	connection *cryptossh.Client
+	inbound    *inboundActivity
 	stop       chan struct{}
 	done       chan struct{}
 	once       sync.Once
 	mu         sync.Mutex
 	closed     bool
 	transports []*http.Transport
+}
+
+type inboundActivity struct {
+	mu       sync.Mutex
+	lastRead time.Time
+}
+
+func (activity *inboundActivity) remainingSilence(timeout time.Duration) time.Duration {
+	activity.mu.Lock()
+	defer activity.mu.Unlock()
+	return timeout - time.Since(activity.lastRead)
+}
+
+type inboundConnection struct {
+	net.Conn
+	activity *inboundActivity
+}
+
+func (connection inboundConnection) Read(destination []byte) (int, error) {
+	count, err := connection.Conn.Read(destination)
+	if count > 0 {
+		connection.activity.mu.Lock()
+		connection.activity.lastRead = time.Now()
+		connection.activity.mu.Unlock()
+	}
+	return count, err
 }
 
 func (*Client) String() string   { return "ssh.Client{redacted}" }
@@ -196,7 +223,9 @@ func Dial(ctx context.Context, endpoint Endpoint, authentication Authentication)
 			return nil
 		},
 	}
-	connection, channels, requests, err := cryptossh.NewClientConn(raw, address, config)
+	activity := &inboundActivity{}
+	observed := inboundConnection{Conn: raw, activity: activity}
+	connection, channels, requests, err := cryptossh.NewClientConn(observed, address, config)
 	if err != nil {
 		_ = raw.Close()
 		if keyError != nil {
@@ -221,6 +250,7 @@ func Dial(ctx context.Context, endpoint Endpoint, authentication Authentication)
 	}
 	client := &Client{
 		connection: cryptossh.NewClient(connection, channels, requests),
+		inbound:    activity,
 		stop:       make(chan struct{}), done: make(chan struct{}), transports: []*http.Transport{},
 	}
 	go client.keepAlive(keepAliveEvery, keepAliveTimeout)
@@ -295,22 +325,32 @@ func (client *Client) keepAlive(interval, timeout time.Duration) {
 			result <- err
 		}()
 		timer := time.NewTimer(timeout)
-		select {
-		case err := <-result:
-			timer.Stop()
-			if err != nil {
+	waitForReply:
+		for {
+			select {
+			case err := <-result:
+				timer.Stop()
+				if err != nil {
+					_ = client.connection.Close()
+					return
+				}
+				break waitForReply
+			case <-client.stop:
+				timer.Stop()
 				_ = client.connection.Close()
+				<-result
+				return
+			case <-timer.C:
+				// A delayed global reply cannot invalidate current inbound traffic.
+				// Keep waiting for this request until a full silent window passes.
+				if remaining := client.inbound.remainingSilence(timeout); remaining > 0 {
+					timer.Reset(remaining)
+					continue
+				}
+				_ = client.connection.Close()
+				<-result
 				return
 			}
-		case <-client.stop:
-			timer.Stop()
-			_ = client.connection.Close()
-			<-result
-			return
-		case <-timer.C:
-			_ = client.connection.Close()
-			<-result
-			return
 		}
 	}
 }
