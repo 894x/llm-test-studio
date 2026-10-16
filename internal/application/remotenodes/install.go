@@ -92,7 +92,7 @@ func (manager *Manager) installLocked(
 	if err != nil {
 		return err
 	}
-	if system.UID != 0 {
+	if system.UID != 0 && !system.HasSudo {
 		return runnerinstall.ErrRootRequired
 	}
 	if node.Installation != nil {

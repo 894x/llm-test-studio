@@ -88,6 +88,7 @@ type Client struct {
 	endpoints  []*runnerHTTP
 	opening    chan struct{}
 	openWG     sync.WaitGroup
+	privilege  privilegeMode
 }
 
 type inboundActivity struct {

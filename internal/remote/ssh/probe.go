@@ -16,6 +16,7 @@ type SystemInfo struct {
 	SystemdPID1    bool   `json:"systemd_pid1"`
 	HasSHA256      bool   `json:"has_sha256"`
 	HasRunuser     bool   `json:"has_runuser"`
+	HasSudo        bool   `json:"has_sudo"`
 }
 
 const systemProbe = `set -eu
@@ -31,6 +32,11 @@ fi
 cat /proc/1/comm
 if command -v sha256sum >/dev/null 2>&1; then printf 'yes\n'; else printf 'no\n'; fi
 if command -v runuser >/dev/null 2>&1; then printf 'yes\n'; else printf 'no\n'; fi
+if [ "$(id -u)" != 0 ] && sudo_uid=$(printf 'id -u\n' | /usr/bin/sudo -n -- /bin/sh -s 2>/dev/null) && [ "$sudo_uid" = 0 ]; then
+  printf 'yes\n'
+else
+  printf 'no\n'
+fi
 `
 
 // Probe executes a fixed read-only script; no endpoint or user-supplied text is
@@ -42,7 +48,7 @@ func (client *Client) Probe(ctx context.Context) (SystemInfo, error) {
 	}
 	defer clear(document)
 	lines := strings.Split(strings.TrimSuffix(string(document), "\n"), "\n")
-	if len(lines) != 8 || lines[0] != "llm-test-system-probe" {
+	if len(lines) != 9 || lines[0] != "llm-test-system-probe" {
 		return SystemInfo{}, ErrUnsupported
 	}
 	uid, err := strconv.ParseUint(lines[1], 10, 32)
@@ -68,15 +74,40 @@ func (client *Client) Probe(ctx context.Context) (SystemInfo, error) {
 	if lines[2] != "Linux" || !supportedArch {
 		return SystemInfo{}, ErrUnsupported
 	}
-	return SystemInfo{
+	if lines[8] != "yes" && lines[8] != "no" {
+		return SystemInfo{}, ErrUnsupported
+	}
+	system := SystemInfo{
 		UID: uint32(uid), OS: "linux", Arch: architecture, SystemdVersion: uint32(version),
 		SystemdPID1: lines[5] == "systemd", HasSHA256: lines[6] == "yes", HasRunuser: lines[7] == "yes",
-	}, nil
+		HasSudo: lines[8] == "yes",
+	}
+	client.mu.Lock()
+	client.privilege = privilegeDenied
+	if system.UID == 0 {
+		client.privilege = privilegeRoot
+	} else if system.HasSudo {
+		client.privilege = privilegeSudo
+	}
+	client.mu.Unlock()
+	return system, nil
 }
 
 // runScript is intentionally private. Installer commands live in this package
 // as fixed templates with validated parameters, never as an arbitrary UI command.
 func (client *Client) runScript(ctx context.Context, script string) ([]byte, error) {
+	return client.runScriptCommand(ctx, script, "/bin/sh -s")
+}
+
+func (client *Client) runAdministrativeScript(ctx context.Context, script string) ([]byte, error) {
+	command, err := client.administrativeCommand(ctx, "/bin/sh -s")
+	if err != nil {
+		return nil, err
+	}
+	return client.runScriptCommand(ctx, script, command)
+}
+
+func (client *Client) runScriptCommand(ctx context.Context, script, command string) ([]byte, error) {
 	if client == nil || ctx == nil {
 		return nil, ErrInvalid
 	}
@@ -92,7 +123,7 @@ func (client *Client) runScript(ctx context.Context, script string) ([]byte, err
 	output := &boundedOutput{limit: 64 << 10}
 	session.Stdout, session.Stderr = output, io.Discard
 	session.Stdin = strings.NewReader(script)
-	if err := session.Run("/bin/sh -s"); err != nil {
+	if err := session.Run(command); err != nil {
 		clear(output.Bytes())
 		return nil, connectionError(ctx, err)
 	}

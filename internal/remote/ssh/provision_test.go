@@ -122,7 +122,7 @@ func TestProvisionStopsBeforeExecutionWhenSFTPLacksDurableUpload(t *testing.T) {
 		switch command {
 		case "/bin/sh -s":
 			if string(input) == systemProbe {
-				_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\n")
+				_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\nno\n")
 				return
 			}
 			expected := "set -eu\numask 077\nmkdir -m 0700 -- " + directory + "\n"

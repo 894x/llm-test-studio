@@ -169,7 +169,7 @@ func TestLiveProvisionSharedRunner(t *testing.T) {
 	if err != nil || !validPause {
 		t.Fatal("cannot verify restart while accepted work or an unconfirmed pause remains")
 	}
-	if _, err := client.runScript(t.Context(),
+	if _, err := client.runAdministrativeScript(t.Context(),
 		"set -eu\nsystemctl kill --kill-who=main --signal=SIGKILL llm-test-runner.service\n"); err != nil {
 		t.Fatal("controlled runner process kill failed")
 	}
@@ -230,7 +230,7 @@ func TestLiveRunnerInstallationDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	document, err := client.runScript(t.Context(), `set -eu
+	document, err := client.runAdministrativeScript(t.Context(), `set -eu
 getent passwd llm-test-runner || true
 getent group llm-test-runner || true
 id llm-test-runner || true
@@ -279,7 +279,7 @@ func liveArtifact(t *testing.T, path string) Artifact {
 
 func liveServiceFacts(t *testing.T, client *Client) map[string]string {
 	t.Helper()
-	document, err := client.runScript(t.Context(), "set -eu\nsystemctl show llm-test-runner.service "+
+	document, err := client.runAdministrativeScript(t.Context(), "set -eu\nsystemctl show llm-test-runner.service "+
 		"--property=MainPID,NRestarts,ActiveState,SubState,User,Group,WatchdogTimestampMonotonic,WatchdogUSec,"+
 		"Restart,Result,ExecMainStatus,ExecMainCode,StartLimitIntervalUSec,StartLimitBurst,NeedDaemonReload\n")
 	if err != nil {

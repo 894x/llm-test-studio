@@ -295,6 +295,15 @@ func (manager *Manager) check(ctx context.Context, id string, expected uint64) e
 			&system,
 		)
 	}
+	if system.UID != 0 && !system.HasSudo {
+		return manager.failed(
+			ctx,
+			id,
+			expected,
+			runnerinstall.ErrRootRequired,
+			&system,
+		)
+	}
 	node, err = manager.resolveInstallation(ctx, node, session)
 	if err != nil {
 		return manager.failed(

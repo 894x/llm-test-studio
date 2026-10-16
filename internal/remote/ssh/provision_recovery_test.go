@@ -170,7 +170,7 @@ func bootstrapRecoveryPeer(t *testing.T, directory string, loseCreateReply bool)
 			return
 		}
 		if string(input) == systemProbe {
-			_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\n")
+			_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\nno\n")
 			status = 0
 			return
 		}

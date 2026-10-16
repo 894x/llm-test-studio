@@ -211,7 +211,9 @@ func newUpgradeFixture(t *testing.T) *upgradeFixture {
 		_ = server.Serve()
 	}
 	fixture.peer.execute = func(command string, channel cryptossh.Channel) {
-		fixture.execs.Add(1)
+		if command != "/bin/sh -s" {
+			fixture.execs.Add(1)
+		}
 		status := uint32(0)
 		defer func() {
 			_, _ = channel.SendRequest("exit-status", false, cryptossh.Marshal(struct{ Status uint32 }{Status: status}))
@@ -223,7 +225,7 @@ func newUpgradeFixture(t *testing.T) *upgradeFixture {
 				status = 1
 				return
 			}
-			_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\n")
+			_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249\nsystemd\nyes\nyes\nno\n")
 		case strings.HasPrefix(command, "systemctl show "):
 			if fixture.active.Load() {
 				_, _ = io.WriteString(channel, "LoadState=loaded\nActiveState=active\nSubState=running\n")

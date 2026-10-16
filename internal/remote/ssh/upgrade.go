@@ -304,7 +304,7 @@ func (client *Client) prepareUpgrade(ctx context.Context, call upgradeCall) erro
 	if err != nil {
 		return err
 	}
-	if system.UID != 0 {
+	if system.UID != 0 && !system.HasSudo {
 		return runnerinstall.ErrRootRequired
 	}
 	supported := system.SystemdPID1 && system.SystemdVersion >= 249 && system.HasSHA256 && system.HasRunuser
@@ -330,7 +330,7 @@ func (client *Client) prepareUpgrade(ctx context.Context, call upgradeCall) erro
 		return err
 	}
 	if !exists {
-		output, err := client.runScript(ctx, "set -eu\numask 077\nmkdir -m 0700 -- "+directory+"\n")
+		output, err := client.runAdministrativeScript(ctx, "set -eu\numask 077\nmkdir -m 0700 -- "+directory+"\n")
 		clear(output)
 		if err != nil {
 			return err
@@ -645,6 +645,10 @@ func upgradeLaunchCommand(id, command string) string {
 // Only fixed package-owned commands reach this helper. It does not expose a
 // shell to the application. Closing this observer channel never stops a unit.
 func (client *Client) runUpgradeCommand(ctx context.Context, command string) ([]byte, error) {
+	command, err := client.administrativeCommand(ctx, command)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, operationTimeout)
 	defer cancel()
 	stop := context.AfterFunc(ctx, func() { _ = client.connection.Close() })

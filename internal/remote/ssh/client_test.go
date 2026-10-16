@@ -197,7 +197,7 @@ func (peer *testPeer) channel(open cryptossh.NewChannel) {
 			<-peer.stop
 			return
 		}
-		_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249 (249.11)\nsystemd\nyes\nyes\n")
+		_, _ = io.WriteString(channel, "llm-test-system-probe\n0\nLinux\nx86_64\nsystemd 249 (249.11)\nsystemd\nyes\nyes\nno\n")
 		_, _ = channel.SendRequest("exit-status", false, cryptossh.Marshal(struct{ Status uint32 }{Status: 0}))
 		return
 	}

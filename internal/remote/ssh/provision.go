@@ -79,7 +79,7 @@ func (client *Client) Provision(
 	if err != nil {
 		return result, err
 	}
-	if system.UID != 0 {
+	if system.UID != 0 && !system.HasSudo {
 		return result, runnerinstall.ErrRootRequired
 	}
 	supported := system.SystemdPID1 && system.SystemdVersion >= 249 && system.HasSHA256 && system.HasRunuser
@@ -119,7 +119,7 @@ func (client *Client) Provision(
 			}
 		}
 	}()
-	document, err := client.runScript(ctx, "set -eu\numask 077\nmkdir -m 0700 -- "+directory+"\n")
+	document, err := client.runAdministrativeScript(ctx, "set -eu\numask 077\nmkdir -m 0700 -- "+directory+"\n")
 	clear(document)
 	if err != nil {
 		return result, err
@@ -146,7 +146,11 @@ func (client *Client) Provision(
 	}
 	defer session.Close()
 	session.Stdin, session.Stdout, session.Stderr = bytes.NewReader(input), output, diagnostic
-	commandErr := session.Run(directory + "/llm-test-runner provision")
+	command, err := client.administrativeCommand(ctx, directory+"/llm-test-runner provision")
+	if err != nil {
+		return result, err
+	}
+	commandErr := session.Run(command)
 	defer clear(diagnostic.Bytes())
 	if ctx.Err() != nil {
 		return result, ctx.Err()

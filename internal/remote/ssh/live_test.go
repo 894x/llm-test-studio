@@ -46,7 +46,7 @@ func TestLiveSSHProbeAndVerifiedSFTPTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	document, err := client.runScript(
+	document, err := client.runAdministrativeScript(
 		t.Context(),
 		"set -eu\numask 077\nmktemp -d /tmp/llm-test-ssh-validation.XXXXXXXXXX\n",
 	)
@@ -65,7 +65,7 @@ func TestLiveSSHProbeAndVerifiedSFTPTransfer(t *testing.T) {
 	}
 	defer func() {
 		// Only these exact, validated non-secret test paths are removed.
-		_, err := client.runScript(t.Context(), "set -eu\nrm -f -- '"+directory+"/program'\nrmdir -- '"+directory+"'\n")
+		_, err := client.runAdministrativeScript(t.Context(), "set -eu\nrm -f -- '"+directory+"/program'\nrmdir -- '"+directory+"'\n")
 		if err != nil {
 			t.Errorf("validation artifact cleanup failed at %s", directory)
 		}

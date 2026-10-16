@@ -328,6 +328,19 @@ func TestManagerReusesDifferentBuildAndNeverRequestsAnArtifact(t *testing.T) {
 }
 
 func TestManagerInstallsOnceWithDurableStableOperationAndRecordsActualRunner(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		uid  uint32
+	}{
+		{name: "root", uid: 0},
+		{name: "sudo", uid: 1000},
+	} {
+		t.Run(test.name, func(t *testing.T) { testManagerAdministrativeInstall(t, test.uid) })
+	}
+}
+
+func testManagerAdministrativeInstall(t *testing.T, uid uint32) {
+	t.Helper()
 	fixture := newNodeFixture(t)
 	node := fixture.save(t, passwordCommand(t))
 	identity := fixtureIdentity(t, strings.Repeat("fixture-node-token", 3))
@@ -339,6 +352,10 @@ func TestManagerInstallsOnceWithDurableStableOperationAndRecordsActualRunner(t *
 		}
 		return fixturePairing(t, node, identity), nil
 	}}
+	remote.probe = func(context.Context) (remotessh.SystemInfo, error) {
+		return remotessh.SystemInfo{UID: uid, HasSudo: uid != 0, OS: "linux", Arch: "amd64",
+			SystemdVersion: 249, SystemdPID1: true, HasSHA256: true, HasRunuser: true}, nil
+	}
 	manager := managerFixture(t, fixture, remote)
 	manager.release = "v-fixture"
 	manager.artifacts = managerArtifactSource(t)
@@ -381,8 +398,35 @@ func TestManagerInstallsOnceWithDurableStableOperationAndRecordsActualRunner(t *
 	if provisions != 1 || !completed {
 		t.Fatal("installation did not reach actual healthy observation")
 	}
+	if node.Observation.System.UID != uid || node.Observation.System.HasSudo != (uid != 0) {
+		t.Fatal("installation observation replaced the login UID or lost verified sudo access")
+	}
 	if node.Installation.Request.ArtifactSHA256 == node.Observation.Runner.EngineBuildID {
 		t.Fatal("test must preserve a different actual compatible runner build")
+	}
+}
+
+func TestManagerRejectsNonRootWithoutSudoBeforePairing(t *testing.T) {
+	fixture := newNodeFixture(t)
+	node := fixture.save(t, passwordCommand(t))
+	remote := &remoteFixture{
+		probe: func(context.Context) (remotessh.SystemInfo, error) {
+			return remotessh.SystemInfo{UID: 1000, OS: "linux", Arch: "amd64", SystemdVersion: 249,
+				SystemdPID1: true, HasSHA256: true, HasRunuser: true}, nil
+		},
+		shared: func(context.Context) (Pairing, error) {
+			t.Error("unsupported privilege reached shared pairing")
+			return Pairing{}, os.ErrPermission
+		},
+	}
+	manager := managerFixture(t, fixture, remote)
+	if err := manager.Check(t.Context(), node.ID, node.Revision); !errors.Is(err, runnerinstall.ErrRootRequired) {
+		t.Fatal("non-root node without sudo was not rejected")
+	}
+	config, err := fixture.store.Read(t.Context())
+	if err != nil || config.Nodes[0].Observation.Status != "unsupported" ||
+		config.Nodes[0].Observation.System.UID != 1000 || config.Nodes[0].Observation.System.HasSudo {
+		t.Fatal("rejected privilege did not retain its actual observation")
 	}
 }
 

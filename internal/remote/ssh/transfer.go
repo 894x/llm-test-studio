@@ -208,7 +208,11 @@ func verifyParents(remote *sftp.Client, name string) error {
 	}
 }
 
-func (client *Client) withSFTP(ctx context.Context, timeout time.Duration, operation func(*sftp.Client) error) error {
+func (client *Client) withSFTP(
+	ctx context.Context,
+	timeout time.Duration,
+	operation func(*sftp.Client) error,
+) (runErr error) {
 	if client == nil || ctx == nil || timeout <= 0 {
 		return ErrInvalid
 	}
@@ -218,15 +222,36 @@ func (client *Client) withSFTP(ctx context.Context, timeout time.Duration, opera
 	// channel creation and file I/O; accepted runner tasks remain independent.
 	stop := context.AfterFunc(ctx, func() { _ = client.connection.Close() })
 	defer stop()
-	remote, err := sftp.NewClient(
-		client.connection,
-		sftp.UseConcurrentWrites(true),
-		sftp.MaxConcurrentRequestsPerFile(16),
-	)
+	mode, err := client.administrativeMode(ctx)
 	if err != nil {
-		return connectionError(ctx, err)
+		return err
 	}
-	defer remote.Close()
+	var remote *sftp.Client
+	var closeRemote func()
+	if mode == privilegeSudo {
+		remote, closeRemote, err = client.sudoSFTP(ctx)
+	} else {
+		remote, err = sftp.NewClient(
+			client.connection,
+			sftp.UseConcurrentWrites(true),
+			sftp.MaxConcurrentRequestsPerFile(16),
+		)
+		if err != nil {
+			return connectionError(ctx, err)
+		}
+		if err == nil {
+			closeRemote = func() { _ = remote.Close() }
+		}
+	}
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeRemote()
+		if ctx.Err() != nil {
+			runErr = ctx.Err()
+		}
+	}()
 	err = operation(remote)
 	if ctx.Err() != nil {
 		return ctx.Err()
