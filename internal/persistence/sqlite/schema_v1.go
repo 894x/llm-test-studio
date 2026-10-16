@@ -20,6 +20,16 @@ var currentSchemaObjects = []schemaObject{
 	{kind: "index", name: "idx_job_submissions_pending", table: "job_submissions",
 		ddl: `CREATE INDEX idx_job_submissions_pending ON job_submissions(job_id)
 		WHERE state IN ('prepared', 'pending')`},
+	{kind: "table", name: "job_control_outbox", table: "job_control_outbox", ddl: `CREATE TABLE job_control_outbox (
+		command_id TEXT PRIMARY KEY NOT NULL,
+		job_id TEXT NOT NULL,
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		state TEXT NOT NULL CHECK(state IN ('pending', 'confirmed', 'rejected')),
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES job_submissions(job_id)
+	)`},
+	{kind: "index", name: "idx_job_control_outbox_pending", table: "job_control_outbox",
+		ddl: `CREATE INDEX idx_job_control_outbox_pending ON job_control_outbox(command_id) WHERE state = 'pending'`},
 	{kind: "table", name: "remote_performance_results", table: "remote_performance_results", ddl: `CREATE TABLE remote_performance_results (
 		job_id TEXT PRIMARY KEY,
 		report_id TEXT NOT NULL UNIQUE,

@@ -68,34 +68,68 @@ func (backends productionJobBackends) Open(
 	return nil, jobs.ErrUnavailable
 }
 
+type productionJobRepository interface {
+	jobs.SubmissionRepository
+	jobs.ControlRepository
+}
+
+type productionJobServices struct {
+	coordinator   *jobs.Coordinator
+	controller    *jobs.Controller
+	confirmations *jobs.ConfirmationWatcher
+	deliveries    *jobs.ControlDeliveryWatcher
+	close         func() error
+}
+
 func newProductionJobs(
 	ctx context.Context,
-	repository jobs.SubmissionRepository,
+	repository productionJobRepository,
 	backends productionJobBackends,
-) (*jobs.Coordinator, *jobs.ConfirmationWatcher, func() error, error) {
+) (productionJobServices, error) {
 	coordinator, err := jobs.NewCoordinator(jobs.CoordinatorDependencies{
 		Repository: repository, Open: backends.Open, Now: time.Now,
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return productionJobServices{}, err
+	}
+	controller, err := jobs.NewController(jobs.ControllerDependencies{
+		Repository: repository, Submissions: repository, Open: backends.Open, Now: time.Now,
+	})
+	if err != nil {
+		return productionJobServices{}, err
 	}
 	watcher, err := jobs.NewConfirmationWatcher(ctx, jobs.ConfirmationDependencies{
 		Repository: repository, Reconcile: coordinator.Reconcile,
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return productionJobServices{}, err
+	}
+	deliveries, err := jobs.NewControlDeliveryWatcher(ctx, jobs.ControlDeliveryDependencies{
+		Repository: repository, Deliver: controller.Deliver,
+	})
+	if err != nil {
+		_ = watcher.Close()
+		return productionJobServices{}, err
 	}
 	finished := make(chan error, 1)
 	go func() { finished <- watcher.Run() }()
+	controlsFinished := make(chan error, 1)
+	go func() { controlsFinished <- deliveries.Run() }()
 	var once sync.Once
 	var closeError error
-	return coordinator, watcher, func() error {
+	closeServices := func() error {
 		once.Do(func() {
-			closeError = watcher.Close()
+			closeError = deliveries.Close()
+			if err := <-controlsFinished; !errors.Is(err, context.Canceled) {
+				closeError = errors.Join(closeError, err)
+			}
+			closeError = errors.Join(closeError, watcher.Close())
 			if err := <-finished; !errors.Is(err, context.Canceled) {
 				closeError = errors.Join(closeError, err)
 			}
 		})
 		return closeError
-	}, nil
+	}
+	return productionJobServices{coordinator: coordinator, controller: controller,
+		confirmations: watcher, deliveries: deliveries, close: closeServices}, nil
 }

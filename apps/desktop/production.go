@@ -301,7 +301,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			_ = runService.Close()
 			return desktopDependencies{}, fmt.Errorf("create remote synchronization: %w", err)
 		}
-		jobCoordinator, confirmations, closeJobs, err := newProductionJobs(ctx, repository, productionJobBackends{
+		jobServices, err := newProductionJobs(ctx, repository, productionJobBackends{
 			configuration: remoteNodes.configuration, connect: options.runnerConnector, local: localExecutor.Connect,
 		})
 		if err != nil {
@@ -329,11 +329,11 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
 		})
 		launcher, err := jobs.NewLauncher(jobs.LauncherDependencies{
-			Coordinator: jobCoordinator, Runs: runService.Preparer, Comparisons: comparisonService.Preparer,
+			Coordinator: jobServices.coordinator, Runs: runService.Preparer, Comparisons: comparisonService.Preparer,
 			Performance: quickTests, Now: time.Now,
 		})
 		if err != nil {
-			_ = closeJobs()
+			_ = jobServices.close()
 			_ = closeRemoteSync()
 			_ = closeRemoteNodes()
 			_ = runService.Close()
@@ -349,13 +349,15 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			comparisons:      comparisonService,
 			remoteNodes:      remoteNodes.manager,
 			remoteSync:       remoteSync,
-			jobs:             jobCoordinator,
+			jobs:             jobServices.coordinator,
 			launcher:         launcher,
-			confirmations:    confirmations,
+			controls:         jobServices.controller,
+			confirmations:    jobServices.confirmations,
+			controlDelivery:  jobServices.deliveries,
 			quickTests:       quickTests,
 			close: func() error {
 				return errors.Join(
-					closeJobs(),
+					jobServices.close(),
 					closeRemoteSync(),
 					closeRemoteNodes(),
 					runService.Close(),

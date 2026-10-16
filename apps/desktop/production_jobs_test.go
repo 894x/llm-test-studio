@@ -125,17 +125,20 @@ func TestProductionJobsOwnsConfirmationWorkerButNotSharedDatabase(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer repository.Close()
-	coordinator, watcher, closeJobs, err := newProductionJobs(t.Context(), repository, productionJobBackends{})
+	services, err := newProductionJobs(t.Context(), repository, productionJobBackends{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer closeJobs()
-	if coordinator == nil || watcher == nil {
+	defer services.close()
+	watcher := services.confirmations
+	validCommands := services.coordinator != nil && services.controller != nil
+	validWorkers := watcher != nil && services.deliveries != nil
+	if !validCommands || !validWorkers {
 		t.Fatal("production submission services were not wired")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	for watcher.Snapshot().CheckedAt.IsZero() {
+	for watcher.Snapshot().CheckedAt.IsZero() || services.deliveries.Snapshot().CheckedAt.IsZero() {
 		select {
 		case <-ctx.Done():
 			t.Fatal("production startup did not query pending submissions")
@@ -146,12 +149,15 @@ func TestProductionJobsOwnsConfirmationWorkerButNotSharedDatabase(t *testing.T) 
 		t.Fatal("confirmation worker stopped before shutdown")
 	}
 	for range 2 {
-		if err := closeJobs(); err != nil {
+		if err := services.close(); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if watcher.Snapshot().Running {
 		t.Fatal("production closer did not join the confirmation worker")
+	}
+	if services.deliveries.Snapshot().Running {
+		t.Fatal("production closer did not join the control delivery worker")
 	}
 	if _, err := repository.ListPendingSubmissions(t.Context(), "", 1); err != nil {
 		t.Fatal("submission closer closed the shared database")
@@ -169,6 +175,9 @@ func TestProductionRunnerErrorsRetainCurrentUpgradeAndNotFoundMeaning(t *testing
 	}
 	if !errors.Is(runnerBackendError(&runnerclient.RemoteError{Code: "not_found"}), jobs.ErrNotFound) {
 		t.Fatal("authoritative 404 lost its observation meaning")
+	}
+	if !errors.Is(runnerBackendError(&runnerclient.RemoteError{Code: "job_conflict"}), jobs.ErrConflict) {
+		t.Fatal("authoritative control refusal lost its conflict meaning")
 	}
 	source := &runnerclient.RemoteError{Code: "unauthorized"}
 	if runnerBackendError(source) != source || runnerBackendError(nil) != nil {

@@ -171,7 +171,9 @@ type desktopDependencies struct {
 	remoteSync       *remotesync.Watcher
 	jobs             *jobs.Coordinator
 	launcher         *jobs.Launcher
+	controls         *jobs.Controller
 	confirmations    *jobs.ConfirmationWatcher
+	controlDelivery  *jobs.ControlDeliveryWatcher
 	close            func() error
 }
 

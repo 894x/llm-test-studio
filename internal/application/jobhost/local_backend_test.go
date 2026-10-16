@@ -22,6 +22,72 @@ import (
 
 const localBackendNodeID = "84000000-0000-4000-8000-000000000001"
 
+func TestLocalBackendControlsAndReplaysOneCommandWithoutOwningExecution(t *testing.T) {
+	for _, kind := range []jobcontract.CommandKind{jobcontract.CommandStopSending, jobcontract.CommandCancel} {
+		t.Run(string(kind), func(t *testing.T) {
+			repository := openHostRepository(t)
+			core := newControlledCore()
+			dependencies := hostDependencies(repository, core, &countedGuard{})
+			dependencies.Target = jobcontract.ExecutionTarget{Kind: jobcontract.TargetLocal}
+			host := newTestHost(t, dependencies)
+			backend, err := jobs.NewLocalBackend(localBackendDependencies(host, repository))
+			if err != nil {
+				t.Fatal(err)
+			}
+			submission := testSubmission(t)
+			submission.Job.Target = dependencies.Target
+			id := submission.Job.JobID
+			if _, err := backend.Submit(t.Context(), &submission); err != nil {
+				t.Fatal(err)
+			}
+			_ = enteredExecution(t, core)
+			snapshot, err := backend.GetJob(t.Context(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			meta, err := domain.NewEntityMeta(time.Now().UTC())
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := jobcontract.Command{Contract: jobcontract.CurrentContract, CommandID: meta.ID, JobID: id,
+				Kind: kind, ExpectedRevision: snapshot.Receipt.Revision}
+			confirmation, err := backend.Command(t.Context(), command)
+			if err != nil || confirmation.Command != command {
+				t.Fatalf("local management handle did not apply the command: %v", err)
+			}
+			_ = backend.Close()
+			want := domain.RunCancelled
+			if kind == jobcontract.CommandStopSending {
+				select {
+				case <-core.stopped:
+				case <-time.After(2 * time.Second):
+					t.Fatal("local backend did not deliver the drain signal")
+				}
+				close(core.release)
+				want = domain.RunCompleted
+			}
+			waitPerformanceJob(
+				t,
+				repository,
+				id,
+				want,
+			)
+			fresh, err := jobs.NewLocalBackend(localBackendDependencies(host, repository))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer fresh.Close()
+			replayed, err := fresh.Command(t.Context(), command)
+			if err != nil || replayed.Command != command || !replayed.AcceptedAt.Equal(confirmation.AcceptedAt) {
+				t.Fatalf("new handle did not recover the stable original command: %v", err)
+			}
+			if _, err := backend.Command(t.Context(), command); !errors.Is(err, jobs.ErrUnavailable) {
+				t.Fatal("closed local handle still accepted commands")
+			}
+		})
+	}
+}
+
 func localBackendDependencies(host *jobhost.Host, repository jobs.LocalReadRepository) jobs.LocalBackendDependencies {
 	return jobs.LocalBackendDependencies{Host: host, Repository: repository, NodeID: localBackendNodeID, Version: "local-test"}
 }

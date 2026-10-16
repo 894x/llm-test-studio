@@ -127,6 +127,20 @@ func (backend *LocalBackend) Close() error {
 	return nil
 }
 
+func (backend *LocalBackend) Command(
+	ctx context.Context,
+	command jobcontract.Command,
+) (jobcontract.CommandConfirmation, error) {
+	if err := command.Validate(); err != nil {
+		return jobcontract.CommandConfirmation{}, localBackendError(err)
+	}
+	if _, err := backend.GetJob(ctx, command.JobID); err != nil {
+		return jobcontract.CommandConfirmation{}, err
+	}
+	confirmation, _, err := backend.host.ApplyCommand(ctx, command)
+	return confirmation, localBackendError(err)
+}
+
 func (backend *LocalBackend) available(ctx context.Context) error {
 	if ctx == nil {
 		return ErrInvalid
@@ -146,6 +160,8 @@ func localBackendError(err error) error {
 		return ErrNotFound
 	case errors.Is(err, jobhost.ErrIdentity):
 		return ErrTargetChanged
+	case errors.Is(err, jobhost.ErrConflict):
+		return ErrConflict
 	case errors.Is(err, jobhost.ErrInvalid), errors.Is(err, jobcontract.ErrInvalid):
 		return ErrInvalid
 	case errors.Is(err, jobcontract.ErrUnsupported):

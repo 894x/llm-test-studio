@@ -34,11 +34,14 @@ func (location Location) Validate() error {
 
 // Backend owns one management connection, never the lifetime of accepted work.
 // GetJob must return ErrNotFound only for an authoritative current-node 404.
+// Command returns ErrConflict only when the node explicitly refuses that
+// instruction; transport uncertainty must retain its pending identity.
 // Connectors return ErrTargetChanged for a replaced saved binding.
 type Backend interface {
 	Probe(context.Context) (jobcontract.RunnerInfo, error)
 	Submit(context.Context, *jobcontract.Submission) (jobcontract.Receipt, error)
 	GetJob(context.Context, string) (jobcontract.Snapshot, error)
+	Command(context.Context, jobcontract.Command) (jobcontract.CommandConfirmation, error)
 	Close() error
 }
 

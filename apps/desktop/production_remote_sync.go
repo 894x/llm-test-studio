@@ -156,11 +156,21 @@ func runnerBackendError(err error) error {
 		switch remote.Code {
 		case "not_found":
 			return jobs.ErrNotFound
+		case "job_conflict":
+			return jobs.ErrConflict
 		case "unsupported_contract", "capability_missing":
 			return jobs.ErrUpgradeRequired
 		}
 	}
 	return err
+}
+
+func (connection *productionRunnerConnection) Command(
+	ctx context.Context,
+	command jobcontract.Command,
+) (jobcontract.CommandConfirmation, error) {
+	confirmation, err := connection.Client.Command(ctx, command)
+	return confirmation, runnerBackendError(err)
 }
 
 func openProductionRunner(
