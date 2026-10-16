@@ -21,7 +21,12 @@ func (client *Client) ListJobs(ctx context.Context, after uint64, limit uint32) 
 		return jobhost.JobPage{}, ErrInvalid
 	}
 	route := "/jobs?after=" + strconv.FormatUint(after, 10) + "&limit=" + strconv.FormatUint(uint64(limit), 10)
-	raw, err := client.json(ctx, remotessh.Request{Method: http.MethodGet, Route: route}, jobcontract.MaxEventPageBytes)
+	raw, err := client.json(
+		ctx,
+		remotessh.Request{Method: http.MethodGet, Route: route},
+		jobcontract.MaxEventPageBytes,
+		managementJSONTimeout,
+	)
 	if err != nil {
 		return jobhost.JobPage{}, err
 	}
@@ -82,7 +87,12 @@ func (client *Client) ReadEvents(ctx context.Context, query EventQuery) (jobhost
 	}
 	route := "/jobs/" + id + "/events?after_sequence=" + strconv.FormatUint(after, 10) +
 		"&limit=" + strconv.FormatUint(uint64(limit), 10) + "&wait_ms=" + strconv.FormatInt(wait.Milliseconds(), 10)
-	raw, err := client.json(ctx, remotessh.Request{Method: http.MethodGet, Route: route}, jobcontract.MaxEventPageBytes)
+	raw, err := client.json(
+		ctx,
+		remotessh.Request{Method: http.MethodGet, Route: route},
+		jobcontract.MaxEventPageBytes,
+		eventJSONTimeout,
+	)
 	if err != nil {
 		return jobhost.EventPage{}, err
 	}

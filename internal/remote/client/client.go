@@ -25,6 +25,11 @@ var (
 	ErrConnection = errors.New("remote_connection_failed")
 )
 
+const (
+	managementJSONTimeout = 30 * time.Second
+	eventJSONTimeout      = 2 * time.Minute
+)
+
 type Identity struct {
 	NodeID         string
 	InstallationID string
@@ -55,9 +60,12 @@ func New(identity Identity, transport Transport) (*Client, error) {
 }
 
 func (client *Client) Probe(ctx context.Context) (jobcontract.RunnerInfo, error) {
-	raw, err := client.json(ctx, remotessh.Request{
-		Method: http.MethodGet, Route: "/runner",
-	}, jobcontract.MaxRunnerInfoBytes)
+	raw, err := client.json(
+		ctx,
+		remotessh.Request{Method: http.MethodGet, Route: "/runner"},
+		jobcontract.MaxRunnerInfoBytes,
+		managementJSONTimeout,
+	)
 	if err != nil {
 		return jobcontract.RunnerInfo{}, err
 	}
@@ -95,9 +103,12 @@ func (client *Client) Submit(ctx context.Context, submission *jobcontract.Submis
 	}
 	body := &submissionBody{document: document}
 	defer body.Close()
-	raw, err := client.json(ctx, remotessh.Request{
-		Method: http.MethodPost, Route: "/jobs", Body: body,
-	}, jobcontract.MaxStateBytes)
+	raw, err := client.json(
+		ctx,
+		remotessh.Request{Method: http.MethodPost, Route: "/jobs", Body: body},
+		jobcontract.MaxStateBytes,
+		managementJSONTimeout,
+	)
 	if err != nil {
 		return jobcontract.Receipt{}, err
 	}
@@ -124,9 +135,12 @@ func (client *Client) GetJob(ctx context.Context, id string) (jobcontract.Snapsh
 	if !domain.IsUUID(id) {
 		return jobcontract.Snapshot{}, ErrInvalid
 	}
-	raw, err := client.json(ctx, remotessh.Request{
-		Method: http.MethodGet, Route: "/jobs/" + id,
-	}, jobcontract.MaxStateBytes)
+	raw, err := client.json(
+		ctx,
+		remotessh.Request{Method: http.MethodGet, Route: "/jobs/" + id},
+		jobcontract.MaxStateBytes,
+		managementJSONTimeout,
+	)
 	if err != nil {
 		return jobcontract.Snapshot{}, err
 	}
@@ -155,9 +169,12 @@ func (client *Client) Command(
 	if err != nil {
 		return jobcontract.CommandConfirmation{}, ErrInvalid
 	}
-	raw, err := client.json(ctx, remotessh.Request{
-		Method: http.MethodPost, Route: "/jobs/" + command.JobID + suffix, Body: bytes.NewReader(document),
-	}, jobcontract.MaxStateBytes)
+	raw, err := client.json(
+		ctx,
+		remotessh.Request{Method: http.MethodPost, Route: "/jobs/" + command.JobID + suffix, Body: bytes.NewReader(document)},
+		jobcontract.MaxStateBytes,
+		managementJSONTimeout,
+	)
 	if err != nil {
 		return jobcontract.CommandConfirmation{}, err
 	}
@@ -177,9 +194,14 @@ func (client *Client) owns(snapshot jobcontract.Snapshot) bool {
 		origin.InstallationID == client.identity.InstallationID
 }
 
-func (client *Client) json(ctx context.Context, input remotessh.Request, limit int64) ([]byte, error) {
+func (client *Client) json(
+	ctx context.Context,
+	input remotessh.Request,
+	limit int64,
+	timeout time.Duration,
+) ([]byte, error) {
 	input.JSONGzip = true
-	response, close, err := client.open(ctx, input, 30*time.Second)
+	response, close, err := client.open(ctx, input, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -228,8 +250,26 @@ func (client *Client) open(
 		cancel()
 		return nil, nil, ErrIntegrity
 	}
+	response.Body = &responseBody{source: response.Body, ctx: requestCtx}
 	return response, func() { _ = response.Body.Close(); cancel() }, nil
 }
+
+type responseBody struct {
+	source io.ReadCloser
+	ctx    context.Context
+}
+
+func (body *responseBody) Read(destination []byte) (int, error) {
+	count, err := body.source.Read(destination)
+	if err != nil {
+		if contextErr := body.ctx.Err(); contextErr != nil {
+			return count, contextErr
+		}
+	}
+	return count, err
+}
+
+func (body *responseBody) Close() error { return body.source.Close() }
 
 func transportError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
