@@ -13,6 +13,10 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
+// A valid spec larger than this soft budget occupies one page by itself.
+// The submission contract remains the hard per-job byte limit.
+const maxJobListSpecBytes = 1 << 20
+
 func (repository *Repository) ListJobs(ctx context.Context, query jobhost.JobListQuery) (jobhost.JobPage, error) {
 	if err := query.Validate(); err != nil {
 		return jobhost.JobPage{}, err
@@ -25,7 +29,7 @@ func (repository *Repository) ListJobs(ctx context.Context, query jobhost.JobLis
 	rows, err := tx.QueryContext(
 		ctx,
 		`
-		SELECT accepted_sequence, `+jobColumns+` FROM execution_jobs
+		SELECT accepted_sequence, id, length(CAST(spec_json AS BLOB)) FROM execution_jobs
 		WHERE accepted_sequence > ? AND installation_id = ?
 		  AND json_extract(spec_json, '$.target.kind') = ?
 		  AND COALESCE(json_extract(spec_json, '$.target.node_id'), '') = ?
@@ -45,39 +49,32 @@ func (repository *Repository) ListJobs(ctx context.Context, query jobhost.JobLis
 		Contract: jobcontract.CurrentContract, Jobs: []jobcontract.Snapshot{},
 		NextCursor: strconv.FormatUint(query.After, 10),
 	}
+	type listEntry struct {
+		id       string
+		sequence int64
+	}
+	entries := []listEntry{}
+	var used int64
 	for rows.Next() {
-		var sequence int64
-		var row storedJobRow
-		if err := rows.Scan(
-			&sequence,
-			&row.id,
-			&row.installation,
-			&row.build,
-			&row.kind,
-			&row.revision,
-			&row.status,
-			&row.acceptedAt,
-			&row.specSHA256,
-			&row.commitment,
-			&row.document,
-			&row.sequence,
-			&row.acceptedDocument,
-		); err != nil {
+		var sequence, specBytes int64
+		var id string
+		if err := rows.Scan(&sequence, &id, &specBytes); err != nil {
 			return jobhost.JobPage{}, fmt.Errorf("scan job list: %w", err)
 		}
 		if sequence <= 0 || uint64(sequence) <= query.After {
 			return jobhost.JobPage{}, storageCorrupt("job acceptance sequence")
 		}
-		if len(page.Jobs) == int(query.Limit) {
+		full := len(entries) == int(query.Limit)
+		overBudget := len(entries) > 0 && used+specBytes > maxJobListSpecBytes
+		if full || overBudget {
 			page.HasMore = true
 			break
 		}
-		snapshot, err := row.decode()
-		if err != nil {
-			return jobhost.JobPage{}, err
+		if specBytes <= 0 || specBytes > jobcontract.MaxSubmissionBytes {
+			return jobhost.JobPage{}, storageCorrupt("job list spec byte limit")
 		}
-		page.Jobs = append(page.Jobs, snapshot)
-		page.NextCursor = strconv.FormatInt(sequence, 10)
+		entries = append(entries, listEntry{id: id, sequence: sequence})
+		used += specBytes
 	}
 	if err := rows.Err(); err != nil {
 		return jobhost.JobPage{}, fmt.Errorf("iterate job list: %w", err)
@@ -85,7 +82,17 @@ func (repository *Repository) ListJobs(ctx context.Context, query jobhost.JobLis
 	if err := rows.Close(); err != nil {
 		return jobhost.JobPage{}, fmt.Errorf("close job list: %w", err)
 	}
-	for _, snapshot := range page.Jobs {
+	// Resolve only this prefix after closing its cursor on the single-connection
+	// pool. Lookahead rows remain unconsumed and are validated on their own page.
+	for _, entry := range entries {
+		row, err := queryJobRow(ctx, tx, entry.id)
+		if err != nil {
+			return jobhost.JobPage{}, err
+		}
+		snapshot, err := row.decode()
+		if err != nil {
+			return jobhost.JobPage{}, err
+		}
 		spec, err := queryJobSpec(ctx, tx, snapshot.Receipt.JobID)
 		if err != nil {
 			return jobhost.JobPage{}, err
@@ -94,6 +101,8 @@ func (repository *Repository) ListJobs(ctx context.Context, query jobhost.JobLis
 		if !sameOwner || snapshot.Validate(spec) != nil {
 			return jobhost.JobPage{}, storageCorrupt("job list ownership")
 		}
+		page.Jobs = append(page.Jobs, snapshot)
+		page.NextCursor = strconv.FormatInt(entry.sequence, 10)
 	}
 	if err := tx.Commit(); err != nil {
 		return jobhost.JobPage{}, fmt.Errorf("commit job list: %w", err)

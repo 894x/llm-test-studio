@@ -8,10 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"mime"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -179,6 +177,7 @@ func (client *Client) owns(snapshot jobcontract.Snapshot) bool {
 }
 
 func (client *Client) json(ctx context.Context, input remotessh.Request, limit int64) ([]byte, error) {
+	input.JSONGzip = true
 	response, close, err := client.open(ctx, input, 30*time.Second)
 	if err != nil {
 		return nil, err
@@ -225,36 +224,6 @@ func (client *Client) open(
 		return nil, nil, ErrIntegrity
 	}
 	return response, func() { _ = response.Body.Close(); cancel() }, nil
-}
-
-func readJSON(response *http.Response, limit int64) ([]byte, error) {
-	values := response.Header.Values("Content-Type")
-	if len(values) != 1 {
-		return nil, ErrIntegrity
-	}
-	mediaType, parameters, err := mime.ParseMediaType(values[0])
-	if err != nil || mediaType != "application/json" {
-		return nil, ErrIntegrity
-	}
-	for name, value := range parameters {
-		if name != "charset" || !strings.EqualFold(value, "utf-8") {
-			return nil, ErrIntegrity
-		}
-	}
-	if !identityEncoding(response) || response.ContentLength > limit {
-		return nil, ErrIntegrity
-	}
-	raw, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil {
-		return nil, ErrConnection
-	}
-	if int64(len(raw)) > limit {
-		return nil, ErrIntegrity
-	}
-	if response.ContentLength >= 0 && response.ContentLength != int64(len(raw)) {
-		return nil, ErrIntegrity
-	}
-	return raw, nil
 }
 
 func identityEncoding(response *http.Response) bool {

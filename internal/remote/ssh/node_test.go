@@ -48,7 +48,14 @@ func testNodeRequest(t *testing.T, delay time.Duration) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/runner" {
+			if request.Header.Get("Accept-Encoding") != "identity" {
+				t.Error("Node.Info changed its identity encoding")
+			}
 			_ = json.NewEncoder(writer).Encode(info)
+			return
+		}
+		if request.URL.Path == "/json" && request.Header.Get("Accept-Encoding") == "gzip" {
+			_, _ = io.WriteString(writer, "{}")
 			return
 		}
 		fixedHeaders := request.Header.Get("Range") == "bytes=1-" &&
@@ -86,11 +93,17 @@ func testNodeRequest(t *testing.T, delay time.Duration) {
 		{Method: http.MethodGet, Route: "/report", RangeStart: &negative},
 		{Method: http.MethodPost, Route: "/report", RangeStart: &start},
 		{Method: http.MethodGet, Route: "/report", Body: strings.NewReader("body"), RangeStart: &start},
+		{Method: http.MethodGet, Route: "/report", RangeStart: &start, JSONGzip: true},
 	} {
 		if _, err := node.Do(t.Context(), input); !errors.Is(err, ErrInvalid) {
 			t.Fatal("invalid Range request reached the tunnel")
 		}
 	}
+	jsonResponse, err := node.Do(t.Context(), Request{Method: http.MethodGet, Route: "/json", JSONGzip: true})
+	if err != nil || jsonResponse.StatusCode != http.StatusOK {
+		t.Fatal("explicit JSON gzip negotiation was not forwarded")
+	}
+	_ = jsonResponse.Body.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Second)
 	defer cancel()
 	response, err := node.Do(ctx, Request{Method: http.MethodGet, Route: "/report", RangeStart: &start})

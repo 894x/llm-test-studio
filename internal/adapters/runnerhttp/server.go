@@ -116,6 +116,7 @@ func New(dependencies Dependencies) (*Handler, error) {
 }
 
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	writer = &jsonResponseWriter{ResponseWriter: writer, gzip: acceptsJSONGzip(request)}
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	if !handler.authorized(request) {
@@ -364,6 +365,12 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Add("Vary", "Accept-Encoding")
+	if negotiated, ok := writer.(*jsonResponseWriter); ok && negotiated.gzip {
+		document = gzipJSON(document)
+		writer.Header().Set("Content-Encoding", "gzip")
+	}
+	writer.Header().Set("Content-Length", strconv.Itoa(len(document)))
 	writer.WriteHeader(status)
 	_, _ = writer.Write(document)
 }

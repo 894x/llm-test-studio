@@ -125,16 +125,38 @@ func (synchronizer *Synchronizer) Pass(ctx context.Context, request Request) (Ou
 		}
 		return 0
 	})
+	var firstError error
+	performanceResultImported := false
 	for _, document := range documents {
-		if err := synchronizer.importDocument(
+		if err := ctx.Err(); err != nil {
+			return outcome, errors.Join(firstError, err)
+		}
+		if document.Imported {
+			if document.Kind == jobcontract.EventPerformanceResult {
+				performanceResultImported = true
+			}
+			continue
+		}
+		archive := document.Kind == jobcontract.EventReport && document.Reference.Kind == jobcontract.KindPerformance
+		if archive && !performanceResultImported {
+			continue
+		}
+		err := synchronizer.importDocument(
 			ctx,
 			request,
 			document,
-		); err != nil {
-			return outcome, err
+		)
+		if firstError == nil {
+			firstError = err
+		}
+		if err == nil && document.Kind == jobcontract.EventPerformanceResult {
+			performanceResultImported = true
 		}
 	}
-	return outcome, nil
+	if err := ctx.Err(); err != nil {
+		return outcome, errors.Join(firstError, err)
+	}
+	return outcome, firstError
 }
 
 func (synchronizer *Synchronizer) importDocument(

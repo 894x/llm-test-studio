@@ -79,6 +79,10 @@ func coordinatorClient(
 			}
 			request.Header.Set("Authorization", "Bearer "+nodeToken)
 			request.Header.Set(jobcontract.ContractHeader, "1")
+			request.Header.Set("Accept-Encoding", "identity")
+			if input.JSONGzip {
+				request.Header.Set("Accept-Encoding", "gzip")
+			}
 			if input.Body != nil {
 				request.Header.Set("Content-Type", "application/json")
 			}

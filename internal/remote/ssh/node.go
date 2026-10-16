@@ -126,6 +126,7 @@ type Request struct {
 	Route      string
 	Body       io.Reader
 	RangeStart *int64
+	JSONGzip   bool
 }
 
 // Do sends only relative management routes through this node's pinned tunnel.
@@ -143,7 +144,7 @@ func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error)
 		return nil, ErrInvalid
 	}
 	if start := input.RangeStart; start != nil {
-		validRange := method == http.MethodGet && body == nil && *start >= 0
+		validRange := method == http.MethodGet && body == nil && *start >= 0 && !input.JSONGzip
 		if !validRange {
 			return nil, ErrInvalid
 		}
@@ -165,6 +166,9 @@ func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error)
 	request.Header.Set("Authorization", "Bearer "+string(token))
 	request.Header.Set(jobcontract.ContractHeader, strconv.Itoa(jobcontract.CurrentContract))
 	request.Header.Set("Accept-Encoding", "identity")
+	if input.JSONGzip {
+		request.Header.Set("Accept-Encoding", "gzip")
+	}
 	if input.RangeStart != nil {
 		request.Header.Set("Range", "bytes="+strconv.FormatInt(*input.RangeStart, 10)+"-")
 	}
