@@ -40,6 +40,7 @@ type RemoteNodeSummary struct {
 	Runner             *RemoteRunnerSummary           `json:"runner"`
 	InstallationStage  string                         `json:"installation_stage"`
 	InstallationError  string                         `json:"installation_error"`
+	Upgrade            *RemoteNodeUpgradeView         `json:"upgrade"`
 }
 
 type RemoteRunnerSummary struct {
@@ -127,6 +128,11 @@ func (app *DesktopApp) GetRemoteNodes() (RemoteNodesSnapshot, error) {
 		if node.Installation != nil {
 			view.InstallationStage, view.InstallationError = node.Installation.Stage, node.Installation.ErrorCode
 		}
+		var observed *jobcontract.RunnerInfo
+		if node.Observation != nil {
+			observed = node.Observation.Runner
+		}
+		view.Upgrade = projectRemoteUpgrade(node.ID, node.Upgrade, observed)
 		result.Nodes = append(result.Nodes, view)
 	}
 	return result, nil

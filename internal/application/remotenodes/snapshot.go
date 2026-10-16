@@ -32,6 +32,7 @@ type NodeView struct {
 	RunnerNodeID       string             `json:"runner_node_id"`
 	InstallationID     string             `json:"installation_id"`
 	Installation       *Installation      `json:"installation"`
+	Upgrade            *Upgrade           `json:"upgrade"`
 	Observation        *Observation       `json:"observation"`
 	Status             string             `json:"status"`
 	Eligible           bool               `json:"eligible"`
@@ -46,12 +47,16 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	result := Snapshot{Revision: config.Revision, Default: config.Default, Nodes: []NodeView{}}
 	now := service.now().UTC()
 	for _, node := range config.Nodes {
+		upgrade, err := service.store.readUpgrade(ctx, node.ID)
+		if err != nil {
+			return Snapshot{}, err
+		}
 		view := NodeView{
 			ID: node.ID, Revision: node.Revision, Name: node.Name, Region: node.Region,
 			Host: node.Host, Port: node.Port, User: node.User, Enabled: node.Enabled,
 			AuthenticationKind: node.Authentication.Kind, HasAuthentication: len(node.Authentication.refs()) != 0,
 			HasPassphrase: node.Authentication.PassphraseRef != "", HostKey: node.HostKey,
-			Installation: node.Installation, Observation: node.Observation, Status: "unchecked",
+			Installation: node.Installation, Upgrade: upgrade, Observation: node.Observation, Status: "unchecked",
 		}
 		if node.Binding != nil {
 			view.RunnerNodeID, view.InstallationID = node.Binding.Identity.NodeID, node.Binding.Identity.InstallationID
@@ -67,6 +72,9 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 		if !node.Enabled {
 			view.Status, view.Eligible = "disabled", false
+		}
+		if unresolvedUpgrade(upgrade) {
+			view.Status, view.Eligible = "maintenance", false
 		}
 		result.Nodes = append(result.Nodes, view)
 	}

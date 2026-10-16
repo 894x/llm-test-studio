@@ -33,6 +33,12 @@ func (paths layout) checkInstallationRoot() error {
 	paired, committedOperation := false, false
 	for _, entry := range entries {
 		name := entry.Name()
+		if entry.IsDir() && strings.HasPrefix(name, "upgrade-data-") {
+			if err := paths.checkUpgradeDataDirectory(name); err != nil {
+				return err
+			}
+			continue
+		}
 		file, err := openOwned(filepath.Join(paths.install, name), os.Geteuid(), true)
 		if errors.Is(err, os.ErrNotExist) && validTemporaryName(name) {
 			continue
@@ -69,6 +75,15 @@ func (paths layout) checkInstallationRoot() error {
 					return ErrUnownedPath
 				}
 				committedOperation = true
+			case strings.HasPrefix(name, "upgrade-") && strings.HasSuffix(name, ".json"):
+				operation, err := DecodeUpgradeOperation(document)
+				if err != nil || upgradeOperationName(operation.Request.OperationID) != name {
+					return ErrUnownedPath
+				}
+			case name == "active-upgrade.json":
+				if _, err := DecodeUpgradeRequest(bytes.NewReader(document)); err != nil {
+					return ErrUnownedPath
+				}
 			case validTemporaryName(name):
 				// An interrupted atomic write is never decoded as a committed record.
 			default:

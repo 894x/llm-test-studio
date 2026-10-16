@@ -35,6 +35,25 @@ type RemoteSession interface {
 		func(runnerinstall.Progress),
 	) (runnerinstall.Result, error)
 	Operation(context.Context, string) (runnerinstall.Operation, error)
+	UpgradeOperation(context.Context, string) (runnerinstall.UpgradeOperation, error)
+	Upgrade(
+		context.Context,
+		runnerinstall.UpgradeRequest,
+		remotessh.Artifact,
+		func(runnerinstall.UpgradeProgress),
+	) (runnerinstall.UpgradeOperation, error)
+	RetryUpgrade(
+		context.Context,
+		runnerinstall.UpgradeRequest,
+		remotessh.Artifact,
+		func(runnerinstall.UpgradeProgress),
+	) (runnerinstall.UpgradeOperation, error)
+	RecoverUpgrade(
+		context.Context,
+		runnerinstall.UpgradeRequest,
+		remotessh.Artifact,
+		func(runnerinstall.UpgradeProgress),
+	) (runnerinstall.UpgradeOperation, error)
 	CleanupBootstrap(context.Context, string) error
 	Close() error
 }
@@ -101,6 +120,37 @@ func (session *sshSession) Provision(
 
 func (session *sshSession) Operation(ctx context.Context, id string) (runnerinstall.Operation, error) {
 	return session.client.InstallationOperation(ctx, id)
+}
+
+func (session *sshSession) UpgradeOperation(ctx context.Context, id string) (runnerinstall.UpgradeOperation, error) {
+	return session.client.UpgradeOperation(ctx, id)
+}
+
+func (session *sshSession) Upgrade(
+	ctx context.Context,
+	request runnerinstall.UpgradeRequest,
+	artifact remotessh.Artifact,
+	progress func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error) {
+	return session.client.Upgrade(ctx, request, artifact, progress)
+}
+
+func (session *sshSession) RetryUpgrade(
+	ctx context.Context,
+	request runnerinstall.UpgradeRequest,
+	artifact remotessh.Artifact,
+	progress func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error) {
+	return session.client.RetryUpgrade(ctx, request, artifact, progress)
+}
+
+func (session *sshSession) RecoverUpgrade(
+	ctx context.Context,
+	request runnerinstall.UpgradeRequest,
+	artifact remotessh.Artifact,
+	progress func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error) {
+	return session.client.RecoverUpgrade(ctx, request, artifact, progress)
 }
 
 func (session *sshSession) CleanupBootstrap(ctx context.Context, directory string) error {

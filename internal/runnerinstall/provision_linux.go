@@ -114,6 +114,9 @@ func (installer provisioner) provision(ctx context.Context, request Request) (re
 		return Result{}, err
 	}
 	defer lock.Close()
+	if err := checkNoActiveUpgrade(lock); err != nil {
+		return Result{}, err
+	}
 	if err := syncDirectory(installer.layout.install); err != nil {
 		return Result{}, err
 	}
@@ -429,7 +432,10 @@ func probeRunner(ctx context.Context, config runnerconfig.Config, token []byte) 
 		return jobcontract.RunnerInfo{}, ErrIntegrity
 	}
 	if !info.Healthy {
-		return jobcontract.RunnerInfo{}, ErrService
+		// Keep the validated identity and pending count available to explicit
+		// upgrade recovery, which must distinguish an unhealthy idle process
+		// from an unavailable API before it is safe to stop the service.
+		return info, ErrService
 	}
 	return info, nil
 }

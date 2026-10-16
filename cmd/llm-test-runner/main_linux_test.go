@@ -56,6 +56,27 @@ func TestProvisionRejectsInvalidAndUnsupportedRequestsBeforeInstallation(t *test
 	}
 }
 
+func TestUpgradeCommandsAcceptRequestOnlyThroughStdinAndRedactFailures(t *testing.T) {
+	for _, name := range []string{"upgrade", "retry-upgrade", "recover-upgrade"} {
+		for _, input := range []string{`{}`, `{"password":"do-not-print-this-secret"}`} {
+			var output, diagnostic bytes.Buffer
+			code := run(t.Context(), []string{name}, streams{
+				input: strings.NewReader(input), output: &output, errors: &diagnostic,
+			})
+			if code != 1 || output.Len() != 0 || diagnostic.String() != "invalid_installation_request\n" {
+				t.Fatalf("%s did not fail with a fixed safe code", name)
+			}
+		}
+		var output, diagnostic bytes.Buffer
+		code := run(t.Context(), []string{name, "--password", "do-not-print-this-secret"}, streams{
+			input: strings.NewReader(`{}`), output: &output, errors: &diagnostic,
+		})
+		if code != 1 || output.Len() != 0 || strings.Contains(diagnostic.String(), "secret") {
+			t.Fatalf("%s accepted argv or exposed argument", name)
+		}
+	}
+}
+
 func TestInitUsesStdinAndPreservesExistingIdentityOnRepeatedCommand(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state")
 	token := strings.Repeat("t", 64)

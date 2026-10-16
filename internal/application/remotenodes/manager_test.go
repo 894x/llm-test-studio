@@ -26,15 +26,26 @@ type provisionFixture func(
 	func(runnerinstall.Progress),
 ) (runnerinstall.Result, error)
 
+type upgradeFixture func(
+	context.Context,
+	runnerinstall.UpgradeRequest,
+	remotessh.Artifact,
+	func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error)
+
 type remoteFixture struct {
-	probe        func(context.Context) (remotessh.SystemInfo, error)
-	shared       func(context.Context) (Pairing, error)
-	bound        func(context.Context, Binding, *credentials.Lease) (jobcontract.RunnerInfo, error)
-	provision    provisionFixture
-	operation    func(context.Context, string) (runnerinstall.Operation, error)
-	cleanup      func(context.Context, string) error
-	closeSession func() error
-	closed       atomic.Uint32
+	probe            func(context.Context) (remotessh.SystemInfo, error)
+	shared           func(context.Context) (Pairing, error)
+	bound            func(context.Context, Binding, *credentials.Lease) (jobcontract.RunnerInfo, error)
+	provision        provisionFixture
+	operation        func(context.Context, string) (runnerinstall.Operation, error)
+	upgradeOperation func(context.Context, string) (runnerinstall.UpgradeOperation, error)
+	upgrade          upgradeFixture
+	retryUpgrade     upgradeFixture
+	recoverUpgrade   upgradeFixture
+	cleanup          func(context.Context, string) error
+	closeSession     func() error
+	closed           atomic.Uint32
 }
 
 func (remote *remoteFixture) Probe(ctx context.Context) (remotessh.SystemInfo, error) {
@@ -92,6 +103,49 @@ func (remote *remoteFixture) CleanupBootstrap(ctx context.Context, directory str
 		return remote.cleanup(ctx, directory)
 	}
 	return nil
+}
+
+func (remote *remoteFixture) UpgradeOperation(ctx context.Context, id string) (runnerinstall.UpgradeOperation, error) {
+	if remote.upgradeOperation == nil {
+		return runnerinstall.UpgradeOperation{}, os.ErrNotExist
+	}
+	return remote.upgradeOperation(ctx, id)
+}
+
+func (remote *remoteFixture) Upgrade(
+	ctx context.Context,
+	request runnerinstall.UpgradeRequest,
+	artifact remotessh.Artifact,
+	progress func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error) {
+	if remote.upgrade == nil {
+		return runnerinstall.UpgradeOperation{}, runnerinstall.ErrService
+	}
+	return remote.upgrade(ctx, request, artifact, progress)
+}
+
+func (remote *remoteFixture) RetryUpgrade(
+	ctx context.Context,
+	request runnerinstall.UpgradeRequest,
+	artifact remotessh.Artifact,
+	progress func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error) {
+	if remote.retryUpgrade == nil {
+		return runnerinstall.UpgradeOperation{}, runnerinstall.ErrService
+	}
+	return remote.retryUpgrade(ctx, request, artifact, progress)
+}
+
+func (remote *remoteFixture) RecoverUpgrade(
+	ctx context.Context,
+	request runnerinstall.UpgradeRequest,
+	artifact remotessh.Artifact,
+	progress func(runnerinstall.UpgradeProgress),
+) (runnerinstall.UpgradeOperation, error) {
+	if remote.recoverUpgrade == nil {
+		return runnerinstall.UpgradeOperation{}, runnerinstall.ErrService
+	}
+	return remote.recoverUpgrade(ctx, request, artifact, progress)
 }
 
 func (remote *remoteFixture) Close() error {

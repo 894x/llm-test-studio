@@ -227,7 +227,11 @@ func (manager *Manager) recordInstallation(ctx context.Context, node Node, attem
 
 func installationCode(cause error) string {
 	switch {
-	case errors.Is(cause, runnerartifacts.ErrUnavailable):
+	case errors.Is(cause, ErrUpgradeIdentity):
+		return "installation_operation_conflict"
+	case errors.Is(cause, remotessh.ErrUpgradePending):
+		return "remote_connection_failed"
+	case errors.Is(cause, runnerartifacts.ErrUnavailable), errors.Is(cause, remotessh.ErrUpgradeArtifactUnavailable):
 		return "runner_release_unavailable"
 	case errors.Is(cause, runnerartifacts.ErrInvalid):
 		return "invalid_runner_release"

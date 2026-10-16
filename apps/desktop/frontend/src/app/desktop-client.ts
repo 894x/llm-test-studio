@@ -1,5 +1,6 @@
 import { DesktopDataError } from "@/app/data-error"
-import { EMPTY_REMOTE_NODES, parseRemoteNodes, type RemoteNodesSnapshot, type RemoteNodeDraft,
+import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
+  type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
   type RemoteNodeAction, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
@@ -87,6 +88,7 @@ export type DesktopErrorCode =
   | "remote_node_busy"
   | "remote_node_commit_unconfirmed"
   | "remote_node_upgrade_required"
+  | "remote_node_identity_conflict"
   | "job_invalid"
   | "job_not_found"
   | "job_conflict"
@@ -152,6 +154,10 @@ export interface DesktopClient extends CatalogActions {
   selectDefaultExecution(command: DefaultExecutionCommand): Promise<void>
   retryRemoteInstallation(command: RemoteNodeAction): Promise<void>
   removeRemoteNode(command: RemoteNodeAction): Promise<void>
+  startRemoteNodeUpgrade(command: StartRemoteNodeUpgradeCommand): Promise<RemoteNodeUpgradeView>
+  getRemoteNodeUpgrade(id: string): Promise<RemoteNodeUpgradeView | null>
+  retryRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<RemoteNodeUpgradeView>
+  recoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<RemoteNodeUpgradeView>
   getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
   openDiagnosticsDirectory(): Promise<void>
   getWorkspace(): Promise<WorkspaceSnapshot>
@@ -188,6 +194,10 @@ export type DesktopDiagnosticsSnapshot = {
 
 type WailsDesktopBinding = {
   GetRemoteNodes(): Promise<unknown>
+  StartRemoteNodeUpgrade(command: StartRemoteNodeUpgradeCommand): Promise<unknown>
+  GetRemoteNodeUpgrade(id: string): Promise<unknown>
+  RetryRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<unknown>
+  RecoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<unknown>
   SaveRemoteNode(command: RemoteNodeDraft): Promise<unknown>
   RefreshRemoteNode(command: RemoteNodeAction): Promise<unknown>
   ConfirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<unknown>
@@ -248,6 +258,7 @@ type FrontendDiagnostic = {
 const REQUIRED_WAILS_BINDING_METHODS = [
   "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
   "RetryRemoteInstallation", "RemoveRemoteNode",
+  "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
@@ -307,6 +318,10 @@ export function createFixtureClient(
     async selectDefaultExecution() { throw new DesktopClientError("remote_nodes_unavailable") },
     async retryRemoteInstallation() { throw new DesktopClientError("remote_nodes_unavailable") },
     async removeRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async startRemoteNodeUpgrade() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async getRemoteNodeUpgrade() { return null },
+    async retryRemoteNodeUpgrade() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async recoverRemoteNodeUpgrade() { throw new DesktopClientError("remote_nodes_unavailable") },
     async openDiagnosticsDirectory() {},
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
@@ -500,6 +515,10 @@ function createLazyFixtureClient(): DesktopClient {
     selectDefaultExecution: async command => (await client).selectDefaultExecution(command),
     retryRemoteInstallation: async command => (await client).retryRemoteInstallation(command),
     removeRemoteNode: async command => (await client).removeRemoteNode(command),
+    startRemoteNodeUpgrade: async command => (await client).startRemoteNodeUpgrade(command),
+    getRemoteNodeUpgrade: async id => (await client).getRemoteNodeUpgrade(id),
+    retryRemoteNodeUpgrade: async command => (await client).retryRemoteNodeUpgrade(command),
+    recoverRemoteNodeUpgrade: async command => (await client).recoverRemoteNodeUpgrade(command),
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getWorkspace: async () => (await client).getWorkspace(),
@@ -580,6 +599,26 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     selectDefaultExecution: async command => callBinding(() => binding.SelectDefaultExecution(command), parseVoid),
     retryRemoteInstallation: async command => callBinding(() => binding.RetryRemoteInstallation(command), parseVoid),
     removeRemoteNode: async command => callBinding(() => binding.RemoveRemoteNode(command), parseVoid),
+    startRemoteNodeUpgrade: async command => callBinding(() => binding.StartRemoteNodeUpgrade(command), value => {
+      const view = parseRemoteNodeUpgrade(value)
+      if (view.configuration_id !== command.id || view.operation_id !== command.operation_id || view.expected_build_id !== command.expected_build_id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
+    getRemoteNodeUpgrade: async id => callBinding(() => binding.GetRemoteNodeUpgrade(id), value => {
+      const view = parseNullableRemoteNodeUpgrade(value)
+      if (view && view.configuration_id !== id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
+    retryRemoteNodeUpgrade: async command => callBinding(() => binding.RetryRemoteNodeUpgrade(command), value => {
+      const view = parseRemoteNodeUpgrade(value)
+      if (view.configuration_id !== command.id || view.operation_id !== command.operation_id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
+    recoverRemoteNodeUpgrade: async command => callBinding(() => binding.RecoverRemoteNodeUpgrade(command), value => {
+      const view = parseRemoteNodeUpgrade(value)
+      if (view.configuration_id !== command.id || view.operation_id !== command.operation_id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
     subscribeReportGeneration: (onProgress) => {
       const runtime = (window as typeof window & {

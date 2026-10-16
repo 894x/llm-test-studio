@@ -62,7 +62,8 @@
     "job_commit_unconfirmed": "Command persistence is unconfirmed. Refresh the control history before sending another command.",
     "job_query_unavailable": "Durable job queries are unavailable. Refresh or inspect local logs.",
     "job_commands_unavailable": "Job commands are unavailable. Try again in the desktop application.",
-    "remote_node_upgrade_required": "This node configuration format requires an upgrade."
+    "remote_node_upgrade_required": "This node configuration format requires an upgrade.",
+    "remote_node_identity_conflict": "The runner identity changed. Read the current node state before continuing."
   },
   "errorCode": {
     "invalid_request": "Invalid test parameters",

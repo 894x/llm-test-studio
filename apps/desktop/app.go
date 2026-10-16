@@ -17,6 +17,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
 
 var (
@@ -73,6 +74,7 @@ const (
 	desktopCodeRemoteNodeBusy            = "remote_node_busy"
 	desktopCodeRemoteNodeUnconfirmed     = "remote_node_commit_unconfirmed"
 	desktopCodeRemoteNodeUpgrade         = "remote_node_upgrade_required"
+	desktopCodeRemoteNodeIdentity        = "remote_node_identity_conflict"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -1000,6 +1002,8 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeRemoteNodesMissing}
 	case errors.Is(internal, remotenodes.ErrInvalid):
 		return DesktopBindingError{Code: desktopCodeRemoteNodeInvalid}
+	case errors.Is(internal, remotenodes.ErrUpgradeIdentity):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeIdentity}
 	case errors.Is(internal, remotenodes.ErrConflict):
 		return DesktopBindingError{Code: desktopCodeRemoteNodeConflict}
 	case errors.Is(internal, remotenodes.ErrNotFound):
@@ -1012,11 +1016,11 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeRemoteNodeUsageUnknown}
 	case errors.Is(internal, remotenodes.ErrCredential):
 		return DesktopBindingError{Code: desktopCodeRemoteNodeCredential}
-	case errors.Is(internal, remotenodes.ErrBusy):
+	case errors.Is(internal, remotenodes.ErrBusy), errors.Is(internal, runnerinstall.ErrBusy):
 		return DesktopBindingError{Code: desktopCodeRemoteNodeBusy}
 	case errors.Is(internal, remotenodes.ErrCommitUnconfirmed):
 		return DesktopBindingError{Code: desktopCodeRemoteNodeUnconfirmed}
-	case errors.Is(internal, remotenodes.ErrUnsupported):
+	case errors.Is(internal, remotenodes.ErrUnsupported), errors.Is(internal, runnerinstall.ErrUpgradeRequired):
 		return DesktopBindingError{Code: desktopCodeRemoteNodeUpgrade}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
@@ -1095,7 +1099,8 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeRemoteNodeCredential,
 		desktopCodeRemoteNodeBusy,
 		desktopCodeRemoteNodeUnconfirmed,
-		desktopCodeRemoteNodeUpgrade:
+		desktopCodeRemoteNodeUpgrade,
+		desktopCodeRemoteNodeIdentity:
 		return true
 	default:
 		return false

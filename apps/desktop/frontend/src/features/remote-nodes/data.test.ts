@@ -9,7 +9,7 @@ function snapshot(): RemoteNodesSnapshot {
     enabled: true, authentication_kind: "password", has_authentication: true, has_passphrase: false,
     host_key: { type: "ssh-ed25519", fingerprint: `SHA256:${"A".repeat(43)}` }, proposed_host_key: null,
     status: "ready", eligible: true, checking: false, checked_at: "2026-10-16T00:00:00Z",
-    installation_stage: "", installation_error: "", runner: {
+    installation_stage: "", installation_error: "", upgrade: null, runner: {
       node_id: id, installation_id: id, version: "runner-test", build_id: "a".repeat(64), os: "linux", arch: "amd64",
       ready: true, healthy: true, active: 0, queued: 0, pending: 0, max_active_jobs: 1, max_concurrency: 2000,
     },

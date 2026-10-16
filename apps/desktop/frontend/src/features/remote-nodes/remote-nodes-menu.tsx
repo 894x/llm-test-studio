@@ -17,13 +17,17 @@ import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 import { RemoteNodeEditor } from "./remote-node-editor"
-import type { RemoteNode, RemoteNodeDraft, RemoteNodesSnapshot } from "./data"
+import { RemoteNodeUpgrade } from "./remote-node-upgrade"
+import { observedUpgradeRunner, useRemoteNodeUpgrades } from "./use-remote-node-upgrades"
+import type { RemoteNode, RemoteNodeDraft, RemoteNodesSnapshot, RemoteRunner } from "./data"
 
 export type RemoteNodesClient = Pick<DesktopClient, "getRemoteNodes" | "saveRemoteNode" | "refreshRemoteNode" |
-  "confirmRemoteNodeHostKey" | "selectDefaultExecution" | "retryRemoteInstallation" | "removeRemoteNode">
+  "confirmRemoteNodeHostKey" | "selectDefaultExecution" | "retryRemoteInstallation" | "removeRemoteNode" |
+  "startRemoteNodeUpgrade" | "getRemoteNodeUpgrade" | "retryRemoteNodeUpgrade" | "recoverRemoteNodeUpgrade">
 
 const POLL_INTERVAL = 1500
 const MAX_POLLS = 40
+const EMPTY_NODES: RemoteNode[] = []
 const INSTALLATION_STAGES = new Set(["checking", "uploading", "account", "program", "configuration", "service", "verifying", "completed"])
 const INSTALLATION_ERRORS = new Set(["runner_release_unavailable", "runner_release_upgrade_required", "runner_release_integrity_failed",
   "runner_upgrade_required", "runner_installation_failed", "installation_root_required", "unsupported_installation_platform",
@@ -53,6 +57,7 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [polls, setPolls] = useState(0)
+  const upgrades = useRemoteNodeUpgrades(client, snapshot?.nodes ?? EMPTY_NODES, disabled || blocked || Boolean(busy))
   const mounted = useRef(false)
   const opened = useRef(false)
   const generation = useRef(0)
@@ -155,6 +160,8 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
   }
 
   const save = async (draft: RemoteNodeDraft) => {
+    const node = snapshot?.nodes.find(node => node.id === draft.id)
+    if (node && upgrades.lockedNow(node)) return
     const result = await command("save", async () => {
       try { await client.saveRemoteNode(draft) }
       finally { pendingSaveID.current = draft.id }
@@ -234,27 +241,28 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                   <Badge variant={node.status === "ready" ? "secondary" : "outline"}>{node.checking && <Spinner />}{t(`status.${node.status}`)}</Badge>
                 </div>
                 {selectedNode?.id === node.id && <p className="text-[11px] text-muted-foreground">{t("isDefault")}</p>}
-                <NodeDetails node={node} />
+                <NodeDetails node={node} runner={observedUpgradeRunner(node, upgrades.get(node).view)} />
                 {node.proposed_host_key && <Alert>
                   <p className="font-medium">{t(node.status === "host_changed" ? "hostChanged" : "hostUnverified")}</p>
                   <p className="mt-1">{t("verifyFingerprint")}</p>
                   {node.host_key && <p className="mt-2 font-mono [overflow-wrap:anywhere]">{t("previousFingerprint")} {node.host_key.fingerprint}</p>}
                   <p className="mt-2 text-muted-foreground">{t("observedFingerprint")} · {node.proposed_host_key.type}</p>
                   <p className="font-mono [overflow-wrap:anywhere]">{node.proposed_host_key.fingerprint}</p>
-                  <Button variant="outline" size="sm" className="mt-3" disabled={unavailable || node.checking}
+                  <Button variant="outline" size="sm" className="mt-3" disabled={unavailable || node.checking || upgrades.locked(node)}
                     onClick={() => void command(`trust:${node.id}`, () => client.confirmRemoteNodeHostKey({
                       id: node.id, expected_revision: node.revision, key: node.proposed_host_key!,
                     }))}><ShieldCheckIcon />{t("confirmFingerprint")}</Button>
                 </Alert>}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" disabled={unavailable} onClick={() => setEditor(draftFromNode(node))}>{t("edit")}</Button>
-                  <Button variant="ghost" size="sm" disabled={unavailable || node.checking} onClick={() => void command(`check:${node.id}`,
-                    () => client.refreshRemoteNode({ id: node.id, expected_revision: node.revision }))}><RefreshCwIcon />{t("check")}</Button>
-                  <Button variant="ghost" size="sm" disabled={unavailable || node.checking} onClick={() => void command(`install:${node.id}`,
-                    () => client.retryRemoteInstallation({ id: node.id, expected_revision: node.revision }))}>{t("install")}</Button>
-                  <Button variant="destructive" size="sm" disabled={unavailable} onClick={() => void command(`remove:${node.id}`,
-                    () => client.removeRemoteNode({ id: node.id, expected_revision: node.revision }))}>{t("remove")}</Button>
+                  <Button variant="outline" size="sm" disabled={unavailable || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) setEditor(draftFromNode(node)) }}>{t("edit")}</Button>
+                  <Button variant="ghost" size="sm" disabled={unavailable || node.checking || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) void command(`check:${node.id}`,
+                    () => client.refreshRemoteNode({ id: node.id, expected_revision: node.revision })) }}><RefreshCwIcon />{t("check")}</Button>
+                  <Button variant="ghost" size="sm" disabled={unavailable || node.checking || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) void command(`install:${node.id}`,
+                    () => client.retryRemoteInstallation({ id: node.id, expected_revision: node.revision })) }}>{t("install")}</Button>
+                  <Button variant="destructive" size="sm" disabled={unavailable || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) void command(`remove:${node.id}`,
+                    () => client.removeRemoteNode({ id: node.id, expected_revision: node.revision })) }}>{t("remove")}</Button>
                 </div>
+                <RemoteNodeUpgrade node={node} controller={upgrades} disabled={unavailable} />
               </section>)}
             </div>
             {checking && polls >= MAX_POLLS && <Alert>{t("pollPaused")}<Button className="mt-2" variant="outline" size="sm"
@@ -266,12 +274,12 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
   </Sheet>
 }
 
-function NodeDetails({ node }: { node: RemoteNode }) {
+function NodeDetails({ node, runner }: { node: RemoteNode; runner: RemoteRunner | null }) {
   const { t } = useTranslation("remoteNodes")
   return <>
-    {node.runner && <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-xs">
-      <div className="min-w-0"><dt className="text-muted-foreground">{t("runner")}</dt><dd className="[overflow-wrap:anywhere]">{node.runner.version} · {node.runner.os}/{node.runner.arch}</dd></div>
-      <div><dt className="text-muted-foreground">{t("workload")}</dt><dd className="tabular-nums">{t("workloadValue", { active: node.runner.active, queued: node.runner.queued, pending: node.runner.pending })}</dd></div>
+    {runner && <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div className="min-w-0"><dt className="text-muted-foreground">{t("runner")}</dt><dd className="[overflow-wrap:anywhere]">{runner.version} · {runner.os}/{runner.arch}</dd></div>
+      <div><dt className="text-muted-foreground">{t("workload")}</dt><dd className="tabular-nums">{t("workloadValue", { active: runner.active, queued: runner.queued, pending: runner.pending })}</dd></div>
     </dl>}
     {node.installation_stage && <p className="text-xs text-muted-foreground">{t("installationStage")} · {t(`stage.${INSTALLATION_STAGES.has(node.installation_stage) ? node.installation_stage : "unknown"}`)}</p>}
     {node.installation_error && <Alert variant="destructive">{t(`installationError.${INSTALLATION_ERRORS.has(node.installation_error) ? node.installation_error : "unknown"}`)}</Alert>}

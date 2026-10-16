@@ -175,6 +175,13 @@ func (service *Service) Remove(ctx context.Context, id string, expected uint64) 
 		if unresolvedInstallation(node.Installation) {
 			return ErrReferenced
 		}
+		upgrade, err := service.store.readUpgrade(ctx, id)
+		if err != nil {
+			return err
+		}
+		if unresolvedUpgrade(upgrade) {
+			return ErrReferenced
+		}
 		if service.canRemove == nil {
 			return ErrUsageUnknown
 		}

@@ -29,7 +29,7 @@ function node(changes: Partial<RemoteNode> = {}): RemoteNode {
     checked_at: "2026-10-16T00:00:00Z", runner: { node_id: NODE_ID, installation_id: NODE_ID,
       version: "v-current", build_id: "a".repeat(64), os: "linux", arch: "amd64", ready: true, healthy: true,
       active: 2, queued: 1, pending: 0, max_active_jobs: 4, max_concurrency: 16 },
-    installation_stage: "completed", installation_error: "", ...changes }
+    installation_stage: "completed", installation_error: "", upgrade: null, ...changes }
 }
 
 function fixture(nodes: RemoteNode[] = [node()]) {
@@ -44,6 +44,10 @@ function fixture(nodes: RemoteNode[] = [node()]) {
     selectDefaultExecution: vi.fn<RemoteNodesClient["selectDefaultExecution"]>(async () => undefined),
     retryRemoteInstallation: vi.fn<RemoteNodesClient["retryRemoteInstallation"]>(async () => undefined),
     removeRemoteNode: vi.fn<RemoteNodesClient["removeRemoteNode"]>(async () => undefined),
+    startRemoteNodeUpgrade: vi.fn<RemoteNodesClient["startRemoteNodeUpgrade"]>(),
+    getRemoteNodeUpgrade: vi.fn<RemoteNodesClient["getRemoteNodeUpgrade"]>(async () => null),
+    retryRemoteNodeUpgrade: vi.fn<RemoteNodesClient["retryRemoteNodeUpgrade"]>(),
+    recoverRemoteNodeUpgrade: vi.fn<RemoteNodesClient["recoverRemoteNodeUpgrade"]>(),
   } satisfies RemoteNodesClient
   return { client, get: () => snapshot, set: (next: RemoteNodesSnapshot) => { snapshot = next } }
 }

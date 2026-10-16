@@ -62,7 +62,8 @@
     "job_commit_unconfirmed": "命令保存结果尚未确认，请刷新控制记录；不要重复发送新命令",
     "job_query_unavailable": "暂时无法读取持久任务，请刷新或查看本地日志",
     "job_commands_unavailable": "任务命令暂不可用，请在桌面应用中重试",
-    "remote_node_upgrade_required": "节点配置格式不受支持，需要升级后再使用"
+    "remote_node_upgrade_required": "节点配置格式不受支持，需要升级后再使用",
+    "remote_node_identity_conflict": "Runner 身份已变化，请先读取节点当前状态再继续"
   },
   "errorCode": {
     "invalid_request": "测试参数无效",

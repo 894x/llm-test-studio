@@ -36,6 +36,12 @@ func main() {
 }
 
 func run(ctx context.Context, arguments []string, streams streams) int {
+	if len(arguments) == 1 {
+		switch arguments[0] {
+		case "upgrade", "retry-upgrade", "recover-upgrade":
+			return runUpgrade(ctx, arguments[0], streams)
+		}
+	}
 	if len(arguments) == 1 && arguments[0] == "provision" {
 		request, err := runnerinstall.DecodeRequest(streams.input)
 		if err != nil {
@@ -125,6 +131,38 @@ func run(ctx context.Context, arguments []string, streams streams) int {
 	}{NodeID: config.NodeID, InstallationID: config.InstallationID, ListenPort: config.ListenPort})
 	if err != nil {
 		return fail(streams.errors, err)
+	}
+	return 0
+}
+
+func runUpgrade(ctx context.Context, mode string, streams streams) int {
+	request, err := runnerinstall.DecodeUpgradeRequest(streams.input)
+	if err != nil {
+		_, _ = io.WriteString(streams.errors, runnerinstall.ErrorCode(err)+"\n")
+		return 1
+	}
+	progress := func(progress runnerinstall.UpgradeProgress) {
+		// A closed observer must not abort a shared-node upgrade or its jobs.
+		_ = json.NewEncoder(streams.output).Encode(struct {
+			Progress runnerinstall.UpgradeProgress `json:"progress"`
+		}{Progress: progress})
+	}
+	invoke := runnerinstall.Upgrade
+	switch mode {
+	case "retry-upgrade":
+		invoke = runnerinstall.RetryUpgrade
+	case "recover-upgrade":
+		invoke = runnerinstall.RecoverUpgrade
+	}
+	operation, err := invoke(ctx, request, progress)
+	if err != nil {
+		_, _ = io.WriteString(streams.errors, runnerinstall.ErrorCode(err)+"\n")
+		return 1
+	}
+	if err := json.NewEncoder(streams.output).Encode(struct {
+		Operation runnerinstall.UpgradeOperation `json:"operation"`
+	}{Operation: operation}); err != nil {
+		return 1
 	}
 	return 0
 }

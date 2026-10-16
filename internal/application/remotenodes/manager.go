@@ -30,6 +30,7 @@ type Manager struct {
 	cancel        context.CancelFunc
 	mu            sync.Mutex
 	checks        map[string]*checkTask
+	upgrades      map[string]*upgradeTask
 	workers       sync.WaitGroup
 	closed        bool
 	monitoring    bool
@@ -65,7 +66,7 @@ func NewManager(ctx context.Context, dependencies ManagerDependencies) (*Manager
 	return &Manager{
 		configuration: dependencies.Configuration, artifacts: dependencies.Artifacts,
 		release: dependencies.Release, connect: connect, ctx: lifetime, cancel: cancel,
-		checks: map[string]*checkTask{}, monitorEvery: 15 * time.Second,
+		checks: map[string]*checkTask{}, upgrades: map[string]*upgradeTask{}, monitorEvery: 15 * time.Second,
 	}, nil
 }
 

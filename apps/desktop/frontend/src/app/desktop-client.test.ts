@@ -14,8 +14,39 @@ import { DesktopDataError } from "./data-error"
 import type { LaunchCommand } from "@/features/jobs/data"
 import { jobFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
 import { EMPTY_REMOTE_NODES } from "@/features/remote-nodes/data"
+import { remoteUpgradeFixture, REMOTE_CONFIGURATION_ID, UPGRADE_OPERATION_ID } from "@/test/remote-upgrade-fixture"
 
 describe("Wails desktop client", () => {
+  it("uses current explicit upgrade bindings and checks operation/configuration identity", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    const command = { id: REMOTE_CONFIGURATION_ID, expected_revision: 3, operation_id: UPGRADE_OPERATION_ID, expected_build_id: "a".repeat(64) }
+    const action = { id: command.id, expected_revision: command.expected_revision, operation_id: command.operation_id }
+    const view = remoteUpgradeFixture()
+    binding.StartRemoteNodeUpgrade.mockResolvedValueOnce(view)
+    await expect(client.startRemoteNodeUpgrade(command)).resolves.toEqual(view)
+    expect(binding.StartRemoteNodeUpgrade).toHaveBeenCalledExactlyOnceWith(command)
+    await expect(client.getRemoteNodeUpgrade(command.id)).resolves.toBeNull()
+    binding.GetRemoteNodeUpgrade.mockResolvedValueOnce(view)
+    await expect(client.getRemoteNodeUpgrade(command.id)).resolves.toEqual(view)
+    expect(binding.GetRemoteNodeUpgrade).toHaveBeenLastCalledWith(command.id)
+    binding.RetryRemoteNodeUpgrade.mockResolvedValueOnce(view)
+    await expect(client.retryRemoteNodeUpgrade(action)).resolves.toEqual(view)
+    expect(binding.RetryRemoteNodeUpgrade).toHaveBeenCalledExactlyOnceWith(action)
+    binding.RecoverRemoteNodeUpgrade.mockResolvedValueOnce(view)
+    await expect(client.recoverRemoteNodeUpgrade(action)).resolves.toEqual(view)
+    expect(binding.RecoverRemoteNodeUpgrade).toHaveBeenCalledExactlyOnceWith(action)
+    binding.StartRemoteNodeUpgrade.mockResolvedValueOnce({ ...view, operation_id: REMOTE_CONFIGURATION_ID })
+    await expect(client.startRemoteNodeUpgrade(command)).rejects.toBeInstanceOf(DesktopDataError)
+    binding.GetRemoteNodeUpgrade.mockResolvedValueOnce({ ...view, configuration_id: UPGRADE_OPERATION_ID })
+    await expect(client.getRemoteNodeUpgrade(command.id)).rejects.toBeInstanceOf(DesktopDataError)
+    binding.RetryRemoteNodeUpgrade.mockResolvedValueOnce({ ...view, operation_id: REMOTE_CONFIGURATION_ID })
+    await expect(client.retryRemoteNodeUpgrade(action)).rejects.toBeInstanceOf(DesktopDataError)
+    binding.RecoverRemoteNodeUpgrade.mockRejectedValueOnce("remote_node_identity_conflict")
+    await expect(client.recoverRemoteNodeUpgrade(action)).rejects.toMatchObject({ code: "remote_node_identity_conflict" })
+    binding.GetRemoteNodeUpgrade.mockResolvedValueOnce(undefined)
+    await expect(client.getRemoteNodeUpgrade(command.id)).rejects.toBeInstanceOf(DesktopDataError)
+  })
   afterEach(() => {
     Reflect.deleteProperty(window, "go")
 		Reflect.deleteProperty(window, "runtime")
@@ -1032,6 +1063,8 @@ function installBinding(
 ) {
   const binding = {
     GetRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
+    StartRemoteNodeUpgrade: vi.fn(), GetRemoteNodeUpgrade: vi.fn<(id: string) => Promise<unknown>>(async () => null),
+    RetryRemoteNodeUpgrade: vi.fn(), RecoverRemoteNodeUpgrade: vi.fn(),
     SaveRemoteNode: vi.fn(async (_command?: unknown) => undefined),
     RefreshRemoteNode: vi.fn(async (_command?: unknown) => undefined),
     ConfirmRemoteNodeHostKey: vi.fn(async (_command?: unknown) => undefined),
