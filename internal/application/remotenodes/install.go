@@ -244,8 +244,18 @@ func installationCode(cause error) string {
 	case errors.Is(cause, remotessh.ErrIntegrity):
 		return "remote_file_integrity_failed"
 	default:
-		return runnerinstall.ErrorCode(cause)
+		code := runnerinstall.ErrorCode(cause)
+		if code == "runner_installation_failed" && pendingUpgradeObservation(cause) {
+			return "remote_connection_failed"
+		}
+		return code
 	}
+}
+
+func pendingUpgradeObservation(cause error) bool {
+	var upgrade *remotessh.UpgradeError
+	return errors.As(cause, &upgrade) && upgrade.Pending &&
+		(errors.Is(cause, context.DeadlineExceeded) || errors.Is(cause, context.Canceled))
 }
 
 func installationCause(code string) error {

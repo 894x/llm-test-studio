@@ -226,11 +226,19 @@ func (manager *Manager) check(ctx context.Context, id string, expected uint64) e
 	if err != nil {
 		return err
 	}
-	if !node.Enabled {
+	attempt, err := manager.configuration.store.readUpgrade(ctx, id)
+	if err != nil {
+		return err
+	}
+	observingUpgrade := unresolvedUpgrade(attempt)
+	if !node.Enabled && !observingUpgrade {
 		return nil
 	}
 	connection, err := manager.configuration.AcquireSSH(ctx, id, expected)
 	if err != nil {
+		if observingUpgrade {
+			return err
+		}
 		return manager.failed(
 			ctx,
 			id,
@@ -241,11 +249,14 @@ func (manager *Manager) check(ctx context.Context, id string, expected uint64) e
 	}
 	defer connection.Close()
 	node = connection.Node
-	if !node.Enabled {
+	if !node.Enabled && !observingUpgrade {
 		return nil
 	}
 	session, err := manager.connect(ctx, node.Endpoint(), connection.Authentication)
 	if err != nil {
+		if observingUpgrade {
+			return err
+		}
 		return manager.failed(
 			ctx,
 			id,
@@ -255,6 +266,14 @@ func (manager *Manager) check(ctx context.Context, id string, expected uint64) e
 		)
 	}
 	defer session.Close()
+	if observingUpgrade {
+		return manager.observeUpgrade(
+			ctx,
+			node,
+			attempt.Request,
+			session,
+		)
+	}
 	system, err := session.Probe(ctx)
 	if err != nil {
 		return manager.failed(

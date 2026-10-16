@@ -53,9 +53,10 @@ type upgradeTask struct {
 type upgradeAction string
 
 const (
-	upgradeStart   upgradeAction = "start"
-	upgradeRetry   upgradeAction = "retry"
-	upgradeRecover upgradeAction = "recover"
+	upgradeStart              upgradeAction = "start"
+	upgradeRetry              upgradeAction = "retry"
+	upgradeRecover            upgradeAction = "recover"
+	upgradeObservationTimeout               = 10 * time.Second
 )
 
 func (attempt Upgrade) Validate() error {
@@ -387,16 +388,17 @@ func (manager *Manager) runUpgrade(
 	if upgradeTerminal(attempt.Operation) {
 		return nil
 	}
-	latest := attempt.Operation
 	defer func() {
 		if err == nil {
 			return
 		}
+		latest := attempt.Operation
 		if latest != nil {
-			attempt.Operation, attempt.Stage = latest, latest.Stage
+			attempt.Stage = latest.Stage
 		}
 		attempt.ErrorCode, attempt.ChangedAt = installationCode(err), manager.configuration.now().UTC()
-		if upgradeTerminal(latest) {
+		uncertainObservation := attempt.ErrorCode == "remote_connection_failed"
+		if latest != nil && (upgradeTerminal(latest) || latest.ErrorCode != "" && uncertainObservation) {
 			attempt.ErrorCode = latest.ErrorCode
 		}
 		confirm, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -420,42 +422,12 @@ func (manager *Manager) runUpgrade(
 	}
 	defer session.Close()
 	accept := func(operation runnerinstall.UpgradeOperation) error {
-		if operation.Validate() != nil || operation.Request != attempt.Request {
-			return remotessh.ErrIntegrity
-		}
-		if previous := attempt.Operation; previous != nil {
-			// Wall clocks alone do not order irreversible facts. A newer GET
-			// during progress may precede an older transport return, even when
-			// both calls belong to this same explicit operation.
-			resumeRegressed := previous.ResumeAttempted && !operation.ResumeAttempted
-			if upgradeTerminal(previous) || resumeRegressed {
-				return nil
-			}
-			changedBranch := operation.Stage != "rolling_back" && operation.Stage != "rolled_back"
-			restoreReenabled := !previous.Restorable && operation.Restorable
-			rollbackRegressed := previous.Stage == "rolling_back" && (changedBranch || restoreReenabled)
-			if rollbackRegressed {
-				return nil
-			}
-			strongerResume := operation.ResumeAttempted && !previous.ResumeAttempted
-			strongerRollback := operation.Stage == "rolling_back" && !operation.Restorable &&
-				(previous.Stage != "rolling_back" || previous.Restorable)
-			stronger := strongerResume || strongerRollback || upgradeTerminal(&operation)
-			if !stronger && operation.ChangedAt.Before(previous.ChangedAt) {
-				return nil
-			}
-			if !stronger && operation.ChangedAt.Equal(previous.ChangedAt) {
-				before, _ := json.Marshal(previous)
-				after, _ := json.Marshal(operation)
-				if !bytes.Equal(before, after) {
-					return nil
-				}
-			}
-		}
-		latest = &operation
-		attempt.Operation, attempt.Stage, attempt.ErrorCode = &operation, operation.Stage, operation.ErrorCode
-		attempt.ChangedAt = manager.configuration.now().UTC()
-		return manager.configuration.store.writeUpgrade(ctx, id, *attempt)
+		return manager.acceptUpgrade(
+			ctx,
+			id,
+			attempt,
+			operation,
+		)
 	}
 	operation, queryErr := session.UpgradeOperation(ctx, operationID)
 	if queryErr == nil {
@@ -534,4 +506,96 @@ func (manager *Manager) runUpgrade(
 		err = remotessh.ErrIntegrity
 	}
 	return err
+}
+
+// observeUpgrade performs one journal read, independently of the explicit-action
+// worker. Missing or unreachable journals never enter an execution retry path.
+func (manager *Manager) observeUpgrade(
+	ctx context.Context,
+	node Node,
+	request runnerinstall.UpgradeRequest,
+	session RemoteSession,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, upgradeObservationTimeout)
+	defer cancel()
+	err := manager.configuration.store.withNodeOperation(ctx, node.ID, func() error {
+		current, err := manager.node(ctx, node.ID, node.Revision)
+		if err != nil {
+			return err
+		}
+		sameIdentity := current.Binding != nil && current.Binding.Identity.NodeID == request.NodeID &&
+			current.Binding.Identity.InstallationID == request.InstallationID
+		if !sameIdentity {
+			return ErrUpgradeIdentity
+		}
+		attempt, err := manager.configuration.store.readUpgrade(ctx, node.ID)
+		if err != nil {
+			return err
+		}
+		if attempt == nil || attempt.Request != request {
+			return ErrConflict
+		}
+		if upgradeTerminal(attempt.Operation) {
+			return nil
+		}
+		operation, err := session.UpgradeOperation(ctx, request.OperationID)
+		if err != nil {
+			return err
+		}
+		return manager.acceptUpgrade(
+			ctx,
+			node.ID,
+			attempt,
+			operation,
+		)
+	})
+	if errors.Is(err, ErrBusy) {
+		// An explicit action or another client's observer owns this node. It
+		// will persist its result; observation must not delay or replace it.
+		return nil
+	}
+	return err
+}
+
+// acceptUpgrade is shared by action acknowledgments and read-only observations.
+// Callers hold the node operation lock and have checked the node revision.
+func (manager *Manager) acceptUpgrade(
+	ctx context.Context,
+	id string,
+	attempt *Upgrade,
+	operation runnerinstall.UpgradeOperation,
+) error {
+	if operation.Validate() != nil || operation.Request != attempt.Request {
+		return remotessh.ErrIntegrity
+	}
+	if previous := attempt.Operation; previous != nil {
+		// Irreversible facts order observations even across server clock drift.
+		resumeRegressed := previous.ResumeAttempted && !operation.ResumeAttempted
+		if upgradeTerminal(previous) || resumeRegressed {
+			return nil
+		}
+		changedBranch := operation.Stage != "rolling_back" && operation.Stage != "rolled_back"
+		restoreReenabled := !previous.Restorable && operation.Restorable
+		rollbackRegressed := previous.Stage == "rolling_back" && (changedBranch || restoreReenabled)
+		if rollbackRegressed {
+			return nil
+		}
+		strongerResume := operation.ResumeAttempted && !previous.ResumeAttempted
+		strongerRollback := operation.Stage == "rolling_back" && !operation.Restorable &&
+			(previous.Stage != "rolling_back" || previous.Restorable)
+		stronger := strongerResume || strongerRollback || upgradeTerminal(&operation)
+		if !stronger && operation.ChangedAt.Before(previous.ChangedAt) {
+			return nil
+		}
+		if !stronger && operation.ChangedAt.Equal(previous.ChangedAt) {
+			before, _ := json.Marshal(previous)
+			after, _ := json.Marshal(operation)
+			if !bytes.Equal(before, after) {
+				return nil
+			}
+		}
+	}
+	attempt.Operation, attempt.Stage, attempt.ErrorCode = &operation, operation.Stage, operation.ErrorCode
+	attempt.ChangedAt = manager.configuration.now().UTC()
+	return manager.configuration.store.writeUpgrade(ctx, id, *attempt)
 }
