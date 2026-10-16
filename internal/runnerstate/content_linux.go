@@ -21,19 +21,6 @@ const contentBufferBytes = 32 << 10
 
 var ErrContentCorrupt = errors.New("invalid_runner_content")
 
-type ContentIdentity struct {
-	SHA256 string
-	Size   int64
-}
-
-func (identity ContentIdentity) Validate() error {
-	validSize := identity.Size >= 1 && identity.Size <= jobcontract.MaxAssetBytes
-	if !jobcontract.IsSHA256(identity.SHA256) || !validSize {
-		return ErrInvalid
-	}
-	return nil
-}
-
 // ContentReader is a verified, seekable private file. State.Close closes its
 // descriptor; cancellation affects only this stream. Read and Seek reject a
 // replaced file or state directory without rehashing the complete file.
@@ -43,7 +30,7 @@ type ContentReader struct {
 	ctx      context.Context
 	file     *os.File
 	name     string
-	identity ContentIdentity
+	identity jobcontract.ContentIdentity
 	info     os.FileInfo
 }
 
@@ -55,12 +42,13 @@ var _ io.ReadSeekCloser = (*ContentReader)(nil)
 // A blocking source reader must honor ctx itself, as an HTTP request body does.
 func (state *State) PutContent(
 	ctx context.Context,
-	identity ContentIdentity,
+	identity jobcontract.ContentIdentity,
 	source io.Reader,
 ) (created bool, err error) {
 	if ctx == nil || source == nil || identity.Validate() != nil {
 		return false, ErrInvalid
 	}
+	defer func() { err = classifyContentStorageError(err) }()
 	if err := state.contentReady(ctx); err != nil {
 		return false, err
 	}
@@ -72,14 +60,18 @@ func (state *State) PutContent(
 	if err := state.registerContentFile(file); err != nil {
 		return false, err
 	}
-	defer func() { err = errors.Join(err, state.releaseContentFile(file)) }()
+	defer func() {
+		if closeErr := state.releaseContentFile(file); closeErr != nil {
+			err = errors.Join(err, jobcontract.ErrAssetStorage, closeErr)
+		}
+	}()
 	if err := streamContent(
 		ctx,
 		identity,
 		source,
 		file,
 	); err != nil {
-		return false, err
+		return false, classifyContentInputError(err)
 	}
 	info, err := file.Stat()
 	if err != nil {
@@ -105,7 +97,11 @@ func (state *State) PutContent(
 	if err != nil {
 		return false, err
 	}
-	defer existing.Close()
+	defer func() {
+		if closeErr := existing.Close(); closeErr != nil {
+			err = errors.Join(err, jobcontract.ErrAssetStorage, closeErr)
+		}
+	}()
 	state.contentMu.Lock()
 	defer state.contentMu.Unlock()
 	if err := state.contentReadyLocked(ctx); err != nil {
@@ -160,10 +156,14 @@ func (state *State) PutContent(
 	return false, nil
 }
 
-func (state *State) OpenContent(ctx context.Context, identity ContentIdentity) (*ContentReader, error) {
+func (state *State) OpenContent(
+	ctx context.Context,
+	identity jobcontract.ContentIdentity,
+) (reader *ContentReader, err error) {
 	if ctx == nil || identity.Validate() != nil {
 		return nil, ErrInvalid
 	}
+	defer func() { err = classifyContentStorageError(err) }()
 	if err := state.contentReady(ctx); err != nil {
 		return nil, err
 	}
@@ -178,7 +178,9 @@ func (state *State) OpenContent(ctx context.Context, identity ContentIdentity) (
 	valid := false
 	defer func() {
 		if !valid {
-			state.releaseContentFile(file)
+			if closeErr := state.releaseContentFile(file); closeErr != nil {
+				err = errors.Join(err, jobcontract.ErrAssetStorage, closeErr)
+			}
 		}
 	}()
 	info, err := file.Stat()
@@ -266,7 +268,9 @@ func (reader *ContentReader) ready() error {
 	)
 }
 
-func contentName(identity ContentIdentity) string { return "content-" + identity.SHA256 + ".blob" }
+func contentName(identity jobcontract.ContentIdentity) string {
+	return "content-" + identity.SHA256 + ".blob"
+}
 
 func validContentInfo(info os.FileInfo, size int64) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -394,22 +398,26 @@ func (state *State) syncContentFile(file *os.File) error {
 	return file.Sync()
 }
 
-func (state *State) syncContentDirectory() error {
+func (state *State) syncContentDirectory() (err error) {
 	directory, err := state.root.Open(".")
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() {
+		if closeErr := directory.Close(); closeErr != nil {
+			err = errors.Join(err, jobcontract.ErrAssetStorage, closeErr)
+		}
+	}()
 	return state.syncContentFile(directory)
 }
 
 func (state *State) publishContent(
 	ctx context.Context,
-	identity ContentIdentity,
+	identity jobcontract.ContentIdentity,
 	temporary string,
 	file *os.File,
 	info os.FileInfo,
-) (bool, error) {
+) (created bool, err error) {
 	state.contentMu.Lock()
 	defer state.contentMu.Unlock()
 	if err := state.contentReadyLocked(ctx); err != nil {
@@ -427,7 +435,11 @@ func (state *State) publishContent(
 	if err != nil {
 		return false, err
 	}
-	defer directory.Close()
+	defer func() {
+		if closeErr := directory.Close(); closeErr != nil {
+			err = errors.Join(err, jobcontract.ErrAssetStorage, closeErr)
+		}
+	}()
 	raw, err := directory.SyscallConn()
 	if err != nil {
 		return false, err
@@ -488,7 +500,7 @@ func (state *State) publishContent(
 	)
 }
 
-func streamContent(ctx context.Context, identity ContentIdentity, source io.Reader, target io.Writer) error {
+func streamContent(ctx context.Context, identity jobcontract.ContentIdentity, source io.Reader, target io.Writer) error {
 	limited := io.LimitReader(source, identity.Size+1)
 	digest := sha256.New()
 	buffer := make([]byte, contentBufferBytes)
@@ -500,7 +512,7 @@ func streamContent(ctx context.Context, identity ContentIdentity, source io.Read
 		}
 		n, readErr := limited.Read(buffer)
 		if n < 0 || n > len(buffer) {
-			return ErrInvalid
+			return &contentReadError{cause: ErrInvalid}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -517,26 +529,63 @@ func streamContent(ctx context.Context, identity ContentIdentity, source io.Read
 			_, _ = digest.Write(buffer[:n])
 			count += int64(n)
 			if count > identity.Size {
-				return fmt.Errorf("%w: content length", ErrContentCorrupt)
+				return &contentIntegrityError{cause: fmt.Errorf("%w: content length", ErrContentCorrupt)}
 			}
 		} else {
 			emptyReads++
 			if emptyReads >= 100 && readErr == nil {
-				return io.ErrNoProgress
+				return &contentReadError{cause: io.ErrNoProgress}
 			}
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
 		}
+		if errors.Is(readErr, io.ErrUnexpectedEOF) {
+			return &contentIntegrityError{cause: readErr}
+		}
 		if readErr != nil {
-			return readErr
+			return &contentReadError{cause: readErr}
 		}
 	}
 	if count != identity.Size {
-		return io.ErrUnexpectedEOF
+		return &contentIntegrityError{cause: io.ErrUnexpectedEOF}
 	}
 	if hex.EncodeToString(digest.Sum(nil)) != identity.SHA256 {
-		return fmt.Errorf("%w: content digest", ErrContentCorrupt)
+		return &contentIntegrityError{cause: fmt.Errorf("%w: content digest", ErrContentCorrupt)}
 	}
 	return ctx.Err()
+}
+
+type contentIntegrityError struct{ cause error }
+
+func (err *contentIntegrityError) Error() string { return err.cause.Error() }
+func (err *contentIntegrityError) Unwrap() error { return err.cause }
+
+type contentReadError struct{ cause error }
+
+func (err *contentReadError) Error() string { return err.cause.Error() }
+func (err *contentReadError) Unwrap() error { return err.cause }
+
+func classifyContentInputError(err error) error {
+	var integrity *contentIntegrityError
+	if errors.As(err, &integrity) {
+		return errors.Join(jobcontract.ErrAssetIntegrity, integrity.cause)
+	}
+	var read *contentReadError
+	if errors.As(err, &read) {
+		return errors.Join(jobcontract.ErrAssetRead, read.cause)
+	}
+	return err
+}
+
+func classifyContentStorageError(err error) error {
+	if err == nil || errors.Is(err, jobcontract.ErrAssetStorage) {
+		return err
+	}
+	isInput := errors.Is(err, jobcontract.ErrAssetIntegrity) || errors.Is(err, jobcontract.ErrAssetRead)
+	isCancelled := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	if isInput || isCancelled {
+		return err
+	}
+	return errors.Join(jobcontract.ErrAssetStorage, err)
 }

@@ -71,8 +71,11 @@ func decodeError(response *http.Response) error {
 		"body_too_large": 413, "capability_missing": 422, "job_conflict": 409,
 		"not_found": 404, "capacity_exceeded": 429, "runner_maintenance": 423,
 		"storage_unavailable": 503, "invalid_range": 416,
+		"asset_integrity_mismatch": 422, "asset_read_failed": 408, "invalid_content_encoding": 415,
+		"upload_in_progress": 409,
 	}
-	retryable := response.StatusCode == 503 || response.StatusCode == 429
+	uploadBusy := response.StatusCode == http.StatusConflict && wire.Code == "upload_in_progress"
+	retryable := response.StatusCode == 503 || response.StatusCode == 429 || uploadBusy
 	if codes[wire.Code] != response.StatusCode || wire.Retryable != retryable {
 		return ErrIntegrity
 	}

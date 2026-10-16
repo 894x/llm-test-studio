@@ -69,8 +69,14 @@ func TestDiskAdmissionReservesHeadroomAndReleasesExactlyOnce(t *testing.T) {
 type fixedDiskUsage struct {
 	used         uint64
 	available    uint64
+	contentFiles uint64
 	usedErr      error
 	availableErr error
+	contentErr   error
+}
+
+func (usage fixedDiskUsage) ContentFiles(ctx context.Context) (uint64, error) {
+	return usage.contentFiles, errors.Join(ctx.Err(), usage.contentErr)
 }
 
 func (usage fixedDiskUsage) UsedBytes(ctx context.Context) (uint64, error) {

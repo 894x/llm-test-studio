@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os/user"
+	"slices"
 	"strconv"
 	"time"
 
@@ -65,7 +66,11 @@ func applyUpgradeMaintenance(
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusConflict {
-		return jobhost.MaintenanceResult{}, ErrConflict
+		data, err := io.ReadAll(io.LimitReader(response.Body, MaxRecordBytes+1))
+		if err != nil || len(data) > MaxRecordBytes {
+			return jobhost.MaintenanceResult{}, ErrIntegrity
+		}
+		return jobhost.MaintenanceResult{}, maintenanceConflict(data)
 	}
 	if response.StatusCode != http.StatusOK {
 		return jobhost.MaintenanceResult{}, ErrService
@@ -97,4 +102,55 @@ func applyUpgradeMaintenance(
 		return jobhost.MaintenanceResult{}, ErrIntegrity
 	}
 	return result, nil
+}
+
+func maintenanceConflict(document []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(document))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		return ErrIntegrity
+	}
+	required := []string{"contract", "code", "message", "retryable"}
+	fields := map[string]json.RawMessage{}
+	for decoder.More() {
+		token, err := decoder.Token()
+		name, ok := token.(string)
+		allowed := slices.Contains(required, name) || name == "field"
+		validName := err == nil && ok && allowed
+		if !validName || fields[name] != nil {
+			return ErrIntegrity
+		}
+		var value json.RawMessage
+		if decoder.Decode(&value) != nil || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return ErrIntegrity
+		}
+		fields[name] = value
+	}
+	if token, err := decoder.Token(); err != nil || token != json.Delim('}') {
+		return ErrIntegrity
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return ErrIntegrity
+	}
+	for _, name := range required {
+		if fields[name] == nil {
+			return ErrIntegrity
+		}
+	}
+	var wire struct {
+		Contract  int    `json:"contract"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		Field     string `json:"field"`
+		Retryable bool   `json:"retryable"`
+	}
+	if json.Unmarshal(document, &wire) != nil || wire.Contract != jobcontract.CurrentContract {
+		return ErrIntegrity
+	}
+	if wire.Code == "upload_in_progress" && wire.Retryable {
+		return ErrBusy
+	}
+	if wire.Code == "job_conflict" && !wire.Retryable {
+		return ErrConflict
+	}
+	return ErrIntegrity
 }

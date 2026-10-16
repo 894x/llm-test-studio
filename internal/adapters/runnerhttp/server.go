@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"io"
 	"mime"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
@@ -41,15 +43,23 @@ type Dependencies struct {
 	Repository   ReadRepository
 	TokenSHA256  [32]byte
 	Capabilities jobcontract.RunnerCapabilities
+	Content      ContentStore
+}
+
+type ContentStore interface {
+	PutContent(context.Context, jobcontract.ContentIdentity, io.Reader) (bool, error)
 }
 
 type Handler struct {
-	host        *jobhost.Host
-	maintenance *jobhost.Maintenance
-	repository  ReadRepository
-	tokenHash   [32]byte
-	info        jobcontract.RunnerInfo
-	mux         *http.ServeMux
+	host          *jobhost.Host
+	maintenance   *jobhost.Maintenance
+	repository    ReadRepository
+	tokenHash     [32]byte
+	info          jobcontract.RunnerInfo
+	content       ContentStore
+	serviceMu     sync.Mutex
+	activeUploads uint64
+	mux           *http.ServeMux
 }
 
 type ErrorResponse struct {
@@ -74,6 +84,30 @@ func New(dependencies Dependencies) (*Handler, error) {
 	if identity.Target.Kind != jobcontract.TargetRemote {
 		return nil, ErrInvalid
 	}
+	if dependencies.Capabilities.Features == nil {
+		return nil, ErrInvalid
+	}
+	content := dependencies.Content
+	if content != nil {
+		value := reflect.ValueOf(content)
+		if value.Kind() == reflect.Pointer && value.IsNil() {
+			content = nil
+		}
+	}
+	features := make([]string, 0, len(dependencies.Capabilities.Features)+1)
+	for _, feature := range dependencies.Capabilities.Features {
+		if feature == "assets" {
+			return nil, ErrInvalid
+		}
+		if feature != jobcontract.FeatureContentUpload {
+			features = append(features, feature)
+		}
+	}
+	if content != nil {
+		features = append(features, jobcontract.FeatureContentUpload)
+	}
+	slices.Sort(features)
+	dependencies.Capabilities.Features = features
 	policy := identity.Policy
 	info := jobcontract.RunnerInfo{
 		Contract: jobcontract.CurrentContract, NodeID: identity.Origin.NodeID,
@@ -92,6 +126,7 @@ func New(dependencies Dependencies) (*Handler, error) {
 	handler := &Handler{
 		host: dependencies.Host, repository: dependencies.Repository, tokenHash: dependencies.TokenSHA256,
 		maintenance: dependencies.Maintenance,
+		content:     content,
 		info:        info.Clone(), mux: http.NewServeMux(),
 	}
 	handler.mux.HandleFunc("GET /runner", handler.runner)
@@ -105,6 +140,7 @@ func New(dependencies Dependencies) (*Handler, error) {
 	handler.mux.HandleFunc("GET /jobs/{job_id}/reports/{report_id}", handler.report)
 	handler.mux.HandleFunc("GET /jobs/{job_id}/archives/{report_id}", handler.performanceArchive)
 	handler.mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		closeUnreadAssetBody(writer, request)
 		writeError(
 			writer,
 			http.StatusNotFound,
@@ -116,10 +152,12 @@ func New(dependencies Dependencies) (*Handler, error) {
 }
 
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	writer = &jsonResponseWriter{ResponseWriter: writer, gzip: acceptsJSONGzip(request)}
+	compress := request.Method != http.MethodPut && acceptsJSONGzip(request)
+	writer = &jsonResponseWriter{ResponseWriter: writer, gzip: compress}
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	if !handler.authorized(request) {
+		closeUnreadAssetBody(writer, request)
 		writer.Header().Set("WWW-Authenticate", "Bearer")
 		writeError(
 			writer,
@@ -131,6 +169,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	contracts := request.Header.Values(jobcontract.ContractHeader)
 	if len(contracts) != 1 || contracts[0] != strconv.Itoa(jobcontract.CurrentContract) {
+		closeUnreadAssetBody(writer, request)
 		writeError(
 			writer,
 			http.StatusUpgradeRequired,
@@ -140,12 +179,19 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if len(request.URL.RawQuery) > 4096 {
+		closeUnreadAssetBody(writer, request)
 		writeError(
 			writer,
 			http.StatusBadRequest,
 			"invalid_query",
 			"The query is too large.",
 		)
+		return
+	}
+	// Content upload is the only PUT operation. Validate it before ServeMux
+	// can clean an alias path or redirect an invalid request to a valid one.
+	if request.Method == http.MethodPut {
+		handler.uploadAsset(writer, request)
 		return
 	}
 	handler.mux.ServeHTTP(writer, request)

@@ -142,6 +142,7 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
 		Host: host, Maintenance: maintenance, Repository: readView, TokenSHA256: [32]byte(hash),
 		Capabilities: capabilities(),
+		Content:      &contentStore{state: state, guard: guard, host: host},
 	})
 	clear(hash)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,7 +84,7 @@ type Client struct {
 	once       sync.Once
 	mu         sync.Mutex
 	closed     bool
-	transports []*http.Transport
+	endpoints  []*runnerHTTP
 }
 
 type inboundActivity struct {
@@ -251,7 +250,7 @@ func Dial(ctx context.Context, endpoint Endpoint, authentication Authentication)
 	client := &Client{
 		connection: cryptossh.NewClient(connection, channels, requests),
 		inbound:    activity,
-		stop:       make(chan struct{}), done: make(chan struct{}), transports: []*http.Transport{},
+		stop:       make(chan struct{}), done: make(chan struct{}), endpoints: []*runnerHTTP{},
 	}
 	go client.keepAlive(keepAliveEvery, keepAliveTimeout)
 	return client, nil
@@ -355,63 +354,6 @@ func (client *Client) keepAlive(interval, timeout time.Duration) {
 	}
 }
 
-// RunnerHTTP opens SSH direct-tcpip channels to one loopback port. It creates no
-// local listener and cannot forward requests to another destination or a proxy.
-func (client *Client) RunnerHTTP(port uint16) (*http.Client, error) {
-	if client == nil || port == 0 {
-		return nil, ErrInvalid
-	}
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	if client.closed {
-		return nil, ErrConnection
-	}
-	if len(client.transports) >= 4 {
-		return nil, ErrInvalid
-	}
-	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, requested string) (net.Conn, error) {
-			if network != "tcp" || requested != address {
-				return nil, ErrInvalid
-			}
-			ctx, cancel := context.WithTimeout(ctx, connectTimeout)
-			defer cancel()
-			// net/http detaches its dial context from request cancellation so a
-			// connection may be pooled. A withheld SSH channel reply must instead
-			// remain bounded by the request that initiated it.
-			if owner, ok := ctx.Value(dialOwnerKey{}).(context.Context); ok {
-				stop := context.AfterFunc(owner, cancel)
-				defer stop()
-			}
-			connection, err := client.dialRunner(ctx, address)
-			if err != nil {
-				return nil, connectionError(ctx, err)
-			}
-			return connection, nil
-		},
-		MaxIdleConns: 8, MaxIdleConnsPerHost: 8, MaxConnsPerHost: 16,
-		IdleConnTimeout: time.Minute, ResponseHeaderTimeout: 25 * time.Second,
-		MaxResponseHeaderBytes: 16 << 10,
-	}
-	client.transports = append(client.transports, transport)
-	return &http.Client{
-		Transport: runnerTransport{transport: transport}, Timeout: 2 * time.Minute,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}, nil
-}
-
-type dialOwnerKey struct{}
-
-type runnerTransport struct{ transport *http.Transport }
-
-func (transport runnerTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	ctx := context.WithValue(request.Context(), dialOwnerKey{}, request.Context())
-	return transport.transport.RoundTrip(request.Clone(ctx))
-}
-
-func (transport runnerTransport) CloseIdleConnections() { transport.transport.CloseIdleConnections() }
-
 func (client *Client) dialRunner(ctx context.Context, address string) (net.Conn, error) {
 	type opened struct {
 		connection net.Conn
@@ -451,13 +393,14 @@ func (client *Client) Close() error {
 	client.once.Do(func() {
 		client.mu.Lock()
 		client.closed = true
-		for _, transport := range client.transports {
-			transport.CloseIdleConnections()
-		}
-		client.transports = []*http.Transport{}
+		endpoints := client.endpoints
+		client.endpoints = []*runnerHTTP{}
 		client.mu.Unlock()
 		close(client.stop)
 		_ = client.connection.Close()
+		for _, endpoint := range endpoints {
+			endpoint.close()
+		}
 		<-client.done
 	})
 	return nil

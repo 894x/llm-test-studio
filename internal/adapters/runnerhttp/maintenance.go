@@ -30,7 +30,17 @@ func (handler *Handler) maintain(writer http.ResponseWriter, request *http.Reque
 		writeOperationError(writer, err)
 		return
 	}
+	handler.serviceMu.Lock()
+	if command.Action == jobcontract.MaintenancePause && handler.activeUploads != 0 {
+		handler.serviceMu.Unlock()
+		writeJSON(writer, http.StatusConflict, ErrorResponse{
+			Contract: jobcontract.CurrentContract, Code: "upload_in_progress",
+			Message: "An active content upload must finish before maintenance.", Retryable: true,
+		})
+		return
+	}
 	result, err := handler.maintenance.Apply(request.Context(), command)
+	handler.serviceMu.Unlock()
 	if err != nil {
 		writeOperationError(writer, err)
 		return

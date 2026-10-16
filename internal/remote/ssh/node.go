@@ -125,6 +125,7 @@ type Request struct {
 	Method     string
 	Route      string
 	Body       io.Reader
+	Content    *jobcontract.ContentIdentity
 	RangeStart *int64
 	JSONGzip   bool
 }
@@ -132,6 +133,9 @@ type Request struct {
 // Do sends only relative management routes through this node's pinned tunnel.
 // Callers own request-body secret cleanup and response-body limits and Close.
 func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error) {
+	if node == nil || ctx == nil {
+		return nil, ErrInvalid
+	}
 	method, route, body := input.Method, input.Route, input.Body
 	invalidRequest := node == nil || ctx == nil || len(route) > 4096
 	if invalidRequest {
@@ -144,9 +148,24 @@ func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error)
 		return nil, ErrInvalid
 	}
 	if start := input.RangeStart; start != nil {
-		validRange := method == http.MethodGet && body == nil && *start >= 0 && !input.JSONGzip
+		validRange := method == http.MethodGet && body == nil && *start >= 0 && !input.JSONGzip && input.Content == nil
 		if !validRange {
 			return nil, ErrInvalid
+		}
+	}
+	httpClient := node.http
+	var content jobcontract.ContentIdentity
+	if input.Content != nil {
+		content = *input.Content
+		validContent := content.Validate() == nil && body != nil && !input.JSONGzip
+		validRoute := method == http.MethodPut && route == "/assets/"+content.SHA256
+		if !validContent || !validRoute {
+			return nil, ErrInvalid
+		}
+		var err error
+		httpClient, err = node.parent.bulkRunnerHTTP(node.http)
+		if err != nil {
+			return nil, err
 		}
 	}
 	token, err := node.token.Bytes()
@@ -154,6 +173,10 @@ func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error)
 		return nil, ErrConnection
 	}
 	defer clear(token)
+	var cancel context.CancelFunc
+	if input.Content != nil {
+		ctx, cancel = context.WithTimeout(ctx, jobcontract.AssetUploadTimeout)
+	}
 	request, err := http.NewRequestWithContext(
 		ctx,
 		method,
@@ -161,6 +184,9 @@ func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error)
 		body,
 	)
 	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return nil, ErrInvalid
 	}
 	request.Header.Set("Authorization", "Bearer "+string(token))
@@ -175,7 +201,20 @@ func (node *Node) Do(ctx context.Context, input Request) (*http.Response, error)
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	return node.http.Do(request)
+	if input.Content != nil {
+		request.ContentLength = content.Size
+		request.Header.Set("Content-Type", "application/octet-stream")
+		request.Header.Set("Content-Encoding", "identity")
+	}
+	response, err := httpClient.Do(request)
+	if cancel != nil {
+		if err != nil {
+			cancel()
+		} else {
+			response.Body = &contentResponse{ReadCloser: response.Body, cancel: cancel}
+		}
+	}
+	return response, err
 }
 
 func (node *Node) Info(ctx context.Context) (jobcontract.RunnerInfo, error) {
@@ -226,18 +265,13 @@ func (node *Node) Close() error {
 	return nil
 }
 
-func (client *Client) releaseRunnerHTTP(httpClient *http.Client) {
-	transport, ok := httpClient.Transport.(runnerTransport)
-	if !ok {
-		return
-	}
-	transport.CloseIdleConnections()
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	for index, current := range client.transports {
-		if current == transport.transport {
-			client.transports = append(client.transports[:index], client.transports[index+1:]...)
-			return
-		}
-	}
+type contentResponse struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (response *contentResponse) Close() error {
+	err := response.ReadCloser.Close()
+	response.cancel()
+	return err
 }

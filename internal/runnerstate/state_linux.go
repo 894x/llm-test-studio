@@ -288,6 +288,37 @@ func (state *State) UsedBytes(ctx context.Context) (uint64, error) {
 	return total, err
 }
 
+// ContentFiles counts retained complete files and scratch names, including
+// malformed or failed content names. They continue consuming admission quota.
+func (state *State) ContentFiles(ctx context.Context) (count uint64, err error) {
+	if err := state.contentReady(ctx); err != nil {
+		return 0, err
+	}
+	directory, err := state.root.Open(".")
+	if err != nil {
+		return 0, err
+	}
+	defer func() { err = errors.Join(err, directory.Close()) }()
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		entries, readErr := directory.ReadDir(128)
+		for _, entry := range entries {
+			name := entry.Name()
+			if strings.HasPrefix(name, "content-") || strings.HasPrefix(name, ".content-") {
+				count++
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return count, state.contentReady(ctx)
+		}
+		if readErr != nil {
+			return 0, readErr
+		}
+	}
+}
+
 func (state *State) Close() error {
 	state.once.Do(func() {
 		state.err = errors.Join(state.closeContent(), state.lock.Close(), state.root.Close())
@@ -295,14 +326,22 @@ func (state *State) Close() error {
 	return state.err
 }
 
-func openPrivate(root *os.Root, name string, flags int) (*os.File, error) {
+func openPrivate(root *os.Root, name string, flags int) (file *os.File, err error) {
 	// Root.OpenFile resolves links within its root. Openat on its pinned
 	// directory descriptor enforces that the final private file is not a link.
 	directory, err := root.Open(".")
 	if err != nil {
 		return nil, err
 	}
-	defer directory.Close()
+	defer func() {
+		if closeErr := directory.Close(); closeErr != nil {
+			if file != nil {
+				closeErr = errors.Join(closeErr, file.Close())
+				file = nil
+			}
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	raw, err := directory.SyscallConn()
 	if err != nil {
 		return nil, err

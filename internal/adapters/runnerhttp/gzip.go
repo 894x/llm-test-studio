@@ -14,6 +14,8 @@ type jsonResponseWriter struct {
 	gzip bool
 }
 
+func (writer *jsonResponseWriter) Unwrap() http.ResponseWriter { return writer.ResponseWriter }
+
 func acceptsJSONGzip(request *http.Request) bool {
 	if request.Header.Get("Range") != "" {
 		return false

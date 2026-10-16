@@ -191,7 +191,7 @@ func TestSharedNodePairingValidatesFreshIdentityAndReleasesPools(t *testing.T) {
 	if _, _, err := client.ConnectBoundNode(t.Context(), identity, storedToken); !errors.Is(err, ErrIntegrity) {
 		t.Fatal("node silently re-paired a replaced installation")
 	}
-	if len(client.transports) != 0 {
+	if len(client.endpoints) != 0 {
 		t.Fatal("failed live identity verification retained a connection pool")
 	}
 	_ = storedToken.Close()

@@ -30,12 +30,12 @@ func contentTestState(t *testing.T) *State {
 	return state
 }
 
-func contentTestIdentity(document []byte) ContentIdentity {
+func contentTestIdentity(document []byte) jobcontract.ContentIdentity {
 	digest := sha256.Sum256(document)
-	return ContentIdentity{SHA256: hex.EncodeToString(digest[:]), Size: int64(len(document))}
+	return jobcontract.ContentIdentity{SHA256: hex.EncodeToString(digest[:]), Size: int64(len(document))}
 }
 
-func contentTestRead(t *testing.T, state *State, identity ContentIdentity) []byte {
+func contentTestRead(t *testing.T, state *State, identity jobcontract.ContentIdentity) []byte {
 	t.Helper()
 	file, err := state.OpenContent(t.Context(), identity)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestContentStreamsPrivateBytesAndReopensSeekableContent(t *testing.T) {
 func TestContentRejectsInvalidIdentityBeforeReading(t *testing.T) {
 	state := contentTestState(t)
 	valid := contentTestIdentity([]byte("x"))
-	for _, identity := range []ContentIdentity{
+	for _, identity := range []jobcontract.ContentIdentity{
 		{SHA256: valid.SHA256, Size: 0},
 		{SHA256: valid.SHA256, Size: -1},
 		{SHA256: valid.SHA256, Size: jobcontract.MaxAssetBytes + 1},
@@ -160,7 +160,7 @@ func TestContentRejectsInvalidIdentityBeforeReading(t *testing.T) {
 	if _, err := state.PutContent(t.Context(), valid, nil); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nil body accepted")
 	}
-	maximum := ContentIdentity{SHA256: valid.SHA256, Size: jobcontract.MaxAssetBytes}
+	maximum := jobcontract.ContentIdentity{SHA256: valid.SHA256, Size: jobcontract.MaxAssetBytes}
 	source := &contentProbeReader{source: strings.NewReader("")}
 	_, err := state.PutContent(t.Context(), maximum, source)
 	if !errors.Is(err, io.ErrUnexpectedEOF) || source.calls != 1 {
@@ -182,7 +182,7 @@ func (reader *contentZeroReader) Read(buffer []byte) (int, error) {
 
 func TestContentMaximumLimiterStreamsExactlyExpectedPlusOneWithoutDisk(t *testing.T) {
 	source := &contentZeroReader{}
-	identity := ContentIdentity{SHA256: strings.Repeat("a", 64), Size: jobcontract.MaxAssetBytes}
+	identity := jobcontract.ContentIdentity{SHA256: strings.Repeat("a", 64), Size: jobcontract.MaxAssetBytes}
 	err := streamContent(
 		t.Context(),
 		identity,
