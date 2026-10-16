@@ -1129,3 +1129,23 @@ priority集合还包含持久已知的foreign任务，本次HTTP新任务样本�
 产物根 `E:/TEMP/llm-native-final-c50c538-4210d70159224eb4a9d051f6803c526f/`：EXE27108352字节、SHA `cac5c9363d1dfac5978a9bde042a362f52e4c7f7b9736e653cd788489af52410`；exe-only ZIP9538612字节、SHA `ac960b6adbf7f799d341b9cd9f6c15b9e713629de11b0e5c06eccd3d0f42b91f`，唯一entry流式SHA与EXE相同。`final-native-package.safe.json` SHA `c2abe27c0d61a15d0e57d99c67b214d88d5a1bab21cb56abd04c975e343b5386`，父级另核EXE/ZIP/launcher/manifest四项摘要匹配。
 
 同目录launcher仍为SHA `dbdbbc7493b4bf0c45c9b9355f79d72958b23d648a1d5113df0f8d135db827c4`，仅引用既有隔离profile；没有启动GUI、读取或复制profile/凭据、切换真实APPDATA，原02b包保持。构建不替代原生界面验收，也未推送或发布。
+
+## 2026-10-17：三出口补验工具的两次失败与本地闭环修正
+
+为避免完整冷历史扫描干扰出口配对，补验工具直接使用当前生产 Preparer、Coordinator、LocalCore、Manager、固定身份的 SSH Backend，以及仅针对新 JobID 的 Synchronizer。它不运行 DesktopApp 初始化或 foreign Watcher，不证明原生入口 R14。仍每目标最多一次 Prepare/Submit，原未确认 Job 不重提；受控 HTTPS 目标使用合成凭据，没有访问用户付费渠道。
+
+第一次实际进程 exit1/EOF、633毫秒，停在隔离缓存目录初始化：工具漏掉生产路径已有的 EnsurePrivateDirectory，缓存构造器正确拒绝不存在的目录。Prepare/Submit/Launch 均0，无 JobID，受控目标未创建；工具未确认清理，不能据未发送任务追认 cleanup 成功。原安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-sdmlo9ig/egress-webhook.safe.json`，SHA `0b499013d08e3f4174ea4890e161c9e10628ed92108285db70e78d050f83c7ae`。
+
+第二次修正初始化后实际 exit1/EOF、24.994秒。本地 Prepare/Submit/Launch 各1，Job `b665826f-093f-4d6d-9a2b-a1f0aeafede1` 已 completed，原性能归档 `4fc7017c-b1f0-4eb3-a526-47355861c3b1` 已封存，1请求成功；后续校验却错误地将本地执行器套入远程固定预算，报 runner_health_mismatch。真实本地预算128/1024/65536与远程1/16/2000不同，此错误不是已证节点不健康。远程新任务均未提交；受控目标创建201、删除204、删除后读取404，cleanup_confirmed=true。原回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-8861v6oy/egress-webhook.safe.json`，SHA `63f3e0feb2308735bf37db0543d621d8245aefad3cef67320bce7ec421eefa48`，仍保持 passed=false。只读核原数据库前后SHA相同，不能补造当时未完成的 capture 配对断言。
+
+第三份独立 TEMP 工具先以真实 loopback 重现旧 gate 失败，再改为读取本地 Host 的实际 Policy/Origin；Ready、Healthy及Active/Queued/Pending全0仍必需，远程 sharedRunnerProbeError 原样保留。最终完整 loopback Prepare1/Submit1/POST1→sealed result→archive→settled→Close 通过，2.07秒。共3次隔离本地 Job、各1个免费 loopback请求：旧 gate RED、一次新增负例断言过严的工具失败、最终 GREEN均保留。真实 live 与 loopback 共用同一 launchPerformance、观察和归档校验路径；语义断言失败现在保留 probe_validation 分类及首错。
+
+独立增量审查通过，冻结 EXE SHA `d70593a9ac7c7496c3c859e8caa362b1e809a6dd1971993f85f04507c0394ebb`、Go源SHA `42bf05ad96d17e3db9208241481cc4398329176c043a0a3349ed641a4f82aa1a`、dispatcher SHA `fad290b2f97d6b39732dda83e8cf09d69d078d7771d0121dd6fd26fdebb2d566`；3295项编译输入前后零漂移。`C:/Users/894/AppData/Local/Temp/llm-r4-owned-egress-loopback-32621686/FINAL-LOOPBACK.safe.json` SHA `4b6151d7c89b65fac5ed52d6a9b87955bf677c25f0102d2f4fa8df1d88b325be`。这只证明本地闭环与工具修正，不能代替三出口实际通过；原失败收据和原 Job 均保留。
+
+## 2026-10-17：三出口补验明确接收后的首次事件404
+
+上述冻结工具的唯一新三出口实跑实际 exit1/EOF，38.905秒，stderr0；Prepare/Submit/Launch各3，没有重试提交或 foreign 历史扫描。三角色受控直接请求均1次、SSE原字节匹配，出口分别为本地117.185.180.212、新节点122.51.2.21、原节点39.109.103.132。本地 Job `eec43243-4318-446b-8880-fbef76b1bfb6`、报告 `e03c13ee-3214-4f5b-9356-6509c0c6dac8`；新节点 Job `de35414d-6be9-4f40-82a7-e72c3e42f5e5`、报告 `1e3eb3a5-ec94-4863-bda4-05e58b032b8e`，两者各1/1成功、原archive与actual Origin/出口均匹配，限定规范化后的冻结业务摘要相同。
+
+原节点这次 Job `1368e52d-f309-4be6-9b0e-be44c5e94db8` 已明确收到 POST jobs 的HTTP202（370字节、333毫秒），Submit完整实体986字节，协调器保存 accepted/revision3。随后首次 events 查询返回HTTP404（114字节、168毫秒），工具停止观察并保留首错，当时仍剩106.130秒测量预算。因此这次失败不是等待预算耗尽；202也不能代替实际执行、终态或报告证明。没有将这次已确认接收套用于原未确认Job，也没有重提任一旧Job。
+
+捕获共5条（3条control及local/fast实际Core请求），原节点Core出口配对未完成，整体 passed=false。目标创建201、删除204、删除后GET404，cleanup_confirmed=true，后端cleanup_failure=null。原安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-kxqdb_0_/egress-webhook.safe.json`，SHA `cfeb7d11b8100fd5e07581874b8c5fde5eb241d8bb56cff597d254e7636893ef`；隔离工作区 `C:/Users/894/AppData/Local/Temp/llm-r4-egress-workspace-u3xif70k` 保留。该结果属于固定c50c538生产路径的协调器/后端补验，不是新调度代码或原生DesktopApp验收。
