@@ -892,3 +892,23 @@ PreparedWire是runtime.Response内部json:-字段，只描述准备结果，不�
 父级会话19012真实exit0，免费共享执行证据 `%TEMP%/llm-second-node-shared-rfxwq6w2/acceptance.safe.json` SHA `eb5b3af6e932f2b78f662e62b4657cd8bcee4cd272163b4201c2b7143a0ac902`，events SHA `5189c78fcb941be6b99c0693e663e2dcc926e9be7285a424c4fefb1ee889743b`。复用当前helper内的两个独立OS客户端role，每个仅Launch1，client标签r15-client-a/b均与实际R8不同；观察到同一runner active1/queued1、B可见A，Mock gate释放后两Job均completed/settled，并由真实同步取得sealed、origin匹配的完整性能文档/统计归档。Job分别为 `86a180fb-4fa5-40a1-8e89-a8eaec54b433`、`5bd84910-ace5-4624-8af5-383e82ee8e11`；报告分别为 `2f509d05-33fa-4123-88ba-30ebafba16b9`、`7e71d7d0-3aa6-415a-be1e-0c5578a2dd2a`。A终态观察6039ms、终态后settled8ms、镜像4535ms，总10591ms；B分别3121/7/7289ms，总10427ms。Mock实际请求2、最大同时请求1、拒绝0、Provider0；执行前后PID2728603/start804746624/NRestarts1/exe SHA相同。两个role使用同一client二进制和不同版本标签，不宣称不同client二进制构建已经实测；也未测试队列/总并发上限饱和。
 
 本轮确立第二台真实amd64节点的自动安装、两节点默认切换、共享复用、空闲进程保活和最小性能任务闭环。它不改判原服务器13项历史冷同步失败，不代替arm64实跑、native/OS Store、整机重启、历史库直接转换/实际切换、完整恢复或其他既有尚未验收项；文件扩展仍按用户要求暂缓。本轮没有再跑付费K3，先前真实渠道结果与失败继续保留。
+
+## 2026-10-17：历史 766 快照直接转换当前格式，实际切换仍待执行
+
+父级会话25355实际exit0，使用独立TEMP工具将既有766格式快照直接转换到当前 `1db91d4ba40e06d3b5d3a8a7730d5f57702d63f3c39cb3e4d3a80b678c64fa68` / 80声明对象；没有串联ADC转换器。工具及当前typed validator基于clean `67b387e244978bd4bfdc2d4d7a218afccb5c0c27`；Python SHA `3bf9460f8adb3211f2f57bfee743b90fcf26907fff10b885927d35547ba8b54b`，validator SHA `140a7e6960e39708042e04d4c8ea2ff2f1418e99d29791b425545fa932a47adb`。只接受固定源格式、准确DDL与父级固定SHA；未知、ADC、DDL漂移、非法关系/资产及已存在目标明确拒绝。8项合成正负验证、vet及独立静态审查通过。发布前完成验证与proof写入，以最后一步no-replace link发布；孤立proof不表示转换成功。
+
+执行目录为 `%TEMP%/direct-766-current-67-355104de899e48fcacb80ecad381ec09/`。父级先独占复制既有 `source-766.snapshot.db` 为 `parent-source-766.db`，复制前后及转换后的源SHA均为 `8ffacb1af4a3101a75abf09e02fc02f191e549423182ab7131adadfe9d9da8f2` / 187662336字节。新 `current.db` 实际存在，187621376字节，SHA `6366bd911116554d9593eaa2c335eeac1133ccc6e9c09400d907e206ddb5a8be` 与转换proof一致。父级随后只读immutable复核quick_check通过、FK违规0、无sidecar且目标SHA不变；并非只凭工具退出或预先写入的proof判定。
+
+当前完整 `VerifyRunnerDatabase` 与全部Quick Performance getter校验通过：63个execution runs、252个revision、5482个result、4个comparison、8个comparison revision、22个comparison-run关系、61份普通report、43份性能report。原生SQLite类型和值及其他JSON字节逐表验证保留；仅替换schema checksum，并在104份历史未受管理报告根部显式补 `execution_origin:null`。新增managed/content inventories均为空，没有为历史本地运行虚构远程Job、节点Origin或物理文件事实。当前应用仍只接受唯一当前格式，没有运行时历史reader、自动迁移或版本分支。
+
+`current.db.conversion.safe.json` SHA `17d5ca08ffde37010cc03fe5ab6627037c211d4d2ef3d36aa95fbc463887d59c`；父级实际文件/退出/只读复核记录 `parent-actual-conversion.safe.json` SHA `3d09c3120f41754bbc4ffaa141bf984f620f35022fe8c616103d5758e882a392`。本次只操作既有快照的独立副本，没有打开或修改实际APPDATA库，没有服务器数据库、SSH或provider操作。真实用户库的新鲜一致性快照、切换、实际应用回读与恢复验证仍未完成；临时入口 `direct_766_current.py`、固定validator及验证副本保留在上述目录，待必要升级与验证完成后清理，不进入应用启动、构建或正常读写路径。
+
+## 2026-10-17：沿用原冷同步副本续传，节点观察缓存显式更新
+
+父级将原 `fixed-main-read-budget-poll5s/run-wl53xkng/workspace-b` 的38个文件、92297862字节完整复制到 `%TEMP%/cold-resume-67-fd1ba674-e79d-47f4-8228-0bb37d8e4e35/workspace-b`，源复制前后与目标相对路径/大小/SHA逐一一致。沿用原配置ID、默认选择、物理节点绑定、10个镜像、14个已发现报告引用（9个imported）、9份完整缓存和5份partial；没有重置任务或从空库重跑。实际客户端库起始SHA仍为 `68cec4feece5486d804a7c7dc636c16faae75f580a5d56960d532a06f183c825`。
+
+首个续传入口会话53429实际exit1，`run-gec0uenu/observation.safe.json`保留false，仅4条安全记录；增加固定prepare阶段标记后的同工作区会话91438也实际exit1，`r2/run-ev77hivw/observation.safe.json`保留false。后者明确停止于FileStore.Read，未到配置Validate或唯一SSH Dial入口；两次均未运行watcher、访问任务库、提交或调用provider。不能将这两次初始化失败算成网络超时或续传验收。
+
+已确认 `4007889` 新增的SystemInfo.has_sudo同时影响节点Observation.System的当前严格JSON形状。旧13802d8缓存缺少该字段，会被current FileStore canonical校验拒绝；FileStore构造器接受完整文件路径，原路径用法正确。真实t.TempDir非空绑定配置回归证明：含has_sudo当前文件可读、仅删除字段明确ErrInvalid且原字节不变、仅将过期Observation置null后可读。这里属于节点观察缓存的持久形状变化；此前“任务/报告/SQLite格式不变”的结论不应扩展为所有配置都不受影响。未新增缺字段fallback或历史格式reader。
+
+父级在自有续传副本上单独显式转换：固定源nodes.json SHA `c5ee7091e2fb7425c349d3f5befa194a1f5e1de19867483b7e059f6912a8aca9`，仅将完整过期Observation值替换为null，得到SHA `1feb9db3092aa0079827b51c2c3fe8441ed5446952ff6dd8b2038ff395a38821`。原文件独占备份为 `parent-original-nodes-before-has-sudo.json`；没有将未知has_sudo伪造为false。语义及原始JSON其余字节、身份/auth引用/默认选择均保留，其他37个工作区文件及数据库/缓存SHA不变，原工作区及实际APPDATA均未修改。`parent-explicit-observation-conversion.safe.json` SHA `ad618fdc1953f8abf4aaf4468b640e6dd52e73c329b288ec9f63c27bc9ecf209`。临时转换以显式父操作完成，不进入应用正常读写。
