@@ -573,3 +573,10 @@ B1 secondary32b302d→mainf6c786f的18文件已整合，内部Render/Send统一�
 父级clean cf83全仓Go/vet已终态通过，A14+B1 18 Git blobs0漂移；本阶段无FE/bindings变化，因此未重复Wails/FE/native。Stage、JobContent/Host持久非空admission、runtime adapter桥、native_case、持久RequestWire、Windows physical adapter、HTTP组合及manifest/release仍待接通，JobSpec filegate/cap不变、fileLaunch仍禁；整体文件链路未完成，原r6 false与真实数据切换边界保持。该主树检查记录时单50620 first-page诊断仅prepared，后续实际执行见下段，完整验证见[验证记录](remote-execution-validation.md)。
 
 单50620首页现已离线执行通过：r4保留13条原事件seq1..13的6659B页面envelope由工具重建，非捕获HTTP；currentClient(fake memory transport/0HTTP)解码一次、Batch/Budget通过，再仅对新owned TEMP 1db Apply一次，5.802ms成功并回读seq13/rev4/completed，digest/Origin匹配，实际Close/DiagnosticComplete/ImportSuccess、process0/EOF。仅证明固定小Performance旧页当前可读可写，未覆盖实际服务器HTTP/Probe、并发调度或fullsync，不改原r6 false或实际数据切换；下一步仅准备真实冷同步阶段观测卡，未新GET/SSH/E2E/provider，详见[验证记录](remote-execution-validation.md)。
+
+
+### 第二台 amd64 节点推进记录
+
+`4007889`已提交root/免交互sudo当前实现，相关Go包完整测试、vet、desktop节点测试与独立审查通过。父级第二节点真实入口48042已经完成一次自动安装到固定R8、两台物理节点及本地默认切换、独立客户端共享复用，实际Close/OS退出/EOF齐全；94878证明新节点空闲runner强杀后约5.58秒自动恢复；19012证明两个独立客户端Job按共享active1/queued1执行、两份性能报告同步完成，免费Mock请求仅2，实际runner来源与进程前后相符。工具首次本地路径失败和首次保活观察失败均保留false，修正工具后的证据分别记录，不改写旧记录。
+
+R8 runner是精确9a0991b源码的双架构产物，实际新节点amd64已运行；当前client源码为4007889，既有R7仍复用。此进展只补上述实际边界，原13历史冷同步、arm64实跑、native/OS Store、整机重启、历史库直接转换/切换、完整恢复、CI发布及其他既有待验范围继续保持；文件扩展仍暂缓。完整身份、operation、Job、报告、工具SHA和限制见验证记录对应节。
