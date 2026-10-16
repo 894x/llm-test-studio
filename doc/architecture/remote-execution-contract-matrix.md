@@ -226,6 +226,8 @@ P2a的49文件已由独立1467e19f整合main cbef518。当前 `Input.type=file` 
 
 P3首片31文件由secondary40b296e整合main00b1802，冷查询11文件由secondary2193d75整合main94f1。当前仅严格manifest/holding/release types、Ledger ports、空内容接收及16表/8索引基础；Acceptance.ContentClaims必显式非nil，当前只接受[]，非空claims/assets仍拒绝，metadata不构成physical pin。Manager A、真实pins/permit、Core resolver与P2b仍在别树开始，assets/fileLaunch及manifest/release/physicalManager均未开放。
 
-冷查询在同一只读TX捕获有界raw，关闭游标、归还pool1连接后再纯投影，保留同快照revision及完整坏数据拒绝；确定性writer1秒timeout RED与暂停投影writer成功GREEN已通过，预算不变。最终clean94f1全仓Go/vet通过，31个P3 blobs与9个冷查询纯文件无漂移、两merge文件复核；无FE/bindings或现管理协议变化。父级原d629/e001/b285各一次GET只证明completed/rev4/seq469 Snapshot读取和Close/EOF成功，不等于冷同步/报告导入通过；原r5 false不变，r6仅TEMP准备。
+冷查询在同一只读TX捕获有界raw，关闭游标、归还pool1连接后再纯投影，保留同快照revision及完整坏数据拒绝；确定性writer1秒timeout RED与暂停投影writer成功GREEN已通过，预算不变。最终clean94f1全仓Go/vet通过，31个P3 blobs与9个冷查询纯文件无漂移、两merge文件复核；无FE/bindings或现管理协议变化。父级原d629/e001/b285各一次GET只证明completed/rev4/seq469 Snapshot读取和Close/EOF成功，不等于冷同步/报告导入通过；原r5 false不变，该次记录时r6仅TEMP准备。
 
 唯一current schema替换为1db/80，仅P3改变schema；旧ADC正常打开将拒绝且不改数据。固定ADC→1db的TEMP工具仅验证已登记私有fixtures，尚未转换/切换真实用户或服务器DB，也不支持766/7afb等其他历史入口；工具位置与当前证据集中见[验证记录](remote-execution-validation.md)。
+
+后续r6 fixedsource94f1/session80178已实际exit1，run-jgyxsecl止于400秒b_cold_preparation，phase400020ms；B57424清理后实际exit1/400077ms、readerEOF、cleanup_completed=true，未到A/Mock/Launch/control，新Job与command均空、provider0。父级只读副本仅4/13镜像、54events、8条已观测refs全imported/4perfresults，缺余9项，不是冷同步完成；summary初始ID空数组不表示服务端无13历史ID。连接释放机制的确定回归与主Go PASS保持，但不足排除其他不相容/导入失败，根因未定；原false、资产关闭和真实数据切换边界不变，详见[验证记录](remote-execution-validation.md)。

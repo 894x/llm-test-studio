@@ -815,4 +815,12 @@ P3的31文件包含严格FinalManifest/holding/release当前types、Ledger ports
 
 父级实际运行 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/fixed-get-r5-three-jobs/observation-u1r76jmp/`，observation.safe.json SHA `8b0319d7952290707570c634154861a5a7083d962d7fc76ea9f2401c437ab8a7`。原d62994b6-f054-4a7d-a14e-0e167dc1023e、e00123b8-ad42-4753-9a1f-ac5e50e442a2、b2856f8f-fb78-43f7-9109-ee56fde233b0各GET一次，依次1.620821/1.583541/1.559442s，均completed/rev4/seq469，Snapshot与Origin校验通过；实际Close、reader EOF、进程exit0，mutation/provider均0。
 
-该轮只含Snapshot，refmetadata_available=false，未取event页、报告引用清单或文档，未启动watcher/Pass或重投。它不代表r5客户端已补齐镜像、报告导入完成、冷基线PASS或唯一根因已定；r6仅TEMP准备、尚未实跑，预算原样，无新Job/paid，原r3/r4/r5 false与其他既有待验边界保留。
+该轮只含Snapshot，refmetadata_available=false，未取event页、报告引用清单或文档，未启动watcher/Pass或重投。它不代表r5客户端已补齐镜像、报告导入完成、冷基线PASS或唯一根因已定；该次固定GET记录时r6仅TEMP准备、尚未实跑，预算原样，无新Job/paid，后续实际结果见下节，原r3/r4/r5 false与其他既有待验边界保留。
+
+## 2026-10-16：r6 冷准备实际失败，唯一只读副本仍缺9个镜像
+
+r6固定source94f1、binary SHA `15b758501a224989ea586e31b059c89cd35a69e455e32f0b2a35cca6fbcea91d`，父级session80178真实终态exit1，目录 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/r6/run-jgyxsecl/`。B57424/config93cf0672-46e9-4e59-ab26-710cff893dc9的node_ready观测在role12.368495s，含初始13ID的cold_import入口在role23.067099s；既定400秒cap仍失败，failure_phase=b_cold_preparation，phase400020ms。父级清理后B实际exit1、elapsed400077ms、readerEOF、cleanup_completed=true，未到A/Mock/Launch/Control，新JobIDs=[]、command空、paid/provider0。summary.initial_server_job_ids=[]只是baseline_ready前未赋值，不能据此称服务端无历史；原acceptance.safe.json保持false，SHA `54022154f3c368ad5e7a4d7fd13c726a40f30cf479b30a8aead0d4208f1eafb0`。
+
+父级确认PID不在后仅做一份clone的只读SQL核对，记录于同根 `postfailure-r6-cold-jgyxsecl/facts.safe.json`，SHA `72586cab19cc0a5d2238f11a90bbf9fa5887f5d24ca1cd1fe6d89fdb403f9b70`。该记录报告原B/clone749568字节、前后SHA均 `da64f36908d0ed404c0a0ded69c58e74fc7669e8f20285078031bf8028e73423`，无sidecar、1db current；仅4mirrors/54events/8refs全部imported/4perfresults，Submission/outbox/controltarget/local execution_jobs/空inventory均0。现有4镜像为06dfa643、38e7fbaf、500a3a97、72f9ea6b；其余9个初始ID缺失，完整UUID见facts。已观测引用全导入不表示缺镜像对应文档已导入，也不是冷同步完成。本次文档更新仅读这两份safe JSON并核其摘要，未打开或哈希DB/clone。
+
+连接释放机制仍有确定RED/GREEN及主树Go/vet证据，但r6结果不足以排除其他不相容或导入失败，新根因未定；不将副本行数、EOF或seq400推为唯一原因。后续只准备离线Spec/事件契约诊断，尚未新GET、重跑E2E或重提旧Job/paid。原r3/r4/r5/r6 false、预算、资产关闭、真实数据转换/切换及其他待验边界保持；本次失败不反改已通过的本地机制与完整Go记录。

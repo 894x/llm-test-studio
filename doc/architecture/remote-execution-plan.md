@@ -560,4 +560,6 @@ foundation secondary40b296e→main00b1802、cold secondary2193d75→main94f1已�
 
 固定ADC→1db的临时fixture工具保留在 `%TEMP%/llm-content-adc-converter-59ce60cd9273430885996414b1fcbc68/`，仅已登记私有fixture验证通过，真实DB未转换/切换；旧766/7afb→ADC证据仅属于旧目标，不支持用工具串联或runtime历史路径进入新current。实际已存旧源须有单独固定source→current的显式工具及验证，仍是待升级事项。
 
-父级原d629/e001/b285各一次固定GET成功，只含completed/rev4/seq469 Snapshot，不含event/document同步；原r5及旧失败保留，r6仅TEMP准备、预算原样，无新Job/paid。Manager A、真实pins/permit与P2b另树开始，尚未交付；assets/fileLaunch和manifest/release/physicalManager仍false，不把types/SQL基础当作媒体执行或删除能力。
+父级原d629/e001/b285各一次固定GET成功，只含completed/rev4/seq469 Snapshot，不含event/document同步；原r5及旧失败保留，该次记录时r6仅TEMP准备、预算原样，无新Job/paid。Manager A、真实pins/permit与P2b另树开始，尚未交付；assets/fileLaunch和manifest/release/physicalManager仍false，不把types/SQL基础当作媒体执行或删除能力。
+
+随后fixedsource94f1的r6/session80178已实际exit1，400秒b_cold_preparation失败，phase400020ms；B57424父级清理后实际exit1/400077ms、readerEOF、cleanup_completed=true。未进入A/Mock/Launch/control、无新Job/paid；cold_import事件仍有初始13ID，summary空数组不能作服务端为空的证据。父级只读副本1db仅4镜像/54events，8条已观测refs虽全部imported、另有4perfresults，仍缺9个初始镜像，不能称冷同步完成。连接释放修复的本地机制证据不等于排除其他不相容或导入失败；新根因未定，后续仅准备离线Spec/事件契约诊断，尚未新增GET或再跑E2E。完整事实与原false保留见[验证记录](remote-execution-validation.md)。

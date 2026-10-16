@@ -142,4 +142,6 @@ P3 foundation31文件现由secondary40b296e整合main00b1802，冷查询由secon
 
 唯一current schema已由ADC/56替换为1db91…fa68/80声明对象，当前runtime拒绝旧checksum并保留数据；这影响后续程序升级前的数据前置条件，正常upgrade不能代替转换。临时固定ADC→1db工具在 `%TEMP%/llm-content-adc-converter-59ce60cd9273430885996414b1fcbc68/`（run-converter.ps1/overlay.json/usage.txt），13 pins无漂移且仅私有fixture成功；不支持其他历史源，也未转换/切换实际用户或服务器DB。旧766/7afb→ADC工具只属当时目标，不可串联为当前入口；实际旧源的直接current转换和恢复验收仍pending，工具按该未完成边界保留。
 
-父级对原d629/e001/b285各一次GET均取得completed/rev4/seq469 Snapshot并完成Close/EOF/exit0，mutation/provider0；不含event/document同步或升级动作，原r5 false不改。r6只在TEMP准备、尚未实跑、预算原样，无新Job/paid；完整主树、fixture及固定GET证据集中见[验证记录](remote-execution-validation.md)。
+父级对原d629/e001/b285各一次GET均取得completed/rev4/seq469 Snapshot并完成Close/EOF/exit0，mutation/provider0；不含event/document同步或升级动作，原r5 false不改。该次记录时r6只在TEMP准备、尚未实跑、预算原样，无新Job/paid；完整主树、fixture及固定GET证据集中见[验证记录](remote-execution-validation.md)。
+
+后续r6 fixedsource94f1/session80178已在400秒b_cold_preparation实际失败，phase400020ms；B57424清理后实际exit1/400077ms、readerEOF、cleanup_completed=true，未进入A/Mock/Launch/control，新JobIDs与command空、paid/provider0。初始13ID仍在cold_import事件，summary空数组不代表服务端为空；父级唯一只读副本仅4镜像/54events、8条已观测refs全imported/4perfresults，仍缺9镜像，不是冷同步、升级或数据切换验收通过。连接释放修复与主Go PASS保持，新根因未定，后续离线Spec/事件诊断仅准备，无新GET/E2E；原false、assets/fileLaunch关闭及真实数据转换/恢复边界不改，完整证据见[验证记录](remote-execution-validation.md)。
