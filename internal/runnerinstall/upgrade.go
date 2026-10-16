@@ -77,7 +77,7 @@ func DecodeUpgradeRequest(reader io.Reader) (UpgradeRequest, error) {
 		return UpgradeRequest{}, ErrInvalid
 	}
 	fields := []string{"contract", "operation_id", "node_id", "installation_id", "expected_build_id", "artifact_sha256"}
-	if err := exactUpgradeFields(document, fields); err != nil {
+	if err := exactOperationFields(document, fields); err != nil {
 		return UpgradeRequest{}, err
 	}
 	var request UpgradeRequest
@@ -87,7 +87,7 @@ func DecodeUpgradeRequest(reader io.Reader) (UpgradeRequest, error) {
 	return request, request.Validate()
 }
 
-func exactUpgradeFields(document []byte, fields []string) error {
+func exactOperationFields(document []byte, fields []string) error {
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
 		return ErrInvalid

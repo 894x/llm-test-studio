@@ -114,6 +114,9 @@ func (installer provisioner) provision(ctx context.Context, request Request) (re
 		return Result{}, err
 	}
 	defer lock.Close()
+	if err := checkNoUninstall(lock); err != nil {
+		return Result{}, err
+	}
 	if err := checkNoActiveUpgrade(lock); err != nil {
 		return Result{}, err
 	}

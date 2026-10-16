@@ -281,9 +281,9 @@ C11随用户暂缓的文件声明/执行范围明确记为deferred；不因现�
 
 ### 阶段 C/E 与其他当前边界
 
-- C：两台实际amd64安装/复用及daemon重启，完整ARM64 VM安装/整机启动/限速/在途恢复，安装锁T0竞争与实际产品升级均有证据。两架构卸载尚无对应操作与实跑；Manager.Remove/OSStore cleanup只删本地配置/引用，QEMU关机也不是卸载。严格要求两架构整机重启时，amd64整机重启没有本轮证明；ARM64不是物理机器。
+- C：两台实际amd64安装/复用及daemon重启，完整ARM64 VM安装/整机启动/限速/在途恢复，安装锁T0竞争与实际产品升级均有证据。管理员 CLI uninstall/recover-uninstall 已实现，当前合同、双锁、busy/settlement、未知文件、loaded-service 校验和中断恢复的 Win/Linux 测试与独立审查通过；两架构实际 systemd 卸载仍待验。Manager.Remove/OSStore cleanup只删本地配置/引用，QEMU关机也不是卸载。严格要求两架构整机重启时，amd64整机重启没有本轮证明；ARM64不是物理机器。
 - E：新鲜一致性备份、固定766→当前1db直接转换/typed校验，以及R13实际APPDATA临时切换/Core回读63 Run与报告目录/关闭后原字节恢复已证。`internal/runnerinstall/upgrade_linux_test.go::TestUpgradeUsesCurrentSQLiteBackupAndRestoresItsBusinessState` 使用真实SQLite文件验证恢复，`TestUpgradeRefusesRealUnsupportedSQLiteWithoutChangingSourceOrProgram` 验证旧格式拒绝不变。实际用户库最终仍为原文件，未永久切换或验收实际路径原生GUI；服务器备份typed一致不等于实际服务器DB回滚。临时工具/恢复材料按验证记录保留，无runtime历史读取或自动迁移。
 - 交付：Wails2.15.0 EXE/ZIP与本地检查已有摘要；云端CI/发布未执行，没有push/发布授权，本轮不执行。
-- R4：早期TCP预检诊断 `C:/Users/894/AppData/Local/Temp/llm-r4-preflight-only-1c55k34c/preflight.safe.json` SHA `f72f1aa7f0d83949ccc872e40b8f27f9ee9a8b954da5efac6910cc441eaf41f6`：local/fast/slow目标TCP均超时，SSH诊断成功，业务/provider为0且清理确认。不能确定为防火墙；后续HTTPS可行性probe虽已通过，尚未完成Core本地/两节点三Job的冻结输入与配对出口对照，R4仍未完成。
+- R4：早期TCP预检诊断 `C:/Users/894/AppData/Local/Temp/llm-r4-preflight-only-1c55k34c/preflight.safe.json` SHA `f72f1aa7f0d83949ccc872e40b8f27f9ee9a8b954da5efac6910cc441eaf41f6` 保留，不能确定为防火墙。后续 HTTPS 三路 control 均成功、三个出口不同；本地 Core Job f6b5d750-937a-4345-9486-a49dc8689e61 完成 1/1 后因 capture_source_ip_mismatch 停止，未提交 fast/slow，资源删除确认。详见 validation 的实际 receipt，不能将预检与单任务成功计作三 Job 对照完成。
 
 R11本轮选定的当前非文件契约场景已有上述T0断言与执行记录；这不提升为G07平台/运维实跑通过。文件媒体范围deferred，非文件安全断言和有界扫描各有证据，不把完整R12写为全部通过。已配置节点的原生交互仍按R14保留；R16远程工作流完成而兼容性失败，原146个assertion_failed不变。

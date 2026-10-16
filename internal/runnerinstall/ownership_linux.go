@@ -84,6 +84,15 @@ func (paths layout) checkInstallationRoot() error {
 				if _, err := DecodeUpgradeRequest(bytes.NewReader(document)); err != nil {
 					return ErrUnownedPath
 				}
+			case strings.HasPrefix(name, "uninstall-") && strings.HasSuffix(name, ".json"):
+				operation, err := DecodeUninstallOperation(document)
+				if err != nil || uninstallOperationName(operation.Request.OperationID) != name {
+					return ErrUnownedPath
+				}
+			case name == activeUninstallName:
+				if _, err := DecodeUninstallRequest(bytes.NewReader(document)); err != nil {
+					return ErrUnownedPath
+				}
 			case validTemporaryName(name):
 				// An interrupted atomic write is never decoded as a committed record.
 			default:

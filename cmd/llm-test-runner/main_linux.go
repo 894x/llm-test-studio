@@ -40,6 +40,12 @@ func run(ctx context.Context, arguments []string, streams streams) int {
 		switch arguments[0] {
 		case "upgrade", "retry-upgrade", "recover-upgrade":
 			return runUpgrade(ctx, arguments[0], streams)
+		case "uninstall", "recover-uninstall":
+			invoke := runnerinstall.Uninstall
+			if arguments[0] == "recover-uninstall" {
+				invoke = runnerinstall.RecoverUninstall
+			}
+			return runUninstall(ctx, streams, invoke)
 		}
 	}
 	if len(arguments) == 1 && arguments[0] == "provision" {
@@ -131,6 +137,33 @@ func run(ctx context.Context, arguments []string, streams streams) int {
 	}{NodeID: config.NodeID, InstallationID: config.InstallationID, ListenPort: config.ListenPort})
 	if err != nil {
 		return fail(streams.errors, err)
+	}
+	return 0
+}
+
+func runUninstall(
+	ctx context.Context,
+	streams streams,
+	invoke func(context.Context, runnerinstall.UninstallRequest, func(runnerinstall.UninstallProgress)) (runnerinstall.UninstallOperation, error),
+) int {
+	request, err := runnerinstall.DecodeUninstallRequest(streams.input)
+	if err != nil {
+		_, _ = io.WriteString(streams.errors, runnerinstall.ErrorCode(err)+"\n")
+		return 1
+	}
+	operation, err := invoke(ctx, request, func(progress runnerinstall.UninstallProgress) {
+		_ = json.NewEncoder(streams.output).Encode(struct {
+			Progress runnerinstall.UninstallProgress `json:"progress"`
+		}{Progress: progress})
+	})
+	if err != nil {
+		_, _ = io.WriteString(streams.errors, runnerinstall.ErrorCode(err)+"\n")
+		return 1
+	}
+	if json.NewEncoder(streams.output).Encode(struct {
+		Operation runnerinstall.UninstallOperation `json:"operation"`
+	}{Operation: operation}) != nil {
+		return 1
 	}
 	return 0
 }

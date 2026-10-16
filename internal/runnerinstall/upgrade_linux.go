@@ -108,6 +108,9 @@ func (installer upgrader) run(
 		return UpgradeOperation{}, err
 	}
 	defer lock.Close()
+	if err := checkNoUninstall(lock); err != nil {
+		return UpgradeOperation{}, err
+	}
 	if err := installer.layout.checkProgramRoot(lock); err != nil {
 		return UpgradeOperation{}, err
 	}
@@ -315,38 +318,20 @@ func (installer upgrader) credentials(
 	owner account,
 	request UpgradeRequest,
 ) (runnerconfig.Config, []byte, error) {
-	config, exists, err := installer.layout.readConfig(owner)
-	if err != nil || !exists {
-		config.Clear()
-		return runnerconfig.Config{}, nil, ErrPairingRequired
+	config, token, err := installer.layout.credentials(state, owner)
+	if err != nil {
+		return runnerconfig.Config{}, nil, err
 	}
 	fail := func(err error) (runnerconfig.Config, []byte, error) {
 		config.Clear()
+		clear(token)
 		return runnerconfig.Config{}, nil, err
 	}
 	if config.NodeID != request.NodeID || config.InstallationID != request.InstallationID {
 		return fail(ErrConflict)
 	}
-	document, err := state.ReadPrivate("identity.json", MaxRequestBytes)
-	if err != nil {
-		return fail(ErrPairingRequired)
-	}
-	identity, err := DecodeIdentity(document)
-	expected := Identity{
-		Contract: config.Contract, NodeID: config.NodeID, InstallationID: config.InstallationID,
-		ListenPort: config.ListenPort, TokenSHA256: config.TokenSHA256,
-	}
-	if err != nil || identity != expected {
-		return fail(ErrPairingRequired)
-	}
-	token, err := state.ReadPrivate(PairingName, 128)
-	if err != nil || !tokenMatches(config, token) {
-		clear(token)
-		return fail(ErrPairingRequired)
-	}
 	unit, err := installer.layout.checkUnit()
 	if err != nil || !unit {
-		clear(token)
 		return fail(ErrUnownedPath)
 	}
 	return config, token, nil

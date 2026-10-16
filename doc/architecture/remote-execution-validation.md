@@ -1043,3 +1043,19 @@ R11 收尾仅新增测试，没有改变生产实现、管理契约、存储格�
 HTTP 最大 wait_ms=20000 实际等待 20.001 秒后返回空页，原 cursor、任务和单次 Mock 请求保持；活动任务的长轮询取消后继续完成原 Job。两个真实 Performance Job 分别验证未就绪 404、双向报告归属错误 404，以及正常原始字节和 SHA 不变。Run 报告覆盖合法/非法 Range，响应发送 16 字节后真实中断，随后按偏移续传重建相同字节与 SHA。32 MiB 合法 Run 实体通过 domain、canonical encoder 和 HTTP，+1 实体被拒绝；这一大报告只通过 ReadRepository 装饰器验证 HTTP/编码层，没有声称 SQLite 写入了 32 MiB Run Report。
 
 HTTP 非长等待定向通过（3.185 秒），最大等待专项通过（21.493 秒），包 vet 通过。独立审查发现跨 Job 错误响应最初只检查了 owner 文档；修正后同时排除双方文档并严格解析唯一当前 not_found 错误及 EOF，受影响测试通过（1.626 秒）。六份测试最终审查通过，格式和 diff 检查通过；平台运维 G07、R4 真实三任务、卸载实跑及原生界面仍单独保留，未改变其完成状态。
+
+## 2026-10-17：阶段 C 卸载当前实现与测试
+
+17 个当前源文件冻结卡 `C:/Users/894/AppData/Local/Temp/llm-uninstall-freeze-r2-20261017.safe.json`，SHA `3aba95d4bd710cc13f29af139fecc891a5b84020fbe184b4b46376d5c562a36b`，aggregate `bdc5ea75a70bd9cf0415026d52a4e19a348aa7e3cbdac5b9681d2077f4c0daf4`。父级逐文件核对 17/17 匹配。Windows runnerinstall 全包测试通过（0.536 秒）；Linux amd64 两包测试二进制在 WSL root 执行通过，Win/Linux vet、gofmt/style、diff 检查通过。独立最终审查通过；这些是合同和 Linux fixtures，尚未执行实际 systemd 安装/卸载。
+
+管理员从独立保留的受信 runner artifact 以 root 调用 `uninstall`，stdin 为唯一当前合同 JSON，字段为 contract、operation_id、node_id、installation_id、expected_build_id；所有重试原样复用五字段。操作验证受管 unit、loaded-service 与实际进程/API 身份，关闭 admission、确认 Pending=0，停止并取得原 runtime 锁，再以只读当前数据库验证任务 settled。未知文件不递归删除；数据目录、配对/身份、数据库/内容/备份、账户/组及两原锁 inode 保留。成功 tombstone 明确阻止自动 Provision/Upgrade 复活。
+
+删除阶段前可用相同 JSON 调用 `recover-uninstall` 恢复服务与 admission 并终结为 aborted；进入 removing 后只能原操作继续，不重新打开 admission。lost-ACK、取消、锁竞争、WAL 中 queued/unsettled 数据、未知内容、初始 API 离线均有测试。最终修复包括：停止前核 loaded unit/drop-in/FragmentPath/PID exe；已删 unit 的续办在 runtime 锁内 reload 并确认 not-found；orphan checking 在 claim gate 前验证冻结安装，旧 build 拒绝后不会占 gate 阻塞当前操作。没有改变 schema、任务合同、历史格式读取或保留数据。
+
+## 2026-10-17：R4 受控 HTTPS 实跑的保留失败
+
+独立审查后的 coordinator SHA `69b278d34d6810a219cf14f0277cde3a21fc976941d0ca35c47b5cd53bb312c4`、Go SHA `d8bf370a99f255fd6d556b678dc7cbb0d3fdc7f03dfe158a4b8a8c08d37a000e`、EXE SHA `d4d232aecc7dd8e18a0753db1627c215203fc3e9b0636301b69a8013cdd6041b` 实际执行一次。三个 control HTTPS POST 均返回 200 与精确 SSE，nonce 与捕获匹配；本地及两节点出口互异，两个 SSH control 正常退出并关闭资源。
+
+Core 仅提交本地 Job `f6b5d750-937a-4345-9486-a49dc8689e61`，完成 1/1，Report `a771ec9e-4d29-4394-a3cf-55f602008146`，归档 Origin 匹配。随后实际 peer IP 不匹配 Python 本地预检，工具明确以 capture_source_ip_mismatch 失败，在 fast/slow Launch 前停止。全局 launch_calls 未得到最终 child 汇总而保持 unknown，观察到 1 次 Launch 和唯一上述 Job；不将 unknown 写为零。实际 child exit1/EOF、3 control＋1 task 共 4 条 capture；目标 DELETE204/后续 GET404，cleanup_confirmed=true，耗时 26.739 秒。没有调用用户付费提供商。
+
+安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-webhook-review-b98nhqjm/egress-webhook.safe.json` 及独立 workspace 均保留；旧失败未覆盖。当前只证明三路受控 HTTPS 可达和单本地任务执行，尚不证明相同业务输入由三个出口执行。请求路径/代理差异待诊断，不放宽 IP 匹配来改判通过。

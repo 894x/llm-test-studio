@@ -25,6 +25,7 @@ var (
 	ErrUpgradeRequired = errors.New("runner_upgrade_required")
 	ErrService         = errors.New("runner_service_unavailable")
 	ErrIntegrity       = errors.New("installation_integrity_failed")
+	ErrUninstalled     = errors.New("runner_uninstalled")
 )
 
 const (
@@ -238,6 +239,8 @@ func ErrorFromCode(code string) error {
 		return ErrUpgradeRequired
 	case "installation_integrity_failed":
 		return ErrIntegrity
+	case "runner_uninstalled":
+		return ErrUninstalled
 	case "invalid_installation_request":
 		return ErrInvalid
 	default:
@@ -247,6 +250,8 @@ func ErrorFromCode(code string) error {
 
 func ErrorCode(err error) string {
 	switch {
+	case errors.Is(err, ErrUninstalled):
+		return "runner_uninstalled"
 	case errors.Is(err, ErrRootRequired):
 		return "installation_root_required"
 	case errors.Is(err, ErrUnsupported):
