@@ -56,12 +56,14 @@ type remoteUpgradeLiveEvent struct {
 	OperationID               string                 `json:"operation_id"`
 	StartCalls                uint32                 `json:"start_calls"`
 	RetryCalls                uint32                 `json:"retry_calls"`
+	RecoverCalls              uint32                 `json:"recover_calls"`
 	ProvisionCalls            uint32                 `json:"provision_calls"`
 	BaselineEligible          bool                   `json:"baseline_eligible"`
 	BaselineIdle              bool                   `json:"baseline_idle"`
 	CheckPreservedOldBuild    bool                   `json:"check_preserved_old_build"`
 	QueryPreservedReceipt     bool                   `json:"query_preserved_receipt"`
 	FinalCheckPreservedTarget bool                   `json:"final_check_preserved_target"`
+	FinalCheckPreservedOld    bool                   `json:"final_check_preserved_old"`
 	Upgrade                   *RemoteNodeUpgradeView `json:"upgrade"`
 }
 
@@ -75,7 +77,7 @@ func decodeRemoteUpgradeLiveInput(reader io.Reader) (remoteUpgradeLiveInput, err
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	decoded := decoder.Decode(&input) == nil && decoder.Decode(&struct{}{}) == io.EOF
-	validAction := input.Action == "start" || input.Action == "retry"
+	validAction := input.Action == "start" || input.Action == "retry" || input.Action == "recover"
 	validIDs := domain.IsUUID(input.ConfigurationID) && domain.IsUUID(input.OperationID) &&
 		domain.IsUUID(input.NodeID) && domain.IsUUID(input.InstallationID)
 	validPin := input.Endpoint.Validate() == nil && input.Endpoint.Fingerprint != "" && input.Endpoint.HostKeyType != ""
@@ -197,14 +199,27 @@ func TestLiveRemoteNodeUpgradeProductFlow(t *testing.T) {
 			t.Fatal("original durable intent is unavailable or changed")
 		}
 		result.Upgrade = view
-		if input.Action == "retry" {
-			node := remoteUpgradeLiveNode(t, app, input.ConfigurationID)
+		node := remoteUpgradeLiveNode(t, app, input.ConfigurationID)
+		switch input.Action {
+		case "retry":
 			result.RetryCalls = 1
 			result.Upgrade, err = app.RetryRemoteNodeUpgrade(RemoteNodeUpgradeAction{
 				ID: node.ID, ExpectedRevision: node.Revision, OperationID: input.OperationID,
 			})
 			if err != nil {
 				result.Reason = "retry_unconfirmed"
+			}
+		case "recover":
+			if view.ResumeAttempted {
+				t.Fatal("original operation crossed the recovery boundary")
+			}
+			// Only the original intent is required here: the old service may be stopped.
+			result.RecoverCalls = 1
+			result.Upgrade, err = app.RecoverRemoteNodeUpgrade(RemoteNodeUpgradeAction{
+				ID: node.ID, ExpectedRevision: node.Revision, OperationID: input.OperationID,
+			})
+			if err != nil {
+				result.Reason = "recover_unconfirmed"
 			}
 		}
 	}
@@ -220,11 +235,15 @@ func TestLiveRemoteNodeUpgradeProductFlow(t *testing.T) {
 				emitRemoteUpgradeLive(result)
 				last = key
 			}
-			if view.Stage == "rolled_back" {
+			if view.Stage == "rolled_back" && input.Action != "recover" {
 				result.Reason = "operation_rolled_back"
 				t.Fatal("explicit upgrade did not reach target")
 			}
-			if view.Stage == "completed" && view.Confirmed {
+			if view.Stage == "completed" && input.Action == "recover" {
+				result.Reason = "operation_completed_without_recovery"
+				t.Fatal("original operation completed instead of recovering")
+			}
+			if view.Stage == remoteUpgradeLiveTerminalStage(input.Action) && view.Confirmed {
 				break
 			}
 		}
@@ -236,10 +255,11 @@ func TestLiveRemoteNodeUpgradeProductFlow(t *testing.T) {
 	}
 	result.Reason = "receipt_invalid"
 	view := result.Upgrade
-	if view.ErrorCode != "" || !view.ResumeAttempted || view.Restorable {
-		t.Fatal("completed journal lacks the irreversible resume receipt")
+	if !remoteUpgradeLiveTerminalReceipt(view, input) {
+		t.Fatal("terminal journal does not match the explicitly requested action")
 	}
-	assertRemoteUpgradeLiveRunner(t, view.ActualRunner, input, true)
+	target := input.Action != "recover"
+	assertRemoteUpgradeLiveRunner(t, view.ActualRunner, input, target)
 	if input.Action != "start" {
 		hydrateRemoteUpgradeSSH(t, ctx, input, configurationRoot, store, true)
 	}
@@ -252,18 +272,26 @@ func TestLiveRemoteNodeUpgradeProductFlow(t *testing.T) {
 		t.Fatal("same-operation read changed its confirmed receipt")
 	}
 	node := remoteUpgradeLiveNode(t, app, input.ConfigurationID)
-	if !remoteUpgradeLiveIdentity(node.Upgrade, input) || node.Upgrade.Stage != "completed" || !node.Upgrade.Confirmed {
+	if !remoteUpgradeLiveTerminalReceipt(node.Upgrade, input) {
 		t.Fatal("GetRemoteNodes lost the mandatory upgrade projection")
 	}
 	checkedBefore := remoteUpgradeLiveCheckedAt(node)
 	if app.RefreshRemoteNode(RemoteNodeAction{ID: node.ID, ExpectedRevision: node.Revision}) != nil {
 		t.Fatal("final explicit Check failed")
 	}
-	node = waitRemoteUpgradeChecked(t, ctx, app, input, true, checkedBefore)
-	result.FinalCheckPreservedTarget = node.Eligible && remoteUpgradeLiveIdentity(node.Upgrade, input) &&
-		node.Upgrade.Stage == "completed" && node.Upgrade.Confirmed
-	if !result.FinalCheckPreservedTarget {
-		t.Fatal("Check changed the confirmed target or operation")
+	node = waitRemoteUpgradeChecked(
+		t,
+		ctx,
+		app,
+		input,
+		target,
+		checkedBefore,
+	)
+	checkPreserved := node.Eligible && remoteUpgradeLiveTerminalReceipt(node.Upgrade, input)
+	result.FinalCheckPreservedTarget = target && checkPreserved
+	result.FinalCheckPreservedOld = !target && checkPreserved
+	if !checkPreserved {
+		t.Fatal("Check changed the confirmed release or operation")
 	}
 	if provisionCalls.Load() != 0 {
 		t.Fatal("product acceptance attempted forbidden initial provisioning")
@@ -272,7 +300,7 @@ func TestLiveRemoteNodeUpgradeProductFlow(t *testing.T) {
 }
 
 // An unexpected missing installation must fail without allowing Check to
-// bootstrap another runner. Upgrade/Retry and all reads delegate unchanged.
+// bootstrap another runner. Upgrade/Retry/Recover and all reads delegate unchanged.
 type remoteUpgradeLiveSession struct {
 	remotenodes.RemoteSession
 	provisionCalls *atomic.Uint32
@@ -334,6 +362,37 @@ func remoteUpgradeLiveIdentity(view *RemoteNodeUpgradeView, input remoteUpgradeL
 	return view != nil && view.ConfigurationID == input.ConfigurationID && view.NodeID == input.NodeID &&
 		view.InstallationID == input.InstallationID && view.OperationID == input.OperationID &&
 		view.ExpectedBuildID == input.OldBuild && view.TargetBuildID == input.TargetBuild
+}
+
+func remoteUpgradeLiveTerminalStage(action string) string {
+	if action == "recover" {
+		return "rolled_back"
+	}
+	return "completed"
+}
+
+// A rolled-back receipt proves the original runner is available. It does not
+// prove a database backup was restored; recovery before backup needs no restore.
+func remoteUpgradeLiveTerminalReceipt(view *RemoteNodeUpgradeView, input remoteUpgradeLiveInput) bool {
+	if !remoteUpgradeLiveIdentity(view, input) {
+		return false
+	}
+	validStage := view.Stage == remoteUpgradeLiveTerminalStage(input.Action)
+	validFlags := view.Confirmed && !view.Restorable && view.ResumeAttempted == (input.Action != "recover")
+	validResult := view.ErrorCode == "" && view.ActualRunner != nil
+	valid := validStage && validFlags && validResult
+	if !valid {
+		return false
+	}
+	version, build := input.TargetVersion, input.TargetBuild
+	if input.Action == "recover" {
+		version, build = input.OldVersion, input.OldBuild
+	}
+	runner := view.ActualRunner
+	validIdentity := runner.NodeID == input.NodeID && runner.InstallationID == input.InstallationID
+	validRelease := runner.Version == version && runner.BuildID == build && runner.OS == "linux" && runner.Arch == "amd64"
+	validReady := runner.Ready && runner.Healthy && runner.Active == 0 && runner.Queued == 0 && runner.Pending == 0
+	return validIdentity && validRelease && validReady
 }
 
 func remoteUpgradeLiveNode(t *testing.T, app *DesktopApp, id string) RemoteNodeSummary {
@@ -433,7 +492,7 @@ func waitRemoteUpgradeChecked(
 	}
 }
 
-// A separate explicitly selected retry process reconstructs only transient
+// A separate explicitly selected retry/recover process reconstructs only transient
 // credentials from supplied password and the existing protected shared pairing.
 // It preserves original local configuration, binding, token refs and operation.
 func hydrateRemoteUpgradeSSH(
@@ -523,5 +582,166 @@ func TestRemoteUpgradeLiveCredentialEnvelopeCannotSerialize(t *testing.T) {
 	}
 	if strings.Contains(input.String(), "synthetic-private") || strings.Contains(input.GoString(), "synthetic-private") {
 		t.Fatal("private input formatting was allowed")
+	}
+}
+
+func remoteUpgradeLiveSyntheticInput() remoteUpgradeLiveInput {
+	return remoteUpgradeLiveInput{
+		Action: "recover",
+		Endpoint: remotessh.Endpoint{
+			Host: "127.0.0.1", Port: 22, User: "synthetic",
+			Fingerprint: "SHA256:" + strings.Repeat("A", 43), HostKeyType: "ssh-ed25519",
+		},
+		Password: []byte("synthetic-private"), WorkspaceRoot: filepath.Clean(os.TempDir()),
+		ArtifactRoot:    filepath.Join(os.TempDir(), "synthetic-upgrade-artifacts"),
+		ConfigurationID: "3f6df481-0eb5-4ff1-b4fb-bc111a85f777",
+		OperationID:     "736cadb6-0c65-4d66-a44b-af27963739df",
+		NodeID:          "3b74c278-f7df-4c20-951c-461768b8cb9f",
+		InstallationID:  "773992b0-d25c-43a5-b0fa-9342165b6a37",
+		OldVersion:      "synthetic-old", OldBuild: strings.Repeat("a", 64),
+		TargetVersion: "synthetic-target", TargetBuild: strings.Repeat("b", 64),
+	}
+}
+
+func TestRemoteUpgradeLiveCurrentActionsAndBoundedInput(t *testing.T) {
+	// Only this synthetic test wire bypasses the private envelope's serialization ban.
+	type syntheticWire remoteUpgradeLiveInput
+	for _, action := range []string{"start", "retry", "recover"} {
+		t.Run(action, func(t *testing.T) {
+			input := remoteUpgradeLiveSyntheticInput()
+			input.Action = action
+			document, err := json.Marshal(syntheticWire(input))
+			if err != nil {
+				t.Fatal("synthetic fixture serialization failed")
+			}
+			decoded, err := decodeRemoteUpgradeLiveInput(bytes.NewReader(document))
+			if err != nil || decoded.Action != action || decoded.OperationID != input.OperationID {
+				t.Fatal("current explicit action was rejected or changed")
+			}
+			clear(decoded.Password)
+		})
+	}
+	cases := []struct {
+		name   string
+		mutate func(*remoteUpgradeLiveInput)
+		suffix string
+	}{
+		{name: "query cannot trigger action", mutate: func(input *remoteUpgradeLiveInput) { input.Action = "query" }},
+		{name: "unknown action", mutate: func(input *remoteUpgradeLiveInput) { input.Action = "restore" }},
+		{name: "missing operation", mutate: func(input *remoteUpgradeLiveInput) { input.OperationID = "" }},
+		{name: "missing pin", mutate: func(input *remoteUpgradeLiveInput) { input.Endpoint.Fingerprint = "" }},
+		{name: "same builds", mutate: func(input *remoteUpgradeLiveInput) { input.TargetBuild = input.OldBuild }},
+		{name: "empty password", mutate: func(input *remoteUpgradeLiveInput) { input.Password = []byte{} }},
+		{name: "relative workspace", mutate: func(input *remoteUpgradeLiveInput) { input.WorkspaceRoot = "relative" }},
+		{name: "trailing document", suffix: "{}"},
+	}
+	for _, item := range cases {
+		t.Run(item.name, func(t *testing.T) {
+			input := remoteUpgradeLiveSyntheticInput()
+			if item.mutate != nil {
+				item.mutate(&input)
+			}
+			document, err := json.Marshal(syntheticWire(input))
+			if err != nil {
+				t.Fatal("synthetic fixture serialization failed")
+			}
+			document = append(document, item.suffix...)
+			if _, err := decodeRemoteUpgradeLiveInput(bytes.NewReader(document)); err == nil {
+				t.Fatal("invalid current input was accepted")
+			}
+		})
+	}
+	if _, err := decodeRemoteUpgradeLiveInput(strings.NewReader(strings.Repeat(" ", (64<<10)+1))); err == nil {
+		t.Fatal("oversized input was accepted")
+	}
+	document, _ := json.Marshal(syntheticWire(remoteUpgradeLiveSyntheticInput()))
+	document = append(document[:len(document)-1], []byte(",\"provider_key\":\"synthetic\"}")...)
+	if _, err := decodeRemoteUpgradeLiveInput(bytes.NewReader(document)); err == nil {
+		t.Fatal("unsupported provider field was accepted")
+	}
+}
+
+func remoteUpgradeLiveSyntheticReceipt(input remoteUpgradeLiveInput) *RemoteNodeUpgradeView {
+	version, build := input.TargetVersion, input.TargetBuild
+	if input.Action == "recover" {
+		version, build = input.OldVersion, input.OldBuild
+	}
+	return &RemoteNodeUpgradeView{
+		ConfigurationID: input.ConfigurationID, NodeID: input.NodeID, InstallationID: input.InstallationID,
+		OperationID: input.OperationID, ExpectedBuildID: input.OldBuild, TargetBuildID: input.TargetBuild,
+		Stage: remoteUpgradeLiveTerminalStage(input.Action), Confirmed: true,
+		ResumeAttempted: input.Action != "recover", ChangedAt: "2026-10-16T01:00:00Z",
+		ActualRunner: &RemoteRunnerSummary{
+			NodeID: input.NodeID, InstallationID: input.InstallationID, Version: version, BuildID: build,
+			OS: "linux", Arch: "amd64", Ready: true, Healthy: true, MaxActiveJobs: 1, MaxConcurrency: 1,
+		},
+	}
+}
+
+func TestRemoteUpgradeLiveActionTerminalReceipts(t *testing.T) {
+	for _, action := range []string{"start", "retry", "recover"} {
+		t.Run(action, func(t *testing.T) {
+			input := remoteUpgradeLiveSyntheticInput()
+			input.Action = action
+			view := remoteUpgradeLiveSyntheticReceipt(input)
+			if !remoteUpgradeLiveTerminalReceipt(view, input) {
+				t.Fatal("current action terminal receipt rejected")
+			}
+			view.Stage = "rolled_back"
+			if action == "recover" {
+				view.Stage = "completed"
+			}
+			if remoteUpgradeLiveTerminalReceipt(view, input) {
+				t.Fatal("different terminal outcome accepted")
+			}
+		})
+	}
+	input := remoteUpgradeLiveSyntheticInput()
+	cases := []struct {
+		name   string
+		mutate func(*RemoteNodeUpgradeView)
+	}{
+		{name: "configuration", mutate: func(view *RemoteNodeUpgradeView) { view.ConfigurationID = input.OperationID }},
+		{name: "operation", mutate: func(view *RemoteNodeUpgradeView) { view.OperationID = input.NodeID }},
+		{name: "physical node", mutate: func(view *RemoteNodeUpgradeView) { view.NodeID = input.OperationID }},
+		{name: "installation", mutate: func(view *RemoteNodeUpgradeView) { view.InstallationID = input.OperationID }},
+		{name: "request old build", mutate: func(view *RemoteNodeUpgradeView) { view.ExpectedBuildID = input.TargetBuild }},
+		{name: "request target build", mutate: func(view *RemoteNodeUpgradeView) { view.TargetBuildID = input.OldBuild }},
+		{name: "unconfirmed", mutate: func(view *RemoteNodeUpgradeView) { view.Confirmed = false }},
+		{name: "resume attempted", mutate: func(view *RemoteNodeUpgradeView) { view.ResumeAttempted = true }},
+		{name: "still restorable", mutate: func(view *RemoteNodeUpgradeView) { view.Restorable = true }},
+		{name: "error", mutate: func(view *RemoteNodeUpgradeView) { view.ErrorCode = "runner_installation_failed" }},
+		{name: "missing runner", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner = nil }},
+		{name: "target runner", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.BuildID = input.TargetBuild }},
+		{
+			name:   "wrong release",
+			mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Version = input.TargetVersion },
+		},
+		{
+			name:   "wrong runner node",
+			mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.NodeID = input.OperationID },
+		},
+		{
+			name:   "wrong runner install",
+			mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.InstallationID = input.OperationID },
+		},
+		{name: "wrong platform", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Arch = "arm64" }},
+		{name: "not ready", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Ready = false }},
+		{name: "unhealthy", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Healthy = false }},
+		{name: "active", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Active = 1 }},
+		{name: "queued", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Queued = 1 }},
+		{name: "pending", mutate: func(view *RemoteNodeUpgradeView) { view.ActualRunner.Pending = 1 }},
+	}
+	for _, item := range cases {
+		t.Run(item.name, func(t *testing.T) {
+			view := remoteUpgradeLiveSyntheticReceipt(input)
+			item.mutate(view)
+			if remoteUpgradeLiveTerminalReceipt(view, input) {
+				t.Fatal("unsafe or unrelated recovery receipt accepted")
+			}
+		})
+	}
+	if remoteUpgradeLiveTerminalReceipt(nil, input) {
+		t.Fatal("missing recovery receipt accepted")
 	}
 }
