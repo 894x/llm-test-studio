@@ -70,6 +70,10 @@ func (repository *Repository) ApplyRemoteBatch(
 	if mirror.Origin != batch.Origin || batch.AfterSequence > mirror.Snapshot.LatestSequence {
 		return remoteresults.Mirror{}, remoteresults.ErrConflict
 	}
+	state, err := newRemoteBatchState(mirror.Spec)
+	if err != nil {
+		return remoteresults.Mirror{}, err
+	}
 	for _, document := range documents {
 		event, err := decodeStoredJobEvent(document)
 		if err != nil {
@@ -100,6 +104,7 @@ func (repository *Repository) ApplyRemoteBatch(
 			tx,
 			mirror,
 			event,
+			state,
 		)
 		if err != nil {
 			return remoteresults.Mirror{}, err

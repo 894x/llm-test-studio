@@ -19,6 +19,7 @@ func applyRemoteEventTx(
 	tx *sql.Tx,
 	mirror remoteresults.Mirror,
 	event jobcontract.Event,
+	state *remoteBatchState,
 ) (jobcontract.Snapshot, error) {
 	next := mirror.Snapshot
 	next.LatestSequence = event.Sequence
@@ -28,19 +29,19 @@ func applyRemoteEventTx(
 	var err error
 	switch event.Kind {
 	case jobcontract.EventState:
-		var state jobcontract.Snapshot
-		if err = decodeCanonical(event.Payload, &state, nil); err != nil {
+		var snapshot jobcontract.Snapshot
+		if err = decodeCanonical(event.Payload, &snapshot, nil); err != nil {
 			break
 		}
 		previous := mirror.Snapshot.Receipt
-		validTransition := validJobTransition(previous.Status, state.Receipt.Status) && state.Receipt.Revision == previous.Revision+1
-		validTime := state.UpdatedAt.Equal(event.CreatedAt) && !state.UpdatedAt.Before(mirror.Snapshot.UpdatedAt)
-		if state.Validate(mirror.Spec) != nil || !validTransition || !validTime {
+		validTransition := validJobTransition(previous.Status, snapshot.Receipt.Status) && snapshot.Receipt.Revision == previous.Revision+1
+		validTime := snapshot.UpdatedAt.Equal(event.CreatedAt) && !snapshot.UpdatedAt.Before(mirror.Snapshot.UpdatedAt)
+		if snapshot.ValidateState() != nil || !sameRemoteReceiptIdentity(previous, snapshot.Receipt) || !validTransition || !validTime {
 			err = remoteresults.ErrInvalid
 			break
 		}
-		next.Receipt.Status, next.Receipt.Revision, next.Failure = state.Receipt.Status, state.Receipt.Revision, state.Failure
-		if !equalCanonicalDocuments(next, state) {
+		next.Receipt.Status, next.Receipt.Revision, next.Failure = snapshot.Receipt.Status, snapshot.Receipt.Revision, snapshot.Failure
+		if !equalCanonicalDocuments(next, snapshot) {
 			err = remoteresults.ErrConflict
 		}
 	case jobcontract.EventCommand:
@@ -58,6 +59,9 @@ func applyRemoteEventTx(
 			mirror.Spec.JobID,
 			event.Payload,
 		)
+		if err == nil {
+			state.invalidateRuns()
+		}
 	case jobcontract.EventEvidence:
 		err = importRemoteEvidenceTx(
 			ctx,
@@ -71,6 +75,7 @@ func applyRemoteEventTx(
 			tx,
 			mirror.Spec.JobID,
 			event.Payload,
+			state,
 		)
 	case jobcontract.EventComparison:
 		err = importRemoteComparisonTx(
@@ -85,6 +90,7 @@ func applyRemoteEventTx(
 			tx,
 			mirror.Spec,
 			event.Payload,
+			state,
 		)
 	case jobcontract.EventPerformanceResult:
 		err = importRemotePerformanceReferenceTx(
@@ -118,8 +124,11 @@ func applyRemoteEventTx(
 	if err != nil {
 		return jobcontract.Snapshot{}, fmt.Errorf("import remote %s: %w", event.Kind, err)
 	}
-	if err := next.Validate(mirror.Spec); err != nil {
+	if err := next.ValidateState(); err != nil {
 		return jobcontract.Snapshot{}, err
+	}
+	if !sameRemoteReceiptIdentity(mirror.Snapshot.Receipt, next.Receipt) {
+		return jobcontract.Snapshot{}, remoteresults.ErrConflict
 	}
 	return next, nil
 }
@@ -251,7 +260,13 @@ func requireUnsealedRemoteRun(ctx context.Context, tx *sql.Tx, runID string) err
 	return nil
 }
 
-func importRemoteResultTx(ctx context.Context, tx *sql.Tx, jobID string, raw []byte) error {
+func importRemoteResultTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	jobID string,
+	raw []byte,
+	state *remoteBatchState,
+) error {
 	result, err := decodeResultDocument(raw)
 	if err != nil {
 		return err
@@ -268,6 +283,10 @@ func importRemoteResultTx(ctx context.Context, tx *sql.Tx, jobID string, raw []b
 	); err != nil {
 		return err
 	}
+	current, err := state.currentRun(ctx, tx, result.RunID)
+	if err != nil {
+		return err
+	}
 	matched, err := importedDocumentMatches(ctx, tx.QueryRowContext(ctx, `SELECT document_json FROM case_results WHERE id = ?`, result.ID), raw)
 	if matched || err != nil {
 		return err
@@ -275,15 +294,11 @@ func importRemoteResultTx(ctx context.Context, tx *sql.Tx, jobID string, raw []b
 	if err := requireUnsealedRemoteRun(ctx, tx, result.RunID); err != nil {
 		return err
 	}
-	run, err := queryCurrentRun(ctx, tx, result.RunID)
-	if err != nil {
-		return err
-	}
 	if err := validateStoredResultAgainstSnapshot(
 		ctx,
 		tx,
 		result,
-		run.Snapshot(),
+		current.snapshot,
 		map[string]domain.Evidence{},
 	); err != nil {
 		return err
@@ -325,7 +340,13 @@ func importRemoteComparisonTx(ctx context.Context, tx *sql.Tx, spec jobcontract.
 	)
 }
 
-func importRemoteReportReferenceTx(ctx context.Context, tx *sql.Tx, spec jobcontract.JobSpec, raw []byte) error {
+func importRemoteReportReferenceTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	spec jobcontract.JobSpec,
+	raw []byte,
+	state *remoteBatchState,
+) error {
 	var reference jobcontract.ReportReference
 	if err := decodeCanonical(raw, &reference, nil); err != nil {
 		return err
@@ -344,11 +365,11 @@ func importRemoteReportReferenceTx(ctx context.Context, tx *sql.Tx, spec jobcont
 		); err != nil {
 			return err
 		}
-		run, err := queryCurrentRun(ctx, tx, reference.RunID)
+		current, err := state.currentRun(ctx, tx, reference.RunID)
 		if err != nil {
 			return err
 		}
-		if !jobcontract.Terminal(run.Status()) {
+		if !jobcontract.Terminal(current.run.Status()) {
 			return remoteresults.ErrInvalid
 		}
 		var conflict bool
