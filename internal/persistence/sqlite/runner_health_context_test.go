@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -47,6 +48,33 @@ func (connection healthProbeConnection) BeginTx(context.Context, driver.TxOption
 
 func (healthProbeConnection) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
 	return driver.RowsAffected(0), nil
+}
+
+func (healthProbeConnection) QueryContext(
+	_ context.Context,
+	query string,
+	_ []driver.NamedValue,
+) (driver.Rows, error) {
+	if strings.HasPrefix(query, "SELECT EXISTS(") {
+		return &healthProbeRows{columns: []string{"unsupported"}, values: [][]driver.Value{{false}}}, nil
+	}
+	return nil, errors.New("unexpected health content query")
+}
+
+type healthProbeRows struct {
+	columns []string
+	values  [][]driver.Value
+}
+
+func (rows *healthProbeRows) Columns() []string { return rows.columns }
+func (rows *healthProbeRows) Close() error      { return nil }
+func (rows *healthProbeRows) Next(values []driver.Value) error {
+	if len(rows.values) == 0 {
+		return io.EOF
+	}
+	copy(values, rows.values[0])
+	rows.values = rows.values[1:]
+	return nil
 }
 
 type healthProbeTransaction struct {

@@ -490,6 +490,9 @@ func (row runnerBackupRecord) nullable(name string) sql.NullString {
 }
 
 func validateRunnerBackupDocument(table string, row runnerBackupRecord) error {
+	if err := validateContentBackupRow(table, row); err != nil {
+		return err
+	}
 	document := []byte(row.text("document_json"))
 	switch table {
 	case "local_executor_identity":
@@ -599,6 +602,9 @@ func validateRunnerBackupDocument(table string, row runnerBackupRecord) error {
 }
 
 func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
+	if err := validateContentRelations(ctx, conn); err != nil {
+		return err
+	}
 	checks := []struct {
 		table, column string
 		visit         func(string) error
@@ -776,7 +782,7 @@ func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQuerye
 
 func runnerBackupEachID(
 	ctx context.Context,
-	conn *sql.Conn,
+	conn relationQueryer,
 	table, column string,
 	visit func(string) error,
 ) error {

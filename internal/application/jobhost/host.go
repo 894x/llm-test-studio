@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -186,7 +187,9 @@ func (host *Host) Submit(ctx context.Context, submission *jobcontract.Submission
 	if err := ctx.Err(); err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
-	input := Acceptance{Spec: spec, Origin: host.origin,
+	input := Acceptance{
+		ContentClaims: []jobcontent.Claim{},
+		Spec:          spec, Origin: host.origin,
 		SecretCommitment: host.secretCommitment(spec.JobID, submission.Secrets)}
 	existing, err := host.repository.LookupJob(ctx, input)
 	if err == nil {

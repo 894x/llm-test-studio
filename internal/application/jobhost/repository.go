@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
@@ -23,6 +24,7 @@ type Acceptance struct {
 	Origin           domain.ExecutionOrigin
 	SecretCommitment string
 	AcceptedAt       time.Time
+	ContentClaims    []jobcontent.Claim
 }
 
 type Change struct {

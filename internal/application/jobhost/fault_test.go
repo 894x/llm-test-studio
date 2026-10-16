@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -228,7 +229,7 @@ func TestCancelSignalIsDeliveredAfterLostCommandConfirmation(t *testing.T) {
 func TestTerminalJobBeforeSettlementMarkerIsRecoveredWithoutExecution(t *testing.T) {
 	repository, core := openHostRepository(t), newControlledCore()
 	submission := testSubmission(t)
-	initial, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
+	initial, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{ContentClaims: []jobcontent.Claim{},
 		Spec: submission.Job, Origin: acceptedOrigin(submission.Job),
 		SecretCommitment: submission.Job.EngineBuildID, AcceptedAt: time.Now().UTC(),
 	})

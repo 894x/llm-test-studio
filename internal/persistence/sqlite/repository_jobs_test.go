@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/runs"
@@ -52,6 +53,7 @@ func executionOrigin(spec jobcontract.JobSpec) domain.ExecutionOrigin {
 func jobAcceptance(spec jobcontract.JobSpec) jobhost.Acceptance {
 	return jobhost.Acceptance{
 		Spec: spec, Origin: executionOrigin(spec), SecretCommitment: strings.Repeat("b", 64), AcceptedAt: repositoryEpoch.Add(time.Minute),
+		ContentClaims: []jobcontent.Claim{},
 	}
 }
 

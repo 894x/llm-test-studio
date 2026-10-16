@@ -1,6 +1,6 @@
 package sqlite
 
-var currentSchemaObjects = []schemaObject{
+var currentSchemaObjects = append([]schemaObject{
 	{kind: "table", name: "local_executor_identity", table: "local_executor_identity", ddl: `CREATE TABLE local_executor_identity (
 		singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
 		node_id TEXT NOT NULL CHECK(length(CAST(node_id AS BLOB)) = 36),
@@ -148,6 +148,7 @@ var currentSchemaObjects = []schemaObject{
 		job_id TEXT NOT NULL,
 		position INTEGER NOT NULL CHECK(position >= 0),
 		UNIQUE(job_id, position),
+		UNIQUE(job_id, run_id),
 		FOREIGN KEY(run_id) REFERENCES execution_runs(id),
 		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
 	)`},
@@ -387,4 +388,4 @@ var currentSchemaObjects = []schemaObject{
 		BEGIN
 			SELECT RAISE(ABORT, 'comparison revisions are immutable');
 		END`},
-}
+}, contentSchemaObjects...)

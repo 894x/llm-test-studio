@@ -96,6 +96,10 @@ func openRepository(ctx context.Context, dsn string, busyTimeout time.Duration) 
 		}
 		return nil, fmt.Errorf("%w: validate operational repository integrity: %v", ErrCorrupt, err)
 	}
+	if err := validateContentRelations(ctx, conn); err != nil {
+		cleanup()
+		return nil, err
+	}
 	// Return the configured connection to the pool; keeping a shared *sql.Conn
 	// bypasses transaction reservation and permits overlapping BEGIN statements.
 	if err := conn.Close(); err != nil {

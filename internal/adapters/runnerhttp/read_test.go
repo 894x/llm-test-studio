@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -311,7 +312,7 @@ func TestHTTPOwnerChecksAllowPreviousRunnerBuildButExcludeOtherInstallations(t *
 		if foreign {
 			submission.Job.NodeInstallationID = "33333333-3333-4333-8333-333333333333"
 		}
-		if _, _, err := fixture.repository.AcceptJob(t.Context(), jobhost.Acceptance{
+		if _, _, err := fixture.repository.AcceptJob(t.Context(), jobhost.Acceptance{ContentClaims: []jobcontent.Claim{},
 			Spec: submission.Job, SecretCommitment: strings.Repeat("d", 64), AcceptedAt: time.Now().UTC(),
 			Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: submission.Job.Target.NodeID,
 				InstallationID: submission.Job.NodeInstallationID, EngineBuildID: submission.Job.EngineBuildID,

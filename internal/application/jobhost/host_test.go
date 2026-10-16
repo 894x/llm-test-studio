@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
@@ -442,7 +443,7 @@ func TestHostRecoverySealsOwnedJobsWithoutSendingAndPreservesForeignJobs(t *test
 	foreign := testSubmission(t)
 	foreign.Job.NodeInstallationID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 	for _, submission := range []jobcontract.Submission{owned, foreign} {
-		_, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
+		_, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{ContentClaims: []jobcontent.Claim{},
 			Spec: submission.Job, Origin: acceptedOrigin(submission.Job),
 			SecretCommitment: strings.Repeat("f", 64), AcceptedAt: time.Now().UTC(),
 		})

@@ -18,6 +18,9 @@ func (repository *Repository) CheckWritable(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE execution_jobs SET revision = revision WHERE 0`); err != nil {
 		return fmt.Errorf("probe runner writer: %w", err)
 	}
+	if err := rejectInactiveContentFacts(ctx, tx); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		// database/sql may finish its cancellation rollback before Commit,
 		// returning ErrTxDone instead of the transaction context's error.

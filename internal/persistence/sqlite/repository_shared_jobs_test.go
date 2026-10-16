@@ -586,7 +586,7 @@ func TestSharedControlRejectsMissingOrChangedAnchorWithoutMutation(t *testing.T)
 
 func TestSharedJobCurrentSchemaRejectsPreviousChecksumWithoutMutation(t *testing.T) {
 	version, name, checksum := persistence.CurrentSchemaIdentity()
-	if version != 1 || name != "0001_protocol_runtime" || checksum != "adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e" {
+	if version != 1 || name != "0001_protocol_runtime" || checksum != "1db91d4ba40e06d3b5d3a8a7730d5f57702d63f3c39cb3e4d3a80b678c64fa68" {
 		t.Fatalf("unexpected shared job schema identity: %d %s %s", version, name, checksum)
 	}
 	for _, operation := range []string{"migrate", "inspect", "repository"} {
@@ -598,7 +598,7 @@ func TestSharedJobCurrentSchemaRejectsPreviousChecksumWithoutMutation(t *testing
 			}
 			db := openDatabase(t, path)
 			if _, err := db.ExecContext(t.Context(), `UPDATE schema_migrations SET checksum = ?`,
-				"7afb439aaccf28d19e7e7381e2ef5611e013f062676e3706d44b3313d52c0708"); err != nil {
+				"adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e"); err != nil {
 				t.Fatal(err)
 			}
 			if err := db.Close(); err != nil {

@@ -20,65 +20,32 @@ func (repository *Repository) AcceptJob(
 	ctx context.Context,
 	input jobhost.Acceptance,
 ) (jobcontract.Snapshot, bool, error) {
-	if !jobcontract.IsSHA256(input.SecretCommitment) {
+	if !jobcontract.IsSHA256(input.SecretCommitment) || input.ContentClaims == nil {
 		return jobcontract.Snapshot{}, false, jobhost.ErrInvalid
+	}
+	if len(input.ContentClaims) != 0 {
+		return jobcontract.Snapshot{}, false, jobcontract.ErrUnsupported
 	}
 	spec, err := input.Spec.Freeze()
 	if err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
-	snapshot, err := spec.InitialSnapshot(input.AcceptedAt, input.Origin)
-	if err != nil {
-		return jobcontract.Snapshot{}, false, err
+	if len(spec.Assets) != 0 {
+		return jobcontract.Snapshot{}, false, jobcontract.ErrUnsupported
 	}
 	digest, err := spec.Digest()
 	if err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
-	specDocument, err := marshalCanonical(spec)
-	if err != nil {
-		return jobcontract.Snapshot{}, false, err
-	}
-	snapshotDocument, err := marshalCanonical(snapshot)
-	if err != nil {
-		return jobcontract.Snapshot{}, false, err
-	}
-	preparedRuns := make([]preparedRunCreate, 0, len(snapshot.Receipt.RunIDs))
-	for _, input := range spec.PreparedRuns() {
-		run, err := domain.NewRun(input.Meta, input.PlanID, input.Snapshot)
-		if err != nil {
-			return jobcontract.Snapshot{}, false, err
-		}
-		prepared, err := prepareRunCreate(run)
-		if err != nil {
-			return jobcontract.Snapshot{}, false, err
-		}
-		preparedRuns = append(preparedRuns, prepared)
-	}
-	var preparedComparison *preparedComparisonCreate
-	if spec.Kind == jobcontract.KindComparison {
-		comparison, err := spec.Spec.Comparison.Comparison()
-		if err != nil {
-			return jobcontract.Snapshot{}, false, err
-		}
-		prepared, err := prepareComparisonCreate(comparison)
-		if err != nil {
-			return jobcontract.Snapshot{}, false, err
-		}
-		preparedComparison = &prepared
-	}
-	event, err := newJobEvent(jobEventWrite{
-		JobID: spec.JobID, Kind: jobcontract.EventAccepted, At: input.AcceptedAt,
-		Payload: jobcontract.AcceptedEvent{Spec: spec, Snapshot: snapshot},
-	}, 1)
-	if err != nil {
-		return jobcontract.Snapshot{}, false, err
-	}
+	prepared, prepareErr := prepareJobAcceptance(spec, input.AcceptedAt, input.Origin)
 	tx, err := repository.db.BeginTx(ctx, nil)
 	if err != nil {
 		return jobcontract.Snapshot{}, false, fmt.Errorf("begin job admission: %w", err)
 	}
 	defer tx.Rollback()
+	if err := rejectInactiveContentFacts(ctx, tx); err != nil {
+		return jobcontract.Snapshot{}, false, err
+	}
 	var remoteOwner bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_job_mirrors WHERE job_id = ?)`, spec.JobID).Scan(&remoteOwner); err != nil {
 		return jobcontract.Snapshot{}, false, fmt.Errorf("read remote job owner: %w", err)
@@ -86,12 +53,6 @@ func (repository *Repository) AcceptJob(
 	if remoteOwner {
 		return jobcontract.Snapshot{}, false, jobhost.ErrConflict
 	}
-	if spec.Kind == jobcontract.KindPerformance {
-		if err := requireLocalPerformanceReport(ctx, tx, spec.Spec.Performance.ReportID); err != nil {
-			return jobcontract.Snapshot{}, false, err
-		}
-	}
-
 	stored, err := queryJobRow(ctx, tx, spec.JobID)
 	if err == nil {
 		sameSpec := stored.specSHA256 == digest
@@ -100,11 +61,23 @@ func (repository *Repository) AcceptJob(
 			return jobcontract.Snapshot{}, false, jobhost.ErrConflict
 		}
 		previous, err := stored.decode()
+		if err == nil {
+			_, err = queryJobContent(ctx, tx, spec.JobID)
+		}
 		return previous, false, err
 	}
 	if !errors.Is(err, jobhost.ErrNotFound) {
 		return jobcontract.Snapshot{}, false, err
 	}
+	if prepareErr != nil {
+		return jobcontract.Snapshot{}, false, prepareErr
+	}
+	if spec.Kind == jobcontract.KindPerformance {
+		if err := requireLocalPerformanceReport(ctx, tx, spec.Spec.Performance.ReportID); err != nil {
+			return jobcontract.Snapshot{}, false, err
+		}
+	}
+
 	if spec.Kind == jobcontract.KindPerformance {
 		var existing int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM quick_performance_reports WHERE id = ?`,
@@ -130,13 +103,17 @@ func (repository *Repository) AcceptJob(
 		formatTime(input.AcceptedAt),
 		digest,
 		input.SecretCommitment,
-		specDocument,
-		snapshotDocument,
+		prepared.specDocument,
+		prepared.snapshotDocument,
 	); err != nil {
 		return jobcontract.Snapshot{}, false, classifyJobWriteError("create job", err)
 	}
-	for index, prepared := range preparedRuns {
-		if err := createRunTx(ctx, tx, prepared); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO execution_job_content(job_id, inventory_revision)
+		VALUES(?, 1)`, spec.JobID); err != nil {
+		return jobcontract.Snapshot{}, false, classifyJobWriteError("create job content inventory", err)
+	}
+	for index, preparedRun := range prepared.preparedRuns {
+		if err := createRunTx(ctx, tx, preparedRun); err != nil {
 			return jobcontract.Snapshot{}, false, classifyJobWriteError("create job run", err)
 		}
 		if _, err := tx.ExecContext(
@@ -144,25 +121,88 @@ func (repository *Repository) AcceptJob(
 			`
 			INSERT INTO execution_job_runs(run_id, job_id, position) VALUES(?, ?, ?)
 		`,
-			prepared.run.Meta().ID,
+			preparedRun.run.Meta().ID,
 			spec.JobID,
 			index,
 		); err != nil {
 			return jobcontract.Snapshot{}, false, classifyJobWriteError("link job run", err)
 		}
 	}
-	if preparedComparison != nil {
-		if err := createComparisonTx(ctx, tx, *preparedComparison); err != nil {
+	if prepared.preparedComparison != nil {
+		if err := createComparisonTx(ctx, tx, *prepared.preparedComparison); err != nil {
 			return jobcontract.Snapshot{}, false, classifyJobWriteError("create job comparison", err)
 		}
 	}
-	if err := insertJobEventTx(ctx, tx, event); err != nil {
+	if err := insertJobEventTx(ctx, tx, prepared.event); err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return jobcontract.Snapshot{}, false, classifyJobWriteError("commit job admission", err)
 	}
-	return snapshot, true, nil
+	return prepared.snapshot, true, nil
+}
+
+type preparedJobAcceptance struct {
+	snapshot           jobcontract.Snapshot
+	specDocument       []byte
+	snapshotDocument   []byte
+	preparedRuns       []preparedRunCreate
+	preparedComparison *preparedComparisonCreate
+	event              jobcontract.Event
+}
+
+func prepareJobAcceptance(
+	spec jobcontract.JobSpec,
+	acceptedAt time.Time,
+	origin domain.ExecutionOrigin,
+) (preparedJobAcceptance, error) {
+	snapshot, err := spec.InitialSnapshot(acceptedAt, origin)
+	if err != nil {
+		return preparedJobAcceptance{}, err
+	}
+	specDocument, err := marshalCanonical(spec)
+	if err != nil {
+		return preparedJobAcceptance{}, err
+	}
+	snapshotDocument, err := marshalCanonical(snapshot)
+	if err != nil {
+		return preparedJobAcceptance{}, err
+	}
+	preparedRuns := make([]preparedRunCreate, 0, len(snapshot.Receipt.RunIDs))
+	for _, runInput := range spec.PreparedRuns() {
+		run, err := domain.NewRun(runInput.Meta, runInput.PlanID, runInput.Snapshot)
+		if err != nil {
+			return preparedJobAcceptance{}, err
+		}
+		prepared, err := prepareRunCreate(run)
+		if err != nil {
+			return preparedJobAcceptance{}, err
+		}
+		preparedRuns = append(preparedRuns, prepared)
+	}
+	var preparedComparison *preparedComparisonCreate
+	if spec.Kind == jobcontract.KindComparison {
+		comparison, err := spec.Spec.Comparison.Comparison()
+		if err != nil {
+			return preparedJobAcceptance{}, err
+		}
+		prepared, err := prepareComparisonCreate(comparison)
+		if err != nil {
+			return preparedJobAcceptance{}, err
+		}
+		preparedComparison = &prepared
+	}
+	event, err := newJobEvent(jobEventWrite{
+		JobID: spec.JobID, Kind: jobcontract.EventAccepted, At: acceptedAt,
+		Payload: jobcontract.AcceptedEvent{Spec: spec, Snapshot: snapshot},
+	}, 1)
+	if err != nil {
+		return preparedJobAcceptance{}, err
+	}
+	return preparedJobAcceptance{
+		snapshot: snapshot, specDocument: specDocument, snapshotDocument: snapshotDocument,
+		preparedRuns: preparedRuns, preparedComparison: preparedComparison, event: event,
+	}, nil
 }
 
 func (repository *Repository) GetJob(ctx context.Context, id string) (jobcontract.Snapshot, error) {

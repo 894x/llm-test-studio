@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/894x/llm-test-studio/internal/application/jobcontent"
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/runs"
@@ -347,7 +348,9 @@ func TestLocalBackendRejectsForeignTargetsClosedHandlesAndUnsupportedContracts(t
 	}
 	foreign := testSubmission(t)
 	defer foreign.Clear()
-	if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{Spec: foreign.Job, Origin: acceptedOrigin(foreign.Job),
+	if _, _, err := repository.AcceptJob(t.Context(), jobhost.Acceptance{
+		ContentClaims: []jobcontent.Claim{},
+		Spec:          foreign.Job, Origin: acceptedOrigin(foreign.Job),
 		SecretCommitment: strings.Repeat("d", 64), AcceptedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
