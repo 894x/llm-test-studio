@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -159,8 +160,9 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 	fixture := newHTTPFixture(t, false, capabilities())
 	management := httpManagementClient(t, fixture)
 	history := make([]jobcontract.Submission, 0, historicalJobs)
-	for range historicalJobs {
+	for index := range historicalJobs {
 		submission := fixture.runSubmission(t, false)
+		submission.Job.JobID = fmt.Sprintf("71000000-0000-4000-8000-%012d", index+1)
 		if _, err := management.Submit(t.Context(), &submission); err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +245,8 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 	origin := remoteresults.Origin{ConfigurationID: coordinatorLocation.ConfigurationID,
 		NodeID: identity.Target.NodeID, InstallationID: identity.InstallationID}
 	watcher, err := remotesync.NewWatcher(t.Context(), remotesync.WatcherDependencies{
-		Synchronizer: synchronizer, PriorityJobs: desktop.ListRemoteSyncPriorityIDs,
+		Synchronizer: synchronizer, FactPriorityJobs: desktop.ListRemoteFactPriorityIDs,
+		DocumentWork: desktop.ListRemoteDocumentWork,
 		Nodes: func(context.Context) ([]remotesync.Node, error) {
 			return []remotesync.Node{{Origin: origin, Revision: 1}}, nil
 		},
@@ -286,7 +289,7 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("initial real tail discovery never began its historical report download")
 	}
-	wantHeld := min(heldCandidates, 3)
+	wantHeld := 1 // History documents have one slot; Focus retains the other.
 	waitHeld, cancelHeld := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancelHeld()
 	for activeDownloads.Load() < int64(wantHeld) {
@@ -334,7 +337,7 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 	)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	var sharedImported, remainingHistory int
+	var sharedImported, sharedObserved, remainingHistory int
 	for {
 		mirror, mirrorErr := desktop.GetRemoteMirror(ctx, fresh.Job.JobID)
 		documents, documentErr := desktop.ListRemoteDocuments(ctx, fresh.Job.JobID)
@@ -355,6 +358,9 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 	}
 	elapsed := time.Since(started)
 	for _, submission := range history {
+		if _, err := desktop.GetRemoteMirror(t.Context(), submission.Job.JobID); err == nil {
+			sharedObserved++
+		}
 		documents, err := desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
 		if errors.Is(err, remoteresults.ErrNotFound) {
 			remainingHistory++
@@ -369,8 +375,8 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 			remainingHistory++
 		}
 	}
-	if heldCandidates == 1 && sharedImported == 0 {
-		t.Fatal("one slow report starved other shared history imports")
+	if sharedObserved <= wantHeld {
+		t.Fatal("a held report starved other shared history facts")
 	}
 	if remainingHistory < 25 {
 		t.Fatal("own priority was only observed after exhausting the history backlog")
@@ -386,7 +392,7 @@ func verifyOwnJobDuringHTTPBacklog(t *testing.T, heldCandidates int) {
 		t.Fatal("blocked historical report was falsely imported or its download duplicated")
 	}
 	if heldCandidates == 4 && blockedPaths[lastCandidatePath].Load() != 0 {
-		t.Fatal("the fourth cold historical report occupied the reserved priority slot")
+		t.Fatal("another cold historical report occupied the reserved Focus document slot")
 	}
 	partialPath := filepath.Join(cacheRoot, blockedDocument.Reference.SHA256+".partial")
 	partial, err := os.ReadFile(partialPath)

@@ -85,7 +85,7 @@ func TestWatcherIndependentNodesRevisionCancellationAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer, Connect: connect,
-		PriorityJobs: emptyPriorityJobs,
+		DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
 		Nodes: func(context.Context) ([]Node, error) {
 			sourceMu.Lock()
 			defer sourceMu.Unlock()
@@ -164,8 +164,8 @@ func TestWatcherCloseBeforeRunAndRejectDuplicateSourcesWithoutConnecting(t *test
 	}
 	var calls atomic.Int64
 	dependencies := WatcherDependencies{Synchronizer: synchronizer,
-		PriorityJobs: emptyPriorityJobs,
-		Nodes:        func(context.Context) ([]Node, error) { return []Node{}, nil },
+		DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
+		Nodes: func(context.Context) ([]Node, error) { return []Node{}, nil },
 		Connect: func(context.Context, Node) (Connection, error) {
 			calls.Add(1)
 			return nil, errors.New("unexpected connection")
@@ -245,8 +245,8 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 	var active, maximum atomic.Int64
 	var opened, closed atomic.Int64
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		PriorityJobs: emptyPriorityJobs,
-		Nodes:        func(context.Context) ([]Node, error) { return nodes, nil },
+		DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
+		Nodes: func(context.Context) ([]Node, error) { return nodes, nil },
 		Connect: func(_ context.Context, node Node) (Connection, error) {
 			opened.Add(1)
 			at := time.Now().UTC()
@@ -272,7 +272,7 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- watcher.Run() }()
 	t.Cleanup(func() { _ = watcher.Close() })
-	for range maxBackgroundSyncs {
+	for range maxBackgroundFacts {
 		select {
 		case <-entered:
 		case <-time.After(2 * time.Second):
@@ -291,11 +291,11 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	validBudget := maximum.Load() == maxBackgroundSyncs && active.Load() == 0
+	validBudget := maximum.Load() == maxBackgroundFacts && active.Load() == 0
 	if !validBudget || closed.Load() != int64(len(nodes)) {
 		t.Fatal("sync budget or shutdown resource accounting was violated")
 	}
-	if len(watcher.gate) != 0 || len(watcher.backgroundGate) != 0 {
+	if len(watcher.gate) != 0 || len(watcher.backgroundFactGate) != 0 {
 		t.Fatal("shutdown leaked global or background slot reservations")
 	}
 }
@@ -344,7 +344,7 @@ func TestWatcherKeepsTailAcrossSessionsAndFindsNewRoots(t *testing.T) {
 	synchronizer, _ := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
 	var opens, closes atomic.Int64
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{
-		Synchronizer: synchronizer, PriorityJobs: emptyPriorityJobs,
+		Synchronizer: synchronizer, DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
 		Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) {
 			opens.Add(1)

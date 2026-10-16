@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"slices"
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
@@ -15,7 +14,7 @@ import (
 	runnerclient "github.com/894x/llm-test-studio/internal/remote/client"
 )
 
-const maxPagesPerPass = 20
+const maxPagesPerObservation = 20
 
 type Remote interface {
 	Probe(context.Context) (jobcontract.RunnerInfo, error)
@@ -58,10 +57,9 @@ func New(dependencies Dependencies) (*Synchronizer, error) {
 	return &Synchronizer{repository: dependencies.Repository, documents: dependencies.Documents}, nil
 }
 
-// Pass bounds one observation attempt. Repeating it resumes the durable event
-// cursor and immutable partial documents. It never submits or controls a job;
-// cancellation stops observation only. MoreEvents requests another bounded pass.
-func (synchronizer *Synchronizer) Pass(ctx context.Context, request Request) (Outcome, error) {
+// Observe imports bounded event pages without waiting for any document.
+// Cancellation stops observation only; committed per-job cursors remain durable.
+func (synchronizer *Synchronizer) Observe(ctx context.Context, request Request) (Outcome, error) {
 	validIdentity := request.Origin.Validate() == nil && domain.IsUUID(request.JobID)
 	if ctx == nil || !validIdentity || request.Remote == nil {
 		return Outcome{}, remoteresults.ErrInvalid
@@ -84,7 +82,7 @@ func (synchronizer *Synchronizer) Pass(ctx context.Context, request Request) (Ou
 	if !validSource {
 		return outcome, remoteresults.ErrConflict
 	}
-	for range maxPagesPerPass {
+	for range maxPagesPerObservation {
 		after := outcome.Mirror.Snapshot.LatestSequence
 		page, err := request.Remote.ReadEvents(ctx, runnerclient.EventQuery{
 			JobID: request.JobID, AfterSequence: after, Limit: 200,
@@ -107,56 +105,7 @@ func (synchronizer *Synchronizer) Pass(ctx context.Context, request Request) (Ou
 			break
 		}
 	}
-	documents, err := synchronizer.repository.ListRemoteDocuments(ctx, request.JobID)
-	if err != nil {
-		return outcome, err
-	}
-	// A performance archive is meaningful only after its full sealed result.
-	// SQL ordering and arrival in the same page must not determine this order.
-	slices.SortStableFunc(documents, func(left, right remoteresults.DocumentReference) int {
-		if left.Kind == right.Kind {
-			return 0
-		}
-		if left.Kind == jobcontract.EventPerformanceResult {
-			return -1
-		}
-		if right.Kind == jobcontract.EventPerformanceResult {
-			return 1
-		}
-		return 0
-	})
-	var firstError error
-	performanceResultImported := false
-	for _, document := range documents {
-		if err := ctx.Err(); err != nil {
-			return outcome, errors.Join(firstError, err)
-		}
-		if document.Imported {
-			if document.Kind == jobcontract.EventPerformanceResult {
-				performanceResultImported = true
-			}
-			continue
-		}
-		archive := document.Kind == jobcontract.EventReport && document.Reference.Kind == jobcontract.KindPerformance
-		if archive && !performanceResultImported {
-			continue
-		}
-		err := synchronizer.importDocument(
-			ctx,
-			request,
-			document,
-		)
-		if firstError == nil {
-			firstError = err
-		}
-		if err == nil && document.Kind == jobcontract.EventPerformanceResult {
-			performanceResultImported = true
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return outcome, errors.Join(firstError, err)
-	}
-	return outcome, firstError
+	return outcome, nil
 }
 
 func (synchronizer *Synchronizer) importDocument(

@@ -41,7 +41,16 @@ func TestRemoteSyncPriorityStatementRetainsSnapshotAcrossConcurrentRepositoryWri
 	}
 	ids := []string{"84000000-0000-4000-8000-000000000001", "84000000-0000-4000-8000-000000000002"}
 	build := strings.Repeat("a", 64)
-	at := time.Date(2026, time.October, 16, 0, 0, 0, 0, time.UTC)
+	at := time.Date(
+		2026,
+		time.October,
+		16,
+		0,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
 	snapshot := jobcontract.Snapshot{Receipt: jobcontract.Receipt{
 		Contract: jobcontract.CurrentContract, Kind: jobcontract.KindRun, AcceptedAt: at,
 		Origin: domain.ExecutionOrigin{Kind: "remote", NodeID: origin.NodeID, InstallationID: origin.InstallationID,
@@ -94,10 +103,16 @@ func TestRemoteSyncPriorityStatementRetainsSnapshotAcrossConcurrentRepositoryWri
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer plan.Close()
 	for plan.Next() {
 		var id, parent, unused int
 		var detail string
-		if err := plan.Scan(&id, &parent, &unused, &detail); err != nil {
+		if err := plan.Scan(
+			&id,
+			&parent,
+			&unused,
+			&detail,
+		); err != nil {
 			t.Fatal(err)
 		}
 		t.Log(detail)
@@ -138,9 +153,12 @@ func TestRemoteSyncPriorityStatementRetainsSnapshotAcrossConcurrentRepositoryWri
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writer.db.ExecContext(ctx,
+	if _, err := writer.db.ExecContext(
+		ctx,
 		`UPDATE remote_job_mirrors SET snapshot_json = ?, applied_sequence = 2 WHERE job_id = ?`,
-		string(terminal), ids[1]); err != nil {
+		string(terminal),
+		ids[1],
+	); err != nil {
 		t.Fatalf("independent repository WAL write blocked by streaming reader: %v", err)
 	}
 	if !rows.Next() || rows.Scan(destinations...) != nil {
@@ -160,7 +178,12 @@ func TestRemoteSyncPriorityStatementRetainsSnapshotAcrossConcurrentRepositoryWri
 	if err := rows.Close(); err != nil {
 		t.Fatal(err)
 	}
-	page, err := reader.ListRemoteSyncPriorityIDs(ctx, origin, "", 25)
+	page, err := reader.ListRemoteFactPriorityIDs(
+		ctx,
+		origin,
+		"",
+		25,
+	)
 	if err != nil || !slices.Equal(page.JobIDs, ids[:1]) {
 		t.Fatalf("new priority statement did not observe committed terminal write: %+v, %v", page, err)
 	}

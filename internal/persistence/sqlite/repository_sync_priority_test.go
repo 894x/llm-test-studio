@@ -97,7 +97,12 @@ func TestRemoteSyncPriorityIncludesSharedActiveAndDeduplicatesOwnMirror(t *testi
 	slices.Sort(wanted)
 	got, cursor := []string{}, ""
 	for {
-		page, err := repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, cursor, 5)
+		page, err := repository.ListRemoteFactPriorityIDs(
+			t.Context(),
+			remoteOrigin,
+			cursor,
+			5,
+		)
 		if err != nil || page.JobIDs == nil || len(page.JobIDs) > 5 {
 			t.Fatalf("shared priority page: %+v, %v", page, err)
 		}
@@ -115,7 +120,7 @@ func TestRemoteSyncPriorityIncludesSharedActiveAndDeduplicatesOwnMirror(t *testi
 	}
 }
 
-func TestRemoteSyncPriorityTerminalExitsAndLateUnimportedDocumentReenters(t *testing.T) {
+func TestRemoteFactPriorityTerminalDocumentsUseSeparateQueue(t *testing.T) {
 	node, desktop := openOperationalRepository(t), openOperationalRepository(t)
 	defer node.Close()
 	defer desktop.Close()
@@ -129,14 +134,30 @@ func TestRemoteSyncPriorityTerminalExitsAndLateUnimportedDocumentReenters(t *tes
 		t.Fatal("fixture lacks a late report")
 	}
 	applyRemoteEvents(t, desktop, events[:reportAt])
-	page, err := desktop.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 25)
+	page, err := desktop.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		25,
+	)
 	if err != nil || len(page.JobIDs) != 0 || page.HasMore {
 		t.Fatalf("terminal without known refs remains priority: %+v, %v", page, err)
 	}
 	applyRemoteEvents(t, desktop, events[reportAt:])
-	page, err = desktop.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 25)
-	if err != nil || !slices.Equal(page.JobIDs, []string{spec.JobID}) {
-		t.Fatalf("late unimported report did not regain priority: %+v, %v", page, err)
+	page, err = desktop.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		25,
+	)
+	if err != nil || len(page.JobIDs) != 0 {
+		t.Fatalf("late document consumed fact priority: %+v, %v", page, err)
+	}
+	documents, err := desktop.ListRemoteDocumentWork(t.Context(), remoteresults.DocumentQuery{
+		Origin: remoteOrigin, Class: remoteresults.DocumentHistory, Limit: 2,
+	})
+	if err != nil || len(documents.Items) != 1 || documents.Items[0].JobID != spec.JobID {
+		t.Fatalf("late document missing from separate work: %+v, %v", documents, err)
 	}
 	origin := executionOrigin(spec)
 	fixture.report.ExecutionOrigin = &origin
@@ -149,9 +170,20 @@ func TestRemoteSyncPriorityTerminalExitsAndLateUnimportedDocumentReenters(t *tes
 	}); err != nil {
 		t.Fatal(err)
 	}
-	page, err = desktop.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 25)
+	page, err = desktop.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		25,
+	)
 	if err != nil || len(page.JobIDs) != 0 || page.HasMore {
 		t.Fatalf("fully imported terminal remains priority: %+v, %v", page, err)
+	}
+	documents, err = desktop.ListRemoteDocumentWork(t.Context(), remoteresults.DocumentQuery{
+		Origin: remoteOrigin, Class: remoteresults.DocumentHistory, Limit: 2,
+	})
+	if err != nil || len(documents.Items) != 0 || documents.HasMore {
+		t.Fatalf("imported document remained work: %+v, %v", documents, err)
 	}
 }
 
@@ -163,7 +195,12 @@ func TestRemoteSyncPrioritySkipsTerminalHistoryBeforeLimit(t *testing.T) {
 	}
 	active := priorityMirror(t, repository, 129)
 	started := time.Now()
-	page, err := repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 1)
+	page, err := repository.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		1,
+	)
 	t.Logf("priority prefix: terminal=128 active=1 returned=%d elapsed=%s", len(page.JobIDs), time.Since(started))
 	if err != nil || !slices.Equal(page.JobIDs, []string{active.JobID}) || page.HasMore {
 		t.Fatalf("terminal history consumed a priority page: %+v, %v", page, err)
@@ -238,7 +275,12 @@ func TestRemoteSyncPriorityTerminalCorruptionIsNotFilteredOrMutated(t *testing.T
 					t.Fatal(err)
 				}
 			}
-			assertPriorityCorruptUnchanged(t, repository, db, "snapshot_json")
+			assertPriorityCorruptUnchanged(
+				t,
+				repository,
+				db,
+				"snapshot_json",
+			)
 		})
 	}
 }
@@ -252,12 +294,21 @@ func TestRemoteSyncPriorityInvalidImportedMarkerCannotHideTerminal(t *testing.T)
 	if _, err := db.ExecContext(t.Context(), `PRAGMA ignore_check_constraints = ON`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(t.Context(), `INSERT INTO remote_job_report_refs
+	if _, err := db.ExecContext(
+		t.Context(),
+		`INSERT INTO remote_job_report_refs
 	 (job_id,reference_type,report_id,document_json,imported) VALUES (?,'report',?,'{}',2)`,
-		spec.JobID, submittedPageJobID(100)); err != nil {
+		spec.JobID,
+		submittedPageJobID(100),
+	); err != nil {
 		t.Fatal(err)
 	}
-	assertPriorityCorruptUnchanged(t, repository, db, "snapshot_json")
+	assertPriorityCorruptUnchanged(
+		t,
+		repository,
+		db,
+		"snapshot_json",
+	)
 }
 
 func assertPriorityCorruptUnchanged(t *testing.T, repository *persistence.Repository, db *sql.DB, column string) {
@@ -268,7 +319,12 @@ func assertPriorityCorruptUnchanged(t *testing.T, repository *persistence.Reposi
 	if err := db.QueryRowContext(t.Context(), query).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	_, err := repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 2)
+	_, err := repository.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		2,
+	)
 	if !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("corrupt terminal hint disappeared or was accepted: %v", err)
 	}
@@ -313,7 +369,12 @@ func TestRemoteSyncPriorityConflictingTerminalSourcesCannotDisappear(t *testing.
 					t.Fatal(err)
 				}
 			}
-			assertPriorityCorruptUnchanged(t, repository, db, "snapshot_json")
+			assertPriorityCorruptUnchanged(
+				t,
+				repository,
+				db,
+				"snapshot_json",
+			)
 		})
 	}
 }
@@ -329,13 +390,23 @@ func TestRemoteSyncPriorityCancellationReleasesSingleConnection(t *testing.T) {
 	defer repository.Close()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := repository.ListRemoteSyncPriorityIDs(ctx, remoteOrigin, "", 1); !errors.Is(err, context.Canceled) {
+	if _, err := repository.ListRemoteFactPriorityIDs(
+		ctx,
+		remoteOrigin,
+		"",
+		1,
+	); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation ignored: %v", err)
 	}
 	ctx, done := context.WithTimeout(t.Context(), time.Second)
 	defer done()
 	for range 3 {
-		page, err := repository.ListRemoteSyncPriorityIDs(ctx, remoteOrigin, "", 1)
+		page, err := repository.ListRemoteFactPriorityIDs(
+			ctx,
+			remoteOrigin,
+			"",
+			1,
+		)
 		if err != nil || len(page.JobIDs) != 1 || !page.HasMore {
 			t.Fatalf("priority rows leaked sole connection: %+v, %v", page, err)
 		}
@@ -361,7 +432,12 @@ func TestRemoteSyncPriorityForeignMirrorsUseExactOrigin(t *testing.T) {
 			origin,
 		)
 	}
-	page, err := repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 25)
+	page, err := repository.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		25,
+	)
 	if err != nil || !slices.Equal(page.JobIDs, []string{submittedPageJobID(1)}) {
 		t.Fatalf("foreign mirror scope widened: %+v, %v", page, err)
 	}
@@ -421,20 +497,40 @@ func TestRemoteSyncPriorityPagesUseExactScopeAndBothDeliveryStates(t *testing.T)
 		if variant == "accepted" || variant == "prepared" {
 			state = variant
 		}
-		storePrioritySubmission(t, repository, record, state)
+		storePrioritySubmission(
+			t,
+			repository,
+			record,
+			state,
+		)
 		if variant == "pending" || variant == "accepted" {
 			wanted = append(wanted, spec.JobID)
 		}
 	}
-	page, err := repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 1)
+	page, err := repository.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		"",
+		1,
+	)
 	if err != nil || !slices.Equal(page.JobIDs, wanted[:1]) || !page.HasMore || page.NextCursor != wanted[0] {
 		t.Fatalf("priority first page: %+v, %v", page, err)
 	}
-	page, err = repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, page.NextCursor, 1)
+	page, err = repository.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		page.NextCursor,
+		1,
+	)
 	if err != nil || !slices.Equal(page.JobIDs, wanted[1:]) || page.HasMore || page.NextCursor != wanted[1] {
 		t.Fatalf("priority tail: %+v, %v", page, err)
 	}
-	page, err = repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, page.NextCursor, 1)
+	page, err = repository.ListRemoteFactPriorityIDs(
+		t.Context(),
+		remoteOrigin,
+		page.NextCursor,
+		1,
+	)
 	if err != nil || page.JobIDs == nil || len(page.JobIDs) != 0 || page.HasMore || page.NextCursor != wanted[1] {
 		t.Fatal("empty priority tail changed its keyset cursor")
 	}
@@ -446,7 +542,12 @@ func TestRemoteSyncPriorityRejectsColumnDocumentMismatchWithoutMutation(t *testi
 		t.Run(column, func(t *testing.T) {
 			repository, path := newSubmittedPagesRepository(t)
 			record := submissionFixture(t, remoteSpec(jobSpecForRun(t, runWithCompleteSnapshot(t))))
-			storePrioritySubmission(t, repository, record, "pending")
+			storePrioritySubmission(
+				t,
+				repository,
+				record,
+				"pending",
+			)
 			db := openDatabase(t, path)
 			defer db.Close()
 			jsonPath, value := "$.prepared.configuration_id", any(submittedPageJobID(200))
@@ -472,18 +573,28 @@ func TestRemoteSyncPriorityRejectsColumnDocumentMismatchWithoutMutation(t *testi
 			case "unsupported_prepared":
 				jsonPath, value = "$.prepared.schema_version", 0
 			}
-			if _, err := db.ExecContext(t.Context(), `UPDATE job_submissions SET document_json = json_set(document_json, ?, ?)`,
-				jsonPath, value); err != nil {
+			if _, err := db.ExecContext(
+				t.Context(),
+				`UPDATE job_submissions SET document_json = json_set(document_json, ?, ?)`,
+				jsonPath,
+				value,
+			); err != nil {
 				t.Fatal(err)
 			}
 			var before, after string
 			if err := db.QueryRowContext(t.Context(), `SELECT document_json FROM job_submissions`).Scan(&before); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := repository.ListRemoteSyncPriorityIDs(t.Context(), remoteOrigin, "", 2); !errors.Is(err, persistence.ErrCorrupt) {
+			if _, err := repository.ListRemoteFactPriorityIDs(
+				t.Context(),
+				remoteOrigin,
+				"",
+				2,
+			); !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatalf("corrupt priority owner or format accepted: %v", err)
 			}
-			if err := db.QueryRowContext(t.Context(), `SELECT document_json FROM job_submissions`).Scan(&after); err != nil || before != after {
+			err := db.QueryRowContext(t.Context(), `SELECT document_json FROM job_submissions`).Scan(&after)
+			if err != nil || before != after {
 				t.Fatal("rejected priority hint mutated persisted input")
 			}
 		})
@@ -502,16 +613,31 @@ func TestRemoteSyncPriorityValidatesPageAndCancellation(t *testing.T) {
 		{origin: remoteOrigin, limit: 0},
 		{origin: remoteOrigin, limit: 26},
 	} {
-		if _, err := repository.ListRemoteSyncPriorityIDs(t.Context(), invalid.origin, invalid.after, invalid.limit); !errors.Is(err, jobs.ErrInvalid) {
+		if _, err := repository.ListRemoteFactPriorityIDs(
+			t.Context(),
+			invalid.origin,
+			invalid.after,
+			invalid.limit,
+		); !errors.Is(err, jobs.ErrInvalid) {
 			t.Fatal("invalid priority page accepted")
 		}
 	}
-	if _, err := repository.ListRemoteSyncPriorityIDs(nil, remoteOrigin, "", 2); !errors.Is(err, jobs.ErrInvalid) {
+	if _, err := repository.ListRemoteFactPriorityIDs(
+		nil,
+		remoteOrigin,
+		"",
+		2,
+	); !errors.Is(err, jobs.ErrInvalid) {
 		t.Fatal("nil context accepted")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := repository.ListRemoteSyncPriorityIDs(ctx, remoteOrigin, "", 2); !errors.Is(err, context.Canceled) {
+	if _, err := repository.ListRemoteFactPriorityIDs(
+		ctx,
+		remoteOrigin,
+		"",
+		2,
+	); !errors.Is(err, context.Canceled) {
 		t.Fatal("priority query did not propagate cancellation")
 	}
 }
@@ -521,7 +647,12 @@ func TestRemoteSyncPriorityColumnCorruptionCannotPromoteAnotherScope(t *testing.
 		t.Run(field, func(t *testing.T) {
 			repository, path := newSubmittedPagesRepository(t)
 			record := submissionFixture(t, remoteSpec(jobSpecForRun(t, runWithCompleteSnapshot(t))))
-			storePrioritySubmission(t, repository, record, "pending")
+			storePrioritySubmission(
+				t,
+				repository,
+				record,
+				"pending",
+			)
 			db := openDatabase(t, path)
 			defer db.Close()
 			origin, replacement := remoteOrigin, submittedPageJobID(201)
@@ -537,7 +668,12 @@ func TestRemoteSyncPriorityColumnCorruptionCannotPromoteAnotherScope(t *testing.
 			case "installation_id":
 				origin.InstallationID = replacement
 			}
-			if _, err := repository.ListRemoteSyncPriorityIDs(t.Context(), origin, "", 2); !errors.Is(err, persistence.ErrCorrupt) {
+			if _, err := repository.ListRemoteFactPriorityIDs(
+				t.Context(),
+				origin,
+				"",
+				2,
+			); !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatal("corrupted owner columns promoted a foreign submission to priority")
 			}
 		})

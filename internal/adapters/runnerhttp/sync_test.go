@@ -75,7 +75,7 @@ func syncDocuments(t *testing.T) (*documentcache.Cache, string) {
 	return cache, root
 }
 
-func TestSynchronizationPassImportsAllKindsAndReplaysCachedDocuments(t *testing.T) {
+func TestSynchronizationObservesAndImportsAllKindsWithoutRedownloading(t *testing.T) {
 	for _, kind := range []jobcontract.Kind{jobcontract.KindRun, jobcontract.KindComparison, jobcontract.KindPerformance} {
 		t.Run(string(kind), func(t *testing.T) {
 			fixture := newHTTPFixture(t, false, capabilities())
@@ -111,13 +111,30 @@ func TestSynchronizationPassImportsAllKindsAndReplaysCachedDocuments(t *testing.
 			request := remotesync.Request{JobID: submission.Job.JobID, Remote: client,
 				Origin: remoteresults.Origin{ConfigurationID: httpMeta(t).ID,
 					NodeID: identity.Target.NodeID, InstallationID: identity.InstallationID}}
-			outcome, err := synchronizer.Pass(t.Context(), request)
+			outcome, err := synchronizer.Observe(t.Context(), request)
 			if err != nil || outcome.MoreEvents || outcome.Mirror.Snapshot.Receipt.Status != domain.RunCompleted {
 				t.Fatalf("synchronization did not reach node terminal: %v", err)
 			}
 			documents, err := desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
-			if err != nil || len(documents) == 0 || downloads != len(documents) {
+			if err != nil || len(documents) == 0 || downloads != 0 {
 				t.Fatalf("document download count=%d: %v", downloads, err)
+			}
+			for _, kind := range []jobcontract.EventKind{jobcontract.EventPerformanceResult, jobcontract.EventReport} {
+				for _, document := range documents {
+					if document.Kind != kind {
+						continue
+					}
+					imported, err := synchronizer.ImportDocument(t.Context(), remotesync.DocumentRequest{
+						Request: request, Document: document,
+					})
+					if err != nil || !imported.Imported {
+						t.Fatalf("original document import failed: %v", err)
+					}
+				}
+			}
+			documents, err = desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
+			if err != nil || downloads != len(documents) {
+				t.Fatal("document imports did not match their original downloads")
 			}
 			for _, document := range documents {
 				if !document.Imported {
@@ -128,9 +145,19 @@ func TestSynchronizationPassImportsAllKindsAndReplaysCachedDocuments(t *testing.
 				}
 			}
 			sequence := outcome.Mirror.Snapshot.LatestSequence
-			outcome, err = synchronizer.Pass(t.Context(), request)
+			outcome, err = synchronizer.Observe(t.Context(), request)
 			if err != nil || outcome.Mirror.Snapshot.LatestSequence != sequence || downloads != len(documents) {
 				t.Fatalf("replay redownloaded or changed the mirror: %v", err)
+			}
+			for _, document := range documents {
+				if _, err := synchronizer.ImportDocument(t.Context(), remotesync.DocumentRequest{
+					Request: request, Document: document,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if downloads != len(documents) {
+				t.Fatal("an imported durable reference downloaded again")
 			}
 			if fixture.requests.Load() != requests {
 				t.Fatal("synchronization repeated provider traffic")
@@ -184,9 +211,9 @@ func TestSynchronizationResumesTruncatedArchiveAfterDatabaseAndCacheReopen(t *te
 	request := remotesync.Request{JobID: submission.Job.JobID, Remote: client,
 		Origin: remoteresults.Origin{ConfigurationID: httpMeta(t).ID,
 			NodeID: identity.Target.NodeID, InstallationID: identity.InstallationID}}
-	outcome, err := synchronizer.Pass(t.Context(), request)
-	if !errors.Is(err, runnerclient.ErrConnection) || outcome.Mirror.Snapshot.Receipt.Status != domain.RunCompleted {
-		t.Fatalf("transfer failure changed execution outcome: %v", err)
+	outcome, err := synchronizer.Observe(t.Context(), request)
+	if err != nil || outcome.Mirror.Snapshot.Receipt.Status != domain.RunCompleted {
+		t.Fatalf("observation did not retain the execution terminal: %v", err)
 	}
 	documents, err := desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
 	if err != nil || len(documents) != 2 {
@@ -196,13 +223,27 @@ func TestSynchronizationResumesTruncatedArchiveAfterDatabaseAndCacheReopen(t *te
 	for _, document := range documents {
 		if document.Kind == jobcontract.EventReport {
 			archive = document
-			if document.Imported {
-				t.Fatal("truncated archive was marked imported")
-			}
 			continue
 		}
-		if !document.Imported {
-			t.Fatal("full result was not imported before its archive")
+		if _, err := synchronizer.ImportDocument(t.Context(), remotesync.DocumentRequest{
+			Request: request, Document: document,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	imported, err := synchronizer.ImportDocument(t.Context(), remotesync.DocumentRequest{
+		Request: request, Document: archive,
+	})
+	if !errors.Is(err, runnerclient.ErrConnection) || imported.Imported {
+		t.Fatalf("truncated archive was marked imported: %v", err)
+	}
+	documents, err = desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
+	if err != nil || len(documents) != 2 {
+		t.Fatal(err)
+	}
+	for _, document := range documents {
+		if document.Imported != (document.Kind == jobcontract.EventPerformanceResult) {
+			t.Fatal("archive transfer changed the durable full-result dependency state")
 		}
 	}
 	info, err := os.Stat(filepath.Join(root, archive.Reference.SHA256+".partial"))
@@ -226,8 +267,14 @@ func TestSynchronizationResumesTruncatedArchiveAfterDatabaseAndCacheReopen(t *te
 		t.Fatal(err)
 	}
 	sequence := outcome.Mirror.Snapshot.LatestSequence
-	outcome, err = synchronizer.Pass(t.Context(), request)
-	if err != nil || !archiveResumed || fullDownloads != 1 || outcome.Mirror.Snapshot.LatestSequence != sequence {
+	outcome, err = synchronizer.Observe(t.Context(), request)
+	if err != nil || outcome.Mirror.Snapshot.LatestSequence != sequence {
+		t.Fatalf("reopen changed the durable observation cursor: %v", err)
+	}
+	imported, err = synchronizer.ImportDocument(t.Context(), remotesync.DocumentRequest{
+		Request: request, Document: archive,
+	})
+	if err != nil || !imported.Imported || !archiveResumed || fullDownloads != 1 {
 		t.Fatalf("reopen did not resume the original document: %v", err)
 	}
 	original, err := fixture.repository.ReadPerformanceArchive(t.Context(), submission.Job.JobID, archive.Reference.ID)
@@ -242,7 +289,7 @@ func TestSynchronizationResumesTruncatedArchiveAfterDatabaseAndCacheReopen(t *te
 	if _, err := desktop.GetQuickPerformanceReport(t.Context(), archive.Reference.ID); err != nil {
 		t.Fatal("offline report was not imported")
 	}
-	outcome, err = synchronizer.Pass(t.Context(), request)
+	outcome, err = synchronizer.Observe(t.Context(), request)
 	if err == nil || outcome.Mirror.Snapshot.Receipt.Status != domain.RunCompleted {
 		t.Fatal("node outage replaced a known execution terminal")
 	}

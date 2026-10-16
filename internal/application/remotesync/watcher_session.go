@@ -49,33 +49,43 @@ const (
 )
 
 type sessionEvent struct {
-	lane     scanLane
-	metadata bool
-	after    uint64
-	page     jobhost.JobPage
-	priority remoteresults.PriorityPage
-	id       string
-	result   syncResult
+	lane          scanLane
+	metadata      bool
+	after         uint64
+	page          jobhost.JobPage
+	priority      remoteresults.PriorityPage
+	id            string
+	result        syncResult
+	document      bool
+	documentIndex int
+	documents     remoteresults.DocumentPage
 }
 
 // Only this session's owner mutates scan and scheduling state. Workers publish
 // one bounded result; cancellation joins every worker before closing SSH/HTTP.
 type observationSession struct {
-	watcher    *Watcher
-	node       Node
-	connection Connection
-	scan       *discovery
-	ctx        context.Context
-	workers    sync.WaitGroup
-	events     chan sessionEvent
-	report     func(syncResult)
-	inflight   map[string]scanLane
-	selected   map[string]bool
-	fetching   [laneCount]bool
-	fetched    [laneCount]bool
-	started    int
-	applied    bool
-	firstError error
+	watcher          *Watcher
+	node             Node
+	connection       Connection
+	scan             *discovery
+	ctx              context.Context
+	workers          sync.WaitGroup
+	events           chan sessionEvent
+	report           func(syncResult)
+	inflight         map[string]scanLane
+	selected         map[string]bool
+	fetching         [laneCount]bool
+	fetched          [laneCount]bool
+	started          int
+	historyStarted   bool
+	historyTurn      bool
+	applied          bool
+	firstError       error
+	documentFetching [2]bool
+	documentFetched  [2]bool
+	documentInflight [2]bool
+	documentStarted  [2]bool
+	activeDocuments  [2]remoteresults.DocumentWork
 }
 
 func (watcher *Watcher) attempt(
@@ -91,7 +101,12 @@ func (watcher *Watcher) attempt(
 		return false, err
 	}
 	defer connection.Close()
+	release, err := watcher.acquireFacts(ctx, priorityLane)
+	if err != nil {
+		return false, err
+	}
 	info, err := connection.Probe(ctx)
+	release()
 	if err != nil {
 		return false, err
 	}
@@ -101,7 +116,7 @@ func (watcher *Watcher) attempt(
 	}
 	session := observationSession{
 		watcher: watcher, node: node, connection: connection, scan: scan, ctx: ctx,
-		events: make(chan sessionEvent, jobsPerTick+int(laneCount)), report: report,
+		events: make(chan sessionEvent, jobsPerTick+int(laneCount)+6), report: report,
 		inflight: map[string]scanLane{}, selected: map[string]bool{},
 	}
 	defer func() { cancel(); session.workers.Wait() }()
@@ -131,11 +146,15 @@ func (watcher *Watcher) attempt(
 }
 
 func (session *observationSession) tick() {
-	session.started, session.selected = 0, map[string]bool{}
+	session.started, session.selected, session.historyStarted = 0, map[string]bool{}, false
 	session.fetched = [laneCount]bool{}
+	session.documentFetched, session.documentStarted = [2]bool{}, [2]bool{}
 	session.schedule()
 	for lane := range laneCount {
 		session.fetch(lane)
+	}
+	for index := range session.scan.documents {
+		session.fetchDocuments(index)
 	}
 }
 
@@ -178,7 +197,12 @@ func (session *observationSession) fetch(lane scanLane) {
 		if lane == priorityLane {
 			event.priority, event.result.err = session.watcher.priorityPage(session.ctx, session.node, priorityAfter)
 		} else {
-			event.page, event.result.err = session.connection.ListJobs(session.ctx, after, discoveryPageSize)
+			release, err := session.watcher.acquireFacts(session.ctx, priorityLane)
+			event.result.err = err
+			if err == nil {
+				event.page, event.result.err = session.connection.ListJobs(session.ctx, after, discoveryPageSize)
+				release()
+			}
 		}
 		session.publish(event)
 	})
@@ -195,7 +219,19 @@ func (session *observationSession) accept(event sessionEvent) {
 	if session.ctx.Err() != nil {
 		return
 	}
-	if event.metadata {
+	if event.document {
+		index := event.documentIndex
+		if event.metadata {
+			session.documentFetching[index] = false
+			if event.result.err == nil {
+				scan := &session.scan.documents[index]
+				scan.pending, scan.index, scan.end = event.documents.Items, 0, !event.documents.HasMore
+			}
+		} else {
+			session.documentInflight[index] = false
+			session.activeDocuments[index] = remoteresults.DocumentWork{}
+		}
+	} else if event.metadata {
 		session.fetching[event.lane] = false
 		if event.result.err == nil {
 			event.result.err = session.acceptPage(event)
@@ -255,13 +291,21 @@ func (session *observationSession) schedule() {
 	if session.ctx.Err() != nil {
 		return
 	}
-	// Reserve one background slot before priority/tail borrow the remaining
-	// capacity. First discovery imports every root, including already terminal
-	// roots; only historical revisits are limited to a single in-flight worker.
-	session.schedulePage(historyLane, &session.scan.history.scanPage, 1)
+	session.scheduleDocuments()
+	// History gets one fact turn per tick; cold discovery consumes the remaining
+	// turns without waiting for a report or monopolizing historical revisits.
+	if session.historyTurn && !session.historyStarted {
+		session.schedulePage(historyLane, &session.scan.history.scanPage, 1)
+	}
+	priorityLimit := 1
+	emptyTail := session.scan.tail.index == len(session.scan.tail.pending) && !session.fetching[tailLane]
+	emptyHistory := session.scan.history.index == len(session.scan.history.pending) && !session.fetching[historyLane]
+	if emptyTail && emptyHistory {
+		priorityLimit = maxFactSyncs
+	}
 	priority := &session.scan.priority
 	for priority.index < len(priority.pending) {
-		if !session.hasSlot() || session.laneActive(priorityLane) >= priorityPageSize {
+		if !session.hasSlot() || session.laneActive(priorityLane) >= priorityLimit {
 			break
 		}
 		id := priority.pending[priority.index]
@@ -269,10 +313,13 @@ func (session *observationSession) schedule() {
 		session.start(priorityLane, id, nil)
 	}
 	session.schedulePage(tailLane, &session.scan.tail, jobsPerTick)
+	if !session.historyStarted {
+		session.schedulePage(historyLane, &session.scan.history.scanPage, 1)
+	}
 }
 
 func (session *observationSession) hasSlot() bool {
-	return session.started < jobsPerTick && len(session.inflight) < jobsPerTick
+	return session.started < jobsPerTick && len(session.inflight) < maxFactSyncs
 }
 
 func (session *observationSession) schedulePage(lane scanLane, page *scanPage, limit int) {
@@ -281,7 +328,7 @@ func (session *observationSession) schedulePage(lane scanLane, page *scanPage, l
 	}
 	var started int
 	for page.index < len(page.pending) && started < limit {
-		if !session.hasSlot() || session.backgroundActive() >= maxBackgroundSyncs {
+		if !session.hasSlot() || session.backgroundActive() >= maxBackgroundFacts {
 			break
 		}
 		snapshot := page.pending[page.index]
@@ -309,6 +356,10 @@ func (session *observationSession) backgroundActive() int {
 func (session *observationSession) start(lane scanLane, id string, snapshot *jobcontract.Snapshot) bool {
 	if _, active := session.inflight[id]; active || session.selected[id] {
 		return false
+	}
+	if lane != priorityLane {
+		session.historyStarted = session.historyStarted || lane == historyLane
+		session.historyTurn = lane == tailLane
 	}
 	session.inflight[id], session.selected[id] = lane, true
 	session.started++

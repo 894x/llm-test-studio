@@ -1,8 +1,7 @@
 package remoteresults
 
-// PriorityPage contains bounded active shared-job or unimported-document IDs
-// used only as scheduling hints. Terminal jobs leave priority after importing
-// known documents; history synchronization still revisits them for late data.
+// PriorityPage contains bounded active shared-job IDs used as scheduling hints.
+// Terminal jobs leave fact priority; history still revisits them for late facts.
 // The page does not authenticate or project remote execution facts.
 type PriorityPage struct {
 	JobIDs     []string

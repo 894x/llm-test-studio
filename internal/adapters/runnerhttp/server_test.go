@@ -65,6 +65,21 @@ func capabilities() jobcontract.RunnerCapabilities {
 
 func newHTTPFixture(t *testing.T, blocked bool, caps jobcontract.RunnerCapabilities) *httpFixture {
 	t.Helper()
+	return newHTTPFixtureWithExecutionTimeout(
+		t,
+		blocked,
+		caps,
+		30*time.Second,
+	)
+}
+
+func newHTTPFixtureWithExecutionTimeout(
+	t *testing.T,
+	blocked bool,
+	caps jobcontract.RunnerCapabilities,
+	executionTimeout time.Duration,
+) *httpFixture {
+	t.Helper()
 	fixture := &httpFixture{entered: make(chan struct{})}
 	release := make(chan struct{})
 	fixture.release = sync.OnceFunc(func() { close(release) })
@@ -107,7 +122,7 @@ func newHTTPFixture(t *testing.T, blocked bool, caps jobcontract.RunnerCapabilit
 	}
 	t.Cleanup(func() { _ = core.Close() })
 	policy := jobhost.RemotePolicy()
-	policy.ExecutionTimeout = 30 * time.Second
+	policy.ExecutionTimeout = executionTimeout
 	fixture.host, err = jobhost.New(t.Context(), jobhost.Dependencies{
 		Repository: repository, Executor: core, Guard: testGuard{}, Clock: testClock{}, Policy: policy,
 		Target: jobcontract.ExecutionTarget{

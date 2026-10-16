@@ -63,7 +63,7 @@ func sessionWatcher(t *testing.T, node Node, connection Connection) *Watcher {
 		t.Fatal(err)
 	}
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{
-		Synchronizer: synchronizer, PriorityJobs: emptyPriorityJobs,
+		Synchronizer: synchronizer, DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
 		Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) { return connection, nil },
 	})
@@ -75,7 +75,7 @@ func sessionWatcher(t *testing.T, node Node, connection Connection) *Watcher {
 	return watcher
 }
 
-func TestSessionSlowHistoryLeavesSlotsForNewForeignAndClosesAfterJoin(t *testing.T) {
+func TestSessionBoundedSlowHistoryLeavesMetadataLiveAndNextTailTurnProgresses(t *testing.T) {
 	node := watcherNode(1)
 	old, fresh := queuedJob(node, 1), queuedJob(node, 2)
 	fresh.Receipt.Status, fresh.Receipt.Revision, fresh.LatestSequence = domain.RunCompleted, 4, 4
@@ -95,10 +95,18 @@ func TestSessionSlowHistoryLeavesSlotsForNewForeignAndClosesAfterJoin(t *testing
 		}}, events: func(ctx context.Context, id string) error {
 		if id == old.Receipt.JobID {
 			historySeen.Add(1)
-			historyActive.Store(true)
+			if historyActive.Swap(true) {
+				t.Error("history fact turn duplicated while active")
+			}
 			defer historyActive.Store(false)
-			<-ctx.Done()
-			return ctx.Err()
+			timer := time.NewTimer(30 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+				return context.DeadlineExceeded
+			}
 		}
 		freshSeen.Add(1)
 		return errors.New("fixture import failure")
@@ -128,8 +136,8 @@ func TestSessionSlowHistoryLeavesSlotsForNewForeignAndClosesAfterJoin(t *testing
 	waitFor(t, historyActive.Load)
 	added.Store(true)
 	waitFor(t, func() bool { return freshSeen.Load() > 0 })
-	if historySeen.Load() != 1 {
-		t.Fatal("blocked history was duplicated on later ticks")
+	if historySeen.Load() < 1 {
+		t.Fatal("history fact turn was never observed")
 	}
 	stop()
 	if closed.Load() != 1 || scan.tail.cursor != 2 {
@@ -205,7 +213,7 @@ func TestSessionHistoryHorizonIsFixedAndBoundaryPageIsBounded(t *testing.T) {
 	session.workers.Wait()
 }
 
-func TestSessionSchedulesHistoryPriorityAndTailWithinOneTick(t *testing.T) {
+func TestSessionSchedulesPriorityAndColdTailWithinFactBudget(t *testing.T) {
 	node := watcherNode(1)
 	connection := &priorityObservation{watcherConnection: watcherConnection{node: node},
 		snapshots: map[string]jobcontract.Snapshot{}, events: func(ctx context.Context, _ string) error {
@@ -231,14 +239,14 @@ func TestSessionSchedulesHistoryPriorityAndTailWithinOneTick(t *testing.T) {
 	for _, lane := range session.inflight {
 		counts[lane]++
 	}
-	if counts[historyLane] != 1 || counts[priorityLane] != 2 || counts[tailLane] != 1 {
+	if counts[historyLane] != 0 || counts[priorityLane] != 1 || counts[tailLane] != 1 {
 		t.Fatalf("lane shares: %v", counts)
 	}
 	// Repeated metadata/completion callbacks must not create another tick budget.
 	for range 10 {
 		session.schedule()
 	}
-	if session.started != jobsPerTick || len(session.inflight) != jobsPerTick {
+	if session.started != maxFactSyncs || len(session.inflight) != maxFactSyncs {
 		t.Fatal("callback bypassed per-tick or in-flight bound")
 	}
 	cancel()
@@ -264,14 +272,14 @@ func TestSessionColdTailReservesNodeSlotForLaterPriority(t *testing.T) {
 		ctx: ctx, events: make(chan sessionEvent, jobsPerTick), inflight: map[string]scanLane{}, selected: map[string]bool{}}
 	defer func() { cancel(); session.workers.Wait() }()
 	session.schedule()
-	reserved := session.backgroundActive() == maxBackgroundSyncs && scan.tail.index == maxBackgroundSyncs
-	if !reserved || len(session.inflight) != maxBackgroundSyncs {
+	reserved := session.backgroundActive() == maxBackgroundFacts && scan.tail.index == maxBackgroundFacts
+	if !reserved || len(session.inflight) != maxBackgroundFacts {
 		t.Fatal("cold discovery occupied the priority node slot or consumed its waiting fourth root")
 	}
 	scan.priority.pending = []string{own.Receipt.JobID}
 	session.schedule()
-	priorityStarted := session.laneActive(priorityLane) == 1 && len(session.inflight) == jobsPerTick
-	if !priorityStarted || session.backgroundActive() != maxBackgroundSyncs {
+	priorityStarted := session.laneActive(priorityLane) == 1 && len(session.inflight) == maxFactSyncs
+	if !priorityStarted || session.backgroundActive() != maxBackgroundFacts {
 		t.Fatal("later priority could not use its reserved slot while cold history remained blocked")
 	}
 }
@@ -356,11 +364,14 @@ func TestSessionPriorityCannotBorrowAllSlotsWhileTailMetadataIsSlow(t *testing.T
 		done <- err
 	}()
 	defer func() { cancel(); <-done }()
-	waitFor(t, func() bool { return priorityPages.Load() >= 2 && priorityEntered.Load() == 2 })
+	waitFor(t, func() bool { return priorityPages.Load() >= 1 && priorityEntered.Load() == 1 })
+	if priorityEntered.Load() != 1 {
+		t.Fatal("priority borrowed the reserved tail slot while metadata was pending")
+	}
 	close(metadataRelease)
 	waitFor(t, tailSeen.Load)
-	if priorityEntered.Load() != 2 {
-		t.Fatal("priority borrowed the remaining tail/history slots across ticks")
+	if priorityEntered.Load() > maxFactSyncs {
+		t.Fatal("priority exceeded the fact budget after the tail completed")
 	}
 }
 
@@ -429,6 +440,7 @@ func TestSessionCancellationJoinsBothMetadataAndJobWorkers(t *testing.T) {
 		_ string,
 		_ uint32,
 	) (remoteresults.PriorityPage, error) {
+		metadata.Add(1)
 		active.Add(1)
 		defer active.Add(-1)
 		<-ctx.Done()
@@ -450,7 +462,7 @@ func TestSessionCancellationJoinsBothMetadataAndJobWorkers(t *testing.T) {
 	}()
 	stop := sync.OnceFunc(func() { cancel(); <-done })
 	defer stop()
-	waitFor(t, func() bool { return active.Load() == 4 && metadata.Load() == 2 })
+	waitFor(t, func() bool { return active.Load() == maxFactSyncs && metadata.Load() > 0 })
 	stop()
 	if closes.Load() != 1 || len(watcher.gate) != 0 {
 		t.Fatal("session leaked its connection or global gate waiters")

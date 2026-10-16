@@ -39,8 +39,9 @@ func startObservingFixture(
 	}
 	var opened, closed atomic.Int64
 	watcher, err := remotesync.NewWatcher(t.Context(), remotesync.WatcherDependencies{
-		Synchronizer: synchronizer,
-		PriorityJobs: repository.ListRemoteSyncPriorityIDs,
+		Synchronizer:     synchronizer,
+		FactPriorityJobs: repository.ListRemoteFactPriorityIDs,
+		DocumentWork:     repository.ListRemoteDocumentWork,
 		Nodes: func(context.Context) ([]remotesync.Node, error) {
 			return []remotesync.Node{{Origin: origin, Revision: 1}}, nil
 		},
@@ -74,7 +75,12 @@ func startObservingFixture(
 
 func awaitObservation(t *testing.T, predicate func() bool) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	awaitObservationFor(t, 10*time.Second, predicate)
+}
+
+func awaitObservationFor(t *testing.T, budget time.Duration, predicate func() bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), budget)
 	defer cancel()
 	for !predicate() {
 		timer := time.NewTimer(5 * time.Millisecond)
@@ -165,7 +171,8 @@ func TestBackgroundWatcherDiscoversSharedJobsAndReopensWithoutControllingExecuti
 		cache,
 		origin,
 	)
-	awaitObservation(t, func() bool {
+	// Five original documents share one History turn per production poll.
+	awaitObservationFor(t, 45*time.Second, func() bool {
 		for _, id := range jobIDs {
 			mirror, err := desktop.GetRemoteMirror(t.Context(), id)
 			if err != nil || mirror.Snapshot.Receipt.Status != domain.RunCompleted {
@@ -197,7 +204,7 @@ func TestBackgroundWatcherDiscoversSharedJobsAndReopensWithoutControllingExecuti
 	)
 	waitHTTPSettlement(t, firstClient)
 	requests = fixture.requests.Load()
-	awaitObservation(t, func() bool {
+	awaitObservationFor(t, 20*time.Second, func() bool {
 		documents, err := desktop.ListRemoteDocuments(t.Context(), later.Job.JobID)
 		return err == nil && len(documents) == 1 && documents[0].Imported
 	})

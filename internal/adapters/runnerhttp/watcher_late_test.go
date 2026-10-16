@@ -57,7 +57,8 @@ func TestBackgroundWatcherRevisitsAnExistingJobForLateReports(t *testing.T) {
 	)
 	waitHTTPSettlement(t, client)
 	requests := fixture.requests.Load()
-	awaitObservation(t, func() bool {
+	// Observation, full result and archive are separate production turns.
+	awaitObservationFor(t, 25*time.Second, func() bool {
 		mirror, err := desktop.GetRemoteMirror(t.Context(), submission.Job.JobID)
 		if err != nil || mirror.Snapshot.LatestSequence <= before.Snapshot.LatestSequence {
 			return false
@@ -140,7 +141,8 @@ func TestBackgroundWatcherRetriesOnlyPendingPartialDocuments(t *testing.T) {
 		NodeID: identity.Target.NodeID, InstallationID: identity.InstallationID}
 	connection := &partialDocumentObservation{Client: client}
 	watcher, err := remotesync.NewWatcher(t.Context(), remotesync.WatcherDependencies{
-		Synchronizer: synchronizer, PriorityJobs: desktop.ListRemoteSyncPriorityIDs,
+		Synchronizer: synchronizer, FactPriorityJobs: desktop.ListRemoteFactPriorityIDs,
+		DocumentWork: desktop.ListRemoteDocumentWork,
 		Nodes: func(context.Context) ([]remotesync.Node, error) {
 			return []remotesync.Node{{Origin: origin, Revision: 1}}, nil
 		},
@@ -157,7 +159,7 @@ func TestBackgroundWatcherRetriesOnlyPendingPartialDocuments(t *testing.T) {
 		documents, err := desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
 		return err == nil && len(documents) == 2 && documents[0].Imported && !documents[1].Imported
 	})
-	awaitObservation(t, func() bool {
+	awaitObservationFor(t, 20*time.Second, func() bool {
 		documents, err := desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
 		return err == nil && len(documents) == 2 && documents[0].Imported && documents[1].Imported
 	})
@@ -200,7 +202,7 @@ func TestBackgroundWatcherFindsAnotherClientsAlreadyCompletedTailJob(t *testing.
 		cache,
 		origin,
 	)
-	awaitObservation(t, func() bool {
+	awaitObservationFor(t, 20*time.Second, func() bool {
 		documents, err := desktop.ListRemoteDocuments(t.Context(), first.Job.JobID)
 		return err == nil && len(documents) == 2 && documents[0].Imported && documents[1].Imported
 	})
@@ -219,7 +221,7 @@ func TestBackgroundWatcherFindsAnotherClientsAlreadyCompletedTailJob(t *testing.
 	)
 	waitHTTPSettlement(t, client)
 	requests := fixture.requests.Load()
-	awaitObservation(t, func() bool {
+	awaitObservationFor(t, 20*time.Second, func() bool {
 		mirror, err := desktop.GetRemoteMirror(t.Context(), newJob.Job.JobID)
 		if err != nil || mirror.Snapshot.Receipt.Status != domain.RunCompleted {
 			return false

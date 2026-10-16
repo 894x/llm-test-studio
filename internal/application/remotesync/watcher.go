@@ -18,7 +18,10 @@ import (
 const (
 	maxObservedNodes   = 64
 	maxConcurrentSyncs = 4
-	maxBackgroundSyncs = maxConcurrentSyncs - 1
+	maxFactSyncs       = 2
+	maxBackgroundFacts = 1
+	maxDocumentSyncs   = 2
+	documentPageSize   = 2
 	discoveryPageSize  = 25
 	jobsPerTick        = 4
 	priorityPageSize   = 2
@@ -37,10 +40,11 @@ type Connection interface {
 }
 
 type WatcherDependencies struct {
-	Synchronizer *Synchronizer
-	Nodes        func(context.Context) ([]Node, error)
-	Connect      func(context.Context, Node) (Connection, error)
-	PriorityJobs func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
+	Synchronizer     *Synchronizer
+	Nodes            func(context.Context) ([]Node, error)
+	Connect          func(context.Context, Node) (Connection, error)
+	FactPriorityJobs func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
+	DocumentWork     func(context.Context, remoteresults.DocumentQuery) (remoteresults.DocumentPage, error)
 }
 
 type NodeStatus struct {
@@ -58,23 +62,28 @@ type WatcherSnapshot struct {
 }
 
 type Watcher struct {
-	synchronizer   *Synchronizer
-	source         func(context.Context) ([]Node, error)
-	connect        func(context.Context, Node) (Connection, error)
-	priorityJobs   func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
-	ctx            context.Context
-	cancel         context.CancelFunc
-	mu             sync.Mutex
-	workers        map[string]*nodeWorker
-	wait           sync.WaitGroup
-	gate           chan struct{}
-	backgroundGate chan struct{}
-	running        bool
-	closed         bool
-	sourceError    string
-	refreshEvery   time.Duration
-	pollEvery      time.Duration
-	attemptTimeout time.Duration
+	synchronizer        *Synchronizer
+	source              func(context.Context) ([]Node, error)
+	connect             func(context.Context, Node) (Connection, error)
+	priorityJobs        func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	mu                  sync.Mutex
+	workers             map[string]*nodeWorker
+	wait                sync.WaitGroup
+	gate                chan struct{}
+	factGate            chan struct{}
+	backgroundFactGate  chan struct{}
+	documentGate        chan struct{}
+	focusDocumentGate   chan struct{}
+	historyDocumentGate chan struct{}
+	documentWork        func(context.Context, remoteresults.DocumentQuery) (remoteresults.DocumentPage, error)
+	running             bool
+	closed              bool
+	sourceError         string
+	refreshEvery        time.Duration
+	pollEvery           time.Duration
+	attemptTimeout      time.Duration
 }
 
 type nodeWorker struct {
@@ -86,25 +95,28 @@ type nodeWorker struct {
 }
 
 type discovery struct {
-	tail     scanPage
-	history  historyScan
-	priority priorityScan
+	tail      scanPage
+	history   historyScan
+	priority  priorityScan
+	documents [2]documentScan
 }
 
 func NewWatcher(ctx context.Context, dependencies WatcherDependencies) (*Watcher, error) {
 	validDependencies := dependencies.Synchronizer != nil && dependencies.Nodes != nil &&
-		dependencies.Connect != nil && dependencies.PriorityJobs != nil
+		dependencies.Connect != nil && dependencies.FactPriorityJobs != nil && dependencies.DocumentWork != nil
 	if ctx == nil || !validDependencies {
 		return nil, remoteresults.ErrInvalid
 	}
 	lifetime, cancel := context.WithCancel(ctx)
 	return &Watcher{
 		synchronizer: dependencies.Synchronizer, source: dependencies.Nodes, connect: dependencies.Connect,
-		priorityJobs: dependencies.PriorityJobs,
-		ctx:          lifetime, cancel: cancel, workers: map[string]*nodeWorker{},
-		gate:           make(chan struct{}, maxConcurrentSyncs),
-		backgroundGate: make(chan struct{}, maxBackgroundSyncs),
-		refreshEvery:   10 * time.Second, pollEvery: 5 * time.Second, attemptTimeout: 2 * time.Minute,
+		priorityJobs: dependencies.FactPriorityJobs, documentWork: dependencies.DocumentWork,
+		ctx: lifetime, cancel: cancel, workers: map[string]*nodeWorker{},
+		gate:     make(chan struct{}, maxConcurrentSyncs),
+		factGate: make(chan struct{}, maxFactSyncs), backgroundFactGate: make(chan struct{}, maxBackgroundFacts),
+		documentGate:      make(chan struct{}, maxDocumentSyncs),
+		focusDocumentGate: make(chan struct{}, 1), historyDocumentGate: make(chan struct{}, 1),
+		refreshEvery: 10 * time.Second, pollEvery: 5 * time.Second, attemptTimeout: 2 * time.Minute,
 	}, nil
 }
 
@@ -305,12 +317,11 @@ func (watcher *Watcher) observe(id string, worker *nodeWorker) {
 }
 
 func (watcher *Watcher) priorityPage(ctx context.Context, node Node, after string) (remoteresults.PriorityPage, error) {
-	select {
-	case watcher.gate <- struct{}{}:
-		defer func() { <-watcher.gate }()
-	case <-ctx.Done():
-		return remoteresults.PriorityPage{}, ctx.Err()
+	release, err := watcher.acquireFacts(ctx, priorityLane)
+	if err != nil {
+		return remoteresults.PriorityPage{}, err
 	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	page, err := watcher.priorityJobs(
@@ -351,23 +362,11 @@ func (watcher *Watcher) syncJob(
 	id string,
 	snapshot *jobcontract.Snapshot,
 ) syncResult {
-	if lane != priorityLane {
-		// Background work takes its own quota before the shared budget. A
-		// waiting historical download cannot occupy the priority reservation.
-		select {
-		case watcher.backgroundGate <- struct{}{}:
-			defer func() { <-watcher.backgroundGate }()
-		case <-ctx.Done():
-			return syncResult{err: ctx.Err()}
-		}
+	release, err := watcher.acquireFacts(ctx, lane)
+	if err != nil {
+		return syncResult{err: err}
 	}
-	// Include GET/needsSync's full mirror/spec decoding in the global budget.
-	select {
-	case watcher.gate <- struct{}{}:
-		defer func() { <-watcher.gate }()
-	case <-ctx.Done():
-		return syncResult{err: ctx.Err()}
-	}
+	defer release()
 	if snapshot == nil {
 		observed, err := connection.GetJob(ctx, id)
 		if err != nil {
@@ -382,7 +381,7 @@ func (watcher *Watcher) syncJob(
 	if err != nil || !needed {
 		return syncResult{err: err}
 	}
-	_, err = watcher.synchronizer.Pass(ctx, Request{Origin: node.Origin, JobID: id, Remote: connection})
+	_, err = watcher.synchronizer.Observe(ctx, Request{Origin: node.Origin, JobID: id, Remote: connection})
 	return syncResult{applied: err == nil, err: err}
 }
 
@@ -410,16 +409,6 @@ func (watcher *Watcher) needsSync(ctx context.Context, node Node, snapshot jobco
 	if mirror.Snapshot.LatestSequence < snapshot.LatestSequence {
 		return true, nil
 	}
-	documents, err := watcher.synchronizer.repository.ListRemoteDocuments(ctx, receipt.JobID)
-	if err != nil {
-		return false, err
-	}
-	for _, document := range documents {
-		if !document.Imported {
-			return true, nil
-		}
-	}
-	// Imported describes database documents. This skip does not assert that
-	// separately managed evidence, attachments or externally removed files exist.
+	// Document readiness is scheduled independently from execution facts.
 	return false, nil
 }

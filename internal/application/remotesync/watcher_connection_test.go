@@ -119,7 +119,7 @@ func TestWatcherReconnectsAfterMidSessionConnectionFailure(t *testing.T) {
 			jobEntered := make(chan struct{})
 			var entered sync.Once
 			watcher, err := NewWatcher(t.Context(), WatcherDependencies{
-				Synchronizer: synchronizer, PriorityJobs: emptyPriorityJobs,
+				Synchronizer: synchronizer, DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
 				Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
 				Connect: func(context.Context, Node) (Connection, error) {
 					generation := opened.Add(1)

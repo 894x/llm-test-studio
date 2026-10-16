@@ -285,11 +285,27 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 				expectedDocuments = 2
 			}
 			for {
-				if _, err := synchronizer.Pass(deadline, remotesync.Request{Origin: origin,
-					JobID: submission.Job.JobID, Remote: client}); err != nil {
+				request := remotesync.Request{Origin: origin, JobID: submission.Job.JobID, Remote: client}
+				if _, err := synchronizer.Observe(deadline, request); err != nil {
 					t.Fatal(err)
 				}
 				documents, err := repository.ListRemoteDocuments(deadline, submission.Job.JobID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, kind := range []jobcontract.EventKind{jobcontract.EventPerformanceResult, jobcontract.EventReport} {
+					for _, document := range documents {
+						if document.Kind != kind {
+							continue
+						}
+						if _, err := synchronizer.ImportDocument(deadline, remotesync.DocumentRequest{
+							Request: request, Document: document,
+						}); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				documents, err = repository.ListRemoteDocuments(deadline, submission.Job.JobID)
 				if err != nil {
 					t.Fatal(err)
 				}

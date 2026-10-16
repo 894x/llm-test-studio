@@ -13,7 +13,7 @@ import (
 	runnerclient "github.com/894x/llm-test-studio/internal/remote/client"
 )
 
-// This fixture isolates the per-pass work limit. Full journal semantics and
+// This fixture isolates the per-observation work limit. Full journal semantics and
 // original document imports are verified by the runnerhttp integration tests.
 type cursorRepository struct {
 	remoteresults.Repository
@@ -72,7 +72,7 @@ func (unusedCache) Read(
 	return nil, errors.New("unexpected document read in cursor fixture")
 }
 
-func TestPassBoundsPaginationAndResumesCommittedCursor(t *testing.T) {
+func TestObserveBoundsPaginationAndResumesCommittedCursor(t *testing.T) {
 	origin := remoteresults.Origin{ConfigurationID: "11111111-1111-4111-8111-111111111111",
 		NodeID: "22222222-2222-4222-8222-222222222222", InstallationID: "33333333-3333-4333-8333-333333333333"}
 	repository := &cursorRepository{mirror: remoteresults.Mirror{Origin: origin}}
@@ -83,34 +83,34 @@ func TestPassBoundsPaginationAndResumesCommittedCursor(t *testing.T) {
 	remote := &endlessRemote{origin: origin}
 	request := Request{Origin: origin, JobID: "44444444-4444-4444-8444-444444444444", Remote: remote}
 	for pass := 1; pass <= 2; pass++ {
-		outcome, err := synchronizer.Pass(t.Context(), request)
-		want := uint64(pass * maxPagesPerPass)
+		outcome, err := synchronizer.Observe(t.Context(), request)
+		want := uint64(pass * maxPagesPerObservation)
 		if err != nil || !outcome.MoreEvents || outcome.Mirror.Snapshot.LatestSequence != want {
-			t.Fatalf("pass did not stop at its work bound: %v", err)
+			t.Fatalf("observation did not stop at its work bound: %v", err)
 		}
 		if remote.calls != int(want) || remote.lastAfter != want-1 {
-			t.Fatal("pass restarted or fetched beyond the committed cursor")
+			t.Fatal("observation restarted or fetched beyond the committed cursor")
 		}
 	}
 	request.Origin.ConfigurationID = "55555555-5555-4555-8555-555555555555"
-	if _, err := synchronizer.Pass(t.Context(), request); !errors.Is(err, remoteresults.ErrConflict) {
+	if _, err := synchronizer.Observe(t.Context(), request); !errors.Is(err, remoteresults.ErrConflict) {
 		t.Fatal("source switch was not rejected before observation")
 	}
-	if remote.calls != 2*maxPagesPerPass {
+	if remote.calls != 2*maxPagesPerObservation {
 		t.Fatal("source conflict opened a remote request")
 	}
 	request.Origin = origin
 	remote.origin.InstallationID = "55555555-5555-4555-8555-555555555555"
-	if _, err := synchronizer.Pass(t.Context(), request); !errors.Is(err, remoteresults.ErrConflict) {
+	if _, err := synchronizer.Observe(t.Context(), request); !errors.Is(err, remoteresults.ErrConflict) {
 		t.Fatal("wrong remote installation was not rejected")
 	}
-	if remote.calls != 2*maxPagesPerPass {
+	if remote.calls != 2*maxPagesPerObservation {
 		t.Fatal("wrong remote installation read an event page")
 	}
 	remote.origin = origin
 	remote.empty = true
 	before := repository.mirror.Snapshot.LatestSequence
-	if _, err := synchronizer.Pass(t.Context(), request); !errors.Is(err, runnerclient.ErrIntegrity) {
+	if _, err := synchronizer.Observe(t.Context(), request); !errors.Is(err, runnerclient.ErrIntegrity) {
 		t.Fatal("endless empty page was accepted")
 	}
 	if repository.mirror.Snapshot.LatestSequence != before {

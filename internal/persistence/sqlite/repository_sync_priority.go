@@ -13,14 +13,13 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
-// ListRemoteSyncPriorityIDs returns active shared-job or unimported-document
-// scheduling hints. Terminal jobs with all known documents imported leave this
-// queue; history synchronization still revisits them for late documents.
+// ListRemoteFactPriorityIDs returns active shared-job scheduling hints.
+// Terminal jobs leave this queue even while documents remain unimported.
 // Go validates bounded rows until limit+1 eligible IDs. SQLite may scan and sort
 // the scoped small headers/snapshots first; total work depends on scoped history
 // and respects ctx. Full spec/submission blobs stay out of the sort and Go.
 // Actual synchronization still authenticates full specs and the event journal.
-func (repository *Repository) ListRemoteSyncPriorityIDs(
+func (repository *Repository) ListRemoteFactPriorityIDs(
 	ctx context.Context,
 	origin remoteresults.Origin,
 	after string,
@@ -51,87 +50,20 @@ func (repository *Repository) ListRemoteSyncPriorityIDs(
 		if err := ctx.Err(); err != nil {
 			return remoteresults.PriorityPage{}, err
 		}
-		var id, ownState, ownDigest, mirrorDigest string
-		var ownOrigin, mirrorOrigin remoteresults.Origin
-		var own, mirror, badReference, pendingReference bool
-		var ownRevision, sequence int64
-		var ownMetadata, ownKeys, preparedKeys, receiptDocument []byte
-		var specMetadata, specKeys, snapshotDocument []byte
-		if err := rows.Scan(
-			&id,
-			&own,
-			&mirror,
-			&ownOrigin.ConfigurationID,
-			&ownOrigin.NodeID,
-			&ownOrigin.InstallationID,
-			&ownRevision,
-			&ownState,
-			&ownDigest,
-			&ownMetadata,
-			&ownKeys,
-			&preparedKeys,
-			&receiptDocument,
-			&mirrorOrigin.ConfigurationID,
-			&mirrorOrigin.NodeID,
-			&mirrorOrigin.InstallationID,
-			&mirrorDigest,
-			&specMetadata,
-			&specKeys,
-			&snapshotDocument,
-			&sequence,
-			&badReference,
-			&pendingReference,
-		); err != nil {
+		var header remoteSyncHeader
+		if err := rows.Scan(header.destinations()...); err != nil {
 			return remoteresults.PriorityPage{}, fmt.Errorf("scan remote sync priority identity: %w", err)
 		}
-		if !domain.IsUUID(id) || id <= previous || badReference {
+		if header.id <= previous {
 			return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority identity or reference state")
 		}
-		previous = id
-		var receipt *jobcontract.Receipt
-		if own {
-			validEnvelope := priorityEnvelopeKeys(ownKeys, []string{
-				"created_at", "observation", "prepared", "receipt", "revision", "spec_sha256", "state", "updated_at",
-			}) && priorityEnvelopeKeys(preparedKeys, []string{"configuration_id", "runner", "spec"})
-			identity := prioritySubmissionIdentity{ID: id, Origin: ownOrigin, Revision: ownRevision,
-				State: ownState, Digest: ownDigest}
-			if !validEnvelope || ownOrigin != origin || !identity.valid(ownMetadata) {
-				return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority submission identity")
-			}
-			if ownState == string(jobs.SubmissionAccepted) {
-				value, err := jobcontract.DecodeReceipt(bytes.NewReader(receiptDocument))
-				if err != nil || !priorityReceiptMatches(value, identity, ownMetadata) {
-					return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority submission receipt")
-				}
-				receipt = &value
-			} else if string(receiptDocument) != "null" {
-				return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority unexpected submission receipt")
-			}
+		previous = header.id
+		if err := header.validate(origin); err != nil {
+			return remoteresults.PriorityPage{}, err
 		}
-		eligible := ownState != string(jobs.SubmissionPrepared)
-		if mirror {
-			snapshot, err := jobcontract.DecodeSnapshot(bytes.NewReader(snapshotDocument))
-			validSnapshot := err == nil && snapshot.Receipt.JobID == id && snapshot.LatestSequence == uint64(sequence)
-			if !validSnapshot || mirrorOrigin != origin || !jobcontract.IsSHA256(mirrorDigest) {
-				return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority mirror snapshot")
-			}
-			if !validPrioritySpec(
-				specMetadata,
-				specKeys,
-				snapshot,
-				mirrorOrigin,
-			) {
-				return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority mirror identity")
-			}
-			if own {
-				if ownState == string(jobs.SubmissionPrepared) || ownDigest != mirrorDigest {
-					return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority conflicting sources")
-				}
-				if receipt != nil && !samePriorityAcceptance(*receipt, snapshot.Receipt) {
-					return remoteresults.PriorityPage{}, storageCorrupt("remote sync priority conflicting acceptance")
-				}
-			}
-			eligible = !jobcontract.Terminal(snapshot.Receipt.Status) || pendingReference
+		eligible := header.own && header.ownState != string(jobs.SubmissionPrepared)
+		if header.mirror {
+			eligible = !jobcontract.Terminal(header.snapshot.Receipt.Status)
 		}
 		if !eligible {
 			continue
@@ -140,8 +72,8 @@ func (repository *Repository) ListRemoteSyncPriorityIDs(
 			page.HasMore = true
 			break
 		}
-		page.JobIDs = append(page.JobIDs, id)
-		page.NextCursor = id
+		page.JobIDs = append(page.JobIDs, header.id)
+		page.NextCursor = header.id
 	}
 	if err := rows.Err(); err != nil {
 		return remoteresults.PriorityPage{}, fmt.Errorf("iterate remote sync priority identities: %w", err)
@@ -150,6 +82,81 @@ func (repository *Repository) ListRemoteSyncPriorityIDs(
 		return remoteresults.PriorityPage{}, fmt.Errorf("close remote sync priority identities: %w", err)
 	}
 	return page, nil
+}
+
+type remoteSyncHeader struct {
+	id, ownState, ownDigest, mirrorDigest               string
+	ownOrigin, mirrorOrigin                             remoteresults.Origin
+	own, mirror, badReference, pendingReference         bool
+	ownRevision, sequence                               int64
+	ownMetadata, ownKeys, preparedKeys, receiptDocument []byte
+	specMetadata, specKeys, snapshotDocument            []byte
+	snapshot                                            jobcontract.Snapshot
+}
+
+func (header *remoteSyncHeader) destinations() []any {
+	return []any{
+		&header.id, &header.own, &header.mirror,
+		&header.ownOrigin.ConfigurationID, &header.ownOrigin.NodeID, &header.ownOrigin.InstallationID,
+		&header.ownRevision, &header.ownState, &header.ownDigest,
+		&header.ownMetadata, &header.ownKeys, &header.preparedKeys, &header.receiptDocument,
+		&header.mirrorOrigin.ConfigurationID, &header.mirrorOrigin.NodeID, &header.mirrorOrigin.InstallationID,
+		&header.mirrorDigest, &header.specMetadata, &header.specKeys, &header.snapshotDocument,
+		&header.sequence, &header.badReference, &header.pendingReference,
+	}
+}
+
+func (header *remoteSyncHeader) validate(origin remoteresults.Origin) error {
+	if !domain.IsUUID(header.id) || header.badReference {
+		return storageCorrupt("remote sync priority identity or reference state")
+	}
+	var receipt *jobcontract.Receipt
+	if header.own {
+		validEnvelope := priorityEnvelopeKeys(header.ownKeys, []string{
+			"created_at", "observation", "prepared", "receipt", "revision", "spec_sha256", "state", "updated_at",
+		}) && priorityEnvelopeKeys(header.preparedKeys, []string{"configuration_id", "runner", "spec"})
+		identity := prioritySubmissionIdentity{ID: header.id, Origin: header.ownOrigin, Revision: header.ownRevision,
+			State: header.ownState, Digest: header.ownDigest}
+		if !validEnvelope || header.ownOrigin != origin || !identity.valid(header.ownMetadata) {
+			return storageCorrupt("remote sync priority submission identity")
+		}
+		if header.ownState == string(jobs.SubmissionAccepted) {
+			value, err := jobcontract.DecodeReceipt(bytes.NewReader(header.receiptDocument))
+			if err != nil || !priorityReceiptMatches(value, identity, header.ownMetadata) {
+				return storageCorrupt("remote sync priority submission receipt")
+			}
+			receipt = &value
+		} else if string(header.receiptDocument) != "null" {
+			return storageCorrupt("remote sync priority unexpected submission receipt")
+		}
+	}
+	if !header.mirror {
+		return nil
+	}
+	snapshot, err := jobcontract.DecodeSnapshot(bytes.NewReader(header.snapshotDocument))
+	validSnapshot := err == nil && snapshot.Receipt.JobID == header.id && header.sequence > 0 &&
+		snapshot.LatestSequence == uint64(header.sequence)
+	if !validSnapshot || header.mirrorOrigin != origin || !jobcontract.IsSHA256(header.mirrorDigest) {
+		return storageCorrupt("remote sync priority mirror snapshot")
+	}
+	if !validPrioritySpec(
+		header.specMetadata,
+		header.specKeys,
+		snapshot,
+		header.mirrorOrigin,
+	) {
+		return storageCorrupt("remote sync priority mirror identity")
+	}
+	if header.own {
+		if header.ownState == string(jobs.SubmissionPrepared) || header.ownDigest != header.mirrorDigest {
+			return storageCorrupt("remote sync priority conflicting sources")
+		}
+		if receipt != nil && !samePriorityAcceptance(*receipt, snapshot.Receipt) {
+			return storageCorrupt("remote sync priority conflicting acceptance")
+		}
+	}
+	header.snapshot = snapshot
+	return nil
 }
 
 type prioritySubmissionIdentity struct {
@@ -261,11 +268,12 @@ const remoteSyncPriorityScopeSQL = `WITH scope(configuration_id,node_id,installa
 
 // Documents stay inside SQLite expressions, never in a materialized CTE or Go.
 // Each returned header is <=4KiB; current snapshots/receipts are <=64KiB.
-const remoteSyncPriorityHeadersSQL = remoteSyncPriorityScopeSQL + `,
+const remoteSyncHeaderCTEsSQL = `,
  sources AS NOT MATERIALIZED (
  SELECT ids.job_id, s.job_id IS NOT NULL AS own, m.job_id IS NOT NULL AS mirror,
  s.configuration_id AS sc,s.node_id AS sn,s.installation_id AS si,s.revision AS sr,s.state AS ss,s.spec_sha256 AS sd,
  m.configuration_id AS mc,m.node_id AS mn,m.installation_id AS mi,m.spec_sha256 AS md,m.applied_sequence AS sequence,
+ m.performance_report_id AS performance_id,
  CASE WHEN length(CAST(s.document_json AS BLOB)) BETWEEN 1 AND ?
  THEN CASE WHEN json_valid(s.document_json) THEN s.document_json END END AS submission,
  CASE WHEN length(CAST(m.spec_json AS BLOB)) BETWEEN 1 AND ?
@@ -290,8 +298,10 @@ const remoteSyncPriorityHeadersSQL = remoteSyncPriorityScopeSQL + `,
  '$.engine_build_id','$.kind') AS spec_metadata,
  (SELECT json_group_array(key) FROM json_each(spec)) AS spec_keys
  FROM sources
- )
- SELECT CASE WHEN length(CAST(job_id AS BLOB)) = 36 THEN job_id ELSE '' END,own,mirror,
+ ) `
+
+const remoteSyncHeaderColumnsSQL = `CASE WHEN length(CAST(headers.job_id AS BLOB)) = 36
+ THEN headers.job_id ELSE '' END,own,mirror,
  CASE WHEN length(CAST(sc AS BLOB)) = 36 THEN sc ELSE '' END,
  CASE WHEN length(CAST(sn AS BLOB)) = 36 THEN sn ELSE '' END,
  CASE WHEN length(CAST(si AS BLOB)) = 36 THEN si ELSE '' END,
@@ -308,5 +318,7 @@ const remoteSyncPriorityHeadersSQL = remoteSyncPriorityScopeSQL + `,
  CASE WHEN length(CAST(spec_keys AS BLOB)) <= 4096 THEN spec_keys END,snapshot,COALESCE(sequence,0),
  EXISTS(SELECT 1 FROM remote_job_report_refs r WHERE r.job_id = headers.job_id
  AND (r.imported IS NULL OR r.imported NOT IN (0,1) OR r.reference_type NOT IN ('report','performance_result'))),
- EXISTS(SELECT 1 FROM remote_job_report_refs r WHERE r.job_id = headers.job_id AND r.imported = 0)
- FROM headers ORDER BY job_id`
+ EXISTS(SELECT 1 FROM remote_job_report_refs r WHERE r.job_id = headers.job_id AND r.imported = 0)`
+
+const remoteSyncPriorityHeadersSQL = remoteSyncPriorityScopeSQL + remoteSyncHeaderCTEsSQL +
+	`SELECT ` + remoteSyncHeaderColumnsSQL + ` FROM headers ORDER BY headers.job_id`

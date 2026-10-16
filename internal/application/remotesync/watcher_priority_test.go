@@ -24,16 +24,33 @@ func emptyPriorityJobs(
 	return remoteresults.PriorityPage{JobIDs: []string{}, NextCursor: after}, nil
 }
 
-func TestWatcherRequiresTheCurrentPrioritySourcePort(t *testing.T) {
+func emptyDocumentWork(
+	_ context.Context,
+	query remoteresults.DocumentQuery,
+) (remoteresults.DocumentPage, error) {
+	return remoteresults.DocumentPage{Items: []remoteresults.DocumentWork{}, NextCursor: query.After}, nil
+}
+
+func TestWatcherRequiresBothCurrentWorkSourcePorts(t *testing.T) {
 	synchronizer, _ := New(Dependencies{
 		Repository: missingMirrorRepository{}, Documents: unusedCache{},
 	})
-	_, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		Nodes:   func(context.Context) ([]Node, error) { return []Node{}, nil },
-		Connect: func(context.Context, Node) (Connection, error) { return nil, errors.New("unused") },
-	})
-	if !errors.Is(err, remoteresults.ErrInvalid) {
-		t.Fatal("missing priority source silently retained the superseded discovery-only path")
+	for _, missing := range []string{"facts", "documents"} {
+		t.Run(missing, func(t *testing.T) {
+			dependencies := WatcherDependencies{Synchronizer: synchronizer,
+				FactPriorityJobs: emptyPriorityJobs, DocumentWork: emptyDocumentWork,
+				Nodes:   func(context.Context) ([]Node, error) { return []Node{}, nil },
+				Connect: func(context.Context, Node) (Connection, error) { return nil, errors.New("unused") },
+			}
+			if missing == "facts" {
+				dependencies.FactPriorityJobs = nil
+			} else {
+				dependencies.DocumentWork = nil
+			}
+			if _, err := NewWatcher(t.Context(), dependencies); !errors.Is(err, remoteresults.ErrInvalid) {
+				t.Fatal("missing current work source silently retained a superseded scheduling path")
+			}
+		})
 	}
 }
 
@@ -62,9 +79,9 @@ func TestWatcherSlowPriorityJobDoesNotBlockLaterTicks(t *testing.T) {
 	synchronizer, _ := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
 	var pages atomic.Int32
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
-		Connect: func(context.Context, Node) (Connection, error) { return connection, nil },
-		PriorityJobs: func(
+		Nodes:        func(context.Context) ([]Node, error) { return []Node{node}, nil },
+		Connect:      func(context.Context, Node) (Connection, error) { return connection, nil },
+		DocumentWork: emptyDocumentWork, FactPriorityJobs: func(
 			_ context.Context,
 			_ remoteresults.Origin,
 			_ string,
@@ -125,7 +142,8 @@ func TestWatcherGlobalBudgetIncludesFullMirrorValidation(t *testing.T) {
 	synchronizer, _ := New(Dependencies{Repository: repository, Documents: unusedCache{}})
 	node := watcherNode(1)
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		PriorityJobs: emptyPriorityJobs, Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
+		DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
+		Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) { return nil, errors.New("unused") }})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +165,7 @@ func TestWatcherGlobalBudgetIncludesFullMirrorValidation(t *testing.T) {
 			)
 		}()
 	}
-	for range maxConcurrentSyncs {
+	for range maxFactSyncs {
 		select {
 		case <-repository.entered:
 		case <-time.After(time.Second):
@@ -176,7 +194,8 @@ func TestWatcherBackgroundWaitersLeaveGlobalCapacityForPriority(t *testing.T) {
 	}
 	node := watcherNode(1)
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		PriorityJobs: emptyPriorityJobs, Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
+		DocumentWork: emptyDocumentWork, FactPriorityJobs: emptyPriorityJobs,
+		Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) { return nil, errors.New("unused") }})
 	if err != nil {
 		t.Fatal(err)
@@ -202,11 +221,11 @@ func TestWatcherBackgroundWaitersLeaveGlobalCapacityForPriority(t *testing.T) {
 	for index := range maxConcurrentSyncs {
 		start(tailLane, index+1)
 	}
-	for range maxBackgroundSyncs {
+	for range maxBackgroundFacts {
 		select {
 		case <-repository.entered:
 		case <-time.After(time.Second):
-			t.Fatal("background work did not occupy its three full validation slots")
+			t.Fatal("background work did not occupy its single full validation slot")
 		}
 	}
 	pageContext, stopPage := context.WithTimeout(ctx, time.Second)
@@ -219,11 +238,11 @@ func TestWatcherBackgroundWaitersLeaveGlobalCapacityForPriority(t *testing.T) {
 	select {
 	case <-repository.entered:
 	case <-time.After(time.Second):
-		t.Fatal("priority full validation could not enter its reserved fourth global slot")
+		t.Fatal("priority full validation could not enter its reserved fact slot")
 	}
-	full := len(watcher.gate) == maxConcurrentSyncs && len(watcher.backgroundGate) == maxBackgroundSyncs
-	if !full || repository.active.Load() != maxConcurrentSyncs {
-		t.Fatal("mixed priority/background work bypassed the global four-worker budget")
+	full := len(watcher.gate) == maxFactSyncs && len(watcher.backgroundFactGate) == maxBackgroundFacts
+	if !full || repository.active.Load() != maxFactSyncs {
+		t.Fatal("mixed priority/background work bypassed the two-worker fact budget")
 	}
 	cancel()
 	workers.Wait()
@@ -232,7 +251,7 @@ func TestWatcherBackgroundWaitersLeaveGlobalCapacityForPriority(t *testing.T) {
 			t.Fatal("cancellation did not release a sync worker or background waiter")
 		}
 	}
-	zeroSlots := len(watcher.gate) == 0 && len(watcher.backgroundGate) == 0
+	zeroSlots := len(watcher.gate) == 0 && len(watcher.backgroundFactGate) == 0
 	if !zeroSlots || repository.active.Load() != 0 {
 		t.Fatal("mixed lane cancellation leaked global or background slot reservations")
 	}
@@ -259,9 +278,10 @@ func TestWatcherRejectsInvalidPriorityHintsAndStillDiscoversSharedJobs(t *testin
 			return errors.New("shared observation fixture")
 		}}
 		watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-			Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
-			Connect: func(context.Context, Node) (Connection, error) { return connection, nil },
-			PriorityJobs: func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error) {
+			Nodes:        func(context.Context) ([]Node, error) { return []Node{node}, nil },
+			Connect:      func(context.Context, Node) (Connection, error) { return connection, nil },
+			DocumentWork: emptyDocumentWork,
+			FactPriorityJobs: func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error) {
 				return page, nil
 			},
 		})
@@ -309,9 +329,10 @@ func TestWatcherDeduplicatesQueuesAndRejectsForeignPriorityExecution(t *testing.
 					return errors.New("observation fixture")
 				}}
 			watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-				Nodes:   func(context.Context) ([]Node, error) { return []Node{node}, nil },
-				Connect: func(context.Context, Node) (Connection, error) { return connection, nil },
-				PriorityJobs: func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error) {
+				Nodes:        func(context.Context) ([]Node, error) { return []Node{node}, nil },
+				Connect:      func(context.Context, Node) (Connection, error) { return connection, nil },
+				DocumentWork: emptyDocumentWork,
+				FactPriorityJobs: func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error) {
 					return remoteresults.PriorityPage{JobIDs: []string{own.Receipt.JobID}, NextCursor: own.Receipt.JobID}, nil
 				},
 			})

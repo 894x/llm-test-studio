@@ -25,7 +25,7 @@ type productionPriorityRepository struct {
 	jobID  string
 }
 
-func (repository productionPriorityRepository) ListRemoteSyncPriorityIDs(
+func (repository productionPriorityRepository) ListRemoteFactPriorityIDs(
 	_ context.Context,
 	origin remoteresults.Origin,
 	after string,
@@ -35,6 +35,13 @@ func (repository productionPriorityRepository) ListRemoteSyncPriorityIDs(
 		return remoteresults.PriorityPage{}, errors.New("production priority scope changed")
 	}
 	return remoteresults.PriorityPage{JobIDs: []string{repository.jobID}, NextCursor: repository.jobID}, nil
+}
+
+func (productionPriorityRepository) ListRemoteDocumentWork(
+	_ context.Context,
+	query remoteresults.DocumentQuery,
+) (remoteresults.DocumentPage, error) {
+	return remoteresults.DocumentPage{Items: []remoteresults.DocumentWork{}, NextCursor: query.After}, nil
 }
 
 func (productionPriorityRepository) GetRemoteMirror(context.Context, string) (remoteresults.Mirror, error) {
