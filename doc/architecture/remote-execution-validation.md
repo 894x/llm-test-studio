@@ -1156,6 +1156,8 @@ priority集合还包含持久已知的foreign任务，本次HTTP新任务样本�
 
 固定同ID的下一次只读辨识actual exit0/EOF、3.327秒，远端3.129秒，stderr0：真WAL视图读到1行completed/revision4/sequence12，主文件immutable诊断视图0行；两个事务顺序执行且都关闭。managed进程、DB inode及FD前后稳定，DB为RO1/RW1、WAL为RW2、SHM为RW1。只证明该时刻新任务依赖已提交WAL，`api_runtime_dsn_measured=false`，不能据此宣称运行中API用了immutable或已经确定404根因。固定R7源码的只读DSN为mode=ro，静态未见immutable；saved BoundNode与实际listen port均44917。实际安全投影 `C:/Users/894/AppData/Local/Temp/llm-r4-wal-visibility-713caf46/parent-observed.safe.json`，SHA `47e999f70d420dca84ea3635661a57868af775eab15591e8f9c88e795201e86c`。没有HTTP、checkpoint、写SQL、任务或服务操作，SSH全部资源关闭，本地源未变；R4仍false。
 
+以固定R7源码3ca83d和当前350ddc8分别在Windows及本机WSL Linux做真实独立OpenReadOnlyView接线复现：读不存在ID后只POST1次，同一个启动view立即看见accepted/seq1，随后completed/sealed/archive及pending0；没有重开reader或checkpoint，4个隔离免费Mock任务均通过，未复现线上RED。测试工具链Go1.26.5与实际R7二进制Go1.26.6不同，不等同精确相同构建的复现。实际保留R7二进制SHA与节点相同，11项依赖匹配；保留构建记录210输入前后不变、clean3ca83d、无overlay，git快照3处换行差异规范化后aggregate匹配，但二进制无embedded VCS revision，不据此新增“可重现二进制构建”声明。实际汇总 `C:/Users/894/AppData/Local/Temp/llm-r7-readview-repro-2e5a7788/repro-results.safe.json` SHA `022dcd04f21d0a3b94651c458b93d48c347429dba8bef193c8e706be15c391ae`；构建归属核查 `actual-r7-source-binding.safe.json` SHA `797cfa82e89d0866244d3fc717d3ea2c8afbc27595c2c054c24bdf11c4980019`。初次WSL参数错误在任务执行前拒绝，未计产品失败；没有改产品或服务器，404根因仍未确定。
+
 ## 2026-10-17：350ddc8分离事实与文档，补齐未知共享任务积压回归
 
 旧c50的独立TEMP完整源码与git blob核对一致，真实RED进程exit1/EOF（测试62.19秒、命令63.655秒）：32个历史根、4个可阻塞报告中实际3个held，另一client的新foreign任务在源端running；60秒内本地仍无其running mirror/child，ListJobs只到两次。早期一次编译错误和一次等待器错误均属于工具失败，未算作产品RED。安全投影 `C:/Users/894/AppData/Local/Temp/llm-g07-foreign-red-fdd6bc27c92f4bc9ac5f2a5125374692/foreign-red-observed.safe.json`，SHA `93c8654d8939ad60a1baebfe76ee6938c9dc8537a18b8e0808bea5f72aa2f827`。
