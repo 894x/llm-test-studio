@@ -402,7 +402,7 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | D3a Remote 桌面节点设置 | 已实现 | 顶部 Remote 面板接入节点列表、编辑、密码/私钥、指纹确认、检查、安装重试和默认选择；提交后清除表单秘密，更新不确定时先重读，默认离线仍保留；移除 guard 使用只读持久事实，并与提交及新控制意图串行；真实 Wails 空节点面板与表单通过三档浏览器渲染验证 |
 | D3b 统一桌面任务入口与观察 | 已实现 | 当前七个 Job 绑定替换旧六个启动/控制入口与同步性能事件；四类任务每次启动读最新默认并显式提交位置，待确认保持原 ID；持久任务分页、重开找回、固定指令重试与完整性能结果接入，统计归档仅在已同步目录存在时开放；真实远程全入口和原生窗口截图仍待最终验收 |
 | D2i 服务端冻结实际执行来源 | 已实现 | Host 在接收事务冻结七字段 Origin，Receipt、事件、终态和报告保留原 runner 版本/构建；客户端探测仅供未接收准备使用；当前 unmanaged 报告明确 null，managed 报告与 owner/mirror 同源；严格拒绝旧回执和缺字段文档，不增加历史版本读取；完整大任务通过有界内容校验缓存保留严格校验并避免重复解析超时 |
-| C2c2 至 E | 进行中 | R7 升级/backup 与 typed、旧报告恢复、旧 c2 单 Mock 真实 OS 退出重开已有实际证据；shared/foreign 统一 view/控制新契约已实现，全仓 Go/vet 与浏览器 fixture 通过，旧 false 保留。7afb 与 766→adc 副本转换验证已通过，desktop/runner 真实切换及恢复、600 秒共享控制实机、native、完整公平性/大任务、文件资源、重启/故障还原、第二节点 arm64 与 CI 发布仍待实施或验收 |
+| C2c2 至 E | 进行中 | R7 升级/backup 与 typed、旧报告恢复、旧 c2 单 Mock 真实 OS 退出重开已有实际证据；shared/foreign 本地契约与浏览器 fixture 通过，r2 实机止于 B 发现阶段，控制尚未验收，旧 false 保留。7afb 与 766→adc 副本转换及历史副本两轮 Desktop 初始化/重开查询已通过；desktop/runner 真实切换及恢复、共享控制、native、完整公平性/大任务、文件资源、重启/故障还原、第二节点 arm64 与 CI 发布仍待实施或验收 |
 
 2026-10-16 的 R16 已执行，不能再记为“真实请求进行中”，也不能记为整体通过：Chat 为 67 通过/17 失败，Responses 为 104 通过/126 失败；三请求最小性能 3/3 成功、0 超时，TTFT P50 2994.382ms、E2E P50 3679.773ms。原 summary 的 `passed=false` 原样保留。第二轮离线复核 17.04s 通过，`GetReports` 返回三个指定报告耗时 4367ms，原源表和 summary 未改；这只证明持久结果离线可读，不改写提供商判定或补认旧观察窗口。详情和安全证据位置见[验证记录](remote-execution-validation.md)。
 
@@ -470,9 +470,11 @@ R5 是 clean `53b8e0ad00ffcf371a0be90ad0670d8519773f83` 的已构建产物，未
 
 当前 client c2 与冻结 runner R7 源 3ca 分开：210 个既有共享输入不变、增加 2 个 priority 输入，本轮 runner 未重建/再次部署。该阶段完整大任务/多 client 公平性仍待实机；foreign 全视图/控制当时尚未实现，文件资源/附件/release/回收、native 窗口/真实关窗/OS keyring、历史库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 及 CI 发布范围保持。K3 付费 R1、旧 query R4、本轮 Mock R7 来源分清，所有历史失败不覆盖；具体证据见[验证记录](remote-execution-validation.md)。
 
-本轮 shared/foreign 统一 JobRead、nullable submission、冻结 ControlTarget 和真实 source anchor 已实现，Query 和七个 Wails 绑定消费者同步替换；本 client 控制历史与他人 confirmed remote 事件严格区分，foreign pending 控制阻止节点移除。51 源码 78581 全仓 Go 测试/vet 通过且摘要不变；FE 完整 738 后追加 1 测试、定向 App60 及三尺寸浏览器 fixture 通过，不声明最新全套 739 实跑。新 600 秒单 Mock 共享控制尚未 SSH/Launch，r1 工具编译后的预检发现分页参数错误，r2 修复中，native=false；历史 c2 进程 PASS 不可替代本次新契约实机。
+本轮 shared/foreign 统一 JobRead、nullable submission、冻结 ControlTarget 和真实 source anchor 已实现，Query 和七个 Wails 绑定消费者同步替换；本 client 控制历史与他人 confirmed remote 事件严格区分，foreign pending 控制阻止节点移除。51 源码 78581 全仓 Go 测试/vet 通过且摘要不变；FE 完整 738 后追加 1 测试、定向 App60 及三尺寸浏览器 fixture 通过，不声明最新全套 739 实跑。后续 r2/source519 实机 4278 exit1：A 仅 Launch 一次并已接收原 Job d1cce52e，B 只完成旧任务 baseline，未观察到新 foreign Job，控制及 C 查询未执行。原 false 保留；75284 纯 GET 诊断只证明同一原 Job 后来 completed、封口与结果身份正确，不代替共享控制通过。scheduler 本轮刚开始实施，未验收；native=false，历史 c2 进程 PASS 不可替代本次新契约实机。
 
 SQLite 唯一 current 由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`，version1/name0001_protocol_runtime 保持，影响共用 schema 的 desktop/runner；runtime 拒绝旧格式保留数据，无兼容或自动迁移。shared/foreign 已提交 626ccdd；固定 7afb→adc 的三类 fixture 与实际历史 766d1aa…→adc 一致性私有副本已通过当前契约验证，真实切换/恢复仍 pending。副本保全 63runs/252revisions/5482results/4comparisons/8comparison revisions/22comparison runs/61reports/43perf；104 份 reports/perf 仅由离线工具补合法 unmanaged 显式 null。实际 187662336 字节用户源库 SHA 不变，服务器仍原 R7，旧 proof 未改；新 Mock 已增加数据，不把旧 10Job 当当前常数。细节见[当前矩阵](remote-execution-contract-matrix.md)和[验证记录](remote-execution-validation.md)。
+
+历史转换副本另以 clean626 的真实 DesktopApp initializer/startup/getters/shutdown/reopen 完成两轮验证，92.283s 内全部 61 Run 报告、43 性能报告及 4 comparison details 原 ID 可读，104 份归档 body 与母本 typed JSON 等值；公开列表 cap100 正常，最旧 4 份仍可按 ID 读取。只在应用副本新增 local identity，MemoryStore、0 HTTP/SSH/provider，非 native/OS keyring 或实际用户库切换验收。quota 8f7c828 与 content ff657e7 已本地提交，Linux WSL runnerstate/runnerprocess 完整测试及 vet 通过；仅 ErrCapacity 软拒新任务，真实 DB 故障仍隔离，content 仍是内部流式原子存储基础，未提供 HTTP/Job assets/附件/release，assets 能力 false。两项未部署到 R7、未新增 schema；完整证据及限制见[验证记录](remote-execution-validation.md)。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 
