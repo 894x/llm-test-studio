@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"slices"
 	"sync"
@@ -210,20 +211,38 @@ func (client *Client) open(
 	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	response, err := client.do(requestCtx, input)
 	if err != nil {
+		requestErr := requestCtx.Err()
 		cancel()
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
-		if requestCtx.Err() != nil && ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
 		}
-		return nil, nil, ErrConnection
+		if requestErr != nil {
+			return nil, nil, requestErr
+		}
+		return nil, nil, transportError(err)
 	}
 	if response == nil || response.Body == nil {
 		cancel()
 		return nil, nil, ErrIntegrity
 	}
 	return response, func() { _ = response.Body.Close(); cancel() }, nil
+}
+
+func transportError(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	var timeout net.Error
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		return context.DeadlineExceeded
+	}
+	return ErrConnection
 }
 
 func identityEncoding(response *http.Response) bool {

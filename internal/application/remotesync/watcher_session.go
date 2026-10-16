@@ -10,6 +10,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/jobhost"
 	"github.com/894x/llm-test-studio/internal/application/remoteresults"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
+	runnerclient "github.com/894x/llm-test-studio/internal/remote/client"
 )
 
 type scanPage struct {
@@ -119,6 +120,9 @@ func (watcher *Watcher) attempt(
 			return session.applied, errors.Join(session.firstError, err)
 		case event := <-session.events:
 			session.accept(event)
+			if errors.Is(event.result.err, runnerclient.ErrConnection) {
+				return session.applied, errors.Join(session.firstError, event.result.err)
+			}
 			session.schedule()
 		case <-ticker.C:
 			session.tick()

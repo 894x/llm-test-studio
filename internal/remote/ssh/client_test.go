@@ -46,6 +46,7 @@ type testPeer struct {
 	execute        func(string, cryptossh.Channel)
 	sftpSession    func(cryptossh.Channel)
 	keepaliveReply func(*cryptossh.Request)
+	forwardOpen    func(cryptossh.NewChannel)
 	stop           chan struct{}
 	wg             sync.WaitGroup
 }
@@ -143,6 +144,10 @@ func (peer *testPeer) serve(raw net.Conn) {
 
 func (peer *testPeer) channel(open cryptossh.NewChannel) {
 	if open.ChannelType() == "direct-tcpip" {
+		if peer.forwardOpen != nil {
+			peer.forwardOpen(open)
+			return
+		}
 		peer.forward(open)
 		return
 	}
@@ -487,31 +492,154 @@ func TestFixedCommandOutputCannotBypassItsByteBudgetThroughIOCopy(t *testing.T) 
 	}
 }
 
-func TestRunnerChannelOpenCancellationClosesAnOtherwiseResponsiveSSHPeer(t *testing.T) {
+func TestRunnerChannelOpenCancellationPreservesOtherResponsesAndClosesLateChannel(t *testing.T) {
 	peer := newTestPeer(t)
-	peer.stallForward.Store(true)
+	withheld, releaseOpen, lateClosed := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var forwards atomic.Int32
+	peer.forwardOpen = func(open cryptossh.NewChannel) {
+		if forwards.Add(1) != 2 {
+			peer.forward(open)
+			return
+		}
+		close(withheld)
+		select {
+		case <-releaseOpen:
+		case <-peer.stop:
+			return
+		}
+		channel, requests, err := open.Accept()
+		if err != nil {
+			return
+		}
+		defer channel.Close()
+		peer.wg.Go(func() { cryptossh.DiscardRequests(requests) })
+		_, _ = io.Copy(io.Discard, channel)
+		close(lateClosed)
+	}
 	client := dialPeer(t, peer)
-	httpClient, err := client.RunnerHTTP(44917)
+	releaseBody := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/slow" {
+			_, _ = io.WriteString(writer, "first")
+			writer.(http.Flusher).Flush()
+			select {
+			case <-releaseBody:
+			case <-request.Context().Done():
+				return
+			}
+			_, _ = io.WriteString(writer, "second")
+			return
+		}
+		_, _ = io.WriteString(writer, "ok")
+	}))
+	defer server.Close()
+	var releaseBodyOnce, releaseOpenOnce sync.Once
+	defer releaseBodyOnce.Do(func() { close(releaseBody) })
+	defer releaseOpenOnce.Do(func() { close(releaseOpen) })
+	port := uint16(server.Listener.Addr().(*net.TCPAddr).Port)
+	httpClient, err := client.RunnerHTTP(port)
 	if err != nil {
 		t.Fatal(err)
+	}
+	response, err := httpClient.Get(server.URL + "/slow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	prefix := make([]byte, 5)
+	if _, err := io.ReadFull(response.Body, prefix); err != nil || string(prefix) != "first" {
+		t.Fatal("existing response did not start")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 	request, _ := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		"http://127.0.0.1:44917/runner",
+		server.URL+"/runner",
 		nil,
 	)
 	if _, err := httpClient.Do(request); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("withheld channel-open reply ignored the request deadline")
 	}
+	select {
+	case <-withheld:
+	case <-time.After(time.Second):
+		t.Fatal("second channel was not withheld")
+	}
+	if _, err := client.Probe(t.Context()); err != nil {
+		t.Fatal("one cancelled channel closed the shared SSH connection")
+	}
+	releaseBodyOnce.Do(func() { close(releaseBody) })
+	if suffix, err := io.ReadAll(response.Body); err != nil || string(suffix) != "second" {
+		t.Fatalf("another request lost its active response: %q %v", suffix, err)
+	}
+	releaseOpenOnce.Do(func() { close(releaseOpen) })
+	select {
+	case <-lateClosed:
+	case <-time.After(time.Second):
+		t.Fatal("late channel reply was not closed")
+	}
+	ready, err := httpClient.Get(server.URL + "/ready")
+	if err != nil {
+		t.Fatal("channel cancellation prevented later requests")
+	}
+	_ = ready.Body.Close()
+	if _, err := client.Probe(t.Context()); err != nil {
+		t.Fatal("late channel cleanup closed the shared SSH connection")
+	}
+}
+
+func TestRunnerChannelOpensRemainBoundedAndCloseJoinsPendingOpens(t *testing.T) {
+	peer := newTestPeer(t)
+	opened := make(chan struct{}, maxChannelOpens+1)
+	peer.forwardOpen = func(cryptossh.NewChannel) {
+		opened <- struct{}{}
+		<-peer.stop
+	}
+	client := dialPeer(t, peer)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	results := make(chan error, maxChannelOpens)
+	for range maxChannelOpens {
+		go func() { _, err := client.dialRunner(ctx, "127.0.0.1:44917"); results <- err }()
+	}
+	for range maxChannelOpens {
+		select {
+		case <-opened:
+		case <-time.After(time.Second):
+			t.Fatal("pending channel opens did not fill their bound")
+		}
+	}
+	cancel()
+	for range maxChannelOpens {
+		if err := <-results; !errors.Is(err, context.Canceled) {
+			t.Fatal("channel caller did not observe cancellation")
+		}
+	}
+	if len(client.opening) != maxChannelOpens {
+		t.Fatal("cancelled opens released their slots before their SSH replies")
+	}
+	boundedCtx, boundedCancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer boundedCancel()
+	if _, err := client.dialRunner(boundedCtx, "127.0.0.1:44917"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("waiting for a channel slot ignored its deadline")
+	}
+	select {
+	case <-opened:
+		t.Fatal("pending channel-open limit was exceeded")
+	default:
+	}
+	waiting := make(chan error, 1)
+	go func() { _, err := client.dialRunner(t.Context(), "127.0.0.1:44917"); waiting <- err }()
 	closed := make(chan struct{})
-	go func() { _ = client.connection.Wait(); close(closed) }()
+	go func() { _ = client.Close(); close(closed) }()
 	select {
 	case <-closed:
 	case <-time.After(time.Second):
-		t.Fatal("channel cancellation left the blocked SSH open alive")
+		t.Fatal("Close did not interrupt and join pending channel opens")
+	}
+	if err := <-waiting; !errors.Is(err, ErrConnection) || len(client.opening) != 0 {
+		t.Fatal("Close retained pending opens or admitted a new one")
 	}
 }
 

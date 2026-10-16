@@ -171,15 +171,21 @@ func TestBulkPoolRetainsPinnedDestinationRedirectAndChannelCancellation(t *testi
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
-	if _, err := bulk.Do(request); err == nil {
+	if _, err := bulk.Do(request); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("bulk channel-open ignored request cancellation")
 	}
+	if _, err := client.Probe(t.Context()); err != nil {
+		t.Fatal("bulk channel cancellation closed the shared SSH connection")
+	}
 	ended := make(chan struct{})
-	go func() { _ = client.connection.Wait(); close(ended) }()
+	go func() { _ = client.Close(); close(ended) }()
 	select {
 	case <-ended:
 	case <-time.After(time.Second):
-		t.Fatal("withheld bulk channel-open retained the SSH dial goroutine")
+		t.Fatal("SSH close did not join the withheld bulk channel open")
+	}
+	if len(client.opening) != 0 {
+		t.Fatal("SSH close retained a pending bulk channel-open slot")
 	}
 }
 

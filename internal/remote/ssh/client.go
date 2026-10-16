@@ -33,6 +33,7 @@ const (
 	operationTimeout = 30 * time.Second
 	keepAliveEvery   = 15 * time.Second
 	keepAliveTimeout = 5 * time.Second
+	maxChannelOpens  = 16
 )
 
 type Endpoint struct {
@@ -85,6 +86,8 @@ type Client struct {
 	mu         sync.Mutex
 	closed     bool
 	endpoints  []*runnerHTTP
+	opening    chan struct{}
+	openWG     sync.WaitGroup
 }
 
 type inboundActivity struct {
@@ -251,6 +254,7 @@ func Dial(ctx context.Context, endpoint Endpoint, authentication Authentication)
 		connection: cryptossh.NewClient(connection, channels, requests),
 		inbound:    activity,
 		stop:       make(chan struct{}), done: make(chan struct{}), endpoints: []*runnerHTTP{},
+		opening: make(chan struct{}, maxChannelOpens),
 	}
 	go client.keepAlive(keepAliveEvery, keepAliveTimeout)
 	return client, nil
@@ -355,18 +359,51 @@ func (client *Client) keepAlive(interval, timeout time.Duration) {
 }
 
 func (client *Client) dialRunner(ctx context.Context, address string) (net.Conn, error) {
+	select {
+	case client.opening <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-client.stop:
+		return nil, ErrConnection
+	}
+	client.mu.Lock()
+	if client.closed {
+		client.mu.Unlock()
+		<-client.opening
+		return nil, ErrConnection
+	}
+	client.openWG.Add(1)
+	client.mu.Unlock()
 	type opened struct {
 		connection net.Conn
 		err        error
 	}
-	result := make(chan opened, 1)
+	result := make(chan opened)
 	go func() {
+		defer client.openWG.Done()
+		defer func() { <-client.opening }()
 		connection, err := client.connection.Dial("tcp", address)
-		result <- opened{connection: connection, err: err}
+		select {
+		case result <- opened{connection: connection, err: err}:
+			return
+		case <-ctx.Done():
+		case <-client.stop:
+		}
+		if connection != nil {
+			_ = connection.Close()
+		}
 	}()
 	select {
 	case opened := <-result:
-		if err := ctx.Err(); err != nil {
+		err := ctx.Err()
+		if err == nil {
+			select {
+			case <-client.stop:
+				err = ErrConnection
+			default:
+			}
+		}
+		if err != nil {
 			if opened.connection != nil {
 				_ = opened.connection.Close()
 			}
@@ -374,15 +411,11 @@ func (client *Client) dialRunner(ctx context.Context, address string) (net.Conn,
 		}
 		return opened.connection, opened.err
 	case <-ctx.Done():
-		// A peer may answer keepalives while withholding channel-open replies.
-		// Closing the parent connection interrupts and joins that blocked open;
-		// a bare ssh.DialContext would leave its Dial goroutine pending.
-		_ = client.connection.Close()
-		opened := <-result
-		if opened.connection != nil {
-			_ = opened.connection.Close()
-		}
+		// SSH cannot cancel one pending channel open. Keep its bounded slot until
+		// the reply arrives or Close interrupts it, without harming other channels.
 		return nil, ctx.Err()
+	case <-client.stop:
+		return nil, ErrConnection
 	}
 }
 
@@ -401,6 +434,7 @@ func (client *Client) Close() error {
 		for _, endpoint := range endpoints {
 			endpoint.close()
 		}
+		client.openWG.Wait()
 		<-client.done
 	})
 	return nil

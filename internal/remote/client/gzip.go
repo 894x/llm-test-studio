@@ -45,7 +45,7 @@ func readJSON(response *http.Response, limit int64) ([]byte, error) {
 	}
 	wire, err := io.ReadAll(io.LimitReader(response.Body, wireLimit+1))
 	if err != nil {
-		return nil, ErrConnection
+		return nil, transportError(err)
 	}
 	if int64(len(wire)) > wireLimit {
 		return nil, ErrIntegrity
