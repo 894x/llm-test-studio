@@ -634,18 +634,6 @@ func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
 			}
 			return validateReportStorage(ctx, conn, report)
 		}},
-		{table: "case_results", column: "id", visit: func(id string) error {
-			var row storedResultRow
-			if err := row.scan(conn.QueryRowContext(ctx, `SELECT id, schema_version, revision, created_at,
-				updated_at, run_id, entry_id, case_id, request_id, document_json FROM case_results WHERE id = ?`, id)); err != nil {
-				return err
-			}
-			result, err := row.decode("")
-			if err != nil {
-				return err
-			}
-			return validateStoredResultReferences(ctx, conn, result)
-		}},
 		{table: "execution_performance_observations", column: "job_id", visit: func(id string) error {
 			spec, snapshot, err := queryPerformanceOwner(ctx, conn, id)
 			if err != nil {
@@ -684,7 +672,106 @@ func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
 			return err
 		}
 	}
-	return nil
+	return validateRunnerBackupCaseResults(ctx, conn)
+}
+
+func validateRunnerBackupCaseResults(ctx context.Context, queryer relationQueryer) error {
+	type resultIdentity struct{ runID, id string }
+
+	var afterRunID, afterID string
+	var currentRunID string
+	var snapshot domain.RunSnapshot
+	started := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		rows, err := queryer.QueryContext(
+			ctx,
+			`SELECT run_id, id FROM case_results
+			WHERE (? = 0 OR run_id > ? OR (run_id = ? AND id > ?))
+			ORDER BY run_id, id LIMIT 128`,
+			started,
+			afterRunID,
+			afterRunID,
+			afterID,
+		)
+		if err != nil {
+			return err
+		}
+		page := []resultIdentity{}
+		for rows.Next() {
+			if err := ctx.Err(); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			var runID, id string
+			if err := rows.Scan(&runID, &id); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			page = append(page, resultIdentity{runID: runID, id: id})
+		}
+		iterationErr := rows.Err()
+		closeErr := rows.Close()
+		if iterationErr != nil {
+			return iterationErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		// The transaction freezes each owner. Keep only its snapshot across pages;
+		// evidence reuse ends at each bounded page or owner change.
+		evidenceCache := make(map[string]domain.Evidence)
+		for _, identity := range page {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			var row storedResultRow
+			if err := row.scan(queryer.QueryRowContext(ctx, `
+				SELECT id, schema_version, revision, created_at, updated_at,
+				       run_id, entry_id, case_id, request_id, document_json FROM case_results WHERE id = ?
+			`, identity.id)); err != nil {
+				return err
+			}
+			if row.id != identity.id || row.runID != identity.runID {
+				return fmt.Errorf("%w: result page identity", ErrCorrupt)
+			}
+			result, err := row.decode("")
+			if err != nil {
+				return err
+			}
+			if result.RunID != currentRunID {
+				run, err := queryCurrentRun(ctx, queryer, result.RunID)
+				if err != nil {
+					if contextErr := ctx.Err(); contextErr != nil {
+						return contextErr
+					}
+					return fmt.Errorf("%w: result owner", ErrCorrupt)
+				}
+				snapshot = run.Snapshot()
+				currentRunID = result.RunID
+				evidenceCache = make(map[string]domain.Evidence)
+			}
+			if err := validateStoredResultAgainstSnapshot(
+				ctx,
+				queryer,
+				result,
+				snapshot,
+				evidenceCache,
+			); err != nil {
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			afterRunID, afterID = row.runID, row.id
+		}
+		started = true
+		if len(page) < 128 {
+			return ctx.Err()
+		}
+	}
 }
 
 func runnerBackupEachID(
