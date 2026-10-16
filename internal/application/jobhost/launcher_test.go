@@ -186,10 +186,20 @@ func TestLauncherRoutesEveryPreparationThroughOneLocalOwner(t *testing.T) {
 				domain.RunCompleted,
 			)
 			waitSettled(t, repository)
+			view, err := repository.SubmittedJob(t.Context(), accepted.Prepared.Spec.JobID)
+			if err != nil || view.Execution == nil || view.Execution.Status != domain.RunCompleted ||
+				view.Delivery != jobs.SubmissionAccepted || view.Location.Kind != jobcontract.TargetLocal {
+				t.Fatalf("local launch could not be read through the current query boundary: %v", err)
+			}
 			if kind == jobs.LaunchPerformance {
 				result, err := repository.ReadPerformanceResult(t.Context(), accepted.Prepared.Spec.JobID)
 				if err != nil || result.Result.ObservationState != jobcontract.PerformanceAvailable {
 					t.Fatal("launched performance did not seal the original result")
+				}
+				presented, err := repository.SubmittedPerformanceResult(t.Context(), accepted.Prepared.Spec.JobID)
+				if err != nil || !view.PerformanceResultReady || view.Progress == nil || presented.Observation == nil ||
+					presented.Observation.Report.Metrics != result.Result.Observation.Checkpoint.Report.Metrics {
+					t.Fatalf("local presentation did not retain the original measured metrics: %v", err)
 				}
 			} else {
 				reports, err := repository.ListReportsForRuns(t.Context(), accepted.Receipt.RunIDs)

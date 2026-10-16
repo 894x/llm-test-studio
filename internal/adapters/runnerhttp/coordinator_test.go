@@ -180,6 +180,10 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 				t.Fatal(err)
 			}
 			prepared := prepareCoordinatedJob(t, coordinator, submission)
+			view, err := repository.SubmittedJob(t.Context(), submission.Job.JobID)
+			if err != nil || view.Delivery != jobs.SubmissionPrepared || view.Execution != nil {
+				t.Fatal("prepared query fabricated a remote execution")
+			}
 			if prepared.Prepared.Runner.RunnerVersion != "runner-test-1" ||
 				prepared.Prepared.Spec.EngineBuildID != fixture.host.Identity().EngineBuildID {
 				t.Fatal("prepared job did not use the actual runner")
@@ -188,6 +192,10 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 			pending, err := coordinator.Submit(t.Context(), submission.Job.JobID, leases)
 			if !errors.Is(err, jobs.ErrPending) || pending.State != jobs.SubmissionPending || pending.Receipt != nil {
 				t.Fatalf("lost response was treated as rejection or confirmation: %v", err)
+			}
+			view, err = repository.SubmittedJob(t.Context(), submission.Job.JobID)
+			if err != nil || view.Delivery != jobs.SubmissionPending || view.Execution != nil {
+				t.Fatal("lost acknowledgement was inferred from missing local execution")
 			}
 			for _, lease := range leases {
 				if _, err := lease.Bytes(); !errors.Is(err, credentials.ErrClosed) {
@@ -255,6 +263,10 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 			if _, err := coordinator.Submit(t.Context(), submission.Job.JobID, nil); err != nil {
 				t.Fatal("repeated lookup of an accepted submission required another credential or connection")
 			}
+			view, err = repository.SubmittedJob(t.Context(), submission.Job.JobID)
+			if err != nil || view.Delivery != jobs.SubmissionAccepted || view.Execution != nil {
+				t.Fatal("accepted but unsynchronized task was relabeled as queued")
+			}
 			cache, _ := syncDocuments(t)
 			synchronizer, err := remotesync.New(remotesync.Dependencies{Repository: repository, Documents: cache})
 			if err != nil {
@@ -297,6 +309,30 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 			}
 			if opened.Load() != closed.Load() || posts.Load() != 1 || fixture.requests.Load() != requests {
 				t.Fatal("coordinator retained a connection or replayed paid work")
+			}
+			fixture.api.Close()
+			view, err = repository.SubmittedJob(t.Context(), submission.Job.JobID)
+			if err != nil || view.Execution == nil || view.Execution.Status != domain.RunCompleted ||
+				view.Executor.Version != prepared.Prepared.Runner.RunnerVersion {
+				t.Fatalf("offline submitted execution query lost its original state or runner: %v", err)
+			}
+			if view.Location != coordinatorLocation || view.Executor.NodeID != origin.NodeID {
+				t.Fatal("offline submitted query changed the fixed origin")
+			}
+			if kind == jobcontract.KindPerformance {
+				result, err := repository.SubmittedPerformanceResult(t.Context(), submission.Job.JobID)
+				if err != nil || !view.PerformanceResultReady || view.Progress == nil || result.Observation == nil ||
+					result.ObservationState != jobcontract.PerformanceAvailable {
+					t.Fatalf("offline submitted query did not expose the full imported result: %v", err)
+				}
+				if result.ReportID != submission.Job.Spec.Performance.ReportID || result.Executor != view.Executor {
+					t.Fatal("offline performance result lost its frozen input or executor")
+				}
+			} else if view.PerformanceResultReady {
+				t.Fatal("run or comparison was projected as a performance result")
+			}
+			if fixture.requests.Load() != requests || posts.Load() != 1 {
+				t.Fatal("offline presentation query accessed execution")
 			}
 		})
 	}
