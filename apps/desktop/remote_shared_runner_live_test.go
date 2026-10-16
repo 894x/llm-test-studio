@@ -30,6 +30,13 @@ import (
 
 const sharedRunnerLiveEnable = "LLM_TEST_LIVE_REMOTE_SHARED"
 
+const (
+	sharedRunnerExecutionWindow  = 170 * time.Second
+	sharedRunnerSettlementWindow = 3 * time.Minute
+	sharedRunnerMirrorWindow     = 3 * time.Minute
+	sharedRunnerRoleWindow       = 9 * time.Minute
+)
+
 // One bounded document arrives on an anonymous stdin pipe. There is no real
 // provider credential field: each role creates its own synthetic mock key.
 // The coordinator owns an empty workspace root and deliberately retains it.
@@ -53,22 +60,91 @@ func (sharedRunnerLiveInput) MarshalJSON() ([]byte, error) {
 }
 
 type sharedRunnerLiveResult struct {
-	Role                string                   `json:"role"`
-	ClientVersion       string                   `json:"client_version"`
-	Executor            jobs.ExecutorView        `json:"executor"`
-	Budget              jobcontract.RunnerBudget `json:"budget"`
-	Active              uint32                   `json:"active"`
-	Queued              uint32                   `json:"queued"`
-	Pending             uint32                   `json:"pending"`
-	Healthy             bool                     `json:"healthy"`
-	PeerVisible         bool                     `json:"peer_visible"`
-	LaunchCalls         uint32                   `json:"launch_calls"`
-	ReportID            string                   `json:"report_id,omitempty"`
-	ActualCases         int                      `json:"actual_cases"`
-	CaseIdentitiesMatch bool                     `json:"case_identities_match"`
-	OriginVerified      bool                     `json:"origin_verified"`
-	Sealed              bool                     `json:"sealed"`
-	TerminalToSettledMS int64                    `json:"terminal_to_settled_ms"`
+	started              time.Time
+	Role                 string                   `json:"role"`
+	ClientVersion        string                   `json:"client_version"`
+	Executor             jobs.ExecutorView        `json:"executor"`
+	Budget               jobcontract.RunnerBudget `json:"budget"`
+	Active               uint32                   `json:"active"`
+	Queued               uint32                   `json:"queued"`
+	Pending              uint32                   `json:"pending"`
+	Healthy              bool                     `json:"healthy"`
+	PeerVisible          bool                     `json:"peer_visible"`
+	LaunchCalls          uint32                   `json:"launch_calls"`
+	ReportID             string                   `json:"report_id,omitempty"`
+	ActualCases          int                      `json:"actual_cases"`
+	CaseIdentitiesMatch  bool                     `json:"case_identities_match"`
+	OriginVerified       bool                     `json:"origin_verified"`
+	Sealed               bool                     `json:"sealed"`
+	TerminalToSettledMS  int64                    `json:"terminal_to_settled_ms"`
+	TerminalObservedMS   int64                    `json:"terminal_observed_ms"`
+	SettlementWindowMS   int64                    `json:"settlement_window_ms"`
+	MirrorAfterSettledMS int64                    `json:"mirror_after_settled_ms"`
+	RoleElapsedMS        int64                    `json:"role_elapsed_ms"`
+	FailurePhase         string                   `json:"failure_phase,omitempty"`
+	FailureReason        string                   `json:"failure_reason,omitempty"`
+}
+
+type sharedLiveFailureKey struct{}
+
+type sharedLiveFailure struct {
+	phase    string
+	reason   string
+	deadline time.Time
+}
+
+func (failure *sharedLiveFailure) enter(phase string, deadline time.Time) {
+	if failure.reason == "" {
+		switch phase {
+		case "input", "startup", "pairing", "baseline", "preparation", "launch", "acceptance", "execution", "settlement",
+			"mirror", "report", "final_probe", "configuration", "credentials", "original_job", "remote_observation", "shutdown":
+		default:
+			phase = "verification"
+		}
+		failure.phase, failure.deadline = phase, deadline
+	}
+}
+
+func (failure *sharedLiveFailure) first(reason string) {
+	if failure.reason != "" {
+		return
+	}
+	switch reason {
+	case "input_invalid", "workspace_invalid", "baseline_read_failed", "baseline_not_idle", "launch_unconfirmed",
+		"job_read_unavailable", "job_identity_changed", "runner_probe_unavailable", "runner_probe_invalid",
+		"runner_unhealthy", "runner_origin_changed", "execution_not_completed", "queue_not_observed",
+		"settlement_window_expired", "report_invalid", "phase_deadline", "phase_failed":
+		failure.reason = reason
+	default:
+		failure.reason = "phase_failed"
+	}
+}
+
+func failSharedLive(t *testing.T, ctx context.Context, reason string) {
+	t.Helper()
+	if failure, ok := ctx.Value(sharedLiveFailureKey{}).(*sharedLiveFailure); ok {
+		failure.first(reason)
+	}
+	t.Fatal("allow-listed live verification failed")
+}
+
+func TestSharedRunnerFailureEvidenceIsFirstAndAllowListed(t *testing.T) {
+	failure := &sharedLiveFailure{}
+	failure.enter("execution", time.Now().Add(time.Minute))
+	failure.first("job_read_unavailable")
+	failure.enter("settlement", time.Time{})
+	failure.first("runner_unhealthy")
+	if failure.phase != "execution" || failure.reason != "job_read_unavailable" {
+		t.Fatal("a later cleanup failure replaced the first verification boundary")
+	}
+	private := &sharedLiveFailure{}
+	private.enter("synthetic-secret", time.Time{})
+	private.first("synthetic-secret")
+	result := sharedRunnerLiveResult{FailurePhase: private.phase, FailureReason: private.reason}
+	document, err := json.Marshal(result)
+	if err != nil || bytes.Contains(document, []byte("synthetic-secret")) || private.phase != "verification" {
+		t.Fatal("unlisted diagnostic text escaped the fixed safe evidence boundary")
+	}
 }
 
 type sharedRunnerLiveEvent struct {
@@ -85,8 +161,18 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 	if os.Getenv(sharedRunnerLiveEnable) != "1" {
 		t.Skip("explicit zero-provider-cost physical runner role; bounded stdin only")
 	}
-	final := sharedRunnerLiveEvent{Stage: "failed", State: "role_incomplete"}
+	failure := &sharedLiveFailure{phase: "input"}
+	result := sharedRunnerLiveResult{started: time.Now()}
+	final := sharedRunnerLiveEvent{Stage: "failed", State: "phase_failed", Result: &result}
 	defer func() {
+		if t.Failed() || final.Stage != "completed" {
+			if failure.reason == "" && !failure.deadline.IsZero() && !time.Now().Before(failure.deadline) {
+				failure.first("phase_deadline")
+			}
+			failure.first("phase_failed")
+			result.FailurePhase, result.FailureReason = failure.phase, failure.reason
+			final.State = failure.reason
+		}
 		emitSharedRunnerLive(final)
 		code := 0
 		if t.Failed() || final.Stage != "completed" {
@@ -96,12 +182,19 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 	}()
 	input, err := decodeSharedRunnerLiveInput(os.Stdin)
 	if err != nil {
+		failure.first("input_invalid")
 		t.Fatal("invalid bounded shared runner role configuration")
 	}
 	defer clear(input.Password)
-	ctx, cancel := context.WithTimeout(t.Context(), 170*time.Second)
+	base := context.WithValue(t.Context(), sharedLiveFailureKey{}, failure)
+	ctx, cancel := context.WithTimeout(base, sharedRunnerRoleWindow)
 	defer cancel()
-	result := sharedRunnerLiveResult{Role: input.Role, ClientVersion: sharedRunnerClientVersion(input.Role)}
+	executionCtx, cancelExecution := context.WithTimeout(ctx, sharedRunnerExecutionWindow)
+	defer cancelExecution()
+	result.Role, result.ClientVersion = input.Role, sharedRunnerClientVersion(input.Role)
+	result.SettlementWindowMS = sharedRunnerSettlementWindow.Milliseconds()
+	deadline, _ := executionCtx.Deadline()
+	failure.enter("startup", deadline)
 	app, configurationRoot, store := startSharedRunnerLiveApp(
 		t,
 		ctx,
@@ -112,13 +205,16 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 	pairingInput := liveK3Input{Endpoint: input.Endpoint, Password: input.Password,
 		ExpectedNodeID: input.ExpectedNodeID, ExpectedInstallation: input.ExpectedInstallation,
 		ExpectedVersion: input.ExpectedVersion, ExpectedBuild: input.ExpectedBuild}
-	configurationID := pairLiveK3Node(t, ctx, app, pairingInput)
+	failure.enter("pairing", deadline)
+	configurationID := pairLiveK3Node(t, executionCtx, app, pairingInput)
 	location := liveK3RemoteDefault(t, app, configurationID, pairingInput)
+	failure.enter("baseline", deadline)
 	audit := openSharedRunnerBaseline(t, ctx, sharedRunnerBaselineSettings{
 		app: app, input: input, configurationRoot: configurationRoot,
 		configurationID: configurationID, store: store,
 	})
 	defer audit.Close()
+	failure.enter("preparation", deadline)
 	secret := make([]byte, 24)
 	if _, err := rand.Read(secret); err != nil {
 		t.Fatal("cannot create a synthetic mock credential")
@@ -135,6 +231,10 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 			BaseURL: input.BaseURL, APIKey: string(apiKey), RequestTimeoutMS: 120_000,
 			CaseConcurrency: 4, Inputs: map[string]json.RawMessage{}}
 	}
+	if executionCtx.Err() != nil {
+		t.Fatal("the bounded preparation window expired before the single launch")
+	}
+	failure.enter("launch", deadline)
 	view, launchErr := app.LaunchJob(command) // One call only. Pending never starts a replacement.
 	result.LaunchCalls = 1
 	if launchErr != nil {
@@ -143,7 +243,7 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 			final.JobID = page.Jobs[0].JobID
 		}
 		final.State = "launch_unconfirmed_no_resubmission"
-		t.Fatal("launch was not confirmed; retained outbox must be reviewed without resubmission")
+		failSharedLive(t, ctx, "launch_unconfirmed")
 	}
 	final.JobID = view.JobID
 	assertLiveK3Executor(t, view, pairingInput)
@@ -151,18 +251,23 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 		t.Fatal("actual runner metadata was replaced by the desktop client label")
 	}
 	result.Executor = view.Executor
-	view = waitSharedRunnerAcceptance(t, ctx, app, view.JobID)
+	failure.enter("acceptance", deadline)
+	view = waitSharedRunnerAcceptance(t, executionCtx, app, view.JobID)
 	assertLiveK3Executor(t, view, pairingInput)
 	emitSharedRunnerLive(sharedRunnerLiveEvent{Stage: "accepted", JobID: view.JobID,
 		State: string(view.Delivery), Result: &result})
+	failure.enter("execution", deadline)
 	terminalAt := observeSharedRunnerTerminal(
 		t,
-		ctx,
+		executionCtx,
 		audit,
 		input,
 		view,
 		&result,
 	)
+	result.TerminalObservedMS = time.Since(result.started).Milliseconds()
+	cancelExecution()
+	failure.enter("settlement", terminalAt.Add(sharedRunnerSettlementWindow))
 	waitSharedRunnerSettled(
 		t,
 		ctx,
@@ -170,27 +275,46 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 		terminalAt,
 		&result,
 	)
-	view = waitSharedRunnerMirror(t, ctx, app, view.JobID)
+	emitSharedRunnerLive(sharedRunnerLiveEvent{Stage: "settled", JobID: view.JobID, State: "idle", Result: &result})
+	mirrorStarted := time.Now()
+	mirrorCtx, cancelMirror := context.WithTimeout(ctx, sharedRunnerMirrorWindow)
+	defer cancelMirror()
+	mirrorDeadline, _ := mirrorCtx.Deadline()
+	failure.enter("mirror", mirrorDeadline)
+	view = waitSharedRunnerMirror(t, mirrorCtx, app, view.JobID)
 	assertLiveK3Executor(t, view, pairingInput)
 	assertLiveK3Outbox(t, app, []liveK3JobSummary{{JobID: view.JobID}})
+	failure.enter("report", mirrorDeadline)
 	if input.Role == "settlement" {
-		detail := waitLiveK3Report(t, ctx, app, view)
+		detail := waitLiveK3Report(t, mirrorCtx, app, view)
 		item := liveK3JobSummary{FailureCases: []liveK3CaseFailure{}}
 		collectLiveK3Suite(&item, detail, suite, view.Executor)
 		result.ActualCases, result.CaseIdentitiesMatch = item.ActualCases, item.CaseIdentitiesMatch
 		result.ReportID, result.OriginVerified = item.ReportID, item.RunnerReportOrigin
 		if result.ActualCases != 230 || !result.CaseIdentitiesMatch || !result.OriginVerified {
-			t.Fatal("the complete authored Responses suite or its actual runner report is missing")
+			failSharedLive(t, ctx, "report_invalid")
 		}
 		// Mock 200 responses do not prove the authored negative assertions pass.
 	} else {
-		outcome := waitLiveK3Performance(t, ctx, app, view.JobID)
-		archive := waitLiveK3Archive(t, ctx, app, outcome.ReportID)
+		outcome := waitLiveK3Performance(t, mirrorCtx, app, view.JobID)
+		archive := waitLiveK3Archive(t, mirrorCtx, app, outcome.ReportID)
 		result.ReportID, result.Sealed = outcome.ReportID, outcome.SealedAt != ""
 		result.OriginVerified = liveK3PerformanceOriginMatches(outcome, view) && liveK3ArchiveOriginMatches(archive, outcome)
 		if !sharedRunnerMinimumPerformance(outcome) || !result.OriginVerified {
-			t.Fatal("the minimum actual mock performance result is incomplete")
+			failSharedLive(t, ctx, "report_invalid")
 		}
+	}
+	result.MirrorAfterSettledMS = time.Since(mirrorStarted).Milliseconds()
+	failure.enter("final_probe", time.Now().Add(5*time.Second))
+	finalProbeCtx, cancelFinalProbe := context.WithTimeout(ctx, 5*time.Second)
+	probe, err := audit.Probe(finalProbeCtx)
+	cancelFinalProbe()
+	if err != nil {
+		failSharedLive(t, ctx, "runner_probe_unavailable")
+	}
+	applySharedRunnerProbe(t, ctx, probe, &result)
+	if probe.Active != 0 || probe.Queued != 0 || probe.Pending != 0 {
+		t.Fatal("the actual runner is no longer fully settled at final verification")
 	}
 	final = sharedRunnerLiveEvent{Stage: "completed", JobID: view.JobID,
 		State: string(view.Execution.Status), Result: &result}
@@ -326,7 +450,7 @@ func openSharedRunnerBaseline(
 		t.Fatal("cannot verify the isolated runner baseline before submitting")
 	}
 	result := sharedRunnerLiveResult{Executor: expected.Executor}
-	applySharedRunnerProbe(t, probe, &result)
+	applySharedRunnerProbe(t, ctx, probe, &result)
 	baseline := result.Healthy && probe.Active == 0 && probe.Queued == 0 && probe.Pending == 0
 	if settings.input.Role == "b" {
 		peer, readErr := audit.GetJob(ctx, settings.input.PeerJobID)
@@ -373,14 +497,17 @@ func observeSharedRunnerTerminal(
 	last := ""
 	for {
 		snapshot, err := audit.GetJob(ctx, view.JobID)
-		if err != nil || !liveK3AuditIdentity(view, snapshot) {
-			t.Fatal("the read-only runner observation changed job or execution identity")
+		if err != nil {
+			failSharedLive(t, ctx, "job_read_unavailable")
+		}
+		if !liveK3AuditIdentity(view, snapshot) {
+			failSharedLive(t, ctx, "job_identity_changed")
 		}
 		probe, err := audit.Probe(ctx)
 		if err != nil {
-			t.Fatal("the physical runner probe is unavailable")
+			failSharedLive(t, ctx, "runner_probe_unavailable")
 		}
-		applySharedRunnerProbe(t, probe, result)
+		applySharedRunnerProbe(t, ctx, probe, result)
 		state := string(snapshot.Receipt.Status)
 		if state != last {
 			emitSharedRunnerLive(sharedRunnerLiveEvent{Stage: "observed", JobID: view.JobID, State: state, Result: result})
@@ -399,8 +526,11 @@ func observeSharedRunnerTerminal(
 			}
 		}
 		if jobcontract.Terminal(snapshot.Receipt.Status) {
-			if snapshot.Receipt.Status != domain.RunCompleted || (input.Role == "b" && !queueVerified) {
-				t.Fatal("fixed job did not complete or the shared queue was not observed before release")
+			if snapshot.Receipt.Status != domain.RunCompleted {
+				failSharedLive(t, ctx, "execution_not_completed")
+			}
+			if input.Role == "b" && !queueVerified {
+				failSharedLive(t, ctx, "queue_not_observed")
 			}
 			return time.Now()
 		}
@@ -408,21 +538,55 @@ func observeSharedRunnerTerminal(
 	}
 }
 
-func applySharedRunnerProbe(t *testing.T, probe jobcontract.RunnerInfo, result *sharedRunnerLiveResult) {
+func applySharedRunnerProbe(
+	t *testing.T,
+	ctx context.Context,
+	probe jobcontract.RunnerInfo,
+	result *sharedRunnerLiveResult,
+) {
 	t.Helper()
+	if err := sharedRunnerProbeError(probe, result.Executor); err != nil {
+		reason := "runner_probe_invalid"
+		if errors.Is(err, jobs.ErrTargetChanged) {
+			reason = "runner_origin_changed"
+		} else if errors.Is(err, jobs.ErrUnavailable) {
+			reason = "runner_unhealthy"
+		}
+		failSharedLive(t, ctx, reason)
+	}
+	result.Budget, result.Active, result.Queued, result.Pending = probe.Budget, probe.Active, probe.Queued, probe.Pending
+	result.Healthy = probe.Ready && probe.Healthy
+}
+
+func sharedRunnerProbeError(probe jobcontract.RunnerInfo, executor jobs.ExecutorView) error {
 	budget := probe.Budget
 	validBudget := budget.MaxActiveJobs == 1 && budget.MaxQueuedJobs == 16 && budget.MaxConcurrency == 2000
 	if probe.Validate() != nil || !validBudget {
-		t.Fatal("the physical runner does not expose the intended 1/16/2000 policy")
+		return jobs.ErrInvalid
 	}
-	executor := result.Executor
 	origin := domain.ExecutionOrigin{Kind: "remote", NodeID: probe.NodeID, InstallationID: probe.NodeInstallationID,
 		EngineBuildID: probe.EngineBuildID, RunnerVersion: probe.RunnerVersion, OS: probe.OS, Arch: probe.Arch}
 	if !liveK3OriginMatches(&origin, executor) {
-		t.Fatal("runner probe and accepted receipt execution origin differ")
+		return jobs.ErrTargetChanged
 	}
-	result.Budget, result.Active, result.Queued, result.Pending = budget, probe.Active, probe.Queued, probe.Pending
-	result.Healthy = probe.Ready && probe.Healthy
+	if !probe.Ready || !probe.Healthy {
+		return jobs.ErrUnavailable
+	}
+	return nil
+}
+
+func sharedRunnerSettlementState(
+	probe jobcontract.RunnerInfo,
+	executor jobs.ExecutorView,
+	elapsed time.Duration,
+) (bool, error) {
+	if err := sharedRunnerProbeError(probe, executor); err != nil {
+		return false, err
+	}
+	if elapsed < 0 || elapsed >= sharedRunnerSettlementWindow {
+		return false, context.DeadlineExceeded
+	}
+	return probe.Active == 0 && probe.Queued == 0 && probe.Pending == 0, nil
 }
 
 func waitSharedRunnerSettled(
@@ -433,23 +597,28 @@ func waitSharedRunnerSettled(
 	result *sharedRunnerLiveResult,
 ) {
 	t.Helper()
+	// One 230-case suite is one prepared child: 140 seconds of settlement
+	// workflow, plus at most 20 seconds of outcome/marker I/O and probe slack.
+	// This observer window never changes any runner operation's own deadline.
+	observation, cancel := context.WithDeadline(ctx, terminalAt.Add(sharedRunnerSettlementWindow))
+	defer cancel()
 	for {
-		probe, err := audit.Probe(ctx)
+		probeCtx, cancelProbe := context.WithTimeout(observation, 5*time.Second)
+		probe, err := audit.Probe(probeCtx)
+		cancelProbe()
 		if err != nil {
-			t.Fatal("cannot observe runner settlement after terminal state")
+			failSharedLive(t, ctx, "runner_probe_unavailable")
 		}
-		applySharedRunnerProbe(t, probe, result)
+		applySharedRunnerProbe(t, ctx, probe, result)
 		result.TerminalToSettledMS = time.Since(terminalAt).Milliseconds()
-		if result.Healthy && probe.Active == 0 && probe.Queued == 0 && probe.Pending == 0 {
-			if result.TerminalToSettledMS > 5000 {
-				t.Fatal("runner did not settle within five seconds after terminal observation")
-			}
+		settled, err := sharedRunnerSettlementState(probe, result.Executor, time.Since(terminalAt))
+		if err != nil {
+			failSharedLive(t, ctx, "settlement_window_expired")
+		}
+		if settled {
 			return
 		}
-		if result.TerminalToSettledMS > 5000 {
-			t.Fatal("runner remained unsettled five seconds after terminal observation")
-		}
-		liveK3Pause(t, ctx, 100*time.Millisecond)
+		liveK3Pause(t, observation, 500*time.Millisecond)
 	}
 }
 
@@ -482,6 +651,9 @@ func sharedRunnerMinimumPerformance(result jobs.PerformanceResultView) bool {
 }
 
 func emitSharedRunnerLive(event sharedRunnerLiveEvent) {
+	if event.Result != nil && !event.Result.started.IsZero() {
+		event.Result.RoleElapsedMS = time.Since(event.Result.started).Milliseconds()
+	}
 	_ = json.NewEncoder(os.Stdout).Encode(event)
 }
 
@@ -545,5 +717,55 @@ func TestSharedRunnerMinimumCommandHasOneSyntheticRequest(t *testing.T) {
 	minimal := profile.RequestCount == 1 && profile.Concurrency == 1 && !extra
 	if command.Validate() != nil || !minimal || profile.URL != baseURL {
 		t.Fatal("shared runner role unexpectedly adds traffic, concurrency, or another endpoint")
+	}
+}
+
+func TestSharedRunnerSettlementHasIndependentSingleChildWindow(t *testing.T) {
+	view, _ := liveK3AuditFixture()
+	valid := jobcontract.RunnerInfo{Contract: jobcontract.CurrentContract,
+		NodeID: view.Executor.NodeID, NodeInstallationID: view.Executor.InstallationID,
+		EngineBuildID: view.Executor.BuildID, RunnerVersion: view.Executor.Version,
+		OS: view.Executor.OS, Arch: view.Executor.Arch, Ready: true, Healthy: true,
+		Capabilities: jobcontract.RunnerCapabilities{JobKinds: []jobcontract.Kind{jobcontract.KindRun},
+			Protocols: []string{"openai_chat"}, Features: []string{}},
+		Budget: jobcontract.RunnerBudget{MaxActiveJobs: 1, MaxQueuedJobs: 16, MaxConcurrency: 2000,
+			QueueTimeoutNS: int64(time.Minute), ExecutionTimeoutNS: int64(time.Hour)}}
+	for _, test := range []struct {
+		name    string
+		elapsed time.Duration
+		change  func(*jobcontract.RunnerInfo)
+		settled bool
+		failure bool
+	}{
+		{name: "work may exceed a single storage allowance", elapsed: 10 * time.Second, settled: true},
+		{name: "single child worst workflow with remaining observation slack", elapsed: 160 * time.Second, settled: true},
+		{name: "last instant within observation", elapsed: sharedRunnerSettlementWindow - time.Nanosecond, settled: true},
+		{name: "observation boundary is finite", elapsed: sharedRunnerSettlementWindow, failure: true},
+		{name: "still pending is not settled", elapsed: time.Minute, change: func(info *jobcontract.RunnerInfo) {
+			info.Pending = 1
+		}},
+		{name: "unhealthy fails without retry through recovery", elapsed: time.Second,
+			change: func(info *jobcontract.RunnerInfo) { info.Ready, info.Healthy = false, false }, failure: true},
+		{name: "changed build fails", elapsed: time.Second,
+			change: func(info *jobcontract.RunnerInfo) { info.EngineBuildID = strings.Repeat("a", 64) }, failure: true},
+		{name: "changed installation fails", elapsed: time.Second,
+			change: func(info *jobcontract.RunnerInfo) {
+				info.NodeInstallationID = "83000000-0000-4000-8000-000000000009"
+			}, failure: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			probe := valid.Clone()
+			if test.change != nil {
+				test.change(&probe)
+			}
+			settled, err := sharedRunnerSettlementState(probe, view.Executor, test.elapsed)
+			if settled != test.settled || (err != nil) != test.failure {
+				t.Fatal("single-child settlement observation ignored its identity, health, or work bound")
+			}
+		})
+	}
+	stages := sharedRunnerExecutionWindow + sharedRunnerSettlementWindow + sharedRunnerMirrorWindow
+	if sharedRunnerSettlementWindow != 3*time.Minute || stages > sharedRunnerRoleWindow {
+		t.Fatal("the independent phase windows are not covered by the finite role lifetime")
 	}
 }

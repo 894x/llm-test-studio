@@ -21,6 +21,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
+	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/jobcontract"
@@ -52,14 +53,29 @@ func (sharedResumeLiveInput) MarshalJSON() ([]byte, error) {
 }
 
 type sharedResumeResult struct {
-	Executor      jobs.ExecutorView `json:"executor"`
-	ReportID      string            `json:"report_id"`
-	Sealed        bool              `json:"sealed"`
-	Archived      bool              `json:"archived"`
-	Origin        bool              `json:"origin_verified"`
-	BlockedWrites uint32            `json:"blocked_writes"`
-	ProviderCalls uint32            `json:"provider_calls"`
-	LaunchCalls   uint32            `json:"launch_calls"`
+	Kind                jobcontract.Kind  `json:"kind"`
+	Executor            jobs.ExecutorView `json:"executor"`
+	ReportID            string            `json:"report_id"`
+	Sealed              bool              `json:"sealed"`
+	Archived            bool              `json:"archived"`
+	Origin              bool              `json:"origin_verified"`
+	BlockedWrites       uint32            `json:"blocked_writes"`
+	ProviderCalls       uint32            `json:"provider_calls"`
+	LaunchCalls         uint32            `json:"launch_calls"`
+	ReportVerified      bool              `json:"report_verified"`
+	ActualCases         int               `json:"actual_cases"`
+	ExpectedCases       int               `json:"expected_cases"`
+	ObservedCases       int               `json:"observed_cases"`
+	OriginalOutcome     domain.RunStatus  `json:"original_outcome"`
+	FullSuiteComplete   bool              `json:"full_suite_complete"`
+	CaseIdentitiesMatch bool              `json:"case_identities_match"`
+	ServerState         domain.RunStatus  `json:"server_state"`
+	ServerSequence      uint64            `json:"server_sequence"`
+	ServerRevision      uint64            `json:"server_revision"`
+	Healthy             bool              `json:"healthy"`
+	Pending             uint32            `json:"pending"`
+	FailurePhase        string            `json:"failure_phase,omitempty"`
+	FailureReason       string            `json:"failure_reason,omitempty"`
 }
 
 type sharedResumeEvent struct {
@@ -124,24 +140,42 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	if os.Getenv(sharedResumeLiveEnable) != "1" {
 		t.Skip("explicit original-job query-only recovery; bounded stdin only")
 	}
-	final := sharedResumeEvent{Stage: "failed", State: "query_only_recovery_incomplete"}
+	failure := &sharedLiveFailure{phase: "input"}
+	result := sharedResumeResult{}
+	var guard *sharedResumeGuard
+	final := sharedResumeEvent{Stage: "failed", State: "phase_failed", Result: &result}
 	defer func() {
+		if guard != nil {
+			result.BlockedWrites, result.ProviderCalls = guard.writes.Load(), guard.provider.Load()
+		}
+		if t.Failed() || final.Stage != "query_verified" {
+			if failure.reason == "" && !failure.deadline.IsZero() && !time.Now().Before(failure.deadline) {
+				failure.first("phase_deadline")
+			}
+			failure.first("phase_failed")
+			result.FailurePhase, result.FailureReason = failure.phase, failure.reason
+			final.State = failure.reason
+		}
 		_ = json.NewEncoder(os.Stdout).Encode(final)
 		code := 0
-		if t.Failed() || final.Stage != "completed" {
+		if t.Failed() || final.Stage != "query_verified" {
 			code = 1
 		}
 		os.Exit(code)
 	}()
 	input, err := decodeSharedResumeInput(os.Stdin)
 	if err != nil {
+		failure.first("input_invalid")
 		t.Fatal("invalid bounded query-only recovery configuration")
 	}
 	defer clear(input.Password)
 	defer clear(input.NodeToken)
 	final.JobID = input.JobID
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+	base := context.WithValue(t.Context(), sharedLiveFailureKey{}, failure)
+	ctx, cancel := context.WithTimeout(base, 10*time.Minute)
 	defer cancel()
+	deadline, _ := ctx.Deadline()
+	failure.enter("configuration", deadline)
 	configurationRoot := filepath.Join(input.WorkspaceRoot, "configuration")
 	directory, _, err := productionStoragePaths(configurationRoot)
 	if err != nil {
@@ -167,6 +201,10 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	if len(configuration.Nodes) != 1 || node == nil || !selected {
 		t.Fatal("recovery requires the original single paired node and default selection")
 	}
+	if node.Installation != nil {
+		t.Fatal("query-only recovery refuses every saved installation or cleanup operation")
+	}
+	failure.enter("credentials", deadline)
 	store, err := restoreSharedResumeCredentials(ctx, remoteRoot, *node, input)
 	if err != nil {
 		t.Fatal("private credentials do not match the retained current node binding")
@@ -180,7 +218,7 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	if err != nil {
 		t.Fatal("cannot disable installation and upgrade in recovery")
 	}
-	guard := &sharedResumeGuard{}
+	guard = &sharedResumeGuard{}
 	catalogRoot := filepath.Join(input.WorkspaceRoot, "catalog")
 	options := productionOptions{
 		userConfigDir: func() (string, error) { return configurationRoot, nil },
@@ -190,8 +228,10 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 		appVersion: "r15-client-resume", credentialStore: store, runnerSource: source,
 		runnerConnector: guard.connect, protocolTransport: guard,
 	}
+	failure.enter("startup", deadline)
 	app := startLiveK3App(t, ctx, options)
 	defer func() { _ = app.shutdown() }()
+	failure.enter("original_job", deadline)
 	assertLiveK3Outbox(t, app, []liveK3JobSummary{{JobID: input.JobID}})
 	view, err := app.GetJob(input.JobID)
 	if err != nil || view.Delivery != jobs.SubmissionAccepted || view.Confirmation == nil {
@@ -200,26 +240,58 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	expected := liveK3Input{ExpectedNodeID: input.ExpectedNodeID, ExpectedInstallation: input.ExpectedInstallation,
 		ExpectedVersion: input.ExpectedVersion, ExpectedBuild: input.ExpectedBuild}
 	assertLiveK3Executor(t, view, expected)
-	if view.Kind != jobcontract.KindPerformance || view.Location.ConfigurationID != input.ConfigurationID {
-		t.Fatal("the retained job is not the original remote performance submission")
+	validKind := view.Kind == jobcontract.KindPerformance || view.Kind == jobcontract.KindRun
+	if !validKind || view.Location.ConfigurationID != input.ConfigurationID {
+		t.Fatal("the retained job is not the original supported remote submission")
 	}
+	result.Kind, result.Executor = view.Kind, view.Executor
 	_ = json.NewEncoder(os.Stdout).Encode(sharedResumeEvent{
 		Stage: "original_accepted", JobID: input.JobID, State: string(view.Delivery),
 	})
-	view = waitSharedRunnerMirror(t, ctx, app, input.JobID)
+	failure.enter("remote_observation", deadline)
+	audit, err := openLiveK3Audit(ctx, liveK3AuditSettings{ConfigurationRoot: configurationRoot,
+		Credentials: store, ConfigurationID: input.ConfigurationID, Expected: view})
+	if err != nil {
+		failSharedLive(t, ctx, "job_read_unavailable")
+	}
+	readonly := &sharedResumeConnection{runnerConnection: audit, guard: guard}
+	defer readonly.Close()
+	observeSharedResumeOriginal(t, ctx, readonly, view, &result)
+	failure.enter("mirror", deadline)
+	view = waitSharedResumeMirror(t, ctx, app, input.JobID, result)
 	assertLiveK3Executor(t, view, expected)
 	_ = json.NewEncoder(os.Stdout).Encode(sharedResumeEvent{
-		Stage: "mirror_completed", JobID: input.JobID, State: string(view.Execution.Status),
+		Stage: "mirror_terminal", JobID: input.JobID, State: string(view.Execution.Status),
 	})
-	outcome := waitLiveK3Performance(t, ctx, app, input.JobID)
-	archive := waitLiveK3Archive(t, ctx, app, outcome.ReportID)
-	result := sharedResumeResult{Executor: view.Executor, ReportID: outcome.ReportID,
-		Sealed: outcome.SealedAt != "", Archived: archive.Archived,
-		Origin: liveK3PerformanceOriginMatches(outcome, view) && liveK3ArchiveOriginMatches(archive, outcome)}
-	if !sharedRunnerMinimumPerformance(outcome) || !result.Origin || !result.Sealed || !result.Archived {
-		t.Fatal("the original mock performance result and archive are incomplete")
+	failure.enter("report", deadline)
+	if view.Kind == jobcontract.KindPerformance {
+		outcome := waitLiveK3Performance(t, ctx, app, input.JobID)
+		archive := waitLiveK3Archive(t, ctx, app, outcome.ReportID)
+		result.ReportID, result.Sealed, result.Archived = outcome.ReportID, outcome.SealedAt != "", archive.Archived
+		result.Origin = liveK3PerformanceOriginMatches(outcome, view) && liveK3ArchiveOriginMatches(archive, outcome)
+		if !sharedRunnerMinimumPerformance(outcome) || !result.Origin || !result.Sealed || !result.Archived {
+			failSharedLive(t, ctx, "report_invalid")
+		}
+	} else {
+		suite := liveK3FullSuites(t, app)[1]
+		detail := waitLiveK3Report(t, ctx, app, view)
+		if !sharedResumeRunReport(detail, suite, view, &result) {
+			failSharedLive(t, ctx, "report_invalid")
+		}
 	}
+	result.ReportVerified = true
 	assertLiveK3Outbox(t, app, []liveK3JobSummary{{JobID: input.JobID}})
+	failure.enter("final_probe", deadline)
+	probe, err := readonly.Probe(ctx)
+	if err != nil {
+		failSharedLive(t, ctx, "runner_probe_unavailable")
+	}
+	idle := probe.Active == 0 && probe.Queued == 0 && probe.Pending == 0
+	if sharedRunnerProbeError(probe, view.Executor) != nil || !idle {
+		failSharedLive(t, ctx, "runner_unhealthy")
+	}
+	result.Healthy, result.Pending = probe.Healthy && probe.Ready, probe.Pending
+	failure.enter("shutdown", deadline)
 	if err := app.shutdown(); err != nil {
 		t.Fatal("query-only recovery shutdown failed")
 	}
@@ -227,8 +299,137 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	if result.BlockedWrites != 0 || result.ProviderCalls != 0 {
 		t.Fatal("query-only recovery attempted a forbidden runner write or provider request")
 	}
-	final = sharedResumeEvent{Stage: "completed", JobID: input.JobID,
+	final = sharedResumeEvent{Stage: "query_verified", JobID: input.JobID,
 		State: string(view.Execution.Status), Result: &result}
+}
+
+func observeSharedResumeOriginal(
+	t *testing.T,
+	ctx context.Context,
+	audit runnerConnection,
+	view jobs.JobView,
+	result *sharedResumeResult,
+) {
+	t.Helper()
+	last := ""
+	for {
+		snapshot, err := audit.GetJob(ctx, view.JobID)
+		if err != nil {
+			failSharedLive(t, ctx, "job_read_unavailable")
+		}
+		matching := liveK3AuditIdentity(view, snapshot) && view.Confirmation != nil &&
+			snapshot.Receipt.AcceptedAt.Format(time.RFC3339Nano) == view.Confirmation.AcceptedAt &&
+			snapshot.Receipt.Revision >= view.Confirmation.Revision
+		if !matching {
+			failSharedLive(t, ctx, "job_identity_changed")
+		}
+		result.ServerState, result.ServerSequence = snapshot.Receipt.Status, snapshot.LatestSequence
+		result.ServerRevision = snapshot.Receipt.Revision
+		probe, err := audit.Probe(ctx)
+		if err != nil {
+			failSharedLive(t, ctx, "runner_probe_unavailable")
+		}
+		result.Healthy, result.Pending = probe.Ready && probe.Healthy, probe.Pending
+		if sharedRunnerProbeError(probe, view.Executor) != nil {
+			failSharedLive(t, ctx, "runner_unhealthy")
+		}
+		state := string(snapshot.Receipt.Status)
+		if state != last {
+			_ = json.NewEncoder(os.Stdout).Encode(sharedResumeEvent{Stage: "server_observed",
+				JobID: view.JobID, State: state, Result: result})
+			last = state
+		}
+		if jobcontract.Terminal(snapshot.Receipt.Status) {
+			result.OriginalOutcome = snapshot.Receipt.Status
+			settled := sharedRunnerLiveResult{Executor: view.Executor}
+			waitSharedRunnerSettled(t, ctx, audit, time.Now(), &settled)
+			return
+		}
+		liveK3Pause(t, ctx, time.Second)
+	}
+}
+
+func waitSharedResumeMirror(
+	t *testing.T,
+	ctx context.Context,
+	app *DesktopApp,
+	id string,
+	remote sharedResumeResult,
+) jobs.JobView {
+	t.Helper()
+	for {
+		view, err := app.GetJob(id)
+		if err == nil && view.Execution != nil {
+			execution := view.Execution
+			if jobcontract.Terminal(execution.Status) && execution.Status != remote.ServerState {
+				failSharedLive(t, ctx, "job_identity_changed")
+			}
+			if execution.Status == remote.ServerState && execution.Revision == remote.ServerRevision &&
+				execution.LatestSequence >= remote.ServerSequence {
+				return view
+			}
+		}
+		liveK3Pause(t, ctx, time.Second)
+	}
+}
+
+func sharedResumeRunReport(
+	detail reporting.Detail,
+	suite liveK3Suite,
+	view jobs.JobView,
+	result *sharedResumeResult,
+) bool {
+	report := detail.Report
+	if detail.Source != reporting.SourceRun || report.Validate() != nil || len(view.RunIDs) != 1 ||
+		view.Execution == nil || report.RunID != view.RunIDs[0] || report.RunStatus != view.Execution.Status ||
+		report.Protocol != suite.protocol || suite.count != 230 {
+		return false
+	}
+	result.ReportID, result.ExpectedCases, result.ActualCases = report.ID, suite.count, len(report.CaseResults)
+	result.Origin = liveK3OriginMatches(report.ExecutionOrigin, view.Executor)
+	reported, observed, valid := sharedResumeCaseSubset(suite.caseKeys, report.CaseResults, detail.RequestResults)
+	if !valid {
+		return false
+	}
+	result.ObservedCases, result.CaseIdentitiesMatch = observed, true
+	result.FullSuiteComplete = report.RunStatus == domain.RunCompleted &&
+		reported == suite.count && observed == suite.count
+	return result.Origin
+}
+
+func sharedResumeCaseSubset(expected map[string]string, summaries, requests []domain.Result) (int, int, bool) {
+	reported, observed := map[string]bool{}, map[string]bool{}
+	for _, item := range summaries {
+		if expected[item.CaseID] == "" || reported[item.CaseID] {
+			return 0, 0, false
+		}
+		reported[item.CaseID] = true
+	}
+	for _, item := range requests {
+		if expected[item.CaseID] == "" || !reported[item.CaseID] {
+			return 0, 0, false
+		}
+		observed[item.CaseID] = true
+	}
+	return len(reported), len(observed), true
+}
+
+func TestSharedResumeFailedRunPreservesPartialCaseIdentity(t *testing.T) {
+	expected := map[string]string{"a": "case-a", "b": "case-b", "c": "case-c"}
+	summaries := []domain.Result{{CaseID: "a"}, {CaseID: "b"}}
+	requests := []domain.Result{{CaseID: "a"}, {CaseID: "a"}}
+	reported, observed, valid := sharedResumeCaseSubset(expected, summaries, requests)
+	if !valid || reported != 2 || observed != 1 {
+		t.Fatal("a partial failure must retain distinct reported and request-backed observed counts")
+	}
+	for _, bad := range [][]domain.Result{{{CaseID: "unknown"}}, {{CaseID: "a"}, {CaseID: "a"}}} {
+		if _, _, valid := sharedResumeCaseSubset(expected, bad, nil); valid {
+			t.Fatal("unknown or duplicate summary case identities were accepted")
+		}
+	}
+	if _, _, valid := sharedResumeCaseSubset(expected, summaries, []domain.Result{{CaseID: "c"}}); valid {
+		t.Fatal("a request outside the original partial report was accepted")
+	}
 }
 
 func decodeSharedResumeInput(reader io.Reader) (sharedResumeLiveInput, error) {
