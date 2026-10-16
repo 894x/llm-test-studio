@@ -27,6 +27,8 @@ type Upload struct {
 const (
 	maxUploadBytes      = 256 << 20
 	transferBufferBytes = 512 << 10
+	sftpMetadataTimeout = 2 * time.Minute
+	sftpArtifactTimeout = 5 * time.Minute
 )
 
 // UploadNew validates both the transmitted bytes and a separate SFTP readback.
@@ -39,7 +41,7 @@ func (client *Client) UploadNew(ctx context.Context, upload Upload) error {
 	if !valid || upload.Source == nil {
 		return ErrInvalid
 	}
-	return client.withSFTP(ctx, func(remote *sftp.Client) error {
+	return client.withSFTP(ctx, sftpArtifactTimeout, func(remote *sftp.Client) error {
 		if err := verifyParents(remote, upload.Path); err != nil {
 			return err
 		}
@@ -124,7 +126,7 @@ func (client *Client) ReadPrivate(ctx context.Context, name string, owner uint32
 		return nil, ErrInvalid
 	}
 	document := []byte{}
-	err := client.withSFTP(ctx, func(remote *sftp.Client) error {
+	err := client.withSFTP(ctx, sftpMetadataTimeout, func(remote *sftp.Client) error {
 		if err := verifyParents(remote, name); err != nil {
 			return err
 		}
@@ -206,11 +208,11 @@ func verifyParents(remote *sftp.Client, name string) error {
 	}
 }
 
-func (client *Client) withSFTP(ctx context.Context, operation func(*sftp.Client) error) error {
-	if client == nil || ctx == nil {
+func (client *Client) withSFTP(ctx context.Context, timeout time.Duration, operation func(*sftp.Client) error) error {
+	if client == nil || ctx == nil || timeout <= 0 {
 		return ErrInvalid
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// SFTP methods have no context. Closing the SSH connection interrupts blocked
 	// channel creation and file I/O; accepted runner tasks remain independent.

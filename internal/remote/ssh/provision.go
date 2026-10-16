@@ -89,7 +89,7 @@ func (client *Client) Provision(
 	directory := BootstrapDirectory(request.OperationID)
 	// The caller persists this exact operation-derived path before provisioning.
 	// An existing directory must be recovered explicitly, never reused for upload.
-	if err := client.withSFTP(ctx, func(remote *sftp.Client) error {
+	if err := client.withSFTP(ctx, sftpMetadataTimeout, func(remote *sftp.Client) error {
 		if err := verifyParents(remote, directory); err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func (client *Client) CleanupBootstrap(ctx context.Context, directory string) er
 	if !ValidBootstrapDirectory(directory) {
 		return ErrInvalid
 	}
-	return client.withSFTP(ctx, func(remote *sftp.Client) error {
+	return client.withSFTP(ctx, sftpMetadataTimeout, func(remote *sftp.Client) error {
 		if err := verifyParents(remote, directory+"/llm-test-runner"); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return nil

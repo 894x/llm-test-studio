@@ -315,7 +315,7 @@ func (client *Client) prepareUpgrade(ctx context.Context, call upgradeCall) erro
 	}
 	directory := UpgradeDirectory(call.request.OperationID)
 	exists := false
-	if err := client.withSFTP(ctx, func(remote *sftp.Client) error {
+	if err := client.withSFTP(ctx, sftpMetadataTimeout, func(remote *sftp.Client) error {
 		if err := verifyParents(remote, directory); err != nil {
 			return err
 		}
@@ -349,7 +349,7 @@ func (client *Client) prepareUpgrade(ctx context.Context, call upgradeCall) erro
 	}
 	present := map[string]bool{}
 	partials := []Upload{}
-	if err := client.withSFTP(ctx, func(remote *sftp.Client) error {
+	if err := client.withSFTP(ctx, sftpArtifactTimeout, func(remote *sftp.Client) error {
 		if err := verifyUpgradeDirectory(remote, directory); err != nil {
 			return err
 		}
@@ -404,7 +404,7 @@ func (client *Client) prepareUpgrade(ctx context.Context, call upgradeCall) erro
 		if unit.running() {
 			return ErrUpgradePending
 		}
-		if err := client.withSFTP(ctx, func(remote *sftp.Client) error {
+		if err := client.withSFTP(ctx, sftpMetadataTimeout, func(remote *sftp.Client) error {
 			if err := verifyUpgradeDirectory(remote, directory); err != nil {
 				return err
 			}
@@ -457,7 +457,7 @@ func (client *Client) reuseStagedUpgrade(ctx context.Context, call upgradeCall) 
 	digest := sha256.Sum256(input)
 	request := Upload{Path: directory + "/request.json", Mode: 0600, Size: int64(len(input)),
 		SHA256: hex.EncodeToString(digest[:])}
-	err = client.withSFTP(ctx, func(remote *sftp.Client) error {
+	err = client.withSFTP(ctx, sftpArtifactTimeout, func(remote *sftp.Client) error {
 		if err := verifyUpgradeDirectory(remote, directory); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return ErrUpgradeArtifactUnavailable
