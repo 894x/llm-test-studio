@@ -235,3 +235,11 @@ P3首片31文件由secondary40b296e整合main00b1802，冷查询11文件由secon
 后续exact94离线诊断已完成：原r4保留clone的13条Spec/accepted原字节经匿名stdin送入，DecodeSpec、stored/raw/canonical摘要、accepted解码/身份/Origin与Snapshot.Validate/内层digest全部通过，exit0/EOF/13complete/all_valid=true，源摘要不变。这只证明固定定义及accepted层当前可读，普通nullable/digest候选未在该13条上复现；未覆盖后续事件/报告或同步DB写，原r6 false不改，下一步转向同步落库及后续边界，不据此声明Manager A完成。证据见[验证记录](remote-execution-validation.md)。
 
 后续Manager A阶段已由secondary9215c65整合main1f86d55，14个Git blobs一致；owned physical pins/Permit/digest绑定、独立borrow与Close join、Linux真实statx/私有marker及主树Windows/WSL定向包验证通过。A不再改schema；Host接线、SQL非空内容、HTTP组合、Stage、manifest/release和Windows adapter尚未接通，assets/fileLaunch仍false。它是阶段完成，不是整体资产执行、真实DB/SSH/provider/native或race验收；完整证据见[验证记录](remote-execution-validation.md)，13条诊断与原r6 false保留。
+
+## B1 typed Render/Send 已整合（cf83ad3，非文件Job执行）
+
+B1的18文件由secondary32b302d整合mainf6c786f；RenderInput/RenderedRequest/FileOccurrence/runtime.Request替换内部Render/Send契约，所有repo调用者与fixture已更新，无RawMessage旧wrapper。唯一builder在注入model后编码并算真实wire长度/SHA，读取实际流并核hash与PNG/JPEG配置，仅替换显式声明的原生Chat image位置；文件至1 MiB、每request一次occurrence、final wire至4 MiB，4个文件编码槽各保守计16 MiB，即64 MiB额外payload策略，不是总RSS上限。取消后不再暴露body字节，源/槽释放与Close join、redacted_asset evidence已验证。
+
+PreparedWire只属内部json:-，不是对端完整消费body的证明；Report/Exchange/PerformanceSample当前持久形状、schema、JobSpec filegate和cap均不改，不需B1历史转换。Stage、Host/SQL非空、runtime adapter桥、native_case、持久RequestWire字段、Windows physical adapter及assetlaunch尚未接通。clean cf83全仓Go/vet已通过，A14+B1 18 blobs无漂移；本阶段未重跑Wails/FE/native，不是实机文件闭环，原r6 false和真实DB切换边界不变，证据见[验证记录](remote-execution-validation.md)。
+
+单50620首页随后已离线实际执行：保留r4的seq1..13原event bytes组成6659B重建envelope（非捕获HTTP，has_more=false），currentClient内存fake transport解码一次、Batch/Budget通过，新owned TEMP 1db的Apply恰一次5.802ms成功，mirror seq13/rev4/completed且digest/Origin匹配，Close/EOF/exit0。它只证明固定小Performance旧事件页当前可读可写，不覆盖实际HTTP/Probe、并发调度、其他任务或fullsync；原r6 false及真实数据切换边界保持，证据见[验证记录](remote-execution-validation.md)。

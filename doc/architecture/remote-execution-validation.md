@@ -838,3 +838,19 @@ secondary9215c65的14文件已整合main `1f86d550b5033101b90b302125aa739eb36bd0
 主树Windows jobcontent0.613s、jobhost23.125s、runnerhttp37.594s完整包及对应vet均0；Linux/amd64 CGO0两个包交叉编译和vet通过，主树新binary在WSL Ubuntu24.04 UID0实际执行runnerstate全包6.06738s、contentstate全包0.456949s，均exit0、binary未变。初次session27673因PowerShell native参数拆分为无效-test而harness exit1；改用Python传精确argv后重用同binary通过，未改产品、未重复Windows检查，原调用失败保留，不将其抹成一次全绿。
 
 证据 `%TEMP%/llm-content-manager-main-1f86d55-20261016/verification.safe.json` SHA `e2e61aae98568c88732fd0b489e63bfcbaded5b12c633577d59bb6a540c4c068`，Windows及WSL原日志保留。这是A阶段定向包/平台验证，不是新的全仓、实际用户或服务器DB、外部SSH/provider/native/race证明；前述13条Spec/accepted诊断的范围与原r6 false不变，后续仍需完成文件链路与同步落库/事件/报告边界。
+
+## 2026-10-16：B1 typed Render/Send 整合与完整主树Go检查通过
+
+B1 secondary32b302d→mainf6c786f共18文件，统一RenderInput/RenderedRequest/FileOccurrence/runtime.Request并更新所有repo调用者及transport fixture，无RawMessage Render/Send旧wrapper。FileOccurrence带外、JSON保留已验证null位置；唯一builder在最终编码前注入model，按真实wire算长度/SHA，读取实际源流核hash与PNG/JPEG配置，只替换显式原生Chat image位置。文件至1 MiB、宽高各至4096/16777216像素、每request一次occurrence、final wire至4 MiB；4个shared文件编码槽各保守计16 MiB，为64 MiB额外payload策略而非总RSS承诺。body与transport Read/Close同步、取消后拒绝继续读，源/槽只释放一次，Direct Send response读取与Client.Close join；当前evidence用redacted_asset，沿用64 KiB omitted_size_limit，独立于wire cap。
+
+PreparedWire是runtime.Response内部json:-字段，只描述准备结果，不证明对端消费完整body；未新增持久RequestWire，Report/Exchange/PerformanceSample当前形状、schema、JobSpec filegate/cap均未变，不需或执行B1历史转换。Stage、Host/SQL非空、runtime adapter桥、native_case、Windows physical adapter、HTTP组合及manifest/release仍未接通，fileLaunch/asset执行仍不开放。原冻结证据 `%TEMP%/llm-b1-wire-proof-94f1b39-85e32c31cbdc445586870b0be863621f/source-freeze.json` SHA `3c2f0e7b6adf4a634abd13a4d296677fef27453f9c9c447ec57427f8d1be1948`，verification.md记录Windows完整testspec/protocols及vet、filegate回归、CGO0 Linux交叉编译和实际WSL protocols通过；取消后读的确定性RED→GREEN及独立review闭环保留，仅fake transport/loopback，不是physical/provider证明。
+
+父级session49820已真实终态exit0，HEAD/status前后clean `cf83ad3979c3ce8b56e41baa756b01df462f2892`，Go1.26.6 Windows/amd64 CGO0/GOMAXPROCS2；`go test -p 2 ./... -count=1 -timeout=15m` 和 `go vet -p 2 ./...` 均0，总317.2033226s。670个Go/module加15个dist共685输入前后清单SHA同为 `a026703a671cda098c3d21febf8396d2a10f167787fc4552c4028542eade3570`。证据根 `%TEMP%/llm-b1-main-cf83ad3-20261016/`，verification.safe.json SHA `04232c69642ee0e9892072312ae6684846360cb455c6ef230c04918606254d62`，go-test.raw.log SHA `3d777c6f5a2fb2a985cc676b18fd5558741abb9601eb69ac97a32db9b87494b8`，vet日志为空；integration-provenance.safe.json SHA `7bf5faad1534cd670f2b6f6c55a906302635a8f46aa19b5b0cb0d8275fbe65ce`核A14+B1 18 Git blobs0漂移。
+
+本阶段无FE/bindings改动，未重跑Wails/FE/native；旧P2a结果不冒充B1新执行。以上不等于实机文件全链、race、真实DB切换或原冷同步通过，原r6及所有旧false保留；该主树检查记录时单50620 first-page诊断仍prepared，后续离线执行见下一节，不新增该项实机结论。
+
+## 2026-10-16：固定50620首页离线解码与一次新库Apply通过
+
+父级已实际执行 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/offline-first-page-50620-94/parent-retained-first-page.safe.json` 所记诊断，SHA `d7f6a3d03111c7b852f0033aac09d28c80511f3e69501b37cd58ab9d87172946`。原r4保留clone取Job50620b5e-ec5b-4ccb-b7f1-3f456a2844bc的13条原event bytes、seq1..13，经匿名stdin构成6659B页面、has_more=false；周围page envelope是重建值，非捕获的真实HTTP响应。currentClient使用内存fake transport、0HTTP解码一次，Batch/Budget通过；只对新owned TEMP current1db执行Apply恰一次，5.802ms成功，GetMirror seq13/rev4/completed、digest/Origin匹配，Go总47.792ms，父级总elapsed0.131656s。实际Close、DiagnosticComplete、ImportSuccess、process0/readerEOF；import_success只指该页Apply与mirror回读，未表示文档下载完成。
+
+记录报告源58c88c6f…e93a不变，新的entry-2234119231/current.db与owner marker保留，675840字节、SHA `40e1276915eb7c51aa60f7d5e27c54a3fb5df1ad66172c5f50f987c75bcb236d`；它是新建诊断库，不是历史DB转换或实际切换，本次文档更新仅读safe JSON。固定小Performance旧页可读可写，不覆盖当前服务器HTTP/Probe、并发调度、其他任务或fullsync，r6保留库原9项缺镜像事实未被该新库实验改写。下一步仅准备真实冷同步阶段观测卡，未新GET/SSH/E2E/provider，原r6及所有旧false、资产关闭和真实数据切换边界保持。
