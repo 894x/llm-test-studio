@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -17,6 +19,13 @@ func (repository *Repository) CheckWritable(ctx context.Context) error {
 		return fmt.Errorf("probe runner writer: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
+		// database/sql may finish its cancellation rollback before Commit,
+		// returning ErrTxDone instead of the transaction context's error.
+		// Only that exact sentinel is ambiguous; other database failures remain
+		// faults even when the context happens to expire at the same time.
+		if contextErr := ctx.Err(); err == sql.ErrTxDone && contextErr != nil {
+			err = errors.Join(err, contextErr)
+		}
 		return fmt.Errorf("commit runner write probe: %w", err)
 	}
 	return nil
