@@ -9,12 +9,13 @@ export async function launchAtDefault(client: Pick<JobClient, "getRemoteNodes" |
 }
 
 export function jobControlRevision(job: JobView): number | null {
-  if (job.execution && job.confirmation) return Math.max(job.execution.revision, job.confirmation.revision)
-  return job.execution?.revision ?? job.confirmation?.revision ?? null
+  const confirmation = job.submission?.confirmation
+  if (job.execution && confirmation) return Math.max(job.execution.revision, confirmation.revision)
+  return job.execution?.revision ?? confirmation?.revision ?? null
 }
 
-// Run history predates managed Jobs. Only a persisted submission can authorize
-// a command; a run ID alone never identifies an executor or control revision.
+// A managed Job supplies the actual executor and authoritative control revision,
+// including shared remote jobs. A run ID alone cannot identify a control target.
 export async function controlRun(client: JobClient, runID: string, kind: ControlInput["kind"]): Promise<JobView> {
   let cursor = ""
   const visited = new Set<string>()

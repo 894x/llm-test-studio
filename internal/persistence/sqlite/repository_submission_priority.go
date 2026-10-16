@@ -21,7 +21,7 @@ func (repository *Repository) ListRemoteSubmissionIDs(
 	after string,
 	limit uint32,
 ) (remoteresults.PriorityPage, error) {
-	if !validSubmittedPage(ctx, after, limit) || origin.Validate() != nil {
+	if !validJobPage(ctx, after, limit) || origin.Validate() != nil {
 		return remoteresults.PriorityPage{}, jobs.ErrInvalid
 	}
 	rows, err := repository.db.QueryContext(

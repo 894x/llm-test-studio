@@ -1,6 +1,6 @@
 import { vi } from "vitest"
 import type { DesktopClient } from "@/app/desktop-client"
-import type { JobView, ControlView, PerformanceResultView } from "@/features/jobs/data"
+import type { JobView, SubmissionView, ControlView, PerformanceResultView } from "@/features/jobs/data"
 import { EMPTY_REMOTE_NODES } from "@/features/remote-nodes/data"
 import type { QuickPerformanceReport } from "@/features/quick-test/data"
 
@@ -10,6 +10,12 @@ export const REPORT_ID = "c1111111-1111-4111-8111-111111111111"
 export const RUN_ID = "d1111111-1111-4111-8111-111111111111"
 export const JOB_TIME = "2026-10-16T00:00:00Z"
 
+export function submissionFixture(overrides: Partial<SubmissionView> = {}): SubmissionView {
+  return { delivery_revision: 2, delivery: "accepted", observation: "",
+    prepared_at: JOB_TIME, delivery_updated_at: JOB_TIME,
+    confirmation: { status: "running", revision: 1, accepted_at: JOB_TIME }, ...overrides }
+}
+
 export function jobFixture(overrides: Partial<JobView> = {}): JobView {
   return {
     schema_version: 1, job_id: JOB_ID, kind: "performance",
@@ -17,10 +23,8 @@ export function jobFixture(overrides: Partial<JobView> = {}): JobView {
     executor: { node_id: "e1111111-1111-4111-8111-111111111111",
       installation_id: "f1111111-1111-4111-8111-111111111111",
       version: "test-current", build_id: "a".repeat(64), os: "windows", arch: "amd64" },
-    delivery_revision: 2, delivery: "accepted", observation: "",
-    prepared_at: JOB_TIME, delivery_updated_at: JOB_TIME,
+    submission: submissionFixture(),
     run_ids: [], report_ids: [REPORT_ID], comparison_id: "",
-    confirmation: { status: "running", revision: 1, accepted_at: JOB_TIME },
     execution: { status: "running", revision: 1, latest_sequence: 1,
       accepted_at: JOB_TIME, updated_at: JOB_TIME, failure: null },
     progress: null, performance_result_ready: false,
@@ -57,7 +61,7 @@ export function executionClient(report?: QuickPerformanceReport) {
   const active = jobFixture()
   const accepted = jobFixture({ execution: null })
   const completed = jobFixture({
-    confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME },
+    submission: submissionFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME } }),
     execution: { ...active.execution!, status: "completed", revision: 2, latest_sequence: 3 },
     performance_result_ready: true,
   })

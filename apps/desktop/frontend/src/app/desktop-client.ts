@@ -672,7 +672,7 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     launchJob: async command => callBinding(() => binding.LaunchJob(command), value => {
       const job = parseJobView(value)
       const kind = command.kind === "plan" || command.kind === "quick_task" ? "run" : command.kind
-      if (job.kind !== kind || job.location.kind !== command.location.kind || job.location.configuration_id !== command.location.configuration_id) throw new DesktopDataError("Invalid launch identity")
+      if (!job.submission || job.kind !== kind || job.location.kind !== command.location.kind || job.location.configuration_id !== command.location.configuration_id) throw new DesktopDataError("Invalid launch identity")
       return job
     }),
     getJobs: async (after, limit) => callBinding(() => binding.GetJobs(after, limit), parseJobPage),

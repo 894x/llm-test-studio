@@ -677,6 +677,11 @@ func TestRemoteMirrorImportsRealCoreWarmupAndRampProgress(t *testing.T) {
 	defer desktop.Close()
 	events := remoteEvents(t, node, spec)
 	applyRemoteEvents(t, desktop, events)
+	view, err := desktop.Job(t.Context(), spec.JobID)
+	if err != nil || view.Submission != nil || view.Execution == nil || view.Progress == nil ||
+		view.Progress.Progress != report.Progress {
+		t.Fatalf("actual foreign progress was not available through the shared query: %v", err)
+	}
 	bad := events[len(events)-1]
 	bad.Sequence++
 	bad.Payload = canonicalFixtureJSON(t, quicktest.PerformanceProgress{Phase: "unsupported_phase"})

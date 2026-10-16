@@ -14,13 +14,14 @@ import (
 
 const MaxProgressViewBytes = 64 << 10
 
-// Query reads the fixed submission and its durable execution projection.
+// Query reads local delivery and actual execution facts, including shared jobs.
 // Implementations cannot connect to a node, submit, reconcile or send commands.
 type Query interface {
-	SubmittedJob(context.Context, string) (JobView, error)
-	SubmittedJobs(context.Context, string, uint32) (JobPage, error)
-	SubmittedPerformanceResult(context.Context, string) (PerformanceResultView, error)
-	SubmittedJobControls(context.Context, string, string, uint32) (ControlPageView, error)
+	Job(context.Context, string) (JobView, error)
+	Jobs(context.Context, string, uint32) (JobPage, error)
+	PerformanceResult(context.Context, string) (PerformanceResultView, error)
+	// JobControls lists this client's durable deliveries, not other clients' intents.
+	JobControls(context.Context, string, string, uint32) (ControlPageView, error)
 }
 
 type JobPage struct {
@@ -62,26 +63,31 @@ type ProgressView struct {
 	Progress   quicktest.PerformanceProgress `json:"progress"`
 }
 
+// SubmissionView contains only this client's durable job delivery facts.
+type SubmissionView struct {
+	DeliveryRevision  uint64            `json:"delivery_revision"`
+	Delivery          SubmissionState   `json:"delivery"`
+	Observation       Observation       `json:"observation"`
+	PreparedAt        string            `json:"prepared_at"`
+	DeliveryUpdatedAt string            `json:"delivery_updated_at"`
+	Confirmation      *ConfirmationView `json:"confirmation"`
+}
+
 // JobView keeps delivery and execution as separate facts. Missing execution
 // means that no matching state has been observed locally, never a queued job.
 type JobView struct {
-	SchemaVersion          int               `json:"schema_version"`
-	JobID                  string            `json:"job_id"`
-	Kind                   jobcontract.Kind  `json:"kind"`
-	Location               Location          `json:"location"`
-	Executor               ExecutorView      `json:"executor"`
-	DeliveryRevision       uint64            `json:"delivery_revision"`
-	Delivery               SubmissionState   `json:"delivery"`
-	Observation            Observation       `json:"observation"`
-	PreparedAt             string            `json:"prepared_at"`
-	DeliveryUpdatedAt      string            `json:"delivery_updated_at"`
-	RunIDs                 []string          `json:"run_ids"`
-	ReportIDs              []string          `json:"report_ids"`
-	ComparisonID           string            `json:"comparison_id"`
-	Confirmation           *ConfirmationView `json:"confirmation"`
-	Execution              *ExecutionView    `json:"execution"`
-	Progress               *ProgressView     `json:"progress"`
-	PerformanceResultReady bool              `json:"performance_result_ready"`
+	SchemaVersion          int              `json:"schema_version"`
+	JobID                  string           `json:"job_id"`
+	Kind                   jobcontract.Kind `json:"kind"`
+	Location               Location         `json:"location"`
+	Executor               ExecutorView     `json:"executor"`
+	Submission             *SubmissionView  `json:"submission"`
+	RunIDs                 []string         `json:"run_ids"`
+	ReportIDs              []string         `json:"report_ids"`
+	ComparisonID           string           `json:"comparison_id"`
+	Execution              *ExecutionView   `json:"execution"`
+	Progress               *ProgressView    `json:"progress"`
+	PerformanceResultReady bool             `json:"performance_result_ready"`
 }
 
 type PerformanceObservationView struct {
@@ -108,27 +114,29 @@ type PerformanceResultView struct {
 	Observation      *PerformanceObservationView             `json:"observation"`
 }
 
-// ProjectSubmittedJob receives records from one storage snapshot. The caller
-// must also compare the stored execution spec to record.SpecSHA256.
-func ProjectSubmittedJob(
-	record SubmissionRecord,
-	execution *jobcontract.Snapshot,
+// ProjectJob projects one consistent set of delivery and actual executor facts.
+func ProjectJob(
+	read JobRead,
 	progress *ProgressView,
 	resultReady bool,
 ) (JobView, error) {
-	if record.Validate() != nil {
-		return JobView{}, ErrInvalid
+	if err := read.Validate(); err != nil {
+		return JobView{}, err
 	}
-	spec := record.Prepared.Spec
+	spec, execution := read.Spec, read.Execution
 	view := JobView{SchemaVersion: 1, JobID: spec.JobID, Kind: spec.Kind,
-		Location: recordLocation(record), Executor: executorView(record.Prepared),
-		DeliveryRevision: record.Revision, Delivery: record.State, Observation: record.Observation,
-		PreparedAt: record.CreatedAt.Format(time.RFC3339Nano), DeliveryUpdatedAt: record.UpdatedAt.Format(time.RFC3339Nano),
-		RunIDs: []string{}, ReportIDs: []string{}}
-	if receipt := record.Receipt; receipt != nil {
-		view.Executor = originExecutorView(receipt.Origin)
-		view.Confirmation = &ConfirmationView{Status: receipt.Status, Revision: receipt.Revision,
-			AcceptedAt: receipt.AcceptedAt.Format(time.RFC3339Nano)}
+		Location: read.Location,
+		RunIDs:   []string{}, ReportIDs: []string{}}
+	if record := read.Submission; record != nil {
+		view.Executor = executorView(record.Prepared)
+		view.Submission = &SubmissionView{DeliveryRevision: record.Revision, Delivery: record.State,
+			Observation: record.Observation, PreparedAt: record.CreatedAt.Format(time.RFC3339Nano),
+			DeliveryUpdatedAt: record.UpdatedAt.Format(time.RFC3339Nano)}
+		if receipt := record.Receipt; receipt != nil {
+			view.Executor = originExecutorView(receipt.Origin)
+			view.Submission.Confirmation = &ConfirmationView{Status: receipt.Status, Revision: receipt.Revision,
+				AcceptedAt: receipt.AcceptedAt.Format(time.RFC3339Nano)}
+		}
 	}
 	for _, input := range spec.PreparedRuns() {
 		view.RunIDs = append(view.RunIDs, input.Meta.ID)
@@ -145,21 +153,13 @@ func ProjectSubmittedJob(
 		}
 		return view, nil
 	}
-	if record.State == SubmissionPrepared || execution.Validate(spec) != nil {
-		return JobView{}, ErrConflict
-	}
-	if confirmed := record.Receipt; confirmed != nil {
+	if record := read.Submission; record != nil && record.Receipt != nil {
+		confirmed := record.Receipt
 		behind := execution.Receipt.Revision < confirmed.Revision
 		if behind && spec.Target.Kind == jobcontract.TargetRemote {
-			if !confirmedExecutionMatches(execution.Receipt, *confirmed) {
-				return JobView{}, ErrConflict
-			}
 			// GET confirmation and journal synchronization advance independently.
 			// Keep the newer confirmation visible until this mirror catches up.
 			return view, nil
-		}
-		if !confirmedExecutionMatches(*confirmed, execution.Receipt) {
-			return JobView{}, ErrConflict
 		}
 	}
 	view.Executor = originExecutorView(execution.Receipt.Origin)
@@ -209,14 +209,14 @@ func (progress ProgressView) Validate(snapshot jobcontract.Snapshot) error {
 	return nil
 }
 
-func ProjectSubmittedPerformanceResult(
-	record SubmissionRecord,
+func ProjectPerformanceResult(
+	read JobRead,
 	result jobcontract.PerformanceResult,
 ) (PerformanceResultView, error) {
-	if record.Validate() != nil || record.State == SubmissionPrepared {
+	if read.Validate() != nil || read.Submission != nil && read.Submission.State == SubmissionPrepared {
 		return PerformanceResultView{}, ErrInvalid
 	}
-	spec := record.Prepared.Spec
+	spec := read.Spec
 	validOwner := spec.Kind == jobcontract.KindPerformance && spec.Spec.Performance != nil && result.JobID == spec.JobID
 	if !validOwner || result.Validate() != nil || result.Terminal.Validate(spec) != nil {
 		return PerformanceResultView{}, ErrConflict
@@ -224,14 +224,14 @@ func ProjectSubmittedPerformanceResult(
 	if result.ReportID != spec.Spec.Performance.ReportID {
 		return PerformanceResultView{}, ErrConflict
 	}
-	if record.Receipt != nil && !confirmedExecutionMatches(*record.Receipt, result.Terminal.Receipt) {
+	if receipt := read.acceptanceReceipt(); receipt != nil && !confirmedExecutionMatches(*receipt, result.Terminal.Receipt) {
 		return PerformanceResultView{}, ErrConflict
 	}
 	if result.Observation != nil && result.Observation.ValidateFor(spec) != nil {
 		return PerformanceResultView{}, ErrConflict
 	}
 	view := PerformanceResultView{SchemaVersion: 1, JobID: result.JobID, ReportID: result.ReportID,
-		Location: recordLocation(record), Executor: originExecutorView(result.Terminal.Receipt.Origin),
+		Location: read.Location, Executor: originExecutorView(result.Terminal.Receipt.Origin),
 		Terminal: *executionView(result.Terminal),
 		SealedAt: result.SealedAt.Format(time.RFC3339Nano), ExecutionStarted: result.ExecutionStarted,
 		ObservationState: result.ObservationState}

@@ -33,8 +33,10 @@ func TestSubmissionViewsFreezeAcceptedOriginAcrossProbeVersionChanges(t *testing
 	pending := prepared
 	pending.State, pending.Revision = jobs.SubmissionPending, 2
 	for _, record := range []jobs.SubmissionRecord{prepared, pending} {
-		view, err := jobs.ProjectSubmittedJob(record, nil, nil, false)
-		if err != nil || view.Executor.Version != "prepared-probe" || view.Executor.OS != "probe-os" {
+		read := jobs.JobRead{Spec: record.Prepared.Spec, Location: coordinatorLocation, Submission: &record}
+		view, err := jobs.ProjectJob(read, nil, false)
+		if err != nil || view.Submission == nil ||
+			view.Executor.Version != "prepared-probe" || view.Executor.OS != "probe-os" {
 			t.Fatalf("unconfirmed preparation lost its probed executor: %v", err)
 		}
 	}
@@ -56,8 +58,10 @@ func TestSubmissionViewsFreezeAcceptedOriginAcrossProbeVersionChanges(t *testing
 		{record: accepted, execution: &snapshot},
 		{record: pending, execution: &snapshot},
 	} {
-		view, err := jobs.ProjectSubmittedJob(input.record, input.execution, nil, false)
-		if err != nil || view.Executor != want {
+		read := jobs.JobRead{Spec: input.record.Prepared.Spec, Location: coordinatorLocation,
+			Submission: &input.record, Execution: input.execution}
+		view, err := jobs.ProjectJob(read, nil, false)
+		if err != nil || view.Submission == nil || view.Executor != want {
 			t.Fatalf("accepted execution reused preparation probe identity: %v", err)
 		}
 	}
@@ -67,7 +71,8 @@ func TestSubmissionViewsFreezeAcceptedOriginAcrossProbeVersionChanges(t *testing
 	result := jobcontract.PerformanceResult{Contract: jobcontract.CurrentContract,
 		JobID: snapshot.Receipt.JobID, ReportID: snapshot.Receipt.ReportIDs[0], Terminal: terminal,
 		SealedAt: terminal.UpdatedAt, ObservationState: jobcontract.PerformanceNotStarted}
-	view, err := jobs.ProjectSubmittedPerformanceResult(accepted, result)
+	acceptedRead := jobs.JobRead{Spec: accepted.Prepared.Spec, Location: coordinatorLocation, Submission: &accepted}
+	view, err := jobs.ProjectPerformanceResult(acceptedRead, result)
 	if err != nil || view.Executor != want {
 		t.Fatalf("sealed result reused preparation probe identity: %v", err)
 	}
@@ -82,12 +87,14 @@ func TestSubmissionViewsFreezeAcceptedOriginAcrossProbeVersionChanges(t *testing
 	} {
 		changed := terminal
 		mutate(&changed.Receipt.Origin)
-		if _, err := jobs.ProjectSubmittedJob(accepted, &changed, nil, false); !errors.Is(err, jobs.ErrConflict) {
+		changedRead := acceptedRead
+		changedRead.Execution = &changed
+		if _, err := jobs.ProjectJob(changedRead, nil, false); !errors.Is(err, jobs.ErrConflict) {
 			t.Fatalf("changed accepted origin entered execution view: %v", err)
 		}
 		changedResult := result
 		changedResult.Terminal = changed
-		if _, err := jobs.ProjectSubmittedPerformanceResult(accepted, changedResult); !errors.Is(err, jobs.ErrConflict) {
+		if _, err := jobs.ProjectPerformanceResult(acceptedRead, changedResult); !errors.Is(err, jobs.ErrConflict) {
 			t.Fatalf("changed accepted origin entered sealed result: %v", err)
 		}
 	}
@@ -95,13 +102,22 @@ func TestSubmissionViewsFreezeAcceptedOriginAcrossProbeVersionChanges(t *testing
 		CommandID: coordinatorLocation.ConfigurationID, JobID: result.JobID,
 		Kind: jobcontract.CommandCancel, ExpectedRevision: 1}
 	confirmation := jobcontract.CommandConfirmation{Command: command, AcceptedAt: terminal.UpdatedAt, Snapshot: terminal}
-	control := jobs.ControlRecord{SchemaVersion: 1, Command: command, Revision: 2, State: jobs.ControlConfirmed,
+	target, err := acceptedRead.ControlTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Acceptance == nil || target.Acceptance.Origin != origin ||
+		!target.Acceptance.AcceptedAt.Equal(snapshot.Receipt.AcceptedAt) {
+		t.Fatal("control destination lost the real frozen admission")
+	}
+	control := jobs.ControlRecord{SchemaVersion: 1, Command: command, Target: target,
+		Revision: 2, State: jobs.ControlConfirmed,
 		CreatedAt: terminal.UpdatedAt, UpdatedAt: terminal.UpdatedAt, Confirmation: &confirmation}
-	if err := control.ValidateFor(accepted); err != nil {
+	if err := control.ValidateFor(acceptedRead); err != nil {
 		t.Fatal(err)
 	}
 	confirmation.Snapshot.Receipt.Origin.RunnerVersion = "replacement-at-same-acceptance-time"
-	if err := control.ValidateFor(accepted); !errors.Is(err, jobs.ErrConflict) {
+	if err := control.ValidateFor(acceptedRead); !errors.Is(err, jobs.ErrConflict) {
 		t.Fatalf("control confirmation changed the accepted executor version: %v", err)
 	}
 }

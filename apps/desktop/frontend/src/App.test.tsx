@@ -1,5 +1,5 @@
-import { executionClient, jobFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID } from "@/test/jobs-fixture"
-import { protocolReportFixture } from "@/test/protocol-report-fixture"
+import { executionClient, jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID } from "@/test/jobs-fixture"
+import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -19,7 +19,7 @@ import {
 } from "./features/runs/fixtures"
 import type { WorkspaceSnapshot } from "./features/runs/data"
 import type { ReportGenerationProgress } from "./features/reports/generation-progress"
-import { EMPTY_COMPARISONS } from "./features/comparisons/data"
+import { EMPTY_COMPARISONS, type ComparisonSnapshot } from "./features/comparisons/data"
 import { EMPTY_REMOTE_NODES } from "./features/remote-nodes/data"
 import type { QuickPerformanceReport } from "./features/quick-test/data"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY } from "./features/quick-test/task-draft"
@@ -154,7 +154,7 @@ describe("desktop run workspace", () => {
   it("recovers the submitted Job from persisted queries after remount without relaunching", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
-    const pending = jobFixture({ delivery: "pending", observation: "unreachable", confirmation: null, execution: null })
+    const pending = jobFixture({ submission: submissionFixture({ delivery: "pending", observation: "unreachable", confirmation: null }), execution: null })
     vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [pending], next_cursor: "", has_more: false })
     vi.mocked(client.getJob).mockResolvedValue(pending)
     const first = render(<App client={client} />)
@@ -171,6 +171,67 @@ describe("desktop run workspace", () => {
     expect(client.getJob).toHaveBeenCalledWith(JOB_ID)
     expect(client.launchJob).not.toHaveBeenCalled()
     expect(client.controlJob).not.toHaveBeenCalled()
+  })
+
+  it("polls a shared comparison missing from the first reads and opens its synchronized reports", async () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, "", "#reports")
+    const client = desktopClient()
+    client.workspace = { ...client.workspace, active_run_id: undefined, runs: [] }
+    const left = protocolReportFixture()
+    left.report.channel.name = "共享渠道 A"
+    const right = protocolReportFixture("failed")
+    right.report.id = reportID(20)
+    right.report.run_id = reportID(21)
+    right.report.channel = { id: reportID(22), name: "共享渠道 B" }
+    const reports = { schema_version: 1 as const, reports: [
+      ...protocolReportSnapshot(left).reports, ...protocolReportSnapshot(right).reports,
+    ] }
+    const comparison: ComparisonSnapshot = { schema_version: 1, comparisons: [{
+      id: COMMAND_ID, created_at: JOB_TIME, status: "completed", plan_id: reportID(31),
+      plan_name: "共享节点渠道一致性", model_id: left.report.model.id, model_name: left.report.model.name,
+      channels: [left, right].map(detail => ({ channel_id: detail.report.channel.id, channel_name: detail.report.channel.name,
+        run_id: detail.report.run_id, run_status: detail.report.run_status, report_ready: true,
+        passed: detail.report.conclusion.passed, verdict: detail.report.conclusion.verdict, metrics: {} })),
+    }] }
+    const shared = jobFixture({ kind: "comparison", submission: null,
+      location: { kind: "remote", configuration_id: reportID(32) }, comparison_id: COMMAND_ID,
+      run_ids: [left.report.run_id, right.report.run_id], report_ids: [left.report.id, right.report.id],
+      execution: { ...jobFixture().execution!, status: "completed" } })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [shared], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(shared)
+    vi.mocked(client.getComparisons).mockResolvedValueOnce(EMPTY_COMPARISONS)
+      .mockResolvedValueOnce(EMPTY_COMPARISONS).mockResolvedValue(comparison)
+    vi.mocked(client.getReports).mockResolvedValue(reports)
+    vi.mocked(client.getReportDetail).mockImplementation(async id => id === left.report.id ? left : right)
+
+    render(<App client={client} />)
+    await act(async () => {})
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "任务" }))
+    await act(async () => {})
+    expect(screen.getByRole("region", { name: "任务详情" })).toHaveTextContent("共享节点任务")
+    expect(client.getComparisons).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+    await act(async () => {})
+    expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(client.getComparisons).toHaveBeenCalledTimes(3)
+    const open = screen.getByRole("button", { name: "查看渠道对比报告：test-model" })
+    expect(open).toBeEnabled()
+    fireEvent.click(open)
+    await act(async () => {})
+    const table = screen.getByRole("table", { name: "渠道对比用例结果" })
+    expect(table).toHaveTextContent("Reject invalid parameter")
+    expect(table).toHaveTextContent("共享渠道 A")
+    expect(table).toHaveTextContent("共享渠道 B")
+    expect(client.getReportDetail).toHaveBeenCalledWith(left.report.id)
+    expect(client.getReportDetail).toHaveBeenCalledWith(right.report.id)
+    expect(client.launchJob).not.toHaveBeenCalled()
+    expect(client.controlJob).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+    expect(client.getComparisons).toHaveBeenCalledTimes(3)
   })
 
   it("opens on the compact run workspace instead of a dashboard", async () => {
@@ -1491,6 +1552,6 @@ function launchEnvelope(kind: string, payload: unknown) {
 }
 function completedJob() {
   const job = jobFixture()
-  return jobFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME },
+  return jobFixture({ submission: submissionFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME } }),
     execution: { ...job.execution!, status: "completed", revision: 2, latest_sequence: 3 }, performance_result_ready: true })
 }

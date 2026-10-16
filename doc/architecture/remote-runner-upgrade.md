@@ -99,7 +99,7 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 ## 数据与验收边界
 
 仅接受单一当前 SQLite schema 与当前业务格式；历史或未知格式返回升级要求并保留原数据。
-本功能不包含历史读取器、运行时迁移、数据转换或节点数据删除，也不改变现有任务、节点配置和数据库格式。
+本升级功能不包含历史读取器、运行时迁移、数据转换或节点数据删除；shared/foreign独立功能本轮改变了desktop/runner共用SQLite的唯一current checksum，不能把该变更当成本升级流程会自动处理的数据转换。
 
 已验证：Windows Go 全仓测试及 vet、相关最新回归、Linux 交叉编译与 WSL 测试、Wails 2.15.0 bindings 生成，以及独立代码复核。
 覆盖双锁/CAS、same-op 丢 ACK、current schema/WAL 备份、身份 token 保持、Resume 前后恢复门、旧 Resume 丢 ACK、journal 回退、关闭与脱敏边界。SSH staged-digest 修复已本地提交 `86d631692c374295c1ddf5ed6b59d17eade56cb1`，集成全仓 Go 测试 55718 exit 0（desktop 53.965s、remotenodes 3.661s、SSH 2.782s），全仓 vet exit 0；后续 clean476 客户端已使用该修复在实机执行新 operation。
@@ -113,3 +113,9 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 后续 priority c2d39bb 已本地提交并通过全仓 Go/vet；真实验收 37845 以 submit/audit/reopen 三个 OS 进程验证一个免费 Mock 任务在 submit 实际退出后继续、封口并重开恢复，整轮 180 秒预算内观测 37369ms，事后独立复核无 blocking。该观测值在 summary 写盘/owner.close 前记录，不是 wrapper 总生命周期。runner 仍为原 R7 源 3ca/1b94…，本轮未重建/再次部署；当前 client 共享输入另增 2 个 priority 文件，不能声称与 3ca 全同。
 
 本轮 sample1/success1、Launch1、paid0、daemon 进程不变；nativefalse 且使用 scoped MemoryStore，未验证 OS keyring 或真实点击关窗。完整大任务/多 client 公平性、foreign 视图/控制、文件资源、完整还原/故障回滚、native、历史库、重启、第二节点/arm64 与 CI 发布仍待交付；不从单样本推算与旧恢复耗时的提升倍数。精确证据及所有原失败见[验证记录](remote-execution-validation.md)。仅接受当前格式，未转换或删除/reset 用户数据。
+
+本轮 shared/foreign 增加 per-command job_control_targets 及 outbox 复合 FK，schema version1/name0001_protocol_runtime 不变，current checksum 已由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新 runtime 拒绝旧 DB 且保留原数据；现有 R7/3ca 仍运行旧 schema，尚未重建/部署。7afb 源须在下一构建切换前独立离线转换及恢复验证；实际历史用户库为更早 766d1aa…，须固定 766→adc 直接 converter，不能冒充 7afb。工具在 TEMP 准备，未完成验收或切换，不能写数据升级完成。
+
+新 JobView 必填 nullable submission，foreign 只从 actual execution/receipt 取来源；ControlTarget 冻结真实 node/install/spec 与已知 acceptance，历史 executor R4 与 daemon R7 合法，不比较 build 相等。GetJobControls 仅本 client 持久投递记录，foreign pending 控制通过真实 mirror anchor 保留并阻止节点移除。当前四项升级 API、Get 纯 local 和显式 Check 语义未改变；七个 Job Wails 绑定名称不变，新 Job DTO 和共用 schema 是 breaking 变更，不能用旧 reader 或自动迁移绕过。
+
+shared/foreign 本地 Go 全仓/模块 review、FE 与浏览器 fixture 已通过，真实新 shared 控制、native 及数据切换仍 pending。现有 R7 升级、旧 query 和 c2 进程验收只证明其原 schema 阶段，不代表 adc 新 schema 已部署；当前节点数据已因后续 Mock 增长，旧 10Job 基线不是恒定现状。全部历史失败与其他交付范围保留，证据见[验证记录](remote-execution-validation.md)。

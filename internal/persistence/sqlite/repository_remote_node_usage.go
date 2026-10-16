@@ -14,8 +14,8 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
-// RemoteNodeRemovalBlocked reads only this desktop's durable associations. It
-// does not inspect or alter jobs owned by other clients on the remote runner.
+// RemoteNodeRemovalBlocked reads this desktop's durable submissions, mirrors
+// and controls. It does not contact or alter jobs on the remote runner.
 // Empty executor IDs identify an unbound configuration, which must have no jobs.
 func (repository *Repository) RemoteNodeRemovalBlocked(
 	ctx context.Context,
@@ -127,7 +127,11 @@ func remoteNodeJobBlocked(ctx context.Context, tx *sql.Tx, origin remoteresults.
 		if err != nil || digest != record.SpecSHA256 {
 			return false, storageCorrupt("remote node submission mirror spec")
 		}
-		view, err := jobs.ProjectSubmittedJob(record, &mirror.Snapshot, nil, false)
+		read, err := queryExecution(ctx, tx, id)
+		if err != nil {
+			return false, err
+		}
+		view, err := jobs.ProjectJob(read.JobRead, nil, false)
 		if err != nil {
 			return false, storageCorrupt("remote node submission mirror state")
 		}

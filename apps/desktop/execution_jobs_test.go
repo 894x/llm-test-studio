@@ -48,25 +48,25 @@ type recordingJobQuery struct {
 	limit  uint32
 }
 
-func (query *recordingJobQuery) SubmittedJob(ctx context.Context, id string) (jobs.JobView, error) {
+func (query *recordingJobQuery) Job(ctx context.Context, id string) (jobs.JobView, error) {
 	query.ctx, query.jobID = ctx, id
 	query.calls = append(query.calls, "job")
 	return query.job, query.err
 }
 
-func (query *recordingJobQuery) SubmittedJobs(ctx context.Context, after string, limit uint32) (jobs.JobPage, error) {
+func (query *recordingJobQuery) Jobs(ctx context.Context, after string, limit uint32) (jobs.JobPage, error) {
 	query.ctx, query.after, query.limit = ctx, after, limit
 	query.calls = append(query.calls, "jobs")
 	return jobs.JobPage{SchemaVersion: 1, Jobs: []jobs.JobView{}}, query.err
 }
 
-func (query *recordingJobQuery) SubmittedPerformanceResult(ctx context.Context, id string) (jobs.PerformanceResultView, error) {
+func (query *recordingJobQuery) PerformanceResult(ctx context.Context, id string) (jobs.PerformanceResultView, error) {
 	query.ctx, query.jobID = ctx, id
 	query.calls = append(query.calls, "performance")
 	return query.result, query.err
 }
 
-func (query *recordingJobQuery) SubmittedJobControls(ctx context.Context, id, after string, limit uint32) (jobs.ControlPageView, error) {
+func (query *recordingJobQuery) JobControls(ctx context.Context, id, after string, limit uint32) (jobs.ControlPageView, error) {
 	query.ctx, query.jobID, query.after, query.limit = ctx, id, after, limit
 	query.calls = append(query.calls, "controls")
 	return jobs.ControlPageView{SchemaVersion: 1, JobID: id, Commands: []jobs.ControlView{}}, query.err
@@ -134,6 +134,9 @@ func desktopSubmissionFixture(t *testing.T) jobs.SubmissionRecord {
 func desktopControlFixture() jobs.ControlRecord {
 	at := time.Date(2026, 10, 16, 1, 0, 0, 0, time.UTC)
 	return jobs.ControlRecord{SchemaVersion: 1, Revision: 1, State: jobs.ControlPending,
+		Target: jobs.ControlTarget{JobID: desktopJobID, Location: jobs.Location{Kind: jobcontract.TargetLocal},
+			NodeID: "83000000-0000-4000-8000-000000000098", InstallationID: "83000000-0000-4000-8000-000000000097",
+			SpecSHA256: strings.Repeat("a", 64)},
 		CreatedAt: at, UpdatedAt: at, Command: jobcontract.Command{Contract: jobcontract.CurrentContract,
 			CommandID: "83000000-0000-4000-8000-000000000001", JobID: desktopJobID,
 			Kind: jobcontract.CommandCancel, ExpectedRevision: 7}}
@@ -150,10 +153,10 @@ func TestDesktopLaunchReturnsAcceptanceIdentityWithoutFollowupQueries(t *testing
 	t.Cleanup(func() { _ = app.shutdown() })
 	command := desktopLaunchFixture()
 	view, err := app.LaunchJob(command)
-	if err != nil || view.JobID != record.Prepared.Spec.JobID || view.Delivery != jobs.SubmissionPending {
+	if err != nil || view.JobID != record.Prepared.Spec.JobID || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionPending {
 		t.Fatalf("pending launch lost its identity: %v, %v", view, err)
 	}
-	if view.Execution != nil || view.Confirmation != nil || launcher.calls != 1 || len(query.calls) != 0 {
+	if view.Execution != nil || view.Submission.Confirmation != nil || launcher.calls != 1 || len(query.calls) != 0 {
 		t.Fatal("pending delivery invented execution, resent, or depended on a later query")
 	}
 	if launcher.ctx != app.ctx || !reflect.DeepEqual(launcher.command, command) {
@@ -169,7 +172,7 @@ func TestDesktopLaunchReturnsAcceptanceIdentityWithoutFollowupQueries(t *testing
 		Status: domain.RunQueued, Revision: 1, RunIDs: []string{}, ReportIDs: []string{spec.Spec.Performance.ReportID}}
 	launcher.record, launcher.err = record, nil
 	view, err = app.LaunchJob(command)
-	if err != nil || view.JobID != spec.JobID || view.Delivery != jobs.SubmissionAccepted || view.Confirmation == nil {
+	if err != nil || view.JobID != spec.JobID || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionAccepted || view.Submission.Confirmation == nil {
 		t.Fatalf("accepted launch lost its direct confirmation: %v, %v", view, err)
 	}
 	if view.Execution != nil || launcher.calls != 2 || len(query.calls) != 0 {
@@ -305,6 +308,8 @@ func TestDesktopControlPreservesPendingIdentityAndOriginalRevision(t *testing.T)
 
 func TestDesktopControlVerifiesAmbiguousCommitBeforeClaimingSaved(t *testing.T) {
 	record := desktopControlFixture()
+	changedTarget := record
+	changedTarget.Target.InstallationID = "83000000-0000-4000-8000-000000000096"
 	for _, test := range []struct {
 		name    string
 		stored  jobs.ControlRecord
@@ -314,6 +319,7 @@ func TestDesktopControlVerifiesAmbiguousCommitBeforeClaimingSaved(t *testing.T) 
 		{name: "missing", readErr: jobs.ErrNotFound},
 		{name: "unreadable", readErr: errors.New("secret storage error")},
 		{name: "invalid", stored: jobs.ControlRecord{}},
+		{name: "different frozen target", stored: changedTarget},
 		{name: "saved", stored: record, saved: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -341,6 +347,36 @@ func TestDesktopControlVerifiesAmbiguousCommitBeforeClaimingSaved(t *testing.T) 
 				t.Fatal("ambiguous create was resent or not checked by its stable identity")
 			}
 		})
+	}
+}
+
+func TestDesktopSharedJobQueriesPreserveNullSubmissionAndOriginalExecutor(t *testing.T) {
+	view := jobs.JobView{SchemaVersion: 1, JobID: desktopJobID, Kind: jobcontract.KindPerformance,
+		Location:               jobs.Location{Kind: jobcontract.TargetRemote, ConfigurationID: "83000000-0000-4000-8000-000000000095"},
+		Executor:               jobs.ExecutorView{Version: "original-r4", BuildID: strings.Repeat("a", 64)},
+		Execution:              &jobs.ExecutionView{Status: domain.RunCompleted, Revision: 7, LatestSequence: 15},
+		PerformanceResultReady: true}
+	query := &recordingJobQuery{job: view, result: jobs.PerformanceResultView{SchemaVersion: 1,
+		JobID: desktopJobID, Executor: view.Executor, Location: view.Location}}
+	launcher, controller := &recordingJobLauncher{}, &recordingJobController{}
+	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
+		return desktopDependencies{jobQuery: query, launcher: launcher, controls: controller}, nil
+	})
+	app.onStartup(t.Context())
+	t.Cleanup(func() { _ = app.shutdown() })
+	actual, err := app.GetJob(desktopJobID)
+	if err != nil || !reflect.DeepEqual(actual, view) || actual.Submission != nil {
+		t.Fatal("shared job getter invented local delivery or changed actual executor")
+	}
+	result, err := app.GetJobPerformanceResult(desktopJobID)
+	if err != nil || result.Executor != view.Executor {
+		t.Fatal("shared performance getter replaced original executor")
+	}
+	if _, err := app.GetJobControls(desktopJobID, "", 25); err != nil {
+		t.Fatal(err)
+	}
+	if len(query.calls) != 3 || launcher.calls != 0 || len(controller.requests)+len(controller.deliveries) != 0 {
+		t.Fatal("shared reads performed a submission or control operation")
 	}
 }
 

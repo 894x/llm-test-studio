@@ -60,7 +60,9 @@ func (app *DesktopApp) LaunchJob(command jobs.LaunchCommand) (jobs.JobView, erro
 	}
 	// Project the returned durable acceptance directly. A later query cannot
 	// obscure its identity or cause the caller to submit a second job.
-	view, err := jobs.ProjectSubmittedJob(record, nil, nil, false)
+	read := jobs.JobRead{Spec: record.Prepared.Spec, Submission: &record,
+		Location: jobs.Location{Kind: record.Prepared.Spec.Target.Kind, ConfigurationID: record.Prepared.ConfigurationID}}
+	view, err := jobs.ProjectJob(read, nil, false)
 	if err != nil {
 		return jobs.JobView{}, app.safeBindingError(ErrJobCommitUnconfirmed)
 	}
@@ -76,7 +78,7 @@ func (app *DesktopApp) GetJobs(after string, limit uint32) (jobs.JobPage, error)
 		return jobs.JobPage{}, app.safeBindingError(err)
 	}
 	defer lease.release()
-	page, err := lease.jobQuery.SubmittedJobs(lease.ctx, after, limit)
+	page, err := lease.jobQuery.Jobs(lease.ctx, after, limit)
 	if err != nil {
 		return jobs.JobPage{}, app.jobQueryError(err)
 	}
@@ -92,7 +94,7 @@ func (app *DesktopApp) GetJob(jobID string) (jobs.JobView, error) {
 		return jobs.JobView{}, app.safeBindingError(err)
 	}
 	defer lease.release()
-	view, err := lease.jobQuery.SubmittedJob(lease.ctx, jobID)
+	view, err := lease.jobQuery.Job(lease.ctx, jobID)
 	if err != nil {
 		return jobs.JobView{}, app.jobQueryError(err)
 	}
@@ -108,7 +110,7 @@ func (app *DesktopApp) GetJobPerformanceResult(jobID string) (jobs.PerformanceRe
 		return jobs.PerformanceResultView{}, app.safeBindingError(err)
 	}
 	defer lease.release()
-	view, err := lease.jobQuery.SubmittedPerformanceResult(lease.ctx, jobID)
+	view, err := lease.jobQuery.PerformanceResult(lease.ctx, jobID)
 	if err != nil {
 		return jobs.PerformanceResultView{}, app.jobQueryError(err)
 	}
@@ -142,7 +144,7 @@ func (app *DesktopApp) ControlJob(command jobs.ControlInput) (jobs.ControlView, 
 		// Only a matching persisted command proves that this intent is saved.
 		stored, readErr := lease.controlRecords.GetControl(lease.ctx, record.Command.CommandID)
 		matching := readErr == nil && stored.Validate() == nil && stored.Command == record.Command &&
-			stored.CreatedAt.Equal(record.CreatedAt)
+			stored.Target.Equal(record.Target) && stored.CreatedAt.Equal(record.CreatedAt)
 		if !matching {
 			return jobs.ControlView{}, app.safeBindingError(ErrJobCommitUnconfirmed)
 		}
@@ -160,7 +162,7 @@ func (app *DesktopApp) GetJobControls(jobID, after string, limit uint32) (jobs.C
 		return jobs.ControlPageView{}, app.safeBindingError(err)
 	}
 	defer lease.release()
-	page, err := lease.jobQuery.SubmittedJobControls(lease.ctx, jobID, after, limit)
+	page, err := lease.jobQuery.JobControls(lease.ctx, jobID, after, limit)
 	if err != nil {
 		return jobs.ControlPageView{}, app.jobQueryError(err)
 	}

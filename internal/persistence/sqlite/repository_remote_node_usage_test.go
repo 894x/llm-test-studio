@@ -51,6 +51,25 @@ func TestRemoteNodeUsageRequiresCompleteReportAndRetainsArtifactReferences(t *te
 				t.Fatal(err)
 			}
 			assertRemoteNodeUsage(t, desktop, files != "none")
+			if files == "none" {
+				control := controlFixture(
+					t,
+					desktop,
+					spec.JobID,
+					1,
+				)
+				if _, err := desktop.CreateControl(t.Context(), control); err != nil {
+					t.Fatal(err)
+				}
+				assertRemoteNodeUsage(t, desktop, true)
+				control.Revision++
+				control.State, control.Observation = jobs.ControlRejected, jobs.ObservationRejected
+				control.UpdatedAt = control.UpdatedAt.Add(time.Second)
+				if err := desktop.UpdateControl(t.Context(), control, control.Revision-1); err != nil {
+					t.Fatal(err)
+				}
+				assertRemoteNodeUsage(t, desktop, false)
+			}
 			if _, err := desktop.RemoteNodeRemovalBlocked(t.Context(), remoteOrigin.ConfigurationID,
 				remoteOrigin.ConfigurationID, remoteOrigin.InstallationID); !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatal("mismatched executor identity was ignored")
@@ -103,6 +122,12 @@ func TestRemoteNodeUsageRetainsPreparedPendingAcceptedAndPendingControls(t *test
 	assertRemoteNodeUsage(t, desktop, false)
 	commandMeta := entityMeta("91000000-0000-4000-8000-000000000008", 1)
 	control := jobs.ControlRecord{SchemaVersion: 1, Revision: 1, State: jobs.ControlPending,
+		Target: controlFixture(
+			t,
+			desktop,
+			spec.JobID,
+			1,
+		).Target,
 		CreatedAt: commandMeta.CreatedAt, UpdatedAt: commandMeta.UpdatedAt,
 		Command: jobcontract.Command{Contract: jobcontract.CurrentContract, CommandID: commandMeta.ID,
 			JobID: spec.JobID, Kind: jobcontract.CommandCancel, ExpectedRevision: 1}}

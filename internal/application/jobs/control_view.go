@@ -23,6 +23,8 @@ type ControlView struct {
 	Execution        *ExecutionView          `json:"execution"`
 }
 
+// ControlPageView contains this client's outbox deliveries for one actual job.
+// Other clients' confirmed commands remain execution journal facts.
 type ControlPageView struct {
 	SchemaVersion int           `json:"schema_version"`
 	JobID         string        `json:"job_id"`
@@ -31,7 +33,7 @@ type ControlPageView struct {
 	HasMore       bool          `json:"has_more"`
 }
 
-// ProjectControl receives a record whose fixed submission owner has already
+// ProjectControl receives a record whose fixed actual target has already
 // been verified by Controller or the repository's read transaction.
 func ProjectControl(record ControlRecord) (ControlView, error) {
 	if record.Validate() != nil {

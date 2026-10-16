@@ -16,11 +16,14 @@ export type Observation = "" | "unreachable" | "not_found" | "identity_changed" 
 export type ExecutorView = { node_id: string; installation_id: string; version: string; build_id: string; os: string; arch: string }
 export type ExecutionView = { status: JobStatus; revision: number; latest_sequence: number; accepted_at: string; updated_at: string; failure: { phase: string; error_code: string } | null }
 export type ConfirmationView = { status: JobStatus; revision: number; accepted_at: string }
+export type SubmissionView = {
+  delivery_revision: number; delivery: "prepared" | "pending" | "accepted"; observation: Observation
+  prepared_at: string; delivery_updated_at: string; confirmation: ConfirmationView | null
+}
 export type JobView = {
   schema_version: 1; job_id: string; kind: JobKind; location: ExecutionLocation; executor: ExecutorView
-  delivery_revision: number; delivery: "prepared" | "pending" | "accepted"; observation: Observation
-  prepared_at: string; delivery_updated_at: string; run_ids: string[]; report_ids: string[]; comparison_id: string
-  confirmation: ConfirmationView | null; execution: ExecutionView | null
+  submission: SubmissionView | null; run_ids: string[]; report_ids: string[]; comparison_id: string
+  execution: ExecutionView | null
   progress: { sequence: number; recorded_at: string; progress: QuickPerformanceProgress } | null
   performance_result_ready: boolean
 }
@@ -82,16 +85,29 @@ function confirmation(value: unknown): ConfirmationView {
   const item = record(value, ["status", "revision", "accepted_at"])
   return { status: choice(item.status, statuses), revision: integer(item.revision, 1), accepted_at: time(item.accepted_at) }
 }
+function submission(value: unknown): SubmissionView {
+  const item = record(value, ["delivery_revision", "delivery", "observation", "prepared_at", "delivery_updated_at", "confirmation"])
+  const result: SubmissionView = {
+    delivery_revision: integer(item.delivery_revision, 1), delivery: choice(item.delivery, ["prepared", "pending", "accepted"]),
+    observation: choice(item.observation, observations), prepared_at: time(item.prepared_at),
+    delivery_updated_at: time(item.delivery_updated_at), confirmation: nullable(item.confirmation, confirmation),
+  }
+  if ((result.delivery === "accepted") !== (result.confirmation !== null)) return invalid()
+  return result
+}
 const progressKeys = ["phase", "planned", "offered", "launched", "completed", "in_flight", "peak_in_flight", "succeeded", "failed", "rejected", "stopped", "capped", "capacity_rung_number", "capacity_rung_count", "capacity_target", "send_duration_ms", "drain_duration_ms", "total_duration_ms"]
 function progress(value: unknown): QuickPerformanceProgress {
   record(value, ["phase", "planned", "launched", "completed", "peak_in_flight", "succeeded", "failed", "rejected", "send_duration_ms", "drain_duration_ms", "total_duration_ms"], progressKeys)
   return parseQuickPerformanceProgress(value)
 }
 export function parseJobView(value: unknown): JobView {
-  const item = record(value, ["schema_version", "job_id", "kind", "location", "executor", "delivery_revision", "delivery", "observation", "prepared_at", "delivery_updated_at", "run_ids", "report_ids", "comparison_id", "confirmation", "execution", "progress", "performance_result_ready"])
+  const item = record(value, ["schema_version", "job_id", "kind", "location", "executor", "submission", "run_ids", "report_ids", "comparison_id", "execution", "progress", "performance_result_ready"])
   schema(item)
-  const result: JobView = { schema_version: 1, job_id: uuid(item.job_id), kind: choice(item.kind, ["run", "performance", "comparison"]), location: parseExecutionLocation(item.location), executor: executor(item.executor), delivery_revision: integer(item.delivery_revision, 1), delivery: choice(item.delivery, ["prepared", "pending", "accepted"]), observation: choice(item.observation, observations), prepared_at: time(item.prepared_at), delivery_updated_at: time(item.delivery_updated_at), run_ids: ids(item.run_ids), report_ids: ids(item.report_ids), comparison_id: item.comparison_id === "" ? "" : uuid(item.comparison_id), confirmation: nullable(item.confirmation, confirmation), execution: nullable(item.execution, execution), progress: nullable(item.progress, value => { const p = record(value, ["sequence", "recorded_at", "progress"]); return { sequence: integer(p.sequence, 2), recorded_at: time(p.recorded_at), progress: progress(p.progress) } }), performance_result_ready: bool(item.performance_result_ready) }
-  if ((result.delivery === "accepted") !== (result.confirmation !== null) || (result.delivery === "prepared" && result.execution !== null) || (result.performance_result_ready && (result.kind !== "performance" || !result.execution || !isJobTerminal(result.execution.status))) || (result.progress && (!result.execution || result.kind !== "performance" || result.progress.sequence > result.execution.latest_sequence))) return invalid()
+  const result: JobView = { schema_version: 1, job_id: uuid(item.job_id), kind: choice(item.kind, ["run", "performance", "comparison"]), location: parseExecutionLocation(item.location), executor: executor(item.executor), submission: nullable(item.submission, submission), run_ids: ids(item.run_ids), report_ids: ids(item.report_ids), comparison_id: item.comparison_id === "" ? "" : uuid(item.comparison_id), execution: nullable(item.execution, execution), progress: nullable(item.progress, value => { const p = record(value, ["sequence", "recorded_at", "progress"]); return { sequence: integer(p.sequence, 2), recorded_at: time(p.recorded_at), progress: progress(p.progress) } }), performance_result_ready: bool(item.performance_result_ready) }
+  if ((!result.submission && (!result.execution || result.location.kind !== "remote")) ||
+      (result.submission?.delivery === "prepared" && result.execution !== null) ||
+      (result.performance_result_ready && (result.kind !== "performance" || !result.execution || !isJobTerminal(result.execution.status))) ||
+      (result.progress && (!result.execution || result.kind !== "performance" || result.progress.sequence > result.execution.latest_sequence))) return invalid()
   return result
 }
 function pagination(item: Record<string, unknown>): { next_cursor: string; has_more: boolean } {

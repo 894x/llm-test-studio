@@ -19,10 +19,10 @@ func TestDesktopLaunchKeepsDurablePendingIdentityOnConfirmationStorageFailure(t 
 	app.onStartup(t.Context())
 	t.Cleanup(func() { _ = app.shutdown() })
 	view, err := app.LaunchJob(desktopLaunchFixture())
-	if err != nil || view.JobID != record.Prepared.Spec.JobID || view.Delivery != jobs.SubmissionPending {
+	if err != nil || view.JobID != record.Prepared.Spec.JobID || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionPending {
 		t.Fatalf("accepted upstream work was reported as a failed new launch: %v", err)
 	}
-	if view.DeliveryRevision != record.Revision || view.Execution != nil || view.Confirmation != nil {
+	if view.Submission.DeliveryRevision != record.Revision || view.Execution != nil || view.Submission.Confirmation != nil {
 		t.Fatal("unpersisted confirmation was presented as authoritative execution")
 	}
 	if launcher.calls != 1 || len(query.calls) != 0 {

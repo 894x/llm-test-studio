@@ -168,14 +168,15 @@ func TestLiveRemoteK3ExistingWorkspaceOfflineReview(t *testing.T) {
 	defer func() { _ = app.shutdown(); review.DeniedManagementConnections = denied.Load() }()
 	review.UsedConsistentPrivateClone = true
 	suites := liveK3FullSuites(t, app)
-	page, err := app.GetJobs("", 25)
-	if err != nil || page.HasMore || len(page.Jobs) != 3 {
-		t.Fatal("offline clone does not contain exactly the expected three submissions")
+	originals := make([]liveK3JobSummary, 0, len(input.Jobs))
+	for _, expected := range input.Jobs {
+		originals = append(originals, liveK3JobSummary{JobID: expected.JobID})
 	}
+	assertLiveK3Outbox(t, app, originals)
 	galleryStarted := time.Now()
 	gallery, galleryErr := app.GetReports()
-	if galleryErr != nil || len(gallery.Reports) != len(input.Jobs) {
-		t.Fatal("offline gallery does not contain exactly the three expected reports")
+	if galleryErr != nil {
+		t.Fatal("offline gallery is unavailable")
 	}
 	for index, expected := range input.Jobs {
 		expectedSource := reporting.SourceRun
@@ -200,7 +201,8 @@ func TestLiveRemoteK3ExistingWorkspaceOfflineReview(t *testing.T) {
 	review.ProviderAssertionsPassed = true
 	for index, expected := range input.Jobs {
 		view, readErr := app.GetJob(expected.JobID)
-		if readErr != nil || view.Executor != input.Executor || view.Delivery != jobs.SubmissionAccepted ||
+		if readErr != nil || view.Executor != input.Executor || view.Submission == nil ||
+			view.Submission.Delivery != jobs.SubmissionAccepted ||
 			view.Execution == nil || view.Execution.Status != "completed" {
 			t.Fatal("offline authoritative job identity or terminal state differs from expectations")
 		}
@@ -208,7 +210,7 @@ func TestLiveRemoteK3ExistingWorkspaceOfflineReview(t *testing.T) {
 		if controlsErr != nil || controls.HasMore || len(controls.Commands) != 0 {
 			t.Fatal("offline job has unexpected control instructions")
 		}
-		item := liveK3JobSummary{JobID: view.JobID, Executor: view.Executor, Delivery: string(view.Delivery),
+		item := liveK3JobSummary{JobID: view.JobID, Executor: view.Executor, Delivery: string(view.Submission.Delivery),
 			Status: string(view.Execution.Status), ReportID: expected.ReportID, FailureCases: []liveK3CaseFailure{}}
 		if index < 2 {
 			if len(view.RunIDs) != 1 || view.RunIDs[0] != expected.RunID {

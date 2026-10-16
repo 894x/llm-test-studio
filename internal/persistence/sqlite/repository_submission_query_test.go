@@ -46,16 +46,16 @@ func newSubmittedReadFixture(t *testing.T, remote bool) submittedReadFixture {
 	if _, err := repository.CreateSubmission(t.Context(), record); err != nil {
 		t.Fatal(err)
 	}
-	view, err := repository.SubmittedJob(t.Context(), spec.JobID)
-	if err != nil || view.Delivery != jobs.SubmissionPrepared || view.Execution != nil {
+	view, err := repository.Job(t.Context(), spec.JobID)
+	if err != nil || view.Submission.Delivery != jobs.SubmissionPrepared || view.Execution != nil {
 		t.Fatalf("preparation invented execution state: %v", err)
 	}
 	record = pendingSubmission(record)
 	if err := repository.UpdateSubmission(t.Context(), record, record.Revision-1); err != nil {
 		t.Fatal(err)
 	}
-	view, err = repository.SubmittedJob(t.Context(), spec.JobID)
-	if err != nil || view.Delivery != jobs.SubmissionPending || view.Execution != nil {
+	view, err = repository.Job(t.Context(), spec.JobID)
+	if err != nil || view.Submission.Delivery != jobs.SubmissionPending || view.Execution != nil {
 		t.Fatalf("pending delivery invented execution state: %v", err)
 	}
 	executor := repository
@@ -94,8 +94,8 @@ func TestSubmittedQueryPreservesPendingAndFixedExecutorFacts(t *testing.T) {
 				if accepted {
 					fixture.confirm(t)
 				}
-				view, err := fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
-				if err != nil || view.Delivery != fixture.record.State || view.DeliveryRevision != fixture.record.Revision {
+				view, err := fixture.repository.Job(t.Context(), fixture.spec.JobID)
+				if err != nil || view.Submission.Delivery != fixture.record.State || view.Submission.DeliveryRevision != fixture.record.Revision {
 					t.Fatalf("delivery was rewritten by a query: %v", err)
 				}
 				if view.Execution == nil || view.Execution.Status != domain.RunQueued || view.Execution.Revision != 1 {
@@ -138,9 +138,9 @@ func TestSubmittedQueryDistinguishesUnsynchronizedRemoteAndMissingLocalExecution
 			if _, err := fixture.db.ExecContext(t.Context(), statement, fixture.spec.JobID); err != nil {
 				t.Fatal(err)
 			}
-			view, err := fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
+			view, err := fixture.repository.Job(t.Context(), fixture.spec.JobID)
 			if remote {
-				if err != nil || view.Delivery != jobs.SubmissionAccepted || view.Execution != nil {
+				if err != nil || view.Submission.Delivery != jobs.SubmissionAccepted || view.Execution != nil {
 					t.Fatalf("unsynchronized remote state invented a receipt: %v", err)
 				}
 			} else if !errors.Is(err, persistence.ErrCorrupt) {
@@ -163,17 +163,17 @@ func TestSubmittedRemoteConfirmationCanLeadJournalSynchronization(t *testing.T) 
 		fixture.snapshot = next
 	}
 	fixture.confirm(t)
-	view, err := fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
-	if err != nil || view.Confirmation == nil || view.Confirmation.Status != domain.RunCompleted {
+	view, err := fixture.repository.Job(t.Context(), fixture.spec.JobID)
+	if err != nil || view.Submission.Confirmation == nil || view.Submission.Confirmation.Status != domain.RunCompleted {
 		t.Fatalf("newer confirmed receipt was lost: %v", err)
 	}
 	if view.Execution != nil || view.Progress != nil || view.PerformanceResultReady {
 		t.Fatal("lagging mirror was published ahead of journal synchronization")
 	}
 	applyRemoteEvents(t, fixture.repository, remoteEvents(t, fixture.executor, fixture.spec))
-	view, err = fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
+	view, err = fixture.repository.Job(t.Context(), fixture.spec.JobID)
 	if err != nil || view.Execution == nil || view.Execution.Status != domain.RunCompleted ||
-		view.Execution.Revision != view.Confirmation.Revision {
+		view.Execution.Revision != view.Submission.Confirmation.Revision {
 		t.Fatalf("caught-up mirror was not published: %v", err)
 	}
 	stored, err := fixture.repository.GetSubmission(t.Context(), fixture.spec.JobID)
@@ -244,7 +244,7 @@ func TestSubmittedQueryRejectsOversizedAndChangedExecutionWithoutMutation(t *tes
 					return document
 				}
 				before := read()
-				_, err := fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
+				_, err := fixture.repository.Job(t.Context(), fixture.spec.JobID)
 				if !errors.Is(err, persistence.ErrCorrupt) {
 					t.Fatalf("corrupt execution was projected: %v", err)
 				}
@@ -282,7 +282,7 @@ func TestSubmittedProgressRejectsInvalidFactsBeforeProjection(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			view, err := fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
+			view, err := fixture.repository.Job(t.Context(), fixture.spec.JobID)
 			if err != nil || view.Progress == nil || view.Progress.Progress != progress {
 				t.Fatalf("valid current progress was lost: %v", err)
 			}
@@ -306,7 +306,7 @@ func TestSubmittedProgressRejectsInvalidFactsBeforeProjection(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			_, err = fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
+			_, err = fixture.repository.Job(t.Context(), fixture.spec.JobID)
 			if !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatalf("corrupt progress was projected: %v", err)
 			}
@@ -317,26 +317,26 @@ func TestSubmittedProgressRejectsInvalidFactsBeforeProjection(t *testing.T) {
 func TestSubmittedQueriesRejectInvalidInputsAndPreserveCancellation(t *testing.T) {
 	fixture := newSubmittedReadFixture(t, false)
 	for _, ctx := range []context.Context{nil, t.Context()} {
-		if _, err := fixture.repository.SubmittedJob(ctx, "invalid"); !errors.Is(err, jobs.ErrInvalid) {
+		if _, err := fixture.repository.Job(ctx, "invalid"); !errors.Is(err, jobs.ErrInvalid) {
 			t.Fatal(err)
 		}
-		if _, err := fixture.repository.SubmittedPerformanceResult(ctx, "invalid"); !errors.Is(err, jobs.ErrInvalid) {
+		if _, err := fixture.repository.PerformanceResult(ctx, "invalid"); !errors.Is(err, jobs.ErrInvalid) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := fixture.repository.SubmittedJob(t.Context(), remoteOrigin.NodeID); !errors.Is(err, jobs.ErrNotFound) {
+	if _, err := fixture.repository.Job(t.Context(), remoteOrigin.NodeID); !errors.Is(err, jobs.ErrNotFound) {
 		t.Fatal(err)
 	}
-	_, err := fixture.repository.SubmittedPerformanceResult(t.Context(), fixture.spec.JobID)
+	_, err := fixture.repository.PerformanceResult(t.Context(), fixture.spec.JobID)
 	if !errors.Is(err, jobs.ErrInvalid) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := fixture.repository.SubmittedJob(ctx, fixture.spec.JobID); !errors.Is(err, context.Canceled) {
+	if _, err := fixture.repository.Job(ctx, fixture.spec.JobID); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	_, err = fixture.repository.SubmittedPerformanceResult(ctx, fixture.spec.JobID)
+	_, err = fixture.repository.PerformanceResult(ctx, fixture.spec.JobID)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestSubmittedPerformanceQueryPreservesIncompleteAndReturnedObservations(t *
 			if err := fixture.repository.UpdateSubmission(t.Context(), record, record.Revision-1); err != nil {
 				t.Fatal(err)
 			}
-			_, err := fixture.repository.SubmittedPerformanceResult(t.Context(), fixture.spec.JobID)
+			_, err := fixture.repository.PerformanceResult(t.Context(), fixture.spec.JobID)
 			if !errors.Is(err, jobs.ErrNotFound) {
 				t.Fatalf("unsealed result was readable: %v", err)
 			}
@@ -369,7 +369,7 @@ func TestSubmittedPerformanceQueryPreservesIncompleteAndReturnedObservations(t *
 				t.Fatal(err)
 			}
 			before := fixture.requests.Load()
-			view, err := fixture.repository.SubmittedPerformanceResult(t.Context(), fixture.spec.JobID)
+			view, err := fixture.repository.PerformanceResult(t.Context(), fixture.spec.JobID)
 			if err != nil || view.ObservationState != sealed.Result.ObservationState ||
 				view.ExecutionStarted != sealed.Result.ExecutionStarted || view.Terminal.Status != domain.RunCancelled {
 				t.Fatalf("sealed execution facts were replaced: %v", err)
@@ -390,8 +390,8 @@ func TestSubmittedPerformanceQueryPreservesIncompleteAndReturnedObservations(t *
 					view.Observation.Report,
 				)
 			}
-			state, err := fixture.repository.SubmittedJob(t.Context(), fixture.spec.JobID)
-			if err != nil || !state.PerformanceResultReady || state.Delivery != jobs.SubmissionPending ||
+			state, err := fixture.repository.Job(t.Context(), fixture.spec.JobID)
+			if err != nil || !state.PerformanceResultReady || state.Submission.Delivery != jobs.SubmissionPending ||
 				fixture.requests.Load() != before {
 				t.Fatalf("query changed delivery or executed another request: %v", err)
 			}
@@ -400,8 +400,11 @@ func TestSubmittedPerformanceQueryPreservesIncompleteAndReturnedObservations(t *
 }
 
 func TestSubmittedRemotePerformanceQueryRequiresVerifiedImport(t *testing.T) {
-	for _, target := range []string{"valid", "marker", "missing document", "size", "digest"} {
+	for _, target := range []string{"valid", "marker", "missing document", "size", "digest",
+		"foreign valid", "foreign marker", "foreign missing document", "foreign size", "foreign digest"} {
 		t.Run(target, func(t *testing.T) {
+			foreign := strings.HasPrefix(target, "foreign ")
+			target = strings.TrimPrefix(target, "foreign ")
 			fixture := newPerformanceStorageFixture(t)
 			spec := remoteSpec(fixture.spec)
 			node := openOperationalRepository(t)
@@ -427,20 +430,22 @@ func TestSubmittedRemotePerformanceQueryRequiresVerifiedImport(t *testing.T) {
 			defer desktop.Close()
 			db := openDatabase(t, path)
 			defer db.Close()
-			record := submissionFixture(t, spec)
-			if _, err := desktop.CreateSubmission(t.Context(), record); err != nil {
-				t.Fatal(err)
-			}
-			record = pendingSubmission(record)
-			if err := desktop.UpdateSubmission(t.Context(), record, record.Revision-1); err != nil {
-				t.Fatal(err)
+			if !foreign {
+				record := submissionFixture(t, spec)
+				if _, err := desktop.CreateSubmission(t.Context(), record); err != nil {
+					t.Fatal(err)
+				}
+				record = pendingSubmission(record)
+				if err := desktop.UpdateSubmission(t.Context(), record, record.Revision-1); err != nil {
+					t.Fatal(err)
+				}
 			}
 			applyRemoteEvents(t, desktop, remoteEvents(t, node, spec))
-			view, err := desktop.SubmittedJob(t.Context(), spec.JobID)
-			if err != nil || view.PerformanceResultReady {
+			view, err := desktop.Job(t.Context(), spec.JobID)
+			if err != nil || view.PerformanceResultReady || (view.Submission == nil) != foreign {
 				t.Fatalf("reference alone became a downloaded result: %v", err)
 			}
-			if _, err := desktop.SubmittedPerformanceResult(t.Context(), spec.JobID); !errors.Is(err, jobs.ErrNotFound) {
+			if _, err := desktop.PerformanceResult(t.Context(), spec.JobID); !errors.Is(err, jobs.ErrNotFound) {
 				t.Fatalf("not downloaded result was readable: %v", err)
 			}
 			if err := desktop.ImportRemotePerformanceDocument(t.Context(), remoteresults.PerformanceDocumentImport{
@@ -449,9 +454,13 @@ func TestSubmittedRemotePerformanceQueryRequiresVerifiedImport(t *testing.T) {
 				t.Fatal(err)
 			}
 			if target == "valid" {
-				result, err := desktop.SubmittedPerformanceResult(t.Context(), spec.JobID)
+				result, err := desktop.PerformanceResult(t.Context(), spec.JobID)
 				if err != nil || result.Observation != nil || result.ObservationState != jobcontract.PerformanceNotStarted {
 					t.Fatalf("verified offline result not readable: %v", err)
+				}
+				view, err := desktop.Job(t.Context(), spec.JobID)
+				if err != nil || !view.PerformanceResultReady || (view.Submission == nil) != foreign {
+					t.Fatalf("verified result lost current shared ownership: %v", err)
 				}
 				return
 			}
@@ -476,12 +485,12 @@ func TestSubmittedRemotePerformanceQueryRequiresVerifiedImport(t *testing.T) {
 				t.Fatal(err)
 			}
 			if target == "digest" {
-				view, err := desktop.SubmittedJob(t.Context(), spec.JobID)
-				if err != nil || !view.PerformanceResultReady {
-					t.Fatalf("light presence check unexpectedly decoded or rejected the full result: %v", err)
+				_, err := desktop.Job(t.Context(), spec.JobID)
+				if !errors.Is(err, persistence.ErrCorrupt) {
+					t.Fatalf("unverified result was marked ready: %v", err)
 				}
 			}
-			if _, err := desktop.SubmittedPerformanceResult(t.Context(), spec.JobID); !errors.Is(err, persistence.ErrCorrupt) {
+			if _, err := desktop.PerformanceResult(t.Context(), spec.JobID); !errors.Is(err, persistence.ErrCorrupt) {
 				t.Fatalf("unverified imported result was projected: %v", err)
 			}
 		})

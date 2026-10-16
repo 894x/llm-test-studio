@@ -345,15 +345,15 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 		if launchErr != nil {
 			// Retain any persisted identity even when a binding rejects. Reads
 			// cannot issue another submission or conceal an uncertain paid job.
-			if outbox, readErr := app.GetJobs("", 25); readErr == nil {
+			if ownJobs, readErr := readLiveK3OwnJobs(app.GetJobs); readErr == nil {
 				known := map[string]bool{}
 				for _, item := range summary.Jobs {
 					known[item.JobID] = true
 				}
-				for _, candidate := range outbox.Jobs {
+				for _, candidate := range ownJobs {
 					if !known[candidate.JobID] {
 						summary.Jobs = append(summary.Jobs, liveK3JobSummary{JobID: candidate.JobID,
-							Executor: candidate.Executor, Delivery: string(candidate.Delivery), FailureCases: []liveK3CaseFailure{}})
+							Executor: candidate.Executor, Delivery: string(candidate.Submission.Delivery), FailureCases: []liveK3CaseFailure{}})
 					}
 				}
 			}
@@ -361,7 +361,10 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 			t.Fatal("live launch failed; no replacement job was submitted")
 		}
 		assertLiveK3Executor(t, view, input)
-		item := liveK3JobSummary{JobID: view.JobID, Executor: view.Executor, Delivery: string(view.Delivery),
+		if view.Submission == nil {
+			t.Fatal("the launched job lost its own durable submission")
+		}
+		item := liveK3JobSummary{JobID: view.JobID, Executor: view.Executor, Delivery: string(view.Submission.Delivery),
 			FailureCases: []liveK3CaseFailure{}}
 		if index < 2 {
 			item.SuiteKey, item.ExpectedCases = suites[index].key, suites[index].count
@@ -398,7 +401,7 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 		view = waitLiveK3Job(t, ctx, app, view.JobID, false)
 		assertLiveK3Executor(t, view, input)
 		item = summary.Jobs[index]
-		item.Executor, item.Delivery, item.Status = view.Executor, string(view.Delivery), string(view.Execution.Status)
+		item.Executor, item.Delivery, item.Status = view.Executor, string(view.Submission.Delivery), string(view.Execution.Status)
 		if index < 2 {
 			detail := waitLiveK3Report(t, ctx, app, view)
 			collectLiveK3Suite(&item, detail, suites[index], view.Executor)
@@ -691,7 +694,10 @@ func waitLiveK3Job(t *testing.T, ctx context.Context, app *DesktopApp, id string
 	for {
 		view, err := app.GetJob(id)
 		if err == nil {
-			status := string(view.Delivery)
+			if view.Submission == nil {
+				t.Fatal("the original submitted job was projected as shared history")
+			}
+			status := string(view.Submission.Delivery)
 			if view.Execution != nil {
 				status += "/" + string(view.Execution.Status)
 			}
@@ -710,7 +716,7 @@ func waitLiveK3Job(t *testing.T, ctx context.Context, app *DesktopApp, id string
 			if view.Execution != nil {
 				terminal := jobcontract.Terminal(view.Execution.Status)
 				running := view.Execution.Status == domain.RunRunning || view.Execution.Status == domain.RunDraining
-				if terminal || (accepted && view.Confirmation != nil && running) {
+				if terminal || (accepted && view.Submission.Confirmation != nil && running) {
 					return view
 				}
 			}
@@ -719,14 +725,118 @@ func waitLiveK3Job(t *testing.T, ctx context.Context, app *DesktopApp, id string
 	}
 }
 
+// Shared discovery can add foreign executions to the same paginated query.
+// Only real submission records can establish this client's launch identities.
+func readLiveK3OwnJobs(readPage func(string, uint32) (jobs.JobPage, error)) ([]jobs.JobView, error) {
+	ownJobs := []jobs.JobView{}
+	seenJobs, seenCursors := map[string]bool{}, map[string]bool{}
+	cursor := ""
+	for {
+		page, err := readPage(cursor, 25)
+		if err != nil {
+			return nil, err
+		}
+		for _, view := range page.Jobs {
+			if !domain.IsUUID(view.JobID) || seenJobs[view.JobID] {
+				return nil, jobs.ErrInvalid
+			}
+			seenJobs[view.JobID] = true
+			if view.Submission != nil {
+				ownJobs = append(ownJobs, view)
+				continue
+			}
+			if view.Location.Kind != jobcontract.TargetRemote || view.Execution == nil {
+				return nil, jobs.ErrInvalid
+			}
+		}
+		if !page.HasMore {
+			return ownJobs, nil
+		}
+		invalidCursor := page.NextCursor == "" || seenCursors[page.NextCursor]
+		if len(page.Jobs) == 0 || invalidCursor {
+			return nil, jobs.ErrInvalid
+		}
+		cursor = page.NextCursor
+		seenCursors[cursor] = true
+	}
+}
+
+func TestLiveK3OwnJobsDistinguishesSharedHistoryAcrossPages(t *testing.T) {
+	foreign := jobs.JobView{JobID: "86000000-0000-4000-8000-000000000001",
+		Location: jobs.Location{Kind: jobcontract.TargetRemote,
+			ConfigurationID: "86000000-0000-4000-8000-000000000004"},
+		Execution: &jobs.ExecutionView{Status: domain.RunCompleted}}
+	own := jobs.JobView{JobID: "86000000-0000-4000-8000-000000000002",
+		Submission: &jobs.SubmissionView{Delivery: jobs.SubmissionAccepted}}
+	cursors := []string{}
+	ownJobs, err := readLiveK3OwnJobs(func(cursor string, limit uint32) (jobs.JobPage, error) {
+		cursors = append(cursors, cursor)
+		if limit != 25 {
+			t.Fatal("launch-identity review changed its bounded page size")
+		}
+		if cursor == "" {
+			return jobs.JobPage{Jobs: []jobs.JobView{foreign}, HasMore: true, NextCursor: foreign.JobID}, nil
+		}
+		if cursor != foreign.JobID {
+			t.Fatal("launch-identity review changed the returned cursor")
+		}
+		return jobs.JobPage{Jobs: []jobs.JobView{own}}, nil
+	})
+	if err != nil || len(ownJobs) != 1 || ownJobs[0].JobID != own.JobID || len(cursors) != 2 {
+		t.Fatal("shared history hid the original own submission on a later page")
+	}
+	if foreign.Submission != nil || ownJobs[0].Submission != own.Submission {
+		t.Fatal("shared history fabricated a submission or replaced the real delivery facts")
+	}
+}
+
+func TestLiveK3OwnJobsRejectsInvalidPaginationAndForeignShape(t *testing.T) {
+	own := jobs.JobView{JobID: "86000000-0000-4000-8000-000000000002",
+		Submission: &jobs.SubmissionView{Delivery: jobs.SubmissionAccepted}}
+	for _, fixture := range []struct {
+		name  string
+		pages []jobs.JobPage
+	}{
+		{name: "duplicate job across pages", pages: []jobs.JobPage{
+			{Jobs: []jobs.JobView{own}, HasMore: true, NextCursor: own.JobID},
+			{Jobs: []jobs.JobView{own}},
+		}},
+		{name: "empty continuing page", pages: []jobs.JobPage{
+			{Jobs: []jobs.JobView{}, HasMore: true, NextCursor: own.JobID},
+		}},
+		{name: "missing continuing cursor", pages: []jobs.JobPage{
+			{Jobs: []jobs.JobView{own}, HasMore: true},
+		}},
+		{name: "foreign job without actual execution", pages: []jobs.JobPage{
+			{Jobs: []jobs.JobView{{JobID: own.JobID, Location: jobs.Location{Kind: jobcontract.TargetRemote,
+				ConfigurationID: "86000000-0000-4000-8000-000000000004"}}}},
+		}},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			index := 0
+			_, err := readLiveK3OwnJobs(func(string, uint32) (jobs.JobPage, error) {
+				if index >= len(fixture.pages) {
+					t.Fatal("invalid pagination continued reading")
+				}
+				page := fixture.pages[index]
+				index++
+				return page, nil
+			})
+			if !errors.Is(err, jobs.ErrInvalid) {
+				t.Fatal("invalid shared job pages entered the own-submission proof")
+			}
+		})
+	}
+}
+
 func assertLiveK3Outbox(t *testing.T, app *DesktopApp, submitted []liveK3JobSummary) {
 	t.Helper()
-	page, err := app.GetJobs("", 25)
-	if err != nil || page.HasMore || len(page.Jobs) != len(submitted) {
+	ownJobs, err := readLiveK3OwnJobs(app.GetJobs)
+	if err != nil || len(ownJobs) != len(submitted) {
 		t.Fatal("submission outbox has unexpected paid job identities")
 	}
 	ids := map[string]bool{}
-	for _, item := range page.Jobs {
+	for _, item := range ownJobs {
 		ids[item.JobID] = true
 	}
 	for _, item := range submitted {

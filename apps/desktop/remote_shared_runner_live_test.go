@@ -238,9 +238,9 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 	view, launchErr := app.LaunchJob(command) // One call only. Pending never starts a replacement.
 	result.LaunchCalls = 1
 	if launchErr != nil {
-		page, readErr := app.GetJobs("", 25)
-		if readErr == nil && len(page.Jobs) == 1 {
-			final.JobID = page.Jobs[0].JobID
+		ownJobs, readErr := readLiveK3OwnJobs(app.GetJobs)
+		if readErr == nil && len(ownJobs) == 1 {
+			final.JobID = ownJobs[0].JobID
 		}
 		final.State = "launch_unconfirmed_no_resubmission"
 		failSharedLive(t, ctx, "launch_unconfirmed")
@@ -255,7 +255,7 @@ func TestLiveRemoteSharedRunnerRole(t *testing.T) {
 	view = waitSharedRunnerAcceptance(t, executionCtx, app, view.JobID)
 	assertLiveK3Executor(t, view, pairingInput)
 	emitSharedRunnerLive(sharedRunnerLiveEvent{Stage: "accepted", JobID: view.JobID,
-		State: string(view.Delivery), Result: &result})
+		State: string(view.Submission.Delivery), Result: &result})
 	failure.enter("execution", deadline)
 	terminalAt := observeSharedRunnerTerminal(
 		t,
@@ -477,8 +477,13 @@ func waitSharedRunnerAcceptance(t *testing.T, ctx context.Context, app *DesktopA
 	t.Helper()
 	for {
 		view, err := app.GetJob(id)
-		if err == nil && view.Delivery == jobs.SubmissionAccepted && view.Confirmation != nil {
-			return view
+		if err == nil {
+			if view.Submission == nil {
+				t.Fatal("the original launched job lost its own durable submission")
+			}
+			if view.Submission.Delivery == jobs.SubmissionAccepted && view.Submission.Confirmation != nil {
+				return view
+			}
 		}
 		liveK3Pause(t, ctx, 250*time.Millisecond)
 	}

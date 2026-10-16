@@ -48,14 +48,17 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
     if (revision) void execute(() => client.controlJob({ job_id: job.job_id, kind, expected_revision: revision }))
   }
   const p = job.progress?.progress
+  const submission = job.submission
+  const confirmation = submission?.confirmation
   return <section className="min-w-0 flex flex-col gap-4 py-3 text-xs [overflow-wrap:anywhere]" aria-label={t("details")}>
     <dl className="flex flex-col gap-3">
       <Property label={t("jobID")} value={job.job_id} />
+      <Property label={t("source")} value={t(submission ? "thisDesktop" : "sharedNode")} />
       <Property label={t("location")} value={`${t(job.location.kind)} · ${job.executor.node_id}`} />
       <Property label={t("executor")} value={`${job.executor.version} · ${job.executor.os}/${job.executor.arch} · ${job.executor.installation_id} · ${job.executor.build_id}`} />
-      <Property label={t("delivery")} value={t(`deliveryStates.${job.delivery}`)} />
-      {job.observation ? <Property label={t("connection")} value={t(`observations.${job.observation}`)} /> : null}
-      <Property label={t("execution")} value={job.execution ? t(`statuses.${job.execution.status}`) : job.confirmation ? t("awaitingSync", { status: t(`statuses.${job.confirmation.status}`), revision: job.confirmation.revision }) : t("awaitingConfirmation")} />
+      {submission ? <Property label={t("delivery")} value={t(`deliveryStates.${submission.delivery}`)} /> : null}
+      {submission?.observation ? <Property label={t("connection")} value={t(`observations.${submission.observation}`)} /> : null}
+      <Property label={t("execution")} value={job.execution ? t(`statuses.${job.execution.status}`) : confirmation ? t("awaitingSync", { status: t(`statuses.${confirmation.status}`), revision: confirmation.revision }) : t("awaitingConfirmation")} />
       {job.execution?.failure ? <Property label={t("failure")} value={`${job.execution.failure.phase} · ${job.execution.failure.error_code}`} /> : null}
       <Property label={t("result")} value={t(job.performance_result_ready ? "resultReady" : "resultPending")} />
     </dl>
@@ -72,6 +75,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
     {commandError ? <Alert variant="destructive"><AlertDescription>{publicDesktopErrorMessage(commandError, t("controlFailed"))}</AlertDescription></Alert> : null}
     {controls && controls.commands.length > 0 ? <div className="flex flex-col gap-2">
       <h3 className="font-medium">{t("controls")}</h3>
+      <p className="text-muted-foreground">{t("controlsDescription")}</p>
       {controls.commands.map(command => <div key={command.command_id} className="flex flex-col gap-1 py-1">
         <p>{t(command.kind === "cancel" ? "cancel" : "stop")} · {t(`controlStates.${command.state}`)} · r{command.expected_revision}</p>
         <p className="text-muted-foreground">{command.command_id}</p>

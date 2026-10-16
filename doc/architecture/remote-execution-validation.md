@@ -341,11 +341,11 @@ Windows jobs/jobhost/runnerhttp/sqlite 完整测试及相关 vet 通过；最终
 
 ## 2026-10-16：持久停止/取消指令与后台送达
 
-Controller 先将确切 command_id、kind、job_id 和 expected_revision 写入当前 job_control_outbox，再连接原不可变 Submission 的配置、node 与 installation。尚未发送的 prepared 任务不能创建控制；pending 提交可能已在节点执行，允许保存指令。离线、404、身份变化和不支持契约只保存有限观察，不能生成执行终态或修改原 revision。节点 Command 的明确冲突成为 rejected；连接前冲突不能代替节点拒绝。兼容构建变化与维护暂停不阻止控制已有任务，不比较客户端版本，也不改变原任务的执行构建。
+本阶段实现时，Controller 先将确切 command_id、kind、job_id 和 expected_revision 写入当时的 job_control_outbox，再连接原不可变 Submission 的配置、node 与 installation；这是该阶段事实，后续共享控制目标契约见文末。尚未发送的 prepared 任务不能创建控制；pending 提交可能已在节点执行，允许保存指令。离线、404、身份变化和不支持契约只保存有限观察，不能生成执行终态或修改原 revision。节点 Command 的明确冲突成为 rejected；连接前冲突不能代替节点拒绝。兼容构建变化与维护暂停不阻止控制已有任务，不比较客户端版本，也不改变原任务的执行构建。
 
 控制没有临时渠道秘密，可以按节点安装范围内的原 command_id 安全重传。HTTP 接收端在核对当前状态前返回已持久的原命令确认，因此完成后也能找回丢失的停止/取消回执。客户端确认采用 CAS；已存确认回包丢失先只读核对，人工与后台同时送达只保留一个原确认。数据库提交不明时本次调用不发送，已持久的 pending 仍可由后台发现。任务权威状态继续由执行日志提供，不以命令 pending、rejected 或网络错误改写。
 
-后台每五秒最多处理四项，读取五秒、送达三十秒，坏节点不阻止游标走向后页，页尾才回绕；UUID 分页不承诺不同指令的操作顺序，各命令保留原 revision，冲突需重新读取权威状态。生产装配组合两类 worker；关闭先取消并等待控制/确认循环，再关闭同步、节点、Core 和数据库。当前桌面控制面先针对已持久准备的本桌面 Job，导入共享任务的控制展示、公开绑定和 UI 仍待完成。
+后台每五秒最多处理四项，读取五秒、送达三十秒，坏节点不阻止游标走向后页，页尾才回绕；UUID 分页不承诺不同指令的操作顺序，各命令保留原 revision，冲突需重新读取权威状态。生产装配组合两类 worker；关闭先取消并等待控制/确认循环，再关闭同步、节点、Core 和数据库。该阶段桌面控制面先针对已持久准备的本桌面 Job，导入共享任务的控制展示、公开绑定和 UI 当时仍待完成。
 
 SQLite Create 同 ID 同内容返回原 confirmed/rejected，改变命令或终态回退明确拒绝。Get 使用同一只读事务核对原 Submission，List 最多 25 项，每份约 70 KiB，在 SQL 中先限字节再解码；单页含前瞻项最多约 1.8 MiB。新测试覆盖两仓库 Create/CAS、重开、final 稳定性、超限/重复/未知/缺失/null/大小写/旧格式、错列与确认 owner，拒绝字节不变，取消和存储错误不变成缺失。
 
@@ -681,4 +681,20 @@ K3 保存证据离线分类为：拒绝预期 400 而实际 200 共 124 例、�
 
 该 PASS 覆盖单个免费 Mock 任务的真实 OS 进程退出后继续与重开恢复，native_window_verified=false；使用 scoped MemoryStore，不构成 OS keyring 或真实点击关窗验收。37.369 秒与旧 265/261 秒的原报告恢复不具严格同条件，不计算提升倍数或唯一归因。付费 K3 executor 仍为 R1、两个旧 query Job 为 R4、本轮新 Mock 为 R7；K3 仍 67/84、104/230、performance3/3 且未重复付费，所有原 false 保留。
 
-仍需完整大任务/多 client 公平性、foreign Job 全视图与控制（尚未实现）、文件资源/附件/release 与回收、native 窗口与真实关窗/OS keyring、历史用户库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 实机、CI 及发布交付等验收。本轮单样本与本地 priority 测试不替代这些范围。
+在该次进程验收阶段仍需完整大任务/多 client 公平性、foreign Job 全视图与控制（当时尚未实现）、文件资源/附件/release 与回收、native 窗口与真实关窗/OS keyring、历史用户库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 实机、CI 及发布交付等验收。本轮单样本与本地 priority 测试不替代这些范围。
+
+## 2026-10-16：shared/foreign 当前契约已实现，存储转换与新实机验收待完成
+
+本轮基于 a4ea4dc 冻结 51 个源码文件，实现本 client 提交任务与发现的 foreign remote 任务的统一查询/控制。JobView 删除旧六个 delivery 顶层字段，改为必填 nullable `submission`，对象精确含 delivery_revision、delivery、observation、prepared_at、delivery_updated_at、confirmation；foreign 必须 submission:null 及 actual execution，不伪造发送或接收时间。Query 改为 Job/Jobs/PerformanceResult/JobControls，七个 Wails 绑定名称和 ControlInput 三字段不变，Go/FE/fixtures/bindings 同时替换；旧 shape 明确拒绝，只有唯一当前路径。progress/result 使用 common Spec；同只读 TX 核验来源并对 Submission/Mirror 做 UNION UUID 去重及完整原文预算分页。完整规则与负例见[契约矩阵](remote-execution-contract-matrix.md)。
+
+ControlRecord 新增必填 Target，冻结 Job/location/node/install/specSHA 和 nullable acceptance(origin+accepted_at)；foreign 必须来自 actual receipt，own pending 尚不知接收时可 null，保存后的完整 Target 连同 Command/创建时间永久冻结，后来获知接收也不重写旧 null。每个 command 以真实 Submission 或 Mirror 恰一 FK 建立 anchor，Create 同 write TX 重读 source 并核 proposal，outbox 复合 FK 绑定 command_id/job_id；重放、CAS 和所有读再核 anchor/Target/current source。已知 executor R4 而当前 daemon R7 合法，不比较 build 相等。GetJobControls 仅表示本 client 持久投递记录，不包含他人未投递意图；他人 confirmed 控制由 remote events 提供。foreign pending control 也阻止移除节点。
+
+这是 breaking 存储变更：version1/name0001_protocol_runtime 不变，7afb439a…0708 被唯一 current checksum `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`替换；仅新增 job_control_targets 和 outbox FK，schemaObjects55→56（migration metadata 另算）。共用 schema 的旧 desktop/runner DB 被新 runtime 明确拒绝且保留原数据，没有运行时旧 reader、自动转换或 reset。TEMP 独立工具在 `%TEMP%/llm-shared-jobs-offline-conversion-20261016/`准备，尚未完成转换验收或切换。
+
+实际历史用户库更早，为固定源 `766d1aa38961d13165383a5e3ed57207d558d5593c9f401e7d0f60213846faa8`，不能误按 7afb 处理；需 766→adc 直接 converter。源 187662336 字节，只读预检前后 SHA 相同（cbc5337e…4eb5）；execution_runs63/run revisions252/case results5482/comparisons4/comparison revisions8/reports61/perf43 均须保留。缺 execution_origin 的 reports/perf 仅拟在独立工具中补合法 unmanaged 显式 null，不能由 runtime 缺字段回退或当前 Probe 伪造历史来源。工具未完成验收、未切换，源用户库、服务器与 K3 旧 proof 均未改。
+
+App 13files、FE 15files、SQLite 14files 及其余 9 个当前契约适配测试已冻结，模块全测/vet/独立 review 通过；App owner desktop61.073s、SQLite152.454s。FE 原完整 738 测试、lint/build 通过后追加一个测试，随后 App comparison 定向 60 测试、当前 bindings 下 tsc 及独立 review 通过；没有将最新全套 739 声称为已实跑。五个旧 live 入口均 SKIP，没有新 K3 或 SSH。最终集成 78581 全仓 `go test ./...` exit0（desktop68.802s、runnerhttp28.235s、jobhost24.317s、jobs0.415s、SQLite167.962s），全仓 vet exit0，51files 源码前后相同；`%TEMP%/llm-shared-jobs-integration-k48jzi04/verification.safe.json` SHA `294a69442d0824dd2a6309e87de4f765bd9010695882465ec03d12a0179e1d53`，go-test.log SHA `50977daf73557546ab4cb899e063487c4c6f229f724be20e78fbd2bab00f56b4`。
+
+浏览器 fixture 实跑通过：1440×900 light、1024×768 dark、960×640 system-dark 均 identity 正确/非空/无 overlay/console0/外部请求 0/无横向滚动；foreign 不显示 delivery、按 revision3 模拟 cancel 后显示本 client 控制记录，own 显示 delivery，Escape 焦点恢复/Enter 重开/system change→light 通过。`%TEMP%/llm-shared-jobs-ui-ryulrs8_/browser-check.safe.json`为 2373 字节、SHA `5c54f496526a62fc9df2475c79427fd81da0e8a455e3bbe14bf46b384ab7be8c`。CUA 因 kernel assets 路径错误不可用，使用已有 bundled Playwright1.62.1/缓存 Chromium140.0.7339.16 完成，无安装依赖；fixture 不是真实共享控制或 native 窗口。Vite 自有 PID33652 核对后停止，exit1 是清理，不是验收失败。
+
+新 600 秒单 Mock 共享控制工具在 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/`准备，尚未 compile/SSH/Launch；新 schema 转换/切换、Go 实机共享控制、native 都未验收。实际服务器仍为原 R7/3ca/1b94…，未重建/部署；前轮新 Mock 已增加业务，旧 10Job 基线只属于当时记录，不是当前恒定计数。旧 c2/180 秒单 Mock 退出重开 PASS、K3 及所有旧 false 保留，不能替代新 shared 契约验收。完整公平性/大任务、文件资源、native、历史库转换、重启/故障还原、第二节点/arm64、CI 发布等范围不缩减。

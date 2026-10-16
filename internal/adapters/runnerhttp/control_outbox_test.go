@@ -139,7 +139,7 @@ func (fixture *controlHTTPFixture) reopenController(t *testing.T, controls jobs.
 	t.Helper()
 	var err error
 	fixture.controller, err = jobs.NewController(jobs.ControllerDependencies{
-		Repository: controls, Submissions: fixture.repository, Open: fixture.open, Now: time.Now,
+		Repository: controls, Targets: fixture.repository, Open: fixture.open, Now: time.Now,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -452,7 +452,7 @@ func TestControlOutboxConcurrentClientsDeliverOneDurableDecision(t *testing.T) {
 	results := make(chan error, 2)
 	for _, repository := range []*sqlite.Repository{fixture.repository, secondRepository} {
 		controller, err := jobs.NewController(jobs.ControllerDependencies{
-			Repository: repository, Submissions: repository, Open: open, Now: time.Now,
+			Repository: repository, Targets: repository, Open: open, Now: time.Now,
 		})
 		if err != nil {
 			t.Fatal(err)

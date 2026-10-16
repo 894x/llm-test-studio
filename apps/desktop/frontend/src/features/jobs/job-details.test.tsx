@@ -1,14 +1,37 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
 import { EMPTY_REPORTS } from "@/features/reports/data"
-import { controlFixture, executionClient, jobFixture, JOB_ID, REPORT_ID } from "@/test/jobs-fixture"
+import { controlFixture, executionClient, jobFixture, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
 import { JobDetails } from "./job-details"
 import { JobsMenu } from "./jobs-menu"
 
 afterEach(() => { vi.useRealTimers() })
 
 describe("durable job observation", () => {
+  it("shows shared remote execution and controls it without local submission fields", async () => {
+    const client = executionClient()
+    const job = jobFixture({ submission: null, location: { kind: "remote", configuration_id: JOB_ID },
+      executor: { ...jobFixture().executor, version: "runner-r4", build_id: "b".repeat(64), os: "linux" },
+      execution: { ...jobFixture().execution!, revision: 7 } })
+    client.getJobs.mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    client.getJob.mockResolvedValue(job)
+    render(<JobsMenu client={client} preferredJob={null} reports={EMPTY_REPORTS} onOpenReport={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "任务" }))
+    const details = await screen.findByRole("region", { name: "任务详情" })
+    expect(within(details).getByText("共享节点任务")).toBeVisible()
+    expect(within(details).getByText("运行中")).toBeVisible()
+    expect(within(details).getByText(/runner-r4/)).toHaveTextContent("b".repeat(64))
+    expect(within(details).queryByText("投递状态")).not.toBeInTheDocument()
+    expect(within(details).queryByText("等待执行器确认")).not.toBeInTheDocument()
+    expect(within(details).queryByText("本客户端控制命令")).not.toBeInTheDocument()
+    const cancel = within(details).getByRole("button", { name: "取消任务" })
+    expect(cancel).toBeEnabled()
+    fireEvent.click(cancel)
+    await waitFor(() => expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 7 }))
+    expect(client.launchJob).not.toHaveBeenCalled()
+  })
+
   it("keeps an executor confirmation visible while journal synchronization is missing", async () => {
     const client = executionClient()
     const job = jobFixture({ execution: null })
@@ -42,6 +65,35 @@ describe("durable job observation", () => {
     fireEvent.click(retry)
     await waitFor(() => expect(client.retryJobControl).toHaveBeenCalledExactlyOnceWith(pending.command_id))
     expect(client.controlJob).not.toHaveBeenCalled()
+  })
+
+  it("clears old local control records when a successful query returns an empty page", async () => {
+    vi.useFakeTimers()
+    const client = executionClient()
+    client.getJobControls.mockResolvedValueOnce({ schema_version: 1, job_id: JOB_ID, commands: [controlFixture()], next_cursor: "", has_more: false })
+    render(<JobDetails client={client} jobID={JOB_ID} initialJob={jobFixture()} />)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByRole("button", { name: "重试原命令" })).toBeVisible()
+    expect(screen.getByText("本客户端控制命令")).toBeVisible()
+    expect(screen.getByRole("button", { name: "取消任务" })).toBeDisabled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500) })
+    expect(client.getJobControls).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole("button", { name: "重试原命令" })).not.toBeInTheDocument()
+    expect(screen.queryByText("本客户端控制命令")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "取消任务" })).toBeEnabled()
+  })
+
+  it("retains the last authoritative local commands when their next read fails", async () => {
+    vi.useFakeTimers()
+    const client = executionClient()
+    client.getJobControls.mockResolvedValueOnce({ schema_version: 1, job_id: JOB_ID, commands: [controlFixture()], next_cursor: "", has_more: false })
+      .mockRejectedValue(new DesktopClientError("job_query_unavailable"))
+    render(<JobDetails client={client} jobID={JOB_ID} initialJob={jobFixture()} />)
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500) })
+    expect(screen.getByRole("button", { name: "重试原命令" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "取消任务" })).toBeDisabled()
+    expect(screen.getByText(/当前展示最后一次确认的数据/)).toBeVisible()
   })
 
   it("does not send a cancellation when the observer closes", async () => {
@@ -78,7 +130,7 @@ describe("durable job observation", () => {
     const job = jobFixture({ execution: { ...jobFixture().execution!, status: "cancelled" }, performance_result_ready: true })
     client.getJob.mockResolvedValue(job)
     client.getJobPerformanceResult.mockResolvedValue({ schema_version: 1, job_id: JOB_ID, report_id: REPORT_ID,
-      location: job.location, executor: job.executor, terminal: job.execution!, sealed_at: job.prepared_at,
+      location: job.location, executor: job.executor, terminal: job.execution!, sealed_at: JOB_TIME,
       execution_started: true, observation_state: "interrupted", observation: null })
     const measured = vi.fn()
     render(<JobDetails client={client} jobID={JOB_ID} initialJob={job} onOpenReport={vi.fn()} renderPerformance={measured} />)

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
-import { executionClient, jobFixture, RUN_ID } from "@/test/jobs-fixture"
+import { executionClient, jobFixture, submissionFixture, JOB_ID, RUN_ID } from "@/test/jobs-fixture"
 import { controlRun, jobControlRevision, launchAtDefault } from "./execution"
 
 describe("durable job submission and controls", () => {
@@ -27,19 +27,33 @@ describe("durable job submission and controls", () => {
   })
 
   it("uses only the authoritative job receipt or synchronized revision", () => {
-    const job = jobFixture({ confirmation: { ...jobFixture().confirmation!, revision: 4 } })
+    const job = jobFixture({ submission: submissionFixture({ confirmation: { ...submissionFixture().confirmation!, revision: 4 } }) })
     expect(jobControlRevision(job)).toBe(4)
     expect(jobControlRevision({ ...job, execution: null })).toBe(4)
-    expect(jobControlRevision({ ...job, execution: null, confirmation: null })).toBeNull()
+    expect(jobControlRevision({ ...job, execution: null, submission: submissionFixture({ delivery: "pending", confirmation: null }) })).toBeNull()
   })
 
-  it("maps a run through persisted submissions and refreshes before control", async () => {
+  it("maps a run through managed jobs and refreshes before control", async () => {
     const client = executionClient()
     const job = jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [] })
     client.getJobs.mockResolvedValueOnce({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
     client.getJob.mockResolvedValueOnce({ ...job, execution: { ...job.execution!, revision: 6 } })
     await controlRun(client, RUN_ID, "stop_sending")
     expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: job.job_id, kind: "stop_sending", expected_revision: 6 })
+  })
+
+  it("controls a shared run using its actual execution revision and original runner release", async () => {
+    const client = executionClient()
+    const job = jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [], submission: null,
+      location: { kind: "remote", configuration_id: JOB_ID },
+      executor: { ...jobFixture().executor, version: "runner-r4", build_id: "b".repeat(64), os: "linux" },
+      execution: { ...jobFixture().execution!, revision: 7 } })
+    client.getJobs.mockResolvedValueOnce({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    client.getJob.mockResolvedValueOnce(job)
+    expect(jobControlRevision(job)).toBe(7)
+    await controlRun(client, RUN_ID, "cancel")
+    expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 7 })
+    expect(client.launchJob).not.toHaveBeenCalled()
   })
 
   it("refuses unmanaged historical runs and does not send local controls", async () => {

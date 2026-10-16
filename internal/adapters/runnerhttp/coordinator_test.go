@@ -184,8 +184,8 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 				t.Fatal(err)
 			}
 			prepared := prepareCoordinatedJob(t, coordinator, submission)
-			view, err := repository.SubmittedJob(t.Context(), submission.Job.JobID)
-			if err != nil || view.Delivery != jobs.SubmissionPrepared || view.Execution != nil {
+			view, err := repository.Job(t.Context(), submission.Job.JobID)
+			if err != nil || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionPrepared || view.Execution != nil {
 				t.Fatal("prepared query fabricated a remote execution")
 			}
 			if prepared.Prepared.Runner.RunnerVersion != "runner-test-1" ||
@@ -197,8 +197,8 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 			if !errors.Is(err, jobs.ErrPending) || pending.State != jobs.SubmissionPending || pending.Receipt != nil {
 				t.Fatalf("lost response was treated as rejection or confirmation: %v", err)
 			}
-			view, err = repository.SubmittedJob(t.Context(), submission.Job.JobID)
-			if err != nil || view.Delivery != jobs.SubmissionPending || view.Execution != nil {
+			view, err = repository.Job(t.Context(), submission.Job.JobID)
+			if err != nil || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionPending || view.Execution != nil {
 				t.Fatal("lost acknowledgement was inferred from missing local execution")
 			}
 			for _, lease := range leases {
@@ -267,8 +267,8 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 			if _, err := coordinator.Submit(t.Context(), submission.Job.JobID, nil); err != nil {
 				t.Fatal("repeated lookup of an accepted submission required another credential or connection")
 			}
-			view, err = repository.SubmittedJob(t.Context(), submission.Job.JobID)
-			if err != nil || view.Delivery != jobs.SubmissionAccepted || view.Execution != nil {
+			view, err = repository.Job(t.Context(), submission.Job.JobID)
+			if err != nil || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionAccepted || view.Execution != nil {
 				t.Fatal("accepted but unsynchronized task was relabeled as queued")
 			}
 			cache, _ := syncDocuments(t)
@@ -315,8 +315,9 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 				t.Fatal("coordinator retained a connection or replayed paid work")
 			}
 			fixture.api.Close()
-			view, err = repository.SubmittedJob(t.Context(), submission.Job.JobID)
-			if err != nil || view.Execution == nil || view.Execution.Status != domain.RunCompleted ||
+			view, err = repository.Job(t.Context(), submission.Job.JobID)
+			if err != nil || view.Submission == nil || view.Submission.Delivery != jobs.SubmissionAccepted ||
+				view.Execution == nil || view.Execution.Status != domain.RunCompleted ||
 				view.Executor.Version != prepared.Prepared.Runner.RunnerVersion {
 				t.Fatalf("offline submitted execution query lost its original state or runner: %v", err)
 			}
@@ -324,7 +325,7 @@ func TestCoordinatorAutomaticallyReconcilesLostHTTPAcceptanceAfterReopenAndImpor
 				t.Fatal("offline submitted query changed the fixed origin")
 			}
 			if kind == jobcontract.KindPerformance {
-				result, err := repository.SubmittedPerformanceResult(t.Context(), submission.Job.JobID)
+				result, err := repository.PerformanceResult(t.Context(), submission.Job.JobID)
 				if err != nil || !view.PerformanceResultReady || view.Progress == nil || result.Observation == nil ||
 					result.ObservationState != jobcontract.PerformanceAvailable {
 					t.Fatalf("offline submitted query did not expose the full imported result: %v", err)

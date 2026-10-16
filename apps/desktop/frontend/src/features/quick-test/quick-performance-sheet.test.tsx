@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
 import { createAppI18n } from "@/i18n/i18n"
 
-import { executionClient, jobFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
+import { executionClient, jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
 import { QuickPerformanceSheet } from "./quick-performance-sheet"
 import {
   type QuickPerformanceReport,
@@ -59,7 +59,7 @@ describe("QuickPerformanceSheet", () => {
   it("keeps a pending Job identity observable without fabricating an execution or report", async () => {
     const user = userEvent.setup()
     const client = executionClient()
-    const pending = jobFixture({ delivery: "pending", observation: "unreachable", confirmation: null, execution: null })
+    const pending = jobFixture({ submission: submissionFixture({ delivery: "pending", observation: "unreachable", confirmation: null }), execution: null })
     client.launchJob.mockResolvedValue(pending)
     client.getJob.mockResolvedValue(pending)
     render(<QuickPerformanceSheet open onOpenChange={vi.fn()} connection={connection} client={client} />)
@@ -1721,7 +1721,7 @@ function performanceLaunch(performance: unknown) {
 
 function completedPerformanceJob() {
   const job = jobFixture()
-  return jobFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME },
+  return jobFixture({ submission: submissionFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME } }),
     execution: { ...job.execution!, status: "completed", revision: 2, latest_sequence: 3 },
     performance_result_ready: true })
 }

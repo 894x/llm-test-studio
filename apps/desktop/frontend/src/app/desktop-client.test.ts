@@ -12,7 +12,7 @@ import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 import { createDesktopClient, createFixtureClient, singleFlightRead } from "./desktop-client"
 import { DesktopDataError } from "./data-error"
 import type { LaunchCommand } from "@/features/jobs/data"
-import { jobFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
+import { jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
 import { EMPTY_REMOTE_NODES } from "@/features/remote-nodes/data"
 import { remoteUpgradeFixture, REMOTE_CONFIGURATION_ID, UPGRADE_OPERATION_ID } from "@/test/remote-upgrade-fixture"
 
@@ -164,7 +164,7 @@ describe("Wails desktop client", () => {
   it("returns the accepted Job identity without a query and preserves pending delivery", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const pending = jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [],
-      delivery: "pending", observation: "unreachable", confirmation: null, execution: null })
+      submission: submissionFixture({ delivery: "pending", observation: "unreachable", confirmation: null }), execution: null })
     binding.LaunchJob.mockResolvedValueOnce(pending)
     binding.GetJob.mockRejectedValueOnce(new Error("read unavailable"))
     const command = quickTaskCommand()
@@ -330,7 +330,8 @@ describe("Wails desktop client", () => {
     { api_key: "synthetic-secret" }, { run_id: RUN_ID }, { delivery: "failed" },
     { location: { kind: "local", configuration_id: RUN_ID } },
     { executor: { ...jobFixture().executor, token: "synthetic-secret" } },
-    { delivery: "pending" }, { confirmation: { ...jobFixture().confirmation, revision: 0 } },
+    { submission: submissionFixture({ delivery: "pending" }) },
+    { submission: { ...submissionFixture(), confirmation: { ...submissionFixture().confirmation, revision: 0 } } },
     { execution: { ...jobFixture().execution, revision: 0 } },
     { run_ids: [RUN_ID, RUN_ID] }, { report_ids: null }, { prepared_at: "yesterday" },
     { performance_result_ready: true },
@@ -346,6 +347,27 @@ describe("Wails desktop client", () => {
     const confirmation = jobFixture({ execution: null, progress: null })
     binding.GetJob.mockResolvedValueOnce(confirmation)
     await expect(createDesktopClient().getJob(JOB_ID)).resolves.toEqual(confirmation)
+  })
+
+  it("reads shared remote jobs without requiring a local submission or matching runner release", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const job = jobFixture({ submission: null, location: { kind: "remote", configuration_id: RUN_ID },
+      executor: { ...jobFixture().executor, version: "runner-r4", build_id: "b".repeat(64), os: "linux" } })
+    binding.GetJob.mockResolvedValueOnce(job)
+    binding.GetJobs.mockResolvedValueOnce({ schema_version: 1, jobs: [job], next_cursor: JOB_ID, has_more: false } as never)
+    const client = createDesktopClient()
+    await expect(client.getJob(JOB_ID)).resolves.toEqual(job)
+    await expect(client.getJobs("", 25)).resolves.toMatchObject({ jobs: [job] })
+    expect(binding.LaunchJob).not.toHaveBeenCalled()
+  })
+
+  it("rejects a shared job as the result of this client's launch", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const command = { ...quickTaskCommand(), location: { kind: "remote" as const, configuration_id: RUN_ID } }
+    binding.LaunchJob.mockResolvedValueOnce(jobFixture({ kind: "run", run_ids: [RUN_ID], report_ids: [], submission: null, location: command.location }))
+    await expect(createDesktopClient().launchJob(command)).rejects.toBeInstanceOf(DesktopDataError)
+    expect(binding.LaunchJob).toHaveBeenCalledTimes(1)
+    expect(binding.GetJob).not.toHaveBeenCalled()
   })
 
   it("observes current Job progress through a query and rejects unexpected progress fields", async () => {

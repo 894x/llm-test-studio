@@ -15,6 +15,8 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
+const maxPerformanceReferenceBytes = 4096
+
 func (repository *Repository) ImportRemotePerformanceDocument(ctx context.Context, input remoteresults.PerformanceDocumentImport) error {
 	validIdentity := input.Origin.Validate() == nil && domain.IsUUID(input.JobID)
 	validKind := input.Kind == jobcontract.EventReport || input.Kind == jobcontract.EventPerformanceResult
@@ -45,8 +47,10 @@ func (repository *Repository) ImportRemotePerformanceDocument(ctx context.Contex
 	var imported bool
 	err = tx.QueryRowContext(
 		ctx,
-		`SELECT document_json, imported FROM remote_job_report_refs
+		`SELECT CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END, imported
+		FROM remote_job_report_refs
 		WHERE job_id = ? AND reference_type = ? AND report_id = ?`,
+		maxPerformanceReferenceBytes,
 		input.JobID,
 		input.Kind,
 		reportID,
@@ -205,8 +209,10 @@ func queryRemotePerformanceResult(ctx context.Context, tx *sql.Tx, mirror remote
 	var imported bool
 	err = tx.QueryRowContext(
 		ctx,
-		`SELECT document_json, imported FROM remote_job_report_refs
+		`SELECT CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END, imported
+		FROM remote_job_report_refs
 		WHERE job_id = ? AND reference_type = 'performance_result' AND report_id = ?`,
+		maxPerformanceReferenceBytes,
 		mirror.Spec.JobID,
 		reportID,
 	).Scan(&referenceRaw, &imported)
@@ -258,7 +264,9 @@ func validateRemotePerformanceJournal(
 	var eventRaw []byte
 	err := tx.QueryRowContext(
 		ctx,
-		`SELECT document_json FROM remote_job_events WHERE job_id = ? AND sequence = ?`,
+		`SELECT CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
+		FROM remote_job_events WHERE job_id = ? AND sequence = ?`,
+		jobcontract.MaxEventBytes,
 		result.JobID,
 		result.Terminal.LatestSequence+1,
 	).Scan(&eventRaw)
@@ -282,8 +290,10 @@ func validateRemotePerformanceJournal(
 	var checkpointSequence uint64
 	err = tx.QueryRowContext(
 		ctx,
-		`SELECT sequence, document_json FROM remote_job_events WHERE job_id = ?
+		`SELECT sequence, CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
+		FROM remote_job_events WHERE job_id = ?
 		AND kind = 'performance_checkpoint' AND sequence <= ? ORDER BY sequence DESC LIMIT 1`,
+		jobcontract.MaxEventBytes,
 		result.JobID,
 		result.Terminal.LatestSequence,
 	).Scan(&checkpointSequence, &checkpointRaw)

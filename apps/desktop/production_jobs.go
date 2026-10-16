@@ -71,6 +71,7 @@ func (backends productionJobBackends) Open(
 type productionJobRepository interface {
 	jobs.SubmissionRepository
 	jobs.ControlRepository
+	jobs.JobReader
 }
 
 type productionJobServices struct {
@@ -93,7 +94,7 @@ func newProductionJobs(
 		return productionJobServices{}, err
 	}
 	controller, err := jobs.NewController(jobs.ControllerDependencies{
-		Repository: repository, Submissions: repository, Open: backends.Open, Now: time.Now,
+		Repository: repository, Targets: repository, Open: backends.Open, Now: time.Now,
 	})
 	if err != nil {
 		return productionJobServices{}, err

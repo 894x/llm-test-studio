@@ -11,7 +11,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
-const MaxControlRecordBytes = jobcontract.MaxStateBytes + jobcontract.MaxCommandBytes + 2048
+const MaxControlRecordBytes = jobcontract.MaxStateBytes + jobcontract.MaxCommandBytes + MaxControlTargetBytes + 2048
 
 type ControlState string
 
@@ -22,10 +22,11 @@ const (
 )
 
 // ControlRecord is a durable instruction, never a replacement execution state.
-// Its destination comes only from the immutable submission identified by JobID.
+// Its destination is frozen from immutable local or mirrored execution facts.
 type ControlRecord struct {
 	SchemaVersion int                              `json:"schema_version"`
 	Command       jobcontract.Command              `json:"command"`
+	Target        ControlTarget                    `json:"target"`
 	Revision      uint64                           `json:"revision"`
 	State         ControlState                     `json:"state"`
 	Observation   Observation                      `json:"observation"`
@@ -51,7 +52,9 @@ func (record ControlRecord) Validate() error {
 	validRevision := record.Revision > 0 && record.Revision <= math.MaxInt64
 	validTimes := validTime(record.CreatedAt) && validTime(record.UpdatedAt) &&
 		!record.UpdatedAt.Before(record.CreatedAt)
-	validEnvelope := record.SchemaVersion == 1 && validRevision && validTimes && record.Command.Validate() == nil
+	validDocuments := record.Command.Validate() == nil && record.Target.Validate() == nil
+	validTarget := record.Target.JobID == record.Command.JobID
+	validEnvelope := record.SchemaVersion == 1 && validRevision && validTimes && validDocuments && validTarget
 	if !validEnvelope {
 		return ErrInvalid
 	}
@@ -81,20 +84,25 @@ func (record ControlRecord) Validate() error {
 	return ErrInvalid
 }
 
-func (record ControlRecord) ValidateFor(submission SubmissionRecord) error {
-	validOwner := submission.Prepared.Spec.JobID == record.Command.JobID && submission.State != SubmissionPrepared
-	validDocuments := record.Validate() == nil && submission.Validate() == nil
-	if !validDocuments || !validOwner {
+func (record ControlRecord) ValidateFor(read JobRead) error {
+	if record.Validate() != nil {
 		return ErrInvalid
+	}
+	if err := record.Target.ValidateFor(read); err != nil {
+		return err
 	}
 	if record.Confirmation == nil {
 		return nil
 	}
 	snapshot := record.Confirmation.Snapshot
-	if snapshot.Validate(submission.Prepared.Spec) != nil {
+	if snapshot.Validate(read.Spec) != nil {
 		return ErrConflict
 	}
-	if receipt := submission.Receipt; receipt != nil {
+	origin := snapshot.Receipt.Origin
+	if origin.NodeID != record.Target.NodeID || origin.InstallationID != record.Target.InstallationID {
+		return ErrConflict
+	}
+	if receipt := read.acceptanceReceipt(); receipt != nil {
 		sameAcceptance := receipt.AcceptedAt.Equal(snapshot.Receipt.AcceptedAt) && receipt.Origin == snapshot.Receipt.Origin
 		if !sameAcceptance {
 			return ErrConflict
@@ -108,7 +116,7 @@ func (record ControlRecord) ValidateSuccessor(next ControlRecord) error {
 		return ErrInvalid
 	}
 	fixed := record.Command == next.Command && record.CreatedAt.Equal(next.CreatedAt) &&
-		next.Revision == record.Revision+1 && !next.UpdatedAt.Before(record.UpdatedAt)
+		next.Revision == record.Revision+1 && !next.UpdatedAt.Before(record.UpdatedAt) && record.Target.Equal(next.Target)
 	if !fixed || record.State != ControlPending {
 		return ErrConflict
 	}
@@ -123,7 +131,7 @@ type ControlInput struct {
 
 type ControllerDependencies struct {
 	Repository  ControlRepository
-	Submissions SubmissionRepository
+	Targets     JobReader
 	Open        func(context.Context, Location, Access) (Backend, error)
 	Now         func() time.Time
 	MetaFactory func(time.Time) (domain.EntityMeta, error)
@@ -131,14 +139,14 @@ type ControllerDependencies struct {
 
 type Controller struct {
 	repository  ControlRepository
-	submissions SubmissionRepository
+	targets     JobReader
 	open        func(context.Context, Location, Access) (Backend, error)
 	now         func() time.Time
 	metaFactory func(time.Time) (domain.EntityMeta, error)
 }
 
 func NewController(dependencies ControllerDependencies) (*Controller, error) {
-	validPorts := !nilPort(dependencies.Repository) && !nilPort(dependencies.Submissions) && dependencies.Open != nil
+	validPorts := !nilPort(dependencies.Repository) && !nilPort(dependencies.Targets) && dependencies.Open != nil
 	if !validPorts || dependencies.Now == nil {
 		return nil, ErrInvalid
 	}
@@ -146,7 +154,7 @@ func NewController(dependencies ControllerDependencies) (*Controller, error) {
 	if factory == nil {
 		factory = domain.NewEntityMeta
 	}
-	return &Controller{repository: dependencies.Repository, submissions: dependencies.Submissions,
+	return &Controller{repository: dependencies.Repository, targets: dependencies.Targets,
 		open: dependencies.Open, now: dependencies.Now, metaFactory: factory}, nil
 }
 
@@ -168,13 +176,17 @@ func (controller *Controller) Request(ctx context.Context, input ControlInput) (
 	if !validMeta || command.Validate() != nil {
 		return ControlRecord{}, ErrInvalid
 	}
-	submission, err := controller.submissions.GetSubmission(ctx, input.JobID)
+	read, err := controller.targets.ReadJob(ctx, input.JobID)
 	if err != nil {
 		return ControlRecord{}, err
 	}
-	record := ControlRecord{SchemaVersion: 1, Command: command, Revision: 1, State: ControlPending,
+	target, err := read.ControlTarget()
+	if err != nil {
+		return ControlRecord{}, err
+	}
+	record := ControlRecord{SchemaVersion: 1, Command: command, Target: target, Revision: 1, State: ControlPending,
 		Observation: ObservationNone, CreatedAt: meta.CreatedAt, UpdatedAt: meta.CreatedAt}
-	if err := record.ValidateFor(submission); err != nil {
+	if err := record.ValidateFor(read); err != nil {
 		return ControlRecord{}, err
 	}
 	stored, err := controller.repository.CreateControl(ctx, record)
@@ -183,7 +195,7 @@ func (controller *Controller) Request(ctx context.Context, input ControlInput) (
 		// will deliver the stored ID; this call cannot assume it committed.
 		return record, err
 	}
-	if stored.Command != record.Command || stored.ValidateFor(submission) != nil {
+	if stored.Command != record.Command || !stored.Target.SameBinding(record.Target) || stored.ValidateFor(read) != nil {
 		return record, ErrConflict
 	}
 	return controller.Deliver(ctx, stored.Command.CommandID)
@@ -202,14 +214,14 @@ func (controller *Controller) Deliver(ctx context.Context, id string) (ControlRe
 	if err != nil || record.State != ControlPending {
 		return record, err
 	}
-	submission, err := controller.submissions.GetSubmission(ctx, record.Command.JobID)
+	read, err := controller.targets.ReadJob(ctx, record.Command.JobID)
 	if err != nil {
 		return record, err
 	}
-	if err := record.ValidateFor(submission); err != nil {
+	if err := record.ValidateFor(read); err != nil {
 		return record, err
 	}
-	backend, err := controller.open(ctx, recordLocation(submission), ObservationAccess)
+	backend, err := controller.open(ctx, record.Target.Location, ObservationAccess)
 	if err != nil || nilPort(backend) {
 		if err == nil {
 			err = ErrUnavailable
@@ -239,7 +251,7 @@ func (controller *Controller) Deliver(ctx context.Context, id string) (ControlRe
 			false,
 		)
 	}
-	if !sameInstallation(submission, info) {
+	if record.Target.NodeID != info.NodeID || record.Target.InstallationID != info.NodeInstallationID {
 		return controller.failed(
 			ctx,
 			record,
@@ -260,7 +272,7 @@ func (controller *Controller) Deliver(ctx context.Context, id string) (ControlRe
 	next.Revision++
 	next.State, next.Observation, next.Confirmation = ControlConfirmed, ObservationNone, &confirmation
 	next.UpdatedAt = controller.updatedAt(record)
-	if next.ValidateFor(submission) != nil {
+	if next.ValidateFor(read) != nil {
 		return controller.failed(
 			ctx,
 			record,
@@ -328,7 +340,8 @@ func (controller *Controller) save(
 		// Storage acknowledgement loss or another delivery can already have
 		// committed the result. Read only; never infer success from the transport.
 		current, readErr := controller.repository.GetControl(ctx, previous.Command.CommandID)
-		matching := readErr == nil && current.Command == previous.Command && current.CreatedAt.Equal(previous.CreatedAt)
+		matching := readErr == nil && current.Command == previous.Command && current.CreatedAt.Equal(previous.CreatedAt) &&
+			current.Target.Equal(previous.Target)
 		if matching && current.State != ControlPending {
 			return current, nil
 		}

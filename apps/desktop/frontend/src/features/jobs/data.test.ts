@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest"
-import { controlFixture, jobFixture, COMMAND_ID, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
+import { controlFixture, jobFixture, submissionFixture, COMMAND_ID, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
 import { parseControlPage, parseControlView, parseJobPage, parseJobView, parsePerformanceResult } from "./data"
 
 describe("current durable job boundary", () => {
   it("keeps delivery, confirmation and synchronized execution independent", () => {
     const confirmed = jobFixture({ execution: null })
     expect(parseJobView(confirmed)).toEqual(confirmed)
-    const pending = jobFixture({ delivery: "pending", confirmation: null, execution: null, observation: "unreachable" })
+    const pending = jobFixture({ submission: submissionFixture({ delivery: "pending", confirmation: null, observation: "unreachable" }), execution: null })
     expect(parseJobView(pending)).toEqual(pending)
     expect(parseJobView(jobFixture({ kind: "run", report_ids: [] })).kind).toBe("run")
   })
 
   it.each([
     { extra: "unknown" }, { schema_version: 0 }, { job_id: "invalid" }, { kind: "plan" },
-    { kind: "quick_task" }, { delivery_revision: "2" }, { delivery_revision: 0 },
-    { delivery: "failed" }, { confirmation: null }, { observation: "timeout" },
-    { prepared_at: "2026-10-16" }, { run_ids: null }, { report_ids: [REPORT_ID, REPORT_ID] },
+    { kind: "quick_task" }, { submission: submissionFixture({ delivery_revision: 0 }) },
+    { submission: { ...submissionFixture(), delivery_revision: "2" } },
+    { submission: { ...submissionFixture(), delivery: "failed" } },
+    { submission: submissionFixture({ confirmation: null }) },
+    { submission: { ...submissionFixture(), observation: "timeout" } },
+    { submission: submissionFixture({ prepared_at: "2026-10-16" }) },
+    { submission: { ...submissionFixture(), unexpected: true } },
+    { submission: undefined }, { submission: null },
+    { run_ids: null }, { report_ids: [REPORT_ID, REPORT_ID] },
     { location: { kind: "remote", configuration_id: "" } },
     { executor: { ...jobFixture().executor, build_id: "unverified" } },
     { executor: { ...jobFixture().executor, secret: "rejected" } },
@@ -23,6 +29,43 @@ describe("current durable job boundary", () => {
     { performance_result_ready: true },
   ])("rejects malformed current job data %j", change => {
     expect(() => parseJobView({ ...jobFixture(), ...change })).toThrow()
+  })
+
+  it("accepts shared remote execution without inventing local submission state", () => {
+    const shared = jobFixture({ submission: null, location: { kind: "remote", configuration_id: JOB_ID },
+      executor: { ...jobFixture().executor, version: "runner-r4", build_id: "b".repeat(64), os: "linux" } })
+    expect(parseJobView(shared)).toEqual(shared)
+    expect(() => parseJobView({ ...shared, execution: null })).toThrow()
+    expect(() => parseJobView({ ...shared, location: { kind: "local", configuration_id: "" } })).toThrow()
+  })
+
+  it("rejects each replaced top-level field and the previous whole DTO without mutating it", () => {
+    const current = jobFixture()
+    const localSubmission = submissionFixture()
+    for (const [key, value] of Object.entries(localSubmission)) {
+      const raw = { ...current, [key]: value }
+      const before = structuredClone(raw)
+      expect(() => parseJobView(raw)).toThrow()
+      expect(raw).toEqual(before)
+    }
+    const { submission: _submission, ...sharedFields } = current
+    const previous = { ...sharedFields, ...localSubmission }
+    const before = structuredClone(previous)
+    expect(() => parseJobView(previous)).toThrow()
+    expect(previous).toEqual(before)
+  })
+
+  it("keeps current local delivery constraints inside the submission object", () => {
+    const pendingWithExecution = jobFixture({ submission: submissionFixture({ delivery: "pending", confirmation: null }) })
+    expect(parseJobView(pendingWithExecution)).toEqual(pendingWithExecution)
+    const prepared = jobFixture({ submission: submissionFixture({ delivery: "prepared", confirmation: null }), execution: null })
+    expect(parseJobView(prepared)).toEqual(prepared)
+    expect(() => parseJobView({ ...prepared, execution: jobFixture().execution })).toThrow()
+    for (const key of Object.keys(submissionFixture())) {
+      const incomplete: Record<string, unknown> = { ...submissionFixture() }
+      delete incomplete[key]
+      expect(() => parseJobView({ ...jobFixture(), submission: incomplete })).toThrow()
+    }
   })
 
   it("validates bounded, non-null pages and current UUID cursors", () => {

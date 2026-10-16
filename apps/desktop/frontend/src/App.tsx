@@ -329,10 +329,10 @@ function AppWorkspace({
 
   const lastObservedJob = useRef("")
   const receiveJobObservation = useCallback((job: JobView) => {
-    const marker = `${job.job_id}:${job.delivery_revision}:${job.confirmation?.revision}:${job.execution?.revision}:${job.execution?.latest_sequence}:${job.performance_result_ready}`
+    const marker = `${job.job_id}:${job.submission?.delivery_revision}:${job.submission?.confirmation?.revision}:${job.execution?.revision}:${job.execution?.latest_sequence}:${job.performance_result_ready}`
     if (lastObservedJob.current === marker) return
     lastObservedJob.current = marker
-    if (job.kind === "comparison" && job.delivery !== "prepared" && job.comparison_id) {
+    if (job.kind === "comparison" && job.submission?.delivery !== "prepared" && job.comparison_id) {
       setPendingComparisonIDs(ids => ids.includes(job.comparison_id) ? ids : [...ids, job.comparison_id])
     }
     invalidateWorkspace()

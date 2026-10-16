@@ -43,7 +43,7 @@ func submittedPageJobID(index int) string {
 
 func TestSubmittedJobsPagesKeepDeliveryOriginAndExecutorAcrossReopen(t *testing.T) {
 	repository, path := newSubmittedPagesRepository(t)
-	empty, err := repository.SubmittedJobs(submittedPagesContext(t), "", 25)
+	empty, err := repository.Jobs(submittedPagesContext(t), "", 25)
 	if err != nil || empty.SchemaVersion != 1 || empty.Jobs == nil || len(empty.Jobs) != 0 || empty.HasMore {
 		t.Fatalf("empty submitted page is not a current non-null collection: %v", err)
 	}
@@ -74,11 +74,11 @@ func TestSubmittedJobsPagesKeepDeliveryOriginAndExecutorAcrossReopen(t *testing.
 		records[spec.JobID] = record
 	}
 	ctx := submittedPagesContext(t)
-	first, err := repository.SubmittedJobs(ctx, "", 25)
+	first, err := repository.Jobs(ctx, "", 25)
 	if err != nil || len(first.Jobs) != 25 || !first.HasMore || first.NextCursor != submittedPageJobID(25) {
 		t.Fatalf("first submitted page lost its keyset bound: %v", err)
 	}
-	last, err := repository.SubmittedJobs(ctx, first.NextCursor, 25)
+	last, err := repository.Jobs(ctx, first.NextCursor, 25)
 	if err != nil || len(last.Jobs) != 2 || last.HasMore || last.NextCursor != submittedPageJobID(27) {
 		t.Fatalf("submitted tail omitted or repeated a record: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSubmittedJobsPagesKeepDeliveryOriginAndExecutorAcrossReopen(t *testing.
 			expectedNode, expectedInstallation = origin.NodeID, origin.InstallationID
 			expectedVersion, expectedBuild = origin.RunnerVersion, origin.EngineBuildID
 		}
-		matchingDelivery := view.JobID == id && view.Delivery == record.State && view.DeliveryRevision == record.Revision
+		matchingDelivery := view.JobID == id && view.Submission.Delivery == record.State && view.Submission.DeliveryRevision == record.Revision
 		matchingLocation := view.Location.Kind == record.Prepared.Spec.Target.Kind &&
 			view.Location.ConfigurationID == record.Prepared.ConfigurationID
 		matchingExecutor := view.Executor.NodeID == expectedNode &&
@@ -109,22 +109,22 @@ func TestSubmittedJobsPagesKeepDeliveryOriginAndExecutorAcrossReopen(t *testing.
 		if view.RunIDs == nil || view.ReportIDs == nil || len(view.RunIDs) != 1 {
 			t.Fatalf("submitted %s lost its frozen child identity or collection shape", id)
 		}
-		if view.PreparedAt != record.CreatedAt.Format(time.RFC3339Nano) ||
-			view.DeliveryUpdatedAt != record.UpdatedAt.Format(time.RFC3339Nano) {
+		if view.Submission.PreparedAt != record.CreatedAt.Format(time.RFC3339Nano) ||
+			view.Submission.DeliveryUpdatedAt != record.UpdatedAt.Format(time.RFC3339Nano) {
 			t.Fatalf("submitted %s lost delivery timestamps", id)
 		}
 		if record.Receipt == nil {
-			if view.Confirmation != nil {
+			if view.Submission.Confirmation != nil {
 				t.Fatalf("unconfirmed delivery %s acquired an acknowledgement", id)
 			}
 			continue
 		}
-		if view.Confirmation == nil || view.Confirmation.Status != record.Receipt.Status ||
-			view.Confirmation.AcceptedAt != record.Receipt.AcceptedAt.Format(time.RFC3339Nano) {
+		if view.Submission.Confirmation == nil || view.Submission.Confirmation.Status != record.Receipt.Status ||
+			view.Submission.Confirmation.AcceptedAt != record.Receipt.AcceptedAt.Format(time.RFC3339Nano) {
 			t.Fatalf("remote acknowledgement for %s was lost before synchronization", id)
 		}
 	}
-	tail, err := repository.SubmittedJobs(ctx, last.NextCursor, 25)
+	tail, err := repository.Jobs(ctx, last.NextCursor, 25)
 	if err != nil || tail.Jobs == nil || len(tail.Jobs) != 0 || tail.HasMore || tail.NextCursor != last.NextCursor {
 		t.Fatalf("exhausted submitted cursor is not a stable empty page: %v", err)
 	}
@@ -133,11 +133,16 @@ func TestSubmittedJobsPagesKeepDeliveryOriginAndExecutorAcrossReopen(t *testing.
 	}
 	reopened := reopenHardeningRepository(t, path)
 	defer reopened.Close()
-	read, err := reopened.SubmittedJobs(ctx, "", 25)
+	read, err := reopened.Jobs(ctx, "", 25)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRoundTrip(t, "reopened submitted page", first, read)
+	assertRoundTrip(
+		t,
+		"reopened submitted page",
+		first,
+		read,
+	)
 }
 
 func TestSubmittedJobsPagesBudgetCompleteFrozenInputBeforeProjection(t *testing.T) {
@@ -159,11 +164,11 @@ func TestSubmittedJobsPagesBudgetCompleteFrozenInputBeforeProjection(t *testing.
 		}
 	}
 	ctx := submittedPagesContext(t)
-	first, err := repository.SubmittedJobs(ctx, "", 25)
+	first, err := repository.Jobs(ctx, "", 25)
 	if err != nil || len(first.Jobs) != 5 || !first.HasMore || first.NextCursor != submittedPageJobID(5) {
 		t.Fatalf("16 MiB frozen-input budget did not stop before the sixth small DTO: %v", err)
 	}
-	last, err := repository.SubmittedJobs(ctx, first.NextCursor, 25)
+	last, err := repository.Jobs(ctx, first.NextCursor, 25)
 	if err != nil || len(last.Jobs) != 1 || last.HasMore || last.Jobs[0].JobID != submittedPageJobID(6) {
 		t.Fatalf("byte-limited submitted page lost its deferred record: %v", err)
 	}
@@ -206,11 +211,21 @@ func TestSubmittedJobControlsPagesKeepAllHistoryAndIndependentExecution(t *testi
 	}
 	expected := map[string]jobs.ControlRecord{}
 	for index := 1; index <= 27; index++ {
-		foreign := controlFixture(otherSpec.JobID, index*2-1)
+		foreign := controlFixture(
+			t,
+			fixture.repository,
+			otherSpec.JobID,
+			index*2-1,
+		)
 		if _, err := fixture.repository.CreateControl(t.Context(), foreign); err != nil {
 			t.Fatal(err)
 		}
-		record := controlFixture(fixture.spec.JobID, index*2)
+		record := controlFixture(
+			t,
+			fixture.repository,
+			fixture.spec.JobID,
+			index*2,
+		)
 		if index%3 == 1 {
 			record.Command.Kind = jobcontract.CommandStopSending
 			record.Command.ExpectedRevision = fixture.snapshot.Receipt.Revision
@@ -256,16 +271,21 @@ func TestSubmittedJobControlsPagesKeepAllHistoryAndIndependentExecution(t *testi
 		t.Fatal(err)
 	}
 	ctx := submittedPagesContext(t)
-	first, err := fixture.repository.SubmittedJobControls(ctx, fixture.spec.JobID, "", 25)
+	first, err := fixture.repository.JobControls(ctx, fixture.spec.JobID, "", 25)
 	if err != nil || len(first.Commands) != 25 || !first.HasMore || first.JobID != fixture.spec.JobID {
 		t.Fatalf("control history lost its per-job bound: %v", err)
 	}
-	last, err := fixture.repository.SubmittedJobControls(ctx, fixture.spec.JobID, first.NextCursor, 25)
+	last, err := fixture.repository.JobControls(ctx, fixture.spec.JobID, first.NextCursor, 25)
 	if err != nil || len(last.Commands) != 2 || last.HasMore {
 		t.Fatalf("control history tail omitted final or pending instructions: %v", err)
 	}
 	for index, view := range append(first.Commands, last.Commands...) {
-		id := controlFixture(fixture.spec.JobID, (index+1)*2).Command.CommandID
+		id := controlFixture(
+			t,
+			fixture.repository,
+			fixture.spec.JobID,
+			(index+1)*2,
+		).Command.CommandID
 		record := expected[id]
 		matchingIdentity := view.SchemaVersion == 1 && view.CommandID == id && view.JobID == fixture.spec.JobID
 		matchingDelivery := view.State == record.State && view.Observation == record.Observation &&
@@ -293,16 +313,26 @@ func TestSubmittedJobControlsPagesKeepAllHistoryAndIndependentExecution(t *testi
 			t.Fatalf("historical confirmation %s was overwritten by current completion", id)
 		}
 	}
-	if first.NextCursor != controlFixture(fixture.spec.JobID, 50).Command.CommandID ||
-		last.NextCursor != controlFixture(fixture.spec.JobID, 54).Command.CommandID {
+	if first.NextCursor != controlFixture(
+		t,
+		fixture.repository,
+		fixture.spec.JobID,
+		50,
+	).Command.CommandID ||
+		last.NextCursor != controlFixture(
+			t,
+			fixture.repository,
+			fixture.spec.JobID,
+			54,
+		).Command.CommandID {
 		t.Fatal("control history cursor did not retain the last returned command")
 	}
-	tail, err := fixture.repository.SubmittedJobControls(ctx, fixture.spec.JobID, last.NextCursor, 25)
+	tail, err := fixture.repository.JobControls(ctx, fixture.spec.JobID, last.NextCursor, 25)
 	emptyTail := tail.Commands != nil && len(tail.Commands) == 0 && !tail.HasMore
 	if err != nil || !emptyTail || tail.NextCursor != last.NextCursor {
 		t.Fatalf("exhausted control history did not return a stable non-null collection: %v", err)
 	}
-	foreignPage, err := fixture.repository.SubmittedJobControls(ctx, otherSpec.JobID, "", 25)
+	foreignPage, err := fixture.repository.JobControls(ctx, otherSpec.JobID, "", 25)
 	if err != nil || len(foreignPage.Commands) != 25 || !foreignPage.HasMore {
 		t.Fatalf("other job's history was lost: %v", err)
 	}
@@ -311,7 +341,7 @@ func TestSubmittedJobControlsPagesKeepAllHistoryAndIndependentExecution(t *testi
 			t.Fatal("control history leaked another job's instructions")
 		}
 	}
-	current, err := fixture.repository.SubmittedJob(ctx, fixture.spec.JobID)
+	current, err := fixture.repository.Job(ctx, fixture.spec.JobID)
 	if err != nil || current.Execution == nil || current.Execution.Status != domain.RunCompleted {
 		t.Fatalf("reading historical controls replaced current job execution: %v", err)
 	}
@@ -319,7 +349,12 @@ func TestSubmittedJobControlsPagesKeepAllHistoryAndIndependentExecution(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRoundTrip(t, "history read preserves execution", completed, stored)
+	assertRoundTrip(
+		t,
+		"history read preserves execution",
+		completed,
+		stored,
+	)
 	var path string
 	row := fixture.db.QueryRowContext(ctx, `SELECT file FROM pragma_database_list WHERE name = 'main'`)
 	if err := row.Scan(&path); err != nil {
@@ -330,11 +365,16 @@ func TestSubmittedJobControlsPagesKeepAllHistoryAndIndependentExecution(t *testi
 	}
 	reopened := reopenHardeningRepository(t, path)
 	defer reopened.Close()
-	read, err := reopened.SubmittedJobControls(ctx, fixture.spec.JobID, "", 25)
+	read, err := reopened.JobControls(ctx, fixture.spec.JobID, "", 25)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRoundTrip(t, "reopened control history", first, read)
+	assertRoundTrip(
+		t,
+		"reopened control history",
+		first,
+		read,
+	)
 }
 
 func TestSubmittedPagesValidateInputsAndPreserveCancellation(t *testing.T) {
@@ -344,7 +384,7 @@ func TestSubmittedPagesValidateInputsAndPreserveCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := submittedPagesContext(t)
-	empty, err := repository.SubmittedJobControls(ctx, spec.JobID, "", 25)
+	empty, err := repository.JobControls(ctx, spec.JobID, "", 25)
 	if err != nil || empty.SchemaVersion != 1 || empty.JobID != spec.JobID || empty.Commands == nil ||
 		len(empty.Commands) != 0 || empty.HasMore {
 		t.Fatalf("job without controls did not return a current non-null collection: %v", err)
@@ -361,29 +401,29 @@ func TestSubmittedPagesValidateInputsAndPreserveCancellation(t *testing.T) {
 		{name: "excess limit", ctx: ctx, limit: 26},
 	} {
 		t.Run(input.name, func(t *testing.T) {
-			if _, err := repository.SubmittedJobs(input.ctx, input.after, input.limit); !errors.Is(err, jobs.ErrInvalid) {
+			if _, err := repository.Jobs(input.ctx, input.after, input.limit); !errors.Is(err, jobs.ErrInvalid) {
 				t.Fatalf("invalid submitted page query accepted: %v", err)
 			}
-			_, err := repository.SubmittedJobControls(input.ctx, spec.JobID, input.after, input.limit)
+			_, err := repository.JobControls(input.ctx, spec.JobID, input.after, input.limit)
 			if !errors.Is(err, jobs.ErrInvalid) {
 				t.Fatalf("invalid control history query accepted: %v", err)
 			}
 		})
 	}
 	for _, id := range []string{"", "invalid"} {
-		if _, err := repository.SubmittedJobControls(ctx, id, "", 25); !errors.Is(err, jobs.ErrInvalid) {
+		if _, err := repository.JobControls(ctx, id, "", 25); !errors.Is(err, jobs.ErrInvalid) {
 			t.Fatalf("invalid history owner accepted: %v", err)
 		}
 	}
-	if _, err := repository.SubmittedJobControls(ctx, submittedPageJobID(99), "", 25); !errors.Is(err, jobs.ErrNotFound) {
+	if _, err := repository.JobControls(ctx, submittedPageJobID(99), "", 25); !errors.Is(err, jobs.ErrNotFound) {
 		t.Fatalf("missing history owner was confused with an empty history: %v", err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := repository.SubmittedJobs(cancelled, "", 25); !errors.Is(err, context.Canceled) {
+	if _, err := repository.Jobs(cancelled, "", 25); !errors.Is(err, context.Canceled) {
 		t.Fatalf("submitted page lost cancellation: %v", err)
 	}
-	if _, err := repository.SubmittedJobControls(cancelled, spec.JobID, "", 25); !errors.Is(err, context.Canceled) {
+	if _, err := repository.JobControls(cancelled, spec.JobID, "", 25); !errors.Is(err, context.Canceled) {
 		t.Fatalf("control history lost cancellation: %v", err)
 	}
 }
@@ -414,7 +454,12 @@ func TestSubmittedPagesRejectOversizedDocumentsWithoutMutation(t *testing.T) {
 			read := `SELECT document_json FROM job_submissions WHERE job_id = ?`
 			size := jobcontract.MaxSubmissionBytes + jobcontract.MaxRunnerInfoBytes + jobcontract.MaxStateBytes + 4097
 			if target == "control" {
-				control := controlFixture(spec.JobID, 1)
+				control := controlFixture(
+					t,
+					repository,
+					spec.JobID,
+					1,
+				)
 				if _, err := repository.CreateControl(t.Context(), control); err != nil {
 					t.Fatal(err)
 				}
@@ -431,10 +476,10 @@ func TestSubmittedPagesRejectOversizedDocumentsWithoutMutation(t *testing.T) {
 			}
 			var err error
 			if target == "control" || target == "history owner" {
-				_, err = repository.SubmittedJobControls(ctx, record.Prepared.Spec.JobID, "", 1)
+				_, err = repository.JobControls(ctx, record.Prepared.Spec.JobID, "", 1)
 			} else {
-				_, err = repository.SubmittedJobs(ctx, "", 1)
-				if err != nil && !strings.Contains(err.Error(), "submitted page identity or byte limit") {
+				_, err = repository.Jobs(ctx, "", 1)
+				if err != nil && !strings.Contains(err.Error(), "job page identity or byte limit") {
 					t.Fatalf("oversized input reached projection instead of the bounded ID scan: %v", err)
 				}
 			}

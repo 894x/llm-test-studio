@@ -118,8 +118,8 @@ func TestLiveRemoteClosedObserverRole(t *testing.T) {
 	emit("launch_started", "", "attempt_started")
 	view, launchErr := app.LaunchJob(sharedRunnerPerformanceCommand(location, input.BaseURL, key))
 	if launchErr != nil {
-		if page, readErr := app.GetJobs("", 25); readErr == nil && len(page.Jobs) == 1 {
-			view = page.Jobs[0]
+		if ownJobs, readErr := readLiveK3OwnJobs(app.GetJobs); readErr == nil && len(ownJobs) == 1 {
+			view = ownJobs[0]
 		}
 	}
 	final.JobID = view.JobID
@@ -127,10 +127,13 @@ func TestLiveRemoteClosedObserverRole(t *testing.T) {
 		final.State = "launch_identity_unknown_no_resubmission"
 		t.Fatal("one launch has no confirmed local identity; retained outbox requires query-only review")
 	}
-	emit("launch_returned", view.JobID, string(view.Delivery))
+	if view.Submission == nil {
+		t.Fatal("the launched job lost its own durable submission")
+	}
+	emit("launch_returned", view.JobID, string(view.Submission.Delivery))
 	// Pending delivery is confirmed only by queries of this exact durable ID.
 	// Acceptance does not wait for the unrelated historical mirror backlog.
-	if view.Delivery != jobs.SubmissionAccepted || view.Confirmation == nil {
+	if view.Submission.Delivery != jobs.SubmissionAccepted || view.Submission.Confirmation == nil {
 		view = waitSharedRunnerAcceptance(t, ctx, app, view.JobID)
 	}
 	assertLiveK3Executor(t, view, pairing)
@@ -139,7 +142,7 @@ func TestLiveRemoteClosedObserverRole(t *testing.T) {
 		t.Fatal("accepted job is missing its stable report or actual runner identity")
 	}
 	result.Executor, result.ReportID = view.Executor, view.ReportIDs[0]
-	emit("accepted", view.JobID, string(view.Confirmation.Status))
+	emit("accepted", view.JobID, string(view.Submission.Confirmation.Status))
 	settings := liveK3AuditSettings{ConfigurationRoot: configurationRoot,
 		Credentials: store, ConfigurationID: configurationID, Expected: view}
 	preClose := waitClosedObserverRunning(t, ctx, settings)
@@ -235,7 +238,10 @@ func closedObserverRunningSnapshot(expected jobs.JobView, snapshot jobcontract.S
 }
 
 func closedObserverSnapshotMatches(expected jobs.JobView, snapshot jobcontract.Snapshot) bool {
-	confirmation := expected.Confirmation
+	if expected.Submission == nil {
+		return false
+	}
+	confirmation := expected.Submission.Confirmation
 	if confirmation == nil || !liveK3AuditIdentity(expected, snapshot) {
 		return false
 	}
@@ -371,8 +377,11 @@ func TestClosedObserverRunningUsesIndependentSnapshotWithoutLocalExecution(t *te
 		valid  bool
 	}{
 		{name: "matching remote running snapshot without a local mirror", valid: true},
+		{name: "foreign job without own submission", change: func(view *jobs.JobView, _ *jobcontract.Snapshot) {
+			view.Submission = nil
+		}},
 		{name: "unconfirmed delivery", change: func(view *jobs.JobView, _ *jobcontract.Snapshot) {
-			view.Confirmation = nil
+			view.Submission.Confirmation = nil
 		}},
 		{name: "different job", change: func(_ *jobs.JobView, snapshot *jobcontract.Snapshot) {
 			snapshot.Receipt.JobID = "83000000-0000-4000-8000-000000000009"
@@ -389,10 +398,10 @@ func TestClosedObserverRunningUsesIndependentSnapshotWithoutLocalExecution(t *te
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			view, snapshot := liveK3AuditFixture()
-			view.Delivery = jobs.SubmissionAccepted
+			view.Submission = &jobs.SubmissionView{Delivery: jobs.SubmissionAccepted,
+				Confirmation: &jobs.ConfirmationView{Status: domain.RunQueued, Revision: 1,
+					AcceptedAt: snapshot.Receipt.AcceptedAt.Format(time.RFC3339Nano)}}
 			view.Execution = nil
-			view.Confirmation = &jobs.ConfirmationView{Status: domain.RunQueued, Revision: 1,
-				AcceptedAt: snapshot.Receipt.AcceptedAt.Format(time.RFC3339Nano)}
 			if test.change != nil {
 				test.change(&view, &snapshot)
 			}

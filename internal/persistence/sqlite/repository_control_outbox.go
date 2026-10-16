@@ -42,7 +42,17 @@ func (repository *Repository) CreateControl(
 	defer tx.Rollback()
 	previous, err := queryControl(ctx, tx, record.Command.CommandID)
 	if err == nil {
-		if previous.Command != record.Command {
+		if previous.Command != record.Command || !previous.Target.SameBinding(record.Target) {
+			return jobs.ControlRecord{}, jobs.ErrConflict
+		}
+		if previous.Target.Acceptance != nil && !previous.Target.Equal(record.Target) {
+			return jobs.ControlRecord{}, jobs.ErrConflict
+		}
+		read, readErr := queryExecution(ctx, tx, record.Command.JobID)
+		if readErr != nil {
+			return jobs.ControlRecord{}, readErr
+		}
+		if record.ValidateFor(read.JobRead) != nil {
 			return jobs.ControlRecord{}, jobs.ErrConflict
 		}
 		return previous, nil
@@ -50,7 +60,16 @@ func (repository *Repository) CreateControl(
 	if !errors.Is(err, jobs.ErrNotFound) {
 		return jobs.ControlRecord{}, err
 	}
-	if err := validateControlOwner(ctx, tx, record); err != nil {
+	read, err := queryExecution(ctx, tx, record.Command.JobID)
+	if err != nil {
+		return jobs.ControlRecord{}, err
+	}
+	if err := createControlTarget(
+		ctx,
+		tx,
+		record,
+		read,
+	); err != nil {
 		return jobs.ControlRecord{}, err
 	}
 	_, err = tx.ExecContext(
@@ -119,7 +138,7 @@ func (repository *Repository) UpdateControl(ctx context.Context, next jobs.Contr
 	if err := previous.ValidateSuccessor(next); err != nil {
 		return err
 	}
-	if err := validateControlOwner(ctx, tx, next); err != nil {
+	if err := validateStoredControlOwner(ctx, tx, next); err != nil {
 		return err
 	}
 	result, err := tx.ExecContext(
@@ -156,7 +175,12 @@ func (repository *Repository) ListPendingControls(
 	if ctx == nil || !validPage {
 		return jobs.ControlPage{}, jobs.ErrInvalid
 	}
-	rows, err := repository.db.QueryContext(
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return jobs.ControlPage{}, fmt.Errorf("begin pending controls read: %w", err)
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(
 		ctx,
 		`SELECT `+controlReadColumns+`
 		FROM job_control_outbox WHERE state = 'pending' AND command_id > ? ORDER BY command_id LIMIT ?`,
@@ -168,10 +192,23 @@ func (repository *Repository) ListPendingControls(
 		return jobs.ControlPage{}, fmt.Errorf("list pending controls: %w", err)
 	}
 	defer rows.Close()
-	page := jobs.ControlPage{Records: []jobs.ControlRecord{}, NextCursor: after}
+	records := []jobs.ControlRecord{}
 	for rows.Next() {
 		record, err := scanControl(rows)
 		if err != nil {
+			return jobs.ControlPage{}, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return jobs.ControlPage{}, fmt.Errorf("iterate pending controls: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return jobs.ControlPage{}, fmt.Errorf("close pending controls: %w", err)
+	}
+	page := jobs.ControlPage{Records: []jobs.ControlRecord{}, NextCursor: after}
+	for _, record := range records {
+		if err := validateStoredControlOwner(ctx, tx, record); err != nil {
 			return jobs.ControlPage{}, err
 		}
 		if len(page.Records) == int(limit) {
@@ -181,8 +218,8 @@ func (repository *Repository) ListPendingControls(
 		page.Records = append(page.Records, record)
 		page.NextCursor = record.Command.CommandID
 	}
-	if err := rows.Err(); err != nil {
-		return jobs.ControlPage{}, fmt.Errorf("iterate pending controls: %w", err)
+	if err := tx.Commit(); err != nil {
+		return jobs.ControlPage{}, fmt.Errorf("commit pending controls read: %w", err)
 	}
 	return page, nil
 }
@@ -198,23 +235,10 @@ func queryControl(ctx context.Context, tx *sql.Tx, id string) (jobs.ControlRecor
 	if err != nil {
 		return jobs.ControlRecord{}, err
 	}
-	if err := validateControlOwner(ctx, tx, record); err != nil {
-		invalidOwner := errors.Is(err, jobs.ErrInvalid) || errors.Is(err, jobs.ErrConflict) ||
-			errors.Is(err, jobs.ErrNotFound)
-		if invalidOwner {
-			return jobs.ControlRecord{}, storageCorrupt("control intent owner")
-		}
+	if err := validateStoredControlOwner(ctx, tx, record); err != nil {
 		return jobs.ControlRecord{}, err
 	}
 	return record, nil
-}
-
-func validateControlOwner(ctx context.Context, tx *sql.Tx, record jobs.ControlRecord) error {
-	submission, err := querySubmission(ctx, tx, record.Command.JobID)
-	if err != nil {
-		return err
-	}
-	return record.ValidateFor(submission)
 }
 
 func scanControl(row interface{ Scan(...any) error }) (jobs.ControlRecord, error) {

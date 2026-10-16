@@ -236,7 +236,8 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	failure.enter("original_job", deadline)
 	assertLiveK3Outbox(t, app, []liveK3JobSummary{{JobID: input.JobID}})
 	view, err := app.GetJob(input.JobID)
-	if err != nil || view.Delivery != jobs.SubmissionAccepted || view.Confirmation == nil {
+	if err != nil || view.Submission == nil ||
+		view.Submission.Delivery != jobs.SubmissionAccepted || view.Submission.Confirmation == nil {
 		t.Fatal("the original accepted job is missing; recovery will not submit a replacement")
 	}
 	expected := input.executionExpectation()
@@ -248,7 +249,7 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	}
 	result.Kind, result.Executor = view.Kind, view.Executor
 	_ = json.NewEncoder(os.Stdout).Encode(sharedResumeEvent{
-		Stage: "original_accepted", JobID: input.JobID, State: string(view.Delivery),
+		Stage: "original_accepted", JobID: input.JobID, State: string(view.Submission.Delivery),
 	})
 	failure.enter("remote_observation", deadline)
 	audit, err := openLiveK3Audit(ctx, liveK3AuditSettings{ConfigurationRoot: configurationRoot,
@@ -327,9 +328,9 @@ func observeSharedResumeOriginal(
 		if err != nil {
 			failSharedLive(t, ctx, "job_read_unavailable")
 		}
-		matching := liveK3AuditIdentity(view, snapshot) && view.Confirmation != nil &&
-			snapshot.Receipt.AcceptedAt.Format(time.RFC3339Nano) == view.Confirmation.AcceptedAt &&
-			snapshot.Receipt.Revision >= view.Confirmation.Revision
+		matching := view.Submission != nil && liveK3AuditIdentity(view, snapshot) && view.Submission.Confirmation != nil &&
+			snapshot.Receipt.AcceptedAt.Format(time.RFC3339Nano) == view.Submission.Confirmation.AcceptedAt &&
+			snapshot.Receipt.Revision >= view.Submission.Confirmation.Revision
 		if !matching {
 			failSharedLive(t, ctx, "job_identity_changed")
 		}

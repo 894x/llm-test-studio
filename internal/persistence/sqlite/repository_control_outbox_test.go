@@ -15,9 +15,19 @@ import (
 	persistence "github.com/894x/llm-test-studio/internal/persistence/sqlite"
 )
 
-func controlFixture(jobID string, index int) jobs.ControlRecord {
+func controlFixture(t *testing.T, repository *persistence.Repository, jobID string, index int) jobs.ControlRecord {
+	t.Helper()
+	read, err := repository.ReadJob(t.Context(), jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := read.ControlTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
 	at := repositoryEpoch.Add(2 * time.Minute)
 	return jobs.ControlRecord{SchemaVersion: 1, Revision: 1, State: jobs.ControlPending,
+		Target:    target,
 		CreatedAt: at, UpdatedAt: at, Observation: jobs.ObservationNone,
 		Command: jobcontract.Command{Contract: jobcontract.CurrentContract,
 			CommandID: fmt.Sprintf("83000000-0000-4000-8000-%012d", index), JobID: jobID,
@@ -27,7 +37,12 @@ func controlFixture(jobID string, index int) jobs.ControlRecord {
 func TestControlOutboxReopensOriginalInstructionsAndStableConfirmations(t *testing.T) {
 	fixture := newSubmittedReadFixture(t, true)
 	fixture.confirm(t)
-	record := controlFixture(fixture.spec.JobID, 1)
+	record := controlFixture(
+		t,
+		fixture.repository,
+		fixture.spec.JobID,
+		1,
+	)
 	stored, err := fixture.repository.CreateControl(t.Context(), record)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +95,9 @@ func TestControlOutboxReopensOriginalInstructionsAndStableConfirmations(t *testi
 	for _, mutation := range []func(*jobs.ControlRecord){
 		func(value *jobs.ControlRecord) { value.Command.Kind = jobcontract.CommandStopSending },
 		func(value *jobs.ControlRecord) { value.Command.ExpectedRevision++ },
-		func(value *jobs.ControlRecord) { value.Command.JobID = remoteOrigin.NodeID },
+		func(value *jobs.ControlRecord) {
+			value.Command.JobID, value.Target.JobID = remoteOrigin.NodeID, remoteOrigin.NodeID
+		},
 	} {
 		changed := record
 		mutation(&changed)
@@ -106,7 +123,12 @@ func TestControlOutboxConcurrentCreateAndCASHaveOneStateWinner(t *testing.T) {
 	other := reopenHardeningRepository(t, databasePath)
 	defer other.Close()
 	repositories := []*persistence.Repository{fixture.repository, other}
-	record := controlFixture(fixture.spec.JobID, 1)
+	record := controlFixture(
+		t,
+		fixture.repository,
+		fixture.spec.JobID,
+		1,
+	)
 	errorsFound := make(chan error, 2)
 	var workers sync.WaitGroup
 	for _, repository := range repositories {
@@ -153,7 +175,12 @@ func TestControlOutboxConcurrentCreateAndCASHaveOneStateWinner(t *testing.T) {
 func TestControlOutboxBoundsPendingPagesAndDoesNotReturnFinalInstructions(t *testing.T) {
 	fixture := newSubmittedReadFixture(t, false)
 	for index := 1; index <= 27; index++ {
-		record := controlFixture(fixture.spec.JobID, index)
+		record := controlFixture(
+			t,
+			fixture.repository,
+			fixture.spec.JobID,
+			index,
+		)
 		if _, err := fixture.repository.CreateControl(t.Context(), record); err != nil {
 			t.Fatal(err)
 		}
@@ -163,7 +190,12 @@ func TestControlOutboxBoundsPendingPagesAndDoesNotReturnFinalInstructions(t *tes
 			if err := fixture.repository.UpdateControl(t.Context(), record, 1); err != nil {
 				t.Fatal(err)
 			}
-			repeated, err := fixture.repository.CreateControl(t.Context(), controlFixture(fixture.spec.JobID, index))
+			repeated, err := fixture.repository.CreateControl(t.Context(), controlFixture(
+				t,
+				fixture.repository,
+				fixture.spec.JobID,
+				index,
+			))
 			if err != nil || repeated.State != jobs.ControlRejected {
 				t.Fatalf("repeated creation reset a rejected instruction: %v", err)
 			}
@@ -178,7 +210,12 @@ func TestControlOutboxBoundsPendingPagesAndDoesNotReturnFinalInstructions(t *tes
 	first, err := fixture.repository.ListPendingControls(t.Context(), "", 25)
 	validFirst := err == nil && len(first.Records) == 25 && first.HasMore
 	if !validFirst || first.Records[0].Command.CommandID !=
-		controlFixture(fixture.spec.JobID, 2).Command.CommandID {
+		controlFixture(
+			t,
+			fixture.repository,
+			fixture.spec.JobID,
+			2,
+		).Command.CommandID {
 		t.Fatalf("pending control page is not bounded or contains a final instruction: %v", err)
 	}
 	last, err := fixture.repository.ListPendingControls(t.Context(), first.NextCursor, 25)
@@ -204,7 +241,12 @@ func TestControlOutboxRejectsCorruptDocumentsWithoutChangingStoredBytes(t *testi
 		"columns", "confirmation owner"} {
 		t.Run(target, func(t *testing.T) {
 			fixture := newSubmittedReadFixture(t, false)
-			record := controlFixture(fixture.spec.JobID, 1)
+			record := controlFixture(
+				t,
+				fixture.repository,
+				fixture.spec.JobID,
+				1,
+			)
 			if _, err := fixture.repository.CreateControl(t.Context(), record); err != nil {
 				t.Fatal(err)
 			}

@@ -301,6 +301,11 @@ func TestRemoteNodeRemovalWaitsForNewControlIntentToBeSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	meta, _ := domain.NewEntityMeta(time.Now().UTC())
+	target, err := (jobs.JobRead{Spec: accepted.Prepared.Spec, Submission: &accepted,
+		Location: jobs.Location{Kind: jobcontract.TargetRemote, ConfigurationID: node.ID}}).ControlTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	controller := remoteNodeControlWriter{request: func(ctx context.Context, input jobs.ControlInput) (jobs.ControlRecord, error) {
 		close(entered)
@@ -310,6 +315,7 @@ func TestRemoteNodeRemovalWaitsForNewControlIntentToBeSaved(t *testing.T) {
 			return jobs.ControlRecord{}, ctx.Err()
 		}
 		control := jobs.ControlRecord{SchemaVersion: 1, Revision: 1, State: jobs.ControlPending,
+			Target:    target,
 			CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
 			Command: jobcontract.Command{Contract: jobcontract.CurrentContract, CommandID: meta.ID,
 				JobID: input.JobID, Kind: input.Kind, ExpectedRevision: input.ExpectedRevision}}

@@ -58,7 +58,7 @@ export function JobsMenu({ client, preferredJob, reports, onOpenReport, onJobCha
             {!page && !error ? <Spinner className="my-4" /> : null}
             {page?.jobs.length === 0 ? <Empty><EmptyDescription>{t("empty")}</EmptyDescription></Empty> : null}
             {page?.jobs.map(job => <Button key={job.job_id} variant={selected?.job_id === job.job_id ? "secondary" : "ghost"} className="my-1 h-auto w-full justify-start whitespace-normal px-2 py-2 text-left text-xs [overflow-wrap:anywhere]" data-state={selected?.job_id === job.job_id ? "selected" : undefined} aria-pressed={selected?.job_id === job.job_id} onClick={() => { setSelectedID(job.job_id); setSelectedSnapshot(job) }}>
-              <span className="min-w-0"><span className="block font-medium">{t(`kinds.${job.kind}`)} · {t(job.location.kind)}</span><span className="mt-1 block text-[11px] text-muted-foreground">{job.job_id}</span><span className="mt-1 block text-[11px]">{job.execution ? t(`statuses.${job.execution.status}`) : t(`deliveryStates.${job.delivery}`)}</span></span>
+              <span className="min-w-0"><span className="block font-medium">{t(`kinds.${job.kind}`)} · {t(job.location.kind)}</span><span className="mt-1 block text-[11px] text-muted-foreground">{job.job_id}</span><span className="mt-1 block text-[11px]">{job.execution ? t(`statuses.${job.execution.status}`) : job.submission ? t(`deliveryStates.${job.submission.delivery}`) : null}</span>{!job.submission ? <span className="mt-1 block text-[11px] text-muted-foreground">{t("sharedNode")}</span> : null}</span>
             </Button>)}
           </ScrollArea>
           <div className="flex flex-wrap gap-2 py-2">

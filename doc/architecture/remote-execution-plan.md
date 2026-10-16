@@ -317,9 +317,9 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 
 对已存在的数据库先做只读身份与结构预检，再进入当前格式的正常打开流程，确保拒绝旧格式时不因初始化、PRAGMA 或清理逻辑修改数据。
 
-现有本地历史数据通过临时、独立调用的升级工具转换：先记录源标记与 checksum，创建一致性 SQLite 备份并复制证据清单；明确把该已知本地来源标为 local，保留 ID、时间、指标、verdict 和原始证据引用；再按目标当前 validator、行数、关联、报告摘要、foreign key 与 quick_check 验证。未知来源或格式停止，不猜测。
+现有本地历史数据通过临时、独立调用的升级工具转换：先记录源标记与 checksum，创建一致性 SQLite 备份并复制证据清单；核对已知源的所有权，保留 ID、时间、指标、verdict 和原始证据引用；本轮历史reports/perf缺execution_origin时仅在独立转换工具中补合法unmanaged显式null，不依据当前机器伪造历史Origin；再按目标当前 validator、行数、关联、报告摘要、foreign key 与 quick_check 验证。未知来源或格式停止，不猜测。
 
-工具放在 `scripts/upgrade-remote-execution-once/`，仅在实施时创建并明确执行；不放入启动、构建、正常读取或远程任务接收。验证和切换完成后删除临时工具；备份保留。节点格式升级同样在无活动任务、备份完成后单独执行，不能靠重新安装清空历史数据。测试 amd64 节点已对已知空业务源结构执行一次独立转换，该工具明确拒绝非空业务数据，不代表本地历史用户数据库已升级；后续 R1 → R2 在同一当前 checksum 下只升级程序，完整业务数据和备份保留、没有数据转换。本地用户数据库未打开或修改，最终 E 阶段仍需相应已知历史源的转换与恢复验证。
+临时工具仅在独立工作目录中按已知源创建并明确执行，本轮在 `%TEMP%/llm-shared-jobs-offline-conversion-20261016/`准备；不放入启动、构建、正常读取或远程任务接收。验证和切换完成后删除临时工具；备份保留。节点格式升级同样在无活动任务、备份完成后单独执行，不能靠重新安装清空历史数据。测试 amd64 节点已对已知空业务源结构执行一次独立转换，该工具明确拒绝非空业务数据，不代表本地历史用户数据库已升级；后续 R1 → R2 在同一当前 checksum 下只升级程序，完整业务数据和备份保留、没有数据转换。本轮实际历史用户库仅做只读预检，未转换或切换，最终 E 阶段仍需固定已知历史源的直接转换与恢复验证。
 
 ## 实施顺序与验收
 
@@ -398,7 +398,7 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | D3a Remote 桌面节点设置 | 已实现 | 顶部 Remote 面板接入节点列表、编辑、密码/私钥、指纹确认、检查、安装重试和默认选择；提交后清除表单秘密，更新不确定时先重读，默认离线仍保留；移除 guard 使用只读持久事实，并与提交及新控制意图串行；真实 Wails 空节点面板与表单通过三档浏览器渲染验证 |
 | D3b 统一桌面任务入口与观察 | 已实现 | 当前七个 Job 绑定替换旧六个启动/控制入口与同步性能事件；四类任务每次启动读最新默认并显式提交位置，待确认保持原 ID；持久任务分页、重开找回、固定指令重试与完整性能结果接入，统计归档仅在已同步目录存在时开放；真实远程全入口和原生窗口截图仍待最终验收 |
 | D2i 服务端冻结实际执行来源 | 已实现 | Host 在接收事务冻结七字段 Origin，Receipt、事件、终态和报告保留原 runner 版本/构建；客户端探测仅供未接收准备使用；当前 unmanaged 报告明确 null，managed 报告与 owner/mirror 同源；严格拒绝旧回执和缺字段文档，不增加历史版本读取；完整大任务通过有界内容校验缓存保留严格校验并避免重复解析超时 |
-| C2c2 至 E | 进行中 | R7 升级/actual backup 与 typed 核验、两个原 Mock 报告恢复及 Desktop 纯查询通过；priority c2d39bb 已提交/全测，本轮单 Mock 在 submit 实际退出后由 audit/reopen 两个 OS 进程确认继续与恢复通过（整轮 180 秒预算）。初轮 Start 超时、bf 四 false、K3 原判定保留。当前客户端的完整大任务/多 client 公平性、foreign 视图/控制、文件资源/回收、native 关窗/OS keyring、历史库、重启/故障还原、第二节点 arm64 与 CI 发布仍待实施或验收 |
+| C2c2 至 E | 进行中 | R7 升级/backup 与 typed、旧报告恢复、旧 c2 单 Mock 真实 OS 退出重开已有实际证据；shared/foreign 统一 view/控制新契约已实现，全仓 Go/vet 与浏览器 fixture 通过，旧 false 保留。新 adc schema 的 desktop/runner 源转换、766 历史库直接转换、600 秒共享控制实机、native、完整公平性/大任务、文件资源、重启/故障还原、第二节点 arm64 与 CI 发布仍待实施或验收 |
 
 2026-10-16 的 R16 已执行，不能再记为“真实请求进行中”，也不能记为整体通过：Chat 为 67 通过/17 失败，Responses 为 104 通过/126 失败；三请求最小性能 3/3 成功、0 超时，TTFT P50 2994.382ms、E2E P50 3679.773ms。原 summary 的 `passed=false` 原样保留。第二轮离线复核 17.04s 通过，`GetReports` 返回三个指定报告耗时 4367ms，原源表和 summary 未改；这只证明持久结果离线可读，不改写提供商判定或补认旧观察窗口。详情和安全证据位置见[验证记录](remote-execution-validation.md)。
 
@@ -464,7 +464,11 @@ R5 是 clean `53b8e0ad00ffcf371a0be90ad0670d8519773f83` 的已构建产物，未
 
 优先同步已提交 c2d39bb，99319 全仓 Go 测试与 vet 通过。真实单 Mock 验收 37845 exit0/PASS：submit PID15372 实际退出后，audit PID43596 确认 sequence7→8→13/completed，reopen PID61536 恢复同 Job/report/spec/receipt 及 sealed 归档/来源，sample1/success1；Launch1、paid0、runner R7 进程不变。整轮 180 秒上限下 observed_ms37369 是含 setup/三 role 的验收观测值，不是 wrapper 总生命周期；事后独立证据复核无 blocking。它证明本轮单样本在既有共享历史下完成和恢复，不与旧 265/261 秒计算提升倍数。
 
-当前 client c2 与冻结 runner R7 源 3ca 分开：210 个既有共享输入不变、增加 2 个 priority 输入，本轮 runner 未重建/再次部署。完整大任务/多 client 公平性仍待实机；foreign 全视图/控制尚未实现，文件资源/附件/release/回收、native 窗口/真实关窗/OS keyring、历史库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 及 CI 发布范围保持。K3 付费 R1、旧 query R4、本轮 Mock R7 来源分清，所有历史失败不覆盖；具体证据见[验证记录](remote-execution-validation.md)。
+当前 client c2 与冻结 runner R7 源 3ca 分开：210 个既有共享输入不变、增加 2 个 priority 输入，本轮 runner 未重建/再次部署。该阶段完整大任务/多 client 公平性仍待实机；foreign 全视图/控制当时尚未实现，文件资源/附件/release/回收、native 窗口/真实关窗/OS keyring、历史库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 及 CI 发布范围保持。K3 付费 R1、旧 query R4、本轮 Mock R7 来源分清，所有历史失败不覆盖；具体证据见[验证记录](remote-execution-validation.md)。
+
+本轮 shared/foreign 统一 JobRead、nullable submission、冻结 ControlTarget 和真实 source anchor 已实现，Query 和七个 Wails 绑定消费者同步替换；本 client 控制历史与他人 confirmed remote 事件严格区分，foreign pending 控制阻止节点移除。51 源码 78581 全仓 Go 测试/vet 通过且摘要不变；FE 完整 738 后追加 1 测试、定向 App60 及三尺寸浏览器 fixture 通过，不声明最新全套 739 实跑。新 600 秒单 Mock 共享控制尚未 compile/SSH/Launch，native=false；历史 c2 进程 PASS 不可替代本次新契约实机。
+
+SQLite 唯一 current 由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`，version1/name0001_protocol_runtime 保持，影响共用 schema 的 desktop/runner；runtime 拒绝旧格式保留数据，无兼容或自动迁移。固定 7afb→adc 与实际历史 766d1aa…→adc 直接转换工具均在 TEMP 准备，未完成验收/切换；实际历史 187662336 字节源库的 63runs/252revisions/5482cases/4comparisons/8comparison revisions/61reports/43perf 须完整保留，reports/perf 只在工具中补合法 unmanaged null。服务器仍原 R7，用户源库及旧 proof 未改；新 Mock 已增加数据，不把旧 10Job 当当前常数。细节见[当前矩阵](remote-execution-contract-matrix.md)和[验证记录](remote-execution-validation.md)。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 

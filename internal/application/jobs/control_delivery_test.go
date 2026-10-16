@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -38,6 +39,9 @@ func pendingControlFixture(index int) ControlRecord {
 		time.UTC,
 	)
 	return ControlRecord{SchemaVersion: 1, Revision: 1, State: ControlPending, CreatedAt: at, UpdatedAt: at,
+		Target: ControlTarget{JobID: "83000000-0000-4000-8000-000000000099",
+			Location: Location{Kind: jobcontract.TargetLocal}, NodeID: "83000000-0000-4000-8000-000000000098",
+			InstallationID: "83000000-0000-4000-8000-000000000097", SpecSHA256: strings.Repeat("a", 64)},
 		Command: jobcontract.Command{Contract: jobcontract.CurrentContract, Kind: jobcontract.CommandCancel,
 			JobID: "83000000-0000-4000-8000-000000000099", ExpectedRevision: 1,
 			CommandID: fmt.Sprintf("83000000-0000-4000-8000-%012d", index)}}

@@ -20,13 +20,25 @@ var currentSchemaObjects = []schemaObject{
 	{kind: "index", name: "idx_job_submissions_pending", table: "job_submissions",
 		ddl: `CREATE INDEX idx_job_submissions_pending ON job_submissions(job_id)
 		WHERE state IN ('prepared', 'pending')`},
+	{kind: "table", name: "job_control_targets", table: "job_control_targets", ddl: `CREATE TABLE job_control_targets (
+		command_id TEXT PRIMARY KEY NOT NULL,
+		job_id TEXT NOT NULL,
+		submission_job_id TEXT,
+		mirror_job_id TEXT,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		CHECK((submission_job_id IS NOT NULL AND mirror_job_id IS NULL AND submission_job_id = job_id)
+			OR (submission_job_id IS NULL AND mirror_job_id IS NOT NULL AND mirror_job_id = job_id)),
+		UNIQUE(command_id, job_id),
+		FOREIGN KEY(submission_job_id) REFERENCES job_submissions(job_id),
+		FOREIGN KEY(mirror_job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
 	{kind: "table", name: "job_control_outbox", table: "job_control_outbox", ddl: `CREATE TABLE job_control_outbox (
 		command_id TEXT PRIMARY KEY NOT NULL,
 		job_id TEXT NOT NULL,
 		revision INTEGER NOT NULL CHECK(revision > 0),
 		state TEXT NOT NULL CHECK(state IN ('pending', 'confirmed', 'rejected')),
 		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
-		FOREIGN KEY(job_id) REFERENCES job_submissions(job_id)
+		FOREIGN KEY(command_id, job_id) REFERENCES job_control_targets(command_id, job_id)
 	)`},
 	{kind: "index", name: "idx_job_control_outbox_pending", table: "job_control_outbox",
 		ddl: `CREATE INDEX idx_job_control_outbox_pending ON job_control_outbox(command_id) WHERE state = 'pending'`},
