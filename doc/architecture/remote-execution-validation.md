@@ -329,7 +329,7 @@ Windows desktop 完整测试、vet 和构建通过；前端全套 421 项测试�
 
 ## 待验收
 
-全部交付仍按实施方案 R1–R16 核验，后续各节分别追加实现和实测证据。当前 K3 完整 Chat、Responses 与最小性能已执行，真实断言失败和原 summary 保留；离线读取复核通过，不补认原关闭观察窗口。产品内完整升级编排、foreign Job 全视图与控制、媒体与外置附件、release/回收、第二台节点、arm64 实机、宿主重启及实机故障回滚仍未完成；R15 已证明双独立客户端共用队列，本轮随后因桌面镜像导入超时未整体通过，升级后 230 Case 节点 Mock 角色尚未启动。单个 amd64 节点的安装、共享复用、systemd 强杀恢复与两次显式操作不代替其余边界，付费渠道结果也不由前置 Python 冒烟替代。
+全部交付仍按实施方案 R1–R16 核验，后续各节分别追加实现和实测证据。当前 K3 完整 Chat、Responses 与最小性能已执行，真实断言失败和原 summary 保留；离线读取复核通过，不补认原关闭观察窗口。产品内完整升级编排、foreign Job 全视图与控制、媒体与外置附件、release/回收、第二台节点、arm64 实机、宿主重启及实机故障回滚仍未完成；R15 已证明双独立客户端共用队列，初次 attempt 因桌面镜像导入超时失败，后续 query-only 原 ID 补同步通过。R2 的完整 230 Case 节点 Mock settlement 因 runner exit 1 未通过；关闭观察端的原尝试因 helper 等待本地 mirror 超时未通过，修正 helper 后尚未重验。单个 amd64 节点的安装、共享复用、systemd 强杀恢复与两次显式操作不代替其余边界，付费渠道结果也不由前置 Python 冒烟替代。
 
 ## 2026-10-16：持久任务与完整性能结果的只读查询
 
@@ -409,11 +409,11 @@ Windows SSH/remotenodes 两包完整测试通过；交叉编译后 Ubuntu 24.04 
 
 升级后实际 `/proc/200404/exe` SHA-256 为 `3d3435b5000e6c1dc1f0b5e281af0bd17d9fb9bd9995bfc2fcb19f21fed9890a`，版本 `remote-execution-20261016-r2`。node_id `55e50d9b-b900-4b5e-9fb6-c4fee2bc17be`、installation_id `2ec0bac4-20bc-4765-b256-cad839f1c5a1` 保持；systemd active/running，runner ready/healthy，NRestarts=0、Pending=0，共享策略仍为活动任务 1、队列 16、总并发 2000。manifest 的 source_commit 为 `e4786a359de43af96cda8fc517ca2b3cdf5e3786`、source_dirty=true；不能把该验证产物描述为 clean 发布构建。
 
-R15 双独立客户端复验的中间结果见下一节，尚不记录为整体通过；升级后完整 230 Case 的真实节点 Mock 收尾角色未启动。产品内完整升级编排、其他客户端发现任务的全视图和控制、本地媒体 asset 与外置证据附件、明确 release/回收、arm64 实机、第二台服务器、宿主重启后的自启动及实机升级故障回滚仍待对应实施或验收。既有方案的范围和验收条件保持，不以本次单节点程序升级代替全部交付。
+R15 双独立客户端复验的初次 attempt 与后续原 ID 恢复分别记录于后续两节，不将初次 attempt 记为通过；升级后完整 230 Case 的真实节点 Mock 收尾角色在该次失败时未启动，后续进展独立记录。产品内完整升级编排、其他客户端发现任务的全视图和控制、本地媒体 asset 与外置证据附件、明确 release/回收、arm64 实机、第二台服务器、宿主重启后的自启动及实机升级故障回滚仍待对应实施或验收。既有方案的范围和验收条件保持，不以本次单节点程序升级代替全部交付。
 
 ## 2026-10-16：R15 共享队列通过，桌面镜像导入超时
 
-两个 child 使用同一验收测试程序，在 production options 中分别设置 `r15-client-a`、`r15-client-b` 应用版本；证明不同客户端版本值不必匹配实际 R2 runner 版本。没有运行两个历史客户端代码构建，也没有遍历历史版本组合；项目仍只有单一当前管理契约。
+两个 child 使用同一验收测试程序，在 production options 中分别设置 `r15-client-a`、`r15-client-b` 应用版本；两个独立进程和工作区共用同一节点授权及预算，证明不同客户端版本值不必匹配实际 R2 runner 版本。没有运行两个历史客户端代码构建，也没有遍历历史版本组合；项目仍只有单一当前管理契约，没有版本兼容层。
 
 会话 `90867` 在 `role_stage_deadline` 自然失败，没有重新提交任务。`r15-client-a`、`r15-client-b` 是两个独立进程，均回读实际 R2 runner 来源；A 仅 Launch 一次 Job `38e7fbaf-2908-47ba-a655-7854c17398e1`，B 仅 Launch 一次 Job `72f9ea6b-e858-4638-8739-7874043c5c59`。独立只读 audit 观察 A running、B queued，全局 active=1、queued=1，Mock 请求数 1、在途 1；释放 Mock 后，同一 audit 观察两项原 Job 均为 completed。这证明两客户端共用远端队列和活动预算，不表示桌面同步已完成。
 
@@ -424,3 +424,67 @@ R15 双独立客户端复验的中间结果见下一节，尚不记录为整体�
 后续 fresh 只读节点检查仍为 PID 200404、NRestarts=0、原 R2 执行 SHA，ready/healthy=true、active/queued/pending 均为 0。节点 SQL 中原三个 Job 与新 A/B 共五个任务均 completed、revision=4、settled=1，证明 A/B 已在服务端完成收尾，本轮未触发 runner 重启。安全证据为 `%TEMP%/llm-remote-r15-shared-20261016.safe.json`，原样保留且不会覆盖成通过结果。R15 整体仍因 local mirror 超时为 false；该小任务收尾证据不能替代尚未启动的 230 Case settlement 角色，也不证明大任务优化已在实机验证。
 
 预览构建使用 Wails CLI v2.15.0，退出码 0；`remote-acceptance` EXE 为 26532864 字节，SHA-256 `44866e9f6b9b8ca269252359d7f7ba985f31048a283300b996b55721e406ea9c`。该产物尚未启动，不能作为原生窗口或 UI 验收证据。
+
+## 2026-10-16：导入成本修复与原 R15 任务只读恢复
+
+提交 `b3355e7` 在 SQLite 导入事务的一页内复用已验证的 Run，逐事件继续核对 owner、position、revision、seal、reportCount 和 Receipt 静态身份；Run 事件清除该复用值，每页重新验证。没有改变 DDL、超时或当前 contract，也没有增加旧格式读取。全仓 `go test ./...` 通过，desktop 48.299s、SQLite 73.248s；全仓 vet 通过。独立复核 `TestRemoteBatch` 1.802s 通过，没有 blocking finding。
+
+本地回放完整真实 Responses 的 469 个事件、461 条结果、原约 2 MB 报告，随后回放小性能任务的 16 个事件、完整结果与统计归档，9.46s 通过。24 事件量测从 6.592s 降至 2.626s，但两次资源条件不同，不能将全部差值归因于缓存。CPU profile 中 `ApplyRemoteBatch` 为 6.32s → 2.53s、`queryCurrentRun` 为 3.90s → 0.60s，支持重复解析是明确成本来源；本地回放不代替实际节点大任务收尾验收。
+
+实机 query-only 恢复会话 `23834` 退出 0。A 原 Job `38e7fbaf-2908-47ba-a655-7854c17398e1` 的 mirror 在 24.400s 可读，完整性能结果、归档及来源在 26.406s 确认，ReportID 为 `012d66de-7069-4413-bd04-09b84572a713`；B 原 Job `72f9ea6b-e858-4638-8739-7874043c5c59` 分别为 31.709s、33.715s，ReportID 为 `86805873-4ad0-4803-80ce-6588b47cd243`。该阶段 Launch、Submit、Command 和提供商调用均为 0；固定 SSH 主机身份后恢复 MemoryStore 中原凭据引用，仅发起 GET，没有重提原任务。
+
+恢复前后 runner 仍为 PID 200404、start tick 23033236、NRestarts=0，实际执行 SHA 不变。新安全证据为 `%TEMP%/llm-remote-r15-resume-20261016.safe.json`；原 shared 失败 JSON 与原 K3 `passed=false` 均原样保留。此结果证明新客户端代码可补齐原 ID 的镜像与报告，不追认会话 `90867` 为通过，也不将其描述为两个历史客户端代码构建的验证。
+
+含本次补丁的新版预览构建由 Wails CLI v2.15.0 完成，退出 0；EXE 为 26547200 字节，SHA-256 `6a00f731ed6e583c51c1adaa3701bbbd2a5ad6bfe2f42ed4cb2ac4fd785672d8`，仍未启动。统一 live test EXE SHA-256 为 `2456560c913b1be27b7561e35ccbcc4d4438fd5b7dff46e70809a242fac03160`，来源工作区为 dirty，不称 clean 发布或原生窗口验收完成。
+
+完整 230 Case 的实际节点免费 Mock settlement 角色会话 `84720` 及单免费 Job 的关闭观察验证均已得到失败结果，具体原因见下一节；不再记为 pending，也不以原 ID 补同步通过替代。产品内完整升级编排、foreign Job 全视图与控制、媒体与外置附件、release/回收、arm64 实机、第二服务器、宿主重启和升级故障回滚等既有剩余范围保持。
+
+## 2026-10-16：R2 大任务收尾与关闭观察验证失败
+
+完整 Responses 230 Case 的实际节点免费 Mock Job `e00123b8-ad42-4753-9a1f-ac5e50e442a2` 未通过无故障收尾验收。runner 从原 PID 200404 变为 209188，NRestarts 从 0 增至 1，journal 记录 `runner_start_failed` 和 exit 1；systemd 重启后补齐原报告。安全证据 `%TEMP%/llm-remote-r15-settlement-r2-20261016.safe.json` 保留 false，原 JobID 禁止重提。报告最终可读不能改写这次退出和重启，也不能把先前本地回放或小任务通过推广为大任务实机通过。
+
+关闭观察端的原尝试也未通过：helper 错误地等待本地 mirror，在 70s 截止前没有进入预期观测流程。只读 outbox 已证明原 Job `06dfa643-3886-4c39-9f36-9177d513bab5` 为 accepted；原安全 JSON 的 `launch_calls=0` 是未及时更新的默认值，不能据此断言任务没有提交。原 JSON 保留 false，继续查询原 ID，不重新 Launch。helper 修正已提交为 `13392f6`，尚未重验，不能补认原关闭窗口。
+
+该失败后的诊断使用隔离的服务器数据库 clone 确认超时步骤，修复方向是将每次单独存储 I/O 的既有 5s 限制与整个收尾 workflow 分开。以下分别记录基线诊断与 R3 升级事实；最终大任务和关闭观察实机验收仍未完成，不增加历史契约兼容路径。
+
+## 2026-10-16：R2 原 Job 的隔离收尾基线诊断
+
+会话 `72591` 退出 0，使用 `b3355e7` 的旧 R2 基线在实服务器私有数据库 clone 上执行 Settle-only，原 Job `e00123b8-ad42-4753-9a1f-ac5e50e442a2` 没有重提。源库包含 7 个 Job，目标任务为 461 条结果、469 个事件。共享 5s workflow 的实际总耗时为 5334ms；首个失败步骤为最后一次 `ListReportsForRuns`，开始于 4819ms、剩余期限 180ms，该调用实际耗时 515ms。此前两次 `GetRun` 为 666ms/642ms，`RunExecutionOrigin` 748ms、`ListResults` 686ms、`CreateReport` 1560ms，各次均小于 5s，证据指向多个合法存储步骤累计耗尽共享期限。
+
+诊断进程另用 60s workflow 作对照，总耗时 7193ms，最后 Mark 157ms 并成功；这不是把产品 `storageTimeout` 调为 60s。两轮 Execute 和提供商请求均为 0。原业务 typed hash、PID 209188、start tick 23203834、NRestarts=1、实际 R2 构建 SHA `3d3435b5000e6c1dc1f0b5e281af0bd17d9fb9bd9995bfc2fcb19f21fed9890a` 全部保持。
+
+本地安全证据为 `%TEMP%/llm-remote-settlement-baseline-20261016.safe.json`，SHA-256 `8699ca5edd3fe01540d1f8c7bb6a88bdbae192ac365aa63b2d2f617b7ed05a7c`；远端证据为 `/var/tmp/llm-test-settle-diagnostic-a7c21f619ab05a0308222501568c5d3b/diagnostic.safe.jsonl`。同目录的 source.db 与诊断 binary 保留，内部临时 work clone 已正常删除。本节仅证明旧基线的根因；诊断当时 R3 尚未升级，后续升级证据独立记录于下一节，不补认大任务复验。
+
+## 2026-10-16：R3 收尾修复发布到测试节点
+
+修复提交 `2f52b3284408d8d4dbbae4ca0b9f93c3c218ca41` 后，全仓 Go 测试与 vet 通过，desktop 48.845s、jobhost 24.206s、SQLite 71.387s。该提交修改 10 个文件，859 行增加、66 行删除。它将单次存储 I/O 的既有 5s 预算与整体收尾 workflow 分开；本地验证与隔离基线的诊断证据不能代替后续大任务实测，其失败事实另记于下一节。
+
+R3 升级 operation `650cdb6c-7312-4846-bc83-8d62d4a8a52d` 的会话 `80581` 退出 0，实际执行 pause、等待 Pending=0、停止服务、一致性备份、切换 current、暂停状态核验、同 operation 恢复接收，最终 completed。备份保留于 `/var/backups/llm-test-runner/650cdb6c-7312-4846-bc83-8d62d4a8a52d/`，当前 schema checksum 仍为 `7afb439aaccf28d19e7e7381e2ef5611e013f062676e3706d44b3313d52c0708`；备份 `quick_check=ok`、foreign key 错误 0、业务 2300 行。没有执行数据格式转换或触碰本地用户数据库。
+
+fresh 独立 probe 会话 `65509` 退出 0：实际 PID 211250、NRestarts=0，执行 inode SHA-256 `7cc292b7f2c9ffb6728d0035d68deb8d72fc58243b3905566d558b6b06e9d25a`，版本 `remote-execution-20261016-r3`；原 node/install 身份保持，ready/healthy=true、active/queued/pending=0、maintenance 为空，共享预算仍为 1/16/2000。原七个 Job 均 completed、revision=4、settled=1；其中包括旧关闭观察 Job `06dfa643-3886-4c39-9f36-9177d513bab5`，其终态不能证明旧性能结果或旧关闭窗口验收成功。
+
+R3 产物保留于 `%TEMP%/llm-runner-remote-e2e-20261016-r3/`：linux/amd64 为 13639842 字节、SHA-256 `7cc292b7f2c9ffb6728d0035d68deb8d72fc58243b3905566d558b6b06e9d25a`；linux/arm64 为 12714146 字节、SHA-256 `efc509ceb44165f8f7f51fd535470c9096ce0cb11f1bc061e9d851ffb7944535`。manifest source_commit 为 `2f52b3284408d8d4dbbae4ca0b9f93c3c218ca41`、source_dirty=true，仍是准确记录来源的验证产物，不是 clean 发布；arm64 仍只有构建证据。
+
+原生预览 `apps/desktop/build/bin/llm-test-studio-remote-acceptance-r3.exe` 使用 Wails CLI v2.15.0 构建通过，26608640 字节、SHA-256 `295b8b98d8a2a3f379bccde8ff651be9cb31d17ed9130a84adf0b9c8ae814cae`，尚未启动。升级和独立健康检查通过不代表大任务验收通过；R3 免费 230 Case 的后续失败事实见下一节，关闭观察仍未运行。既有失败证据与其余未完成范围均保持。
+
+## 2026-10-16：R3 大任务实测失败，执行阶段故障待定位
+
+单独 settlement 会话 `89151` 仅接收一次 Job `f24d35f8-2370-4578-ac45-0fc288161b61`，工作区保留于 `%TEMP%/llm-remote-r15-settlement-dqea80zt/`。原任务在 30635ms 确认 accepted，35244ms 观察到 running、healthy=true，随后验收以 `role_incomplete` 失败；该版 harness 未保存首个错误的阶段证据，不能据角色结果推断具体失败调用。
+
+fresh 只读检查会话 `73567` 确认 runner 从 PID 211250 变为 212013、NRestarts 从 0 增至 1，实际执行 SHA 仍为 `7cc292b7f2c9ffb6728d0035d68deb8d72fc58243b3905566d558b6b06e9d25a`。journal 记录 `runner_start_failed`、exit 1，时间戳为 `1792119868596750us`，CPU 为 36.693s。恢复后原 `f24d35f8-2370-4578-ac45-0fc288161b61` 为 failed、revision=4、settled=1，其余七个任务仍为 completed；当前 runner ready/healthy=true、Pending=0。恢复后的健康状态不能改写这次任务失败和进程退出。
+
+原失败安全证据以 O_EXCL 创建并保留于 `%TEMP%/llm-remote-r15-settlement-r3-20261016.safe.json`，SHA-256 `a7216a514b2f31bc13ea58e06486eead273654ae6d98b25a183ecea4bb1c1b13`，不覆盖为通过结果。原 f24 Job 和此前付费 JobID 均禁止重提；下一步只读取得原失败事实、核对执行路径，并在私有 clone 端口做成本 profile，由测试侧补齐安全阶段证据及 query-only 原 Run 恢复。
+
+R3 的收尾期限源码修复与隔离 clone 根因验证仍成立，但执行阶段另一项存储故障尚未解决，真实大任务验收明确失败。关闭观察验证尚未运行，不记为通过；不得以本地测试、升级成功、健康重启或报告恢复替代这两项实际边界。
+
+## 2026-10-16：原 f24 失败事实与只读恢复未通过
+
+源节点只读 probe 会话 `62506` 已读得业务事实，但最后可选文件的 key allow-list 检查报错，进程退出 1；不能称整次 probe 成功。原 f24 的持久时间顺序为 root accepted `03:04:08.75972606`、root starting `03:04:12.625073801`、root running `03:04:12.812903159`、child failed `03:04:19.473155006`、root failed `03:04:22.01015323`、report `03:04:25.213264543`。child 失败为 revision=2、phase=`runner`、code=`job_storage_unavailable`；事件总数仅 6，请求结果、Case summary 和 entry marker 均为 0。
+
+本地只读核查同样证明 child 从 revision=1 queued 直接到 revision=2 failed。ReportID `61323546-5bb1-4b2e-9252-20b508cce96f`（RunID 前缀 `6ceb6140`）的引用已 imported=1，本地文档为 1483134 字节；这些行存在不等于公开报告 API 已通过验证。节点 available bytes 为 191221383168，配置仍为 MaxStorage 20 GiB、MinFree 512 MiB、Reservation 128 MiB；本次未量测 UsedBytes，不能用宿主空闲空间排除状态目录配额因素。
+
+原失败事实的安全证据为 `%TEMP%/llm-remote-f24-failure-facts-20261016.safe.json`，SHA-256 `6e712a833e12d8e002d3238d5a00aa9156584ad116522ff3477ca9337b4bbb2b`。原始失败结论保留，不重提任务、不覆盖既有证据。
+
+query-only 恢复会话 `68469` 自然退出 1。原 receipt 在 2586ms 可读，服务器仍为 failed、sequence=6、revision=4、healthy=true、Pending=0；本地 mirror 在 118566ms 到达 terminal failed。报告阶段到 600666ms 仍未通过 `GetReports`/`GetReportDetail`，尽管引用和文档已存在。该阶段 Launch、blocked writes 和提供商调用计数均为 0，original outcome=failed，不把这次恢复转为通过。安全证据 `%TEMP%/llm-remote-f24-query-recovery-20261016.safe.json` 的 SHA-256 为 `5f787836313b11eb0c0a27fc9591771cef45d77c128d0038cd63da6253ff05bd`。
+
+具体失败存储端口仍未证明。现有顺序最符合 Adopt 之后 starting 的 `UpdateRun` 未提交，或监控取消这两条候选路径，不能据此选定根因。当前仅在服务器私有 clone 上进行三个端口的并发读取 profile，并在本地 clone 单次调用公开报告 API 诊断显示失败；没有新建真实 Job，最终修复与验收结果待后续证据。

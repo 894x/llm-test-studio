@@ -406,6 +406,28 @@ R2 程序升级 operation `30656a4a-fc7f-4958-813b-a461762d3aa3` 已完成，备
 
 R15 会话 `90867` 以 `role_stage_deadline` 自然失败，整体未通过。两个独立客户端各仅 Launch 一次；独立 audit 证明 A running/B queued、共享 active=1/queued=1、Mock 请求数与在途均为 1，释放后两个原 Job 均 completed。随后桌面仍在导入旧大任务，两项新 Job 未进入本地 mirror；这是桌面导入超时，不能改写远端成功终态。原两份工作区保留，仅允许重开/查询原 Job 补证，不再次 Launch。fresh 只读节点检查确认原 PID/R2 SHA/NRestarts=0 保持，ready/healthy=true、active/queued/pending=0，原三个与新 A/B 共五个 Job 均 completed/revision=4/settled=1；安全证据原样保存为 `%TEMP%/llm-remote-r15-shared-20261016.safe.json`。升级后 230 Case settlement 角色尚未启动，历史大任务导入优化待验证；不得把此阶段写成 R15 整体通过或大任务优化实机通过。具体 JobID、工作区和只读游标证据见[验证记录](remote-execution-validation.md)。
 
+后续提交 `b3355e7` 修复页内重复 Run 校验成本，逐事件身份/位置/revision/seal/报告数与 Receipt 静态身份检查、Run 事件清除和每页重验继续保留；没有改变 DDL、超时或当前 contract。全仓 Go 测试通过（desktop 48.299s、SQLite 73.248s），全仓 vet 与独立 RemoteBatch 复核通过；完整历史 Responses 469 事件/461 结果/约 2 MB 报告后接性能结果及归档的本地回放 9.46s 通过。
+
+query-only 恢复会话 `23834` 已实际通过，A/B 的原 JobID 分别在 26.406s/33.715s 补齐完整结果、归档和来源，Launch/Submit/Command/提供商调用均为 0，runner PID/start tick/实际 SHA/NRestarts=0 保持。新证据 `%TEMP%/llm-remote-r15-resume-20261016.safe.json` 与原失败证据分开保留，不追认旧 attempt 通过。两个 child 使用同一测试 EXE、不同 production 版本标记和独立工作区，证明当前契约下版本值无需匹配 runner；没有运行历史客户端代码或引入版本兼容层。
+
+后续完整 230 Case 实际节点免费 Mock Job `e00123b8-ad42-4753-9a1f-ac5e50e442a2` 在 R2 上未通过无故障收尾：PID 200404 → 209188、NRestarts 0 → 1，journal 为 `runner_start_failed`/exit 1，重启后补齐原报告。安全证据 `%TEMP%/llm-remote-r15-settlement-r2-20261016.safe.json` 保留 false，禁止重提原 Job。关闭观察原尝试也因 helper 等待 local mirror 至 70s 截止而失败；原 Job `06dfa643-3886-4c39-9f36-9177d513bab5` 已有 accepted outbox，原 JSON 的 `launch_calls=0` 只是默认值，不能据此称未提交。修正 helper 的 `13392f6` 尚未重验，两份原失败结论均不改。
+
+失败后的隔离服务器数据库 clone 用于定位超时步骤，jobhost 将每次单独存储 I/O 的既有 5s 限制与整个收尾 workflow 分开。基线诊断和后续 R3 升级分别记录如下，大任务与关闭观察仍不能记为已验收。其余既有范围与验收条件不缩减。
+
+后续会话 `72591` 已在实服务器私有 clone 上完成旧 R2/b3355e7 的 Settle-only 根因验证，未重提原 Job。共享 5s workflow 共 5334ms，最后 `ListReportsForRuns` 在 4819ms 开始、剩余 180ms、实际耗时 515ms；此前 GetRun、来源、结果和报告写入各次均低于 5s。诊断用 60s workflow 对照在 7193ms 成功，不是产品超时改成 60s；Execute/提供商调用为 0，原业务 typed hash、PID/start tick/NRestarts 与构建不变。安全证据、摘要及保留的远端 source.db/binary 位置见[验证记录](remote-execution-validation.md)。这只证明共享期限耗尽的根因，当时 R3 尚未升级，后续升级与最终复验分别记录。
+
+后续 R3 收尾修复提交 `2f52b3284408d8d4dbbae4ca0b9f93c3c218ca41` 的全仓 Go 测试与 vet 通过。operation `650cdb6c-7312-4846-bc83-8d62d4a8a52d` 已在测试节点完成暂停、等待收尾、一致备份、程序切换与同操作恢复；当前 schema 不变，备份 2300 业务行、quick_check=ok、FK 错误 0，保留于 `/var/backups/llm-test-runner/650cdb6c-7312-4846-bc83-8d62d4a8a52d/`。fresh 独立 probe 确认 PID 211250、NRestarts=0、R3 实际 inode SHA、原 node/install、ready/healthy、空 maintenance 和 1/16/2000 预算；原七个 Job 均 completed/revision=4/settled=1，不以旧 Job 终态补认旧关闭窗口。
+
+R3 manifest 记录 source_commit=`2f52b3284408d8d4dbbae4ca0b9f93c3c218ca41`、source_dirty=true，双架构构建与 Wails CLI v2.15.0 原生预览构建通过，原生 EXE 尚未启动。升级和独立健康检查已获实机证据；后续免费 230 Case 实测失败，关闭观察尚未运行，不改变此前失败证据或缩减其余范围。产物摘要及完整过程见[验证记录](remote-execution-validation.md)。
+
+R3 settlement 会话 `89151` 仅接收一次 Job `f24d35f8-2370-4578-ac45-0fc288161b61`，30635ms accepted、35244ms running/healthy=true，随后 `role_incomplete`。fresh 会话 `73567` 证明 PID 211250 → 212013、NRestarts 0 → 1、原 R3 SHA 不变，journal 为 `runner_start_failed`/exit 1；恢复后原 Job failed/revision=4/settled=1，其余七个 completed，当前 ready/healthy=true、Pending=0。安全证据 `%TEMP%/llm-remote-r15-settlement-r3-20261016.safe.json` 保留失败，原 Job 与付费 IDs 禁止重提。
+
+收尾期限源码修复与隔离基线 profile 证据保持，执行阶段另一存储故障尚未解决，不能写成 R3 大任务验收成功或仍待跑。原 harness 缺首错阶段事实，后续仅通过只读 API、执行路径核对、私有 clone 端口 profile 和 query-only 原 Run 恢复补证；关闭观察仍未运行，不由重启后的健康状态代替验收。
+
+原 f24 的后续事实表明 child 从 queued revision=1 到 failed revision=2，phase=runner、code=job_storage_unavailable，仅 6 个事件、零请求结果/summary/marker；root 已生成原失败报告。源节点 probe `62506` 的业务读取成功但末尾可选文件 allow-list 检查错误、exit 1，不能记为完整 probe 通过。available bytes 虽为 191221383168，UsedBytes 未量，20 GiB 状态配额仍不能据此排除。具体失败端口尚未证明，Adopt 后 starting UpdateRun 未提交或监控取消只是候选解释。
+
+原 ID 的 query-only 会话 `68469` 自然 exit 1：receipt 2586ms、terminal failed mirror 118566ms，报告阶段到 600666ms 仍未通过 GetReports/Detail；本地 imported 引用与 1483134 字节报告文档存在不能替代公开 API 验证。Launch/blocked writes/提供商调用均为 0，original outcome=failed 保持。两个失败 safe 文件与摘要见[验证记录](remote-execution-validation.md)；当前仅在私有服务器 clone 做三端口并发 profile、本地 clone 做单次公开报告读取诊断，不发新真实 Job、不覆盖旧证据，也不宣称故障已修复。
+
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 
 A2 验证 Plan 与临时 Suite 准备不写运行数据或 keyring，准备结果不携带秘密，目录原生请求字节被修改后冻结值仍不变。桌面、runs、comparisons 测试及 runs 的 go vet 通过；持久化格式未改变，不需要在这一提交升级历史数据。
