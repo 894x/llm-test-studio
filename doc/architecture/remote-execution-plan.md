@@ -563,3 +563,7 @@ foundation secondary40b296e→main00b1802、cold secondary2193d75→main94f1已�
 父级原d629/e001/b285各一次固定GET成功，只含completed/rev4/seq469 Snapshot，不含event/document同步；原r5及旧失败保留，该次记录时r6仅TEMP准备、预算原样，无新Job/paid。Manager A、真实pins/permit与P2b另树开始，尚未交付；assets/fileLaunch和manifest/release/physicalManager仍false，不把types/SQL基础当作媒体执行或删除能力。
 
 随后fixedsource94f1的r6/session80178已实际exit1，400秒b_cold_preparation失败，phase400020ms；B57424父级清理后实际exit1/400077ms、readerEOF、cleanup_completed=true。未进入A/Mock/Launch/control、无新Job/paid；cold_import事件仍有初始13ID，summary空数组不能作服务端为空的证据。父级只读副本1db仅4镜像/54events，8条已观测refs虽全部imported、另有4perfresults，仍缺9个初始镜像，不能称冷同步完成。连接释放修复的本地机制证据不等于排除其他不相容或导入失败；新根因未定，后续仅准备离线Spec/事件契约诊断，尚未新增GET或再跑E2E。完整事实与原false保留见[验证记录](remote-execution-validation.md)。
+
+Spec/accepted层的后续离线诊断已实际完成：原r4保留clone的13条raw bytes匿名stdin进入exact94，当前DecodeSpec、摘要/canonical、accepted解码/身份/Origin、Snapshot.Validate和内层digest全绿，exit0/EOF/13complete，源不变。普通nullable/digest候选未在固定13条复现，不能外推为后续事件、报告或同步DB写通过；下一步检查同步落库与后续边界。原r6及其他false保留，Manager A仍待父级审查/整合，资产执行与真实数据切换边界不变，详见[验证记录](remote-execution-validation.md)。
+
+随后Manager A的14文件已由secondary9215c65整合main1f86d55，14 blobs一致；owned physical pins/Permit/digest绑定、独立borrow、Close join及Linux statx私有marker已落地并通过主树定向Windows/WSL验证。A阶段不改schema，仍缺Host/SQL非空/HTTP组合、Stage、manifest/release及Windows adapter；assets/fileLaunch不开放，整体文件闭环未完成。663个Go/module输入逐项0漂移，初WSL参数拆分harness失败及同binary纠正argv后的PASS分开保留，详见[验证记录](remote-execution-validation.md)；不替代新全仓/实机或race，原13条诊断、r6 false和真实切换边界保持。

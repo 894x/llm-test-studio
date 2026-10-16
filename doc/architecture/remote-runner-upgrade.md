@@ -145,3 +145,7 @@ P3 foundation31文件现由secondary40b296e整合main00b1802，冷查询由secon
 父级对原d629/e001/b285各一次GET均取得completed/rev4/seq469 Snapshot并完成Close/EOF/exit0，mutation/provider0；不含event/document同步或升级动作，原r5 false不改。该次记录时r6只在TEMP准备、尚未实跑、预算原样，无新Job/paid；完整主树、fixture及固定GET证据集中见[验证记录](remote-execution-validation.md)。
 
 后续r6 fixedsource94f1/session80178已在400秒b_cold_preparation实际失败，phase400020ms；B57424清理后实际exit1/400077ms、readerEOF、cleanup_completed=true，未进入A/Mock/Launch/control，新JobIDs与command空、paid/provider0。初始13ID仍在cold_import事件，summary空数组不代表服务端为空；父级唯一只读副本仅4镜像/54events、8条已观测refs全imported/4perfresults，仍缺9镜像，不是冷同步、升级或数据切换验收通过。连接释放修复与主Go PASS保持，新根因未定，后续离线Spec/事件诊断仅准备，无新GET/E2E；原false、assets/fileLaunch关闭及真实数据转换/恢复边界不改，完整证据见[验证记录](remote-execution-validation.md)。
+
+后续exact94离线诊断已实际校验原r4保留clone的13条Spec/accepted原字节：匿名stdin、exit0/EOF/13complete/all_valid，DecodeSpec、stored/raw/canonical digest、accepted身份/Origin及Snapshot.Validate/内层digest均通过，源不变。它仅证明固定定义/accepted层当前可读，普通nullable/digest候选未在13条复现；不含后续事件/报告/同步DB写，不能追认r6、升级或数据切换通过。下一步为同步落库及后续边界，Manager A仍待父级审查/整合，既有资产关闭及原false保持，证据集中见[验证记录](remote-execution-validation.md)。
+
+后续Manager A已由secondary9215c65整合main1f86d55，14 blobs一致，owned pins/Permit/digest、独立borrow/Close join和Linux statx私有marker通过主树Windows/实际WSL定向验证；初WSL argv拆分失败及同binary纠正后PASS均保留，证据见[验证记录](remote-execution-validation.md)。A不改schema或既有升级/转换门；Host、非空SQL、HTTP组合、Stage、manifest/release与Windows adapter仍未接通，assets/fileLaunch仍false，无真实DB/SSH/provider/native/race验收。该阶段已完成，整体文件链路和真实数据切换仍待完成，原13条诊断与r6 false不追认。

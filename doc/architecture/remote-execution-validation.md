@@ -824,3 +824,17 @@ r6固定source94f1、binary SHA `15b758501a224989ea586e31b059c89cd35a69e455e32f0
 父级确认PID不在后仅做一份clone的只读SQL核对，记录于同根 `postfailure-r6-cold-jgyxsecl/facts.safe.json`，SHA `72586cab19cc0a5d2238f11a90bbf9fa5887f5d24ca1cd1fe6d89fdb403f9b70`。该记录报告原B/clone749568字节、前后SHA均 `da64f36908d0ed404c0a0ded69c58e74fc7669e8f20285078031bf8028e73423`，无sidecar、1db current；仅4mirrors/54events/8refs全部imported/4perfresults，Submission/outbox/controltarget/local execution_jobs/空inventory均0。现有4镜像为06dfa643、38e7fbaf、500a3a97、72f9ea6b；其余9个初始ID缺失，完整UUID见facts。已观测引用全导入不表示缺镜像对应文档已导入，也不是冷同步完成。本次文档更新仅读这两份safe JSON并核其摘要，未打开或哈希DB/clone。
 
 连接释放机制仍有确定RED/GREEN及主树Go/vet证据，但r6结果不足以排除其他不相容或导入失败，新根因未定；不将副本行数、EOF或seq400推为唯一原因。后续只准备离线Spec/事件契约诊断，尚未新GET、重跑E2E或重提旧Job/paid。原r3/r4/r5/r6 false、预算、资产关闭、真实数据转换/切换及其他待验边界保持；本次失败不反改已通过的本地机制与完整Go记录。
+
+## 2026-10-16：固定13条Spec与accepted离线当前校验通过
+
+父级已实际执行 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/offline-spec-accepted-94/parent-retained-diagnostic.safe.json` 所记诊断，SHA `a600ef3604a5089bc369fdb761678db4c7b9eeea69b0b6c6d00b4b1ffe37772c`。从原r4保留clone取13条Spec/accepted原字节，只经匿名stdin送exact94诊断，raw_payload_files_written=0、network/provider=0，6.42943s后process exit0、reader EOF；13条row及summary rows13/input_complete/diagnostic_complete/all_valid均通过。记录报告源 `58c88c6fa96f65bbe2317e239d5ee589c824e192474021110962e828bc66e93a` 前后不变、无sidecar；本次文档更新仅读safe JSON，未访问DB/clone或接口。
+
+逐条通过DecodeSpec、Digest与stored/raw/canonical摘要匹配，以及accepted解码、外层身份/实际Origin、内层payload与mirror原字节/canonical匹配、Snapshot.Validate及内层Spec digest。它证明这13条固定任务定义和accepted层当前可读，普通nullable/digest不相容候选未在其上复现，不构成所有nullable组合或整个同步链路的普遍结论。后续事件、报告和同步DB写均未覆盖，下一步转向同步落库及后续边界；原r6仍false，未重提旧Job/paid，不声明Manager A审查/整合完成，既有Go通过、资产关闭与真实数据切换边界保持。
+
+## 2026-10-16：Manager A 阶段已主整合，Windows 与实际 WSL 定向验证通过
+
+secondary9215c65的14文件已整合main `1f86d550b5033101b90b302125aa739eb36bd070`，14个Git blobs相同，663个Go/module输入前后逐项0漂移。Manager拥有physical pins/Permit并绑定digest，提供独立borrow和Close join；Linux适配使用真实statx与私有marker。A不改变schema，当前仍1db；Host/非空SQL/HTTP组合、Stage、manifest/release未接，Windows adapter仍缺，assets/fileLaunch继续false，阶段提交完成不表示整体文件执行完成。
+
+主树Windows jobcontent0.613s、jobhost23.125s、runnerhttp37.594s完整包及对应vet均0；Linux/amd64 CGO0两个包交叉编译和vet通过，主树新binary在WSL Ubuntu24.04 UID0实际执行runnerstate全包6.06738s、contentstate全包0.456949s，均exit0、binary未变。初次session27673因PowerShell native参数拆分为无效-test而harness exit1；改用Python传精确argv后重用同binary通过，未改产品、未重复Windows检查，原调用失败保留，不将其抹成一次全绿。
+
+证据 `%TEMP%/llm-content-manager-main-1f86d55-20261016/verification.safe.json` SHA `e2e61aae98568c88732fd0b489e63bfcbaded5b12c633577d59bb6a540c4c068`，Windows及WSL原日志保留。这是A阶段定向包/平台验证，不是新的全仓、实际用户或服务器DB、外部SSH/provider/native/race证明；前述13条Spec/accepted诊断的范围与原r6 false不变，后续仍需完成文件链路与同步落库/事件/报告边界。

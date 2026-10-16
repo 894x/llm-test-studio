@@ -231,3 +231,7 @@ P3首片31文件由secondary40b296e整合main00b1802，冷查询11文件由secon
 唯一current schema替换为1db/80，仅P3改变schema；旧ADC正常打开将拒绝且不改数据。固定ADC→1db的TEMP工具仅验证已登记私有fixtures，尚未转换/切换真实用户或服务器DB，也不支持766/7afb等其他历史入口；工具位置与当前证据集中见[验证记录](remote-execution-validation.md)。
 
 后续r6 fixedsource94f1/session80178已实际exit1，run-jgyxsecl止于400秒b_cold_preparation，phase400020ms；B57424清理后实际exit1/400077ms、readerEOF、cleanup_completed=true，未到A/Mock/Launch/control，新Job与command均空、provider0。父级只读副本仅4/13镜像、54events、8条已观测refs全imported/4perfresults，缺余9项，不是冷同步完成；summary初始ID空数组不表示服务端无13历史ID。连接释放机制的确定回归与主Go PASS保持，但不足排除其他不相容/导入失败，根因未定；原false、资产关闭和真实数据切换边界不变，详见[验证记录](remote-execution-validation.md)。
+
+后续exact94离线诊断已完成：原r4保留clone的13条Spec/accepted原字节经匿名stdin送入，DecodeSpec、stored/raw/canonical摘要、accepted解码/身份/Origin与Snapshot.Validate/内层digest全部通过，exit0/EOF/13complete/all_valid=true，源摘要不变。这只证明固定定义及accepted层当前可读，普通nullable/digest候选未在该13条上复现；未覆盖后续事件/报告或同步DB写，原r6 false不改，下一步转向同步落库及后续边界，不据此声明Manager A完成。证据见[验证记录](remote-execution-validation.md)。
+
+后续Manager A阶段已由secondary9215c65整合main1f86d55，14个Git blobs一致；owned physical pins/Permit/digest绑定、独立borrow与Close join、Linux真实statx/私有marker及主树Windows/WSL定向包验证通过。A不再改schema；Host接线、SQL非空内容、HTTP组合、Stage、manifest/release和Windows adapter尚未接通，assets/fileLaunch仍false。它是阶段完成，不是整体资产执行、真实DB/SSH/provider/native或race验收；完整证据见[验证记录](remote-execution-validation.md)，13条诊断与原r6 false保留。
