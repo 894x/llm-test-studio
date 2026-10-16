@@ -32,7 +32,7 @@ const (
 	connectTimeout   = 15 * time.Second
 	operationTimeout = 30 * time.Second
 	keepAliveEvery   = 15 * time.Second
-	keepAliveTimeout = 5 * time.Second
+	keepAliveTimeout = operationTimeout
 	maxChannelOpens  = 16
 )
 

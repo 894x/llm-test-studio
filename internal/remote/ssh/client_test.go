@@ -715,3 +715,70 @@ func TestSSHKeepaliveAcceptsFailureRepliesAndClosesAnUnresponsivePeer(t *testing
 		}
 	}
 }
+
+func TestSSHKeepaliveWaitsForManagementSilenceBudget(t *testing.T) {
+	if keepAliveTimeout < operationTimeout {
+		t.Fatal("keepalive can close SSH before the current management operation budget expires")
+	}
+	const timeout = 300 * time.Millisecond
+	const oldSilenceWindow = timeout / 6
+	for _, fullSilence := range []bool{false, true} {
+		t.Run(strconv.FormatBool(fullSilence), func(t *testing.T) {
+			peer := newTestPeer(t)
+			seen, release := make(chan struct{}), make(chan struct{})
+			var first atomic.Bool
+			peer.keepaliveReply = func(request *cryptossh.Request) {
+				if first.CompareAndSwap(false, true) {
+					close(seen)
+					select {
+					case <-release:
+					case <-peer.stop:
+						return
+					}
+				}
+				_ = request.Reply(false, nil)
+			}
+			client := dialPeer(t, peer)
+			var releaseOnce sync.Once
+			t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+			close(client.stop)
+			<-client.done
+			client.stop, client.done = make(chan struct{}), make(chan struct{})
+			started := time.Now()
+			go client.keepAlive(5*time.Millisecond, timeout)
+			select {
+			case <-seen:
+			case <-time.After(time.Second):
+				t.Fatal("keepalive was not sent")
+			}
+			if fullSilence {
+				select {
+				case <-client.done:
+				case <-time.After(time.Second):
+					t.Fatal("a full silent management window did not close SSH")
+				}
+				if time.Since(started) < timeout {
+					t.Fatal("keepalive closed SSH before its silence budget")
+				}
+				if _, err := client.Probe(t.Context()); err == nil {
+					t.Fatal("silent SSH connection remained usable")
+				}
+				return
+			}
+			timer := time.NewTimer(2 * oldSilenceWindow)
+			defer timer.Stop()
+			select {
+			case <-client.done:
+				t.Fatal("temporary silence closed SSH before its management budget")
+			case <-timer.C:
+			}
+			if peer.keepalives.Load() != 1 {
+				t.Fatal("waiting for a reply started another keepalive")
+			}
+			releaseOnce.Do(func() { close(release) })
+			if _, err := client.Probe(t.Context()); err != nil {
+				t.Fatal("a late keepalive reply within the management budget closed SSH")
+			}
+		})
+	}
+}
