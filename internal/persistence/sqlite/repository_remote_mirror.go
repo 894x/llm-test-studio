@@ -3,7 +3,6 @@ package sqlite
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -156,58 +155,56 @@ func (repository *Repository) GetRemoteMirror(ctx context.Context, id string) (r
 }
 
 func queryRemoteMirror(ctx context.Context, queryer rowQueryer, id string) (remoteresults.Mirror, error) {
-	var mirror remoteresults.Mirror
-	var specDocument, snapshotDocument []byte
-	var digest string
-	var sequence uint64
-	err := queryer.QueryRowContext(ctx, `SELECT configuration_id, node_id, installation_id, spec_sha256,
-		CASE WHEN length(CAST(spec_json AS BLOB)) <= ? THEN spec_json ELSE '' END,
-		CASE WHEN length(CAST(snapshot_json AS BLOB)) <= ? THEN snapshot_json ELSE '' END,
-		applied_sequence FROM remote_job_mirrors WHERE job_id = ?`,
-		jobcontract.MaxSubmissionBytes, jobcontract.MaxEventBytes, id).Scan(
-		&mirror.Origin.ConfigurationID,
-		&mirror.Origin.NodeID,
-		&mirror.Origin.InstallationID,
-		&digest,
-		&specDocument,
-		&snapshotDocument,
-		&sequence,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return remoteresults.Mirror{}, remoteresults.ErrNotFound
-	}
+	stored, err := queryStoredRemoteMirror(ctx, queryer, id)
 	if err != nil {
-		return remoteresults.Mirror{}, fmt.Errorf("read remote mirror: %w", err)
+		return remoteresults.Mirror{}, err
 	}
-	if err := decodeCanonical(specDocument, &mirror.Spec, func() error { return mirror.Spec.Validate() }); err != nil {
-		return remoteresults.Mirror{}, fmt.Errorf("%w: remote spec", ErrCorrupt)
+	return stored.decode(id)
+}
+
+func queryStoredRemoteMirror(ctx context.Context, queryer rowQueryer, id string) (storedRemoteMirrorRow, error) {
+	var stored storedRemoteMirrorRow
+	err := stored.scan(queryer.QueryRowContext(
+		ctx,
+		`SELECT configuration_id, node_id, installation_id, spec_sha256,
+		spec_document, snapshot_document, applied_sequence, accepted_document,
+		CASE WHEN json_valid(snapshot_document) THEN
+			CASE WHEN json_type(snapshot_document, '$.receipt.kind') = 'text'
+				AND length(CAST(json_extract(snapshot_document, '$.receipt.kind') AS BLOB)) <= 32
+			THEN json_extract(snapshot_document, '$.receipt.kind') ELSE '' END
+		ELSE '' END
+		FROM (
+			SELECT
+				CASE WHEN length(CAST(configuration_id AS BLOB)) <= 36
+					THEN configuration_id ELSE '!' END AS configuration_id,
+				CASE WHEN length(CAST(node_id AS BLOB)) <= 36
+					THEN node_id ELSE '!' END AS node_id,
+				CASE WHEN length(CAST(installation_id AS BLOB)) <= 36
+					THEN installation_id ELSE '!' END AS installation_id,
+				CASE WHEN length(CAST(spec_sha256 AS BLOB)) <= 64
+					THEN spec_sha256 ELSE '!' END AS spec_sha256,
+				CASE WHEN length(CAST(spec_json AS BLOB)) <= ?
+					THEN spec_json ELSE '' END AS spec_document,
+				CASE WHEN length(CAST(snapshot_json AS BLOB)) <= ?
+					THEN snapshot_json ELSE '' END AS snapshot_document,
+				CASE WHEN length(CAST(applied_sequence AS BLOB)) <= 20
+					THEN applied_sequence ELSE -1 END AS applied_sequence,
+				COALESCE((SELECT
+					CASE WHEN length(CAST(event.document_json AS BLOB)) <= ?
+						THEN event.document_json ELSE '' END
+					FROM remote_job_events AS event
+					WHERE event.job_id = mirror.job_id AND event.sequence = 1), '') AS accepted_document
+			FROM remote_job_mirrors AS mirror WHERE job_id = ?
+		)`,
+		jobcontract.MaxSubmissionBytes,
+		jobcontract.MaxEventBytes,
+		jobcontract.MaxEventBytes,
+		id,
+	))
+	if err != nil {
+		return storedRemoteMirrorRow{}, err
 	}
-	if err := decodeCanonical(snapshotDocument, &mirror.Snapshot, nil); err != nil {
-		return remoteresults.Mirror{}, fmt.Errorf("%w: remote snapshot", ErrCorrupt)
-	}
-	actualDigest, err := mirror.Spec.Digest()
-	validOrigin := mirror.Origin.Validate() == nil && mirror.Spec.Target.Kind == jobcontract.TargetRemote &&
-		mirror.Spec.Target.NodeID == mirror.Origin.NodeID && mirror.Spec.NodeInstallationID == mirror.Origin.InstallationID
-	validState := mirror.Spec.JobID == id && mirror.Snapshot.LatestSequence == sequence &&
-		mirror.Snapshot.Validate(mirror.Spec) == nil
-	if err != nil || actualDigest != digest || !validOrigin || !validState {
-		return remoteresults.Mirror{}, fmt.Errorf("%w: remote mirror identity", ErrCorrupt)
-	}
-	var acceptedDocument []byte
-	if err := queryer.QueryRowContext(ctx, `SELECT
-		CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
-		FROM remote_job_events WHERE job_id = ? AND sequence = 1`, jobcontract.MaxEventBytes, id).Scan(&acceptedDocument); err != nil {
-		return remoteresults.Mirror{}, relationStorageError(ctx, "remote accepted origin", err)
-	}
-	accepted, err := decodeAcceptedOrigin(acceptedDocument, mirror.Snapshot)
-	if err != nil || accepted.specSHA256 != actualDigest || accepted.specDocumentSHA256 != sha256.Sum256(specDocument) {
-		return remoteresults.Mirror{}, storageCorrupt("remote accepted origin")
-	}
-	executor := mirror.Snapshot.Receipt.Origin
-	if executor.Kind != "remote" || executor.NodeID != mirror.Origin.NodeID || executor.InstallationID != mirror.Origin.InstallationID {
-		return remoteresults.Mirror{}, storageCorrupt("remote executor origin")
-	}
-	return mirror, nil
+	return stored, nil
 }
 
 func createRemoteMirrorTx(

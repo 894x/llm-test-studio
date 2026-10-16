@@ -273,18 +273,13 @@ func validateRemotePerformanceJournal(
 	if err != nil {
 		return fmt.Errorf("read mirrored result event: %w", err)
 	}
-	event, err := decodeStoredJobEvent(eventRaw)
-	if err != nil {
+	if err := validateStoredPerformanceResultEvent(
+		result,
+		raw,
+		eventRaw,
+		result.Terminal.LatestSequence+1,
+	); err != nil {
 		return err
-	}
-	validIdentity := event.Kind == jobcontract.EventPerformanceResult && event.JobID == result.JobID
-	validEvent := validIdentity && event.CreatedAt.Equal(result.SealedAt) && event.Sequence == result.Terminal.LatestSequence+1
-	var reference jobcontract.PerformanceResultReference
-	if err := decodeCanonical(event.Payload, &reference, func() error { return reference.Validate() }); err != nil {
-		return storageCorrupt("mirrored performance result event")
-	}
-	if !validEvent || reference != performanceResultReference(result, raw) {
-		return remoteresults.ErrConflict
 	}
 	var checkpointRaw []byte
 	var checkpointSequence uint64
@@ -298,39 +293,22 @@ func validateRemotePerformanceJournal(
 		result.Terminal.LatestSequence,
 	).Scan(&checkpointSequence, &checkpointRaw)
 	if errors.Is(err, sql.ErrNoRows) {
-		if result.Observation == nil {
-			return nil
-		}
-		return remoteresults.ErrConflict
+		return validateStoredPerformanceCheckpoint(
+			result,
+			checkpointRaw,
+			checkpointSequence,
+			false,
+		)
 	}
 	if err != nil {
 		return fmt.Errorf("read mirrored performance checkpoint: %w", err)
 	}
-	if result.Observation == nil {
-		return remoteresults.ErrConflict
-	}
-	checkpointEvent, err := decodeStoredJobEvent(checkpointRaw)
-	if err != nil {
-		return err
-	}
-	validCheckpointEvent := checkpointEvent.JobID == result.JobID && checkpointEvent.Kind == jobcontract.EventPerformanceCheckpoint &&
-		checkpointEvent.Sequence == checkpointSequence
-	if !validCheckpointEvent {
-		return storageCorrupt("mirrored checkpoint envelope")
-	}
-	var checkpoint jobcontract.PerformanceCheckpointEvent
-	if err := decodeCanonical(checkpointEvent.Payload, &checkpoint, nil); err != nil {
-		return storageCorrupt("mirrored checkpoint event")
-	}
-	observation := result.Observation
-	matchingCheckpoint := checkpoint.ReportID == result.ReportID && checkpoint.Revision == observation.Revision &&
-		checkpoint.Stage == observation.Checkpoint.Stage && checkpoint.Boundary == observation.Checkpoint.Boundary
-	matchingTime := checkpointEvent.CreatedAt.Equal(observation.RecordedAt) &&
-		reflect.DeepEqual(checkpoint.RungIndex, observation.Checkpoint.RungIndex)
-	if !matchingCheckpoint || !matchingTime {
-		return remoteresults.ErrConflict
-	}
-	return nil
+	return validateStoredPerformanceCheckpoint(
+		result,
+		checkpointRaw,
+		checkpointSequence,
+		true,
+	)
 }
 
 func importRemotePerformanceArchiveTx(

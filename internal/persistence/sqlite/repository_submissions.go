@@ -3,7 +3,6 @@ package sqlite
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +19,14 @@ var _ jobs.SubmissionRepository = (*Repository)(nil)
 const submissionColumns = `job_id, configuration_id, node_id, installation_id,
 	revision, state, spec_sha256, document_json`
 
-const submissionReadColumns = `job_id, configuration_id, node_id, installation_id,
-	revision, state, spec_sha256,
+const submissionReadColumns = `
+	CASE WHEN length(CAST(job_id AS BLOB)) <= 36 THEN job_id ELSE '!' END,
+	CASE WHEN length(CAST(configuration_id AS BLOB)) <= 36 THEN configuration_id ELSE '!' END,
+	CASE WHEN length(CAST(node_id AS BLOB)) <= 36 THEN node_id ELSE '!' END,
+	CASE WHEN length(CAST(installation_id AS BLOB)) <= 36 THEN installation_id ELSE '!' END,
+	CASE WHEN length(CAST(revision AS BLOB)) <= 20 THEN revision ELSE -1 END,
+	CASE WHEN length(CAST(state AS BLOB)) <= 32 THEN state ELSE '!' END,
+	CASE WHEN length(CAST(spec_sha256 AS BLOB)) <= 64 THEN spec_sha256 ELSE '!' END,
 	CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE NULL END`
 
 const maxSubmissionRecordBytes = jobcontract.MaxSubmissionBytes + jobcontract.MaxRunnerInfoBytes +
@@ -168,10 +173,15 @@ func (repository *Repository) ListPendingSubmissions(
 	page := jobs.SubmissionPage{Records: []jobs.SubmissionRecord{}, NextCursor: after}
 	var used int
 	for rows.Next() {
-		record, size, err := scanSubmission(rows)
+		var stored storedSubmissionRow
+		if err := stored.scan(rows); err != nil {
+			return jobs.SubmissionPage{}, err
+		}
+		record, err := stored.decode()
 		if err != nil {
 			return jobs.SubmissionPage{}, err
 		}
+		size := len(stored.document)
 		if len(page.Records) == int(limit) || used+size > jobs.MaxSubmissionPageBytes {
 			page.HasMore = true
 			break
@@ -187,48 +197,25 @@ func (repository *Repository) ListPendingSubmissions(
 }
 
 func querySubmission(ctx context.Context, queryer rowQueryer, id string) (jobs.SubmissionRecord, error) {
-	record, _, err := scanSubmission(queryer.QueryRowContext(
+	stored, err := queryStoredSubmission(ctx, queryer, id)
+	if err != nil {
+		return jobs.SubmissionRecord{}, err
+	}
+	return stored.decode()
+}
+
+func queryStoredSubmission(ctx context.Context, queryer rowQueryer, id string) (storedSubmissionRow, error) {
+	var stored storedSubmissionRow
+	err := stored.scan(queryer.QueryRowContext(
 		ctx,
 		`SELECT `+submissionReadColumns+` FROM job_submissions WHERE job_id = ?`,
 		maxSubmissionRecordBytes,
 		id,
 	))
-	return record, err
-}
-
-func scanSubmission(row interface{ Scan(...any) error }) (jobs.SubmissionRecord, int, error) {
-	var id, configurationID, nodeID, installationID, state, digest string
-	var revision uint64
-	var document []byte
-	err := row.Scan(
-		&id,
-		&configurationID,
-		&nodeID,
-		&installationID,
-		&revision,
-		&state,
-		&digest,
-		&document,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return jobs.SubmissionRecord{}, 0, jobs.ErrNotFound
-	}
 	if err != nil {
-		return jobs.SubmissionRecord{}, 0, fmt.Errorf("read submission record: %w", err)
+		return storedSubmissionRow{}, err
 	}
-	record, err := decodeSubmissionRecord(document)
-	if err != nil {
-		return jobs.SubmissionRecord{}, 0, err
-	}
-	prepared := record.Prepared
-	validOwner := prepared.ConfigurationID == configurationID && prepared.Runner.NodeID == nodeID &&
-		prepared.Runner.NodeInstallationID == installationID
-	validRecord := prepared.Spec.JobID == id && record.Revision == revision && string(record.State) == state &&
-		record.SpecSHA256 == digest
-	if !validOwner || !validRecord {
-		return jobs.SubmissionRecord{}, 0, fmt.Errorf("%w: submission identity", ErrCorrupt)
-	}
-	return record, len(document), nil
+	return stored, nil
 }
 
 func decodeSubmissionRecord(document []byte) (jobs.SubmissionRecord, error) {

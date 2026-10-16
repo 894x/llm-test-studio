@@ -17,6 +17,20 @@ func validJobPage(ctx context.Context, after string, limit uint32) bool {
 }
 
 func (repository *Repository) Jobs(ctx context.Context, after string, limit uint32) (jobs.JobPage, error) {
+	return repository.readJobPage(
+		ctx,
+		after,
+		limit,
+		projectStoredJobView,
+	)
+}
+
+func (repository *Repository) readJobPage(
+	ctx context.Context,
+	after string,
+	limit uint32,
+	project func(context.Context, storedJobView) (jobs.JobView, error),
+) (jobs.JobPage, error) {
 	if !validJobPage(ctx, after, limit) {
 		return jobs.JobPage{}, jobs.ErrInvalid
 	}
@@ -34,24 +48,50 @@ func (repository *Repository) Jobs(ctx context.Context, after string, limit uint
 	if err != nil {
 		return jobs.JobPage{}, err
 	}
-	page := jobs.JobPage{SchemaVersion: 1, Jobs: []jobs.JobView{}, NextCursor: after, HasMore: more}
-	for _, id := range ids {
-		view, err := queryJobView(ctx, tx, id)
+	stored := make([]storedJobView, 0, len(ids))
+	for _, entry := range ids {
+		source, err := queryStoredJobView(ctx, tx, entry.id)
 		if err != nil {
 			return jobs.JobPage{}, err
 		}
-		page.Jobs = append(page.Jobs, view)
-		page.NextCursor = id
+		// All retained documents were counted by the same snapshot's ID query.
+		// Scalars have fixed SQL bounds and fit in the per-item metadata allowance.
+		if source.byteSize() > entry.bytes+jobPageMetadataBytes {
+			return jobs.JobPage{}, storageCorrupt("job page raw bundle byte limit")
+		}
+		stored = append(stored, source)
 	}
 	if err := tx.Commit(); err != nil {
 		return jobs.JobPage{}, fmt.Errorf("commit job page: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return jobs.JobPage{}, err
+	}
+	page := jobs.JobPage{SchemaVersion: 1, Jobs: []jobs.JobView{}, NextCursor: after, HasMore: more}
+	for index, source := range stored {
+		view, err := project(ctx, source)
+		stored[index] = storedJobView{}
+		if err != nil {
+			return jobs.JobPage{}, err
+		}
+		page.Jobs = append(page.Jobs, view)
+		page.NextCursor = view.JobID
+	}
 	return page, nil
+}
+
+// SQL bounds every retained scalar. This allowance covers their fixed size
+// outside the existing page budget, which counts complete JSON documents.
+const jobPageMetadataBytes = 4096
+
+type jobPageIdentity struct {
+	id    string
+	bytes int64
 }
 
 // Close the bounded ID cursor before loading frozen job sources on pool=1.
 // The raw document budget also limits work before expensive typed projection.
-func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]string, bool, error) {
+func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]jobPageIdentity, bool, error) {
 	rows, err := tx.QueryContext(
 		ctx,
 		`WITH candidates AS MATERIALIZED (
@@ -90,7 +130,7 @@ func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]
 		return nil, false, fmt.Errorf("read job page ids: %w", err)
 	}
 	defer rows.Close()
-	ids := []string{}
+	ids := []jobPageIdentity{}
 	var used int64
 	var more bool
 	for rows.Next() {
@@ -134,11 +174,14 @@ func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]
 			more = true
 			break
 		}
-		ids = append(ids, id)
+		ids = append(ids, jobPageIdentity{id: id, bytes: size})
 		used += size
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, fmt.Errorf("iterate job page ids: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, false, fmt.Errorf("close job page ids: %w", err)
 	}
 	return ids, more, nil
 }

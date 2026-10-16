@@ -223,28 +223,58 @@ func (repository *Repository) GetJobSpec(ctx context.Context, id string) (jobcon
 	return queryJobSpec(ctx, repository.db, id)
 }
 
+type storedJobSpecRow struct {
+	document                          []byte
+	installation, build, kind, digest string
+}
+
 func queryJobSpec(ctx context.Context, queryer rowQueryer, id string) (jobcontract.JobSpec, error) {
-	var document []byte
-	var installation, build, kind, digest string
-	err := queryer.QueryRowContext(ctx, `
-		SELECT installation_id, engine_build_id, kind, spec_sha256,
+	row, err := queryStoredJobSpec(ctx, queryer, id)
+	if err != nil {
+		return jobcontract.JobSpec{}, err
+	}
+	return row.decode(id)
+}
+
+func queryStoredJobSpec(ctx context.Context, queryer rowQueryer, id string) (storedJobSpecRow, error) {
+	var row storedJobSpecRow
+	err := queryer.QueryRowContext(
+		ctx,
+		`SELECT CASE WHEN length(CAST(installation_id AS BLOB)) <= 36 THEN installation_id ELSE '!' END,
+		CASE WHEN length(CAST(engine_build_id AS BLOB)) <= 64 THEN engine_build_id ELSE '!' END,
+		CASE WHEN length(CAST(kind AS BLOB)) <= 16 THEN kind ELSE '!' END,
+		CASE WHEN length(CAST(spec_sha256 AS BLOB)) <= 64 THEN spec_sha256 ELSE '!' END,
 		CASE WHEN length(CAST(spec_json AS BLOB)) <= ? THEN spec_json ELSE '' END
 		FROM execution_jobs WHERE id = ?
-	`, jobcontract.MaxSubmissionBytes, id).Scan(&installation, &build, &kind, &digest, &document)
+	`,
+		jobcontract.MaxSubmissionBytes,
+		id,
+	).Scan(
+		&row.installation,
+		&row.build,
+		&row.kind,
+		&row.digest,
+		&row.document,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return jobcontract.JobSpec{}, jobhost.ErrNotFound
+		return storedJobSpecRow{}, jobhost.ErrNotFound
 	}
 	if err != nil {
-		return jobcontract.JobSpec{}, fmt.Errorf("read job spec: %w", err)
+		return storedJobSpecRow{}, fmt.Errorf("read job spec: %w", err)
 	}
+	return row, nil
+}
+
+func (row storedJobSpecRow) decode(id string) (jobcontract.JobSpec, error) {
 	var spec jobcontract.JobSpec
-	if err := decodeCanonical(document, &spec, func() error { return spec.Validate() }); err != nil {
+	if err := decodeCanonical(row.document, &spec, func() error { return spec.Validate() }); err != nil {
 		return jobcontract.JobSpec{}, fmt.Errorf("%w: job spec", ErrCorrupt)
 	}
 	actualDigest, err := spec.Digest()
-	sameIdentity := spec.JobID == id && spec.NodeInstallationID == installation
-	sameEngine := spec.EngineBuildID == build && string(spec.Kind) == kind
-	if err != nil || !sameIdentity || !sameEngine || actualDigest != digest {
+	sameIdentity := spec.JobID == id && spec.NodeInstallationID == row.installation
+	sameEngine := spec.EngineBuildID == row.build && string(spec.Kind) == row.kind
+	validSpec := err == nil && sameIdentity && sameEngine && actualDigest == row.digest
+	if !validSpec {
 		return jobcontract.JobSpec{}, fmt.Errorf("%w: job spec identity", ErrCorrupt)
 	}
 	return spec, nil
