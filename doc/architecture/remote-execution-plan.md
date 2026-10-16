@@ -592,3 +592,15 @@ R8 runner是精确9a0991b源码的双架构产物，实际新节点amd64已运�
 R8节点新增共享foreign控制闭环：A仅Launch1，B仅Cancel1并实际退出，第三个独立进程重开B原workspace，原Job、唯一command、cancelled镜像及归档报告身份一致；三个进程均exit0，免费Mock请求1、最大并发1、Provider0，runner进程/构建未变。真实Windows OSStore另由父级执行，父与两个子进程跨进程读取、替换和清理两项新合成凭据均通过，全部操作事实为true，清理无未决引用且没有秘密落盘；完整身份及固定证据见[验证记录](remote-execution-validation.md)同日记录。
 
 这两项实际边界已完成，不能外推为原生UI、不同client编译或跨进程CAS通过；ARM64实跑、真实APPDATA切换/恢复、整机/在途故障、积压公平性与CI等既有待验范围继续保持，ARM64 VM仅准备中。原400/600秒失败和付费K3失败不改判，文件扩展继续暂缓。
+
+### 2026-10-17 ARM64 VM 安装与当前 Windows 构建
+
+完整ARM64 TCG VM上的Ubuntu24.04/systemd255已通过产品自动安装R8及同OS进程新App重开：Fetch2/Provision1/Upgrade0/Provider0、operation completed、无cleanup pending，节点/installation/default/config/credentialRefs保持，实际arm64程序摘要匹配。它补齐ARM64虚拟系统安装证据，不是物理arm64、Job执行或独立OS进程重开证明；首次输入路径大小写失败及原VM环境失败保留，产品校验未放宽，完整证据见[验证记录](remote-execution-validation.md)。
+
+clean2942446的Windows EXE及exe-only ZIP已用固定Wails2.15.0、新bindings与前端构建生成并由父级核摘要，2004个tracked blobs不变，应用未启动或发布。ComputerUse三次初始化失败、native actions0，原生UI仍未验收；VM整机重启仅在准备baseline，ARM64任务执行、真实数据切换/恢复、完整故障恢复、公平性及CI等既有待验范围不由本轮替代。K3及原400/600秒失败保持，文件扩展继续暂缓。
+
+### 2026-10-17 ARM64 完整启动与用户库新鲜备份
+
+同一自有ARM64 VM经QMP整机reset后，已由前后不同boot ID、两个只读观察进程实际exit0、enabled/active服务、原node/installation/实际exe摘要及TCP端口证明自启动。原SSH reboot错误与观察算法失败保留；没有重启用户服务器，也未把配置检查扩为真实失败限速、重启后HTTP就绪或在途恢复证明。
+
+实际用户APPDATA的新鲜只读online backup及其独立766→当前1db转换已通过，源前后SHA不变、当前完整typed/43份性能getter及父只读完整性检查通过。真实数据切换、实际新应用回读与恢复切换仍待完成；固定工具边界未放宽，临时入口与备份继续保留。完整证据见[验证记录](remote-execution-validation.md)同日记录，其余待验和文件扩展暂缓决定保持。

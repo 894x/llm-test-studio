@@ -932,3 +932,23 @@ PreparedWire是runtime.Response内部json:-字段，只描述准备结果，不�
 父级另行执行基于8e8040f的真实Windows OSStore工具，exe SHA `867a70d328fa696621cf1868be15625eef1249856b71f37a93f956bae83fd360`。父进程28552、替换子进程17548、清理子进程57624均实际exit0；preflightNotFound、initialStored、childCompared、childReplaced、parentCompared、cleanupNotFound六组事实均为[true,true]，cleanup_complete及children_joined为true、unresolved为空、stderr为空。只使用两项新生成的合成凭据，未枚举或更改旧凭据，没有秘密落盘。
 
 真实回执 `%TEMP%/osstore-windows-8e8040f-942d135b3ed14da388a2c7589993a0fa/parent-real-9f37c67bd0844e0aa5e955b4858da7b8.safe.jsonl` SHA `b2d9c653a2cb73d18de0b145966b2c8afde34eac2e62081a484926ebe0d65a0c`。它补齐真实Windows backend的跨进程读取、替换和清理证明，不代表原生UI、不同client编译或跨进程CAS通过；ARM64 VM仍在准备，未实跑。原400/600秒失败、付费K3失败、积压公平性、真实APPDATA切换/恢复及其他未完成项均保留，文件扩展继续暂缓。
+
+## 2026-10-17：ARM64 TCG VM 安装通过，当前 Windows 包仅构建
+
+完整ARM64 TCG VM（非物理arm64）运行Ubuntu24.04/systemd255。父级helper42520实际exit0，summary elapsed131947ms，真实UID1000/HasSudo=true；Fetch2/Provision1/Upgrade0/Provider0，R8实际程序SHA `bd6d905c40bdead6f985b7dfab56d17442e46e01896dfaaffcdd82731bf0844f`。operation `9096143f-6f17-427d-b143-0f54c78734d5` completed、cleanup_pending=false；node `79a2c203-85d9-4d54-b409-da54d1c3d2fa`、installation `56ff089a-95bc-4a2e-beb1-4188775903d3` 已确认。首次Close后，在同一OS进程内用新MemoryStore和新App重开并取得fresh CheckedAt，default/config/credentialRefs/节点身份保持；不是独立OS进程或真实keyring验收，也未执行Job。
+
+证据根 `E:/TEMP/codex-llm-arm64-eff38645530b43dd94ad039e1f594595-r3-r4/`：`helper-43801d3e008df526.safe.log` SHA `d53d108707ea61d6b3b42ba394202070eff67a83a4d9133a353d7c4e3563df0a`、`parent-arm64-actual-exit.safe.json` SHA `6b69cae9c147223010072d7d2dcd69095d86fb6fbb3951a2199ad7522e424d3b`。approved helper SHA `c2d670e096bab7a4b6f72e1eab3284efd67261b19cb2709db4b4ec939757dc92` 仅修正TEMP workspace常量E:/TEMP→E:/Temp以匹配resolve，未放宽11字段输入或产品校验；首次helper39676仍为input invalid/elapsed0/exit1、SSH及Provision0，原两次VM启动失败和controllerEOF保留为环境失败。
+
+当前clean2942446的Windows交付包位于 `%TEMP%/llm-native-2942446-4787639040f1450d9273f5bc4452431f/`。`llm-test-studio.exe` 27014144字节/SHA `af01ab567ae54a40f7b0e4ba7cd7e3c5cc3ff3fa711e54a2dda8fea300b9d6d9`；exe-only ZIP按现Windows release方式生成，9503067字节/SHA `7099c23a1f5540f93e7a6d909d6cc3f624f164ac4768927a520c09bdcc01ac4d`；`artifact-proof.safe.json` SHA `a6e7bd1d2449ef6e6f231804b8c7f4a46ad9617a6aabdae16eb4d70b3dc28eab`，三项均由父级实核。Wails CLI/module2.15.0，fresh bindings、frontend build及native build均exit0，2004个tracked blobs前后与294相同；构建阶段无网络、安装、应用启动、DB/keyring或provider调用，不代表已发布。
+
+ComputerUse三次初始化（含reset）均报failed to write kernel assets/os error3，native actions为0，原生窗口验收仍未通过。VM整机reboot仅在准备baseline，尚无重启后证明；ARM64任务执行、真实APPDATA切换/恢复、积压公平性与其他既有待验项保持。原400/600秒失败和K3兼容性失败不改判，文件扩展继续暂缓。
+
+## 2026-10-17：ARM64 完整启动自启动及真实用户库新鲜备份
+
+同一自有ARM64 VM在只读baseline后，经QMP一次system_reset完成整机重新启动；不涉及两台用户服务器。baseline观察进程17528和重启后观察进程58344均实际exit0。boot ID从 `51c6d28d-0d72-4505-b461-cb36a438995b` 变为 `fac0cb89-767c-47a0-ac00-bc5ce3b57d14`，runner PID1532→624；服务仍enabled/active/running、NRestarts0，原node/installation、实际exe SHA bd6d905c…0844f及端口44917不变。Restart=on-failure、WatchdogUSec=30s、StartLimitBurst=5为实际回读配置；没有重新部署、升级、提交Job或调用provider。观察二进制SHA `9e8bf79d4029bc4c318e953334336ca34da58ff6ca8b48aef299da54e10c5bc1`，前后日志SHA分别 `19ae99baa665101c5a350fd4ab24f80df9ac5395ad029282449b269af6666b6e`、`6a1e185a7085df00e65a3446f82e608cfb8a392085a3051e53af153f4d5626fa`，位于上节VM证据根。原SSH reboot调用报SSHException、不能证明其已重启；随后QMP确认及不同boot ID才作为本轮完整启动证明。初次观察工具未限定ed25519协商而connect失败的记录保留，非服务失败；当前观察固定已批准ed25519指纹。这证明整机启动后的服务自启动和TCP监听，不证明重启后HTTP就绪、在途恢复或真实启动失败限速场景。
+
+父级完整启动交叉验证回执为VM证据根的 `parent-full-boot-acceptance.safe.json`，SHA `d30e73b8b1ca79c6379b7436d3437734e750168d68b8b0a468dcad20ba86bf56`。
+
+实际APPDATA库通过SQLite只读连接online backup得到新鲜一致性快照，源前后SHA均为 `cbc5337e54c00bd581d00ad7db8a097d6400f1f9b12338f950b1900860ce4eb5`，无新增sidecar；187662336字节快照SHA `8ffacb1af4a3101a75abf09e02fc02f191e549423182ab7131adadfe9d9da8f2`。`%TEMP%/llm-actual-user-fresh-d3d7965e542d4c9a88552445c9ce1ca1/backup.safe.json` SHA `8430d7d5ed7f3670855af8eeb42d1404821217de3a5d821ca65acbc24b2e1c0e`。快照与先前源字节相同，但本次为实际用户库的新鲜备份，不是沿用旧备份的时间结论；同目录 `parent-fresh-final.safe.json` SHA `191ec200f1f41131af34082927cfea931d2eba5b71d4094879f2f232e38bdcc8` 记录转换后再次核对实际源不变。
+
+固定766→当前1db工具及其validator保持原字节和原私有root边界。新备份副本在原工具根显式转换，进程51644实际exit0；新 `actual-fresh-20261017-current.db` 为187621376字节、SHA `6366bd911116554d9593eaa2c335eeac1133ccc6e9c09400d907e206ddb5a8be`，conversion proof SHA `70b73c80c0e23cb5e4f1213304040f41db47185c33598b784bb899553858b4d8`。当前80对象及完整typed validator/43份性能getter通过，保留63 runs/252 revisions/5482 results/4 comparisons/61普通报告；父另行只读quick/FK/hash通过，源仍不变。首次跨root拒绝及复制原工具到新root后被固定validator拒绝的两次exit1保留；正确执行使用原root，没有放宽guard或增加历史运行时路径。新鲜备份与副本转换已完成；真实APPDATA切换、实际新应用回读及恢复切换仍未执行，工具和备份继续保留。
