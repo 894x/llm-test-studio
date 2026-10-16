@@ -136,7 +136,16 @@ func TestWatcherGlobalBudgetIncludesFullMirrorValidation(t *testing.T) {
 	finished := make(chan syncResult, maxConcurrentSyncs*2)
 	for index := range maxConcurrentSyncs * 2 {
 		snapshot := queuedJob(node, index+1)
-		go func() { finished <- watcher.syncJob(ctx, node, nil, snapshot.Receipt.JobID, &snapshot) }()
+		go func() {
+			finished <- watcher.syncJob(
+				ctx,
+				priorityLane,
+				node,
+				nil,
+				snapshot.Receipt.JobID,
+				&snapshot,
+			)
+		}()
 	}
 	for range maxConcurrentSyncs {
 		select {
@@ -156,6 +165,76 @@ func TestWatcherGlobalBudgetIncludesFullMirrorValidation(t *testing.T) {
 	}
 	if repository.active.Load() != 0 || len(watcher.gate) != 0 {
 		t.Fatal("cancellation did not join validation workers and gate waiters")
+	}
+}
+
+func TestWatcherBackgroundWaitersLeaveGlobalCapacityForPriority(t *testing.T) {
+	repository := &gatedMirrorRepository{entered: make(chan struct{}, maxConcurrentSyncs+1)}
+	synchronizer, err := New(Dependencies{Repository: repository, Documents: unusedCache{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := watcherNode(1)
+	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
+		PriorityJobs: emptyPriorityJobs, Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
+		Connect: func(context.Context, Node) (Connection, error) { return nil, errors.New("unused") }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watcher.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait() }()
+	finished := make(chan syncResult, maxConcurrentSyncs+1)
+	start := func(lane scanLane, index int) {
+		snapshot := queuedJob(node, index)
+		workers.Go(func() {
+			finished <- watcher.syncJob(
+				ctx,
+				lane,
+				node,
+				nil,
+				snapshot.Receipt.JobID,
+				&snapshot,
+			)
+		})
+	}
+	for index := range maxConcurrentSyncs {
+		start(tailLane, index+1)
+	}
+	for range maxBackgroundSyncs {
+		select {
+		case <-repository.entered:
+		case <-time.After(time.Second):
+			t.Fatal("background work did not occupy its three full validation slots")
+		}
+	}
+	pageContext, stopPage := context.WithTimeout(ctx, time.Second)
+	_, err = watcher.priorityPage(pageContext, node, "")
+	stopPage()
+	if err != nil {
+		t.Fatalf("background waiter occupied global capacity needed by priority metadata: %v", err)
+	}
+	start(priorityLane, 900)
+	select {
+	case <-repository.entered:
+	case <-time.After(time.Second):
+		t.Fatal("priority full validation could not enter its reserved fourth global slot")
+	}
+	full := len(watcher.gate) == maxConcurrentSyncs && len(watcher.backgroundGate) == maxBackgroundSyncs
+	if !full || repository.active.Load() != maxConcurrentSyncs {
+		t.Fatal("mixed priority/background work bypassed the global four-worker budget")
+	}
+	cancel()
+	workers.Wait()
+	for range maxConcurrentSyncs + 1 {
+		if result := <-finished; !errors.Is(result.err, context.Canceled) {
+			t.Fatal("cancellation did not release a sync worker or background waiter")
+		}
+	}
+	zeroSlots := len(watcher.gate) == 0 && len(watcher.backgroundGate) == 0
+	if !zeroSlots || repository.active.Load() != 0 {
+		t.Fatal("mixed lane cancellation leaked global or background slot reservations")
 	}
 }
 

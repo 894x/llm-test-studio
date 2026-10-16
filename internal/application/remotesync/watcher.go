@@ -18,6 +18,7 @@ import (
 const (
 	maxObservedNodes   = 64
 	maxConcurrentSyncs = 4
+	maxBackgroundSyncs = maxConcurrentSyncs - 1
 	discoveryPageSize  = 25
 	jobsPerTick        = 4
 	priorityPageSize   = 2
@@ -67,6 +68,7 @@ type Watcher struct {
 	workers        map[string]*nodeWorker
 	wait           sync.WaitGroup
 	gate           chan struct{}
+	backgroundGate chan struct{}
 	running        bool
 	closed         bool
 	sourceError    string
@@ -100,8 +102,9 @@ func NewWatcher(ctx context.Context, dependencies WatcherDependencies) (*Watcher
 		synchronizer: dependencies.Synchronizer, source: dependencies.Nodes, connect: dependencies.Connect,
 		priorityJobs: dependencies.PriorityJobs,
 		ctx:          lifetime, cancel: cancel, workers: map[string]*nodeWorker{},
-		gate:         make(chan struct{}, maxConcurrentSyncs),
-		refreshEvery: 10 * time.Second, pollEvery: 5 * time.Second, attemptTimeout: 2 * time.Minute,
+		gate:           make(chan struct{}, maxConcurrentSyncs),
+		backgroundGate: make(chan struct{}, maxBackgroundSyncs),
+		refreshEvery:   10 * time.Second, pollEvery: 5 * time.Second, attemptTimeout: 2 * time.Minute,
 	}, nil
 }
 
@@ -342,11 +345,22 @@ type syncResult struct {
 
 func (watcher *Watcher) syncJob(
 	ctx context.Context,
+	lane scanLane,
 	node Node,
 	connection Connection,
 	id string,
 	snapshot *jobcontract.Snapshot,
 ) syncResult {
+	if lane != priorityLane {
+		// Background work takes its own quota before the shared budget. A
+		// waiting historical download cannot occupy the priority reservation.
+		select {
+		case watcher.backgroundGate <- struct{}{}:
+			defer func() { <-watcher.backgroundGate }()
+		case <-ctx.Done():
+			return syncResult{err: ctx.Err()}
+		}
+	}
 	// Include GET/needsSync's full mirror/spec decoding in the global budget.
 	select {
 	case watcher.gate <- struct{}{}:

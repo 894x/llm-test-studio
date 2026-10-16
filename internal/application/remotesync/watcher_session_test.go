@@ -245,6 +245,37 @@ func TestSessionSchedulesHistoryPriorityAndTailWithinOneTick(t *testing.T) {
 	session.workers.Wait()
 }
 
+func TestSessionColdTailReservesNodeSlotForLaterPriority(t *testing.T) {
+	node := watcherNode(1)
+	own := queuedJob(node, 900)
+	connection := &priorityObservation{watcherConnection: watcherConnection{node: node},
+		snapshots: map[string]jobcontract.Snapshot{own.Receipt.JobID: own},
+		events: func(ctx context.Context, _ string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}}
+	watcher := sessionWatcher(t, node, connection)
+	scan := resetDiscovery()
+	for index := range jobsPerTick {
+		scan.tail.pending = append(scan.tail.pending, queuedJob(node, index+1))
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	session := observationSession{watcher: watcher, node: node, connection: connection, scan: &scan,
+		ctx: ctx, events: make(chan sessionEvent, jobsPerTick), inflight: map[string]scanLane{}, selected: map[string]bool{}}
+	defer func() { cancel(); session.workers.Wait() }()
+	session.schedule()
+	reserved := session.backgroundActive() == maxBackgroundSyncs && scan.tail.index == maxBackgroundSyncs
+	if !reserved || len(session.inflight) != maxBackgroundSyncs {
+		t.Fatal("cold discovery occupied the priority node slot or consumed its waiting fourth root")
+	}
+	scan.priority.pending = []string{own.Receipt.JobID}
+	session.schedule()
+	priorityStarted := session.laneActive(priorityLane) == 1 && len(session.inflight) == jobsPerTick
+	if !priorityStarted || session.backgroundActive() != maxBackgroundSyncs {
+		t.Fatal("later priority could not use its reserved slot while cold history remained blocked")
+	}
+}
+
 func TestSessionRejectsMalformedAdmissionPagesWithoutAdvancing(t *testing.T) {
 	for _, test := range []struct {
 		cursor  string

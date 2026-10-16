@@ -272,17 +272,17 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- watcher.Run() }()
 	t.Cleanup(func() { _ = watcher.Close() })
-	for range maxConcurrentSyncs {
+	for range maxBackgroundSyncs {
 		select {
 		case <-entered:
 		case <-time.After(2 * time.Second):
-			t.Fatal("full synchronization slots did not enter observation")
+			t.Fatal("background synchronization slots did not enter observation")
 		}
 	}
 	waitFor(t, func() bool { return opened.Load() == int64(len(nodes)) })
 	select {
 	case <-entered:
-		t.Fatal("fifth node bypassed the synchronization budget")
+		t.Fatal("background observer consumed the reserved priority slot")
 	case <-time.After(40 * time.Millisecond):
 	}
 	if err := watcher.Close(); err != nil {
@@ -291,8 +291,12 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if maximum.Load() != maxConcurrentSyncs || active.Load() != 0 || closed.Load() != int64(len(nodes)) {
+	validBudget := maximum.Load() == maxBackgroundSyncs && active.Load() == 0
+	if !validBudget || closed.Load() != int64(len(nodes)) {
 		t.Fatal("sync budget or shutdown resource accounting was violated")
+	}
+	if len(watcher.gate) != 0 || len(watcher.backgroundGate) != 0 {
+		t.Fatal("shutdown leaked global or background slot reservations")
 	}
 }
 

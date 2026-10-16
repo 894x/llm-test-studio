@@ -280,7 +280,10 @@ func (session *observationSession) schedulePage(lane scanLane, page *scanPage, l
 		return
 	}
 	var started int
-	for page.index < len(page.pending) && session.hasSlot() && started < limit {
+	for page.index < len(page.pending) && started < limit {
+		if !session.hasSlot() || session.backgroundActive() >= maxBackgroundSyncs {
+			break
+		}
 		snapshot := page.pending[page.index]
 		page.index++
 		if session.start(lane, snapshot.Receipt.JobID, &snapshot) {
@@ -299,6 +302,10 @@ func (session *observationSession) laneActive(lane scanLane) int {
 	return count
 }
 
+func (session *observationSession) backgroundActive() int {
+	return session.laneActive(tailLane) + session.laneActive(historyLane)
+}
+
 func (session *observationSession) start(lane scanLane, id string, snapshot *jobcontract.Snapshot) bool {
 	if _, active := session.inflight[id]; active || session.selected[id] {
 		return false
@@ -308,6 +315,7 @@ func (session *observationSession) start(lane scanLane, id string, snapshot *job
 	session.workers.Go(func() {
 		result := session.watcher.syncJob(
 			session.ctx,
+			lane,
 			session.node,
 			session.connection,
 			id,
