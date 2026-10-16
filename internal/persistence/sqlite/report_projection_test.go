@@ -16,6 +16,94 @@ import (
 
 var _ reporting.Catalog = (*persistence.Repository)(nil)
 
+func TestReportProjectionsAcceptRunFailureHistory(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		statuses []domain.RunStatus
+	}{
+		{name: "queued"},
+		{name: "starting", statuses: []domain.RunStatus{domain.RunStarting}},
+		{name: "running", statuses: []domain.RunStatus{domain.RunStarting, domain.RunRunning}},
+		{name: "draining", statuses: []domain.RunStatus{domain.RunStarting, domain.RunRunning, domain.RunDraining}},
+	} {
+		for _, recordFailure := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/failure=%t", test.name, recordFailure), func(t *testing.T) {
+				repository := openRepository(t)
+				defer repository.Close()
+				fixture := newRepositoryFixture(t)
+				storeFailedProjectionReport(t, repository, fixture, test.statuses, recordFailure)
+
+				projections, err := repository.ListReportProjections(context.Background())
+				if err != nil {
+					t.Fatalf("ListReportProjections() with a failed run history: %v", err)
+				}
+				if len(projections) != 1 || projections[0].ID != fixture.report.ID ||
+					projections[0].RunStatus != domain.RunFailed || projections[0].Passed || projections[0].CaseCount != 0 {
+					t.Fatalf("failed report projection = %#v", projections)
+				}
+			})
+		}
+	}
+}
+
+func TestReportProjectionsRejectFailureHistoryTamperingWithoutMutation(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		appendDocumentSQL string
+		updateDocumentSQL string
+	}{
+		{name: "terminal revision repeated", appendDocumentSQL: "document_json"},
+		{
+			name:              "terminal failure changed",
+			appendDocumentSQL: "json_set(document_json, '$.failure.error_code', 'job_commands_unavailable')",
+		},
+		{name: "terminal failure removed", appendDocumentSQL: "json_remove(document_json, '$.failure')"},
+		{
+			name:              "snapshot changed",
+			updateDocumentSQL: "json_set(document_json, '$.plan_snapshot.environment.app_version', 'changed')",
+		},
+		{
+			name:              "metadata changed",
+			updateDocumentSQL: "json_set(document_json, '$.updated_at', '2026-08-30T01:05:03Z')",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path, repository, fixture := openHardeningRepository(t)
+			failed := storeFailedProjectionReport(t, repository, fixture, nil, true)
+			closeForTamper(t, repository)
+			if test.appendDocumentSQL != "" {
+				revision := failed.Meta().Revision
+				updatedAt := failed.Meta().UpdatedAt.Add(time.Minute).Format(time.RFC3339Nano)
+				tamper(t, path, `
+					INSERT INTO execution_run_revisions(
+						run_id, schema_version, revision, created_at, updated_at,
+						plan_id, plan_revision, status, snapshot_json, document_json
+					)
+					SELECT run_id, schema_version, revision + 1, created_at, ?,
+					       plan_id, plan_revision, status, snapshot_json,
+					       json_set(`+test.appendDocumentSQL+`, '$.revision', revision + 1, '$.updated_at', ?)
+					FROM execution_run_revisions WHERE run_id = ? AND revision = ?
+				`, updatedAt, updatedAt, failed.Meta().ID, revision)
+				tamper(t, path, `UPDATE execution_runs SET current_revision = ? WHERE id = ?`, revision+1, failed.Meta().ID)
+			} else {
+				tamper(t, path, `DROP TRIGGER trg_execution_run_revisions_no_update`)
+				tamper(t, path, `UPDATE execution_run_revisions SET document_json = `+test.updateDocumentSQL+`
+					WHERE run_id = ? AND revision = ?`, failed.Meta().ID, failed.Meta().Revision)
+				restoreRunRevisionUpdateTrigger(t, path)
+			}
+			repository = reopenHardeningRepository(t, path)
+			defer repository.Close()
+			before := projectionRunStorage(t, path, failed.Meta().ID)
+			if _, err := repository.ListReportProjections(context.Background()); !errors.Is(err, persistence.ErrCorrupt) {
+				t.Fatalf("ListReportProjections() error = %v, want ErrCorrupt", err)
+			}
+			if after := projectionRunStorage(t, path, failed.Meta().ID); after != before {
+				t.Fatal("rejected projection read changed stored run history or report")
+			}
+		})
+	}
+}
+
 func TestReportProjectionsReturnOnlyBoundedSummaryScalars(t *testing.T) {
 	t.Parallel()
 
@@ -947,4 +1035,68 @@ func storeFixtureReport(t *testing.T, repository *persistence.Repository, fixtur
 	if err := repository.CreateReport(context.Background(), report); err != nil {
 		t.Fatalf("CreateReport() error = %v", err)
 	}
+}
+
+func storeFailedProjectionReport(
+	t *testing.T,
+	repository *persistence.Repository,
+	fixture repositoryFixture,
+	statuses []domain.RunStatus,
+	recordFailure bool,
+) domain.Run {
+	t.Helper()
+	createRunGraph(t, repository, fixture)
+	run := transitionRun(t, repository, fixture.run, statuses...)
+	previous := run.Meta().Revision
+	at := repositoryEpoch.Add(time.Duration(previous) * time.Minute)
+	var err error
+	if recordFailure {
+		run, err = run.Fail(domain.RunFailure{Phase: "runner", ErrorCode: "job_storage_unavailable"}, at)
+	} else {
+		run, err = run.Transition(domain.RunFailed, at)
+	}
+	if err != nil {
+		t.Fatalf("fail run: %v", err)
+	}
+	if err := repository.UpdateRun(context.Background(), previous, run); err != nil {
+		t.Fatalf("UpdateRun(failed): %v", err)
+	}
+	report := fixture.report
+	report.RunStatus = domain.RunFailed
+	report.Conclusion = domain.ReportConclusion{Verdict: "fail", Issues: []string{"Execution failed"}}
+	report.CaseResults = []domain.Result{}
+	report.Evidence = []domain.Evidence{}
+	report.Attachments = []domain.ReportAttachment{}
+	report.Verification = domain.SummarizeVerification(report.CaseResults)
+	report.EntryReports[0].Status = domain.EntryReportNotStarted
+	report.EntryReports[0].Conclusion = domain.ReportConclusion{Verdict: "not_started", Issues: []string{}}
+	report.EntryReports[0].CaseResults = []domain.Result{}
+	report.EntryReports[0].Verification = domain.SummarizeVerification(report.CaseResults)
+	if err := repository.CreateReport(context.Background(), report); err != nil {
+		t.Fatalf("CreateReport(failed): %v", err)
+	}
+	return run
+}
+
+func projectionRunStorage(t *testing.T, path, runID string) string {
+	t.Helper()
+	db := openDatabase(t, path)
+	defer db.Close()
+	queries := []string{
+		`SELECT json_array(id, current_revision, created_at, sealed) FROM execution_runs WHERE id = ?`,
+		`SELECT json_group_array(json_array(run_id, schema_version, revision, created_at, updated_at,
+			plan_id, plan_revision, status, typeof(snapshot_json), hex(snapshot_json),
+			typeof(document_json), hex(document_json)))
+		 FROM (SELECT * FROM execution_run_revisions WHERE run_id = ? ORDER BY revision)`,
+		`SELECT json_group_array(json_array(id, schema_version, run_id, generated_at,
+			typeof(document_json), hex(document_json)))
+		 FROM (SELECT * FROM reports WHERE run_id = ? ORDER BY id)`,
+	}
+	documents := make([]string, len(queries))
+	for index, query := range queries {
+		if err := db.QueryRow(query, runID).Scan(&documents[index]); err != nil {
+			t.Fatalf("read projection source %d: %v", index, err)
+		}
+	}
+	return strings.Join(documents, "\n")
 }

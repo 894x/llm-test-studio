@@ -350,7 +350,13 @@ func validateReportRunHistories(ctx context.Context, tx *sql.Tx, currentRuns map
 				return fmt.Errorf("%w: report run initial revision", ErrCorrupt)
 			}
 		} else {
-			want, transitionErr := previous.Transition(run.Status(), meta.UpdatedAt)
+			var want domain.Run
+			var transitionErr error
+			if failure := run.Failure(); run.Status() == domain.RunFailed && failure != nil {
+				want, transitionErr = previous.Fail(*failure, meta.UpdatedAt)
+			} else {
+				want, transitionErr = previous.Transition(run.Status(), meta.UpdatedAt)
+			}
 			if transitionErr != nil || !reflect.DeepEqual(want, run) {
 				return fmt.Errorf("%w: report run revision transition", ErrCorrupt)
 			}
