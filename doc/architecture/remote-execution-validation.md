@@ -978,3 +978,18 @@ R5免费Mock首次尝试在CreatePlan前失败：临时工具给新Entry预填ID
 父级另外在固定原生沙盒中执行当前产品节点服务与真实Windows OSStore。seed进程12272实际exit0：保存两个独立节点配置，R8配对ready并设默认remote，R7确认主机指纹后保持disabled、未配对。三个专用作用域凭据写入OSStore；未安装/升级runner、没有artifact/provider调用，未启动monitor或镜像worker。独立reopen进程实际exit0，读取全部3refs，再仅对R8执行Bound检查，取得fresh ready；默认、配置、binding及refs保持，Shared0/Bound1、R7网络0、Get5、凭据写删尝试0。
 
 最后独立cleanup进程实际exit0，经当前节点删除与引用检查，仅清理本工具两个节点及3个ledger登记的专用凭据，逐项确认ErrNotFound；最终nodes0/credential_refs0/default local。没有枚举或更改既有凭据、实际APPDATA或用户服务器上的runner。cleanup在持有桌面锁后拒绝任何SQLite sidecar，避免immutable读取遗漏WAL引用；该guard通过独立静态审查。证据根 `E:/TEMP/llm-native-remote-seed-112d32a84af945328f155bd189542d05/`，seed/reopen/cleanup日志SHA分别 `a54024873b883f8d0a295457aea0c8f8934d919efb62843fb9128680d253d61f`、`b91c6ae257a5fc98cf7249912a34063b973d368c438e7f7ee7d53e8514e35390`、`e9b1fcd4196b1bb408a07fe4fbfe7c0d12da5afefb84a7017e0490a3ebffa6b6`。这是当前生产组合的后台与真实keyring验收；已配置两节点的原生点击切换仍未验，用户Esc后的同轮未继续界面操作。
+
+## 2026-10-17：R15 两个实际构建双向提交通过
+
+同一当前生产源码以产品原有desktopApplicationVersion的不同ldflags值编译两个实际客户端构建，均通过真实R8节点提交和跨构建读取。没有增加项目历史格式支持或要求client/runner构建相等。
+
+- 构建A提交、构建B观察及新进程重开：Job `94724fcf-fb41-4119-a088-f466a73a2616`，Report `b237c425-a19c-4693-9262-34d18599894d`；回执 `E:/TEMP/llm-r15-distinct-builds-e6a5e2c2f3ee45339c1c751d8c3dca41/run-41kqbvk0/acceptance.safe.json` SHA `c6fbe750cc450ac485d19f8bca5f75047b769b1438ca92fd408d3cc338190970`。
+- 构建B提交、构建A观察及新进程重开：Job `254cce16-d4ef-4ca9-b385-46586c9f313f`，Report `ff382075-fe1e-4d7d-93ba-4c5aa6e4b792`；回执 `E:/TEMP/llm-r15-reverse-submit-b-6e151f7d52cc4810af842be91bebd2f0/run-2eogefh3/acceptance.safe.json` SHA `1092e306ae88483649fdc57059814c5542e02a61ef036caa1314aa09a1b54d98`。
+
+两轮均在首请求仍冻结时确认提交客户端实际exit0/EOF，释放后由其他构建取得同Job/Run/双Entry/Report；各Entry恰好1请求。每轮三个客户端OS进程均退出0，只有提交方Launch/Submit各1，其余Submit/Command0；免费Mock2、峰值并发1、拒绝0、Provider0，shutdown ACK/EOF/transport关闭及cleanup全真。runner PID2728603/start804746624/NRestarts1/实际SHA67f21005…fc77前后不变，报告Origin保持实际R8；未安装、升级或覆盖runner。独立交叉核验 `r15-two-submit-verified.safe.json` 位于第二工具根，SHA `7deaeee95d5f5ed06738f3c4d4ec959740a5144542ad1ba24db08afefda5a511`。
+
+## 2026-10-17：R13 实际 APPDATA 路径临时切换与恢复通过
+
+独立静态安全审查及Windows自有TEMP重命名探针通过后，父级执行固定路径/摘要的临时cutover工具，实际exit0、35.05秒。原文件先保留为同卷唯一兄弟文件，当前格式字节副本进入实际APPDATA数据库路径；当前DesktopApp Core读出63条Run及上限100条报告目录，正常reader对旧格式明确拒绝。工具关闭全部SQLite读者后保留当前文件并恢复原文件；异常路径也有独立恢复程序，未知摘要、sidecar或运行中客户端均拒绝覆盖。
+
+父级日志 `E:/TEMP/llm-actual-profile-r13-3f94991a108c4a4fa84bd5d7de1d696d/parent-cutover.safe.log` SHA `a26d16f9278be3b597663113fa5ac6d7dfa020bc4093108455d34cd296f576e4`；只读复核回执 `r13-parent-verified.safe.json` SHA `6059be54caea47a296154d30d8b27e4af7e476b22e1155cce4229a71a1a5b449`。实际原库和独立original.backup.db均保持SHA `cbc5337e54c00bd581d00ad7db8a097d6400f1f9b12338f950b1900860ce4eb5`；当前格式文件另存保留，SHA `6366bd911116554d9593eaa2c335eeac1133ccc6e9c09400d907e206ddb5a8be`。此项证明实际路径后台读取和原字节恢复，用户实际库最终仍为原文件；没有永久切换、原生GUI实际路径验收、运行时迁移或历史解码fallback，临时工具及恢复材料继续保留。

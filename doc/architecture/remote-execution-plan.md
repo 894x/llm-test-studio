@@ -612,3 +612,9 @@ clean2942446的Windows EXE及exe-only ZIP已用固定Wails2.15.0、新bindings�
 R5两Suite的实际A进程退出后，后续条目完成，独立B及重开的query读回同Job/Run/Report。首次末尾Mock检查超时的失败记录保留，原任务只读恢复确认报告、runner和无遗留Mock，未重复提交原Job。统一process查询预算后，一个新的独立免费验收Job已完整通过：三进程exit0、仅一次Launch/Submit、Mock2/最大并发1/拒绝0/Provider0、进程前后不变及shutdown/cleanup确认。三角色仍为同exe，不能扩为不同实际client构建通过。详见[验证记录](remote-execution-validation.md)同日证据。
 
 当前节点产品组合另通过真实Windows OSStore后台闭环：保存两节点、默认R8、独立进程读回专用凭据并Bound取得fresh ready，默认/身份/refs保持；最后仅清理自建两节点与3个专用refs并确认不存在。未改实际APPDATA或用户runner；已配置节点的原生点击切换仍待验，其余入口、故障、公平性、数据切换及CI等既有边界保持。
+
+### 2026-10-17 两个客户端构建提交与真实路径恢复
+
+R15已补齐两个实际客户端构建双向提交：构建A提交、构建B读取及重开，随后构建B提交、构建A读取及重开，两轮均通过。两个构建使用同一当前生产源码和不同产品版本元数据，每轮三个OS进程均退出0，只有提交方Submit1，Mock2/峰值1/拒绝0，原Job/Run/双Entry/Report保持，runner进程、安装身份及实际程序摘要未变。此项没有增加历史格式支持；报告保留实际R8来源。
+
+R13实际APPDATA路径的临时切换、当前DesktopApp Core读取和原文件恢复也已执行通过：63条Run及上限100条报告目录可读，旧格式明确拒绝；35.05秒、实际退出0。原文件和独立备份均保持原SHA，转换后的当前文件另行保留。本次已验证恢复流程，实际用户库最终保持原文件；永久切换和该路径的原生GUI观察不由此替代。完整ID、工具和回执摘要见验证记录对应节。
