@@ -374,3 +374,112 @@ func TestRunAndWholeComparisonPayloadValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmissionRejectsIncompleteRunSnapshotsWithoutMutation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(*runs.PreparedRun)
+	}{
+		{name: "missing plan document", change: func(run *runs.PreparedRun) {
+			run.Snapshot.PlanDocument = nil
+		}},
+		{name: "missing binding", change: func(run *runs.PreparedRun) {
+			run.Snapshot.Mapping = nil
+		}},
+		{name: "missing resolved entries", change: func(run *runs.PreparedRun) {
+			run.Snapshot.Entries = []domain.RunEntrySnapshot{}
+		}},
+		{name: "missing suite document", change: func(run *runs.PreparedRun) {
+			run.Snapshot.Entries[0].Suite = nil
+		}},
+		{name: "missing case definition", change: func(run *runs.PreparedRun) {
+			run.Snapshot.Entries[0].CaseDefinitions = []domain.TestCase{}
+		}},
+		{name: "missing resolved case inputs", change: func(run *runs.PreparedRun) {
+			delete(run.Snapshot.Entries[0].CaseInputs, run.Snapshot.Entries[0].Cases[0].CaseID)
+		}},
+		{name: "non-initial revision", change: func(run *runs.PreparedRun) {
+			run.Meta.Revision = 2
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			run := preparedRunFixture(t)
+			spec := performanceSpec(t)
+			spec.Kind, spec.Spec = KindRun, Payload{Run: &run}
+			submission := submissionWithFixtureSecrets(spec)
+			if err := submission.Validate(); err != nil {
+				t.Fatalf("valid run submission rejected: %v", err)
+			}
+			test.change(submission.Job.Spec.Run)
+			assertInvalidSubmissionUnchanged(t, submission)
+		})
+	}
+}
+
+func TestSubmissionRejectsInconsistentFrozenComparisonWithoutMutation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(*comparisons.PreparedComparison)
+	}{
+		{name: "different plan reference", change: func(comparison *comparisons.PreparedComparison) {
+			run := &comparison.Runs[1]
+			run.Snapshot.Plan.Revision++
+			run.Snapshot.PlanDocument.Revision++
+		}},
+		{name: "different frozen plan content", change: func(comparison *comparisons.PreparedComparison) {
+			comparison.Runs[1].Snapshot.PlanDocument.Seed++
+		}},
+		{name: "different model reference", change: func(comparison *comparisons.PreparedComparison) {
+			comparison.Runs[1].Snapshot.Model.Revision++
+		}},
+		{name: "different frozen model content", change: func(comparison *comparisons.PreparedComparison) {
+			comparison.Runs[1].Snapshot.Model.Name = "Different frozen model"
+		}},
+		{name: "non-initial parent revision", change: func(comparison *comparisons.PreparedComparison) {
+			comparison.Meta.Revision = 2
+		}},
+		{name: "non-initial child revision", change: func(comparison *comparisons.PreparedComparison) {
+			comparison.Runs[1].Meta.Revision = 2
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			submission := submissionWithFixtureSecrets(comparisonSpec(t, 2))
+			if err := submission.Validate(); err != nil {
+				t.Fatalf("valid comparison submission rejected: %v", err)
+			}
+			test.change(submission.Job.Spec.Comparison)
+			for _, run := range submission.Job.Spec.Comparison.Runs {
+				if _, err := domain.NewRun(run.Meta, run.PlanID, run.Snapshot); err != nil {
+					t.Fatalf("comparison boundary fixture contains an invalid child run: %v", err)
+				}
+			}
+			assertInvalidSubmissionUnchanged(t, submission)
+		})
+	}
+}
+
+func submissionWithFixtureSecrets(spec JobSpec) Submission {
+	submission := Submission{Job: spec, Secrets: []Secret{}}
+	for _, slot := range spec.SecretSlots() {
+		submission.Secrets = append(submission.Secrets, Secret{Slot: slot, Value: []byte("fixture")})
+	}
+	return submission
+}
+
+func assertInvalidSubmissionUnchanged(t *testing.T, submission Submission) {
+	t.Helper()
+	before, err := json.Marshal(submission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := submission.Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid submission error = %v; want ErrInvalid", err)
+	}
+	after, err := json.Marshal(submission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("rejecting a submission mutated its frozen payload or transport secrets")
+	}
+}

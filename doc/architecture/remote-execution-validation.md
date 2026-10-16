@@ -1021,3 +1021,15 @@ R6 Comparison、预热＋爬坡、预热＋容量阶梯三个实际免费Job均�
 R4的两次受控出口工具或预检失败仍未取得三方source配对证明，不能认定具体防火墙原因。已配置节点的原生点击/三尺寸/主题、实际用户库永久切换及云端CI发布仍未执行；当前状态、可用测试产物和数据边界汇总见[当前交付状态](remote-execution-status.md)。
 
 最终只读交叉核验 `final-r16-independent-verification.safe.json` 位于上述R16工具根，SHA `16d985dbe49a2510913f3f7db045a7407bc6853633cf55205ffd5700d443fca0`；冻结源码、EXE/coordinator、空stderr、实际child exit0、3个原ID及报告来源、146个assertion_failed、性能3/c1、离线重开和关闭均一致。该核验只读取安全回执和固定源码，没有另行访问DB、SSH或提供商，也不改判兼容性失败。
+
+## 2026-10-17：R4 零任务 TCP 诊断与收尾审计
+
+固定 `egress_preflight_only.py` SHA `13f956fc1f336e705735f49e4433d5b11c30a6ad565c6da4f1fe7b8141f839f1` 经独立复核后，仅执行一次三路 TCP 诊断。受控 Mock 确认监听 `0.0.0.0:34015`，上限 0 HTTP 请求、TTL 180 秒；本地连接及两台节点通过 SSH 执行的连接均在目标 TCP 阶段得到 TimeoutError。两台节点的 SSH socket、握手、指纹校验、认证、exec 与解析成功，诊断子程序各 exit0。三路探测预算各含目标 TCP 5 秒，不能据此证明更长预算也不可达，更不能指定安全组或主机防火墙为原因。
+
+父进程实际 exit1、34.695 秒（含私密输入等待）；没有 Go 子进程、Launch、Submit、Command、HTTP 或提供商请求，Mock 三个计数均 0。固定 runner 的前后进程事实一致，Mock shutdown ACK 与各 SSH 资源关闭通过；原有两次失败未改写。安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-preflight-only-1c55k34c/preflight.safe.json`，SHA `f72f1aa7f0d83949ccc872e40b8f27f9ee9a8b954da5efac6910cc441eaf41f6`。该结果只定位当前受控目标的 TCP 可达性失败，R4 source IP 配对仍未完成。
+
+本轮另外逐项核对契约矩阵与当前源码，移除已经完成的 HTTP、独立客户端和后台恢复项的过时 pending 表述，保留真正未测的负例、大小及并发边界。阶段 C 的卸载边界发现确实缺少实现和实跑；没有将桌面移除配置、OSStore 清理或停止自有 VM 当作服务器卸载证据。文件、媒体及 native_case 扩展继续暂缓。
+
+R11 收尾仅新增测试，没有改变生产实现、管理契约、存储格式或现有数据。`spec_test.go` 新增 13 个子用例，经实际 Submission validator 拒绝缺必要结构的 Run、冻结 Plan/Model 不一致的 Comparison 与父子非初始 revision；每例先验证合法基准，拒绝后序列化字节不变。Comparison 还单独验证每个子 Run 自身合法，避免错因拒绝。新增用例及完整 `go test ./internal/jobcontract -count=1` 通过（1.343 秒）。
+
+`http_contract_final_test.go` 对 Run、Performance、Comparison 各测 null、数组代替对象和多个 payload，共 9 项 HTTP 400 / invalid_request，逐项验证无 Job、节点列表为空、active/queued 为 0、Mock 请求为 0。另以两个独立 HTTP transport 同时发送同 expected revision 的不同 cancel/stop 命令，验证唯一 200 持久确认、另一个 409 且无确认记录、唯一 command journal、按实际胜者得到 cancelled 或 draining 后 completed；同 ID 重放不改变最终状态或增加请求。新增目标测试、并发用例重复 20 次、相关原有 HTTP admission/control/字节边界回归及该包 vet 均通过；重复并发执行不等于 race detector。限定两份测试的独立功能审查通过，没有发现需修改生产实现的问题。逐字段类型、最大完整实体及剩余长轮询/下载边界仍按矩阵保留，不据代表性负例宣称全部 R11 已验。
