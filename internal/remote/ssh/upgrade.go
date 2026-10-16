@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/runnerinstall"
 	"github.com/pkg/sftp"
 )
@@ -378,7 +379,7 @@ func (client *Client) prepareUpgrade(ctx context.Context, call upgradeCall) erro
 			if !present[name] {
 				continue
 			}
-			if err := verifyUpgradeArtifact(remote, upload); err != nil {
+			if err := client.verifyUpgradeArtifact(ctx, remote, upload); err != nil {
 				return err
 			}
 		}
@@ -476,7 +477,7 @@ func (client *Client) reuseStagedUpgrade(ctx context.Context, call upgradeCall) 
 				return ErrExists
 			}
 		}
-		if err := verifyUpgradeArtifact(remote, request); err != nil {
+		if err := client.verifyUpgradeArtifact(ctx, remote, request); err != nil {
 			return err
 		}
 		name := directory + "/llm-test-runner"
@@ -489,7 +490,7 @@ func (client *Client) reuseStagedUpgrade(ctx context.Context, call upgradeCall) 
 		if !validSize || !expectedSize {
 			return ErrIntegrity
 		}
-		return verifyUpgradeArtifact(remote, Upload{
+		return client.verifyUpgradeArtifact(ctx, remote, Upload{
 			Path: name, Mode: 0700, Size: info.Size(), SHA256: call.request.ArtifactSHA256,
 		})
 	})
@@ -517,18 +518,68 @@ func verifyUpgradeDirectory(remote *sftp.Client, directory string) error {
 	return nil
 }
 
-func verifyUpgradeArtifact(remote *sftp.Client, upload Upload) error {
+// Existing staging is hashed by the authenticated host rather than downloaded
+// again. New uploads retain UploadNew's independent SFTP readback before rename.
+func (client *Client) verifyUpgradeArtifact(ctx context.Context, remote *sftp.Client, upload Upload) error {
+	relative, prefixed := strings.CutPrefix(upload.Path, upgradePrefix)
+	id, name, separated := strings.Cut(relative, "/")
+	directory := UpgradeDirectory(id)
+	validPath := prefixed && separated && directory != "" && upload.Path == directory+"/"+name
+	validFile := name == "request.json" && upload.Mode == 0600 || name == "llm-test-runner" && upload.Mode == 0700
+	validSize := upload.Size > 0 && upload.Size <= maxUploadBytes
+	if !validPath || !validFile || !validSize || !jobcontract.IsSHA256(upload.SHA256) {
+		return ErrInvalid
+	}
+	before, err := stagedUpgradeMetadata(remote, upload)
+	if err != nil {
+		return err
+	}
+	// UUID validation and the two fixed basenames exclude shell metacharacters.
+	output, err := client.runUpgradeCommand(ctx, "sha256sum -- '"+upload.Path+"'")
+	if err != nil {
+		return err
+	}
+	defer clear(output)
+	if string(output) != upload.SHA256+"  "+upload.Path+"\n" {
+		return ErrIntegrity
+	}
+	after, err := stagedUpgradeMetadata(remote, upload)
+	if err != nil {
+		return err
+	}
+	if before != after {
+		return ErrIntegrity
+	}
+	return nil
+}
+
+type stagedUpgradeFileMetadata struct {
+	uid      uint32
+	gid      uint32
+	mode     os.FileMode
+	size     int64
+	modified int64
+}
+
+func stagedUpgradeMetadata(remote *sftp.Client, upload Upload) (stagedUpgradeFileMetadata, error) {
+	var metadata stagedUpgradeFileMetadata
+	directory := upload.Path[:strings.LastIndex(upload.Path, "/")]
+	if err := verifyUpgradeDirectory(remote, directory); err != nil {
+		return metadata, err
+	}
 	info, err := remote.Lstat(upload.Path)
 	if err != nil {
-		return ErrTransfer
+		return metadata, ErrTransfer
 	}
 	stat, ok := info.Sys().(*sftp.FileStat)
 	mode := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
 	valid := ok && stat.UID == 0 && info.Mode().IsRegular() && mode == upload.Mode && info.Size() == upload.Size
 	if !valid {
-		return ErrIntegrity
+		return metadata, ErrIntegrity
 	}
-	return verifyUpload(remote, upload.Path, upload)
+	return stagedUpgradeFileMetadata{
+		uid: stat.UID, gid: stat.GID, mode: info.Mode(), size: info.Size(), modified: info.ModTime().UnixNano(),
+	}, nil
 }
 
 type upgradeUnitState struct {

@@ -231,6 +231,18 @@ func newUpgradeFixture(t *testing.T) *upgradeFixture {
 			}
 			_, _ = io.WriteString(channel, "LoadState=not-found\nActiveState=inactive\nSubState=dead\n")
 		case command == "sync -f -- "+directory:
+		case command == "sha256sum -- '"+directory+"/request.json'" ||
+			command == "sha256sum -- '"+directory+"/llm-test-runner'":
+			name := strings.TrimSuffix(strings.TrimPrefix(command, "sha256sum -- '"), "'")
+			fixture.fs.mu.Lock()
+			entry, exists := fixture.fs.entries[name]
+			digest := sha256.Sum256(entry.data)
+			fixture.fs.mu.Unlock()
+			if !exists {
+				status = 1
+				return
+			}
+			_, _ = io.WriteString(channel, hex.EncodeToString(digest[:])+"  "+name+"\n")
 		case strings.HasPrefix(command, "systemd-run "):
 			valid := false
 			for _, verb := range []string{"upgrade", "retry-upgrade", "recover-upgrade"} {
