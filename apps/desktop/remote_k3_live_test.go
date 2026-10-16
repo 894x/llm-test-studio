@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
+	"github.com/894x/llm-test-studio/internal/application/remoteresults"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
@@ -78,13 +80,16 @@ type liveK3CaseFailure struct {
 }
 
 type liveK3Performance struct {
-	ReportID         string                         `json:"report_id"`
-	SealedAt         string                         `json:"sealed_at"`
-	ObservationState string                         `json:"observation_state"`
-	SampleCount      *int                           `json:"sample_count"`
-	Profile          *quicktest.PerformanceProfile  `json:"profile"`
-	Progress         *quicktest.PerformanceProgress `json:"progress"`
-	Metrics          *load.Metrics                  `json:"metrics"`
+	ReportID                         string                         `json:"report_id"`
+	SealedAt                         string                         `json:"sealed_at"`
+	ObservationState                 string                         `json:"observation_state"`
+	TerminalOriginVerified           bool                           `json:"terminal_origin_verified"`
+	CheckpointOriginPresent          bool                           `json:"checkpoint_origin_present"`
+	StatisticalArchiveOriginVerified bool                           `json:"statistical_archive_origin_verified"`
+	SampleCount                      *int                           `json:"sample_count"`
+	Profile                          *quicktest.PerformanceProfile  `json:"profile"`
+	Progress                         *quicktest.PerformanceProgress `json:"progress"`
+	Metrics                          *load.Metrics                  `json:"metrics"`
 }
 
 // This allow-listed document never embeds a domain report, observation,
@@ -111,17 +116,18 @@ type liveK3JobSummary struct {
 }
 
 type liveK3Summary struct {
-	SchemaVersion           int                `json:"schema_version"`
-	Passed                  bool               `json:"passed"`
-	StartedAt               string             `json:"started_at"`
-	CompletedAt             string             `json:"completed_at"`
-	ObserverClosedAt        string             `json:"observer_closed_at"`
-	ObserverReopenedAt      string             `json:"observer_reopened_at"`
-	ObserverRestartVerified bool               `json:"observer_restart_verified"`
-	ContinuedWhileClosed    bool               `json:"continued_while_closed"`
-	OfflineReopenVerified   bool               `json:"offline_reopen_verified"`
-	Jobs                    []liveK3JobSummary `json:"jobs"`
-	Failures                []string           `json:"failures"`
+	SchemaVersion           int                  `json:"schema_version"`
+	Passed                  bool                 `json:"passed"`
+	StartedAt               string               `json:"started_at"`
+	CompletedAt             string               `json:"completed_at"`
+	ObserverClosedAt        string               `json:"observer_closed_at"`
+	ObserverReopenedAt      string               `json:"observer_reopened_at"`
+	ObserverRestartVerified bool                 `json:"observer_restart_verified"`
+	ContinuedWhileClosed    bool                 `json:"continued_while_closed"`
+	ObserverAudit           *liveK3ObserverAudit `json:"observer_audit"`
+	OfflineReopenVerified   bool                 `json:"offline_reopen_verified"`
+	Jobs                    []liveK3JobSummary   `json:"jobs"`
+	Failures                []string             `json:"failures"`
 }
 
 type liveK3Suite struct {
@@ -130,6 +136,139 @@ type liveK3Suite struct {
 	count    int
 	suite    catalog.SuiteSummary
 	caseKeys map[string]string
+}
+
+type liveK3ObserverAudit struct {
+	BeforeCloseSequence    uint64 `json:"before_close_sequence"`
+	ClosedBaselineSequence uint64 `json:"closed_baseline_sequence"`
+	ObservedSequence       uint64 `json:"observed_sequence"`
+	Outcome                string `json:"outcome"`
+}
+
+type liveK3AuditSettings struct {
+	ConfigurationRoot string
+	Credentials       credentials.Store
+	ConfigurationID   string
+	Expected          jobs.JobView
+	Window            time.Duration
+}
+
+// Both observations happen after DesktopApp.shutdown has returned and before
+// another DesktopApp starts. This independent management connection cannot
+// launch, control, synchronize or execute a task. Sequence growth is durable
+// runner progress, without comparing clocks on different machines.
+func observeLiveK3ClosedDesktop(ctx context.Context, settings liveK3AuditSettings) liveK3ObserverAudit {
+	result := liveK3ObserverAudit{Outcome: "unavailable"}
+	if settings.Expected.Execution == nil || settings.Window <= 0 {
+		return result
+	}
+	result.BeforeCloseSequence = settings.Expected.Execution.LatestSequence
+	ctx, cancel := context.WithTimeout(ctx, settings.Window)
+	defer cancel()
+	connection, err := openLiveK3Audit(ctx, settings)
+	if err != nil {
+		return result
+	}
+	defer connection.Close()
+	baseline, err := connection.GetJob(ctx, settings.Expected.JobID)
+	if err != nil || !liveK3AuditIdentity(settings.Expected, baseline) {
+		return result
+	}
+	result.ClosedBaselineSequence, result.ObservedSequence = baseline.LatestSequence, baseline.LatestSequence
+	if baseline.LatestSequence < result.BeforeCloseSequence {
+		result.Outcome = "sequence_regressed"
+		return result
+	}
+	if jobcontract.Terminal(baseline.Receipt.Status) {
+		// Work may have completed before the first closed-window observation.
+		// Its receipt survives the restart, but that is a different fact.
+		result.Outcome = "already_terminal"
+		return result
+	}
+	for {
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			result.Outcome = "no_advance_observed"
+			return result
+		case <-timer.C:
+		}
+		current, err := connection.GetJob(ctx, settings.Expected.JobID)
+		if err != nil {
+			continue
+		}
+		result.ObservedSequence = current.LatestSequence
+		result.Outcome = classifyLiveK3Audit(settings.Expected, baseline, current)
+		if result.Outcome != "unchanged" {
+			return result
+		}
+	}
+}
+
+func openLiveK3Audit(ctx context.Context, settings liveK3AuditSettings) (runnerConnection, error) {
+	directory, _, err := productionStoragePaths(settings.ConfigurationRoot)
+	if err != nil {
+		return nil, jobs.ErrInvalid
+	}
+	directory = filepath.Join(directory, "remote-nodes")
+	scope, err := credentialScopeForRoot(directory)
+	if err != nil {
+		return nil, jobs.ErrUnavailable
+	}
+	keys, err := credentials.NewScopedStore(settings.Credentials, scope)
+	if err != nil {
+		return nil, jobs.ErrUnavailable
+	}
+	store, err := remotenodes.NewFileStore(filepath.Join(directory, "nodes.json"))
+	if err != nil {
+		return nil, jobs.ErrUnavailable
+	}
+	// No Manager, watcher, cleanup, Save or credential mutation is created.
+	configuration, err := remotenodes.New(remotenodes.Dependencies{Store: store, Credentials: keys})
+	if err != nil {
+		return nil, jobs.ErrUnavailable
+	}
+	snapshot, err := configuration.Snapshot(ctx)
+	if err != nil {
+		return nil, jobs.ErrUnavailable
+	}
+	for _, node := range snapshot.Nodes {
+		if node.ID != settings.ConfigurationID {
+			continue
+		}
+		executor := settings.Expected.Executor
+		if node.RunnerNodeID != executor.NodeID || node.InstallationID != executor.InstallationID || node.HostKey == nil {
+			return nil, jobs.ErrTargetChanged
+		}
+		return openProductionRunner(ctx, configuration, remotesync.Node{Revision: node.Revision,
+			Origin: remoteresults.Origin{ConfigurationID: node.ID,
+				NodeID: node.RunnerNodeID, InstallationID: node.InstallationID}}, jobs.ObservationAccess)
+	}
+	return nil, jobs.ErrNotFound
+}
+
+func liveK3AuditIdentity(expected jobs.JobView, snapshot jobcontract.Snapshot) bool {
+	receipt := snapshot.Receipt
+	owner := receipt.JobID == expected.JobID && receipt.Kind == expected.Kind &&
+		receipt.ComparisonID == expected.ComparisonID
+	children := slices.Equal(receipt.RunIDs, expected.RunIDs) && slices.Equal(receipt.ReportIDs, expected.ReportIDs)
+	return snapshot.ValidateState() == nil && owner && children && liveK3OriginMatches(&receipt.Origin, expected.Executor)
+}
+
+func classifyLiveK3Audit(expected jobs.JobView, baseline, current jobcontract.Snapshot) string {
+	matching := liveK3AuditIdentity(expected, baseline) && liveK3AuditIdentity(expected, current) &&
+		current.Receipt.AcceptedAt.Equal(baseline.Receipt.AcceptedAt)
+	if !matching {
+		return "identity_changed"
+	}
+	if current.LatestSequence < baseline.LatestSequence {
+		return "sequence_regressed"
+	}
+	if current.LatestSequence > baseline.LatestSequence {
+		return "advanced"
+	}
+	return "unchanged"
 }
 
 // This test is intentionally excluded from ordinary runs. It submits at most
@@ -189,8 +328,6 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 	}()
 	suites := liveK3FullSuites(t, app)
 	nodeID := pairLiveK3Node(t, ctx, app, input)
-	closedAt, reopenedAt := time.Time{}, time.Time{}
-	var minimumClockOffset, maximumClockOffset time.Duration
 	for index := range 3 {
 		location := liveK3RemoteDefault(t, app, nodeID, input)
 		command := jobs.LaunchCommand{Location: location, Kind: jobs.LaunchPerformance,
@@ -204,7 +341,6 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 				BaseURL: input.BaseURL, APIKey: string(input.APIKey), RequestTimeoutMS: 120_000,
 				CaseConcurrency: input.CaseConcurrency, Inputs: map[string]json.RawMessage{}}
 		}
-		launchStarted := time.Now().UTC()
 		view, launchErr := app.LaunchJob(command) // Exactly one call per job; never retry this line.
 		if launchErr != nil {
 			// Retain any persisted identity even when a binding rejects. Reads
@@ -236,14 +372,6 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 		assertLiveK3Executor(t, view, input)
 		assertLiveK3Outbox(t, app, summary.Jobs)
 		if index == 0 {
-			if view.Confirmation != nil {
-				acceptedAt, parseErr := time.Parse(time.RFC3339Nano, view.Confirmation.AcceptedAt)
-				if parseErr != nil {
-					t.Fatal("runner admission timestamp is invalid")
-				}
-				minimumClockOffset = acceptedAt.Sub(time.Now().UTC())
-				maximumClockOffset = acceptedAt.Sub(launchStarted)
-			}
 			if view.Execution == nil || jobcontract.Terminal(view.Execution.Status) {
 				summary.Failures = append(summary.Failures, "first_job_not_running_at_observer_close")
 			}
@@ -251,11 +379,14 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 				t.Fatal("cannot close the desktop observer cleanly")
 			}
 			app = nil
-			closedAt = time.Now().UTC()
-			summary.ObserverClosedAt = closedAt.Format(time.RFC3339Nano)
-			liveK3Pause(t, ctx, time.Duration(input.DisconnectSeconds)*time.Second)
-			reopenedAt = time.Now().UTC()
-			summary.ObserverReopenedAt = reopenedAt.Format(time.RFC3339Nano)
+			summary.ObserverClosedAt = time.Now().UTC().Format(time.RFC3339Nano)
+			audit := observeLiveK3ClosedDesktop(ctx, liveK3AuditSettings{
+				ConfigurationRoot: configurationRoot, Credentials: store, ConfigurationID: nodeID,
+				Expected: view, Window: time.Duration(input.DisconnectSeconds) * time.Second,
+			})
+			summary.ObserverAudit = &audit
+			summary.ContinuedWhileClosed = audit.Outcome == "advanced"
+			summary.ObserverReopenedAt = time.Now().UTC().Format(time.RFC3339Nano)
 			app = startLiveK3App(t, ctx, options)
 			reopened, readErr := app.GetJob(view.JobID)
 			if readErr != nil || reopened.JobID != view.JobID || reopened.Location != view.Location {
@@ -271,15 +402,6 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 		if index < 2 {
 			detail := waitLiveK3Report(t, ctx, app, view)
 			collectLiveK3Suite(&item, detail, suites[index], view.Executor)
-			if index == 0 {
-				for _, result := range detail.RequestResults {
-					earliest := result.CreatedAt.Add(-maximumClockOffset)
-					latest := result.CreatedAt.Add(-minimumClockOffset)
-					if earliest.After(closedAt) && latest.Before(reopenedAt) {
-						summary.ContinuedWhileClosed = true
-					}
-				}
-			}
 			if item.ActualCases != item.ExpectedCases || !item.CaseIdentitiesMatch || !item.RunnerReportOrigin {
 				summary.Failures = append(summary.Failures, "suite_incomplete_or_runner_origin_mismatch")
 			}
@@ -290,9 +412,13 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 			result := waitLiveK3Performance(t, ctx, app, view.JobID)
 			item.ReportID = result.ReportID
 			item.Performance = summarizeLiveK3Performance(result)
+			item.Performance.TerminalOriginVerified = liveK3PerformanceOriginMatches(result, view)
 			if result.Observation != nil {
-				item.RunnerReportOrigin = liveK3OriginMatches(result.Observation.Report.ExecutionOrigin, view.Executor)
+				item.Performance.CheckpointOriginPresent = result.Observation.Report.ExecutionOrigin != nil
 			}
+			archive := waitLiveK3Archive(t, ctx, app, result.ReportID)
+			item.Performance.StatisticalArchiveOriginVerified = liveK3ArchiveOriginMatches(archive, result)
+			item.RunnerReportOrigin = item.Performance.TerminalOriginVerified && item.Performance.StatisticalArchiveOriginVerified
 			if !liveK3MinimumPerformance(result) || !item.RunnerReportOrigin {
 				summary.Failures = append(summary.Failures, "minimum_performance_incomplete_or_failed")
 			}
@@ -331,14 +457,18 @@ func TestLiveRemoteK3DesktopExecution(t *testing.T) {
 		} else {
 			result, performanceErr := app.GetJobPerformanceResult(item.JobID)
 			if performanceErr != nil || result.SealedAt != item.Performance.SealedAt || result.ReportID != item.ReportID ||
-				result.Observation == nil || !liveK3OriginMatches(result.Observation.Report.ExecutionOrigin, view.Executor) {
+				!liveK3PerformanceOriginMatches(result, view) {
 				t.Fatal("sealed performance result is not readable offline")
+			}
+			archive, archiveErr := app.GetReportDetail(item.ReportID)
+			if archiveErr != nil || archive.Performance == nil || !liveK3ArchiveOriginMatches(*archive.Performance, result) {
+				t.Fatal("actual runner statistical archive is not readable offline")
 			}
 		}
 	}
 	summary.OfflineReopenVerified = true
 	if !summary.ContinuedWhileClosed {
-		summary.Failures = append(summary.Failures, "no_runner_result_timestamp_during_observer_disconnect")
+		summary.Failures = append(summary.Failures, "no_durable_sequence_advance_observed_while_desktop_closed")
 	}
 	if len(summary.Failures) != 0 {
 		t.Error("live acceptance contains real failures; inspect the retained safe summary")
@@ -719,6 +849,47 @@ func waitLiveK3Performance(t *testing.T, ctx context.Context, app *DesktopApp, i
 		}
 		liveK3Pause(t, ctx, 2*time.Second)
 	}
+}
+
+func waitLiveK3Archive(t *testing.T, ctx context.Context, app *DesktopApp, reportID string) quicktest.PerformanceReport {
+	t.Helper()
+	for {
+		detail, err := app.GetReportDetail(reportID)
+		if err == nil && detail.Source == reporting.SourceQuickPerformance && detail.Performance != nil {
+			return *detail.Performance
+		}
+		liveK3Pause(t, ctx, 2*time.Second)
+	}
+}
+
+// The public result Executor projects the validated Terminal Receipt origin.
+// A checkpoint may omit its origin; an origin it does carry must agree.
+func liveK3PerformanceOriginMatches(result jobs.PerformanceResultView, view jobs.JobView) bool {
+	if view.Execution == nil || result.JobID != view.JobID || result.Location != view.Location || result.Executor != view.Executor {
+		return false
+	}
+	terminal := result.Terminal
+	matchingTerminal := terminal.Revision == view.Execution.Revision && terminal.Status == view.Execution.Status &&
+		terminal.AcceptedAt == view.Execution.AcceptedAt && terminal.LatestSequence <= view.Execution.LatestSequence
+	if !matchingTerminal || !jobcontract.Terminal(terminal.Status) || result.SealedAt == "" {
+		return false
+	}
+	if result.Observation != nil {
+		origin := result.Observation.Report.ExecutionOrigin
+		if origin != nil && !liveK3OriginMatches(origin, result.Executor) {
+			return false
+		}
+	}
+	return true
+}
+
+func liveK3ArchiveOriginMatches(archive quicktest.PerformanceReport, result jobs.PerformanceResultView) bool {
+	if _, err := quicktest.ValidateArchivedPerformanceReport(archive); err != nil {
+		return false
+	}
+	return archive.ReportID == result.ReportID && archive.GeneratedAt == result.SealedAt &&
+		archive.Archived && archive.ArchiveStatus == quicktest.PerformanceArchiveArchived &&
+		liveK3OriginMatches(archive.ExecutionOrigin, result.Executor)
 }
 
 func summarizeLiveK3Performance(result jobs.PerformanceResultView) *liveK3Performance {
