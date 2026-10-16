@@ -4,7 +4,7 @@
 
 ## 触发条件与共享节点
 
-- 连接、保存连接、后台 Check 和任务观察不会因为客户端发布版本或构建不同而覆盖已有 runner。
+- 连接、保存连接、后台监测和任务观察不会因为客户端发布版本或构建不同而覆盖已有 runner。
 - 当前管理协议、任务格式与所需能力相容时，不同发布构建的客户端可以共享同一节点；不要求 client build 与 runner build 精确相等。
 - 已有初装 Provision 路径继续只负责初装或复用。升级必须由独立、显式的升级动作触发。
 - 升级保留服务器 NodeID、InstallationID、现有 token 和任务所有权，不重新配对，不删除节点或重置数据库。
@@ -35,6 +35,8 @@ restorable, confirmed, changed_at
 `GetRemoteNodes` 的每个节点包含必填的 `upgrade: View | null`。
 `confirmed` 仅表示已取得并验证服务器 journal，不表示 worker 仍在运行。
 关闭面板只停止前端观察；重启客户端后可显式 Retry 同一 operation。
+
+`GetRemoteNodeUpgrade` 始终纯 local。既有显式 `CheckRemoteNode` 遇到 pending 升级时，先在单次 10 秒预算内只读同 operation 的服务器 journal 并更新观察；disabled 节点只有存在 pending 升级时才允许这次显式读取，后台 Run 仍跳过 disabled 节点。该刷新不占升级 actions 槽，保留 typed timeout 分类；不会隐式 launch、准备 artifact、Provision、Retry 或 Recover。四项升级 API 及当前 DTO 不变，显式 Check 不是第五个升级动作。
 
 ## 执行路径与持久记录
 
@@ -100,6 +102,8 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 本功能不包含历史读取器、运行时迁移、数据转换或节点数据删除，也不改变现有任务、节点配置和数据库格式。
 
 已验证：Windows Go 全仓测试及 vet、相关最新回归、Linux 交叉编译与 WSL 测试、Wails 2.15.0 bindings 生成，以及独立代码复核。
-覆盖双锁/CAS、same-op 丢 ACK、current schema/WAL 备份、身份 token 保持、Resume 前后恢复门、旧 Resume 丢 ACK、journal 回退、关闭与脱敏边界。
+覆盖双锁/CAS、same-op 丢 ACK、current schema/WAL 备份、身份 token 保持、Resume 前后恢复门、旧 Resume 丢 ACK、journal 回退、关闭与脱敏边界。SSH staged-digest 修复已本地提交 `86d631692c374295c1ddf5ed6b59d17eade56cb1`，集成全仓 Go 测试 55718 exit 0（desktop 53.965s、remotenodes 3.661s、SSH 2.782s），全仓 vet exit 0；该修复仍未实机部署。
 维护竞争联测使用真实 `Maintenance.Apply` 和 current SQLite，并在端口注入 Pending 竞争；不是实机并发 Job 或 provider 验收。
-尚待真实节点上的 SSH/systemd 升级、实际共享任务竞争和原生桌面界面验收；其他分支的运维脚本升级不能代替本正式产品流程的验收。
+正式同 operation 的 Start、两次 Retry 和一次 Recover 已在真实 SSH/systemd 节点执行，但四次客户端原观察均 false；不能再记为未跑，也不能记为正式产品验收通过。独立运维当前 CLI recover-upgrade 随后恢复原 R4，服务器 journal 已 rolled_back、R4 服务健康，当前只读 typed 数据及既有身份/文件检查与升级前一致；该结果不替代 Desktop API Recover 验收，backup_restore_verified 仍为 false，也不声明物理 DB 或私有 executor key 字节相同。父端全文主审与 self-test 在实跑前，独立 reviewer 复核在实跑后，不改写审查先后。
+
+clean R7 已构建但尚未部署，须新 operation 完整升级与恢复验证；实际共享任务竞争、报告及关闭重开恢复、完整备份还原和原生桌面界面等验收仍未完成。原失败、同 op 证据和最新运维恢复的精确边界见[验证记录](remote-execution-validation.md)。仅接受当前格式，未执行 DB 格式转换或桌面历史库升级，不删除或 reset 用户数据。
