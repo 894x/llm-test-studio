@@ -372,7 +372,8 @@ Windows SSH/remotenodes 两包完整测试通过；交叉编译后 Ubuntu 24.04 
 前端最新全量 46 文件、613 测试通过，生产构建与 lint 退出 0，仅两条既有 set-state-in-effect 提示。独立复核的三项 P2 已关闭：pending Comparison 持续观察、QuickTask 控制只走原持久指令、sealed outcome 不冒充统计归档。
 
 独立 APPDATA 下启动真实 Wails dev 进程，核对正确 worktree EXE、LLM Test Studio 窗口标题、34115 端口归属、真实 Wails/Go runtime 和四组工作区读取；没有使用用户数据库。Windows 截图工具与 CUA runtime 均报 failed to write kernel assets，改用系统已安装 Chrome 和现有 Playwright 对真实 Wails 开发服务验证 1440×900 light、1280×800 dark、960×640 dark：Remote 按钮、真实空节点列表/本地默认、添加表单、密码遮蔽、Escape 关闭和任务面板可用，表单无横向溢出。应用代码没有页面运行错误；每次加载会遇到当前 Wails v2.15.0 开发覆盖层 /wails/ipc.js 的 Svelte h.nodes 异常，已核对其库源码，未修改 Wails 或放宽应用解析。原生窗口截图、非空节点交互及真实模型结果另待实机验收。
-# 2026-10-16 当前桌面闭环与节点升级补充
+
+## 2026-10-16 当前桌面闭环与节点升级补充
 
 当前阶段的 `go test ./...` 和 `go vet ./...` 均通过；桌面包 30.086 秒、SQLite 包 66.985 秒。前端完整 46 文件、613 测试、生产构建与 lint 通过，lint 保留两项既有警告。节点移除 guard 已装配到生产，提交和新控制意图与移除串行，持久控制的读取及原 ID 重传沿原路径执行。相关并发及持久化回归和独立代码复核通过。
 

@@ -97,7 +97,8 @@ export function parseJobView(value: unknown): JobView {
 function pagination(item: Record<string, unknown>): { next_cursor: string; has_more: boolean } {
   const cursor = item.next_cursor === "" ? "" : uuid(item.next_cursor)
   const hasMore = bool(item.has_more)
-  if (hasMore !== !!cursor) return invalid()
+  // Final and exhausted keyset pages retain their continuation UUID.
+  if (hasMore && cursor === "") return invalid()
   return { next_cursor: cursor, has_more: hasMore }
 }
 export function parseJobPage(value: unknown): JobPage {

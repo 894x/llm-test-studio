@@ -337,9 +337,18 @@ describe("Wails desktop client", () => {
     expect(binding.GetJobs).toHaveBeenCalledExactlyOnceWith(RUN_ID, 1)
   })
 
+  it.each([false, true])("accepts the current GetJobs final SQL page (empty tail: %s)", async empty => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const after = empty ? JOB_ID : ""
+    const page = { schema_version: 1, jobs: empty ? [] : [jobFixture()], next_cursor: JOB_ID, has_more: false }
+    binding.GetJobs.mockResolvedValueOnce(page as never)
+    await expect(createDesktopClient().getJobs(after, 25)).resolves.toEqual(page)
+    expect(binding.GetJobs).toHaveBeenCalledExactlyOnceWith(after, 25)
+  })
+
   it.each([
     { jobs: null }, { jobs: [jobFixture(), jobFixture()] }, { jobs: Array(26).fill(jobFixture()) },
-    { jobs: [], has_more: true }, { jobs: [], next_cursor: JOB_ID }, { jobs: [], schema_version: 0 },
+    { jobs: [], has_more: true }, { jobs: [], next_cursor: "", has_more: true }, { jobs: [], schema_version: 0 },
     { jobs: [], raw_payload: "synthetic-secret" },
   ])("rejects invalid Job pages %j", async (invalid) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
@@ -387,12 +396,21 @@ describe("Wails desktop client", () => {
 
   it.each([
     { job_id: RUN_ID }, { commands: null }, { commands: [controlFixture({ job_id: RUN_ID })] },
-    { commands: [controlFixture(), controlFixture()] }, { commands: [], next_cursor: COMMAND_ID },
+    { commands: [controlFixture(), controlFixture()] }, { commands: [], next_cursor: "", has_more: true },
     { commands: [], has_more: true }, { commands: [], secret: "synthetic-secret" },
   ])("rejects malformed control history %j", async (invalid) => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     binding.GetJobControls.mockResolvedValueOnce({ schema_version: 1, job_id: JOB_ID, commands: [], next_cursor: "", has_more: false, ...invalid } as never)
     await expect(createDesktopClient().getJobControls(JOB_ID, "", 25)).rejects.toBeInstanceOf(DesktopDataError)
+  })
+
+  it.each([false, true])("accepts the current GetJobControls final SQL page (empty tail: %s)", async empty => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const after = empty ? COMMAND_ID : ""
+    const page = { schema_version: 1, job_id: JOB_ID, commands: empty ? [] : [controlFixture()], next_cursor: COMMAND_ID, has_more: false }
+    binding.GetJobControls.mockResolvedValueOnce(page as never)
+    await expect(createDesktopClient().getJobControls(JOB_ID, after, 25)).resolves.toEqual(page)
+    expect(binding.GetJobControls).toHaveBeenCalledExactlyOnceWith(JOB_ID, after, 25)
   })
 
   it.each(["not_started", "interrupted", "available"] as const)("preserves the sealed %s performance outcome without an archive query", async (state) => {

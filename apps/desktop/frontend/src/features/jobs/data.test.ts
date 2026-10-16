@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { controlFixture, jobFixture, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
+import { controlFixture, jobFixture, COMMAND_ID, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
 import { parseControlPage, parseControlView, parseJobPage, parseJobView, parsePerformanceResult } from "./data"
 
 describe("current durable job boundary", () => {
@@ -26,9 +26,9 @@ describe("current durable job boundary", () => {
   })
 
   it("validates bounded, non-null pages and current UUID cursors", () => {
-    const page = { schema_version: 1, jobs: [jobFixture()], next_cursor: "", has_more: false }
+    const page = { schema_version: 1, jobs: [jobFixture()], next_cursor: JOB_ID, has_more: false }
     expect(parseJobPage(page)).toEqual(page)
-    for (const change of [{ jobs: null }, { jobs: Array(26).fill(jobFixture()) }, { jobs: [jobFixture(), jobFixture()] }, { has_more: true }, { next_cursor: "offset:25" }, { previous_cursor: "" }]) {
+    for (const change of [{ jobs: null }, { jobs: Array(26).fill(jobFixture()) }, { jobs: [jobFixture(), jobFixture()] }, { has_more: true, next_cursor: "" }, { next_cursor: "offset:25" }, { previous_cursor: "" }]) {
       expect(() => parseJobPage({ ...page, ...change })).toThrow()
     }
   })
@@ -38,7 +38,7 @@ describe("current durable job boundary", () => {
     expect(parseControlView(controlFixture({ state: "rejected", observation: "rejected", delivery_revision: 2 })).state).toBe("rejected")
     const confirmed = controlFixture({ state: "confirmed", delivery_revision: 2, confirmed_at: JOB_TIME, execution: jobFixture().execution })
     expect(parseControlView(confirmed)).toEqual(confirmed)
-    const page = { schema_version: 1, job_id: JOB_ID, commands: [controlFixture()], next_cursor: "", has_more: false }
+    const page = { schema_version: 1, job_id: JOB_ID, commands: [controlFixture()], next_cursor: COMMAND_ID, has_more: false }
     expect(parseControlPage(page)).toEqual(page)
     expect(() => parseControlPage({ ...page, job_id: REPORT_ID })).toThrow()
     expect(() => parseControlView({ ...confirmed, arbitrary: "state" })).toThrow()
@@ -59,5 +59,50 @@ describe("current durable job boundary", () => {
     expect(() => parsePerformanceResult({ ...envelope, observation_state: "available" })).toThrow()
     expect(() => parsePerformanceResult({ ...envelope, extra: "no" })).toThrow()
     expect(() => parsePerformanceResult({ ...envelope, terminal: job.execution })).toThrow()
+  })
+})
+
+describe.each(["GetJobs", "GetJobControls"] as const)("%s current keyset pagination", method => {
+  const parse = method === "GetJobs" ? parseJobPage : parseControlPage
+  const cursor = method === "GetJobs" ? JOB_ID : COMMAND_ID
+  const page = (empty: boolean, nextCursor: unknown, hasMore: unknown) => ({
+    schema_version: 1,
+    ...(method === "GetJobs" ? { jobs: empty ? [] : [jobFixture()] } : { job_id: JOB_ID, commands: empty ? [] : [controlFixture()] }),
+    next_cursor: nextCursor,
+    has_more: hasMore,
+  })
+
+  it("accepts the last nonempty SQL page with its last ID and has_more false", () => {
+    const raw = page(false, cursor, false)
+    expect(parse(raw)).toEqual(raw)
+  })
+
+  it("accepts an exhausted empty SQL tail retaining the incoming cursor", () => {
+    const raw = page(true, cursor, false)
+    expect(parse(raw)).toEqual(raw)
+  })
+
+  it("accepts an empty initial SQL page without a cursor", () => {
+    const raw = page(true, "", false)
+    expect(parse(raw)).toEqual(raw)
+  })
+
+  it("requires a nonempty UUID only when another page is available", () => {
+    const raw = page(false, cursor, true)
+    expect(parse(raw)).toEqual(raw)
+    expect(() => parse(page(false, "", true))).toThrow()
+  })
+
+  it.each([null, undefined, 0, true, "offset:25", "not-a-uuid"])("rejects invalid cursor %j without mutating the response", invalidCursor => {
+    for (const hasMore of [false, true]) {
+      const raw = page(false, invalidCursor, hasMore)
+      const before = structuredClone(raw)
+      expect(() => parse(raw)).toThrow()
+      expect(raw).toEqual(before)
+    }
+  })
+
+  it("keeps has_more strictly boolean", () => {
+    expect(() => parse(page(false, cursor, "false"))).toThrow()
   })
 })

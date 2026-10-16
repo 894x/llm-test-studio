@@ -167,7 +167,7 @@ SFTP API 依据 [pkg/sftp v1.13.11 文档](https://pkg.go.dev/github.com/pkg/sft
 | 行 | 当前规则 | 执行证据与剩余边界 |
 | --- | --- | --- |
 | D01 | LaunchJob、GetJobs、GetJob、GetJobPerformanceResult、ControlJob、GetJobControls、RetryJobControl 是唯一桌面执行/控制路径；Launch 必须显式位置和唯一 payload，接收后确认存储失败仍返回原 pending ID | Go 桌面契约测试、真实 Core/HTTP 的确认读写失败及三次 CAS 竞争验证一次 POST，重开只读确认；旧六个绑定和性能事件移除，不自动重提或降级本地 |
-| D02 | Job 与控制历史均是独立只读投影；页大小 1..25，任务冻结输入每页最多 16 MiB；控制确认不得覆盖独立执行状态 | SQLite 27 项分页、交错控制、重开、首项/前瞻超限、取消与拒绝字节不变通过；UI 分开显示 delivery、confirmation、execution 和完整结果，报告目录同步前不开统计归档 |
+| D02 | Job 与控制历史均是独立只读投影；页大小 1..25，任务冻结输入每页最多 16 MiB；末页保留最后 UUID，空尾页保留传入 cursor，只有 has_more=true 必须非空 cursor；控制确认不得覆盖独立执行状态 | SQLite 27 项分页、交错控制、重开、首项/前瞻超限、取消与拒绝字节不变通过；发现并修复 FE 错误拒绝合法尾 cursor，当前绑定与解析 228 项定向测试及构建通过；UI 分开显示 delivery、confirmation、execution 和完整结果，报告目录同步前不开统计归档 |
 | D03 | Receipt 的 Origin 为服务端必填 kind、node_id、installation_id、engine_build_id、runner_version、os、arch；与 Spec 的目标前置条件核对，接受后全值不可变；要求 execution_origin 能力，不比较客户端发布版本 | local/remote Host、HTTP、导入、历史控制、报告及温缓存篡改负例通过；Accepted 复用唯一 DecodeSpec 和预算；兼容升级后的已有工作通过 GET 保留历史来源，旧构建 POST 仍拒绝 |
 | D04 | Report 和 PerformanceReport 当前形状必须包含 execution_origin；合法 unmanaged 明确 null，managed 报告必须与 owner/mirror 同源；checkpoint 可 null，有值必须与 terminal 同源，统计归档独立复制 terminal Origin | 生成器、SQLite、typed frontend parser 对合法 null、错误身份/平台/构建、缺失/旧字段和对象隔离测试通过；准备 Environment 不改写成执行平台；没有历史格式适配或运行时转换 |
 | D05 | 完整 accepted 文档按全部原字节 SHA256 缓存纯校验结果，最多 128 项、每项最多 64 KiB receipt 和固定摘要；每读仍核对当前 row，任何字节变化完整重验，错误不缓存 | 复现并修复 1.257 MB Spec 在 84 条结果写入中重复解析导致的 5s deadline；完整 84 Case 后接性能任务两次独立回归约 13s 通过，阈值和 DDL 未改；容量、同长篡改、并发及重开测试通过，未运行 race detector |

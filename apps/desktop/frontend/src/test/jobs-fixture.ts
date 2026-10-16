@@ -65,14 +65,14 @@ export function executionClient(report?: QuickPerformanceReport) {
     getRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
     launchJob: vi.fn<ExecutionClient["launchJob"]>(async () => accepted),
     getJob: vi.fn<ExecutionClient["getJob"]>(async () => report ? completed : active),
-    getJobs: vi.fn<ExecutionClient["getJobs"]>(async () => ({ schema_version: 1, jobs: [], next_cursor: "", has_more: false })),
+    getJobs: vi.fn<ExecutionClient["getJobs"]>(async after => ({ schema_version: 1, jobs: [], next_cursor: after, has_more: false })),
     getJobPerformanceResult: vi.fn<ExecutionClient["getJobPerformanceResult"]>(async () => {
       if (!report) throw new Error("Test outcome is not available")
       return performanceResultFixture(report)
     }),
     controlJob: vi.fn<ExecutionClient["controlJob"]>(async () => controlFixture()),
-    getJobControls: vi.fn<ExecutionClient["getJobControls"]>(async () => ({
-      schema_version: 1, job_id: JOB_ID, commands: [], next_cursor: "", has_more: false,
+    getJobControls: vi.fn<ExecutionClient["getJobControls"]>(async (jobID, after) => ({
+      schema_version: 1, job_id: jobID, commands: [], next_cursor: after, has_more: false,
     })),
     retryJobControl: vi.fn<ExecutionClient["retryJobControl"]>(async () => controlFixture()),
   } satisfies ExecutionClient
