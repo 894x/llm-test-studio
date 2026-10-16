@@ -44,7 +44,8 @@ func NewPerformanceExecutor(dependencies PerformanceExecutorDependencies) (*Perf
 		return nil, ErrInvalid
 	}
 	return &PerformanceExecutor{
-		repository: dependencies.Repository, clock: dependencies.Clock, active: map[string]struct{}{},
+		repository: performanceStorage{PerformanceExecutionRepository: dependencies.Repository},
+		clock:      dependencies.Clock, active: map[string]struct{}{},
 		host: quicktest.NewHost(quicktest.HostDependencies{
 			Transport: dependencies.Transport, Clock: dependencies.Clock,
 		}),
@@ -89,7 +90,7 @@ func (core *PerformanceExecutor) Execute(ctx context.Context, execution Executio
 			}
 		})
 	}
-	storeContext, cancel := context.WithTimeout(context.Background(), storageTimeout)
+	storeContext := context.Background()
 	snapshot, err := core.admittedJob(storeContext, spec)
 	if err == nil && !jobcontract.Terminal(snapshot.Receipt.Status) {
 		_, err = core.repository.GetPerformanceObservation(storeContext, spec.JobID)
@@ -99,7 +100,6 @@ func (core *PerformanceExecutor) Execute(ctx context.Context, execution Executio
 			err = nil
 		}
 	}
-	cancel()
 	if err != nil {
 		notifyFailure()
 		return Outcome{}, err
@@ -193,8 +193,7 @@ func (core *PerformanceExecutor) Settle(ctx context.Context, spec jobcontract.Jo
 	if invalid || spec.Validate() != nil || spec.Kind != jobcontract.KindPerformance {
 		return ErrInvalid
 	}
-	storeContext, cancel := context.WithTimeout(ctx, storageTimeout)
-	defer cancel()
+	storeContext := ctx
 	snapshot, err := core.admittedJob(storeContext, spec)
 	if err != nil {
 		return err

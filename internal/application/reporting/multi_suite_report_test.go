@@ -81,7 +81,7 @@ func TestBuildEntryReportsRejectsResultsForNotStartedEntry(t *testing.T) {
 	run, results := multiSuiteReportFixture(t, now)
 	secondRequest := results[3]
 
-	if _, err := buildEntryReports(run.Snapshot(), domain.RunCancelled, []domain.Result{secondRequest}); err == nil {
+	if _, err := buildEntryReports(t.Context(), run.Snapshot(), domain.RunCancelled, []domain.Result{secondRequest}); err == nil {
 		t.Fatal("buildEntryReports accepted work for an entry reported as not_started")
 	}
 }

@@ -90,9 +90,10 @@ func (host *Host) execute(ctx context.Context, control *jobControl) {
 }
 
 func (host *Host) startLocked(id string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
-	defer cancel()
-	current, err := host.repository.GetJob(ctx, id)
+	ctx := context.Background()
+	current, err := storageRead(ctx, func(operation context.Context) (jobcontract.Snapshot, error) {
+		return host.repository.GetJob(operation, id)
+	})
 	if err != nil {
 		return false, err
 	}
@@ -100,8 +101,10 @@ func (host *Host) startLocked(id string) (bool, error) {
 		return false, nil
 	}
 	for _, status := range []domain.RunStatus{domain.RunStarting, domain.RunRunning} {
-		current, err = host.repository.ChangeJob(ctx, Change{
-			JobID: id, ExpectedRevision: current.Receipt.Revision, Status: status, At: host.after(current.UpdatedAt),
+		current, err = storageRead(ctx, func(operation context.Context) (jobcontract.Snapshot, error) {
+			return host.repository.ChangeJob(operation, Change{
+				JobID: id, ExpectedRevision: current.Receipt.Revision, Status: status, At: host.after(current.UpdatedAt),
+			})
 		})
 		if err != nil {
 			return false, err
@@ -119,20 +122,25 @@ func (host *Host) after(previous time.Time) time.Time {
 }
 
 func (host *Host) recordOutcomeLocked(id string, outcome Outcome) (jobcontract.Snapshot, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
-	defer cancel()
-	current, err := host.repository.GetJob(ctx, id)
+	ctx := context.Background()
+	current, err := storageRead(ctx, func(operation context.Context) (jobcontract.Snapshot, error) {
+		return host.repository.GetJob(operation, id)
+	})
 	if err != nil || jobcontract.Terminal(current.Receipt.Status) {
 		return current, err
 	}
-	next, err := host.repository.ChangeJob(ctx, Change{
-		JobID: id, ExpectedRevision: current.Receipt.Revision, Status: outcome.Status,
-		Failure: outcome.Failure, At: host.after(current.UpdatedAt),
+	next, err := storageRead(ctx, func(operation context.Context) (jobcontract.Snapshot, error) {
+		return host.repository.ChangeJob(operation, Change{
+			JobID: id, ExpectedRevision: current.Receipt.Revision, Status: outcome.Status,
+			Failure: outcome.Failure, At: host.after(current.UpdatedAt),
+		})
 	})
 	if !errors.Is(err, ErrConflict) {
 		return next, err
 	}
-	winner, readErr := host.repository.GetJob(ctx, id)
+	winner, readErr := storageRead(ctx, func(operation context.Context) (jobcontract.Snapshot, error) {
+		return host.repository.GetJob(operation, id)
+	})
 	if readErr == nil && jobcontract.Terminal(winner.Receipt.Status) {
 		return winner, nil
 	}
@@ -154,28 +162,30 @@ func (host *Host) complete(control *jobControl, outcome Outcome) {
 	if stateErr == nil {
 		outcome = outcomeOf(snapshot)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
-	settleErr := host.executor.Settle(ctx, control.spec, outcome)
-	cancel()
+	settleErr := host.settle(host.settlementContext, control.spec, outcome)
 	if settleErr != nil {
 		host.storageFailed()
 	}
 	releaseErr := releaseControl(control)
-	if stateErr != nil || settleErr != nil || releaseErr != nil {
+	settled := stateErr == nil && settleErr == nil && releaseErr == nil
+	if !settled {
 		host.storageFailed()
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
 		markErr := host.repository.MarkJobSettled(ctx, control.spec.JobID)
 		cancel()
 		if markErr != nil {
+			settled = false
 			host.storageFailed()
 		}
 	}
 	host.mu.Lock()
-	delete(host.controls, control.spec.JobID)
-	if control.reserved {
-		host.active--
-		host.concurrency -= control.units
+	if settled {
+		delete(host.controls, control.spec.JobID)
+		if control.reserved {
+			host.active--
+			host.concurrency -= control.units
+		}
 	}
 	host.dispatchLocked()
 	host.mu.Unlock()
@@ -239,7 +249,7 @@ func (host *Host) shutdownReason() error {
 }
 
 func (host *Host) recover(ctx context.Context) error {
-	jobs, err := host.repository.RecoveryJobs(ctx)
+	jobs, err := storageRead(ctx, host.repository.RecoveryJobs)
 	if err != nil {
 		return err
 	}
@@ -247,7 +257,9 @@ func (host *Host) recover(ctx context.Context) error {
 		if snapshot.Receipt.Origin.InstallationID != host.installationID {
 			continue
 		}
-		spec, err := host.repository.GetJobSpec(ctx, snapshot.Receipt.JobID)
+		spec, err := storageRead(ctx, func(operation context.Context) (jobcontract.JobSpec, error) {
+			return host.repository.GetJobSpec(operation, snapshot.Receipt.JobID)
+		})
 		if err != nil {
 			return err
 		}
@@ -263,10 +275,12 @@ func (host *Host) recover(ctx context.Context) error {
 			}
 			outcome = outcomeOf(snapshot)
 		}
-		if err := host.executor.Settle(ctx, spec, outcome); err != nil {
+		if err := host.settle(ctx, spec, outcome); err != nil {
 			return err
 		}
-		if err := host.repository.MarkJobSettled(ctx, spec.JobID); err != nil {
+		if err := storageWrite(ctx, func(operation context.Context) error {
+			return host.repository.MarkJobSettled(operation, spec.JobID)
+		}); err != nil {
 			return err
 		}
 	}
@@ -362,6 +376,9 @@ func (host *Host) Close() error {
 		return nil
 	}
 	host.closed = true
+	stopSettlement := time.AfterFunc(settlementCloseGrace, host.stopSettlement)
+	defer stopSettlement.Stop()
+	defer host.stopSettlement()
 	cause := host.shutdownReason()
 	for _, control := range host.controls {
 		if control.phase == phaseQueued {

@@ -18,6 +18,10 @@ import (
 
 var ErrGenerationInvalid = errors.New("reporting: invalid generation request")
 
+// ErrReportWrite marks the only generation failure that may have committed.
+// Loading and computation failures never require a second report read.
+var ErrReportWrite = errors.New("reporting: report write failed")
+
 type ReportRepository interface {
 	GetRun(context.Context, string) (domain.Run, error)
 	RunExecutionOrigin(context.Context, string) (*domain.ExecutionOrigin, error)
@@ -156,7 +160,7 @@ func (generator *Generator) Generate(ctx context.Context, runID string) (generat
 	if err != nil || !domain.IsUUID(reportID) {
 		return ErrGenerationInvalid
 	}
-	entries, err := buildEntryReports(snapshot, run.Status(), results)
+	entries, err := buildEntryReports(ctx, snapshot, run.Status(), results)
 	if err != nil {
 		return err
 	}
@@ -171,18 +175,36 @@ func (generator *Generator) Generate(ctx context.Context, runID string) (generat
 	if run.Status() == domain.RunCancelled {
 		conclusion.Verdict = "cancelled"
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	metrics := aggregateMetrics(requestResults)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timeline := resultTimeline(requestResults)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	distributions := resultDistributions(requestResults)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	report := domain.Report{
 		ExecutionOrigin: origin,
 		SchemaVersion:   domain.CurrentReportSchemaVersion, Protocol: snapshot.Model.Protocol, Verification: verification,
 		ID: reportID, RunID: runID, RunStatus: run.Status(), GeneratedAt: generatedAt, PlanSnapshot: snapshot,
 		Model: domain.ReportSubject{ID: snapshot.Model.ID, Name: snapshot.Model.Name}, Channel: domain.ReportSubject{ID: snapshot.Channel.ID, Name: snapshot.Channel.Name}, Environment: snapshot.Environment,
-		Conclusion: conclusion, SLA: map[string]domain.MetricValue{}, Metrics: aggregateMetrics(requestResults), Timeline: resultTimeline(requestResults), Distributions: resultDistributions(requestResults),
+		Conclusion: conclusion, SLA: map[string]domain.MetricValue{}, Metrics: metrics, Timeline: timeline, Distributions: distributions,
 		CaseResults: caseResults, EntryReports: entries, ErrorClusters: []json.RawMessage{}, Evidence: append([]domain.Evidence{}, evidence...), Baseline: json.RawMessage(`{}`), Attachments: []domain.ReportAttachment{},
 	}
 	// The storage boundary validates the complete report before any write.
 	advance("persisting", 0, 0, "")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := generator.repository.CreateReport(ctx, report); err != nil {
-		return fmt.Errorf("persist report: %w", err)
+		return fmt.Errorf("%w: %w", ErrReportWrite, err)
 	}
 	advance("ready", 0, 0, report.ID)
 	return nil
@@ -202,13 +224,19 @@ func verificationConclusion(summary domain.VerificationSummary, completed bool, 
 	return domain.ReportConclusion{Passed: verdict == "pass", Verdict: verdict, Issues: issues}
 }
 
-func buildEntryReports(snapshot domain.RunSnapshot, runStatus domain.RunStatus, results []domain.Result) ([]domain.EntryReport, error) {
+func buildEntryReports(ctx context.Context, snapshot domain.RunSnapshot, runStatus domain.RunStatus, results []domain.Result) ([]domain.EntryReport, error) {
 	known := map[string]bool{}
 	byEntry := make(map[string][]domain.Result, len(snapshot.Entries))
 	for _, entry := range snapshot.Entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		known[entry.EntryID] = true
 	}
 	for _, result := range results {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !known[result.EntryID] {
 			return nil, errors.New("result refers to unknown plan entry")
 		}
@@ -217,9 +245,15 @@ func buildEntryReports(snapshot domain.RunSnapshot, runStatus domain.RunStatus, 
 	reports := make([]domain.EntryReport, 0, len(snapshot.Entries))
 	stopped := false
 	for _, entry := range snapshot.Entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		summaries, requests := []domain.Result{}, []domain.Result{}
 		status := domain.EntryReportNotStarted
 		for _, result := range byEntry[entry.EntryID] {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if result.EntryStatus == domain.EntryExecutionCompleted {
 				status = domain.EntryReportCompleted
 				continue

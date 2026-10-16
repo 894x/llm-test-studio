@@ -21,15 +21,16 @@ import (
 )
 
 var (
-	ErrClosed         = errors.New("job_host_closed")
-	ErrCapacity       = errors.New("job_capacity_exceeded")
-	ErrIdentity       = errors.New("job_host_identity_mismatch")
-	ErrUnavailable    = errors.New("job_host_unavailable")
-	ErrCancelled      = errors.New("job_cancelled")
-	ErrLocalShutdown  = errors.New("local_shutdown")
-	ErrInterrupted    = errors.New("runner_interrupted")
-	ErrExecutionLimit = errors.New("job_execution_timeout")
-	ErrMaintenance    = errors.New("runner_maintenance")
+	ErrClosed          = errors.New("job_host_closed")
+	ErrCapacity        = errors.New("job_capacity_exceeded")
+	ErrIdentity        = errors.New("job_host_identity_mismatch")
+	ErrUnavailable     = errors.New("job_host_unavailable")
+	ErrCancelled       = errors.New("job_cancelled")
+	ErrLocalShutdown   = errors.New("local_shutdown")
+	ErrInterrupted     = errors.New("runner_interrupted")
+	ErrExecutionLimit  = errors.New("job_execution_timeout")
+	ErrMaintenance     = errors.New("runner_maintenance")
+	ErrSettlementLimit = errors.New("job_settlement_timeout")
 )
 
 const storageTimeout = 5 * time.Second
@@ -59,17 +60,19 @@ type Host struct {
 	origin                  domain.ExecutionOrigin
 	commitmentKey           []byte
 
-	mu             sync.Mutex
-	controls       map[string]*jobControl
-	queue          []*jobControl
-	active         uint32
-	concurrency    uint64
-	closed         bool
-	maintenanceID  string
-	failureHandled bool
-	unhealthy      atomic.Bool
-	wg             sync.WaitGroup
-	closeDone      chan struct{}
+	mu                sync.Mutex
+	controls          map[string]*jobControl
+	queue             []*jobControl
+	active            uint32
+	concurrency       uint64
+	closed            bool
+	maintenanceID     string
+	failureHandled    bool
+	unhealthy         atomic.Bool
+	wg                sync.WaitGroup
+	closeDone         chan struct{}
+	settlementContext context.Context
+	stopSettlement    context.CancelFunc
 }
 
 type jobPhase uint8
@@ -140,7 +143,9 @@ func New(ctx context.Context, dependencies Dependencies) (*Host, error) {
 		commitmentKey: slices.Clone(dependencies.CommitmentKey),
 		controls:      map[string]*jobControl{}, queue: []*jobControl{}, closeDone: make(chan struct{}),
 	}
+	host.settlementContext, host.stopSettlement = context.WithCancel(context.Background())
 	if err := host.recover(ctx); err != nil {
+		host.stopSettlement()
 		clear(host.commitmentKey)
 		return nil, err
 	}

@@ -59,26 +59,27 @@ func NewRunExecutor(dependencies RunExecutorDependencies) (*RunExecutor, error) 
 	if invalid {
 		return nil, ErrInvalid
 	}
+	repository := runStorage{RunRepository: dependencies.Repository}
 	core := &RunExecutor{
-		repository: dependencies.Repository, clock: dependencies.Clock,
+		repository: repository, clock: dependencies.Clock,
 		active: map[string]*runGroup{},
 	}
 	host, err := runs.NewHost(runs.HostDependencies{
-		Repository: dependencies.Repository, Executor: dependencies.Executor, Clock: dependencies.Clock,
+		Repository: repository, Executor: dependencies.Executor, Clock: dependencies.Clock,
 		PersistenceFailure: core.observeFailure,
 	})
 	if err != nil {
 		return nil, err
 	}
 	reports, err := reporting.NewGenerator(reporting.GeneratorDependencies{
-		Repository: dependencies.Repository, Clock: dependencies.Clock,
+		Repository: repository, Clock: dependencies.Clock,
 	})
 	if err != nil {
 		_ = host.Close()
 		return nil, err
 	}
 	groups, err := comparisons.NewRefresher(comparisons.RefresherDependencies{
-		Repository: dependencies.Repository, Runs: dependencies.Repository, Clock: dependencies.Clock,
+		Repository: repository, Runs: repository, Clock: dependencies.Clock,
 	})
 	if err != nil {
 		_ = host.Close()
@@ -249,9 +250,10 @@ func (core *RunExecutor) Execute(ctx context.Context, execution Execution) (Outc
 	if execution.Spec.Kind == jobcontract.KindRun {
 		return runOutcome(children[0]), nil
 	}
-	storeContext, cancel := context.WithTimeout(context.Background(), storageTimeout)
-	defer cancel()
-	comparison, err := core.groups.Refresh(storeContext, execution.Spec.Spec.Comparison.Meta.ID)
+	comparison, err := core.groups.Refresh(ctx, execution.Spec.Spec.Comparison.Meta.ID)
+	if ctx.Err() != nil {
+		return reasonOutcome(context.Cause(ctx)), nil
+	}
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -297,8 +299,7 @@ func (core *RunExecutor) watch(
 }
 
 func (core *RunExecutor) stop(inputs []runs.PreparedRun) error {
-	ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
-	defer cancel()
+	ctx := context.Background()
 	for _, input := range inputs {
 		err := core.host.StopSending(ctx, input.Meta.ID)
 		if err != nil && !errors.Is(err, runs.ErrNotActive) {
@@ -309,8 +310,7 @@ func (core *RunExecutor) stop(inputs []runs.PreparedRun) error {
 }
 
 func (core *RunExecutor) terminate(inputs []runs.PreparedRun, outcome Outcome) error {
-	ctx, cancel := context.WithTimeout(context.Background(), storageTimeout)
-	defer cancel()
+	ctx := context.Background()
 	errorsFound := []error{}
 	for _, input := range inputs {
 		var err error
@@ -350,6 +350,9 @@ func (core *RunExecutor) Settle(ctx context.Context, spec jobcontract.JobSpec, o
 		return err
 	}
 	for _, input := range inputs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		child, err := core.repository.GetRun(ctx, input.Meta.ID)
 		if err != nil {
 			return err
@@ -429,9 +432,12 @@ func (core *RunExecutor) ensureReport(ctx context.Context, child domain.Run) err
 		return err
 	}
 	generationErr := core.reports.Generate(ctx, child.Meta().ID)
+	if generationErr != nil && !errors.Is(generationErr, reporting.ErrReportWrite) {
+		return generationErr
+	}
 	exists, err = core.hasReport(ctx, child)
 	if err != nil {
-		return err
+		return errors.Join(generationErr, err)
 	}
 	if exists {
 		return nil
