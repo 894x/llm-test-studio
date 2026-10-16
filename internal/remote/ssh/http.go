@@ -248,11 +248,27 @@ func (call *runnerCall) finish() {
 
 type runnerResponse struct {
 	io.ReadCloser
-	call *runnerCall
+	call    *runnerCall
+	stateMu sync.Mutex
+	eof     bool
+	closed  bool
 }
 
 func (response *runnerResponse) Read(destination []byte) (int, error) {
+	response.stateMu.Lock()
+	complete := response.eof && !response.closed
+	response.stateMu.Unlock()
+	if complete {
+		return 0, io.EOF
+	}
 	count, err := response.ReadCloser.Read(destination)
+	if err == io.EOF {
+		// Automatic resource release must not change a later EOF probe into a
+		// read on the now-closed body. Explicit Close still ends this reader.
+		response.stateMu.Lock()
+		response.eof = true
+		response.stateMu.Unlock()
+	}
 	if err != nil {
 		response.call.close()
 	}
@@ -260,6 +276,9 @@ func (response *runnerResponse) Read(destination []byte) (int, error) {
 }
 
 func (response *runnerResponse) Close() error {
+	response.stateMu.Lock()
+	response.closed = true
+	response.stateMu.Unlock()
 	response.call.close()
 	return nil
 }

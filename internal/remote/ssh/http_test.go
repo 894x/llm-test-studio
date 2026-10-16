@@ -364,6 +364,139 @@ type blockedNodeSource struct {
 	close   sync.Once
 }
 
+func TestRunnerResponsePreservesObservedEOFAndReleasesItsCall(t *testing.T) {
+	for _, withData := range []bool{false, true} {
+		t.Run(strconv.FormatBool(withData), func(t *testing.T) {
+			body := &responseEOFBody{data: []byte("complete"), eofWithData: withData}
+			response, ctx, owner := ownedTestResponse(t, body)
+			if copied, err := io.CopyN(io.Discard, response, 8); err != nil || copied != 8 {
+				t.Fatal("complete response did not deliver its declared bytes")
+			}
+			var extra [1]byte
+			for range 3 {
+				if count, err := response.Read(extra[:]); count != 0 || err != io.EOF {
+					t.Fatalf("observed EOF changed after automatic close: count=%d err=%v", count, err)
+				}
+			}
+			wantReads := 2
+			if withData {
+				wantReads = 1
+			}
+			if body.reads != wantReads || body.closes != 1 || ctx.Err() != context.Canceled {
+				t.Fatal("EOF did not close/cancel exactly once or later reads touched its closed body")
+			}
+			owner.mu.Lock()
+			active := len(owner.requests)
+			owner.mu.Unlock()
+			if active != 0 {
+				t.Fatal("completed response retained its owned request")
+			}
+			owner.wg.Wait()
+		})
+	}
+}
+
+func TestRunnerResponseExplicitCloseAndReadFailureDoNotBecomeEOF(t *testing.T) {
+	for _, prefix := range []int{0, 1, 8} {
+		body := &responseEOFBody{data: []byte("complete"), eofWithData: true}
+		response, _, _ := ownedTestResponse(t, body)
+		if prefix > 0 {
+			if _, err := io.CopyN(io.Discard, response, int64(prefix)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_ = response.Close()
+		if _, err := response.Read(make([]byte, 1)); err == nil || err == io.EOF {
+			t.Fatal("explicit close was hidden by synthetic EOF")
+		}
+	}
+	body := &responseEOFBody{data: []byte("partial"), readErr: io.ErrUnexpectedEOF}
+	response, _, _ := ownedTestResponse(t, body)
+	if count, err := response.Read(make([]byte, 32)); count != 7 || err != io.ErrUnexpectedEOF {
+		t.Fatal("partial response lost its real read error")
+	}
+	if _, err := response.Read(make([]byte, 1)); err == nil || err == io.EOF {
+		t.Fatal("read failure was converted to successful EOF")
+	}
+}
+
+func TestRunnerResponseCloseDoesNotHoldStateGateAcrossReadOrClose(t *testing.T) {
+	body := &blockedResponseBody{entered: make(chan struct{}), closed: make(chan struct{})}
+	response, _, _ := ownedTestResponse(t, body)
+	result := make(chan error, 1)
+	go func() { _, err := response.Read(make([]byte, 1)); result <- err }()
+	<-body.entered
+	closed := make(chan struct{})
+	go func() { _ = response.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("blocked read prevented response cancellation")
+	}
+	if err := <-result; err != io.ErrClosedPipe {
+		t.Fatal("cancelled response fabricated EOF")
+	}
+}
+
+func ownedTestResponse(t *testing.T, body io.ReadCloser) (*runnerResponse, context.Context, *runnerHTTP) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	owner := &runnerHTTP{requests: map[*runnerCall]struct{}{}}
+	call := &runnerCall{owner: owner, cancel: cancel, response: body}
+	owner.requests[call] = struct{}{}
+	owner.wg.Add(1)
+	return &runnerResponse{ReadCloser: body, call: call}, ctx, owner
+}
+
+type responseEOFBody struct {
+	data        []byte
+	eofWithData bool
+	readErr     error
+	closed      bool
+	reads       int
+	closes      int
+}
+
+func (body *responseEOFBody) Read(destination []byte) (int, error) {
+	body.reads++
+	if body.closed {
+		return 0, io.ErrClosedPipe
+	}
+	count := copy(destination, body.data)
+	body.data = body.data[count:]
+	if body.readErr != nil {
+		return count, body.readErr
+	}
+	if count == 0 || body.eofWithData && len(body.data) == 0 {
+		return count, io.EOF
+	}
+	return count, nil
+}
+
+func (body *responseEOFBody) Close() error {
+	body.closes++
+	body.closed = true
+	return nil
+}
+
+type blockedResponseBody struct {
+	entered chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func (body *blockedResponseBody) Read([]byte) (int, error) {
+	close(body.entered)
+	<-body.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (body *blockedResponseBody) Close() error {
+	body.once.Do(func() { close(body.closed) })
+	return nil
+}
+
 func (source *blockedNodeSource) Read([]byte) (int, error) {
 	source.start.Do(func() { close(source.started) })
 	<-source.closed
