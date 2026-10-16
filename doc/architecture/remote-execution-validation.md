@@ -952,3 +952,29 @@ ComputerUse三次初始化（含reset）均报failed to write kernel assets/os e
 实际APPDATA库通过SQLite只读连接online backup得到新鲜一致性快照，源前后SHA均为 `cbc5337e54c00bd581d00ad7db8a097d6400f1f9b12338f950b1900860ce4eb5`，无新增sidecar；187662336字节快照SHA `8ffacb1af4a3101a75abf09e02fc02f191e549423182ab7131adadfe9d9da8f2`。`%TEMP%/llm-actual-user-fresh-d3d7965e542d4c9a88552445c9ce1ca1/backup.safe.json` SHA `8430d7d5ed7f3670855af8eeb42d1404821217de3a5d821ca65acbc24b2e1c0e`。快照与先前源字节相同，但本次为实际用户库的新鲜备份，不是沿用旧备份的时间结论；同目录 `parent-fresh-final.safe.json` SHA `191ec200f1f41131af34082927cfea931d2eba5b71d4094879f2f232e38bdcc8` 记录转换后再次核对实际源不变。
 
 固定766→当前1db工具及其validator保持原字节和原私有root边界。新备份副本在原工具根显式转换，进程51644实际exit0；新 `actual-fresh-20261017-current.db` 为187621376字节、SHA `6366bd911116554d9593eaa2c335eeac1133ccc6e9c09400d907e206ddb5a8be`，conversion proof SHA `70b73c80c0e23cb5e4f1213304040f41db47185c33598b784bb899553858b4d8`。当前80对象及完整typed validator/43份性能getter通过，保留63 runs/252 revisions/5482 results/4 comparisons/61普通报告；父另行只读quick/FK/hash通过，源仍不变。首次跨root拒绝及复制原工具到新root后被固定validator拒绝的两次exit1保留；正确执行使用原root，没有放宽guard或增加历史运行时路径。新鲜备份与副本转换已完成；真实APPDATA切换、实际新应用回读及恢复切换仍未执行，工具和备份继续保留。
+
+## 2026-10-17：原生历史工作台启动修复与 R5 首次退出续跑证据
+
+原生构建2942446打开已转换的历史库副本时，实际报 `load_workspace/frontend_data_invalid`。原因是前端要求历史Run的plan_id仍存在于当前计划目录，而Go已经按冻结快照保留被删除计划的历史。修复提交 `b03e350` 移除这项当前目录成员关系要求，保留逐条DTO、UUID、重复ID和活动引用校验；未增加历史格式解码或数据库变更。前端49文件/758测试、lint/build、workspace和desktop Go测试、desktop vet/build及独立审查通过。
+
+父级在新的只读副本上调用当前DesktopApp.GetWorkspace：plans0/runs63，其中17条authored历史没有当前计划，重复Run ID为0；helper实际exit0，读前后SHA均6366bd91…5a8be。首次PowerShell参数解析导致的helper启动exit2保留；改用字面量参数数组后执行成功，没有修改工具或数据库校验。
+
+固定Wails CLI/module2.15.0生成新的Windows生产EXE，实际SHA `25e4ef6410fcccf9fb65b9f0989a41898472ce9b60165188c6d9e2afdfdcef19`；exe-only ZIP SHA `354ddbe353c3c5635c983a676ed652e3fe01c37f2ee50f529ac28da330dea5f4`。独立进程60324使用仅对子进程生效的APPDATA/LOCALAPPDATA，在新的历史库字节副本上实际显示63条运行与对比记录，顶部Remote按钮成功打开默认本地、空节点配置面板。观察窗口1346×813，不代替三种规定尺寸、已配置节点切换、主题或全部异步状态验收。两次ComputerUse被用户Esc停止，停止后未继续同轮界面操作。原生测试进程后续按精确PID/EXE身份结束以释放沙盒；实际用户APPDATA源SHA仍为cbc5337e…4eb5，未切换。证据根 `E:/TEMP/llm-native-b03e350-cdf42c78e4af456ea8157b98be64080a/`，`parent-native-history.safe.json` SHA `43a259d50f3090136d4727d4c45fdaf8a416afc7ba914c3a274778af0b95b477`；未发布或push。
+
+R5免费Mock首次尝试在CreatePlan前失败：临时工具给新Entry预填ID，与当前目录创建合同冲突；Launch/Submit/Provider均0，原 `run-rwriyjn6` 保留。临时工具经过production catalog离线红绿后，固定修复exe SHA `f1b1e61bc795c7bf582782615ac3b74b5374bfaf559f400f540f62bd9fb39a6c` 在R8节点实跑。A45596仅Launch/Submit各1，在首请求仍冻结时实际exit0并读完stdout；父随后再次确认仅首请求活动，再释放gate。B42728与其实际退出后重开的query13800均实际exit0，读回原Job `c7ca984d-9783-4d32-8f84-1d7a549d804f`、Run `e183da7a-6e59-4ba2-a78d-d10862df9dfd`、Report `f1052037-a8ed-4efa-934d-71284bf71898`，两个不同Suite/Entry各1条结果，completed/sealed、Report身份保持；B/query没有提交或控制，Provider0。
+
+这次核心退出续跑完成，但整体脚本仍exit1：末尾runner_process_after在5.012秒触发 `mock_io_deadline`，没有收到process响应及shutdown确认，原 `passed=false/cleanup_completed=false` 保持。冻结Mock的process_proof内部systemctl本身允许5秒，外层默认5秒未覆盖其余处理和传输；现有证据不能细分当次实际耗时归因。`E:/TEMP/llm-r5-plan-exit-ffcb8103-b328-4cdd-8fe8-74fc2962505a/run-xdcp8fr9/` 保留原始事实与三进程退出记录；原任务只读恢复、Mock最终预算/清理和runner后置身份仍待补验，不通过再次Launch覆盖这次失败。
+
+## 2026-10-17：R5 完整退出续跑通过，真实 OSStore 节点配置跨进程通过
+
+父级对上一节原任务执行只读恢复，观察进程实际exit0：原Job/Run/Report与双Entry各1结果不变，runner PID2728603/start804746624/实际SHA67f21005…fc77不变；原Mock端口43035无监听、精确冻结源码进程不存在，原summary SHA `85783a45c7839a4f87cdb5f93ca4d4a3215960a402cbd42ce29bd8776f902e8b` 保持passed=false。恢复回执 `recovery-readonly-1792174928977113400.safe.json` SHA `16335c8e3d764be0e91140b06594dc1b92ea1078285fdfed7fce955f423fc5fc` 位于上节R5工具根；历史最终Mock计数与shutdown ACK不可恢复，未从报告反推。
+
+独立coordinator副本仅统一process查询的外层、command、read、channel预算为15秒，保留600秒总预算、180秒Mock、90秒gate及全部执行预算；离线10.1秒回复通过，原脚本未改。这修正预算不一致，不能证明上次具体卡点。随后显式执行一个新的免费验收Job，保留原失败Job及全部记录：A59552在首请求仍冻结时实际exit0，父读完stdout、再次确认唯一首请求仍活动后才释放gate；B53276及其退出后query45260均实际exit0。
+
+新Job `1f1f0e12-c9aa-461b-a901-2902391bea1c`、Run `8b35537c-a351-4faa-b454-78c78abccb5a`、Report `4632873a-9f4b-4d98-9da0-e25f2fa5bd91` 在三进程中身份一致，两个不同Suite/Entry各执行一次，后续条目在A退出后完成；仅A Launch/Submit各1，B/query均0，所有Command/Provider0。Mock实际2请求、最大并发1、拒绝0、无过期，最终active0，process响应与shutdown ACK均收到、transport关闭、cleanup_completed=true；runner前后完整进程事实一致。process本次24ms，整体脚本实际exit0。三角色仍用同一exe，此项不证明不同真实client构建。
+
+证据 `E:/TEMP/llm-r5-plan-exit-ffcb8103-b328-4cdd-8fe8-74fc2962505a/run-l3jo_uy3/acceptance.safe.json` SHA `69de11f71448be64c8656327988a5ba01b236ea8a5887d229572f6a5957af5a9`；父交叉核验 `parent-final-verification.safe.json` SHA `004ab20401fdaefb042a378fef274466da0f82e302b90990e0cb7e9172a1bfa3`。这补齐R5的两Suite退出续跑及重开报告证据，不代替其他入口、在途重启或公平性验收。
+
+父级另外在固定原生沙盒中执行当前产品节点服务与真实Windows OSStore。seed进程12272实际exit0：保存两个独立节点配置，R8配对ready并设默认remote，R7确认主机指纹后保持disabled、未配对。三个专用作用域凭据写入OSStore；未安装/升级runner、没有artifact/provider调用，未启动monitor或镜像worker。独立reopen进程实际exit0，读取全部3refs，再仅对R8执行Bound检查，取得fresh ready；默认、配置、binding及refs保持，Shared0/Bound1、R7网络0、Get5、凭据写删尝试0。
+
+最后独立cleanup进程实际exit0，经当前节点删除与引用检查，仅清理本工具两个节点及3个ledger登记的专用凭据，逐项确认ErrNotFound；最终nodes0/credential_refs0/default local。没有枚举或更改既有凭据、实际APPDATA或用户服务器上的runner。cleanup在持有桌面锁后拒绝任何SQLite sidecar，避免immutable读取遗漏WAL引用；该guard通过独立静态审查。证据根 `E:/TEMP/llm-native-remote-seed-112d32a84af945328f155bd189542d05/`，seed/reopen/cleanup日志SHA分别 `a54024873b883f8d0a295457aea0c8f8934d919efb62843fb9128680d253d61f`、`b91c6ae257a5fc98cf7249912a34063b973d368c438e7f7ee7d53e8514e35390`、`e9b1fcd4196b1bb408a07fe4fbfe7c0d12da5afefb84a7017e0490a3ebffa6b6`。这是当前生产组合的后台与真实keyring验收；已配置两节点的原生点击切换仍未验，用户Esc后的同轮未继续界面操作。

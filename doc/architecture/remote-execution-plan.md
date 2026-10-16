@@ -604,3 +604,11 @@ clean2942446的Windows EXE及exe-only ZIP已用固定Wails2.15.0、新bindings�
 同一自有ARM64 VM经QMP整机reset后，已由前后不同boot ID、两个只读观察进程实际exit0、enabled/active服务、原node/installation/实际exe摘要及TCP端口证明自启动。原SSH reboot错误与观察算法失败保留；没有重启用户服务器，也未把配置检查扩为真实失败限速、重启后HTTP就绪或在途恢复证明。
 
 实际用户APPDATA的新鲜只读online backup及其独立766→当前1db转换已通过，源前后SHA不变、当前完整typed/43份性能getter及父只读完整性检查通过。真实数据切换、实际新应用回读与恢复切换仍待完成；固定工具边界未放宽，临时入口与备份继续保留。完整证据见[验证记录](remote-execution-validation.md)同日记录，其余待验和文件扩展暂缓决定保持。
+
+### 2026-10-17 原生历史工作台修复与退出续跑实测
+
+修复b03e350统一当前前后端语义：历史Run按冻结快照读取，不要求原计划仍在当前目录；未添加历史版本解码或数据迁移。63条历史中的17条触发原前端错误；修复后新的Wails2.15.0生产构建在独立APPDATA副本中实际显示63条运行，顶部Remote可打开本地默认/空节点面板。前端758测试、桌面Go测试/构建/审查通过；1346×813的这次观察不代替三尺寸、已配置节点及全部UI状态，实际用户APPDATA未切换。
+
+R5两Suite的实际A进程退出后，后续条目完成，独立B及重开的query读回同Job/Run/Report。首次末尾Mock检查超时的失败记录保留，原任务只读恢复确认报告、runner和无遗留Mock，未重复提交原Job。统一process查询预算后，一个新的独立免费验收Job已完整通过：三进程exit0、仅一次Launch/Submit、Mock2/最大并发1/拒绝0/Provider0、进程前后不变及shutdown/cleanup确认。三角色仍为同exe，不能扩为不同实际client构建通过。详见[验证记录](remote-execution-validation.md)同日证据。
+
+当前节点产品组合另通过真实Windows OSStore后台闭环：保存两节点、默认R8、独立进程读回专用凭据并Bound取得fresh ready，默认/身份/refs保持；最后仅清理自建两节点与3个专用refs并确认不存在。未改实际APPDATA或用户runner；已配置节点的原生点击切换仍待验，其余入口、故障、公平性、数据切换及CI等既有边界保持。
