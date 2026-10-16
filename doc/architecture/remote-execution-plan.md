@@ -285,6 +285,10 @@ JobReceipt 明确返回 contract、job_id、kind、accepted_at、node_installati
 
 桌面按 `(node_id, installation_id, job_id, sequence)` 投影。新增 `ApplyRemoteBatch` 事务，原子保存领域值、结果、证据索引及已应用游标；事务失败不前移游标。同 ID 同内容可重放，同 ID 不同内容报冲突，不覆盖本地执行拥有的数据。不能直接套用当前 `AppendResults` 给终态 Run 补数据，因为它要求 Run 可写；远程镜像写入使用独立端口并验证来源与日志顺序。
 
+当前同步采用每节点两分钟 session、五秒 tick，metadata 与 job 完成独立推进，不等待整批 join。每节点 inflight≤4（含 gate 等待）、每 tick 新启动≤4，priority page/inflight≤2、history inflight≤1，tail/history pending 各≤25；全局完整 GET/needsSync/Pass gate4 与 priority SQL gate/五秒期限保持。tail admission cursor 单调且末页不归零，冷发现 terminal 仍完整导入；history 独立回绕，每轮固定 tail 高水位，ListJobs 页游标使边界最多有一页 25 项有界越界。四槽实际忙时不承诺绝对 25 秒。取消 join 全部 metadata/job 后 close 一次，正常期限轮换立即重连并保留 scan；配置 generation 改变则取消/join 后 reset。AppliedAt 只记真实应用 callback，session 首个真实错误不被 metadata 成功抹掉，旧 session 结果不得写入新状态。
+
+唯一 priority 端口 `ListRemoteSyncPriorityIDs` 纳入 own pending/accepted 无 mirror，以及 own/foreign 非 terminal 或 known refs 未 imported；own prepared 排除，终态全部已知引用 imported 后退出，不等于 settled，late report 靠 history 补查。单 statement 验证当前 Snapshot/Receipt、UUID 顺序、小身份与双源冲突，Go 读到 limit+1 个 eligible 停止，完整 spec 不传入 Go；SQL 仍可能扫描/排序节点 scope 的小 header/snapshot，不是 O(limit) 或全仓 constant-memory 保证，后续完整同步校验不减。
+
 文件系统与 SQLite 不跨资源假装原子：下载文件先写临时路径并校验 SHA-256，再原子重命名，最后事务登记。崩溃后可清理未引用临时文件；未确认完整的文件不能标为已下载。Reference 可先记录为 pending，界面区分“元数据已同步”与“证据可离线读取”。
 
 Linux State 已提供内容寻址文件基础：固定小缓冲流式核验长度与 SHA、原子不覆盖发布及目录持久确认，重复上传仍验证输入，可 seek 读取核对文件和私有目录身份；关闭 State 会释放文件并阻止后续发布。损坏文件与失败 partial 保留。目前仅为内部端口，asset 上传、任务持久引用、媒体解析、证据下载、完整 manifest 与 release 尚待接入，不宣告 assets 能力，不改变 Job 或 SQLite 格式。
@@ -390,7 +394,7 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | D1a 原子结果镜像 | 已实现 | 三类节点日志的领域事实、来源与游标同事务导入；重复页重放、来源/内容冲突、迟到结果、本地恢复与对比汇总隔离；Run 原始报告按引用校验后原子导入，Performance 两类引用独立 pending；尚未装配同步循环、文件缓存或性能文档导入 |
 | D1b 性能文档镜像 | 已实现 | 共享唯一统计归档投影，独立归档下载接口与原字节续传，完整结果关联执行日志后导入，统计归档与 imported 标记同事务保存；真实 Core/HTTP/第二数据库关闭服务后离线读取通过；自动同步、私有文件缓存和 UI 仍待后续装配 |
 | D1c 文件缓存与同步单次执行 | 已实现 | 按摘要加锁的私有 partial、校验/同步/原子发布与离线复用；同步前核对实际节点安装，按持久游标有界补页，先完整性能结果后归档，文件持久后才导入；三类真实 Core/HTTP 测试和截断后重开续传通过；后台发现/调度、证据附件和 UI 尚待装配 |
-| D1d 后台发现与桌面同步装配 | 已实现 | 有界节点观察、共享任务分页与循环重扫、每轮最多四个任务、全局四份完整同步；配置读取失败暂停观察并自动重试，修复后恢复；桌面从保存的绑定与授权重连，关闭时等待观察连接释放再关闭数据库；真实 Core/HTTP 与第二数据库重开验证通过，公开入口、实际 SSH/OS Store、证据附件和 UI 仍待验收 |
+| D1d 后台发现与桌面同步装配 | 已实现 | a91f1d8 采用独立 tick/session、单调 tail 与固定高水位 history；节点四槽、priority两项/history一项及全局四份完整同步，取消全部 join、正常轮换保留扫描、配置变更 reset。当前 priority SQL 不物化完整 spec，实际同步完整校验保留；Windows 全仓 Go/vet、真实 WSL Linux 与双仓库回归通过，r3 共享控制、完整公平性/大任务、OS Store 与证据附件仍待实机验收 |
 | D2a 提交记录与确认状态存储 | 已实现 | 无秘密的完整冻结输入、实际 runner 与固定目标持久化；发送意图 CAS、待确认观察和接收确认独立于执行终态，已接收不可回退；跨仓库竞争、重开、写失败与 25 条/16 MiB 分页验证通过；Coordinator、Backend 选择、实际提交/重查及桌面入口尚待接入 |
 | D2b 提交与确认协调器 | 已实现 | 明确 Location、fresh probe、共享当前能力判定、发送前持久 CAS、lease 清理和固定目的地只读重查；三类真实 Core/HTTP 在确认响应截断后继续执行，关闭/重开桌面数据库找回原确认并导入报告，跨协调器竞争只发送一次；生产 Backend、启动重查调度、控制命令及全部桌面入口尚待装配 |
 | D2c 生产远程 Backend 与自动确认恢复 | 已实现 | Coordinator 与确认观察器进入桌面生产生命周期，复用固定主机密钥和节点级保存授权；准备/新提交与已有任务观察分开，禁用新任务仍继续同步；每页最多四项并行重查，失败继续扫描后页，prepared 只经过游标不发送或查询，重开后自动找回三类任务原确认；本地共享 JobHost、控制命令和公开运行入口/Remote UI 尚待接通 |
@@ -470,7 +474,7 @@ R5 是 clean `53b8e0ad00ffcf371a0be90ad0670d8519773f83` 的已构建产物，未
 
 当前 client c2 与冻结 runner R7 源 3ca 分开：210 个既有共享输入不变、增加 2 个 priority 输入，本轮 runner 未重建/再次部署。该阶段完整大任务/多 client 公平性仍待实机；foreign 全视图/控制当时尚未实现，文件资源/附件/release/回收、native 窗口/真实关窗/OS keyring、历史库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 及 CI 发布范围保持。K3 付费 R1、旧 query R4、本轮 Mock R7 来源分清，所有历史失败不覆盖；具体证据见[验证记录](remote-execution-validation.md)。
 
-本轮 shared/foreign 统一 JobRead、nullable submission、冻结 ControlTarget 和真实 source anchor 已实现，Query 和七个 Wails 绑定消费者同步替换；本 client 控制历史与他人 confirmed remote 事件严格区分，foreign pending 控制阻止节点移除。51 源码 78581 全仓 Go 测试/vet 通过且摘要不变；FE 完整 738 后追加 1 测试、定向 App60 及三尺寸浏览器 fixture 通过，不声明最新全套 739 实跑。后续 r2/source519 实机 4278 exit1：A 仅 Launch 一次并已接收原 Job d1cce52e，B 只完成旧任务 baseline，未观察到新 foreign Job，控制及 C 查询未执行。原 false 保留；75284 纯 GET 诊断只证明同一原 Job 后来 completed、封口与结果身份正确，不代替共享控制通过。scheduler 本轮刚开始实施，未验收；native=false，历史 c2 进程 PASS 不可替代本次新契约实机。
+本轮 shared/foreign 统一 JobRead、nullable submission、冻结 ControlTarget 和真实 source anchor 已实现，Query 和七个 Wails 绑定消费者同步替换；本 client 控制历史与他人 confirmed remote 事件严格区分，foreign pending 控制阻止节点移除。51 源码 78581 全仓 Go 测试/vet 通过且摘要不变；FE 完整 738 后追加 1 测试、定向 App60 及三尺寸浏览器 fixture 通过，不声明最新全套 739 实跑。后续 r2/source519 实机 4278 exit1：A 仅 Launch 一次并已接收原 Job d1cce52e，B 只完成旧任务 baseline，未观察到新 foreign Job，控制及 C 查询未执行。原 false 保留；75284 纯 GET 诊断只证明同一原 Job 后来 completed、封口与结果身份正确，不代替共享控制通过。后续 scheduler/SQL 已提交 a91f1d8，602 Go/module inputs 全仓 test/vet 前后不变；r3 尚未 final compile/SSH/Launch/control，native=false，历史 c2 进程 PASS 不可替代本次新契约实机。
 
 SQLite 唯一 current 由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`，version1/name0001_protocol_runtime 保持，影响共用 schema 的 desktop/runner；runtime 拒绝旧格式保留数据，无兼容或自动迁移。shared/foreign 已提交 626ccdd；固定 7afb→adc 的三类 fixture 与实际历史 766d1aa…→adc 一致性私有副本已通过当前契约验证，真实切换/恢复仍 pending。副本保全 63runs/252revisions/5482results/4comparisons/8comparison revisions/22comparison runs/61reports/43perf；104 份 reports/perf 仅由离线工具补合法 unmanaged 显式 null。实际 187662336 字节用户源库 SHA 不变，服务器仍原 R7，旧 proof 未改；新 Mock 已增加数据，不把旧 10Job 当当前常数。细节见[当前矩阵](remote-execution-contract-matrix.md)和[验证记录](remote-execution-validation.md)。
 

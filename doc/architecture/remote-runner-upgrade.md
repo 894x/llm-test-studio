@@ -121,3 +121,5 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 shared/foreign 本地 Go 全仓/模块 review、FE 与浏览器 fixture 已通过，真实新 shared 控制、native 及数据切换仍 pending。现有 R7 升级、旧 query 和 c2 进程验收只证明其原 schema 阶段，不代表 adc 新 schema 已部署；当前节点数据已因后续 Mock 增长，旧 10Job 基线不是恒定现状。全部历史失败与其他交付范围保留，证据见[验证记录](remote-execution-validation.md)。
 
 后续 r2/source519 实机共享验收 4278 exit1，观察止于 B 发现阶段，foreign 控制未执行；75284 纯 GET 仅确认原 Job d1cce52e 后来 completed、封口结果与原身份一致，原 false 不变，不是重试或升级通过。clean626 历史转换副本已用生产 DesktopApp 初始化、查询、关闭、重开两轮验证 61reports/43perf/4comparisons，母库与原用户库均未改；仍无真实切换/恢复、native 或 OS keyring 验收，TEMP 工具继续保留。quota/content 的 Linux 集成测试已通过，但内部文件基础尚无 HTTP/附件/release，未新增 schema，也未部署到当前 R7；本轮 scheduler 尚未验收。证据边界见[验证记录](remote-execution-validation.md)。
+
+后续 scheduler/priority SQL 已提交 `a91f1d8e20cfa2c97a2b55536dd57a0518135e18`：独立两分钟 session/五秒 tick、节点四槽和 priority/history 份额、单调 tail/固定高水位 history，以及只读小 snapshot priority 查询均完成本地实现与 Windows 全仓 Go/vet、真实 WSL Linux 回归。schema/wire/FE/DTO/Wails 无变更，不新增转换要求，也不代表重跑 native；CGO0 验证不是 race。当前 R7 未部署本阶段构建，既有 adc 用户库真实切换/恢复仍 pending；r3 工具仅静态草案、尚未 final compile/SSH/Launch/control，原 r2 false 不追认。P1 文件上传在其他工作树实施，尚无完成或 assets 能力证据，其他交付范围保留。
