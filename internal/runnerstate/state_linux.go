@@ -28,6 +28,11 @@ type State struct {
 	path string
 	once sync.Once
 	err  error
+
+	contentMu     sync.Mutex
+	contentClosed bool
+	contentFiles  map[*os.File]struct{}
+	contentSync   func(*os.File) error
 }
 
 // Open holds an advisory runtime lock until Close. The inode is retained after
@@ -285,7 +290,7 @@ func (state *State) UsedBytes(ctx context.Context) (uint64, error) {
 
 func (state *State) Close() error {
 	state.once.Do(func() {
-		state.err = errors.Join(state.lock.Close(), state.root.Close())
+		state.err = errors.Join(state.closeContent(), state.lock.Close(), state.root.Close())
 	})
 	return state.err
 }

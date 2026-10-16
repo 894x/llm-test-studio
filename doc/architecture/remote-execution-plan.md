@@ -287,6 +287,8 @@ JobReceipt 明确返回 contract、job_id、kind、accepted_at、node_installati
 
 文件系统与 SQLite 不跨资源假装原子：下载文件先写临时路径并校验 SHA-256，再原子重命名，最后事务登记。崩溃后可清理未引用临时文件；未确认完整的文件不能标为已下载。Reference 可先记录为 pending，界面区分“元数据已同步”与“证据可离线读取”。
 
+Linux State 已提供内容寻址文件基础：固定小缓冲流式核验长度与 SHA、原子不覆盖发布及目录持久确认，重复上传仍验证输入，可 seek 读取核对文件和私有目录身份；关闭 State 会释放文件并阻止后续发布。损坏文件与失败 partial 保留。目前仅为内部端口，asset 上传、任务持久引用、媒体解析、证据下载、完整 manifest 与 release 尚待接入，不宣告 assets 能力，不改变 Job 或 SQLite 格式。
+
 节点日志初期不自动压缩或删除。显式 release 需要终态与完整 manifest 下载回执，之后保留 job_id、请求摘要和终态墓碑；已释放的 Job 返回其终态及 released 标记，禁止同 ID 再执行。节点磁盘预算不足时拒绝新任务，提示同步与回收，不能删除未下载结果。
 
 当前 Linux runner 的 MaxStorageBytes 与 MinFreeBytes 是接收软配额：启动或运行时超限仅拒绝新提交，仍提供读取与同步，让已接收任务继续执行和归档；空间恢复后无须重启即可接收。监控在超限时仍独立验证数据库可写，实际目录扫描、可用空间查询或持久化故障才隔离服务。当前仍拒绝非空 asset 清单；asset、manifest 和显式 release 接口按后续阶段实现，不因这项软配额调整而视为已交付。
