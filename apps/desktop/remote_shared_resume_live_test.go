@@ -34,16 +34,18 @@ const sharedResumeLiveEnable = "LLM_TEST_LIVE_REMOTE_SHARED_RESUME"
 // This role reopens one retained workspace. It has no launch or control input.
 // Secrets arrive once through bounded anonymous stdin and stay in MemoryStore.
 type sharedResumeLiveInput struct {
-	Endpoint             remotessh.Endpoint `json:"endpoint"`
-	Password             []byte             `json:"password"`
-	NodeToken            []byte             `json:"node_token"`
-	WorkspaceRoot        string             `json:"workspace_root"`
-	ConfigurationID      string             `json:"configuration_id"`
-	JobID                string             `json:"job_id"`
-	ExpectedNodeID       string             `json:"expected_node_id"`
-	ExpectedInstallation string             `json:"expected_installation_id"`
-	ExpectedVersion      string             `json:"expected_version"`
-	ExpectedBuild        string             `json:"expected_build"`
+	Endpoint                 remotessh.Endpoint `json:"endpoint"`
+	Password                 []byte             `json:"password"`
+	NodeToken                []byte             `json:"node_token"`
+	WorkspaceRoot            string             `json:"workspace_root"`
+	ConfigurationID          string             `json:"configuration_id"`
+	JobID                    string             `json:"job_id"`
+	ExpectedNodeID           string             `json:"expected_node_id"`
+	ExpectedInstallation     string             `json:"expected_installation_id"`
+	ExpectedExecutionVersion string             `json:"expected_execution_version"`
+	ExpectedExecutionBuild   string             `json:"expected_execution_build"`
+	ExpectedRunnerVersion    string             `json:"expected_runner_version"`
+	ExpectedRunnerBuild      string             `json:"expected_runner_build"`
 }
 
 func (sharedResumeLiveInput) String() string   { return "sharedResumeLiveInput{redacted}" }
@@ -237,9 +239,9 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	if err != nil || view.Delivery != jobs.SubmissionAccepted || view.Confirmation == nil {
 		t.Fatal("the original accepted job is missing; recovery will not submit a replacement")
 	}
-	expected := liveK3Input{ExpectedNodeID: input.ExpectedNodeID, ExpectedInstallation: input.ExpectedInstallation,
-		ExpectedVersion: input.ExpectedVersion, ExpectedBuild: input.ExpectedBuild}
+	expected := input.executionExpectation()
 	assertLiveK3Executor(t, view, expected)
+	expectedRunner := input.runnerExpectation(view.Executor)
 	validKind := view.Kind == jobcontract.KindPerformance || view.Kind == jobcontract.KindRun
 	if !validKind || view.Location.ConfigurationID != input.ConfigurationID {
 		t.Fatal("the retained job is not the original supported remote submission")
@@ -256,7 +258,14 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 	}
 	readonly := &sharedResumeConnection{runnerConnection: audit, guard: guard}
 	defer readonly.Close()
-	observeSharedResumeOriginal(t, ctx, readonly, view, &result)
+	observeSharedResumeOriginal(
+		t,
+		ctx,
+		readonly,
+		view,
+		expectedRunner,
+		&result,
+	)
 	failure.enter("mirror", deadline)
 	view = waitSharedResumeMirror(t, ctx, app, input.JobID, result)
 	assertLiveK3Executor(t, view, expected)
@@ -287,7 +296,7 @@ func TestLiveRemoteSharedResumeRole(t *testing.T) {
 		failSharedLive(t, ctx, "runner_probe_unavailable")
 	}
 	idle := probe.Active == 0 && probe.Queued == 0 && probe.Pending == 0
-	if sharedRunnerProbeError(probe, view.Executor) != nil || !idle {
+	if sharedRunnerProbeError(probe, expectedRunner) != nil || !idle {
 		failSharedLive(t, ctx, "runner_unhealthy")
 	}
 	result.Healthy, result.Pending = probe.Healthy && probe.Ready, probe.Pending
@@ -308,6 +317,7 @@ func observeSharedResumeOriginal(
 	ctx context.Context,
 	audit runnerConnection,
 	view jobs.JobView,
+	expectedRunner jobs.ExecutorView,
 	result *sharedResumeResult,
 ) {
 	t.Helper()
@@ -330,7 +340,7 @@ func observeSharedResumeOriginal(
 			failSharedLive(t, ctx, "runner_probe_unavailable")
 		}
 		result.Healthy, result.Pending = probe.Ready && probe.Healthy, probe.Pending
-		if sharedRunnerProbeError(probe, view.Executor) != nil {
+		if sharedRunnerProbeError(probe, expectedRunner) != nil {
 			failSharedLive(t, ctx, "runner_unhealthy")
 		}
 		state := string(snapshot.Receipt.Status)
@@ -341,7 +351,7 @@ func observeSharedResumeOriginal(
 		}
 		if jobcontract.Terminal(snapshot.Receipt.Status) {
 			result.OriginalOutcome = snapshot.Receipt.Status
-			settled := sharedRunnerLiveResult{Executor: view.Executor}
+			settled := sharedRunnerLiveResult{Executor: expectedRunner}
 			waitSharedRunnerSettled(t, ctx, audit, time.Now(), &settled)
 			return
 		}
@@ -447,19 +457,37 @@ func decodeSharedResumeInput(reader io.Reader) (sharedResumeLiveInput, error) {
 	validPin := input.Endpoint.Validate() == nil && input.Endpoint.Fingerprint != "" && input.Endpoint.HostKeyType != ""
 	validIdentity := domain.IsUUID(input.ConfigurationID) && domain.IsUUID(input.JobID) &&
 		domain.IsUUID(input.ExpectedNodeID) && domain.IsUUID(input.ExpectedInstallation)
-	validRelease := input.ExpectedVersion != "" && len(input.ExpectedVersion) <= 128 &&
-		strings.TrimSpace(input.ExpectedVersion) == input.ExpectedVersion && jobcontract.IsSHA256(input.ExpectedBuild)
+	validExecution := sharedResumeReleaseValid(input.ExpectedExecutionVersion, input.ExpectedExecutionBuild)
+	validRunner := sharedResumeReleaseValid(input.ExpectedRunnerVersion, input.ExpectedRunnerBuild)
 	validSecret := len(input.Password) > 0 && len(input.Password) <= 8192 &&
 		len(input.NodeToken) >= 32 && len(input.NodeToken) <= 128
 	filesystemRoot := filepath.VolumeName(input.WorkspaceRoot) + string(os.PathSeparator)
 	validRoot := filepath.IsAbs(input.WorkspaceRoot) && input.WorkspaceRoot == filepath.Clean(input.WorkspaceRoot) &&
 		input.WorkspaceRoot != filesystemRoot
-	if !decoded || !validPin || !validIdentity || !validRelease || !validSecret || !validRoot {
+	if !decoded || !validPin || !validIdentity || !validExecution || !validRunner || !validSecret || !validRoot {
 		clear(input.Password)
 		clear(input.NodeToken)
 		return sharedResumeLiveInput{}, jobs.ErrInvalid
 	}
 	return input, nil
+}
+
+func sharedResumeReleaseValid(version, build string) bool {
+	validVersion := version != "" && len(version) <= 128 && strings.TrimSpace(version) == version
+	return validVersion && jobcontract.IsSHA256(build)
+}
+
+func (input sharedResumeLiveInput) executionExpectation() liveK3Input {
+	return liveK3Input{
+		ExpectedNodeID: input.ExpectedNodeID, ExpectedInstallation: input.ExpectedInstallation,
+		ExpectedVersion: input.ExpectedExecutionVersion, ExpectedBuild: input.ExpectedExecutionBuild,
+	}
+}
+
+func (input sharedResumeLiveInput) runnerExpectation(execution jobs.ExecutorView) jobs.ExecutorView {
+	// Current daemon release is independent of the job's frozen admission origin.
+	execution.Version, execution.BuildID = input.ExpectedRunnerVersion, input.ExpectedRunnerBuild
+	return execution
 }
 
 func restoreSharedResumeCredentials(
@@ -531,17 +559,24 @@ func TestSharedResumeInputRequiresOriginalIdentityAndSecrets(t *testing.T) {
 		"password":       base64.StdEncoding.EncodeToString([]byte("synthetic-unit-password")),
 		"node_token":     base64.StdEncoding.EncodeToString(bytes.Repeat([]byte("x"), 32)),
 		"workspace_root": t.TempDir(), "configuration_id": "84000000-0000-4000-8000-000000000001",
-		"job_id":                   "84000000-0000-4000-8000-000000000002",
-		"expected_node_id":         "84000000-0000-4000-8000-000000000003",
-		"expected_installation_id": "84000000-0000-4000-8000-000000000004",
-		"expected_version":         "actual-runner-unit", "expected_build": strings.Repeat("a", 64),
+		"job_id":                     "84000000-0000-4000-8000-000000000002",
+		"expected_node_id":           "84000000-0000-4000-8000-000000000003",
+		"expected_installation_id":   "84000000-0000-4000-8000-000000000004",
+		"expected_execution_version": "original-runner-unit", "expected_execution_build": strings.Repeat("a", 64),
+		"expected_runner_version": "current-runner-unit", "expected_runner_build": strings.Repeat("b", 64),
 	}
 	for _, test := range []struct {
 		name   string
 		change func(map[string]any)
 		valid  bool
 	}{
-		{name: "current original job", valid: true},
+		{name: "original executor differs from current daemon", valid: true},
+		{name: "missing execution version", change: func(value map[string]any) { delete(value, "expected_execution_version") }},
+		{name: "missing execution build", change: func(value map[string]any) { delete(value, "expected_execution_build") }},
+		{name: "missing runner version", change: func(value map[string]any) { delete(value, "expected_runner_version") }},
+		{name: "missing runner build", change: func(value map[string]any) { delete(value, "expected_runner_build") }},
+		{name: "removed version field", change: func(value map[string]any) { value["expected_version"] = "old-shape" }},
+		{name: "removed build field", change: func(value map[string]any) { value["expected_build"] = strings.Repeat("c", 64) }},
 		{name: "missing token", change: func(value map[string]any) { delete(value, "node_token") }},
 		{name: "raw password", change: func(value map[string]any) { value["password"] = "raw-not-base64" }},
 		{name: "short token", change: func(value map[string]any) { value["node_token"] = "eA==" }},
@@ -571,6 +606,57 @@ func TestSharedResumeInputRequiresOriginalIdentityAndSecrets(t *testing.T) {
 	}
 	if _, err := decodeSharedResumeInput(bytes.NewReader(bytes.Repeat([]byte(" "), (64<<10)+1))); err == nil {
 		t.Fatal("oversized private input was accepted")
+	}
+}
+
+func TestSharedResumeKeepsExecutionOriginSeparateFromCurrentDaemon(t *testing.T) {
+	input := sharedResumeLiveInput{
+		ExpectedNodeID:           "84000000-0000-4000-8000-000000000003",
+		ExpectedInstallation:     "84000000-0000-4000-8000-000000000004",
+		ExpectedExecutionVersion: "original-r4", ExpectedExecutionBuild: strings.Repeat("a", 64),
+		ExpectedRunnerVersion: "current-r6", ExpectedRunnerBuild: strings.Repeat("b", 64),
+	}
+	execution := jobs.ExecutorView{
+		NodeID: input.ExpectedNodeID, InstallationID: input.ExpectedInstallation,
+		Version: input.ExpectedExecutionVersion, BuildID: input.ExpectedExecutionBuild,
+		OS: "linux", Arch: "amd64",
+	}
+	view := jobs.JobView{
+		JobID: "84000000-0000-4000-8000-000000000002",
+		Location: jobs.Location{Kind: jobcontract.TargetRemote,
+			ConfigurationID: "84000000-0000-4000-8000-000000000001"},
+		Executor: execution,
+	}
+	assertLiveK3Executor(t, view, input.executionExpectation())
+	runner := input.runnerExpectation(execution)
+	probe := jobcontract.RunnerInfo{
+		Contract: jobcontract.CurrentContract, NodeID: runner.NodeID, NodeInstallationID: runner.InstallationID,
+		RunnerVersion: runner.Version, EngineBuildID: runner.BuildID, OS: runner.OS, Arch: runner.Arch,
+		Ready: true, Healthy: true,
+		Budget: jobcontract.RunnerBudget{
+			MaxActiveJobs: 1, MaxQueuedJobs: 16, MaxConcurrency: 2000,
+			QueueTimeoutNS: int64(time.Minute), ExecutionTimeoutNS: int64(time.Hour),
+		},
+		Capabilities: jobcontract.RunnerCapabilities{
+			JobKinds:  []jobcontract.Kind{jobcontract.KindPerformance},
+			Protocols: []string{string(domain.ProtocolOpenAIChat)}, Features: []string{jobcontract.FeatureExecutionOrigin},
+		},
+	}
+	if sharedRunnerProbeError(probe, runner) != nil {
+		t.Fatal("current daemon was compared against the original execution release")
+	}
+	if sharedRunnerProbeError(probe, execution) == nil {
+		t.Fatal("an original execution release was accepted as the current daemon")
+	}
+	origin := domain.ExecutionOrigin{
+		Kind: "remote", NodeID: execution.NodeID, InstallationID: execution.InstallationID,
+		RunnerVersion: execution.Version, EngineBuildID: execution.BuildID, OS: execution.OS, Arch: execution.Arch,
+	}
+	if !liveK3OriginMatches(&origin, view.Executor) || liveK3OriginMatches(&origin, runner) {
+		t.Fatal("the report admission origin was replaced by the upgraded daemon release")
+	}
+	if view.Executor != execution {
+		t.Fatal("constructing the daemon expectation changed the original job executor")
 	}
 }
 
