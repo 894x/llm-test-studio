@@ -13,6 +13,7 @@
 | 共享与重连 | 两个实际客户端构建双向提交通过；离线原命令持久化，恢复后由原 worker 投递一次并确认。 |
 | 历史与凭据 | 原 13 个任务已完整续传；原生窗口显示 63 条历史运行；真实 Windows OSStore 跨进程保存、读取及测试凭据清理通过。 |
 | 数据恢复 | 固定源独立转换、实际 APPDATA 路径临时切换、当前 Core 读取及原文件精确恢复通过。 |
+| 历史积压调度 | c50c538修复冷历史占满全部同步槽的问题；本地真实HTTP/SQLite测试在3个旧下载仍阻塞时，新own报告可完成导入。未知foreign发现和实SSH完整积压公平性仍待。 |
 
 ## 用户指定渠道最终实测
 
@@ -37,9 +38,9 @@
 
 ## 本地测试产物
 
-当前代码 `02b60cc` 的 Windows 正式构建已通过，Wails CLI/模块固定 2.15.0。EXE：`E:/TEMP/llm-native-final-02b60cc-a697f018883d49c197e32f9ea1c7664d/llm-test-studio.exe`，SHA-256 `94fcf1d3f85d54cd71f174b2572781f56388b82d9503573b15824d2a168ca6a3`。新包只完成构建，没有启动 GUI；此前63条历史的原生观察仍对应旧 `b03e350` 包。
+当前代码 `c50c538` 的 Windows 正式构建已通过，包含历史积压调度修复，Wails CLI/模块固定 2.15.0。EXE：`E:/TEMP/llm-native-final-c50c538-4210d70159224eb4a9d051f6803c526f/llm-test-studio.exe`，SHA-256 `cac5c9363d1dfac5978a9bde042a362f52e4c7f7b9736e653cd788489af52410`。新包只完成构建，没有启动 GUI；此前63条历史的原生观察仍对应旧 `b03e350` 包。
 
-同目录 ZIP：`llm-test-studio-02b60cc-windows-amd64.zip`，SHA-256 `98a257d472dea8ed2810c6f2ecdc40b67e40cfac31280408e2173db50e805410`；唯一 entry 的流式 SHA 与新 EXE 相同。EXE-only ZIP 不包含数据库或凭据，也未推送或发布。
+同目录 ZIP：`llm-test-studio-c50c538-windows-amd64.zip`，SHA-256 `ac960b6adbf7f799d341b9cd9f6c15b9e713629de11b0e5c06eccd3d0f42b91f`；唯一 entry 的流式 SHA 与新 EXE 相同。EXE-only ZIP 不包含数据库或凭据，也未推送或发布；原 `02b60cc` 包继续保留。
 
 已验证的隔离历史 profile 仍保留在旧目录 `E:/TEMP/llm-native-b03e350-cdf42c78e4af456ea8157b98be64080a/` 的 `appdata` 与 `localappdata`。直接使用默认用户目录启动仍会遇到已明确列出的旧格式限制，测试包不代表用户库已永久升级。
 

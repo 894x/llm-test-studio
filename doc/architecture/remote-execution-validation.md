@@ -1099,3 +1099,33 @@ v3 coordinator SHA `edb3e064d51a19b5404a93f7a0f82ee845f2e6588aa044069c45ec688143
 产物根 `E:/TEMP/llm-native-final-02b60cc-a697f018883d49c197e32f9ea1c7664d/`：EXE27106816字节、SHA `94fcf1d3f85d54cd71f174b2572781f56388b82d9503573b15824d2a168ca6a3`；exe-only ZIP9538456字节、SHA `98a257d472dea8ed2810c6f2ecdc40b67e40cfac31280408e2173db50e805410`，唯一entry的stream SHA核对为同一EXE。`final-native-package.safe.json` SHA `1b8c4ae97fa5eb0145e8b1b9fc0374d38ea5adc4b4c0d9f1b062b098e81fc11b`。
 
 `Launch-verified-test-profile.cmd` SHA `dbdbbc7493b4bf0c45c9b9355f79d72958b23d648a1d5113df0f8d135db827c4`，只引用原 `b03e350` 已验证隔离profile的两个绝对路径，启动目标为本新EXE。准备期间没有读取或复制数据库/凭据，脚本没有执行。真正用户APPDATA保持原格式，仍需显式升级后才能作为默认路径使用；当前源码未增加runtime迁移或历史格式fallback。新包没有公开发布，原生已配置节点点击/三尺寸/主题以及此前G07未实测范围仍明确保留。
+
+## 2026-10-17：原 slow 提交的只读诊断与平台前提
+
+原 R4 Job `7e83fe38-7ec1-43ac-ba61-320955caaa88` 的冻结 Spec 为835字节、assets0；按原工具固定合成凭据长度推导当前 Submission 为986字节，这不是捕获的实发 wire。原数据库只读前后SHA均为 `cb17bde55d8465a8c78fa024d8ef13932b4674a03ce45b17865e13b85fd8587a`。这些事实不支持“大提交体传输耗时”解释。
+
+产品 Submit 的30秒由建连、探测、pending CAS、POST及确认共享，POST没有独占30秒；原工具120秒则由本地、新节点、原节点三个角色及读取报告共用。原 Launch 正常返回固定ID的源码路径表明已通过前置检查及pending CAS并进入Backend.Submit，但不能证明写出了任何POST字节。最初传输/HTTP/确认错误没有保存，后续只读not_found覆盖末次观察，无法区分未写出、拒绝、确认丢失或本地确认失败。观察child的EOF不是远端HTTP的EOF证明；延长120秒或30秒均不是已证修复。未联网、重提原Job或改判原失败。安全诊断 `C:/Users/894/AppData/Local/Temp/llm-r4-egress-fixture-abd6821d/original-slow-confirmation-diagnosis-3f796b4.md`，SHA `c97e3a8abdc251ec38bf0fe12b249ad8fc10d51283ce7e34c6fe8cb0a61f86b0`。
+
+当前Windows缓存定向测试实际exit0（包0.520秒），writer预算与目录身份子项通过，`.json`、`.partial`、`.lock`三项symlink仍明确SKIP；当前进程没有SeCreateSymbolicLinkPrivilege，开发模式开关值不存在。没有改变系统权限或将SKIP当通过。
+
+两台现有物理节点的安装操作均已完成。只断开一个新SSH再重开Manager只能证明普通重连，不能补齐S06/S08首次安装中断；产品固定安装路径不支持同节点独立namespace，不能删除身份或修改本地Stage造场景。完整首次安装断线验收还需第三个干净且明确授权的真实节点。仅TEMP只读方案 `C:/Users/894/AppData/Local/Temp/llm-physical-install-disconnect-plan-20261017.md`（SHA `9199c5efcf1f67e93d28a2ef943b34cbfbad921a334f5fd6fff1cde5744c1e0e`）已形成，没有执行升级、停止现有服务、主机断网或重建VM。
+
+## 2026-10-17：冷历史阻塞 priority 的复现与修复
+
+实际发现冷tail的4个完整Pass能占满每节点4个inflight和全局4槽，后来的priority查询及同步都无法进入；仅延长等待不能解决占槽。旧生产代码的真实HTTP回归exit1/EOF：4个历史报告响应同时held，新own在服务器已completed，但4个默认tick后仍无本地mirror（测试24.65秒）。这个RED记录保留。
+
+修复提交 `c50c538` 仅改2个生产文件及4份测试：非priority完整同步先取全局3个后台配额，再取既有总4槽，不能持总槽等待后台；每节点tail/history合计最多3个，未启动的第4项不消费索引。priority查询与完整同步可使用保留容量；priority仍最多2个，history仍先调度且最多1个。默认5秒tick、2分钟session和总4槽不改，没有API、DDL或持久格式变更。该总限不包含ListJobs metadata，不能说所有HTTP请求最多4个。
+
+真实Watcher、Core、HTTP、SQLite、cache的两个最终定向场景实际exit0/EOF、合计21.084秒：64个foreign历史中1个报告held时，已导入5个历史、59个仍待，新own约5.03秒导入；4个历史报告具备held条件的饱和场景实际只启动3个，第4个候选HTTP请求0，新own约4.97秒导入，64个旧报告仍待。旧held响应直到最后Close从未释放；16字节partial不发布、不标imported，观察方没有Submit/Command重发，连接open/close均1/1、body与handler/worker全部join。两样本各65个免费Mock请求，没有SSH或付费提供商调用；这些时延不是通用SLA。
+
+冻结与执行卡 `C:/Users/894/AppData/Local/Temp/llm-g07-priority-reservation-d6381481-1b63-4f62-96be-9e4c95a4e7a5.safe.json`，SHA `10cc525239c5e772637f23f862adaa38a8e0a8c5417e75d0d8fd284059efa597`；父级逐项核6/6源码匹配。混合global/background配额、node索引与取消等待者unit通过，remotesync全包1.069秒、两相关包vet通过；父级完整runnerhttp（89.549秒）及desktop（69.755秒）回归实际exit0。独立6文件最终审查通过，未重复已通过的付费或FE测试。
+
+priority集合还包含持久已知的foreign任务，本次HTTP新任务样本是own。未知foreign仍只能经tail发现，未消费的冷历史页仍可能推迟它；后续事实与文档调度分离目前只有只读设计，未实施。不能把这次已证修复记成全部G07或实SSH历史积压公平性通过。
+
+## 2026-10-17：包含调度修复的 Windows 试用包
+
+提交 `c50c538f830af1525dc05c35c7c9e15634d98040` 在上述回归后完成单次正式构建，actual exit0、Wails16.959秒，CLI/module2.15.0，AppVersion为 `remote-execution-c50c538`。动态核2022个tracked文件，只有父级3docs预期变化，其他代码/依赖无漂移，6份bindings字节相同；初始仅允许两docs的守卫失败收据保留，核实status为父级新增记录后明确列为第三个预期变化，没有重建或忽略源代码漂移。
+
+产物根 `E:/TEMP/llm-native-final-c50c538-4210d70159224eb4a9d051f6803c526f/`：EXE27108352字节、SHA `cac5c9363d1dfac5978a9bde042a362f52e4c7f7b9736e653cd788489af52410`；exe-only ZIP9538612字节、SHA `ac960b6adbf7f799d341b9cd9f6c15b9e713629de11b0e5c06eccd3d0f42b91f`，唯一entry流式SHA与EXE相同。`final-native-package.safe.json` SHA `c2abe27c0d61a15d0e57d99c67b214d88d5a1bab21cb56abd04c975e343b5386`，父级另核EXE/ZIP/launcher/manifest四项摘要匹配。
+
+同目录launcher仍为SHA `dbdbbc7493b4bf0c45c9b9355f79d72958b23d648a1d5113df0f8d135db827c4`，仅引用既有隔离profile；没有启动GUI、读取或复制profile/凭据、切换真实APPDATA，原02b包保持。构建不替代原生界面验收，也未推送或发布。
