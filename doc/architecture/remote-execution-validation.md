@@ -993,3 +993,31 @@ R5免费Mock首次尝试在CreatePlan前失败：临时工具给新Entry预填ID
 独立静态安全审查及Windows自有TEMP重命名探针通过后，父级执行固定路径/摘要的临时cutover工具，实际exit0、35.05秒。原文件先保留为同卷唯一兄弟文件，当前格式字节副本进入实际APPDATA数据库路径；当前DesktopApp Core读出63条Run及上限100条报告目录，正常reader对旧格式明确拒绝。工具关闭全部SQLite读者后保留当前文件并恢复原文件；异常路径也有独立恢复程序，未知摘要、sidecar或运行中客户端均拒绝覆盖。
 
 父级日志 `E:/TEMP/llm-actual-profile-r13-3f94991a108c4a4fa84bd5d7de1d696d/parent-cutover.safe.log` SHA `a26d16f9278be3b597663113fa5ac6d7dfa020bc4093108455d34cd296f576e4`；只读复核回执 `r13-parent-verified.safe.json` SHA `6059be54caea47a296154d30d8b27e4af7e476b22e1155cce4229a71a1a5b449`。实际原库和独立original.backup.db均保持SHA `cbc5337e54c00bd581d00ad7db8a097d6400f1f9b12338f950b1900860ce4eb5`；当前格式文件另存保留，SHA `6366bd911116554d9593eaa2c335eeac1133ccc6e9c09400d907e206ddb5a8be`。此项证明实际路径后台读取和原字节恢复，用户实际库最终仍为原文件；没有永久切换、原生GUI实际路径验收、运行时迁移或历史解码fallback，临时工具及恢复材料继续保留。
+
+## 2026-10-17：保活、在途恢复、断线命令及全入口收尾
+
+R3首次自有ARM64 VM限速工具实际exit1，恢复成功；只读systemd日志证明已在5次启动后触发限速，但本机Result保持exit-code，旧工具等待start-limit-hit导致超时。原false保留。新工具绑定本次boot/journal游标，约34.02秒观察到5次Starting、重启计数1..5和明确限速消息，再观察6秒无新启动；PID0/计数/执行起点稳定，最后恢复相同程序及node/installation、enabled/active/TCP。实际exit0，无产品unit或预算变更。证据根 `E:/TEMP/codex-llm-arm64-r3-final-5ee5e46b484944c081ed15b592623aa6/`，`r3-start-limit-independent-verification.safe.json` SHA `ae82d8caa3365fbe4c8485dca75219539c82d233e97ded896b5be492a6988ffa`。
+
+同一自有完整ARM64系统中，R8仅提交一个免费held请求，随后强杀固定unit的main进程并重启。PID2427→2541，node/installation/arm64程序SHA保持；原Job `ea379fe7-10f3-45cb-a7c2-11b0a1cd0ef5` 为failed/runner_interrupted，结果封存为interrupted、settled=true/Pending0，10秒观察Mock计数保持1→1。7张相关业务表的既有行不变、服务恢复，Go当前typed/canonical/seal检查后实际exit0；无重投或Provider请求。相同工具根的 `r8-inflight-independent-verification.safe.json` SHA `28ec790e0e16321f984aaf726e18080925286630a1867e72ab05fd8c16c061f5`。观察完成后自有QEMU正常退出0，controller/launcher进程均结束，磁盘和恢复材料保留；没有重启用户服务器。
+
+R10在R8实际节点对B专用transport断连，唯一ControlJob保存原Command `83ac9edb-025e-4ca6-aa91-af5033964efa` 为pending/unreachable、wire0；恢复后约4.272秒由现有worker投递同一命令一次，delivery revision2→3，Job `5190e578-65aa-47fe-a3b9-fb3229d6dff5`、Target、CreatedAt及期望revision保持。A/B/query均实际exit0，B退出后重开的query取得同一confirmed命令和sealed报告；Mock1/Provider0，runner完整进程事实不变，cleanup完成。安全复核 `C:/Users/894/AppData/Local/Temp/llm-r10-reconnect-1a4b29d-01ce1f9374f84175a54e303531d2a927/R10-evidence-bb5cea5b79174304883f56cfac7a8959.safe.json` SHA `5a5d893669a54ee0622f5ee02d247d58aff18fd9c38951ab0ba54862c5e6f849`。
+
+R6 Comparison、预热＋爬坡、预热＋容量阶梯三个实际免费Job均通过。各A在首请求held时实际退出0/EOF，再release后由B和新query读回相同输出；9个进程均exit0/EOF，Mock最终计数分别2、1+3+2=6、1+2+2=5，active0/拒绝0/ACK/EOF/transport/cleanup全真，runner PID2728603/start/hash保持。listener统一硬上限11，任务预算分别2/11/5；Comparison两个child并行，不声称后续child在A退出后才启动。原ramp工具将合法checkpoint Origin=null误拒绝的false保留；原Job只读诊断证实当前sealed和StatisticalArchive合法，不追认原false。修正仅在新TEMP断言中允许当前可空值，并加强terminal、projection、归档全值核对；没有产品或持久格式变更。合并证据 `E:/TEMP/llm-r6-managed-orchestration-fixed-output-152a5ce71cdc4fcdb98dc934473b3aa2/r6-final-evidence.safe.json` SHA `33efe1871688aaf1920a6e1a54756b5ff48d61e2d2a1a3ecc201ef536a670c8c`。
+
+## 2026-10-17：最终 R16 真实 K3 与最小性能已执行
+
+全部上述免费任务结束后，固定当前产品Go代码的C4工具在R8实际节点运行指定渠道、kimi-k3：Chat84和Responses230保持原Case/断言、兼容并发4，随后性能3请求/并发1。只有3次Launch/Submit，没有自动重投或控制、安装、升级及本地Provider调用；实际child43964及父coordinator均exit0。三个Job均completed，报告下载及离线重开、shutdown确认通过；workflow_complete=true与compatibility_passed=false分别记录。
+
+| 项目 | 真实判定 | Job / Report |
+| --- | --- | --- |
+| Chat | 65/84通过，19失败，0未判定 | `4b3220a8-8479-4968-9b33-e379855bcc46` / `e0c92267-cb95-4a00-90d5-439869a9cf05` |
+| Responses | 103/230通过，127失败，0未判定 | `da311f94-4c1f-4103-9382-9174e6a0c1b3` / `e8eee1db-a67f-4352-8c16-de7ec6a20cb4` |
+| 最小性能 | 3/3成功、峰值并发1、0拒绝 | `acee913e-070c-4eb5-aa80-78fcda1d9077` / `df3ec54e-aeba-49b7-8455-35d0aadbb4d4` |
+
+性能记录平均TTFT1555.507ms、平均端到端2294.233ms、generation TPS49.967，总时长6884.510ms，三个样本均有TTFT；它仅是最小负载验证。实际报告来源均为node0493a2f6…/installation dc4aa5d3…、R8/version remote-execution-20261016-r8/build67f21005…fc77/linux-amd64；客户端编译源1a4b29d与后续文档提交的生产代码相同。冻结EXE SHA `cab15f24b1016e485a07b0031f420131d3c7cc308bab053cf02817d834bb074d`，coordinator SHA `9b8da2d6b64bc5eb74c934adf66802aa6fc8f6d36170871faff55cf6987e0a81`。
+
+证据根 `E:/TEMP/llm-final-r16-k3-c4-bae3eb2590a64e69ba9860f2bc5238fb/`，`run-current-r8/acceptance-final.safe.json` SHA `56fa564c9bdb6e9d0f52f3846d41ba0fa28b4bb983346beb2e8b5523e0a1c97e`。146个失败均保留原判定；安全汇总不足以把所有失败统一归因于HTTP、decoder或提供商。此前R1实测及所有原false记录不改判。
+
+R4的两次受控出口工具或预检失败仍未取得三方source配对证明，不能认定具体防火墙原因。已配置节点的原生点击/三尺寸/主题、实际用户库永久切换及云端CI发布仍未执行；当前状态、可用测试产物和数据边界汇总见[当前交付状态](remote-execution-status.md)。
+
+最终只读交叉核验 `final-r16-independent-verification.safe.json` 位于上述R16工具根，SHA `16d985dbe49a2510913f3f7db045a7407bc6853633cf55205ffd5700d443fca0`；冻结源码、EXE/coordinator、空stderr、实际child exit0、3个原ID及报告来源、146个assertion_failed、性能3/c1、离线重开和关闭均一致。该核验只读取安全回执和固定源码，没有另行访问DB、SSH或提供商，也不改判兼容性失败。
