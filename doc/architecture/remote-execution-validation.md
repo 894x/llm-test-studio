@@ -518,4 +518,56 @@ query-only 恢复会话 `68469` 自然退出 1。原 receipt 在 2586ms 可读�
 
 远端 stage 为 `/var/tmp/llm-test-settle-diagnostic-5ff093e197f9f0a5b4c0c58407e02ad5/`。原始内层日志经会话 `20577` 成功取回到 `%TEMP%/runports-4b21bce229d0febdb96974b4.safe.jsonl`，12107 字节、SHA-256 `cbce692a38e5fddb9af1f53b4be5853b7e7e47e8237c65c2f9b5903f3a22e5b4`。外层独立观察摘要为 `%TEMP%/llm-remote-run-ports-baseline-20261016.safe.json`，SHA-256 `4a67d25e155018a75fe5fbf7a56e0004042bb97709aa3fe04a46aa3153f382f5`。后者是 `parent_observed` 摘要，不是原始 raw JSON；raw JSONL 只包含 inner clone 和端口记录，不能混称原始日志已经含全部源库与进程观察。
 
-已安装 modernc SQLite v1.35.0 的 ReadOnly transaction 使用 plain BEGIN/deferred；不能仅凭 DSN 的 immediate 选项把实际只读事务描述成 immediate。本轮明确瓶颈是全局 max-connection=1。HTTP 独立只读 view 与 WAL 下的读写连接隔离正在实现，尚未提交、部署或通过实机验收；执行稳定性和最终实机验收仍未完成，原 K3/R3/query 失败历史及整体剩余范围保持。
+已安装 modernc SQLite v1.35.0 的 ReadOnly transaction 使用 plain BEGIN/deferred；不能仅凭 DSN 的 immediate 选项把实际只读事务描述成 immediate。本轮明确瓶颈是全局 max-connection=1。HTTP 独立只读 view 与 WAL 下的读写连接隔离已提交为 `81d7b93bcddb946e12d8ab42a8da6b76652643fa`，提交时尚未部署或执行同源实机对照；确定性测试、构建和后来完成的隔离对照分别见后续记录。执行稳定性和最终实机验收仍未完成，原 K3/R3/query 失败历史及整体剩余范围保持。
+
+## 2026-10-16：HTTP 只读隔离已提交，R4 构建完成但未部署
+
+提交 `81d7b93bcddb946e12d8ab42a8da6b76652643fa`（`fix(runner): isolate history reads from execution storage`）包含 6 个文件、666 行增加/8 行删除。HTTP 全部 7 项 ReadRepository 端口，包括 `ownJob` 的 owner 核对，使用独立 mode=ro、query_only、deferred、单连接 WAL view；Core、Host 和 health 保留原 RW 单连接。两者共用 openRepository 的唯一当前 schema 和 integrity 校验，没有通过历史格式或降低校验换取并发。
+
+HTTP 关闭准入与 handler 的 Add 登记使用同一锁，取消 API 后执行既有 10s Shutdown、Close，等待 Serve 与实际 handler 退出，再关闭 Host/Core/read view/RW。10s 是 Shutdown 阶段的既有期限，不是整个关闭 workflow 的硬上限。
+
+确定性测试在持有只读 snapshot 的门闩期间验证 RW GetRun、Starting Update 和 health 成功；已持有的读 snapshot 保留原 revision，后续新读见到新 revision。另覆盖只读路径 replacement、FK、busy、WAL 拒绝时不改数据、未知 DDL 拒绝和取消关闭。review 发现的测试 fixture 路径问题已按平台纠正：Windows 使用合法的 `#`、`%` 字符，Linux 使用真实 `?` 路径验证 URI。最新 Windows focused 独立运行 1.551s、实现者运行 1.618s 通过，WSL focused 9 个测试和 runnerprocess 全部 8 个测试通过，相关 vet 通过。
+
+最终全仓 `go test ./...` 通过，desktop 59.472s、jobhost 24.483s、SQLite 96.799s；全仓 vet 通过。独立 review 无 blocking，聚合结果摘要为 `f706ed09011c91c69662d0baa1750d05d6fe6e721f43fdd08d075c44a98ec777`。这些本地/WSL 证据证明隔离边界，不代替弱节点同矩阵实测。
+
+R4 构建前后源码均为 clean `81d7b93bcddb946e12d8ab42a8da6b76652643fa`，产物目录 `%TEMP%/llm-runner-remote-e2e-20261016-r4/`。runner 使用真实入口 `cmd/llm-test-runner`、CGO=0、trimpath、`-s -w` 和 `main.version=remote-execution-20261016-r4`；manifest source_commit 为该提交、source_dirty=false，manifest SHA-256 `bcb766e51b25cb423a6d6ae16ea55c017e25b75c5182e88261a5b2ed9a08c345`。
+
+| 产物 | 字节数 | SHA-256 | 已执行边界 |
+| --- | ---: | --- | --- |
+| linux/amd64 runner | 13656226 | `1c4c2bab329e2349dee6c0f87002662f9b20acfc1dcb64518eff546fcffc1d62` | 仅 WSL version 返回 r4 及相同摘要 |
+| linux/arm64 runner | 12714146 | `bba03cecd185bb752a35d4763deccea53b346bec252dc79b800e4d29b2a83e10` | 仅 ELF/摘要核对，未实机运行 |
+| 原生 R4 preview EXE | 26621440 | `0e20b12f51c21311bd15f113193143c67a9cb053b3ee08a9a66a0153396ccaf1` | Wails v2.15.0、pnpm build 和指定构建通过，未启动 |
+| 统一 acceptance test EXE | 36766208 | `558f6bc6141669fbf2216de30e4ff84745fda21d27ffac870f5833c9d4940374` | 构建产物，不作为新实机对照证据 |
+
+原生 EXE 位于上述产物目录的副本及 `apps/desktop/build/bin/llm-test-studio-remote-acceptance-r4.exe`；test EXE 为 `%TEMP%/llm-remote-81d7b93-acceptance.test.exe`。完整构建证据为产物目录内 `r4-build-proof.safe.json`，SHA-256 `441d025f444c4f37bc890bf6bbc23c8ba2cd7ace8313b75bd0fa0c27a8312c9d`。go.mod、go.sum、锁文件与 bindings 合计 9 个输入文件原字节未变。
+
+截至 R4 构建记录时，真实服务器仍为 R3、PID 212013、原 `7cc292b7f2c9ffb6728d0035d68deb8d72fc58243b3905566d558b6b06e9d25a` 可执行文件；新增分池 readerStats 的同一 16 场景对照当时仅在 TEMP 准备、未 SSH，后续实际对照结果独立记录于下一节。正式升级功能当时在独立 managed worktree `C:/Users/894/.codex/worktrees/remote-upgrade-flow/llm-test`、分支 `codex/remote-upgrade-flow`（基线 `51a218d`）按 API、core、snapshot、SSH、UI 五路实现，尚未合入或验收；后续整合状态另记。旧失败证据不清理、不改判，整体剩余范围保持。
+
+## 2026-10-16：同源 read view 实机隔离对照通过，R4 升级进行中
+
+会话 `55904` 使用精确源码 `81d7b93bcddb946e12d8ab42a8da6b76652643fa` archive 在同一服务器完成 read view 对照，return=0、260639ms，18 条记录中的 16 个端口场景 error_class 全部为 ok，没有 deadline 或 TxDone。Activate、Execute 和提供商调用均为 0；这次运行是私有 clone 诊断工具，不是正式 runner 替换。
+
+全部 8 条四 reader 场景均实际记录 readerQueued=3、readerInUse=1、reader_errors=0；执行关键 writer 的 queued、in-use、pool WaitCount 和 WaitTotal 全部为 0。父端程序逐项校验了 16 个端口场景及双池条件，确认读并发存在且执行连接没有被历史 reader 排队占用。
+
+| 端口 | 无 reader、常规预算 | 四 reader、常规预算 | 四 reader、60s 外层诊断对照 |
+| --- | --- | --- | --- |
+| Starting Update | 2398ms，成功，BeginTx 0ms | 1654ms，成功，BeginTx 0ms | 1810ms，成功 |
+| CheckWritable | 0ms，成功 | 0ms，成功 | 0ms，成功 |
+| GetRun | 655ms，成功 | 700ms，成功 | 665ms，成功 |
+| AdoptQueued | 756ms，成功 | 774ms，成功 | 784ms，成功，内部 GetRun 的 5s 预算也通过 |
+
+原单池基线四 reader 下 Starting Update 5021ms/BeginTx 4424ms 失败、GetRun 5000ms 失败，AdoptQueued 即使外层 60s 仍遇到内部 GetRun 5s 失败。新对照证明该单池竞争机制已被隔离修复，不改写原 f24 失败，也不唯一归因原失败。60s 仍只是 control，生产单次 5s/health 4s 期限没有改变。
+
+源库 typed business SHA `4844878864421964db5126084b11aa83cd6286348b9c52d2d6368660206d0632`、原 R3 PID 212013、start tick 23384984、NRestarts=1 和 exe SHA `7cc292b7f2c9ffb6728d0035d68deb8d72fc58243b3905566d558b6b06e9d25a` 前后均不变。远端 stage 为 `/var/tmp/llm-test-settle-diagnostic-664f5f00eddc3f11ba49884f665121ac/`，诊断 binary SHA-256 `26985a7fd430e0b667d3e798546e616955e9ea384220699bbcd3e14eb3ca8a6e`，dispatcher SHA-256 `dce6169118c8f43acaaaf79404c7e627cf4525a4b831eb3a321760825b955e8b`；不能将其摘要当成正在运行的 runner 摘要。
+
+会话 `42559` 成功取回原字节日志 `%TEMP%/readview-runports-07df66aa528ef895f4646c47.safe.jsonl`，14039 字节、SHA-256 `591a7279c952fef0026d7a4614244f795738836425bc1e4294007bc0882f1f75`。父端外层 observed 摘要为 `%TEMP%/llm-remote-run-ports-readview-20261016.safe.json`，SHA-256 `559bb41ff7837508eceff08bbdc49c53088f9cfaa6cb84255a12cdb43bc15d3c`；原始 inner clone/ports 日志与外层源库/进程观察继续区分保存。
+
+operator 会话 `79091` 在上述对照完成时已开始 R3 → R4，当时尚未取得完成确认、新 PID 或 operation ID；后续完成事实见下一节。实际升级后的免费 Mock 大任务与关闭观察仍须验收；不重复付费 K3，不覆盖原 paid/failed/query 证据，也不缩减正式升级功能、共享 foreign 管理、文件资源、最终 native、第二节点与 arm64 等未完成范围。
+
+## 2026-10-16：R4 运维升级完成，正式产品升级流程已整合
+
+运维会话 `79091` 退出 0，operation `0e6927a1-e600-4a1c-903b-a91ff12d89a3` 为 completed，备份保留于 `/var/backups/llm-test-runner/0e6927a1-e600-4a1c-903b-a91ff12d89a3/`。独立只读 probe `31788` 退出 0：PID 220541、NRestarts=0、systemd active/running，实际 exe SHA `1c4c2bab329e2349dee6c0f87002662f9b20acfc1dcb64518eff546fcffc1d62`，ready/healthy=true、active/queued/pending=0、maintenance 为空，node/install 身份保持。journal 为 completed；备份 quick_check=ok、FK 错误 0、当前 7afb schema marker、业务 2312 行。后续独立 verifier 的 typed 比对通过，具体证据如下；新免费 settlement 会话 `10334` 已启动，尚未观测结果，不提前记为通过。
+
+正式产品升级功能由独立 worktree 的 `d18e44e` 整合为当前主 worktree 提交 `0d4dd840090590b3970a7528e67f940414ec62ff`，47 个文件、7045 行增加/39 行删除。整合前独立 worktree 的最新全仓 Go 测试和 vet 通过，前端 726 测试、tsc、build、6 个浏览器 fixture 及 review 通过；fixture 不等于 native 验收。整合后主 worktree 的全仓 Go 测试完整通过，desktop 59.420s、jobhost 24.756s、SQLite 95.873s，全仓 vet 通过。该正式流程尚未完成真实 SSH/systemd 验收，运维 R4 升级不能替代它。schema、Job 和节点配置格式未变；必填 `node.upgrade` 对象或显式 null 是唯一当前 DTO 的 breaking 变化，四项升级 API 的当前契约见[远程 runner 升级设计](remote-runner-upgrade.md)。既有失败历史和其他未完成验收范围保持。
+
+只读 verifier 会话 `73600` 退出 0，current → backup → current 的真正 typed business SHA 均为 `4844878864421964db5126084b11aa83cd6286348b9c52d2d6368660206d0632`；该次比对时八个 Job 全部 settled，计数为 case 1091、event 1175、rev 14、runs 4、reports 4、perf 4。schema marker 为 7afb，56 个有 SQL 对象的 DDL SHA-256 为 `496a3b23dcdea695dd3ab90b54d081cc2470aa7e7975d53c97ca698164e73ce2`，current 使用 WAL、backup 使用 DELETE，二者 quick_check=ok、FK0。进程前后 PID 220541、start tick 23877733、NRestarts=0、实际 R4 exe SHA 和 UID 998 保持，control/Launch/提供商调用均为 0。原字节证据 `%TEMP%/r4-readonly-verification-606718e14d565f04f071b3f0.safe.jsonl` 为 2438 字节、SHA-256 `c5e20ba3cda0b4786fdb212b9afd7bc42f8bd0a09cbd3a9e8393772831fb3e7e`，verifier 工具 SHA-256 `80fc4c68630670ce682c9b795797ea974d5829e7b51be5379201347bdcc53c4c`。这证明本次程序切换保留业务与身份，不将仍无结果的免费任务或产品升级流程验收转为通过。
