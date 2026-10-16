@@ -741,7 +741,7 @@ B 的空 workspace 经产品 watcher 导入初始12Job及全部 pending 文档�
 
 随后 before-cancel 文件尚不存在即 wrapper 失败，commandID 空、cancel/control0，无 queryC，terminal/sealed/reopen 均未验证。清理前 A/B poll 均 null，父记录 terminate_requested，实际两进程 exit1、readerEOFtrue；cleanup_completed=false、mock_close_completed=false，原 mock_process_after:null。before-cleanup.safe.json SHA `d0518a2f374381f0d4fbc454180d24603ac33a1555ed57d7d20b360adae89db0`，after-cleanup.safe.json SHA `f794ba1df87c8ef91387468c1bb3af542a1ddff8daf7e3c92efd38b05a410165`。仅有 before 的原 R7 PID244293/starttick24859722/NRestarts0，不能称优雅退出或 runner after 状态保持已证。
 
-离线工具另复现一条相符缺陷：status cap2 的 channel.settimeout 影响同 channel 后台 reader，闲置2秒触发 socket.timeout/reader_failed；第二次 status 抛另一模块 AcceptanceError 后被 generic wrapper 接住，死 reader 又不能消费 cleanup ACK。原 raw error 未保存，不能追认为 r3 唯一根因，也不修改产品来适配坏验收。r4 仅 TEMP 准备中、未实跑；P1 仍在 secondary 未整合/部署，assetsfalse，Linux 一条旧 provision 测试仍在核 baseline，不宣称本轮全 Linux 通过。共享控制、终态/重开、完整公平性/大任务、文件资源、native/OS keyring、真实历史库切换/恢复、故障重启、第二节点/arm64、CI 发布及全部旧失败边界继续保留。
+离线工具另复现一条相符缺陷：status cap2 的 channel.settimeout 影响同 channel 后台 reader，闲置2秒触发 socket.timeout/reader_failed；第二次 status 抛另一模块 AcceptanceError 后被 generic wrapper 接住，死 reader 又不能消费 cleanup ACK。原 raw error 未保存，不能追认为 r3 唯一根因，也不修改产品来适配坏验收。该阶段记录时 r4 尚在 TEMP 准备、P1 尚未整合，Linux旧provision测试仍在核baseline；后续P1整合、root回归及r4实际失败见下文，不覆盖原r3记录。共享控制、终态/重开、完整公平性/大任务、文件资源、native/OS keyring、真实历史库切换/恢复、故障重启、第二节点/arm64、CI 发布及全部旧失败边界继续保留。
 
 ## 2026-10-16：P1 内容上传已提交，Job assets 仍关闭
 
@@ -753,6 +753,36 @@ P1 的28文件最终raw aggregate为 `e30981adca0fd1dcea8f8b1ea9200ff78089ff00e6
 
 Windows全仓test/vet在初冻结ba0789通过（177698ms）；最后仅SSH http.go/http_test.go的closed-owner body-close补丁，完整client/SSH/vet通过，其余26路径不变。Linux七个affected包初次SSH nonroot失败、其余通过；exact c962旧archive在UID1000同样失败，command_count2/cleanup_pendingtrue，fake probe UID0与实际fixture UID1000不符。最终同版SSH在root UID0完整包通过，最终Linux vet0；未放宽fixture或生产权限，旧nonroot失败证据保留，不宣称任意Linux环境全通过。后续父端主a91+P1全仓Go/vet session86996已真实exit0，整合验证通过。
 
-父级对main4512709执行 `go test ./... -count=1 -timeout=15m` 与 `go vet ./...` 均exit0，总177.900s，Go1.26.6 windows/amd64、CGO0；616个Go/module输入前后逐一SHA未变，inputs-before/after清单均为 `b551c70cabc2723eac1d8bb1c375804808de63212f8f2b6bd67d545360ca0967`。desktop60.900s、runnerhttp45.511s、jobhost28.250s、remotesync1.010s、SQLite168.229s、SSH3.055s。`%TEMP%/llm-content-shared-integration-4512709-c0324b8e2be54b2098a3a8e622eac7d8/verification.safe.json` SHA `99dcad229c5418bd736e6e76fc5746c1ae84ab8960e79198933fb6be01a5d686`，go-test.log SHA `1c9c8394d04a032f3cc3ef8bce6975f824ec9809a623ac4e4a1f4db5d37ec920`，vet日志为空。精确P1的28paths及modules Git blobs在secondary1204270与main4512709完全一致；整合源码包含预期a91 watcher差异，不能按整个目录等同P1清单。该PASS仍是Windows整合检查，不改变r4未实跑、native/外部SSH/provider/部署未验收边界。
+父级对main4512709执行 `go test ./... -count=1 -timeout=15m` 与 `go vet ./...` 均exit0，总177.900s，Go1.26.6 windows/amd64、CGO0；616个Go/module输入前后逐一SHA未变，inputs-before/after清单均为 `b551c70cabc2723eac1d8bb1c375804808de63212f8f2b6bd67d545360ca0967`。desktop60.900s、runnerhttp45.511s、jobhost28.250s、remotesync1.010s、SQLite168.229s、SSH3.055s。`%TEMP%/llm-content-shared-integration-4512709-c0324b8e2be54b2098a3a8e622eac7d8/verification.safe.json` SHA `99dcad229c5418bd736e6e76fc5746c1ae84ab8960e79198933fb6be01a5d686`，go-test.log SHA `1c9c8394d04a032f3cc3ef8bce6975f824ec9809a623ac4e4a1f4db5d37ec920`，vet日志为空。精确P1的28paths及modules Git blobs在secondary1204270与main4512709完全一致；整合源码包含预期a91 watcher差异，不能按整个目录等同P1清单。该PASS仍是Windows整合检查，不替代后续r4实测，也不证明native/外部SSH/provider/部署验收。
 
-真实独立Linux进程PID722/exe SHA `69ed288de7f2242834411fc6a4f7d4f804191e7346f4d6ebb8aebcb6a7341c67` 经TCP上传131072字节，31.041710264s越过旧30秒，同时普通JSON正常；重复/重启、坏body保持健康、disk fault隔离、阻塞upload SIGTERM join及维护互斥通过。没有实际1 GiB传输、31秒跨SSH全链、race（CGO不可用）、外部SSH/provider、nativeUI、真实用户DB或部署验收；既有opt-in31秒report/SSH测试未启用。r4工具将基于451 exact archive覆盖新SSH ownership，尚未实跑；原r3 false和全部既有未完成范围保留。
+真实独立Linux进程PID722/exe SHA `69ed288de7f2242834411fc6a4f7d4f804191e7346f4d6ebb8aebcb6a7341c67` 经TCP上传131072字节，31.041710264s越过旧30秒，同时普通JSON正常；重复/重启、坏body保持健康、disk fault隔离、阻塞upload SIGTERM join及维护互斥通过。没有实际1 GiB传输、31秒跨SSH全链、race（CGO不可用）、外部SSH/provider、nativeUI、真实用户DB或部署验收；既有opt-in31秒report/SSH测试未启用。后续451 exact archive的r4实际结果见下一节，原r3 false和全部既有未完成范围保留。
+
+## 2026-10-16：共享 r4 冷导入失败，保留副本公开/typed 查询通过
+
+基于 exact451 的 r4/session37618 exit1，止于 B 对13个历史Job的 cold_import，既定400秒窗口在400022ms超时；没有创建A、Mock或新Job，Launch/Submit/control均未执行。原 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/r4/run-btagzgbe/acceptance.safe.json` 保持 passed=false，SHA `c517e5231b6427be6a45256aaca464d02b6a9f2cf66d0bf22521b6c9909b4879`，没有重跑、补投或延长窗口。
+
+只读诊断目录为同根 `postfailure-r4-cold-btagzgbe/`。原 B 数据库99893248字节，原库复制前后、执行后及副本SHA均为 `58c88c6fa96f65bbe2317e239d5ee589c824e192474021110962e828bc66e93a`，无WAL/SHM/journal。13个镜像齐全，11completed、1failed，另 `d62994b6-f054-4a7d-a14e-0e167dc1023e` 仍为本地running/rev3/seq400。20个已观测文档引用中18个imported=true；`d1cce52e-c390-4c1c-98e8-587a695cceee` 的报告 `8d438085-461b-4677-bf5f-c62b282c2820` 有 performance_result 与 report 两条imported=false。d629的0/0仅表示本地尚未观测引用，不证明服务端最终没有文档。
+
+一次隔离只读工具总13.006244s，真实Desktop GetJobs一次5.250806s返回13条/HasMore=false，再各13次GetJob和ReadJob，27次API全部成功，当前read/spec/execution校验及列表→单项→typed历史Origin稳定。只有3条精确匹配当前R7执行身份，其余历史版本差异合法；未启用ProductionInitializer、watcher、凭据恢复或网络，也未调用Pass、下载、提交、控制、SSH或provider。它排除保留数据必然getter/typed报错的解释，不代表已导完历史、原400秒过程正常或服务端当前状态已重新验证。
+
+exact451 的 Pass 上限为20页×200 events=4000，seq400不是正常单Pass上限；文档导入在该Job事件循环之后，性能archive先依赖sealed result导入，单Job文档错误只保存session firstError，不直接取消其它Job。冷基线不要求所有历史镜像terminal，但要求全部本地已知引用imported；两条pending已经足以使条件不成立。保留的findings.md SHA `e9ee2604d98ca708d94c3793bdaf8c4ddabfbc26c09667b7a194393c71e5c544`、diagnosis.safe.json SHA `8aa54663b4abe10962e00cbbbe1561de9c5ad46bd77baa6e88798c71efd9c3bf`、query/timings.safe.json SHA `479de118c2a190438ca2f5083ec124aa8f2567baaec03ceeb7a2ef1e356cf249`。独立审查后只运行这一轮副本查询，原失败与全部旧证据未改；不能由此确定原400秒唯一卡点或d629为何停在seq400。
+
+## 2026-10-16：SSH response 尾部 EOF 对照与修复整合通过
+
+本地使用精确git archive对照：P1 `45127094355757cc8ffb4d6c170271ff8ea05088` 与旧 `a91f1d8e20cfa2c97a2b55536dd57a0518135e18`，测试只连接进程内固定loopback fake SSH/HTTP。451 的response末次Read可返回数据和io.EOF，随后自动call.close取消内部context并关闭底层；CopyN已完整成功，current downloadReport额外的一字节EOF探针却访问已关闭body而报ErrIntegrity。直接CopyN对照1、32768、1048593字节在451均RED、a91均GREEN，caller context保持nil；进一步同一当前下载测试覆盖RunReport/PerformanceArchive×offset0/17/last-byte六组合，451全ErrIntegrity RED、a91全GREEN，不改客户端严格校验。
+
+三文件修复只给已观察到的纯io.EOF保留透明EOF；自动cancel/close/owner WaitGroup回收保持，显式Close与非EOF断流不能转为成功，元数据锁不跨底层Read或Close。TestRunnerResponse*覆盖两种EOF、关闭前后、断流及阻塞Read并发Close；TestRunnerHTTPCurrentReportDownloadsPreserveTailEOF走实际public DownloadReport/DownloadPerformanceArchive，六请求复用一个SSH channel、无自动重试；截断仍ErrConnection。plain io.ReadAll与通用直接gzip默认Multistream(true)尾探针通过，后者仅为reader透明性回归：生产readJSON先完整wireReadAll，再从内存用Multistream(false)解码，不能把直接gzip候选写成d629事件同步的已证根因。
+
+secondary `689d58e` 的三文件已整合 main `868351809964a495d8758dbb44ae3d255304e8aa`。冻结raw aggregate `24c339f365605a0f65e8238d02f08eca138db5edc03c92646d3d06a8f2c4f2ea`；`%TEMP%/llm-p1-response-diagnostic-20261016/source-response-final.safe.json` SHA `dcac898341387961996ae52cecfb515b39d05d791b1331228d330c8799f4bd93`，verification-response-final.safe.json SHA `0569cfebcf6b022b1dc1df1ab8ba2e6ff24da90411f5418d6a8651bab74c65dd`。原451/a91 archive、RED/GREEN原日志、overlay和Linux二进制均保留；独立code-reviewer只读复核三文件无blocking。修复后Windows完整client0.785s/SSH3.553s及vet通过，Go1.26.6 CGO0交叉编译后WSL Ubuntu24.04验证UID0，再完整SSH/client两包各exit0；未运行race，不将root fixture通过泛化为全部Linux环境。
+
+父级在clean868上执行 `go test ./... -count=1 -timeout=15m` 和 `go vet ./...` 均0，总171.0433091s；617个Go/module输入前后清单SHA同为 `1a31f300ba30224a04949fdca25b3c6f96a349c4ecce01ed92a3881fd70d7bc6`，结束HEAD/status仍clean868。`%TEMP%/llm-shared-eof-integration-8683518-b426809355a54a87b92c91157b14f527/verification.safe.json` SHA `f2cfffb289f7b2a95c0d61b420be60d189cebc12b8e4d859a9f3b4a6e975792a`，go-test.raw.log SHA `8f3dd6c2274a8bef69ff2f36b99f397b6fe36b65bb292054482eccace750f182`，vet日志为空。无wire/schema/DTO/期限/重试或历史格式支持变更，无新增转换要求，也没有部署新runner。
+
+该对照确认严格EOF尾探针的可复现缺陷，不追认原r4为PASS，也不证明全部pending或d629seq400由它导致。原构建与离线阶段的零外部调用记录仅属于各自阶段，后续r5已实际执行，结果另列下节。共享控制、终态/重开和其他实机范围仍待新证据；assets仍false、非空Job assets仍422，既有native/keyring、真实用户库切换/恢复及全部历史失败边界保持。
+
+## 2026-10-16：共享 r5 冷基线再次超时，原失败保留
+
+r5 exact868/session82376已终态exit1，目录为 `%TEMP%/llm-shared-foreign-acceptance-1e9984b8-833d-4673-8161-013d4a2d7dd9/r5/run-vvyq5fzo/`。既定400秒cold baseline再次超时，尚未进入A/Mock/新Job/control；B34176由父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true。原acceptance.safe.json仍passed=false/phase_or_global_observation_expired，SHA `f86758d7bbc4248ab96177f43f803bbdfe25969548e6b646c246f403b612a9bd`；BDB56012800字节，不为本次文档更新打开或改动数据库。
+
+cold_import事件含初始13个Job ID；summary.initial_server_job_ids=[]仅因未到baseline_ready，不能将该空数组写成服务端无历史任务。没有新Launch/Submit/control或provider请求，不重投原Job、不延长窗口、不覆盖r3/r4或本次false。EOF修复的可复现对照和本地/全仓PASS保持，但它不等于已解决全部cold/seq400问题；本节不预判r5的pending文档、getter状态或具体卡点，后续只读诊断须另有实际证据。
+
+P2a显式本地文件binding/lease已由独立工作树提交 `1467e19f3f5841e7e8c0259cf1e0066c00b87c4b`（49文件），尚未合主，fileLaunch仍禁；P3/P4仅设计，P2–P5文件闭环、assets启用及既有数据切换、恢复仍待验。

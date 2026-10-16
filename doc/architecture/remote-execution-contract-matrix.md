@@ -159,6 +159,7 @@ RunSnapshot、Plan、Case、输入与 PerformanceProfile 的子字段仍以当�
 | S06 | SSH provision 仅接受已核验平台的产物，固定命令及 stdin 请求；输出有界并校验操作身份；网络确认不明可重查操作记录 | partial：TestProvisionOutputHandlesFragmentsAndRejectsUntrustedControlData、TestProvisionStopsBeforeExecutionWhenSFTPLacksDurableUpload、真实 TestLiveProvisionSharedRunner 通过；19.5 MB 产物经 512 KiB 缓冲和 16 请求上限上传与回读，实例安装确认可重查；物理节点安装期间断网后的全流程重连仍待验证 |
 | S07 | 配对只读 root 私有身份/令牌并核对摘要；实时元数据必须匹配已配对安装；Close 释放 lease 与连接池，不取消已接收任务 | partial：TestSharedNodePairingValidatesFreshIdentityAndReleasesPools 连续 8 次连接/关闭、换身份、秘密格式化与外部目的地拒绝通过；物理双连接共用节点、兼容产物不覆盖且不重启通过；桌面 OS Store 尚待接入 |
 | S08 | 创建远端暂存目录前先持久保存严格路径与操作归属，确认丢失仍可查询原意图；只清理 root 私有已知内容，未知文件和权限异常原样保留 | partial：bootstrap ownership 持久化、确认丢失与重开回归及 root WSL 私有文件/未知内容保护通过；真实首次上传超时目录已核验并清理，无递归删除；完整安装中断重连仍待实机验证 |
+| S09 | HTTP response 观察到纯 io.EOF 后自动关闭底层、取消请求并回收 owner，后续尾部探针仍返回 EOF；显式 Close 与非 EOF 断流不变为成功，不持元数据锁跨实际 I/O | partial：TestRunnerResponse* 与 TestRunnerHTTPCurrentReportDownloadsPreserveTailEOF 覆盖两种 EOF、显式/并发关闭、Run/PerformanceArchive 全量和 Range、截断不重试及池复用；exact451 六项 ErrIntegrity RED、a91 六项 GREEN，修复后 Windows client/SSH、WSL root 两包及 main868 全仓 Go/vet 通过。这里只确认尾部探针缺陷，不将 r4 冷失败或 d629 seq400 唯一归因于它；r5 已执行，400秒冷基线仍超时失败 |
 
 SFTP API 依据 [pkg/sftp v1.13.11 文档](https://pkg.go.dev/github.com/pkg/sftp@v1.13.11)，SSH 通道实现核对当前引入的 x/crypto v0.54.0 源码，查阅日期 2026-10-16。以上是传输模块验证，不表示自动部署、systemd 或真实提供商 e2e 已验收。
 
@@ -191,9 +192,9 @@ clean626 历史转换副本已通过两轮生产 DesktopApp 初始化/查询/关
 
 priority 唯一只读端口为 `ListRemoteSyncPriorityIDs`，替换旧方法且无 alias：纳入 own pending/accepted 且无 mirror、own/foreign 非 terminal 或 known refs 未 imported；排除 own prepared，终态全部 known refs imported 后退出 priority，不称 settled，迟到报告仍靠 history。单 statement 严格校验顶层 UUID 顺序、当前 Snapshot/Receipt、小身份及双源冲突，Go 在 limit+1 个 eligible 后停止；SQL 仍可能 scan/sort 整个节点 scope 的小 header/snapshot，工作非 O(limit)，不宣称全仓 constant memory。完整 spec 不传 Go，实际同步的完整校验不弱化；WAL 双仓库 snapshot 一致性回归与真实 B 私有 clone 零 priority 查询通过，未启动原 B watcher。schema/wire 不变，无新增转换要求，既有 adc 用户库真实切换/恢复仍 pending。
 
-后续 r3/session27088 exit1：两个独立 OS client 一次 Launch/Submit、paid0，实际 daemon 仍 R7；B 空 workspace 的生产 watcher 已完成冷导入和新 Job50620b5e 的 public/typed/SQL foreign 查询。整轮止于 wrapper_operation_failed，commandID 空，control0，未验证终态/封口/重开；清理未完成且原 mock_process_after:null，不能声称优雅关闭或 runner after 状态已证。离线工具复现同 channel status timeout 影响后台 reader 的相符缺陷，但原 raw error 未保存，不能追认为唯一根因；r4 仅 TEMP 准备中，完整证据见[验证记录](remote-execution-validation.md)。
+后续 r3/session27088 exit1：两个独立 OS client 一次 Launch/Submit、paid0，实际 daemon 仍 R7；B 空 workspace 的生产 watcher 已完成冷导入和新 Job50620b5e 的 public/typed/SQL foreign 查询。整轮止于 wrapper_operation_failed，commandID 空，control0，未验证终态/封口/重开；清理未完成且原 mock_process_after:null，不能声称优雅关闭或 runner after 状态已证。离线工具复现同 channel status timeout 影响后台 reader 的相符缺陷，但原 raw error 未保存，不能追认为唯一根因。后续 r4 已实际执行并在 B13 冷导入400.022s失败，未创建 A/Mock/Job/control；原 false 保留，完整证据见[验证记录](remote-execution-validation.md)。
 
-## P1 内容上传当前边界（4512709，非 Job assets）
+## P1 内容上传当前边界（4512709，EOF 修复8683518，非 Job assets）
 
 新增可选 feature `content_upload`，仍使用当前 contract1 和既有 Features，不新增必填 RunnerInfo 字段或要求同 build。`jobcontract.ContentIdentity` 替换原 runnerstate 类型，无 alias。下列为独立内容 PUT 的本地/WSL 证据，不把 U01–U13 的有界 P1 覆盖当成媒体执行完成；细分矩阵 `%TEMP%/llm-content-http-p1-c962-20261016/p1-boundary-matrix.safe.json` SHA `bcd77697dff1ac9725de8d62fec4671251588289ecef2ef889b70b7974bc6344`。
 
@@ -207,4 +208,8 @@ priority 唯一只读端口为 `ListRemoteSyncPriorityIDs`，替换旧方法且�
 | U11–U12 | receipt精确绑定contract/node/install/hash/size，JSON≤1024B；2xx坏receipt仍拒绝；丢确认只允许显式同内容完整重传，不新建Job | TestAssetReceiptRequiresEveryCurrentFieldAndNoAliases、TestUploadContentStrictlyBindsReceiptAndRejectsUntrustedResponses、lost-ack完整重传测试通过 |
 | U13 | serviceMu原子互斥：活跃upload令pause409 upload_in_progress/retryable/noApply，pause先赢则upload423；installer仅严格当前SafeError busy码映射ErrBusy | upload/maintenance生命周期竞争与TestUpgradeMaintenanceClassifiesUploadBusyWithoutConfirmingPause通过，无旧409 fallback |
 
-P1 已提交 main4512709、未部署R7，主a91+P1全仓 session86996 已test/vet exit0，616 Go/module输入前后逐一不变；最终proof记录初冻结Windows全仓与最后两文件client/SSH修复的不同边界。Linux nonroot SSH失败在exact c962旧基线同样复现，最终root完整SSH及其余affected包/vet通过，无fixture或生产权限放宽，不称所有Linux环境均通过。assets仍false、非空Job assets仍422/0Execute；HTTP asset GET、Job binding/refDB、附件、manifest、release及P2–P5仍未实施，schema/DTO/FE/Wails无变更，无新增数据升级。详见[验证记录](remote-execution-validation.md)。
+P1 已提交 main4512709、未部署R7，主a91+P1全仓 session86996 已test/vet exit0，616 Go/module输入前后逐一不变；最终proof记录初冻结Windows全仓与最后两文件client/SSH修复的不同边界。Linux nonroot SSH失败在exact c962旧基线同样复现，最终root完整SSH及其余affected包/vet通过，无fixture或生产权限放宽，不称所有Linux环境均通过。assets仍false、非空Job assets仍422/0Execute；HTTP asset GET、Job binding/refDB、附件、manifest、release及P2–P5闭环尚未交付，schema/DTO/FE/Wails无变更，无新增数据升级。详见[验证记录](remote-execution-validation.md)。
+
+后续 EOF 修复已从 secondary689d58e 整合 main `868351809964a495d8758dbb44ae3d255304e8aa`，不改下载 SHA/长度/额外 EOF 校验、期限、重试或 wire/schema。父级 clean868 全仓 Go test/vet 均0，171.043s，617个Go/module输入前后摘要相同。通用直接 gzip reader 回归与生产 readJSON 的先 wireReadAll、再 Multistream(false) 分开，不据前者推断真实 JSON 同步根因。
+
+r4 保留副本13个镜像齐全，但 d1cce52e 的 performance_result/report 两引用仍 pending，d629 仍 running/rev3/seq400；27次公开/typed离线查询13.006244s全绿且原DB/副本SHA不变，不等于历史文档已全部导入。后续r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时，未进入A/Mock/新Job/control；B34176父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true，BDB56012800字节。初始13个ID存在于cold_import事件，summary空数组不表示服务端没有历史Job；原r5 false保留，不预判其pending/getter或seq400原因。P2a已在独立树提交1467e19f（49文件）、尚未合主，fileLaunch仍禁，P3/P4仅设计，其他文件闭环与既有待验范围保持。
