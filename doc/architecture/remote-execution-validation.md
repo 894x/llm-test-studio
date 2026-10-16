@@ -785,4 +785,16 @@ r5 exact868/session82376已终态exit1，目录为 `%TEMP%/llm-shared-foreign-ac
 
 cold_import事件含初始13个Job ID；summary.initial_server_job_ids=[]仅因未到baseline_ready，不能将该空数组写成服务端无历史任务。没有新Launch/Submit/control或provider请求，不重投原Job、不延长窗口、不覆盖r3/r4或本次false。EOF修复的可复现对照和本地/全仓PASS保持，但它不等于已解决全部cold/seq400问题；本节不预判r5的pending文档、getter状态或具体卡点，后续只读诊断须另有实际证据。
 
-P2a显式本地文件binding/lease已由独立工作树提交 `1467e19f3f5841e7e8c0259cf1e0066c00b87c4b`（49文件），尚未合主，fileLaunch仍禁；P3/P4仅设计，P2–P5文件闭环、assets启用及既有数据切换、恢复仍待验。
+r5终态记录时，P2a显式本地文件binding/lease仅由独立工作树提交1467e19f（49文件），尚未合主；后续主整合见下一节，fileLaunch仍禁。
+
+后续只读SQL核对目录为同根 `postfailure-r5-cold-vvyq5fzo/`：初始13个ID仅有11个镜像，缺d62994b6-f054-4a7d-a14e-0e167dc1023e与e00123b8-ad42-4753-9a1f-ac5e50e442a2；唯一已观测pending为b2856f8f-fb78-43f7-9109-ee56fde233b0的report4e301591-5724-49a0-a047-c818f4e7170e。r4未导入的d1cce52e两条performance_result/report引用，本轮均imported=true，不能沿用r4缺口解释r5。原DB与副本复制前后、SQL后SHA均为 `abb3011c6ab2f82882113fc68be4a8df0ddb288a5c0f9af2152ceaa86009b4ee`，无sidecar、无写入；facts.safe.json SHA `41689258e9a62f615f50aa08a0482c662c162eb97d9c9122ebad862a4814420c`，fact_table.md SHA `25d0b992855d7b330fbafa560a206c81dd21375135bc505537215e49b97dfca8`，completion.safe.json保留原验收false。该轮未调用getter/API、watcher、Pass、SSH或provider，仅描述副本差异，不确定EOF/调度/SQLite/seq400根因。watcher源调查另行进行，纯GET工具仅准备未执行，无r6、新Job或paid调用。
+
+## 2026-10-16：P2a 主树整合与完整本地验证通过，文件执行仍禁止
+
+P2a独立1467e19f的49个Git blobs及source-freeze.git_blob已逐项核对并整合为clean main `cbef51855ab10843058baa7fec8517ef3edfb0a8`；modules与现有Case/Suite JSON未变。当前Input/SuiteInput/FileBinding严格解码，文件声明仅image_data_url、PNG/JPEG子集、1..1 MiB；FileBinding只有逻辑asset_ref，不允许本地路径。Input.Clone/CloneSuiteInputs隔离可变成员；Go `testspec.ValidateInputs`返回ResolvedInputs，分开JSONValues与Files，已更新当前调用者而非保留旧map包装。当前版本扫描只命中旧schema1拒绝负例，没有新增版本选择或迁移路径。
+
+两个当前Wails绑定为CreateLocalFileSelection(document)与ReleaseLocalFileSelection(selectionID)。前者接严格data_base64/media_type DTO，selection只在桌面会话内拥有PNG/JPEG字节快照：单份1..1 MiB、最多8份/总8 MiB、DTO最多1400000字节、宽高各至4096/总像素至16777216；borrow读者独立定位，Release禁止新借用、最后读者关闭后释放，owner Close收回读者和内存。临时selection不进入draft或Launch，这些能力尚不组成Job资产或请求编码。
+
+主树核对Wails CLI v2.15.0后generate成功，生成上述两个绑定；完整FE49个test files/757 tests、测试tsc、lint与build均exit0。lint仍有既有2条set-state-in-effect warnings，build仍有大chunk提示，不写成无warnings。父级全仓 `go test ./... -count=1 -timeout=15m` 与 `go vet ./...` 在session23680真实exit0，总213.2087342s，HEAD/status前后保持clean cbef。630个Go/module加15个当前embed共645输入前后清单SHA同为 `3808c8ca5d6fffe71ace33de660e3ab5a956b335b07cac57e7311e45f7df870b`。
+
+完整证据根 `%TEMP%/llm-p2a-main-integration-cbef518-efc40a0bc2844165ab0210afda77b58e/`，integration-verification.safe.json SHA `b0ee6cf359d61640685ad8433e332e7bebfafd2f17520eaac12422614cb890c3`，frontend-verification.safe.json及wails/test/tsc/lint/build原日志保留。没有schema、actualDB或转换变更，也未验证native窗口/chooser、browser、物理节点或provider；fileLaunch仍在持久化/调用provider前拒绝。Stage、执行encoding/capture/wire metadata、KindPerformance.native_case、P3真实admission/pins/resolver与P4 manifest/release未实现；P3首片types/ports和16表SQL基础在别树实施，尚不能写为完成或给出current checksum。原r5仍false，全部历史失败和既有切换/恢复边界保持。

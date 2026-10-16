@@ -212,4 +212,12 @@ P1 已提交 main4512709、未部署R7，主a91+P1全仓 session86996 已test/ve
 
 后续 EOF 修复已从 secondary689d58e 整合 main `868351809964a495d8758dbb44ae3d255304e8aa`，不改下载 SHA/长度/额外 EOF 校验、期限、重试或 wire/schema。父级 clean868 全仓 Go test/vet 均0，171.043s，617个Go/module输入前后摘要相同。通用直接 gzip reader 回归与生产 readJSON 的先 wireReadAll、再 Multistream(false) 分开，不据前者推断真实 JSON 同步根因。
 
-r4 保留副本13个镜像齐全，但 d1cce52e 的 performance_result/report 两引用仍 pending，d629 仍 running/rev3/seq400；27次公开/typed离线查询13.006244s全绿且原DB/副本SHA不变，不等于历史文档已全部导入。后续r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时，未进入A/Mock/新Job/control；B34176父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true，BDB56012800字节。初始13个ID存在于cold_import事件，summary空数组不表示服务端没有历史Job；原r5 false保留，不预判其pending/getter或seq400原因。P2a已在独立树提交1467e19f（49文件）、尚未合主，fileLaunch仍禁，P3/P4仅设计，其他文件闭环与既有待验范围保持。
+r4 保留副本13个镜像齐全，但 d1cce52e 的 performance_result/report 两引用仍 pending，d629 仍 running/rev3/seq400；27次公开/typed离线查询13.006244s全绿且原DB/副本SHA不变，不等于历史文档已全部导入。后续r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时，未进入A/Mock/新Job/control；B34176父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true，BDB56012800字节。初始13个ID存在于cold_import事件，summary空数组不表示服务端没有历史Job；原r5 false保留，不预判其pending/getter或seq400原因。r5终态记录时P2a仅在独立树提交1467e19f，后续主整合见下一节；其他文件闭环与既有待验范围保持。
+
+## P2a 当前文件声明与桌面 selection（cbef518，禁止 fileLaunch）
+
+P2a的49文件已由独立1467e19f整合main cbef518。当前 `Input.type=file` 必须带 `file:{encoding,media_types,max_bytes}`：encoding仅声明image_data_url，media_types为不重复的PNG/JPEG非空子集，max_bytes为1..1 MiB；禁止default/enum/minimum/maximum/unit。FileBinding仅含逻辑asset_ref，不含本地路径、selection或实际内容；Input/SuiteInput/FileBinding严格拒绝未知、重复、错大小写、null字段，Clone隔离可变成员，Suite仍用显式Case绑定。
+
+`testspec.ValidateInputs` 的Go返回值已替换为 `ResolvedInputs{JSONValues,Files}`，受影响调用者已更新，无旧map包装或兼容路径。两个当前Wails绑定为 `CreateLocalFileSelection(document)`、`ReleaseLocalFileSelection(selectionID)`；只接严格data_base64/media_type DTO，不接路径。selection单份1..1 MiB、最多8份/合计8 MiB、DTO最多1400000字节，PNG/JPEG配置维度各不超过4096、像素不超过16777216；会话owner管理独立borrow reader及释放，临时selection不进入draft或Launch。
+
+主树Wails 2.15.0生成、FE757测试/tsc/lint/build和全仓Go/vet已通过；详细输入锁定、既有warnings及证据只列于[验证记录](remote-execution-validation.md)。这不包含文件Job执行、Stage/请求编码/capture/wire metadata或KindPerformance.native_case；无admitted resolver时仍拒绝fileLaunch，assets=false。P3真实admission/pins/resolver与P4 manifest/release未交付；别树P3 types/ports和16表SQL基础正在实施，尚无完成或current checksum结论。P2a无schema/actualDB/转换变更，也无native/browser/physical/provider验收。

@@ -291,7 +291,7 @@ JobReceipt 明确返回 contract、job_id、kind、accepted_at、node_installati
 
 文件系统与 SQLite 不跨资源假装原子：下载文件先写临时路径并校验 SHA-256，再原子重命名，最后事务登记。崩溃后可清理未引用临时文件；未确认完整的文件不能标为已下载。Reference 可先记录为 pending，界面区分“元数据已同步”与“证据可离线读取”。
 
-Linux State 已提供内容寻址文件基础，P1 已接通受鉴权的内容 PUT：固定小缓冲流式核验长度与 SHA、原子不覆盖发布及目录持久确认，重复上传仍完整验证输入，严格 receipt 绑定 contract/node/install/hash/size。唯一 `jobcontract.ContentIdentity` 替换原 `runnerstate.ContentIdentity`，无 alias；新增可选 feature `content_upload` 在既有 Features 内，不加必填 RunnerInfo 字段或要求 client/runner 同 build。损坏文件与失败 partial 保留；当前 assets=false，非空 Job assets 仍422/0Execute，尚无 HTTP asset GET、任务绑定/引用 DB、媒体解析、附件、完整 manifest 或 release，P2–P5 未实施，不改变 Job、SQLite、DTO/FE/Wails 格式。
+Linux State 已提供内容寻址文件基础，P1 已接通受鉴权的内容 PUT：固定小缓冲流式核验长度与 SHA、原子不覆盖发布及目录持久确认，重复上传仍完整验证输入，严格 receipt 绑定 contract/node/install/hash/size。唯一 `jobcontract.ContentIdentity` 替换原 `runnerstate.ContentIdentity`，无 alias；新增可选 feature `content_upload` 在既有 Features 内，不加必填 RunnerInfo 字段或要求 client/runner 同 build。损坏文件与失败 partial 保留；当前 assets=false，非空 Job assets 仍422/0Execute，尚无 HTTP asset GET、任务绑定/引用 DB、媒体解析、附件、完整 manifest 或 release，P2–P5文件执行闭环未交付。P1本身不改Job、SQLite、DTO/FE/Wails格式；后续P2a当前声明/selection和两个绑定已另行合主，见实施记录。
 
 上传与 Job 共用20 GiB/最少512 MiB可用空间 reservation，最多4个上传槽、16384个保留完整文件/partial，活跃 reservation 保守计费，无自动 GC/delete。upload 总期限10分钟、bulk header2分钟，调用方更早取消仍生效；管理 JSON30秒及原 pool25秒/2分钟策略不扩大。SSH 最多4个 endpoint owner，每个固定 management/bulk 两种 role、总 transports≤8，所有出口释放源，关闭取消并 join。serviceMu 内上传与维护竞争：活跃上传使 pause 返回409 upload_in_progress/retryable且不 apply；pause 先赢则新上传423。installer 仅将严格当前 SafeError 的 busy 码映射 ErrBusy，无旧409 fallback。
 
@@ -490,7 +490,11 @@ r4 原 B 数据保留13个镜像、20个已观测文档引用，其中 d1cce52e 
 
 独立 local SSH/HTTP 对照确认了 P1 response 生命周期缺陷：末次读返回数据与EOF后自动回收底层，current DownloadReport/DownloadPerformanceArchive 的额外EOF探针随后误报ErrIntegrity。exact451 的全量、offset17与last-byte六组合全部RED，a91同测试全GREEN；secondary689d58e 的透明 sticky EOF 修复已整合 main `868351809964a495d8758dbb44ae3d255304e8aa`，保留自动cancel/close/join、显式Close与断流错误，不改完整性校验、期限或重试。Windows client/SSH和WSL root两包、独立review通过；父级 clean868 全仓Go/vet均0，171.043s，617输入摘要前后相同。通用直接gzip回归独立于生产先wireReadAll再Multistream(false)，不将此缺陷追认为d629或全部冷导入失败的唯一原因。
 
-r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时，没有A/Mock/新Job/control；B34176父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true，BDB56012800字节。cold_import事件列有初始13个ID，summary.initial_server_job_ids为空只因未到baseline_ready，不能据此称历史为空。EOF本地缺陷已证并修复，不等于全部cold/seq400问题已解决，不追认r3/r4，也不预判r5 pending/getter原因。P2a显式本地文件binding/lease已在独立树提交 `1467e19f3f5841e7e8c0259cf1e0066c00b87c4b`（49文件），尚未合主且禁止fileLaunch；P3/P4仅设计，P2–P5文件闭环、assets启用、部署与既有数据切换/恢复等范围均待实际交付。对应原始证据和安全摘要见[验证记录](remote-execution-validation.md)。
+r5 exact868/session82376/run-vvyq5fzo已exit1，400秒cold baseline再次超时，没有A/Mock/新Job/control；B34176父级清理后实际exit1，进程elapsed400075ms、cleanup_completed=true，BDB56012800字节。cold_import事件列有初始13个ID，summary.initial_server_job_ids为空只因未到baseline_ready，不能据此称历史为空。EOF本地缺陷已证并修复，不等于全部cold/seq400问题已解决，不追认r3/r4，也不预判r5 pending/getter原因。r5终态记录时P2a仅在独立树提交1467e19f（49文件），随后主整合与当前边界见下文；对应原始证据和安全摘要见[验证记录](remote-execution-validation.md)。
+
+P2a已整合main cbef518：严格当前Input/SuiteInput/FileBinding及深Clone，文件声明只允许image_data_url、PNG/JPEG和1..1 MiB；`testspec.ValidateInputs`已改为返回分离JSONValues/Files的ResolvedInputs，所有当前调用者一起替换。两个Wails绑定CreateLocalFileSelection/ReleaseLocalFileSelection拥有会话内有界selection及borrow/release，不接本地路径，不把selection写入draft或Launch；每份至1 MiB、8份/共8 MiB，DTO与图像尺寸另有限额，详见[当前矩阵](remote-execution-contract-matrix.md)。
+
+main cbef518已通过Wails CLI2.15.0核对与生成、完整FE757测试及tsc/lint/build、clean主树全仓Go/vet；原有2条lint warnings与chunk提示保留，完整摘要集中见[验证记录](remote-execution-validation.md)。本阶段没有schema/actualDB/转换变更或native/browser/physical/provider证据，fileLaunch仍禁；Stage、执行编码/capture/wire metadata、KindPerformance.native_case及P3真实admission/pins/resolver、P4 manifest/release未完成。P3首片types/ports与16表SQL基础正在别树实施，不据此声明已交付或确定新checksum；原r5及全部旧失败不改。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 
