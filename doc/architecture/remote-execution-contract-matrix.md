@@ -183,6 +183,6 @@ TestJSONGzipPreservesCurrentTypedStateAndFixedErrors、TestReadJSONRejectsInvali
 
 ## 共享任务当前存储与执行边界（2026-10-16）
 
-当前 SQLite 仍为 version1/name `0001_protocol_runtime`，checksum 已从 `7afb439aaccf28d19e7e7381e2ef5611e013f062676e3706d44b3313d52c0708` 原地替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新增 per-command `job_control_targets`及 outbox 复合 FK；schemaObjects 按不含 migration metadata 的口径 55→56。desktop 与 runner 共用该 schema；旧 checksum 正常运行时明确拒绝、数据保留，不双读、自动迁移或按缺字段降级。已知 7afb 源及更早 766 源的转换均属独立 TEMP 工具任务，未执行切换，详见[验证记录](remote-execution-validation.md)。
+当前 SQLite 仍为 version1/name `0001_protocol_runtime`，checksum 已从 `7afb439aaccf28d19e7e7381e2ef5611e013f062676e3706d44b3313d52c0708` 原地替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新增 per-command `job_control_targets`及 outbox 复合 FK；schemaObjects 按不含 migration metadata 的口径 55→56。desktop 与 runner 共用该 schema；旧 checksum 正常运行时明确拒绝、数据保留，不双读、自动迁移或按缺字段降级。626ccdd clean 源的独立 TEMP 工具已通过三类 7afb fixture 和更早 766 历史源一致性私有副本的直接转换验收；9 controls、104 份归档和历史业务关系均经当前 typed/getter/FK/quick_check 验证。原用户库未写入，真实切换与恢复仍 pending；工具不是运行时兼容机制，详见[验证记录](remote-execution-validation.md)。
 
-本轮 51 源码文件在 78581 全仓 Go 测试及 vet 前后摘要相同，均 exit0。上面新共享契约的证据为本地 Core/SQLite/Mock、typed FE 及浏览器 fixture；真实共享控制工具尚未 compile/SSH/Launch，native=false。原 R7/c2 单 Mock 退出重开证明属于旧 schema 阶段，不能替代本次新 shared 契约实机验收。
+本轮 51 源码文件在 78581 全仓 Go 测试及 vet 前后摘要相同，均 exit0。上面新共享契约的证据为本地 Core/SQLite/Mock、typed FE 及浏览器 fixture；真实共享控制尚未 SSH/Launch；r1 工具编译后的预检发现分页参数错误，r2 修复中，native=false。原 R7/c2 单 Mock 退出重开证明属于旧 schema 阶段，不能替代本次新 shared 契约实机验收。

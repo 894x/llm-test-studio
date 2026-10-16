@@ -114,7 +114,7 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 
 本轮 sample1/success1、Launch1、paid0、daemon 进程不变；nativefalse 且使用 scoped MemoryStore，未验证 OS keyring 或真实点击关窗。完整大任务/多 client 公平性、foreign 视图/控制、文件资源、完整还原/故障回滚、native、历史库、重启、第二节点/arm64 与 CI 发布仍待交付；不从单样本推算与旧恢复耗时的提升倍数。精确证据及所有原失败见[验证记录](remote-execution-validation.md)。仅接受当前格式，未转换或删除/reset 用户数据。
 
-本轮 shared/foreign 增加 per-command job_control_targets 及 outbox 复合 FK，schema version1/name0001_protocol_runtime 不变，current checksum 已由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新 runtime 拒绝旧 DB 且保留原数据；现有 R7/3ca 仍运行旧 schema，尚未重建/部署。7afb 源须在下一构建切换前独立离线转换及恢复验证；实际历史用户库为更早 766d1aa…，须固定 766→adc 直接 converter，不能冒充 7afb。工具在 TEMP 准备，未完成验收或切换，不能写数据升级完成。
+本轮 shared/foreign 已提交 626ccdd，增加 per-command job_control_targets 及 outbox 复合 FK，schema version1/name0001_protocol_runtime 不变，current checksum 已由 7afb439a…0708 替换为 `adc400effb974273c9d7d18dc8cc7f2deb7623cd958c7f80d61b8010dca4be6e`。新 runtime 拒绝旧 DB 且保留原数据；现有 R7/3ca 仍运行旧 schema，尚未重建/部署。独立 TEMP 工具已通过三类 7afb fixture 及实际历史 766d1aa…一致性私有副本的直接转换验收；原用户库只读不变，真实 desktop/runner 切换与恢复仍 pending，不能写数据升级完成。工具保留至实际升级/切换/恢复验证完成，证据和验证边界见[验证记录](remote-execution-validation.md)。
 
 新 JobView 必填 nullable submission，foreign 只从 actual execution/receipt 取来源；ControlTarget 冻结真实 node/install/spec 与已知 acceptance，历史 executor R4 与 daemon R7 合法，不比较 build 相等。GetJobControls 仅本 client 持久投递记录，foreign pending 控制通过真实 mirror anchor 保留并阻止节点移除。当前四项升级 API、Get 纯 local 和显式 Check 语义未改变；七个 Job Wails 绑定名称不变，新 Job DTO 和共用 schema 是 breaking 变更，不能用旧 reader 或自动迁移绕过。
 
