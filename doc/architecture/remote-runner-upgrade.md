@@ -108,6 +108,8 @@ UI 必须区分初检忙与暂停竞态：`checking + installation_busy` 表示�
 
 新 operation346da881 仅 Start 一次，初轮六分钟客户端 false 保留；同一 Start 后台已 completed，R7 服务 ready/healthy，独立 actual backup/基线/current typed 核验、两个原免费 Mock 报告 query 恢复，以及重开 Desktop 组合的 Get/Check 纯查询均已执行通过。原报告保留原 R4 执行来源，未被当前 R7 覆盖；230 案例报告齐全不等于 K3 兼容性通过，旧 K3 和 bf 操作失败不改判。
 
-只读观察工具 v1 误把顶层 Configuration 写入序号锁为 immutable 而 false；v2 在只排除 Observation 和顶层 writeRevision、锁定 nodeRevision 及全部 binding/pin/authrefs/default/meta 后实跑通过，完整 intent 不变。v2 fresh bound Check 命中本地终态，check_calls1/journal_reads0，不能称再次读 journal；没有升级执行动作。此结果不等于真实 OS 退出/重开（整轮 180 秒预算）或 native 窗口验收。
+只读观察工具 v1 误把顶层 Configuration 写入序号锁为 immutable 而 false；v2 在只排除 Observation 和顶层 writeRevision、锁定 nodeRevision 及全部 binding/pin/authrefs/default/meta 后实跑通过，完整 intent 不变。v2 fresh bound Check 命中本地终态，check_calls1/journal_reads0，不能称再次读 journal；没有升级执行动作。此纯查询结果本身不证明真实OS退出/重开或native窗口；后续单Mock真实进程验收另记。
 
-共享同步公平性、foreign Job 全视图/控制、完整备份还原/故障回滚、原生桌面界面及其余既有范围仍待验收。精确证据与原失败历史见[验证记录](remote-execution-validation.md)。仅接受当前格式，未执行 DB 格式转换或桌面历史库升级，不删除或 reset 用户数据。
+后续 priority c2d39bb 已本地提交并通过全仓 Go/vet；真实验收 37845 以 submit/audit/reopen 三个 OS 进程验证一个免费 Mock 任务在 submit 实际退出后继续、封口并重开恢复，整轮 180 秒预算内观测 37369ms，事后独立复核无 blocking。该观测值在 summary 写盘/owner.close 前记录，不是 wrapper 总生命周期。runner 仍为原 R7 源 3ca/1b94…，本轮未重建/再次部署；当前 client 共享输入另增 2 个 priority 文件，不能声称与 3ca 全同。
+
+本轮 sample1/success1、Launch1、paid0、daemon 进程不变；nativefalse 且使用 scoped MemoryStore，未验证 OS keyring 或真实点击关窗。完整大任务/多 client 公平性、foreign 视图/控制、文件资源、完整还原/故障回滚、native、历史库、重启、第二节点/arm64 与 CI 发布仍待交付；不从单样本推算与旧恢复耗时的提升倍数。精确证据及所有原失败见[验证记录](remote-execution-validation.md)。仅接受当前格式，未转换或删除/reset 用户数据。

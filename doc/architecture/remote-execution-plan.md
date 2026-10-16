@@ -398,7 +398,7 @@ Go Core 负责节点可选性、全部计数、生命周期、同步和部署；
 | D3a Remote 桌面节点设置 | 已实现 | 顶部 Remote 面板接入节点列表、编辑、密码/私钥、指纹确认、检查、安装重试和默认选择；提交后清除表单秘密，更新不确定时先重读，默认离线仍保留；移除 guard 使用只读持久事实，并与提交及新控制意图串行；真实 Wails 空节点面板与表单通过三档浏览器渲染验证 |
 | D3b 统一桌面任务入口与观察 | 已实现 | 当前七个 Job 绑定替换旧六个启动/控制入口与同步性能事件；四类任务每次启动读最新默认并显式提交位置，待确认保持原 ID；持久任务分页、重开找回、固定指令重试与完整性能结果接入，统计归档仅在已同步目录存在时开放；真实远程全入口和原生窗口截图仍待最终验收 |
 | D2i 服务端冻结实际执行来源 | 已实现 | Host 在接收事务冻结七字段 Origin，Receipt、事件、终态和报告保留原 runner 版本/构建；客户端探测仅供未接收准备使用；当前 unmanaged 报告明确 null，managed 报告与 owner/mirror 同源；严格拒绝旧回执和缺字段文档，不增加历史版本读取；完整大任务通过有界内容校验缓存保留严格校验并避免重复解析超时 |
-| C2c2 至 E | 进行中 | 新 operation 已后台升级至 R7，actual backup/基线/current typed 核验、两个原免费 Mock 报告 query 恢复与重开 Desktop Check 纯查询通过；初轮 Start 超时、原 bf 四 false 及 K3 原判定保留。真实 OS 退出/重开（整轮 180 秒预算）、共享同步公平性、foreign Job 全视图/控制、文件及附件/release/回收、历史用户库、最终 native、宿主重启、完整还原/故障回滚、第二服务器与 arm64 实机仍待实施或验收 |
+| C2c2 至 E | 进行中 | R7 升级/actual backup 与 typed 核验、两个原 Mock 报告恢复及 Desktop 纯查询通过；priority c2d39bb 已提交/全测，本轮单 Mock 在 submit 实际退出后由 audit/reopen 两个 OS 进程确认继续与恢复通过（整轮 180 秒预算）。初轮 Start 超时、bf 四 false、K3 原判定保留。当前客户端的完整大任务/多 client 公平性、foreign 视图/控制、文件资源/回收、native 关窗/OS keyring、历史库、重启/故障还原、第二节点 arm64 与 CI 发布仍待实施或验收 |
 
 2026-10-16 的 R16 已执行，不能再记为“真实请求进行中”，也不能记为整体通过：Chat 为 67 通过/17 失败，Responses 为 104 通过/126 失败；三请求最小性能 3/3 成功、0 超时，TTFT P50 2994.382ms、E2E P50 3679.773ms。原 summary 的 `passed=false` 原样保留。第二轮离线复核 17.04s 通过，`GetReports` 返回三个指定报告耗时 4367ms，原源表和 summary 未改；这只证明持久结果离线可读，不改写提供商判定或补认旧观察窗口。详情和安全证据位置见[验证记录](remote-execution-validation.md)。
 
@@ -462,7 +462,9 @@ R5 是 clean `53b8e0ad00ffcf371a0be90ad0670d8519773f83` 的已构建产物，未
 
 27151 仅查询原免费 Mock Job d629 与 e700，分别补齐 230 案例报告和 sealed 性能归档，实际来源仍为原 R4，当前 R7 daemon PID/start 不变、Launch/blockedWrites/provider0。它不是 K3 兼容性 230 全通过，也不代表真正 OS 关闭重开；K3 仍 Chat67/84、Responses104/230、performance3/3 及原 false。重开 Desktop 查询 v1 因误锁顶层写入序号而 false，原证据保留；v2 独立 68012 通过，intent 和配置语义保持、freshCheck/Get 稳定，check1/journal_reads0、无升级执行动作。当前已验证 R7 后台升级、actual backup/typed 保持、指定原报告及重开纯查询，证据见[验证记录](remote-execution-validation.md)。
 
-整体仍需真实 OS 退出/重开（整轮 180 秒预算）、共享同步公平性与新任务及时性、foreign Job 全视图/控制、文件资源/附件/release/回收、历史用户库转换、最终 native 窗口、宿主重启、完整还原/故障回滚、第二节点及 arm64 实机验收。优先同步调度仍在实现，指定原报告恢复不替代这些交付条件。
+优先同步已提交 c2d39bb，99319 全仓 Go 测试与 vet 通过。真实单 Mock 验收 37845 exit0/PASS：submit PID15372 实际退出后，audit PID43596 确认 sequence7→8→13/completed，reopen PID61536 恢复同 Job/report/spec/receipt 及 sealed 归档/来源，sample1/success1；Launch1、paid0、runner R7 进程不变。整轮 180 秒上限下 observed_ms37369 是含 setup/三 role 的验收观测值，不是 wrapper 总生命周期；事后独立证据复核无 blocking。它证明本轮单样本在既有共享历史下完成和恢复，不与旧 265/261 秒计算提升倍数。
+
+当前 client c2 与冻结 runner R7 源 3ca 分开：210 个既有共享输入不变、增加 2 个 priority 输入，本轮 runner 未重建/再次部署。完整大任务/多 client 公平性仍待实机；foreign 全视图/控制尚未实现，文件资源/附件/release/回收、native 窗口/真实关窗/OS keyring、历史库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 及 CI 发布范围保持。K3 付费 R1、旧 query R4、本轮 Mock R7 来源分清，所有历史失败不覆盖；具体证据见[验证记录](remote-execution-validation.md)。
 
 A1 增加了无目录执行、传输后快照隔离、提交上下文取消后独立激活、拒绝无效输入、关闭后拒收以及活动身份冲突的测试。现有运行和对比测试仍验证结果、终态和报告路径。Windows 当前未启用 CGO，race detector 尚不可用，不能将普通测试视为竞态检测证据。
 

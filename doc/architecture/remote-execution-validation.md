@@ -661,4 +661,24 @@ K3 保存证据离线分类为：拒绝预期 400 而实际 200 共 124 例、�
 
 重开 Desktop 查询观察 29264 的 v1 原 false 保留（`%TEMP%/llm-product-upgrade-observe-proof-seqscz9q/acceptance.safe.json` SHA `a4a70c37213ab6b7785351ef5eda6c9e1fa925aefd4ba1692eff242a59f7615a`）：它已 Get completed R7、freshCheck/Get 稳定、intent 保持，journal_reads1；失败来自工具将顶层 Configuration.Revision 写入序号 10→11 错误锁为 immutable。精确诊断只发现该字段变化，nodeRevision3 与 binding/pin/authrefs/default/meta 不变，Observation 不参与该比较。修正工具的独立实跑 68012 exit0/PASS：`%TEMP%/llm-product-upgrade-observe-v2-proof-pc40p1qn/acceptance.safe.json`（2206 字节，SHA `728eff6939b168a7fc1e3e4156c0ee45831e66eb611f1a1c9de12ac411051be7`），events SHA `053bd63a650af4587b5af893a6db750ca893567fe8a3b57aa7e3869a7671b0bd`。完整 intent hash 不变；配置语义比较仅排除 Observation 和顶层 writeRevision，write11→12 而 nodeRevision 及全部身份/授权引用不变。check_calls1、journal_reads0：本地已有终态，本轮 fresh bound Check 不能称又读 journal；重复 Get/Check 与 R7 健康闲置通过，升级 mutation/Shared/artifact/provider 均 0，1 次任务连接被 guard 阻断。
 
-当前已验证服务器升级、实际 backup 与 typed 业务保持、指定原报告恢复及重开 Desktop 纯查询。真实 OS 退出/重开（整轮 180 秒预算）、共享同步公平性与新任务及时性、foreign Job 全视图/控制、最终 native 窗口、文件资源/附件/release/回收、历史用户库转换、宿主重启、完整还原/故障回滚、第二节点与 arm64 实机等仍未完成；新 worker 正在处理优先同步调度，不把 WIP 写为已验收。
+在本节阶段已验证服务器升级、实际 backup 与 typed 业务保持、指定原报告恢复及重开 Desktop 纯查询；当时真实 OS 退出/重开与优先同步调度仍待验证，后续结果见下一节。其余既有范围按各项实际验收推进，不因单一查询通过而全部完成。
+
+## 2026-10-16：优先同步已提交，单 Mock 真实 OS 退出与重开恢复通过
+
+优先同步调度已提交 `c2d39bb351af8bc2b44f69107c324397a8f86166`（10 文件）。父端全仓 `go test ./... -timeout=15m` 会话 99319 exit0（desktop61.336s、SQLite106.737s、runnerhttp29.175s、remotesync0.679s），全仓 vet exit0，10 个源码 SHA 前后相同；`%TEMP%/llm-priority-verification-3a7520383767414dbf1a24ba7696ccfc/verification.safe.json` SHA 为 `16caf1edbe04310aad1cd2ce22db0da2c53886d4669ae40ccf5b238675090446`。本轮变更内部 Watcher/Repository 端口与调度，未改变对外 DTO、数据库 schema 或持久文档格式，无历史数据转换。本地实现/测试完成，本轮增加了既有共享历史下单个新任务完成及重开恢复的实机证据；当前客户端的完整大任务、多 client 公平性仍待实机验收。
+
+验收 client 来自 clean c2d39bb 及冻结 TEMP overlay/显式 map，helper 为 37265408 字节/SHA `bff20b08d76378a35ad72ade4cf8b5e56ffa927c5f597e52e04a9d903423743a`；build proof `%TEMP%/llm-client-priority-r7-c2d39bb/process-boundary-build-proof.safe.json` SHA `354a0c2686242e8176d26c95dc3c3c97040bab329fcccbab6a01c39806771de8`。native 为 26819072 字节/SHA `769c9b325bae5bf858917bf4a36576c1d324b4413237846ab0116a624bec1e1c`，同目录 `client-native-build-proof.safe.json` SHA `faf7442224200a82fd8ab081fa79719ed3be5ef4f5291a6e4a75f603cee269fb`，仅构建未启动。实际 runner 仍是原 R7/3ca 源/1b94…，本轮未重建或再次部署；当前 client 的 runner 共享依赖保留 210 个既有输入不变，但新增 `internal/application/remoteresults/priority.go` 和 `internal/persistence/sqlite/repository_submission_priority.go`，不能声称当前源码与 3ca 完全相同。
+
+父端唯一真实进程验收 wrapper `37845` exit0/PASS：workspace `%TEMP%/llm-remote-closed-process-workspace-j5chp8tr/`，config `419240b0-f223-453f-8b3b-d2629adf7d06`，Job `d42161cf-f6c7-4960-b25a-285f35beecb3`，report `58da40ad-66ab-4c2a-9cb0-2d6fd6cb5839`，spec SHA `a190009db22bfe86a692c4336a05c74361616f19c1808ba47b30a4175c6c9cae`。整轮观察上限 180000ms，`observed_ms=37369`包含 Mock setup 和三 role，在 summary 写盘与 owner.close 前采集，不是 wrapper 总生命周期精确 37.369 秒。
+
+| OS 测试进程 | 证据时间与结果 |
+| --- | --- |
+| submit PID15372 | 实际进程 exit0 在 26960ms 确认，随后才创建 audit |
+| audit PID43596 | submit 退出后的 baseline 为 29467ms/sequence7；30088ms 推进至 sequence8，30524ms 到 completed/sequence13/revision4，进程 exit0 |
+| reopen PID61536 | 36900ms 恢复原 default、Job/report/spec/receipt/executor；sealed/archived/origin verified 均 true，sample1/success1，进程 exit0 |
+
+本轮 Launch1、Mock perf_count1，paid/provider0、automatic retries0、control0、query blocked writes0；runner PID244293/start24859722/R7 exe 前后保持。原产物 `%TEMP%/llm-remote-closed-process-proof-akxh_79a/acceptance.safe.json`（5717 字节，SHA `7a91a3b70d7299012ef1172a286cbc6cb336b181d90e5d22ef24c4b6d04ae872`）和 events（9475 字节，SHA `21a7a0394a151d2d347e491b16e8408919ea4e34975c927fd81d46893ab7fc6c`）保持。事后独立证据复核无 blocking，核过 11 个 build proof 引用、实际 proof 和冻结脚本，确认 coordinator 在真实 Popen.wait 取得 submit exit0 并 fsync 后才创建 audit，三个 PID 均 exit0、身份/序号与零额外执行动作成立；不改写审查先后。
+
+该 PASS 覆盖单个免费 Mock 任务的真实 OS 进程退出后继续与重开恢复，native_window_verified=false；使用 scoped MemoryStore，不构成 OS keyring 或真实点击关窗验收。37.369 秒与旧 265/261 秒的原报告恢复不具严格同条件，不计算提升倍数或唯一归因。付费 K3 executor 仍为 R1、两个旧 query Job 为 R4、本轮新 Mock 为 R7；K3 仍 67/84、104/230、performance3/3 且未重复付费，所有原 false 保留。
+
+仍需完整大任务/多 client 公平性、foreign Job 全视图与控制（尚未实现）、文件资源/附件/release 与回收、native 窗口与真实关窗/OS keyring、历史用户库转换、宿主重启、完整还原/故障回滚、第二节点/arm64 实机、CI 及发布交付等验收。本轮单样本与本地 priority 测试不替代这些范围。
