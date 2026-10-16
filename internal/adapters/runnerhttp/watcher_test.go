@@ -40,6 +40,7 @@ func startObservingFixture(
 	var opened, closed atomic.Int64
 	watcher, err := remotesync.NewWatcher(t.Context(), remotesync.WatcherDependencies{
 		Synchronizer: synchronizer,
+		PriorityJobs: repository.ListRemoteSubmissionIDs,
 		Nodes: func(context.Context) ([]remotesync.Node, error) {
 			return []remotesync.Node{{Origin: origin, Revision: 1}}, nil
 		},

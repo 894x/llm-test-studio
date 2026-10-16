@@ -33,9 +33,14 @@ type runnerConnector func(
 
 type remoteSyncDependencies struct {
 	Directory     string
-	Repository    remoteresults.Repository
+	Repository    remoteSyncRepository
 	Configuration *remotenodes.Service
 	Connect       runnerConnector
+}
+
+type remoteSyncRepository interface {
+	remoteresults.Repository
+	ListRemoteSubmissionIDs(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
 }
 
 func newProductionRemoteSynchronization(
@@ -64,6 +69,7 @@ func newProductionRemoteSynchronization(
 	}
 	watcher, err := remotesync.NewWatcher(ctx, remotesync.WatcherDependencies{
 		Synchronizer: synchronizer,
+		PriorityJobs: dependencies.Repository.ListRemoteSubmissionIDs,
 		Nodes: func(ctx context.Context) ([]remotesync.Node, error) {
 			snapshot, err := dependencies.Configuration.Snapshot(ctx)
 			if err != nil {

@@ -20,6 +20,7 @@ func TestWatcherRetriesSourceTimeoutAndSuspendsOldObserversUntilRecovery(t *test
 	unavailable.Store(true)
 	var opened, closed atomic.Int64
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
+		PriorityJobs: emptyPriorityJobs,
 		Nodes: func(context.Context) ([]Node, error) {
 			if unavailable.Load() {
 				return nil, context.DeadlineExceeded

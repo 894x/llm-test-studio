@@ -21,6 +21,7 @@ const (
 	maxConcurrentSyncs = 4
 	discoveryPageSize  = 25
 	jobsPerAttempt     = 4
+	priorityPerAttempt = 2
 )
 
 type Node struct {
@@ -30,6 +31,7 @@ type Node struct {
 
 type Connection interface {
 	Remote
+	GetJob(context.Context, string) (jobcontract.Snapshot, error)
 	ListJobs(context.Context, uint64, uint32) (jobhost.JobPage, error)
 	Close() error
 }
@@ -38,6 +40,7 @@ type WatcherDependencies struct {
 	Synchronizer *Synchronizer
 	Nodes        func(context.Context) ([]Node, error)
 	Connect      func(context.Context, Node) (Connection, error)
+	PriorityJobs func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
 }
 
 type NodeStatus struct {
@@ -58,6 +61,7 @@ type Watcher struct {
 	synchronizer   *Synchronizer
 	source         func(context.Context) ([]Node, error)
 	connect        func(context.Context, Node) (Connection, error)
+	priorityJobs   func(context.Context, remoteresults.Origin, string, uint32) (remoteresults.PriorityPage, error)
 	ctx            context.Context
 	cancel         context.CancelFunc
 	mu             sync.Mutex
@@ -81,20 +85,23 @@ type nodeWorker struct {
 }
 
 type discovery struct {
-	cursor  uint64
-	pending []jobcontract.Snapshot
-	index   int
+	cursor         uint64
+	priorityCursor string
+	pending        []jobcontract.Snapshot
+	index          int
 }
 
 func NewWatcher(ctx context.Context, dependencies WatcherDependencies) (*Watcher, error) {
-	validDependencies := dependencies.Synchronizer != nil && dependencies.Nodes != nil && dependencies.Connect != nil
+	validDependencies := dependencies.Synchronizer != nil && dependencies.Nodes != nil &&
+		dependencies.Connect != nil && dependencies.PriorityJobs != nil
 	if ctx == nil || !validDependencies {
 		return nil, remoteresults.ErrInvalid
 	}
 	lifetime, cancel := context.WithCancel(ctx)
 	return &Watcher{
 		synchronizer: dependencies.Synchronizer, source: dependencies.Nodes, connect: dependencies.Connect,
-		ctx: lifetime, cancel: cancel, workers: map[string]*nodeWorker{}, gate: make(chan struct{}, maxConcurrentSyncs),
+		priorityJobs: dependencies.PriorityJobs,
+		ctx:          lifetime, cancel: cancel, workers: map[string]*nodeWorker{}, gate: make(chan struct{}, maxConcurrentSyncs),
 		refreshEvery: 10 * time.Second, pollEvery: 5 * time.Second, attemptTimeout: 2 * time.Minute,
 	}, nil
 }
@@ -293,10 +300,96 @@ func (watcher *Watcher) attempt(ctx context.Context, node Node, scan *discovery)
 	if !validSource {
 		return false, remoteresults.ErrConflict
 	}
+	results := make(chan syncResult, jobsPerAttempt)
+	selected := map[string]bool{}
+	var started int
+	start := func(id string, snapshot *jobcontract.Snapshot) {
+		selected[id] = true
+		started++
+		go func() {
+			results <- watcher.syncJob(
+				ctx,
+				node,
+				connection,
+				id,
+				snapshot,
+			)
+		}()
+	}
+	priority, firstError := watcher.priorityPage(ctx, node, scan)
+	for _, id := range priority {
+		start(id, nil)
+	}
+	// Local observations begin before a shared page request can block. Both
+	// queues advance independently, reserving at least half the slots for discovery.
+	pageErr := watcher.discover(ctx, connection, scan)
+	if pageErr != nil && firstError == nil {
+		firstError = pageErr
+	}
+	if pageErr == nil {
+		for started < jobsPerAttempt && scan.index < len(scan.pending) {
+			snapshot := scan.pending[scan.index]
+			scan.index++
+			id := snapshot.Receipt.JobID
+			if !selected[id] {
+				start(id, &snapshot)
+			}
+		}
+	}
+	applied := false
+	for range started {
+		result := <-results
+		applied = applied || result.applied
+		if firstError == nil {
+			firstError = result.err
+		}
+	}
+	return applied, errors.Join(firstError, ctx.Err())
+}
+
+func (watcher *Watcher) priorityPage(ctx context.Context, node Node, scan *discovery) ([]string, error) {
+	select {
+	case watcher.gate <- struct{}{}:
+		defer func() { <-watcher.gate }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	page, err := watcher.priorityJobs(
+		ctx,
+		node.Origin,
+		scan.priorityCursor,
+		priorityPerAttempt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(page.JobIDs) > priorityPerAttempt || page.HasMore && len(page.JobIDs) == 0 {
+		return nil, remoteresults.ErrInvalid
+	}
+	previous := scan.priorityCursor
+	for _, id := range page.JobIDs {
+		if !domain.IsUUID(id) || id <= previous {
+			return nil, remoteresults.ErrInvalid
+		}
+		previous = id
+	}
+	if page.NextCursor != previous {
+		return nil, remoteresults.ErrInvalid
+	}
+	scan.priorityCursor = page.NextCursor
+	if !page.HasMore {
+		scan.priorityCursor = ""
+	}
+	return page.JobIDs, nil
+}
+
+func (watcher *Watcher) discover(ctx context.Context, connection Connection, scan *discovery) error {
 	if scan.index == len(scan.pending) {
 		page, err := connection.ListJobs(ctx, scan.cursor, discoveryPageSize)
 		if err != nil {
-			return false, err
+			return err
 		}
 		cursor, err := strconv.ParseUint(page.NextCursor, 10, 63)
 		validPage := err == nil && strconv.FormatUint(cursor, 10) == page.NextCursor &&
@@ -304,41 +397,51 @@ func (watcher *Watcher) attempt(ctx context.Context, node Node, scan *discovery)
 		validCursor := cursor >= scan.cursor && (len(page.Jobs) == 0 || cursor > scan.cursor)
 		validTail := len(page.Jobs) > 0 || (!page.HasMore && cursor == scan.cursor)
 		if !validPage || !validCursor || !validTail {
-			return false, remoteresults.ErrInvalid
+			return remoteresults.ErrInvalid
 		}
 		scan.pending, scan.index, scan.cursor = page.Jobs, 0, cursor
 		if !page.HasMore {
 			scan.cursor = 0
 		}
 	}
-	applied := false
-	var firstError error
-	for range jobsPerAttempt {
-		if scan.index == len(scan.pending) {
-			break
-		}
-		if err := ctx.Err(); err != nil {
-			return applied, err
-		}
-		snapshot := scan.pending[scan.index]
-		scan.index++
-		needed, err := watcher.needsSync(ctx, node, snapshot)
-		if err == nil && needed {
-			select {
-			case watcher.gate <- struct{}{}:
-				_, err = watcher.synchronizer.Pass(ctx, Request{Origin: node.Origin,
-					JobID: snapshot.Receipt.JobID, Remote: connection})
-				<-watcher.gate
-				applied = applied || err == nil
-			case <-ctx.Done():
-				err = ctx.Err()
-			}
-		}
-		if firstError == nil {
-			firstError = err
-		}
+	return nil
+}
+
+type syncResult struct {
+	applied bool
+	err     error
+}
+
+func (watcher *Watcher) syncJob(
+	ctx context.Context,
+	node Node,
+	connection Connection,
+	id string,
+	snapshot *jobcontract.Snapshot,
+) syncResult {
+	// Include GET/needsSync's full mirror/spec decoding in the global budget.
+	select {
+	case watcher.gate <- struct{}{}:
+		defer func() { <-watcher.gate }()
+	case <-ctx.Done():
+		return syncResult{err: ctx.Err()}
 	}
-	return applied, firstError
+	if snapshot == nil {
+		observed, err := connection.GetJob(ctx, id)
+		if err != nil {
+			return syncResult{err: err}
+		}
+		if observed.Receipt.JobID != id {
+			return syncResult{err: remoteresults.ErrConflict}
+		}
+		snapshot = &observed
+	}
+	needed, err := watcher.needsSync(ctx, node, *snapshot)
+	if err != nil || !needed {
+		return syncResult{err: err}
+	}
+	_, err = watcher.synchronizer.Pass(ctx, Request{Origin: node.Origin, JobID: id, Remote: connection})
+	return syncResult{applied: err == nil, err: err}
 }
 
 func (watcher *Watcher) needsSync(ctx context.Context, node Node, snapshot jobcontract.Snapshot) (bool, error) {

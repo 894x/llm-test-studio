@@ -85,6 +85,7 @@ func TestWatcherIndependentNodesRevisionCancellationAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer, Connect: connect,
+		PriorityJobs: emptyPriorityJobs,
 		Nodes: func(context.Context) ([]Node, error) {
 			sourceMu.Lock()
 			defer sourceMu.Unlock()
@@ -163,7 +164,8 @@ func TestWatcherCloseBeforeRunAndRejectDuplicateSourcesWithoutConnecting(t *test
 	}
 	var calls atomic.Int64
 	dependencies := WatcherDependencies{Synchronizer: synchronizer,
-		Nodes: func(context.Context) ([]Node, error) { return []Node{}, nil },
+		PriorityJobs: emptyPriorityJobs,
+		Nodes:        func(context.Context) ([]Node, error) { return []Node{}, nil },
 		Connect: func(context.Context, Node) (Connection, error) {
 			calls.Add(1)
 			return nil, errors.New("unexpected connection")
@@ -243,7 +245,8 @@ func TestWatcherBoundsConcurrentFullSyncAndCancelsGateWaiters(t *testing.T) {
 	var active, maximum atomic.Int64
 	var opened, closed atomic.Int64
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		Nodes: func(context.Context) ([]Node, error) { return nodes, nil },
+		PriorityJobs: emptyPriorityJobs,
+		Nodes:        func(context.Context) ([]Node, error) { return nodes, nil },
 		Connect: func(_ context.Context, node Node) (Connection, error) {
 			opened.Add(1)
 			at := time.Now().UTC()
@@ -334,12 +337,14 @@ func TestWatcherContinuesPendingPageAcrossFailuresAndWrapsAfterTail(t *testing.T
 	listed := []uint64{}
 	observed := map[string]int{}
 	var opened, closed, observations int
+	var observedMu sync.Mutex
 	synchronizer, err := New(Dependencies{Repository: missingMirrorRepository{}, Documents: unusedCache{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	watcher, err := NewWatcher(t.Context(), WatcherDependencies{Synchronizer: synchronizer,
-		Nodes: func(context.Context) ([]Node, error) { return []Node{node}, nil },
+		PriorityJobs: emptyPriorityJobs,
+		Nodes:        func(context.Context) ([]Node, error) { return []Node{node}, nil },
 		Connect: func(context.Context, Node) (Connection, error) {
 			opened++
 			connection := &failingJobObservation{watcherConnection: watcherConnection{node: node,
@@ -349,6 +354,8 @@ func TestWatcherContinuesPendingPageAcrossFailuresAndWrapsAfterTail(t *testing.T
 					return jobhost.JobPage{Contract: jobcontract.CurrentContract,
 						Jobs: roots[int(after):end], NextCursor: fmt.Sprint(end), HasMore: end < len(roots)}, nil
 				}}, observe: func(id string) {
+				observedMu.Lock()
+				defer observedMu.Unlock()
 				observed[id]++
 				observations++
 			}}
