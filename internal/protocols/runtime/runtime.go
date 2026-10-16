@@ -16,10 +16,11 @@ const MaxResponseBytes int64 = 32 << 20
 const MaxExchanges = 1024
 
 type Response struct {
-	HTTP        *http.Response
-	Started     time.Time
-	TTFBMS      float64
-	RequestBody json.RawMessage
+	HTTP         *http.Response
+	Started      time.Time
+	TTFBMS       float64
+	RequestBody  json.RawMessage
+	PreparedWire *PreparedWire `json:"-"`
 }
 
 type Transport interface {
@@ -29,8 +30,9 @@ type Transport interface {
 type Request struct {
 	Method  string
 	Path    string
-	Body    json.RawMessage
+	Body    testspec.RenderedRequest
 	Headers map[string]string
+	Assets  AssetResolver
 }
 
 type Execution struct {
@@ -39,6 +41,7 @@ type Execution struct {
 	Random    testspec.RandomContext
 	Settings  testspec.RunSettings
 	Transport Transport
+	Assets    AssetResolver
 }
 
 type Descriptor struct {
@@ -83,7 +86,7 @@ func Read(response Response) ([]byte, error) {
 }
 
 func Exchange(step string, request Request, response Response) testspec.Exchange {
-	body := request.Body
+	body := request.Body.Body
 	if len(response.RequestBody) > 0 {
 		body = response.RequestBody
 	}

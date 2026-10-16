@@ -49,6 +49,9 @@ func (protocol TaskProtocol) Descriptor() Descriptor {
 }
 
 func (protocol TaskProtocol) ValidateProtocol(spec testspec.Spec) error {
+	if spec.HasFileInputs() {
+		return testspec.ErrFileInputsUnsupported
+	}
 	if spec.Operation != "" {
 		return errors.New("task protocol has no named request operations")
 	}
@@ -65,7 +68,10 @@ func (protocol TaskProtocol) Execute(ctx context.Context, execution Execution) t
 		AddIssue(&observation, "prepare", "file_inputs_unsupported")
 		return observation
 	}
-	body, err := testspec.Render(execution.Spec.Request, execution.Inputs, execution.Random, map[string]json.RawMessage{})
+	body, err := testspec.Render(testspec.RenderInput{
+		Request: execution.Spec.Request, Declarations: execution.Spec.Inputs,
+		Values: execution.Inputs, Random: execution.Random, Responses: map[string]json.RawMessage{},
+	})
 	if err != nil {
 		AddIssue(&observation, "prepare", "request_generation_failed")
 		return observation

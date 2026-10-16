@@ -50,6 +50,9 @@ func (module *Module) Descriptor() runtime.Descriptor {
 }
 
 func (module *Module) ValidateProtocol(spec testspec.Spec) error {
+	if spec.HasFileInputs() {
+		return testspec.ErrFileInputsUnsupported
+	}
 	if spec.Operation != "" {
 		return errors.New("text protocol supports only the create operation")
 	}
@@ -77,7 +80,10 @@ func (module *Module) Execute(ctx context.Context, execution runtime.Execution) 
 		observation.Metrics = map[string]float64{}
 		random := execution.Random
 		random.MemberID += "/" + step.ID
-		body, err := testspec.Render(step.Request, execution.Inputs, random, responses)
+		body, err := testspec.Render(testspec.RenderInput{
+			Request: step.Request, Declarations: execution.Spec.Inputs,
+			Values: execution.Inputs, Random: random, Responses: responses,
+		})
 		if err != nil {
 			runtime.AddIssue(&observation, step.ID, "request_generation_failed")
 			break

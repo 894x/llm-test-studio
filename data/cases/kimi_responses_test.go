@@ -55,7 +55,7 @@ func (fixture *kimiResponsesFixture) Send(_ context.Context, request runtime.Req
 		return runtime.Response{}, err
 	}
 	return runtime.Response{
-		Started: time.Now(), RequestBody: request.Body,
+		Started: time.Now(), RequestBody: request.Body.Body,
 		HTTP: &http.Response{StatusCode: fixture.status, Body: io.NopCloser(strings.NewReader(string(raw)))},
 	}, nil
 }

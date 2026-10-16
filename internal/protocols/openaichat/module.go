@@ -36,6 +36,10 @@ func (*Module) Descriptor() runtime.Descriptor {
 }
 
 func (*Module) ValidateProtocol(spec testspec.Spec) error {
+	fileRequestUnsupported := spec.HasFileInputs() && (spec.Workflow != nil || spec.Operation != "")
+	if fileRequestUnsupported {
+		return errors.New("file inputs require the create operation without a workflow")
+	}
 	if spec.Operation != "" && spec.Operation != "models.list" {
 		return errors.New("unsupported openai-chat operation")
 	}
@@ -51,7 +55,10 @@ func (*Module) ValidateProtocol(spec testspec.Spec) error {
 func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspec.Observation {
 	started := time.Now()
 	observation := runtime.NewObservation("openai-chat")
-	if execution.Spec.HasFileInputs() || len(execution.Inputs.Files) != 0 {
+	hasFiles := execution.Spec.HasFileInputs() || len(execution.Inputs.Files) != 0
+	fileRequestUnsupported := hasFiles &&
+		(execution.Assets == nil || execution.Spec.Workflow != nil || execution.Spec.Operation != "")
+	if fileRequestUnsupported {
 		runtime.AddIssue(&observation, "prepare", "file_inputs_unsupported")
 		return observation
 	}
@@ -68,12 +75,17 @@ func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspe
 		observation.StreamCompleted = nil
 		random := execution.Random
 		random.MemberID += "/" + step.ID
-		body, err := testspec.Render(step.Request, execution.Inputs, random, responses)
+		body, err := testspec.Render(testspec.RenderInput{
+			Request: step.Request, Declarations: execution.Spec.Inputs,
+			Values: execution.Inputs, Random: random, Responses: responses,
+		})
 		if err != nil {
 			runtime.AddIssue(&observation, step.ID, "request_generation_failed")
 			break
 		}
-		request := runtime.Request{Method: http.MethodPost, Path: protocol.OpenAIChatPath, Body: body}
+		request := runtime.Request{
+			Method: http.MethodPost, Path: protocol.OpenAIChatPath, Body: body, Assets: execution.Assets,
+		}
 		if execution.Spec.Operation == "models.list" {
 			request = runtime.Request{Method: http.MethodGet, Path: protocol.OpenAIModelsPath}
 		}

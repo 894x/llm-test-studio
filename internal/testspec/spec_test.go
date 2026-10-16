@@ -35,8 +35,8 @@ func TestFixedNegativeRequestIsValidAndAssertionsAreOptional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), `"temperature":"invalid"`) {
-		t.Fatalf("negative input changed: %s", body)
+	if !strings.Contains(string(body.Body), `"temperature":"invalid"`) {
+		t.Fatalf("negative input changed: %s", body.Body)
 	}
 	result := Evaluate(spec.Assertions, Observation{})
 	if result.Status != VerdictNotApplicable || result.Assertions == nil {
@@ -77,18 +77,18 @@ func TestGeneratorUnicodeAndStableRandomContexts(t *testing.T) {
 	}
 	for range 10 {
 		again, err := Generate(spec, nil, context)
-		if err != nil || string(again) != string(first) {
+		if err != nil || string(again.Body) != string(first.Body) {
 			t.Fatal("random generation depends on previous calls")
 		}
 	}
 	otherContext := context
 	otherContext.Iteration++
 	other, _ := Generate(spec, nil, otherContext)
-	if string(first) == string(other) {
+	if string(first.Body) == string(other.Body) {
 		t.Fatal("repeated instances reused identical random stream")
 	}
 	var body map[string]string
-	if err := json.Unmarshal(first, &body); err != nil {
+	if err := json.Unmarshal(first.Body, &body); err != nil {
 		t.Fatal(err)
 	}
 	if len([]rune(body["repeat"])) != 13 || body["fixed"] != "$input stays literal" {
@@ -111,20 +111,19 @@ func TestSequenceReferencesOnlyPreviousExplicitResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	responses := map[string]json.RawMessage{"initial": json.RawMessage(`{"choices":[{"message":{"role":"assistant","content":"First"}}]}`)}
-	body, err := Render(
-		spec.Workflow.Steps[0].Request,
-		ResolvedInputs{
+	body, err := Render(RenderInput{
+		Request: spec.Workflow.Steps[0].Request, Declarations: spec.Inputs,
+		Values: ResolvedInputs{
 			JSONValues: map[string]json.RawMessage{},
 			Files:      map[string]FileBinding{},
 		},
-		RandomContext{},
-		responses,
-	)
+		Responses: responses,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), `"content":"First"`) {
-		t.Fatalf("missing extracted response: %s", body)
+	if !strings.Contains(string(body.Body), `"content":"First"`) {
+		t.Fatalf("missing extracted response: %s", body.Body)
 	}
 	spec.Workflow.Steps[0].Request.Body = json.RawMessage(`{"messages":[{"$response":"followup","pointer":""}]}`)
 	if err := spec.Validate(); err == nil {
@@ -173,15 +172,14 @@ func TestAssertionGroupsSupportAdmissionOrTerminalFailure(t *testing.T) {
 func TestInputExpansionHasAggregateBudget(t *testing.T) {
 	value, _ := json.Marshal(strings.Repeat("a", MaxDocumentBytes/2))
 	request := Request{Body: json.RawMessage(`{"a":{"$input":"x"},"b":{"$input":"x"},"c":{"$input":"x"}}`)}
-	if _, err := Render(
-		request,
-		ResolvedInputs{
+	if _, err := Render(RenderInput{
+		Request: request, Declarations: map[string]Input{"x": {Type: "string"}},
+		Values: ResolvedInputs{
 			JSONValues: map[string]json.RawMessage{"x": value},
 			Files:      map[string]FileBinding{},
 		},
-		RandomContext{},
-		nil,
-	); err == nil {
+		Responses: map[string]json.RawMessage{},
+	}); err == nil {
 		t.Fatal("unbounded repeated input expansion")
 	}
 }

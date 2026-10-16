@@ -1,7 +1,6 @@
 package protocols
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,6 +33,7 @@ type clientState struct {
 	lifecycle context.Context
 	cancel    context.CancelFunc
 	active    sync.WaitGroup
+	closeDone chan struct{}
 }
 
 type Execution struct {
@@ -41,6 +41,7 @@ type Execution struct {
 	Inputs   map[string]json.RawMessage
 	Random   testspec.RandomContext
 	Settings testspec.RunSettings
+	Assets   runtime.AssetResolver
 }
 
 func NewClient(
@@ -56,7 +57,7 @@ func NewClient(
 	if !exists {
 		return nil, ErrInvalidBinding
 	}
-	client := &Client{state: &clientState{module: module, channel: channel}}
+	client := &Client{state: &clientState{module: module, channel: channel, closeDone: make(chan struct{})}}
 	secret, err := lease.Bytes()
 	if err != nil || len(secret) == 0 {
 		clear(secret)
@@ -80,39 +81,37 @@ func NewClient(
 }
 
 func (client *Client) Execute(ctx context.Context, execution Execution) (testspec.Result, error) {
-	if client == nil || client.state == nil {
-		return testspec.Result{}, ErrClientClosed
+	call, err := client.beginCall(ctx)
+	if err != nil {
+		return testspec.Result{}, err
 	}
+	defer call.finish()
 	state := client.state
-	state.mu.Lock()
-	if state.closed {
-		state.mu.Unlock()
-		return testspec.Result{}, ErrClientClosed
+	if execution.Spec.Validate() != nil || execution.Settings.Validate() != nil {
+		return testspec.Result{}, ErrInvalidExecution
 	}
-	state.active.Add(1)
-	state.mu.Unlock()
-	defer state.active.Done()
-	invalidSpec := execution.Spec.Validate() != nil || state.module.ValidateProtocol(execution.Spec) != nil
-	if invalidSpec || execution.Settings.Validate() != nil {
+	if err := state.module.ValidateProtocol(execution.Spec); err != nil {
+		if errors.Is(err, testspec.ErrFileInputsUnsupported) {
+			return testspec.Result{}, err
+		}
 		return testspec.Result{}, ErrInvalidExecution
 	}
 	inputs, err := testspec.ValidateInputs(execution.Spec.Inputs, execution.Inputs)
 	if err != nil {
 		return testspec.Result{}, err
 	}
-	if len(inputs.Files) != 0 {
+	if len(inputs.Files) != 0 && execution.Assets == nil {
 		return testspec.Result{}, testspec.ErrFileInputsUnsupported
 	}
 	timeout := execution.Settings.TimeoutMS
 	if timeout == 0 {
 		timeout = 600_000
 	}
-	runContext, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
-	stop := context.AfterFunc(state.lifecycle, cancel)
-	defer func() { stop(); cancel() }()
+	runContext, cancel := context.WithTimeout(call.ctx, time.Duration(timeout)*time.Millisecond)
+	defer cancel()
 	observation := state.module.Execute(runContext, runtime.Execution{
 		Spec: execution.Spec, Inputs: inputs, Random: execution.Random,
-		Settings: execution.Settings, Transport: client,
+		Settings: execution.Settings, Transport: client, Assets: execution.Assets,
 	})
 	observation.Model = state.channel.UpstreamModelName
 	verdict := testspec.Evaluate(execution.Spec.Assertions, observation)
@@ -124,34 +123,38 @@ func (client *Client) Execute(ctx context.Context, execution Execution) (testspe
 }
 
 func (client *Client) Send(ctx context.Context, request runtime.Request) (runtime.Response, error) {
+	call, err := client.beginCall(ctx)
+	if err != nil {
+		return runtime.Response{}, err
+	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			call.finish()
+		}
+	}()
 	state := client.state
 	state.mu.Lock()
-	if state.closed {
-		state.mu.Unlock()
-		return runtime.Response{}, ErrClientClosed
-	}
 	secret := string(state.secret)
 	state.mu.Unlock()
-	body := append(json.RawMessage{}, request.Body...)
-	if len(body) > 0 {
-		var object map[string]json.RawMessage
-		if json.Unmarshal(body, &object) != nil || object == nil {
-			return runtime.Response{}, ErrInvalidExecution
-		}
-		if _, exists := object["model"]; exists {
-			return runtime.Response{}, ErrInvalidExecution
-		}
-		object["model"], _ = json.Marshal(state.channel.UpstreamModelName)
-		body, _ = json.Marshal(object)
-	}
 	descriptor, _ := protocol.Lookup(string(state.channel.Protocol))
 	address, err := protocol.ResolveAddress(state.channel.BaseURL, request.Path, descriptor.RequestPaths)
 	if err != nil {
 		return runtime.Response{}, ErrInvalidExecution
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, request.Method, address.Endpoint, bytes.NewReader(body))
+	wire, err := prepareWire(call.ctx, request, state.channel)
+	if err != nil {
+		return runtime.Response{}, err
+	}
+	defer wire.Close()
+	length := int64(len(wire.data))
+	httpRequest, err := http.NewRequestWithContext(call.ctx, request.Method, address.Endpoint, wire)
 	if err != nil {
 		return runtime.Response{}, ErrInvalidExecution
+	}
+	httpRequest.ContentLength = length
+	if length == 0 {
+		httpRequest.Body = http.NoBody
 	}
 	httpRequest.Header.Set("Authorization", "Bearer "+secret)
 	httpRequest.Header.Set("Content-Type", "application/json")
@@ -166,18 +169,33 @@ func (client *Client) Send(ctx context.Context, request runtime.Request) (runtim
 	started := time.Now()
 	var firstByte float64
 	var traceMu sync.Mutex
-	trace := &httptrace.ClientTrace{GotFirstResponseByte: func() { traceMu.Lock(); firstByte = runtime.Milliseconds(started); traceMu.Unlock() }}
-	httpRequest = httpRequest.WithContext(httptrace.WithClientTrace(ctx, trace))
+	trace := &httptrace.ClientTrace{GotFirstResponseByte: func() {
+		traceMu.Lock()
+		firstByte = runtime.Milliseconds(started)
+		traceMu.Unlock()
+	}}
+	httpRequest = httpRequest.WithContext(httptrace.WithClientTrace(call.ctx, trace))
 	response, err := state.http.Do(httpRequest)
+	closeErr := wire.Close()
 	traceMu.Lock()
 	ttfb := firstByte
 	traceMu.Unlock()
-	result := runtime.Response{HTTP: response, Started: started, TTFBMS: ttfb, RequestBody: body}
-	if err != nil {
+	result := runtime.Response{
+		HTTP: response, Started: started, TTFBMS: ttfb, RequestBody: wire.view,
+		PreparedWire: wire.metadata,
+	}
+	if err != nil || closeErr != nil {
 		if response != nil && response.Body != nil {
-			response.Body.Close()
+			_ = response.Body.Close()
+		}
+		if call.ctx.Err() != nil {
+			return result, call.ctx.Err()
 		}
 		return result, errors.New("protocol transport failed")
+	}
+	if response != nil && response.Body != nil {
+		response.Body = ownResponseBody(response.Body, call)
+		transferred = true
 	}
 	return result, nil
 }
@@ -190,6 +208,7 @@ func (client *Client) Close() error {
 	state.mu.Lock()
 	if state.closed {
 		state.mu.Unlock()
+		<-state.closeDone
 		return nil
 	}
 	state.closed = true
@@ -201,6 +220,7 @@ func (client *Client) Close() error {
 	state.secret = nil
 	state.mu.Unlock()
 	state.http.CloseIdleConnections()
+	close(state.closeDone)
 	return nil
 }
 

@@ -145,63 +145,100 @@ func randomNode(value any) bool {
 	return false
 }
 
-func Generate(spec Spec, values map[string]json.RawMessage, random RandomContext) (json.RawMessage, error) {
+func Generate(spec Spec, values map[string]json.RawMessage, random RandomContext) (RenderedRequest, error) {
+	if spec.HasFileInputs() && spec.Workflow != nil {
+		return RenderedRequest{}, unsupportedRenderedFile("file inputs do not support workflows")
+	}
 	resolved, err := ValidateInputs(spec.Inputs, values)
 	if err != nil {
-		return nil, err
+		return RenderedRequest{}, err
 	}
-	return Render(spec.Request, resolved, random, map[string]json.RawMessage{})
+	return Render(RenderInput{
+		Request:      spec.Request,
+		Declarations: spec.Inputs,
+		Values:       resolved,
+		Random:       random,
+		Responses:    map[string]json.RawMessage{},
+	})
 }
 
 // Render evaluates explicit template nodes. Strings never undergo interpolation.
-func Render(
-	request Request,
-	values ResolvedInputs,
-	random RandomContext,
-	responses map[string]json.RawMessage,
-) (json.RawMessage, error) {
-	if len(values.Files) != 0 {
-		return nil, ErrFileInputsUnsupported
+func Render(input RenderInput) (RenderedRequest, error) {
+	if err := input.validateFileBindings(); err != nil {
+		return RenderedRequest{}, err
 	}
-	value, err := decodeValue(request.Body)
+	value, err := decodeValue(input.Request.Body)
 	if err != nil {
-		return nil, err
+		return RenderedRequest{}, err
 	}
-	state := generatorState{values: values.JSONValues, random: random, responses: responses}
-	generated, err := state.render(value, "body", 0)
+	state := generatorState{
+		values:       input.Values.JSONValues,
+		declarations: input.Declarations,
+		fileBindings: input.Values.Files,
+		random:       input.Random,
+		responses:    input.Responses,
+		files:        []FileOccurrence{},
+		usedFiles:    map[string]bool{},
+	}
+	generated, err := state.render(value, renderPosition{seedPath: "body"})
 	if err != nil {
-		return nil, err
+		return RenderedRequest{}, err
+	}
+	if len(state.usedFiles) != len(input.Values.Files) {
+		return RenderedRequest{}, unsupportedRenderedFile("every file binding must be used exactly once")
 	}
 	object, ok := generated.(map[string]any)
 	if !ok {
-		return nil, errors.New("generated request body must be an object")
+		return RenderedRequest{}, errors.New("generated request body must be an object")
 	}
 	if _, exists := object["model"]; exists {
-		return nil, errors.New("generated model conflicts with run binding")
+		return RenderedRequest{}, errors.New("generated model conflicts with run binding")
 	}
 	raw, err := json.Marshal(generated)
 	if err != nil || len(raw) > MaxDocumentBytes {
-		return nil, errors.New("generated request exceeds the 4 MiB limit")
+		return RenderedRequest{}, errors.New("generated request exceeds the 4 MiB limit")
 	}
-	return raw, nil
+	request := RenderedRequest{Body: raw, Files: state.files}
+	if err := request.validateFiles(object); err != nil {
+		return RenderedRequest{}, err
+	}
+	return request, nil
 }
 
 type generatorState struct {
 	values         map[string]json.RawMessage
+	declarations   map[string]Input
+	fileBindings   map[string]FileBinding
+	files          []FileOccurrence
+	usedFiles      map[string]bool
 	random         RandomContext
 	responses      map[string]json.RawMessage
 	generatedBytes int
 }
 
-func (state *generatorState) render(value any, path string, depth int) (any, error) {
-	if depth > 64 {
+type renderPosition struct {
+	seedPath    string
+	pointer     string
+	depth       int
+	inGenerator bool
+}
+
+func (position renderPosition) child(name string) renderPosition {
+	position.seedPath += "/" + name
+	position.pointer += "/" + strings.ReplaceAll(strings.ReplaceAll(name, "~", "~0"), "/", "~1")
+	position.depth++
+	return position
+}
+
+func (state *generatorState) render(value any, position renderPosition) (any, error) {
+	if position.depth > 64 {
 		return nil, errors.New("generator nesting exceeds limit")
 	}
 	switch current := value.(type) {
 	case []any:
 		result := make([]any, len(current))
 		for index, nested := range current {
-			generated, err := state.render(nested, path+"/"+strconv.Itoa(index), depth+1)
+			generated, err := state.render(nested, position.child(strconv.Itoa(index)))
 			if err != nil {
 				return nil, err
 			}
@@ -210,6 +247,23 @@ func (state *generatorState) render(value any, path string, depth int) (any, err
 		return result, nil
 	case map[string]any:
 		if name, ok := current["$input"].(string); ok {
+			if binding, isFile := state.fileBindings[name]; isFile {
+				_, validPointer := imageFilePointer(position.pointer)
+				invalidPosition := position.inGenerator || !validPointer || len(current) != 1
+				if invalidPosition || state.usedFiles[name] {
+					return nil, unsupportedRenderedFile("file inputs require one independent native JSON value node")
+				}
+				file := *state.declarations[name].File
+				file.MediaTypes = append([]string{}, file.MediaTypes...)
+				state.files = append(state.files, FileOccurrence{
+					InputName: name,
+					Pointer:   position.pointer,
+					AssetRef:  binding.AssetRef,
+					File:      file,
+				})
+				state.usedFiles[name] = true
+				return nil, nil
+			}
 			raw, exists := state.values[name]
 			if !exists {
 				return nil, fmt.Errorf("referenced input %s has no value", name)
@@ -219,6 +273,9 @@ func (state *generatorState) render(value any, path string, depth int) (any, err
 				return nil, errors.New("expanded inputs exceed the request budget")
 			}
 			return decodeValue(raw)
+		}
+		if _, response := current["$response"]; response && len(state.fileBindings) != 0 {
+			return nil, unsupportedRenderedFile("file inputs do not support response references")
 		}
 		if step, ok := current["$response"].(string); ok {
 			state.generatedBytes += len(state.responses[step])
@@ -242,8 +299,11 @@ func (state *generatorState) render(value any, path string, depth int) (any, err
 			names = append(names, name)
 		}
 		sort.Strings(names)
+		if _, generator := current["$generate"]; generator {
+			position.inGenerator = true
+		}
 		for _, name := range names {
-			generated, err := state.render(current[name], path+"/"+name, depth+1)
+			generated, err := state.render(current[name], position.child(name))
 			if err != nil {
 				return nil, err
 			}
@@ -253,7 +313,7 @@ func (state *generatorState) render(value any, path string, depth int) (any, err
 			if generator == "concat" || generator == "repeat" {
 				return state.combine(generator, result)
 			}
-			return state.text(generator, result, path)
+			return state.text(generator, result, position.seedPath)
 		}
 		return result, nil
 	default:

@@ -116,17 +116,15 @@ func TestResolvedInputsKeepOrdinaryAssetObjectAndInlineValuesAsJSON(t *testing.T
 		t.Fatalf("ordinary inputs changed meaning: %+v, %v", resolved, err)
 	}
 	request := Request{Body: json.RawMessage(`{"object":{"$input":"object"},"url":{"$input":"url"},"inline":{"$input":"inline"}}`)}
-	body, err := Render(
-		request,
-		resolved,
-		RandomContext{},
-		nil,
-	)
+	body, err := Render(RenderInput{
+		Request: request, Declarations: declarations, Values: resolved,
+		Responses: map[string]json.RawMessage{},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var decoded map[string]json.RawMessage
-	if err := json.Unmarshal(body, &decoded); err != nil {
+	if err := json.Unmarshal(body.Body, &decoded); err != nil {
 		t.Fatal(err)
 	}
 	for name, raw := range supplied {
@@ -144,7 +142,7 @@ func TestResolvedInputsKeepOrdinaryAssetObjectAndInlineValuesAsJSON(t *testing.T
 	}
 }
 
-func TestFileInputsCannotRenderOrGenerate(t *testing.T) {
+func TestFileInputsRejectUnsupportedAndUnusedLocations(t *testing.T) {
 	raw := `{"inputs":{"image":` + fileDeclarationJSON + `},"request":{"body":{"image":{"$input":"image"}}},"assertions":[]}`
 	spec, err := Decode(json.RawMessage(raw))
 	if err != nil || !spec.HasFileInputs() {
@@ -158,12 +156,10 @@ func TestFileInputsCannotRenderOrGenerate(t *testing.T) {
 	if _, err := Generate(spec, supplied, RandomContext{}); !errors.Is(err, ErrFileInputsUnsupported) {
 		t.Fatalf("file generation error = %v", err)
 	}
-	if _, err := Render(
-		Request{Body: json.RawMessage(`{}`)},
-		resolved,
-		RandomContext{},
-		nil,
-	); !errors.Is(err, ErrFileInputsUnsupported) {
+	if _, err := Render(RenderInput{
+		Request: Request{Body: json.RawMessage(`{}`)}, Declarations: spec.Inputs, Values: resolved,
+		Responses: map[string]json.RawMessage{},
+	}); !errors.Is(err, ErrFileInputsUnsupported) {
 		t.Fatalf("unused file binding rendering error = %v", err)
 	}
 	for _, duplicate := range []string{
