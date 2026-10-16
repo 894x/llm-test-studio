@@ -61,6 +61,10 @@ func (protocol TaskProtocol) ValidateProtocol(spec testspec.Spec) error {
 func (protocol TaskProtocol) Execute(ctx context.Context, execution Execution) testspec.Observation {
 	started := time.Now()
 	observation := NewObservation(protocol.ID)
+	if execution.Spec.HasFileInputs() || len(execution.Inputs.Files) != 0 {
+		AddIssue(&observation, "prepare", "file_inputs_unsupported")
+		return observation
+	}
 	body, err := testspec.Render(execution.Spec.Request, execution.Inputs, execution.Random, map[string]json.RawMessage{})
 	if err != nil {
 		AddIssue(&observation, "prepare", "request_generation_failed")

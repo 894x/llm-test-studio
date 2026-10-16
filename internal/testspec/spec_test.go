@@ -111,7 +111,15 @@ func TestSequenceReferencesOnlyPreviousExplicitResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	responses := map[string]json.RawMessage{"initial": json.RawMessage(`{"choices":[{"message":{"role":"assistant","content":"First"}}]}`)}
-	body, err := Render(spec.Workflow.Steps[0].Request, nil, RandomContext{}, responses)
+	body, err := Render(
+		spec.Workflow.Steps[0].Request,
+		ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]FileBinding{},
+		},
+		RandomContext{},
+		responses,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +173,15 @@ func TestAssertionGroupsSupportAdmissionOrTerminalFailure(t *testing.T) {
 func TestInputExpansionHasAggregateBudget(t *testing.T) {
 	value, _ := json.Marshal(strings.Repeat("a", MaxDocumentBytes/2))
 	request := Request{Body: json.RawMessage(`{"a":{"$input":"x"},"b":{"$input":"x"},"c":{"$input":"x"}}`)}
-	if _, err := Render(request, map[string]json.RawMessage{"x": value}, RandomContext{}, nil); err == nil {
+	if _, err := Render(
+		request,
+		ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{"x": value},
+			Files:      map[string]FileBinding{},
+		},
+		RandomContext{},
+		nil,
+	); err == nil {
 		t.Fatal("unbounded repeated input expansion")
 	}
 }

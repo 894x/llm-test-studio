@@ -17,6 +17,12 @@
     "details": "{{title}}详情"
   },
   "error": {
+    "file_input_invalid": "所选图片无效，请选择非空的 PNG 或 JPEG 图片。",
+    "file_input_too_large": "图片超过 1 MiB 上限，请选择较小的图片。",
+    "file_input_limit": "已达到本地图片选择上限，请移除图片后重试。",
+    "file_input_busy": "正在导入图片，请稍后重试。",
+    "file_input_not_found": "图片选择已不可用，请重新选择图片。",
+    "file_input_unavailable": "本地图片选择不可用，请在桌面应用中重试。",
     "operationFailed": "{{operation}}失败：{{message}}",
     "desktop_not_started": "桌面服务仍在启动，请稍候重试；日志操作名：startup",
     "desktop_startup_failed": "桌面服务初始化失败，请查看日志中的 startup 记录",

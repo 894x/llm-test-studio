@@ -23,6 +23,7 @@ import {
   type CreateSuiteCommand,
   type CreateTestCaseCommand,
   type DeleteCommand,
+  type FileMediaType,
   type UpdateChannelCommand,
   type UpdateChannelModelCommand,
   type UpdateModelCommand,
@@ -97,6 +98,12 @@ export type DesktopErrorCode =
   | "job_commit_unconfirmed"
   | "job_query_unavailable"
   | "job_commands_unavailable"
+  | "file_input_invalid"
+  | "file_input_too_large"
+  | "file_input_limit"
+  | "file_input_busy"
+  | "file_input_not_found"
+  | "file_input_unavailable"
 
 type PublicErrorMessages = Record<DesktopErrorCode, string> & {
   operationFailed: string
@@ -147,6 +154,8 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
 }
 
 export interface DesktopClient extends CatalogActions {
+  createLocalFileSelection(command: CreateLocalFileSelectionCommand): Promise<LocalFileSelection>
+  releaseLocalFileSelection(selectionID: string): Promise<void>
   getRemoteNodes(): Promise<RemoteNodesSnapshot>
   saveRemoteNode(command: RemoteNodeDraft): Promise<void>
   refreshRemoteNode(command: RemoteNodeAction): Promise<void>
@@ -182,6 +191,34 @@ export interface DesktopClient extends CatalogActions {
   forgetQuickTaskCredential(runId: string): Promise<void>
 }
 
+export const MAX_LOCAL_FILE_BYTES = 1048576
+const MAX_LOCAL_FILE_BASE64_LENGTH = 1398104
+const MAX_LOCAL_FILE_DOCUMENT_BYTES = 1400000
+export type CreateLocalFileSelectionCommand = { data_base64: string; media_type: FileMediaType }
+export type LocalFileSelection = { selection_id: string; sha256: string; size: number; media_type: FileMediaType }
+
+function localFileSelectionDocument(command: CreateLocalFileSelectionCommand): string {
+  if (!isRecord(command) || Object.keys(command).length !== 2 ||
+    (command.media_type !== "image/png" && command.media_type !== "image/jpeg") ||
+    typeof command.data_base64 !== "string" || !command.data_base64.length ||
+    command.data_base64.length % 4 !== 0) throw new DesktopClientError("file_input_invalid")
+  if (command.data_base64.length > MAX_LOCAL_FILE_BASE64_LENGTH) throw new DesktopClientError("file_input_too_large")
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(command.data_base64)) throw new DesktopClientError("file_input_invalid")
+  const size = command.data_base64.length / 4 * 3 - (command.data_base64.endsWith("==") ? 2 : command.data_base64.endsWith("=") ? 1 : 0)
+  if (size > MAX_LOCAL_FILE_BYTES) throw new DesktopClientError("file_input_too_large")
+  const document = JSON.stringify(command)
+  if (new TextEncoder().encode(document).byteLength > MAX_LOCAL_FILE_DOCUMENT_BYTES) throw new DesktopClientError("file_input_too_large")
+  return document
+}
+
+function parseLocalFileSelection(value: unknown): LocalFileSelection {
+  if (!isRecord(value) || Object.keys(value).length !== 4 || !isUUID(value.selection_id) ||
+    typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256) ||
+    !Number.isSafeInteger(value.size) || (value.size as number) < 1 || (value.size as number) > MAX_LOCAL_FILE_BYTES ||
+    (value.media_type !== "image/png" && value.media_type !== "image/jpeg")) throw new DesktopDataError("Invalid local file selection")
+  return { selection_id: value.selection_id, sha256: value.sha256, size: value.size as number, media_type: value.media_type }
+}
+
 export type DesktopDiagnosticsSnapshot = {
   schema_version: 1
   available: boolean
@@ -193,6 +230,8 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  CreateLocalFileSelection(document: string): Promise<unknown>
+  ReleaseLocalFileSelection(selectionID: string): Promise<unknown>
   GetRemoteNodes(): Promise<unknown>
   StartRemoteNodeUpgrade(command: StartRemoteNodeUpgradeCommand): Promise<unknown>
   GetRemoteNodeUpgrade(id: string): Promise<unknown>
@@ -256,6 +295,7 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "CreateLocalFileSelection", "ReleaseLocalFileSelection",
   "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
   "RetryRemoteInstallation", "RemoveRemoteNode",
   "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
@@ -308,6 +348,8 @@ export function createFixtureClient(
     }))
   }
   return {
+    async createLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
+    async releaseLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async getDiagnostics() {
       return fixtureDiagnosticsSnapshot()
     },
@@ -507,6 +549,8 @@ function createLazyFixtureClient(): DesktopClient {
       createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS),
   )
   return {
+    createLocalFileSelection: async command => (await client).createLocalFileSelection(command),
+    releaseLocalFileSelection: async id => (await client).releaseLocalFileSelection(id),
     getDiagnostics: async () => (await client).getDiagnostics(),
     getRemoteNodes: async () => (await client).getRemoteNodes(),
     saveRemoteNode: async command => (await client).saveRemoteNode(command),
@@ -592,6 +636,18 @@ export function singleFlightRead<T>(read: () => Promise<T>): (() => Promise<T>) 
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   return {
+    createLocalFileSelection: async command => {
+      const document = localFileSelectionDocument(command)
+      return callBinding(() => binding.CreateLocalFileSelection(document), value => {
+        const selection = parseLocalFileSelection(value)
+        if (selection.media_type !== command.media_type) throw new DesktopDataError("Invalid local file selection media type")
+        return selection
+      })
+    },
+    releaseLocalFileSelection: async id => {
+      if (!isUUID(id)) throw new DesktopClientError("file_input_invalid")
+      return callBinding(() => binding.ReleaseLocalFileSelection(id), parseVoid)
+    },
     getRemoteNodes: singleFlightRead(() => callBinding(() => binding.GetRemoteNodes(), parseRemoteNodes)),
     saveRemoteNode: async command => callBinding(() => binding.SaveRemoteNode(command), parseVoid),
     refreshRemoteNode: async command => callBinding(() => binding.RefreshRemoteNode(command), parseVoid),

@@ -44,8 +44,9 @@ import { taskConnectionURLs } from "./connection-url"
 import { ConnectionURLInput } from "./connection-url-input"
 import { protocolOptions } from "@/features/catalog/protocols"
 import { SaveChannelSheet } from "./save-channel-sheet"
+import { LocalFileInput } from "./local-file-input"
 
-type Actions = JobClient & Pick<DesktopClient, "getQuickTask" | "rememberQuickTaskCredential" | "forgetQuickTaskCredential">
+type Actions = JobClient & Pick<DesktopClient, "getQuickTask" | "rememberQuickTaskCredential" | "forgetQuickTaskCredential" | "createLocalFileSelection" | "releaseLocalFileSelection">
 
 export function QuickTaskWorkspace({
   catalog,
@@ -83,6 +84,8 @@ export function QuickTaskWorkspace({
   >(null)
   const [job, setJob] = useState<JobView | null>(null)
   const inFlight = useRef(false)
+  const fileImportInFlight = useRef(false)
+  const [fileImporting, setFileImporting] = useState(false)
   const performanceTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState("")
@@ -97,6 +100,19 @@ export function QuickTaskWorkspace({
   const protocol = draft.task?.protocol ?? selectedProtocol
   const currentTasks = catalog.suites.filter(item => item.protocol === protocol)
   const task = currentTasks.find((item) => item.id === draft.task?.id) ?? draft.task ?? currentTasks[0]
+  const hasFileInputs = task?.inputs.some(input => input.type === "file") ?? false
+  const fileCoordinator = {
+    begin: () => {
+      if (fileImportInFlight.current) return false
+      fileImportInFlight.current = true
+      setFileImporting(true)
+      return true
+    },
+    end: () => {
+      fileImportInFlight.current = false
+      setFileImporting(false)
+    },
+  }
   const form =
     draft.task || !task
       ? draft
@@ -535,13 +551,23 @@ export function QuickTaskWorkspace({
                       </p>
                       {task.inputs.map((input) => (
                         <TaskField
-                          key={input.key}
+                          key={input.type === "file" ? `${taskKey(task)}:${input.key}:${form.source_run_id ?? ""}` : input.key}
                           id={`input.${input.key}`}
                           label={input.label}
                           error={errors[`input.${input.key}`]}
                           className={input.type === "boolean" || input.type === "number" || input.type === "integer" ? undefined : "col-span-full"}
                         >
-                          {input.type === "boolean" ? (
+                          {input.type === "file" ? (
+                            <LocalFileInput
+                              id={`quick-task-input.${input.key}`}
+                              definition={input.file}
+                              actions={actions}
+                              coordinator={fileCoordinator}
+                              importing={fileImporting}
+                              disabled={!!pending}
+                              invalid={!!errors[`input.${input.key}`]}
+                            />
+                          ) : input.type === "boolean" ? (
                             <Checkbox
                               id={`quick-task-input.${input.key}`}
                               checked={form.inputs[input.key] === true}
@@ -584,8 +610,9 @@ export function QuickTaskWorkspace({
                     </div>
                   </fieldset>
                   <p className="text-[11px] text-muted-foreground">{t("task.draftNote")}</p>
+                  {hasFileInputs ? <Alert><AlertDescription>{t("fileInput.launchUnavailable")}</AlertDescription></Alert> : null}
                   <div className="flex flex-wrap gap-2">
-                    <Button type="submit" disabled={!!pending}>
+                    <Button type="submit" disabled={!!pending || hasFileInputs}>
                       {pending === "start" ? (
                         <Spinner data-icon="inline-start" />
                       ) : (
@@ -598,7 +625,7 @@ export function QuickTaskWorkspace({
                         ref={performanceTrigger}
                         type="button"
                         variant="outline"
-                        disabled={!!pending}
+                        disabled={!!pending || hasFileInputs}
                         onClick={(event) => openPerformance(event.currentTarget)}
                       >
                         <GaugeIcon data-icon="inline-start" />

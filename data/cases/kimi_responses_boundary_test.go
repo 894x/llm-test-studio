@@ -41,7 +41,11 @@ func kimiNativeSpec(t *testing.T, directory string) testspec.Spec {
 
 func kimiBoundaryObservation(spec testspec.Spec, root map[string]any, status int) testspec.Observation {
 	return openairesponses.New().Execute(context.Background(), runtime.Execution{
-		Spec: spec, Inputs: map[string]json.RawMessage{},
+		Spec: spec,
+		Inputs: testspec.ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]testspec.FileBinding{},
+		},
 		Transport: &kimiResponsesFixture{status: status, root: root},
 	})
 }

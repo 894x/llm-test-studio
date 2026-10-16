@@ -66,19 +66,39 @@ export interface CatalogTestCase {
 }
 
 export type CatalogPlanParameterValue = string | number | boolean | null | CatalogPlanParameterValue[] | { [key: string]: CatalogPlanParameterValue }
-export interface SuiteInput {
+interface SuiteInputBase {
   key: string
   label: string
-  type: "string" | "integer" | "number" | "boolean" | "object" | "array"
   description?: string
+  bindings: { case_id: string; input: string }[]
+}
+export type FileMediaType = "image/png" | "image/jpeg"
+export interface FileInput {
+  encoding: "image_data_url"
+  media_types: FileMediaType[]
+  max_bytes: number
+}
+export interface FileSuiteInput extends SuiteInputBase {
+  type: "file"
+  file: FileInput
+  required: true
+  default?: never
+  enum?: never
+  minimum?: never
+  maximum?: never
+  unit?: never
+}
+interface JSONSuiteInput extends SuiteInputBase {
+  type: "string" | "integer" | "number" | "boolean" | "object" | "array"
+  file?: never
   unit?: string
   default?: CatalogPlanParameterValue
   required?: boolean
   minimum?: number
   maximum?: number
   enum?: CatalogPlanParameterValue[]
-  bindings: { case_id: string; input: string }[]
 }
+export type SuiteInput = JSONSuiteInput | FileSuiteInput
 export interface CatalogSuite {
   id: string; revision: number; key: string; name: string; protocol: CatalogProtocol
   case_count: number; cases: CatalogCaseReference[]; description: string; inputs: SuiteInput[]
@@ -386,9 +406,29 @@ export function parseSuite(value: unknown): CatalogSuite {
     protocol: value.protocol, case_count: value.case_count, cases, description: value.description, inputs }
 }
 export function parseSuiteInput(value: unknown): SuiteInput {
+  if (isRecord(value) && value.type === "file") {
+    if (!isSafeCaseKey(value.key) || !isNonBlank(value.label) || value.required !== true ||
+      (value.description !== undefined && typeof value.description !== "string") ||
+      !Array.isArray(value.bindings) ||
+      Object.keys(value).some(key => !["key", "label", "type", "description", "required", "file", "bindings"].includes(key)) ||
+      !isRecord(value.file) || Object.keys(value.file).length !== 3 ||
+      value.file.encoding !== "image_data_url" || !Array.isArray(value.file.media_types) ||
+      value.file.media_types.length < 1 || value.file.media_types.length > 2 ||
+      !value.file.media_types.every(type => type === "image/png" || type === "image/jpeg") ||
+      new Set(value.file.media_types).size !== value.file.media_types.length ||
+      !Number.isSafeInteger(value.file.max_bytes) || (value.file.max_bytes as number) < 1 ||
+      (value.file.max_bytes as number) > 1048576) throw invalidCatalog()
+    return { key: value.key, label: value.label, type: "file", required: true,
+      ...(value.description !== undefined ? { description: value.description as string } : {}),
+      file: { encoding: "image_data_url", media_types: [...value.file.media_types] as FileMediaType[], max_bytes: value.file.max_bytes as number },
+      bindings: value.bindings.map(binding => {
+        if (!isRecord(binding) || !isUUID(binding.case_id) || !isNonBlank(binding.input) || "pointer" in binding || "case_key" in binding) throw invalidCatalog()
+        return { case_id: binding.case_id, input: binding.input }
+      }) }
+  }
   if (!isRecord(value) || !isSafeCaseKey(value.key) || !isNonBlank(value.label) ||
     !["string", "integer", "number", "boolean", "object", "array"].includes(value.type as string) ||
-    !Array.isArray(value.bindings) ||
+    !Array.isArray(value.bindings) || "file" in value ||
     (value.default !== undefined && !isJSONValue(value.default)) ||
     (value.required !== undefined && typeof value.required !== "boolean") ||
     (value.minimum !== undefined && (typeof value.minimum !== "number" || !Number.isFinite(value.minimum))) ||
@@ -396,7 +436,7 @@ export function parseSuiteInput(value: unknown): SuiteInput {
     (value.description !== undefined && typeof value.description !== "string") ||
     (value.unit !== undefined && typeof value.unit !== "string") ||
     (value.enum !== undefined && (!Array.isArray(value.enum) || !value.enum.every(isJSONValue)))) throw invalidCatalog()
-  return { key: value.key, label: value.label, type: value.type as SuiteInput["type"],
+  return { key: value.key, label: value.label, type: value.type as JSONSuiteInput["type"],
     ...(value.default !== undefined ? { default: structuredClone(value.default) as CatalogPlanParameterValue } : {}),
     ...(value.required !== undefined ? { required: value.required as boolean } : {}),
     ...(value.minimum !== undefined ? { minimum: value.minimum as number } : {}),

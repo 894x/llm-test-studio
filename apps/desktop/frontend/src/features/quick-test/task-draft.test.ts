@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
 import { DesktopDataError } from "@/app/data-error"
+import { FILE_SUITE, FILE_SELECTION } from "@/test/local-file-fixture"
 import {
   createTaskDraft,
   encodeTaskDraft,
@@ -38,6 +39,22 @@ const task = {
 }
 
 describe("quick task drafts", () => {
+  it("keeps file selections out of drafts and rejects every file-task command", () => {
+    const draft = { ...createTaskDraft(FILE_SUITE), base_url: "https://example.test", api_key: "key", model: "model" }
+    expect(draft.inputs).toEqual({})
+    const poisoned = { ...draft, inputs: { image: FILE_SELECTION.selection_id } }
+    const encoded = encodeTaskDraft(poisoned)
+    expect(encoded).not.toContain(FILE_SELECTION.selection_id)
+    expect(JSON.parse(encoded).inputs).toEqual({})
+    expect(decodeTaskDraft(encoded)?.inputs).toEqual({})
+    const checked = quickTaskCommand(poisoned)
+    expect(checked.command).toBeUndefined()
+    expect(checked.errors["input.image"]).toContain("暂不可运行")
+    expect(decodeTaskDraft(JSON.stringify({ ...JSON.parse(encoded), inputs: poisoned.inputs }))).toBeNull()
+    expect(() => parseQuickTaskDetail({ schema_version: 1, run_id: FILE_SELECTION.selection_id,
+      suite: FILE_SUITE, model: "model", base_url: "https://example.test", seed: 1, request_timeout_ms: 60000,
+      case_concurrency: 4, inputs: { image: { asset_ref: FILE_SELECTION.selection_id } } })).toThrow()
+  })
   it("preserves editable fields and root random context while never persisting a key", () => {
     const draft = {
       ...createTaskDraft(task),

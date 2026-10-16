@@ -35,7 +35,7 @@ type Request struct {
 
 type Execution struct {
 	Spec      testspec.Spec
-	Inputs    map[string]json.RawMessage
+	Inputs    testspec.ResolvedInputs
 	Random    testspec.RandomContext
 	Settings  testspec.RunSettings
 	Transport Transport

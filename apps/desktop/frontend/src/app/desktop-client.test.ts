@@ -14,9 +14,52 @@ import { DesktopDataError } from "./data-error"
 import type { LaunchCommand } from "@/features/jobs/data"
 import { jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
 import { EMPTY_REMOTE_NODES } from "@/features/remote-nodes/data"
+import { FILE_SELECTION } from "@/test/local-file-fixture"
 import { remoteUpgradeFixture, REMOTE_CONFIGURATION_ID, UPGRADE_OPERATION_ID } from "@/test/remote-upgrade-fixture"
 
 describe("Wails desktop client", () => {
+  it("imports a bounded image document through current bindings and strictly validates its metadata", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    const command = { data_base64: "AQID", media_type: "image/png" as const }
+    binding.CreateLocalFileSelection.mockResolvedValueOnce(FILE_SELECTION)
+    await expect(client.createLocalFileSelection(command)).resolves.toEqual(FILE_SELECTION)
+    expect(binding.CreateLocalFileSelection).toHaveBeenCalledExactlyOnceWith(JSON.stringify(command))
+    await client.releaseLocalFileSelection(FILE_SELECTION.selection_id)
+    expect(binding.ReleaseLocalFileSelection).toHaveBeenCalledExactlyOnceWith(FILE_SELECTION.selection_id)
+    for (const response of [
+      { ...FILE_SELECTION, path: "private" }, { ...FILE_SELECTION, data_base64: "AQID" },
+      { ...FILE_SELECTION, selection_id: "invalid" }, { ...FILE_SELECTION, sha256: "A".repeat(64) },
+      { ...FILE_SELECTION, size: 0 }, { ...FILE_SELECTION, size: 1048577 }, { ...FILE_SELECTION, size: 1.5 },
+      { ...FILE_SELECTION, media_type: "image/gif" }, { ...FILE_SELECTION, media_type: "image/jpeg" },
+    ]) {
+      binding.CreateLocalFileSelection.mockResolvedValueOnce(response)
+      await expect(client.createLocalFileSelection(command)).rejects.toBeInstanceOf(DesktopDataError)
+    }
+    for (const code of ["file_input_invalid", "file_input_too_large", "file_input_limit", "file_input_busy", "file_input_not_found", "file_input_unavailable"]) {
+      binding.CreateLocalFileSelection.mockRejectedValueOnce(code)
+      await expect(client.createLocalFileSelection(command)).rejects.toMatchObject({ code })
+    }
+    const count = binding.CreateLocalFileSelection.mock.calls.length
+    await expect(client.createLocalFileSelection({ ...command, path: "private" } as never)).rejects.toMatchObject({ code: "file_input_invalid" })
+    await expect(client.createLocalFileSelection({ ...command, data_base64: "!bad" })).rejects.toMatchObject({ code: "file_input_invalid" })
+    await expect(client.createLocalFileSelection({ ...command, data_base64: "A".repeat(1398108) })).rejects.toMatchObject({ code: "file_input_too_large" })
+    await expect(client.createLocalFileSelection({ ...command, data_base64: "A".repeat(1398104) })).rejects.toMatchObject({ code: "file_input_too_large" })
+    expect(binding.CreateLocalFileSelection).toHaveBeenCalledTimes(count)
+    const maximum = { ...command, data_base64: "A".repeat(1398102) + "==" }
+    binding.CreateLocalFileSelection.mockResolvedValueOnce({ ...FILE_SELECTION, size: 1048576 })
+    await expect(client.createLocalFileSelection(maximum)).resolves.toMatchObject({ size: 1048576 })
+    expect(new TextEncoder().encode(binding.CreateLocalFileSelection.mock.lastCall![0]).byteLength).toBeLessThanOrEqual(1400000)
+    await expect(client.releaseLocalFileSelection("private-path")).rejects.toMatchObject({ code: "file_input_invalid" })
+    binding.ReleaseLocalFileSelection.mockRejectedValueOnce("file_input_not_found")
+    await expect(client.releaseLocalFileSelection(FILE_SELECTION.selection_id)).rejects.toMatchObject({ code: "file_input_not_found" })
+  })
+
+  it("keeps local file selection explicitly unavailable in fixture previews", async () => {
+    const client = createFixtureClient(FIXTURE_WORKSPACE)
+    await expect(client.createLocalFileSelection({ data_base64: "AQID", media_type: "image/png" })).rejects.toMatchObject({ code: "file_input_unavailable" })
+    await expect(client.releaseLocalFileSelection(FILE_SELECTION.selection_id)).rejects.toMatchObject({ code: "file_input_unavailable" })
+  })
   it("uses current explicit upgrade bindings and checks operation/configuration identity", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()
@@ -1084,6 +1127,8 @@ function installBinding(
   reports: unknown = FIXTURE_REPORTS,
 ) {
   const binding = {
+    CreateLocalFileSelection: vi.fn<(document: string) => Promise<unknown>>(),
+    ReleaseLocalFileSelection: vi.fn(async (_id?: string) => undefined),
     GetRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
     StartRemoteNodeUpgrade: vi.fn(), GetRemoteNodeUpgrade: vi.fn<(id: string) => Promise<unknown>>(async () => null),
     RetryRemoteNodeUpgrade: vi.fn(), RecoverRemoteNodeUpgrade: vi.fn(),

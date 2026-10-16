@@ -10,6 +10,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/jobfiles"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
@@ -211,6 +212,7 @@ type DesktopApp struct {
 	emitEvent                desktopEventEmitter
 	saveReportExport         reportExportSaver
 	copyReportPNG            reportPNGClipboardWriter
+	fileSelections           *jobfiles.Registry
 }
 
 // DesktopDiagnosticsSnapshot is an allow-listed operator view. The filesystem
@@ -290,6 +292,7 @@ func newDesktopApp(initialize desktopInitializer) *DesktopApp {
 		initialize:       initialize,
 		saveReportExport: saveReportExportToFile,
 		copyReportPNG:    writePNGToClipboard,
+		fileSelections:   jobfiles.NewRegistry(),
 	}
 	app.drained = sync.NewCond(&app.mu)
 	app.startupDone = sync.NewCond(&app.mu)
@@ -900,6 +903,8 @@ func (app *DesktopApp) shutdown() error {
 		app.drained.Wait()
 	}
 	closeResources := app.close
+	selections := app.fileSelections
+	app.fileSelections = nil
 	app.query = nil
 	app.catalog = nil
 	app.catalogCommands = nil
@@ -920,8 +925,11 @@ func (app *DesktopApp) shutdown() error {
 	app.mu.Unlock()
 
 	var shutdownErr error
+	if selections != nil {
+		shutdownErr = selections.Close()
+	}
 	if closeResources != nil {
-		shutdownErr = closeResources()
+		shutdownErr = errors.Join(shutdownErr, closeResources())
 	}
 	app.mu.Lock()
 	app.shutdownErr = shutdownErr
@@ -958,6 +966,18 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 	}
 
 	switch {
+	case errors.Is(internal, jobfiles.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeFileInputInvalid}
+	case errors.Is(internal, jobfiles.ErrTooLarge):
+		return DesktopBindingError{Code: desktopCodeFileInputTooLarge}
+	case errors.Is(internal, jobfiles.ErrLimit):
+		return DesktopBindingError{Code: desktopCodeFileInputLimit}
+	case errors.Is(internal, jobfiles.ErrBusy):
+		return DesktopBindingError{Code: desktopCodeFileInputBusy}
+	case errors.Is(internal, jobfiles.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeFileInputNotFound}
+	case errors.Is(internal, jobfiles.ErrClosed):
+		return DesktopBindingError{Code: desktopCodeFileInputUnavailable}
 	case errors.Is(internal, ErrJobCommitUnconfirmed):
 		return DesktopBindingError{Code: desktopCodeJobCommitUnconfirmed}
 	case errors.Is(internal, ErrJobQueryUnavailable):
@@ -1061,6 +1081,9 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 
 func isDesktopBindingCode(code string) bool {
 	switch code {
+	case desktopCodeFileInputInvalid, desktopCodeFileInputTooLarge, desktopCodeFileInputLimit,
+		desktopCodeFileInputBusy, desktopCodeFileInputNotFound, desktopCodeFileInputUnavailable:
+		return true
 	case desktopCodeJobInvalid, desktopCodeJobNotFound, desktopCodeJobConflict, desktopCodeJobUnavailable,
 		desktopCodeJobPending, desktopCodeJobCommitUnconfirmed, desktopCodeJobQueryUnavailable, desktopCodeJobCommandsUnavailable,
 		desktopCodeNotStarted,

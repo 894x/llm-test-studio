@@ -163,12 +163,17 @@ func (entry RunEntrySnapshot) Validate(protocol Protocol) error {
 		if err != nil {
 			return err
 		}
+		if entry.Suite != nil {
+			if err := entry.Suite.validateFileInputBindings(testCase.ID, spec.Inputs); err != nil {
+				return err
+			}
+		}
 		inputs, found := entry.CaseInputs[testCase.ID]
 		if !found || inputs == nil {
 			return errors.New("missing resolved Case inputs")
 		}
 		resolved, err := testspec.ValidateInputs(spec.Inputs, inputs)
-		if err != nil || !equalSnapshotMap(resolved, inputs) {
+		if err != nil || !equalSnapshotMap(resolved.SnapshotValues(), inputs) {
 			return errors.New("run Case inputs are invalid or unresolved")
 		}
 	}

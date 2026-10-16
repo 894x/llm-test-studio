@@ -100,6 +100,9 @@ func (client *Client) Execute(ctx context.Context, execution Execution) (testspe
 	if err != nil {
 		return testspec.Result{}, err
 	}
+	if len(inputs.Files) != 0 {
+		return testspec.Result{}, testspec.ErrFileInputsUnsupported
+	}
 	timeout := execution.Settings.TimeoutMS
 	if timeout == 0 {
 		timeout = 600_000

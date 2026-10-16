@@ -58,6 +58,9 @@ func (service *Preparer) BuildQuickTask(
 	if err != nil {
 		return PreparedRun{}, nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
+	if suite.HasFileInputs() {
+		return PreparedRun{}, nil, fmt.Errorf("%w: %w", ErrNotRunnable, testspec.ErrFileInputsUnsupported)
+	}
 	for _, testCase := range cases {
 		invalidCase := testCase.Validate() != nil || !testCase.Enabled
 		if invalidCase || service.caseTypes.Validate(suite.Protocol, testCase.Definitions[suite.Protocol]) != nil {
@@ -71,7 +74,10 @@ func (service *Preparer) BuildQuickTask(
 		if err != nil {
 			return PreparedRun{}, nil, err
 		}
-		caseInputs[testCase.ID] = values
+		if len(values.Files) != 0 {
+			return PreparedRun{}, nil, fmt.Errorf("%w: %w", ErrNotRunnable, testspec.ErrFileInputsUnsupported)
+		}
+		caseInputs[testCase.ID] = values.SnapshotValues()
 	}
 
 	now := service.clock.Now()

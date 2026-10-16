@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { I18nextProvider } from "react-i18next"
 import { useState } from "react"
 import userEvent from "@testing-library/user-event"
@@ -8,6 +8,8 @@ import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/
 import { createTaskDraft, type TaskDraft } from "./task-draft"
 import { executionClient, jobFixture } from "@/test/jobs-fixture"
 import { QuickTaskWorkspace } from "./quick-task-workspace"
+import type { CatalogSuite } from "@/features/catalog/data"
+import { FILE_CATALOG, FILE_SELECTION, FILE_SUITE } from "@/test/local-file-fixture"
 
 const task = {
   ...FIXTURE_CATALOG.suites[0],
@@ -44,12 +46,15 @@ function setup(
   refresh = vi.fn(async () => {}),
   workspace = FIXTURE_WORKSPACE,
   catalog = FIXTURE_CATALOG,
+  selectedTask: CatalogSuite = task,
 ) {
   const actions = {
     ...executionClient(),
     getQuickTask: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined),
     forgetQuickTaskCredential: vi.fn(async () => undefined),
+    createLocalFileSelection: vi.fn(async () => FILE_SELECTION),
+    releaseLocalFileSelection: vi.fn(async () => undefined),
   }
   const observed = jobFixture({ kind: "run", run_ids: [FIXTURE_WORKSPACE.runs[0].id], report_ids: [] })
   actions.launchJob.mockResolvedValue({ ...observed, execution: null })
@@ -62,7 +67,7 @@ function setup(
       <QuickTaskWorkspace
         catalog={{
           ...catalog,
-          suites: [task, catalog.suites[1]],
+          suites: [selectedTask, catalog.suites[1]],
         }}
         workspace={workspace}
         reports={FIXTURE_REPORTS}
@@ -87,6 +92,20 @@ function setup(
 }
 
 describe("Suite quick task workspace", () => {
+  it("renders an explicit file declaration and blocks launch before and after image selection", async () => {
+    const actions = setup({ ...createTaskDraft(FILE_SUITE), base_url: "https://example.test", api_key: "key", model: "model" },
+      undefined, undefined, FILE_CATALOG, FILE_SUITE)
+    const start = screen.getByRole("button", { name: "开始测试" })
+    expect(start).toBeDisabled()
+    fireEvent.submit(start.closest("form")!)
+    expect(actions.launchJob).not.toHaveBeenCalled()
+    expect(screen.getAllByText(/包含文件输入的任务暂不可运行/).length).toBeGreaterThan(0)
+    const picker = screen.getByLabelText("测试图片")
+    await userEvent.setup().upload(picker, new File([new Uint8Array([1, 2, 3])], "sample.png", { type: "image/png" }))
+    await screen.findByText("已选择：image/png · 3 字节")
+    expect(start).toBeDisabled()
+    expect(actions.launchJob).not.toHaveBeenCalled()
+  })
   it("rejects a protocol excluded by the saved model mapping", async () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
     catalog.models[0].protocols = ["openai-chat", "openai-responses"]

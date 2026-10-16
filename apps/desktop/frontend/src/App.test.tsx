@@ -69,6 +69,7 @@ function desktopClient(): DesktopClient & {
     getJob: vi.fn<DesktopClient["getJob"]>(async () => structuredClone(observedJob)),
     getQuickTask: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined), forgetQuickTaskCredential: vi.fn(async () => undefined),
+    createLocalFileSelection: vi.fn(), releaseLocalFileSelection: vi.fn(async () => undefined),
 
     ...catalogMutationMocks(),
     ...remoteNodeMocks(),
@@ -1177,6 +1178,7 @@ describe("desktop run workspace", () => {
 			getComparisons: vi.fn(),
 			getQuickTask: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined), forgetQuickTaskCredential: vi.fn(async () => undefined),
+    createLocalFileSelection: vi.fn(), releaseLocalFileSelection: vi.fn(async () => undefined),
 
       ...executionClient(),
       ...catalogMutationMocks(),

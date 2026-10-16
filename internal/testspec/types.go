@@ -23,6 +23,7 @@ type Input struct {
 	Minimum     *float64          `json:"minimum,omitempty"`
 	Maximum     *float64          `json:"maximum,omitempty"`
 	Enum        []json.RawMessage `json:"enum,omitempty"`
+	File        *FileInput        `json:"file,omitempty"`
 }
 
 type Request struct {

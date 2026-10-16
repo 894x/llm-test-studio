@@ -47,7 +47,7 @@ export function createTaskDraft(task: CatalogSuite | null): TaskDraft {
     channel_id: "",
     api_key: "",
     inputs: Object.fromEntries(
-      (task?.inputs ?? []).map((input) => [
+      (task?.inputs ?? []).filter(input => input.type !== "file").map((input) => [
         input.key,
         typeof input.default === "boolean" ? input.default : input.default === undefined ? "" : typeof input.default === "string" ? input.default : JSON.stringify(input.default),
       ]),
@@ -79,6 +79,10 @@ export function quickTaskCommand(draft: TaskDraft, caseConcurrency = DEFAULT_CAS
   if (!Number.isSafeInteger(draft.seed) || draft.seed < 0) errors.seed = tx("quickTest:task.numberRequired")
   if (!Number.isSafeInteger(draft.request_timeout_ms) || draft.request_timeout_ms < 1) errors.request_timeout_ms = tx("quickTest:task.numberRequired")
   for (const input of task?.inputs ?? []) {
+    if (input.type === "file") {
+      errors[`input.${input.key}`] = tx("quickTest:fileInput.launchUnavailable")
+      continue
+    }
     const value = draft.inputs[input.key]
     if (value === "" || value === undefined) {
       if (input.required && input.default === undefined) errors[`input.${input.key}`] = tx("quickTest:task.valueRequired")
@@ -125,7 +129,8 @@ export function encodeTaskDraft(draft: TaskDraft): string {
     model: draft.model,
     base_url: baseURL,
     channel_id: draft.channel_id,
-    inputs: draft.inputs, seed: draft.seed, request_timeout_ms: draft.request_timeout_ms,
+    inputs: Object.fromEntries((draft.task?.inputs ?? []).filter(input => input.type !== "file")
+      .map(input => [input.key, draft.inputs[input.key]])), seed: draft.seed, request_timeout_ms: draft.request_timeout_ms,
     ...(draft.credential_run_id && baseURL ? { credential_run_id: draft.credential_run_id } : {}),
     ...(draft.source_run_id ? { source_run_id: draft.source_run_id } : {}),
   })
@@ -151,11 +156,15 @@ export function decodeTaskDraft(raw: string | null): TaskDraft | null {
     const task = value.task === null ? null : parseSuite(value.task)
     if (
       !record(value.inputs) ||
-      Object.keys(value.inputs).length !== (task?.inputs.length ?? 0)
+      Object.keys(value.inputs).length !== (task?.inputs.filter(input => input.type !== "file").length ?? 0)
     )
       return null
     const inputs: TaskDraft["inputs"] = {}
     for (const input of task?.inputs ?? []) {
+      if (input.type === "file") {
+        if (Object.hasOwn(value.inputs, input.key)) return null
+        continue
+      }
       const item = value.inputs[input.key]
       if (typeof item !== (input.type === "boolean" ? "boolean" : "string")) return null
       inputs[input.key] = item as string | boolean
@@ -199,7 +208,7 @@ export function parseQuickTaskDetail(value: unknown): QuickTaskDetail {
   const inputs: QuickTaskDetail["inputs"] = {}
   for (const [key, item] of Object.entries(value.inputs)) {
     const definition = suite.inputs.find(input => input.key === key)
-    if (!definition || !isJSONValue(item) ||
+    if (!definition || definition.type === "file" || !isJSONValue(item) ||
       (definition.type === "string" && typeof item !== "string") || (definition.type === "boolean" && typeof item !== "boolean") ||
       ((definition.type === "integer" || definition.type === "number") && typeof item !== "number") ||
       (definition.type === "integer" && !Number.isSafeInteger(item)) ||

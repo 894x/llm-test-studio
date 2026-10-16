@@ -51,6 +51,10 @@ func (*Module) ValidateProtocol(spec testspec.Spec) error {
 func (*Module) Execute(ctx context.Context, execution runtime.Execution) testspec.Observation {
 	started := time.Now()
 	observation := runtime.NewObservation("openai-chat")
+	if execution.Spec.HasFileInputs() || len(execution.Inputs.Files) != 0 {
+		runtime.AddIssue(&observation, "prepare", "file_inputs_unsupported")
+		return observation
+	}
 	steps := []testspec.Step{{ID: "initial", Request: execution.Spec.Request}}
 	if execution.Spec.Workflow != nil {
 		steps = append(steps, execution.Spec.Workflow.Steps...)

@@ -156,15 +156,18 @@ func Generate(spec Spec, values map[string]json.RawMessage, random RandomContext
 // Render evaluates explicit template nodes. Strings never undergo interpolation.
 func Render(
 	request Request,
-	values map[string]json.RawMessage,
+	values ResolvedInputs,
 	random RandomContext,
 	responses map[string]json.RawMessage,
 ) (json.RawMessage, error) {
+	if len(values.Files) != 0 {
+		return nil, ErrFileInputsUnsupported
+	}
 	value, err := decodeValue(request.Body)
 	if err != nil {
 		return nil, err
 	}
-	state := generatorState{values: values, random: random, responses: responses}
+	state := generatorState{values: values.JSONValues, random: random, responses: responses}
 	generated, err := state.render(value, "body", 0)
 	if err != nil {
 		return nil, err

@@ -17,6 +17,12 @@
     "details": "{{title}} details"
   },
   "error": {
+    "file_input_invalid": "The selected image is invalid. Choose a nonempty PNG or JPEG image.",
+    "file_input_too_large": "The image exceeds the 1 MiB limit. Choose a smaller image.",
+    "file_input_limit": "The local image selection limit is reached. Remove an image before retrying.",
+    "file_input_busy": "An image import is in progress. Wait and retry.",
+    "file_input_not_found": "The image selection is no longer available. Select the image again.",
+    "file_input_unavailable": "Local image selection is unavailable. Retry in the desktop application.",
     "operationFailed": "{{operation}} failed: {{message}}",
     "desktop_not_started": "Desktop services are starting. Retry shortly; log operation: startup.",
     "desktop_startup_failed": "Desktop initialization failed. Check the startup log entry.",

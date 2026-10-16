@@ -146,7 +146,13 @@ func (spec JobSpec) Validate() error {
 	}
 	switch spec.Kind {
 	case KindRun:
-		if spec.Spec.Run == nil || validateRun(*spec.Spec.Run) != nil {
+		if spec.Spec.Run == nil {
+			return invalid("spec.run")
+		}
+		if err := validateRun(*spec.Spec.Run); err != nil {
+			if errors.Is(err, ErrUnsupported) {
+				return err
+			}
 			return invalid("spec.run")
 		}
 	case KindPerformance:
@@ -166,6 +172,9 @@ func (spec JobSpec) Validate() error {
 		}
 		for _, run := range input.Runs {
 			if err := validateRun(run); err != nil {
+				if errors.Is(err, ErrUnsupported) {
+					return err
+				}
 				return invalid("spec.comparison.runs")
 			}
 		}
@@ -180,7 +189,24 @@ func validateRun(input runs.PreparedRun) error {
 		return invalid("meta.revision")
 	}
 	_, err := domain.NewRun(input.Meta, input.PlanID, input.Snapshot)
-	return err
+	if err != nil {
+		return err
+	}
+	for _, entry := range input.Snapshot.Entries {
+		if entry.Suite != nil && entry.Suite.HasFileInputs() {
+			return fmt.Errorf("%w: file inputs require admitted asset resolution", ErrUnsupported)
+		}
+		for _, testCase := range entry.CaseDefinitions {
+			spec, err := testCase.SpecFor(input.Snapshot.Channel.Protocol)
+			if err != nil {
+				return err
+			}
+			if spec.HasFileInputs() {
+				return fmt.Errorf("%w: file inputs require admitted asset resolution", ErrUnsupported)
+			}
+		}
+	}
+	return nil
 }
 
 func validateAssets(assets []Asset) error {

@@ -1,8 +1,29 @@
 import { describe, expect, it } from "vitest"
 import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
-import { parseCatalogSnapshot } from "./data"
+import { parseCatalogSnapshot, parseSuiteInput } from "./data"
+import { FILE_CATALOG, FILE_INPUT } from "@/test/local-file-fixture"
 
 describe("reference-only protocol catalog", () => {
+  it("parses only explicit current file declarations without reinterpreting ordinary object inputs", () => {
+    expect(parseCatalogSnapshot(FILE_CATALOG)).toEqual(FILE_CATALOG)
+    expect(parseSuiteInput(FILE_INPUT)).toEqual(FILE_INPUT)
+    expect(parseSuiteInput({ ...FILE_INPUT, file: { ...FILE_INPUT.file, media_types: ["image/png"], max_bytes: 1 } })).toMatchObject({ type: "file" })
+    const ordinary = { key: "asset", label: "Asset", type: "object", default: { asset_ref: "ordinary-json" }, bindings: [] }
+    expect(parseSuiteInput(ordinary)).toEqual(ordinary)
+    for (const invalid of [
+      { ...FILE_INPUT, required: false }, { ...FILE_INPUT, default: "image" }, { ...FILE_INPUT, unit: "bytes" },
+      { ...FILE_INPUT, enum: [] }, { ...FILE_INPUT, minimum: 1 }, { ...FILE_INPUT, maximum: 10 },
+      { ...FILE_INPUT, file: undefined }, { ...FILE_INPUT, file_input: FILE_INPUT.file },
+      ...[0, 1048577, 1.5].map(max_bytes => ({ ...FILE_INPUT, file: { ...FILE_INPUT.file, max_bytes } })),
+      ...[[], ["image/png", "image/png"], ["image/gif"]].map(media_types => ({ ...FILE_INPUT, file: { ...FILE_INPUT.file, media_types } })),
+      { ...FILE_INPUT, file: { ...FILE_INPUT.file, encoding: "base64" } },
+      { ...FILE_INPUT, file: { ...FILE_INPUT.file, path: "private" } }, { ...ordinary, file: FILE_INPUT.file },
+    ]) {
+      const before = structuredClone(invalid)
+      expect(() => parseSuiteInput(invalid)).toThrow()
+      expect(invalid).toEqual(before)
+    }
+  })
 
   it("accepts mapping protocol subsets", () => {
     const catalog = structuredClone(FIXTURE_CATALOG)
