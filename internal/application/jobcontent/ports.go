@@ -35,6 +35,7 @@ type AdmissionResources interface {
 // Its metadata does not authorize admission without the owning manager permit.
 type PreparedResources interface {
 	Claims() []Claim
+	Permit() *Permit
 	BindJob(string) (JobResources, error)
 	Close() error
 }
