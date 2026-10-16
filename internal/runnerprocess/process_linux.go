@@ -102,6 +102,11 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		return err
 	}
 	defer func() { runErr = errors.Join(runErr, repository.Close()) }()
+	readView, err := repository.OpenReadOnlyView(startup)
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, readView.Close()) }()
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns, transport.MaxIdleConnsPerHost = 4096, 4096
 	defer transport.CloseIdleConnections()
@@ -135,7 +140,7 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	}
 	hash, _ := hex.DecodeString(config.TokenSHA256)
 	handler, err := runnerhttp.New(runnerhttp.Dependencies{
-		Host: host, Maintenance: maintenance, Repository: repository, TokenSHA256: [32]byte(hash),
+		Host: host, Maintenance: maintenance, Repository: readView, TokenSHA256: [32]byte(hash),
 		Capabilities: capabilities(),
 	})
 	clear(hash)
@@ -147,8 +152,9 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		return err
 	}
 	defer listener.Close()
+	requests := &drainingHandler{next: handler}
 	server := &http.Server{
-		Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
+		Handler: requests, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
 		WriteTimeout: 30 * time.Second, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10,
 		ErrorLog: log.New(io.Discard, "", 0),
 	}
@@ -161,12 +167,9 @@ func Run(ctx context.Context, options Options) (runErr error) {
 		serveResult <- server.Serve(listener)
 	}()
 	defer func() {
-		cancelAPI()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = server.Shutdown(shutdown)
-		_ = server.Close()
-		<-serveDone
+		requests.shutdown(shutdown, server, cancelAPI, serveDone)
 	}()
 	origin := host.Identity().Origin
 	ready := Ready{
