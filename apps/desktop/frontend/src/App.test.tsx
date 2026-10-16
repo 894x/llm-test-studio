@@ -19,6 +19,7 @@ import {
 import type { WorkspaceSnapshot } from "./features/runs/data"
 import type { ReportGenerationProgress } from "./features/reports/generation-progress"
 import { EMPTY_COMPARISONS } from "./features/comparisons/data"
+import { EMPTY_REMOTE_NODES } from "./features/remote-nodes/data"
 import type { QuickPerformanceReport } from "./features/quick-test/data"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY } from "./features/quick-test/task-draft"
 import indexHtml from "../index.html?raw"
@@ -81,6 +82,7 @@ function desktopClient(): DesktopClient & {
 		runQuickPerformanceTest: vi.fn(),
 
     ...catalogMutationMocks(),
+    ...remoteNodeMocks(),
   }
   return client
 }
@@ -94,6 +96,15 @@ function catalogMutationMocks() {
     createTestCase: vi.fn(reply), updateTestCase: vi.fn(reply), deleteTestCase: vi.fn(reply),
     createSuite: vi.fn(reply), updateSuite: vi.fn(reply), deleteSuite: vi.fn(reply),
     createPlan: vi.fn(reply), updatePlan: vi.fn(reply), deletePlan: vi.fn(reply),
+  }
+}
+
+function remoteNodeMocks() {
+  return {
+    getRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
+    saveRemoteNode: vi.fn(async () => undefined), refreshRemoteNode: vi.fn(async () => undefined),
+    confirmRemoteNodeHostKey: vi.fn(async () => undefined), selectDefaultExecution: vi.fn(async () => undefined),
+    retryRemoteInstallation: vi.fn(async () => undefined), removeRemoteNode: vi.fn(async () => undefined),
   }
 }
 
@@ -1094,6 +1105,7 @@ describe("desktop run workspace", () => {
 			runQuickPerformanceTest: vi.fn(),
 
       ...catalogMutationMocks(),
+      ...remoteNodeMocks(),
     }
 
     render(<App client={client} />)

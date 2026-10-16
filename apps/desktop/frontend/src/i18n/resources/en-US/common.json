@@ -43,7 +43,18 @@
     "comparison_invalid": "The channel comparison request is invalid. Select a plan and at least two channels.",
     "comparison_not_ready": "The selected channels cannot be compared fairly with the same model revision. Check the model mappings and retry.",
     "comparison_target_unmapped": "The selected model is not bound to one of the channels. Add the channel-model mapping first.",
-    "comparison_channel_not_ready": "One of the selected channels is disabled or has no credential, so it cannot join the comparison."
+    "comparison_channel_not_ready": "One of the selected channels is disabled or has no credential, so it cannot join the comparison.",
+    "remote_nodes_unavailable": "Remote node management is unavailable. Retry in the desktop application.",
+    "remote_node_invalid": "Check the node connection and authentication settings.",
+    "remote_node_revision_conflict": "The node configuration changed. Refresh before retrying.",
+    "remote_node_not_found": "The remote node no longer exists. Refresh the list.",
+    "remote_node_re_pair_required": "The connection identity is bound. Create a new node for a different server or installation.",
+    "remote_node_still_referenced": "The node is selected as default, has an unresolved installation, or is referenced by a task.",
+    "remote_node_usage_unavailable": "Task and report synchronization cannot be confirmed. The node cannot be removed.",
+    "remote_node_credential_unavailable": "Re-enter node credentials or check the system credential store.",
+    "remote_node_busy": "A node operation is in progress. Refresh shortly.",
+    "remote_node_commit_unconfirmed": "The save is not confirmed. Refresh the node list before continuing.",
+    "remote_node_upgrade_required": "This node configuration format requires an upgrade."
   },
   "errorCode": {
     "invalid_request": "Invalid test parameters",

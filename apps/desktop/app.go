@@ -31,6 +31,7 @@ var (
 	ErrComparisonUnavailable     = errors.New("comparison service is unavailable")
 	ErrDiagnosticsUnavailable    = errors.New("desktop diagnostics are unavailable")
 	ErrQuickTestUnavailable      = errors.New("quick test service is unavailable")
+	ErrRemoteNodesUnavailable    = errors.New("remote node manager is unavailable")
 	ErrCatalogSavedRefreshFailed = errors.New("catalog mutation was saved but the refreshed snapshot is unavailable")
 	ErrInvalidIdentifier         = errors.New("desktop command identifier is invalid")
 )
@@ -62,6 +63,17 @@ const (
 	desktopCodeComparisonNotReady        = "comparison_not_ready"
 	desktopCodeComparisonTargetUnmapped  = "comparison_target_unmapped"
 	desktopCodeComparisonChannelNotReady = "comparison_channel_not_ready"
+	desktopCodeRemoteNodesMissing        = "remote_nodes_unavailable"
+	desktopCodeRemoteNodeInvalid         = "remote_node_invalid"
+	desktopCodeRemoteNodeConflict        = "remote_node_revision_conflict"
+	desktopCodeRemoteNodeNotFound        = "remote_node_not_found"
+	desktopCodeRemoteNodeRePair          = "remote_node_re_pair_required"
+	desktopCodeRemoteNodeReferenced      = "remote_node_still_referenced"
+	desktopCodeRemoteNodeUsageUnknown    = "remote_node_usage_unavailable"
+	desktopCodeRemoteNodeCredential      = "remote_node_credential_unavailable"
+	desktopCodeRemoteNodeBusy            = "remote_node_busy"
+	desktopCodeRemoteNodeUnconfirmed     = "remote_node_commit_unconfirmed"
+	desktopCodeRemoteNodeUpgrade         = "remote_node_upgrade_required"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -234,6 +246,7 @@ type desktopRequirements struct {
 	commands        bool
 	comparisons     bool
 	quickTests      bool
+	remoteNodes     bool
 }
 
 type desktopLease struct {
@@ -245,6 +258,7 @@ type desktopLease struct {
 	commands        RunCommands
 	comparisons     ComparisonService
 	quickTests      QuickPerformanceRunner
+	remoteNodes     *remotenodes.Manager
 	release         func()
 }
 
@@ -901,6 +915,9 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if require.quickTests && isNilInterface(app.quickTests) {
 		return desktopLease{}, ErrQuickTestUnavailable
 	}
+	if require.remoteNodes && app.remoteNodes == nil {
+		return desktopLease{}, ErrRemoteNodesUnavailable
+	}
 	app.active++
 	released := false
 	release := func() {
@@ -920,6 +937,7 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		reports: app.reports, commands: app.commands, release: release,
 		comparisons: app.comparisons,
 		quickTests:  app.quickTests,
+		remoteNodes: app.remoteNodes,
 	}, nil
 }
 
@@ -955,6 +973,7 @@ func (app *DesktopApp) shutdown() error {
 	app.commands = nil
 	app.comparisons = nil
 	app.quickTests = nil
+	app.remoteNodes = nil
 	app.close = nil
 	app.mu.Unlock()
 
@@ -1017,6 +1036,28 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
 	case errors.Is(internal, ErrQuickTestUnavailable):
 		return DesktopBindingError{Code: desktopCodeQuickTestMissing}
+	case errors.Is(internal, ErrRemoteNodesUnavailable):
+		return DesktopBindingError{Code: desktopCodeRemoteNodesMissing}
+	case errors.Is(internal, remotenodes.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeInvalid}
+	case errors.Is(internal, remotenodes.ErrConflict):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeConflict}
+	case errors.Is(internal, remotenodes.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeNotFound}
+	case errors.Is(internal, remotenodes.ErrRePairRequired), errors.Is(internal, remotenodes.ErrDuplicate):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeRePair}
+	case errors.Is(internal, remotenodes.ErrReferenced):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeReferenced}
+	case errors.Is(internal, remotenodes.ErrUsageUnknown):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUsageUnknown}
+	case errors.Is(internal, remotenodes.ErrCredential):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeCredential}
+	case errors.Is(internal, remotenodes.ErrBusy):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeBusy}
+	case errors.Is(internal, remotenodes.ErrCommitUnconfirmed):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUnconfirmed}
+	case errors.Is(internal, remotenodes.ErrUnsupported):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUpgrade}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, ErrCatalogSavedRefreshFailed):
@@ -1081,7 +1122,18 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeComparisonInvalid,
 		desktopCodeComparisonNotReady,
 		desktopCodeComparisonTargetUnmapped,
-		desktopCodeComparisonChannelNotReady:
+		desktopCodeComparisonChannelNotReady,
+		desktopCodeRemoteNodesMissing,
+		desktopCodeRemoteNodeInvalid,
+		desktopCodeRemoteNodeConflict,
+		desktopCodeRemoteNodeNotFound,
+		desktopCodeRemoteNodeRePair,
+		desktopCodeRemoteNodeReferenced,
+		desktopCodeRemoteNodeUsageUnknown,
+		desktopCodeRemoteNodeCredential,
+		desktopCodeRemoteNodeBusy,
+		desktopCodeRemoteNodeUnconfirmed,
+		desktopCodeRemoteNodeUpgrade:
 		return true
 	default:
 		return false

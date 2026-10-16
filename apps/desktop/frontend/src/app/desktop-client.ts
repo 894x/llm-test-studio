@@ -1,4 +1,6 @@
 import { DesktopDataError } from "@/app/data-error"
+import { EMPTY_REMOTE_NODES, parseRemoteNodes, type RemoteNodesSnapshot, type RemoteNodeDraft,
+  type RemoteNodeAction, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
 import { resolveConnectionURL } from "@/features/quick-test/connection-url"
@@ -85,6 +87,17 @@ export type DesktopErrorCode =
   | "comparison_not_ready"
   | "comparison_target_unmapped"
   | "comparison_channel_not_ready"
+  | "remote_nodes_unavailable"
+  | "remote_node_invalid"
+  | "remote_node_revision_conflict"
+  | "remote_node_not_found"
+  | "remote_node_re_pair_required"
+  | "remote_node_still_referenced"
+  | "remote_node_usage_unavailable"
+  | "remote_node_credential_unavailable"
+  | "remote_node_busy"
+  | "remote_node_commit_unconfirmed"
+  | "remote_node_upgrade_required"
 
 type PublicErrorMessages = Record<DesktopErrorCode, string> & {
   operationFailed: string
@@ -135,6 +148,13 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
 }
 
 export interface DesktopClient extends CatalogActions {
+  getRemoteNodes(): Promise<RemoteNodesSnapshot>
+  saveRemoteNode(command: RemoteNodeDraft): Promise<void>
+  refreshRemoteNode(command: RemoteNodeAction): Promise<void>
+  confirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<void>
+  selectDefaultExecution(command: DefaultExecutionCommand): Promise<void>
+  retryRemoteInstallation(command: RemoteNodeAction): Promise<void>
+  removeRemoteNode(command: RemoteNodeAction): Promise<void>
   getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
   openDiagnosticsDirectory(): Promise<void>
   getWorkspace(): Promise<WorkspaceSnapshot>
@@ -169,6 +189,13 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  GetRemoteNodes(): Promise<unknown>
+  SaveRemoteNode(command: RemoteNodeDraft): Promise<unknown>
+  RefreshRemoteNode(command: RemoteNodeAction): Promise<unknown>
+  ConfirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<unknown>
+  SelectDefaultExecution(command: DefaultExecutionCommand): Promise<unknown>
+  RetryRemoteInstallation(command: RemoteNodeAction): Promise<unknown>
+  RemoveRemoteNode(command: RemoteNodeAction): Promise<unknown>
   GetDiagnostics(): Promise<unknown>
   OpenDiagnosticsDirectory(): Promise<unknown>
   ReportFrontendDiagnostic(diagnostic: FrontendDiagnostic): Promise<unknown>
@@ -220,6 +247,8 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
+  "RetryRemoteInstallation", "RemoveRemoteNode",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
   "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
@@ -273,6 +302,13 @@ export function createFixtureClient(
     async getDiagnostics() {
       return fixtureDiagnosticsSnapshot()
     },
+    async getRemoteNodes() { return structuredClone(EMPTY_REMOTE_NODES) },
+    async saveRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async refreshRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async confirmRemoteNodeHostKey() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async selectDefaultExecution() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async retryRemoteInstallation() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async removeRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
     async openDiagnosticsDirectory() {},
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
@@ -537,6 +573,13 @@ function createLazyFixtureClient(): DesktopClient {
   )
   return {
     getDiagnostics: async () => (await client).getDiagnostics(),
+    getRemoteNodes: async () => (await client).getRemoteNodes(),
+    saveRemoteNode: async command => (await client).saveRemoteNode(command),
+    refreshRemoteNode: async command => (await client).refreshRemoteNode(command),
+    confirmRemoteNodeHostKey: async command => (await client).confirmRemoteNodeHostKey(command),
+    selectDefaultExecution: async command => (await client).selectDefaultExecution(command),
+    retryRemoteInstallation: async command => (await client).retryRemoteInstallation(command),
+    removeRemoteNode: async command => (await client).removeRemoteNode(command),
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getWorkspace: async () => (await client).getWorkspace(),
@@ -609,6 +652,13 @@ export function singleFlightRead<T>(read: () => Promise<T>): (() => Promise<T>) 
 
 function wailsClient(binding: WailsDesktopBinding): DesktopClient {
   return {
+    getRemoteNodes: singleFlightRead(() => callBinding(() => binding.GetRemoteNodes(), parseRemoteNodes)),
+    saveRemoteNode: async command => callBinding(() => binding.SaveRemoteNode(command), parseVoid),
+    refreshRemoteNode: async command => callBinding(() => binding.RefreshRemoteNode(command), parseVoid),
+    confirmRemoteNodeHostKey: async command => callBinding(() => binding.ConfirmRemoteNodeHostKey(command), parseVoid),
+    selectDefaultExecution: async command => callBinding(() => binding.SelectDefaultExecution(command), parseVoid),
+    retryRemoteInstallation: async command => callBinding(() => binding.RetryRemoteInstallation(command), parseVoid),
+    removeRemoteNode: async command => callBinding(() => binding.RemoveRemoteNode(command), parseVoid),
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
     subscribeReportGeneration: (onProgress) => {
       const runtime = (window as typeof window & {

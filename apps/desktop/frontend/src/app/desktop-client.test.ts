@@ -11,6 +11,7 @@ import { parseQuickPerformanceReport } from "@/features/quick-test/data"
 
 import { createDesktopClient, createFixtureClient, singleFlightRead } from "./desktop-client"
 import { DesktopDataError } from "./data-error"
+import { EMPTY_REMOTE_NODES } from "@/features/remote-nodes/data"
 
 describe("Wails desktop client", () => {
   afterEach(() => {
@@ -18,6 +19,19 @@ describe("Wails desktop client", () => {
 		Reflect.deleteProperty(window, "runtime")
 		vi.unstubAllEnvs()
 		vi.useRealTimers()
+  })
+
+  it("uses the current remote node bindings and rejects malformed snapshots", async () => {
+    const binding = installBinding(FIXTURE_WORKSPACE)
+    const client = createDesktopClient()
+    await expect(client.getRemoteNodes()).resolves.toEqual(EMPTY_REMOTE_NODES)
+    binding.GetRemoteNodes.mockResolvedValueOnce({ ...EMPTY_REMOTE_NODES, token_ref: "private" })
+    await expect(client.getRemoteNodes()).rejects.toBeInstanceOf(DesktopDataError)
+    const command = { expected_revision: 1, location: { kind: "local" as const, configuration_id: "" } }
+    await client.selectDefaultExecution(command)
+    expect(binding.SelectDefaultExecution).toHaveBeenCalledExactlyOnceWith(command)
+    binding.SelectDefaultExecution.mockRejectedValueOnce("remote_node_revision_conflict")
+    await expect(client.selectDefaultExecution(command)).rejects.toMatchObject({ code: "remote_node_revision_conflict" })
   })
 
   it("classifies malformed English payloads by type instead of translated text", async () => {
@@ -1292,6 +1306,13 @@ function installBinding(
   reports: unknown = FIXTURE_REPORTS,
 ) {
   const binding = {
+    GetRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
+    SaveRemoteNode: vi.fn(async (_command?: unknown) => undefined),
+    RefreshRemoteNode: vi.fn(async (_command?: unknown) => undefined),
+    ConfirmRemoteNodeHostKey: vi.fn(async (_command?: unknown) => undefined),
+    SelectDefaultExecution: vi.fn(async (_command?: unknown) => undefined),
+    RetryRemoteInstallation: vi.fn(async (_command?: unknown) => undefined),
+    RemoveRemoteNode: vi.fn(async (_command?: unknown) => undefined),
     GetWorkspace: vi.fn(async () => structuredClone(payload)),
     GetCatalog: vi.fn(async () => structuredClone(catalog)),
     GetReports: vi.fn(async () => structuredClone(reports)),
