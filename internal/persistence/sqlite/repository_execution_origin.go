@@ -63,7 +63,8 @@ func queryBoundedCurrentRun(ctx context.Context, queryer rowQueryer, runID strin
 func queryValidatedRunExecutionOrigin(ctx context.Context, queryer relationQueryer, run domain.Run) (*domain.ExecutionOrigin, error) {
 	runID := run.Meta().ID
 	rows, err := queryer.QueryContext(ctx, `SELECT 'owned', job_id, position FROM execution_job_runs WHERE run_id = ?
-		UNION ALL SELECT 'mirror', job_id, position FROM remote_job_runs WHERE run_id = ? LIMIT 3`, runID, runID)
+		UNION ALL SELECT 'mirror', job_id, position FROM remote_job_runs WHERE run_id = ?
+		UNION ALL SELECT 'historical', job_id, position FROM upgrade_history_runs WHERE run_id = ? LIMIT 3`, runID, runID, runID)
 	if err != nil {
 		return nil, fmt.Errorf("read run execution owner: %w", err)
 	}
@@ -93,6 +94,10 @@ func queryValidatedRunExecutionOrigin(ctx context.Context, queryer relationQuery
 		return nil, storageCorrupt("duplicate run execution namespace")
 	}
 	owned := owners[0]
+	if owned.namespace == "historical" {
+		// Execution provenance was never recorded by this historical producer.
+		return nil, nil
+	}
 	var admission validatedAdmission
 	var snapshot jobcontract.Snapshot
 	if owned.namespace == "owned" {

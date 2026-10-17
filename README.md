@@ -16,7 +16,7 @@
 </p>
 
 > [!NOTE]
-> LLM Test Studio is licensed under Apache-2.0 and is being prepared for its first public open-source release.
+> LLM Test Studio is publicly available under Apache-2.0. See the [compatibility and data-upgrade policy](doc/compatibility-policy.md) before changing released contracts or upgrading stored data.
 
 ## Product proof
 
@@ -276,4 +276,6 @@ LLM Test Studio source code, built-in case definitions, and project-owned media 
 
 ## Open-source status
 
-Public-release preparation is in progress. Licensing, contributor guidance, security reporting, repository templates, and initial source/history secret scanning are now covered. Remaining release gates include replacing or stabilizing externally hosted media fixtures and deciding how public desktop binaries will be signed and notarized.
+LLM Test Studio is publicly released. Contributions must preserve supported user-facing contracts and provide application-shipped migrations for routine data upgrades; private implementation details can evolve with their callers. SQLite upgrades now cover the ten most recent distinct storage structures identified in code history, with verified backups and historical fixtures. The [compatibility and data-upgrade policy](doc/compatibility-policy.md) lists exact source commits, read-only historical job limitations, archive export commands, and remaining release verification. This does not establish that any actual user installation has been upgraded.
+
+Check each release's notes for available packages, supported upgrade sources, and signing/notarization status. External media fixture stability and binary signing/notarization remain separate verification items; public source availability does not establish their completion.

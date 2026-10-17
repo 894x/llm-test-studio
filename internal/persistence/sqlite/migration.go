@@ -3,12 +3,11 @@ package sqlite
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,9 +15,9 @@ import (
 )
 
 const (
-	currentSchemaName    = "0001_protocol_runtime"
+	currentSchemaName    = "0002_operational_upgrades"
 	defaultBusyTime      = 5 * time.Second
-	CurrentSchemaVersion = 1
+	CurrentSchemaVersion = 2
 )
 
 // CurrentSchemaIdentity returns the single operational schema marker.
@@ -26,9 +25,8 @@ func CurrentSchemaIdentity() (version int, name, checksum string) {
 	return CurrentSchemaVersion, currentSchemaName, currentSchemaChecksum()
 }
 
-// ErrSchemaResetRequired classifies databases that do not exactly match the
-// current operational schema. The product intentionally provides no migration
-// or import path for those databases.
+// ErrSchemaResetRequired classifies unsupported or invalid persisted formats.
+// The name is retained for callers; this error never authorizes a data reset.
 var ErrSchemaResetRequired = errors.New("unsupported sqlite schema; preserve this database and explicitly upgrade it before opening")
 
 // MigrateOptions identifies the application creating the operational schema
@@ -45,10 +43,8 @@ type schemaObject struct {
 	ddl   string
 }
 
-// Migrate creates or validates the single operational schema. Earlier schemas
-// are deliberately unsupported by the production runtime. The schema reset
-// handles operational data; the temporary external migration tool is the
-// explicit cutover path for authored files and selected archived records.
+// Migrate upgrades supported operational baselines before normal workspace use.
+// All changes commit together; the pre-upgrade SQLite backup is retained.
 func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("sqlite migration path is required")
@@ -57,6 +53,10 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		return errors.New("sqlite migration app version is required")
 	}
 	busyTimeout, err := normalizeBusyTimeout(options.BusyTimeout)
+	if err != nil {
+		return err
+	}
+	catalog, err := loadMigrationCatalog()
 	if err != nil {
 		return err
 	}
@@ -75,6 +75,11 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if err := configureConnection(ctx, conn, busyTimeout); err != nil {
 		return err
 	}
+	// SQLite's documented table-rebuild procedure requires this before BEGIN.
+	// Both the source and the completed transaction are checked for FK integrity.
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return fmt.Errorf("prepare sqlite migration constraints: %w", err)
+	}
 	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return fmt.Errorf("begin sqlite migration: %w", err)
 	}
@@ -84,11 +89,11 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
 		}
 	}()
-	version, err := appliedMigrationVersion(ctx, conn)
+	state, err := inspectMigrationState(ctx, conn, catalog)
 	if err != nil {
 		return err
 	}
-	if version == 0 {
+	if state.version == 0 {
 		if err := validateEmptyDatabase(ctx, conn); err != nil {
 			return err
 		}
@@ -97,17 +102,20 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 				return fmt.Errorf("apply sqlite migration %s object %q: %w", currentSchemaName, object.name, err)
 			}
 		}
-		if _, err := conn.ExecContext(ctx, `INSERT INTO schema_migrations(version, name, checksum, applied_at, app_version) VALUES(1, ?, ?, ?, ?)`,
-			currentSchemaName, currentSchemaChecksum(), time.Now().UTC().Format(time.RFC3339Nano), options.AppVersion); err != nil {
-			return fmt.Errorf("record sqlite migration %s: %w", currentSchemaName, err)
+		baseline := catalog.Baselines[len(catalog.Baselines)-1]
+		if err := recordMigration(ctx, conn, migrationRecord{
+			version: 1, name: baseline.Name, checksum: baseline.Checksum,
+		}, options.AppVersion); err != nil {
+			return err
 		}
-		if _, err := conn.ExecContext(ctx, "PRAGMA user_version = 1"); err != nil {
-			return fmt.Errorf("set sqlite user version: %w", err)
+		if err := recordCurrentMigration(ctx, conn, options.AppVersion); err != nil {
+			return err
 		}
-		version = 1
 	}
-	if version != CurrentSchemaVersion {
-		return schemaResetRequired("unsupported migration version %d", version)
+	if state.version == 1 {
+		if err := upgradeOperationalDatabase(ctx, conn, path, state.baseline, options); err != nil {
+			return err
+		}
 	}
 	if err := validateAppliedSchema(ctx, conn); err != nil {
 		return err
@@ -138,7 +146,11 @@ func SchemaVersion(ctx context.Context, path string) (int, error) {
 	if !info.Mode().IsRegular() {
 		return 0, errors.New("sqlite schema path must be a regular file")
 	}
-	db, err := sql.Open("sqlite", path)
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return 0, err
+	}
+	db, err := sql.Open("sqlite", runnerBackupURI(absolute, "ro"))
 	if err != nil {
 		return 0, fmt.Errorf("open sqlite schema inspection: %w", err)
 	}
@@ -195,46 +207,15 @@ func configureConnection(ctx context.Context, conn *sql.Conn, busyTimeout time.D
 }
 
 func appliedMigrationVersion(ctx context.Context, conn *sql.Conn) (int, error) {
-	var userVersion int
-	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&userVersion); err != nil {
-		return 0, fmt.Errorf("read sqlite user version: %w", err)
-	}
-	var migrationTableCount int
-	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'`).Scan(&migrationTableCount); err != nil {
-		return 0, fmt.Errorf("inspect sqlite migration table: %w", err)
-	}
-	if migrationTableCount == 0 {
-		if userVersion != 0 {
-			return 0, schemaResetRequired("user_version is %d without migration history", userVersion)
-		}
-		return 0, nil
-	}
-	var version, count int
-	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&count, &version); err != nil {
-		return 0, fmt.Errorf("read sqlite migration history: %w", err)
-	}
-	if count != 1 || version != CurrentSchemaVersion {
-		return 0, schemaResetRequired("migration history contains %d rows ending at version %d", count, version)
-	}
-	var name, checksum, appliedAt, appVersion string
-	if err := conn.QueryRowContext(ctx, `SELECT name, checksum, applied_at, app_version FROM schema_migrations WHERE version = 1`).Scan(&name, &checksum, &appliedAt, &appVersion); err != nil {
-		return 0, fmt.Errorf("read sqlite migration record: %w", err)
-	}
-	if name != currentSchemaName || checksum != currentSchemaChecksum() {
-		return 0, schemaResetRequired("operational baseline migration identity does not match")
-	}
-	timestamp, err := time.Parse(time.RFC3339Nano, appliedAt)
-	if err != nil || timestamp.IsZero() || strings.TrimSpace(appVersion) == "" {
-		return 0, schemaResetRequired("operational baseline migration metadata is invalid")
-	}
-	_, offset := timestamp.Zone()
-	if offset != 0 || userVersion != CurrentSchemaVersion {
-		return 0, schemaResetRequired("operational baseline has user_version %d", userVersion)
-	}
-	if err := validateAppliedSchema(ctx, conn); err != nil {
+	catalog, err := loadMigrationCatalog()
+	if err != nil {
 		return 0, err
 	}
-	return CurrentSchemaVersion, nil
+	state, err := inspectMigrationState(ctx, conn, catalog)
+	if err != nil {
+		return 0, err
+	}
+	return state.version, nil
 }
 
 func validateEmptyDatabase(ctx context.Context, conn *sql.Conn) error {
@@ -249,8 +230,12 @@ func validateEmptyDatabase(ctx context.Context, conn *sql.Conn) error {
 }
 
 func validateAppliedSchema(ctx context.Context, conn *sql.Conn) error {
-	expected := make(map[string]schemaObject, len(currentSchemaObjects))
-	for _, object := range currentSchemaObjects {
+	return validateSchemaObjects(ctx, conn, currentSchemaObjects)
+}
+
+func validateSchemaObjects(ctx context.Context, conn *sql.Conn, objects []schemaObject) error {
+	expected := make(map[string]schemaObject, len(objects))
+	for _, object := range objects {
 		expected[object.name] = object
 	}
 	rows, err := conn.QueryContext(ctx, `SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`)
@@ -300,13 +285,7 @@ func normalizeDDL(value string) string {
 }
 
 func currentSchemaChecksum() string {
-	parts := make([]string, 0, len(currentSchemaObjects)+1)
-	parts = append(parts, currentSchemaName)
-	for _, object := range currentSchemaObjects {
-		parts = append(parts, object.ddl)
-	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n-- object --\n")))
-	return hex.EncodeToString(sum[:])
+	return schemaChecksum(currentSchemaName, currentSchemaObjects)
 }
 
 func validateIntegrity(ctx context.Context, conn *sql.Conn) error {

@@ -602,6 +602,9 @@ func validateRunnerBackupDocument(table string, row runnerBackupRecord) error {
 }
 
 func validateRunnerBackupRelations(ctx context.Context, conn *sql.Conn) error {
+	if err := validateUpgradeHistory(ctx, conn); err != nil {
+		return err
+	}
 	if err := validateContentRelations(ctx, conn); err != nil {
 		return err
 	}

@@ -84,7 +84,8 @@ func openRepository(ctx context.Context, dsn string, busyTimeout time.Duration) 
 	}
 	if version != CurrentSchemaVersion {
 		cleanup()
-		return nil, fmt.Errorf("%w: operational repository requires schema version %d", ErrCorrupt, CurrentSchemaVersion)
+		return nil, fmt.Errorf("%w: %w", ErrCorrupt,
+			schemaResetRequired("operational repository requires schema version %d; run Migrate first", CurrentSchemaVersion))
 	}
 	// Return the configured connection to the pool; keeping a shared *sql.Conn
 	// bypasses transaction reservation and permits overlapping BEGIN statements.

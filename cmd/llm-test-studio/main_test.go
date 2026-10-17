@@ -33,7 +33,7 @@ func TestHelpAndDefaultMachineDiagnosticsHaveStableContracts(t *testing.T) {
 			name:     "root help",
 			args:     []string{"--help"},
 			wantCode: 0,
-			wantHelp: "Usage: llm-test-studio <doctor|audit|load>",
+			wantHelp: "Usage: llm-test-studio <doctor|audit|load|data>",
 		},
 		{
 			name:     "audit help",

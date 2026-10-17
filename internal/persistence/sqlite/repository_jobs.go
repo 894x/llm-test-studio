@@ -43,6 +43,9 @@ func (repository *Repository) AcceptJob(
 		return jobcontract.Snapshot{}, false, fmt.Errorf("begin job admission: %w", err)
 	}
 	defer tx.Rollback()
+	if err := rejectArchivedJob(ctx, tx, spec.JobID); err != nil {
+		return jobcontract.Snapshot{}, false, err
+	}
 	if err := rejectInactiveContentFacts(ctx, tx); err != nil {
 		return jobcontract.Snapshot{}, false, err
 	}

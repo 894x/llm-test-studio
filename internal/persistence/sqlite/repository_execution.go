@@ -297,6 +297,8 @@ func (repository *Repository) listRuns(ctx context.Context, interruptedOnly bool
 			SELECT 1 FROM remote_job_runs AS remote_owner WHERE remote_owner.run_id = root.id
 		) AND NOT EXISTS (
 			SELECT 1 FROM execution_job_runs AS job_owner WHERE job_owner.run_id = root.id
+		) AND NOT EXISTS (
+			SELECT 1 FROM upgrade_history_runs AS historical_owner WHERE historical_owner.run_id = root.id
 		)`
 		arguments = append(arguments, domain.RunQueued, domain.RunStarting, domain.RunRunning, domain.RunDraining)
 	}

@@ -1,7 +1,8 @@
 package sqlite
 
 // These objects are part of the single current schema. Keeping them together
-// makes the content ownership relationships reviewable without a migration path.
+// makes the content ownership relationships reviewable. Released baseline SQL
+// is frozen separately in migrations/operational_baselines.json.
 var contentSchemaObjects = []schemaObject{
 	{kind: "table", name: "content_stores", table: "content_stores", ddl: `CREATE TABLE content_stores (
 		store_id TEXT PRIMARY KEY NOT NULL,

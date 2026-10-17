@@ -1,6 +1,6 @@
 package sqlite
 
-var currentSchemaObjects = append([]schemaObject{
+var operationalSchemaObjects = append([]schemaObject{
 	{kind: "table", name: "local_executor_identity", table: "local_executor_identity", ddl: `CREATE TABLE local_executor_identity (
 		singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
 		node_id TEXT NOT NULL CHECK(length(CAST(node_id AS BLOB)) = 36),
@@ -389,3 +389,5 @@ var currentSchemaObjects = append([]schemaObject{
 			SELECT RAISE(ABORT, 'comparison revisions are immutable');
 		END`},
 }, contentSchemaObjects...)
+
+var currentSchemaObjects = append(append([]schemaObject{}, operationalSchemaObjects...), upgradeHistorySchemaObjects...)

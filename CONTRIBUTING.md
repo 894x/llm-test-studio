@@ -9,6 +9,14 @@ Thank you for helping improve reusable, multi-model LLM testing.
 - For new built-in cases or media, follow [`data/cases/PROVENANCE.md`](data/cases/PROVENANCE.md) and state the source, license, and whether AI-assisted generation was used.
 - Discuss large behavior, storage-schema, or public API changes in an issue first.
 
+## Compatibility and data upgrades
+
+Follow [Compatibility and data upgrades](doc/compatibility-policy.md) for changes to released interfaces or user data. Keep supported CLI/API behavior, configuration, authored definitions and historical reports usable across upgrades. Private implementation details can change with their callers.
+
+Routine data upgrades must use tested, version-controlled migrations shipped with the application and run before normal workspace use. Preserve released migration steps and user data; do not replace a released schema baseline, require a temporary developer script, or ask users to reset their database. Include backup/recovery behavior and supported source-version fixtures.
+
+For a breaking change, describe affected releases and consumers, the transition path, release-version choice, and downgrade limitations. Documenting a policy or writing a migration is not evidence that an existing installation was successfully upgraded.
+
 ## Development environment
 
 - Go 1.25+ using the Go 1.26.6 toolchain declared in `go.mod`

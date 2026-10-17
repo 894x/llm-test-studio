@@ -20,12 +20,13 @@ import (
 	"github.com/894x/llm-test-studio/internal/diagnostics"
 )
 
-const rootUsage = `Usage: llm-test-studio <doctor|audit|load> [options]
+const rootUsage = `Usage: llm-test-studio <doctor|audit|load|data> [options]
 
 Commands:
   doctor      Check whether the Go core and local case definitions are usable
   audit       List or run compatibility audit cases
   load        Run an OpenAI-compatible load test with the Go core
+  data        Export historical records preserved during database upgrades
 `
 
 const auditUsage = `Usage: llm-test-studio audit <list|run> [options]
@@ -79,6 +80,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runAudit(ctx, args[1:], stdout, stderr, dependencies)
 	case "load":
 		return runLoad(ctx, args[1:], stdout, stderr, dependencies)
+	case "data":
+		return runData(ctx, args[1:], stdout, stderr)
 	default:
 		return diagnosticExit(stderr, "json", "usage_error", "unknown command", 2)
 	}

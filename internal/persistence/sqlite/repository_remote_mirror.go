@@ -45,6 +45,9 @@ func (repository *Repository) ApplyRemoteBatch(
 		return remoteresults.Mirror{}, fmt.Errorf("begin remote import: %w", err)
 	}
 	defer tx.Rollback()
+	if err := rejectArchivedJob(ctx, tx, batch.JobID); err != nil {
+		return remoteresults.Mirror{}, err
+	}
 	mirror, err := queryRemoteMirror(ctx, tx, batch.JobID)
 	if errors.Is(err, remoteresults.ErrNotFound) {
 		if batch.AfterSequence != 0 || len(documents) == 0 {
@@ -240,6 +243,9 @@ func createRemoteMirrorTx(
 	}
 	if spec.Kind == jobcontract.KindPerformance {
 		performanceID = spec.Spec.Performance.ReportID
+		if err := rejectHistoricalResource(ctx, tx, "performance", spec.Spec.Performance.ReportID); err != nil {
+			return remoteresults.Mirror{}, err
+		}
 		var exists bool
 		if err := tx.QueryRowContext(
 			ctx,

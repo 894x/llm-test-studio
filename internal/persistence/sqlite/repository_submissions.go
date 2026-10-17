@@ -54,6 +54,9 @@ func (repository *Repository) CreateSubmission(
 		return jobs.SubmissionRecord{}, fmt.Errorf("begin submission record: %w", err)
 	}
 	defer tx.Rollback()
+	if err := rejectArchivedJob(ctx, tx, record.Prepared.Spec.JobID); err != nil {
+		return jobs.SubmissionRecord{}, err
+	}
 	previous, err := querySubmission(ctx, tx, record.Prepared.Spec.JobID)
 	if err == nil {
 		if !record.SamePreparation(previous) {

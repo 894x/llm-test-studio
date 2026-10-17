@@ -91,12 +91,14 @@ func Run(ctx context.Context, options Options) (runErr error) {
 	if err := guard.Check(ctx); err != nil && !errors.Is(err, jobhost.ErrCapacity) {
 		return err
 	}
-	startup, cancelStartup := context.WithTimeout(ctx, 30*time.Second)
-	defer cancelStartup()
 	path := filepath.Join(state.Path(), "runner.db")
-	if err := sqlite.Migrate(startup, path, sqlite.MigrateOptions{AppVersion: options.Version}); err != nil {
+	// Backing up a large history is not subject to the service's short startup
+	// timeout. Shutdown still cancels migration and SQLite rolls it back.
+	if err := sqlite.Migrate(ctx, path, sqlite.MigrateOptions{AppVersion: options.Version}); err != nil {
 		return err
 	}
+	startup, cancelStartup := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelStartup()
 	repository, err := sqlite.OpenRepository(startup, path, sqlite.RepositoryOptions{})
 	if err != nil {
 		return err

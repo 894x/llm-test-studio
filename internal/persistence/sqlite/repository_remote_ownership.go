@@ -10,7 +10,8 @@ import (
 func (repository *Repository) IsLocalComparison(ctx context.Context, id string) (bool, error) {
 	var remote bool
 	if err := repository.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM remote_job_mirrors WHERE comparison_id = ?)`, id,
+		`SELECT EXISTS(SELECT 1 FROM remote_job_mirrors WHERE comparison_id = ?)
+		OR EXISTS(SELECT 1 FROM upgrade_history_jobs WHERE comparison_id = ?)`, id, id,
 	).Scan(&remote); err != nil {
 		return false, fmt.Errorf("read comparison owner: %w", err)
 	}
@@ -18,6 +19,9 @@ func (repository *Repository) IsLocalComparison(ctx context.Context, id string) 
 }
 
 func requireLocalRun(ctx context.Context, queryer rowQueryer, id string) error {
+	if err := rejectHistoricalResource(ctx, queryer, "run", id); err != nil {
+		return err
+	}
 	var remote bool
 	if err := queryer.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM remote_job_runs WHERE run_id = ?)`, id,
@@ -31,6 +35,9 @@ func requireLocalRun(ctx context.Context, queryer rowQueryer, id string) error {
 }
 
 func requireLocalComparison(ctx context.Context, queryer rowQueryer, id string) error {
+	if err := rejectHistoricalResource(ctx, queryer, "comparison", id); err != nil {
+		return err
+	}
 	var remote bool
 	if err := queryer.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM remote_job_mirrors WHERE comparison_id = ?)`, id,
@@ -44,6 +51,9 @@ func requireLocalComparison(ctx context.Context, queryer rowQueryer, id string) 
 }
 
 func requireLocalPerformanceReport(ctx context.Context, queryer rowQueryer, id string) error {
+	if err := rejectHistoricalResource(ctx, queryer, "performance", id); err != nil {
+		return err
+	}
 	var remote bool
 	if err := queryer.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM remote_job_mirrors WHERE performance_report_id = ?)`, id,
