@@ -52,10 +52,17 @@ describe("explicit Runner upgrades", () => {
     show(f.client)
     await open(user)
     expect(f.client.startRemoteNodeUpgrade).not.toHaveBeenCalled()
-    expect(within(nodeRegion()).getByText("runner-old-compatible · linux/amd64")).toBeVisible()
+    expect(within(nodeRegion()).getByText("runner-old-compatible")).toBeVisible()
     const start = within(nodeRegion()).getByRole("button", { name: "升级 Runner" })
     expect(start).toBeEnabled()
-    await act(async () => { fireEvent.click(start); fireEvent.click(start) })
+    await user.click(start)
+    expect(f.client.startRemoteNodeUpgrade).not.toHaveBeenCalled()
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("显式暂停任务接入")
+    await user.click(screen.getByRole("button", { name: "取消" }))
+    expect(f.client.startRemoteNodeUpgrade).not.toHaveBeenCalled()
+    await user.click(start)
+    const confirm = screen.getByRole("button", { name: "确认升级" })
+    await act(async () => { fireEvent.click(confirm); fireEvent.click(confirm) })
     expect(f.client.startRemoteNodeUpgrade).toHaveBeenCalledTimes(1)
     const command = f.client.startRemoteNodeUpgrade.mock.calls[0][0]
     expect(command).toMatchObject({ id: REMOTE_CONFIGURATION_ID, expected_revision: 3, expected_build_id: "a".repeat(64) })
@@ -75,6 +82,7 @@ describe("explicit Runner upgrades", () => {
     show(f.client)
     await open(user)
     await user.click(within(nodeRegion()).getByRole("button", { name: "升级 Runner" }))
+    await user.click(screen.getByRole("button", { name: "确认升级" }))
     await screen.findByText("无法确认此次命令的结果。已保留同一操作，请先读取状态再重试。")
     const command = f.client.startRemoteNodeUpgrade.mock.calls[0][0]
     expect(screen.queryByText(/secret=|private\//)).not.toBeInTheDocument()
@@ -97,6 +105,7 @@ describe("explicit Runner upgrades", () => {
     await open(user)
     vi.useFakeTimers()
     await act(async () => fireEvent.click(within(nodeRegion()).getByRole("button", { name: "升级 Runner" })))
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "确认升级" })))
     const command = f.client.startRemoteNodeUpgrade.mock.calls[0][0]
     const before = f.client.getRemoteNodeUpgrade.mock.calls.length
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "关闭" })))
@@ -110,7 +119,7 @@ describe("explicit Runner upgrades", () => {
     vi.useRealTimers()
     await open(user)
     expect(await screen.findByText("升级已完成")).toBeVisible()
-    expect(within(nodeRegion()).getByText("runner-upgraded · linux/amd64")).toBeVisible()
+    expect(within(nodeRegion()).getByText("runner-upgraded")).toBeVisible()
     expect(within(nodeRegion()).getByRole("button", { name: "编辑" })).toBeEnabled()
   })
 
@@ -144,7 +153,7 @@ describe("explicit Runner upgrades", () => {
       upgrade: remoteUpgradeFixture({ stage: "completed", resume_attempted: true }) })])
     show(f.client)
     await open(user)
-    expect(within(nodeRegion()).getByText("fresh-observation · linux/amd64")).toBeVisible()
+    expect(within(nodeRegion()).getByText("fresh-observation")).toBeVisible()
     expect(within(nodeRegion()).getByRole("button", { name: "升级 Runner" })).toBeDisabled()
     expect(f.client.startRemoteNodeUpgrade).not.toHaveBeenCalled()
   })
@@ -157,6 +166,7 @@ describe("explicit Runner upgrades", () => {
     show(f.client)
     await open(user)
     await user.click(within(nodeRegion()).getByRole("button", { name: "升级 Runner" }))
+    await user.click(screen.getByRole("button", { name: "确认升级" }))
     expect(f.client.startRemoteNodeUpgrade.mock.calls[0][0].expected_build_id).toBe("c".repeat(64))
   })
 
@@ -169,6 +179,7 @@ describe("explicit Runner upgrades", () => {
     await open(user)
     vi.useFakeTimers()
     await act(async () => fireEvent.click(within(nodeRegion()).getByRole("button", { name: "升级 Runner" })))
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "确认升级" })))
     const operation_id = f.client.startRemoteNodeUpgrade.mock.calls[0][0].operation_id
     f.client.getRemoteNodeUpgrade.mockResolvedValueOnce(remoteUpgradeFixture({ operation_id, stage: "resume_attempted",
       resume_attempted: true, changed_at: "2026-10-16T12:02:00Z" }))
@@ -189,6 +200,7 @@ describe("explicit Runner upgrades", () => {
     show(f.client)
     await open(user)
     await user.click(within(nodeRegion()).getByRole("button", { name: "升级 Runner" }))
+    await user.click(screen.getByRole("button", { name: "确认升级" }))
     await waitFor(() => expect(within(nodeRegion()).getByRole("button", { name: "编辑" })).toBeEnabled())
     expect(f.client.getRemoteNodeUpgrade).toHaveBeenCalledWith(REMOTE_CONFIGURATION_ID)
     expect(within(nodeRegion()).queryByRole("button", { name: "重试此次升级" })).not.toBeInTheDocument()
@@ -275,6 +287,7 @@ describe("explicit Runner upgrades", () => {
     show(f.client)
     await open(user)
     await user.click(within(nodeRegion()).getByRole("button", { name: "升级 Runner" }))
+    await user.click(screen.getByRole("button", { name: "确认升级" }))
     await screen.findByText("升级操作或 Runner 身份与预期不一致。已锁住此节点，请先读取状态再继续。")
     expect(within(nodeRegion()).getByRole("button", { name: "重试此次升级" })).toBeDisabled()
     expect(within(nodeRegion()).getByRole("button", { name: "编辑" })).toBeDisabled()

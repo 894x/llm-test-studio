@@ -33,7 +33,7 @@
   "previousFingerprint": "Previously trusted:",
   "observedFingerprint": "Observed SSH host key",
   "confirmFingerprint": "Trust this fingerprint",
-  "runner": "Runner version / platform",
+  "runner": "Runner version",
   "workload": "Runner workload",
   "workloadValue": "{{active}} active · {{queued}} queued · {{pending}} pending",
   "installationStage": "Installation",
@@ -103,7 +103,7 @@
     "start": "Upgrade Runner",
     "help": "Explicitly pause admission, back up data and switch Runner. A different client build never starts an upgrade automatically.",
     "busy": "Tasks remain: {{active}} active, {{queued}} queued, {{pending}} pending. Upgrading will not cancel them. Wait for completion and check the connection again.",
-    "noRunner": "Check the connection to observe the installed Runner before upgrading.",
+    "noRunner": "Connect to view executor information.",
     "actualBuild": "Actual Runner build",
     "targetBuild": "Target build",
     "operation": "Upgrade operation",
@@ -150,7 +150,14 @@
       "invalid_installation_request": "The upgrade request is invalid. Read the current node and operation state before proceeding.",
       "runner_installation_failed": "The upgrade could not finish. Read its state and retry or restore when available.",
       "unknown": "The upgrade reported an unrecognised error. Read its state and check desktop logs before proceeding."
-    }
+    },
+    "details": "Executor details",
+    "copyBuild": "Copy build ID",
+    "copied": "Build ID copied",
+    "copyFailed": "Copy failed. Select the build ID to copy it manually.",
+    "confirmTitle": "Upgrade Runner on {{name}}",
+    "confirm": "Confirm upgrade",
+    "cancel": "Cancel"
   },
   "errors": {
     "remote_node_identity_conflict": "The upgrade identity differs from the expected operation or Runner. This node is locked; read its state before proceeding.",

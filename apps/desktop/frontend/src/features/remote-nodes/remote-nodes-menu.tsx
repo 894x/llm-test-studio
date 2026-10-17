@@ -219,7 +219,7 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
           {blocked && !loading && <Button variant="outline" size="sm" onClick={() => { setError(""); void read(generation.current) }}>
             <RefreshCwIcon />{t("reload")}
           </Button>}
-          <div role="status" aria-live="polite" className="min-h-4 text-xs text-muted-foreground">
+          <div role="status" aria-live="polite" hidden={!busy && !loading && !notice} className="text-xs text-muted-foreground">
             {busy ? <span className="inline-flex items-center gap-2"><Spinner />{t("working")}</span>
               : loading ? <span className="inline-flex items-center gap-2"><Spinner />{t("loading")}</span>
                 : notice ? t(notice) : null}
@@ -236,14 +236,52 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
               <Button variant="outline" size="sm" disabled={unavailable} onClick={() => { setNotice(""); setEditor(newDraft()) }}><PlusIcon />{t("add")}</Button>
             </div>
             {snapshot?.nodes.length === 0 && <p className="py-5 text-xs text-muted-foreground">{t("empty")}</p>}
-            <div className="space-y-5">
-              {snapshot?.nodes.map(node => <section key={node.id} aria-label={node.name} className="min-w-0 space-y-2">
+            <div className="space-y-3">
+              {snapshot?.nodes.map(node => <section key={node.id} aria-label={node.name} className="min-w-0 space-y-3 rounded-lg bg-surface-subtle p-3">
                 <div className="flex min-w-0 items-start justify-between gap-2">
                   <div className="min-w-0 space-y-0.5">
                     <h4 className="text-sm font-medium [overflow-wrap:anywhere]">{node.name}</h4>
-                    <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{node.region && `${node.region} · `}{node.user}@{node.host}:{node.port}</p>
                   </div>
-                  <Badge variant={node.status === "ready" ? "secondary" : "outline"}>{node.checking && <Spinner />}{t(`status.${node.status}`)}</Badge>
+                  <Badge variant="outline" className={node.status === "ready" ? "border-transparent bg-success-soft text-success-strong"
+                    : node.status === "offline" ? "border-transparent bg-warning-soft text-warning-strong" : undefined}>
+                    {node.checking && <Spinner />}{t(`status.${node.status}`)}
+                  </Badge>
+                </div>
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <p className="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">{node.region && `${node.region} · `}{node.user}@{node.host}:{node.port}</p>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={t("edit")} disabled={unavailable || upgrades.locked(node)}
+                          onClick={() => { if (!upgrades.lockedNow(node)) setEditor(draftFromNode(node)) }}><PencilIcon /></Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("edit")}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={t("check")} disabled={unavailable || node.checking || upgrades.locked(node)}
+                          onClick={() => { if (!upgrades.lockedNow(node)) void command(`check:${node.id}`,
+                            () => client.refreshRemoteNode({ id: node.id, expected_revision: node.revision })) }}><RefreshCwIcon /></Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("check")}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={t("install")} disabled={unavailable || node.checking || upgrades.locked(node)}
+                          onClick={() => { if (!upgrades.lockedNow(node)) void command(`install:${node.id}`,
+                            () => client.retryRemoteInstallation({ id: node.id, expected_revision: node.revision })) }}><DownloadIcon /></Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("install")}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="destructive" size="icon-sm" aria-label={t("remove")} disabled={unavailable || upgrades.locked(node)}
+                          onClick={() => { if (!upgrades.lockedNow(node)) void command(`remove:${node.id}`,
+                            () => client.removeRemoteNode({ id: node.id, expected_revision: node.revision })) }}><Trash2Icon /></Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("remove")}</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
                 {selectedNode?.id === node.id && <p className="text-[11px] text-muted-foreground">{t("isDefault")}</p>}
                 <NodeDetails node={node} runner={observedUpgradeRunner(node, upgrades.get(node).view)} />
@@ -258,39 +296,6 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                       id: node.id, expected_revision: node.revision, key: node.proposed_host_key!,
                     }))}><ShieldCheckIcon />{t("confirmFingerprint")}</Button>
                 </Alert>}
-                <div className="flex flex-wrap gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon-sm" aria-label={t("edit")} disabled={unavailable || upgrades.locked(node)}
-                        onClick={() => { if (!upgrades.lockedNow(node)) setEditor(draftFromNode(node)) }}><PencilIcon /></Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("edit")}</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label={t("check")} disabled={unavailable || node.checking || upgrades.locked(node)}
-                        onClick={() => { if (!upgrades.lockedNow(node)) void command(`check:${node.id}`,
-                          () => client.refreshRemoteNode({ id: node.id, expected_revision: node.revision })) }}><RefreshCwIcon /></Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("check")}</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label={t("install")} disabled={unavailable || node.checking || upgrades.locked(node)}
-                        onClick={() => { if (!upgrades.lockedNow(node)) void command(`install:${node.id}`,
-                          () => client.retryRemoteInstallation({ id: node.id, expected_revision: node.revision })) }}><DownloadIcon /></Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("install")}</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="destructive" size="icon-sm" aria-label={t("remove")} disabled={unavailable || upgrades.locked(node)}
-                        onClick={() => { if (!upgrades.lockedNow(node)) void command(`remove:${node.id}`,
-                          () => client.removeRemoteNode({ id: node.id, expected_revision: node.revision })) }}><Trash2Icon /></Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("remove")}</TooltipContent>
-                  </Tooltip>
-                </div>
                 <RemoteNodeUpgrade node={node} controller={upgrades} disabled={unavailable} />
               </section>)}
             </div>
@@ -307,10 +312,10 @@ function NodeDetails({ node, runner }: { node: RemoteNode; runner: RemoteRunner 
   const { t } = useTranslation("remoteNodes")
   return <>
     {runner && <dl className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-xs">
-      <div className="min-w-0"><dt className="text-muted-foreground">{t("runner")}</dt><dd className="[overflow-wrap:anywhere]">{runner.version} · {runner.os}/{runner.arch}</dd></div>
+      <div className="min-w-0"><dt className="text-muted-foreground">{t("runner")}</dt><dd className="[overflow-wrap:anywhere]"><span className="block">{runner.version}</span><span className="block text-[11px] text-muted-foreground">{runner.os}/{runner.arch}</span></dd></div>
       <div><dt className="text-muted-foreground">{t("workload")}</dt><dd className="tabular-nums">{t("workloadValue", { active: runner.active, queued: runner.queued, pending: runner.pending })}</dd></div>
     </dl>}
-    {node.installation_stage && <p className="text-xs text-muted-foreground">{t("installationStage")} · {t(`stage.${INSTALLATION_STAGES.has(node.installation_stage) ? node.installation_stage : "unknown"}`)}</p>}
+    {node.installation_stage && node.installation_stage !== "completed" && <p className="text-xs text-muted-foreground">{t("installationStage")} · {t(`stage.${INSTALLATION_STAGES.has(node.installation_stage) ? node.installation_stage : "unknown"}`)}</p>}
     {node.installation_error && <Alert variant="destructive">{t(`installationError.${INSTALLATION_ERRORS.has(node.installation_error) ? node.installation_error : "unknown"}`)}</Alert>}
   </>
 }

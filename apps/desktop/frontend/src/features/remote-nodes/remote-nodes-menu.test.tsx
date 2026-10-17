@@ -224,8 +224,24 @@ describe("RemoteNodesMenu", () => {
     await user.click(screen.getByRole("button", { name: "Remote nodes" }))
     const sheet = await screen.findByRole("dialog", { name: "Remote nodes" })
     expect(await within(sheet).findByText("2 active · 1 queued · 0 pending")).toBeVisible()
-    expect(within(sheet).getByText("v-current · linux/amd64")).toBeVisible()
+    expect(within(sheet).getByText("v-current")).toBeVisible()
     expect(within(sheet).getByRole("button", { name: "Retry installation" })).toBeVisible()
+  })
+
+  it("keeps the build collapsed and copies it only on request", async () => {
+    const user = userEvent.setup()
+    const f = fixture()
+    show(f.client)
+    await open(user)
+    expect(screen.queryByText("a".repeat(64))).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "执行器详情" }))
+    expect(screen.getByText("a".repeat(64))).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "复制构建标识" }))
+    expect(await navigator.clipboard.readText()).toBe("a".repeat(64))
+    expect(screen.getByText("构建标识已复制")).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "执行器详情" }))
+    expect(screen.queryByText("a".repeat(64))).not.toBeInTheDocument()
+    expect(f.client.startRemoteNodeUpgrade).not.toHaveBeenCalled()
   })
 
   it("keeps remote translation keys and interpolation variables in parity", () => {

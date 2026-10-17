@@ -1,11 +1,18 @@
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { Collapsible } from "radix-ui"
 import ArrowUpCircleIcon from "lucide-react/dist/esm/icons/arrow-up-circle.mjs"
+import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
+import CopyIcon from "lucide-react/dist/esm/icons/copy.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import RotateCcwIcon from "lucide-react/dist/esm/icons/rotate-ccw.mjs"
 
 import { Alert } from "@/components/ui/alert"
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { copyReportTextToClipboard as copyTextToClipboard } from "@/features/reports/report-clipboard"
 import type { RemoteNode } from "./data"
 import { isUpgradeTerminal, observedUpgradeRunner, type useRemoteNodeUpgrades } from "./use-remote-node-upgrades"
 
@@ -13,6 +20,8 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
   node: RemoteNode; controller: ReturnType<typeof useRemoteNodeUpgrades>; disabled: boolean
 }) {
   const { t, i18n } = useTranslation("remoteNodes")
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [copyStatus, setCopyStatus] = useState("")
   const operation = controller.get(node)
   const view = operation.view
   const runner = observedUpgradeRunner(node, view)
@@ -23,17 +32,54 @@ export function RemoteNodeUpgrade({ node, controller, disabled }: {
   const pending = Boolean(operation.pending)
   const active = Boolean(view || operation.command) && !terminal
   const error = operation.error && i18n.exists(operation.error, { ns: "remoteNodes" }) ? t(operation.error) : operation.error ? t("upgrade.commandError") : ""
-  return <section aria-label={t("upgrade.title")} className="min-w-0 space-y-2 pt-1">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h5 className="text-xs font-medium">{t("upgrade.title")}</h5>
-      {!active && <Button variant="outline" size="sm" disabled={disabled || !canStart} onClick={() => controller.start(node)}>
-        <ArrowUpCircleIcon />{t("upgrade.start")}
-      </Button>}
-    </div>
-    {!active && <p className="text-[11px] text-muted-foreground">{t("upgrade.help")}</p>}
+  return <section aria-label={t("upgrade.title")} className="min-w-0 space-y-2">
+    <Collapsible.Root className="min-w-0 space-y-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        {runner ? <Collapsible.Trigger asChild>
+          <Button variant="ghost" size="sm" className="group -ml-2.5 text-muted-foreground">
+            <ChevronRightIcon className="transition-transform group-data-[state=open]:rotate-90" />{t("upgrade.details")}
+          </Button>
+        </Collapsible.Trigger> : <p className="text-[11px] text-muted-foreground">{t("upgrade.noRunner")}</p>}
+        {!active && <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm" disabled={disabled || !canStart}>
+              <ArrowUpCircleIcon />{t("upgrade.start")}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("upgrade.confirmTitle", { name: node.name })}</AlertDialogTitle>
+              <AlertDialogDescription>{t("upgrade.help")}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("upgrade.cancel")}</AlertDialogCancel>
+              <Button disabled={disabled || !canStart} onClick={() => { if (disabled || !canStart) return; setConfirmOpen(false); controller.start(node) }}>
+                {t("upgrade.confirm")}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>}
+      </div>
+      {runner && <Collapsible.Content className="space-y-1">
+        <dl className="min-w-0 text-[11px]">
+          <dt className="flex items-center justify-between gap-2 text-muted-foreground">
+            {t("upgrade.actualBuild")}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label={t("upgrade.copyBuild")} onClick={async () => {
+                  try { await copyTextToClipboard(runner.build_id); setCopyStatus("upgrade.copied") }
+                  catch { setCopyStatus("upgrade.copyFailed") }
+                }}><CopyIcon /></Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("upgrade.copyBuild")}</TooltipContent>
+            </Tooltip>
+          </dt>
+          <dd className="select-text font-mono [overflow-wrap:anywhere]">{runner.build_id}</dd>
+        </dl>
+        {copyStatus && <p role="status" className="text-[11px] text-muted-foreground">{t(copyStatus)}</p>}
+      </Collapsible.Content>}
+    </Collapsible.Root>
     {tasksBusy && !active && <p className="text-[11px] text-warning-strong">{t("upgrade.busy", { active: runner!.active, queued: runner!.queued, pending: runner!.pending })}</p>}
-    {!runner && !active && <p className="text-[11px] text-muted-foreground">{t("upgrade.noRunner")}</p>}
-    {runner && <dl className="min-w-0 text-[11px]"><div className="min-w-0"><dt className="text-muted-foreground">{t("upgrade.actualBuild")}</dt><dd className="mt-0.5 font-mono [overflow-wrap:anywhere]">{runner.build_id}</dd></div></dl>}
     {view && <>
       <div role="status" aria-live="polite" className="flex min-w-0 items-center gap-2 text-xs">
         {active && <Spinner />}<span>{t(`upgrade.stage.${view.stage}`)}</span>

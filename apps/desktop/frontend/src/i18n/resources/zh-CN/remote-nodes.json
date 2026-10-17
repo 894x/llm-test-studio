@@ -33,7 +33,7 @@
   "previousFingerprint": "此前信任的指纹：",
   "observedFingerprint": "本次观察到的 SSH 主机密钥",
   "confirmFingerprint": "信任此指纹",
-  "runner": "Runner 版本 / 平台",
+  "runner": "Runner 版本",
   "workload": "Runner 任务",
   "workloadValue": "运行 {{active}} · 排队 {{queued}} · 待处理 {{pending}}",
   "installationStage": "安装进度",
@@ -103,7 +103,7 @@
     "start": "升级 Runner",
     "help": "显式暂停任务接入、备份数据并切换 Runner。客户端构建不同不会自动触发升级。",
     "busy": "节点仍有任务：运行 {{active}}、排队 {{queued}}、待处理 {{pending}}。升级不会取消它们，请等待完成后重新检查连接。",
-    "noRunner": "请先检查连接，观察已安装的 Runner 后再升级。",
+    "noRunner": "连接后可查看执行器信息。",
     "actualBuild": "实际 Runner 构建",
     "targetBuild": "目标构建",
     "operation": "升级操作",
@@ -150,7 +150,14 @@
       "invalid_installation_request": "升级请求无效，请读取当前节点和操作状态后再继续。",
       "runner_installation_failed": "升级未能完成，请读取状态，再重试或使用可用的恢复入口。",
       "unknown": "升级返回了未识别的错误，请读取状态并检查桌面日志后再继续。"
-    }
+    },
+    "details": "执行器详情",
+    "copyBuild": "复制构建标识",
+    "copied": "构建标识已复制",
+    "copyFailed": "复制失败，请选择构建标识手动复制。",
+    "confirmTitle": "升级「{{name}}」的 Runner",
+    "confirm": "确认升级",
+    "cancel": "取消"
   },
   "errors": {
     "remote_node_identity_conflict": "升级操作或 Runner 身份与预期不一致。已锁住此节点，请先读取状态再继续。",
