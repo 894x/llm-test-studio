@@ -315,7 +315,7 @@ function RunReportBody({ detail, paginate = true }: { detail: Extract<ReportDeta
         </div>
         <ConclusionBadge passed={detail.report.conclusion.passed} verdict={detail.report.conclusion.verdict} status={detail.report.run_status} />
       </header>
-      <ExecutionOriginDetails origin={detail.report.execution_origin} />
+      {!paginate && <ExecutionOriginDetails origin={detail.report.execution_origin} />}
       <CaseOutcomeNavigator
         entries={entries}
         selected={selectedCase}
@@ -458,9 +458,10 @@ function QuickPerformanceDetail({ detail }: { detail: Extract<ReportDetail, { so
   )
 }
 
-function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
+function QuickPerformanceBody({ detail, includeRequestAnalysis = false, showExecutionOrigin = false }: {
   detail: Extract<ReportDetail, { source: "quick_performance" }>
   includeRequestAnalysis?: boolean
+  showExecutionOrigin?: boolean
 }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("reports")
@@ -471,7 +472,7 @@ function QuickPerformanceBody({ detail, includeRequestAnalysis = false }: {
   const hasPhaseThreeData = report.request_budget !== undefined || report.warmup !== undefined || report.ramp !== undefined || report.time_slices !== undefined ||
     report.profile.warmup_requests !== undefined || report.profile.ramp_duration_ms !== undefined || report.profile.ramp_request_cap !== undefined || report.profile.slice_duration_ms !== undefined
   return <section aria-label={tx("desktop:reports_archived_performance_report")} className="space-y-4 p-4">
-    <ExecutionOriginDetails origin={report.execution_origin} />
+    {showExecutionOrigin && <ExecutionOriginDetails origin={report.execution_origin} />}
     <div>
       <h4 className="mb-2 text-xs font-semibold">{t("performance.config")}</h4>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3 xl:grid-cols-6">
@@ -601,7 +602,7 @@ function ReportExportSurface({ ref, report, detail, watermark }: {
         <p className="mt-1 text-[11px] text-muted-foreground">{t("detailDescription", { name: displayReportVerdict(report, t) })}</p>
       </header>
       <div className="border-t">
-        {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} /> : <RunReportBody detail={detail} paginate={false} />}
+        {detail.source === "quick_performance" ? <QuickPerformanceBody detail={detail} showExecutionOrigin /> : <RunReportBody detail={detail} paginate={false} />}
       </div>
       <div className="absolute inset-0 z-10 grid grid-cols-2 content-around overflow-hidden" data-report-watermark>
         {Array.from({ length: 8 }, (_, index) => <span key={index} className="-rotate-12 text-center text-4xl font-semibold text-muted-foreground/15">{label}</span>)}

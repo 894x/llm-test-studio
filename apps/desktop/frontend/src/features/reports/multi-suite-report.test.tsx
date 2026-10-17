@@ -10,11 +10,14 @@ import { EntryCaseTable } from "./entry-case-table"
 describe("compact protocol reports", () => {
   it("groups cases under one entry header, displays names and snapshot parameters, and expands assertions", async () => {
     const detail = protocolReportFixture(); const user = userEvent.setup()
+    detail.entries[0].cases[0].metrics.completion_tokens = { value: 13, samples: 1, unit: "tokens" }
     render(<I18nextProvider i18n={createAppI18n("en-US")}><ReportWorkspace snapshot={protocolReportSnapshot(detail)} preferredReportID={detail.report.id} getDetail={async () => detail} exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()} /></I18nextProvider>)
     const table = await screen.findByRole("table", { name: "Cases in execution entry" })
     expect(screen.getByText("Snapshot suite")).toBeVisible()
     expect(screen.getByText("content_length: 4000")).toBeVisible()
     expect(within(table).getAllByRole("columnheader", { name: "Case name" })).toHaveLength(1)
+    expect(within(table).getByRole("cell", { name: "13" })).toBeVisible()
+    expect(within(table).queryByText("13 tokens")).not.toBeInTheDocument()
     expect(screen.queryByText("opaque-request-id")).not.toBeInTheDocument()
     const rowButton = within(table).getByRole("button", { name: "Reject invalid parameter" })
     await user.click(rowButton)
@@ -22,13 +25,25 @@ describe("compact protocol reports", () => {
     expect(screen.getByRole("table", { name: "Assertion results" })).toHaveTextContent("expected-status")
     expect(screen.getByText("opaque-request-id")).toBeVisible()
   })
-  it("renders empty assertions as observed and uses backend summary counts", () => {
+  it("renders compact backend counts and exposes all statuses on keyboard focus", async () => {
     const entry = protocolReportFixture("not_applicable").entries[0]
     entry.cases[0].verification.observed = 125
+    const user = userEvent.setup()
     render(<I18nextProvider i18n={createAppI18n("en-US")}><EntryCaseTable entry={entry} /></I18nextProvider>)
     expect(screen.getByText("Observed")).toBeVisible()
-    expect(screen.getByText(/125 observed/)).toBeVisible()
+    const summary = screen.getByRole("group", { name: /125 observed/ })
+    expect(summary).toHaveTextContent(/^125$/)
+    expect(summary).not.toHaveTextContent("Passed")
     expect(screen.queryByText("Passed")).not.toBeInTheDocument()
+    await user.tab()
+    await user.tab()
+    expect(summary).toHaveFocus()
+    const tooltip = await screen.findByRole("tooltip")
+    expect(tooltip).toHaveTextContent("Passed0")
+    expect(tooltip).toHaveTextContent("Not met0")
+    expect(tooltip).toHaveTextContent("Observed125")
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument())
   })
   it("bounds default rows and exposes the next page with keyboard-operable controls", async () => {
     const entry = protocolReportFixture().entries[0]; const seed = entry.cases[0]
@@ -48,6 +63,7 @@ describe("compact protocol reports", () => {
     const exportVisualReport = vi.fn(async (element: HTMLElement) => {
       expect(element).toHaveTextContent("Case 0")
       expect(element).toHaveTextContent("Case 79")
+      expect(element).toHaveTextContent("1 passed · 0 failed · 0 observed · 0 indeterminate")
       return { filename: `${detail.report.id}.html`, mediaType: "text/html", blob: new Blob(["report"]) }
     })
     const user = userEvent.setup()

@@ -3,6 +3,10 @@ import { useTranslation } from "react-i18next"
 import ChevronDownIcon from "lucide-react/dist/esm/icons/chevron-down.mjs"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right.mjs"
 import CopyIcon from "lucide-react/dist/esm/icons/copy.mjs"
+import CheckIcon from "lucide-react/dist/esm/icons/check.mjs"
+import XIcon from "lucide-react/dist/esm/icons/x.mjs"
+import EyeIcon from "lucide-react/dist/esm/icons/eye.mjs"
+import CircleHelpIcon from "lucide-react/dist/esm/icons/circle-help.mjs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -32,6 +36,16 @@ export function EntryCaseTable({
   const [page, setPage] = useState(0)
   const [expanded, setExpanded] = useState<string | null>(null)
   const columns = protocolPresentation(entry.protocol).columns
+  const columnWidths = columns.map(column => column.observation === "http_status" ? 56
+    : column.metric === "completion_tokens" || column.observation === "artifacts" ? 80 : 88)
+  const summaryWidth = entry.cases.reduce((width, caseItem) => {
+    const { passed, failed, observed, indeterminate } = caseItem.verification
+    const counts = [passed, failed, observed, indeterminate].filter(count => count > 0)
+    // Reserve icon, gap, tabular digits and cell padding, consistently across pages.
+    const contentWidth = counts.reduce((total, count) => total + 18 + String(count).length * 7, 0)
+    return Math.max(width, 20 + contentWidth + Math.max(0, counts.length - 1) * 8)
+  }, 96)
+  const minimumTableWidth = 280 + 80 + columnWidths.reduce((total, width) => total + width, 0) + summaryWidth
   const visible = paginate ? entry.cases.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : entry.cases
 
   useEffect(() => {
@@ -55,9 +69,16 @@ export function EntryCaseTable({
 
   return <>
     <div className="overflow-x-auto">
-      <Table aria-label={t("protocolDesign.caseTable")} className="min-w-[660px]">
+      <Table aria-label={t("protocolDesign.caseTable")} className={paginate ? "table-fixed" : "min-w-[660px]"}
+        style={paginate ? { minWidth: minimumTableWidth } : undefined}>
+        {paginate ? <colgroup>
+          <col />
+          <col style={{ width: 80 }} />
+          {columns.map((column, index) => <col key={column.id} style={{ width: columnWidths[index] }} />)}
+          <col style={{ width: summaryWidth }} />
+        </colgroup> : null}
         <TableHeader><TableRow className="hover:bg-transparent">
-          <TableHead className="h-8 w-[30%] pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
+          <TableHead className="h-8 pl-3 text-[11px]">{t("protocolDesign.caseName")}</TableHead>
           <TableHead className="h-8 text-[11px]">{t("protocolDesign.verification")}</TableHead>
           {columns.map(column => <TableHead key={column.id} className="h-8 text-[11px]">{columnLabel(column, t)}</TableHead>)}
           <TableHead className="h-8 pr-3 text-[11px]">{t("protocolDesign.summary")}</TableHead>
@@ -79,12 +100,17 @@ export function EntryCaseTable({
                 setExpanded(open ? null : caseItem.case_id)
               }}
             >
-              <TableCell className="py-1 pl-2"><Button type="button" variant="ghost" size="sm" className="h-auto min-h-7 max-w-full justify-start whitespace-normal py-1 text-left" aria-expanded={open} aria-controls={detailID}>
-                {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className="line-clamp-2 break-words">{caseItem.name}</span>
-              </Button></TableCell>
+              <TableCell className="py-1 pl-2"><TooltipProvider delayDuration={250}><Tooltip>
+                <TooltipTrigger asChild><Button type="button" variant="ghost" size="sm"
+                  className={`h-auto min-h-7 max-w-full justify-start py-1 text-left ${paginate ? "w-full min-w-0" : "whitespace-normal"}`}
+                  aria-expanded={open} aria-controls={detailID}>
+                  {open ? <ChevronDownIcon /> : <ChevronRightIcon />}<span className={paginate ? "min-w-0 truncate" : "break-words"}>{caseItem.name}</span>
+                </Button></TooltipTrigger>
+                <TooltipContent className="whitespace-normal [overflow-wrap:anywhere]">{caseItem.name}</TooltipContent>
+              </Tooltip></TooltipProvider></TableCell>
               <TableCell className="py-1"><VerificationBadge status={caseItem.verification.status} /></TableCell>
               {columns.map(column => <TableCell key={column.id} className="py-1 text-xs tabular-nums">{caseColumn(caseItem, column)}</TableCell>)}
-              <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} /></TableCell>
+              <TableCell className="py-1 pr-3 text-[11px]"><VerificationCounts summary={caseItem.verification} compact={paginate} /></TableCell>
             </TableRow>
             {open ? <TableRow id={detailID} className="hover:bg-transparent"><TableCell colSpan={columns.length + 3} className="bg-muted/20 p-3">
               <div className="mb-2 break-all font-mono text-[10px] text-muted-foreground">{caseItem.key} · {caseItem.case_id}</div>
@@ -110,9 +136,38 @@ export function VerificationBadge({ status }: { status: VerificationStatus }) {
   return <Badge variant="outline" className={style}>{t(`protocolDesign.verdict.${status}`)}</Badge>
 }
 
-export function VerificationCounts({ summary }: { summary: VerificationSummary }) {
+export function VerificationCounts({ summary, compact = false }: { summary: VerificationSummary; compact?: boolean }) {
   const { t } = useTranslation("reports")
-  return <span className="tabular-nums">{t("protocolDesign.counts", { ...summary })}</span>
+  const description = t("protocolDesign.counts", { ...summary })
+  if (!compact) return <span className="tabular-nums">{description}</span>
+
+  const counts = [
+    { status: "passed", count: summary.passed, style: "text-outcome-pass", icon: CheckIcon },
+    { status: "failed", count: summary.failed, style: "text-outcome-fail", icon: XIcon },
+    { status: "not_applicable", count: summary.observed, style: "text-muted-foreground", icon: EyeIcon },
+    { status: "indeterminate", count: summary.indeterminate, style: "text-outcome-review", icon: CircleHelpIcon },
+  ] as const
+  const visible = counts.filter(item => item.count > 0)
+
+  return <TooltipProvider><Tooltip>
+    <TooltipTrigger asChild>
+      <span tabIndex={0} role="group" aria-label={description}
+        className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap rounded-sm py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {visible.length ? visible.map(item => <span key={item.status} aria-hidden="true"
+          className={`inline-flex shrink-0 items-center gap-1 ${item.style}`}>
+          <item.icon className="size-3.5 shrink-0" />
+          <span className="tabular-nums">{item.count}</span>
+        </span>) : <span aria-hidden="true" className="text-muted-foreground">—</span>}
+      </span>
+    </TooltipTrigger>
+    <TooltipContent side="left" className="block">
+      <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
+        {counts.map(item => <Fragment key={item.status}>
+          <dt>{t(`protocolDesign.verdict.${item.status}`)}</dt><dd className="text-right tabular-nums">{item.count}</dd>
+        </Fragment>)}
+      </dl>
+    </TooltipContent>
+  </Tooltip></TooltipProvider>
 }
 
 export function ExecutionDetails({ results, paginate = true }: { results: ReportResult[]; paginate?: boolean }) {
@@ -224,7 +279,8 @@ function ResultPagination({ page, count, size, onPage }: { page: number; count: 
 function caseColumn(caseItem: ReportCaseDetail, column: ProtocolColumn): string {
   if (column.metric) {
     const metric = caseItem.metrics[column.metric]
-    return metric ? `${number(metric.value)}${metric.unit ? ` ${metric.unit}` : ""}` : "—"
+    const unit = column.metric === "completion_tokens" ? "" : metric?.unit
+    return metric ? `${number(metric.value)}${unit ? ` ${unit}` : ""}` : "—"
   }
   const observations = caseItem.request_results
     .filter(result => result.dimensions?.phase !== "warmup")
