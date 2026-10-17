@@ -1,6 +1,5 @@
 import { RemoteNodesMenu } from "@/features/remote-nodes/remote-nodes-menu"
-import { JobsMenu } from "@/features/jobs/jobs-menu"
-import { launchAtDefault, controlRun } from "@/features/jobs/execution"
+import { launchAtDefault } from "@/features/jobs/execution"
 import type { JobView } from "@/features/jobs/data"
 import { localizeStoredMessage } from "@/i18n/runtime"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -32,11 +31,11 @@ import type { ReportGenerationProgress } from "@/features/reports/generation-pro
 import { ReportGenerationStatus } from "@/features/reports/report-generation-status"
 import { NewComparisonSheet } from "@/features/comparisons/comparison-workspace"
 import type { ComparisonSnapshot, StartComparisonCommand } from "@/features/comparisons/data"
-import { isRunActive, presentPlans, type StartRunTargetCommand } from "@/features/runs/data"
+import { EMPTY_WORKSPACE, isRunActive, presentPlans, type StartRunTargetCommand } from "@/features/runs/data"
 import {
   NewRunSheet,
-  RunWorkspace,
 } from "@/features/runs/run-workspace"
+import { RunWorkspace } from "@/features/runs/execution-workspace"
 import { useRunShortcuts } from "@/features/runs/use-run-shortcuts"
 import {
   DesktopShell,
@@ -116,7 +115,6 @@ function AppWorkspace({
   const setReports = resources.reports.set
   const setComparisons = resources.comparisons.set
   const [showComparisons, setShowComparisons] = useState(false)
-  const [showJobs, setShowJobs] = useState(false)
   const requiredReads: readonly ResourceKey[] = PAGE_READS[page]
   const states = { workspace: workspaceState, catalog: catalogState, connections: connectionState, definitions: definitionState, quickCatalog: quickCatalogState, reports: reportState, comparisons: comparisonState }
   const failedRead = requiredReads.find(key => states[key].error !== null && states[key].data === null)
@@ -132,7 +130,7 @@ function AppWorkspace({
   const receiveComparisons = useCallback((next: ComparisonSnapshot) => {
     setComparisons(next)
     setPendingComparisonIDs(ids => ids.filter(id => !next.comparisons.some(comparison => comparison.id === id)))
-  }, [setComparisons])
+  }, [setComparisons, setPendingComparisonIDs])
   const [openingLogs, setOpeningLogs] = useState(false)
   const [openLogsError, setOpenLogsError] = useState<unknown>(null)
   const [commandError, setCommandError] = useState("")
@@ -183,10 +181,6 @@ function AppWorkspace({
   useEffect(() => {
     PAGE_READS[page].forEach(key => { void resources[key].load().catch(() => {}) })
   }, [page, resources])
-
-  useEffect(() => {
-    if (showJobs) void resources.reports.load().catch(() => {})
-  }, [resources, showJobs])
 
   const retryInitialLoad = useCallback(() => {
     setOpenLogsError(null)
@@ -343,8 +337,8 @@ function AppWorkspace({
     if (showComparisons && (pageRef.current === "runs" || pageRef.current === "reports")) {
       void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
     }
-    if (showJobs || visibleReads.includes("reports")) void refreshReports().catch(() => { /* The reports read owns its retry state. */ })
-  }, [invalidateWorkspace, resources, receiveComparisons, refreshWorkspace, refreshReports, showComparisons, showJobs])
+    if (pageRef.current === "runs" || visibleReads.includes("reports")) void refreshReports().catch(() => { /* The reports read owns its retry state. */ })
+  }, [invalidateWorkspace, resources, receiveComparisons, refreshWorkspace, refreshReports, showComparisons, setPendingComparisonIDs, setRetryComparisonPoll])
 
   const navigate = useCallback((next: DesktopPage) => {
     if (desktopPageFromHash(window.location.hash) === next) {
@@ -389,26 +383,6 @@ function AppWorkspace({
     onOpenReport: openReport, refreshReports,
     loadWorkspace: resources.workspace.load, loadCatalog: resources.quickCatalog.load,
   })
-
-  const runCommand = useCallback(
-    async (operation: () => Promise<JobView>): Promise<void> => {
-      setCommandPending(true)
-      setCommandError("")
-      try {
-        const controlled = await operation()
-        setPreferredJob(controlled)
-        receiveJobObservation(controlled)
-      } catch (error) {
-        setCommandError(
-          publicDesktopErrorMessage(error, t("app:commandError")),
-        )
-        throw error
-      } finally {
-        setCommandPending(false)
-      }
-    },
-    [receiveJobObservation, setPreferredJob, t],
-  )
 
   const startRun = useCallback(async (command: StartRunTargetCommand): Promise<void> => {
     setCommandPending(true)
@@ -477,7 +451,7 @@ function AppWorkspace({
 		} finally {
 			setCommandPending(false)
 		}
-	}, [client, resources, invalidateWorkspace, receiveComparisons, refreshWorkspace, setPreferredJob, t])
+	}, [client, resources, invalidateWorkspace, receiveComparisons, refreshWorkspace, setPreferredJob, setPendingComparisonIDs, setRetryComparisonPoll, t])
 
   const workspacePlans = snapshot?.plans
   const plans = useMemo(
@@ -523,7 +497,6 @@ function AppWorkspace({
 				<div className="flex items-center gap-2">
 					<DiagnosticsSheet client={client} />
           <RemoteNodesMenu client={client} disabled={commandPending} />
-          <JobsMenu client={client} preferredJob={preferredJob} reports={reports ?? EMPTY_REPORTS} onOpenChange={setShowJobs} onOpenReport={openReport} onJobChange={receiveJobObservation} />
 					<NewComparisonSheet catalog={catalogState.data ?? EMPTY_CATALOG} onOpen={() => resources.catalog.load()} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
 					<NewRunSheet
 						plans={plans}
@@ -539,7 +512,7 @@ function AppWorkspace({
       }
     >
       <Suspense fallback={<div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("app:loadingPage")}</div>}>
-      {pageStatus ?? (page === "overview" ? (
+      {(page === "runs" ? null : pageStatus) ?? (page === "overview" ? (
         <OverviewWorkspace workspace={snapshot!} catalog={catalog!} reports={reports!} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
         <QuickTaskWorkspace
@@ -598,23 +571,22 @@ function AppWorkspace({
         />
       ) : (
         <RunWorkspace
-          snapshot={snapshot!}
-          comparisons={comparisons ?? EMPTY_COMPARISONS}
-          comparisonState={comparisonState}
-          showComparisons={showComparisons}
-          onShowComparisons={() => {
-            setShowComparisons(true)
-            void resources.comparisons.load().catch(() => {})
-          }}
-          onRetryComparisons={() => { void resources.comparisons.refresh().catch(() => {}) }}
-          commandPending={commandPending}
-          commandError={commandError}
+          client={client}
+          snapshot={snapshot ?? EMPTY_WORKSPACE}
+          readStatus={pageStatus}
+          reports={reports ?? EMPTY_REPORTS}
+          preferredJob={preferredJob}
           preferredRunID={preferredRunID}
+          commandError={commandError}
           renderRunShortcuts={renderRunShortcuts}
-          onStopSending={(runId) =>
-            runCommand(() => controlRun(client, runId, "stop_sending"))
-          }
-          onCancelRun={(runId) => runCommand(() => controlRun(client, runId, "cancel"))}
+          onJobChange={receiveJobObservation}
+          onOpenReport={openReport}
+          onOpenComparison={async id => {
+            setShowComparisons(true)
+            setPendingComparisonIDs(ids => ids.includes(id) ? ids : [...ids, id])
+            void resources.comparisons.refresh().then(receiveComparisons).catch(() => setRetryComparisonPoll(true))
+            await openReport(id)
+          }}
         />
       ))}
       </Suspense>

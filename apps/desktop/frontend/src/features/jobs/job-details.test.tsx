@@ -1,10 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
-import { EMPTY_REPORTS } from "@/features/reports/data"
 import { controlFixture, executionClient, jobFixture, JOB_ID, JOB_TIME, REPORT_ID } from "@/test/jobs-fixture"
 import { JobDetails } from "./job-details"
-import { JobsMenu } from "./jobs-menu"
 
 afterEach(() => { vi.useRealTimers() })
 
@@ -16,16 +14,15 @@ describe("durable job observation", () => {
       execution: { ...jobFixture().execution!, revision: 7 } })
     client.getJobs.mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
     client.getJob.mockResolvedValue(job)
-    render(<JobsMenu client={client} preferredJob={null} reports={EMPTY_REPORTS} onOpenReport={vi.fn()} />)
-    fireEvent.click(screen.getByRole("button", { name: "任务" }))
-    const details = await screen.findByRole("region", { name: "任务详情" })
+    render(<JobDetails client={client} jobID={JOB_ID} initialJob={job} />)
+    const details = await screen.findByRole("region", { name: "执行详情" })
     expect(within(details).getByText("共享节点任务")).toBeVisible()
     expect(within(details).getByText("运行中")).toBeVisible()
     expect(within(details).getByText(/runner-r4/)).toHaveTextContent("b".repeat(64))
     expect(within(details).queryByText("投递状态")).not.toBeInTheDocument()
     expect(within(details).queryByText("等待执行器确认")).not.toBeInTheDocument()
     expect(within(details).queryByText("本客户端控制命令")).not.toBeInTheDocument()
-    const cancel = within(details).getByRole("button", { name: "取消任务" })
+    const cancel = within(details).getByRole("button", { name: "取消运行" })
     expect(cancel).toBeEnabled()
     fireEvent.click(cancel)
     await waitFor(() => expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 7 }))
@@ -61,7 +58,7 @@ describe("durable job observation", () => {
     client.getJobControls.mockResolvedValue({ schema_version: 1, job_id: JOB_ID, commands: [pending], next_cursor: "", has_more: false })
     render(<JobDetails client={client} jobID={JOB_ID} initialJob={jobFixture()} />)
     const retry = await screen.findByRole("button", { name: "重试原命令" })
-    expect(screen.getByRole("button", { name: "取消任务" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
     fireEvent.click(retry)
     await waitFor(() => expect(client.retryJobControl).toHaveBeenCalledExactlyOnceWith(pending.command_id))
     expect(client.controlJob).not.toHaveBeenCalled()
@@ -75,12 +72,12 @@ describe("durable job observation", () => {
     await act(async () => { await Promise.resolve() })
     expect(screen.getByRole("button", { name: "重试原命令" })).toBeVisible()
     expect(screen.getByText("本客户端控制命令")).toBeVisible()
-    expect(screen.getByRole("button", { name: "取消任务" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
     await act(async () => { await vi.advanceTimersByTimeAsync(1_500) })
     expect(client.getJobControls).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole("button", { name: "重试原命令" })).not.toBeInTheDocument()
     expect(screen.queryByText("本客户端控制命令")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "取消任务" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeEnabled()
   })
 
   it("retains the last authoritative local commands when their next read fails", async () => {
@@ -92,7 +89,7 @@ describe("durable job observation", () => {
     await act(async () => { await Promise.resolve() })
     await act(async () => { await vi.advanceTimersByTimeAsync(1_500) })
     expect(screen.getByRole("button", { name: "重试原命令" })).toBeVisible()
-    expect(screen.getByRole("button", { name: "取消任务" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "取消运行" })).toBeDisabled()
     expect(screen.getByText(/当前展示最后一次确认的数据/)).toBeVisible()
   })
 
@@ -140,18 +137,4 @@ describe("durable job observation", () => {
     expect(screen.queryByRole("button", { name: "打开已同步报告" })).not.toBeInTheDocument()
   })
 
-  it("recovers persisted jobs after reopening and requests bounded history pages", async () => {
-    const client = executionClient()
-    const job = jobFixture()
-    client.getJobs.mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
-    const view = render(<JobsMenu client={client} preferredJob={null} reports={EMPTY_REPORTS} onOpenReport={vi.fn()} />)
-    fireEvent.click(screen.getByRole("button", { name: "任务" }))
-    expect(await screen.findByText("固定执行器")).toBeVisible()
-    expect(client.getJobs).toHaveBeenCalledWith("", 25)
-    view.unmount()
-    render(<JobsMenu client={client} preferredJob={null} reports={EMPTY_REPORTS} onOpenReport={vi.fn()} />)
-    fireEvent.click(screen.getByRole("button", { name: "任务" }))
-    expect(await screen.findByText("固定执行器")).toBeVisible()
-    expect(client.launchJob).not.toHaveBeenCalled()
-  })
 })

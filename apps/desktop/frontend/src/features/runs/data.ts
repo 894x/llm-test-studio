@@ -64,6 +64,7 @@ export type EntryProgress = {
 }
 
 export type WorkspaceRun = {
+  job_id?: string
   report_id?: string
   case_count: number
   observed_case_count: number
@@ -105,6 +106,8 @@ export type WorkspaceSnapshot = {
   runs: WorkspaceRun[]
   active_run_id?: string
 }
+
+export const EMPTY_WORKSPACE: WorkspaceSnapshot = { schema_version: 1, plans: [], runs: [] }
 
 export type RunStatus =
   | "running"

@@ -1,6 +1,6 @@
 {
   "title": "Run workspace",
-  "description": "Compare pinned versions, track execution, and inspect reproducible evidence",
+  "description": "Track local and remote tests, results and execution details",
   "count": "{{count}} runs",
   "shortcuts": {
     "title": "Run shortcuts",
@@ -72,7 +72,8 @@
     "noFailures": "No failures have been recorded for this run.",
     "artifactsPending": "{{count}} artifacts are waiting for local paths from Go Core.",
     "noArtifacts": "No artifacts generated yet.",
-    "noneSelected": "No run selected"
+    "noneSelected": "No run selected",
+    "execution": "Execution"
   },
   "newRun": {
     "title": "New run",
@@ -140,5 +141,25 @@
     "error": "Unable to load comparisons",
     "retry": "Retry",
     "empty": "No channel comparisons yet"
+  },
+  "executions": {
+    "search": "Search name, model, channel or ID",
+    "kind": "Test type",
+    "allKinds": "All types",
+    "location": "Execution location",
+    "allLocations": "All locations",
+    "allStatuses": "All statuses",
+    "shown": "{{count}} shown",
+    "refresh": "Refresh",
+    "loading": "Loading executions…",
+    "noMatches": "Adjust filters or load more history.",
+    "more": "Load more",
+    "historyHint": "History loads on demand. Filters apply to loaded records.",
+    "children": "{{count}} child runs",
+    "child": "View child run",
+    "awaitingData": "Awaiting execution data",
+    "clear": "Clear filters",
+    "emptyFiltered": "No matching executions",
+    "comparisonReport": "View comparison report"
   }
 }

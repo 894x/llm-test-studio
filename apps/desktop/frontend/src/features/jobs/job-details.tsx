@@ -60,7 +60,7 @@ export function JobDetails({ client, jobID, initialJob, reportIDs, onOpenReport,
       {submission?.observation ? <Property label={t("connection")} value={t(`observations.${submission.observation}`)} /> : null}
       <Property label={t("execution")} value={job.execution ? t(`statuses.${job.execution.status}`) : confirmation ? t("awaitingSync", { status: t(`statuses.${confirmation.status}`), revision: confirmation.revision }) : t("awaitingConfirmation")} />
       {job.execution?.failure ? <Property label={t("failure")} value={`${job.execution.failure.phase} · ${job.execution.failure.error_code}`} /> : null}
-      <Property label={t("result")} value={t(job.performance_result_ready ? "resultReady" : "resultPending")} />
+      {job.kind === "performance" ? <Property label={t("result")} value={t(job.performance_result_ready ? "resultReady" : "resultPending")} /> : null}
     </dl>
     {p && renderProgress ? renderProgress(p) : p ? <div role="status" className="flex flex-col gap-2">
       <p>{t(`phases.${p.phase}`)} · {t("progress", { completed: p.completed, planned: p.planned, active: p.in_flight })}</p>

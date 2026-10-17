@@ -144,6 +144,8 @@ describe("desktop run workspace", () => {
     vi.restoreAllMocks()
   })
   beforeEach(() => {
+    const media = window.matchMedia("(min-width: 1180px)")
+    vi.spyOn(window, "matchMedia").mockImplementation(query => ({ ...media, matches: query === "(min-width: 1180px)" }))
     window.localStorage.clear()
     document.documentElement.className = ""
     Object.defineProperty(window.navigator, "languages", {
@@ -155,18 +157,15 @@ describe("desktop run workspace", () => {
   })
 
   it("recovers the submitted Job from persisted queries after remount without relaunching", async () => {
-    const user = userEvent.setup()
     const client = desktopClient()
     const pending = jobFixture({ submission: submissionFixture({ delivery: "pending", observation: "unreachable", confirmation: null }), execution: null })
     vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [pending], next_cursor: "", has_more: false })
     vi.mocked(client.getJob).mockResolvedValue(pending)
     const first = render(<App client={client} />)
-    await user.click(await screen.findByRole("button", { name: "任务" }))
-    expect(await screen.findByRole("region", { name: "任务详情" })).toHaveTextContent(JOB_ID)
+    expect(await screen.findByRole("region", { name: "执行详情" })).toHaveTextContent(JOB_ID)
     first.unmount()
     render(<App client={client} />)
-    await user.click(await screen.findByRole("button", { name: "任务" }))
-    const details = await screen.findByRole("region", { name: "任务详情" })
+    const details = await screen.findByRole("region", { name: "执行详情" })
     expect(details).toHaveTextContent(JOB_ID)
     expect(details).toHaveTextContent("test-current")
     expect(details).toHaveTextContent("已投递，等待确认")
@@ -176,7 +175,22 @@ describe("desktop run workspace", () => {
     expect(client.controlJob).not.toHaveBeenCalled()
   })
 
-  it("loads Job report links on demand without reading unrelated workspace history", async () => {
+  it("keeps remote execution controls available when the Run history read fails", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const job = jobFixture({ kind: "run", submission: null, location: { kind: "remote", configuration_id: JOB_ID } })
+    vi.mocked(client.getWorkspace).mockRejectedValue(new DesktopClientError("workspace_unavailable"))
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(job)
+    render(<App client={client} />)
+    const details = await screen.findByRole("region", { name: "执行详情" })
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+    await user.click(within(details).getByRole("button", { name: "取消运行" }))
+    expect(client.controlJob).toHaveBeenCalledWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })
+    expect(client.launchJob).not.toHaveBeenCalled()
+  })
+
+  it("loads execution details and report links from the runs page", async () => {
     window.history.replaceState(null, "", "#catalog")
     const user = userEvent.setup()
     const client = desktopClient()
@@ -192,9 +206,10 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
     await screen.findByRole("heading", { name: "模型与渠道" })
     expect(client.getReports).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "任务" }))
-    expect(await screen.findByRole("region", { name: "任务详情" })).toHaveTextContent(JOB_ID)
-    expect(client.getWorkspace).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "运行" }))
+    await user.click(await screen.findByRole("tab", { name: "执行" }))
+    expect(await screen.findByRole("region", { name: "执行详情" })).toHaveTextContent(JOB_ID)
+    expect(client.getWorkspace).toHaveBeenCalled()
     expect(client.getReports).toHaveBeenCalled()
     expect(client.getComparisons).not.toHaveBeenCalled()
     expect(client.getCatalog).toHaveBeenCalledExactlyOnceWith("connections")
@@ -206,7 +221,7 @@ describe("desktop run workspace", () => {
 
   it("polls a shared comparison missing from the first reads and opens its synchronized reports", async () => {
     vi.useFakeTimers()
-    window.history.replaceState(null, "", "#reports")
+    window.history.replaceState(null, "", "#runs")
     const client = desktopClient()
     client.workspace = { ...client.workspace, active_run_id: undefined, runs: [] }
     const left = protocolReportFixture()
@@ -239,17 +254,16 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
     await act(async () => { await vi.dynamicImportSettled() })
     expect(client.getComparisons).not.toHaveBeenCalled()
+    expect(screen.getByRole("region", { name: "执行详情" })).toHaveTextContent("共享节点任务")
+    fireEvent.click(screen.getByRole("button", { name: "报告" }))
+    await act(async () => window.dispatchEvent(new HashChangeEvent("hashchange")))
+    await act(async () => { await vi.dynamicImportSettled() })
     fireEvent.click(screen.getByRole("button", { name: "查看渠道对比记录" }))
     await act(async () => {})
     expect(client.getComparisons).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "任务" }))
-    await act(async () => {})
-    expect(screen.getByRole("region", { name: "任务详情" })).toHaveTextContent("共享节点任务")
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
     expect(client.getComparisons).toHaveBeenCalledTimes(2)
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }))
-    await act(async () => {})
-    expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
     expect(client.getComparisons).toHaveBeenCalledTimes(3)
     const open = screen.getByRole("button", { name: "查看渠道对比报告：test-model" })
@@ -281,10 +295,10 @@ describe("desktop run workspace", () => {
 
     render(<App client={client} />)
     await act(async () => {})
-    fireEvent.click(screen.getByRole("button", { name: "任务" }))
     await act(async () => {})
-    expect(screen.getByRole("region", { name: "任务详情" })).toHaveTextContent("已完成")
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+    expect(screen.getByRole("region", { name: "执行详情" })).toHaveTextContent("已完成")
+    fireEvent.click(screen.getByRole("button", { name: "模型与渠道" }))
+    await act(async () => window.dispatchEvent(new HashChangeEvent("hashchange")))
     await act(async () => {})
     const readsAfterClose = vi.mocked(client.getWorkspace).mock.calls.length
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
@@ -302,8 +316,9 @@ describe("desktop run workspace", () => {
       "运行",
     )
     expect(
-      screen.getByRole("navigation", { name: "测试计划" }),
+      screen.getByRole("combobox", { name: "测试计划" }),
     ).toBeInTheDocument()
+    await screen.findByRole("button", { name: "查看 营销文案基准" })
     expect(screen.getByRole("table", { name: "运行记录" })).toBeInTheDocument()
     expect(
       screen.getByRole("complementary", { name: "运行详情" }),
@@ -315,7 +330,7 @@ describe("desktop run workspace", () => {
     expect(table.closest('[data-slot="table-container"]')).toBeNull()
     expect(
       document.querySelectorAll('[data-slot="scroll-area-scrollbar"]'),
-    ).toHaveLength(2)
+    ).toHaveLength(4)
     const verticalRail = document.querySelector(
       '[data-slot="scroll-area-scrollbar"][data-orientation="vertical"]',
     )
@@ -643,7 +658,6 @@ describe("desktop run workspace", () => {
 		await user.click(within(panel).getByRole("button", { name: "开始性能测试" }))
 
 		await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(2))
-		await user.click(await screen.findByRole("button", { name: "关闭" }))
 		await user.click(await within(panel).findByRole("button", { name: "查看正式报告" }))
 		expect(window.location.hash).toBe("#reports")
 		expect(await screen.findByRole("region", { name: "归档性能报告" })).toHaveTextContent("1 / 1")
@@ -1116,6 +1130,7 @@ describe("desktop run workspace", () => {
       return pending
     })
     render(<App client={client} />)
+    await user.click(await screen.findByRole("tab", { name: "执行" }))
     await user.click(await screen.findByRole("button", { name: kind === "stop_sending" ? "停止发送" : "取消运行" }))
     await waitFor(() => expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind, expected_revision: 1 }))
     expect(client.workspace.runs[0].status).toBe("running")
@@ -1468,7 +1483,7 @@ describe("desktop run workspace", () => {
     expect(client.workspace.active_run_id).toBe(oldWorkspace.active_run_id)
     await act(async () => { progress.resolve(oldWorkspace) })
     expect(client.workspace.active_run_id).toBe(oldWorkspace.active_run_id)
-    expect(client.getWorkspace).toHaveBeenCalledTimes(3)
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
   })
 
   it("keeps long generation visible and exposes failure without repeatedly reading reports", async () => {
@@ -1577,7 +1592,8 @@ describe("desktop run workspace", () => {
     })
     render(<App client={client} />)
 
-    await user.click(await screen.findByRole("button", { name: /空计划/ }))
+    await user.click(await screen.findByRole("combobox", { name: "测试计划" }))
+    await user.click(screen.getByRole("option", { name: "空计划" }))
 
     expect(screen.getByText("这个计划还没有运行记录")).toBeInTheDocument()
     const inspector = screen.getByRole("complementary", { name: "运行详情" })
@@ -1692,15 +1708,18 @@ describe("desktop run workspace", () => {
     expect(client.getCatalog).toHaveBeenCalledTimes(2)
   })
 
-  it("does not read comparison history until explicitly opened", async () => {
+  it("loads execution history on the runs page and keeps comparison reports on demand", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
     render(<App client={client} />)
     await screen.findByRole("heading", { name: "运行工作区" })
+    expect(client.getJobs).toHaveBeenCalledWith("", 25)
+    expect(screen.queryByRole("button", { name: "任务" })).not.toBeInTheDocument()
     expect(client.getCatalog).not.toHaveBeenCalled()
     expect(client.getReports).not.toHaveBeenCalled()
     expect(client.getComparisons).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "查看渠道对比记录" }))
+    await user.click(screen.getByRole("button", { name: "报告" }))
+    await user.click(await screen.findByRole("button", { name: "查看渠道对比记录" }))
     await waitFor(() => expect(client.getComparisons).toHaveBeenCalledTimes(1))
   })
 

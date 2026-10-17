@@ -1163,6 +1163,7 @@ function isWorkspaceRun(value: unknown): boolean {
     (value.failure_phase !== undefined || value.error_code !== undefined)
   return (
     isRecord(value) &&
+    (value.job_id === undefined || isUUID(value.job_id)) &&
     (value.report_id === undefined || isUUID(value.report_id)) &&
     isCaseProgress(value) &&
     isUUID(value.id) &&
@@ -1216,6 +1217,7 @@ function parseRun(value: unknown) {
     })),
     ...(record.source === "quick_task" ? { source: "quick_task" as const } : {}),
     id: record.id as string,
+    ...(record.job_id === undefined ? {} : { job_id: record.job_id as string }),
     ...(record.report_id === undefined ? {} : { report_id: record.report_id as string }),
     revision: record.revision as number,
     plan_id: record.plan_id as string,

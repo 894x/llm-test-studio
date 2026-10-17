@@ -151,6 +151,39 @@ func TestSnapshotExcludesPerformancePlansFromStandardRunPicker(t *testing.T) {
 	}
 }
 
+func TestSnapshotProjectsOptionalJobIdentity(t *testing.T) {
+	now := time.Date(2026, time.October, 17, 10, 0, 0, 0, time.UTC)
+	plan, run := validPlanAndRun(t, now, domain.LoadProfile{
+		Mode: domain.LoadSingle, Concurrency: 1, RequestCount: 1, RequestTimeoutMS: 30_000,
+	})
+	for _, jobID := range []string{"", "99999999-9999-4999-8999-999999999999", "invalid-job"} {
+		t.Run(jobID, func(t *testing.T) {
+			projection := projectionFixture(run, plan, RunProjection{JobID: jobID, Conclusion: ConclusionNone})
+			snapshot, err := New(&fakeCatalog{projections: []RunProjection{projection}}).Snapshot(t.Context())
+			if jobID == "invalid-job" {
+				if !errors.Is(err, ErrInconsistent) {
+					t.Fatalf("invalid job identity error = %v, want ErrInconsistent", err)
+				}
+				return
+			}
+			if err != nil || len(snapshot.Runs) != 1 || snapshot.Runs[0].JobID != jobID {
+				t.Fatalf("job identity projection = %#v, error = %v", snapshot.Runs, err)
+			}
+			encoded, err := json.Marshal(snapshot.Runs[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields := map[string]json.RawMessage{}
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if _, present := fields["job_id"]; present != (jobID != "") {
+				t.Fatalf("optional job identity presence = %v for %q", present, jobID)
+			}
+		})
+	}
+}
+
 func TestSnapshotUsesTwoPortCallsForManyRunsAndPinnedHistoricalLabels(t *testing.T) {
 	now := time.Date(2026, time.August, 30, 10, 0, 0, 0, time.UTC)
 	historical, firstRun := validPlanAndRun(t, now, domain.LoadProfile{

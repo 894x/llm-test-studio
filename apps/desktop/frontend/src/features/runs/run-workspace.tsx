@@ -1,8 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import CircleStopIcon from "lucide-react/dist/esm/icons/circle-stop.mjs"
-import CircleXIcon from "lucide-react/dist/esm/icons/circle-x.mjs"
-import PanelLeftIcon from "lucide-react/dist/esm/icons/panel-left.mjs"
-import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
 import { useTranslation } from "react-i18next"
 
@@ -11,7 +7,6 @@ import {
 } from "@/app/desktop-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import {
   Field,
   FieldContent,
@@ -32,36 +27,21 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
-import type { RunShortcutRenderer } from "./use-run-shortcuts"
-import { ComparisonPanel } from "@/features/comparisons/comparison-workspace"
-import type { ComparisonSnapshot } from "@/features/comparisons/data"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
 import {
   DEFAULT_CASE_CONCURRENCY,
   formatTargetDuration,
-  presentWorkspace,
   type RunRecord,
   type RunStatus,
   type StartRunTargetCommand,
   type TestPlan,
-  type WorkspaceSnapshot,
 } from "./data"
 import { CaseConcurrencyField } from "./case-concurrency-field"
 import { eligibleRuntimeChannels, eligibleRuntimeModels } from "./run-targets"
-
-type ActiveTaskState = "queued" | "starting" | "running" | "draining"
 
 const STATUS_CLASS: Record<RunStatus, string> = {
   running: "text-info-strong",
@@ -71,70 +51,6 @@ const STATUS_CLASS: Record<RunStatus, string> = {
   failed: "text-destructive",
   queued: "text-warning-strong",
   cancelled: "text-muted-foreground",
-}
-
-function PlanNavigation({
-  activePlanId,
-  plans,
-  totalRuns,
-  onSelect,
-}: {
-  activePlanId: string
-  plans: TestPlan[]
-  totalRuns: number
-  onSelect: (planId: string) => void
-}) {
-  const { t } = useTranslation("runs")
-
-  return (
-    <nav aria-label={t("plans.aria")} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="px-2 pb-2 pt-4">
-        <div className="text-xs font-semibold">{t("plans.title")}</div>
-        <div className="mt-1 text-[11px] text-muted-foreground">
-          {t("plans.description")}
-        </div>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pb-3">
-        <button
-          type="button"
-          data-active={activePlanId === "all"}
-          onClick={() => onSelect("all")}
-          className="plan-nav-item"
-        >
-          <span>
-            <span className="block text-xs font-medium">{t("plans.all")}</span>
-            <span className="mt-0.5 block text-[11px] text-muted-foreground">
-              {t("plans.allDescription")}
-            </span>
-          </span>
-          <span className="text-[11px] tabular-nums text-muted-foreground">
-            {totalRuns}
-          </span>
-        </button>
-        {plans.map((plan) => (
-          <button
-            key={plan.id}
-            type="button"
-            data-active={activePlanId === plan.id}
-            onClick={() => onSelect(plan.id)}
-            className="plan-nav-item"
-          >
-            <span className="min-w-0">
-              <span className="block text-xs font-medium [overflow-wrap:anywhere]">
-                {plan.name}
-              </span>
-              <span className="mt-0.5 block text-[11px] [overflow-wrap:anywhere] text-muted-foreground">
-                {plan.description}
-              </span>
-            </span>
-            <span className="text-[11px] tabular-nums text-muted-foreground">
-              {plan.runCount}
-            </span>
-          </button>
-        ))}
-      </div>
-    </nav>
-  )
 }
 
 function StatusBadge({ status }: { status: RunStatus }) {
@@ -151,148 +67,6 @@ function StatusBadge({ status }: { status: RunStatus }) {
       <span className="status-dot" aria-hidden="true" />
       {t(`status.${status}`)}
     </Badge>
-  )
-}
-
-function RunTable({
-  runs,
-  selectedId,
-  onSelect,
-  filtered,
-}: {
-  runs: RunRecord[]
-  selectedId: string
-  onSelect: (run: RunRecord) => void
-  filtered: boolean
-}) {
-  const { t } = useTranslation("runs")
-
-  if (runs.length === 0) {
-    return (
-      <ScrollArea className="min-h-0 min-w-0 flex-1">
-        <Empty className="px-0">
-          <EmptyTitle>
-            {t(filtered ? "table.emptyFiltered" : "table.empty")}
-          </EmptyTitle>
-          <EmptyDescription>
-            {filtered
-              ? t("table.emptyFilteredDescription")
-              : t("table.emptyDescription")}
-          </EmptyDescription>
-        </Empty>
-      </ScrollArea>
-    )
-  }
-
-  return (
-    <ScrollArea className="min-h-0 min-w-0 flex-1">
-      <Table aria-label={t("table.aria")} className="min-w-[640px] table-fixed [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere]">
-        <TableHeader className="sticky top-0 z-10 bg-background">
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="h-8 w-[72px] text-[11px] text-muted-foreground">
-              {t("table.status")}
-            </TableHead>
-            <TableHead className="h-8 w-[26%] text-[11px] text-muted-foreground">
-              {t("table.runPlan")}
-            </TableHead>
-            <TableHead className="h-8 w-[20%] text-[11px] text-muted-foreground">
-              {t("table.target")}
-            </TableHead>
-            <TableHead className="h-8 w-[26%] text-[11px] text-muted-foreground">
-              {t("table.progress")}
-            </TableHead>
-            <TableHead className="h-8 w-[56px] text-[11px] text-muted-foreground">
-              P95
-            </TableHead>
-            <TableHead className="h-8 w-[88px] text-[11px] text-muted-foreground">
-              {t("table.started")}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {runs.map((run) => {
-            const selected = run.id === selectedId
-            const percent =
-              run.caseCount === 0
-                ? 0
-                : Math.round((run.observedCaseCount / run.caseCount) * 100)
-            return (
-              <TableRow
-                key={run.id}
-                data-state={selected ? "selected" : undefined}
-                aria-selected={selected}
-                onClick={() => onSelect(run)}
-                className="h-11"
-              >
-                <TableCell className="py-2">
-                  <StatusBadge status={run.status} />
-                </TableCell>
-                <TableCell className="py-2">
-                  <Button
-                    variant="link"
-                    size="sm"
-                    aria-label={t("table.view", { title: run.title })}
-                    onClick={() => onSelect(run)}
-                    className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs font-medium text-foreground no-underline hover:no-underline"
-                  >
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{run.title}</span>
-                  </Button>
-                  <div className="mt-0.5 [overflow-wrap:anywhere] font-mono text-[10px] text-muted-foreground">
-                    {run.id}
-                  </div>
-                </TableCell>
-                <TableCell className="py-2">
-                  <div className="text-xs [overflow-wrap:anywhere]">{run.model}</div>
-                  <div className="mt-0.5 [overflow-wrap:anywhere] text-[10px] text-muted-foreground">
-                    {run.channel}
-                  </div>
-                </TableCell>
-                <TableCell className="py-2">
-                  {run.caseCount > 0 ? (
-                    <>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Progress
-                          value={percent}
-                          className="w-20"
-                          aria-label={t("table.progressAria", { title: run.title, percent })}
-                        />
-                        <span className="text-[11px] tabular-nums text-muted-foreground">
-                          {t("caseProgress.count", { completed: run.observedCaseCount, total: run.caseCount })}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground">
-                        <span>{t("table.completedCount", { count: run.completed })}</span> · {" "}
-                        {t("table.passed", { count: run.passed })} · {t("table.observed", { count: run.observed })} · {t("table.indeterminate", { count: run.indeterminate })}
-                        {run.targetDurationMS > 0 ? <> · {t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}</> : null}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        {isActiveTaskState(run.coreStatus) ? <Spinner /> : null}
-                        <span className="tabular-nums">{t("table.completedCount", { count: run.completed })}</span>
-                      </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground">
-                        {run.quickTask ? t("presentation.quickSuite") : t("table.targetDuration", { duration: formatTargetDuration(run.targetDurationMS) })}
-                      </div>
-                    </>
-                  )}
-                </TableCell>
-                <TableCell className="py-1 text-xs tabular-nums">
-                  {run.p95}
-                </TableCell>
-                <TableCell className="py-2">
-                  <div className="text-xs">{run.started}</div>
-                  <div className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
-                    {run.duration}
-                  </div>
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </ScrollArea>
   )
 }
 
@@ -313,7 +87,10 @@ function DefinitionRow({
   )
 }
 
-function RunInspectorContent({ run, shortcuts }: { run: RunRecord; shortcuts?: ReactNode }) {
+export function RunInspectorContent({ run, shortcuts, execution, tab, onTabChange }: {
+  run: RunRecord; shortcuts?: ReactNode; execution?: ReactNode
+  tab: string; onTabChange: (tab: string) => void
+}) {
   const { t } = useTranslation("runs")
   const durationOnly = run.total === 0 && run.targetDurationMS > 0
   const targetDetail = run.quickTask ? t("presentation.quickSuite") : durationOnly
@@ -336,8 +113,9 @@ function RunInspectorContent({ run, shortcuts }: { run: RunRecord; shortcuts?: R
           <StatusBadge status={run.status} />
         </div>
       </div>
-      <Tabs defaultValue="summary" className="min-h-0 min-w-0 flex-1 gap-0">
+      <Tabs value={!execution && tab === "execution" ? "summary" : tab} onValueChange={onTabChange} className="min-h-0 min-w-0 flex-1 gap-0">
         <TabsList variant="line" className="mx-4 h-8">
+          {execution ? <TabsTrigger value="execution" className="text-xs">{t("inspector.execution")}</TabsTrigger> : null}
           <TabsTrigger value="summary" className="text-xs">
             {t("inspector.summary")}
           </TabsTrigger>
@@ -348,10 +126,12 @@ function RunInspectorContent({ run, shortcuts }: { run: RunRecord; shortcuts?: R
             {t("inspector.artifacts")}
           </TabsTrigger>
         </TabsList>
+        {execution ? <TabsContent value="execution" className="min-h-0 min-w-0 flex-1"><ScrollArea contentWidth="viewport" className="min-h-0 h-full px-4">{execution}</ScrollArea></TabsContent> : null}
         <TabsContent
           value="summary"
-          className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-2"
+          className="min-h-0 min-w-0 flex-1"
         >
+          <ScrollArea contentWidth="viewport" className="min-h-0 h-full [overflow-wrap:anywhere] px-4 py-2">
           <div className="space-y-3 py-2" aria-label={t("caseProgress.suites")}>
             {run.entryProgress.map((suite, index) => (
               <div key={suite.entry_id} className="min-w-0">
@@ -393,20 +173,23 @@ function RunInspectorContent({ run, shortcuts }: { run: RunRecord; shortcuts?: R
               value={t("inspector.savedArtifacts", { count: run.artifactCount })}
             />
           </dl>
+          </ScrollArea>
         </TabsContent>
         <TabsContent
           value="failures"
-          className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-3 text-xs"
+          className="min-h-0 min-w-0 flex-1"
         >
-          {run.failureSummary ?? t("inspector.noFailures")}
+          <ScrollArea contentWidth="viewport" className="min-h-0 h-full [overflow-wrap:anywhere] px-4 py-3 text-xs">{run.failureSummary ?? t("inspector.noFailures")}</ScrollArea>
         </TabsContent>
         <TabsContent
           value="artifacts"
-          className="min-h-0 min-w-0 overflow-y-auto [overflow-wrap:anywhere] px-4 py-3 text-xs"
+          className="min-h-0 min-w-0 flex-1"
         >
+          <ScrollArea contentWidth="viewport" className="min-h-0 h-full [overflow-wrap:anywhere] px-4 py-3 text-xs">
           {run.artifactCount > 0
             ? t("inspector.artifactsPending", { count: run.artifactCount })
             : t("inspector.noArtifacts")}
+          </ScrollArea>
         </TabsContent>
       </Tabs>
       {shortcuts}
@@ -589,311 +372,4 @@ function RuntimeTargetSelect({ label, value, options, onChange }: { label: strin
 			<SearchableSelect value={value} onValueChange={onChange} disabled={options.length === 0} aria-label={label} className="w-full" placeholder={t("newRun.noOptions", { label })} options={[...options.map(([id, name]) => ({value: id, label: name}))]} />
 		</Field>
 	)
-}
-
-function MobilePlanSheet({
-  activePlanId,
-  plans,
-  totalRuns,
-  onSelect,
-}: {
-  activePlanId: string
-  plans: TestPlan[]
-  totalRuns: number
-  onSelect: (planId: string) => void
-}) {
-  const { t } = useTranslation("runs")
-
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-[1180px]:hidden"
-        >
-          <PanelLeftIcon data-icon="inline-start" /> {t("mobile.plans")}
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="data-[side=left]:w-[300px] px-4 py-0">
-        <SheetHeader className="sr-only">
-          <SheetTitle>{t("plans.title")}</SheetTitle>
-          <SheetDescription>{t("plans.filter")}</SheetDescription>
-        </SheetHeader>
-        <PlanNavigation
-          activePlanId={activePlanId}
-          plans={plans}
-          totalRuns={totalRuns}
-          onSelect={onSelect}
-        />
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function MobileInspectorSheet({ run, shortcuts }: { run: RunRecord; shortcuts?: ReactNode }) {
-  const { t } = useTranslation("runs")
-
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-[1180px]:hidden"
-        >
-          <PanelRightIcon data-icon="inline-start" /> {t("mobile.details")}
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0">
-        <SheetHeader className="sr-only">
-          <SheetTitle>{t("inspector.details")}</SheetTitle>
-          <SheetDescription>
-            {t("inspector.description", { title: run.title })}
-          </SheetDescription>
-        </SheetHeader>
-        <RunInspectorContent run={run} shortcuts={shortcuts} />
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function ActiveTaskBar({
-  run,
-  state,
-  commandPending,
-  onStop,
-  onCancel,
-}: {
-  run: RunRecord
-  state: ActiveTaskState
-  commandPending: boolean
-  onStop: () => void
-  onCancel: () => void
-}) {
-  const { t } = useTranslation("runs")
-  const progress =
-    run.caseCount === 0 ? 0 : Math.round((run.observedCaseCount / run.caseCount) * 100)
-
-  return (
-    <div className="flex min-h-14 shrink-0 items-center gap-3 border-t bg-background py-2">
-      <div
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          state === "running" && "animate-pulse bg-info",
-          state === "draining" && "bg-warning",
-          (state === "queued" || state === "starting") && "bg-muted-foreground",
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-xs">
-          <span data-task-state className="font-semibold">
-            {t(`task.${state}`)}
-          </span>
-          <span className="truncate text-muted-foreground">{run.title}</span>
-          <span className="hidden tabular-nums text-muted-foreground sm:inline">
-            {t("caseProgress.count", { completed: run.observedCaseCount, total: run.caseCount })}
-          </span>
-        </div>
-        {run.caseCount > 0 ? (
-          <Progress
-            value={progress}
-            className="mt-2 max-w-sm"
-            aria-label={t("caseProgress.totalAria", { completed: run.observedCaseCount, total: run.caseCount })}
-          />
-        ) : (
-          <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <Spinner /> {run.quickTask ? t("presentation.quickSuite") : t("task.timedHint")}
-          </div>
-        )}
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={state !== "running" || commandPending}
-        onClick={onStop}
-      >
-        <CircleStopIcon data-icon="inline-start" /> {t("task.stop")}
-      </Button>
-      <Button
-        variant="destructive"
-        size="sm"
-        disabled={commandPending}
-        onClick={onCancel}
-      >
-        <CircleXIcon data-icon="inline-start" /> {t("task.cancel")}
-      </Button>
-    </div>
-  )
-}
-
-function IdleTaskBar() {
-  const { t } = useTranslation("runs")
-
-  return (
-    <div className="flex min-h-14 shrink-0 items-center bg-background py-2">
-      <span className="size-2 rounded-full bg-muted-foreground" aria-hidden="true" />
-      <span className="ml-3 text-xs font-semibold">{t("task.idle")}</span>
-      <span className="ml-2 text-[11px] text-muted-foreground">
-        {t("task.idleHint")}
-      </span>
-    </div>
-  )
-}
-
-export function RunWorkspace({
-  snapshot,
-  comparisons,
-  commandPending,
-  commandError,
-  onStopSending,
-  onCancelRun,
-  preferredRunID,
-  renderRunShortcuts,
-  comparisonState, showComparisons = true, onShowComparisons, onRetryComparisons,
-}: {
-  comparisonState?: { pending: boolean; error: unknown; data: ComparisonSnapshot | null }
-  showComparisons?: boolean
-  onShowComparisons?: () => void
-  onRetryComparisons?: () => void
-  snapshot: WorkspaceSnapshot
-  comparisons: ComparisonSnapshot
-  commandPending: boolean
-  commandError: string
-  onStopSending: (runId: string) => Promise<void>
-  onCancelRun: (runId: string) => Promise<void>
-  preferredRunID?: string
-  renderRunShortcuts?: RunShortcutRenderer
-}) {
-  const { t, i18n } = useTranslation("runs")
-  const [activePlanId, setActivePlanId] = useState("all")
-  const [selectedRunId, setSelectedRunId] = useState(preferredRunID ?? "")
-  const [lastPreferredRunID, setLastPreferredRunID] = useState(preferredRunID)
-  if (lastPreferredRunID !== preferredRunID) {
-    setLastPreferredRunID(preferredRunID)
-    setActivePlanId("all")
-    setSelectedRunId(preferredRunID ?? "")
-  }
-
-  const presentation = useMemo(
-    () => presentWorkspace(snapshot, {
-      locale: i18n.resolvedLanguage ?? i18n.language,
-      t: (key, values) => t(key, values),
-    }),
-    [i18n.language, i18n.resolvedLanguage, snapshot, t],
-  )
-  const { plans, runs } = presentation
-  const visibleRuns = useMemo(
-    () =>
-      activePlanId === "all"
-        ? runs
-        : runs.filter((run) => run.planId === activePlanId),
-    [activePlanId, runs],
-  )
-  const selectedRun =
-    visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0]
-  const activeRun = snapshot.active_run_id
-    ? runs.find((run) => run.id === snapshot.active_run_id)
-    : undefined
-
-  const selectPlan = (planId: string) => {
-    setActivePlanId(planId)
-    const firstRun =
-      planId === "all"
-        ? runs[0]
-        : runs.find((run) => run.planId === planId)
-    setSelectedRunId(firstRun?.id ?? "")
-  }
-
-  return (
-    <main className="flex min-h-0 min-w-0 flex-1 gap-4 pl-4">
-        <aside className="hidden min-w-0 w-48 shrink-0 bg-sidebar min-[1180px]:flex">
-          <PlanNavigation
-            activePlanId={activePlanId}
-            plans={plans}
-            totalRuns={runs.length}
-            onSelect={selectPlan}
-          />
-        </aside>
-
-        <section
-          aria-labelledby="workspace-heading"
-          className="flex min-w-0 flex-1 flex-col max-[1179px]:pr-4"
-        >
-          <div className="flex shrink-0 items-end justify-between gap-3 py-3">
-            <div className="min-w-0">
-              <h1
-                id="workspace-heading"
-                className="text-lg font-semibold tracking-tight"
-              >
-                {t("title")}
-              </h1>
-              <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                {t("description")}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <MobilePlanSheet
-                activePlanId={activePlanId}
-                plans={plans}
-                totalRuns={runs.length}
-                onSelect={selectPlan}
-              />
-              {selectedRun ? <MobileInspectorSheet run={selectedRun} shortcuts={renderRunShortcuts?.(selectedRun.id)} /> : null}
-              <span className="hidden text-[11px] text-muted-foreground sm:inline">
-                {t("count", { count: visibleRuns.length })}
-              </span>
-            </div>
-          </div>
-
-          {!showComparisons || (comparisonState && !comparisonState.data && !comparisonState.pending && !comparisonState.error) ? <div className="pb-2"><Button size="sm" variant="ghost" onClick={onShowComparisons}>{t("comparisons.load")}</Button></div>
-            : comparisonState?.pending && !comparisonState.data ? <p role="status" className="pb-2 text-xs text-muted-foreground">{t("comparisons.loading")}</p>
-            : comparisonState?.error ? <div role="alert" className="pb-2 text-xs text-destructive">{t("comparisons.error")}<Button size="sm" variant="ghost" onClick={onRetryComparisons}>{t("comparisons.retry")}</Button></div>
-            : comparisons.comparisons.length === 0 ? <p role="status" className="pb-2 text-xs text-muted-foreground">{t("comparisons.empty")}</p> : <ComparisonPanel snapshot={comparisons} />}
-
-          <RunTable
-            runs={visibleRuns}
-            selectedId={selectedRun?.id ?? ""}
-            onSelect={(run) => setSelectedRunId(run.id)}
-            filtered={activePlanId !== "all"}
-          />
-
-          {commandError ? (
-            <div role="alert" className="border-t border-destructive/30 py-2 text-xs text-destructive">
-              {commandError}
-            </div>
-          ) : null}
-          {activeRun && isActiveTaskState(activeRun.coreStatus) ? (
-            <ActiveTaskBar
-              run={activeRun}
-              state={activeRun.coreStatus}
-              commandPending={commandPending}
-              onStop={() => {
-                void onStopSending(activeRun.id).catch(() => undefined)
-              }}
-              onCancel={() => {
-                void onCancelRun(activeRun.id).catch(() => undefined)
-              }}
-            />
-          ) : (
-            <IdleTaskBar />
-          )}
-        </section>
-
-        <aside
-          aria-label={t("inspector.details")}
-          className="hidden min-h-0 min-w-0 w-[320px] shrink-0 border-l border-divider bg-background min-[1180px]:flex"
-        >
-          {selectedRun ? (
-            <RunInspectorContent run={selectedRun} shortcuts={renderRunShortcuts?.(selectedRun.id)} />
-          ) : (
-            <div className="p-4 text-xs text-muted-foreground">{t("inspector.noneSelected")}</div>
-          )}
-        </aside>
-    </main>
-  )
-}
-
-function isActiveTaskState(value: string): value is ActiveTaskState {
-  return value === "queued" || value === "starting" || value === "running" || value === "draining"
 }

@@ -1,12 +1,19 @@
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { type CatalogSnapshot } from "@/features/catalog/data"
-import { EMPTY_COMPARISONS } from "@/features/comparisons/data"
+import { EMPTY_REPORTS } from "@/features/reports/data"
+import { executionClient } from "@/test/jobs-fixture"
 
-import { NewRunSheet, RunWorkspace } from "./run-workspace"
+import { NewRunSheet } from "./run-workspace"
+import { RunWorkspace } from "./execution-workspace"
 import { FIXTURE_WORKSPACE, FIXTURE_CATALOG } from "./fixtures"
+
+beforeEach(() => {
+  const media = window.matchMedia("(min-width: 1180px)")
+  vi.spyOn(window, "matchMedia").mockImplementation(query => ({ ...media, matches: query === "(min-width: 1180px)" }))
+})
 
 it("shows separate Suite bars and aggregate Case progress", () => {
   const snapshot = structuredClone(FIXTURE_WORKSPACE)
@@ -18,10 +25,10 @@ it("shows separate Suite bars and aggregate Case progress", () => {
     { entry_id: snapshot.runs[1].id, name: "第二套件", case_count: 4, observed_case_count: 0, status: "not_started" },
   ]
   snapshot.runs = [run]
-  render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
+  render(<RunWorkspace snapshot={snapshot} client={executionClient()} reports={EMPTY_REPORTS} preferredJob={null} commandError="" onOpenReport={vi.fn()} />)
   expect(screen.getByRole("progressbar", { name: "第一套件：3 / 4 个用例已有结果" })).toHaveAttribute("aria-valuenow", "75")
   expect(screen.getByRole("progressbar", { name: "第二套件：0 / 4 个用例已有结果" })).toHaveAttribute("aria-valuenow", "0")
-  expect(screen.getByRole("progressbar", { name: "用例进度：3 / 8" })).toHaveAttribute("aria-valuenow", "38")
+  expect(screen.getByRole("progressbar", { name: `${run.plan_name} 进度 38%` })).toHaveAttribute("aria-valuenow", "38")
 })
 
 it("shows task observations without a fictitious request total or timed target", () => {
@@ -30,9 +37,9 @@ it("shows task observations without a fictitious request total or timed target",
   snapshot.runs = [snapshot.runs[0]]
   Object.assign(snapshot.runs[0], { source: "quick_task", status: "running", planned: 0, duration_ms: 0, completed: 6, passed: 6, failed: 0 })
   snapshot.active_run_id = snapshot.runs[0].id
-  render(<RunWorkspace snapshot={snapshot} comparisons={EMPTY_COMPARISONS} commandPending={false} commandError="" onStopSending={vi.fn()} onCancelRun={vi.fn()} />)
+  render(<RunWorkspace snapshot={snapshot} client={executionClient()} reports={EMPTY_REPORTS} preferredJob={null} commandError="" onOpenReport={vi.fn()} />)
   expect(screen.getAllByText("用例已有结果 2 / 4").length).toBeGreaterThan(0)
-  expect(screen.getByRole("progressbar", { name: "用例进度：2 / 4" })).toHaveAttribute("aria-valuenow", "50")
+  expect(screen.getByRole("progressbar", { name: `${snapshot.runs[0].plan_name} 进度 50%` })).toHaveAttribute("aria-valuenow", "50")
   expect(screen.getAllByText(/6 个请求已完成/).length).toBeGreaterThan(0)
   expect(screen.queryByText(/6\/0|目标时长 0|定时运行/)).not.toBeInTheDocument()
 })

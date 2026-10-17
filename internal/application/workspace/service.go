@@ -52,6 +52,7 @@ func (conclusion Conclusion) Validate() error {
 // snapshots and authored Case definitions belong to explicit detail reads.
 type RunProjection struct {
 	Meta          domain.EntityMeta
+	JobID         string
 	Plan          domain.EntityRevisionRef
 	PlanName      string
 	Model         TargetProjection
@@ -129,6 +130,7 @@ type PlanSummary struct {
 }
 
 type RunSummary struct {
+	JobID             string           `json:"job_id,omitempty"`
 	ReportID          string           `json:"report_id,omitempty"`
 	CaseCount         uint64           `json:"case_count"`
 	ObservedCaseCount uint64           `json:"observed_case_count"`
@@ -292,6 +294,9 @@ func (projection RunProjection) Validate() error {
 	if err := projection.Meta.Validate(); err != nil {
 		return err
 	}
+	if projection.JobID != "" && !domain.IsUUID(projection.JobID) {
+		return errors.New("invalid run job identity")
+	}
 	if err := projection.Plan.Validate("plan"); err != nil {
 		return err
 	}
@@ -378,7 +383,8 @@ func summarizeRun(projection RunProjection) RunSummary {
 	}
 	load := aggregateSequentialLoads(loads)
 	summary := RunSummary{
-		ID: projection.Meta.ID, Revision: projection.Meta.Revision, ReportID: projection.ReportID,
+		ID: projection.Meta.ID, Revision: projection.Meta.Revision,
+		JobID: projection.JobID, ReportID: projection.ReportID,
 		PlanID: projection.Plan.ID, PlanRevision: projection.Plan.Revision, PlanName: projection.PlanName,
 		Status: projection.Status, Conclusion: projection.Conclusion, Source: projection.Source,
 		ModelID: projection.Model.ID, ModelRevision: projection.Model.Revision, ModelName: projection.Model.Name,

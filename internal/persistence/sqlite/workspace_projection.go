@@ -109,6 +109,36 @@ WITH current_runs AS MATERIALIZED (
     FROM execution_runs AS root
     JOIN execution_run_revisions AS revision ON revision.run_id = root.id AND revision.revision = root.current_revision
 ),
+run_owner_claims AS (
+    SELECT run_id, job_id, position, 'owned' AS namespace FROM execution_job_runs
+    UNION ALL SELECT run_id, job_id, position, 'mirror' AS namespace FROM remote_job_runs
+),
+run_owner_fields AS MATERIALIZED (
+    SELECT owner.run_id, owner.job_id, owner.position,
+           CASE owner.namespace WHEN 'owned' THEN owned.id IS NOT NULL AND mirror.job_id IS NULL
+               AND owned.kind = json_extract(owned.spec_json,'$.kind')
+             ELSE mirror.job_id IS NOT NULL AND owned.id IS NULL END AS namespace_valid,
+           CASE owner.namespace WHEN 'owned' THEN json_extract(owned.spec_json,
+             '$.job_id','$.kind','$.spec.run.meta.id',
+             '$.spec.comparison.runs[' || CAST(MAX(CAST(owner.position AS INTEGER),0) AS TEXT) || '].meta.id')
+             ELSE json_extract(mirror.spec_json,
+             '$.job_id','$.kind','$.spec.run.meta.id',
+             '$.spec.comparison.runs[' || CAST(MAX(CAST(owner.position AS INTEGER),0) AS TEXT) || '].meta.id')
+             END AS fields
+    FROM run_owner_claims AS owner
+    LEFT JOIN execution_jobs AS owned ON owned.id = owner.job_id
+    LEFT JOIN remote_job_mirrors AS mirror ON mirror.job_id = owner.job_id
+),
+run_owner_stats AS (
+    SELECT run_id, MIN(job_id) AS job_id, COUNT(*) AS owner_count,
+           MIN(COALESCE(namespace_valid AND json_extract(fields,'$[0]') = job_id
+             AND typeof(position) = 'integer' AND position >= 0
+             AND CASE json_extract(fields,'$[1]')
+               WHEN 'run' THEN position = 0 AND json_extract(fields,'$[2]') = run_id
+               WHEN 'comparison' THEN json_extract(fields,'$[3]') = run_id
+               ELSE 0 END,0)) AS valid
+    FROM run_owner_fields GROUP BY run_id
+),
 entry_documents AS MATERIALIZED (
     SELECT run.id AS run_id, entry.key AS position,
            json_extract(entry.value,'$.entry_id','$.name','$.cases','$.load') AS fields
@@ -194,6 +224,7 @@ artifact_stats AS (SELECT run_id,COUNT(*) AS count FROM artifacts GROUP BY run_i
 SELECT json_object(
     'Meta',json_object('id',run.id,'schema_version',run.schema_version,'revision',run.current_revision,
       'created_at',run.created_at,'updated_at',run.updated_at),
+    'JobID',COALESCE(run_owner_stats.job_id,''),
     'Plan',json_object('id',run.plan_id,'revision',run.plan_revision),
     'PlanName',json_extract(run.snapshot,'$.plan_document.name'),
     'Model',json_object('id',json_extract(run.snapshot,'$.model.id'),'revision',json_extract(run.snapshot,'$.model.revision'),
@@ -220,9 +251,11 @@ SELECT json_object(
     AND json_extract(run.snapshot,'$.plan_document.id') = run.plan_id
     AND json_extract(run.snapshot,'$.plan_document.revision') = run.plan_revision
     AND json_type(run.snapshot,'$.entries') = 'array'
+    AND COALESCE(run_owner_stats.owner_count,0) <= 1 AND COALESCE(run_owner_stats.valid,1) = 1
     AND COALESCE(result_stats.corrupt,0) = 0 AND COALESCE(report_stats.corrupt,0) = 0, 0
 ), run.sealed, COALESCE(report_stats.report_count,0), run.created_at, run.updated_at
 FROM current_runs AS run
+LEFT JOIN run_owner_stats ON run_owner_stats.run_id = run.id
 LEFT JOIN result_stats ON result_stats.run_id = run.id
 LEFT JOIN entry_stats ON entry_stats.run_id = run.id
 LEFT JOIN report_stats ON report_stats.run_id = run.id

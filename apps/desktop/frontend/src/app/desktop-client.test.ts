@@ -97,6 +97,18 @@ describe("Wails desktop client", () => {
 		vi.useRealTimers()
   })
 
+  it("preserves current Job ownership in run summaries and rejects malformed ownership", async () => {
+    const snapshot = structuredClone(FIXTURE_WORKSPACE)
+    const jobID = "a1111111-1111-4111-8111-111111111111"
+    snapshot.runs[0].job_id = jobID
+    const binding = installBinding(snapshot)
+    const client = createDesktopClient()
+    await expect(client.getWorkspace()).resolves.toMatchObject({ runs: [expect.objectContaining({ job_id: jobID }), ...snapshot.runs.slice(1)] })
+    binding.GetWorkspace.mockResolvedValueOnce({ ...snapshot, runs: [{ ...snapshot.runs[0], job_id: "invalid" }] })
+    await expect(client.getWorkspace()).rejects.toBeInstanceOf(DesktopDataError)
+    expect(snapshot.runs[0].job_id).toBe(jobID)
+  })
+
   it("rejects an unknown catalogue scope before invoking the desktop binding", async () => {
     const binding = installBinding(FIXTURE_WORKSPACE)
     const client = createDesktopClient()

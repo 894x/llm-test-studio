@@ -1,6 +1,6 @@
 {
   "title": "运行工作区",
-  "description": "比较固定版本、追踪执行状态并检查可复现证据",
+  "description": "查看本机与远程测试的进度、结果和执行详情",
   "count": "{{count}} 次运行",
   "shortcuts": {
     "title": "快捷运行",
@@ -72,7 +72,8 @@
     "noFailures": "当前运行没有已记录的失败。",
     "artifactsPending": "{{count}} 个产物等待 Go Core 提供本地路径。",
     "noArtifacts": "尚未生成产物。",
-    "noneSelected": "尚未选择运行"
+    "noneSelected": "尚未选择运行",
+    "execution": "执行"
   },
   "newRun": {
     "title": "新建运行",
@@ -140,5 +141,25 @@
     "error": "无法读取对比记录",
     "retry": "重试",
     "empty": "暂无渠道对比记录"
+  },
+  "executions": {
+    "search": "搜索名称、模型、渠道或编号",
+    "kind": "测试类型",
+    "allKinds": "全部类型",
+    "location": "执行位置",
+    "allLocations": "全部位置",
+    "allStatuses": "全部状态",
+    "shown": "已显示 {{count}} 条",
+    "refresh": "刷新",
+    "loading": "正在读取运行记录…",
+    "noMatches": "调整筛选条件，或继续加载更多历史记录。",
+    "more": "加载更多",
+    "historyHint": "按需加载历史记录；筛选作用于已加载记录。",
+    "children": "{{count}} 个子运行",
+    "child": "查看子运行",
+    "awaitingData": "等待执行数据同步",
+    "clear": "清除筛选",
+    "emptyFiltered": "没有匹配的运行记录",
+    "comparisonReport": "查看渠道对比报告"
   }
 }
