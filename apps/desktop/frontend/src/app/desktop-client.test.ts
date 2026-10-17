@@ -1241,7 +1241,7 @@ function installBinding(
   }
   Object.defineProperty(window, "go", {
     configurable: true,
-    value: { main: { DesktopApp: binding } },
+    value: { bridge: { DesktopApp: binding } },
   })
   return binding
 }

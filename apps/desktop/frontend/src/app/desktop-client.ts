@@ -863,9 +863,9 @@ function bindingAvailabilityDetail(candidate?: Partial<WailsDesktopBinding>): st
 
 function readWailsBindingCandidate(): Partial<WailsDesktopBinding> | undefined {
   const root = window as typeof window & {
-    go?: { main?: { DesktopApp?: Partial<WailsDesktopBinding> } }
+    go?: { bridge?: { DesktopApp?: Partial<WailsDesktopBinding> } }
   }
-  return root.go?.main?.DesktopApp
+  return root.go?.bridge?.DesktopApp
 }
 
 function readFrontendDiagnosticBinding(

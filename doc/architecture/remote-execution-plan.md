@@ -22,7 +22,7 @@
 | [RunSnapshot](../../internal/domain/run_snapshot.go) | 冻结完整 Plan、映射、Case 定义、输入和负载 | 增加明确的执行来源，不在远程读取“最新用例” |
 | [EnvironmentSnapshot](../../internal/domain/report.go) | OS、架构、地区、出口、应用和引擎版本 | 补充稳定节点身份与执行构建标识 |
 | [SQLite 执行仓库](../../internal/persistence/sqlite/repository_execution.go) | Run revision、结果、证据校验、事务 | 增加任务日志及远程投影的原子写入边界 |
-| [生产装配](../../apps/desktop/production.go) | 本机执行器、Quick Performance 服务、凭据与仓库注入 | 装配 Coordinator、本地 JobHost、远程客户端与节点服务 |
+| [生产装配](../../apps/desktop/internal/bootstrap/production.go) | 本机执行器、Quick Performance 服务、凭据与仓库注入 | 装配 Coordinator、本地 JobHost、远程客户端与节点服务 |
 | [恢复逻辑](../../internal/application/runs/recovery.go) | 把上次进程留下的活动 Run 标为取消 | 只恢复本执行宿主拥有的任务；远程镜像不进入该逻辑 |
 | [CLI audit](../../cmd/llm-test-studio/main.go) 与 [CLI load](../../cmd/llm-test-studio/load_command.go) | 复用应用或引擎能力，本地命令式执行 | 不把 CLI 子进程充当常驻 runner；受影响的共享类型同步更新 |
 
