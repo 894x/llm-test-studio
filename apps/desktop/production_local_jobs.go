@@ -51,6 +51,7 @@ func newProductionLocalExecutor(
 	}
 	core, err := jobhost.NewCore(jobhost.CoreDependencies{
 		Repository: repository, Runs: runs.NewProtocolExecutor(transport), Transport: transport, Clock: productionClock{},
+		ReportDiagnostic: options.reportRunDiagnostic,
 	})
 	if err != nil {
 		if ownedTransport != nil {

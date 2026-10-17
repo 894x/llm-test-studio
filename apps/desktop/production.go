@@ -194,10 +194,14 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			return desktopDependencies{}, fmt.Errorf("open desktop repository: %w", err)
 		}
 		var localExecutor *productionLocalExecutor
+		var readView *sqlite.Repository
 		defer func() {
 			if initializeError != nil {
 				if localExecutor != nil {
 					initializeError = errors.Join(initializeError, localExecutor.Close())
+				}
+				if readView != nil {
+					initializeError = errors.Join(initializeError, readView.Close())
 				}
 				initializeError = errors.Join(initializeError, repository.Close())
 			}
@@ -209,9 +213,14 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err := runs.RecoverInterrupted(ctx, repository, productionClock{}); err != nil {
 			return desktopDependencies{}, fmt.Errorf("recover interrupted desktop runs: %w", err)
 		}
+		readView, err = repository.OpenReadOnlyView(ctx)
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("open desktop history read view: %w", err)
+		}
 		caseTypes := casetypes.MustBuiltinRegistry()
 		runtimeRepository := filesystemRuntimeRepository{Repository: repository, catalog: catalogRepository}
-		workspaceQuery := workspace.New(runtimeRepository)
+		queryRepository := filesystemRuntimeRepository{Repository: readView, catalog: catalogRepository}
+		workspaceQuery := workspace.New(queryRepository)
 		catalogQuery, err := catalog.New(catalog.Dependencies{
 			Repository: catalogRepository,
 			Clock:      productionClock{},
@@ -225,7 +234,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("create desktop catalog service: %w", err)
 		}
-		reportingQuery := reporting.New(repository)
+		reportingQuery := reporting.New(readView)
 		reportGenerator, err := reporting.NewGenerator(reporting.GeneratorDependencies{
 			Repository: repository,
 			Clock:      productionClock{},
@@ -355,7 +364,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			confirmations:          jobServices.confirmations,
 			controlDelivery:        jobServices.deliveries,
 			performancePreparation: quickTests,
-			jobQuery:               repository,
+			jobQuery:               readView,
 			controlRecords:         repository,
 			close: func() error {
 				return errors.Join(
@@ -364,6 +373,7 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 					closeRemoteNodes(),
 					runService.Close(),
 					localExecutor.Close(),
+					readView.Close(),
 					repository.Close(),
 					ownership.Close(),
 				)

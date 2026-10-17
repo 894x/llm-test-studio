@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
 func openReadViewFixture(t *testing.T) (*Repository, *Repository) {
@@ -54,7 +55,7 @@ func openReadViewFixture(t *testing.T) (*Repository, *Repository) {
 	return writer, reader
 }
 
-func TestRunnerReadViewLongSnapshotDoesNotBlockExecution(t *testing.T) {
+func TestHistoryReadViewLongSnapshotDoesNotBlockExecution(t *testing.T) {
 	writer, reader := openReadViewFixture(t)
 	run := readViewRunFixture(t)
 	if err := writer.CreateRun(t.Context(), run); err != nil {
@@ -82,7 +83,30 @@ func TestRunnerReadViewLongSnapshotDoesNotBlockExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := writer.UpdateRun(critical, run.Meta().Revision, next); err != nil {
-		t.Fatalf("writer waited for the HTTP snapshot: %v", err)
+		t.Fatalf("writer waited for the history snapshot: %v", err)
+	}
+	running, err := next.Transition(domain.RunRunning, next.Meta().UpdatedAt.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.UpdateRun(critical, next.Meta().Revision, running); err != nil {
+		t.Fatal(err)
+	}
+	result := domain.Result{
+		EntityMeta: readViewMeta("30000000-0000-4000-8000-000000000007", 1),
+		RunID:      run.Meta().ID, EntryID: run.Snapshot().Entries[0].EntryID,
+		CaseID: run.Snapshot().Entries[0].Cases[0].CaseID, ExecutionStatus: domain.ExecutionCompleted,
+		Verification: testspec.Verdict{Status: testspec.VerdictPassed, Assertions: []testspec.AssertionResult{}},
+	}
+	if err := writer.AppendResults(critical, result); err != nil {
+		t.Fatalf("result persistence waited for the history snapshot: %v", err)
+	}
+	completed, err := running.Transition(domain.RunCompleted, running.Meta().UpdatedAt.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.UpdateRun(critical, running.Meta().Revision, completed); err != nil {
+		t.Fatalf("terminal state waited for the history snapshot: %v", err)
 	}
 	if err := writer.CheckWritable(critical); err != nil {
 		t.Fatal(err)
@@ -98,8 +122,12 @@ func TestRunnerReadViewLongSnapshotDoesNotBlockExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded, err := reader.GetRun(t.Context(), run.Meta().ID)
-	if err != nil || loaded.Meta().Revision != 2 {
+	if err != nil || loaded.Meta().Revision != 4 || loaded.Status() != domain.RunCompleted {
 		t.Fatalf("new read did not see the committed revision: %v", err)
+	}
+	results, err := reader.ListResults(t.Context(), run.Meta().ID)
+	if err != nil || len(results) != 1 || results[0].ID != result.ID {
+		t.Fatalf("new read did not see the persisted result: %v", err)
 	}
 }
 

@@ -24,9 +24,10 @@ type RunRepository interface {
 }
 
 type RunExecutorDependencies struct {
-	Repository RunRepository
-	Executor   runs.Executor
-	Clock      Clock
+	Repository       RunRepository
+	Executor         runs.Executor
+	Clock            Clock
+	ReportDiagnostic func(runs.Diagnostic)
 }
 
 // RunExecutor executes Run and Comparison jobs through the existing Core.
@@ -67,6 +68,7 @@ func NewRunExecutor(dependencies RunExecutorDependencies) (*RunExecutor, error) 
 	host, err := runs.NewHost(runs.HostDependencies{
 		Repository: repository, Executor: dependencies.Executor, Clock: dependencies.Clock,
 		PersistenceFailure: core.observeFailure,
+		ReportDiagnostic:   dependencies.ReportDiagnostic,
 	})
 	if err != nil {
 		return nil, err

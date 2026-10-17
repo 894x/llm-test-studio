@@ -14,10 +14,11 @@ type CoreRepository interface {
 }
 
 type CoreDependencies struct {
-	Repository CoreRepository
-	Runs       runs.Executor
-	Transport  http.RoundTripper
-	Clock      Clock
+	Repository       CoreRepository
+	Runs             runs.Executor
+	Transport        http.RoundTripper
+	Clock            Clock
+	ReportDiagnostic func(runs.Diagnostic)
 }
 
 // Core dispatches every current job kind to its existing execution component.
@@ -33,6 +34,7 @@ var _ Executor = (*Core)(nil)
 func NewCore(dependencies CoreDependencies) (*Core, error) {
 	runCore, err := NewRunExecutor(RunExecutorDependencies{
 		Repository: dependencies.Repository, Executor: dependencies.Runs, Clock: dependencies.Clock,
+		ReportDiagnostic: dependencies.ReportDiagnostic,
 	})
 	if err != nil {
 		return nil, err

@@ -27,7 +27,7 @@ type RepositoryOptions struct {
 	BusyTimeout time.Duration
 }
 
-// Each Repository uses a one-connection pool. Runner HTTP history uses a
+// Each Repository uses a one-connection pool. Desktop and runner history use a
 // separate read-only view, leaving execution's connection for critical work.
 type Repository struct {
 	db                 *sql.DB

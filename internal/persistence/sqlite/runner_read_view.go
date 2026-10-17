@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// OpenReadOnlyView isolates HTTP history reads from execution's connection.
+// OpenReadOnlyView isolates history reads from execution's connection.
 // Both roles use the same current repository implementation and validation.
-// The owner must stop HTTP readers and close this view before closing writer.
+// The owner must stop readers and close this view before closing writer.
 func (repository *Repository) OpenReadOnlyView(ctx context.Context) (*Repository, error) {
 	missingRepository := repository == nil || repository.db == nil
 	if ctx == nil || missingRepository {
