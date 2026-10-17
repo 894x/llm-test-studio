@@ -1,6 +1,6 @@
 # Remote 当前交付状态
 
-更新：2026-10-17。核心实现和下列后台闭环已完成，代码在 `codex/remote-execution` 独立 worktree 按阶段提交，未推送。整体仍有本页列出的验收缺口，不能将 R1–R16 标记为全部通过。文件、媒体及 native_case 扩展继续按既定范围暂缓。
+更新：2026-10-17。核心实现、分阶段提交及本地R9试用包已完成，代码在 `codex/remote-execution` 独立 worktree，未推送。用户已同意旧节点404先忽略，本轮按已验证范围交付；该问题、此前暂停的原生交互及下列验收缺口仍明确保留，不将R1–R16标为全部通过。文件、媒体及native_case扩展继续暂缓。
 
 已实现多节点配置、默认本地或远程选择、自动安装和 systemd 保活、共享节点授权、后台执行和报告恢复。不同客户端构建可共用同一 runner；按唯一当前合同与所需能力校验，连接不会覆盖 runner，安装和升级互斥，报告记录实际执行来源。
 
@@ -29,8 +29,8 @@
 
 ## 保留的验收边界
 
-- R4 整体三方对照仍未通过。本地与新节点的冻结业务配置、归档及实际出口已证。原未确认Job不重投；最新新Job明确HTTP202/accepted后，首次events404且剩106秒，因此不是等待超时。只读实查确认任务在真实WAL中已completed、12事件齐全且归属一致，但管理API仍not_found；读取路径异常待定位。没有改库、checkpoint、重启或升级来掩盖异常，原失败与目标清理证据均保留，详见[验证记录](remote-execution-validation.md)。
-- 原SQLite驱动取消后的native Rows泄漏已独立复现并升级到首次修复版1.40.1；真实读视图回归由8/0 WAL checkpoint转为8/8，54包Go、全仓vet及Linux定向通过。该问题的新pooled连接仍可读新数据，不能据此宣布R7稳定404已定位或修复；服务器未部署此依赖改动，350ddc8试用包也不包含它。
+- R4整体三方对照仍未通过；用户已明确暂缓旧节点404，停止排查，不执行准备的R9服务器升级。原任务、失败回执和清理证据全部保留。本地与新节点的业务、归档及实际出口已证；旧节点任务实际WAL为completed/12事件/归属一致，但管理GetJob/Events仍404。ListJobs200之后重读也仍404，并非预算耗尽。未改库、checkpoint、重启或升级，详见[验证记录](remote-execution-validation.md)。
+- 原SQLite驱动取消后的native Rows泄漏已独立复现并升级到首次修复版1.40.1；真实读视图回归由8/0 WAL checkpoint转为8/8，54包Go、全仓vet及Linux定向通过，修复包含在下述R9本地包。旧驱动的新pooled连接仍可读新数据，不能据此宣布R7稳定404已定位或修复；两台服务器均未因此自动升级。
 - 阶段 C 的管理员 CLI `uninstall` / `recover-uninstall` 已实现并通过 Win/Linux 合同、故障及 SQLite 测试和独立审查。自建 WSL amd64 与新建 ARM64 完整 VM 的实际 busy 拒绝、settled 后卸载、数据保留及幂等均通过；ARM64 单 Provision1/Mock1、实际 exit0/EOF，VM 已安全停止并保留证据。卸载保留业务数据、身份、配对、内容、备份及服务账户，只删除明确归属的受管程序和 unit；桌面移除配置不代替该操作。
 - R11 本轮选定的未知节点、字段类型、任务能力、观察生命周期及文档边界已补齐 T0 验证；文件声明随既定文件范围暂缓。最大文档的有效实体、预留预算的损坏拒绝和 HTTP 编码层证据分别记录，平台与运维实跑仍保留在矩阵 G07，详见[契约矩阵](remote-execution-contract-matrix.md)。
 - 用户 Esc 停止界面自动化后，已配置节点的原生点击切换、三种窗口尺寸及主题未继续补验；已有组件和空节点面板验证不代替这些交互。
@@ -39,12 +39,14 @@
 
 ## 本地测试产物
 
-当前代码 `350ddc8` 的 Windows 正式构建已通过，包含事实/文档分离及未知共享任务积压修复，Wails CLI/模块固定2.15.0。EXE：`E:/TEMP/llm-native-final-350ddc8-79c0ce6c85fb4fc7aca6ddc171a073e8/llm-test-studio.exe`，SHA-256 `422aa562341b15072738505f3cceeb51ba14653f57fa7d3b1e87c04a19571910`。五包回归和vet通过，正式构建17.482秒；新包没有启动GUI，此前63条历史的原生观察仍对应旧b03e350包。
+最新代码 `22bf930` 的R9 Windows正式构建已通过，包含同步分离及SQLite取消泄漏修复，Wails CLI/模块固定2.15.0。EXE：`E:/TEMP/llm-native-final-22bf930-a625e5b18e8c4812be42be62bd8920ba/aligned-r9/llm-test-studio.exe`，SHA-256 `51c2cf0ac9ac09956e28b01da65b5a852ab232629862348b26c4a111c5a3a5cf`。54包Go和全仓vet通过，正式构建15.764秒；新包没有启动GUI，此前63条历史的原生观察仍对应旧b03e350包。
 
-同目录ZIP：`llm-test-studio-350ddc8-windows-amd64.zip`，SHA-256 `773d69c6556cb17adc69a4ae3330008f1215fc44b62411e491116e5ff3c098c3`；唯一entry流式SHA与新EXE相同。EXE-only ZIP不包含数据库或凭据，也未推送或发布；原c50c538及02b60cc包继续保留。
+同目录ZIP：`llm-test-studio-22bf930-r9-windows-amd64.zip`，SHA-256 `9077d6e98545b84d7ad10122a778c039824b2cfbd74dea8195a706e252d97916`；唯一entry流式SHA与新EXE相同。EXE-only ZIP不包含数据库或凭据，也未推送或发布；此前全部包保留。
 
 已验证的隔离历史 profile 仍保留在旧目录 `E:/TEMP/llm-native-b03e350-cdf42c78e4af456ea8157b98be64080a/` 的 `appdata` 与 `localappdata`。直接使用默认用户目录启动仍会遇到已明确列出的旧格式限制，测试包不代表用户库已永久升级。
 
-新包目录另备 `Launch-verified-test-profile.cmd`，仅为新 EXE 的子进程设置上述旧目录中的两个隔离路径，便于本机打开已验证的历史副本；没有复制 profile 或凭据。脚本只准备、未执行，不能当作新包原生验收。
+新包目录另备 `Launch-verified-test-profile.cmd`，仅为新EXE子进程设置上述两个隔离路径，便于本机打开已验证历史副本；没有复制profile或凭据。桌面AppVersion、配套runner版本及manifest Release均为 `remote-execution-20261017-r9`，其release资源标签一致仅为离线试用资源配置，不改变共享节点允许不同client/runner构建的规则。脚本只准备、未执行，不能当作新包原生验收。
+
+已通过当前Cache.Open在上述隔离profile的公有runner缓存中预热R9两架构资源。随后以禁止Fetch的Source重新打开两架构均成功，Fetch0；因此该本机试用配置无需从尚未发布的GitHub release下载配套runner。仅写公有ELF/manifest及当前API必要锁文件，未读取或修改数据库、凭据、其他profile内容或真实APPDATA。此预热不等同GUI启动或服务器安装；安全回执见[验证记录](remote-execution-validation.md)。
 
 完整证据、转换工具保留位置和早期失败记录见[验证记录](remote-execution-validation.md)，原验收矩阵见[实施计划](remote-execution-plan.md)。
