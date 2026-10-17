@@ -2,6 +2,7 @@ import { performanceProfilesEqual } from "./performance-profile"
 import { isQuickPerformanceProtocol, type QuickPerformanceCommand, type QuickPerformanceProfile, type QuickPerformanceReport } from "./data"
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type FormEvent,
@@ -14,7 +15,7 @@ import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
 import { controlRun, launchAtDefault, type JobClient } from "@/features/jobs/execution"
 import { isJobTerminal, type JobView } from "@/features/jobs/data"
-import { JobDetails } from "@/features/jobs/job-details"
+import { useJobObservation } from "@/features/jobs/use-job-observation"
 import { LocalFileInput } from "./local-file-input"
 import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -67,6 +68,14 @@ type PerformanceHistorySettings = Pick<QuickPerformanceReport,
   "protocol" | "address_mode" | "base_url" | "endpoint" | "model_id" | "profile"
 > & { channel_id?: string; credential_run_id?: string; suite_id?: string }
 
+// Session display metadata only; never retain the submitted API key or payload.
+export type QuickTaskJobEntry = {
+  job: JobView
+  title: string
+  model: string
+  channel: string
+}
+
 // Omit connection details and the temporary key from the in-memory parameter snapshot.
 function performanceProfile({
   protocol: _protocol, address_mode: _addressMode, url: _url, api_key: _apiKey,
@@ -87,6 +96,10 @@ export function QuickTaskWorkspace({
   actions,
   refresh,
   onJobLaunched,
+  functionalJobs,
+  onFunctionalJobsChange,
+  onJobChange,
+  onOpenExecution,
   onOpenReport,
   onPerformanceArchived,
   onSaveChannel,
@@ -101,15 +114,27 @@ export function QuickTaskWorkspace({
   actions: Actions
   refresh: () => Promise<void>
   onJobLaunched?: (job: JobView) => void
+  functionalJobs: QuickTaskJobEntry[]
+  onFunctionalJobsChange: Dispatch<SetStateAction<QuickTaskJobEntry[]>>
+  onJobChange?: (job: JobView) => void
+  onOpenExecution: (job: JobView | null, runID?: string) => void
   onOpenReport: (id: string) => void | Promise<void>
   onPerformanceArchived: (id: string) => void | Promise<void>
   onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
 }) {
   const { t } = useTranslation("quickTest")
+  const { t: tj } = useTranslation("jobs")
   const [pending, setPending] = useState<
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
-  const [job, setJob] = useState<JobView | null>(null)
+  const observedJobs = useRef(new Map<string, string>())
+  const receiveFunctionalJob = useCallback((observed: JobView) => {
+    const marker = JSON.stringify(observed)
+    if (observedJobs.current.get(observed.job_id) === marker) return
+    observedJobs.current.set(observed.job_id, marker)
+    onFunctionalJobsChange(current => current.map(entry => entry.job.job_id === observed.job_id ? { ...entry, job: observed } : entry))
+    onJobChange?.(observed)
+  }, [onFunctionalJobsChange, onJobChange])
   const inFlight = useRef(false)
   const fileImportInFlight = useRef(false)
   const [fileImporting, setFileImporting] = useState(false)
@@ -186,8 +211,28 @@ export function QuickTaskWorkspace({
     ...(form.channel_id ? { channel_id: form.channel_id } : {}),
   }
   const history: QuickTestHistoryItem[] = [
-    ...workspace.runs.filter(run => run.source === "quick_task").map(run => ({
-      id: run.id, runID: run.id, mode: "functional" as const,
+    ...functionalJobs.map(entry => {
+      const observed = entry.job
+      const run = workspace.runs.find(run => run.job_id === observed.job_id || observed.run_ids.includes(run.id))
+      const status = observed.execution?.status
+      const confirmation = observed.submission?.confirmation
+      return {
+        id: observed.job_id, jobID: observed.job_id, runID: run?.id, mode: "functional" as const,
+        title: run?.plan_name ?? entry.title, model: run?.model_name ?? entry.model, channel: run?.channel_name ?? entry.channel,
+        timestamp: observed.submission?.prepared_at ?? observed.execution!.accepted_at,
+        status: status === "completed" && run && run.conclusion !== "none" ? run.conclusion : status ?? "queued",
+        statusLabel: !status ? confirmation
+          ? tj("awaitingSync", { status: tj(`statuses.${confirmation.status}`), revision: confirmation.revision })
+          : tj("awaitingConfirmation") : undefined,
+        active: !status || !isJobTerminal(status), completed: run?.completed, planned: run?.planned,
+        detail: run ? t("task.observed", run) : undefined,
+        error: observed.execution?.failure ? t(`common:errorCode.${observed.execution.failure.error_code}`, { defaultValue: observed.execution.failure.error_code }) : undefined,
+        reportID: reports.reports.find(report => run && report.run_id === run.id)?.id,
+      }
+    }),
+    ...workspace.runs.filter(run => run.source === "quick_task" && !functionalJobs.some(entry =>
+      run.job_id === entry.job.job_id || entry.job.run_ids.includes(run.id))).map(run => ({
+      id: run.id, runID: run.id, jobID: run.job_id, mode: "functional" as const,
       title: run.plan_name, model: run.model_name, channel: run.channel_name,
       timestamp: run.started_at,
       status: run.conclusion === "none" ? (run.status === "starting" ? "queued" : run.status) : run.conclusion,
@@ -209,7 +254,8 @@ export function QuickTaskWorkspace({
     }),
   ].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
   const visibleHistory = history.filter((item, index) => item.active || index < 50)
-  const selectedID = selectedHistoryID || runID
+  const requestedHistoryID = selectedHistoryID || runID || (mode === "functional" ? functionalJobs[0]?.job.job_id : "") || ""
+  const selectedID = history.find(item => item.id === requestedHistoryID || item.runID === requestedHistoryID)?.id ?? requestedHistoryID
   const performanceJobLaunched = (accepted: JobView, command: QuickPerformanceCommand) => {
     const id = accepted.job_id
     setPerformanceSettings(current => ({ ...current, [id]: {
@@ -322,12 +368,13 @@ export function QuickTaskWorkspace({
     onDraftChange(form)
     try {
       const accepted = await launchAtDefault(actions, { kind: "quick_task", quick_task: command, plan: null, performance: null, comparison: null })
-      setJob(accepted)
+      onFunctionalJobsChange(current => [{ job: accepted, title: task!.name, model: command.model,
+        channel: channel?.name ?? command.base_url ?? "" }, ...current.filter(entry => entry.job.job_id !== accepted.job_id)])
+      setSelectedHistoryID(accepted.job_id)
       onJobLaunched?.(accepted)
       const id = accepted.run_ids[0]
       if (id) {
         onRunSelected(id)
-        setSelectedHistoryID(id)
         onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
       }
       await refreshProgress()
@@ -346,7 +393,6 @@ export function QuickTaskWorkspace({
     try {
       const detail = await actions.getQuickTask(id)
       update(restoreTaskDraft(detail, form))
-      setJob(null)
       setCaseConcurrency(detail.case_concurrency)
       onRunSelected(id)
     } catch (reason) {
@@ -358,6 +404,12 @@ export function QuickTaskWorkspace({
   }
   const restoreHistory = async (item: QuickTestHistoryItem) => {
     if (inFlight.current || performancePending) return
+    if (item.jobID) {
+      setMode("functional")
+      setSelectedHistoryID(item.id)
+      if (item.runID) await restore(item.runID)
+      return
+    }
     if (item.runID) {
       setMode("functional")
       setSelectedHistoryID(item.id)
@@ -410,7 +462,7 @@ export function QuickTaskWorkspace({
     setPending("cancel")
     setError("")
     try {
-      setJob(await controlRun(actions, id, "cancel"))
+      receiveFunctionalJob(await controlRun(actions, id, "cancel"))
       await refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
@@ -494,6 +546,8 @@ export function QuickTaskWorkspace({
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("title")}>
+      {functionalJobs.map(entry =>
+        <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob} />)}
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 p-4 xl:grid-cols-[256px_minmax(0,1fr)] overflow-hidden">
         <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("workspace.history")}>
           <div className="shrink-0 space-y-4 pb-4 pt-2">
@@ -503,6 +557,13 @@ export function QuickTaskWorkspace({
           <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
             {visibleHistory.length ? <QuickTestHistory items={visibleHistory} selectedID={selectedID} busy={busy}
               onSelect={item => void restoreHistory(item)}
+              onOpenExecution={item => {
+                const entry = functionalJobs.find(entry => entry.job.job_id === item.jobID)
+                if (entry) { onOpenExecution(entry.job); return }
+                if (!item.jobID) { onOpenExecution(null, item.runID); return }
+                void actions.getJob(item.jobID).then(observed => onOpenExecution(observed))
+                  .catch(reason => setError(publicDesktopErrorMessage(reason, tj("readFailed"))))
+              }}
               onRestore={id => { setMode("functional"); setSelectedHistoryID(id); void restore(id) }}
               onOpenReport={id => void onOpenReport(id)} onCancel={id => void cancel(id)} onRefresh={() => void refreshProgress()} />
               : <p className="py-4 text-xs leading-relaxed text-muted-foreground">{t("task.noHistory")}</p>}
@@ -823,8 +884,6 @@ export function QuickTaskWorkspace({
                     </Button>
                   </div>
                   </form>
-                  {job && mode === "functional" ? <JobDetails key={job.job_id} client={actions} jobID={job.job_id}
-                    initialJob={job} onJobChange={setJob} onOpenReport={onOpenReport} reportIDs={job.report_ids} /> : null}
                   <div hidden={mode !== "performance"}>
                     {isQuickPerformanceProtocol(performanceConnection.protocol) ? <QuickPerformancePanel
                       key={performanceFormRevision} plans={catalog.plans}
@@ -867,6 +926,15 @@ export function QuickTaskWorkspace({
 function taskKey(task: CatalogSuite) {
   return `${task.id}:${task.revision}`
 }
+// Keep unselected submissions observable without mounting a second details panel.
+function QuickTaskJobObserver({ client, jobID, onChange }: {
+  client: JobClient; jobID: string; onChange: (job: JobView) => void
+}) {
+  const { job } = useJobObservation(client, jobID, "", 0)
+  useEffect(() => { if (job) onChange(job) }, [job, onChange])
+  return null
+}
+
 function TaskField({
   id,
   label,

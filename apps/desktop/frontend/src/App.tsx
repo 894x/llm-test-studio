@@ -26,6 +26,7 @@ import { loadLanguagePreference, resolveLocale } from "@/i18n/locale"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { CatalogSnapshot, SavedQuickTestTarget } from "@/features/catalog/data"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY, type TaskDraft } from "@/features/quick-test/task-draft"
+import type { QuickTaskJobEntry } from "@/features/quick-test/quick-task-workspace"
 import { EMPTY_REPORTS, type ReportSnapshot } from "@/features/reports/data"
 import type { ReportGenerationProgress } from "@/features/reports/generation-progress"
 import { ReportGenerationStatus } from "@/features/reports/report-generation-status"
@@ -138,6 +139,7 @@ function AppWorkspace({
   const [catalogMutationPending, setCatalogMutationPending] = useState(false)
   const [catalogMutationError, setCatalogMutationError] = useState("")
   const [quickRunID, setQuickRunID] = useState("")
+  const [quickFunctionalJobs, setQuickFunctionalJobs] = useState<QuickTaskJobEntry[]>([])
   const [startingRunID, setStartingRunID] = useState("")
   const [quickDraft, setQuickDraft] = useState<TaskDraft>(() => {
     try { return decodeTaskDraft(localStorage.getItem(TASK_DRAFT_KEY)) ?? createTaskDraft(null) }
@@ -527,6 +529,10 @@ function AppWorkspace({
           actions={client}
           refresh={refreshQuickTask}
           onJobLaunched={setPreferredJob}
+          functionalJobs={quickFunctionalJobs}
+          onFunctionalJobsChange={setQuickFunctionalJobs}
+          onJobChange={receiveJobObservation}
+          onOpenExecution={(job, runID) => { setPreferredJob(job); setPreferredRunID(runID ?? ""); navigate("runs") }}
           onSaveChannel={async command => {
             let saved: SavedQuickTestTarget | undefined
             await mutateCatalog(async () => { saved = await client.saveQuickTestTarget(command); return saved.catalog }, t("quickTest:saveChannel.title"))

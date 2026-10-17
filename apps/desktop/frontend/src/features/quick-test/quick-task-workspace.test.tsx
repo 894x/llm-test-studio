@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createAppI18n } from "@/i18n/i18n"
 import { FIXTURE_CATALOG, FIXTURE_WORKSPACE, FIXTURE_REPORTS } from "@/features/runs/fixtures"
 import { createTaskDraft, type TaskDraft } from "./task-draft"
-import { QuickTaskWorkspace } from "./quick-task-workspace"
+import { QuickTaskWorkspace, type QuickTaskJobEntry } from "./quick-task-workspace"
 import { executionClient, jobFixture } from "@/test/jobs-fixture"
 import type { CatalogSuite } from "@/features/catalog/data"
 import { FILE_CATALOG, FILE_SELECTION, FILE_SUITE } from "@/test/local-file-fixture"
@@ -85,22 +85,32 @@ function setup(
   actions.getJob.mockResolvedValue(observed)
   const onSaveChannel = vi.fn(async () => ({ catalog, channel_id: catalog.channels[0].id }))
   const onOpenReport = vi.fn()
-  function Harness({ currentReports = reports }: { currentReports?: typeof reports }) {
+  const onJobChange = vi.fn()
+  const onOpenExecution = vi.fn()
+  function Harness({ currentReports = reports, currentWorkspace = workspace, visible = true }: {
+    currentReports?: typeof reports; currentWorkspace?: typeof workspace; visible?: boolean
+  }) {
     const [draft, setDraft] = useState<TaskDraft>(initial)
     const [runID, setRunID] = useState("")
+    const [functionalJobs, setFunctionalJobs] = useState<QuickTaskJobEntry[]>([])
+    if (!visible) return null
     return (
       <QuickTaskWorkspace
         catalog={{
           ...catalog,
           suites: catalog.suites.length ? [selectedTask, catalog.suites[1]] : [],
         }}
-        workspace={workspace}
+        workspace={currentWorkspace}
         reports={currentReports}
         draft={draft}
         onDraftChange={setDraft}
         runID={runID}
         onRunSelected={setRunID}
         actions={actions}
+        functionalJobs={functionalJobs}
+        onFunctionalJobsChange={setFunctionalJobs}
+        onJobChange={onJobChange}
+        onOpenExecution={onOpenExecution}
         refresh={refresh}
         onOpenReport={onOpenReport}
         onPerformanceArchived={vi.fn()}
@@ -116,10 +126,100 @@ function setup(
   const updateReports = (currentReports: typeof reports) => view.rerender(
     <I18nextProvider i18n={createAppI18n("zh-CN")}><Harness currentReports={currentReports} /></I18nextProvider>,
   )
-  return { ...actions, onSaveChannel, onOpenReport, updateReports }
+  const updateWorkspace = (currentWorkspace: typeof workspace) => view.rerender(
+    <I18nextProvider i18n={createAppI18n("zh-CN")}><Harness currentWorkspace={currentWorkspace} /></I18nextProvider>,
+  )
+  const setVisible = (visible: boolean) => view.rerender(
+    <I18nextProvider i18n={createAppI18n("zh-CN")}><Harness visible={visible} /></I18nextProvider>,
+  )
+  return { ...actions, onSaveChannel, onOpenReport, onJobChange, onOpenExecution, updateReports, updateWorkspace, setVisible }
 }
 
 describe("Suite quick task workspace", () => {
+  it("lists a remote functional submission before a local run exists and follows its execution", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
+      undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const remote = jobFixture({ kind: "run", location: { kind: "remote", configuration_id: "remote-node" }, run_ids: [], report_ids: [] })
+    const accepted = { ...remote, execution: null }
+    actions.launchJob.mockResolvedValue(accepted)
+    actions.getJob.mockResolvedValue(accepted)
+    await user.click(screen.getByRole("button", { name: "开启功能测试" }))
+    const history = await screen.findByRole("list", { name: "测试记录" })
+    expect(within(history).getByRole("button", { name: task.name })).toHaveAttribute("aria-current", "true")
+    expect(within(history).getByText(/执行日志待同步/)).toBeInTheDocument()
+    expect(screen.getByText("1 项运行中")).toBeInTheDocument()
+    expect(screen.queryByText("执行编号")).not.toBeInTheDocument()
+    const details = within(history).getByRole("button", { name: `执行详情 ${task.name}` })
+    expect(details).toHaveTextContent("")
+    await user.hover(details)
+    expect(await screen.findByRole("tooltip", { name: "执行详情" })).toBeInTheDocument()
+    await user.click(details)
+    expect(actions.onOpenExecution).toHaveBeenCalledWith(accepted)
+    expect(within(history).queryByRole("button", { name: `填入并编辑 ${task.name}` })).not.toBeInTheDocument()
+    await user.click(within(history).getByRole("button", { name: task.name }))
+    expect(actions.getQuickTask).not.toHaveBeenCalled()
+    actions.getJob.mockResolvedValue(remote)
+    await waitFor(() => expect(within(history).getByText("运行中")).toBeInTheDocument(), { timeout: 4000 })
+    expect(actions.onJobChange).toHaveBeenCalledWith(remote)
+    actions.getJob.mockResolvedValue({ ...remote, execution: { ...remote.execution!, status: "failed", revision: 2, latest_sequence: 2,
+      failure: { phase: "execution", error_code: "request_failed" } } })
+    await waitFor(() => expect(within(history).getByText("失败")).toBeInTheDocument(), { timeout: 4000 })
+    expect(screen.getByText("0 项运行中")).toBeInTheDocument()
+    expect(actions.launchJob).toHaveBeenCalledTimes(1)
+  })
+
+  it("retains submitted jobs across page remounts and observes them in performance mode", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
+      undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const remote = jobFixture({ kind: "run", run_ids: [], report_ids: [] })
+    actions.launchJob.mockResolvedValue(remote)
+    actions.getJob.mockResolvedValue(remote)
+    await user.click(screen.getByRole("button", { name: "开启功能测试" }))
+    expect(await screen.findByText("1 项运行中")).toBeInTheDocument()
+    actions.setVisible(false)
+    actions.setVisible(true)
+    const history = screen.getByRole("list", { name: "测试记录" })
+    expect(within(history).getByText(task.name)).toBeInTheDocument()
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    actions.getJob.mockRejectedValue(new Error("private transport error"))
+    await new Promise(resolve => setTimeout(resolve, 1600))
+    expect(within(history).getByText("运行中")).toBeInTheDocument()
+    expect(screen.getByText("1 项运行中")).toBeInTheDocument()
+    expect(screen.queryByText("private transport error")).not.toBeInTheDocument()
+    actions.getJob.mockResolvedValue({ ...remote, execution: { ...remote.execution!, status: "cancelled", revision: 2, latest_sequence: 2 } })
+    await waitFor(() => expect(within(history).getByText("已取消")).toBeInTheDocument(), { timeout: 4000 })
+    expect(screen.getByText("0 项运行中")).toBeInTheDocument()
+    expect(actions.launchJob).toHaveBeenCalledTimes(1)
+  })
+
+  it("merges a synchronized run into its submitted job without duplicating history", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(task), base_url: "https://example.test", api_key: "private-key", model: "remote-model" },
+      undefined, { ...FIXTURE_WORKSPACE, runs: [] }, undefined, { schema_version: 1, reports: [] })
+    const run = { ...FIXTURE_WORKSPACE.runs[0], source: "quick_task" as const, plan_name: task.name, status: "running" as const, conclusion: "none" as const }
+    const remote = jobFixture({ kind: "run", run_ids: [run.id], report_ids: [] })
+    actions.launchJob.mockResolvedValue(remote)
+    actions.getJob.mockResolvedValue(remote)
+    await user.click(screen.getByRole("button", { name: "开启功能测试" }))
+    const history = await screen.findByRole("list", { name: "测试记录" })
+    actions.updateWorkspace({ ...FIXTURE_WORKSPACE, runs: [run] })
+    expect(within(history).getAllByRole("listitem")).toHaveLength(1)
+    expect(within(history).getByRole("button", { name: `填入并编辑 ${task.name}` })).toBeEnabled()
+    expect(screen.getByText("1 项运行中")).toBeInTheDocument()
+  })
+
+  it("opens execution details for historical runs without restoring or launching a test", async () => {
+    const user = userEvent.setup()
+    const run = { ...FIXTURE_WORKSPACE.runs[0], source: "quick_task" as const, plan_name: "Historical functional test" }
+    const actions = setup(undefined, undefined, { ...FIXTURE_WORKSPACE, runs: [run] })
+    await user.click(screen.getByRole("button", { name: `执行详情 ${run.plan_name}` }))
+    expect(actions.onOpenExecution).toHaveBeenCalledWith(null, run.id)
+    expect(actions.getQuickTask).not.toHaveBeenCalled()
+    expect(actions.launchJob).not.toHaveBeenCalled()
+  })
+
   it("renders an explicit file declaration and blocks launch before and after image selection", async () => {
     const actions = setup({ ...createTaskDraft(FILE_SUITE), base_url: "https://example.test", api_key: "key", model: "model" },
       undefined, undefined, FILE_CATALOG, undefined, FILE_SUITE)

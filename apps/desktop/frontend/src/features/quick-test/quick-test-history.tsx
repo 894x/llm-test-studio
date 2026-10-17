@@ -5,6 +5,7 @@ import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import SquareIcon from "lucide-react/dist/esm/icons/square.mjs"
 import SquarePenIcon from "lucide-react/dist/esm/icons/square-pen.mjs"
+import ArrowRightIcon from "lucide-react/dist/esm/icons/arrow-right.mjs"
 import type { QuickPerformancePhase } from "./data"
 import type { ReactNode } from "react"
 
@@ -21,6 +22,7 @@ export interface QuickTestHistoryItem {
   channel: string
   timestamp: string
   status: string
+  statusLabel?: string
   phase?: QuickPerformancePhase
   active: boolean
   completed?: number
@@ -29,15 +31,17 @@ export interface QuickTestHistoryItem {
   error?: string
   reportID?: string
   runID?: string
+  jobID?: string
 }
 
-export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore, onOpenReport, onCancel, onRefresh }: {
+export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore, onOpenReport, onOpenExecution, onCancel, onRefresh }: {
   items: QuickTestHistoryItem[]
   selectedID: string
   busy: boolean
   onSelect: (item: QuickTestHistoryItem) => void
   onRestore: (id: string) => void
   onOpenReport: (id: string) => void
+  onOpenExecution?: (item: QuickTestHistoryItem) => void
   onCancel: (id: string) => void
   onRefresh: () => void
 }) {
@@ -46,7 +50,7 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
     <TooltipProvider delayDuration={250}>
       <ol aria-label={t("workspace.history")} className="space-y-2">
         {items.map(item => {
-          const statusLabel = item.phase ? t(`phase.${item.phase}`) : t(`common:status.${item.status}`)
+          const statusLabel = item.statusLabel ?? (item.phase ? t(`phase.${item.phase}`) : t(`common:status.${item.status}`))
           const Icon = item.mode === "performance" ? GaugeIcon : FlaskConicalIcon
           const percentage = item.planned && item.completed !== undefined
             ? Math.min(100, 100 * item.completed / item.planned) : undefined
@@ -66,6 +70,7 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                     <time className="text-muted-foreground" dateTime={item.timestamp}>{new Date(item.timestamp).toLocaleString(i18n.language)}</time>
                   </div>
                   <div className="pointer-events-auto relative flex shrink-0 items-center gap-1">
+                    {(item.jobID || item.runID) && onOpenExecution ? <HistoryAction label={t("jobs:details")} name={item.title} onClick={() => onOpenExecution(item)}><ArrowRightIcon /></HistoryAction> : null}
                     {item.active && item.runID ? <>
                       <HistoryAction label={t("task.refresh")} name={item.title} onClick={onRefresh}><RefreshCwIcon /></HistoryAction>
                       <HistoryAction label={t("task.cancel")} name={item.title} disabled={busy} onClick={() => onCancel(item.runID!)}><SquareIcon /></HistoryAction>
