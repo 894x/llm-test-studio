@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import PanelRightIcon from "lucide-react/dist/esm/icons/panel-right.mjs"
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
@@ -13,16 +14,30 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Spinner } from "@/components/ui/spinner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { JobDetails } from "@/features/jobs/job-details"
-import type { JobView } from "@/features/jobs/data"
+import type { JobStatus, JobView, SubmissionView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
 import { QuickPerformanceReportPanel } from "@/features/quick-test/quick-performance-sheet"
 import type { ReportSnapshot } from "@/features/reports/data"
-import { formatTargetDuration, presentWorkspace, type RunRecord, type WorkspaceSnapshot } from "./data"
+import { cn } from "@/lib/utils"
+import { formatTargetDuration, presentWorkspace, type RunRecord, type RunStatus, type WorkspaceSnapshot } from "./data"
 import { RunInspectorContent } from "./run-workspace"
 import type { RunShortcutRenderer } from "./use-run-shortcuts"
 import { useExecutionJobs } from "./use-execution-jobs"
 
 type ExecutionRow = { id: string; job?: JobView; runs: RunRecord[]; title: string; time: string }
+const STATUS_CLASS: Record<JobStatus | SubmissionView["delivery"] | RunStatus, string> = {
+  prepared: "text-muted-foreground",
+  pending: "text-warning-strong",
+  accepted: "text-info-strong",
+  queued: "text-warning-strong",
+  starting: "text-info-strong",
+  running: "text-info-strong",
+  draining: "text-warning-strong",
+  completed: "text-success-strong",
+  passed: "text-success-strong",
+  failed: "text-destructive",
+  cancelled: "text-muted-foreground",
+}
 const desktopQuery = "(min-width: 1180px)"
 const subscribeDesktop = (notify: () => void) => {
   const media = window.matchMedia(desktopQuery)
@@ -101,15 +116,20 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
       <div className="flex shrink-0 items-center justify-between gap-3 py-3">
         <div className="min-w-0"><h1 id="workspace-heading" className="text-lg font-semibold tracking-tight">{t("title")}</h1>
           <p className="mt-1 text-[11px] text-muted-foreground">{t("description")}</p></div>
-        {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
+        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[11px] text-muted-foreground">
+          <span>{t("executions.shown", { count: visible.length })}</span>
+          {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
+          <Button size="sm" variant="ghost" disabled={history.pending} onClick={history.retry}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
+          {!desktop && selected ? <Sheet><SheetTrigger asChild><Button variant="outline" size="sm"><PanelRightIcon />{t("mobile.details")}</Button></SheetTrigger>
           <SheetContent className="data-[side=right]:w-[340px] max-w-full gap-0 p-0 pt-8">
             <SheetHeader className="sr-only"><SheetTitle>{t("inspector.details")}</SheetTitle><SheetDescription>{selected.title}</SheetDescription></SheetHeader>
             {details}
           </SheetContent></Sheet> : null}
+        </div>
       </div>
       {readStatus ? <div className="shrink-0">{readStatus}</div> : null}
-      <div className="grid shrink-0 grid-cols-2 gap-2 pb-3 min-[1180px]:grid-cols-4">
-        <Input aria-label={t("executions.search")} placeholder={t("executions.search")} value={query} onChange={event => setQuery(event.target.value)} className="col-span-2" />
+      <div className="grid shrink-0 grid-cols-[minmax(180px,1.6fr)_104px_104px_116px_minmax(124px,1fr)] gap-2 pb-3">
+        <Input aria-label={t("executions.search")} placeholder={t("executions.search")} value={query} onChange={event => setQuery(event.target.value)} />
         <SearchableSelect aria-label={t("executions.kind")} value={kind} onValueChange={setKind} options={[
           { value: "all", label: t("executions.allKinds") }, ...["run", "performance", "comparison"].map(value => ({ value, label: tj(`kinds.${value}`) })),
         ]} />
@@ -123,21 +143,16 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
         <SearchableSelect aria-label={t("plans.aria")} value={plan} onValueChange={setPlan} options={[
           { value: "all", label: t("plans.all") }, ...presentation.plans.map(item => ({ value: item.id, label: item.name })),
         ]} />
-        <div className="col-span-2 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-          <span>{t("executions.shown", { count: visible.length })}</span>
-          {filtered ? <Button size="sm" variant="ghost" onClick={() => { setQuery(""); setKind("all"); setLocation("all"); setStatus("all"); setPlan("all") }}>{t("executions.clear")}</Button> : null}
-          <Button size="sm" variant="ghost" disabled={history.pending} onClick={history.retry}>{history.pending ? <Spinner /> : null}{t("executions.refresh")}</Button>
-        </div>
       </div>
       {history.error ? <Alert className="mb-2"><AlertDescription>{publicDesktopErrorMessage(history.error, tj("readFailed"))}</AlertDescription></Alert> : null}
       {commandError ? <Alert variant="destructive" className="mb-2"><AlertDescription>{commandError}</AlertDescription></Alert> : null}
-      <ScrollArea className="min-h-0 min-w-0 flex-1">
+      <ScrollArea contentWidth="viewport" className="min-h-0 min-w-0 flex-1">
         {visible.length ? <Table aria-label={t("table.aria")} className="table-fixed [&_td]:whitespace-normal [&_td]:[overflow-wrap:anywhere]">
-          <TableHeader><TableRow><TableHead className="w-[88px]">{t("table.status")}</TableHead><TableHead>{t("table.runPlan")}</TableHead>
-            <TableHead>{t("table.target")}</TableHead><TableHead>{t("table.progress")}</TableHead><TableHead className="w-[112px]">{t("table.started")}</TableHead></TableRow></TableHeader>
+          <colgroup><col className="w-[88px]" /><col /><col /><col /><col className="w-[144px]" /></colgroup>
+          <TableHeader><TableRow><TableHead>{t("table.status")}</TableHead><TableHead>{t("table.runPlan")}</TableHead>
+            <TableHead>{t("table.target")}</TableHead><TableHead>{t("table.progress")}</TableHead><TableHead>{t("table.started")}</TableHead></TableRow></TableHeader>
           <TableBody>{visible.map(row => <TableRow key={row.id} aria-selected={selected?.id === row.id} data-state={selected?.id === row.id ? "selected" : undefined} onClick={() => setSelectedID(row.id)}>
-            <TableCell><span className="inline-flex items-center gap-1.5 text-xs"><span className="status-dot" aria-hidden="true" />
-              {row.job ? row.job.execution ? tj(`statuses.${row.job.execution.status}`) : tj(`deliveryStates.${row.job.submission!.delivery}`) : t(`common:status.${row.runs[0].status}`)}</span></TableCell>
+            <TableCell><ExecutionStatus row={row} /></TableCell>
             <TableCell><Button variant="link" size="sm" className="h-auto w-full justify-start whitespace-normal p-0 text-left text-xs text-foreground" aria-label={t("table.view", { title: row.title })} onClick={() => setSelectedID(row.id)}>{row.title}</Button>
               <p className="mt-1 text-[10px] text-muted-foreground">{tj(`kinds.${row.job?.kind ?? "run"}`)}</p></TableCell>
             <TableCell><p className="text-xs">{row.runs[0]?.model ?? "—"}</p><p className="mt-1 text-[10px] text-muted-foreground">{row.runs[0]?.channel}</p>
@@ -155,6 +170,17 @@ export function RunWorkspace({ client, snapshot, reports, preferredJob, preferre
     </section>
     {desktop ? <aside aria-label={t("inspector.details")} className="flex min-h-0 min-w-0 w-[320px] shrink-0 flex-col border-l border-divider">{details}</aside> : null}
   </main>
+}
+
+function ExecutionStatus({ row }: { row: ExecutionRow }) {
+  const { t } = useTranslation("common")
+  const { t: tj } = useTranslation("jobs")
+  const status = row.job ? row.job.execution?.status ?? row.job.submission!.delivery : row.runs[0].status
+  const label = row.job ? row.job.execution ? tj(`statuses.${row.job.execution.status}`)
+    : tj(`deliveryStates.${row.job.submission!.delivery}`) : t(`status.${row.runs[0].status}`)
+  return <Badge variant="outline" className={cn("h-auto min-h-5 max-w-full gap-1.5 rounded-none border-0 px-0 text-left text-[11px] whitespace-normal", STATUS_CLASS[status])}>
+    <span className="status-dot shrink-0" aria-hidden="true" /><span className="min-w-0">{label}</span>
+  </Badge>
 }
 
 function ExecutionProgress({ row }: { row: ExecutionRow }) {
