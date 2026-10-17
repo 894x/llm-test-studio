@@ -31,10 +31,12 @@ const indexCss = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8")
 
 function deferred<T>() {
   let resolvePromise!: (value: T) => void
-  const promise = new Promise<T>((resolve) => {
+  let rejectPromise!: (reason: unknown) => void
+  const promise = new Promise<T>((resolve, reject) => {
     resolvePromise = resolve
+    rejectPromise = reject
   })
-  return { promise, resolve: resolvePromise }
+  return { promise, resolve: resolvePromise, reject: rejectPromise }
 }
 
 function desktopClient(): DesktopClient & {
@@ -154,6 +156,109 @@ describe("desktop run workspace", () => {
     })
     window.history.replaceState(null, "", "#runs")
     delete (window as Window & { runtime?: unknown }).runtime
+  })
+
+  it("retains run filters, loaded pages, selection and content during a slow background return read", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const first = jobFixture({ kind: "run", report_ids: [] })
+    const second = jobFixture({ kind: "run", job_id: COMMAND_ID, report_ids: [] })
+    vi.mocked(client.getWorkspace).mockResolvedValue({ schema_version: 1, plans: [], runs: [] })
+    vi.mocked(client.getJobs).mockImplementation(async cursor => ({ schema_version: 1,
+      jobs: [cursor ? second : first], next_cursor: cursor ? "" : JOB_ID, has_more: !cursor }))
+    vi.mocked(client.getJob).mockImplementation(async id => id === JOB_ID ? first : second)
+    render(<App client={client} />)
+    await screen.findByRole("table", { name: "运行记录" })
+    await user.click(screen.getByRole("button", { name: "加载更多" }))
+    const table = screen.getByRole("table", { name: "运行记录" })
+    await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(3))
+    const selected = within(table).getAllByRole("row")[2]
+    await user.click(selected)
+    const filter = screen.getByRole("textbox", { name: "搜索名称、模型、渠道或编号" })
+    fireEvent.change(filter, { target: { value: "1111" } })
+    await user.click(screen.getByRole("button", { name: "计划" }))
+    await screen.findByRole("heading", { name: "测试计划" })
+    const read = deferred<Awaited<ReturnType<DesktopClient["getJobs"]>>>()
+    vi.mocked(client.getJobs).mockReturnValue(read.promise)
+    vi.mocked(client.getJobs).mockClear()
+    await user.click(screen.getByRole("button", { name: "运行" }))
+    expect(screen.getByRole("table", { name: "运行记录" })).toBe(table)
+    expect(within(table).getAllByRole("row")).toHaveLength(3)
+    expect(filter).toHaveValue("1111")
+    expect(selected).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled()
+    expect(client.getJobs).toHaveBeenCalledWith("", 25)
+    expect(client.getJobs).toHaveBeenCalledWith(JOB_ID, 25)
+    expect(client.launchJob).not.toHaveBeenCalled()
+    await act(async () => { read.reject(new DesktopClientError("job_query_unavailable")) })
+    expect(within(table).getAllByRole("row")).toHaveLength(3)
+    expect(selected).toHaveAttribute("aria-selected", "true")
+    expect(filter).toHaveValue("1111")
+    expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled()
+  })
+
+  it("stops list, detail and workspace polling while the run page is hidden", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const job = jobFixture({ kind: "run", report_ids: [] })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(job)
+    render(<App client={client} />)
+    await screen.findByRole("region", { name: "执行详情" })
+    await user.click(screen.getByRole("button", { name: "计划" }))
+    await screen.findByRole("heading", { name: "测试计划" })
+    const reads = [client.getJobs, client.getJob, client.getJobControls, client.getWorkspace]
+    reads.forEach(read => vi.mocked(read).mockClear())
+    vi.useFakeTimers()
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+    reads.forEach(read => expect(read).not.toHaveBeenCalled())
+    vi.useRealTimers()
+    await user.click(screen.getByRole("button", { name: "运行" }))
+    await waitFor(() => expect(client.getJobs).toHaveBeenCalled())
+    expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled()
+  })
+
+  it("retains report detail and filters across primary navigation without rereading the sealed detail", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const detail = protocolReportFixture()
+    vi.mocked(client.getReports).mockResolvedValue(protocolReportSnapshot(detail))
+    vi.mocked(client.getReportDetail).mockResolvedValue(detail)
+    window.history.replaceState(null, "", "#reports")
+    render(<App client={client} />)
+    const table = await screen.findByRole("table", { name: "测试报告目录" })
+    const filter = screen.getByRole("searchbox")
+    const query = protocolReportSnapshot(detail).reports[0].id
+    fireEvent.change(filter, { target: { value: query } })
+    await user.click(within(table).getByRole("button"))
+    await waitFor(() => expect(client.getReportDetail).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole("button", { name: "计划" }))
+    await screen.findByRole("heading", { name: "测试计划" })
+    await user.click(screen.getByRole("button", { name: "报告" }))
+    expect(screen.getByRole("button", { name: "返回报告列表" })).toBeVisible()
+    expect(client.getReportDetail).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole("button", { name: "返回报告列表" }))
+    expect(screen.getByRole("searchbox")).toHaveValue(query)
+  })
+
+  it("retains catalog filters and tabs on the correct data scope across navigation", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    window.history.replaceState(null, "", "#catalog")
+    render(<App client={client} />)
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "gpt" } })
+    await user.click(screen.getByRole("tab", { name: /^渠道/ }))
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "OpenAI" } })
+    await user.click(screen.getByRole("button", { name: "用例" }))
+    await screen.findByRole("heading", { name: "测试用例" })
+    await user.click(screen.getByRole("button", { name: "模型与渠道" }))
+    expect(screen.getByRole("tab", { name: /^渠道/ })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("searchbox")).toHaveValue("OpenAI")
+    await user.click(screen.getByRole("tab", { name: /^模型/ }))
+    expect(screen.getByRole("searchbox")).toHaveValue("gpt")
+    expect(screen.getByRole("table")).toHaveTextContent("gpt-5.2")
+    expect(client.getCatalog).toHaveBeenCalledTimes(2)
   })
 
   it("recovers the submitted Job from persisted queries after remount without relaunching", async () => {
@@ -1477,6 +1582,7 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
     await act(async () => {})
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "执行" }), { button: 0, ctrlKey: false })
     fireEvent.click(screen.getByRole("button", { name: "取消运行" }))
     await act(async () => {})
     expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })

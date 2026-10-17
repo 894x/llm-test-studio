@@ -15,7 +15,8 @@ export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean) =
 
 type RerunAttempt = { sourceID: string; runID?: string; waiting: boolean; error?: string }
 
-export function useRunShortcuts({ client, workspace, reports, generation, draft, commandPending, onJobLaunched, onStarted, onOpenReport, refreshReports, loadWorkspace, loadCatalog }: {
+export function useRunShortcuts({ client, workspace, reports, generation, draft, commandPending, onJobLaunched, onStarted, onOpenReport, refreshReports, loadWorkspace, loadCatalog, active = true }: {
+  active?: boolean
   client: DesktopClient
   workspace: WorkspaceSnapshot | null
   reports: ReportSnapshot | null
@@ -41,23 +42,23 @@ export function useRunShortcuts({ client, workspace, reports, generation, draft,
   const waiting = !!attempt?.waiting && !newReport && !generationFailed
 
   useEffect(() => {
-    if (!attempt?.waiting || !attempt.runID || !newReport || openedRunID.current === attempt.runID) return
+    if (!active || !attempt?.waiting || !attempt.runID || !newReport || openedRunID.current === attempt.runID) return
     openedRunID.current = attempt.runID
     void onOpenReport(newReport.id)
-  }, [attempt, newReport, onOpenReport])
+  }, [active, attempt, newReport, onOpenReport])
 
   // Read the report list after terminal status as well as on Core's ready event.
   useEffect(() => {
-    if (!waiting || !newRunStatus || isRunActive(newRunStatus)) return
-    let active = true
+    if (!active || !waiting || !newRunStatus || isRunActive(newRunStatus)) return
+    let observing = true
     let timer: number | undefined
     const refresh = async () => {
       try { await refreshReports() } catch { /* The app retains its report read retry state. */ }
-      if (active) timer = window.setTimeout(() => void refresh(), 2_000)
+      if (observing) timer = window.setTimeout(() => void refresh(), 2_000)
     }
     void refresh()
-    return () => { active = false; window.clearTimeout(timer) }
-  }, [waiting, newRunStatus, refreshReports])
+    return () => { observing = false; window.clearTimeout(timer) }
+  }, [active, waiting, newRunStatus, refreshReports])
 
   const started = (sourceID: string, runID: string) => {
     setCredential(null)

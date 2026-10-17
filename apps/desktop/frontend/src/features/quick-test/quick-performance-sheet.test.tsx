@@ -1,4 +1,4 @@
-import { render as testingRender, screen, waitFor, within } from "@testing-library/react"
+import { act, render as testingRender, screen, waitFor, within } from "@testing-library/react"
 import type { ReactElement } from "react"
 import { I18nextProvider } from "react-i18next"
 import userEvent from "@testing-library/user-event"
@@ -8,7 +8,8 @@ import { DesktopClientError } from "@/app/desktop-client"
 import { createAppI18n } from "@/i18n/i18n"
 
 import { executionClient, jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
-import { QuickPerformanceSheet } from "./quick-performance-sheet"
+import { QuickPerformancePanel, QuickPerformanceSheet } from "./quick-performance-sheet"
+import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import {
   type QuickPerformanceReport,
   type QuickPerformanceSLOAssessment,
@@ -29,6 +30,41 @@ const connection = {
 }
 
 describe("QuickPerformanceSheet", () => {
+  it.each(["accepted", "rejected"])("settles a pending launch while hidden (%s) without losing the receipt or leaving the form busy", async outcome => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    let accept!: (job: ReturnType<typeof jobFixture>) => void
+    let reject!: (error: unknown) => void
+    client.launchJob.mockReturnValue(new Promise((yes, no) => { accept = yes; reject = no }))
+    const launched = vi.fn()
+    const i18n = createAppI18n("zh-CN")
+    const page = (active: boolean) => <I18nextProvider i18n={i18n}>
+      <RetainedWorkspace active={active} fallback="Loading">
+        <QuickPerformancePanel plans={[]} connection={connection} client={client} onJobLaunched={launched} />
+      </RetainedWorkspace>
+    </I18nextProvider>
+    const view = testingRender(page(true))
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(client.launchJob).toHaveBeenCalledOnce())
+    view.rerender(page(false))
+    await act(async () => {
+      if (outcome === "accepted") accept(jobFixture({ execution: null }))
+      else reject(new DesktopClientError("quick_test_unavailable"))
+    })
+    expect(client.getJob).not.toHaveBeenCalled()
+    view.rerender(page(true))
+    if (outcome === "accepted") {
+      expect(launched).toHaveBeenCalledOnce()
+      await screen.findByText(JOB_ID)
+      expect(client.getJob).toHaveBeenCalledWith(JOB_ID)
+    } else {
+      expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled()
+      expect(screen.getByText("快速测试暂不可用")).toBeVisible()
+    }
+    expect(client.launchJob).toHaveBeenCalledOnce()
+    expect(client.controlJob).not.toHaveBeenCalled()
+  })
+
   it("launches only at the selected remote location and never falls back after unavailability", async () => {
     const user = userEvent.setup()
     const client = executionClient()

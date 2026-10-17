@@ -1,8 +1,9 @@
+import { RetainedWorkspace } from "@/features/shell/retained-workspace"
 import { RemoteNodesMenu } from "@/features/remote-nodes/remote-nodes-menu"
 import { launchAtDefault } from "@/features/jobs/execution"
 import type { JobView } from "@/features/jobs/data"
 import { localizeStoredMessage } from "@/i18n/runtime"
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import FolderOpenIcon from "lucide-react/dist/esm/icons/folder-open.mjs"
 
@@ -43,6 +44,7 @@ import {
 } from "@/features/shell/desktop-shell"
 import { DiagnosticsSheet } from "@/features/shell/diagnostics-sheet"
 import {
+  DESKTOP_PAGES,
   desktopPageFromHash,
   type DesktopPage,
 } from "@/features/shell/navigation"
@@ -103,7 +105,6 @@ function AppWorkspace({
   const reportState = useResource(resources.reports)
   const comparisonState = useResource(resources.comparisons)
   const snapshot = workspaceState.data
-  const catalog = (page === "catalog" ? connectionState : page === "cases" ? definitionState : page === "quick-test" ? quickCatalogState : catalogState).data
   const reports = reportState.data
   const comparisons = comparisonState.data
   const setSnapshot = resources.workspace.set
@@ -116,11 +117,7 @@ function AppWorkspace({
   const setReports = resources.reports.set
   const setComparisons = resources.comparisons.set
   const [showComparisons, setShowComparisons] = useState(false)
-  const requiredReads: readonly ResourceKey[] = PAGE_READS[page]
   const states = { workspace: workspaceState, catalog: catalogState, connections: connectionState, definitions: definitionState, quickCatalog: quickCatalogState, reports: reportState, comparisons: comparisonState }
-  const failedRead = requiredReads.find(key => states[key].error !== null && states[key].data === null)
-  const loadError = failedRead ? states[failedRead].error : null
-  const pageReady = requiredReads.every(key => states[key].data !== null)
   const [reportGeneration, setReportGeneration] = useState<Record<string, ReportGenerationProgress>>({})
   const reportReadGeneration = useRef(0)
   const [preferredReportID, setPreferredReportID] = useState("")
@@ -207,7 +204,7 @@ function AppWorkspace({
   const comparisonRunning = !!comparisons?.comparisons.some((comparison) => comparison.status === "running")
   const startingRunPending = !!startingRunID && !snapshot?.runs.some(run => run.id === startingRunID)
   const workspaceVisible = PAGE_READS[page].some(key => key === "workspace")
-  const shouldPollWorkspace = (workspaceVisible || startingRunPending) && !!(retryWorkspacePoll || startingRunPending || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisonRunning || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
+  const shouldPollWorkspace = workspaceVisible && !!(retryWorkspacePoll || startingRunPending || snapshot?.runs.some((run) => isRunActive(run.status)) || comparisonRunning || (quickRunID && !snapshot?.runs.some((run) => run.id === quickRunID)))
   useEffect(() => {
 		if (!shouldPollWorkspace) return
 		let active = true
@@ -380,6 +377,7 @@ function AppWorkspace({
   }, [invalidateWorkspace, navigate])
 
   const renderRunShortcuts = useRunShortcuts({
+    active: page === "runs" || page === "reports",
     client, workspace: snapshot, reports, generation: reportGeneration,
     draft: quickDraft, commandPending, onJobLaunched: setPreferredJob, onStarted: rerunStarted,
     onOpenReport: openReport, refreshReports,
@@ -464,58 +462,41 @@ function AppWorkspace({
     [i18n.language, i18n.resolvedLanguage, workspacePlans, catalogState.data, t],
   )
 
-  const pageStatus = loadError ? (
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-background p-6 text-foreground">
-        <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
-          <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
-          <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" onClick={retryInitialLoad}>
-              {tx("desktop:app_retry_opening")}
-            </Button>
-            <Button size="sm" variant="outline" disabled={openingLogs} aria-busy={openingLogs} onClick={() => void openLogs()}>
-              {openingLogs ? <Spinner /> : <FolderOpenIcon />}
-              {t(openingLogs ? "app:openingLogs" : "app:openLogs")}
-            </Button>
-          </div>
-          {openLogsError !== null && (
-            <p role="status" className="mt-2 text-xs text-destructive">
-              {publicDesktopOperationErrorMessage(openLogsError, t("app:openLogs"), tx("shell:diagnostics.openError"))}
-            </p>
-          )}
-        </div>
-      </div>
-  ) : !pageReady ? (
-    <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
-      <Spinner /> {t("app:loadingPage")}
-    </div>
-  ) : null
+  const renderWorkspace = (page: DesktopPage) => {
+    const requiredReads: readonly ResourceKey[] = PAGE_READS[page]
+    const failedRead = requiredReads.find(key => states[key].error !== null && states[key].data === null)
+    const loadError = failedRead ? states[failedRead].error : null
+    const pageReady = requiredReads.every(key => states[key].data !== null)
+    const catalog = (page === "catalog" ? connectionState : page === "cases" ? definitionState : page === "quick-test" ? quickCatalogState : catalogState).data
 
-  return (
-    <DesktopShell
-      activePage={page}
-      onNavigate={navigate}
-      actions={
-				<div className="flex items-center gap-1">
-					<DiagnosticsSheet client={client} />
-          <RemoteNodesMenu client={client} disabled={commandPending} />
-					<NewComparisonSheet catalog={catalogState.data ?? EMPTY_CATALOG} onOpen={() => resources.catalog.load()} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
-					<NewRunSheet
-						iconOnly
-						plans={plans}
-						catalog={catalogState.data ?? EMPTY_CATALOG}
-            onOpen={() => resources.catalog.load()}
-						commandPending={commandPending}
-						onStartRun={async (command) => {
-							await startRun(command)
-							navigate("runs")
-						}}
-					/>
-				</div>
-      }
-    >
-      <Suspense fallback={<div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("app:loadingPage")}</div>}>
-      {(page === "runs" ? null : pageStatus) ?? (page === "overview" ? (
+    const pageStatus = loadError ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-background p-6 text-foreground">
+          <div role="alert" className="max-w-md border-l-2 border-destructive pl-4">
+            <div className="text-sm font-semibold">{tx("desktop:app_unable_to_open_the_local_workspace")}</div>
+            <p className="mt-1 text-xs text-muted-foreground">{publicDesktopErrorMessage(loadError, t("app:loadError"))}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={retryInitialLoad}>
+                {tx("desktop:app_retry_opening")}
+              </Button>
+              <Button size="sm" variant="outline" disabled={openingLogs} aria-busy={openingLogs} onClick={() => void openLogs()}>
+                {openingLogs ? <Spinner /> : <FolderOpenIcon />}
+                {t(openingLogs ? "app:openingLogs" : "app:openLogs")}
+              </Button>
+            </div>
+            {openLogsError !== null && (
+              <p role="status" className="mt-2 text-xs text-destructive">
+                {publicDesktopOperationErrorMessage(openLogsError, t("app:openLogs"), tx("shell:diagnostics.openError"))}
+              </p>
+            )}
+          </div>
+        </div>
+    ) : !pageReady ? (
+      <div role="status" aria-live="polite" aria-busy="true" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
+        <Spinner /> {t("app:loadingPage")}
+      </div>
+    ) : null
+
+      return (page === "runs" ? null : pageStatus) ?? (page === "overview" ? (
         <OverviewWorkspace workspace={snapshot!} catalog={catalog!} reports={reports!} onOpenReport={openReport} />
       ) : page === "quick-test" ? (
         <QuickTaskWorkspace
@@ -595,8 +576,38 @@ function AppWorkspace({
             await openReport(id)
           }}
         />
+      ))
+  }
+
+  return (
+    <DesktopShell
+      activePage={page}
+      onNavigate={navigate}
+      actions={
+				<div className="flex items-center gap-1">
+					<DiagnosticsSheet client={client} />
+          <RemoteNodesMenu client={client} disabled={commandPending} />
+					<NewComparisonSheet catalog={catalogState.data ?? EMPTY_CATALOG} onOpen={() => resources.catalog.load()} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
+					<NewRunSheet
+						iconOnly
+						plans={plans}
+						catalog={catalogState.data ?? EMPTY_CATALOG}
+            onOpen={() => resources.catalog.load()}
+						commandPending={commandPending}
+						onStartRun={async (command) => {
+							await startRun(command)
+							navigate("runs")
+						}}
+					/>
+				</div>
+      }
+    >
+      {DESKTOP_PAGES.map(({ id }) => (
+        <RetainedWorkspace key={id} active={page === id}
+          fallback={<div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner />{t("app:loadingPage")}</div>}>
+          {renderWorkspace(id)}
+        </RetainedWorkspace>
       ))}
-      </Suspense>
       <ReportGenerationStatus
         progress={Object.values(reportGeneration).filter((progress) =>
           progress.phase !== "ready" || !reports?.reports.some((report) => report.id === progress.report_id),

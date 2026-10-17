@@ -202,9 +202,9 @@ export function QuickPerformancePanel({
   const [job, setJob] = useState<JobView | null>(initialJob ?? null)
   const busy = pending || !!job && (!job.execution || !isJobTerminal(job.execution.status))
   const [operationError, setOperationError] = useState("")
-  const requestGeneration = useRef({ value: 0 })
   // This identity stays in memory only, including the temporary credential.
   const connectionIdentity = JSON.stringify([connection, form])
+  const requestGeneration = useRef({ value: 0, identity: connectionIdentity })
   const [outputIdentity, setOutputIdentity] = useState(connectionIdentity)
   if (outputIdentity !== connectionIdentity) {
     setOutputIdentity(connectionIdentity)
@@ -213,9 +213,11 @@ export function QuickPerformancePanel({
     setPending(false)
   }
   useEffect(() => {
+    // Activity reconnects effects on return. Only changed inputs invalidate a
+    // submission response; leaving the page must not lose its receipt.
     const generation = requestGeneration.current
-    generation.value++
-    return () => {
+    if (generation.identity !== connectionIdentity) {
+      generation.identity = connectionIdentity
       generation.value++
     }
   }, [connectionIdentity])

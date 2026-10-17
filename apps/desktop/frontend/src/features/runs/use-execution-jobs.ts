@@ -1,20 +1,35 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { JobPage, JobView } from "@/features/jobs/data"
 import type { JobClient } from "@/features/jobs/execution"
 
 // Read only the history pages the user has requested. Cursor pages are merged by
 // identity because a newly accepted execution can also occur in a loaded page.
 export function useExecutionJobs(client: JobClient, preferredJob: JobView | null) {
+  // Re-entering a hidden page may overlap a read started before it was hidden.
+  const pendingReads = useRef<{ client: JobClient; requests: Map<string, Promise<JobPage>> } | null>(null)
   const [cursors, setCursors] = useState([""])
   const [pages, setPages] = useState<Map<string, JobPage>>(() => new Map())
   const [error, setError] = useState<unknown>(null)
   const [pending, setPending] = useState(true)
   const [refresh, setRefresh] = useState(0)
   useEffect(() => {
+    if (pendingReads.current?.client !== client) {
+      pendingReads.current = { client, requests: new Map() }
+    }
+    const requests = pendingReads.current.requests
+    const readPage = (cursor: string) => {
+      let request = requests.get(cursor)
+      if (!request) {
+        request = Promise.resolve().then(() => client.getJobs(cursor, 25))
+          .finally(() => { requests.delete(cursor) })
+        requests.set(cursor, request)
+      }
+      return request
+    }
     let active = true
     let timer: number | undefined
     const read = async () => {
-      const reads = await Promise.allSettled(cursors.map(cursor => client.getJobs(cursor, 25)))
+      const reads = await Promise.allSettled(cursors.map(readPage))
       if (!active) return
       setPages(previous => {
         const next = new Map(previous)
