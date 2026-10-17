@@ -1179,3 +1179,15 @@ priority集合还包含持久已知的foreign任务，本次HTTP新任务样本�
 目录 `E:/TEMP/llm-native-final-350ddc8-79c0ce6c85fb4fc7aca6ddc171a073e8/`：EXE27154432字节、SHA `422aa562341b15072738505f3cceeb51ba14653f57fa7d3b1e87c04a19571910`；exe-only ZIP9557219字节、SHA `773d69c6556cb17adc69a4ae3330008f1215fc44b62411e491116e5ff3c098c3`，唯一entry流式SHA与EXE相同。`final-native-package.safe.json` SHA `5a0a7383af2f38cdfb334f286f232af44f4d7cd1257272ed5186ecc578b5da0c`，父级独立核EXE/ZIP/launcher/manifest四项摘要均匹配。
 
 `Launch-verified-test-profile.cmd` SHA仍为 `dbdbbc7493b4bf0c45c9b9355f79d72958b23d648a1d5113df0f8d135db827c4`，只给新EXE子进程设置既有隔离profile两条绝对路径；没有执行、复制或读取profile/凭据。旧c50 EXE/ZIP/launcher复核保留，用户APPDATA未切换，未启动新包GUI或推送发布。试用包不等同用户旧格式数据已升级，也不替代暂停中的原生交互验收。
+
+## 2026-10-17：取消查询的驱动泄漏修复与旧节点读取边界
+
+对原R7 daemon作一次被动SHM/锁观察：PID244293、原build、DB/SHM inode前后一致；两个采样起点相隔150.228358毫秒，均见有效且一致的WAL-index，mxFrame423、nBackfill0、read marks为0/251/423/UINTMAX/UINTMAX，同PID同SHM持有reader slot1的READ锁。它证明两个采样时点存在旧读取标记，不证明期间连续持锁、API连接归属或404根因。SQL、HTTP、信号、锁操作、任务及服务变更均0；actual exit0/EOF、3.279秒，资源全部关闭。安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-shm-lock-observer-3f129cbf/parent-observed.safe.json`，SHA `cc2c94f62fa86db84b7646f556a523bbf770f3a148a9ce7cfc287462a85b100b`。
+
+随后仅经固定R7身份的Info连接加一次ListJobs(limit1)，actual exit0/EOF、10.722秒；列表HTTP200、1项、435字节gzip、body EOF/closed。没有重查GetJob/Events、SQL、提交、控制或provider调用，本地配置未变。ListJobs的当前读取路径执行BeginTx，因此该结果进一步约束遗留显式事务假设；不等同原任务查询已恢复。安全回执 `C:/Users/894/AppData/Local/Temp/llm-r4-listjobs-read-4a0704f0/parent-observed.safe.json`，SHA `01fb48c18c64733e1d129cfca2e130e44f4171809e530af56e94dc9d9ff1af4f`，R4仍false。
+
+独立确认本项目原modernc.org/sqlite v1.35.0含取消后的Rows泄漏：query已生成Rows后，取消分支清空返回值而未Close，调用方因而无法释放native statement。[上游MR81](https://gitlab.com/cznic/sqlite/-/merge_requests/81)及[首次修复v1.40.1的发布记录](https://gitlab.com/cznic/sqlite/-/raw/master/CHANGELOG.md)明确记录该问题。相同受控scalar取消测试在Windows与WSL Linux均实际重现旧驱动泄漏；v1.40.1相同源码均通过。旧驱动的新pooled连接仍能读取新行，故这个复现本身不能证明线上稳定404的因果。
+
+真实OpenReadOnlyView/Run回归进一步验证：取消后goroutine已join、实际返回Rows全部Close、新pooled读取已见revision2，旧驱动仍8 WAL frames/0 checkpointed并残留句柄；新驱动同一源码为8/8、正常清理。有效RED日志 `C:/Users/894/AppData/Local/Temp/llm-runner-read-cancellation-red-a2de71f7e4874e06a7d118829e9107bd.log`，SHA `ba3624b963488bbe6eda4dd537f5963ed3d13e2b22ec4e7939fd8b1e2a52fa57`。前两次scalar安装夹具错误及一次WSL参数错误均发生在有效场景前，未计产品RED或PASS。
+
+依赖单独升级为sqlite1.40.1、对应libc1.66.10/memory1.11.0/xexp20250620；SQLite engine由3.46.1变为3.50.4，Go1.25/toolchain1.26.6及Wails2.15.0保持。没有项目wire、DDL、schema marker或历史格式变化，没有数据转换、运行时兼容分支或服务器操作。全仓Go actual session41981 exit0/EOF、54包通过，全仓vet exit0；新回归在Windows及真实WSL Linux均通过，限定独立审查PASS。验证收据 `C:/Users/894/AppData/Local/Temp/llm-sqlite-cancel-fix-20261017/verification.safe.json`，SHA `8070dc7d879058c6f07c5c94bf0fac82fd71a3d7d66f7f8f5d4b9b7b4cae3e93`。注册测试scalar由驱动保留到测试进程退出；不将此新修复的本地通过记为旧节点已部署、R4通过或新包原生验收。

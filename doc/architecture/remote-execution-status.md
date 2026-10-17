@@ -30,6 +30,7 @@
 ## 保留的验收边界
 
 - R4 整体三方对照仍未通过。本地与新节点的冻结业务配置、归档及实际出口已证。原未确认Job不重投；最新新Job明确HTTP202/accepted后，首次events404且剩106秒，因此不是等待超时。只读实查确认任务在真实WAL中已completed、12事件齐全且归属一致，但管理API仍not_found；读取路径异常待定位。没有改库、checkpoint、重启或升级来掩盖异常，原失败与目标清理证据均保留，详见[验证记录](remote-execution-validation.md)。
+- 原SQLite驱动取消后的native Rows泄漏已独立复现并升级到首次修复版1.40.1；真实读视图回归由8/0 WAL checkpoint转为8/8，54包Go、全仓vet及Linux定向通过。该问题的新pooled连接仍可读新数据，不能据此宣布R7稳定404已定位或修复；服务器未部署此依赖改动，350ddc8试用包也不包含它。
 - 阶段 C 的管理员 CLI `uninstall` / `recover-uninstall` 已实现并通过 Win/Linux 合同、故障及 SQLite 测试和独立审查。自建 WSL amd64 与新建 ARM64 完整 VM 的实际 busy 拒绝、settled 后卸载、数据保留及幂等均通过；ARM64 单 Provision1/Mock1、实际 exit0/EOF，VM 已安全停止并保留证据。卸载保留业务数据、身份、配对、内容、备份及服务账户，只删除明确归属的受管程序和 unit；桌面移除配置不代替该操作。
 - R11 本轮选定的未知节点、字段类型、任务能力、观察生命周期及文档边界已补齐 T0 验证；文件声明随既定文件范围暂缓。最大文档的有效实体、预留预算的损坏拒绝和 HTTP 编码层证据分别记录，平台与运维实跑仍保留在矩阵 G07，详见[契约矩阵](remote-execution-contract-matrix.md)。
 - 用户 Esc 停止界面自动化后，已配置节点的原生点击切换、三种窗口尺寸及主题未继续补验；已有组件和空节点面板验证不代替这些交互。
