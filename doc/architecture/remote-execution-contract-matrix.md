@@ -2,7 +2,7 @@
 
 范围：自有 runner 管理协议的 JobSpec、ExecutionTarget、Submission、asset manifest、事件和控制命令；规则来源为[远程执行方案](remote-execution-plan.md)，不是提供商参数。2026-10-17 按 `ef9c352` 基线及本轮仅测试增量复核源码和已有执行记录：T0 的 validator、SQLite、Core/Mock HTTP，与真实 SSH、systemd、独立桌面进程、OSStore 和付费渠道证据分别记录。本次文档审计没有为文档重复旧测试或重跑付费请求；下方新增T0负例在各轮实际执行通过，执行记录分轮列明。
 
-`covered` 只表示该行选定的必需场景已有对应断言和执行记录，不表示所有层级均实跑；`partial` 保留具体断言缺口，`deferred` 表示用户已暂缓的文件、媒体、native_case 扩展。设计、构建、普通 HTTP 成功不能代替这些证据。当前状态以本节表格和末尾“本轮收尾审计”节为准；后面的带日期阶段记录保留当时事实，不将旧的 pending 或失败追认为当前结果。完整运行回执见[验证记录](remote-execution-validation.md)，用户可读摘要见[当前交付状态](remote-execution-status.md)。
+`covered` 只表示该行选定的必需场景已有对应断言和执行记录，不表示所有层级均实跑；`partial` 保留具体断言缺口，`deferred` 表示用户已暂缓的范围。C10/C11/C13的文件、媒体、native_case扩展继续暂缓；用户另明确确认旧节点404、R14原生界面补验和G07额外平台故障演练“本轮一并暂缓，先交付”。这些执行暂缓不改变契约行的覆盖统计，也不将失败或SKIP改为通过。设计、构建、普通 HTTP 成功不能代替这些证据。当前状态以本节表格和末尾“本轮收尾审计”节为准；后面的带日期阶段记录保留当时事实，不将旧的 pending 或失败追认为当前结果。完整运行回执见[验证记录](remote-execution-validation.md)，用户可读摘要见[当前交付状态](remote-execution-status.md)。
 
 结构清单：Submission 只有 job 与 secrets；job 包含 contract、job_id、node_installation_id、engine_build_id、target、kind、spec、assets；target 包含 kind、node_id；spec 恰有 run、performance、comparison 之一。秘密条目只有 slot 与 value，value 为 JSON base64 字节。asset 条目只有 ref、sha256、size、media_type。run 与 performance 直接复用 A1 至 A3 的准备值；comparison 包含 meta、plan、model、runs，复用 A4a 的整组准备值。
 
@@ -271,7 +271,7 @@ C11随用户暂缓的文件声明/执行范围明确记为deferred；不因现�
 
 本次收尾增量的已执行记录：不存在配置节点的公开准备测试初版target PASS（1.720s），最终style整理后target再次PASS（1.939s）；jobcontract包PASS（1.513s）及相关vet通过；完整Performance文档SQLite边界target PASS（6.699s）；HTTP四项target PASS（3.185s），实际20秒等待专项PASS（21.493s），vet通过。独立审查发现cross-owner断言原先未同时核对双方文档，修为双方文档均不泄露和严格当前ErrorResponse后，受影响target再次PASS（1.626s）。最后Run/Comparison configured open_loop两例补齐后，TestTaskCapabilitiesRequireConfiguredPerformanceAndRunFeatures共12子例定向PASS（1.008s），gofmt/style通过；没有重跑SQLite大负载或vet。以上为父级执行记录及当前源码复核，本次文档编辑没有重跑测试或provider。
 
-当前C01–C29执行表共29行：26 covered、3 deferred（C10/C11/C13），没有把文件暂缓项改成已完成；G07所列平台/运维实跑仍未验收。
+当前C01–C29执行表共29行：26 covered、3 deferred（C10/C11/C13），没有把文件暂缓项改成已完成；G07所列未完成的平台/运维实跑经用户确认本轮暂缓，仍保留未验收标记。
 
 ### R12 安全证据与暂缓范围
 
@@ -286,4 +286,4 @@ C11随用户暂缓的文件声明/执行范围明确记为deferred；不因现�
 - 交付：Wails2.15.0 EXE/ZIP与本地检查已有摘要；云端CI/发布未执行，没有push/发布授权，本轮不执行。
 - R4：早期TCP、HTTP代理路径及跨Job原始字节比较失败保留。v3已对当前刻意随机prompt前缀作严格限定规范化，其余业务字段完全一致；local与新节点各1/1、archive/Origin与实际peer对照均通过。原节点Job7e83fe38-7ec1-43ac-ba61-320955caaa88在120秒预算未完成，receipt SHA ce14e574708ccf5509d9bc27079b8b30b2082f64d98f025d48b5f6e8db594614保留false；接收未确认，不将本地pending/最后GET404认作零wire Submit。后续新三任务补验实际38.905秒、exit1/EOF：原节点新Job1368e52d-f309-4be6-9b0e-be44c5e94db8明确HTTP202/accepted，首次events404时仍剩106.130秒，不能归因等待超时或追认旧Job。新receipt SHA cfeb7d11b8100fd5e07581874b8c5fde5eb241d8bb56cff597d254e7636893ef保持false；local/fast各1/1及出口匹配，新三任务各一次Submit，目标DELETE204/GET404及清理确认。三方R4整体仍未通过。
 
-R11本轮选定的当前非文件契约场景已有上述T0断言与执行记录；这不提升为G07平台/运维实跑通过。文件媒体范围deferred，非文件安全断言和有界扫描各有证据，不把完整R12写为全部通过。已配置节点的原生交互仍按R14保留；R16远程工作流完成而兼容性失败，原146个assertion_failed不变。
+R11本轮选定的当前非文件契约场景已有上述T0断言与执行记录；这不提升为G07平台/运维实跑通过。文件媒体范围deferred，非文件安全断言和有界扫描各有证据，不把完整R12写为全部通过。已配置节点的原生交互按R14保留未验收，用户已明确同意本轮暂缓；R16远程工作流完成而兼容性失败，原146个assertion_failed不变。本轮按现有R9包和已验证范围交付，不继续旧节点404排查、原生补验或额外平台故障演练。
