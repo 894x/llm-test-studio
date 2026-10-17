@@ -42,7 +42,6 @@ function InterfaceSettingsMenu() {
               variant="ghost"
               size="icon-sm"
               aria-label={t("settings.trigger", { theme: label })}
-              className="rounded-full"
             >
               <Settings2Icon />
             </Button>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
+import MonitorIcon from "lucide-react/dist/esm/icons/monitor.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import ServerIcon from "lucide-react/dist/esm/icons/server.mjs"
@@ -180,8 +181,8 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
   return <Sheet open={open} onOpenChange={changeOpen}>
     <Tooltip>
       <TooltipTrigger asChild><SheetTrigger asChild>
-        <Button variant="ghost" size="sm" disabled={disabled} aria-label={t("title")}>
-          <ServerIcon /> Remote
+        <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={t("title")}>
+          {!snapshot ? <Spinner /> : snapshot.default.kind === "local" ? <MonitorIcon /> : <ServerIcon />}
         </Button>
       </SheetTrigger></TooltipTrigger>
       <TooltipContent side="bottom">{t("currentDefault", { name: defaultLabel })}</TooltipContent>
@@ -199,8 +200,9 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
               value={!snapshot ? "" : snapshot.default.kind === "remote" ? snapshot.default.configuration_id : "local"}
               placeholder={t("loading")}
               disabled={unavailable || !snapshot}
-              options={[{ value: "local", label: t("local") }, ...(snapshot?.nodes ?? []).map(node => ({
+              options={[{ value: "local", label: t("local"), icon: <MonitorIcon className="size-4" /> }, ...(snapshot?.nodes ?? []).map(node => ({
                 value: node.id, label: `${node.name}${node.region ? ` · ${node.region}` : ""} · ${t(`status.${node.status}`)}`,
+                icon: <ServerIcon className="size-4" />,
               }))]}
               onValueChange={value => {
                 if (!snapshot) return

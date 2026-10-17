@@ -494,11 +494,12 @@ function AppWorkspace({
       activePage={page}
       onNavigate={navigate}
       actions={
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-1">
 					<DiagnosticsSheet client={client} />
           <RemoteNodesMenu client={client} disabled={commandPending} />
 					<NewComparisonSheet catalog={catalogState.data ?? EMPTY_CATALOG} onOpen={() => resources.catalog.load()} pending={commandPending} onStart={async (command) => { await startComparison(command); navigate("runs") }} />
 					<NewRunSheet
+						iconOnly
 						plans={plans}
 						catalog={catalogState.data ?? EMPTY_CATALOG}
             onOpen={() => resources.catalog.load()}

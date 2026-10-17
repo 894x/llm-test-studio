@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
@@ -203,6 +204,7 @@ export function NewRunSheet({
   commandPending,
   onStartRun,
   triggerLabel,
+  iconOnly = false,
   onOpen,
 }: {
   plans: TestPlan[]
@@ -210,6 +212,7 @@ export function NewRunSheet({
   commandPending: boolean
   onStartRun: (command: StartRunTargetCommand) => Promise<void>
   triggerLabel?: string
+  iconOnly?: boolean
   onOpen?: () => Promise<unknown>
 }) {
   const { t: tx } = useTranslation()
@@ -271,14 +274,19 @@ export function NewRunSheet({
     }
   }
 
+  const trigger = <SheetTrigger asChild>
+    <Button size={iconOnly ? "icon-sm" : "sm"} disabled={commandPending} aria-label={triggerLabel ?? t("newRun.title")}>
+      <PlusIcon />
+      {!iconOnly && (triggerLabel ?? t("newRun.title"))}
+    </Button>
+  </SheetTrigger>
+
   return (
     <Sheet open={open} onOpenChange={next => { setOpen(next); if (next) loadCatalog() }}>
-      <SheetTrigger asChild>
-        <Button size="sm" className="ml-1" disabled={commandPending}>
-          <PlusIcon data-icon="inline-start" />
-          {triggerLabel ?? t("newRun.title")}
-        </Button>
-      </SheetTrigger>
+      {iconOnly ? <Tooltip>
+        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+        <TooltipContent side="bottom">{triggerLabel ?? t("newRun.title")}</TooltipContent>
+      </Tooltip> : trigger}
       <SheetContent className="sm:max-w-[420px]">
         <SheetHeader>
           <SheetTitle>{t("newRun.title")}</SheetTitle>

@@ -9,6 +9,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { eligibleRuntimeChannels, eligibleRuntimeModels } from "@/features/runs/run-targets"
 import type { CatalogSnapshot } from "@/features/catalog/data"
 
@@ -77,11 +78,14 @@ export function NewComparisonSheet({
 
   return (
     <Sheet open={open} onOpenChange={next => { setOpen(next); if (next) loadCatalog() }}>
-      <SheetTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <GitCompareArrowsIcon data-icon="inline-start" /> {t("trigger")}
-        </Button>
-      </SheetTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild><SheetTrigger asChild>
+          <Button size="icon-sm" variant="ghost" aria-label={t("trigger")}>
+            <GitCompareArrowsIcon />
+          </Button>
+        </SheetTrigger></TooltipTrigger>
+        <TooltipContent side="bottom">{t("trigger")}</TooltipContent>
+      </Tooltip>
       <SheetContent className="sm:max-w-[440px]">
         <SheetHeader>
           <SheetTitle>{t("title")}</SheetTitle>
