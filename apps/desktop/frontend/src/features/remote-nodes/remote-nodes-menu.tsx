@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import ArrowLeftIcon from "lucide-react/dist/esm/icons/arrow-left.mjs"
+import DownloadIcon from "lucide-react/dist/esm/icons/download.mjs"
 import MonitorIcon from "lucide-react/dist/esm/icons/monitor.mjs"
+import PencilIcon from "lucide-react/dist/esm/icons/pencil.mjs"
 import PlusIcon from "lucide-react/dist/esm/icons/plus.mjs"
 import RefreshCwIcon from "lucide-react/dist/esm/icons/refresh-cw.mjs"
 import ServerIcon from "lucide-react/dist/esm/icons/server.mjs"
 import ShieldCheckIcon from "lucide-react/dist/esm/icons/shield-check.mjs"
+import Trash2Icon from "lucide-react/dist/esm/icons/trash-2.mjs"
 
 import { DesktopClientError, type DesktopClient } from "@/app/desktop-client"
 import { Alert } from "@/components/ui/alert"
@@ -256,13 +259,37 @@ export function RemoteNodesMenu({ client, disabled = false }: { client: RemoteNo
                     }))}><ShieldCheckIcon />{t("confirmFingerprint")}</Button>
                 </Alert>}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" disabled={unavailable || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) setEditor(draftFromNode(node)) }}>{t("edit")}</Button>
-                  <Button variant="ghost" size="sm" disabled={unavailable || node.checking || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) void command(`check:${node.id}`,
-                    () => client.refreshRemoteNode({ id: node.id, expected_revision: node.revision })) }}><RefreshCwIcon />{t("check")}</Button>
-                  <Button variant="ghost" size="sm" disabled={unavailable || node.checking || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) void command(`install:${node.id}`,
-                    () => client.retryRemoteInstallation({ id: node.id, expected_revision: node.revision })) }}>{t("install")}</Button>
-                  <Button variant="destructive" size="sm" disabled={unavailable || upgrades.locked(node)} onClick={() => { if (!upgrades.lockedNow(node)) void command(`remove:${node.id}`,
-                    () => client.removeRemoteNode({ id: node.id, expected_revision: node.revision })) }}>{t("remove")}</Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="icon-sm" aria-label={t("edit")} disabled={unavailable || upgrades.locked(node)}
+                        onClick={() => { if (!upgrades.lockedNow(node)) setEditor(draftFromNode(node)) }}><PencilIcon /></Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("edit")}</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label={t("check")} disabled={unavailable || node.checking || upgrades.locked(node)}
+                        onClick={() => { if (!upgrades.lockedNow(node)) void command(`check:${node.id}`,
+                          () => client.refreshRemoteNode({ id: node.id, expected_revision: node.revision })) }}><RefreshCwIcon /></Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("check")}</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label={t("install")} disabled={unavailable || node.checking || upgrades.locked(node)}
+                        onClick={() => { if (!upgrades.lockedNow(node)) void command(`install:${node.id}`,
+                          () => client.retryRemoteInstallation({ id: node.id, expected_revision: node.revision })) }}><DownloadIcon /></Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("install")}</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="destructive" size="icon-sm" aria-label={t("remove")} disabled={unavailable || upgrades.locked(node)}
+                        onClick={() => { if (!upgrades.lockedNow(node)) void command(`remove:${node.id}`,
+                          () => client.removeRemoteNode({ id: node.id, expected_revision: node.revision })) }}><Trash2Icon /></Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("remove")}</TooltipContent>
+                  </Tooltip>
                 </div>
                 <RemoteNodeUpgrade node={node} controller={upgrades} disabled={unavailable} />
               </section>)}
