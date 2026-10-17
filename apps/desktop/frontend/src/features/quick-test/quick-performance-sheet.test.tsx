@@ -7,9 +7,9 @@ import { describe, expect, it, vi } from "vitest"
 import { DesktopClientError } from "@/app/desktop-client"
 import { createAppI18n } from "@/i18n/i18n"
 
+import { executionClient, jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID, RUN_ID } from "@/test/jobs-fixture"
 import { QuickPerformanceSheet } from "./quick-performance-sheet"
 import {
-  type QuickPerformanceProgress,
   type QuickPerformanceReport,
   type QuickPerformanceSLOAssessment,
 } from "./data"
@@ -29,17 +29,118 @@ const connection = {
 }
 
 describe("QuickPerformanceSheet", () => {
+  it("launches only at the selected remote location and never falls back after unavailability", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    client.getRemoteNodes.mockResolvedValue({ schema_version: 1, default_revision: 1,
+      default: { kind: "remote", configuration_id: RUN_ID }, nodes: [] })
+    client.launchJob.mockRejectedValue(new DesktopClientError("job_unavailable"))
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(client.launchJob).toHaveBeenCalledTimes(1))
+    expect(client.launchJob.mock.calls[0][0]).toMatchObject({ location: { kind: "remote", configuration_id: RUN_ID } })
+    await waitFor(() => expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled())
+    expect(client.getRemoteNodes).toHaveBeenCalledTimes(1)
+    expect(client.getJob).not.toHaveBeenCalled()
+    expect(screen.queryByRole("region", { name: "性能报告" })).not.toBeInTheDocument()
+  })
+
+  it("blocks launch when execution settings cannot be read", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    client.getRemoteNodes.mockRejectedValue(new DesktopClientError("remote_nodes_unavailable"))
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    await waitFor(() => expect(client.getRemoteNodes).toHaveBeenCalledTimes(1))
+    expect(client.launchJob).not.toHaveBeenCalled()
+    expect(client.getJob).not.toHaveBeenCalled()
+  })
+
+  it("keeps a pending Job identity observable without fabricating an execution or report", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    const pending = jobFixture({ submission: submissionFixture({ delivery: "pending", observation: "unreachable", confirmation: null }), execution: null })
+    client.launchJob.mockResolvedValue(pending)
+    client.getJob.mockResolvedValue(pending)
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    const details = await screen.findByRole("region", { name: "任务详情" })
+    expect(details).toHaveTextContent(JOB_ID)
+    expect(details).toHaveTextContent("已投递，等待确认")
+    expect(details).toHaveTextContent("等待执行器确认")
+    expect(within(details).getByRole("button", { name: "取消任务" })).toBeDisabled()
+    expect(client.getJobPerformanceResult).not.toHaveBeenCalled()
+    client.getJob.mockResolvedValue(completedPerformanceJob())
+    client.getJobPerformanceResult.mockResolvedValue(performanceResultFixture(successfulPerformanceReport()))
+    await screen.findByRole("region", { name: "性能报告" }, { timeout: 3500 })
+    expect(client.launchJob).toHaveBeenCalledTimes(1)
+  })
+
+  it("closes and reopens observation without cancelling the accepted Job", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    const onOpenChange = vi.fn()
+    const view = render(<QuickPerformanceSheet plans={[]} open onOpenChange={onOpenChange} connection={connection} client={client} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    await screen.findByText(JOB_ID)
+    await user.keyboard("{Escape}")
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    view.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}><QuickPerformanceSheet plans={[]} open={false} onOpenChange={onOpenChange} connection={connection} client={client} /></I18nextProvider>)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    const reads = client.getJob.mock.calls.length
+    view.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}><QuickPerformanceSheet plans={[]} open onOpenChange={onOpenChange} connection={connection} client={client} /></I18nextProvider>)
+    await waitFor(() => expect(client.getJob.mock.calls.length).toBeGreaterThan(reads))
+    expect(client.launchJob).toHaveBeenCalledTimes(1)
+    expect(client.controlJob).not.toHaveBeenCalled()
+    expect(client.retryJobControl).not.toHaveBeenCalled()
+  })
+
+  it("retries the same pending command and presents rejection without changing execution", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    const pending = controlFixture()
+    client.getJobControls.mockResolvedValue({ schema_version: 1, job_id: JOB_ID, commands: [pending], next_cursor: "", has_more: false })
+    client.retryJobControl.mockImplementation(async () => {
+      const rejected = controlFixture({ state: "rejected", observation: "rejected", delivery_revision: 2 })
+      client.getJobControls.mockResolvedValue({ schema_version: 1, job_id: JOB_ID, commands: [rejected], next_cursor: "", has_more: false })
+      return rejected
+    })
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    const details = await screen.findByRole("region", { name: "任务详情" })
+    expect(await within(details).findByRole("button", { name: "取消任务" })).toBeDisabled()
+    await user.click(await within(details).findByRole("button", { name: "重试原命令" }))
+    await within(details).findByText(/已拒绝/)
+    expect(client.retryJobControl).toHaveBeenCalledExactlyOnceWith(COMMAND_ID)
+    expect(client.controlJob).not.toHaveBeenCalled()
+    expect(details).toHaveTextContent("运行中")
+  })
+
+  it("shows stale-revision refusal without rebasing or automatically issuing another command", async () => {
+    const user = userEvent.setup()
+    const client = executionClient()
+    client.controlJob.mockRejectedValue(new DesktopClientError("job_conflict"))
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    const details = await screen.findByRole("region", { name: "任务详情" })
+    await user.click(within(details).getByRole("button", { name: "取消任务" }))
+    await within(details).findByRole("alert")
+    expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })
+    expect(client.retryJobControl).not.toHaveBeenCalled()
+    expect(details).toHaveTextContent("运行中")
+  })
+
   it("sends the random-input setting", async () => {
     const user = userEvent.setup()
-    const run = vi.fn(async () => successfulPerformanceReport())
-    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={run} />)
+    const client = executionClient(successfulPerformanceReport())
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     const randomInput = within(dialog).getByRole("checkbox", { name: "随机输入" })
     expect(randomInput).not.toBeChecked()
     await user.click(randomInput)
     expect(randomInput).toBeChecked()
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
-    await waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({ random_input: true }), expect.any(Function)))
+    await waitFor(() => expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({ random_input: true }))))
   })
 
   it("rounds result throughput and latency presentation while keeping percentage precision", async () => {
@@ -51,7 +152,7 @@ describe("QuickPerformanceSheet", () => {
       cache_rate_percent: 25.25,
     })
     const original = structuredClone(result)
-    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={async () => result} />)
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={executionClient(result)} />)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const report = await screen.findByRole("region", { name: "性能报告" })
     for (const value of ["11,813,377 TPM", "50,030 TPM", "11,863,407 TPM", "834 token/s", "6 req/s", "25.3%"]) {
@@ -63,47 +164,32 @@ describe("QuickPerformanceSheet", () => {
     expect(result).toEqual(original)
   })
 
-  it("clears a previous target report and ignores late results from an earlier target", async () => {
+  it("clears a previous target report and ignores late observations from an earlier target", async () => {
     const user = userEvent.setup()
-    let finishOld!: (report: QuickPerformanceReport) => void
-    const run = vi.fn(
-      () =>
-        new Promise<QuickPerformanceReport>((resolve) => {
-          finishOld = resolve
-        }),
-    )
-    const view = render(
-      <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={run} />,
-    )
+    let finishOld!: (value: ReturnType<typeof jobFixture>) => void
+    const client = executionClient(successfulPerformanceReport())
+    client.launchJob.mockResolvedValueOnce(jobFixture({ execution: null }))
+    client.getJob.mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
+    const view = render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
-    const next = { ...connection, model_id: "other-model" }
-    view.rerender(
-      <I18nextProvider i18n={createAppI18n("zh-CN")}>
-        <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={next} run={run} />
-      </I18nextProvider>,
-    )
-    finishOld(successfulPerformanceReport())
+    await waitFor(() => expect(client.getJob).toHaveBeenCalledWith(JOB_ID))
+    view.rerender(<I18nextProvider i18n={createAppI18n("zh-CN")}>
+      <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={{ ...connection, model_id: "other-model" }} client={client} />
+    </I18nextProvider>)
+    finishOld(completedPerformanceJob())
     await waitFor(() => expect(screen.getByRole("button", { name: "开始性能测试" })).toBeEnabled())
     expect(screen.queryByRole("region", { name: "性能报告" })).not.toBeInTheDocument()
-    run.mockResolvedValue(successfulPerformanceReport())
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     await screen.findByRole("region", { name: "性能报告" })
-    view.rerender(
-      <I18nextProvider i18n={createAppI18n("zh-CN")}>
-        <QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={run} />
-      </I18nextProvider>,
-    )
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "性能报告" })).not.toBeInTheDocument(),
-    )
   })
 
   it("shows cancelled and unavailable start failures instead of asking the user to check logs", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn()
+    const client = executionClient()
+    client.launchJob
       .mockRejectedValueOnce(new DesktopClientError("operation_cancelled"))
       .mockRejectedValueOnce(new DesktopClientError("quick_test_unavailable"))
-    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} run={runQuickPerformanceTest} />)
+    render(<QuickPerformanceSheet plans={[]} open onOpenChange={vi.fn()} connection={connection} client={client} />)
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     expect(await within(dialog).findByText("操作已取消")).toBeInTheDocument()
@@ -116,7 +202,7 @@ describe("QuickPerformanceSheet", () => {
 
   it("runs a configurable performance test from the immutable connection and renders its report", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     const onPerformanceArchived = vi.fn(async () => {})
     const onOpenReport = vi.fn()
     render(
@@ -124,7 +210,7 @@ describe("QuickPerformanceSheet", () => {
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
         onArchived={onPerformanceArchived}
         onOpenReport={onOpenReport}
       />,
@@ -147,8 +233,7 @@ describe("QuickPerformanceSheet", () => {
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        {
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch({
           protocol: "openai-chat",
           address_mode: "base_url",
           url: "https://api.example.test/v1",
@@ -181,11 +266,9 @@ describe("QuickPerformanceSheet", () => {
           timeout_ms: 30_000,
           input_tokens: 1_000_000,
           output_tokens: 32,
-        },
-        expect.any(Function),
-      ),
+        })),
     )
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     expect(report).toHaveTextContent("完成 / 计划")
     expect(report).toHaveTextContent("失败")
     expect(report).toHaveTextContent("100%")
@@ -221,20 +304,20 @@ describe("QuickPerformanceSheet", () => {
     expect(within(report).queryByRole("table", { name: "流式时序统计" })).not.toBeInTheDocument()
   })
 
-  it("renders the shared streaming timing table for a live schema-v3 report", async () => {
+  it("renders the shared streaming timing table for the sealed current report", async () => {
     const user = userEvent.setup()
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={vi.fn(async () => phaseFivePerformanceReport())}
+        client={executionClient(phaseFivePerformanceReport())}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     const streaming = within(report).getByRole("table", { name: "流式时序统计" })
     expect(within(streaming).getByRole("row", { name: /TTFT（含推理）/ })).toHaveTextContent(
       /20 ms.*4/,
@@ -246,13 +329,13 @@ describe("QuickPerformanceSheet", () => {
 
   it("keeps mode-specific drafts and sends an open-loop RPS profile", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -277,8 +360,7 @@ describe("QuickPerformanceSheet", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        {
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch({
           protocol: "openai-chat",
           address_mode: "base_url",
           url: "https://api.example.test/v1",
@@ -311,21 +393,19 @@ describe("QuickPerformanceSheet", () => {
           timeout_ms: 60_000,
           input_tokens: 100,
           output_tokens: 100,
-        },
-        expect.any(Function),
-      ),
+        })),
     )
   })
 
   it("sends seven explicit disabled SLO and capacity fields by default and focuses the first SLO error", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -343,13 +423,12 @@ describe("QuickPerformanceSheet", () => {
       await within(dialog).findByText("设置目标达标率时，至少启用一个延迟阈值。"),
     ).toHaveAttribute("data-slot", "field-error")
     expect(target).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await replaceNumber(user, within(dialog).getByLabelText("SLO TTFT（ms）"), "50")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           slo_ttft_ms: 50,
           slo_tpot_ms: 0,
           slo_e2e_ms: 0,
@@ -357,21 +436,19 @@ describe("QuickPerformanceSheet", () => {
           capacity_enabled: false,
           capacity_start: 0,
           capacity_step: 0,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("keeps fixed and open-loop capacity drafts while disabling ramp and sending only the active mode", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -407,8 +484,7 @@ describe("QuickPerformanceSheet", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           load_mode: "open_loop",
           rate_per_second: 3.5,
           ramp_duration_ms: 0,
@@ -416,21 +492,19 @@ describe("QuickPerformanceSheet", () => {
           capacity_enabled: true,
           capacity_start: 0.01,
           capacity_step: 1,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("accepts a twenty-rung 10,000-request capacity budget and blocks a twenty-first rung", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -445,34 +519,31 @@ describe("QuickPerformanceSheet", () => {
       await within(dialog).findByText("容量阶梯最多支持 20 档；请增大步长或减小终止目标。"),
     ).toHaveAttribute("data-slot", "field-error")
     expect(within(dialog).getByLabelText("并发步长")).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await replaceNumber(user, within(dialog).getByLabelText("终止并发"), "20")
     expect(within(dialog).getByText(/容量 10,000 · 合计 10,000 \/ 10,000/)).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           request_count: 500,
           concurrency: 20,
           capacity_enabled: true,
           capacity_start: 1,
           capacity_step: 1,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("keeps a near-terminal open-loop start as a separate rung even when the step exceeds the maximum", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -489,28 +560,25 @@ describe("QuickPerformanceSheet", () => {
     expect(within(dialog).getByText(/容量 20 · 合计 20 \/ 10,000/)).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           load_mode: "open_loop",
           rate_per_second: 2,
           capacity_enabled: true,
           capacity_start: 1.9999999999,
           capacity_step: 3,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("keeps workload drafts and sends a reproducible Poisson normal workload", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -542,8 +610,7 @@ describe("QuickPerformanceSheet", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        {
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch({
           protocol: "openai-chat",
           address_mode: "base_url",
           url: "https://api.example.test/v1",
@@ -576,21 +643,19 @@ describe("QuickPerformanceSheet", () => {
           timeout_ms: 60_000,
           input_tokens: 120,
           output_tokens: 40,
-        },
-        expect.any(Function),
-      ),
+        })),
     )
   })
 
   it("keeps the fixed-ramp cap draft while normalizing open-loop preparation fields", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -619,27 +684,24 @@ describe("QuickPerformanceSheet", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           warmup_requests: 3,
           ramp_duration_ms: 10_000,
           ramp_request_cap: 0,
           slice_duration_ms: 2_000,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("accepts exactly 10,000 total fixed requests and blocks 10,001", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -653,32 +715,29 @@ describe("QuickPerformanceSheet", () => {
         "热身 1,000 + 爬坡 1,000 + 稳态 8,001 = 10,001，超过总请求预算 10,000。",
       ),
     ).toHaveAttribute("data-slot", "field-error")
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await replaceNumber(user, within(dialog).getByLabelText("请求数"), "8000")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           request_count: 8_000,
           warmup_requests: 1_000,
           ramp_duration_ms: 1_000,
           ramp_request_cap: 1_000,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("reserves one measured request for fixed duration-only runs", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -693,19 +752,16 @@ describe("QuickPerformanceSheet", () => {
         "热身与爬坡已用完 10,000 请求预算；持续时间稳态至少需要保留 1 个请求。",
       ),
     ).toHaveAttribute("data-slot", "field-error")
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await replaceNumber(user, within(dialog).getByLabelText("爬坡请求上限"), "999")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           request_count: 0,
           warmup_requests: 9_000,
           ramp_request_cap: 999,
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
@@ -716,13 +772,13 @@ describe("QuickPerformanceSheet", () => {
     "uses ramp intensity headroom at the $arrival 10,000-request boundary",
     async ({ arrival, rejectedRate, acceptedRate, total }) => {
       const user = userEvent.setup()
-      const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+      const client = executionClient(successfulPerformanceReport())
       render(
         <QuickPerformanceSheet plans={[]}
           open
           onOpenChange={vi.fn()}
           connection={connection}
-          run={runQuickPerformanceTest}
+          client={client}
         />,
       )
       const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -742,32 +798,29 @@ describe("QuickPerformanceSheet", () => {
       expect(
         await within(dialog).findByText(new RegExp(`= ${total}，超过总请求预算 10,000`)),
       ).toHaveAttribute("data-slot", "field-error")
-      expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+      expect(client.launchJob).not.toHaveBeenCalled()
 
       await replaceNumber(user, rate, acceptedRate)
       await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
       await waitFor(() =>
-        expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-          expect.objectContaining({
+        expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
             request_count: 0,
             ramp_duration_ms: 1_000,
             ramp_request_cap: 0,
-          }),
-          expect.any(Function),
-        ),
+          }))),
       )
     },
   )
 
   it("validates normal workload bounds before starting performance testing", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn()
+    const client = executionClient()
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -796,18 +849,18 @@ describe("QuickPerformanceSheet", () => {
       "field-error",
     )
     expect(within(dialog).getByLabelText("输入 Token 标准差")).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
   })
 
   it("allows the constant duration-only schedule cap boundary and rejects the first request above it", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -826,33 +879,30 @@ describe("QuickPerformanceSheet", () => {
     ).toHaveAttribute("data-slot", "field-error")
     expect(rate).toHaveAttribute("aria-invalid", "true")
     expect(rate).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await replaceNumber(user, rate, "10000")
     expect(rate).not.toHaveAttribute("aria-invalid")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           request_count: 0,
           duration_ms: 1_000,
           rate_per_second: 10_000,
           arrival_pattern: "constant",
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("uses Poisson headroom for duration-only loads and preserves the hidden RPS draft across modes", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => successfulPerformanceReport())
+    const client = executionClient(successfulPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -872,7 +922,7 @@ describe("QuickPerformanceSheet", () => {
       ),
     ).toHaveAttribute("data-slot", "field-error")
     expect(rate).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await user.click(within(dialog).getByRole("combobox", { name: "负载模式" }))
     await user.click(screen.getByRole("option", { name: "固定并发" }))
@@ -888,24 +938,21 @@ describe("QuickPerformanceSheet", () => {
     await replaceNumber(user, within(dialog).getByLabelText("目标发送 RPS"), "4999.5")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
     await waitFor(() =>
-      expect(runQuickPerformanceTest).toHaveBeenCalledWith(
-        expect.objectContaining({
+      expect(client.launchJob).toHaveBeenCalledWith(performanceLaunch(expect.objectContaining({
           request_count: 0,
           duration_ms: 1_000,
           rate_per_second: 4_999.5,
           arrival_pattern: "poisson",
-        }),
-        expect.any(Function),
-      ),
+        }))),
     )
   })
 
   it("shows authoritative progress while a performance test is running", async () => {
     const user = userEvent.setup()
-    let resolvePerformance!: (report: QuickPerformanceReport) => void
-    const runQuickPerformanceTest = vi.fn(
-      (_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
-        onProgress?.({
+    const client = executionClient()
+    client.getJob.mockResolvedValue(jobFixture({
+      execution: { ...jobFixture().execution!, latest_sequence: 2 },
+      progress: { sequence: 2, recorded_at: JOB_TIME, progress: {
           phase: "sending",
           planned: 10,
           launched: 5,
@@ -918,18 +965,14 @@ describe("QuickPerformanceSheet", () => {
           send_duration_ms: 120,
           drain_duration_ms: 0,
           total_duration_ms: 120,
-        })
-        return new Promise<QuickPerformanceReport>((resolve) => {
-          resolvePerformance = resolve
-        })
-      },
-    )
+        } },
+    }))
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -946,16 +989,17 @@ describe("QuickPerformanceSheet", () => {
       "30",
     )
 
-    resolvePerformance(successfulPerformanceReport())
-    await within(dialog).findByRole("region", { name: "性能报告" })
+    client.getJob.mockResolvedValue(completedPerformanceJob())
+    client.getJobPerformanceResult.mockResolvedValue(performanceResultFixture(successfulPerformanceReport()))
+    await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
   })
 
   it("adds authoritative capacity rung context to the existing progress phase", async () => {
     const user = userEvent.setup()
-    let resolvePerformance!: (report: QuickPerformanceReport) => void
-    const runQuickPerformanceTest = vi.fn(
-      (_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
-        onProgress?.({
+    const client = executionClient()
+    client.getJob.mockResolvedValue(jobFixture({
+      execution: { ...jobFixture().execution!, latest_sequence: 2 },
+      progress: { sequence: 2, recorded_at: JOB_TIME, progress: {
           phase: "sending",
           planned: 10,
           offered: 6,
@@ -972,18 +1016,14 @@ describe("QuickPerformanceSheet", () => {
           send_duration_ms: 120,
           drain_duration_ms: 0,
           total_duration_ms: 120,
-        })
-        return new Promise<QuickPerformanceReport>((resolve) => {
-          resolvePerformance = resolve
-        })
-      },
-    )
+        } },
+    }))
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -996,25 +1036,26 @@ describe("QuickPerformanceSheet", () => {
     expect(status).toHaveTextContent("当前目标 0.01 RPS")
     expect(status).toHaveTextContent("发送中")
 
-    resolvePerformance(successfulPerformanceReport())
-    await within(dialog).findByRole("region", { name: "性能报告" })
+    client.getJob.mockResolvedValue(completedPerformanceJob())
+    client.getJobPerformanceResult.mockResolvedValue(performanceResultFixture(successfulPerformanceReport()))
+    await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
   })
 
   it("shows transport, selected-rung SLO, and capacity conclusions independently", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn(async () => capacityPerformanceReport())
+    const client = executionClient(capacityPerformanceReport())
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     expect(report).toHaveTextContent("传输与协议通过")
     expect(report).toHaveTextContent("SLO 通过")
     expect(report).toHaveTextContent("最高通过并发 2")
@@ -1035,22 +1076,22 @@ describe("QuickPerformanceSheet", () => {
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={vi.fn(async () => selectedReport)}
+        client={executionClient(selectedReport)}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     expect(report).toHaveTextContent(/目标发送\s*2 req\/s/)
   })
 
   it("identifies warmup progress and an authoritative request-cap stop", async () => {
     const user = userEvent.setup()
-    let resolvePerformance!: (report: QuickPerformanceReport) => void
-    const runQuickPerformanceTest = vi.fn(
-      (_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
-        onProgress?.({
+    const client = executionClient()
+    client.getJob.mockResolvedValue(jobFixture({
+      execution: { ...jobFixture().execution!, latest_sequence: 2 },
+      progress: { sequence: 2, recorded_at: JOB_TIME, progress: {
           phase: "warming_up",
           planned: 4,
           offered: 4,
@@ -1065,18 +1106,14 @@ describe("QuickPerformanceSheet", () => {
           send_duration_ms: 120,
           drain_duration_ms: 0,
           total_duration_ms: 120,
-        })
-        return new Promise<QuickPerformanceReport>((resolve) => {
-          resolvePerformance = resolve
-        })
-      },
-    )
+        } },
+    }))
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -1091,16 +1128,17 @@ describe("QuickPerformanceSheet", () => {
       "50",
     )
 
-    resolvePerformance(successfulPerformanceReport())
-    await within(dialog).findByRole("region", { name: "性能报告" })
+    client.getJob.mockResolvedValue(completedPerformanceJob())
+    client.getJobPerformanceResult.mockResolvedValue(performanceResultFixture(successfulPerformanceReport()))
+    await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
   })
 
   it("shows report finalization after Core has completed the load", async () => {
     const user = userEvent.setup()
-    let resolvePerformance!: (report: QuickPerformanceReport) => void
-    const runQuickPerformanceTest = vi.fn(
-      (_command, onProgress?: (progress: QuickPerformanceProgress) => void) => {
-        onProgress?.({
+    const client = executionClient()
+    client.getJob.mockResolvedValue(jobFixture({
+      execution: { ...jobFixture().execution!, latest_sequence: 2 },
+      progress: { sequence: 2, recorded_at: JOB_TIME, progress: {
           phase: "completed",
           planned: 10,
           launched: 10,
@@ -1113,18 +1151,14 @@ describe("QuickPerformanceSheet", () => {
           send_duration_ms: 300,
           drain_duration_ms: 20,
           total_duration_ms: 320,
-        })
-        return new Promise<QuickPerformanceReport>((resolve) => {
-          resolvePerformance = resolve
-        })
-      },
-    )
+        } },
+    }))
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -1134,8 +1168,9 @@ describe("QuickPerformanceSheet", () => {
     expect(status).toHaveTextContent("测试已完成，正在封存报告")
     expect(status).not.toHaveTextContent("发送中")
 
-    resolvePerformance(successfulPerformanceReport())
-    await within(dialog).findByRole("region", { name: "性能报告" })
+    client.getJob.mockResolvedValue(completedPerformanceJob())
+    client.getJobPerformanceResult.mockResolvedValue(performanceResultFixture(successfulPerformanceReport()))
+    await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
   })
 
   it("does not present the duration-mode safety cap as a planned request count", async () => {
@@ -1144,13 +1179,13 @@ describe("QuickPerformanceSheet", () => {
     durationReport.profile.request_count = 0
     durationReport.profile.duration_ms = 1_000
     durationReport.progress.planned = 10_000
-    const runQuickPerformanceTest = vi.fn(async () => durationReport)
+    const client = executionClient(durationReport)
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -1158,7 +1193,7 @@ describe("QuickPerformanceSheet", () => {
     await replaceNumber(user, within(dialog).getByLabelText("持续时间（秒）"), "1")
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     expect(report).toHaveTextContent("完成（持续时间模式）")
     expect(report).not.toHaveTextContent("4 / 10,000")
   })
@@ -1170,13 +1205,13 @@ describe("QuickPerformanceSheet", () => {
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={vi.fn(async () => phaseThreePerformanceReport())}
+        client={executionClient(phaseThreePerformanceReport())}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     expect(report).toHaveTextContent("主指标仅统计稳态阶段")
     expect(report).toHaveTextContent("请求预算")
     expect(report).toHaveTextContent("7 / 10,000")
@@ -1191,13 +1226,13 @@ describe("QuickPerformanceSheet", () => {
 
   it("requires a request-count or duration target before starting performance testing", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn()
+    const client = executionClient()
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -1216,7 +1251,7 @@ describe("QuickPerformanceSheet", () => {
     expect(requestCount).toHaveAttribute("aria-invalid", "true")
     expect(duration).toHaveAttribute("aria-invalid", "true")
     expect(requestCount).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
 
     await replaceNumber(user, duration, "1")
     expect(requestCount).not.toHaveAttribute("aria-invalid")
@@ -1236,13 +1271,13 @@ describe("QuickPerformanceSheet", () => {
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={vi.fn(async () => mixedPerformanceReport())}
+        client={executionClient(mixedPerformanceReport())}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
     await user.click(within(dialog).getByRole("button", { name: "开始性能测试" }))
 
-    const report = await within(dialog).findByRole("region", { name: "性能报告" })
+    const report = await within(dialog).findByRole("region", { name: "性能报告" }, { timeout: 3500 })
     expect(
       within(report).getByRole("figure", { name: "请求结果分布：成功 3，失败 1" }),
     ).toBeInTheDocument()
@@ -1263,13 +1298,13 @@ describe("QuickPerformanceSheet", () => {
 
   it("identifies an out-of-range performance input", async () => {
     const user = userEvent.setup()
-    const runQuickPerformanceTest = vi.fn()
+    const client = executionClient()
     render(
       <QuickPerformanceSheet plans={[]}
         open
         onOpenChange={vi.fn()}
         connection={connection}
-        run={runQuickPerformanceTest}
+        client={client}
       />,
     )
     const dialog = screen.getByRole("dialog", { name: "快速性能测试" })
@@ -1283,7 +1318,7 @@ describe("QuickPerformanceSheet", () => {
     )
     expect(concurrency).toHaveAttribute("aria-invalid", "true")
     expect(concurrency).toHaveFocus()
-    expect(runQuickPerformanceTest).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
   })
 })
 
@@ -1299,6 +1334,7 @@ async function replaceNumber(
 function successfulPerformanceReport(): QuickPerformanceReport {
   return {
     schema_version: 2,
+    execution_origin: null,
     report_id: "77777777-7777-4777-8777-777777777771",
     generated_at: "2026-08-31T14:30:00Z",
     archived: true,
@@ -1676,4 +1712,16 @@ function mixedPerformanceReport(): QuickPerformanceReport {
         : sample,
     ),
   }
+}
+
+function performanceLaunch(performance: unknown) {
+  return { location: { kind: "local", configuration_id: "" }, kind: "performance",
+    plan: null, quick_task: null, performance, comparison: null }
+}
+
+function completedPerformanceJob() {
+  const job = jobFixture()
+  return jobFixture({ submission: submissionFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME } }),
+    execution: { ...job.execution!, status: "completed", revision: 2, latest_sequence: 3 },
+    performance_result_ready: true })
 }

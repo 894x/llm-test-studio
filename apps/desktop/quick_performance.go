@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"math"
 	"time"
 
@@ -10,23 +8,12 @@ import (
 	"github.com/894x/llm-test-studio/internal/domain"
 )
 
-var errQuickTestOperationFailed = errors.New("quick test operation failed")
-
 const (
 	quickTestDiagnosticPerformanceOperation = "performance_test"
 	quickTestDiagnosticArchiveOperation     = "performance_archive"
 	quickTestDiagnosticFallbackCode         = domain.ErrorCode("quick_test_failed")
 	quickTestDiagnosticArchiveFailedCode    = domain.ErrorCode("quick_performance_archive_failed")
 )
-
-const quickPerformanceProgressEventName = "quick-performance-progress"
-
-const quickPerformanceProgressInterval = 100 * time.Millisecond
-
-type quickPerformanceProgressEvent struct {
-	ProgressID string                        `json:"progress_id"`
-	Progress   quicktest.PerformanceProgress `json:"progress"`
-}
 
 type quickTestDiagnosticEvent struct {
 	Operation    string
@@ -38,54 +25,6 @@ type quickTestDiagnosticEvent struct {
 
 func (event quickTestDiagnosticEvent) Error() string {
 	return "quick test diagnostic: operation=" + event.Operation + " code=" + event.ErrorCode
-}
-
-func (app *DesktopApp) RunQuickPerformanceTest(command quicktest.PerformanceCommand, progressID string) (quicktest.PerformanceReport, error) {
-	lease, err := app.acquire(desktopRequirements{quickTests: true})
-	if err != nil {
-		return quicktest.PerformanceReport{}, app.safeBindingError(err)
-	}
-	defer lease.release()
-	var report quicktest.PerformanceReport
-	if progressID == "" {
-		report, err = lease.quickTests.RunPerformance(lease.ctx, command)
-	} else if !domain.IsUUID(progressID) {
-		return quicktest.PerformanceReport{}, app.safeBindingError(ErrInvalidIdentifier)
-	} else if runner, ok := lease.quickTests.(QuickPerformanceProgressRunner); ok {
-		lastEmitted := time.Time{}
-		lastPhase := quicktest.PerformancePhaseNotStarted
-		report, err = runner.RunPerformanceWithProgress(lease.ctx, command, func(progress quicktest.PerformanceProgress) {
-			now := time.Now()
-			phaseChanged := progress.Phase != lastPhase
-			if !lastEmitted.IsZero() && !phaseChanged && now.Sub(lastEmitted) < quickPerformanceProgressInterval {
-				return
-			}
-			lastEmitted = now
-			lastPhase = progress.Phase
-			app.emitDesktopEvent(lease.ctx, quickPerformanceProgressEventName, quickPerformanceProgressEvent{
-				ProgressID: progressID,
-				Progress:   progress,
-			})
-		})
-	} else {
-		report, err = lease.quickTests.RunPerformance(lease.ctx, command)
-	}
-	if err != nil {
-		return quicktest.PerformanceReport{}, app.safeBindingError(classifyQuickPerformanceError(err))
-	}
-	app.reportQuickPerformanceDiagnostics(report)
-	return report, nil
-}
-
-func classifyQuickPerformanceError(err error) error {
-	switch {
-	case errors.Is(err, quicktest.ErrServiceUnavailable):
-		return ErrQuickTestUnavailable
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return err
-	default:
-		return errQuickTestOperationFailed
-	}
 }
 
 func (app *DesktopApp) reportQuickPerformanceDiagnostics(report quicktest.PerformanceReport) {

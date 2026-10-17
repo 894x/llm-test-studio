@@ -157,11 +157,17 @@ const (
 	CredentialChannelAPIKey    CredentialPurpose = "channel_api_key"
 	CredentialQuickTaskAPIKey  CredentialPurpose = "quick_task_api_key"
 	CredentialIntegrationAdmin CredentialPurpose = "integration_admin"
+	CredentialSSHPassword      CredentialPurpose = "ssh_password"
+	CredentialSSHPrivateKey    CredentialPurpose = "ssh_private_key"
+	CredentialSSHPassphrase    CredentialPurpose = "ssh_passphrase"
+	CredentialRunnerToken      CredentialPurpose = "runner_token"
 )
 
 func (purpose CredentialPurpose) Validate() error {
 	switch purpose {
 	case CredentialChannelAPIKey, CredentialQuickTaskAPIKey, CredentialIntegrationAdmin:
+		return nil
+	case CredentialSSHPassword, CredentialSSHPrivateKey, CredentialSSHPassphrase, CredentialRunnerToken:
 		return nil
 	default:
 		return fmt.Errorf("unsupported credential purpose %q", purpose)

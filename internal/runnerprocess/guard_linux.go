@@ -1,0 +1,121 @@
+package runnerprocess
+
+import (
+	"context"
+	"io"
+	"sync"
+
+	"github.com/894x/llm-test-studio/internal/application/jobhost"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
+	"github.com/894x/llm-test-studio/internal/runnerconfig"
+)
+
+type diskUsage interface {
+	UsedBytes(context.Context) (uint64, error)
+	AvailableBytes() (uint64, error)
+	ContentFiles(context.Context) (uint64, error)
+}
+
+const (
+	maxContentUploads = 4
+	maxContentFiles   = 16384
+)
+
+type diskGuard struct {
+	state    diskUsage
+	config   runnerconfig.Config
+	mu       sync.Mutex
+	reserved uint64
+	uploads  uint64
+}
+
+func (guard *diskGuard) reserveContent(ctx context.Context, identity jobcontract.ContentIdentity) (io.Closer, error) {
+	if ctx == nil || identity.Validate() != nil {
+		return nil, jobhost.ErrInvalid
+	}
+	guard.mu.Lock()
+	defer guard.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if guard.uploads >= maxContentUploads {
+		return nil, jobhost.ErrCapacity
+	}
+	files, err := guard.state.ContentFiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Active scratch files may already appear in files. Conservatively counting
+	// their leases as well also covers the interval before each scratch exists.
+	if files >= maxContentFiles || guard.uploads >= maxContentFiles-files {
+		return nil, jobhost.ErrCapacity
+	}
+	bytes := uint64(identity.Size)
+	if err := guard.check(ctx, bytes); err != nil {
+		return nil, err
+	}
+	guard.reserved += bytes
+	guard.uploads++
+	return &diskReservation{guard: guard, bytes: bytes, content: true}, nil
+}
+
+func (guard *diskGuard) Reserve(ctx context.Context, spec jobcontract.JobSpec) (io.Closer, error) {
+	// File asset verification and resolution are connected together in the next
+	// asset phase. This runner does not advertise the assets capability yet.
+	if len(spec.Assets) != 0 {
+		return nil, jobhost.ErrInvalid
+	}
+	guard.mu.Lock()
+	defer guard.mu.Unlock()
+	if err := guard.check(ctx, guard.config.ReservationBytes); err != nil {
+		return nil, err
+	}
+	guard.reserved += guard.config.ReservationBytes
+	return &diskReservation{guard: guard, bytes: guard.config.ReservationBytes}, nil
+}
+
+func (guard *diskGuard) check(ctx context.Context, additional uint64) error {
+	used, err := guard.state.UsedBytes(ctx)
+	if err != nil {
+		return err
+	}
+	available, err := guard.state.AvailableBytes()
+	if err != nil {
+		return err
+	}
+	if additional > guard.config.MaxStorageBytes || guard.reserved > guard.config.MaxStorageBytes-additional {
+		return jobhost.ErrCapacity
+	}
+	reserve := guard.reserved + additional
+	validBudget := reserve <= guard.config.MaxStorageBytes && used <= guard.config.MaxStorageBytes-reserve
+	validFree := available >= guard.config.MinFreeBytes && available-guard.config.MinFreeBytes >= reserve
+	if !validBudget || !validFree {
+		return jobhost.ErrCapacity
+	}
+	return ctx.Err()
+}
+
+func (guard *diskGuard) Check(ctx context.Context) error {
+	guard.mu.Lock()
+	defer guard.mu.Unlock()
+	return guard.check(ctx, 0)
+}
+
+type diskReservation struct {
+	guard   *diskGuard
+	bytes   uint64
+	content bool
+	once    sync.Once
+}
+
+func (reservation *diskReservation) Close() error {
+	reservation.once.Do(func() {
+		reservation.guard.mu.Lock()
+		defer reservation.guard.mu.Unlock()
+		reservation.guard.reserved -= reservation.bytes
+		if reservation.content {
+			reservation.guard.uploads--
+		}
+	})
+	return nil
+}

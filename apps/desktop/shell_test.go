@@ -127,7 +127,7 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		{name: "workspace", err: ErrWorkspaceUnavailable, want: "workspace_unavailable"},
 		{name: "catalog", err: ErrCatalogUnavailable, want: "catalog_unavailable"},
 		{name: "reports", err: ErrReportingUnavailable, want: "reports_unavailable"},
-		{name: "commands", err: ErrRunCommandsUnavailable, want: "run_commands_unavailable"},
+		{name: "commands", err: ErrQuickTaskServiceUnavailable, want: "run_commands_unavailable"},
 		{name: "comparisons", err: ErrComparisonUnavailable, want: "comparison_unavailable"},
 		{name: "quick test", err: ErrQuickTestUnavailable, want: "quick_test_unavailable"},
 		{name: "identifier", err: ErrInvalidIdentifier, want: "invalid_identifier"},
@@ -174,6 +174,9 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		gotCodes[match[1]] = struct{}{}
 	}
 	wantCodes := map[string]struct{}{
+		desktopCodeJobInvalid: {}, desktopCodeJobNotFound: {}, desktopCodeJobConflict: {},
+		desktopCodeJobUnavailable: {}, desktopCodeJobPending: {}, desktopCodeJobCommitUnconfirmed: {},
+		desktopCodeJobQueryUnavailable: {}, desktopCodeJobCommandsUnavailable: {},
 		desktopCodeNotStarted:                {},
 		desktopCodeStartupFailed:             {},
 		desktopCodeStopped:                   {},
@@ -200,6 +203,24 @@ func TestDesktopBindingErrorCodesMatchFrontendContract(t *testing.T) {
 		desktopCodeComparisonNotReady:        {},
 		desktopCodeComparisonTargetUnmapped:  {},
 		desktopCodeComparisonChannelNotReady: {},
+		desktopCodeRemoteNodesMissing:        {},
+		desktopCodeRemoteNodeInvalid:         {},
+		desktopCodeRemoteNodeConflict:        {},
+		desktopCodeRemoteNodeNotFound:        {},
+		desktopCodeRemoteNodeRePair:          {},
+		desktopCodeRemoteNodeReferenced:      {},
+		desktopCodeRemoteNodeUsageUnknown:    {},
+		desktopCodeRemoteNodeCredential:      {},
+		desktopCodeRemoteNodeBusy:            {},
+		desktopCodeRemoteNodeUnconfirmed:     {},
+		desktopCodeRemoteNodeUpgrade:         {},
+		desktopCodeRemoteNodeIdentity:        {},
+		desktopCodeFileInputInvalid:          {},
+		desktopCodeFileInputTooLarge:         {},
+		desktopCodeFileInputLimit:            {},
+		desktopCodeFileInputBusy:             {},
+		desktopCodeFileInputNotFound:         {},
+		desktopCodeFileInputUnavailable:      {},
 	}
 	if len(gotCodes) != len(wantCodes) {
 		t.Fatalf("frontend error codes = %v, want exact backend code set %v", gotCodes, wantCodes)

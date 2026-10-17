@@ -1,3 +1,9 @@
+import enExecutionOrigin from "./resources/en-US/execution-origin.json"
+import zhExecutionOrigin from "./resources/zh-CN/execution-origin.json"
+import enJobs from "./resources/en-US/jobs.json"
+import zhJobs from "./resources/zh-CN/jobs.json"
+import enRemoteNodes from "./resources/en-US/remote-nodes.json"
+import zhRemoteNodes from "./resources/zh-CN/remote-nodes.json"
 import enDesktop from "./resources/en-US/desktop.json"
 import zhDesktop from "./resources/zh-CN/desktop.json"
 import { createInstance, type i18n } from "i18next"
@@ -24,8 +30,8 @@ import zhRuns from "./resources/zh-CN/runs.json"
 import zhShell from "./resources/zh-CN/shell.json"
 
 export const resources = {
-  "zh-CN": { desktop: zhDesktop, app: zhApp, catalog: zhCatalog, common: zhCommon, comparisons: zhComparisons, overview: zhOverview, quickTest: zhQuickTest, reports: zhReports, runs: zhRuns, shell: zhShell },
-  "en-US": { desktop: enDesktop, app: enApp, catalog: enCatalog, common: enCommon, comparisons: enComparisons, overview: enOverview, quickTest: enQuickTest, reports: enReports, runs: enRuns, shell: enShell },
+  "zh-CN": { executionOrigin: zhExecutionOrigin, jobs: zhJobs, remoteNodes: zhRemoteNodes, desktop: zhDesktop, app: zhApp, catalog: zhCatalog, common: zhCommon, comparisons: zhComparisons, overview: zhOverview, quickTest: zhQuickTest, reports: zhReports, runs: zhRuns, shell: zhShell },
+  "en-US": { executionOrigin: enExecutionOrigin, jobs: enJobs, remoteNodes: enRemoteNodes, desktop: enDesktop, app: enApp, catalog: enCatalog, common: enCommon, comparisons: enComparisons, overview: enOverview, quickTest: enQuickTest, reports: enReports, runs: enRuns, shell: enShell },
 } as const
 
 export function createAppI18n(locale: SupportedLocale): i18n {

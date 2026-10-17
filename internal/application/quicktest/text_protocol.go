@@ -44,10 +44,9 @@ func performanceBody(selected domain.Protocol, prompt string, outputTokens uint3
 	})
 }
 
-func (service *Service) nativePerformanceExecutor(
+func (service *Host) nativePerformanceExecutor(
 	config performanceExecutionConfig,
 	lease *credentials.Lease,
-	releaseCredential func(),
 ) (load.Executor, func(), domain.ErrorCode) {
 	selected, address := config.Protocol, config.Address
 	model, body := config.Model, config.Body
@@ -64,7 +63,6 @@ func (service *Service) nativePerformanceExecutor(
 		if client != nil {
 			_ = client.Close()
 		}
-		releaseCredential()
 	}
 	if err != nil {
 		cleanup()

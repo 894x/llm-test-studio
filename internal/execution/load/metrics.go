@@ -318,7 +318,9 @@ func percentile(sortedValues []float64, quantile float64) float64 {
 		return sortedValues[lower]
 	}
 	weight := position - float64(lower)
-	return sortedValues[lower]*(1-weight) + sortedValues[upper]*weight
+	// Interpolate the difference so equal samples remain exactly equal. A
+	// weighted sum can round P95 above P99 for identical fractional timings.
+	return sortedValues[lower] + (sortedValues[upper]-sortedValues[lower])*weight
 }
 
 func milliseconds(duration time.Duration) float64 {

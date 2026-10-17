@@ -1,14 +1,14 @@
 import { DesktopDataError } from "@/app/data-error"
+import { EMPTY_REMOTE_NODES, parseRemoteNodes, parseRemoteNodeUpgrade, parseNullableRemoteNodeUpgrade,
+  type StartRemoteNodeUpgradeCommand, type RemoteNodeUpgradeAction, type RemoteNodeUpgradeView, type RemoteNodesSnapshot, type RemoteNodeDraft,
+  type RemoteNodeAction, type HostKeyConfirmation, type DefaultExecutionCommand } from "@/features/remote-nodes/data"
 import { parseQuickTaskDetail, type QuickTaskDetail, type RememberQuickTaskCredentialCommand } from "@/features/quick-test/task-draft"
 import { translateDesktop as tx } from "@/i18n/runtime"
-import { resolveConnectionURL } from "@/features/quick-test/connection-url"
-import { PROTOCOLS } from "@/features/catalog/protocols"
-import { DEFAULT_CASE_CONCURRENCY, type StartQuickTaskCommand, type StartRunTargetCommand, type WorkspaceSnapshot } from "@/features/runs/data"
+import { type WorkspaceSnapshot } from "@/features/runs/data"
 import {
   EMPTY_COMPARISONS,
   parseComparisonSnapshot,
   type ComparisonSnapshot,
-  type StartComparisonCommand,
 } from "@/features/comparisons/data"
 import {
   EMPTY_CATALOG,
@@ -25,6 +25,7 @@ import {
   type CreateSuiteCommand,
   type CreateTestCaseCommand,
   type DeleteCommand,
+  type FileMediaType,
   type UpdateChannelCommand,
   type UpdateChannelModelCommand,
   type UpdateModelCommand,
@@ -42,17 +43,9 @@ import {
   type ReportExportFormat,
   type ReportSnapshot,
 } from "@/features/reports/data"
-import {
-  estimateQuickPerformanceOpenLoopRampRequestCap,
-  estimateQuickPerformanceOpenLoopRequestCap,
-  parseQuickPerformanceProgress,
-  parseQuickPerformanceReport,
-  type QuickPerformanceCommand,
-  type QuickPerformanceProgress,
-  type QuickPerformanceReport,
-  type QuickPerformanceSliceCount,
-  type QuickPerformanceSliceLatency,
-} from "@/features/quick-test/data"
+import { parseJobView, parseJobPage, parsePerformanceResult, parseControlView, parseControlPage,
+  type LaunchCommand, type JobView, type JobPage, type PerformanceResultView,
+  type ControlInput, type ControlView, type ControlPageView } from "@/features/jobs/data"
 import enCommon from "@/i18n/resources/en-US/common.json"
 import zhCommon from "@/i18n/resources/zh-CN/common.json"
 import {
@@ -87,6 +80,32 @@ export type DesktopErrorCode =
   | "comparison_not_ready"
   | "comparison_target_unmapped"
   | "comparison_channel_not_ready"
+  | "remote_nodes_unavailable"
+  | "remote_node_invalid"
+  | "remote_node_revision_conflict"
+  | "remote_node_not_found"
+  | "remote_node_re_pair_required"
+  | "remote_node_still_referenced"
+  | "remote_node_usage_unavailable"
+  | "remote_node_credential_unavailable"
+  | "remote_node_busy"
+  | "remote_node_commit_unconfirmed"
+  | "remote_node_upgrade_required"
+  | "remote_node_identity_conflict"
+  | "job_invalid"
+  | "job_not_found"
+  | "job_conflict"
+  | "job_unavailable"
+  | "job_confirmation_pending"
+  | "job_commit_unconfirmed"
+  | "job_query_unavailable"
+  | "job_commands_unavailable"
+  | "file_input_invalid"
+  | "file_input_too_large"
+  | "file_input_limit"
+  | "file_input_busy"
+  | "file_input_not_found"
+  | "file_input_unavailable"
 
 type PublicErrorMessages = Record<DesktopErrorCode, string> & {
   operationFailed: string
@@ -137,6 +156,19 @@ export function isCatalogSavedRefreshFailure(error: unknown): error is DesktopCl
 }
 
 export interface DesktopClient extends CatalogActions {
+  createLocalFileSelection(command: CreateLocalFileSelectionCommand): Promise<LocalFileSelection>
+  releaseLocalFileSelection(selectionID: string): Promise<void>
+  getRemoteNodes(): Promise<RemoteNodesSnapshot>
+  saveRemoteNode(command: RemoteNodeDraft): Promise<void>
+  refreshRemoteNode(command: RemoteNodeAction): Promise<void>
+  confirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<void>
+  selectDefaultExecution(command: DefaultExecutionCommand): Promise<void>
+  retryRemoteInstallation(command: RemoteNodeAction): Promise<void>
+  removeRemoteNode(command: RemoteNodeAction): Promise<void>
+  startRemoteNodeUpgrade(command: StartRemoteNodeUpgradeCommand): Promise<RemoteNodeUpgradeView>
+  getRemoteNodeUpgrade(id: string): Promise<RemoteNodeUpgradeView | null>
+  retryRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<RemoteNodeUpgradeView>
+  recoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<RemoteNodeUpgradeView>
   getDiagnostics(): Promise<DesktopDiagnosticsSnapshot>
   openDiagnosticsDirectory(): Promise<void>
   getWorkspace(): Promise<WorkspaceSnapshot>
@@ -149,15 +181,44 @@ export interface DesktopClient extends CatalogActions {
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
   copyReportPNG(dataBase64: string): Promise<void>
   getComparisons(): Promise<ComparisonSnapshot>
-  startRunTarget(command: StartRunTargetCommand): Promise<string>
-  startQuickTask(command: StartQuickTaskCommand): Promise<string>
+  launchJob(command: LaunchCommand): Promise<JobView>
+  getJobs(after: string, limit: number): Promise<JobPage>
+  getJob(jobID: string): Promise<JobView>
+  getJobPerformanceResult(jobID: string): Promise<PerformanceResultView>
+  controlJob(command: ControlInput): Promise<ControlView>
+  getJobControls(jobID: string, after: string, limit: number): Promise<ControlPageView>
+  retryJobControl(commandID: string): Promise<ControlView>
   getQuickTask(runId: string): Promise<QuickTaskDetail>
   rememberQuickTaskCredential(command: RememberQuickTaskCredentialCommand): Promise<void>
   forgetQuickTaskCredential(runId: string): Promise<void>
-  stopSending(runId: string): Promise<WorkspaceSnapshot>
-  cancelRun(runId: string): Promise<WorkspaceSnapshot>
-  startComparison(command: StartComparisonCommand): Promise<ComparisonSnapshot>
-  runQuickPerformanceTest(command: QuickPerformanceCommand, onProgress?: (progress: QuickPerformanceProgress) => void): Promise<QuickPerformanceReport>
+}
+
+export const MAX_LOCAL_FILE_BYTES = 1048576
+const MAX_LOCAL_FILE_BASE64_LENGTH = 1398104
+const MAX_LOCAL_FILE_DOCUMENT_BYTES = 1400000
+export type CreateLocalFileSelectionCommand = { data_base64: string; media_type: FileMediaType }
+export type LocalFileSelection = { selection_id: string; sha256: string; size: number; media_type: FileMediaType }
+
+function localFileSelectionDocument(command: CreateLocalFileSelectionCommand): string {
+  if (!isRecord(command) || Object.keys(command).length !== 2 ||
+    (command.media_type !== "image/png" && command.media_type !== "image/jpeg") ||
+    typeof command.data_base64 !== "string" || !command.data_base64.length ||
+    command.data_base64.length % 4 !== 0) throw new DesktopClientError("file_input_invalid")
+  if (command.data_base64.length > MAX_LOCAL_FILE_BASE64_LENGTH) throw new DesktopClientError("file_input_too_large")
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(command.data_base64)) throw new DesktopClientError("file_input_invalid")
+  const size = command.data_base64.length / 4 * 3 - (command.data_base64.endsWith("==") ? 2 : command.data_base64.endsWith("=") ? 1 : 0)
+  if (size > MAX_LOCAL_FILE_BYTES) throw new DesktopClientError("file_input_too_large")
+  const document = JSON.stringify(command)
+  if (new TextEncoder().encode(document).byteLength > MAX_LOCAL_FILE_DOCUMENT_BYTES) throw new DesktopClientError("file_input_too_large")
+  return document
+}
+
+function parseLocalFileSelection(value: unknown): LocalFileSelection {
+  if (!isRecord(value) || Object.keys(value).length !== 4 || !isUUID(value.selection_id) ||
+    typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256) ||
+    !Number.isSafeInteger(value.size) || (value.size as number) < 1 || (value.size as number) > MAX_LOCAL_FILE_BYTES ||
+    (value.media_type !== "image/png" && value.media_type !== "image/jpeg")) throw new DesktopDataError("Invalid local file selection")
+  return { selection_id: value.selection_id, sha256: value.sha256, size: value.size as number, media_type: value.media_type }
 }
 
 export type DesktopDiagnosticsSnapshot = {
@@ -171,6 +232,19 @@ export type DesktopDiagnosticsSnapshot = {
 }
 
 type WailsDesktopBinding = {
+  CreateLocalFileSelection(document: string): Promise<unknown>
+  ReleaseLocalFileSelection(selectionID: string): Promise<unknown>
+  GetRemoteNodes(): Promise<unknown>
+  StartRemoteNodeUpgrade(command: StartRemoteNodeUpgradeCommand): Promise<unknown>
+  GetRemoteNodeUpgrade(id: string): Promise<unknown>
+  RetryRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<unknown>
+  RecoverRemoteNodeUpgrade(command: RemoteNodeUpgradeAction): Promise<unknown>
+  SaveRemoteNode(command: RemoteNodeDraft): Promise<unknown>
+  RefreshRemoteNode(command: RemoteNodeAction): Promise<unknown>
+  ConfirmRemoteNodeHostKey(command: HostKeyConfirmation): Promise<unknown>
+  SelectDefaultExecution(command: DefaultExecutionCommand): Promise<unknown>
+  RetryRemoteInstallation(command: RemoteNodeAction): Promise<unknown>
+  RemoveRemoteNode(command: RemoteNodeAction): Promise<unknown>
   GetDiagnostics(): Promise<unknown>
   OpenDiagnosticsDirectory(): Promise<unknown>
   ReportFrontendDiagnostic(diagnostic: FrontendDiagnostic): Promise<unknown>
@@ -183,15 +257,16 @@ type WailsDesktopBinding = {
   SaveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<unknown>
   CopyReportPNG(dataBase64: string): Promise<unknown>
   GetComparisons(): Promise<unknown>
-  StartRunTarget(command: StartRunTargetCommand): Promise<unknown>
-  StartQuickTask(command: StartQuickTaskCommand): Promise<unknown>
+  LaunchJob(command: LaunchCommand): Promise<unknown>
+  GetJobs(after: string, limit: number): Promise<unknown>
+  GetJob(jobID: string): Promise<unknown>
+  GetJobPerformanceResult(jobID: string): Promise<unknown>
+  ControlJob(command: ControlInput): Promise<unknown>
+  GetJobControls(jobID: string, after: string, limit: number): Promise<unknown>
+  RetryJobControl(commandID: string): Promise<unknown>
   GetQuickTask(runId: string): Promise<unknown>
   RememberQuickTaskCredential(command: RememberQuickTaskCredentialCommand): Promise<unknown>
   ForgetQuickTaskCredential(runId: string): Promise<unknown>
-  StopSending(runId: string): Promise<unknown>
-  CancelRun(runId: string): Promise<unknown>
-  StartComparison(command: StartComparisonCommand): Promise<unknown>
-  RunQuickPerformanceTest(command: QuickPerformanceCommand, progressId: string): Promise<unknown>
   CreateModel(command: CreateModelCommand): Promise<unknown>
   UpdateModel(command: UpdateModelCommand): Promise<unknown>
   DeleteModel(command: DeleteCommand): Promise<unknown>
@@ -222,10 +297,13 @@ type FrontendDiagnostic = {
 }
 
 const REQUIRED_WAILS_BINDING_METHODS = [
+  "CreateLocalFileSelection", "ReleaseLocalFileSelection",
+  "GetRemoteNodes", "SaveRemoteNode", "RefreshRemoteNode", "ConfirmRemoteNodeHostKey", "SelectDefaultExecution",
+  "RetryRemoteInstallation", "RemoveRemoteNode",
+  "StartRemoteNodeUpgrade", "GetRemoteNodeUpgrade", "RetryRemoteNodeUpgrade", "RecoverRemoteNodeUpgrade",
   "GetDiagnostics", "OpenDiagnosticsDirectory", "ReportFrontendDiagnostic",
   "GetWorkspace", "GetCatalog", "GetReports", "GetReportGeneration", "GetReportDetail", "ExportReport",
-  "SaveReportExport", "CopyReportPNG", "GetComparisons", "StartRunTarget", "StartQuickTask", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
-  "StopSending", "CancelRun", "StartComparison", "RunQuickPerformanceTest",
+  "SaveReportExport", "CopyReportPNG", "GetComparisons", "LaunchJob", "GetJobs", "GetJob", "GetJobPerformanceResult", "ControlJob", "GetJobControls", "RetryJobControl", "GetQuickTask", "RememberQuickTaskCredential", "ForgetQuickTaskCredential",
   "CreateModel", "UpdateModel", "DeleteModel", "CreateChannel", "SaveQuickTestTarget",
   "UpdateChannel", "DeleteChannel", "CreateChannelModel", "UpdateChannelModel",
   "DeleteChannelModel", "CreateTestCase", "UpdateTestCase", "DeleteTestCase", "CreateSuite",
@@ -259,9 +337,9 @@ export function createFixtureClient(
   reports: ReportSnapshot = EMPTY_REPORTS,
 	comparisons: ComparisonSnapshot = EMPTY_COMPARISONS,
 ): DesktopClient {
-  let workspace = cloneSnapshot(initial)
+  const workspace = cloneSnapshot(initial)
   let catalogState = structuredClone(catalog)
-	let comparisonState = structuredClone(comparisons)
+	const comparisonState = structuredClone(comparisons)
   const nextID = () => crypto.randomUUID()
   const quickTasks = new Map<string, QuickTaskDetail>()
   const rememberedTaskCredentials = new Set<string>()
@@ -272,9 +350,22 @@ export function createFixtureClient(
     }))
   }
   return {
+    async createLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
+    async releaseLocalFileSelection() { throw new DesktopClientError("file_input_unavailable") },
     async getDiagnostics() {
       return fixtureDiagnosticsSnapshot()
     },
+    async getRemoteNodes() { return structuredClone(EMPTY_REMOTE_NODES) },
+    async saveRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async refreshRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async confirmRemoteNodeHostKey() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async selectDefaultExecution() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async retryRemoteInstallation() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async removeRemoteNode() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async startRemoteNodeUpgrade() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async getRemoteNodeUpgrade() { return null },
+    async retryRemoteNodeUpgrade() { throw new DesktopClientError("remote_nodes_unavailable") },
+    async recoverRemoteNodeUpgrade() { throw new DesktopClientError("remote_nodes_unavailable") },
     async openDiagnosticsDirectory() {},
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
@@ -308,57 +399,13 @@ export function createFixtureClient(
 			return structuredClone(comparisonState)
 		},
 
-		async startRunTarget(command) {
-			const plan = catalogState.plans.find((item) => item.id === command.plan_id)
-			const model = catalogState.models.find((item) => item.id === command.model_id)
-			const channel = catalogState.channels.find((item) => item.id === command.channel_id)
-			const mapped = catalogState.channel_models.some((item) => item.model_id === command.model_id && item.channel_id === command.channel_id)
-			if (!plan || !model || !channel || !mapped) throw new DesktopClientError("invalid_identifier")
-			const id = nextID()
-			const now = new Date().toISOString()
-			workspace.runs.unshift({
-				id, revision: 1, plan_id: plan.id, plan_revision: plan.revision, plan_name: plan.name,
-				case_count: plan.case_count, observed_case_count: 0,
-				entry_progress: [], model_id: model.id, model_revision: model.revision, model_name: model.name,
-				channel_id: channel.id, channel_revision: channel.revision, channel_name: channel.name,
-				status: "queued", conclusion: "none", load_mode: plan.entries[0].load_mode,
-				concurrency: plan.entries[0].load_mode === "single"
-          ? Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, plan.entries[0].case_count)
-          : plan.entries[0].concurrency,
-				rate_per_second: 0, planned: plan.case_count, duration_ms: 0, completed: 0,
-				passed: 0, failed: 0, observed: 0, indeterminate: 0, artifact_count: 0,
-				started_at: now, updated_at: now,
-			})
-			workspace.active_run_id = id
-			return id
-		},
-    async startQuickTask(command) {
-      if (command.source_run_id && quickTasks.get(command.source_run_id)?.suite.id !== command.suite_id) throw new DesktopClientError("run_not_runnable")
-      const suite = catalogState.suites.find((item) => item.id === command.suite_id)
-      if (!suite) throw new DesktopClientError("run_not_runnable")
-      const channel = catalogState.channels.find((item) => item.id === command.channel_id)
-      if (command.channel_id && (!channel?.enabled || !channel.credential_configured)) throw new DesktopClientError("run_not_runnable")
-      if (!command.model || (!channel && (!command.base_url || (!command.api_key && !command.credential_run_id))) || (channel && (command.base_url || command.api_key))) throw new DesktopClientError("run_invalid")
-      if (command.credential_run_id) {
-        const source = quickTasks.get(command.credential_run_id)
-        if (channel || command.api_key || !source || !rememberedTaskCredentials.has(command.credential_run_id) || source.base_url !== command.base_url || source.suite.protocol !== suite.protocol) throw new DesktopClientError("quick_task_credential_unavailable")
-      }
-      const id = nextID()
-      const now = new Date().toISOString()
-      workspace.runs.unshift({
-        id, revision: 1, source: "quick_task", plan_id: id, plan_revision: 1, plan_name: suite.name,
-        case_count: suite.cases.length, observed_case_count: 0,
-        entry_progress: [{ entry_id: id, name: suite.name, case_count: suite.cases.length, observed_case_count: 0, status: "queued" }],
-        model_id: nextID(), model_revision: 1, model_name: command.model,
-        channel_id: channel?.id ?? nextID(), channel_revision: channel?.revision ?? 1, channel_name: channel?.name ?? new URL(command.base_url!).host,
-        status: "queued", conclusion: "none", load_mode: "single", concurrency: Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, suite.case_count),
-        rate_per_second: 0, planned: suite.case_count, duration_ms: 0, completed: 0, passed: 0, failed: 0, observed:0,indeterminate:0,
-        artifact_count: 0, started_at: now, updated_at: now,
-      })
-      workspace.active_run_id = id
-      quickTasks.set(id, { schema_version: 1, seed:command.seed,request_timeout_seconds:command.request_timeout_seconds, case_concurrency: Math.min(command.case_concurrency ?? DEFAULT_CASE_CONCURRENCY, suite.case_count), run_id: id, suite: structuredClone(suite), model: command.model, base_url: channel?.base_url ?? command.base_url!, ...(channel ? { channel_id: channel.id } : {}), inputs: { ...Object.fromEntries(suite.inputs.filter(input=>input.default!==undefined).map((input) => [input.key, input.default!])), ...structuredClone(command.inputs) }, ...(command.credential_run_id ? { credential_run_id: command.credential_run_id } : {}) })
-      return id
-    },
+    async launchJob() { throw new DesktopClientError("job_commands_unavailable") },
+    async getJobs() { return { schema_version: 1, jobs: [], next_cursor: "", has_more: false } },
+    async getJob() { throw new DesktopClientError("job_not_found") },
+    async getJobPerformanceResult() { throw new DesktopClientError("job_not_found") },
+    async controlJob() { throw new DesktopClientError("job_commands_unavailable") },
+    async getJobControls(jobID) { return { schema_version: 1, job_id: jobID, commands: [], next_cursor: "", has_more: false } },
+    async retryJobControl() { throw new DesktopClientError("job_commands_unavailable") },
     async getQuickTask(runId) {
       const detail = quickTasks.get(runId)
       if (!detail) throw new DesktopClientError("run_not_runnable")
@@ -371,40 +418,6 @@ export function createFixtureClient(
       rememberedTaskCredentials.add(command.run_id)
     },
     async forgetQuickTaskCredential(runId) { rememberedTaskCredentials.delete(runId) },
-    async stopSending(runId) {
-      workspace = updateRun(workspace, runId, "draining")
-      return cloneSnapshot(workspace)
-    },
-    async cancelRun(runId) {
-      workspace = {
-        ...updateRun(workspace, runId, "cancelled"),
-        active_run_id:
-          workspace.active_run_id === runId ? undefined : workspace.active_run_id,
-      }
-      return cloneSnapshot(workspace)
-    },
-		async startComparison(command) {
-			const plan = catalogState.plans.find((item) => item.id === command.plan_id)
-			const model = catalogState.models.find((item) => item.id === command.model_id)
-			const channels = command.channel_ids.map((id) => catalogState.channels.find((item) => item.id === id))
-			if (!plan || !model || channels.length < 2 || channels.some((item) => !item)) {
-				throw new DesktopClientError("invalid_identifier")
-			}
-			comparisonState.comparisons.unshift({
-				id: nextID(), created_at: new Date().toISOString(), status: "running",
-				plan_id: plan.id, plan_name: plan.name, model_id: model.id, model_name: model.name,
-				channels: channels.map((channel) => ({
-					channel_id: channel!.id, channel_name: channel!.name, run_id: nextID(),
-					run_status: "queued", report_ready: false, passed: false, verdict: "", metrics: {},
-				})),
-			})
-			return structuredClone(comparisonState)
-		},
-    async runQuickPerformanceTest(command, onProgress) {
-      onProgress?.(fixtureQuickPerformanceProgress(command, "sending", 0))
-      onProgress?.(fixtureQuickPerformanceProgress(command, "completed", command.request_count || Math.max(1, command.concurrency * 2)))
-      return fixtureQuickPerformanceReport(command)
-    },
     async createModel(command) {
       catalogState.models.push({ id: nextID(), revision: 1, ...structuredClone(command) })
       return structuredClone(catalogState)
@@ -538,7 +551,20 @@ function createLazyFixtureClient(): DesktopClient {
       createFixtureClient(FIXTURE_WORKSPACE, FIXTURE_CATALOG, FIXTURE_REPORTS),
   )
   return {
+    createLocalFileSelection: async command => (await client).createLocalFileSelection(command),
+    releaseLocalFileSelection: async id => (await client).releaseLocalFileSelection(id),
     getDiagnostics: async () => (await client).getDiagnostics(),
+    getRemoteNodes: async () => (await client).getRemoteNodes(),
+    saveRemoteNode: async command => (await client).saveRemoteNode(command),
+    refreshRemoteNode: async command => (await client).refreshRemoteNode(command),
+    confirmRemoteNodeHostKey: async command => (await client).confirmRemoteNodeHostKey(command),
+    selectDefaultExecution: async command => (await client).selectDefaultExecution(command),
+    retryRemoteInstallation: async command => (await client).retryRemoteInstallation(command),
+    removeRemoteNode: async command => (await client).removeRemoteNode(command),
+    startRemoteNodeUpgrade: async command => (await client).startRemoteNodeUpgrade(command),
+    getRemoteNodeUpgrade: async id => (await client).getRemoteNodeUpgrade(id),
+    retryRemoteNodeUpgrade: async command => (await client).retryRemoteNodeUpgrade(command),
+    recoverRemoteNodeUpgrade: async command => (await client).recoverRemoteNodeUpgrade(command),
     openDiagnosticsDirectory: async () =>
       (await client).openDiagnosticsDirectory(),
     getWorkspace: async () => (await client).getWorkspace(),
@@ -558,15 +584,16 @@ function createLazyFixtureClient(): DesktopClient {
 		saveReportExport: async (filename, mediaType, dataBase64, locale) => (await client).saveReportExport(filename, mediaType, dataBase64, locale),
 		copyReportPNG: async (dataBase64) => (await client).copyReportPNG(dataBase64),
 		getComparisons: async () => (await client).getComparisons(),
-		startRunTarget: async (command) => (await client).startRunTarget(command),
-		startQuickTask: async (command) => (await client).startQuickTask(command),
+    launchJob: async command => (await client).launchJob(command),
+    getJobs: async (after, limit) => (await client).getJobs(after, limit),
+    getJob: async jobID => (await client).getJob(jobID),
+    getJobPerformanceResult: async jobID => (await client).getJobPerformanceResult(jobID),
+    controlJob: async command => (await client).controlJob(command),
+    getJobControls: async (jobID, after, limit) => (await client).getJobControls(jobID, after, limit),
+    retryJobControl: async commandID => (await client).retryJobControl(commandID),
 		getQuickTask: async (runId) => (await client).getQuickTask(runId),
     rememberQuickTaskCredential: async (command) => (await client).rememberQuickTaskCredential(command),
     forgetQuickTaskCredential: async (runId) => (await client).forgetQuickTaskCredential(runId),
-    stopSending: async (runId) => (await client).stopSending(runId),
-    cancelRun: async (runId) => (await client).cancelRun(runId),
-		startComparison: async (command) => (await client).startComparison(command),
-    runQuickPerformanceTest: async (command, onProgress) => (await client).runQuickPerformanceTest(command, onProgress),
     createModel: async (command) => (await client).createModel(command),
     updateModel: async (command) => (await client).updateModel(command),
     deleteModel: async (command) => (await client).deleteModel(command),
@@ -619,6 +646,45 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     definitions: catalogRead("definitions"), quick_test: catalogRead("quick_test"),
   }
   return {
+    createLocalFileSelection: async command => {
+      const document = localFileSelectionDocument(command)
+      return callBinding(() => binding.CreateLocalFileSelection(document), value => {
+        const selection = parseLocalFileSelection(value)
+        if (selection.media_type !== command.media_type) throw new DesktopDataError("Invalid local file selection media type")
+        return selection
+      })
+    },
+    releaseLocalFileSelection: async id => {
+      if (!isUUID(id)) throw new DesktopClientError("file_input_invalid")
+      return callBinding(() => binding.ReleaseLocalFileSelection(id), parseVoid)
+    },
+    getRemoteNodes: singleFlightRead(() => callBinding(() => binding.GetRemoteNodes(), parseRemoteNodes)),
+    saveRemoteNode: async command => callBinding(() => binding.SaveRemoteNode(command), parseVoid),
+    refreshRemoteNode: async command => callBinding(() => binding.RefreshRemoteNode(command), parseVoid),
+    confirmRemoteNodeHostKey: async command => callBinding(() => binding.ConfirmRemoteNodeHostKey(command), parseVoid),
+    selectDefaultExecution: async command => callBinding(() => binding.SelectDefaultExecution(command), parseVoid),
+    retryRemoteInstallation: async command => callBinding(() => binding.RetryRemoteInstallation(command), parseVoid),
+    removeRemoteNode: async command => callBinding(() => binding.RemoveRemoteNode(command), parseVoid),
+    startRemoteNodeUpgrade: async command => callBinding(() => binding.StartRemoteNodeUpgrade(command), value => {
+      const view = parseRemoteNodeUpgrade(value)
+      if (view.configuration_id !== command.id || view.operation_id !== command.operation_id || view.expected_build_id !== command.expected_build_id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
+    getRemoteNodeUpgrade: async id => callBinding(() => binding.GetRemoteNodeUpgrade(id), value => {
+      const view = parseNullableRemoteNodeUpgrade(value)
+      if (view && view.configuration_id !== id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
+    retryRemoteNodeUpgrade: async command => callBinding(() => binding.RetryRemoteNodeUpgrade(command), value => {
+      const view = parseRemoteNodeUpgrade(value)
+      if (view.configuration_id !== command.id || view.operation_id !== command.operation_id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
+    recoverRemoteNodeUpgrade: async command => callBinding(() => binding.RecoverRemoteNodeUpgrade(command), value => {
+      const view = parseRemoteNodeUpgrade(value)
+      if (view.configuration_id !== command.id || view.operation_id !== command.operation_id) throw new DesktopDataError("Remote upgrade identity mismatch")
+      return view
+    }),
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
     subscribeReportGeneration: (onProgress) => {
       const runtime = (window as typeof window & {
@@ -666,40 +732,45 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
 				reportFrontendFailure(binding, "load_comparisons"),
 				"comparison_unavailable",
 			)),
-		startRunTarget: async (command) =>
-			callBinding(() => binding.StartRunTarget(command), (value) => {
-				if (!isUUID(value)) throw new DesktopDataError(tx("desktop:run_invalid_run_identity"))
-				return value
-			}),
-		startQuickTask: async (command) =>
-			callBinding(() => binding.StartQuickTask(command), (value) => {
-        if (!isUUID(value)) throw new DesktopDataError(tx("desktop:quick_task_invalid_run_identity"))
-        return value
-      }),
+    launchJob: async command => callBinding(() => binding.LaunchJob(command), value => {
+      const job = parseJobView(value)
+      const kind = command.kind === "plan" || command.kind === "quick_task" ? "run" : command.kind
+      if (!job.submission || job.kind !== kind || job.location.kind !== command.location.kind || job.location.configuration_id !== command.location.configuration_id) throw new DesktopDataError("Invalid launch identity")
+      return job
+    }),
+    getJobs: async (after, limit) => callBinding(() => binding.GetJobs(after, limit), parseJobPage),
+    getJob: async jobID => callBinding(() => binding.GetJob(jobID), value => {
+      const job = parseJobView(value)
+      if (job.job_id !== jobID) throw new DesktopDataError("Invalid job identity")
+      return job
+    }),
+    getJobPerformanceResult: async jobID => callBinding(() => binding.GetJobPerformanceResult(jobID), value => {
+      const result = parsePerformanceResult(value)
+      if (result.job_id !== jobID) throw new DesktopDataError("Invalid job identity")
+      return result
+    }),
+    controlJob: async command => callBinding(() => binding.ControlJob(command), value => {
+      const result = parseControlView(value)
+      if (result.job_id !== command.job_id || result.kind !== command.kind || result.expected_revision !== command.expected_revision) throw new DesktopDataError("Invalid control identity")
+      return result
+    }),
+    getJobControls: async (jobID, after, limit) => callBinding(() => binding.GetJobControls(jobID, after, limit), value => {
+      const page = parseControlPage(value)
+      if (page.job_id !== jobID) throw new DesktopDataError("Invalid job identity")
+      return page
+    }),
+    retryJobControl: async commandID => callBinding(() => binding.RetryJobControl(commandID), value => {
+      const command = parseControlView(value)
+      if (command.command_id !== commandID) throw new DesktopDataError("Invalid control identity")
+      return command
+    }),
 		getQuickTask: async (runId) => callBinding(() => binding.GetQuickTask(runId), (value) => {
       const detail = parseQuickTaskDetail(value)
       if (detail.run_id !== runId) throw new DesktopDataError(tx("quickTest:task.invalidHistory"))
       return detail
     }),
-    stopSending: async (runId) =>
-      callBinding(() => binding.StopSending(runId), parseSnapshot),
-    cancelRun: async (runId) =>
-      callBinding(() => binding.CancelRun(runId), parseSnapshot),
-		startComparison: async (command) =>
-			callBinding(() => binding.StartComparison(command), parseComparisonSnapshot),
     rememberQuickTaskCredential: async (command) => callBinding(() => binding.RememberQuickTaskCredential(command), () => undefined),
     forgetQuickTaskCredential: async (runId) => callBinding(() => binding.ForgetQuickTaskCredential(runId), () => undefined),
-    runQuickPerformanceTest: async (command, onProgress) => {
-      const subscription = subscribeQuickPerformanceProgress(onProgress)
-      try {
-        return await callBinding(
-          () => binding.RunQuickPerformanceTest(command, subscription.progressID),
-          parseQuickPerformanceReport,
-        )
-      } finally {
-        subscription.unsubscribe()
-      }
-    },
     createModel: async (command) => callCatalogMutation(binding, () => binding.CreateModel(command)),
     updateModel: async (command) => callCatalogMutation(binding, () => binding.UpdateModel(command)),
     deleteModel: async (command) => callCatalogMutation(binding, () => binding.DeleteModel(command)),
@@ -828,525 +899,13 @@ function fixtureDiagnosticsSnapshot(): DesktopDiagnosticsSnapshot {
   }
 }
 
-const quickPerformanceProgressEventName = "quick-performance-progress"
-
-function subscribeQuickPerformanceProgress(onProgress?: (progress: QuickPerformanceProgress) => void): {
-  progressID: string
-  unsubscribe: () => void
-} {
-  if (!onProgress) return { progressID: "", unsubscribe: () => {} }
-  const runtime = (window as typeof window & {
-    runtime?: { EventsOn?: (eventName: string, callback: (payload: unknown) => void) => () => void }
-  }).runtime
-  if (typeof runtime?.EventsOn !== "function") return { progressID: "", unsubscribe: () => {} }
-  const progressID = crypto.randomUUID()
-  const unsubscribe = runtime.EventsOn(quickPerformanceProgressEventName, (payload) => {
-    if (!isRecord(payload) || payload.progress_id !== progressID) return
-    try {
-      onProgress(parseQuickPerformanceProgress(payload.progress))
-    } catch {
-      // Ignore malformed or stale event payloads at the desktop boundary.
-    }
-  })
-  return { progressID, unsubscribe }
-}
-
-function fixtureQuickPerformanceReport(command: QuickPerformanceCommand): QuickPerformanceReport {
-  const protocol = PROTOCOLS.find((item) => item.id === command.protocol)!
-  const endpoint = command.address_mode === "base_url"
-    ? resolveConnectionURL(command.url, protocol.request_paths[0].path, protocol.request_paths)?.endpoint
-    : command.url.replace(/\/+$/, "")
-  if (!endpoint) throw new DesktopClientError("run_invalid")
-  const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
-  const requestBudget = fixtureQuickPerformanceBudget(command)
-  const completed = command.request_count || Math.min(requestBudget.measured_cap, Math.max(1, configuredInFlight * 2))
-  const totalDurationMS = Math.max(320, command.duration_ms)
-  const seconds = totalDurationMS / 1_000
-  const promptTokens = completed * command.input_tokens
-  const completionTokens = completed * command.output_tokens
-  const samples: QuickPerformanceReport["samples"] = Array.from({ length: completed }, (_, index) => ({
-    request_index: index,
-    scheduled_offset_ms: 0,
-    started_offset_ms: index,
-    finished_offset_ms: 120 + index,
-    schedule_lag_ms: index,
-    e2e_ms: 120,
-    ttfb_ms: 15,
-    ttft_any_ms: 35,
-    ttft_visible_ms: 45,
-    ttft_ms: 35,
-    ttst_ms: 60,
-    observed_icl_ms: 25,
-    semantic_chunk_count: 2,
-    tpot_ms: 5,
-    http_status: 200,
-    success: true,
-    timed_out: false,
-    prompt_tokens: command.input_tokens,
-    completion_tokens: command.output_tokens,
-    cached_tokens: 0,
-    ...(command.workload_mode === "normal" ? {
-      target_input_tokens: command.input_tokens,
-      target_output_tokens: command.output_tokens,
-    } : {}),
-  }))
-  const baseProgress: QuickPerformanceProgress = {
-    phase: "completed",
-    planned: command.capacity_enabled ? command.request_count : requestBudget.measured_cap,
-    offered: completed,
-    launched: completed,
-    completed,
-    in_flight: 0,
-    peak_in_flight: Math.min(configuredInFlight, completed),
-    succeeded: completed,
-    failed: 0,
-    rejected: 0,
-    capped: false,
-    send_duration_ms: totalDurationMS,
-    drain_duration_ms: 0,
-    total_duration_ms: totalDurationMS,
-  }
-  const ttft = fixturePerformanceSummary(samples.map((sample) => sample.ttft_ms))
-  const ttfb = fixturePerformanceSummary(samples.map((sample) => sample.ttfb_ms!))
-  const ttftVisible = fixturePerformanceSummary(samples.map((sample) => sample.ttft_visible_ms!))
-  const ttst = fixturePerformanceSummary(samples.map((sample) => sample.ttst_ms!))
-  const observedICL = fixturePerformanceSummary(samples.map((sample) => sample.observed_icl_ms!))
-  const semanticChunkCount = fixturePerformanceSummary(samples.map((sample) => sample.semantic_chunk_count!))
-  const tpot = fixturePerformanceSummary(samples.map((sample) => sample.tpot_ms))
-  const e2e = fixturePerformanceSummary(samples.map((sample) => sample.e2e_ms))
-  const scheduleLag = fixturePerformanceSummary(samples.map((sample) => sample.schedule_lag_ms))
-  const metrics: QuickPerformanceReport["metrics"] = {
-    completed, succeeded: completed, failed: 0, timed_out: 0,
-    success_rate_percent: 100, offered_qps: completed / seconds,
-    launched_qps: completed / seconds, completed_qps: completed / seconds,
-    successful_request_qps: completed / seconds, request_qps: completed / seconds,
-    rpm: completed / seconds * 60, input_tpm: promptTokens / seconds * 60,
-    output_tpm: completionTokens / seconds * 60,
-    total_tpm: (promptTokens + completionTokens) / seconds * 60,
-    generation_tps: completionTokens / seconds,
-    ttft_samples: completed,
-    ttft_p50_ms: ttft.p50, ttft_p90_ms: ttft.p90, ttft_p95_ms: ttft.p95,
-    ttft_p99_ms: ttft.p99, ttft_average_ms: ttft.average,
-    ttfb_samples: completed, ttfb_p50_ms: ttfb.p50, ttfb_p95_ms: ttfb.p95,
-    ttfb_p99_ms: ttfb.p99, ttfb_average_ms: ttfb.average,
-    ttft_any_samples: completed, ttft_any_p50_ms: ttft.p50, ttft_any_p95_ms: ttft.p95,
-    ttft_any_p99_ms: ttft.p99, ttft_any_average_ms: ttft.average,
-    ttft_visible_samples: completed, ttft_visible_p50_ms: ttftVisible.p50,
-    ttft_visible_p95_ms: ttftVisible.p95, ttft_visible_p99_ms: ttftVisible.p99,
-    ttft_visible_average_ms: ttftVisible.average,
-    ttst_samples: completed, ttst_p50_ms: ttst.p50, ttst_p95_ms: ttst.p95,
-    ttst_p99_ms: ttst.p99, ttst_average_ms: ttst.average,
-    observed_icl_samples: completed, observed_icl_p50_ms: observedICL.p50,
-    observed_icl_p95_ms: observedICL.p95, observed_icl_p99_ms: observedICL.p99,
-    observed_icl_average_ms: observedICL.average,
-    semantic_chunk_count_samples: completed, semantic_chunk_count_p50: semanticChunkCount.p50,
-    semantic_chunk_count_p95: semanticChunkCount.p95, semantic_chunk_count_p99: semanticChunkCount.p99,
-    semantic_chunk_count_average: semanticChunkCount.average,
-    tpot_p50_ms: tpot.p50, tpot_p90_ms: tpot.p90, tpot_p95_ms: tpot.p95,
-    tpot_p99_ms: tpot.p99, tpot_average_ms: tpot.average,
-    e2e_p50_ms: e2e.p50, e2e_p90_ms: e2e.p90, e2e_p95_ms: e2e.p95,
-    e2e_p99_ms: e2e.p99, e2e_average_ms: e2e.average,
-    schedule_lag_p50_ms: scheduleLag.p50, schedule_lag_p90_ms: scheduleLag.p90,
-    schedule_lag_p95_ms: scheduleLag.p95, schedule_lag_p99_ms: scheduleLag.p99,
-    schedule_lag_average_ms: scheduleLag.average,
-    prompt_tokens: promptTokens, completion_tokens: completionTokens,
-    cached_tokens: 0, cache_rate_percent: 0,
-  }
-  const sloAssessment = command.slo_target_percent > 0
-    ? fixtureQuickPerformanceSLOAssessment(command, samples, totalDurationMS)
-    : undefined
-  const capacityTargets = fixtureQuickPerformanceCapacityTargets(command)
-  const executedTargets = command.capacity_enabled && sloAssessment
-    ? sloAssessment.status === "passed" ? capacityTargets : capacityTargets.slice(0, 1)
-    : []
-  const capacityRungs: NonNullable<QuickPerformanceReport["capacity_result"]>["rungs"] = executedTargets.map((target, index) => ({
-    index,
-    target,
-    success: true,
-    progress: {
-      ...baseProgress,
-      peak_in_flight: Math.min(command.load_mode === "fixed_concurrency" ? target : command.max_in_flight, completed),
-      capacity_rung_number: index + 1,
-      capacity_rung_count: capacityTargets.length,
-      capacity_target: target,
-    },
-    metrics,
-    failures: [],
-    slo_assessment: sloAssessment!,
-  }))
-  const capacityResult: QuickPerformanceReport["capacity_result"] = capacityRungs.length > 0 && sloAssessment
-    ? sloAssessment.status === "passed"
-      ? {
-        status: "passed",
-        selected_rung_index: capacityRungs.length - 1,
-        highest_passing_rung_index: capacityRungs.length - 1,
-        rungs: capacityRungs,
-      }
-      : { status: "failed", selected_rung_index: 0, rungs: capacityRungs }
-    : undefined
-  const selectedRung = capacityResult?.selected_rung_index === undefined
-    ? undefined
-    : capacityResult.rungs[capacityResult.selected_rung_index]
-  return {
-    schema_version: 2,
-    protocol: command.protocol,
-    archived: false,
-    archive_status: "not_attempted",
-    model_id: command.model_id,
-    success: true,
-    address_mode: command.address_mode,
-    base_url: endpoint.replace(/\/(chat\/completions|responses|messages)$/, ""),
-    endpoint,
-    profile: {
-      load_mode: command.load_mode, request_count: command.request_count, duration_ms: command.duration_ms,
-      concurrency: command.concurrency,
-      ...(command.load_mode === "open_loop" ? { rate_per_second: command.rate_per_second, max_in_flight: command.max_in_flight } : {}),
-      arrival_pattern: command.arrival_pattern,
-      workload_mode: command.workload_mode,
-      random_input: command.random_input,
-      random_seed: command.random_seed,
-      input_tokens_stddev: command.input_tokens_stddev,
-      output_tokens_stddev: command.output_tokens_stddev,
-      shared_prefix_tokens: command.shared_prefix_tokens,
-      ...(command.warmup_requests > 0 ? { warmup_requests: command.warmup_requests } : {}),
-      ...(command.ramp_duration_ms > 0 ? { ramp_duration_ms: command.ramp_duration_ms } : {}),
-      ...(command.ramp_request_cap > 0 ? { ramp_request_cap: command.ramp_request_cap } : {}),
-      ...(command.slice_duration_ms > 0 ? { slice_duration_ms: command.slice_duration_ms } : {}),
-      ...(command.slo_ttft_ms > 0 ? { slo_ttft_ms: command.slo_ttft_ms } : {}),
-      ...(command.slo_tpot_ms > 0 ? { slo_tpot_ms: command.slo_tpot_ms } : {}),
-      ...(command.slo_e2e_ms > 0 ? { slo_e2e_ms: command.slo_e2e_ms } : {}),
-      ...(command.slo_target_percent > 0 ? { slo_target_percent: command.slo_target_percent } : {}),
-      ...(command.capacity_enabled ? {
-        capacity_enabled: true,
-        capacity_start: command.capacity_start,
-        capacity_step: command.capacity_step,
-      } : {}),
-      timeout_ms: command.timeout_ms,
-      input_tokens: command.input_tokens, output_tokens: command.output_tokens,
-    },
-    progress: selectedRung?.progress ?? baseProgress,
-    metrics: selectedRung?.metrics ?? metrics,
-    samples,
-    failures: [],
-    ...(sloAssessment ? { slo_assessment: selectedRung?.slo_assessment ?? sloAssessment } : {}),
-    ...(capacityResult ? { capacity_result: capacityResult } : {}),
-    ...(fixtureHasPhaseThreeConfiguration(command) ? { request_budget: requestBudget } : {}),
-    ...(command.warmup_requests > 0 ? { warmup: fixtureQuickPerformanceTraffic(command, command.warmup_requests, command.warmup_requests) } : {}),
-    ...(command.ramp_duration_ms > 0 ? {
-      ramp: fixtureQuickPerformanceRamp(command, requestBudget.ramp_cap),
-    } : {}),
-    ...(command.slice_duration_ms > 0 ? {
-      time_slices: fixtureQuickPerformanceTimeSlices(command, samples, totalDurationMS),
-    } : {}),
-  }
-}
-
-function fixtureHasPhaseThreeConfiguration(command: QuickPerformanceCommand): boolean {
-  return command.warmup_requests > 0 || command.ramp_duration_ms > 0 || command.slice_duration_ms > 0 || command.capacity_enabled
-}
-
-function fixtureQuickPerformanceBudget(command: QuickPerformanceCommand): NonNullable<QuickPerformanceReport["request_budget"]> {
-  const rampCap = command.ramp_duration_ms === 0
-    ? 0
-    : command.load_mode === "fixed_concurrency"
-      ? command.ramp_request_cap
-      : estimateQuickPerformanceOpenLoopRampRequestCap(
-          command.ramp_duration_ms,
-          command.rate_per_second,
-          command.arrival_pattern,
-        )
-  const measuredCap = command.capacity_enabled
-    ? command.request_count * fixtureQuickPerformanceCapacityTargets(command).length
-    : command.request_count > 0
-      ? command.request_count
-    : command.load_mode === "fixed_concurrency"
-      ? Math.max(1, 10_000 - command.warmup_requests - rampCap)
-      : estimateQuickPerformanceOpenLoopRequestCap(command.duration_ms, command.rate_per_second, command.arrival_pattern)
-  return {
-    limit: 10_000,
-    warmup_cap: command.warmup_requests,
-    ramp_cap: rampCap,
-    measured_cap: measuredCap,
-    total_cap: command.warmup_requests + rampCap + measuredCap,
-  }
-}
-
-function fixtureQuickPerformanceCapacityTargets(command: QuickPerformanceCommand): number[] {
-  if (!command.capacity_enabled) return []
-  const maximum = command.load_mode === "fixed_concurrency" ? command.concurrency : command.rate_per_second
-  const targets: number[] = []
-  for (let index = 0; index <= 20; index += 1) {
-    const candidate = command.capacity_start + index * command.capacity_step
-    if (candidate >= maximum) {
-      targets.push(maximum)
-      break
-    }
-    targets.push(candidate)
-  }
-  return targets
-}
-
-function fixtureQuickPerformanceSLOAssessment(
-  command: QuickPerformanceCommand,
-  samples: QuickPerformanceReport["samples"],
-  totalDurationMS: number,
-): NonNullable<QuickPerformanceReport["slo_assessment"]> {
-  const violations = { transport: 0, ttft: 0, tpot: 0, e2e: 0 }
-  let goodRequests = 0
-  for (const sample of samples) {
-    const transportViolation = !sample.success
-    const ttftViolation = command.slo_ttft_ms > 0 && (sample.ttft_ms <= 0 || sample.ttft_ms > command.slo_ttft_ms)
-    const tpotViolation = command.slo_tpot_ms > 0 && (sample.tpot_ms <= 0 || sample.tpot_ms > command.slo_tpot_ms)
-    const e2eViolation = command.slo_e2e_ms > 0 && (sample.e2e_ms <= 0 || sample.e2e_ms > command.slo_e2e_ms)
-    if (transportViolation) violations.transport += 1
-    if (ttftViolation) violations.ttft += 1
-    if (tpotViolation) violations.tpot += 1
-    if (e2eViolation) violations.e2e += 1
-    if (!transportViolation && !ttftViolation && !tpotViolation && !e2eViolation) goodRequests += 1
-  }
-  const totalRequests = samples.length
-  const goodRequestPercent = totalRequests > 0 ? goodRequests / totalRequests * 100 : 0
-  return {
-    status: goodRequestPercent >= command.slo_target_percent ? "passed" : "failed",
-    thresholds: { ttft_ms: command.slo_ttft_ms, tpot_ms: command.slo_tpot_ms, e2e_ms: command.slo_e2e_ms },
-    target_percent: command.slo_target_percent,
-    total_requests: totalRequests,
-    good_requests: goodRequests,
-    bad_requests: totalRequests - goodRequests,
-    good_request_percent: goodRequestPercent,
-    goodput_qps: totalDurationMS > 0 ? goodRequests / (totalDurationMS / 1_000) : 0,
-    violations,
-  }
-}
-
-function fixtureQuickPerformanceTraffic(
-  command: QuickPerformanceCommand,
-  requestCap: number,
-  completed: number,
-): NonNullable<QuickPerformanceReport["warmup"]> {
-  const configuredInFlight = command.load_mode === "open_loop" ? command.max_in_flight : command.concurrency
-  return {
-    request_cap: requestCap,
-    offered: completed,
-    launched: completed,
-    completed,
-    succeeded: completed,
-    failed: 0,
-    timed_out: 0,
-    rejected: 0,
-    peak_in_flight: Math.min(configuredInFlight, completed),
-    prompt_tokens: completed * command.input_tokens,
-    completion_tokens: completed * command.output_tokens,
-    cached_tokens: 0,
-    send_duration_ms: 100,
-    drain_duration_ms: 0,
-    total_duration_ms: 100,
-    failures: [],
-    stopped: false,
-    capped: false,
-  }
-}
-
-function fixtureQuickPerformanceRamp(
-  command: QuickPerformanceCommand,
-  requestCap: number,
-): NonNullable<QuickPerformanceReport["ramp"]> {
-  return {
-    shape: "linear_staircase",
-    duration_ms: command.ramp_duration_ms,
-    steps: command.load_mode === "fixed_concurrency" ? Math.min(command.concurrency, 10) : 10,
-    ...(command.load_mode === "fixed_concurrency"
-      ? { target_concurrency: command.concurrency }
-      : { target_rate_per_second: command.rate_per_second }),
-    completed_window: true,
-    traffic: {
-      ...fixtureQuickPerformanceTraffic(command, requestCap, requestCap),
-      send_duration_ms: command.ramp_duration_ms,
-      total_duration_ms: command.ramp_duration_ms,
-    },
-  }
-}
-
-function fixtureQuickPerformanceTimeSlices(
-  command: QuickPerformanceCommand,
-  samples: QuickPerformanceReport["samples"],
-  totalDurationMS: number,
-): NonNullable<QuickPerformanceReport["time_slices"]> {
-  type Slice = NonNullable<QuickPerformanceReport["time_slices"]>[number]
-  type Accumulator = {
-    slice: Slice
-    ttfb: number[]
-    ttftAny: number[]
-    ttftVisible: number[]
-    ttst: number[]
-    observedICL: number[]
-    semanticChunkCount: number[]
-    tpot: number[]
-    e2e: number[]
-  }
-  const byIndex = new Map<number, Accumulator>()
-  const get = (offsetMS: number) => {
-    const finalOffsetMS = totalDurationMS - Math.max(Number.EPSILON, Math.abs(totalDurationMS) * Number.EPSILON)
-    const boundedOffset = Math.max(0, Math.min(offsetMS, finalOffsetMS))
-    const sliceIndex = Math.floor(boundedOffset / command.slice_duration_ms)
-    const startMS = sliceIndex * command.slice_duration_ms
-    const nominalEndMS = startMS + command.slice_duration_ms
-    const endMS = Math.min(nominalEndMS, totalDurationMS)
-    let accumulator = byIndex.get(sliceIndex)
-    if (!accumulator) {
-      const emptyLatency = { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
-      const emptyCount = { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
-      accumulator = {
-        slice: {
-          slice_index: sliceIndex,
-          start_ms: startMS,
-          end_ms: endMS,
-          partial: endMS < nominalEndMS,
-          offered: 0,
-          launched: 0,
-          completed: 0,
-          succeeded: 0,
-          failed: 0,
-          rejected: 0,
-          prompt_tokens: 0,
-          completion_tokens: 0,
-          cached_tokens: 0,
-          ttfb: emptyLatency,
-          ttft_any: emptyLatency,
-          ttft_visible: emptyLatency,
-          ttft: emptyLatency,
-          ttst: emptyLatency,
-          observed_icl: emptyLatency,
-          semantic_chunk_count: emptyCount,
-          tpot: emptyLatency,
-          e2e: emptyLatency,
-        },
-        ttfb: [],
-        ttftAny: [],
-        ttftVisible: [],
-        ttst: [],
-        observedICL: [],
-        semanticChunkCount: [],
-        tpot: [],
-        e2e: [],
-      }
-      byIndex.set(sliceIndex, accumulator)
-    }
-    return accumulator
-  }
-  for (const sample of samples) {
-    get(sample.scheduled_offset_ms).slice.offered += 1
-    const launched = get(sample.started_offset_ms)
-    launched.slice.launched += 1
-    if (sample.success) {
-      if (sample.ttfb_ms! > 0) launched.ttfb.push(sample.ttfb_ms!)
-      if (sample.ttft_any_ms! > 0) launched.ttftAny.push(sample.ttft_any_ms!)
-      if (sample.ttft_visible_ms! > 0) launched.ttftVisible.push(sample.ttft_visible_ms!)
-      if (sample.semantic_chunk_count! >= 2) {
-        if (sample.ttst_ms! > 0) launched.ttst.push(sample.ttst_ms!)
-        launched.observedICL.push(sample.observed_icl_ms!)
-      }
-      launched.semanticChunkCount.push(sample.semantic_chunk_count!)
-      if (sample.tpot_ms > 0) launched.tpot.push(sample.tpot_ms)
-      if (sample.e2e_ms > 0) launched.e2e.push(sample.e2e_ms)
-    }
-
-    const completed = get(sample.finished_offset_ms)
-    completed.slice.completed += 1
-    if (sample.success) {
-      completed.slice.succeeded += 1
-      completed.slice.prompt_tokens += sample.prompt_tokens
-      completed.slice.completion_tokens += sample.completion_tokens
-      completed.slice.cached_tokens += sample.cached_tokens
-    } else {
-      completed.slice.failed += 1
-      if (sample.error_code === "scheduler_overload") completed.slice.rejected += 1
-    }
-  }
-  if (totalDurationMS % command.slice_duration_ms !== 0) get(totalDurationMS)
-  return [...byIndex.values()]
-    .sort((left, right) => left.slice.slice_index - right.slice.slice_index)
-    .map((accumulator) => ({
-      ...accumulator.slice,
-      ttfb: fixturePerformanceLatencySlice(accumulator.ttfb),
-      ttft_any: fixturePerformanceLatencySlice(accumulator.ttftAny),
-      ttft_visible: fixturePerformanceLatencySlice(accumulator.ttftVisible),
-      ttft: fixturePerformanceLatencySlice(accumulator.ttftAny),
-      ttst: fixturePerformanceLatencySlice(accumulator.ttst),
-      observed_icl: fixturePerformanceLatencySlice(accumulator.observedICL),
-      semantic_chunk_count: fixturePerformanceCountSlice(accumulator.semanticChunkCount),
-      tpot: fixturePerformanceLatencySlice(accumulator.tpot),
-      e2e: fixturePerformanceLatencySlice(accumulator.e2e),
-    }))
-}
-
-function fixturePerformanceLatencySlice(values: number[]): QuickPerformanceSliceLatency {
-  if (values.length === 0) return { count: 0, p50_ms: 0, p95_ms: 0, p99_ms: 0, average_ms: 0 }
-  const summary = fixturePerformanceSummary(values)
-  return { count: values.length, p50_ms: summary.p50, p95_ms: summary.p95, p99_ms: summary.p99, average_ms: summary.average }
-}
-
-function fixturePerformanceCountSlice(values: number[]): QuickPerformanceSliceCount {
-  if (values.length === 0) return { count: 0, p50: 0, p95: 0, p99: 0, average: 0 }
-  const summary = fixturePerformanceSummary(values)
-  return { count: values.length, p50: summary.p50, p95: summary.p95, p99: summary.p99, average: summary.average }
-}
-
-function fixturePerformanceSummary(values: number[]): { p50: number; p90: number; p95: number; p99: number; average: number } {
-  const sorted = [...values].sort((left, right) => left - right)
-  const percentile = (quantile: number) => {
-    const position = (sorted.length - 1) * quantile
-    const lower = Math.floor(position)
-    const upper = Math.ceil(position)
-    if (lower === upper) return sorted[lower]
-    return sorted[lower] * (upper - position) + sorted[upper] * (position - lower)
-  }
-  return {
-    p50: percentile(0.5),
-    p90: percentile(0.9),
-    p95: percentile(0.95),
-    p99: percentile(0.99),
-    average: sorted.reduce((sum, value) => sum + value, 0) / sorted.length,
-  }
-}
-
-function fixtureQuickPerformanceProgress(command: QuickPerformanceCommand, phase: "sending" | "completed", completed: number): QuickPerformanceProgress {
-  const capacityTargets = fixtureQuickPerformanceCapacityTargets(command)
-  const configuredInFlight = command.load_mode === "open_loop"
-    ? command.max_in_flight
-    : command.capacity_enabled ? capacityTargets[0] : command.concurrency
-  const planned = command.capacity_enabled ? command.request_count : fixtureQuickPerformanceBudget(command).measured_cap
-  const totalDurationMS = phase === "completed" ? Math.max(320, command.duration_ms) : 0
-  return {
-    phase,
-    planned,
-    offered: phase === "completed" ? planned : Math.min(configuredInFlight, planned),
-    launched: phase === "completed" ? planned : Math.min(configuredInFlight, planned),
-    completed,
-    in_flight: phase === "completed" ? 0 : Math.min(configuredInFlight, planned),
-    peak_in_flight: Math.min(configuredInFlight, planned),
-    succeeded: completed,
-    failed: 0,
-    rejected: 0,
-    capped: false,
-    send_duration_ms: totalDurationMS,
-    drain_duration_ms: 0,
-    total_duration_ms: totalDurationMS,
-    ...(command.capacity_enabled ? {
-      capacity_rung_number: 1,
-      capacity_rung_count: capacityTargets.length,
-      capacity_target: capacityTargets[0],
-    } : {}),
-  }
-}
-
 function fixtureReportDetail(summary: ReportSnapshot["reports"][number]): ReportDetail {
  const verification = {status:summary.passed ? "passed" as const : "failed" as const,passed:summary.passed_case_count,failed:summary.failed_case_count,observed:summary.observed_case_count,indeterminate:0}
  return {
   schema_version:1,source:"run",
   report:{id:summary.id,run_id:summary.run_id!,run_status:summary.run_status,generated_at:summary.generated_at,protocol:"openai-chat",
    model:{id:"10000000-0000-4000-8000-000000000001",name:summary.model_name},channel:{id:"10000000-0000-4000-8000-000000000002",name:summary.channel_name},
-   environment:{os:"windows",arch:"amd64",region:"local",network_egress:"direct",app_version:"fixture",engine_version:"go-core"},
+   execution_origin:null,environment:{os:"windows",arch:"amd64",region:"local",network_egress:"direct",app_version:"fixture",engine_version:"go-core"},
    conclusion:{passed:summary.passed,verdict:summary.verdict,issues:[]},sla:{},metrics:{},case_results:[]},
   request_results:[],entries:[{entry_id:"10000000-0000-4000-8000-000000000003",target_kind:"suite",target_id:"10000000-0000-4000-8000-000000000004",key:"fixture-suite",name:"Fixture suite",protocol:"openai-chat",parameters:{},seed:1,warmup_count:0,settings:{},
    load:{mode:"single",concurrency:1,request_count:1,rate_per_second:0,duration_ms:0,request_timeout_ms:60000},status:summary.run_status,
@@ -1410,10 +969,7 @@ function parseSnapshot(value: unknown): WorkspaceSnapshot {
   const planIDs = new Set(plans.map((plan) => plan.id))
   const runIDs = new Set(runs.map((run) => run.id))
   if (planIDs.size !== plans.length) throw new DesktopDataError(tx("desktop:app_invalid_desktop_test_plan_data"))
-  if (
-    runIDs.size !== runs.length ||
-    runs.some((run) => run.source !== "quick_task" && !planIDs.has(run.plan_id))
-  ) {
+  if (runIDs.size !== runs.length) {
     throw new DesktopDataError(tx("desktop:app_invalid_desktop_run_data"))
   }
   if (
@@ -1535,21 +1091,6 @@ function isProtocolError(error: unknown): boolean {
 
 function isDesktopErrorCode(value: string): value is DesktopErrorCode {
   return Object.hasOwn(PUBLIC_ERROR_MESSAGES["zh-CN"], value)
-}
-
-function updateRun(
-  snapshot: WorkspaceSnapshot,
-  runId: string,
-  status: "draining" | "cancelled",
-): WorkspaceSnapshot {
-  let found = false
-  const runs = snapshot.runs.map((run) => {
-    if (run.id !== runId) return run
-    found = true
-    return { ...run, status }
-  })
-  if (!found) throw new DesktopDataError(tx("desktop:app_run_not_found"))
-  return { ...snapshot, runs }
 }
 
 function cloneSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {

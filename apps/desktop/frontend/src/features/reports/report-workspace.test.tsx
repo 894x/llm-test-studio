@@ -7,8 +7,30 @@ import { createAppI18n } from "@/i18n/i18n"
 import { ReportWorkspace } from "./report-workspace"
 import { parseReportDetail, type ReportDetail, type ReportSnapshot } from "./data"
 import type { QuickPerformanceSLOAssessment } from "@/features/quick-test/data"
+import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
 
 describe("ReportWorkspace", () => {
+  it("labels the preparation environment separately from the actual remote execution platform", async () => {
+    const user = userEvent.setup()
+    const detail = protocolReportFixture()
+    detail.report.execution_origin = { kind: "remote", node_id: reportID(20), installation_id: reportID(21),
+      engine_build_id: "a".repeat(64), runner_version: "v-actual-runner", os: "linux", arch: "arm64" }
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><ReportWorkspace
+      snapshot={protocolReportSnapshot(detail)} getDetail={vi.fn(async () => detail)}
+      exportReport={vi.fn()} saveReportExport={vi.fn()} copyReportPNG={vi.fn()}
+    /></I18nextProvider>)
+    await user.click(within(screen.getByRole("table")).getByRole("button"))
+    const inspector = screen.getByRole("complementary", { name: "报告详情" })
+    await waitFor(() => expect(within(inspector).getByRole("region", { name: "实际执行来源" })).toBeVisible())
+    const actual = within(inspector).getByRole("region", { name: "实际执行来源" })
+    expect(actual).toHaveTextContent("远程 Runner")
+    expect(actual).toHaveTextContent("v-actual-runner")
+    expect(actual).toHaveTextContent("linux/arm64")
+    expect(actual).not.toHaveTextContent("windows")
+    expect(inspector).toHaveTextContent("准备环境: windows/amd64")
+    await user.click(within(actual).getByRole("button", { name: "执行身份" }))
+    expect(within(actual).getByText(detail.report.execution_origin.engine_build_id)).toBeVisible()
+  })
   it("loads details only when opened and reuses the sealed report when returning", async () => {
     const user = userEvent.setup()
     const reportID = "77777777-7777-4777-8777-777777777771"
@@ -495,6 +517,7 @@ function quickDetail(reportID: string) {
     source: "quick_performance",
     performance: {
       schema_version: 2,
+      execution_origin: null,
     protocol: "openai-chat" as const,
       report_id: reportID,
       generated_at: "2026-08-31T14:30:00Z",

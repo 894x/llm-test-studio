@@ -1,4 +1,5 @@
-import { protocolReportFixture } from "@/test/protocol-report-fixture"
+import { executionClient, jobFixture, submissionFixture, controlFixture, performanceResultFixture, JOB_ID, JOB_TIME, COMMAND_ID } from "@/test/jobs-fixture"
+import { protocolReportFixture, protocolReportSnapshot, reportID } from "@/test/protocol-report-fixture"
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -20,7 +21,8 @@ import type { WorkspaceSnapshot } from "./features/runs/data"
 import { selectCatalog, type CatalogScope } from "./features/catalog/data"
 import type { ReportSnapshot } from "./features/reports/data"
 import type { ReportGenerationProgress } from "./features/reports/generation-progress"
-import { EMPTY_COMPARISONS } from "./features/comparisons/data"
+import { EMPTY_COMPARISONS, type ComparisonSnapshot } from "./features/comparisons/data"
+import { EMPTY_REMOTE_NODES } from "./features/remote-nodes/data"
 import type { QuickPerformanceReport } from "./features/quick-test/data"
 import { createTaskDraft, decodeTaskDraft, encodeTaskDraft, TASK_DRAFT_KEY } from "./features/quick-test/task-draft"
 import indexHtml from "../index.html?raw"
@@ -38,6 +40,7 @@ function deferred<T>() {
 function desktopClient(): DesktopClient & {
   workspace: WorkspaceSnapshot
 } {
+  let observedJob = jobFixture()
   const client = {
     workspace: structuredClone(FIXTURE_WORKSPACE),
     getWorkspace: vi.fn(async () => structuredClone(client.workspace)),
@@ -56,33 +59,22 @@ function desktopClient(): DesktopClient & {
 		saveReportExport: vi.fn(async () => true),
 		copyReportPNG: vi.fn(async () => undefined),
 		getComparisons: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		startRunTarget: vi.fn(async () => client.workspace.runs[0].id),
-		startQuickTask: vi.fn(async () => client.workspace.runs[0].id),
-		getQuickTask: vi.fn(),
+    ...executionClient(),
+    launchJob: vi.fn<DesktopClient["launchJob"]>(async command => {
+      if (command.kind === "performance") observedJob = jobFixture({ location: command.location })
+      else if (command.kind === "comparison") observedJob = jobFixture({ kind: "comparison", location: command.location,
+        run_ids: FIXTURE_WORKSPACE.runs.slice(0, 2).map(run => run.id), report_ids: [], comparison_id: COMMAND_ID })
+      else observedJob = jobFixture({ kind: "run", location: command.location,
+        run_ids: [FIXTURE_WORKSPACE.runs[0].id], report_ids: [] })
+      return { ...observedJob, execution: null }
+    }),
+    getJob: vi.fn<DesktopClient["getJob"]>(async () => structuredClone(observedJob)),
+    getQuickTask: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined), forgetQuickTaskCredential: vi.fn(async () => undefined),
-    stopSending: vi.fn(async (runId: string) => {
-      client.workspace = {
-        ...client.workspace,
-        runs: client.workspace.runs.map((run) =>
-          run.id === runId ? { ...run, status: "draining" as const } : run,
-        ),
-      }
-      return structuredClone(client.workspace)
-    }),
-    cancelRun: vi.fn(async (runId: string) => {
-      client.workspace = {
-        ...client.workspace,
-        active_run_id: undefined,
-        runs: client.workspace.runs.map((run) =>
-          run.id === runId ? { ...run, status: "cancelled" as const } : run,
-        ),
-      }
-      return structuredClone(client.workspace)
-    }),
-		startComparison: vi.fn(async () => structuredClone(EMPTY_COMPARISONS)),
-		runQuickPerformanceTest: vi.fn(),
+    createLocalFileSelection: vi.fn(), releaseLocalFileSelection: vi.fn(async () => undefined),
 
     ...catalogMutationMocks(),
+    ...remoteNodeMocks(),
   }
   return client
 }
@@ -99,9 +91,21 @@ function catalogMutationMocks() {
   }
 }
 
+function remoteNodeMocks() {
+  return {
+    getRemoteNodes: vi.fn(async () => structuredClone(EMPTY_REMOTE_NODES)),
+    saveRemoteNode: vi.fn(async () => undefined), refreshRemoteNode: vi.fn(async () => undefined),
+    confirmRemoteNodeHostKey: vi.fn(async () => undefined), selectDefaultExecution: vi.fn(async () => undefined),
+    retryRemoteInstallation: vi.fn(async () => undefined), removeRemoteNode: vi.fn(async () => undefined),
+    startRemoteNodeUpgrade: vi.fn(), getRemoteNodeUpgrade: vi.fn(async () => null),
+    retryRemoteNodeUpgrade: vi.fn(), recoverRemoteNodeUpgrade: vi.fn(),
+  }
+}
+
 function archivedPerformanceReport(reportID: string): QuickPerformanceReport {
   return {
     schema_version: 2,
+    execution_origin: null,
     protocol: "openai-chat" as const,
     report_id: reportID,
     generated_at: "2026-08-31T14:30:00Z",
@@ -148,6 +152,144 @@ describe("desktop run workspace", () => {
     })
     window.history.replaceState(null, "", "#runs")
     delete (window as Window & { runtime?: unknown }).runtime
+  })
+
+  it("recovers the submitted Job from persisted queries after remount without relaunching", async () => {
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const pending = jobFixture({ submission: submissionFixture({ delivery: "pending", observation: "unreachable", confirmation: null }), execution: null })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [pending], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(pending)
+    const first = render(<App client={client} />)
+    await user.click(await screen.findByRole("button", { name: "任务" }))
+    expect(await screen.findByRole("region", { name: "任务详情" })).toHaveTextContent(JOB_ID)
+    first.unmount()
+    render(<App client={client} />)
+    await user.click(await screen.findByRole("button", { name: "任务" }))
+    const details = await screen.findByRole("region", { name: "任务详情" })
+    expect(details).toHaveTextContent(JOB_ID)
+    expect(details).toHaveTextContent("test-current")
+    expect(details).toHaveTextContent("已投递，等待确认")
+    expect(client.getJobs).toHaveBeenCalledWith("", 25)
+    expect(client.getJob).toHaveBeenCalledWith(JOB_ID)
+    expect(client.launchJob).not.toHaveBeenCalled()
+    expect(client.controlJob).not.toHaveBeenCalled()
+  })
+
+  it("loads Job report links on demand without reading unrelated workspace history", async () => {
+    window.history.replaceState(null, "", "#catalog")
+    const user = userEvent.setup()
+    const client = desktopClient()
+    const summary = FIXTURE_REPORTS.reports[0]
+    const job = jobFixture({ kind: "run", run_ids: [summary.run_id!], report_ids: [summary.id] })
+    const detail = protocolReportFixture()
+    detail.report.id = summary.id
+    detail.report.run_id = summary.run_id!
+    vi.mocked(client.getReportDetail).mockResolvedValue(detail)
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(job)
+
+    render(<App client={client} />)
+    await screen.findByRole("heading", { name: "模型与渠道" })
+    expect(client.getReports).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "任务" }))
+    expect(await screen.findByRole("region", { name: "任务详情" })).toHaveTextContent(JOB_ID)
+    expect(client.getWorkspace).not.toHaveBeenCalled()
+    expect(client.getReports).toHaveBeenCalled()
+    expect(client.getComparisons).not.toHaveBeenCalled()
+    expect(client.getCatalog).toHaveBeenCalledExactlyOnceWith("connections")
+    await user.click(await screen.findByRole("button", { name: "打开已同步报告" }))
+    await screen.findByRole("table", { name: "执行项用例结果" })
+    expect(window.location.hash).toBe("#reports")
+    expect(client.getReportDetail).toHaveBeenCalledExactlyOnceWith(summary.id)
+  })
+
+  it("polls a shared comparison missing from the first reads and opens its synchronized reports", async () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, "", "#reports")
+    const client = desktopClient()
+    client.workspace = { ...client.workspace, active_run_id: undefined, runs: [] }
+    const left = protocolReportFixture()
+    left.report.channel.name = "共享渠道 A"
+    const right = protocolReportFixture("failed")
+    right.report.id = reportID(20)
+    right.report.run_id = reportID(21)
+    right.report.channel = { id: reportID(22), name: "共享渠道 B" }
+    const reports = { schema_version: 1 as const, reports: [
+      ...protocolReportSnapshot(left).reports, ...protocolReportSnapshot(right).reports,
+    ] }
+    const comparison: ComparisonSnapshot = { schema_version: 1, comparisons: [{
+      id: COMMAND_ID, created_at: JOB_TIME, status: "completed", plan_id: reportID(31),
+      plan_name: "共享节点渠道一致性", model_id: left.report.model.id, model_name: left.report.model.name,
+      channels: [left, right].map(detail => ({ channel_id: detail.report.channel.id, channel_name: detail.report.channel.name,
+        run_id: detail.report.run_id, run_status: detail.report.run_status, report_ready: true,
+        passed: detail.report.conclusion.passed, verdict: detail.report.conclusion.verdict, metrics: {} })),
+    }] }
+    const shared = jobFixture({ kind: "comparison", submission: null,
+      location: { kind: "remote", configuration_id: reportID(32) }, comparison_id: COMMAND_ID,
+      run_ids: [left.report.run_id, right.report.run_id], report_ids: [left.report.id, right.report.id],
+      execution: { ...jobFixture().execution!, status: "completed" } })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [shared], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(shared)
+    vi.mocked(client.getComparisons).mockResolvedValueOnce(EMPTY_COMPARISONS)
+      .mockResolvedValueOnce(EMPTY_COMPARISONS).mockResolvedValue(comparison)
+    vi.mocked(client.getReports).mockResolvedValue(reports)
+    vi.mocked(client.getReportDetail).mockImplementation(async id => id === left.report.id ? left : right)
+
+    render(<App client={client} />)
+    await act(async () => { await vi.dynamicImportSettled() })
+    expect(client.getComparisons).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "查看渠道对比记录" }))
+    await act(async () => {})
+    expect(client.getComparisons).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "任务" }))
+    await act(async () => {})
+    expect(screen.getByRole("region", { name: "任务详情" })).toHaveTextContent("共享节点任务")
+    expect(client.getComparisons).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+    await act(async () => {})
+    expect(screen.queryByRole("button", { name: "查看渠道对比报告：test-model" })).not.toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(client.getComparisons).toHaveBeenCalledTimes(3)
+    const open = screen.getByRole("button", { name: "查看渠道对比报告：test-model" })
+    expect(open).toBeEnabled()
+    fireEvent.click(open)
+    await act(async () => {})
+    const table = screen.getByRole("table", { name: "渠道对比用例结果" })
+    expect(table).toHaveTextContent("Reject invalid parameter")
+    expect(table).toHaveTextContent("共享渠道 A")
+    expect(table).toHaveTextContent("共享渠道 B")
+    expect(client.getReportDetail).toHaveBeenCalledWith(left.report.id)
+    expect(client.getReportDetail).toHaveBeenCalledWith(right.report.id)
+    expect(client.launchJob).not.toHaveBeenCalled()
+    expect(client.controlJob).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+    expect(client.getComparisons).toHaveBeenCalledTimes(3)
+  })
+
+  it("does not poll hidden comparison history after inspecting a completed shared Job", async () => {
+    vi.useFakeTimers()
+    const client = desktopClient()
+    client.workspace = { ...client.workspace, active_run_id: undefined, runs: [] }
+    const shared = jobFixture({ kind: "comparison", submission: null,
+      location: { kind: "remote", configuration_id: reportID(32) },
+      comparison_id: COMMAND_ID, run_ids: FIXTURE_WORKSPACE.runs.slice(0, 2).map(run => run.id), report_ids: [],
+      execution: { ...jobFixture().execution!, status: "completed" } })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [shared], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(shared)
+
+    render(<App client={client} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("button", { name: "任务" }))
+    await act(async () => {})
+    expect(screen.getByRole("region", { name: "任务详情" })).toHaveTextContent("已完成")
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+    await act(async () => {})
+    const readsAfterClose = vi.mocked(client.getWorkspace).mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(client.getWorkspace).toHaveBeenCalledTimes(readsAfterClose)
+    expect(client.getComparisons).not.toHaveBeenCalled()
   })
 
   it("opens on the compact run workspace instead of a dashboard", async () => {
@@ -216,9 +358,9 @@ describe("desktop run workspace", () => {
 		await user.click(screen.getByRole("checkbox", { name: /阿里云备用渠道/ }))
 		await user.click(screen.getByRole("button", { name: "对比 2 个渠道" }))
 
-		await waitFor(() => expect(client.startComparison).toHaveBeenCalledWith({
+		await waitFor(() => expect(client.launchJob).toHaveBeenCalledWith(launchEnvelope("comparison", {
 			plan_id: plan.id, model_id: model.id, channel_ids: [catalog.channels[0].id, secondChannel.id],
-		}))
+		})))
 	})
 
 	it("identifies the comparison selection when starting it fails", async () => {
@@ -234,7 +376,7 @@ describe("desktop run workspace", () => {
 			channel_id: secondChannel.id, model_id: model.id, upstream_model_name: model.name, protocols: ["openai-chat"],
 		})
 		vi.mocked(client.getCatalog).mockResolvedValue(catalog)
-		vi.mocked(client.startComparison).mockRejectedValueOnce(
+		vi.mocked(client.launchJob).mockRejectedValueOnce(
 			new DesktopClientError("comparison_not_ready"),
 		)
 
@@ -437,7 +579,7 @@ describe("desktop run workspace", () => {
     expect(await screen.findByRole("table", { name: "执行项用例结果" })).toHaveTextContent("Reject invalid parameter")
     expect(client.getReportDetail).toHaveBeenCalledExactlyOnceWith(summary.id)
     expect(client.getQuickTask).not.toHaveBeenCalled()
-    expect(client.startQuickTask).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
   })
 
 	it("shows request-level report detail and all Go export actions", async () => {
@@ -486,7 +628,9 @@ describe("desktop run workspace", () => {
 		vi.mocked(client.getReports)
 			.mockResolvedValueOnce(structuredClone(FIXTURE_REPORTS))
 			.mockResolvedValue(structuredClone(updatedReports))
-		vi.mocked(client.runQuickPerformanceTest).mockResolvedValue(performance)
+		vi.mocked(client.launchJob).mockResolvedValue(jobFixture({ execution: null }))
+    vi.mocked(client.getJob).mockResolvedValue(completedJob())
+    vi.mocked(client.getJobPerformanceResult).mockResolvedValue(performanceResultFixture(performance))
 		vi.mocked(client.getReportDetail).mockResolvedValue({ schema_version: 1, source: "quick_performance", performance })
 
 		render(<App client={client} />)
@@ -498,7 +642,8 @@ describe("desktop run workspace", () => {
 		const panel = screen.getByRole("region", { name: "快速性能测试" })
 		await user.click(within(panel).getByRole("button", { name: "开始性能测试" }))
 
-		await waitFor(() => expect(client.getReports).toHaveBeenCalledTimes(2))
+		await waitFor(() => expect(vi.mocked(client.getReports).mock.calls.length).toBeGreaterThanOrEqual(2))
+		await user.click(await screen.findByRole("button", { name: "关闭" }))
 		await user.click(await within(panel).findByRole("button", { name: "查看正式报告" }))
 		expect(window.location.hash).toBe("#reports")
 		expect(await screen.findByRole("region", { name: "归档性能报告" })).toHaveTextContent("1 / 1")
@@ -916,18 +1061,18 @@ describe("desktop run workspace", () => {
     fireEvent.keyUp(radios[1], { key: "ArrowDown" })
 
     await user.click(within(dialog).getByRole("button", { name: "开始运行" }))
-		expect(client.startRunTarget).toHaveBeenCalledWith({
+		expect(client.launchJob).toHaveBeenCalledWith(launchEnvelope("plan", {
 			plan_id: FIXTURE_WORKSPACE.plans[1].id,
 			model_id: FIXTURE_CATALOG.models[0].id,
 			channel_id: FIXTURE_CATALOG.channels[0].id,
     case_concurrency: 4,
-		})
+		}))
   })
 
   it("identifies the selected plan when creating a run fails", async () => {
     const user = userEvent.setup()
     const client = desktopClient()
-		vi.mocked(client.startRunTarget).mockRejectedValueOnce(
+		vi.mocked(client.launchJob).mockRejectedValueOnce(
       new DesktopClientError("run_commands_unavailable"),
     )
     render(<App client={client} />)
@@ -959,20 +1104,24 @@ describe("desktop run workspace", () => {
     )).toBeInTheDocument()
   })
 
-  it("treats stop-sending and cancel as separate lifecycle actions", async () => {
+  it.each(["stop_sending", "cancel"] as const)("persists a %s command without predicting execution confirmation", async (kind) => {
     const user = userEvent.setup()
     const client = desktopClient()
+    const job = jobFixture({ kind: "run", run_ids: [FIXTURE_WORKSPACE.active_run_id!], report_ids: [] })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(job)
+    vi.mocked(client.controlJob).mockImplementation(async command => {
+      const pending = controlFixture({ kind: command.kind })
+      vi.mocked(client.getJobControls).mockResolvedValue({ schema_version: 1, job_id: JOB_ID, commands: [pending], next_cursor: "", has_more: false })
+      return pending
+    })
     render(<App client={client} />)
-
-    expect(await screen.findByText("发送中", { selector: "[data-task-state]" })).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "停止发送" }))
-    expect(screen.getByText("排空中", { selector: "[data-task-state]" })).toBeInTheDocument()
-    expect(client.stopSending).toHaveBeenCalledWith(FIXTURE_WORKSPACE.active_run_id)
-    expect(screen.getByRole("button", { name: "取消运行" })).toBeEnabled()
-
-    await user.click(screen.getByRole("button", { name: "取消运行" }))
-    expect(client.cancelRun).toHaveBeenCalledWith(FIXTURE_WORKSPACE.active_run_id)
-    expect(screen.getByText("无活动运行")).toBeInTheDocument()
+    await user.click(await screen.findByRole("button", { name: kind === "stop_sending" ? "停止发送" : "取消运行" }))
+    await waitFor(() => expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind, expected_revision: 1 }))
+    expect(client.workspace.runs[0].status).toBe("running")
+    expect(client.workspace.active_run_id).toBe(FIXTURE_WORKSPACE.active_run_id)
+    expect(await screen.findByText(COMMAND_ID)).toBeInTheDocument()
+    expect(client.launchJob).not.toHaveBeenCalled()
   })
 
   it("persists only the versioned theme preference", async () => {
@@ -1117,17 +1266,13 @@ describe("desktop run workspace", () => {
 			saveReportExport: vi.fn(),
 			copyReportPNG: vi.fn(),
 			getComparisons: vi.fn(),
-			startRunTarget: vi.fn(),
-			startQuickTask: vi.fn(),
 			getQuickTask: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined), forgetQuickTaskCredential: vi.fn(async () => undefined),
-      stopSending: vi.fn(),
-      cancelRun: vi.fn(),
-			startComparison: vi.fn(),
+    createLocalFileSelection: vi.fn(), releaseLocalFileSelection: vi.fn(async () => undefined),
 
-			runQuickPerformanceTest: vi.fn(),
-
+      ...executionClient(),
       ...catalogMutationMocks(),
+      ...remoteNodeMocks(),
     }
 
     render(<App client={client} />)
@@ -1286,7 +1431,7 @@ describe("desktop run workspace", () => {
     vi.mocked(client.subscribeReportGeneration).mockImplementation((callback) => { receive = callback; return () => {} })
     const terminal = { ...client.workspace, active_run_id: undefined, runs: client.workspace.runs.map((run) => ({ ...run, status: "completed" as const })) }
     const waitingReports = { ...FIXTURE_REPORTS, reports: FIXTURE_REPORTS.reports.filter((report) => report.run_id !== runID) }
-    const readyReports = { ...waitingReports, reports: [...waitingReports.reports, ...client.workspace.runs.map((run) => ({ ...FIXTURE_REPORTS.reports[0], run_id: run.id }))] }
+    const readyReports = { ...waitingReports, reports: [...waitingReports.reports, ...client.workspace.runs.map((run, index) => ({ ...FIXTURE_REPORTS.reports[0], id: reportID(100 + index), run_id: run.id }))] }
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(client.workspace).mockResolvedValue(terminal)
     vi.mocked(client.getReports).mockResolvedValue(readyReports)
     render(<App client={client} />)
@@ -1304,21 +1449,26 @@ describe("desktop run workspace", () => {
     expect(client.getReports).toHaveBeenCalledTimes(1)
   })
 
-  it("does not let an older progress response replace a completed cancel command", async () => {
+  it("keeps pending cancellation separate from a slow workspace observation", async () => {
     vi.useFakeTimers()
     const client = desktopClient()
     const oldWorkspace = structuredClone(client.workspace)
     const progress = deferred<WorkspaceSnapshot>()
+    const job = jobFixture({ kind: "run", run_ids: [FIXTURE_WORKSPACE.active_run_id!], report_ids: [] })
+    vi.mocked(client.getJobs).mockResolvedValue({ schema_version: 1, jobs: [job], next_cursor: "", has_more: false })
+    vi.mocked(client.getJob).mockResolvedValue(job)
+    vi.mocked(client.controlJob).mockResolvedValue(controlFixture({ kind: "cancel" }))
     vi.mocked(client.getWorkspace).mockResolvedValueOnce(oldWorkspace).mockReturnValueOnce(progress.promise)
     render(<App client={client} />)
     await act(async () => {})
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
     fireEvent.click(screen.getByRole("button", { name: "取消运行" }))
     await act(async () => {})
-    expect(screen.getByText("无活动运行")).toBeInTheDocument()
+    expect(client.controlJob).toHaveBeenCalledExactlyOnceWith({ job_id: JOB_ID, kind: "cancel", expected_revision: 1 })
+    expect(client.workspace.active_run_id).toBe(oldWorkspace.active_run_id)
     await act(async () => { progress.resolve(oldWorkspace) })
-    expect(screen.getByText("无活动运行")).toBeInTheDocument()
-    expect(client.getWorkspace).toHaveBeenCalledTimes(2)
+    expect(client.workspace.active_run_id).toBe(oldWorkspace.active_run_id)
+    expect(client.getWorkspace).toHaveBeenCalledTimes(3)
   })
 
   it("keeps long generation visible and exposes failure without repeatedly reading reports", async () => {
@@ -1384,12 +1534,10 @@ describe("desktop run workspace", () => {
     const rendered = render(<App client={client} />)
     await user.click(await screen.findByRole("combobox", { name: "测试任务" }))
     await user.click(screen.getByRole("option", { name: "OpenAI Chat 连通性测试 · 1 个用例" }))
-    await user.type(await screen.findByLabelText("接口地址"), "https://example.test")
-    await user.type(screen.getByLabelText("API Key"), "test-private-key")
-    await user.type(screen.getByLabelText("模型 ID"), "draft-model")
-    await user.keyboard("{Escape}")
-    await user.clear(screen.getByLabelText("测试消息"))
-    await user.type(screen.getByLabelText("测试消息"), "draft prompt")
+    fireEvent.change(await screen.findByLabelText("接口地址"), { target: { value: "https://example.test" } })
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "test-private-key" } })
+    fireEvent.change(screen.getByLabelText("模型 ID"), { target: { value: "draft-model" } })
+    fireEvent.change(screen.getByLabelText("测试消息"), { target: { value: "draft prompt" } })
     await user.click(screen.getByRole("button", { name: "模型与渠道" }))
     await screen.findByRole("heading", { name: "模型与渠道" })
     await user.click(screen.getByRole("button", { name: "快速测试" }))
@@ -1400,7 +1548,7 @@ describe("desktop run workspace", () => {
     render(<App client={client} />)
     expect(await screen.findByLabelText("测试消息")).toHaveValue("draft prompt")
     expect(screen.getByLabelText("API Key")).toHaveValue("")
-    expect(client.startQuickTask).not.toHaveBeenCalled()
+    expect(client.launchJob).not.toHaveBeenCalled()
   })
 
   it("uses the Core conclusion and never infers pass from request counts", async () => {
@@ -1573,3 +1721,13 @@ describe("desktop run workspace", () => {
   })
 
 })
+
+function launchEnvelope(kind: string, payload: unknown) {
+  return { location: { kind: "local", configuration_id: "" }, kind, plan: null, quick_task: null,
+    performance: null, comparison: null, [kind]: payload }
+}
+function completedJob() {
+  const job = jobFixture()
+  return jobFixture({ submission: submissionFixture({ confirmation: { status: "completed", revision: 2, accepted_at: JOB_TIME } }),
+    execution: { ...job.execution!, status: "completed", revision: 2, latest_sequence: 3 }, performance_result_ready: true })
+}

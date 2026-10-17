@@ -140,8 +140,14 @@ func TestProductionInitializerMigratesAndOpensReadModelsOnlyUnderInjectedRoot(t 
 	if isNilInterface(dependencies.comparisons) {
 		t.Fatal("production initializer did not wire channel comparisons")
 	}
-	if isNilInterface(dependencies.quickTests) {
+	if isNilInterface(dependencies.performancePreparation) {
 		t.Fatal("production initializer did not wire quick tests")
+	}
+	missingCommands := isNilInterface(dependencies.launcher) || isNilInterface(dependencies.controls)
+	missingQueries := isNilInterface(dependencies.jobQuery) || isNilInterface(dependencies.controlRecords)
+	missingWorkers := dependencies.confirmations == nil || dependencies.controlDelivery == nil
+	if dependencies.jobs == nil || missingCommands || missingQueries || missingWorkers {
+		t.Fatal("production initializer did not wire the current job boundary and its durable workers")
 	}
 
 	directory := filepath.Join(configurationRoot, "llm-test-studio")
@@ -647,9 +653,11 @@ func TestProductionCopiedChannelMetadataCannotDeleteAnotherAuthoredRootSecret(t 
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 	baseStore := credentials.NewMemoryStore()
+	configurationRoots := map[string]string{rootA: filepath.Join(configurationRoot, "a"),
+		rootB: filepath.Join(configurationRoot, "b")}
 	optionsForRoot := func(root string) productionOptions {
 		return productionOptions{
-			userConfigDir:   func() (string, error) { return configurationRoot, nil },
+			userConfigDir:   func() (string, error) { return configurationRoots[root], nil },
 			appVersion:      "desktop-test",
 			caseBundle:      fstest.MapFS{},
 			suiteBundle:     fstest.MapFS{},

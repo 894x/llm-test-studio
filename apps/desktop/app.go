@@ -10,26 +10,31 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
-	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/application/jobfiles"
+	"github.com/894x/llm-test-studio/internal/application/jobs"
+	"github.com/894x/llm-test-studio/internal/application/remotenodes"
+	"github.com/894x/llm-test-studio/internal/application/remotesync"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/workspace"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/runnerinstall"
 )
 
 var (
-	ErrDesktopNotStarted         = errors.New("desktop application has not started")
-	ErrDesktopStartup            = errors.New("desktop application startup failed")
-	ErrDesktopStopped            = errors.New("desktop application is shutting down or stopped")
-	ErrWorkspaceUnavailable      = errors.New("workspace query is unavailable")
-	ErrCatalogUnavailable        = errors.New("catalog query is unavailable")
-	ErrReportingUnavailable      = errors.New("reporting query is unavailable")
-	ErrRunCommandsUnavailable    = errors.New("run commands are unavailable")
-	ErrComparisonUnavailable     = errors.New("comparison service is unavailable")
-	ErrDiagnosticsUnavailable    = errors.New("desktop diagnostics are unavailable")
-	ErrQuickTestUnavailable      = errors.New("quick test service is unavailable")
-	ErrCatalogSavedRefreshFailed = errors.New("catalog mutation was saved but the refreshed snapshot is unavailable")
-	ErrInvalidIdentifier         = errors.New("desktop command identifier is invalid")
+	ErrDesktopNotStarted           = errors.New("desktop application has not started")
+	ErrDesktopStartup              = errors.New("desktop application startup failed")
+	ErrDesktopStopped              = errors.New("desktop application is shutting down or stopped")
+	ErrWorkspaceUnavailable        = errors.New("workspace query is unavailable")
+	ErrCatalogUnavailable          = errors.New("catalog query is unavailable")
+	ErrReportingUnavailable        = errors.New("reporting query is unavailable")
+	ErrQuickTaskServiceUnavailable = errors.New("run commands are unavailable")
+	ErrComparisonUnavailable       = errors.New("comparison service is unavailable")
+	ErrDiagnosticsUnavailable      = errors.New("desktop diagnostics are unavailable")
+	ErrQuickTestUnavailable        = errors.New("quick test service is unavailable")
+	ErrRemoteNodesUnavailable      = errors.New("remote node manager is unavailable")
+	ErrCatalogSavedRefreshFailed   = errors.New("catalog mutation was saved but the refreshed snapshot is unavailable")
+	ErrInvalidIdentifier           = errors.New("desktop command identifier is invalid")
 )
 
 const (
@@ -59,6 +64,18 @@ const (
 	desktopCodeComparisonNotReady        = "comparison_not_ready"
 	desktopCodeComparisonTargetUnmapped  = "comparison_target_unmapped"
 	desktopCodeComparisonChannelNotReady = "comparison_channel_not_ready"
+	desktopCodeRemoteNodesMissing        = "remote_nodes_unavailable"
+	desktopCodeRemoteNodeInvalid         = "remote_node_invalid"
+	desktopCodeRemoteNodeConflict        = "remote_node_revision_conflict"
+	desktopCodeRemoteNodeNotFound        = "remote_node_not_found"
+	desktopCodeRemoteNodeRePair          = "remote_node_re_pair_required"
+	desktopCodeRemoteNodeReferenced      = "remote_node_still_referenced"
+	desktopCodeRemoteNodeUsageUnknown    = "remote_node_usage_unavailable"
+	desktopCodeRemoteNodeCredential      = "remote_node_credential_unavailable"
+	desktopCodeRemoteNodeBusy            = "remote_node_busy"
+	desktopCodeRemoteNodeUnconfirmed     = "remote_node_commit_unconfirmed"
+	desktopCodeRemoteNodeUpgrade         = "remote_node_upgrade_required"
+	desktopCodeRemoteNodeIdentity        = "remote_node_identity_conflict"
 )
 
 // WorkspaceQuery is the presentation-neutral Application query exposed to
@@ -118,41 +135,37 @@ type LocalizedReportExporter interface {
 	ExportLocalized(context.Context, string, reporting.ExportFormat, string, string) (reporting.ExportedDocument, error)
 }
 
-// RunCommands is the Application command boundary used by the desktop
-// adapter. A command mutates Core state; the adapter then obtains the
-// authoritative state through WorkspaceQuery.
-type RunCommands interface {
-	StartTarget(context.Context, runs.StartCommand) (string, error)
-	StartQuickTask(context.Context, runs.QuickTaskCommand) (string, error)
-	StopSending(context.Context, string) error
-	CancelRun(context.Context, string) error
+// QuickTaskService retains saved-task queries and credential management.
+type QuickTaskService interface {
+	QuickTaskHistoryQuery
+	QuickTaskCredentialCommands
 }
 
 type ComparisonService interface {
-	Start(context.Context, comparisons.StartCommand) (string, error)
 	Snapshot(context.Context) (comparisons.Snapshot, error)
-}
-
-type QuickPerformanceRunner interface {
-	RunPerformance(context.Context, quicktest.PerformanceCommand) (quicktest.PerformanceReport, error)
-}
-
-type QuickPerformanceProgressRunner interface {
-	RunPerformanceWithProgress(context.Context, quicktest.PerformanceCommand, func(quicktest.PerformanceProgress)) (quicktest.PerformanceReport, error)
 }
 
 type desktopEventEmitter func(context.Context, string, ...interface{})
 
 type desktopDependencies struct {
-	query            WorkspaceQuery
-	catalog          CatalogQuery
-	catalogCommands  CatalogCommands
-	reports          ReportingQuery
-	reportGeneration ReportGenerationSource
-	commands         RunCommands
-	comparisons      ComparisonService
-	quickTests       QuickPerformanceRunner
-	close            func() error
+	query                  WorkspaceQuery
+	catalog                CatalogQuery
+	catalogCommands        CatalogCommands
+	reports                ReportingQuery
+	reportGeneration       ReportGenerationSource
+	commands               QuickTaskService
+	comparisons            ComparisonService
+	performancePreparation jobs.PerformancePreparation
+	jobQuery               jobs.Query
+	controlRecords         jobs.ControlRepository
+	remoteNodes            *remotenodes.Manager
+	remoteSync             *remotesync.Watcher
+	jobs                   *jobs.Coordinator
+	launcher               JobLauncher
+	controls               JobController
+	confirmations          *jobs.ConfirmationWatcher
+	controlDelivery        *jobs.ControlDeliveryWatcher
+	close                  func() error
 }
 
 type desktopInitializer func(context.Context) (desktopDependencies, error)
@@ -161,6 +174,7 @@ type desktopInitializer func(context.Context) (desktopDependencies, error)
 // delegation; business decisions remain in Application services.
 type DesktopApp struct {
 	lifecycleMu              sync.Mutex
+	executionLocationMu      sync.RWMutex
 	mu                       sync.Mutex
 	drained                  *sync.Cond
 	startupDone              *sync.Cond
@@ -177,9 +191,17 @@ type DesktopApp struct {
 	catalogCommands          CatalogCommands
 	reports                  ReportingQuery
 	reportGeneration         ReportGenerationSource
-	commands                 RunCommands
+	commands                 QuickTaskService
 	comparisons              ComparisonService
-	quickTests               QuickPerformanceRunner
+	launcher                 JobLauncher
+	jobQuery                 jobs.Query
+	controls                 JobController
+	controlRecords           jobs.ControlRepository
+	controlDelivery          *jobs.ControlDeliveryWatcher
+	remoteNodes              *remotenodes.Manager
+	remoteSync               *remotesync.Watcher
+	jobs                     *jobs.Coordinator
+	confirmations            *jobs.ConfirmationWatcher
 	close                    func() error
 	startupErr               error
 	shutdownErr              error
@@ -190,6 +212,7 @@ type DesktopApp struct {
 	emitEvent                desktopEventEmitter
 	saveReportExport         reportExportSaver
 	copyReportPNG            reportPNGClipboardWriter
+	fileSelections           *jobfiles.Registry
 }
 
 // DesktopDiagnosticsSnapshot is an allow-listed operator view. The filesystem
@@ -221,7 +244,11 @@ type desktopRequirements struct {
 	reports         bool
 	commands        bool
 	comparisons     bool
-	quickTests      bool
+	launcher        bool
+	jobQuery        bool
+	controls        bool
+	controlRecords  bool
+	remoteNodes     bool
 }
 
 type desktopLease struct {
@@ -230,9 +257,13 @@ type desktopLease struct {
 	catalog         CatalogQuery
 	catalogCommands CatalogCommands
 	reports         ReportingQuery
-	commands        RunCommands
+	commands        QuickTaskService
 	comparisons     ComparisonService
-	quickTests      QuickPerformanceRunner
+	launcher        JobLauncher
+	jobQuery        jobs.Query
+	controls        JobController
+	controlRecords  jobs.ControlRepository
+	remoteNodes     *remotenodes.Manager
 	release         func()
 }
 
@@ -250,7 +281,7 @@ func (err DesktopBindingError) Error() string {
 	return desktopCodeOperationFailed
 }
 
-func NewDesktopApp(query WorkspaceQuery, commands RunCommands) *DesktopApp {
+func NewDesktopApp(query WorkspaceQuery, commands QuickTaskService) *DesktopApp {
 	return newDesktopApp(func(context.Context) (desktopDependencies, error) {
 		return desktopDependencies{query: query, commands: commands}, nil
 	})
@@ -261,6 +292,7 @@ func newDesktopApp(initialize desktopInitializer) *DesktopApp {
 		initialize:       initialize,
 		saveReportExport: saveReportExportToFile,
 		copyReportPNG:    writePNGToClipboard,
+		fileSelections:   jobfiles.NewRegistry(),
 	}
 	app.drained = sync.NewCond(&app.mu)
 	app.startupDone = sync.NewCond(&app.mu)
@@ -437,7 +469,15 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.reportGeneration = dependencies.reportGeneration
 	app.commands = dependencies.commands
 	app.comparisons = dependencies.comparisons
-	app.quickTests = dependencies.quickTests
+	app.launcher = dependencies.launcher
+	app.jobQuery = dependencies.jobQuery
+	app.controls = dependencies.controls
+	app.controlRecords = dependencies.controlRecords
+	app.controlDelivery = dependencies.controlDelivery
+	app.remoteNodes = dependencies.remoteNodes
+	app.remoteSync = dependencies.remoteSync
+	app.jobs = dependencies.jobs
+	app.confirmations = dependencies.confirmations
 	app.close = dependencies.close
 	if dependencies.reportGeneration != nil {
 		unsubscribe := dependencies.reportGeneration.SubscribeProgress(func(progress reporting.GenerationProgress) {
@@ -764,88 +804,6 @@ func (app *DesktopApp) GetComparisons() (comparisons.Snapshot, error) {
 	return snapshot, nil
 }
 
-func (app *DesktopApp) StartComparison(command comparisons.StartCommand) (comparisons.Snapshot, error) {
-	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || len(command.ChannelIDs) < 2 {
-		return comparisons.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
-	}
-	for _, id := range command.ChannelIDs {
-		if !domain.IsUUID(id) {
-			return comparisons.Snapshot{}, app.safeBindingError(ErrInvalidIdentifier)
-		}
-	}
-	lease, err := app.acquire(desktopRequirements{comparisons: true})
-	if err != nil {
-		return comparisons.Snapshot{}, app.safeBindingError(err)
-	}
-	defer lease.release()
-	if _, err := lease.comparisons.Start(lease.ctx, command); err != nil {
-		return comparisons.Snapshot{}, app.safeBindingError(fmt.Errorf("start comparison: %w", err))
-	}
-	snapshot, err := lease.comparisons.Snapshot(lease.ctx)
-	if err != nil {
-		return comparisons.Snapshot{}, app.safeBindingError(fmt.Errorf("query comparisons after start: %w", err))
-	}
-	return snapshot, nil
-}
-
-func (app *DesktopApp) StartRunTarget(command runs.StartCommand) (string, error) {
-	if !domain.IsUUID(command.PlanID) || !domain.IsUUID(command.ModelID) || !domain.IsUUID(command.ChannelID) {
-		return "", app.safeBindingError(ErrInvalidIdentifier)
-	}
-	lease, err := app.acquire(desktopRequirements{commands: true})
-	if err != nil {
-		return "", app.safeBindingError(err)
-	}
-	defer lease.release()
-	runID, err := lease.commands.StartTarget(lease.ctx, command)
-	if err != nil {
-		return "", app.safeBindingError(fmt.Errorf("start run target: %w", err))
-	}
-	if !domain.IsUUID(runID) {
-		return "", app.safeBindingError(fmt.Errorf("start run target: %w", ErrInvalidIdentifier))
-	}
-	return runID, nil
-}
-
-func (app *DesktopApp) StopSending(runID string) (workspace.Snapshot, error) {
-	snapshot, err := app.executeRunCommand("stop sending", runID, func(ctx context.Context, commands RunCommands) error {
-		return commands.StopSending(ctx, runID)
-	})
-	if err != nil {
-		return workspace.Snapshot{}, app.safeBindingError(err)
-	}
-	return snapshot, nil
-}
-
-func (app *DesktopApp) CancelRun(runID string) (workspace.Snapshot, error) {
-	snapshot, err := app.executeRunCommand("cancel run", runID, func(ctx context.Context, commands RunCommands) error {
-		return commands.CancelRun(ctx, runID)
-	})
-	if err != nil {
-		return workspace.Snapshot{}, app.safeBindingError(err)
-	}
-	return snapshot, nil
-}
-
-func (app *DesktopApp) executeRunCommand(name, id string, execute func(context.Context, RunCommands) error) (workspace.Snapshot, error) {
-	if !domain.IsUUID(id) {
-		return workspace.Snapshot{}, fmt.Errorf("%w: %s", ErrInvalidIdentifier, name)
-	}
-	lease, err := app.acquire(desktopRequirements{workspace: true, commands: true})
-	if err != nil {
-		return workspace.Snapshot{}, err
-	}
-	defer lease.release()
-	if err := execute(lease.ctx, lease.commands); err != nil {
-		return workspace.Snapshot{}, fmt.Errorf("%s: %w", name, err)
-	}
-	snapshot, err := lease.workspace.Snapshot(lease.ctx)
-	if err != nil {
-		return workspace.Snapshot{}, fmt.Errorf("query workspace after %s: %w", name, err)
-	}
-	return snapshot, nil
-}
-
 func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error) {
 	if app == nil {
 		return desktopLease{}, ErrDesktopNotStarted
@@ -877,13 +835,25 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		return desktopLease{}, ErrReportingUnavailable
 	}
 	if require.commands && isNilInterface(app.commands) {
-		return desktopLease{}, ErrRunCommandsUnavailable
+		return desktopLease{}, ErrQuickTaskServiceUnavailable
 	}
 	if require.comparisons && isNilInterface(app.comparisons) {
 		return desktopLease{}, ErrComparisonUnavailable
 	}
-	if require.quickTests && isNilInterface(app.quickTests) {
-		return desktopLease{}, ErrQuickTestUnavailable
+	if require.launcher && isNilInterface(app.launcher) {
+		return desktopLease{}, ErrJobCommandsUnavailable
+	}
+	if require.jobQuery && isNilInterface(app.jobQuery) {
+		return desktopLease{}, ErrJobQueryUnavailable
+	}
+	if require.controls && isNilInterface(app.controls) {
+		return desktopLease{}, ErrJobCommandsUnavailable
+	}
+	if require.controlRecords && isNilInterface(app.controlRecords) {
+		return desktopLease{}, ErrJobCommandsUnavailable
+	}
+	if require.remoteNodes && app.remoteNodes == nil {
+		return desktopLease{}, ErrRemoteNodesUnavailable
 	}
 	app.active++
 	released := false
@@ -903,7 +873,8 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		ctx: app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
 		comparisons: app.comparisons,
-		quickTests:  app.quickTests,
+		launcher:    app.launcher, jobQuery: app.jobQuery, controls: app.controls, controlRecords: app.controlRecords,
+		remoteNodes: app.remoteNodes,
 	}, nil
 }
 
@@ -932,19 +903,33 @@ func (app *DesktopApp) shutdown() error {
 		app.drained.Wait()
 	}
 	closeResources := app.close
+	selections := app.fileSelections
+	app.fileSelections = nil
 	app.query = nil
 	app.catalog = nil
 	app.catalogCommands = nil
 	app.reports = nil
 	app.commands = nil
 	app.comparisons = nil
-	app.quickTests = nil
+	app.launcher = nil
+	app.jobQuery = nil
+	app.controls = nil
+	app.controlRecords = nil
+	app.controlDelivery = nil
+	app.jobs = nil
+	app.confirmations = nil
+	app.remoteSync = nil
+	app.reportGeneration = nil
+	app.remoteNodes = nil
 	app.close = nil
 	app.mu.Unlock()
 
 	var shutdownErr error
+	if selections != nil {
+		shutdownErr = selections.Close()
+	}
 	if closeResources != nil {
-		shutdownErr = closeResources()
+		shutdownErr = errors.Join(shutdownErr, closeResources())
 	}
 	app.mu.Lock()
 	app.shutdownErr = shutdownErr
@@ -981,6 +966,38 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 	}
 
 	switch {
+	case errors.Is(internal, jobfiles.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeFileInputInvalid}
+	case errors.Is(internal, jobfiles.ErrTooLarge):
+		return DesktopBindingError{Code: desktopCodeFileInputTooLarge}
+	case errors.Is(internal, jobfiles.ErrLimit):
+		return DesktopBindingError{Code: desktopCodeFileInputLimit}
+	case errors.Is(internal, jobfiles.ErrBusy):
+		return DesktopBindingError{Code: desktopCodeFileInputBusy}
+	case errors.Is(internal, jobfiles.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeFileInputNotFound}
+	case errors.Is(internal, jobfiles.ErrClosed):
+		return DesktopBindingError{Code: desktopCodeFileInputUnavailable}
+	case errors.Is(internal, ErrJobCommitUnconfirmed):
+		return DesktopBindingError{Code: desktopCodeJobCommitUnconfirmed}
+	case errors.Is(internal, ErrJobQueryUnavailable):
+		return DesktopBindingError{Code: desktopCodeJobQueryUnavailable}
+	case errors.Is(internal, ErrJobCommandsUnavailable):
+		return DesktopBindingError{Code: desktopCodeJobCommandsUnavailable}
+	case errors.Is(internal, jobs.ErrUpgradeRequired):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUpgrade}
+	case errors.Is(internal, jobs.ErrTargetChanged):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeRePair}
+	case errors.Is(internal, jobs.ErrPending):
+		return DesktopBindingError{Code: desktopCodeJobPending}
+	case errors.Is(internal, jobs.ErrConflict):
+		return DesktopBindingError{Code: desktopCodeJobConflict}
+	case errors.Is(internal, jobs.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeJobNotFound}
+	case errors.Is(internal, jobs.ErrUnavailable):
+		return DesktopBindingError{Code: desktopCodeJobUnavailable}
+	case errors.Is(internal, jobs.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeJobInvalid}
 	case errors.Is(internal, ErrDesktopNotStarted):
 		return DesktopBindingError{Code: desktopCodeNotStarted}
 	case errors.Is(internal, ErrDesktopStartup):
@@ -993,7 +1010,7 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeCatalogMissing}
 	case errors.Is(internal, ErrReportingUnavailable):
 		return DesktopBindingError{Code: desktopCodeReportsMissing}
-	case errors.Is(internal, ErrRunCommandsUnavailable):
+	case errors.Is(internal, ErrQuickTaskServiceUnavailable):
 		return DesktopBindingError{Code: desktopCodeCommandsMissing}
 	case errors.Is(internal, ErrComparisonUnavailable):
 		return DesktopBindingError{Code: desktopCodeComparisonMissing}
@@ -1001,6 +1018,30 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 		return DesktopBindingError{Code: desktopCodeDiagnosticsMissing}
 	case errors.Is(internal, ErrQuickTestUnavailable):
 		return DesktopBindingError{Code: desktopCodeQuickTestMissing}
+	case errors.Is(internal, ErrRemoteNodesUnavailable):
+		return DesktopBindingError{Code: desktopCodeRemoteNodesMissing}
+	case errors.Is(internal, remotenodes.ErrInvalid):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeInvalid}
+	case errors.Is(internal, remotenodes.ErrUpgradeIdentity):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeIdentity}
+	case errors.Is(internal, remotenodes.ErrConflict):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeConflict}
+	case errors.Is(internal, remotenodes.ErrNotFound):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeNotFound}
+	case errors.Is(internal, remotenodes.ErrRePairRequired), errors.Is(internal, remotenodes.ErrDuplicate):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeRePair}
+	case errors.Is(internal, remotenodes.ErrReferenced):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeReferenced}
+	case errors.Is(internal, remotenodes.ErrUsageUnknown):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUsageUnknown}
+	case errors.Is(internal, remotenodes.ErrCredential):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeCredential}
+	case errors.Is(internal, remotenodes.ErrBusy), errors.Is(internal, runnerinstall.ErrBusy):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeBusy}
+	case errors.Is(internal, remotenodes.ErrCommitUnconfirmed):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUnconfirmed}
+	case errors.Is(internal, remotenodes.ErrUnsupported), errors.Is(internal, runnerinstall.ErrUpgradeRequired):
+		return DesktopBindingError{Code: desktopCodeRemoteNodeUpgrade}
 	case errors.Is(internal, ErrInvalidIdentifier):
 		return DesktopBindingError{Code: desktopCodeInvalidIdentifier}
 	case errors.Is(internal, ErrCatalogSavedRefreshFailed):
@@ -1040,7 +1081,12 @@ func (app *DesktopApp) safeBindingError(internal error) error {
 
 func isDesktopBindingCode(code string) bool {
 	switch code {
-	case desktopCodeNotStarted,
+	case desktopCodeFileInputInvalid, desktopCodeFileInputTooLarge, desktopCodeFileInputLimit,
+		desktopCodeFileInputBusy, desktopCodeFileInputNotFound, desktopCodeFileInputUnavailable:
+		return true
+	case desktopCodeJobInvalid, desktopCodeJobNotFound, desktopCodeJobConflict, desktopCodeJobUnavailable,
+		desktopCodeJobPending, desktopCodeJobCommitUnconfirmed, desktopCodeJobQueryUnavailable, desktopCodeJobCommandsUnavailable,
+		desktopCodeNotStarted,
 		desktopCodeStartupFailed,
 		desktopCodeStopped,
 		desktopCodeWorkspaceMissing,
@@ -1065,7 +1111,19 @@ func isDesktopBindingCode(code string) bool {
 		desktopCodeComparisonInvalid,
 		desktopCodeComparisonNotReady,
 		desktopCodeComparisonTargetUnmapped,
-		desktopCodeComparisonChannelNotReady:
+		desktopCodeComparisonChannelNotReady,
+		desktopCodeRemoteNodesMissing,
+		desktopCodeRemoteNodeInvalid,
+		desktopCodeRemoteNodeConflict,
+		desktopCodeRemoteNodeNotFound,
+		desktopCodeRemoteNodeRePair,
+		desktopCodeRemoteNodeReferenced,
+		desktopCodeRemoteNodeUsageUnknown,
+		desktopCodeRemoteNodeCredential,
+		desktopCodeRemoteNodeBusy,
+		desktopCodeRemoteNodeUnconfirmed,
+		desktopCodeRemoteNodeUpgrade,
+		desktopCodeRemoteNodeIdentity:
 		return true
 	default:
 		return false

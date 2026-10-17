@@ -27,7 +27,7 @@ type QuickTaskDetail struct {
 
 // QuickTaskPerformancePath resolves the native create endpoint from the selected
 // definitions; performance inputs remain owned by the performance service.
-func (service *Service) QuickTaskPerformancePath(ctx context.Context, command QuickTaskCommand, selectedProtocol domain.Protocol) (string, error) {
+func (service *Preparer) QuickTaskPerformancePath(ctx context.Context, command QuickTaskCommand, selectedProtocol domain.Protocol) (string, error) {
 	if service == nil || ctx == nil || !domain.IsUUID(command.SuiteID) || isNil(service.quickTasks) {
 		return "", ErrInvalid
 	}
@@ -61,7 +61,7 @@ type QuickTaskSuite struct {
 	CaseCount int `json:"case_count"`
 }
 
-func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskDetail, error) {
+func (service *Preparer) QuickTask(ctx context.Context, runID string) (QuickTaskDetail, error) {
 	snapshot, err := service.quickTaskSnapshot(ctx, runID)
 	if err != nil {
 		return QuickTaskDetail{}, err
@@ -80,7 +80,7 @@ func (service *Service) QuickTask(ctx context.Context, runID string) (QuickTaskD
 	}, nil
 }
 
-func (service *Service) quickTaskSnapshot(ctx context.Context, runID string) (domain.RunSnapshot, error) {
+func (service *Preparer) quickTaskSnapshot(ctx context.Context, runID string) (domain.RunSnapshot, error) {
 	if service == nil || ctx == nil || !domain.IsUUID(runID) {
 		return domain.RunSnapshot{}, ErrInvalid
 	}

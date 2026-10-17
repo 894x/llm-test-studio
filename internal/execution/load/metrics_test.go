@@ -48,6 +48,39 @@ func TestPercentileIsInterpolatedAndMetricsStayFiniteAtZeroElapsed(t *testing.T)
 	}
 }
 
+func TestPercentilePreservesBoundsAndOrderForFractionalTimings(t *testing.T) {
+	for _, values := range [][]float64{
+		{1.6017, 1.6017},
+		{0.000001, 0.000001},
+		{1.6017, math.Nextafter(1.6017, math.Inf(1))},
+		{0, 0, 1.6017, 1.6017},
+		{0.000001, 1000000000},
+	} {
+		previous := values[0]
+		for index := range 101 {
+			actual := percentile(values, float64(index)/100)
+			if actual < previous || actual < values[0] || actual > values[len(values)-1] {
+				t.Fatalf("percentile %d=%v escaped ordered sample bounds %v", index, actual, values)
+			}
+			previous = actual
+		}
+	}
+}
+
+func TestComputeMetricsKeepsIdenticalFractionalLatenciesEqual(t *testing.T) {
+	elapsed := 1601700 * time.Nanosecond
+	observation := Observation{Success: true, Streaming: true, E2E: elapsed, TTFTAny: elapsed, TTFT: elapsed}
+	metrics := ComputeMetrics([]Observation{observation, observation}, 2*elapsed)
+	for _, value := range []float64{
+		metrics.E2EP50, metrics.E2EP90, metrics.E2EP95, metrics.E2EP99,
+		metrics.TTFTP50, metrics.TTFTP90, metrics.TTFTP95, metrics.TTFTP99,
+	} {
+		if value != 1.6017 {
+			t.Fatalf("identical latency samples produced %v, want exactly 1.6017 ms", value)
+		}
+	}
+}
+
 func TestComputeMetricsWithProgressSeparatesLoadAndCompletionRates(t *testing.T) {
 	observations := []Observation{
 		{Success: true, CompletionTokens: 3},

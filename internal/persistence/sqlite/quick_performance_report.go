@@ -11,6 +11,7 @@ import (
 
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
 const maxQuickPerformanceReportBytes = 32 << 20
@@ -30,12 +31,78 @@ func (repository *Repository) SaveQuickPerformanceReport(ctx context.Context, re
 	if len(document) > maxQuickPerformanceReportBytes {
 		return errors.New("quick performance report exceeds storage byte limit")
 	}
-	_, err = repository.db.ExecContext(ctx, `
+	tx, err := repository.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin quick performance archive: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireLocalPerformanceReport(ctx, tx, report.ReportID); err != nil {
+		return err
+	}
+	if err := insertQuickPerformanceReportTx(
+		ctx,
+		tx,
+		report,
+		generatedAt,
+		document,
+	); err != nil {
+		return err
+	}
+	var jobID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM execution_jobs WHERE kind = 'performance'
+		AND json_extract(spec_json, '$.spec.performance.report_id') = ?
+	`, report.ReportID).Scan(&jobID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read quick performance job owner: %w", err)
+	}
+	if err == nil {
+		if err := journalJobEventTx(ctx, tx, jobEventWrite{
+			JobID: jobID, Kind: jobcontract.EventReport, At: generatedAt,
+			Payload: reportReference(
+				report.ReportID,
+				jobcontract.KindPerformance,
+				"",
+				document,
+			),
+		}); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return classifyWriteError("commit quick performance archive", err)
+	}
+	return nil
+}
+
+func insertQuickPerformanceReportTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	report quicktest.PerformanceReport,
+	generatedAt time.Time,
+	document []byte,
+) error {
+	if err := validatePerformanceArchiveOrigin(ctx, tx, report); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(
+		ctx,
+		`
 		INSERT INTO quick_performance_reports(
 			id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed, document_json
 		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, report.ReportID, report.GeneratedAt, generatedAt.UnixNano(), report.Success, report.ModelID, report.BaseURL,
-		report.Progress.Phase, report.Metrics.Completed, report.Metrics.Failed, document)
+	`,
+		report.ReportID,
+		report.GeneratedAt,
+		generatedAt.UnixNano(),
+		report.Success,
+		report.ModelID,
+		report.BaseURL,
+		report.Progress.Phase,
+		report.Metrics.Completed,
+		report.Metrics.Failed,
+		document,
+	)
 	if err != nil {
 		return classifyWriteError("save quick performance report", err)
 	}
@@ -49,10 +116,16 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 	var generatedAt string
 	var generatedAtUnixNano int64
 	var document []byte
-	err := repository.db.QueryRowContext(ctx, `
-		SELECT generated_at, generated_at_unix_nano, document_json
+	tx, err := repository.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return quicktest.PerformanceReport{}, fmt.Errorf("begin performance report read: %w", err)
+	}
+	defer tx.Rollback()
+	err = tx.QueryRowContext(ctx, `
+		SELECT generated_at, generated_at_unix_nano,
+		CASE WHEN length(CAST(document_json AS BLOB)) <= ? THEN document_json ELSE '' END
 		FROM quick_performance_reports WHERE id = ?
-	`, reportID).Scan(&generatedAt, &generatedAtUnixNano, &document)
+	`, maxQuickPerformanceReportBytes, reportID).Scan(&generatedAt, &generatedAtUnixNano, &document)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return quicktest.PerformanceReport{}, err
 	}
@@ -65,6 +138,12 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 	report, parsedAt, err := decodeQuickPerformanceReport(document)
 	if err != nil || report.ReportID != reportID || report.GeneratedAt != generatedAt || parsedAt.UnixNano() != generatedAtUnixNano {
 		return quicktest.PerformanceReport{}, fmt.Errorf("%w: quick performance report document", ErrCorrupt)
+	}
+	if err := validatePerformanceArchiveOrigin(ctx, tx, report); err != nil {
+		return quicktest.PerformanceReport{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return quicktest.PerformanceReport{}, fmt.Errorf("commit performance report read: %w", err)
 	}
 	return report, nil
 }

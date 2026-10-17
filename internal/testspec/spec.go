@@ -23,6 +23,15 @@ func Decode(raw json.RawMessage) (Spec, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return spec, errors.New("case spec must contain exactly one JSON object")
 	}
+	fields, err := strictObject(raw, nil)
+	if err != nil {
+		return spec, fmt.Errorf("invalid case spec: %w", err)
+	}
+	if inputs, exists := fields["inputs"]; exists && spec.Inputs != nil {
+		if _, err := strictObject(inputs, nil); err != nil {
+			return spec, fmt.Errorf("invalid case inputs: %w", err)
+		}
+	}
 	return spec, spec.Validate()
 }
 
@@ -58,6 +67,15 @@ func (spec Spec) Validate() error {
 	return nil
 }
 
+func (spec Spec) HasFileInputs() bool {
+	for _, input := range spec.Inputs {
+		if input.Type == "file" {
+			return true
+		}
+	}
+	return false
+}
+
 func (spec Spec) validateWorkflow() error {
 	switch spec.Workflow.Mode {
 	case "submit", "wait":
@@ -85,13 +103,26 @@ func (spec Spec) validateWorkflow() error {
 }
 
 func (input Input) Validate() error {
+	if len(input.Description) > 1024 || len(input.Unit) > 64 || len(input.Enum) > 256 {
+		return errors.New("input metadata exceeds its limit")
+	}
+	if input.Type == "file" {
+		if input.File == nil || !input.Required {
+			return errors.New("file inputs require required=true and a file declaration")
+		}
+		hasValueRules := len(input.Default) != 0 || len(input.Enum) != 0 || input.Unit != ""
+		if hasValueRules || input.Minimum != nil || input.Maximum != nil {
+			return errors.New("file inputs cannot use default, enum, numeric bounds or unit")
+		}
+		return input.File.Validate()
+	}
+	if input.File != nil {
+		return errors.New("only file inputs may contain a file declaration")
+	}
 	switch input.Type {
 	case "string", "integer", "number", "boolean", "object", "array":
 	default:
 		return errors.New("unsupported input type")
-	}
-	if len(input.Description) > 1024 || len(input.Unit) > 64 || len(input.Enum) > 256 {
-		return errors.New("input metadata exceeds its limit")
 	}
 	if input.Minimum != nil && (math.IsNaN(*input.Minimum) || math.IsInf(*input.Minimum, 0)) {
 		return errors.New("minimum must be finite")
@@ -117,28 +148,42 @@ func (input Input) Validate() error {
 
 // ValidateInputs resolves declared defaults and rejects undeclared assignments.
 // It validates authoring parameters, not the provider's request-body contract.
-func ValidateInputs(declarations map[string]Input, supplied map[string]json.RawMessage) (map[string]json.RawMessage, error) {
-	resolved := make(map[string]json.RawMessage, len(declarations))
+func ValidateInputs(declarations map[string]Input, supplied map[string]json.RawMessage) (ResolvedInputs, error) {
+	resolved := ResolvedInputs{
+		JSONValues: make(map[string]json.RawMessage, len(declarations)),
+		Files:      map[string]FileBinding{},
+	}
 	for name := range supplied {
 		if _, exists := declarations[name]; !exists {
-			return nil, errors.New("an assigned input is not declared by this case")
+			return ResolvedInputs{}, errors.New("an assigned input is not declared by this case")
 		}
 	}
 	for name, definition := range declarations {
+		if err := definition.Validate(); err != nil {
+			return ResolvedInputs{}, fmt.Errorf("input %s: %w", name, err)
+		}
 		value, exists := supplied[name]
 		if !exists {
 			value = definition.Default
 		}
 		if len(value) == 0 {
 			if definition.Required {
-				return nil, fmt.Errorf("required input %s has no value", name)
+				return ResolvedInputs{}, fmt.Errorf("required input %s has no value", name)
 			}
 			continue
 		}
-		if err := validateInputValue(definition, value, true); err != nil {
-			return nil, fmt.Errorf("input %s: %w", name, err)
+		if definition.Type == "file" {
+			var binding FileBinding
+			if err := json.Unmarshal(value, &binding); err != nil {
+				return ResolvedInputs{}, fmt.Errorf("input %s: %w", name, err)
+			}
+			resolved.Files[name] = binding
+			continue
 		}
-		resolved[name] = append(json.RawMessage{}, value...)
+		if err := validateInputValue(definition, value, true); err != nil {
+			return ResolvedInputs{}, fmt.Errorf("input %s: %w", name, err)
+		}
+		resolved.JSONValues[name] = append(json.RawMessage{}, value...)
 	}
 	return resolved, nil
 }

@@ -3,150 +3,80 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 )
 
-type recordingQuickPerformanceRunner struct {
-	performanceCommand quicktest.PerformanceCommand
-	performanceReport  quicktest.PerformanceReport
-	err                error
-	performanceCalls   int
-	ctx                context.Context
-	progress           []quicktest.PerformanceProgress
+type recordingPerformanceJobLauncher struct {
+	command jobs.LaunchCommand
+	err     error
+	ctx     context.Context
+	calls   int
 }
 
-func (runner *recordingQuickPerformanceRunner) RunPerformance(ctx context.Context, command quicktest.PerformanceCommand) (quicktest.PerformanceReport, error) {
-	runner.performanceCalls++
-	runner.ctx = ctx
-	runner.performanceCommand = command
-	return runner.performanceReport, runner.err
+func (launcher *recordingPerformanceJobLauncher) Launch(
+	ctx context.Context,
+	command jobs.LaunchCommand,
+) (jobs.SubmissionRecord, error) {
+	launcher.calls++
+	launcher.ctx = ctx
+	launcher.command = command
+	return jobs.SubmissionRecord{}, launcher.err
 }
 
-func (runner *recordingQuickPerformanceRunner) RunPerformanceWithProgress(ctx context.Context, command quicktest.PerformanceCommand, onProgress func(quicktest.PerformanceProgress)) (quicktest.PerformanceReport, error) {
-	runner.performanceCalls++
-	runner.ctx = ctx
-	runner.performanceCommand = command
-	for _, progress := range runner.progress {
-		onProgress(progress)
-	}
-	return runner.performanceReport, runner.err
-}
-
-func TestRunQuickPerformanceReturnsStableErrorsWithoutLeakingRunnerDetails(t *testing.T) {
+func TestLaunchPerformancePreparationErrorsKeepSafePublicMeaning(t *testing.T) {
 	const sensitive = "sk-should-never-be-reported"
-	tests := []struct {
-		name string
-		err  error
-		want string
-		leak string
-	}{
-		{name: "unknown runner error", err: errors.New(sensitive), want: desktopCodeOperationFailed, leak: sensitive},
-		{name: "cancelled", err: context.Canceled, want: desktopCodeOperationCancelled},
-		{name: "deadline exceeded", err: context.DeadlineExceeded, want: desktopCodeOperationCancelled},
-		{name: "service unavailable", err: quicktest.ErrServiceUnavailable, want: desktopCodeQuickTestMissing},
+	command := quicktest.PerformanceCommand{
+		Protocol: domain.ProtocolOpenAIChat, AddressMode: quicktest.AddressModeBaseURL,
+		URL: "https://api.example.test/v1", APIKey: sensitive, ModelID: "upstream-model",
+		RequestCount: 10, Concurrency: 2, TimeoutMS: 30_000, InputTokens: 100, OutputTokens: 100,
 	}
-	for _, test := range tests {
+	for _, test := range []struct {
+		name string
+		code domain.ErrorCode
+		want string
+	}{
+		{name: "credential required", code: quicktest.ErrorCredentialRequired, want: desktopCodeQuickTaskCredential},
+		{name: "invalid request", code: quicktest.ErrorInvalidRequest, want: desktopCodeJobInvalid},
+	} {
 		t.Run(test.name, func(t *testing.T) {
-			runner := &recordingQuickPerformanceRunner{err: test.err}
+			launcher := &recordingPerformanceJobLauncher{
+				err: fmt.Errorf("%s: %w", sensitive, jobs.PreparationError{Code: test.code}),
+			}
 			app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
-				return desktopDependencies{quickTests: runner}, nil
+				return desktopDependencies{launcher: launcher}, nil
 			})
 			var reported error
 			app.setErrorReporter(func(err error) { reported = err })
-			app.onStartup(context.Background())
+			type contextKey struct{}
+			app.onStartup(context.WithValue(context.Background(), contextKey{}, "desktop"))
 
-			_, err := app.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, "")
+			view, err := app.LaunchJob(jobs.LaunchCommand{
+				Location: jobs.Location{Kind: jobcontract.TargetLocal}, Kind: jobs.LaunchPerformance,
+				Performance: &command,
+			})
 			assertBindingErrorCode(t, err, test.want)
-			if reported == nil {
-				t.Fatal("expected the original failure to be reported internally")
+			if view.JobID != "" || strings.Contains(err.Error(), sensitive) {
+				t.Fatal("preparation failure exposed an accepted identity or sensitive detail")
 			}
-			if test.leak != "" && strings.Contains(reported.Error(), test.leak) {
-				t.Fatalf("reported error leaked runner detail: %v", reported)
+			if reported == nil || strings.Contains(reported.Error(), sensitive) {
+				t.Fatalf("preparation diagnostic did not preserve a safe reason: %v", reported)
+			}
+			if launcher.calls != 1 || launcher.command.Performance != &command {
+				t.Fatal("performance command was changed or automatically retried")
+			}
+			if launcher.ctx == nil || launcher.ctx.Value(contextKey{}) != "desktop" {
+				t.Fatal("performance preparation did not receive the desktop lifecycle context")
+			}
+			if errors.Is(err, launcher.err) {
+				t.Fatal("public error wrapped the private preparation failure")
 			}
 		})
-	}
-
-	missing := newDesktopApp(func(context.Context) (desktopDependencies, error) {
-		return desktopDependencies{}, nil
-	})
-	missing.onStartup(context.Background())
-	_, err := missing.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, "")
-	assertBindingErrorCode(t, err, desktopCodeQuickTestMissing)
-}
-
-func TestRunQuickPerformanceTestDelegatesThroughLifecycleContext(t *testing.T) {
-	command := quicktest.PerformanceCommand{Protocol: domain.ProtocolOpenAIChat, AddressMode: quicktest.AddressModeBaseURL, URL: "https://api.example.test/v1",
-		APIKey: "sk-ephemeral", ModelID: "upstream-model", RequestCount: 10,
-		Concurrency: 2, TimeoutMS: 30_000, InputTokens: 100, OutputTokens: 100,
-	}
-	runner := &recordingQuickPerformanceRunner{performanceReport: quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion, Success: true,
-		AddressMode: quicktest.AddressModeBaseURL, Endpoint: "https://api.example.test/v1/chat/completions",
-	}}
-	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
-		return desktopDependencies{quickTests: runner}, nil
-	})
-	app.onStartup(context.Background())
-
-	report, err := app.RunQuickPerformanceTest(command, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !report.Success || report.Endpoint != runner.performanceReport.Endpoint {
-		t.Fatalf("report = %#v", report)
-	}
-	if runner.performanceCalls != 1 || runner.performanceCommand != command {
-		t.Fatalf("runner calls = %d, command = %#v", runner.performanceCalls, runner.performanceCommand)
-	}
-	if runner.ctx == nil || runner.ctx != app.ctx {
-		t.Fatal("quick performance test did not receive the desktop lifecycle context")
-	}
-}
-
-func TestRunQuickPerformanceTestPublishesCorrelatedProgressEvents(t *testing.T) {
-	const progressID = "88888888-8888-4888-8888-888888888888"
-	runner := &recordingQuickPerformanceRunner{
-		performanceReport: quicktest.PerformanceReport{Protocol: domain.ProtocolOpenAIChat, SchemaVersion: quicktest.PerformanceSchemaVersion},
-		progress: []quicktest.PerformanceProgress{
-			{Phase: "sending", Planned: 4, Completed: 1, PeakInFlight: 2, Succeeded: 1},
-			{Phase: "completed", Planned: 4, Completed: 4, PeakInFlight: 2, Succeeded: 4, TotalDurationMS: 320},
-		},
-	}
-	app := newDesktopApp(func(context.Context) (desktopDependencies, error) {
-		return desktopDependencies{quickTests: runner}, nil
-	})
-	type emittedEvent struct {
-		name    string
-		payload quickPerformanceProgressEvent
-	}
-	events := make([]emittedEvent, 0)
-	app.setEventEmitter(func(_ context.Context, name string, data ...interface{}) {
-		if len(data) != 1 {
-			t.Fatalf("event data = %#v", data)
-		}
-		payload, ok := data[0].(quickPerformanceProgressEvent)
-		if !ok {
-			t.Fatalf("event payload = %#v", data[0])
-		}
-		events = append(events, emittedEvent{name: name, payload: payload})
-	})
-	app.onStartup(context.Background())
-
-	if _, err := app.RunQuickPerformanceTest(quicktest.PerformanceCommand{}, progressID); err != nil {
-		t.Fatal(err)
-	}
-	if len(events) != 2 {
-		t.Fatalf("events = %#v", events)
-	}
-	for _, event := range events {
-		if event.name != quickPerformanceProgressEventName || event.payload.ProgressID != progressID {
-			t.Fatalf("event = %#v", event)
-		}
-	}
-	if events[0].payload.Progress.Completed != 1 || events[1].payload.Progress.Phase != "completed" {
-		t.Fatalf("progress events = %#v", events)
 	}
 }

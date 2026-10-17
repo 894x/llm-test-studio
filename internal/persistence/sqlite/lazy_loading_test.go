@@ -80,9 +80,9 @@ func TestStartupDefersUnrelatedArchivedDocumentValidation(t *testing.T) {
 	}
 	repository = reopenHardeningRepository(t, path)
 	defer repository.Close()
-	interrupted, err := repository.ListInterruptedRuns(ctx)
+	interrupted, err := repository.ListRecoveryRuns(ctx)
 	if err != nil || len(interrupted) != 0 {
-		t.Fatalf("ListInterruptedRuns() = %v, %v; want no interrupted runs", interrupted, err)
+		t.Fatalf("ListRecoveryRuns() = %v, %v; want no interrupted runs", interrupted, err)
 	}
 	if _, err := repository.GetReport(ctx, fixture.report.ID); !errors.Is(err, persistence.ErrCorrupt) {
 		t.Fatalf("GetReport(unsupported format) = %v, want ErrCorrupt", err)
@@ -106,7 +106,7 @@ func TestWholeDatabaseIntegrityCheckIsExplicit(t *testing.T) {
 	}
 	repository = reopenHardeningRepository(t, path)
 	defer repository.Close()
-	if _, err := repository.ListInterruptedRuns(ctx); err != nil {
+	if _, err := repository.ListRecoveryRuns(ctx); err != nil {
 		t.Fatalf("recovery scanned unrelated archived relations: %v", err)
 	}
 	if err := repository.CheckIntegrity(ctx); err == nil {

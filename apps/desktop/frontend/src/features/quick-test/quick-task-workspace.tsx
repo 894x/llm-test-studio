@@ -1,6 +1,7 @@
 import { performanceProfilesEqual } from "./performance-profile"
 import { isQuickPerformanceProtocol, type QuickPerformanceCommand, type QuickPerformanceProfile, type QuickPerformanceReport } from "./data"
 import {
+  useCallback,
   useRef,
   useState,
   type FormEvent,
@@ -11,6 +12,10 @@ import {
 import { useTranslation } from "react-i18next"
 import PlayIcon from "lucide-react/dist/esm/icons/play.mjs"
 import SaveIcon from "lucide-react/dist/esm/icons/save.mjs"
+import { controlRun, launchAtDefault, type JobClient } from "@/features/jobs/execution"
+import { isJobTerminal, type JobView } from "@/features/jobs/data"
+import { JobDetails } from "@/features/jobs/job-details"
+import { LocalFileInput } from "./local-file-input"
 import { publicDesktopErrorMessage, type DesktopClient } from "@/app/desktop-client"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -48,15 +53,14 @@ import { QuickTestModeSwitch } from "./quick-test-mode-switch"
 import { QuickTestHistory, type QuickTestHistoryItem } from "./quick-test-history"
 import { ModelIcon, ProtocolIcon } from "./model-icon"
 
-type Actions = Pick<
+type Actions = JobClient & Pick<
   DesktopClient,
-  | "startQuickTask"
   | "getQuickTask"
   | "getReportDetail"
   | "rememberQuickTaskCredential"
   | "forgetQuickTaskCredential"
-  | "cancelRun"
-  | "runQuickPerformanceTest"
+  | "createLocalFileSelection"
+  | "releaseLocalFileSelection"
 >
 
 type PerformanceHistorySettings = Pick<QuickPerformanceReport,
@@ -82,7 +86,7 @@ export function QuickTaskWorkspace({
   onRunSelected,
   actions,
   refresh,
-  onWorkspaceUpdated,
+  onJobLaunched,
   onOpenReport,
   onPerformanceArchived,
   onSaveChannel,
@@ -96,7 +100,7 @@ export function QuickTaskWorkspace({
   onRunSelected: (id: string) => void
   actions: Actions
   refresh: () => Promise<void>
-  onWorkspaceUpdated: (snapshot: WorkspaceSnapshot) => void
+  onJobLaunched?: (job: JobView) => void
   onOpenReport: (id: string) => void | Promise<void>
   onPerformanceArchived: (id: string) => void | Promise<void>
   onSaveChannel: (command: SaveQuickTestTargetCommand) => Promise<SavedQuickTestTarget>
@@ -105,7 +109,10 @@ export function QuickTaskWorkspace({
   const [pending, setPending] = useState<
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
+  const [job, setJob] = useState<JobView | null>(null)
   const inFlight = useRef(false)
+  const fileImportInFlight = useRef(false)
+  const [fileImporting, setFileImporting] = useState(false)
   const saveChannelTrigger = useRef<HTMLButtonElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState("")
@@ -127,6 +134,16 @@ export function QuickTaskWorkspace({
   const performancePlans = catalog.plans.filter(plan => plan.performance && plan.protocol === protocol)
   const currentTasks = catalog.suites.filter(item => item.protocol === protocol)
   const task = currentTasks.find((item) => item.id === draft.task?.id) ?? draft.task ?? currentTasks[0]
+  const hasFileInputs = task?.inputs.some(input => input.type === "file") ?? false
+  const fileCoordinator = {
+    begin: () => {
+      if (fileImportInFlight.current) return false
+      fileImportInFlight.current = true
+      setFileImporting(true)
+      return true
+    },
+    end: () => { fileImportInFlight.current = false; setFileImporting(false) },
+  }
   const form =
     draft.task || !task
       ? draft
@@ -146,7 +163,7 @@ export function QuickTaskWorkspace({
   )
   const channel = channels.find((item) => item.id === form.channel_id)
   const missingChannel = !!form.channel_id && !channel
-  const performanceDescriptor = PROTOCOLS.find(item => item.id === protocol)!
+  const performanceDescriptor = PROTOCOLS.find(item => item.id === selectedProtocol)!
   const performanceURL = resolveConnectionURL(channel?.base_url ?? form.base_url, performanceDescriptor.request_paths[0].path, performanceDescriptor.request_paths)
   const connectionURLs = mode === "performance" ? (performanceURL ? [performanceURL] : []) : taskConnectionURLs(channel?.base_url ?? form.base_url, task, catalog)
   const models = [
@@ -160,7 +177,7 @@ export function QuickTaskWorkspace({
     ]),
   ]
   const performanceConnection: QuickPerformanceConnection = {
-    protocol,
+    protocol: selectedProtocol,
     address_mode: "base_url",
     url: channel?.base_url ?? form.base_url.trim(),
     api_key: form.channel_id || form.credential_run_id ? "" : form.api_key.trim(),
@@ -185,45 +202,45 @@ export function QuickTaskWorkspace({
       timestamp: report.generated_at, active: false,
       status: report.run_status === "cancelled" ? "cancelled" : report.passed ? "passed" : "failed",
     })),
-    ...performanceHistory,
+    ...performanceHistory.map(item => {
+      const report = reports.reports.find(report => report.source === "quick_performance" && report.id === item.reportID)
+      if (!report || item.active || item.status !== "completed") return item
+      return { ...item, status: report.run_status === "cancelled" ? "cancelled" : report.passed ? "passed" : "failed" }
+    }),
   ].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
   const visibleHistory = history.filter((item, index) => item.active || index < 50)
   const selectedID = selectedHistoryID || runID
-  const runPerformance: Actions["runQuickPerformanceTest"] = async (command, onProgress) => {
-    const id = crypto.randomUUID()
-    const item: QuickTestHistoryItem = {
-      id, mode: "performance", title: catalog.plans.find(plan => plan.id === selectedPerformancePlanID)?.name ?? t("performance.title"),
-      model: command.model_id, channel: channel?.name ?? command.url,
-      timestamp: new Date().toISOString(), active: true, status: "queued", phase: "not_started",
-    }
+  const performanceJobLaunched = (accepted: JobView, command: QuickPerformanceCommand) => {
+    const id = accepted.job_id
     setPerformanceSettings(current => ({ ...current, [id]: {
       protocol: command.protocol, address_mode: command.address_mode,
       base_url: command.url, endpoint: command.url, model_id: command.model_id,
       profile: performanceProfile(command), channel_id: command.channel_id,
       credential_run_id: command.credential_run_id, suite_id: command.task?.suite_id,
     } }))
-    setPerformancePending(true)
     setSelectedHistoryID(id)
-    setPerformanceHistory(current => [item, ...current])
-    const updateItem = (patch: Partial<QuickTestHistoryItem>) => setPerformanceHistory(current => current.map(entry => entry.id === id ? { ...entry, ...patch } : entry))
-    try {
-      const report = await actions.runQuickPerformanceTest(command, progress => {
-        updateItem({
-          phase: progress.phase, completed: progress.completed,
-          planned: command.request_count > 0 || progress.phase === "warming_up" || progress.phase === "ramping" ? progress.planned : undefined,
-          detail: t("workspace.performanceCounts", { ...progress }),
-        })
-        onProgress?.(progress)
-      })
-      updateItem({ active: false, reportID: report.report_id, phase: undefined, status: report.progress.phase === "cancelled" ? "cancelled" : report.success ? "passed" : "failed" })
-      return report
-    } catch (reason) {
-      updateItem({ active: false, phase: undefined, status: "failed", error: publicDesktopErrorMessage(reason, t("performance.error")) })
-      throw reason
-    } finally {
-      setPerformancePending(false)
-    }
+    setPerformanceHistory(current => [{
+      id, mode: "performance", title: catalog.plans.find(plan => plan.id === selectedPerformancePlanID)?.name ?? t("performance.title"),
+      model: command.model_id, channel: channel?.name ?? command.url,
+      timestamp: accepted.execution?.accepted_at ?? accepted.submission!.prepared_at,
+      active: !accepted.execution || !isJobTerminal(accepted.execution.status),
+      status: accepted.execution?.status ?? accepted.submission?.confirmation?.status ?? "queued",
+      phase: accepted.progress?.progress.phase ?? (!accepted.execution ? "not_started" : undefined),
+    }, ...current])
+    onJobLaunched?.(accepted)
   }
+  const performanceJobChanged = useCallback((observed: JobView) => {
+    const progress = observed.progress?.progress
+    setPerformanceHistory(current => current.map(item => item.id === observed.job_id ? {
+      ...item,
+      active: !observed.execution || !isJobTerminal(observed.execution.status),
+      status: observed.execution?.status ?? observed.submission?.confirmation?.status ?? item.status,
+      phase: observed.execution && isJobTerminal(observed.execution.status) ? undefined : progress?.phase ?? (!observed.execution ? "not_started" : undefined),
+      completed: progress?.completed, planned: progress?.planned,
+      detail: progress ? t("workspace.performanceCounts", { ...progress }) : undefined,
+      reportID: observed.performance_result_ready ? observed.report_ids[0] : undefined,
+    } : item))
+  }, [t])
 
   const update = (next: TaskDraft) => {
     onDraftChange(next)
@@ -304,10 +321,15 @@ export function QuickTaskWorkspace({
     setRefreshError(false)
     onDraftChange(form)
     try {
-      const id = await actions.startQuickTask(command)
-      onRunSelected(id)
-      setSelectedHistoryID(id)
-      onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
+      const accepted = await launchAtDefault(actions, { kind: "quick_task", quick_task: command, plan: null, performance: null, comparison: null })
+      setJob(accepted)
+      onJobLaunched?.(accepted)
+      const id = accepted.run_ids[0]
+      if (id) {
+        onRunSelected(id)
+        setSelectedHistoryID(id)
+        onDraftChange((current) => (current === form ? { ...form, source_run_id: id } : current))
+      }
       await refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
@@ -324,6 +346,7 @@ export function QuickTaskWorkspace({
     try {
       const detail = await actions.getQuickTask(id)
       update(restoreTaskDraft(detail, form))
+      setJob(null)
       setCaseConcurrency(detail.case_concurrency)
       onRunSelected(id)
     } catch (reason) {
@@ -387,7 +410,8 @@ export function QuickTaskWorkspace({
     setPending("cancel")
     setError("")
     try {
-      onWorkspaceUpdated(await actions.cancelRun(id))
+      setJob(await controlRun(actions, id, "cancel"))
+      await refreshProgress()
     } catch (reason) {
       setError(publicDesktopErrorMessage(reason, t("task.failure")))
     } finally {
@@ -730,13 +754,17 @@ export function QuickTaskWorkspace({
                       </TaskField>
                       {(task?.inputs ?? []).map((input) => (
                         <TaskField
-                          key={input.key}
+                          key={input.type === "file" ? `${taskKey(task!)}:${input.key}:${form.source_run_id ?? ""}` : input.key}
                           id={`input.${input.key}`}
                           label={input.label}
                           error={errors[`input.${input.key}`]}
                           className={input.type === "boolean" || input.type === "number" || input.type === "integer" ? undefined : "col-span-full"}
                         >
-                          {input.type === "boolean" ? (
+                          {input.type === "file" ? (
+                            <LocalFileInput id={`quick-task-input.${input.key}`} definition={input.file}
+                              actions={actions} coordinator={fileCoordinator} importing={fileImporting}
+                              disabled={busy} invalid={!!errors[`input.${input.key}`]} />
+                          ) : input.type === "boolean" ? (
                             <Checkbox
                               id={`quick-task-input.${input.key}`}
                               checked={form.inputs[input.key] === true}
@@ -783,8 +811,9 @@ export function QuickTaskWorkspace({
                       ))}
                     </div>
                   </fieldset>
+                  {hasFileInputs ? <Alert><AlertDescription>{t("fileInput.launchUnavailable")}</AlertDescription></Alert> : null}
                   <div className="flex flex-wrap justify-end gap-2">
-                    <Button type="submit" disabled={busy}>
+                    <Button type="submit" disabled={busy || hasFileInputs}>
                       {pending === "start" ? (
                         <Spinner data-icon="inline-start" />
                       ) : (
@@ -794,13 +823,16 @@ export function QuickTaskWorkspace({
                     </Button>
                   </div>
                   </form>
+                  {job && mode === "functional" ? <JobDetails key={job.job_id} client={actions} jobID={job.job_id}
+                    initialJob={job} onJobChange={setJob} onOpenReport={onOpenReport} reportIDs={job.report_ids} /> : null}
                   <div hidden={mode !== "performance"}>
-                    {isQuickPerformanceProtocol(protocol) ? <QuickPerformancePanel
+                    {isQuickPerformanceProtocol(performanceConnection.protocol) ? <QuickPerformancePanel
                       key={performanceFormRevision} plans={catalog.plans}
                       initialProfile={restoredPerformanceProfile} initialPlanID={selectedPerformancePlanID} onPlanChange={setSelectedPerformancePlanID}
                       embedded showPlanSelector={false} blocked={!!pending} connection={performanceConnection} actionsContainer={performanceActionsContainer}
                       resolveConnection={validPerformanceConnection}
-                      run={runPerformance} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
+                      client={actions} onJobLaunched={performanceJobLaunched} onJobChange={performanceJobChanged}
+                      onPendingChange={setPerformancePending} onArchived={onPerformanceArchived} onOpenReport={onOpenReport}
                     /> : <p className="text-xs text-muted-foreground">{t("task.performanceUnavailable")}</p>}
                   </div>
                 </FieldGroup>

@@ -1,3 +1,5 @@
+import enJobs from "./resources/en-US/jobs.json"
+import zhJobs from "./resources/zh-CN/jobs.json"
 import enDesktop from "./resources/en-US/desktop.json"
 import zhDesktop from "./resources/zh-CN/desktop.json"
 import { readdirSync, readFileSync, statSync } from "node:fs"
@@ -25,6 +27,7 @@ import zhRuns from "./resources/zh-CN/runs.json"
 import zhShell from "./resources/zh-CN/shell.json"
 
 const resources = {
+  jobs: [zhJobs, enJobs],
   desktop: [zhDesktop, enDesktop],
   app: [zhApp, enApp], catalog: [zhCatalog, enCatalog], common: [zhCommon, enCommon],
   comparisons: [zhComparisons, enComparisons], overview: [zhOverview, enOverview],

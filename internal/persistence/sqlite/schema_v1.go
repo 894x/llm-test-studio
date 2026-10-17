@@ -1,6 +1,166 @@
 package sqlite
 
-var currentSchemaObjects = []schemaObject{
+var currentSchemaObjects = append([]schemaObject{
+	{kind: "table", name: "local_executor_identity", table: "local_executor_identity", ddl: `CREATE TABLE local_executor_identity (
+		singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+		node_id TEXT NOT NULL CHECK(length(CAST(node_id AS BLOB)) = 36),
+		installation_id TEXT NOT NULL CHECK(length(CAST(installation_id AS BLOB)) = 36),
+		commitment_key BLOB NOT NULL CHECK(typeof(commitment_key) = 'blob' AND length(commitment_key) = 32)
+	)`},
+	{kind: "table", name: "job_submissions", table: "job_submissions", ddl: `CREATE TABLE job_submissions (
+		job_id TEXT PRIMARY KEY,
+		configuration_id TEXT NOT NULL,
+		node_id TEXT NOT NULL,
+		installation_id TEXT NOT NULL,
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		state TEXT NOT NULL CHECK(state IN ('prepared', 'pending', 'accepted')),
+		spec_sha256 TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json))
+	)`},
+	{kind: "index", name: "idx_job_submissions_pending", table: "job_submissions",
+		ddl: `CREATE INDEX idx_job_submissions_pending ON job_submissions(job_id)
+		WHERE state IN ('prepared', 'pending')`},
+	{kind: "table", name: "job_control_targets", table: "job_control_targets", ddl: `CREATE TABLE job_control_targets (
+		command_id TEXT PRIMARY KEY NOT NULL,
+		job_id TEXT NOT NULL,
+		submission_job_id TEXT,
+		mirror_job_id TEXT,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		CHECK((submission_job_id IS NOT NULL AND mirror_job_id IS NULL AND submission_job_id = job_id)
+			OR (submission_job_id IS NULL AND mirror_job_id IS NOT NULL AND mirror_job_id = job_id)),
+		UNIQUE(command_id, job_id),
+		FOREIGN KEY(submission_job_id) REFERENCES job_submissions(job_id),
+		FOREIGN KEY(mirror_job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "job_control_outbox", table: "job_control_outbox", ddl: `CREATE TABLE job_control_outbox (
+		command_id TEXT PRIMARY KEY NOT NULL,
+		job_id TEXT NOT NULL,
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		state TEXT NOT NULL CHECK(state IN ('pending', 'confirmed', 'rejected')),
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(command_id, job_id) REFERENCES job_control_targets(command_id, job_id)
+	)`},
+	{kind: "index", name: "idx_job_control_outbox_pending", table: "job_control_outbox",
+		ddl: `CREATE INDEX idx_job_control_outbox_pending ON job_control_outbox(command_id) WHERE state = 'pending'`},
+	{kind: "index", name: "idx_job_control_outbox_job", table: "job_control_outbox",
+		ddl: `CREATE INDEX idx_job_control_outbox_job ON job_control_outbox(job_id, command_id)`},
+	{kind: "table", name: "remote_performance_results", table: "remote_performance_results", ddl: `CREATE TABLE remote_performance_results (
+		job_id TEXT PRIMARY KEY,
+		report_id TEXT NOT NULL UNIQUE,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "remote_job_mirrors", table: "remote_job_mirrors", ddl: `CREATE TABLE remote_job_mirrors (
+		job_id TEXT PRIMARY KEY,
+		configuration_id TEXT NOT NULL,
+		node_id TEXT NOT NULL,
+		installation_id TEXT NOT NULL,
+		spec_sha256 TEXT NOT NULL,
+		spec_json TEXT NOT NULL CHECK(json_valid(spec_json)),
+		snapshot_json TEXT NOT NULL CHECK(json_valid(snapshot_json)),
+		applied_sequence INTEGER NOT NULL CHECK(applied_sequence > 0),
+		comparison_id TEXT UNIQUE,
+		performance_report_id TEXT UNIQUE
+	)`},
+	{kind: "index", name: "idx_remote_job_mirrors_node", table: "remote_job_mirrors",
+		ddl: `CREATE INDEX idx_remote_job_mirrors_node ON remote_job_mirrors(configuration_id, installation_id, job_id)`},
+	{kind: "table", name: "remote_job_runs", table: "remote_job_runs", ddl: `CREATE TABLE remote_job_runs (
+		run_id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		position INTEGER NOT NULL CHECK(position >= 0),
+		UNIQUE(job_id, position),
+		FOREIGN KEY(run_id) REFERENCES execution_runs(id),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "remote_job_events", table: "remote_job_events", ddl: `CREATE TABLE remote_job_events (
+		job_id TEXT NOT NULL,
+		sequence INTEGER NOT NULL CHECK(sequence > 0),
+		kind TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		PRIMARY KEY(job_id, sequence),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "remote_job_report_refs", table: "remote_job_report_refs", ddl: `CREATE TABLE remote_job_report_refs (
+		job_id TEXT NOT NULL,
+		reference_type TEXT NOT NULL CHECK(reference_type IN ('report', 'performance_result')),
+		report_id TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		imported INTEGER NOT NULL DEFAULT 0 CHECK(imported IN (0, 1)),
+		PRIMARY KEY(job_id, reference_type, report_id),
+		UNIQUE(reference_type, report_id),
+		FOREIGN KEY(job_id) REFERENCES remote_job_mirrors(job_id)
+	)`},
+	{kind: "table", name: "execution_performance_observations", table: "execution_performance_observations",
+		ddl: `CREATE TABLE execution_performance_observations (
+		job_id TEXT PRIMARY KEY,
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		recorded_at TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
+	{kind: "table", name: "execution_performance_results", table: "execution_performance_results",
+		ddl: `CREATE TABLE execution_performance_results (
+		job_id TEXT PRIMARY KEY,
+		report_id TEXT NOT NULL UNIQUE,
+		job_revision INTEGER NOT NULL CHECK(job_revision > 0),
+		status TEXT NOT NULL CHECK(status IN ('completed', 'failed', 'cancelled')),
+		sealed_at TEXT NOT NULL,
+		sha256 TEXT NOT NULL,
+		byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
+	{kind: "table", name: "execution_job_commands", table: "execution_job_commands", ddl: `CREATE TABLE execution_job_commands (
+		id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		kind TEXT NOT NULL CHECK(kind IN ('stop_sending', 'cancel')),
+		expected_revision INTEGER NOT NULL CHECK(expected_revision > 0),
+		accepted_at TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
+	{kind: "table", name: "execution_jobs", table: "execution_jobs", ddl: `CREATE TABLE execution_jobs (
+		accepted_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+		id TEXT NOT NULL UNIQUE,
+		installation_id TEXT NOT NULL,
+		engine_build_id TEXT NOT NULL,
+		kind TEXT NOT NULL CHECK(kind IN ('run', 'performance', 'comparison')),
+		revision INTEGER NOT NULL CHECK(revision > 0),
+		status TEXT NOT NULL CHECK(status IN ('queued', 'starting', 'running', 'draining', 'completed', 'failed', 'cancelled')),
+		accepted_at TEXT NOT NULL,
+		spec_sha256 TEXT NOT NULL,
+		secret_commitment TEXT NOT NULL,
+		spec_json TEXT NOT NULL CHECK(json_valid(spec_json)),
+		snapshot_json TEXT NOT NULL CHECK(json_valid(snapshot_json)),
+		last_sequence INTEGER NOT NULL CHECK(last_sequence >= revision),
+		settled INTEGER NOT NULL DEFAULT 0 CHECK(settled IN (0, 1))
+	)`},
+	{kind: "index", name: "idx_execution_jobs_active", table: "execution_jobs",
+		ddl: `CREATE INDEX idx_execution_jobs_active ON execution_jobs(status, accepted_sequence)`},
+	{kind: "index", name: "idx_execution_jobs_performance_report", table: "execution_jobs",
+		ddl: `CREATE UNIQUE INDEX idx_execution_jobs_performance_report
+		ON execution_jobs(json_extract(spec_json, '$.spec.performance.report_id')) WHERE kind = 'performance'`},
+	{kind: "index", name: "idx_execution_jobs_comparison", table: "execution_jobs",
+		ddl: `CREATE UNIQUE INDEX idx_execution_jobs_comparison
+		ON execution_jobs(json_extract(spec_json, '$.spec.comparison.meta.id')) WHERE kind = 'comparison'`},
+	{kind: "table", name: "execution_job_runs", table: "execution_job_runs", ddl: `CREATE TABLE execution_job_runs (
+		run_id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		position INTEGER NOT NULL CHECK(position >= 0),
+		UNIQUE(job_id, position),
+		UNIQUE(job_id, run_id),
+		FOREIGN KEY(run_id) REFERENCES execution_runs(id),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
+	{kind: "table", name: "execution_job_events", table: "execution_job_events", ddl: `CREATE TABLE execution_job_events (
+		job_id TEXT NOT NULL,
+		sequence INTEGER NOT NULL CHECK(sequence > 0),
+		kind TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		document_json TEXT NOT NULL CHECK(json_valid(document_json)),
+		PRIMARY KEY(job_id, sequence),
+		FOREIGN KEY(job_id) REFERENCES execution_jobs(id)
+	)`},
 	{kind: "table", name: "schema_migrations", table: "schema_migrations", ddl: `CREATE TABLE schema_migrations (
 		version INTEGER PRIMARY KEY,
 		name TEXT NOT NULL UNIQUE,
@@ -228,4 +388,4 @@ var currentSchemaObjects = []schemaObject{
 		BEGIN
 			SELECT RAISE(ABORT, 'comparison revisions are immutable');
 		END`},
-}
+}, contentSchemaObjects...)

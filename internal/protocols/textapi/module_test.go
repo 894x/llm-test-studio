@@ -1,6 +1,9 @@
 package textapi
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +13,37 @@ import (
 	"github.com/894x/llm-test-studio/internal/protocols/runtime"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
+
+type fileTransport struct{ calls int }
+
+func (transport *fileTransport) Send(context.Context, runtime.Request) (runtime.Response, error) {
+	transport.calls++
+	return runtime.Response{}, errors.New("unexpected transport call")
+}
+
+func TestModuleKeepsDeclaredAndResolvedFilesUnsupported(t *testing.T) {
+	module := &Module{ID: "text", Path: "/messages"}
+	for _, declared := range []bool{false, true} {
+		inputs := testspec.ResolvedInputs{JSONValues: map[string]json.RawMessage{}, Files: map[string]testspec.FileBinding{}}
+		spec := testspec.Spec{Inputs: map[string]testspec.Input{}, Request: testspec.Request{Body: json.RawMessage(`{}`)}}
+		if declared {
+			spec.Inputs["image"] = testspec.Input{Type: "file", Required: true, File: &testspec.FileInput{
+				Encoding: "image_data_url", MediaTypes: []string{"image/png"}, MaxBytes: testspec.MaxFileInputBytes,
+			}}
+			if !errors.Is(module.ValidateProtocol(spec), testspec.ErrFileInputsUnsupported) {
+				t.Fatal("text protocol accepted a file declaration")
+			}
+		} else {
+			inputs.Files["image"] = testspec.FileBinding{AssetRef: "image-1"}
+		}
+		transport := &fileTransport{}
+		observation := module.Execute(context.Background(), runtime.Execution{Spec: spec, Inputs: inputs, Transport: transport})
+		if transport.calls != 0 || len(observation.Exchanges) != 0 || len(observation.Issues) != 1 ||
+			observation.Issues[0].Code != "file_inputs_unsupported" {
+			t.Fatalf("text file execution: calls=%d observation=%+v", transport.calls, observation)
+		}
+	}
+}
 
 type timingDecoder struct{}
 

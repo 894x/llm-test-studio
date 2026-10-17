@@ -11,7 +11,7 @@ import (
 
 // resolveEntries reads each current reference once and freezes those same values.
 // No provider request or credential access occurs during resolution.
-func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([]domain.RunEntrySnapshot, error) {
+func (service *Preparer) resolveEntries(ctx context.Context, plan domain.Plan) ([]domain.RunEntrySnapshot, error) {
 	testCases, err := service.repository.ListTestCases(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load Case catalog: %w", err)
@@ -89,6 +89,9 @@ func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([
 			if err != nil {
 				return nil, fmt.Errorf("entry %s inputs: %w", item.EntryID, err)
 			}
+			if suite.HasFileInputs() {
+				return nil, fmt.Errorf("%w: %w", ErrNotRunnable, testspec.ErrFileInputsUnsupported)
+			}
 		default:
 			return nil, ErrNotRunnable
 		}
@@ -107,9 +110,12 @@ func (service *Service) resolveEntries(ctx context.Context, plan domain.Plan) ([
 			if err != nil {
 				return nil, fmt.Errorf("entry %s Case %s inputs: %w", item.EntryID, testCase.Key, err)
 			}
-			entry.CaseInputs[testCase.ID] = inputs
+			if len(inputs.Files) != 0 {
+				return nil, fmt.Errorf("%w: %w", ErrNotRunnable, testspec.ErrFileInputsUnsupported)
+			}
+			entry.CaseInputs[testCase.ID] = inputs.SnapshotValues()
 			if item.TargetKind == domain.PlanTargetCase {
-				entry.Parameters = inputs
+				entry.Parameters = inputs.SnapshotValues()
 			}
 			entry.Cases = append(entry.Cases, domain.CaseRevisionRef{CaseID: testCase.ID, Revision: testCase.Revision})
 			entry.CaseDefinitions = append(entry.CaseDefinitions, testCase)

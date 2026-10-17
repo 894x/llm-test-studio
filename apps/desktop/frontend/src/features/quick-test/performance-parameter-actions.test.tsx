@@ -8,6 +8,7 @@ import { PerformanceProfileFields } from "./performance-profile-fields"
 import { usePerformanceProfileEditor } from "./use-performance-profile-editor"
 import { performanceFormFromProfile, performanceProfileFromForm } from "./performance-profile"
 import { QuickPerformancePanel } from "./quick-performance-sheet"
+import { executionClient } from "@/test/jobs-fixture"
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -46,7 +47,7 @@ describe("performance parameter sharing actions", () => {
     const writeText = vi.fn(async (_text: string) => undefined)
     vi.stubGlobal("runtime", undefined)
     vi.stubGlobal("navigator", { clipboard: { writeText } })
-    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><QuickPerformancePanel plans={[]} embedded run={vi.fn()} connection={{
+    render(<I18nextProvider i18n={createAppI18n("zh-CN")}><QuickPerformancePanel plans={[]} embedded client={executionClient()} connection={{
       protocol: "openai-chat", address_mode: "base_url", url: "https://private.test/v1", api_key: "private-key", model_id: "private-model", channel_id: "private-channel",
     }} /></I18nextProvider>)
     await user.click(screen.getByRole("button", { name: "拷贝参数" }))

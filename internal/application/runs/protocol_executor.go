@@ -60,6 +60,9 @@ func (executor *ProtocolExecutor) executePhase(
 	if invalid || emit == nil || len(request.Cases) == 0 {
 		return ErrInvalid
 	}
+	if request.Entry.Suite != nil && request.Entry.Suite.HasFileInputs() {
+		return fmt.Errorf("%w: %w", ErrNotRunnable, testspec.ErrFileInputsUnsupported)
+	}
 	channel := request.Run.Channel()
 	client, err := protocols.NewClient(executor.registry, request.Credential, channel, executor.transport)
 	if err != nil {
@@ -75,8 +78,12 @@ func (executor *ProtocolExecutor) executePhase(
 		if err != nil {
 			return err
 		}
-		if _, err := testspec.ValidateInputs(spec.Inputs, request.Entry.CaseInputs[testCase.ID]); err != nil {
+		inputs, err := testspec.ValidateInputs(spec.Inputs, request.Entry.CaseInputs[testCase.ID])
+		if err != nil {
 			return err
+		}
+		if len(inputs.Files) != 0 {
+			return fmt.Errorf("%w: %w", ErrNotRunnable, testspec.ErrFileInputsUnsupported)
 		}
 		specs[index] = spec
 	}

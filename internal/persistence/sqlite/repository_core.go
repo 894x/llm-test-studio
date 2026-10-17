@@ -26,8 +26,8 @@ type RepositoryOptions struct {
 	BusyTimeout time.Duration
 }
 
-// Repository uses a one-connection pool. database/sql reserves that connection
-// for each complete transaction and queues other operations with their context.
+// Each Repository uses a one-connection pool. Desktop and runner history use a
+// separate read-only view, leaving execution's connection for critical work.
 type Repository struct {
 	db *sql.DB
 }
@@ -51,6 +51,10 @@ func OpenRepository(ctx context.Context, path string, options RepositoryOptions)
 	if err != nil {
 		return nil, err
 	}
+	return openRepository(ctx, dsn, busyTimeout)
+}
+
+func openRepository(ctx context.Context, dsn string, busyTimeout time.Duration) (*Repository, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite repository: %w", err)
@@ -228,5 +232,8 @@ func (repository *Repository) CheckIntegrity(ctx context.Context) error {
 		return err
 	}
 	defer conn.Close()
-	return validateIntegrity(ctx, conn)
+	if err := validateIntegrity(ctx, conn); err != nil {
+		return err
+	}
+	return validateContentRelations(ctx, conn)
 }

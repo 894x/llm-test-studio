@@ -18,7 +18,7 @@ type relationQueryer interface {
 }
 
 func validateReportStorage(ctx context.Context, queryer relationQueryer, report domain.Report) error {
-	run, err := queryCurrentRun(ctx, queryer, report.RunID)
+	run, err := queryBoundedCurrentRun(ctx, queryer, report.RunID)
 	if err != nil {
 		return relationStorageError(ctx, "report run relation", err)
 	}
@@ -38,6 +38,9 @@ func validateReportStorage(ctx context.Context, queryer relationQueryer, report 
 		documentDigest: sha256.Sum256(document), snapshotDigest: sha256.Sum256(snapshot),
 	}
 	if err := validateReportRunHistories(ctx, queryer, map[string]reportRunExpectation{report.RunID: expected}); err != nil {
+		return err
+	}
+	if err := validateReportOriginForRun(ctx, queryer, run, report.ExecutionOrigin); err != nil {
 		return err
 	}
 	if run.Status() != report.RunStatus || !equalCanonicalDocuments(run.Snapshot(), report.PlanSnapshot) {

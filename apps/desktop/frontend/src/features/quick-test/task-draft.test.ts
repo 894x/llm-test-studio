@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { FIXTURE_CATALOG } from "@/features/runs/fixtures"
+import { FILE_SUITE, FILE_SELECTION } from "@/test/local-file-fixture"
 import { DesktopDataError } from "@/app/data-error"
 import {
   createTaskDraft,
@@ -38,6 +39,23 @@ const task = {
 }
 
 describe("quick task drafts", () => {
+  it("keeps file selections out of drafts and rejects every file-task command", () => {
+    const draft = { ...createTaskDraft(FILE_SUITE), base_url: "https://example.test", api_key: "key", model: "model" }
+    expect(draft.inputs).toEqual({})
+    const poisoned = { ...draft, inputs: { image: FILE_SELECTION.selection_id } }
+    const encoded = encodeTaskDraft(poisoned)
+    expect(encoded).not.toContain(FILE_SELECTION.selection_id)
+    expect(JSON.parse(encoded).inputs).toEqual({})
+    expect(decodeTaskDraft(encoded)?.inputs).toEqual({})
+    const checked = quickTaskCommand(poisoned)
+    expect(checked.command).toBeUndefined()
+    expect(checked.errors["input.image"]).toContain("暂不可运行")
+    expect(decodeTaskDraft(JSON.stringify({ ...JSON.parse(encoded), inputs: poisoned.inputs }))).toBeNull()
+    expect(() => parseQuickTaskDetail({ schema_version: 1, run_id: FILE_SELECTION.selection_id,
+      suite: FILE_SUITE, model: "model", base_url: "https://example.test", seed: 1, request_timeout_seconds: 60,
+      case_concurrency: 4, inputs: { image: { asset_ref: FILE_SELECTION.selection_id } } })).toThrow()
+  })
+
   it("sends seconds while preserving the single millisecond draft storage format", () => {
     const draft = { ...createTaskDraft(task), base_url: "https://example.test", api_key: "test-key", model: "model" }
     expect(draft.request_timeout_seconds).toBe(60)

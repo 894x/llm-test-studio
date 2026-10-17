@@ -90,6 +90,19 @@
     "warming_up": "正在热身",
     "ramping": "正在爬坡"
   },
+  "fileInput": {
+    "invalid": "请选择非空的 PNG 或 JPEG 图片。",
+    "tooLarge": "请选择不超过 {{bytes}} 字节的图片。",
+    "busy": "正在导入另一张图片，请稍后重试。",
+    "unavailable": "本地图片选择不可用，请在桌面应用中重试。",
+    "hint": "{{types}} · 最大 {{bytes}} 字节。选择仅在本次会话中保留。",
+    "importing": "正在导入图片…",
+    "selected": "已选择：{{type}} · {{bytes}} 字节",
+    "empty": "尚未选择图片。",
+    "cancel": "取消图片导入",
+    "remove": "移除图片",
+    "launchUnavailable": "包含文件输入的任务暂不可运行。可以在本次会话中选择图片，执行支持尚不可用。"
+  },
   "task": {
     "choose": "请选择测试任务。",
     "numberRequired": "请输入有效数字。",

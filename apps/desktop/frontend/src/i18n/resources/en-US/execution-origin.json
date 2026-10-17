@@ -1,0 +1,14 @@
+{
+  "title": "Execution origin",
+  "unrecorded": "No execution host origin was recorded.",
+  "location": "Execution location",
+  "local": "Local runner",
+  "remote": "Remote runner",
+  "runnerVersion": "Runner version",
+  "platform": "Execution platform",
+  "identity": "Executor identity",
+  "nodeID": "Node ID",
+  "installationID": "Installation ID",
+  "buildID": "Engine build ID",
+  "preparationEnvironment": "Preparation environment"
+}

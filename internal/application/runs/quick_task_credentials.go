@@ -27,7 +27,7 @@ func validQuickTaskAPIKey(value string) bool {
 // RememberQuickTaskCredential is a separate, explicit action after a Run exists.
 // That Run identity owns the keyring entry, so no authored target or credential
 // metadata file is needed and failed attempts cannot orphan an unreferenced key.
-func (service *Service) RememberQuickTaskCredential(ctx context.Context, command RememberQuickTaskCredentialCommand) error {
+func (service *Preparer) RememberQuickTaskCredential(ctx context.Context, command RememberQuickTaskCredentialCommand) error {
 	if !validQuickTaskAPIKey(command.APIKey) {
 		return ErrInvalid
 	}
@@ -47,7 +47,7 @@ func (service *Service) RememberQuickTaskCredential(ctx context.Context, command
 	return nil
 }
 
-func (service *Service) ForgetQuickTaskCredential(ctx context.Context, runID string) error {
+func (service *Preparer) ForgetQuickTaskCredential(ctx context.Context, runID string) error {
 	if err := service.quickTaskCredentialStoreReady(ctx); err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (service *Service) ForgetQuickTaskCredential(ctx context.Context, runID str
 
 // LeaseQuickTaskCredential binds a remembered key to its original protocol and
 // complete base URL. A different model/Suite at that target can reuse the key.
-func (service *Service) LeaseQuickTaskCredential(ctx context.Context, runID, baseURL string, protocol domain.Protocol) (*credentials.Lease, error) {
+func (service *Preparer) LeaseQuickTaskCredential(ctx context.Context, runID, baseURL string, protocol domain.Protocol) (*credentials.Lease, error) {
 	ref, err := service.quickTaskCredentialRef(ctx, runID, baseURL, protocol)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (service *Service) LeaseQuickTaskCredential(ctx context.Context, runID, bas
 	return lease, nil
 }
 
-func (service *Service) quickTaskCredentialRef(ctx context.Context, runID, baseURL string, protocol domain.Protocol) (credentials.StoreRef, error) {
+func (service *Preparer) quickTaskCredentialRef(ctx context.Context, runID, baseURL string, protocol domain.Protocol) (credentials.StoreRef, error) {
 	if err := service.quickTaskCredentialStoreReady(ctx); err != nil {
 		return credentials.StoreRef{}, err
 	}
@@ -93,7 +93,7 @@ func (service *Service) quickTaskCredentialRef(ctx context.Context, runID, baseU
 	return credentials.NewStoreRef(domain.CredentialQuickTaskAPIKey, runID)
 }
 
-func (service *Service) quickTaskCredentialStoreReady(ctx context.Context) error {
+func (service *Preparer) quickTaskCredentialStoreReady(ctx context.Context) error {
 	if service == nil || ctx == nil {
 		return ErrInvalid
 	}
@@ -112,7 +112,7 @@ func (service *Service) quickTaskCredentialStoreReady(ctx context.Context) error
 	return nil
 }
 
-func (service *Service) rememberedQuickTaskCredential(ctx context.Context, runID string, snapshot domain.RunSnapshot) string {
+func (service *Preparer) rememberedQuickTaskCredential(ctx context.Context, runID string, snapshot domain.RunSnapshot) string {
 	if service.quickTaskCredentialStoreReady(ctx) != nil || snapshot.QuickTask.SavedChannelID != "" {
 		return ""
 	}

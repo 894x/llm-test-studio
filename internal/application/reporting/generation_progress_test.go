@@ -77,3 +77,33 @@ func TestGenerationPersistenceFailureAndCancellationPublishFailedState(t *testin
 		}
 	}
 }
+
+func TestGenerationCancellationBeforePersistenceDoesNotWrite(t *testing.T) {
+	now := time.Date(2026, 10, 3, 8, 0, 0, 0, time.UTC)
+	for _, phase := range []string{"building", "persisting"} {
+		t.Run(phase, func(t *testing.T) {
+			run, results := multiSuiteReportFixture(t, now)
+			repository := &fakeReportRepository{run: run, results: results, evidence: []domain.Evidence{}}
+			generator, err := NewGenerator(GeneratorDependencies{
+				Repository: repository, Clock: fixedReportClock{now: now.Add(time.Minute)},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			unsubscribe := generator.SubscribeProgress(func(item GenerationProgress) {
+				if item.Phase == phase {
+					cancel()
+				}
+			})
+			defer unsubscribe()
+			if err := generator.Generate(ctx, run.Meta().ID); !errors.Is(err, context.Canceled) || errors.Is(err, ErrReportWrite) {
+				t.Fatalf("cancelled generation = %v", err)
+			}
+			if repository.report.ID != "" {
+				t.Fatal("cancelled computation wrote a report")
+			}
+		})
+	}
+}

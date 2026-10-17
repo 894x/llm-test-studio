@@ -1,12 +1,16 @@
+import { ExecutionOriginDetails } from "@/features/reports/execution-origin-details"
 import { formatPerformanceInteger } from "@/features/reports/performance-format"
 import { localizeStoredMessage, desktopLocale, translateDesktop as tx } from "@/i18n/runtime"
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import CheckCircle2Icon from "lucide-react/dist/esm/icons/check-circle-2.mjs"
 import CircleAlertIcon from "lucide-react/dist/esm/icons/circle-alert.mjs"
 import GaugeIcon from "lucide-react/dist/esm/icons/gauge.mjs"
 
 import { publicDesktopErrorMessage } from "@/app/desktop-client"
+import { JobDetails } from "@/features/jobs/job-details"
+import { launchAtDefault, type JobClient } from "@/features/jobs/execution"
+import { isJobTerminal, type JobView } from "@/features/jobs/data"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,17 +62,14 @@ export type QuickPerformanceConnection = Pick<
 export function PlanPerformanceRunSheet({
   planID,
   catalog,
-  run,
+  client,
   onArchived,
   onOpenReport,
   triggerLabel,
 }: {
   planID: string
   catalog: CatalogSnapshot
-  run: (
-    command: QuickPerformanceCommand,
-    onProgress?: (progress: QuickPerformanceProgress) => void,
-  ) => Promise<QuickPerformanceReport>
+  client: JobClient
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
   triggerLabel: string
@@ -122,7 +123,7 @@ export function PlanPerformanceRunSheet({
       connection={{ protocol: catalog.plans.find(plan => plan.id === planID)!.protocol, address_mode: "base_url", url: channel.base_url, api_key: "", channel_id: channel.id, model_id: effectiveModel }}
       plans={catalog.plans}
       initialPlanID={planID}
-      run={run}
+      client={client}
       onArchived={onArchived}
       onOpenReport={onOpenReport}
     /> : null}
@@ -136,11 +137,12 @@ type QuickPerformancePanelProps = {
   plans: CatalogSnapshot["plans"]
   initialPlanID?: string
   initialProfile?: QuickPerformanceProfile
+  initialJob?: JobView | null
   onPlanChange?: (id: string) => void
-  run: (
-    command: QuickPerformanceCommand,
-    onProgress?: (progress: QuickPerformanceProgress) => void,
-  ) => Promise<QuickPerformanceReport>
+  client: JobClient
+  onJobLaunched?: (job: JobView, command: QuickPerformanceCommand) => void
+  onJobChange?: (job: JobView) => void
+  onPendingChange?: (pending: boolean) => void
   onArchived?: (reportID: string) => void | Promise<void>
   onOpenReport?: (reportID: string) => void | Promise<void>
   resolveConnection?: () => QuickPerformanceConnection | undefined
@@ -154,6 +156,22 @@ export function QuickPerformanceSheet({
   onCloseAutoFocus?: (event: Event) => void
 }) {
   const { t } = useTranslation("quickTest")
+  const [job, setJob] = useState<JobView | null>(null)
+  const connectionIdentity = JSON.stringify(props.connection)
+  const [outputIdentity, setOutputIdentity] = useState(connectionIdentity)
+  if (outputIdentity !== connectionIdentity) {
+    setOutputIdentity(connectionIdentity)
+    setJob(null)
+  }
+  const { onJobLaunched, onJobChange } = props
+  const jobLaunched = useCallback((accepted: JobView, command: QuickPerformanceCommand) => {
+    setJob(accepted)
+    onJobLaunched?.(accepted, command)
+  }, [onJobLaunched])
+  const jobChanged = useCallback((observed: JobView) => {
+    setJob(observed)
+    onJobChange?.(observed)
+  }, [onJobChange])
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent onCloseAutoFocus={onCloseAutoFocus} className="data-[side=right]:w-full data-[side=right]:sm:max-w-5xl">
@@ -164,14 +182,14 @@ export function QuickPerformanceSheet({
             <span className="mt-1 block break-all">{props.connection.model_id} · {props.connection.url}</span>
           </SheetDescription>
         </SheetHeader>
-        <QuickPerformancePanel {...props} />
+        <QuickPerformancePanel {...props} initialJob={job} onJobLaunched={jobLaunched} onJobChange={jobChanged} />
       </SheetContent>
     </Sheet>
   )
 }
 
 export function QuickPerformancePanel({
-  connection, plans, initialPlanID, initialProfile, onPlanChange, showPlanSelector = true, run, onArchived, onOpenReport, resolveConnection, actionsContainer, embedded = false, blocked = false,
+  connection, plans, initialPlanID, initialProfile, initialJob, onPlanChange, showPlanSelector = true, client, onJobLaunched, onJobChange, onPendingChange, onArchived, onOpenReport, resolveConnection, actionsContainer, embedded = false, blocked = false,
 }: QuickPerformancePanelProps & { embedded?: boolean; blocked?: boolean }) {
   const { t: tx } = useTranslation()
   const { t } = useTranslation("quickTest")
@@ -181,8 +199,8 @@ export function QuickPerformancePanel({
   const editor = usePerformanceProfileEditor(initialProfile ?? plan?.performance)
   const { form } = editor
   const [pending, setPending] = useState(false)
-  const [report, setReport] = useState<QuickPerformanceReport | null>(null)
-  const [progress, setProgress] = useState<QuickPerformanceProgress | null>(null)
+  const [job, setJob] = useState<JobView | null>(initialJob ?? null)
+  const busy = pending || !!job && (!job.execution || !isJobTerminal(job.execution.status))
   const [operationError, setOperationError] = useState("")
   const requestGeneration = useRef({ value: 0 })
   // This identity stays in memory only, including the temporary credential.
@@ -190,8 +208,7 @@ export function QuickPerformancePanel({
   const [outputIdentity, setOutputIdentity] = useState(connectionIdentity)
   if (outputIdentity !== connectionIdentity) {
     setOutputIdentity(connectionIdentity)
-    setReport(null)
-    setProgress(null)
+    setJob(null)
     setOperationError("")
     setPending(false)
   }
@@ -202,34 +219,33 @@ export function QuickPerformancePanel({
       generation.value++
     }
   }, [connectionIdentity])
+  useEffect(() => { onPendingChange?.(busy) }, [busy, onPendingChange])
+  const observeJob = useCallback((observed: JobView) => { setJob(observed); onJobChange?.(observed) }, [onJobChange])
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    if (pending || blocked) return
+    if (busy || blocked) return
     const target = resolveConnection ? resolveConnection() : connection
     if (!target) return
     const profile = editor.validate()
     if (!profile) return
     setPending(true)
-    setReport(null)
-    setProgress(null)
+    setJob(null)
     setOperationError("")
     const generation = ++requestGeneration.current.value
-    void run(
-      {
+    const command: QuickPerformanceCommand = {
         protocol: target.protocol, address_mode: target.address_mode,
         url: target.url, api_key: target.api_key, model_id: target.model_id,
         ...(target.channel_id ? { channel_id: target.channel_id } : {}),
         ...(target.credential_run_id ? { credential_run_id: target.credential_run_id } : {}),
         ...(target.task ? { task: target.task } : {}),
         ...profile,
-      },
-      (nextProgress) => {
-        if (requestGeneration.current.value === generation) setProgress(nextProgress)
-      },
-    )
-      .then((nextReport) => {
-        if (requestGeneration.current.value === generation) setReport(nextReport)
-        if (nextReport.archived && nextReport.report_id) void onArchived?.(nextReport.report_id)
+      }
+    void launchAtDefault(client, { kind: "performance", plan: null, quick_task: null, comparison: null, performance: command })
+      .then((accepted) => {
+        if (requestGeneration.current.value === generation) {
+          setJob(accepted)
+          onJobLaunched?.(accepted, command)
+        }
       })
       .catch((reason: unknown) => {
         if (requestGeneration.current.value === generation)
@@ -255,7 +271,7 @@ export function QuickPerformancePanel({
                 <FieldLabel htmlFor="quick-performance-plan">{t("performance.plan")}</FieldLabel>
                 <FieldContent>
                   <SearchableSelect id="quick-performance-plan" aria-label={t("performance.plan")} value={plan?.id ?? ""}
-                    disabled={pending || blocked} className="w-full" placeholder={t("performance.choosePlan")}
+                    disabled={busy || blocked} className="w-full" placeholder={t("performance.choosePlan")}
                     options={availablePlans.map(item => ({ value: item.id, label: item.name }))}
                     onValueChange={id => {
                       const selected = availablePlans.find(item => item.id === id)
@@ -267,7 +283,7 @@ export function QuickPerformancePanel({
                   <FieldDescription>{t(availablePlans.length ? "performance.planHint" : "performance.noPlans")}</FieldDescription>
                 </FieldContent>
               </Field> : null}
-              <PerformanceProfileFields editor={editor} pending={pending || blocked} actionsContainer={actionsContainer} />
+              <PerformanceProfileFields editor={editor} pending={busy || blocked} actionsContainer={actionsContainer} />
               {operationError ? (
                 <FieldError className="rounded-md border border-destructive/25 bg-destructive-soft p-3">
                   {localizeStoredMessage(operationError, tx)}
@@ -275,26 +291,23 @@ export function QuickPerformancePanel({
               ) : null}
             </FieldGroup>
           </form>
-          {!embedded && pending && progress ? (
-            <QuickPerformanceProgressPanel
-              progress={progress}
-              requestCount={form.requestCount}
-              loadMode={form.loadMode}
-            />
-          ) : !embedded && pending ? (
+          {job ? <JobDetails key={job.job_id} client={client} jobID={job.job_id} initialJob={job}
+            onJobChange={observeJob}
+            onArchived={onArchived} onOpenReport={onOpenReport} reportIDs={job.report_ids}
+            renderProgress={progress => <QuickPerformanceProgressPanel progress={progress} requestCount={form.requestCount} loadMode={form.loadMode} />}
+            renderPerformance={report => <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} />}
+          /> : !embedded && pending ? (
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Spinner className="size-5" />
               <p className="mt-3 text-sm font-medium">{t("performance.running")}</p>
               <p className="mt-1 text-xs text-muted-foreground">{t("performance.runningHint")}</p>
             </div>
-          ) : report ? (
-            <QuickPerformanceReportPanel report={report} onOpenReport={onOpenReport} />
           ) : null}
     </>
   )
   const startButton = (
-          <Button type="submit" form="quick-performance-form" disabled={pending || blocked}>
-            {pending ? (
+          <Button type="submit" form="quick-performance-form" disabled={busy || blocked}>
+            {busy ? (
               <>
                 <Spinner data-icon="inline-start" />
                 {t("testing")}
@@ -321,7 +334,7 @@ export function QuickPerformancePanel({
   )
 }
 
-function QuickPerformanceReportPanel({
+export function QuickPerformanceReportPanel({
   report,
   onOpenReport,
 }: {
@@ -402,6 +415,7 @@ function QuickPerformanceReportPanel({
           </p>
         </div>
       </div>
+      <div className="px-4 pb-4"><ExecutionOriginDetails origin={report.execution_origin} /></div>
       <Separator />
       <div className="space-y-4 p-4">
         <p className="rounded-md border bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">

@@ -155,8 +155,12 @@ func (service *Service) Run(ctx context.Context, request RunRequest) (FinalEvent
 		return FinalEvent{}, &ConfigError{Err: err}
 	}
 	for _, item := range selected {
-		if _, err := testspec.ValidateInputs(item.Spec.Inputs, config.Inputs); err != nil {
+		inputs, err := testspec.ValidateInputs(item.Spec.Inputs, config.Inputs)
+		if err != nil {
 			return FinalEvent{}, &ConfigError{Err: fmt.Errorf("case %s: %w", item.ID, err)}
+		}
+		if len(inputs.Files) != 0 {
+			return FinalEvent{}, &ConfigError{Err: testspec.ErrFileInputsUnsupported}
 		}
 	}
 	runs, err := apiaudit.ExpandRuns(config, selected)

@@ -1,3 +1,5 @@
+import { launchAtDefault } from "@/features/jobs/execution"
+import type { JobView } from "@/features/jobs/data"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -13,13 +15,14 @@ export type RunShortcutRenderer = (runID: string, showCurrentReport?: boolean) =
 
 type RerunAttempt = { sourceID: string; runID?: string; waiting: boolean; error?: string }
 
-export function useRunShortcuts({ client, workspace, reports, generation, draft, commandPending, onStarted, onOpenReport, refreshReports, loadWorkspace, loadCatalog }: {
+export function useRunShortcuts({ client, workspace, reports, generation, draft, commandPending, onJobLaunched, onStarted, onOpenReport, refreshReports, loadWorkspace, loadCatalog }: {
   client: DesktopClient
   workspace: WorkspaceSnapshot | null
   reports: ReportSnapshot | null
   generation: Record<string, ReportGenerationProgress>
   draft: TaskDraft
   commandPending: boolean
+  onJobLaunched?: (job: JobView) => void
   onStarted: (runID: string) => void
   onOpenReport: (reportID: string) => Promise<void>
   refreshReports: () => Promise<ReportSnapshot>
@@ -63,7 +66,9 @@ export function useRunShortcuts({ client, workspace, reports, generation, draft,
   }
 
   const startQuick = async (sourceID: string, command: StartQuickTaskCommand) => {
-    started(sourceID, await client.startQuickTask(command))
+    const job = await launchAtDefault(client, { kind: "quick_task", quick_task: command, plan: null, performance: null, comparison: null })
+    onJobLaunched?.(job)
+    if (job.run_ids[0]) started(sourceID, job.run_ids[0])
   }
 
   const rerun = async (sourceID: string) => {
@@ -99,11 +104,12 @@ export function useRunShortcuts({ client, workspace, reports, generation, draft,
           setAttempt({ sourceID, waiting: false, error: t("shortcuts.missingPlan") })
           return
         }
-        const runID = await client.startRunTarget({
+        const job = await launchAtDefault(client, { kind: "plan", quick_task: null, performance: null, comparison: null, plan: {
           plan_id: run.plan_id, model_id: run.model_id, channel_id: run.channel_id,
           ...(run.load_mode === "single" && isCaseConcurrency(run.concurrency) ? { case_concurrency: run.concurrency } : {}),
-        })
-        started(sourceID, runID)
+        } })
+        onJobLaunched?.(job)
+        if (job.run_ids[0]) started(sourceID, job.run_ids[0])
       }
     } catch (error) {
       setAttempt({ sourceID, waiting: false, error: publicDesktopErrorMessage(error, t("shortcuts.failed")) })

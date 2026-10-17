@@ -19,10 +19,12 @@ import (
 	"time"
 
 	"github.com/894x/llm-test-studio/internal/application/catalog"
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/jobcontract"
 	"github.com/894x/llm-test-studio/internal/testspec"
 )
 
@@ -184,8 +186,18 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 					planID = item.ID
 				}
 			}
-			if _, err = app.StartRunTarget(runs.StartCommand{PlanID: planID, ModelID: modelID, ChannelID: channelID}); err != nil {
+			job, err := app.LaunchJob(jobs.LaunchCommand{
+				Location: jobs.Location{Kind: jobcontract.TargetLocal}, Kind: jobs.LaunchPlan,
+				Plan: &runs.StartCommand{PlanID: planID, ModelID: modelID, ChannelID: channelID},
+			})
+			if err != nil {
 				t.Fatal(err)
+			}
+			if len(job.RunIDs) != 1 {
+				t.Fatalf("job did not expose exactly one prepared Run: %+v", job)
+			}
+			if !domain.IsUUID(job.RunIDs[0]) || job.JobID == job.RunIDs[0] {
+				t.Fatalf("job did not expose its distinct prepared Run identity: %+v", job)
 			}
 			var summary reporting.Summary
 			deadline := time.Now().Add(8 * time.Second)
@@ -195,7 +207,7 @@ func testProtocolDesktopEndToEnd(t *testing.T, transportFailure bool) {
 					t.Fatal(err)
 				}
 				for _, item := range list.Reports {
-					if item.PlanName == "E2E "+string(protocol) {
+					if item.RunID == job.RunIDs[0] {
 						summary = item
 					}
 				}

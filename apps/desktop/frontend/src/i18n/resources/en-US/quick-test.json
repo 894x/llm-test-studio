@@ -90,6 +90,19 @@
     "warming_up": "Warming up",
     "ramping": "Ramping"
   },
+  "fileInput": {
+    "invalid": "Choose a nonempty PNG or JPEG image.",
+    "tooLarge": "Choose an image no larger than {{bytes}} bytes.",
+    "busy": "Another image is being imported. Wait and try again.",
+    "unavailable": "Local image selection is unavailable. Retry in the desktop application.",
+    "hint": "{{types}} · up to {{bytes}} bytes. Selections stay in this session only.",
+    "importing": "Importing image…",
+    "selected": "Selected: {{type}} · {{bytes}} bytes",
+    "empty": "No image selected.",
+    "cancel": "Cancel image import",
+    "remove": "Remove image",
+    "launchUnavailable": "Tasks with file inputs cannot run yet. Image selection is available for this session; execution support is unavailable."
+  },
   "task": {
     "choose": "Choose a test task.",
     "numberRequired": "Enter a valid number.",

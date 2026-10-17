@@ -23,7 +23,13 @@ type terminalRecoveryRepository struct {
 
 func (r *terminalRecoveryRepository) UpdateRun(ctx context.Context, revision uint64, run domain.Run) error {
 	r.gate.Lock()
-	blocked := r.unavailable && (run.Status() == r.target || r.allTerminal && run.Status() == domain.RunCancelled)
+	terminal := false
+	switch run.Status() {
+	case domain.RunCompleted, domain.RunFailed, domain.RunCancelled:
+		terminal = true
+	}
+	blockedStatus := run.Status() == r.target || r.allTerminal && terminal
+	blocked := r.unavailable && blockedStatus
 	ambiguous := r.commitError && run.Status() == r.target
 	r.gate.Unlock()
 	if blocked {

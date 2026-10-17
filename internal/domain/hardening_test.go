@@ -782,7 +782,7 @@ func TestReportV2SerializesEveryRequiredSectionAndValidatesNestedData(t *testing
 	}
 	for _, required := range []string{
 		"schema_version", "id", "run_id", "run_status", "generated_at", "plan_snapshot", "model", "channel",
-		"environment", "conclusion", "sla", "metrics", "timeline", "distributions", "case_results",
+		"environment", "execution_origin", "conclusion", "sla", "metrics", "timeline", "distributions", "case_results",
 		"error_clusters", "evidence", "baseline", "attachments",
 	} {
 		if _, ok := fields[required]; !ok {

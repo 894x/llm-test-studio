@@ -55,7 +55,7 @@ func (fixture *kimiResponsesFixture) Send(_ context.Context, request runtime.Req
 		return runtime.Response{}, err
 	}
 	return runtime.Response{
-		Started: time.Now(), RequestBody: request.Body,
+		Started: time.Now(), RequestBody: request.Body.Body,
 		HTTP: &http.Response{StatusCode: fixture.status, Body: io.NopCloser(strings.NewReader(string(raw)))},
 	}, nil
 }
@@ -105,7 +105,12 @@ func TestKimiResponsesAssertionsUseNativeOutcomesAndOutputItems(t *testing.T) {
 				}}
 			}
 			observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
-				Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+				Spec: spec,
+				Inputs: testspec.ResolvedInputs{
+					JSONValues: map[string]json.RawMessage{},
+					Files:      map[string]testspec.FileBinding{},
+				},
+				Transport: fixture,
 			})
 			verdict := testspec.Evaluate(spec.Assertions, observation)
 			if (verdict.Status == testspec.VerdictPassed) != test.passed {
@@ -205,7 +210,12 @@ func TestKimiResponsesToolChoiceRejectsUnsupportedNativeValues(t *testing.T) {
 			}
 			fixture := &kimiResponsesFixture{status: test.status, root: root}
 			observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
-				Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+				Spec: spec,
+				Inputs: testspec.ResolvedInputs{
+					JSONValues: map[string]json.RawMessage{},
+					Files:      map[string]testspec.FileBinding{},
+				},
+				Transport: fixture,
 			})
 			var body map[string]any
 			if err := json.Unmarshal(observation.Exchanges[0].RequestBody, &body); err != nil {
@@ -226,7 +236,12 @@ func TestKimiResponsesCacheWorkflowUsesTwoNativeRequests(t *testing.T) {
 	spec := kimiResponsesSpec(t, "K3-cache-prefix-hit")
 	fixture := &kimiResponsesFixture{status: 200, root: kimiResponse("CACHE_READY")}
 	observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
-		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+		Spec: spec,
+		Inputs: testspec.ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]testspec.FileBinding{},
+		},
+		Transport: fixture,
 	})
 	verdict := testspec.Evaluate(spec.Assertions, observation)
 	if fixture.calls != 2 || verdict.Status != testspec.VerdictPassed {
@@ -255,7 +270,12 @@ func TestKimiResponsesMinimalOutputAssertsNativeIncompleteReason(t *testing.T) {
 	usage["output_tokens_details"].(map[string]any)["reasoning_tokens"] = 1
 	fixture := &kimiResponsesFixture{status: 200, root: root}
 	observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
-		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+		Spec: spec,
+		Inputs: testspec.ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]testspec.FileBinding{},
+		},
+		Transport: fixture,
 	})
 	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status != testspec.VerdictPassed {
 		t.Fatalf("expected output limit = %+v", verdict)
@@ -266,7 +286,12 @@ func TestKimiResponsesMinimalOutputAssertsNativeIncompleteReason(t *testing.T) {
 	usage["output_tokens"] = 4
 	usage["total_tokens"] = 516
 	observation = openairesponses.New().Execute(context.Background(), runtime.Execution{
-		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+		Spec: spec,
+		Inputs: testspec.ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]testspec.FileBinding{},
+		},
+		Transport: fixture,
 	})
 	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status == testspec.VerdictPassed {
 		t.Fatal("usage above the documented output budget passed")
@@ -275,7 +300,12 @@ func TestKimiResponsesMinimalOutputAssertsNativeIncompleteReason(t *testing.T) {
 	usage["total_tokens"] = 513
 	root["incomplete_details"] = map[string]any{"reason": "content_filter"}
 	observation = openairesponses.New().Execute(context.Background(), runtime.Execution{
-		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+		Spec: spec,
+		Inputs: testspec.ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]testspec.FileBinding{},
+		},
+		Transport: fixture,
 	})
 	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status == testspec.VerdictPassed {
 		t.Fatal("content filtering passed an output-budget assertion")
@@ -307,7 +337,12 @@ func TestKimiResponsesMaxReasoningAcceptsOnlyDocumentedTerminalOutcomes(t *testi
 			usage["total_tokens"] = 512 + test.outputTokens
 			fixture := &kimiResponsesFixture{status: 200, root: root}
 			observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
-				Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+				Spec: spec,
+				Inputs: testspec.ResolvedInputs{
+					JSONValues: map[string]json.RawMessage{},
+					Files:      map[string]testspec.FileBinding{},
+				},
+				Transport: fixture,
 			})
 			verdict := testspec.Evaluate(spec.Assertions, observation)
 			if (verdict.Status == testspec.VerdictPassed) != test.passed {
@@ -321,7 +356,12 @@ func TestKimiResponsesOutputMaximumDoesNotAssertCombinedContextOverflow(t *testi
 	spec := kimiResponsesSpec(t, "P051-max-completion-context-overflow")
 	fixture := &kimiResponsesFixture{status: 200, root: kimiResponse("你好")}
 	observation := openairesponses.New().Execute(context.Background(), runtime.Execution{
-		Spec: spec, Inputs: map[string]json.RawMessage{}, Transport: fixture,
+		Spec: spec,
+		Inputs: testspec.ResolvedInputs{
+			JSONValues: map[string]json.RawMessage{},
+			Files:      map[string]testspec.FileBinding{},
+		},
+		Transport: fixture,
 	})
 	if verdict := testspec.Evaluate(spec.Assertions, observation); verdict.Status != testspec.VerdictPassed {
 		t.Fatalf("documented output maximum was rejected: %+v", verdict)

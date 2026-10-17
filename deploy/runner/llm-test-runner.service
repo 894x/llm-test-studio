@@ -1,0 +1,43 @@
+# Managed by LLM Test Studio runner installer.
+[Unit]
+Description=LLM Test Studio shared execution runner
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=llm-test-runner
+Group=llm-test-runner
+StateDirectory=llm-test-runner
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/llm-test-runner
+ExecStart=/opt/llm-test-runner/current/llm-test-runner serve --state /var/lib/llm-test-runner
+Restart=on-failure
+RestartSec=5s
+WatchdogSec=30s
+TimeoutStartSec=60s
+TimeoutStopSec=90s
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+LimitCORE=0
+LimitNOFILE=131072
+TasksMax=8192
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target

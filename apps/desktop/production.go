@@ -22,9 +22,11 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/channelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/channelconfig"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
+	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
+	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/reporting"
 	"github.com/894x/llm-test-studio/internal/application/runs"
 	"github.com/894x/llm-test-studio/internal/application/suitecatalog"
@@ -32,7 +34,9 @@ import (
 	"github.com/894x/llm-test-studio/internal/casetypes"
 	"github.com/894x/llm-test-studio/internal/credentials"
 	"github.com/894x/llm-test-studio/internal/domain"
+	"github.com/894x/llm-test-studio/internal/fileconfig"
 	"github.com/894x/llm-test-studio/internal/persistence/sqlite"
+	"github.com/894x/llm-test-studio/internal/runnerartifacts"
 )
 
 var desktopApplicationVersion = "dev"
@@ -47,6 +51,10 @@ type productionOptions struct {
 	reportRunDiagnostic     func(runs.Diagnostic)
 	reportCredentialCleanup func(error)
 	credentialStore         credentials.Store
+	runnerSource            runnerartifacts.Source
+	runnerRelease           string
+	remoteConnector         remotenodes.Connector
+	runnerConnector         runnerConnector
 }
 
 type productionClock struct{}
@@ -66,7 +74,7 @@ func defaultProductionOptions() productionOptions {
 }
 
 func newProductionInitializer(options productionOptions) desktopInitializer {
-	return func(ctx context.Context) (desktopDependencies, error) {
+	return func(ctx context.Context) (result desktopDependencies, initializeError error) {
 		if ctx == nil {
 			ctx = context.Background()
 		}
@@ -84,12 +92,18 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, err
 		}
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return desktopDependencies{}, fmt.Errorf("create desktop data directory: %w", err)
+		if err := fileconfig.EnsurePrivateDirectory(ctx, directory); err != nil {
+			return desktopDependencies{}, fmt.Errorf("prepare desktop data directory: %w", err)
 		}
-		if err := os.Chmod(directory, 0o700); err != nil {
-			return desktopDependencies{}, fmt.Errorf("secure desktop data directory: %w", err)
+		ownership, err := fileconfig.TryAcquireExclusiveLock(ctx, filepath.Join(directory, "desktop-executor.lock"))
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("desktop execution data is already owned or unavailable: %w", err)
 		}
+		defer func() {
+			if initializeError != nil {
+				initializeError = errors.Join(initializeError, ownership.Close())
+			}
+		}()
 		if err := sqlite.Migrate(ctx, database, sqlite.MigrateOptions{
 			AppVersion: options.appVersion,
 		}); err != nil {
@@ -183,13 +197,34 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		if err != nil {
 			return desktopDependencies{}, fmt.Errorf("open desktop repository: %w", err)
 		}
+		var localExecutor *productionLocalExecutor
+		var readView *sqlite.Repository
+		defer func() {
+			if initializeError != nil {
+				if localExecutor != nil {
+					initializeError = errors.Join(initializeError, localExecutor.Close())
+				}
+				if readView != nil {
+					initializeError = errors.Join(initializeError, readView.Close())
+				}
+				initializeError = errors.Join(initializeError, repository.Close())
+			}
+		}()
+		localExecutor, err = newProductionLocalExecutor(ctx, repository, options)
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("create local job host: %w", err)
+		}
 		if err := runs.RecoverInterrupted(ctx, repository, productionClock{}); err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("recover interrupted desktop runs: %w", err)
+		}
+		readView, err = repository.OpenReadOnlyView(ctx)
+		if err != nil {
+			return desktopDependencies{}, fmt.Errorf("open desktop history read view: %w", err)
 		}
 		caseTypes := casetypes.MustBuiltinRegistry()
 		runtimeRepository := filesystemRuntimeRepository{Repository: repository, catalog: catalogRepository}
-		workspaceQuery := workspace.New(runtimeRepository)
+		queryRepository := filesystemRuntimeRepository{Repository: readView, catalog: catalogRepository}
+		workspaceQuery := workspace.New(queryRepository)
 		catalogQuery, err := catalog.New(catalog.Dependencies{
 			Repository: catalogRepository,
 			Clock:      productionClock{},
@@ -201,10 +236,9 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create desktop catalog service: %w", err)
 		}
-		reportingQuery := reporting.New(repository)
+		reportingQuery := reporting.New(readView)
 		reportGenerator, err := reporting.NewGenerator(reporting.GeneratorDependencies{
 			Repository: repository,
 			Clock:      productionClock{},
@@ -218,7 +252,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create report generator: %w", err)
 		}
 		channelService, err := channelconfig.New(channelconfig.Dependencies{
@@ -230,7 +263,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create channel configuration service: %w", err)
 		}
 		if err := channelService.RetryPendingCredentialCleanup(ctx); err != nil && options.reportCredentialCleanup != nil {
@@ -254,7 +286,6 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			},
 		})
 		if err != nil {
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create run application service: %w", err)
 		}
 		comparisonService, err := comparisons.New(comparisons.Dependencies{
@@ -262,8 +293,35 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 		})
 		if err != nil {
 			_ = runService.Close()
-			_ = repository.Close()
 			return desktopDependencies{}, fmt.Errorf("create comparison application service: %w", err)
+		}
+		remoteNodes, closeRemoteNodes, err := newProductionRemoteNodes(
+			ctx,
+			productionRemoteNodeDependencies{
+				Directory: directory, Credentials: baseCredentialStore, Usage: repository, Options: options,
+			},
+		)
+		if err != nil {
+			_ = runService.Close()
+			return desktopDependencies{}, fmt.Errorf("create remote node manager: %w", err)
+		}
+		remoteSync, closeRemoteSync, err := newProductionRemoteSynchronization(ctx, remoteSyncDependencies{
+			Directory: directory, Repository: repository, Configuration: remoteNodes.configuration,
+			Connect: options.runnerConnector,
+		})
+		if err != nil {
+			_ = closeRemoteNodes()
+			_ = runService.Close()
+			return desktopDependencies{}, fmt.Errorf("create remote synchronization: %w", err)
+		}
+		jobServices, err := newProductionJobs(ctx, repository, productionJobBackends{
+			configuration: remoteNodes.configuration, connect: options.runnerConnector, local: localExecutor.Connect,
+		})
+		if err != nil {
+			_ = closeRemoteSync()
+			_ = closeRemoteNodes()
+			_ = runService.Close()
+			return desktopDependencies{}, fmt.Errorf("create job submission coordinator: %w", err)
 		}
 		gate := &productionServiceGate{}
 		quickPerformanceArchive := serializedQuickPerformanceArchive{gate: gate, archive: repository}
@@ -272,27 +330,57 @@ func newProductionInitializer(options productionOptions) desktopInitializer {
 			gate: gate, query: catalogQuery, commands: catalogCommands, channels: channelService,
 			targets: channelService, targetCredential: runService.LeaseQuickTaskCredential,
 		}
+		quickTests := quicktest.New(quicktest.Dependencies{
+			TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
+				return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
+			},
+			TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string, selectedProtocol domain.Protocol) (string, error) {
+				return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model}, selectedProtocol)
+			},
+			Archive:            quickPerformanceArchive,
+			Clock:              productionClock{},
+			ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
+		})
+		launcher, err := jobs.NewLauncher(jobs.LauncherDependencies{
+			Coordinator: jobServices.coordinator, Runs: runService.Preparer, Comparisons: comparisonService.Preparer,
+			Performance: quickTests, Now: time.Now,
+		})
+		if err != nil {
+			_ = jobServices.close()
+			_ = closeRemoteSync()
+			_ = closeRemoteNodes()
+			_ = runService.Close()
+			return desktopDependencies{}, fmt.Errorf("create job launcher: %w", err)
+		}
 		return desktopDependencies{
-			query:            serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
-			catalog:          serializedCatalog,
-			catalogCommands:  serializedCatalog,
-			reports:          serializedReportingQuery{gate: gate, query: reportingQuery},
-			reportGeneration: reportGenerator,
-			commands:         runService,
-			comparisons:      comparisonService,
-			quickTests: quicktest.New(quicktest.Dependencies{
-				TaskCredential: func(ctx context.Context, runID, baseURL string, selectedProtocol domain.Protocol) (*credentials.Lease, error) {
-					return runService.LeaseQuickTaskCredential(ctx, runID, baseURL, selectedProtocol)
-				},
-				TaskPath: func(ctx context.Context, task quicktest.TaskReference, model string, selectedProtocol domain.Protocol) (string, error) {
-					return runService.QuickTaskPerformancePath(ctx, runs.QuickTaskCommand{SuiteID: task.SuiteID, SourceRunID: task.SourceRunID, Model: model}, selectedProtocol)
-				},
-				Archive:            quickPerformanceArchive,
-				Clock:              productionClock{},
-				ChannelConnections: quicktest.NewStoredChannelConnectionResolver(catalogRepository, credentialStore),
-			}),
+			query:                  serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
+			catalog:                serializedCatalog,
+			catalogCommands:        serializedCatalog,
+			reports:                serializedReportingQuery{gate: gate, query: reportingQuery},
+			reportGeneration:       reportGenerator,
+			commands:               runService,
+			comparisons:            comparisonService,
+			remoteNodes:            remoteNodes.manager,
+			remoteSync:             remoteSync,
+			jobs:                   jobServices.coordinator,
+			launcher:               launcher,
+			controls:               jobServices.controller,
+			confirmations:          jobServices.confirmations,
+			controlDelivery:        jobServices.deliveries,
+			performancePreparation: quickTests,
+			jobQuery:               readView,
+			controlRecords:         repository,
 			close: func() error {
-				return errors.Join(runService.Close(), repository.Close())
+				return errors.Join(
+					jobServices.close(),
+					closeRemoteSync(),
+					closeRemoteNodes(),
+					runService.Close(),
+					localExecutor.Close(),
+					readView.Close(),
+					repository.Close(),
+					ownership.Close(),
+				)
 			},
 		}, nil
 	}
