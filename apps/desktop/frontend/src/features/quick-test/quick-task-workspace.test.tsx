@@ -73,6 +73,7 @@ function setup(
 ) {
   const actions = {
     ...executionClient(),
+    getAvailableReports: vi.fn(async (_ids: string[]): Promise<string[]> => []),
     getQuickTask: vi.fn(),
     getReportDetail: vi.fn(),
     rememberQuickTaskCredential: vi.fn(async () => undefined),
@@ -703,13 +704,34 @@ describe("Suite quick task workspace", () => {
     await user.click(screen.getByRole("button", { name: "开始性能测试" }))
     const list = screen.getByRole("list", { name: "测试记录" })
     const row = within(list).getByRole("button", { name: "快速性能测试" }).closest("li")!
-    await waitFor(() => expect(within(row).getByRole("button", { name: "打开报告 快速性能测试" })).toBeInTheDocument())
+    await waitFor(() => expect(row).toHaveTextContent("等待报告同步"))
+    expect(within(row).queryByRole("button", { name: "打开报告 快速性能测试" })).not.toBeInTheDocument()
     actions.updateReports({ schema_version: 1, reports: [{ ...archivedPerformanceSummary,
       run_status: "completed", passed, failed_case_count: passed ? 0 : 2,
     }] })
+    expect(within(row).getByRole("button", { name: "打开报告 快速性能测试" })).toBeInTheDocument()
+    expect(row).not.toHaveTextContent("等待报告同步")
     expect(within(list).getByRole("button", { name: "快速性能测试" }).closest("li")).toBe(row)
     expect(within(row).getByText(expected, { exact: true })).toBeInTheDocument()
     expect(within(list).queryByRole("button", { name: "Saved performance test" })).not.toBeInTheDocument()
+  })
+
+  it("finds an imported performance archive outside the loaded history page", async () => {
+    const user = userEvent.setup()
+    const actions = setup({ ...createTaskDraft(FIXTURE_CATALOG.suites[1]), base_url: "https://example.test", api_key: "private-key", model: "model" },
+      undefined, undefined, undefined, { schema_version: 1, reports: [] })
+    const job = jobFixture({ performance_result_ready: true, report_ids: [archivedPerformanceID],
+      execution: { ...jobFixture().execution!, status: "completed" } })
+    actions.launchJob.mockResolvedValue(job)
+    actions.getJob.mockResolvedValue(job)
+    await user.click(screen.getByRole("switch", { name: "切换测试模式" }))
+    await user.click(screen.getByRole("button", { name: "开始性能测试" }))
+    const list = screen.getByRole("list", { name: "测试记录" })
+    await waitFor(() => expect(actions.getAvailableReports).toHaveBeenCalledWith([archivedPerformanceID]))
+    expect(list).toHaveTextContent("等待报告同步")
+    actions.getAvailableReports.mockResolvedValue([archivedPerformanceID])
+    expect(await within(list).findByRole("button", { name: "打开报告 快速性能测试" }, { timeout: 4000 })).toBeVisible()
+    expect(list).not.toHaveTextContent("等待报告同步")
   })
 
   it.each(["openai-chat", "seedance"])("keeps performance progress and failures when switching back to %s", async protocol => {
@@ -740,7 +762,8 @@ describe("Suite quick task workspace", () => {
     expect(within(row).getByRole("status")).toBeInTheDocument()
     actions.getJob.mockResolvedValue({ ...running, execution: { ...running.execution!, status: "failed", revision: 2,
       failure: { phase: "execution", error_code: "request_failed" } } })
-    await waitFor(() => expect(within(row).queryByRole("status")).not.toBeInTheDocument(), { timeout: 3500 })
+    await waitFor(() => expect(row).toHaveTextContent("等待报告同步"), { timeout: 3500 })
+    expect(within(row).queryByRole("progressbar")).not.toBeInTheDocument()
     expect(within(list).getByRole("button", { name: "快速性能测试" }).closest("li")).toBe(row)
     expect(row).toHaveTextContent("失败")
     expect(screen.getByLabelText("API Key")).toHaveValue("private-key")

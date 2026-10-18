@@ -176,5 +176,8 @@ func (watcher *Watcher) syncDocument(
 	outcome, err := watcher.synchronizer.ImportDocument(ctx, DocumentRequest{
 		Request: Request{Origin: node.Origin, JobID: work.JobID, Remote: connection}, Document: work.Document,
 	})
+	if err == nil && outcome.Imported {
+		watcher.notifyChanged()
+	}
 	return syncResult{applied: outcome.Imported, err: err}
 }

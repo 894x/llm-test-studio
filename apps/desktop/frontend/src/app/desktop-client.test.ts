@@ -166,6 +166,21 @@ describe("Wails desktop client", () => {
     await expect(client.getReportGeneration()).rejects.toBeInstanceOf(DesktopDataError)
   })
 
+  it("subscribes to committed remote result invalidations and releases the runtime listener", () => {
+    installBinding(FIXTURE_WORKSPACE)
+    let event = () => {}
+    const detach = vi.fn()
+    const EventsOn = vi.fn((_name: string, receive: () => void) => { event = receive; return detach })
+    Object.assign(window, { runtime: { EventsOn } })
+    const receive = vi.fn()
+    const unsubscribe = createDesktopClient().subscribeRemoteResults(receive)
+    expect(EventsOn).toHaveBeenCalledWith("remote-results-changed", expect.any(Function))
+    event()
+    expect(receive).toHaveBeenCalledTimes(1)
+    unsubscribe()
+    expect(detach).toHaveBeenCalledTimes(1)
+  })
+
   it("rejects malformed generation events and releases the runtime subscription", () => {
     installBinding(FIXTURE_WORKSPACE)
     let event!: (payload: unknown) => void

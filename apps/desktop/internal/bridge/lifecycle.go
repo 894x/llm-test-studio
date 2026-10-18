@@ -142,6 +142,21 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 			return nil
 		}
 	}
+	if dependencies.RemoteSync != nil {
+		unsubscribe := dependencies.RemoteSync.SubscribeChanges(func() {
+			if lifecycleContext.Err() == nil {
+				app.emitDesktopEvent(lifecycleContext, "remote-results-changed")
+			}
+		})
+		closeServices := app.close
+		app.close = func() error {
+			unsubscribe()
+			if closeServices != nil {
+				return closeServices()
+			}
+			return nil
+		}
+	}
 	app.startupDone.Broadcast()
 	app.mu.Unlock()
 }

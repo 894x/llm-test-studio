@@ -176,6 +176,50 @@ func TestBackgroundWatcherRetriesOnlyPendingPartialDocuments(t *testing.T) {
 	}
 }
 
+func TestTwoDesktopWatchersImportSameRemoteReportAndNotifyAfterCommit(t *testing.T) {
+	fixture := newHTTPFixture(t, false, capabilities())
+	client := httpManagementClient(t, fixture)
+	submission := fixture.runSubmission(t, false)
+	if _, err := client.Submit(t.Context(), &submission); err != nil {
+		t.Fatal(err)
+	}
+	waitHTTPJob(
+		t,
+		fixture,
+		submission.Job.JobID,
+		domain.RunCompleted,
+	)
+	waitHTTPSettlement(t, client)
+	identity := fixture.host.Identity()
+	origin := remoteresults.Origin{ConfigurationID: httpMeta(t).ID,
+		NodeID: identity.Target.NodeID, InstallationID: identity.InstallationID}
+	observed := []*atomic.Bool{}
+	for range 2 {
+		desktop, _ := performanceMirrorStore(t)
+		cache, _ := syncDocuments(t)
+		watcher, stop := startObservingFixture(
+			t,
+			fixture,
+			desktop,
+			cache,
+			origin,
+		)
+		defer stop()
+		committed := &atomic.Bool{}
+		observed = append(observed, committed)
+		unsubscribe := watcher.SubscribeChanges(func() {
+			documents, err := desktop.ListRemoteDocuments(t.Context(), submission.Job.JobID)
+			if err == nil && len(documents) == 1 && documents[0].Imported {
+				committed.Store(true)
+			}
+		})
+		defer unsubscribe()
+	}
+	awaitObservationFor(t, 25*time.Second, func() bool {
+		return observed[0].Load() && observed[1].Load()
+	})
+}
+
 func TestBackgroundWatcherFindsAnotherClientsAlreadyCompletedTailJob(t *testing.T) {
 	fixture := newHTTPFixture(t, false, capabilities())
 	client := httpManagementClient(t, fixture)

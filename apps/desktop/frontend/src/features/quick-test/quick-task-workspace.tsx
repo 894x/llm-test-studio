@@ -58,6 +58,7 @@ type Actions = JobClient & Pick<
   DesktopClient,
   | "getQuickTask"
   | "getReportDetail"
+  | "getAvailableReports"
   | "rememberQuickTaskCredential"
   | "forgetQuickTaskCredential"
   | "createLocalFileSelection"
@@ -130,6 +131,11 @@ export function QuickTaskWorkspace({
     "start" | "history" | "cancel" | "remember" | "forget" | "save" | null
   >(null)
   const observedJobs = useRef(new Map<string, string>())
+  const [unavailableReports, setUnavailableReports] = useState<Set<string>>(() => new Set())
+  const [availableReportIDs, setAvailableReportIDs] = useState<Set<string>>(() => new Set())
+  const reportUnavailable = useCallback((id: string) => {
+    setUnavailableReports(current => current.has(id) ? current : new Set([...current, id]))
+  }, [])
   const receiveFunctionalJob = useCallback((observed: JobView) => {
     const marker = JSON.stringify(observed)
     if (observedJobs.current.get(observed.job_id) === marker) return
@@ -252,11 +258,37 @@ export function QuickTaskWorkspace({
     })),
     ...performanceHistory.map(item => {
       const report = reports.reports.find(report => report.source === "quick_performance" && report.id === item.reportID)
-      if (!report || item.active || item.status !== "completed") return item
+      if (!report || item.active || item.status !== "completed") return { ...item,
+        reportID: report?.id ?? (item.reportID && availableReportIDs.has(item.reportID) ? item.reportID : undefined) }
       return { ...item, status: report.run_status === "cancelled" ? "cancelled" : report.passed ? "passed" : "failed" }
     }),
-  ].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+  ].map(item => ({ ...item,
+    waitingForReport: !item.active && !item.reportID && !unavailableReports.has(item.id),
+    reportError: !item.reportID && unavailableReports.has(item.id),
+  })).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
   const visibleHistory = history
+  const pendingPerformanceIDs = performanceHistory.filter(item => item.reportID && !item.active &&
+    !availableReportIDs.has(item.reportID) && !reports.reports.some(report => report.id === item.reportID))
+    .map(item => item.reportID!).sort().join(",")
+  useEffect(() => {
+    if (!pendingPerformanceIDs) return
+    let active = true
+    let timer: number | undefined
+    const read = async () => {
+      const ids = pendingPerformanceIDs.split(",")
+      const available: string[] = []
+      try {
+        for (let offset = 0; active && offset < ids.length; offset += 100) {
+          available.push(...await actions.getAvailableReports(ids.slice(offset, offset + 100)))
+        }
+        if (!active) return
+        if (available.length) setAvailableReportIDs(current => new Set([...current, ...available]))
+      } catch { /* Keep waiting; an interrupted read does not change report readiness. */ }
+      if (active && available.length !== ids.length) timer = window.setTimeout(() => void read(), 2000)
+    }
+    void read()
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [actions, pendingPerformanceIDs])
   const requestedHistoryID = selectedHistoryID || runID || (mode === "functional" ? functionalJobs[0]?.job.job_id : "") || ""
   const selectedID = history.find(item => item.id === requestedHistoryID || item.runID === requestedHistoryID)?.id ?? requestedHistoryID
   const performanceJobLaunched = (accepted: JobView, command: QuickPerformanceCommand) => {
@@ -556,14 +588,18 @@ export function QuickTaskWorkspace({
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t("title")}>
       {functionalJobs.map(entry =>
-        <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob} />)}
+        <QuickTaskJobObserver key={entry.job.job_id} client={actions} jobID={entry.job.job_id} onChange={receiveFunctionalJob}
+          waitingForReport={!history.find(item => item.jobID === entry.job.job_id)?.reportID} />)}
       {performanceHistory.map(item =>
-        <QuickTaskJobObserver key={item.id} client={actions} jobID={item.id} onChange={performanceJobChanged} onArchived={onPerformanceArchived} />)}
+        <QuickTaskJobObserver key={item.id} client={actions} jobID={item.id} onChange={performanceJobChanged} onArchived={onPerformanceArchived}
+          waitingForReport={!availableReportIDs.has(item.reportID ?? "") && !reports.reports.some(report => report.id === item.reportID) && !unavailableReports.has(item.id)} onUnavailable={reportUnavailable} />)}
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-4 p-4 xl:grid-cols-[256px_minmax(0,1fr)] overflow-hidden">
         <aside className="flex min-h-0 min-w-0 flex-col" aria-label={t("workspace.history")}>
           <div className="shrink-0 space-y-4 pb-4 pt-2">
             <QuickTestModeSwitch performance={mode === "performance"} onChange={checked => setMode(checked ? "performance" : "functional")} />
-            <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">{t("workspace.history")}</h2><span className="text-[11px] text-muted-foreground">{t("workspace.active", { count: history.filter(item => item.active).length })}</span></div>
+            <div className="flex flex-wrap items-center justify-between gap-1"><h2 className="text-sm font-semibold">{t("workspace.history")}</h2><span className="text-[11px] text-muted-foreground">{t("workspace.active", { count: history.filter(item => item.active).length })}</span>
+              {history.some(item => item.waitingForReport) ? <span role="status" className="text-[11px] text-muted-foreground">{t("workspace.syncingReports", { count: history.filter(item => item.waitingForReport).length })}</span> : null}
+            </div>
           </div>
           <ScrollArea contentWidth="viewport" className="min-h-0 flex-1">
             {visibleHistory.length ? <QuickTestHistory items={visibleHistory} selectedID={selectedID} busy={busy}
@@ -939,20 +975,25 @@ function taskKey(task: CatalogSuite) {
   return `${task.id}:${task.revision}`
 }
 // Keep unselected submissions observable without mounting a second details panel.
-function QuickTaskJobObserver({ client, jobID, onChange, onArchived }: {
+function QuickTaskJobObserver({ client, jobID, onChange, onArchived, waitingForReport, onUnavailable }: {
   client: JobClient; jobID: string; onChange: (job: JobView) => void
   onArchived?: (id: string) => void | Promise<void>
+  waitingForReport: boolean
+  onUnavailable?: (id: string) => void
 }) {
-  const { job, result } = useJobObservation(client, jobID, "", 0)
+  const { job, result } = useJobObservation(client, jobID, "", 0, waitingForReport)
   const archived = result?.observation?.report.archived ? result.observation.report.report_id : undefined
   const notifiedArchive = useRef("")
   useEffect(() => { if (job) onChange(job) }, [job, onChange])
   useEffect(() => {
-    if (archived && notifiedArchive.current !== archived) {
+    if (result && (!result.observation || result.observation.report.archive_status === "failed")) onUnavailable?.(jobID)
+  }, [result, jobID, onUnavailable])
+  useEffect(() => {
+    if (!waitingForReport && archived && notifiedArchive.current !== archived) {
       notifiedArchive.current = archived
       void onArchived?.(archived)
     }
-  }, [archived, onArchived])
+  }, [archived, onArchived, waitingForReport])
   return null
 }
 

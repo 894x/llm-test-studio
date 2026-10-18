@@ -7,7 +7,7 @@ const empty: QuickHistoryPage = { schema_version: 1, runs: [], reports: [], next
 
 // The retained workspace owns this state. A hidden Activity stops effects while
 // retaining records, the cursor, selection and the existing scroll viewport.
-export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory" | "getRunSummaries">) {
+export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory" | "getRunSummaries" | "subscribeRemoteResults">) {
   const [data, setData] = useState(empty)
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -38,7 +38,9 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
           if (!after) break
         }
         if (!append) {
-          const ids = [...new Set([...requestedIDs.current, ...state.current.data.runs.filter(run => isRunActive(run.status)).map(run => run.id)])]
+          // Terminal execution can precede report import, including runs beyond
+          // the first history page. Keep those identities in the bounded refresh.
+          const ids = [...new Set([...requestedIDs.current, ...state.current.data.runs.filter(run => isRunActive(run.status) || !run.report_id).map(run => run.id)])]
           for (let offset = 0; offset < ids.length; offset += 100) {
             const updated = await client.getRunSummaries(ids.slice(offset, offset + 100))
             updated.runs.forEach(run => requestedIDs.current.delete(run.id))
@@ -80,7 +82,7 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
   const retry = useCallback(() => read(failedAppend.current), [read])
   const invalidate = useCallback((ids: string[] = []) => {
     ids.forEach(id => requestedIDs.current.add(id))
-    if (flight.current) { invalidated.current = true; return }
+    if (!visible.current || flight.current) { invalidated.current = true; return }
     void read(false)
   }, [read])
   useEffect(() => {
@@ -88,11 +90,20 @@ export function useQuickHistory(client: Pick<DesktopClient, "getQuickTestHistory
     void refresh()
     return () => { visible.current = false }
   }, [refresh])
-  const active = data.runs.some(run => isRunActive(run.status))
   useEffect(() => {
-    if (!active) return
-    const timer = window.setInterval(() => void refresh(), 2000)
+    let active = true
+    let timer: number | undefined
+    const unsubscribe = client.subscribeRemoteResults(() => {
+      if (!active || timer !== undefined) return
+      timer = window.setTimeout(() => { timer = undefined; invalidate() }, 100)
+    })
+    return () => { active = false; window.clearTimeout(timer); unsubscribe() }
+  }, [client, invalidate])
+  const pending = data.runs.some(run => isRunActive(run.status) || !run.report_id)
+  useEffect(() => {
+    // Idle discovery also recovers missed events and other clients' results.
+    const timer = window.setInterval(() => void refresh(), pending ? 2000 : 10_000)
     return () => window.clearInterval(timer)
-  }, [active, refresh])
+  }, [pending, refresh])
   return { data, loaded, loading, error, refresh, loadMore, retry, invalidate }
 }

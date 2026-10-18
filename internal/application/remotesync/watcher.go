@@ -80,6 +80,8 @@ type Watcher struct {
 	documentWork        func(context.Context, remoteresults.DocumentQuery) (remoteresults.DocumentPage, error)
 	running             bool
 	closed              bool
+	listeners           map[uint64]func()
+	nextListener        uint64
 	sourceError         string
 	refreshEvery        time.Duration
 	pollEvery           time.Duration
@@ -382,6 +384,9 @@ func (watcher *Watcher) syncJob(
 		return syncResult{err: err}
 	}
 	_, err = watcher.synchronizer.Observe(ctx, Request{Origin: node.Origin, JobID: id, Remote: connection})
+	if err == nil {
+		watcher.notifyChanged()
+	}
 	return syncResult{applied: err == nil, err: err}
 }
 

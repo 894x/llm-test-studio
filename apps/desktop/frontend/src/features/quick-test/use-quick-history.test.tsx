@@ -13,9 +13,69 @@ function page(index: number, next = "", active = false): QuickHistoryPage {
 afterEach(() => vi.useRealTimers())
 
 describe("quick history pages", () => {
+  it("keeps a terminal run beyond the head page fresh until its report arrives", async () => {
+    const old = page(1, "next", true)
+    old.runs[0].report_id = undefined
+    const terminal = { ...old.runs[0], status: "completed" as const }
+    const getQuickTestHistory = vi.fn().mockResolvedValueOnce(old).mockResolvedValue(page(2, "next"))
+    const getRunSummaries = vi.fn().mockResolvedValue({ schema_version: 1, runs: [terminal], next_cursor: "" })
+    const client = { getQuickTestHistory, getRunSummaries, subscribeRemoteResults: () => () => {} }
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useQuickHistory(client))
+    await act(async () => {})
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(result.current.data.runs.find(run => run.id === terminal.id)?.report_id).toBeUndefined()
+    getRunSummaries.mockResolvedValue({ schema_version: 1, runs: [{ ...terminal, report_id: "ready" }], next_cursor: "" })
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(getRunSummaries).toHaveBeenLastCalledWith(expect.arrayContaining([terminal.id]))
+    expect(result.current.data.runs.find(run => run.id === terminal.id)?.report_id).toBe("ready")
+  })
+
+  it("coalesces remote imports, discovers other clients' reports while idle and unsubscribes when hidden", async () => {
+    let visible = true
+    let notify = () => {}
+    const detach = vi.fn()
+    const initial = { schema_version: 1 as const, runs: [], reports: [], next_cursor: "" }
+    const client = { getQuickTestHistory: vi.fn().mockResolvedValue(initial),
+      getRunSummaries: vi.fn().mockResolvedValue(initial),
+      subscribeRemoteResults: vi.fn((listener: () => void) => { notify = listener; return detach }) }
+    const wrapper = ({ children }: { children: ReactNode }) => <Activity mode={visible ? "visible" : "hidden"}>{children}</Activity>
+    vi.useFakeTimers()
+    const { result, rerender } = renderHook(() => useQuickHistory(client), { wrapper })
+    await act(async () => {})
+    client.getQuickTestHistory.mockResolvedValue(page(3))
+    act(() => { notify(); notify(); notify() })
+    await act(async () => vi.advanceTimersByTimeAsync(100))
+    expect(client.getQuickTestHistory).toHaveBeenCalledTimes(2)
+    expect(result.current.data.runs).toHaveLength(1)
+    visible = false
+    rerender()
+    expect(detach).toHaveBeenCalledTimes(1)
+    act(() => notify())
+    await act(async () => vi.advanceTimersByTimeAsync(20_000))
+    expect(client.getQuickTestHistory).toHaveBeenCalledTimes(2)
+    visible = true
+    rerender()
+    await act(async () => {})
+    expect(client.getQuickTestHistory).toHaveBeenCalledTimes(3)
+    expect(client.subscribeRemoteResults).toHaveBeenCalledTimes(2)
+  })
+
+  it("recovers a missed notification with idle polling", async () => {
+    const empty = { schema_version: 1 as const, runs: [], reports: [], next_cursor: "" }
+    const client = { getQuickTestHistory: vi.fn().mockResolvedValue(empty),
+      getRunSummaries: vi.fn().mockResolvedValue(empty), subscribeRemoteResults: () => () => {} }
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useQuickHistory(client))
+    await act(async () => {})
+    client.getQuickTestHistory.mockResolvedValue(page(7))
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    expect(result.current.data.runs).toHaveLength(1)
+  })
+
   it("deduplicates concurrent loads, retries the failed cursor and retains all pages on refresh", async () => {
     const getQuickTestHistory = vi.fn().mockResolvedValueOnce(page(1, "next"))
-    const client = { getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
+    const client = { subscribeRemoteResults: () => () => {}, getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
     const { result } = renderHook(() => useQuickHistory(client))
     await waitFor(() => expect(result.current.loaded).toBe(true))
     let finish!: (value: QuickHistoryPage) => void
@@ -43,7 +103,7 @@ describe("quick history pages", () => {
   it("refreshes after an invalidation during an in-flight page and retries failed refreshes from the head", async () => {
     let finish!: (value: QuickHistoryPage) => void
     const getQuickTestHistory = vi.fn().mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
-    const client = { getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
+    const client = { subscribeRemoteResults: () => () => {}, getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
     const { result } = renderHook(() => useQuickHistory(client))
     await waitFor(() => expect(getQuickTestHistory).toHaveBeenCalledTimes(1))
     act(() => result.current.invalidate())
@@ -64,7 +124,7 @@ describe("quick history pages", () => {
     let visible = true
     const getQuickTestHistory = vi.fn().mockResolvedValue(page(1, "", true))
     const wrapper = ({ children }: { children: ReactNode }) => <Activity mode={visible ? "visible" : "hidden"}>{children}</Activity>
-    const client = { getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
+    const client = { subscribeRemoteResults: () => () => {}, getQuickTestHistory, getRunSummaries: vi.fn(async () => ({ schema_version: 1 as const, runs: [], next_cursor: "" })) }
     const { result, rerender } = renderHook(() => useQuickHistory(client), { wrapper })
     await waitFor(() => expect(result.current.loaded).toBe(true))
     vi.useFakeTimers()

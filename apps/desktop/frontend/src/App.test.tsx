@@ -56,6 +56,7 @@ function desktopClient(): DesktopClient & {
     getStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
     getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
     subscribeReportGeneration: vi.fn((_receive: (progress: ReportGenerationProgress) => void) => () => {}),
+    subscribeRemoteResults: vi.fn((_receive: () => void) => () => {}),
 		getDiagnostics: vi.fn(async () => ({
 			schema_version: 1 as const, available: true, format: "jsonl" as const,
 			max_file_bytes: 10 * 1024 * 1024, backup_files: 5,
@@ -575,6 +576,24 @@ describe("desktop run workspace", () => {
     expect(client.getReports).toHaveBeenCalledTimes(1)
   })
 
+  it("refreshes a terminal quick task after remote report import without navigating away", async () => {
+    window.history.replaceState(null, "", "#quick-test")
+    const client = desktopClient()
+    const run = { ...client.workspace.runs[0], source: "quick_task" as const,
+      status: "completed" as const, report_id: undefined, plan_name: "Delayed remote report" }
+    client.workspace = { ...client.workspace, runs: [run] }
+    let notify = () => {}
+    vi.mocked(client.subscribeRemoteResults).mockImplementation(listener => { notify = listener; return () => {} })
+    render(<App client={client} />)
+    const list = await screen.findByRole("list", { name: "测试记录" })
+    await waitFor(() => expect(list).toHaveTextContent("等待报告同步"))
+    expect(within(list).queryByRole("button", { name: "打开报告 Delayed remote report" })).not.toBeInTheDocument()
+    client.workspace = { ...client.workspace, runs: [{ ...run, report_id: FIXTURE_REPORTS.reports[0].id }] }
+    act(() => notify())
+    expect(await within(list).findByRole("button", { name: "打开报告 Delayed remote report" })).toBeVisible()
+    expect(list).not.toHaveTextContent("等待报告同步")
+  })
+
   it("shows generation phases and refreshes reports on completion without polling the list", async () => {
     window.history.replaceState(null, "", "#reports")
     const client = desktopClient()
@@ -800,6 +819,7 @@ describe("desktop run workspace", () => {
 			attachment_count: 0,
 		})
 		vi.mocked(client.getReports).mockResolvedValue(structuredClone(updatedReports))
+		vi.mocked(client.getAvailableReports).mockImplementation(async ids => ids.filter(id => updatedReports.reports.some(report => report.id === id)))
 		vi.mocked(client.launchJob).mockResolvedValue(jobFixture({ execution: null, report_ids: [reportID] }))
     vi.mocked(client.getJob).mockResolvedValue({ ...completedJob(), report_ids: [reportID] })
     vi.mocked(client.getJobPerformanceResult).mockResolvedValue(performanceResultFixture(performance))
@@ -1457,6 +1477,7 @@ describe("desktop run workspace", () => {
       getStartupProgress: vi.fn(async () => ({ schema_version: 1 as const, status: "completed" as const, stage: "ready" as const, from_version: 0, to_version: 0, elapsed_ms: 0 })),
       getReportGeneration: vi.fn(async () => ({ schema_version: 1 as const, runs: [] })),
       subscribeReportGeneration: vi.fn(() => () => {}),
+      subscribeRemoteResults: vi.fn(() => () => {}),
 			getReportDetail: vi.fn(),
 			exportReport: vi.fn(),
 			saveReportExport: vi.fn(),

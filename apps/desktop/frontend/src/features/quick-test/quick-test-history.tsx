@@ -25,6 +25,8 @@ export interface QuickTestHistoryItem {
   statusLabel?: string
   phase?: QuickPerformancePhase
   active: boolean
+  waitingForReport?: boolean
+  reportError?: boolean
   completed?: number
   planned?: number
   detail?: string
@@ -87,6 +89,10 @@ export function QuickTestHistory({ items, selectedID, busy, onSelect, onRestore,
                   </div>
                 ) : null}
                 {item.error ? <p className="mt-2 text-[11px] text-destructive [overflow-wrap:anywhere]">{item.error}</p> : null}
+                {item.waitingForReport || item.reportError ? <div role="status" className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  {item.waitingForReport ? <Spinner className="size-3 shrink-0" /> : null}
+                  <span>{t(item.reportError ? "workspace.reportUnavailable" : "workspace.waitingForReport")}</span>
+                </div> : null}
               </div>
             </li>
           )

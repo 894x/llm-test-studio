@@ -184,6 +184,7 @@ export interface DesktopClient extends CatalogActions {
   getReports(): Promise<ReportSnapshot>
   getReportGeneration(): Promise<ReportGenerationSnapshot>
   subscribeReportGeneration(onProgress: (progress: ReportGenerationProgress) => void): () => void
+  subscribeRemoteResults(onChange: () => void): () => void
   getReportDetail(reportId: string): Promise<ReportDetail>
   exportReport(reportId: string, format: ReportExportFormat, watermark: string, locale: string): Promise<ExportedReport>
   saveReportExport(filename: string, mediaType: string, dataBase64: string, locale: string): Promise<boolean>
@@ -384,6 +385,7 @@ export function createFixtureClient(
     async openDiagnosticsDirectory() {},
     async getReportGeneration() { return { schema_version: 1, runs: [] } },
     subscribeReportGeneration() { return () => {} },
+    subscribeRemoteResults() { return () => {} },
     async getStartupProgress() { return { ...READY_STARTUP } },
     async getAvailableReports(ids) { return reports.reports.filter(report => ids.includes(report.id)).map(report => report.id) },
     async getOverview() { return createOverviewSnapshot(workspace, catalogState, reports) },
@@ -610,6 +612,14 @@ function createLazyFixtureClient(): DesktopClient {
     getCatalog: async (scope) => (await client).getCatalog(scope),
     getReports: async () => (await client).getReports(),
     getReportGeneration: async () => (await client).getReportGeneration(),
+    subscribeRemoteResults: (onChange) => {
+      let active = true
+      let unsubscribe = () => {}
+      void client.then(ready => {
+        if (active) unsubscribe = ready.subscribeRemoteResults(onChange)
+      })
+      return () => { active = false; unsubscribe() }
+    },
     subscribeReportGeneration: (onProgress) => {
       let active = true
       let unsubscribe = () => {}
@@ -739,6 +749,12 @@ function wailsClient(binding: WailsDesktopBinding): DesktopClient {
     }),
     getStartupProgress: async () => callBinding(() => binding.GetStartupProgress(), parseStartupProgress),
     getReportGeneration: async () => callBinding(() => binding.GetReportGeneration(), parseReportGenerationSnapshot),
+    subscribeRemoteResults: (onChange) => {
+      const runtime = (window as typeof window & {
+        runtime?: { EventsOn?: (name: string, callback: () => void) => () => void }
+      }).runtime
+      return runtime?.EventsOn?.("remote-results-changed", onChange) ?? (() => {})
+    },
     subscribeReportGeneration: (onProgress) => {
       const runtime = (window as typeof window & {
         runtime?: { EventsOn?: (name: string, callback: (payload: unknown) => void) => () => void }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { isJobTerminal, type ControlPageView, type JobView, type PerformanceResultView } from "./data"
 import type { JobClient } from "./execution"
 
-export function useJobObservation(client: JobClient, jobID: string, controlsAfter: string, refresh: number) {
+export function useJobObservation(client: JobClient, jobID: string, controlsAfter: string, refresh: number, waitingForReport = false) {
   const [job, setJob] = useState<JobView | null>(null)
   const [result, setResult] = useState<PerformanceResultView | null>(null)
   const [controlState, setControls] = useState<{ after: string; page: ControlPageView } | null>(null)
@@ -26,7 +26,7 @@ export function useJobObservation(client: JobClient, jobID: string, controlsAfte
         setResult(outcome)
         if (controlRead.status === "rejected") throw controlRead.reason
         setError(null)
-        settled = !!current.execution && isJobTerminal(current.execution.status) &&
+        settled = !waitingForReport && !!current.execution && isJobTerminal(current.execution.status) &&
           (current.kind !== "performance" || outcome !== null) &&
           !controlRead.value.commands.some(command => command.state === "pending")
       } catch (reason) {
@@ -39,6 +39,6 @@ export function useJobObservation(client: JobClient, jobID: string, controlsAfte
     }
     void read()
     return () => { active = false; window.clearTimeout(timer) }
-  }, [client, jobID, controlsAfter, refresh])
+  }, [client, jobID, controlsAfter, refresh, waitingForReport])
   return { job: job?.job_id === jobID ? job : null, result: result?.job_id === jobID ? result : null, controls: controlState?.after === controlsAfter && controlState.page.job_id === jobID ? controlState.page : null, error }
 }
