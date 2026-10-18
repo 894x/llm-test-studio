@@ -12,35 +12,41 @@ import (
 )
 
 type desktopRequirements struct {
-	workspace       bool
-	quickHistory    bool
-	catalog         bool
-	catalogCommands bool
-	reports         bool
-	commands        bool
-	comparisons     bool
-	launcher        bool
-	jobQuery        bool
-	controls        bool
-	controlRecords  bool
-	remoteNodes     bool
+	overview          bool
+	comparisonHistory bool
+	runHistory        bool
+	workspace         bool
+	quickHistory      bool
+	catalog           bool
+	catalogCommands   bool
+	reports           bool
+	commands          bool
+	comparisons       bool
+	launcher          bool
+	jobQuery          bool
+	controls          bool
+	controlRecords    bool
+	remoteNodes       bool
 }
 
 type desktopLease struct {
-	ctx             context.Context
-	workspace       WorkspaceQuery
-	quickHistory    QuickHistoryQuery
-	catalog         CatalogQuery
-	catalogCommands CatalogCommands
-	reports         ReportingQuery
-	commands        QuickTaskService
-	comparisons     ComparisonService
-	launcher        JobLauncher
-	jobQuery        jobs.Query
-	controls        JobController
-	controlRecords  jobs.ControlRepository
-	remoteNodes     *remotenodes.Manager
-	release         func()
+	overview          OverviewQuery
+	ctx               context.Context
+	comparisonHistory ComparisonHistoryQuery
+	runHistory        RunHistoryQuery
+	workspace         WorkspaceQuery
+	quickHistory      QuickHistoryQuery
+	catalog           CatalogQuery
+	catalogCommands   CatalogCommands
+	reports           ReportingQuery
+	commands          QuickTaskService
+	comparisons       ComparisonService
+	launcher          JobLauncher
+	jobQuery          jobs.Query
+	controls          JobController
+	controlRecords    jobs.ControlRepository
+	remoteNodes       *remotenodes.Manager
+	release           func()
 }
 
 func (app *DesktopApp) onStartup(ctx context.Context) {
@@ -101,6 +107,9 @@ func (app *DesktopApp) onStartup(ctx context.Context) {
 	app.startupProgress.Status = "completed"
 	app.startupProgress.Stage = "ready"
 	app.startupProgress.ElapsedMS = time.Since(app.startupStarted).Milliseconds()
+	app.overview = dependencies.Overview
+	app.comparisonHistory = dependencies.ComparisonHistory
+	app.runHistory = dependencies.RunHistory
 	app.query = dependencies.Query
 	app.quickHistory = dependencies.QuickHistory
 	app.catalog = dependencies.Catalog
@@ -155,6 +164,15 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 	if app.startupErr != nil {
 		return desktopLease{}, app.startupErr
 	}
+	if require.overview && isNilInterface(app.overview) {
+		return desktopLease{}, ErrWorkspaceUnavailable
+	}
+	if require.comparisonHistory && isNilInterface(app.comparisonHistory) {
+		return desktopLease{}, ErrWorkspaceUnavailable
+	}
+	if require.runHistory && isNilInterface(app.runHistory) {
+		return desktopLease{}, ErrWorkspaceUnavailable
+	}
 	if require.quickHistory && isNilInterface(app.quickHistory) {
 		return desktopLease{}, ErrQuickTestUnavailable
 	}
@@ -206,8 +224,11 @@ func (app *DesktopApp) acquire(require desktopRequirements) (desktopLease, error
 		}
 	}
 	return desktopLease{
-		quickHistory: app.quickHistory,
-		ctx:          app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
+		overview:          app.overview,
+		comparisonHistory: app.comparisonHistory,
+		runHistory:        app.runHistory,
+		quickHistory:      app.quickHistory,
+		ctx:               app.ctx, workspace: app.query, catalog: app.catalog, catalogCommands: app.catalogCommands,
 		reports: app.reports, commands: app.commands, release: release,
 		comparisons: app.comparisons,
 		launcher:    app.launcher, jobQuery: app.jobQuery, controls: app.controls, controlRecords: app.controlRecords,

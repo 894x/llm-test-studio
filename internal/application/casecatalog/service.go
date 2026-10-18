@@ -123,17 +123,27 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	return Snapshot{Groups: groups}, nil
 }
 
+// Count validates current content and counts metadata without cloning authored bodies.
+func (service *Service) Count(ctx context.Context) (int, error) {
+	entries, err := service.entries(ctx, true)
+	return len(entries), err
+}
+
 func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
+	return service.entries(ctx, false)
+}
+
+func (service *Service) entries(ctx context.Context, metadataOnly bool) ([]Entry, error) {
 	if service == nil || ctx == nil {
 		return nil, ErrInvalid
 	}
-	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin, &service.cache)
+	builtin, err := discoverCachedFS(ctx, service.builtin, SourceBuiltin, &service.cache, metadataOnly)
 	if err != nil {
 		return nil, err
 	}
 	user := map[string]discovered{}
 	if _, statErr := os.Stat(service.userRoot); statErr == nil {
-		user, err = discoverFS(ctx, os.DirFS(service.userRoot), SourceUser, &service.cache)
+		user, err = discoverCachedFS(ctx, os.DirFS(service.userRoot), SourceUser, &service.cache, metadataOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -251,11 +261,16 @@ func (service *Service) Save(ctx context.Context, group, directory string, raw [
 	return nil
 }
 
-func discoverFS(
+func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {
+	return discoverCachedFS(ctx, sourceFS, source, &fileconfig.ParsedCache[domain.TestCase]{}, false)
+}
+
+func discoverCachedFS(
 	ctx context.Context,
 	sourceFS fs.FS,
 	source Source,
-	caches ...*fileconfig.ParsedCache[domain.TestCase],
+	cache *fileconfig.ParsedCache[domain.TestCase],
+	metadataOnly bool,
 ) (map[string]discovered, error) {
 	result := make(map[string]discovered)
 	err := fs.WalkDir(sourceFS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -279,20 +294,18 @@ func discoverFS(
 		if err != nil {
 			return err
 		}
-		var testCase domain.TestCase
-		if len(caches) == 0 {
-			testCase, err = casecodec.DecodeFilesystemCase(path, raw)
-		} else {
-			testCase, err = caches[0].Read(
-				string(source)+":"+path,
-				raw,
-				func() (domain.TestCase, error) { return casecodec.DecodeFilesystemCase(path, raw) },
-				func(value domain.TestCase) domain.TestCase {
-					value.Definitions = value.Definitions.Clone()
-					return value
-				},
-			)
-		}
+		testCase, err := cache.Read(
+			string(source)+":"+path,
+			raw,
+			func() (domain.TestCase, error) { return casecodec.DecodeFilesystemCase(path, raw) },
+			func(value domain.TestCase) domain.TestCase {
+				if metadataOnly {
+					return domain.TestCase{EntityMeta: value.EntityMeta}
+				}
+				value.Definitions = value.Definitions.Clone()
+				return value
+			},
+		)
 		if err != nil {
 			return fmt.Errorf("invalid case file %q", path)
 		}

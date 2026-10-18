@@ -91,17 +91,27 @@ func UserRootForExecutable(executablePath string) (string, error) {
 	return filepath.Join(directory, "data", "suites"), nil
 }
 
+// Count validates current content and counts metadata without cloning authored bodies.
+func (service *Service) Count(ctx context.Context) (int, error) {
+	entries, err := service.entries(ctx, true)
+	return len(entries), err
+}
+
 func (service *Service) Entries(ctx context.Context) ([]Entry, error) {
+	return service.entries(ctx, false)
+}
+
+func (service *Service) entries(ctx context.Context, metadataOnly bool) ([]Entry, error) {
 	if service == nil || ctx == nil {
 		return nil, ErrInvalid
 	}
-	builtin, err := discoverFS(ctx, service.builtin, SourceBuiltin, &service.cache)
+	builtin, err := discoverCachedFS(ctx, service.builtin, SourceBuiltin, &service.cache, metadataOnly)
 	if err != nil {
 		return nil, err
 	}
 	user := map[string]discovered{}
 	if _, statErr := os.Stat(service.userRoot); statErr == nil {
-		user, err = discoverFS(ctx, os.DirFS(service.userRoot), SourceUser, &service.cache)
+		user, err = discoverCachedFS(ctx, os.DirFS(service.userRoot), SourceUser, &service.cache, metadataOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -223,11 +233,16 @@ func (service *Service) Delete(ctx context.Context, id string, expectedRevision 
 	return nil
 }
 
-func discoverFS(
+func discoverFS(ctx context.Context, sourceFS fs.FS, source Source) (map[string]discovered, error) {
+	return discoverCachedFS(ctx, sourceFS, source, &fileconfig.ParsedCache[domain.Suite]{}, false)
+}
+
+func discoverCachedFS(
 	ctx context.Context,
 	sourceFS fs.FS,
 	source Source,
-	caches ...*fileconfig.ParsedCache[domain.Suite],
+	cache *fileconfig.ParsedCache[domain.Suite],
+	metadataOnly bool,
 ) (map[string]discovered, error) {
 	result := make(map[string]discovered)
 	err := fs.WalkDir(sourceFS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -251,21 +266,19 @@ func discoverFS(
 		if err != nil {
 			return err
 		}
-		var suite domain.Suite
-		if len(caches) == 0 {
-			suite, err = decodeDocument(raw)
-		} else {
-			suite, err = caches[0].Read(
-				string(source)+":"+path,
-				raw,
-				func() (domain.Suite, error) { return decodeDocument(raw) },
-				func(value domain.Suite) domain.Suite {
-					value.Cases = append([]domain.CaseRef{}, value.Cases...)
-					value.Inputs = domain.CloneSuiteInputs(value.Inputs)
-					return value
-				},
-			)
-		}
+		suite, err := cache.Read(
+			string(source)+":"+path,
+			raw,
+			func() (domain.Suite, error) { return decodeDocument(raw) },
+			func(value domain.Suite) domain.Suite {
+				if metadataOnly {
+					return domain.Suite{EntityMeta: value.EntityMeta, Key: value.Key, Protocol: value.Protocol}
+				}
+				value.Cases = append([]domain.CaseRef{}, value.Cases...)
+				value.Inputs = domain.CloneSuiteInputs(value.Inputs)
+				return value
+			},
+		)
 		if err != nil || string(suite.Protocol) != parts[0] {
 			return fmt.Errorf("invalid suite file %q", path)
 		}

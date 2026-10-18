@@ -624,3 +624,31 @@ func jsonMarshalForTest(value any) ([]byte, error) {
 	}
 	return append(raw, '\n'), nil
 }
+
+func TestCountPreservesContentAndExternalEditValidation(t *testing.T) {
+	root := t.TempDir()
+	service, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := validTargetedDocument("60000000-0000-4000-8000-000000000001", time.Now().UTC())
+	if err := service.CreateDocument(t.Context(), document); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		count, err := service.Count(t.Context())
+		if err != nil || count != 1 {
+			t.Fatalf("count=%d %v", count, err)
+		}
+	}
+	documents, err := service.ListDocuments(t.Context())
+	if err != nil || !reflect.DeepEqual(documents[0], document) {
+		t.Fatalf("metadata poisoned full read: %+v %v", documents, err)
+	}
+	if err := os.WriteFile(filepath.Join(root, document.ID+".json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Count(t.Context()); err == nil {
+		t.Fatal("cached count hid invalid content")
+	}
+}

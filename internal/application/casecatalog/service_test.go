@@ -131,3 +131,31 @@ func TestSaveRejectsChangingAnExistingPathIdentityWithoutWriting(t *testing.T) {
 		t.Fatal("rejected save changed the original file")
 	}
 }
+
+func TestCountPreservesOverrideAndContentValidation(t *testing.T) {
+	builtin := fstest.MapFS{"openai-chat/shared/case.json": {Data: []byte(caseJSON("T001", "builtin"))}}
+	root := t.TempDir()
+	writeUserCase(t, root, "openai-chat", "shared", caseJSON("T001", "override"))
+	service, err := casecatalog.New(casecatalog.Options{Builtin: builtin, UserRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		count, err := service.Count(t.Context())
+		if err != nil || count != 1 {
+			t.Fatalf("count=%d, %v", count, err)
+		}
+	}
+	entries, err := service.Entries(t.Context())
+	if err != nil || len(entries) != 1 || entries[0].TestCase.Name != "override" {
+		t.Fatalf("metadata poisoned full read: %+v %v", entries, err)
+	}
+	writeUserCase(t, root, "openai-chat", "extra", caseJSON("T002", "new"))
+	if count, err := service.Count(t.Context()); err != nil || count != 2 {
+		t.Fatalf("external addition: %d %v", count, err)
+	}
+	writeUserCase(t, root, "openai-chat", "shared", "{}")
+	if _, err := service.Count(t.Context()); err == nil {
+		t.Fatal("cached count hid invalid content")
+	}
+}

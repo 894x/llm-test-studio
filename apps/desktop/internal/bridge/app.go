@@ -30,6 +30,9 @@ type DesktopApp struct {
 	active                   int
 	ctx                      context.Context
 	cancel                   context.CancelFunc
+	overview                 OverviewQuery
+	comparisonHistory        ComparisonHistoryQuery
+	runHistory               RunHistoryQuery
 	query                    WorkspaceQuery
 	quickHistory             QuickHistoryQuery
 	catalog                  CatalogQuery

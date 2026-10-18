@@ -18,10 +18,17 @@ const (
 // ListReportProjections reads only the latest report-list scalars. Full document,
 // history and relation validation belongs to GetReport, when the user opens it.
 func (repository *Repository) ListReportProjections(ctx context.Context) ([]reporting.ReportProjection, error) {
+	return repository.ListRecentReportProjections(ctx, reporting.MaxSnapshotReports)
+}
+
+func (repository *Repository) ListRecentReportProjections(ctx context.Context, limit int) ([]reporting.ReportProjection, error) {
+	if limit < 1 || limit > reporting.MaxSnapshotReports {
+		return nil, reporting.ErrInconsistent
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	rows, err := repository.db.QueryContext(ctx, reportProjectionQuery, reporting.MaxSnapshotReports, domain.CurrentReportSchemaVersion)
+	rows, err := repository.db.QueryContext(ctx, reportProjectionQuery, limit, domain.CurrentReportSchemaVersion)
 	if err != nil {
 		return nil, reportProjectionReadError(ctx, "query report summaries", err)
 	}

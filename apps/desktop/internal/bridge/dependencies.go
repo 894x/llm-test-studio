@@ -6,6 +6,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/catalog"
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
+	"github.com/894x/llm-test-studio/internal/application/overview"
 	"github.com/894x/llm-test-studio/internal/application/quickhistory"
 	"github.com/894x/llm-test-studio/internal/application/remotenodes"
 	"github.com/894x/llm-test-studio/internal/application/remotesync"
@@ -82,11 +83,28 @@ type ComparisonService interface {
 
 type desktopEventEmitter func(context.Context, string, ...interface{})
 
+type ComparisonHistoryQuery interface {
+	ComparisonHistory(context.Context, string, []string) (comparisons.HistoryPage, error)
+}
+
+type RunHistoryQuery interface {
+	AvailableReports(context.Context, []string) ([]string, error)
+	Page(context.Context, string) (workspace.HistoryPage, error)
+	Refresh(context.Context, []string) (workspace.HistoryPage, error)
+}
+
 type QuickHistoryQuery interface {
 	Page(context.Context, string) (quickhistory.Page, error)
 }
 
+type OverviewQuery interface {
+	Snapshot(context.Context) (overview.Snapshot, error)
+}
+
 type Dependencies struct {
+	Overview               OverviewQuery
+	ComparisonHistory      ComparisonHistoryQuery
+	RunHistory             RunHistoryQuery
 	QuickHistory           QuickHistoryQuery
 	Query                  WorkspaceQuery
 	Catalog                CatalogQuery

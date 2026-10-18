@@ -94,11 +94,13 @@ type jobPageIdentity struct {
 func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]jobPageIdentity, bool, error) {
 	rows, err := tx.QueryContext(
 		ctx,
-		`WITH candidates AS MATERIALIZED (
-		SELECT job_id FROM (
-			SELECT job_id FROM job_submissions WHERE job_id > ?
-			UNION SELECT job_id FROM remote_job_mirrors WHERE job_id > ?)
-		ORDER BY job_id LIMIT ?)
+		`WITH submissions AS MATERIALIZED (
+ SELECT job_id FROM job_submissions WHERE job_id > ?1 ORDER BY job_id LIMIT ?3
+), mirrors AS MATERIALIZED (
+ SELECT job_id FROM remote_job_mirrors WHERE job_id > ?2 ORDER BY job_id LIMIT ?3
+), candidates AS MATERIALIZED (
+ SELECT job_id FROM (SELECT job_id FROM submissions UNION SELECT job_id FROM mirrors)
+ ORDER BY job_id LIMIT ?3)
 		SELECT CASE WHEN length(CAST(candidate.job_id AS BLOB)) = 36 THEN candidate.job_id ELSE '' END,
 		COALESCE(length(CAST(submission.document_json AS BLOB)), 0),
 		COALESCE(length(CAST(mirror.spec_json AS BLOB)), 0),
@@ -109,13 +111,12 @@ func jobPageIDs(ctx context.Context, tx *sql.Tx, after string, limit uint32) ([]
 		COALESCE(length(CAST(local_result.document_json AS BLOB)), 0),
 		COALESCE((SELECT SUM(length(CAST(document_json AS BLOB))) FROM remote_job_report_refs
 			WHERE job_id = candidate.job_id AND reference_type = 'performance_result'), 0),
-		COALESCE((SELECT SUM(bytes) FROM (
-			SELECT MAX(length(CAST(document_json AS BLOB))) AS bytes FROM remote_job_events
-			WHERE job_id = candidate.job_id AND kind IN ('accepted', 'progress', 'performance_checkpoint', 'performance_result')
-			GROUP BY kind)), 0),
-		COALESCE((SELECT SUM(bytes) FROM (
-			SELECT MAX(length(CAST(document_json AS BLOB))) AS bytes FROM execution_job_events
-			WHERE job_id = candidate.job_id AND kind IN ('accepted', 'progress') GROUP BY kind)), 0)
+		COALESCE((SELECT length(CAST(document_json AS BLOB)) FROM remote_job_events WHERE job_id = candidate.job_id AND sequence=1), 0) +
+		COALESCE((SELECT length(CAST(document_json AS BLOB)) FROM remote_job_events WHERE job_id = candidate.job_id AND kind='progress' ORDER BY sequence DESC LIMIT 1), 0) +
+		COALESCE((SELECT length(CAST(document_json AS BLOB)) FROM remote_job_events WHERE job_id = candidate.job_id AND kind='performance_result' ORDER BY sequence DESC LIMIT 1), 0) +
+		COALESCE((SELECT length(CAST(document_json AS BLOB)) FROM remote_job_events WHERE job_id = candidate.job_id AND kind='performance_checkpoint' AND sequence < (SELECT sequence FROM remote_job_events WHERE job_id=candidate.job_id AND kind='performance_result' ORDER BY sequence DESC LIMIT 1) ORDER BY sequence DESC LIMIT 1), 0),
+		COALESCE((SELECT length(CAST(document_json AS BLOB)) FROM execution_job_events WHERE job_id = candidate.job_id AND sequence=1), 0) +
+		COALESCE((SELECT length(CAST(document_json AS BLOB)) FROM execution_job_events WHERE job_id = candidate.job_id AND kind='progress' ORDER BY sequence DESC LIMIT 1), 0)
 		FROM candidates candidate LEFT JOIN job_submissions submission ON submission.job_id = candidate.job_id
 		LEFT JOIN remote_job_mirrors mirror ON mirror.job_id = candidate.job_id
 		LEFT JOIN execution_jobs local ON local.id = candidate.job_id

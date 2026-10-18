@@ -22,6 +22,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/application/comparisons"
 	"github.com/894x/llm-test-studio/internal/application/jobs"
 	"github.com/894x/llm-test-studio/internal/application/modelcatalog"
+	"github.com/894x/llm-test-studio/internal/application/overview"
 	"github.com/894x/llm-test-studio/internal/application/plancatalog"
 	"github.com/894x/llm-test-studio/internal/application/quickhistory"
 	"github.com/894x/llm-test-studio/internal/application/quicktest"
@@ -323,6 +324,9 @@ func NewInitializer(options Options) bridge.Initializer {
 			return bridge.Dependencies{}, fmt.Errorf("create job launcher: %w", err)
 		}
 		return bridge.Dependencies{
+			Overview:               overview.New(readView, catalogQuery),
+			ComparisonHistory:      comparisons.NewHistory(readView, comparisonService.Refresher),
+			RunHistory:             workspace.NewHistory(readView),
 			QuickHistory:           quickhistory.New(readView),
 			Query:                  serializedWorkspaceQuery{gate: gate, query: workspaceQuery},
 			Catalog:                serializedCatalog,

@@ -323,7 +323,26 @@ func (service *Service) Delete(ctx context.Context, id string, expectedRevision 
 	})
 }
 
+// Count preserves validation and duplicate detection while retaining only identities.
+func (service *Service) Count(ctx context.Context) (int, error) {
+	if service == nil || ctx == nil {
+		return 0, ErrInvalid
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	documents, err := service.loadAllProjected(ctx, planIdentity)
+	return len(documents), err
+}
+
+func planIdentity(value Document) Document {
+	return Document{Plan: domain.Plan{EntityMeta: value.EntityMeta}}
+}
+
 func (service *Service) loadAll(ctx context.Context) ([]Document, error) {
+	return service.loadAllProjected(ctx, cloneDocument)
+}
+
+func (service *Service) loadAllProjected(ctx context.Context, project func(Document) Document) ([]Document, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -338,7 +357,7 @@ func (service *Service) loadAll(ctx context.Context) ([]Document, error) {
 	documents := make([]Document, 0, len(entries))
 	seen := make(map[string]struct{}, len(entries)+len(service.builtin))
 	for id, document := range service.builtin {
-		documents = append(documents, cloneDocument(document))
+		documents = append(documents, project(document))
 		seen[id] = struct{}{}
 	}
 	for _, entry := range entries {
@@ -361,7 +380,7 @@ func (service *Service) loadAll(ctx context.Context) ([]Document, error) {
 		if !domain.IsUUID(id) {
 			return nil, fmt.Errorf("%w: invalid plan filename %q", ErrCorrupt, entry.Name())
 		}
-		document, err := service.loadOne(ctx, id)
+		document, err := service.loadOneProjected(ctx, id, project)
 		if err != nil {
 			return nil, err
 		}
@@ -381,6 +400,10 @@ func (service *Service) loadAll(ctx context.Context) ([]Document, error) {
 }
 
 func (service *Service) loadOne(ctx context.Context, id string) (Document, error) {
+	return service.loadOneProjected(ctx, id, cloneDocument)
+}
+
+func (service *Service) loadOneProjected(ctx context.Context, id string, project func(Document) Document) (Document, error) {
 	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
@@ -388,7 +411,7 @@ func (service *Service) loadOne(ctx context.Context, id string) (Document, error
 		if _, err := os.Lstat(service.path(id)); !errors.Is(err, os.ErrNotExist) {
 			return Document{}, fmt.Errorf("%w: built-in plan id %q is reserved", ErrCorrupt, id)
 		}
-		return cloneDocument(document), nil
+		return project(document), nil
 	}
 	raw, err := os.ReadFile(service.path(id))
 	if errors.Is(err, os.ErrNotExist) {
@@ -401,7 +424,7 @@ func (service *Service) loadOne(ctx context.Context, id string) (Document, error
 		id,
 		raw,
 		func() (Document, error) { return decodeDocument(raw, id) },
-		cloneDocument,
+		project,
 	)
 }
 

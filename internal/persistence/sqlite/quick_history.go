@@ -155,9 +155,10 @@ func historyTimeKey(column string) string {
 var quickHistoryIDQuery = `WITH run_candidates AS MATERIALIZED (
  SELECT ` + historyTimeKey("root.created_at") + ` AS stamp, 'run' AS kind, root.id AS id
  FROM execution_runs AS root
- CROSS JOIN execution_run_revisions AS revision
+ CROSS JOIN execution_run_revisions AS revision INDEXED BY idx_quick_run_revisions
  WHERE revision.run_id=root.id AND revision.revision=root.current_revision
  AND json_type(revision.snapshot_json,'$.quick_task')='object'
+ AND (` + historyTimeKey("root.created_at") + `) <= CASE WHEN ?1='' THEN '9999-12-31T23:59:59.999999999Z' ELSE ?1 END
  AND (?1='' OR (` + historyTimeKey("root.created_at") + `,'run',root.id) < (?1,?2,?3))
  ORDER BY stamp DESC, id DESC LIMIT ?4
 ), performance_candidates AS MATERIALIZED (

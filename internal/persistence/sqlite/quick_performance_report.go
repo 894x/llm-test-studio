@@ -149,12 +149,19 @@ func (repository *Repository) GetQuickPerformanceReport(ctx context.Context, rep
 }
 
 func (repository *Repository) ListQuickPerformanceReportSummaries(ctx context.Context) ([]quicktest.PerformanceArchiveSummary, error) {
+	return repository.ListRecentQuickPerformanceSummaries(ctx, 100)
+}
+
+func (repository *Repository) ListRecentQuickPerformanceSummaries(ctx context.Context, limit int) ([]quicktest.PerformanceArchiveSummary, error) {
+	if limit < 1 || limit > 100 {
+		return nil, errors.New("invalid summary limit")
+	}
 	rows, err := repository.db.QueryContext(ctx, `
 		SELECT id, generated_at, generated_at_unix_nano, success, model_id, base_url, phase, completed, failed
 		FROM quick_performance_reports
 		ORDER BY generated_at_unix_nano DESC, id DESC
-		LIMIT 100
-	`)
+		LIMIT ?
+	`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list quick performance reports: %w", err)
 	}

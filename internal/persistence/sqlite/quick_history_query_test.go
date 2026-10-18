@@ -15,6 +15,7 @@ func TestQuickHistoryCandidateQueryUsesBoundedPerformanceIndex(t *testing.T) {
 	_, err = db.ExecContext(t.Context(), `
 		CREATE TABLE execution_runs (id TEXT PRIMARY KEY, current_revision INTEGER, created_at TEXT);
 		CREATE TABLE execution_run_revisions (run_id TEXT, revision INTEGER, snapshot_json TEXT, PRIMARY KEY(run_id,revision));
+		CREATE INDEX idx_quick_run_revisions ON execution_run_revisions(run_id,revision) WHERE json_type(snapshot_json,'$.quick_task')='object';
 		CREATE TABLE quick_performance_reports (id TEXT PRIMARY KEY, generated_at TEXT, generated_at_unix_nano INTEGER);
 		CREATE INDEX idx_quick_performance_reports_generated ON quick_performance_reports(generated_at_unix_nano DESC,id DESC);`)
 	if err != nil {

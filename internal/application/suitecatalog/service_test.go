@@ -142,3 +142,25 @@ func TestSuiteUserOverlayHasStableIdentityAndDeletesOnlyItsOwnFile(t *testing.T)
 		t.Fatalf("restore %#v %v", restored, err)
 	}
 }
+
+func TestCountPreservesMetadataAndValidation(t *testing.T) {
+	builtin := fstest.MapFS{"openai-chat/smoke/suite.json": {Data: suiteDocument(t, "Builtin")}}
+	service, err := New(Options{Builtin: builtin, UserRoot: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		count, err := service.Count(t.Context())
+		if err != nil || count != 1 {
+			t.Fatalf("count=%d %v", count, err)
+		}
+	}
+	entries, err := service.Entries(t.Context())
+	if err != nil || len(entries[0].Suite.Cases) != 1 {
+		t.Fatalf("metadata poisoned full read: %+v %v", entries, err)
+	}
+	builtin["openai-chat/smoke/suite.json"].Data = []byte("{}")
+	if _, err := service.Count(t.Context()); err == nil {
+		t.Fatal("cached count hid invalid content")
+	}
+}
