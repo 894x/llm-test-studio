@@ -51,15 +51,8 @@ func upgradeOperationalDatabase(
 	if err := verifyMigrationFacts(ctx, conn, facts); err != nil {
 		return err
 	}
-	if err := recordCurrentMigration(ctx, conn, options.AppVersion); err != nil {
+	if err := recordV2Migration(ctx, conn, options.AppVersion); err != nil {
 		return err
-	}
-	// A structurally upgraded database must still be readable by current typed
-	// repositories. Unsupported JSON fails the transaction instead of committing
-	// an apparently successful upgrade that hides the user's history.
-	if _, err := runnerSnapshotFacts(ctx, conn); err != nil {
-		return fmt.Errorf("sqlite upgrade cannot read stored documents; original backup at %s: %w",
-			backup, runnerBackupError(ctx, "validate upgraded documents", err))
 	}
 	return nil
 }
@@ -70,7 +63,7 @@ func applyOperationalUpgrade(ctx context.Context, conn *sql.Conn, baseline histo
 		previous[object.name] = object
 	}
 	rebuilt := map[string]bool{}
-	for _, object := range currentSchemaObjects {
+	for _, object := range schemaV2Objects {
 		if object.kind == "index" && rebuilt[object.table] {
 			continue
 		}
@@ -118,7 +111,7 @@ func applyOperationalUpgrade(ctx context.Context, conn *sql.Conn, baseline histo
 			return err
 		}
 	}
-	return validateAppliedSchema(ctx, conn)
+	return validateSchemaObjects(ctx, conn, schemaV2Objects)
 }
 
 func rebuildOperationalTable(ctx context.Context, conn *sql.Conn, object schemaObject) error {
@@ -147,7 +140,7 @@ func rebuildOperationalTable(ctx context.Context, conn *sql.Conn, object schemaO
 		}
 	}
 	// Dropping a table drops its indexes too, even when their SQL did not change.
-	for _, index := range currentSchemaObjects {
+	for _, index := range schemaV2Objects {
 		if index.kind == "index" && index.table == object.name {
 			if _, err := conn.ExecContext(ctx, index.ddl); err != nil {
 				return fmt.Errorf("restore migration index %q: %w", index.name, err)

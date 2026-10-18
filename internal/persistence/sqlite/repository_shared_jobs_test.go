@@ -586,7 +586,7 @@ func TestSharedControlRejectsMissingOrChangedAnchorWithoutMutation(t *testing.T)
 
 func TestSharedJobCurrentSchemaRejectsTamperedLedgerWithoutMutation(t *testing.T) {
 	version, name, checksum := persistence.CurrentSchemaIdentity()
-	if version != 2 || name != "0002_operational_upgrades" || checksum != "b51d41e07c0dfb885a7198c092bef3631b7734fb129159011a6575d10774699d" {
+	if version != 3 || name != "0003_query_indexes" || checksum != "ceca1e8965986f9722ba7d8ace907a98d316b849c311fa1066f260963055eafb" {
 		t.Fatalf("unexpected shared job schema identity: %d %s %s", version, name, checksum)
 	}
 	for _, operation := range []string{"migrate", "inspect", "repository"} {

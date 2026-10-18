@@ -26,8 +26,8 @@ func TestMigrateFreshDatabaseCreatesOperationalSchemaCurrent(t *testing.T) {
 	if got := queryInt(t, db, "PRAGMA user_version"); got != persistence.CurrentSchemaVersion {
 		t.Fatalf("PRAGMA user_version = %d, want current", got)
 	}
-	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 2 {
-		t.Fatalf("schema migration count = %d, want 2", got)
+	if got := queryInt(t, db, "SELECT COUNT(*) FROM schema_migrations"); got != 3 {
+		t.Fatalf("schema migration count = %d, want 3", got)
 	}
 	for _, table := range []string{
 		"runs",

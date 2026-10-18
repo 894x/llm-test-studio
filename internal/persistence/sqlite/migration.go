@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	currentSchemaName    = "0002_operational_upgrades"
+	currentSchemaName    = "0003_query_indexes"
 	defaultBusyTime      = 5 * time.Second
-	CurrentSchemaVersion = 2
+	CurrentSchemaVersion = 3
 )
 
 // CurrentSchemaIdentity returns the single operational schema marker.
@@ -124,6 +124,9 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 		}, options.AppVersion); err != nil {
 			return err
 		}
+		if err := recordV2Migration(ctx, conn, options.AppVersion); err != nil {
+			return err
+		}
 		if err := recordCurrentMigration(ctx, conn, options.AppVersion); err != nil {
 			return err
 		}
@@ -131,6 +134,14 @@ func Migrate(ctx context.Context, path string, options MigrateOptions) error {
 	if state.version == 1 {
 		if err := upgradeOperationalDatabase(ctx, conn, path, state.baseline, options); err != nil {
 			return err
+		}
+	}
+	if state.version == 1 || state.version == 2 {
+		if err := upgradeQueryIndexes(ctx, conn, path, options, state.version == 2); err != nil {
+			return err
+		}
+		if _, err := runnerSnapshotFacts(ctx, conn); err != nil {
+			return fmt.Errorf("validate upgraded documents: %w", err)
 		}
 	}
 	options.progress("validating", state.version)

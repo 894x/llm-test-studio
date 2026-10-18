@@ -272,7 +272,7 @@ func historicalMigrationFixture(t *testing.T, baseline historicalBaseline, suffi
 		}
 	}
 	for _, query := range []string{
-		"PRAGMA user_version = 1",
+		fmt.Sprintf("PRAGMA user_version = %d", max(1, baseline.Version)),
 		"INSERT INTO runs(id, config) VALUES(73, 'historical-config'), (999, 'removed')",
 		"DELETE FROM runs WHERE id=999",
 		"INSERT INTO run_results(id, run_id, request_id, response_body) VALUES(81, 73, 1, 'historical-response')",

@@ -30,7 +30,10 @@ func TestExportHistoricalMigrationFixture(t *testing.T) {
  if err:=repository.SaveQuickPerformanceReport(t.Context(),quick);err!=nil {t.Fatal(err)}
 }
 '''
-for baseline in catalog['baselines']:
+baselines = catalog['baselines']
+if os.environ.get('MIGRATION_SOURCE_COMMIT'):
+ baselines = [{'commit': subprocess.check_output(['git','rev-parse',os.environ['MIGRATION_SOURCE_COMMIT']],text=True).strip()}]
+for baseline in baselines:
  ref=baseline['commit']; short=ref[:8]
  destination=out/(short+'.json')
  if destination.exists() and not os.environ.get("REBUILD_FIXTURES"): continue
@@ -79,5 +82,6 @@ for baseline in catalog['baselines']:
    rows.append([{'blob':base64.b64encode(v).decode()} if isinstance(v,bytes) else v for v in row])
   if rows:
    records.append({'table':table,'columns':[c[0] for c in cursor.description],'rows':rows})
- destination.write_text(json.dumps({'source_commit':ref,'tables':records},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+ schema = [{'kind':kind,'name':name,'table':table,'ddl':ddl} for kind,name,table,ddl in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid")]
+ destination.write_text(json.dumps({'source_commit':ref,'schema':schema,'tables':records},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
  db.close()

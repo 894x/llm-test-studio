@@ -52,7 +52,7 @@ func upgradeReportOrigins(ctx context.Context, conn *sql.Conn) error {
 			after = id
 		}
 	}
-	for _, object := range currentSchemaObjects {
+	for _, object := range schemaV2Objects {
 		if object.name == "quick_performance_reports_no_update" {
 			_, err := conn.ExecContext(ctx, object.ddl)
 			return err

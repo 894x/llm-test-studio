@@ -390,4 +390,4 @@ var operationalSchemaObjects = append([]schemaObject{
 		END`},
 }, contentSchemaObjects...)
 
-var currentSchemaObjects = append(append([]schemaObject{}, operationalSchemaObjects...), upgradeHistorySchemaObjects...)
+var schemaV2Objects = append(append([]schemaObject{}, operationalSchemaObjects...), upgradeHistorySchemaObjects...)
