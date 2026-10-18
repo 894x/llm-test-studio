@@ -309,6 +309,7 @@ func streamingPerformanceExecutor(executor load.Executor) load.Executor {
 	return func(ctx context.Context, request load.Request) load.Observation {
 		observation := executor(ctx, request)
 		observation.Streaming = true
+		observation.TTFTObserved = observation.TTFTObserved || observation.SemanticChunkCount > 0 || observation.TTFT > 0 || observation.TTFTAny > 0
 		if observation.TTFTAny <= 0 {
 			observation.TTFTAny = observation.TTFT
 		}
@@ -953,8 +954,10 @@ func performanceSamples(observations []load.Observation, evidence map[uint64]*Pe
 			ttftAnyMS,
 			durationMilliseconds(observation.E2E),
 			observation.CompletionTokens,
+			observation.TTFTObserved,
 		)
 		sample := PerformanceSample{
+			TTFTObserved:       observation.TTFTObserved,
 			RequestIndex:       observation.Index,
 			ScheduledOffsetMS:  durationMilliseconds(observation.ScheduledOffset),
 			StartedOffsetMS:    durationMilliseconds(observation.StartedOffset),

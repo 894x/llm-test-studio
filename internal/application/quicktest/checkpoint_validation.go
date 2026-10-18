@@ -313,6 +313,10 @@ func (checkpoint PerformanceCheckpoint) validateCapacity() error {
 	}
 	var highest *uint32
 	for index, rung := range capacity.Rungs {
+		if !validLatencyPrecision(rung.SLOAssessment.LatencyPrecision) ||
+			rung.SLOAssessment.LatencyPrecision != capacity.Rungs[0].SLOAssessment.LatencyPrecision {
+			return ErrPerformanceCheckpoint
+		}
 		planMatches := rung.Index == uint32(index) && rung.Target == targets[index] &&
 			rung.Progress.CapacityRungNumber == uint32(index)+1 &&
 			rung.Progress.CapacityRungCount == uint32(len(targets)) && rung.Progress.CapacityTarget == rung.Target

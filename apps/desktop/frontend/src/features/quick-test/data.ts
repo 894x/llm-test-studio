@@ -238,6 +238,7 @@ export interface QuickPerformanceResponseEvidence {
 }
 
 export interface QuickPerformanceSample {
+  ttft_observed?: boolean
   request_index: number
   scheduled_offset_ms: number
   started_offset_ms: number
@@ -347,6 +348,7 @@ export interface QuickPerformanceTimeSlice {
 export type QuickPerformanceSLOStatus = "not_evaluated" | "passed" | "failed"
 
 export interface QuickPerformanceSLOAssessment {
+  latency_precision?: "latency_2dp_v1"
   status: QuickPerformanceSLOStatus
   thresholds: {
     ttft_ms: number
@@ -607,6 +609,7 @@ function parsePerformanceSample(value: unknown, _schemaVersion: QuickPerformance
   }
   if (
     !isNonNegativeInteger(value.request_index) ||
+    (value.ttft_observed !== undefined && typeof value.ttft_observed !== "boolean") ||
     !offsets.every(isNonNegativeFinite) ||
     !isStatus(value.http_status) ||
     typeof value.success !== "boolean" ||
@@ -625,6 +628,7 @@ function parsePerformanceSample(value: unknown, _schemaVersion: QuickPerformance
   const targetInputTokens = includeTargets && value.target_input_tokens !== undefined ? Number(value.target_input_tokens) : undefined
   const targetOutputTokens = includeTargets && value.target_output_tokens !== undefined ? Number(value.target_output_tokens) : undefined
   const sample: QuickPerformanceSample = {
+    ...(value.ttft_observed === undefined ? {} : { ttft_observed: value.ttft_observed as boolean }),
     request_index: value.request_index,
     scheduled_offset_ms: Number(value.scheduled_offset_ms),
     started_offset_ms: Number(value.started_offset_ms),
@@ -658,6 +662,14 @@ function parsePerformanceSample(value: unknown, _schemaVersion: QuickPerformance
   return sample
 }
 
+// Validate Go's verdict using the same decimal formatting precision as report values.
+const latencyPrecisionFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, useGrouping: false })
+function latencySLOViolated(value: number, limit: number, observed: boolean, precision: "latency_2dp_v1" | undefined): boolean {
+  if (limit <= 0) return false
+  if (precision === undefined) return value <= 0 || value > limit
+  return !observed || Number(latencyPrecisionFormatter.format(value)) > Number(latencyPrecisionFormatter.format(limit))
+}
+
 function parsePerformanceSLOAssessment(
   value: unknown,
   profile: QuickPerformanceProfile,
@@ -665,7 +677,7 @@ function parsePerformanceSLOAssessment(
   metrics: QuickPerformanceMetrics,
   samples?: QuickPerformanceSample[],
 ): QuickPerformanceSLOAssessment {
-  if (!isRecord(value) || !isPerformanceSLOStatus(value.status) || !isRecord(value.thresholds) || !isRecord(value.violations)) {
+  if (!isRecord(value) || (value.latency_precision !== undefined && value.latency_precision !== "latency_2dp_v1") || !isPerformanceSLOStatus(value.status) || !isRecord(value.thresholds) || !isRecord(value.violations)) {
     throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const thresholdFields = ["ttft_ms", "tpot_ms", "e2e_ms"] as const
@@ -681,6 +693,7 @@ function parsePerformanceSLOAssessment(
   ) throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
 
   const assessment: QuickPerformanceSLOAssessment = {
+    ...(value.latency_precision === undefined ? {} : { latency_precision: value.latency_precision as "latency_2dp_v1" }),
     status: value.status,
     thresholds: {
       ttft_ms: Number(value.thresholds.ttft_ms),
@@ -737,9 +750,15 @@ function parsePerformanceSLOAssessment(
   if (samples !== undefined) {
     const observed = samples.reduce((summary, sample) => {
       const transport = !sample.success
-      const ttft = sample.success && assessment.thresholds.ttft_ms > 0 && (sample.ttft_ms <= 0 || sample.ttft_ms > assessment.thresholds.ttft_ms)
-      const tpot = sample.success && assessment.thresholds.tpot_ms > 0 && (sample.tpot_ms <= 0 || sample.tpot_ms > assessment.thresholds.tpot_ms)
-      const e2e = sample.success && assessment.thresholds.e2e_ms > 0 && (sample.e2e_ms <= 0 || sample.e2e_ms > assessment.thresholds.e2e_ms)
+      const ttft = sample.success && latencySLOViolated(
+        sample.ttft_ms, assessment.thresholds.ttft_ms, sample.ttft_observed === true || sample.ttft_ms > 0, assessment.latency_precision,
+      )
+      const tpot = sample.success && latencySLOViolated(
+        sample.tpot_ms, assessment.thresholds.tpot_ms, (sample.ttft_observed === true || sample.ttft_ms > 0) && sample.completion_tokens > 1 && sample.e2e_ms >= sample.ttft_ms, assessment.latency_precision,
+      )
+      const e2e = sample.success && latencySLOViolated(
+        sample.e2e_ms, assessment.thresholds.e2e_ms, true, assessment.latency_precision,
+      )
       if (sample.success && !ttft && !tpot && !e2e) summary.good += 1
       if (transport) summary.transport += 1
       if (ttft) summary.ttft += 1
@@ -778,6 +797,9 @@ function parsePerformanceCapacityResult(
     throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
   }
   const rungs = value.rungs.map((rung, index) => parsePerformanceCapacityRung(rung, profile, index, targets[index], targets.length, schemaVersion))
+  if (rungs.some((rung) => rung.slo_assessment.latency_precision !== rungs[0].slo_assessment.latency_precision)) {
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
+  }
   const passing = rungs.filter((rung) => rung.slo_assessment.status === "passed")
   const highestPassing = passing.length === 0 ? undefined : passing[passing.length - 1].index
   const last = rungs[rungs.length - 1]
@@ -821,6 +843,9 @@ function parsePerformanceCapacityRung(
   const metrics = pickPerformanceMetrics(value.metrics, schemaVersion)
   const failures = parsePerformanceFailures(value.failures)
   const assessment = parsePerformanceSLOAssessment(value.slo_assessment, profile, progress, metrics)
+  if (!performanceV3MetricAlgebraValid(metrics, assessment.latency_precision !== undefined)) {
+    throw new DesktopDataError(tx("desktop:quick-test_invalid_quick_performance_report_structure"))
+  }
   const failureCount = failures.reduce((sum, failure) => sum + failure.count, 0)
   const expectedSuccess = progress.phase === "completed" && metrics.completed > 0 && metrics.failed === 0
   if (
@@ -1116,26 +1141,26 @@ function performanceV3SampleMilestonesValid(sample: QuickPerformanceSample): boo
   const absoluteMilestones = [ttfb, ttftAny, ttftVisible, ttst]
   if (absoluteMilestones.some((milestone) => milestone > sample.e2e_ms) ||
     (ttfb > 0 && ttftAny > 0 && ttfb > ttftAny) ||
-    (ttftVisible > 0 && (ttftAny === 0 || ttftVisible < ttftAny)) ||
-    (ttst > 0 && (chunks < 2 || ttftAny === 0 || ttst < ttftAny)) ||
-    (chunks > 0 && ttftAny === 0) ||
-    (chunks >= 2 && ttst === 0) ||
+    (ttftVisible > 0 && ((ttftAny === 0 && sample.ttft_observed !== true) || ttftVisible < ttftAny)) ||
+    (ttst > 0 && (chunks < 2 || (ttftAny === 0 && sample.ttft_observed !== true) || ttst < ttftAny)) ||
+    (chunks > 0 && ttftAny === 0 && sample.ttft_observed !== true) ||
+    (chunks >= 2 && ttst === 0 && sample.ttft_observed !== true) ||
     (chunks < 2 && (ttst !== 0 || observedICL !== 0)) ||
     (chunks === 1 && ttftVisible > 0 && ttftVisible !== ttftAny) ||
-    (chunks === 0 && (ttftAny !== 0 || ttftVisible !== 0)) ||
-    (chunks === 2 && ttftAny > 0 && ttst > 0 && !approximatelyEqual(observedICL, ttst - ttftAny))) return false
+    (chunks === 0 && (sample.ttft_observed === true || ttftAny !== 0 || ttftVisible !== 0)) ||
+    (chunks === 2 && !approximatelyEqual(observedICL, ttst - ttftAny))) return false
   return true
 }
 
-function performanceV3MetricAlgebraValid(metrics: QuickPerformanceMetrics): boolean {
+function performanceV3MetricAlgebraValid(metrics: QuickPerformanceMetrics, allowZero = true): boolean {
   const latencySummaries = (["ttfb", "ttft_any", "ttft_visible", "ttst", "observed_icl"] as const)
     .map((stem) => [stem, performanceV3MetricDistribution(metrics, stem)] as const)
   const chunkSummary = performanceV3CountMetricDistribution(metrics)
   const ttftP90Valid = isNonNegativeFinite(metrics.ttft_p90_ms) &&
     metrics.ttft_p50_ms <= metrics.ttft_p90_ms && metrics.ttft_p90_ms <= metrics.ttft_p95_ms &&
     (metrics.ttft_samples !== 0 || metrics.ttft_p90_ms === 0) &&
-    (metrics.ttft_samples === 0 || metrics.ttft_p90_ms > 0)
-  if (!latencySummaries.every(([stem, summary]) => performanceV3DistributionValid(summary, stem !== "observed_icl")) ||
+    (allowZero || metrics.ttft_samples === 0 || metrics.ttft_p90_ms > 0)
+  if (!latencySummaries.every(([stem, summary]) => performanceV3DistributionValid(summary, stem !== "observed_icl" && (!allowZero || (stem !== "ttft_any" && stem !== "ttst")))) ||
     !performanceV3DistributionValid(chunkSummary, false) || !ttftP90Valid) return false
 
   return metrics.ttft_samples === metrics.ttft_any_samples &&
@@ -1152,7 +1177,7 @@ function performanceV3MetricAlgebraValid(metrics: QuickPerformanceMetrics): bool
 }
 
 function performanceV3MetricsMatchSamples(metrics: QuickPerformanceMetrics, samples: QuickPerformanceSample[]): boolean {
-  if (!performanceV3MetricAlgebraValid(metrics)) return false
+  if (!performanceV3MetricAlgebraValid(metrics, samples.some((sample) => sample.ttft_observed === true))) return false
   const cohorts = performanceV3CohortsFromSamples(samples)
   const ttft = performanceV3Summarize(cohorts.ttft_any)
   if (metrics.ttft_samples !== ttft.count ||
@@ -1179,10 +1204,10 @@ function performanceV3CohortsFromSamples(samples: QuickPerformanceSample[]): Per
   for (const sample of samples) {
     if (!sample.success) continue
     if (sample.ttfb_ms! > 0) cohorts.ttfb.push(sample.ttfb_ms!)
-    if (sample.ttft_any_ms! > 0) cohorts.ttft_any.push(sample.ttft_any_ms!)
+    if (sample.ttft_observed === true || sample.ttft_any_ms! > 0) cohorts.ttft_any.push(sample.ttft_any_ms!)
     if (sample.ttft_visible_ms! > 0) cohorts.ttft_visible.push(sample.ttft_visible_ms!)
     if (sample.semantic_chunk_count! >= 2) {
-      if (sample.ttst_ms! > 0) cohorts.ttst.push(sample.ttst_ms!)
+      if (sample.ttft_observed === true || sample.ttst_ms! > 0) cohorts.ttst.push(sample.ttst_ms!)
       cohorts.observed_icl.push(sample.observed_icl_ms!)
     }
     cohorts.semantic_chunk_count.push(sample.semantic_chunk_count!)
@@ -1306,8 +1331,8 @@ function performanceV3TimeSlicesMatchSamples(
     for (const stem of ["ttfb", "ttft_any", "ttft_visible", "ttst", "observed_icl", "semantic_chunk_count"] as const) {
       latency.cohorts[stem].push(...cohorts[stem])
     }
-    if (sample.tpot_ms > 0) latency.tpot.push(sample.tpot_ms)
-    if (sample.e2e_ms > 0) latency.e2e.push(sample.e2e_ms)
+    if (sample.tpot_ms > 0 || (sample.ttft_observed === true && sample.completion_tokens > 1)) latency.tpot.push(sample.tpot_ms)
+    if (sample.ttft_observed === true || sample.e2e_ms > 0) latency.e2e.push(sample.e2e_ms)
   }
   if (totalDurationMS % sliceDurationMS !== 0) get(totalDurationMS)
 

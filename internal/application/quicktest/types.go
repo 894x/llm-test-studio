@@ -222,6 +222,7 @@ type PerformanceSLOViolations struct {
 }
 
 type PerformanceSLOAssessment struct {
+	LatencyPrecision   string                   `json:"latency_precision,omitempty"`
 	Status             PerformanceSLOStatus     `json:"status"`
 	Thresholds         PerformanceSLOThresholds `json:"thresholds"`
 	TargetPercent      float64                  `json:"target_percent"`
@@ -307,6 +308,7 @@ const (
 // Failed samples may carry a bounded, redacted response. Request bodies,
 // prompts, credentials, headers, and unredacted provider text remain excluded.
 type PerformanceSample struct {
+	TTFTObserved       bool                         `json:"ttft_observed,omitempty"`
 	RequestIndex       uint64                       `json:"request_index"`
 	TargetInputTokens  uint32                       `json:"target_input_tokens,omitempty"`
 	TargetOutputTokens uint32                       `json:"target_output_tokens,omitempty"`

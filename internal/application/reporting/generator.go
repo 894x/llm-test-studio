@@ -479,7 +479,7 @@ func evaluateSLA(profile domain.SLAProfile, results []domain.Result, aggregates 
 		value := metric.Value
 		rounded := roundedLatency && (metric.Unit == "ms" || metric.Unit == "ms/token")
 		if rounded {
-			value, threshold = roundLatencyMS(value), roundLatencyMS(threshold)
+			value, threshold = domain.RoundLatencyMilliseconds(value), domain.RoundLatencyMilliseconds(threshold)
 		}
 		failed := comparison == "min" && value < threshold || comparison == "max" && value > threshold
 		if failed {

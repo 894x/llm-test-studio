@@ -124,20 +124,24 @@ func ComputeMetricsWithProgress(observations []Observation, progress Progress) M
 		if observation.TTFB > 0 {
 			ttfbs = append(ttfbs, milliseconds(observation.TTFB))
 		}
-		if observation.TTFTAny > 0 {
+		if observation.TTFTObserved || observation.TTFTAny > 0 {
 			ttfts = append(ttfts, milliseconds(observation.TTFTAny))
 		}
 		if observation.TTFTVisible > 0 {
 			ttftVisibles = append(ttftVisibles, milliseconds(observation.TTFTVisible))
 		}
-		if observation.SemanticChunkCount >= 2 && observation.TTFTAny > 0 && observation.TTST > 0 {
+		secondTokenKnown := observation.TTFTObserved || (observation.TTFTAny > 0 && observation.TTST > 0)
+		if observation.SemanticChunkCount >= 2 && secondTokenKnown {
 			ttsts = append(ttsts, milliseconds(observation.TTST))
 			observedICLs = append(observedICLs, milliseconds(observation.ObservedICL))
 		}
 		if observation.Streaming {
 			semanticChunkCounts = append(semanticChunkCounts, float64(observation.SemanticChunkCount))
 		}
-		if observation.TTFTAny > 0 && observation.E2E > observation.TTFTAny && observation.CompletionTokens > 1 {
+		ttftKnown := observation.TTFTObserved || observation.TTFTAny > 0
+		generationKnown := observation.E2E >= observation.TTFTAny &&
+			(observation.TTFTObserved || observation.E2E > observation.TTFTAny)
+		if ttftKnown && generationKnown && observation.CompletionTokens > 1 {
 			intervals := float64(observation.CompletionTokens - 1)
 			tpots = append(tpots, milliseconds(observation.E2E-observation.TTFTAny)/intervals)
 		}
@@ -211,6 +215,7 @@ func normalizeObservationTimings(observation Observation) Observation {
 		if observation.TTFTAny > observation.E2E {
 			observation.TTFTAny = 0
 			observation.TTFT = 0
+			observation.TTFTObserved = false
 		}
 		if observation.TTFTVisible > observation.E2E {
 			observation.TTFTVisible = 0
@@ -222,7 +227,8 @@ func normalizeObservationTimings(observation Observation) Observation {
 	if observation.TTFB > 0 && observation.TTFTAny > 0 && observation.TTFB > observation.TTFTAny {
 		observation.TTFB = 0
 	}
-	if observation.TTFTVisible > 0 && (observation.TTFTAny == 0 || observation.TTFTVisible < observation.TTFTAny) {
+	firstTokenMissing := observation.TTFTAny == 0 && !observation.TTFTObserved
+	if observation.TTFTVisible > 0 && (firstTokenMissing || observation.TTFTVisible < observation.TTFTAny) {
 		observation.TTFTVisible = 0
 	}
 	if !observation.Streaming {
@@ -231,7 +237,7 @@ func normalizeObservationTimings(observation Observation) Observation {
 		observation.SemanticChunkCount = 0
 		return observation
 	}
-	if observation.TTFTAny == 0 {
+	if observation.TTFTAny == 0 && !observation.TTFTObserved {
 		observation.TTFTVisible = 0
 		observation.TTST = 0
 		observation.ObservedICL = 0
@@ -249,7 +255,7 @@ func normalizeObservationTimings(observation Observation) Observation {
 		}
 		return observation
 	}
-	if observation.TTST == 0 || observation.TTST < observation.TTFTAny {
+	if (observation.TTST == 0 && !observation.TTFTObserved) || observation.TTST < observation.TTFTAny {
 		observation.TTST = 0
 		observation.ObservedICL = 0
 		observation.SemanticChunkCount = 1

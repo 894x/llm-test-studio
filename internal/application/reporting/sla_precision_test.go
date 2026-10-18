@@ -75,7 +75,7 @@ func TestRoundLatencyMatchesDecimalDisplayPrecision(t *testing.T) {
 		{value: 50.004, want: 50}, {value: 50.005, want: 50.01},
 		{value: -1.005, want: -1.01}, {value: math.MaxFloat64, want: math.MaxFloat64},
 	} {
-		if got := roundLatencyMS(test.value); got != test.want {
+		if got := domain.RoundLatencyMilliseconds(test.value); got != test.want {
 			t.Fatalf("round(%v) = %v, want %v", test.value, got, test.want)
 		}
 	}

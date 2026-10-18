@@ -116,6 +116,10 @@ func validatePerformanceCapacity(report PerformanceReport) error {
 
 	var highestPassing *uint32
 	for index, rung := range capacity.Rungs {
+		if !validLatencyPrecision(rung.SLOAssessment.LatencyPrecision) ||
+			rung.SLOAssessment.LatencyPrecision != capacity.Rungs[0].SLOAssessment.LatencyPrecision {
+			return errors.New("quick performance capacity precision is inconsistent")
+		}
 		rungIndex := uint32(index)
 		if rung.Index != rungIndex || !approximatelyEqual(rung.Target, targets[index]) ||
 			rung.Progress.CapacityRungNumber != rungIndex+1 || rung.Progress.CapacityRungCount != uint32(len(targets)) ||
@@ -190,7 +194,7 @@ func validatePerformanceCapacityRung(profile PerformanceProfile, rung Performanc
 		!validPerformanceMetricScalars(metrics) {
 		return errors.New("quick performance capacity rung metrics are invalid")
 	}
-	if includeFine && !validPerformanceFineMetricAlgebra(metrics) {
+	if includeFine && !validPerformanceFineMetricAlgebra(metrics, rung.SLOAssessment.LatencyPrecision != "") {
 		return errors.New("quick performance capacity rung fine streaming metrics are invalid")
 	}
 	expectedSuccessRate := float64(progress.Succeeded) / float64(progress.Completed) * 100
@@ -244,7 +248,8 @@ func validatePerformanceCapacityRung(profile PerformanceProfile, rung Performanc
 }
 
 func validatePerformanceCapacitySLO(profile PerformanceProfile, assessment PerformanceSLOAssessment, progress PerformanceProgress) error {
-	if !approximatelyEqual(assessment.Thresholds.TTFTMS, profile.SLOTTFTMS) ||
+	if !validLatencyPrecision(assessment.LatencyPrecision) ||
+		!approximatelyEqual(assessment.Thresholds.TTFTMS, profile.SLOTTFTMS) ||
 		!approximatelyEqual(assessment.Thresholds.TPOTMS, profile.SLOTPOTMS) ||
 		!approximatelyEqual(assessment.Thresholds.E2EMS, profile.SLOE2EMS) ||
 		!approximatelyEqual(assessment.TargetPercent, profile.SLOTargetPercent) ||
@@ -342,7 +347,7 @@ func validPerformanceMetricScalars(metrics load.Metrics) bool {
 		validPerformanceMetricDistributions(metrics)
 }
 
-func validPerformanceFineMetricAlgebra(metrics load.Metrics) bool {
+func validPerformanceFineMetricAlgebra(metrics load.Metrics, allowZero bool) bool {
 	if metrics.TTFBSamples > metrics.Succeeded || metrics.TTFTSamples > metrics.Succeeded || metrics.TTFTAnySamples > metrics.Succeeded ||
 		metrics.TTFTVisibleSamples > metrics.TTFTAnySamples || metrics.TTSTSamples > metrics.TTFTAnySamples ||
 		metrics.ObservedICLSamples != metrics.TTSTSamples || metrics.SemanticChunkCountSamples != metrics.Succeeded ||
@@ -351,20 +356,21 @@ func validPerformanceFineMetricAlgebra(metrics load.Metrics) bool {
 		metrics.TTFTAverage != metrics.TTFTAnyAverage {
 		return false
 	}
-	return validSampledLegacyMetricDistribution(metrics.TTFTSamples, metrics.TTFTP50, metrics.TTFTP90, metrics.TTFTP95, metrics.TTFTP99, metrics.TTFTAverage) &&
+	return validSampledLegacyMetricDistribution(allowZero, metrics.TTFTSamples, metrics.TTFTP50, metrics.TTFTP90, metrics.TTFTP95, metrics.TTFTP99, metrics.TTFTAverage) &&
 		validSampledMetricDistribution(metrics.TTFBSamples, true, metrics.TTFBP50, metrics.TTFBP95, metrics.TTFBP99, metrics.TTFBAverage) &&
-		validSampledMetricDistribution(metrics.TTFTAnySamples, true, metrics.TTFTAnyP50, metrics.TTFTAnyP95, metrics.TTFTAnyP99, metrics.TTFTAnyAverage) &&
+		validSampledMetricDistribution(metrics.TTFTAnySamples, !allowZero, metrics.TTFTAnyP50, metrics.TTFTAnyP95, metrics.TTFTAnyP99, metrics.TTFTAnyAverage) &&
 		validSampledMetricDistribution(metrics.TTFTVisibleSamples, true, metrics.TTFTVisibleP50, metrics.TTFTVisibleP95, metrics.TTFTVisibleP99, metrics.TTFTVisibleAverage) &&
-		validSampledMetricDistribution(metrics.TTSTSamples, true, metrics.TTSTP50, metrics.TTSTP95, metrics.TTSTP99, metrics.TTSTAverage) &&
+		validSampledMetricDistribution(metrics.TTSTSamples, !allowZero, metrics.TTSTP50, metrics.TTSTP95, metrics.TTSTP99, metrics.TTSTAverage) &&
 		validSampledMetricDistribution(metrics.ObservedICLSamples, false, metrics.ObservedICLP50, metrics.ObservedICLP95, metrics.ObservedICLP99, metrics.ObservedICLAverage) &&
 		validSampledMetricDistribution(metrics.SemanticChunkCountSamples, false, metrics.SemanticChunkCountP50, metrics.SemanticChunkCountP95, metrics.SemanticChunkCountP99, metrics.SemanticChunkCountAverage)
 }
 
-func validSampledLegacyMetricDistribution(samples uint64, p50, p90, p95, p99, average float64) bool {
+func validSampledLegacyMetricDistribution(allowZero bool, samples uint64, p50, p90, p95, p99, average float64) bool {
 	if samples == 0 {
 		return p50 == 0 && p90 == 0 && p95 == 0 && p99 == 0 && average == 0
 	}
-	return p50 > 0 && p90 > 0 && p95 > 0 && p99 > 0 && average > 0 && p50 <= p90 && p90 <= p95 && p95 <= p99
+	positive := p50 > 0 && p90 > 0 && p95 > 0 && p99 > 0 && average > 0
+	return (allowZero || positive) && p50 <= p90 && p90 <= p95 && p95 <= p99
 }
 
 func validSampledMetricDistribution(samples uint64, positive bool, p50, p95, p99, average float64) bool {

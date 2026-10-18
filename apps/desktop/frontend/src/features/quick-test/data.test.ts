@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -1028,3 +1029,38 @@ function phaseFiveCapacityReport(): any {
   for (const rung of raw.capacity_result.rungs) Object.assign(rung.metrics, phaseFiveMetrics())
   return raw
 }
+
+
+describe("latency precision across Go and frontend report boundaries", () => {
+  function fixture(name: string) {
+    return JSON.parse(readFileSync(`../../../internal/application/quicktest/testdata/${name}.json`, "utf8"))
+  }
+
+  it.each(["legacy-slo-boundary-220a2185", "legacy-slo-zero-220a2185", "current-slo-boundary", "current-slo-zero"])(
+    "reads %s without changing measurements or conclusions", (name) => {
+      const raw = fixture(name)
+      const parsed = parseQuickPerformanceReport(raw)
+      expect(parsed.samples).toEqual(raw.samples)
+      expect(parsed.slo_assessment).toEqual(raw.slo_assessment)
+      expect(parsed.time_slices).toEqual(raw.time_slices)
+      expect(parsed.slo_assessment?.status).toBe(name.startsWith("legacy") ? "failed" : "passed")
+    },
+  )
+
+  it("rounds thresholds too and rejects an inconsistent rounded verdict", () => {
+    const raw = fixture("current-slo-boundary")
+    raw.profile.slo_e2e_ms = raw.slo_assessment.thresholds.e2e_ms = 999.995
+    expect(parseQuickPerformanceReport(raw).slo_assessment?.status).toBe("passed")
+    raw.profile.slo_e2e_ms = raw.slo_assessment.thresholds.e2e_ms = 999.994
+    expect(() => parseQuickPerformanceReport(raw)).toThrow()
+  })
+
+  it("rejects unknown semantics and missing first-token evidence", () => {
+    const raw = fixture("current-slo-zero")
+    raw.slo_assessment.latency_precision = "future_precision"
+    expect(() => parseQuickPerformanceReport(raw)).toThrow()
+    raw.slo_assessment.latency_precision = "latency_2dp_v1"
+    delete raw.samples[0].ttft_observed
+    expect(() => parseQuickPerformanceReport(raw)).toThrow()
+  })
+})

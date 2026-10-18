@@ -58,6 +58,8 @@ type Request struct {
 // Observation contains only measurement and classification data. Request and
 // response evidence belongs to the redacted artifact boundary, not the scheduler.
 type Observation struct {
+	// TTFTObserved distinguishes a measured zero from a missing first token.
+	TTFTObserved       bool              `json:"ttft_observed,omitempty"`
 	Index              uint64            `json:"index"`
 	ScheduledOffset    time.Duration     `json:"scheduled_offset"`
 	StartedOffset      time.Duration     `json:"started_offset"`

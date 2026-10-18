@@ -396,7 +396,7 @@ func validPerformancePhaseThreeSamples(samples []PerformanceSample, totalDuratio
 		if !approximatelyEqual(sample.ScheduleLagMS, expectedLag) ||
 			(sample.E2EMS > elapsed && !approximatelyEqual(sample.E2EMS, elapsed) && !coarseClockMinimum) ||
 			sample.TTFTMS > sample.E2EMS ||
-			!approximatelyEqual(sample.TPOTMS, performanceTPOTMilliseconds(sample.TTFTMS, sample.E2EMS, sample.CompletionTokens)) {
+			!approximatelyEqual(sample.TPOTMS, performanceTPOTMilliseconds(sample.TTFTMS, sample.E2EMS, sample.CompletionTokens, sample.TTFTObserved)) {
 			return false
 		}
 	}
@@ -421,20 +421,20 @@ func validPerformanceFineSample(sample PerformanceSample) bool {
 			return false
 		}
 	}
-	if sample.TTFTVisibleMS > 0 && (sample.TTFTAnyMS <= 0 || sample.TTFTAnyMS > sample.TTFTVisibleMS) {
+	if sample.TTFTVisibleMS > 0 && ((sample.TTFTAnyMS <= 0 && !sample.TTFTObserved) || sample.TTFTAnyMS > sample.TTFTVisibleMS) {
 		return false
 	}
-	if sample.TTSTMS > 0 && (sample.TTFTAnyMS <= 0 || sample.TTFTAnyMS > sample.TTSTMS) {
+	if sample.TTSTMS > 0 && ((sample.TTFTAnyMS <= 0 && !sample.TTFTObserved) || sample.TTFTAnyMS > sample.TTSTMS) {
 		return false
 	}
 	switch sample.SemanticChunkCount {
 	case 0:
-		return sample.TTFTAnyMS == 0 && sample.TTFTVisibleMS == 0 && sample.TTSTMS == 0 && sample.ObservedICLMS == 0
+		return !sample.TTFTObserved && sample.TTFTAnyMS == 0 && sample.TTFTVisibleMS == 0 && sample.TTSTMS == 0 && sample.ObservedICLMS == 0
 	case 1:
-		return sample.TTFTAnyMS > 0 && (sample.TTFTVisibleMS == 0 || sample.TTFTVisibleMS == sample.TTFTAnyMS) &&
+		return (sample.TTFTObserved || sample.TTFTAnyMS > 0) && (sample.TTFTVisibleMS == 0 || sample.TTFTVisibleMS == sample.TTFTAnyMS) &&
 			sample.TTSTMS == 0 && sample.ObservedICLMS == 0
 	default:
-		return sample.TTFTAnyMS > 0 && sample.TTSTMS > 0 &&
+		return (sample.TTFTObserved || sample.TTFTAnyMS > 0) && (sample.TTFTObserved || sample.TTSTMS > 0) &&
 			(sample.SemanticChunkCount != 2 || approximatelyEqual(sample.ObservedICLMS, sample.TTSTMS-sample.TTFTAnyMS))
 	}
 }
@@ -448,7 +448,7 @@ func validatePerformanceFineMetrics(metrics load.Metrics, samples []PerformanceS
 		if sample.TTFBMS > 0 {
 			ttfb = append(ttfb, sample.TTFBMS)
 		}
-		if sample.TTFTAnyMS > 0 {
+		if sample.TTFTObserved || sample.TTFTAnyMS > 0 {
 			ttftAny = append(ttftAny, sample.TTFTAnyMS)
 		}
 		if sample.TTFTVisibleMS > 0 {
@@ -500,6 +500,7 @@ func rebuildPerformanceMetrics(
 		}
 		observations = append(observations, load.Observation{
 			Index:              sample.RequestIndex,
+			TTFTObserved:       sample.TTFTObserved,
 			ScheduledOffset:    performanceDurationFromMilliseconds(sample.ScheduledOffsetMS),
 			StartedOffset:      performanceDurationFromMilliseconds(sample.StartedOffsetMS),
 			FinishedOffset:     performanceDurationFromMilliseconds(sample.FinishedOffsetMS),

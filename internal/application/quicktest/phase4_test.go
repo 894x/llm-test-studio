@@ -17,7 +17,7 @@ import (
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
-func TestBuildPerformanceSLOAssessmentCountsEveryCompletedRequest(t *testing.T) {
+func TestLegacyPerformanceSLOAssessmentCountsEveryCompletedRequest(t *testing.T) {
 	profile := PerformanceProfile{
 		SLOTTFTMS: 100, SLOTPOTMS: 10, SLOE2EMS: 500, SLOTargetPercent: 50,
 	}
@@ -29,7 +29,7 @@ func TestBuildPerformanceSLOAssessmentCountsEveryCompletedRequest(t *testing.T) 
 	}
 	progress := PerformanceProgress{Phase: load.PhaseCompleted, Completed: 4, TotalDurationMS: 2_000}
 
-	assessment := buildPerformanceSLOAssessment(profile, samples, progress)
+	assessment := buildPerformanceSLOAssessmentWithPrecision(profile, samples, progress, "")
 	if assessment == nil {
 		t.Fatal("buildPerformanceSLOAssessment() = nil")
 	}
@@ -717,7 +717,7 @@ func TestBuildPerformanceSLOAssessmentSeparatesStatusFromObservedMath(t *testing
 	}
 }
 
-func TestBuildPerformanceSLOAssessmentTreatsMissingEnabledLatencyAsViolation(t *testing.T) {
+func TestLegacyPerformanceSLOAssessmentTreatsMissingEnabledLatencyAsViolation(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		profile PerformanceProfile
@@ -728,9 +728,9 @@ func TestBuildPerformanceSLOAssessmentTreatsMissingEnabledLatencyAsViolation(t *
 		{name: "E2E", profile: PerformanceProfile{SLOE2EMS: 10, SLOTargetPercent: 100}, count: func(value PerformanceSLOViolations) uint64 { return value.E2E }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			assessment := buildPerformanceSLOAssessment(test.profile, []PerformanceSample{{Success: true}}, PerformanceProgress{
+			assessment := buildPerformanceSLOAssessmentWithPrecision(test.profile, []PerformanceSample{{Success: true}}, PerformanceProgress{
 				Phase: load.PhaseCompleted, Completed: 1, TotalDurationMS: 1_000,
-			})
+			}, "")
 			if assessment.Status != PerformanceSLOFailed || assessment.GoodRequests != 0 || test.count(assessment.Violations) != 1 {
 				t.Fatalf("assessment = %#v", assessment)
 			}

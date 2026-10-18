@@ -68,14 +68,14 @@ func buildPerformanceTimeSlices(observations []load.Observation, totalDuration, 
 			if ttftAny <= 0 {
 				ttftAny = observation.TTFT
 			}
-			if ttftAny > 0 {
+			if observation.TTFTObserved || ttftAny > 0 {
 				latency.ttftAny = append(latency.ttftAny, durationMilliseconds(ttftAny))
 			}
 			if observation.TTFTVisible > 0 {
 				latency.ttftVisible = append(latency.ttftVisible, durationMilliseconds(observation.TTFTVisible))
 			}
 			if observation.SemanticChunkCount >= 2 {
-				if observation.TTST > 0 {
+				if observation.TTFTObserved || observation.TTST > 0 {
 					latency.ttst = append(latency.ttst, durationMilliseconds(observation.TTST))
 				}
 				if observation.ObservedICL >= 0 {
@@ -83,14 +83,15 @@ func buildPerformanceTimeSlices(observations []load.Observation, totalDuration, 
 				}
 			}
 			latency.semanticChunkCount = append(latency.semanticChunkCount, float64(observation.SemanticChunkCount))
-			if observation.E2E > 0 {
+			if observation.TTFTObserved || observation.E2E > 0 {
 				latency.e2e = append(latency.e2e, durationMilliseconds(observation.E2E))
 			}
 			if tpot := performanceTPOTMilliseconds(
 				durationMilliseconds(ttftAny),
 				durationMilliseconds(observation.E2E),
 				observation.CompletionTokens,
-			); tpot > 0 {
+				observation.TTFTObserved,
+			); tpot > 0 || (observation.TTFTObserved && observation.CompletionTokens > 1) {
 				latency.tpot = append(latency.tpot, tpot)
 			}
 		} else {
@@ -171,23 +172,23 @@ func buildPerformanceTimeSlicesFromSamples(samples []PerformanceSample, totalDur
 			if sample.TTFBMS > 0 {
 				latency.ttfb = append(latency.ttfb, sample.TTFBMS)
 			}
-			if ttftAnyMS > 0 {
+			if sample.TTFTObserved || ttftAnyMS > 0 {
 				latency.ttftAny = append(latency.ttftAny, ttftAnyMS)
 			}
 			if sample.TTFTVisibleMS > 0 {
 				latency.ttftVisible = append(latency.ttftVisible, sample.TTFTVisibleMS)
 			}
 			if sample.SemanticChunkCount >= 2 {
-				if sample.TTSTMS > 0 {
+				if sample.TTFTObserved || sample.TTSTMS > 0 {
 					latency.ttst = append(latency.ttst, sample.TTSTMS)
 				}
 				latency.observedICL = append(latency.observedICL, sample.ObservedICLMS)
 			}
 			latency.semanticChunkCount = append(latency.semanticChunkCount, float64(sample.SemanticChunkCount))
-			if tpot := performanceTPOTMilliseconds(ttftAnyMS, sample.E2EMS, sample.CompletionTokens); tpot > 0 {
+			if tpot := performanceTPOTMilliseconds(ttftAnyMS, sample.E2EMS, sample.CompletionTokens, sample.TTFTObserved); tpot > 0 || (sample.TTFTObserved && sample.CompletionTokens > 1) {
 				latency.tpot = append(latency.tpot, tpot)
 			}
-			if sample.E2EMS > 0 {
+			if sample.TTFTObserved || sample.E2EMS > 0 {
 				latency.e2e = append(latency.e2e, sample.E2EMS)
 			}
 		} else {
@@ -223,8 +224,9 @@ func buildPerformanceTimeSlicesFromSamples(samples []PerformanceSample, totalDur
 	return result
 }
 
-func performanceTPOTMilliseconds(ttftMS, e2eMS float64, completionTokens uint64) float64 {
-	if ttftMS <= 0 || e2eMS <= ttftMS || completionTokens <= 1 {
+func performanceTPOTMilliseconds(ttftMS, e2eMS float64, completionTokens uint64, observed bool) float64 {
+	missing := !observed && (ttftMS <= 0 || e2eMS <= ttftMS)
+	if missing || e2eMS < ttftMS || completionTokens <= 1 {
 		return 0
 	}
 	return (e2eMS - ttftMS) / float64(completionTokens-1)

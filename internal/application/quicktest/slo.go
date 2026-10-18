@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/894x/llm-test-studio/internal/domain"
 	"github.com/894x/llm-test-studio/internal/execution/load"
 )
 
@@ -18,15 +19,23 @@ func validatePerformanceSLO(report PerformanceReport) error {
 		}
 		return nil
 	}
-	expected := buildPerformanceSLOAssessment(report.Profile, report.Samples, report.Progress)
-	if report.SLOAssessment == nil || expected == nil || !equalPerformanceSLOAssessment(*report.SLOAssessment, *expected) {
+	if report.SLOAssessment == nil || !validLatencyPrecision(report.SLOAssessment.LatencyPrecision) {
+		return errors.New("quick performance report SLO precision is unsupported")
+	}
+	expected := buildPerformanceSLOAssessmentWithPrecision(
+		report.Profile,
+		report.Samples,
+		report.Progress,
+		report.SLOAssessment.LatencyPrecision,
+	)
+	if expected == nil || !equalPerformanceSLOAssessment(*report.SLOAssessment, *expected) {
 		return errors.New("quick performance report SLO assessment is inconsistent")
 	}
 	return nil
 }
 
 func equalPerformanceSLOAssessment(left, right PerformanceSLOAssessment) bool {
-	return left.Status == right.Status &&
+	return left.LatencyPrecision == right.LatencyPrecision && left.Status == right.Status &&
 		approximatelyEqual(left.Thresholds.TTFTMS, right.Thresholds.TTFTMS) &&
 		approximatelyEqual(left.Thresholds.TPOTMS, right.Thresholds.TPOTMS) &&
 		approximatelyEqual(left.Thresholds.E2EMS, right.Thresholds.E2EMS) &&
@@ -55,11 +64,31 @@ func buildPerformanceSLOAssessment(
 	samples []PerformanceSample,
 	progress PerformanceProgress,
 ) *PerformanceSLOAssessment {
+	return buildPerformanceSLOAssessmentWithPrecision(
+		profile,
+		samples,
+		progress,
+		domain.SLALatencyTwoDecimalsV1,
+	)
+}
+
+func validLatencyPrecision(precision string) bool {
+	return precision == "" || precision == domain.SLALatencyTwoDecimalsV1
+}
+
+// Unmarked persisted assessments retain their historical exact-value and zero rules.
+func buildPerformanceSLOAssessmentWithPrecision(
+	profile PerformanceProfile,
+	samples []PerformanceSample,
+	progress PerformanceProgress,
+	precision string,
+) *PerformanceSLOAssessment {
 	if !performanceSLOConfigured(profile) {
 		return nil
 	}
 	assessment := &PerformanceSLOAssessment{
-		Status: PerformanceSLONotEvaluated,
+		LatencyPrecision: precision,
+		Status:           PerformanceSLONotEvaluated,
 		Thresholds: PerformanceSLOThresholds{
 			TTFTMS: profile.SLOTTFTMS,
 			TPOTMS: profile.SLOTPOTMS,
@@ -73,15 +102,32 @@ func buildPerformanceSLOAssessment(
 		if !sample.Success {
 			assessment.Violations.Transport++
 		} else {
-			if profile.SLOTTFTMS > 0 && (sample.TTFTMS <= 0 || sample.TTFTMS > profile.SLOTTFTMS) {
+			ttftObserved := sample.TTFTObserved || sample.TTFTMS > 0
+			tpotObserved := ttftObserved && sample.CompletionTokens > 1 && sample.E2EMS >= sample.TTFTMS
+			if latencySLOViolated(
+				sample.TTFTMS,
+				profile.SLOTTFTMS,
+				ttftObserved,
+				precision,
+			) {
 				assessment.Violations.TTFT++
 				good = false
 			}
-			if profile.SLOTPOTMS > 0 && (sample.TPOTMS <= 0 || sample.TPOTMS > profile.SLOTPOTMS) {
+			if latencySLOViolated(
+				sample.TPOTMS,
+				profile.SLOTPOTMS,
+				tpotObserved,
+				precision,
+			) {
 				assessment.Violations.TPOT++
 				good = false
 			}
-			if profile.SLOE2EMS > 0 && (sample.E2EMS <= 0 || sample.E2EMS > profile.SLOE2EMS) {
+			if latencySLOViolated(
+				sample.E2EMS,
+				profile.SLOE2EMS,
+				true,
+				precision,
+			) {
 				assessment.Violations.E2E++
 				good = false
 			}
@@ -106,4 +152,14 @@ func buildPerformanceSLOAssessment(
 		}
 	}
 	return assessment
+}
+
+func latencySLOViolated(value, limit float64, observed bool, precision string) bool {
+	if limit <= 0 {
+		return false
+	}
+	if precision == "" {
+		return value <= 0 || value > limit
+	}
+	return !observed || domain.RoundLatencyMilliseconds(value) > domain.RoundLatencyMilliseconds(limit)
 }
